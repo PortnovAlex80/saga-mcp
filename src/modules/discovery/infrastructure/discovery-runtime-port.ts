@@ -433,6 +433,8 @@ export interface EnsureProjectedTask {
   titlePrefix?: string;
   /** Optional task priority; defaults to "high" for backward compat. */
   priority?: string;
+  sourceArtifactIds?: readonly number[];
+  verificationTargetArtifactId?: number | null;
 }
 
 export interface EnsureNodeExecutionPlan {

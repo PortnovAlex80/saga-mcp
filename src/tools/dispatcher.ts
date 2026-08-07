@@ -725,7 +725,10 @@ function handleWorkerDone(args: Record<string, unknown>): {
       workerId,
       args.execution_id,
       // awaiting_verification ждёт проверки ядром — ещё не 'integrating'
-      newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
+      newStatus === 'done'
+        && task.task_kind
+        && task.execution_mode === 'git_change'
+        && task.integration_state === 'pending'
         ? 'integrating'
         : 'finishing',
     );

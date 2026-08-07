@@ -64,6 +64,10 @@ export interface ProductionCellMaterialization {
   readonly completionPolicy: 'all' | 'any' | 'quorum';
   /** Required when completionPolicy='quorum': minimum successful instances. */
   readonly quorum?: number;
+  readonly taskProvenance?: {
+    readonly sourceArtifactIdsSelector: string;
+    readonly verificationTargetArtifactIdSelector?: string;
+  };
 }
 
 /**
@@ -243,6 +247,14 @@ export function assertValidProductionCellDefinition(
     throw new Error(
       `ProductionCellDefinition '${cell.id}': completionPolicy='quorum' requires a positive integer quorum`,
     );
+  }
+  if (cell.materialization.taskProvenance) {
+    requireNonEmpty(cell.materialization.taskProvenance.sourceArtifactIdsSelector,
+      'materialization.taskProvenance.sourceArtifactIdsSelector');
+    if (cell.materialization.taskProvenance.verificationTargetArtifactIdSelector !== undefined) {
+      requireNonEmpty(cell.materialization.taskProvenance.verificationTargetArtifactIdSelector,
+        'materialization.taskProvenance.verificationTargetArtifactIdSelector');
+    }
   }
 }
 

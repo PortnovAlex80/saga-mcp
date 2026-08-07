@@ -74,6 +74,8 @@ export interface ProductionCellProjectionPersistence {
       executionMode?: string;
       titlePrefix?: string;
       metadata?: Record<string, unknown>;
+      sourceArtifactIds?: readonly number[];
+      verificationTargetArtifactId?: number | null;
     };
   }): { intentId: number; taskId: number; replayed: boolean };
   bindProjectedTaskProcessContext?(input: {
@@ -385,6 +387,17 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     );
     const prepared = Number.isInteger(preparedTaskId) && preparedTaskId > 0
       && Number.isInteger(preparedIntentId) && preparedIntentId > 0;
+    const provenance = cell.materialization.taskProvenance;
+    const sourceArtifactIds = provenance
+      ? integerSelector(workplace.item, provenance.sourceArtifactIdsSelector)
+      : [];
+    const verificationTargets = provenance?.verificationTargetArtifactIdSelector
+      ? integerSelector(workplace.item, provenance.verificationTargetArtifactIdSelector)
+      : [];
+    if (provenance?.verificationTargetArtifactIdSelector && verificationTargets.length !== 1) {
+      throw new NodeExecutionError(this.kind, node.id,
+        `cell '${cell.id}' requires exactly one verification target, got ${verificationTargets.length}`);
+    }
     const plan = prepared
       ? { taskId: preparedTaskId, intentId: preparedIntentId, replayed: true }
       : this.opts.persistence.ensureExecutionPlan({
@@ -430,6 +443,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           role,
           cell_input_item: workplace.item,
         },
+        sourceArtifactIds,
+        verificationTargetArtifactId: verificationTargets[0] ?? null,
       },
       });
     const projectRepositoryId = this.opts.persistence.readTaskProjectRepositoryId(plan.taskId);
@@ -596,6 +611,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       bindings: { cellId: cell.id, final, items },
     };
   }
+}
+
+function integerSelector(value: unknown, selector: string): number[] {
+  let selected = value;
+  for (const segment of selector.split('.').filter(Boolean)) {
+    if (!selected || typeof selected !== 'object' || Array.isArray(selected)) return [];
+    selected = (selected as Record<string, unknown>)[segment];
+  }
+  const values = Array.isArray(selected) ? selected : [selected];
+  return [...new Set(values.filter(
+    (candidate): candidate is number => Number.isSafeInteger(candidate) && (candidate as number) > 0,
+  ))];
 }
 
 function resolveCellDefinition(

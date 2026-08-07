@@ -121,6 +121,11 @@ try {
     `SELECT status,local_outcome FROM factory_process_runs
       WHERE module_name='solution-development' ORDER BY id DESC LIMIT 1`,
   ).get();
+  const unboundVerificationTasks = audit.prepare(
+    `SELECT id FROM tasks
+      WHERE task_kind='verification.ac'
+        AND verification_target_artifact_id IS NULL`,
+  ).all();
   const nonAcceptedWorkplaces = workplaces.filter(row =>
     row.loop_state !== 'terminal' || row.terminal_reason !== 'accepted');
   audit.close();
@@ -132,9 +137,10 @@ try {
     || developmentOutput?.status !== 'completed'
     || developmentOutput?.local_outcome !== 'verified'
     || nonAcceptedWorkplaces.length > 0
+    || unboundVerificationTasks.length > 0
   ) {
     throw new Error(
-      `factory did not complete: ${JSON.stringify({ lifecycle, workplaces })}\n`
+      `factory did not complete: ${JSON.stringify({ lifecycle, workplaces, unboundVerificationTasks })}\n`
       + `${run.stdout}\n${run.stderr}`,
     );
   }

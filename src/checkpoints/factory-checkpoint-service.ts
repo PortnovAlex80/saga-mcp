@@ -167,11 +167,19 @@ export class FactoryCheckpointService {
             if (artifact.expectedHash && digest !== artifact.expectedHash) {
               throw new Error(`CHECKPOINT_ARTIFACT_DB_CONTENT_HASH_MISMATCH: artifact ${artifact.artifactId}`);
             }
+            const relativeObjectPath = path.join(
+              'objects', 'sha256', digest.slice(0, 2), digest,
+            );
+            const absoluteObjectPath = containedPath(storageRoot, relativeObjectPath);
+            mkdirSync(path.dirname(absoluteObjectPath), { recursive: true, mode: 0o700 });
+            if (!existsSync(absoluteObjectPath)) {
+              writeFileSync(absoluteObjectPath, canonical, { mode: 0o600 });
+            }
             objects.push({
               kind: 'artifact',
               digest,
-              size: canonical.length,
-              objectPath: `${storageRoot}/db-native-artifact-${artifact.artifactId}`,
+              size: Buffer.byteLength(canonical),
+              objectPath: relativeObjectPath.replaceAll('\\', '/'),
               bindingId: null,
               relativePath: null,
               sourceRef: `artifact:${artifact.artifactId}`,

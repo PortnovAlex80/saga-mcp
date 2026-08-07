@@ -475,6 +475,8 @@ export interface EnsureProjectedTask {
   executionMode?: string;
   titlePrefix?: string;
   priority?: string;
+  sourceArtifactIds?: readonly number[];
+  verificationTargetArtifactId?: number | null;
 }
 
 export interface EnsureNodeExecutionPlan {

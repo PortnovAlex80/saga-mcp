@@ -953,6 +953,8 @@ export function createDiscoveryWorkplacePersistence(
           executionMode: input.task.executionMode,
           titlePrefix: input.task.titlePrefix,
           metadata: input.task.metadata,
+          sourceArtifactIds: input.task.sourceArtifactIds,
+          verificationTargetArtifactId: input.task.verificationTargetArtifactId,
         },
       });
     },
@@ -982,6 +984,8 @@ export function createDiscoveryWorkplacePersistence(
         executionMode: input.executionMode,
         titlePrefix: input.titlePrefix,
         metadata: input.metadata,
+        sourceArtifactIds: input.sourceArtifactIds,
+        verificationTargetArtifactId: input.verificationTargetArtifactId,
       });
     },
     setProjectedTask(intentId, taskId) {

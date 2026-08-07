@@ -199,6 +199,9 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             sourceBinding: 'resolve-task-graph',
             workKeySelector: 'items',
             completionPolicy: 'all',
+            taskProvenance: {
+              sourceArtifactIdsSelector: 'acceptanceCriterionIds',
+            },
           },
           author: {
             skillRef: 'development-implementation-worker',
@@ -251,6 +254,10 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             sourceBinding: 'resolve-task-graph',
             workKeySelector: 'verificationItems',
             completionPolicy: 'all',
+            taskProvenance: {
+              sourceArtifactIdsSelector: 'acceptanceCriterionIds',
+              verificationTargetArtifactIdSelector: 'acceptanceCriterionIds',
+            },
           },
           author: {
             skillRef: 'development-verification-worker',

@@ -391,6 +391,23 @@ async function main() {
         },
       });
             if (dispatched === 0) {
+              const activeExecutions = getDb().prepare(
+                `SELECT COUNT(*) AS n
+                   FROM worker_executions
+                  WHERE project_id=? AND epic_id=?
+                    AND state IN ('reserved','running','cancel_requested')`,
+              ).get(projectId, epicId) as { n: number };
+              if (activeExecutions.n > 0) {
+                // A resumed host may adopt executions launched by the previous
+                // host. They are not in this process's Promise set, so an empty
+                // local dispatch queue does not mean the factory is idle.
+                emptyDispatchStreak = 0;
+                process.stdout.write(
+                  `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting\n`,
+                );
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                continue;
+              }
               // The queue drained to empty while the lifecycle is still paused.
               // This is NOT necessarily a stuck state: a worker may have just
               // completed a task (e.g. formalization's PRD node) whose

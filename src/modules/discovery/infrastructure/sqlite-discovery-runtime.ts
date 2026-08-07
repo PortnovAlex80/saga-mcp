@@ -312,6 +312,7 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
           + `from '${existing.review_skill}' to '${input.reviewSkill}'`,
         );
       }
+      this.bindProjectedTaskArtifactProvenance(existing.id, input);
       return existing.id;
     }
 
@@ -327,12 +328,13 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
     const titlePrefix = input.titlePrefix ?? 'Discovery: ';
     const priority = input.priority ?? 'high';
 
+    this.validateProjectedTaskArtifactProvenance(input);
     const info = db.prepare(
       `INSERT INTO tasks
          (epic_id, title, description, status, priority, task_kind, workflow_stage,
           execution_skill, review_skill, execution_mode, project_repository_id,
-          generation_key, tags, metadata)
-       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
+          generation_key, tags, metadata, verification_target_artifact_id)
+       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
     ).run(
       input.epicId,
       `${titlePrefix}${input.objective.slice(0, 80)}`,
@@ -353,8 +355,61 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       repoId?.id ?? null,
       input.generationKey,
       JSON.stringify({ ...(input.metadata ?? {}), work_intent_id: input.intentId }),
+      input.verificationTargetArtifactId ?? null,
     );
-    return Number(info.lastInsertRowid);
+    const taskId = Number(info.lastInsertRowid);
+    this.bindProjectedTaskArtifactProvenance(taskId, input);
+    return taskId;
+  }
+
+  private validateProjectedTaskArtifactProvenance(input: EnsureProjectedTask): void {
+    const sourceIds = [...new Set(input.sourceArtifactIds ?? [])];
+    const targetId = input.verificationTargetArtifactId ?? null;
+    if (targetId !== null && input.taskKind !== 'verification.ac') {
+      throw new Error('verificationTargetArtifactId is only valid for verification.ac tasks');
+    }
+    if (input.taskKind === 'verification.ac' && targetId === null) {
+      throw new Error('verification.ac projected task requires one canonical AC target');
+    }
+    const artifactIds = [...new Set([...sourceIds, ...(targetId === null ? [] : [targetId])])];
+    for (const artifactId of artifactIds) {
+      const artifact = getDb().prepare(
+        'SELECT epic_id,type,status FROM artifacts WHERE id=?',
+      ).get(artifactId) as { epic_id: number; type: string; status: string } | undefined;
+      if (!artifact || artifact.epic_id !== input.epicId || artifact.status !== 'accepted') {
+        throw new Error(`projected task source artifact ${artifactId} must be accepted in epic ${input.epicId}`);
+      }
+      if (['development', 'verification'].includes(input.workflowStage ?? '') && artifact.type !== 'AC') {
+        throw new Error(`projected ${input.workflowStage} task source artifact ${artifactId} must be an AC`);
+      }
+    }
+    if (targetId !== null && !sourceIds.includes(targetId)) {
+      throw new Error(`verification target ${targetId} must be present in sourceArtifactIds`);
+    }
+  }
+
+  private bindProjectedTaskArtifactProvenance(taskId: number, input: EnsureProjectedTask): void {
+    this.validateProjectedTaskArtifactProvenance(input);
+    const db = getDb();
+    const targetId = input.verificationTargetArtifactId ?? null;
+    const current = db.prepare(
+      'SELECT verification_target_artifact_id FROM tasks WHERE id=?',
+    ).get(taskId) as { verification_target_artifact_id: number | null };
+    if (current.verification_target_artifact_id !== null
+      && current.verification_target_artifact_id !== targetId) {
+      throw new Error(`projected task ${taskId} verification target cannot be rebound`);
+    }
+    if (targetId !== null && current.verification_target_artifact_id === null) {
+      db.prepare("UPDATE tasks SET verification_target_artifact_id=?,updated_at=datetime('now') WHERE id=?")
+        .run(targetId, taskId);
+    }
+    const linkType = input.workflowStage === 'development' ? 'implements' : 'depends_on';
+    for (const artifactId of [...new Set(input.sourceArtifactIds ?? [])]) {
+      db.prepare(
+        `INSERT OR IGNORE INTO artifact_traces (source_id,target_type,target_id,link_type)
+         VALUES (?,'task',?,?)`,
+      ).run(artifactId, taskId, linkType);
+    }
   }
 
   readTaskState(taskId: number): string | null {

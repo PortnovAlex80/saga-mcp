@@ -1,10 +1,10 @@
 export interface WorkplaceExecutionPersistence {
   ensureExecutionPlan(input: {
     intent: { epicId: number; kind: string; objective: string; authorityScope: { snapshot_ref: string; scope: string; allowed_tools: string[]; enforcement: 'advisory' | 'runtime' }; outputSchema: string; tokenBudget: number; retryBudget: number };
-    task: { epicId: number; projectId: number; objective: string; taskKind: string; executionSkill: string; reviewSkill?: string | null; generationKey: string; workflowStage?: string; executionMode?: string; titlePrefix?: string; metadata?: Record<string, unknown> };
+    task: { epicId: number; projectId: number; objective: string; taskKind: string; executionSkill: string; reviewSkill?: string | null; generationKey: string; workflowStage?: string; executionMode?: string; titlePrefix?: string; metadata?: Record<string, unknown>; sourceArtifactIds?: readonly number[]; verificationTargetArtifactId?: number | null };
   }): { intentId: number; taskId: number; replayed: boolean };
   createIntent(input: { epicId: number; kind: string; objective: string; authorityScope: { snapshot_ref: string; scope: string; allowed_tools: string[]; enforcement: 'advisory' | 'runtime' }; outputSchema: string; tokenBudget: number; retryBudget: number }): { id: number };
-  ensureProjectedTask(input: { epicId: number; projectId: number; intentId: number; objective: string; taskKind: string; executionSkill: string; reviewSkill?: string | null; generationKey: string; workflowStage?: string; executionMode?: string; titlePrefix?: string; metadata?: Record<string, unknown> }): number;
+  ensureProjectedTask(input: { epicId: number; projectId: number; intentId: number; objective: string; taskKind: string; executionSkill: string; reviewSkill?: string | null; generationKey: string; workflowStage?: string; executionMode?: string; titlePrefix?: string; metadata?: Record<string, unknown>; sourceArtifactIds?: readonly number[]; verificationTargetArtifactId?: number | null }): number;
   setProjectedTask(intentId: number, taskId: number): void;
   bindProjectedTaskProcessContext?(input: { taskId: number; processRunId: number; nodeId: string; moduleRef: string; processInputHash: string; nodeInput: unknown; nodeInputHash: string; projectRepositoryId?: number | null; managedReviewBudget?: number | null; recoveryFeedback?: unknown }): void;
   setIntentStatus(intentId: number, expected: string, next: string): boolean;

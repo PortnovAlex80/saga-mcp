@@ -749,6 +749,14 @@ export class ClaudeBoardRunner {
     });
     const args = [
       '-p',
+      // Factory workers execute only the frozen Workplace contract. User and
+      // project hooks, plugins, skills, memory and CLAUDE.md files are ambient
+      // authority and can both pollute the prompt and make completion depend on
+      // a developer's machine. Explicit --settings and --mcp-config below stay
+      // available in bare mode, so the core-owned structured hook and exact
+      // Saga tool surface are preserved.
+      '--bare',
+      '--disable-slash-commands',
       '--model', modelArg,
       // --effort is injected conditionally below (LM Studio → omitted).
       '--mcp-config', executionMcpConfigPath,
@@ -997,15 +1005,13 @@ export class ClaudeBoardRunner {
         (taskState.status === 'review' || taskState.status === 'done') &&
         !taskState.assigned_to &&
         integrationComplete;
-      const changesRequested = code === 0 &&
-        task.status === 'review' &&
+      const changesRequested = task.status === 'review' &&
         taskState?.status === 'todo' &&
         !taskState.assigned_to;
-      const reviewExhausted = code === 0 &&
-        task.status === 'review' &&
+      const reviewExhausted = task.status === 'review' &&
         taskState?.status === 'blocked' &&
         !taskState.assigned_to;
-      const captureOutcome = completed && code === 0
+      const captureOutcome = completed
         ? 'completed'
         : changesRequested || reviewExhausted
           ? 'changes_requested'
@@ -1028,10 +1034,10 @@ export class ClaudeBoardRunner {
         }
       }
 
-      if (completed && code === 0) {
+      if (completed) {
         run.completed += 1;
         this.heartbeat(run, execution, 'CLOSED',
-          `exit=0 completed status=${taskState?.status || '?'}`);
+          `exit=${code ?? '?'} completed from durable worker_done status=${taskState?.status || '?'}`);
       } else if (changesRequested) {
         run.completed += 1;
         this.heartbeat(run, execution, 'CLOSED',
