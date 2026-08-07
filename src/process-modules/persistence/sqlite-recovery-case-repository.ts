@@ -7,6 +7,8 @@
  * - monotonically increasing attempt numbers within a case;
  * - maxAttempts counts repair rounds; exhaustion is the next failed verifier
  *   issue after all configured repair rounds have been consumed;
+ * - exhausted budgets are sticky across resume: a verifier recheck may resolve
+ *   the exhausted case, but another rejection never mints a fresh budget;
  * - terminal cases are never reopened or mutated.
  */
 
@@ -210,6 +212,18 @@ function readAttemptBySourceNodeRun(
   return row ?? null;
 }
 
+function readLastAttemptForCase(
+  db: Database.Database,
+  caseId: number,
+): RecoveryAttemptRow | null {
+  const row = db.prepare(
+    `SELECT * FROM factory_recovery_attempts
+      WHERE recovery_case_id=?
+      ORDER BY attempt DESC LIMIT 1`,
+  ).get(caseId) as RecoveryAttemptRow | undefined;
+  return row ?? null;
+}
+
 function assertIssueInput(input: RecordRecoveryIssueInput): void {
   if (input.issue.schemaVersion !== RECOVERY_ISSUE_SCHEMA) {
     throw new Error(
@@ -348,6 +362,34 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     if (caseRow) {
       assertActiveCaseMatches(caseRow, input, moduleRefKey);
     } else {
+      // Bounded-recovery invariant: an exhausted policy does not silently gain
+      // a fresh budget merely because the ProcessRun was resumed. The generic
+      // executor is allowed to re-run the verifier as a probe after external
+      // or human repair. If that probe rejects again, return the same terminal
+      // case and its last durable feedback without creating a new attempt.
+      const exhaustedCase = this.db.prepare(
+        `SELECT * FROM factory_recovery_cases
+          WHERE process_run_id=? AND policy_id=? AND status='exhausted'
+          ORDER BY id DESC LIMIT 1`,
+      ).get(input.processRunId, input.issue.policyId) as RecoveryCaseRow | undefined;
+      if (exhaustedCase) {
+        assertActiveCaseMatches(exhaustedCase, input, moduleRefKey);
+        const lastAttempt = readLastAttemptForCase(this.db, exhaustedCase.id);
+        if (!lastAttempt) {
+          throw new Error(
+            `RECOVERY_EXHAUSTED_CASE_HAS_NO_ATTEMPT: case ${exhaustedCase.id}`,
+          );
+        }
+        const attemptRecord = rowToAttempt(lastAttempt);
+        return {
+          caseRecord: rowToCase(exhaustedCase),
+          attemptRecord,
+          feedback: attemptRecord.feedback,
+          replayed: true,
+          exhausted: true,
+        };
+      }
+
       const pendingIssueRef = 'pending';
       const info = this.db.prepare(
         `INSERT INTO factory_recovery_cases
@@ -470,6 +512,18 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
           ORDER BY id DESC LIMIT 1`,
       ).get(processRunId, policyId) as RecoveryCaseRow | undefined;
       if (!active) return null;
+
+      // GenericFlowExecutor rechecks an exhausted verifier on explicit resume.
+      // Before that probe it calls resolveActive with the SAME failed NodeRun
+      // that exhausted the case. Treat that call as a no-op: only a later,
+      // successful verifier NodeRun may resolve the exhausted budget. This
+      // prevents resume itself from laundering exhaustion into a fresh case.
+      if (
+        active.status === 'exhausted'
+        && resolvedByNodeRunId === active.last_source_node_run_id
+      ) {
+        return null;
+      }
 
       const info = this.db.prepare(
         `UPDATE factory_recovery_cases
