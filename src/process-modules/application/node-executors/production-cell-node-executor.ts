@@ -1,11 +1,11 @@
 /**
  * Workplace-native Production Cell reconciler.
  *
- * This executor deliberately does not assign, launch, poll, stop, or supervise
- * workers. It materializes deterministic Workplaces, projects the next desk,
- * reconciles completed executions into CandidateSets/GateDecisions, and pauses
- * the ProcessRun while the application-wide dispatcher staffs queued
- * Workplaces.
+ * This executor does not assign, launch, poll, stop, or supervise workers. It
+ * materializes deterministic Workplaces, projects desks, seals CandidateSets,
+ * drives GateRuns and applies durable GateDecisions. All workshop-specific
+ * quality checks and post-acceptance effects are resolved from registries by
+ * opaque ids declared in the installed cell definition.
  */
 
 import { createHash } from 'node:crypto';
@@ -31,6 +31,7 @@ import {
   driveGateRun,
   type CheckProviderRegistry,
 } from '../gate-run-driver.js';
+import type { FactoryPostAcceptanceEffectRegistry } from '../post-acceptance-effects.js';
 import {
   NodeExecutionError,
   type NodeExecutionContext,
@@ -115,22 +116,14 @@ export interface ProductionCellProductReader {
   }): readonly ProductRef[];
 }
 
-export interface ProductionCellIntegrationPort {
-  integrateAcceptedWorkplace(input: {
-    workplaceRef: WorkplaceRef;
-    processRunId: number;
-    expectedProductSchema: string;
-  }): void;
-}
-
 export interface ProductionCellNodeExecutorOptions {
   readonly coordinator: ProductionCellCoordinator;
   readonly candidateSetRepo: SqliteCandidateSetRepository;
   readonly gateRepo: SqliteGateRepository;
   readonly checkProviders: CheckProviderRegistry;
+  readonly postAcceptanceEffects: FactoryPostAcceptanceEffectRegistry;
   readonly persistence: ProductionCellProjectionPersistence;
   readonly productReader: ProductionCellProductReader;
-  readonly integrationPort?: ProductionCellIntegrationPort;
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly now?: () => Date;
 }
@@ -392,7 +385,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (role === 'author') {
       const decision = this.runGate(ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef);
       if (decision.verdict === 'accepted') {
-        if (!cell.review) this.runPostAcceptanceEffect(ctx, cell, workplace.ref);
+        if (!cell.review) this.runPostAcceptanceEffect(ctx, cell, workplace.ref, candidate);
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'accepted', isFinal: !cell.review,
         });
@@ -415,7 +408,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         [candidate.candidateSetRef],
       );
       if (decision.verdict === 'accepted') {
-        this.runPostAcceptanceEffect(ctx, cell, workplace.ref);
+        this.runPostAcceptanceEffect(ctx, cell, workplace.ref, subjectAuthorSet);
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -438,11 +431,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     ctx: NodeExecutionContext,
     cell: ProductionCellDefinition,
     workplaceRef: WorkplaceRef,
+    acceptedCandidate: CandidateSet,
   ): void {
-    if (!this.opts.integrationPort || cell.postAcceptanceEffect !== 'git-integration') return;
-    this.opts.integrationPort.integrateAcceptedWorkplace({
+    if (!cell.postAcceptanceEffect) return;
+    this.opts.postAcceptanceEffects.run(cell.postAcceptanceEffect, {
       workplaceRef,
       processRunId: ctx.processRunId,
+      candidateSetRef: acceptedCandidate.candidateSetRef,
+      producerExecutionRef: acceptedCandidate.producerExecutionRef,
       expectedProductSchema: cell.productContracts[0]!.schemaRef,
     });
   }
