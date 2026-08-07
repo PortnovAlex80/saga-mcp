@@ -375,12 +375,9 @@ export function findNextClaimable(
   },
   taskIds?: number[],
   /**
-   * Optional execution-route resolver (routing cutover). When supplied, the
-   * route is resolved at claim from the task's (module, cell, role,
-   * executionProfile) key and frozen into the execution_context — spawn,
-   * gateway and provenance then read the SAME immutable value. When omitted,
-   * the legacy model-route-only path is used (the resolver is optional so
-   * existing callers and tests keep working unchanged).
+   * Optional execution-route resolver. The resolver selects the executor and
+   * may override inference fields. The final route is merged with the
+   * lifecycle_execution_controls row and frozen in this claim transaction.
    */
   routeResolver?: (key: {
     module: string | null;
@@ -529,18 +526,16 @@ export function findNextClaimable(
 
   if (reservation) {
     const workIntent = readWorkIntentForTaskClaim(db, task);
-    // Routing cutover: when a route resolver is wired in, the route is resolved
-    // ONCE at claim from the task's (module, cell, role, executionProfile) key
-    // and frozen into the snapshot. Spawn then selects the binary from
-    // `executor_kind` — no re-reading config at spawn. When no resolver is
-    // supplied, fall back to the legacy model-route-only path.
+    // Read the lifecycle selection first. Routing policy then selects the
+    // executor and may override provider/model/effort. The merged result is
+    // frozen now; neither spawn nor provenance re-reads live configuration.
     let modelRoute = readModelRouteAtClaim(db, task.epic_id);
     let executorKind: ExecutionContextExecutorKind = 'claude-cli';
     let routePolicy: ExecutionRoutePolicyRef | null = null;
     if (routeResolver) {
       const routeKey = readRouteKeyForTask(db, task, claimedStatus === 'review_in_progress');
       const route = routeResolver(routeKey);
-      modelRoute = routeToModelRoute(route);
+      modelRoute = routeToModelRoute(route, modelRoute);
       executorKind = route.executor.kind;
       routePolicy = route.policyRef && route.policyDigest
         ? { ref: route.policyRef, digest: route.policyDigest }
