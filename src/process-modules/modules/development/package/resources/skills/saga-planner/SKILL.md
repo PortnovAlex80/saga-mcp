@@ -1,77 +1,104 @@
 ---
 name: saga-planner
-description: "Propose an architecture-neutral Development work DAG from one immutable DevelopmentCase; the kernel validates and materializes it."
+description: Proposes one architecture-grounded Development work DAG as an immutable Product Cell output.
 ---
 
-# Development task-graph planner
+# Development Task-Graph Planner
 
-The planner proposes; the kernel authorizes. Never create tasks, mutate Git,
-run workers, or change frozen ids.
+You are the author desk of `development-plan-task-graph`. The frozen
+DevelopmentCase contains accepted AC id/hash bindings, SRS/HOW decomposition,
+repository bases and the pinned Development policy. You propose one typed graph.
+You never create tasks, mutate Git, launch workers, or accept your own graph.
 
-## Authoritative input
+## Exact input
 
-1. Read the assigned task with `task_get`.
+1. Read `task_get({id:<task id>})`.
 2. Use only `task.metadata.process_node_input` as the immutable DevelopmentCase.
-3. Use the exact tracker, call-file and checklist paths from
-   `task.metadata.process_workspace`.
-4. Treat the machine-filled call file as lineage scaffolding, not as a valid
-   implementation plan. Empty implementation arrays and target source arrays
-   must be completed semantically.
+3. Use the exact tracker/call/checklist paths from the materialized workspace.
+4. If gate repair feedback exists, read it first.
 
-## Universal planning principles
+The machine-filled call file is lineage scaffolding. You own semantic grouping,
+dependencies, change scopes and repository partitioning.
 
-- Plan product construction, not one task per acceptance criterion. Acceptance
-  criteria are coverage obligations; several criteria may belong to one
-  coherent work item and one criterion may require ordered work items.
-- Establish shared foundations before dependent work. Encode that order in
-  `dependsOnKeys`; do not rely on prose or worker timing.
-- A work item must leave the repository in a coherent, testable state and must
-  be reviewable as one change.
-- Parallel work is allowed only when workers can start from the same frozen
-  base and integrate independently without semantic or file ownership races.
-- Declare conservative repository-local `changeScopes`. If two items may touch
-  the same scope, order them with a dependency. Never invent narrow scopes only
-  to obtain parallelism.
-- Bind every implementation item to exactly one frozen repository. Partition
-  required implementation keys exactly once across matching integration
-  targets.
-- Verification is candidate-wide. Keep exactly one required verification item
-  per accepted criterion; it runs only after the kernel freezes the integrated
-  candidate. Bind it to the exact frozen repository it must inspect; a
-  verification item without a repository is not executable work.
-- Use only skills and tools present in the frozen execution profile. The graph
-  describes intent, dependencies, ownership and lineage, not a technology.
+## Planning rules
 
-## Required proposal
+- Plan coherent product construction, **not one implementation task per AC**.
+  ACs are coverage obligations. Several ACs may belong to one work item; one AC
+  may require multiple ordered implementation items.
+- Use accepted SRS §D2 as HOW guidance, not as task cardinality. `ac_kind` and
+  `criticality` inform the plan; they do not mechanically create cards.
+- Establish real shared foundations before dependent work via `dependsOnKeys`.
+- Every implementation item must leave its repository in a coherent,
+  independently reviewable/testable state.
+- Parallel items must be safe from the same frozen base. Declare conservative
+  repository-local `changeScopes`; overlapping scopes require a dependency path.
+- Bind each implementation item to one frozen repository.
+- Required implementation keys must be partitioned exactly once across matching
+  integration targets.
+- Verification is candidate-wide: exactly one required verification item per
+  accepted AC, executed only after the integrated candidate freezes.
+- Do not invent narrower scopes/dependencies merely to force parallelism.
 
-Submit exactly `factory.development-task-graph-proposal.v1` through
-`process_node_submit`.
+## Product contract
+
+Fill the machine-provisioned file as:
+
+```json
+{
+  "schema": "factory.development-task-graph-proposal.v1",
+  "content": {
+    "schemaVersion": "factory.development-task-graph-proposal.v1",
+    "implementationItems": [],
+    "verificationItems": [],
+    "integrationTargets": []
+  }
+}
+```
 
 Implementation items:
-
 - `kind=implementation`, `executionMode=git_change`;
 - stable unique key, one frozen repository, non-empty AC coverage;
 - non-empty conservative `changeScopes`;
-- dependencies name implementation items only and form an acyclic graph.
+- closed acyclic dependencies on implementation items only.
 
 Verification items:
-
 - exactly one required item per accepted AC;
 - `kind=verification`, `taskKind=verification.ac`,
   `executionMode=read_only_evidence`;
-- exactly one AC id, exactly one frozen repository id and an empty
-  `changeScopes` array.
+- exactly one AC id, one frozen repository id, empty `changeScopes`;
+- dependencies reflect implementation prerequisites only.
 
 Integration targets:
-
 - exactly one per frozen repository;
-- branch and expected base copied verbatim;
-- source keys are an exact, non-overlapping partition of required
-  implementation items assigned to that repository.
+- branch/base copied verbatim from DevelopmentCase;
+- source keys exactly partition required implementation work for that repository.
 
-## Completion protocol
+## Finish
 
-Read the saved JSON back, ensure it parses and contains no placeholder, then
-call `process_node_submit` once. After success call `worker_done` once and stop.
-If submission is rejected, preserve the exact rejection for the next fenced
-repair execution; do not submit a different payload from the same execution.
+1. Re-read the JSON, ensure it parses and contains no `FILL_` token.
+2. Verify the planner checklist against the frozen DevelopmentCase.
+3. Call `product_submit` exactly once with the file's `schema` and `content`.
+4. Record the returned exact ProductRef in the tracker.
+5. Call `worker_done` exactly once and exit.
+
+`worker_done` only ends this WorkerExecution. The planner Production Cell gate
+runs deterministic schema/lineage/coverage/DAG validation. Only its
+GateDecision accepts the CandidateSet; the following kernel then canonicalizes
+and materializes the already-accepted graph.
+
+## Repair
+
+A gate rejection creates a fresh fenced planner execution in the same Workplace.
+Read durable feedback, reuse the frozen DevelopmentCase, change only the rejected
+plan fields, and submit a new immutable product. Never resubmit a different graph
+from the same execution or mutate an earlier CandidateSet.
+
+## Never
+
+- call `process_node_submit`;
+- create/move tasks or dependencies directly;
+- mutate Git/repository state;
+- equate §D2 row count with implementation task count;
+- use `worker_done` as graph acceptance authority;
+- invent ids/bases/skills;
+- spawn nested agents.
