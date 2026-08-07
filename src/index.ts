@@ -29,6 +29,7 @@ import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './t
 import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
+import { definitions as productDefs, handlers as productHandlers } from './tools/products.js';
 import {
   definitions as processModuleDefs,
   handlers as processModuleHandlers,
@@ -75,9 +76,9 @@ export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.
   }
 }
 
-// Saga 3 proposal submission boundary (D1). A factory so the composition can
-// inject a repository / model-route reader; here it uses the default SQLite
-// wiring that reads the shared saga DB directly.
+// Legacy Discovery-specific submit tools remain registered only until the
+// Discovery package cutover below is complete. The target worker surface is
+// product_submit/product_read for every workshop.
 const discoveryProposals = createDiscoveryProposalHandlers();
 const discoveryNormalization = createDiscoveryNormalizationHandlers();
 const discoveryReadiness = createDiscoveryReadinessHandlers();
@@ -110,6 +111,7 @@ const ALL_TOOLS: Tool[] = [
   ...observationDefs,
   ...conflictDefs,
   ...providerDefs,
+  ...productDefs,
   ...processModuleDefs,
   ...processNodeSubmissionDefs,
   ...deliveryApprovalDefs,
@@ -139,6 +141,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...observationHandlers,
   ...conflictHandlers,
   ...providerHandlers,
+  ...productHandlers,
   ...processModuleHandlers,
   ...processNodeSubmissionHandlers,
   ...deliveryApprovalHandlers,
@@ -189,27 +192,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!handler) {
       throw new Error(`Unknown tool: ${name}`);
     }
-
-    // D1.1: authority gateway. Enforces the frozen execution_context snapshot
-    // captured at claim against this Saga tool call. The gateway is the ONLY
-    // runtime enforcement point for Saga 3 authority — the skill prompt and
-    // --disallowedTools are not the authority source. Saga 3 runtime executions
-    // and non-managed calls are compatibility-allowed.
     const decision = authorizeSagaToolCall({ toolName: name, db: getDb() });
     if (!decision.allow) {
-      // Handler must NOT run — return the actionable denial without invoking it.
       return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ code: decision.code, ...decision.details }, null, 2),
-          },
-        ],
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ code: decision.code, ...decision.details }, null, 2),
+        }],
         isError: true,
       };
     }
     if (decision.advisory) {
-      // Declared-but-not-enforced: log the observation, still run the handler.
       console.error(`[saga-authority] advisory ${decision.observation} (execution=${decision.executionId ?? '-'})`);
     }
 
@@ -221,12 +214,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const msg = error instanceof Error ? error.message : String(error);
     const friendly = friendlyError(msg);
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Error: ${friendly}`,
-        },
-      ],
+      content: [{ type: 'text', text: `Error: ${friendly}` }],
       isError: true,
     };
   }
@@ -238,11 +226,6 @@ async function main() {
   await server.connect(transport);
   console.error('Tracker MCP Server running on stdio');
 
-  // Автозапуск веб-канбана tracker-view как detached child-процесса.
-  // stdio:'ignore' — КРИТИЧНО: MCP-протокол saga идёт по stdio родителя,
-  // любой вывод child'а сюда сломал бы протокол. detached + unref — child
-  // живёт независимо и не держит родительский процесс при выходе.
-  // TRACKER_AUTOSTART=0 → не запускать (headless/CI/тихий режим).
   if (process.env.TRACKER_AUTOSTART !== '0' && process.env.DB_PATH) {
     try {
       const trackerPath = path.join(__dirname, '..', 'tracker-view', 'tracker-view.mjs');
@@ -255,11 +238,6 @@ async function main() {
             ...process.env,
             PORT: trackerPort,
             DB_PATH: process.env.DB_PATH,
-            // Маркер: «я spawn'ут saga-MCP». В этом режиме tracker-view при
-            // занятом порту ТИХО выходит (уже бежит другой — браузер открыт),
-            // не убивает старый процесс и не открывает второе окно.
-            // Ручной `npm run tracker` (без маркера) сохраняет старое поведение
-            // — перезапуск + открытие браузера.
             TRACKER_SPAWNED: '1',
           },
         });
@@ -267,15 +245,10 @@ async function main() {
         console.error(`Tracker view → http://localhost:${trackerPort} (set TRACKER_AUTOSTART=0 to disable)`);
       }
     } catch (err) {
-      // Tracker view не критичен для MCP-сервера — логируем и продолжаем.
       console.error('Tracker view failed to start (non-fatal):', err instanceof Error ? err.message : err);
     }
   }
 
-  // Автозапуск docs-graph viewer (унифицированный граф артефактов + .md).
-  // Тот же паттерн, что и tracker-view: detached + stdio:'ignore' (MCP-протокол
-  // родителя нельзя трогать), unref — child живёт независимо. Порт 4322 по
-  // умолчанию. DOCS_GRAPH_AUTOSTART=0 → не запускать.
   if (process.env.DOCS_GRAPH_AUTOSTART !== '0' && process.env.DB_PATH) {
     try {
       const docsGraphPath = path.join(__dirname, '..', 'tracker-view', 'docs-graph', 'server.mjs');
@@ -294,7 +267,7 @@ async function main() {
         console.error(`Docs graph   → http://localhost:${docsPort} (set DOCS_GRAPH_AUTOSTART=0 to disable)`);
       }
     } catch (err) {
-      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : err);
+      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : String(err));
     }
   }
 }
