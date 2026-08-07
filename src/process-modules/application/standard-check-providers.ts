@@ -14,20 +14,10 @@ const productContractProvider: CheckProvider = {
   providerId: PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
   version: PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
   run() {
-    // Schema/cardinality are checked by the Production Cell reconciler before
-    // GateRun creation. This immutable receipt records that core check.
     return 'passed';
   },
 };
 
-/**
- * One shared registry for platform and package-installed CheckProviders.
- *
- * The core never switches on workshop/module identity. Module installers add
- * providers by opaque providerId; CheckPlans reference only the pinned
- * id/version/digest triple. Duplicate ids are rejected so a package cannot
- * silently shadow another package or a platform provider.
- */
 export class FactoryCheckProviderRegistry implements CheckProviderRegistry {
   private readonly providers = new Map<string, CheckProvider>();
 
@@ -39,7 +29,9 @@ export class FactoryCheckProviderRegistry implements CheckProviderRegistry {
     if (!provider.providerId.trim() || !provider.version.trim()) {
       throw new Error('CHECK_PROVIDER_IDENTITY_REQUIRED');
     }
-    if (this.providers.has(provider.providerId)) {
+    const existing = this.providers.get(provider.providerId);
+    if (existing) {
+      if (existing === provider || existing.version === provider.version) return;
       throw new Error(`CHECK_PROVIDER_DUPLICATE: ${provider.providerId}`);
     }
     this.providers.set(provider.providerId, provider);
@@ -50,11 +42,19 @@ export class FactoryCheckProviderRegistry implements CheckProviderRegistry {
   }
 }
 
+// One process-wide capability registry. The composition root and module
+// installers resolve the same instance, so adding a module contributes only
+// providers/declarations; it never adds a new dispatcher or runtime branch.
+const factoryCheckProviders = new FactoryCheckProviderRegistry();
+
 export function createStandardCheckProviderRegistry(): FactoryCheckProviderRegistry {
-  return new FactoryCheckProviderRegistry();
+  return factoryCheckProviders;
 }
 
-/** Canonical provider ref used when building module-owned CheckPlans. */
+export function registerFactoryCheckProvider(provider: CheckProvider): void {
+  factoryCheckProviders.register(provider);
+}
+
 export function checkProviderRef(
   providerId: string,
   version: string,
@@ -63,10 +63,6 @@ export function checkProviderRef(
   return { providerId, version, providerDigest } as const;
 }
 
-/**
- * Build a fail-closed plan from an ordered set of pinned providers.
- * Product-contract integrity is included first unless explicitly disabled.
- */
 export function buildCheckPlan(
   checkPlanId: string,
   checks: readonly {
