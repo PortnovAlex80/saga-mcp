@@ -35,13 +35,10 @@ const productSubmit: ToolHandler = args => {
     schema,
     payload: content,
   });
-  // Keep the universal content-addressed store populated for exact downstream
-  // reads and lifecycle handoff. The execution-scoped submission row remains
-  // the fence/audit index; both point at the same immutable bytes.
   const universalRef = writeProduct(getDb(), {
     schemaRef: schema,
     content,
-    executionRef: result.record.executionId ?? 'system',
+    executionRef: result.record.executionId,
     productKey: `content:${result.record.contentHash}`,
   });
   return {
@@ -53,6 +50,7 @@ const productSubmit: ToolHandler = args => {
       digest: result.record.contentHash,
     },
     universal_ref: universalRef,
+    submission_id: result.record.submissionId,
     process_run_id: result.record.processRunId,
     module_ref: result.record.moduleRef,
     node_id: result.record.nodeId,
@@ -70,18 +68,34 @@ const productRead: ToolHandler = args => {
     const id = Number(ref.slice('managed-node-submission:'.length));
     if (!Number.isSafeInteger(id) || id < 1) throw new Error('PRODUCT_REF_INVALID');
     const row = getDb().prepare(
-      `SELECT schema_version,payload_snapshot,content_hash
+      `SELECT process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
+              schema_version,payload_snapshot,content_hash,submitted_at
          FROM factory_managed_node_submissions WHERE id=?`,
     ).get(id) as {
+      process_run_id: number;
+      module_ref: string;
+      node_id: string;
+      intent_id: number;
+      task_id: number;
+      execution_id: string;
       schema_version: string;
       payload_snapshot: string;
       content_hash: string;
+      submitted_at: string;
     } | undefined;
     if (!row || row.schema_version !== schemaId || row.content_hash !== digest) {
       throw new Error('PRODUCT_NOT_FOUND');
     }
     return {
       product_ref: { schemaId, ref, digest },
+      submission_id: id,
+      process_run_id: row.process_run_id,
+      module_ref: row.module_ref,
+      node_id: row.node_id,
+      intent_id: row.intent_id,
+      task_id: row.task_id,
+      execution_id: row.execution_id,
+      submitted_at: row.submitted_at,
       content: JSON.parse(row.payload_snapshot),
     };
   }
@@ -118,7 +132,7 @@ export const definitions: Tool[] = [
   {
     name: 'product_read',
     description:
-      'Read one immutable product by the exact ProductRef triple returned by the factory. No latest/by-task fallback is allowed.',
+      'Read one immutable product by the exact ProductRef triple returned by the factory. Returns immutable producer provenance for execution-scoped products. No latest/by-task fallback is allowed.',
     annotations: {
       title: 'Factory: Read Product',
       readOnlyHint: true,
