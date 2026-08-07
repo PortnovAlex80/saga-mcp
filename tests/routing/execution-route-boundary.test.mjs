@@ -33,7 +33,9 @@ test('simulator is an executor, not a provider/model', () => {
   assert.equal(route.provider, null);
   assert.equal(route.model, null);
   assert.equal(route.inference.effort, null);
-  assert.deepEqual(routeToModelRoute(route), {
+  assert.deepEqual(routeToModelRoute(route, {
+    provider: 'zai', model: 'glm-4.7', effort: 'medium',
+  }), {
     provider: null,
     model: null,
     effort: null,
@@ -41,8 +43,21 @@ test('simulator is an executor, not a provider/model', () => {
   assert.match(route.policyDigest, /^[0-9a-f]{64}$/);
 });
 
-test('real claude route keeps provider/model orthogonal to executor', () => {
-  const resolver = createExecutionRouteResolver({
+test('real executor inherits front-selected inference unless policy overrides it', () => {
+  const inheritedResolver = createExecutionRouteResolver({
+    policy: {
+      default: { executor: { kind: 'claude-cli' } },
+      routes: [],
+    },
+  });
+  const inheritedRoute = inheritedResolver.resolve(key);
+  assert.deepEqual(routeToModelRoute(inheritedRoute, {
+    provider: 'zai', model: 'glm-4.7', effort: 'medium',
+  }), {
+    provider: 'zai', model: 'glm-4.7', effort: 'medium',
+  });
+
+  const overrideResolver = createExecutionRouteResolver({
     policy: {
       routes: [{
         match: { executionProfile: 'formalization-architect' },
@@ -50,16 +65,17 @@ test('real claude route keeps provider/model orthogonal to executor', () => {
           executor: { kind: 'claude-cli' },
           provider: 'zai',
           model: 'glm-5.2',
-          effort: 'medium',
+          effort: 'high',
         },
       }],
     },
   });
-  const route = resolver.resolve(key);
-  assert.equal(route.executor.kind, 'claude-cli');
-  assert.equal(route.provider?.id, 'zai');
-  assert.equal(route.model?.id, 'glm-5.2');
-  assert.equal(route.inference.effort, 'medium');
+  const overrideRoute = overrideResolver.resolve(key);
+  assert.deepEqual(routeToModelRoute(overrideRoute, {
+    provider: 'zai', model: 'glm-4.7', effort: 'medium',
+  }), {
+    provider: 'zai', model: 'glm-5.2', effort: 'high',
+  });
 });
 
 test('routing policy rejects executor/model conflation and duplicate matches', () => {
