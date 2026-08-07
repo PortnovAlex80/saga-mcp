@@ -1,4 +1,4 @@
-import type { ProductionCellDefinition } from '../domain/workplace/index.js';
+import type { CheckPlan, ProductionCellDefinition } from '../domain/workplace/index.js';
 import { buildProductContractCheckPlan } from './standard-check-providers.js';
 
 export interface SingletonProductionCellOptions {
@@ -14,16 +14,10 @@ export interface SingletonProductionCellOptions {
   readonly productSource?: 'typed-submission' | 'managed-production';
   readonly maxAttempts: number;
   readonly onExhausted: 'fail' | 'pause';
+  readonly checkPlan?: CheckPlan;
 }
 
-/**
- * Canonical declaration for a singleton authoring Production Cell.
- *
- * This replaces the deleted implicit `kind: lm` compatibility path. A workshop
- * still chooses its profile, schema and recovery budget, but worker lifecycle,
- * CandidateSet sealing and GateDecision semantics are always supplied by the
- * same Production Cell runtime.
- */
+/** Canonical declaration for a singleton authoring Production Cell. */
 export function singletonProductionCell(
   options: SingletonProductionCellOptions,
 ): ProductionCellDefinition {
@@ -45,7 +39,8 @@ export function singletonProductionCell(
     authorGate: {
       gateId: `${options.id}.final`,
       gatePhase: 'final',
-      checkPlan: buildProductContractCheckPlan(`${options.id}.final`),
+      checkPlan:
+        options.checkPlan ?? buildProductContractCheckPlan(`${options.id}.final`),
     },
     recovery: {
       maxAttempts: options.maxAttempts,
