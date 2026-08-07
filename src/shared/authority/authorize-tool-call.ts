@@ -101,7 +101,6 @@ function parseExecutorKind(raw: unknown, policyVersion: string): ExecutionContex
   }
   return raw === 'claude-cli'
     || raw === 'claude-cli-simulator'
-    || raw === 'factory-replay'
     ? raw
     : null;
 }
@@ -115,7 +114,7 @@ function parseModelRoute(
   if (!(raw.model === null || typeof raw.model === 'string')) return null;
   if (!(raw.effort === null || typeof raw.effort === 'string')) return null;
 
-  if (executorKind === 'claude-cli-simulator' || executorKind === 'factory-replay') {
+  if (executorKind === 'claude-cli-simulator') {
     if (raw.provider !== null || raw.model !== null || raw.effort !== null) return null;
     return { provider: null, model: null, effort: null };
   }
@@ -246,11 +245,12 @@ export function readExecutionContextStrict(db: Database, executionId: string): S
   const routePolicy = parseRoutePolicy(raw.route_policy);
   const replay = parseReplay(raw.replay);
   if (replay === undefined) return { ok: false, reason: 'replay binding is malformed or key-mismatched' };
-  if (executorKind === 'factory-replay' && replay?.capsule_ref == null) {
-    return { ok: false, reason: 'factory-replay executor requires an exact capsule binding' };
-  }
-  if (executorKind !== 'factory-replay' && replay?.capsule_ref != null) {
-    return { ok: false, reason: 'capsule-bound execution must use factory-replay executor' };
+  // Consistency: a capsule hit (replay.capsule_ref != null) MUST use the
+  // deterministic simulator executor — never the real claude-cli, which would
+  // call an LLM. Conversely, the simulator executor may run without a capsule
+  // (e.g. the fixture compatibility path).
+  if (replay?.capsule_ref != null && executorKind !== 'claude-cli-simulator') {
+    return { ok: false, reason: 'capsule-bound execution must use claude-cli-simulator executor' };
   }
 
   const snapshot: ExecutionContextSnapshot = {

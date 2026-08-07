@@ -262,7 +262,11 @@ export class SqliteReplayCapsuleRepository {
     if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !nodeInputHash) {
       // Non-Production-Cell / transitional cards simply cannot replay. The key
       // still remains deterministic so capture/lookups never guess.
-      const replayKey = sha256Hex({ projectId: task.project_id ?? 0, taskId: task.id, role, nonReplayable: true });
+      const epicRow = this.db.prepare(
+        'SELECT project_id FROM epics WHERE id=?',
+      ).get(task.epic_id) as { project_id: number } | undefined;
+      const fallbackProjectId = epicRow?.project_id ?? 0;
+      const replayKey = sha256Hex({ projectId: fallbackProjectId, taskId: task.id, role, nonReplayable: true });
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
     const run = this.db.prepare(

@@ -433,14 +433,25 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     workplaceRef: WorkplaceRef,
     acceptedCandidate: CandidateSet,
   ): void {
-    if (!cell.postAcceptanceEffect) return;
-    this.opts.postAcceptanceEffects.run(cell.postAcceptanceEffect, {
+    const effectInput = {
       workplaceRef,
       processRunId: ctx.processRunId,
       candidateSetRef: acceptedCandidate.candidateSetRef,
       producerExecutionRef: acceptedCandidate.producerExecutionRef,
       expectedProductSchema: cell.productContracts[0]!.schemaRef,
-    });
+    };
+    // UNIVERSAL: replay capture runs for EVERY accepted candidate, regardless
+    // of module. This is not a cell-specific effect — it is the factory-wide
+    // mechanism that archives accepted production for future deterministic
+    // replay. Best-effort: failure never revokes the GateDecision.
+    try {
+      this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
+    } catch {
+      // Best-effort: replay capture failure is logged inside the effect.
+    }
+    // Cell-specific effect (git-integration, formalization-accept-products, ...).
+    if (!cell.postAcceptanceEffect) return;
+    this.opts.postAcceptanceEffects.run(cell.postAcceptanceEffect, effectInput);
   }
 
   private ensureRoleProjection(

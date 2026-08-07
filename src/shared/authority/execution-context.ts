@@ -33,8 +33,7 @@ export interface ExecutionModelRoute {
 /** Executor kind is orthogonal to provider/model. */
 export type ExecutionContextExecutorKind =
   | 'claude-cli'
-  | 'claude-cli-simulator'
-  | 'factory-replay';
+  | 'claude-cli-simulator';
 
 /** Citation of the routing policy used to resolve this execution. */
 export interface ExecutionRoutePolicyRef {

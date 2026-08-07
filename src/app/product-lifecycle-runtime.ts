@@ -76,6 +76,7 @@ import {
   createPostAcceptanceEffectRegistry,
   registerFactoryPostAcceptanceEffect,
 } from '../process-modules/application/post-acceptance-effects.js';
+import { createReplayCaptureEffect } from '../infrastructure/replay/replay-capture-effect.js';
 import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
@@ -275,6 +276,10 @@ export function createProductLifecycleRuntime(
   registerFactoryPostAcceptanceEffect(
     createGitIntegrationEffect(new SqliteProductionCellIntegration(db)),
   );
+  // Replay capture is a UNIVERSAL factory capability: it runs for EVERY
+  // accepted candidate regardless of module, archiving the accepted worker
+  // production into a reusable capsule for future deterministic replay.
+  registerFactoryPostAcceptanceEffect(createReplayCaptureEffect(db));
 
   const resolveNodeProducts = (
     processRunId: number,
