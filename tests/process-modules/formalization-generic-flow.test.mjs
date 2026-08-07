@@ -100,13 +100,15 @@ function fixture() {
   ];
   const artifactById = new Map(artifacts.map(row => [row.id, row]));
   const traceById = new Map(traces.map(row => [row.id, row]));
+  const missingTraceIds = new Set();
   const graph = {
     readArtifactsByIds(ids) {
       return [...new Set(ids)].map(id => artifactById.get(id)).filter(Boolean)
         .sort((a, b) => a.id - b.id);
     },
     readTracesByIds(ids) {
-      return [...new Set(ids)].map(id => traceById.get(id)).filter(Boolean)
+      return [...new Set(ids)].filter(id => !missingTraceIds.has(id))
+        .map(id => traceById.get(id)).filter(Boolean)
         .sort((a, b) => a.id - b.id);
     },
     readOutgoingArtifactTraces(sourceIds) {
@@ -370,6 +372,8 @@ function fixture() {
     artifacts,
     artifactById,
     traces,
+    traceById,
+    missingTraceIds,
     nodeWrites,
     queries,
     acceptanceCalls,
@@ -498,6 +502,40 @@ test('descriptor uses LM receipt resolvers and prefixed transition events', () =
     new Set(flow.nodes.filter(node => node.kind === 'kernel').map(node => node.handler)),
     new Set([...Object.values(FORMALIZATION_HANDLER_IDS), 'process-outcome-emitter']),
   );
+});
+
+test('architecture resolver ignores superseded drafts from the same workplace', () => {
+  const fx = fixture();
+  const obsolete = [
+    { ...artifact(38, 100, 'SRS', '7'.repeat(64)), status: 'superseded' },
+    { ...artifact(39, 100, 'SRS', '8'.repeat(64)), status: 'superseded' },
+  ];
+  for (const row of obsolete) fx.artifactById.set(row.id, row);
+  fx.nodeWrites['define-architecture-contract'].artifacts.unshift(38, 39);
+
+  const { architecture: result } = runThroughSettlement(fx);
+
+  assert.equal(result.event, 'completed', JSON.stringify(result));
+  assert.equal(result.production.bindings.srsArtifactId, 40);
+});
+
+test('architecture resolver adopts the latest singular revision after a stale trace was deleted', () => {
+  const fx = fixture();
+  const prior = artifact(39, 100, 'SRS', '8'.repeat(64));
+  fx.artifactById.set(prior.id, prior);
+  fx.nodeWrites['define-architecture-contract'].artifacts.unshift(39);
+  // The append-only ledger still records the author's deleted defective trace.
+  // It is absent from the canonical graph and must not hide the corrected SRS.
+  const staleTrace = trace(199, 39, 10, 'derived_from');
+  fx.traces.push(staleTrace);
+  fx.traceById.set(staleTrace.id, staleTrace);
+  fx.missingTraceIds.add(staleTrace.id);
+  fx.nodeWrites['define-architecture-contract'].traces.unshift(staleTrace.id);
+
+  const { architecture: result } = runThroughSettlement(fx);
+
+  assert.equal(result.event, 'completed', JSON.stringify(result));
+  assert.equal(result.production.bindings.srsArtifactId, 40);
 });
 
 test('exact ledger flow settles and persists a durable SolutionContract', () => {

@@ -90,6 +90,7 @@ const COMMON_WRITE_TOOLS = [
   'worker_done',
   'worker_merge_acquire', 'worker_merge_release',
   'verification_record',
+  'process_node_submit',
   'Write', 'Edit', 'Bash',
 ] as const;
 
@@ -198,6 +199,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           materialization: {
             sourceBinding: 'resolve-task-graph',
             workKeySelector: 'items',
+            dependencySelector: 'dependsOnKeys',
             completionPolicy: 'all',
             taskProvenance: {
               sourceArtifactIdsSelector: 'acceptanceCriterionIds',
@@ -212,6 +214,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             schemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
             mediaType: 'application/json',
             cardinality: '1',
+            productSource: 'typed-submission',
           }],
           authorGate: {
             gateId: 'development-implementation-author',
@@ -231,12 +234,23 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             },
           },
           recovery: { maxAttempts: 2, onExhausted: 'pause' },
+          postAcceptanceEffect: 'git-integration',
           transitions: {
-            accepted: 'verify-acceptance',
+            accepted: 'freeze-integrated-candidate',
             humanRequired: 'complete-blocked',
             failed: 'complete-failed',
           },
         },
+      },
+      {
+        id: 'freeze-integrated-candidate',
+        label: 'Freeze Integrated Candidate',
+        kind: 'kernel',
+        description:
+          'Require every accepted implementation result to be merged, observe the declared integration branches, and persist one immutable content-addressed candidate.',
+        handler: DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate,
+        inputSchema: { id: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA },
+        outputSchema: { id: INTEGRATED_CANDIDATE_SCHEMA },
       },
       {
         id: 'verify-acceptance',
@@ -248,7 +262,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           id: 'development-verification',
           inputSelectors: [
             'resolve-task-graph.verificationItems',
-            'implement-work-items.products',
+            'freeze-integrated-candidate.candidate',
           ],
           materialization: {
             sourceBinding: 'resolve-task-graph',
@@ -268,6 +282,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             schemaRef: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
             mediaType: 'application/json',
             cardinality: '1',
+            productSource: 'typed-submission',
           }],
           authorGate: {
             gateId: 'development-verification-final',
@@ -333,8 +348,18 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       },
       {
         from: 'implement-work-items',
-        to: 'verify-acceptance',
+        to: 'freeze-integrated-candidate',
         on: 'domain.accepted',
+      },
+      {
+        from: 'freeze-integrated-candidate',
+        to: 'verify-acceptance',
+        on: 'domain.frozen',
+      },
+      {
+        from: 'freeze-integrated-candidate',
+        to: 'settle-development',
+        on: 'domain.failed',
       },
       {
         from: 'verify-acceptance',
@@ -464,6 +489,13 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       handler: DEVELOPMENT_KERNEL_HANDLER_IDS.settle,
       description:
         'Admits only a complete workset with trusted evidence for the unchanged frozen candidate.',
+    },
+    {
+      id: 'development-candidate-freeze',
+      version: '1.0.0',
+      handler: DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate,
+      description:
+        'Seals the exact merged repository heads as one immutable candidate before any verification desk starts.',
     },
   ],
   invariants: [

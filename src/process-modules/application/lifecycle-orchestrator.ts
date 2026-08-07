@@ -286,6 +286,23 @@ export class LifecycleOrchestrator {
         let stageRun = ensuredStage.record;
 
         const installation = this.installationRegistry.require(stage.moduleRef);
+        const frozenProcessRun = stageRun.processRunId === null
+          ? null
+          : this.processRunRepo.read(stageRun.processRunId);
+        const processInstallationPin = frozenProcessRun
+          ? {
+              installationId: frozenProcessRun.installationId,
+              packageDigest: frozenProcessRun.packageDigest,
+            }
+          : this.resolveModuleInstallation
+            ? (() => {
+                const pin = this.resolveModuleInstallation!(stage.moduleRef);
+                return {
+                  installationId: pin?.installationId ?? null,
+                  packageDigest: pin?.packageDigest ?? null,
+                };
+              })()
+            : { installationId: null, packageDigest: null };
         const processStart = this.processRunRepo.start({
           moduleRef: stage.moduleRef,
           input: {
@@ -298,15 +315,7 @@ export class LifecycleOrchestrator {
           // W13-AUDIT §18.5: pin the ProcessRun to the immutable module
           // paths without a resolver start unpinned (null/null) and retain the
           // pre-Wave-2 behavior. Mirrors scenario-runner's lockEntry pinning.
-          ...(this.resolveModuleInstallation
-            ? (() => {
-              const pin = this.resolveModuleInstallation!(stage.moduleRef);
-              return {
-                installationId: pin?.installationId ?? null,
-                packageDigest: pin?.packageDigest ?? null,
-              };
-            })()
-            : { installationId: null, packageDigest: null }),
+          ...processInstallationPin,
           invocationContext: {
             projectId: lifecycleRun.projectId,
             epicId: lifecycleRun.epicId,

@@ -88,6 +88,7 @@ function validProposal() {
       projectRepositoryId: 5,
       acceptanceCriterionIds: [101],
       dependsOnKeys: [],
+      changeScopes: ['product-foundation'],
       required: true,
     }],
     verificationItems: [{
@@ -99,6 +100,7 @@ function validProposal() {
       projectRepositoryId: 5,
       acceptanceCriterionIds: [101],
       dependsOnKeys: ['implement-circle'],
+      changeScopes: [],
       required: true,
     }],
     integrationTargets: [{
@@ -230,6 +232,30 @@ test('invalid LM graph is rejected before any task materialization', async () =>
     result.recoveryIssue.summary,
     /verification work for every accepted AC/,
   );
+  assert.equal(materializationCalls, 0);
+});
+
+test('verification work without an exact frozen repository is rejected', async () => {
+  const runInput = developmentCase();
+  const proposal = {
+    ...validProposal(),
+    verificationItems: validProposal().verificationItems.map(item => ({
+      ...item,
+      projectRepositoryId: null,
+    })),
+  };
+  let materializationCalls = 0;
+  const handlers = createDevelopmentKernelHandlers(
+    dependencies(proposal, () => {
+      materializationCalls += 1;
+      throw new Error('must not materialize repository-free verification');
+    }),
+  );
+  const result = await handlers[
+    DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
+  ](resolverContext(runInput, proposal));
+  assert.equal(result.event, 'repair-required');
+  assert.match(result.recoveryIssue.summary, /projectRepositoryId must be an integer/);
   assert.equal(materializationCalls, 0);
 });
 

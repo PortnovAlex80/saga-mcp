@@ -234,7 +234,9 @@ implements DevelopmentTaskGraphPolicyPort {
         || !item.executionMode.trim()
         || typeof item.required !== 'boolean'
         || !unique(item.acceptanceCriterionIds)
-        || !unique(item.dependsOnKeys))
+        || !unique(item.dependsOnKeys)
+        || !unique(item.changeScopes)
+        || item.changeScopes.some(scope => !scope.trim()))
       || allItems.some(item => item.dependsOnKeys.includes(item.key))
       || allItems.some(item =>
         item.dependsOnKeys.some(dependency => !itemKeySet.has(dependency)))
@@ -262,14 +264,35 @@ implements DevelopmentTaskGraphPolicyPort {
     if (
       graph.implementationItems.some(item =>
         item.executionMode !== 'git_change'
-        || item.projectRepositoryId === null)
+        || item.projectRepositoryId === null
+        || item.changeScopes.length === 0)
     ) {
       pushIssue(
         reasonCodes,
         errors,
         'task-graph-dependency-invalid',
-        'implementation work must use git_change and bind one case repository',
+        'implementation work must use git_change, bind one case repository and declare non-empty change scopes',
       );
+    }
+
+    for (let leftIndex = 0; leftIndex < graph.implementationItems.length; leftIndex += 1) {
+      const left = graph.implementationItems[leftIndex]!;
+      for (let rightIndex = leftIndex + 1; rightIndex < graph.implementationItems.length; rightIndex += 1) {
+        const right = graph.implementationItems[rightIndex]!;
+        if (
+          left.projectRepositoryId !== right.projectRepositoryId
+          || !left.changeScopes.some(scope => right.changeScopes.includes(scope))
+        ) continue;
+        if (!dependsTransitivelyOn(left, right, graph.implementationItems)
+          && !dependsTransitivelyOn(right, left, graph.implementationItems)) {
+          pushIssue(
+            reasonCodes,
+            errors,
+            'implementation-scope-overlap',
+            `implementation items '${left.key}' and '${right.key}' overlap without a dependency order`,
+          );
+        }
+      }
     }
     if (
       graph.verificationItems.some(item =>
@@ -277,13 +300,36 @@ implements DevelopmentTaskGraphPolicyPort {
         || item.acceptanceCriterionIds.length !== 1
         || !item.required
         || item.taskKind !== 'verification.ac'
-        || item.executionMode !== 'read_only_evidence')
+        || item.executionMode !== 'read_only_evidence'
+        || !developmentCase.repositories.some(repository =>
+          repository.projectRepositoryId === item.projectRepositoryId))
     ) {
       pushIssue(
         reasonCodes,
         errors,
         'verification-plan-coverage-gap',
-        'every verification item must be a required read_only_evidence verification.ac task for exactly one acceptance criterion',
+        'every verification item must be a required read_only_evidence verification.ac task for exactly one acceptance criterion and one case repository',
+      );
+    }
+
+    const targetSourceKeys = graph.integrationTargets
+      .flatMap(target => target.sourceWorkItemKeys);
+    const requiredImplementationKeys = graph.implementationItems
+      .filter(item => item.required)
+      .map(item => item.key);
+    if (
+      !unique(targetSourceKeys)
+      || !sameStringSet(new Set(targetSourceKeys), new Set(requiredImplementationKeys))
+      || graph.integrationTargets.some(target =>
+        target.sourceWorkItemKeys.some(key =>
+          graph.implementationItems.find(item => item.key === key)
+            ?.projectRepositoryId !== target.projectRepositoryId))
+    ) {
+      pushIssue(
+        reasonCodes,
+        errors,
+        'integration-source-partition-invalid',
+        'required implementation items must belong to exactly one matching repository integration target',
       );
     }
 
@@ -378,6 +424,28 @@ implements DevelopmentTaskGraphPolicyPort {
       errors,
     };
   }
+}
+
+function dependsTransitivelyOn(
+  item: DevelopmentTaskGraphItem,
+  target: DevelopmentTaskGraphItem,
+  allItems: readonly DevelopmentTaskGraphItem[],
+): boolean {
+  const byKey = new Map(allItems.map(candidate => [candidate.key, candidate]));
+  const pending = [...item.dependsOnKeys];
+  const seen = new Set<string>();
+  while (pending.length > 0) {
+    const key = pending.pop()!;
+    if (key === target.key) return true;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pending.push(...(byKey.get(key)?.dependsOnKeys ?? []));
+  }
+  return false;
+}
+
+function sameStringSet(left: Set<string>, right: Set<string>): boolean {
+  return left.size === right.size && [...left].every(value => right.has(value));
 }
 
 function invalidCase(developmentCase: DevelopmentCase): boolean {

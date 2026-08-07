@@ -112,6 +112,11 @@ function decodeItems(
       `${path}.dependsOnKeys`,
       errors,
     );
+    const changeScopes = stringArray(
+      value.changeScopes,
+      `${path}.changeScopes`,
+      errors,
+    );
     if (kind !== 'implementation' && kind !== 'verification') {
       errors.push(`${path}.kind must be implementation|verification`);
     }
@@ -120,11 +125,8 @@ function decodeItems(
         errors.push(`${path}.${key} must be a string`);
       }
     }
-    if (
-      projectRepositoryId !== null
-      && !Number.isInteger(projectRepositoryId)
-    ) {
-      errors.push(`${path}.projectRepositoryId must be integer|null`);
+    if (!Number.isInteger(projectRepositoryId)) {
+      errors.push(`${path}.projectRepositoryId must be an integer`);
     }
     if (typeof value.required !== 'boolean') {
       errors.push(`${path}.required must be a boolean`);
@@ -135,10 +137,10 @@ function decodeItems(
       && typeof value.taskKind === 'string'
       && typeof value.executionSkill === 'string'
       && typeof value.executionMode === 'string'
-      && (projectRepositoryId === null
-        || Number.isInteger(projectRepositoryId))
+      && Number.isInteger(projectRepositoryId)
       && acceptanceCriterionIds
       && dependsOnKeys
+      && changeScopes
       && typeof value.required === 'boolean'
     ) {
       const criticalityRaw = value.criticality;
@@ -153,9 +155,10 @@ function decodeItems(
         taskKind: value.taskKind,
         executionSkill: value.executionSkill,
         executionMode: value.executionMode,
-        projectRepositoryId: projectRepositoryId as number | null,
+        projectRepositoryId: projectRepositoryId as number,
         acceptanceCriterionIds,
         dependsOnKeys,
+        changeScopes,
         required: value.required,
         criticality,
       });
@@ -218,6 +221,8 @@ function canonicalItems(
     acceptanceCriterionIds: [...item.acceptanceCriterionIds]
       .sort((left, right) => left - right),
     dependsOnKeys: [...item.dependsOnKeys].sort(),
+    changeScopes: [...(item.changeScopes
+      ?? (item.kind === 'implementation' ? [`work-item:${item.key}`] : []))].sort(),
   })).sort((left, right) => left.key.localeCompare(right.key));
 }
 

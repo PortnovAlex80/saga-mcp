@@ -91,6 +91,12 @@ export interface ProductionCellProjectionPersistence {
   readTaskProjectRepositoryId(taskId: number): number | null;
   /** Read the immutable hash of the factory order bound to this ProcessRun. */
   readProcessInputHash(processRunId: number): string;
+  readTrustedProviders?(projectId: number): readonly {
+    providerId: number;
+    name: string;
+    version: string | null;
+    category: string;
+  }[];
   /** Make this the sole claimable task projection for the Workplace. */
   activateRoleTask(input: {
     taskId: number;
@@ -104,6 +110,7 @@ export interface ProductionCellProjectionPersistence {
   readExecutionReceipt(executionRef: string): { intentId: number; taskId: number };
   /** Rebuild all task projections after a Workplace transition. */
   projectWorkplace(workplaceRef: WorkplaceRef): void;
+  bindTaskDependencies?(taskId: number, dependencyTaskIds: readonly number[]): void;
 }
 
 export interface ProductionCellProductReader {
@@ -113,7 +120,16 @@ export interface ProductionCellProductReader {
     nodeId: string;
     executionRef: string;
     expectedSchemaRefs: readonly string[];
+    requireTypedSubmission: boolean;
   }): readonly ProductRef[];
+}
+
+export interface ProductionCellIntegrationPort {
+  integrateAcceptedWorkplace(input: {
+    workplaceRef: WorkplaceRef;
+    processRunId: number;
+    expectedProductSchema: string;
+  }): void;
 }
 
 export interface ProductionCellNodeExecutorOptions {
@@ -123,6 +139,7 @@ export interface ProductionCellNodeExecutorOptions {
   readonly checkProviders: CheckProviderRegistry;
   readonly persistence: ProductionCellProjectionPersistence;
   readonly productReader: ProductionCellProductReader;
+  readonly integrationPort?: ProductionCellIntegrationPort;
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly now?: () => Date;
 }
@@ -130,6 +147,7 @@ export interface ProductionCellNodeExecutorOptions {
 interface MaterializedWorkplace {
   readonly ref: WorkplaceRef;
   readonly workKey: string;
+  readonly itemId: string;
   readonly item: unknown;
 }
 
@@ -156,9 +174,35 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
     const moduleRef = `${ctx.module.identity.name}@${ctx.module.identity.version}`;
     const workplaces = this.materialize(ctx, node, cell, moduleRef);
-    const outcomes: ReconcileOutcome[] = [];
+    const initialTaskIds = new Map<string, number>();
     for (const workplace of workplaces) {
-      outcomes.push(await this.reconcile(ctx, node, cell, moduleRef, workplace));
+      const state = this.requireState(workplace.ref);
+      if (state.loopState === 'queued' && state.nextRole === 'author') {
+        initialTaskIds.set(
+          workplace.itemId,
+          this.ensureRoleProjection(ctx, node, cell, workplace, state),
+        );
+      }
+    }
+    if (cell.materialization.dependencySelector) {
+      for (const workplace of workplaces) {
+        const taskId = initialTaskIds.get(workplace.itemId);
+        if (!taskId) continue;
+        const dependencyTaskIds = stringSelector(
+          workplace.item,
+          cell.materialization.dependencySelector,
+        ).map(itemId => initialTaskIds.get(itemId))
+          .filter((id): id is number => id !== undefined);
+        this.opts.persistence.bindTaskDependencies?.(taskId, dependencyTaskIds);
+      }
+    }
+    const outcomes: ReconcileOutcome[] = [];
+    const byItemId = new Map(workplaces.map(workplace => [workplace.itemId, workplace]));
+    for (const workplace of workplaces) {
+      outcomes.push(await this.reconcile(
+        ctx, node, cell, moduleRef, workplace, byItemId,
+        initialTaskIds.has(workplace.itemId),
+      ));
     }
 
     if (outcomes.some(outcome => outcome.pending)) {
@@ -210,7 +254,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   ): readonly MaterializedWorkplace[] {
     const source = cell.materialization.sourceBinding;
     if (!source) {
-      return [this.materializeOne(ctx, cell, moduleRef, 'singleton', ctx.input)];
+      return [this.materializeOne(ctx, cell, moduleRef, 'singleton', 'singleton', ctx.input)];
     }
     const production = resolveSourceProduction(ctx, source);
     const items = extractItems(production?.bindings ?? {}, cell.materialization.workKeySelector);
@@ -219,7 +263,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     const sourceHash = production?.contentHash ?? source;
     return items.map(({ id, value }) =>
-      this.materializeOne(ctx, cell, moduleRef, deriveWorkKey(sourceHash, id), value));
+      this.materializeOne(ctx, cell, moduleRef, deriveWorkKey(sourceHash, id), id, value));
   }
 
   private materializeOne(
@@ -227,6 +271,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     cell: ProductionCellDefinition,
     moduleRef: string,
     workKey: string,
+    itemId: string,
     item: unknown,
   ): MaterializedWorkplace {
     const ref = asWorkplaceRef({
@@ -243,7 +288,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     });
     const state = this.requireState(ref);
     if (state.loopState === 'idle') this.opts.coordinator.admitWork(ref);
-    return { ref, workKey, item };
+    return { ref, workKey, itemId, item };
   }
 
   private async reconcile(
@@ -252,9 +297,38 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     cell: ProductionCellDefinition,
     moduleRef: string,
     workplace: MaterializedWorkplace,
+    workplacesByItemId: ReadonlyMap<string, MaterializedWorkplace>,
+    initiallyProjected: boolean,
   ): Promise<ReconcileOutcome> {
     let state = this.requireState(workplace.ref);
     if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
+
+    if (state.loopState === 'idle') {
+      const dependencies = cell.materialization.dependencySelector
+        ? stringSelector(workplace.item, cell.materialization.dependencySelector)
+        : [];
+      for (const dependencyId of dependencies) {
+        const dependency = workplacesByItemId.get(dependencyId);
+        if (!dependency) {
+          throw new NodeExecutionError(
+            this.kind,
+            node.id,
+            `cell '${cell.id}' item '${workplace.itemId}' names unknown dependency '${dependencyId}'`,
+          );
+        }
+        const dependencyState = this.requireState(dependency.ref);
+        if (dependencyState.loopState !== 'terminal') return pendingOutcome();
+        if (dependencyState.terminalReason !== 'accepted') {
+          throw new NodeExecutionError(
+            this.kind,
+            node.id,
+            `cell '${cell.id}' dependency '${dependencyId}' was not accepted`,
+          );
+        }
+      }
+      this.opts.coordinator.admitWork(workplace.ref);
+      state = this.requireState(workplace.ref);
+    }
 
     if (state.loopState === 'repair_wait') {
       const attempts = this.attemptCount(workplace.ref, state.nextRole);
@@ -277,7 +351,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
 
     if (state.loopState === 'queued') {
-      this.ensureRoleProjection(ctx, node, cell, workplace, state);
+      if (!initiallyProjected) this.ensureRoleProjection(ctx, node, cell, workplace, state);
       return pendingOutcome();
     }
     if (state.loopState === 'leased' || state.loopState === 'running' || state.loopState === 'paused') {
@@ -301,6 +375,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       expectedSchemaRefs: role === 'reviewer'
         ? [cell.review?.verdictSchemaRef ?? '']
         : cell.productContracts.map(contract => contract.schemaRef),
+      requireTypedSubmission: role === 'reviewer'
+        || cell.productContracts.some(contract => contract.productSource === 'typed-submission'),
     });
     if (role === 'reviewer') {
       this.assertReviewerProductContract(cell, products, node.id);
@@ -320,6 +396,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (role === 'author') {
       const decision = this.runGate(ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef);
       if (decision.verdict === 'accepted') {
+        if (!cell.review) this.runPostAcceptanceEffect(ctx, cell, workplace.ref);
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'accepted', isFinal: !cell.review,
         });
@@ -341,6 +418,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         subjectAuthorSet.candidateSetRef,
         [candidate.candidateSetRef],
       );
+      if (decision.verdict === 'accepted') {
+        this.runPostAcceptanceEffect(ctx, cell, workplace.ref);
+      }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
         repairTargetRole: decision.repairTargetRole ?? undefined,
@@ -360,13 +440,26 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     return { ...pendingOutcome(), candidateSetRef: candidate.candidateSetRef };
   }
 
+  private runPostAcceptanceEffect(
+    ctx: NodeExecutionContext,
+    cell: ProductionCellDefinition,
+    workplaceRef: WorkplaceRef,
+  ): void {
+    if (!this.opts.integrationPort || cell.postAcceptanceEffect !== 'git-integration') return;
+    this.opts.integrationPort.integrateAcceptedWorkplace({
+      workplaceRef,
+      processRunId: ctx.processRunId,
+      expectedProductSchema: cell.productContracts[0]!.schemaRef,
+    });
+  }
+
   private ensureRoleProjection(
     ctx: NodeExecutionContext,
     node: ProductionCellFlowNodeDefinition,
     cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
     state: WorkplaceState,
-  ): void {
+  ): number {
     const role = state.nextRole;
     const roleDeclaration = role === 'author' ? cell.author : cell.review?.reviewer;
     if (!roleDeclaration) {
@@ -430,7 +523,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         reviewSkill: null,
         generationKey,
         workflowStage: ctx.module.identity.kind,
-        executionMode: profile.taskKind.includes('verification') ? 'tracker_only' : 'git_change',
+        executionMode: profile.executionMode,
         titlePrefix: `${cell.id}/${role}: `,
         metadata: {
           process_run_id: ctx.processRunId,
@@ -441,6 +534,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           production_cell_id: cell.id,
           work_key: workplace.workKey,
           role,
+          trusted_provider_bindings:
+            this.opts.persistence.readTrustedProviders?.(ctx.projectId) ?? [],
           cell_input_item: workplace.item,
         },
         sourceArtifactIds,
@@ -468,6 +563,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       role,
       executionProfileId: profile.id,
     });
+    return plan.taskId;
   }
 
   private sealCandidateSet(
@@ -623,6 +719,18 @@ function integerSelector(value: unknown, selector: string): number[] {
   return [...new Set(values.filter(
     (candidate): candidate is number => Number.isSafeInteger(candidate) && (candidate as number) > 0,
   ))];
+}
+
+function stringSelector(value: unknown, selector: string): string[] {
+  let selected = value;
+  for (const segment of selector.split('.').filter(Boolean)) {
+    if (!selected || typeof selected !== 'object' || Array.isArray(selected)) return [];
+    selected = (selected as Record<string, unknown>)[segment];
+  }
+  if (!Array.isArray(selected) || !selected.every(item => typeof item === 'string')) {
+    return [];
+  }
+  return [...new Set(selected)];
 }
 
 function resolveCellDefinition(

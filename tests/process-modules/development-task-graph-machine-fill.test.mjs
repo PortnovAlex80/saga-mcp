@@ -76,15 +76,11 @@ function preparationContext(currentContent) {
   };
 }
 
-test('seed comes only from the frozen DevelopmentCase and covers every AC correctly', () => {
+test('seed machine-fills lineage but leaves semantic implementation decomposition to the planner', () => {
   const call = buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase);
   const payload = call.arguments.payload;
 
-  assert.deepEqual(
-    payload.implementationItems.flatMap(item => item.acceptanceCriterionIds),
-    [15],
-    'implementationRequired=false must not create implementation work',
-  );
+  assert.deepEqual(payload.implementationItems, []);
   assert.deepEqual(
     payload.verificationItems.flatMap(item => item.acceptanceCriterionIds),
     [15, 16],
@@ -93,6 +89,7 @@ test('seed comes only from the frozen DevelopmentCase and covers every AC correc
   assert.equal(payload.integrationTargets[0].projectRepositoryId, 65);
   assert.equal(payload.integrationTargets[0].targetBranch, 'integration');
   assert.equal(payload.integrationTargets[0].expectedBaseCommit, 'abc123');
+  assert.deepEqual(payload.integrationTargets[0].sourceWorkItemKeys, []);
   assert.ok(!JSON.stringify(call).includes('FILL_'));
 });
 
@@ -132,7 +129,19 @@ test('preparer replaces an empty, placeholder, or wrong-lineage draft', () => {
 test('preparer preserves a reusable semantic draft scoped to the frozen case', () => {
   const original = buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase);
   const customized = structuredClone(original);
-  customized.arguments.payload.implementationItems[0].key = 'model-owned-key';
+  customized.arguments.payload.implementationItems.push({
+    key: 'model-owned-key',
+    kind: 'implementation',
+    taskKind: 'development.code',
+    executionSkill: 'saga-worker',
+    executionMode: 'git_change',
+    projectRepositoryId: 65,
+    acceptanceCriterionIds: [15],
+    dependsOnKeys: [],
+    changeScopes: ['product-foundation'],
+    required: true,
+    criticality: 'blocker',
+  });
   customized.arguments.payload.verificationItems[0].dependsOnKeys = [
     'model-owned-key',
   ];

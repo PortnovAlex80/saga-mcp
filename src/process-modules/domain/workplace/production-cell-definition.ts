@@ -60,6 +60,13 @@ export interface ProductionCellMaterialization {
    * `workKey` from the stable item id.
    */
   readonly workKeySelector?: string;
+  /**
+   * Optional item field containing stable ids of sibling workplaces that must
+   * reach terminal/accepted before this workplace may be admitted. This is a
+   * generic fan-out DAG mechanism; the runtime does not interpret product
+   * semantics.
+   */
+  readonly dependencySelector?: string;
   /** Normally `all` — the Flow node completes when every instance is terminal. */
   readonly completionPolicy: 'all' | 'any' | 'quorum';
   /** Required when completionPolicy='quorum': minimum successful instances. */
@@ -84,6 +91,8 @@ export interface ProductContract {
   readonly mediaType: string;
   /** '1' for exactly one, '0..1' optional, '1..n' many (cardinality string). */
   readonly cardinality: string;
+  /** Fail closed when the worker did not publish an exact typed submission. */
+  readonly productSource?: 'typed-submission' | 'managed-production';
 }
 
 /**
@@ -159,6 +168,8 @@ export interface ProductionCellDefinition {
   readonly review?: CellReview;
   /** Recovery policy (repair rounds budget). */
   readonly recovery: CellRecoveryPolicy;
+  /** Optional runtime-owned effect after final acceptance and before completion. */
+  readonly postAcceptanceEffect?: 'git-integration';
   /**
    * Typed Flow transitions emitted by the cell's final outcome. Keys are the
    * final GateDecision verdict; values are the Flow node id to transition to.

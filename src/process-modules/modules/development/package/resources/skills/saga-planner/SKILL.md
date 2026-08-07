@@ -1,83 +1,77 @@
 ---
 name: saga-planner
-description: "Proposes one Development task graph from the immutable DevelopmentCase. The planner never creates tasks; process_node_submit persists the proposal and the kernel authorizes/materializes it."
+description: "Propose an architecture-neutral Development work DAG from one immutable DevelopmentCase; the kernel validates and materializes it."
 ---
 
 # Development task-graph planner
 
-You are inside the `plan-task-graph` LM node of the Solution Development
-Process Module. This node follows one rule:
+The planner proposes; the kernel authorizes. Never create tasks, mutate Git,
+run workers, or change frozen ids.
 
-`LM proposes -> reviewer checks -> kernel authorizes and materializes`
+## Authoritative input
 
-You do not call `task_create`, change dependencies, mutate repositories, or
-start workers. Those are kernel/runtime responsibilities after authorization.
+1. Read the assigned task with `task_get`.
+2. Use only `task.metadata.process_node_input` as the immutable DevelopmentCase.
+3. Use the exact tracker, call-file and checklist paths from
+   `task.metadata.process_workspace`.
+4. Treat the machine-filled call file as lineage scaffolding, not as a valid
+   implementation plan. Empty implementation arrays and target source arrays
+   must be completed semantically.
 
-## Authoritative inputs
+## Universal planning principles
 
-1. Call `task_get({id: <assigned task id>})`.
-2. Read `task.metadata.process_node_input`. It is the immutable
-   `factory.development-case.v1` frozen for this ProcessRun.
-3. Read `task.metadata.process_workspace` and use its exact paths:
-   - `tracker_path`
-   - `call_files`
-   - `checklists`
-
-Never open the package source template. Never use a remembered path. Never
-replace frozen repository or AC ids with values from current mutable tables.
-The lifecycle may have changed since this run was pinned.
-
-The runtime machine-fills the call file from the frozen DevelopmentCase. Treat
-that file as your current draft. Inspect it, make only necessary semantic
-corrections, save it to the same path, read it back, and validate the checklist.
-An inherited draft is reusable only if its AC and repository ids still match
-the current frozen input.
+- Plan product construction, not one task per acceptance criterion. Acceptance
+  criteria are coverage obligations; several criteria may belong to one
+  coherent work item and one criterion may require ordered work items.
+- Establish shared foundations before dependent work. Encode that order in
+  `dependsOnKeys`; do not rely on prose or worker timing.
+- A work item must leave the repository in a coherent, testable state and must
+  be reviewable as one change.
+- Parallel work is allowed only when workers can start from the same frozen
+  base and integrate independently without semantic or file ownership races.
+- Declare conservative repository-local `changeScopes`. If two items may touch
+  the same scope, order them with a dependency. Never invent narrow scopes only
+  to obtain parallelism.
+- Bind every implementation item to exactly one frozen repository. Partition
+  required implementation keys exactly once across matching integration
+  targets.
+- Verification is candidate-wide. Keep exactly one required verification item
+  per accepted criterion; it runs only after the kernel freezes the integrated
+  candidate. Bind it to the exact frozen repository it must inspect; a
+  verification item without a repository is not executable work.
+- Use only skills and tools present in the frozen execution profile. The graph
+  describes intent, dependencies, ownership and lineage, not a technology.
 
 ## Required proposal
 
-The call must invoke:
+Submit exactly `factory.development-task-graph-proposal.v1` through
+`process_node_submit`.
 
-- tool: `process_node_submit`
-- schema: `factory.development-task-graph-proposal.v1`
-- payload.schemaVersion: `factory.development-task-graph-proposal.v1`
+Implementation items:
 
-The payload has three arrays:
+- `kind=implementation`, `executionMode=git_change`;
+- stable unique key, one frozen repository, non-empty AC coverage;
+- non-empty conservative `changeScopes`;
+- dependencies name implementation items only and form an acyclic graph.
 
-1. `implementationItems`
-   - Cover every acceptance criterion where `implementationRequired` is true.
-   - `kind` is `implementation`.
-   - `executionMode` is `git_change`.
-   - Bind a repository from `process_node_input.repositories`.
-   - Keys are stable and unique.
+Verification items:
 
-2. `verificationItems`
-   - Exactly one required item for every acceptance criterion, including those
-     with `implementationRequired: false`.
-   - `kind` is `verification`.
-   - `taskKind` is `verification.ac`.
-   - `executionMode` is `read_only_evidence`.
-   - Each item names exactly one acceptance criterion.
+- exactly one required item per accepted AC;
+- `kind=verification`, `taskKind=verification.ac`,
+  `executionMode=read_only_evidence`;
+- exactly one AC id, exactly one frozen repository id and an empty
+  `changeScopes` array.
 
-3. `integrationTargets`
-   - Exactly one target per frozen repository.
-   - Copy `projectRepositoryId`, `integrationBranch`, and
-     `expectedBaseCommit` verbatim.
-   - Source keys name required implementation items only.
+Integration targets:
 
-All dependencies must name proposed keys, implementation items may depend only
-on implementation items, and the graph must be acyclic.
+- exactly one per frozen repository;
+- branch and expected base copied verbatim;
+- source keys are an exact, non-overlapping partition of required
+  implementation items assigned to that repository.
 
-## Execution
+## Completion protocol
 
-1. Read the tracker, task, exact call file, and checklist.
-2. Compare the draft against the frozen DevelopmentCase.
-3. Correct and save the exact call file only if needed.
-4. Read the saved JSON back and ensure it parses and contains no `FILL_` token.
-5. Invoke `process_node_submit` using exactly the JSON in that file.
-6. If submission succeeds, call
-   `worker_done({task_id, worker_id, execution_id, result})` and exit.
-7. If submission is rejected, report the exact error. Do not submit a different
-   payload from the same execution; a correction requires a fresh fenced
-   execution.
-
-Do not keep working after successful `worker_done`.
+Read the saved JSON back, ensure it parses and contains no placeholder, then
+call `process_node_submit` once. After success call `worker_done` once and stop.
+If submission is rejected, preserve the exact rejection for the next fenced
+repair execution; do not submit a different payload from the same execution.

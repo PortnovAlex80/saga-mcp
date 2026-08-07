@@ -310,6 +310,15 @@ function setDependencies(db: Database.Database, taskId: number, dependsOn: numbe
   }
 }
 
+export function replaceTaskDependencies(
+  db: Database.Database,
+  taskId: number,
+  dependsOn: readonly number[],
+): void {
+  setDependencies(db, taskId, [...dependsOn]);
+  evaluateAndUpdateDependencies(db, taskId);
+}
+
 function getUnmetDependencies(db: Database.Database, taskId: number): Array<{ id: number; title: string; status: string }> {
   return db.prepare(
     `SELECT t.id, t.title, t.status FROM task_dependencies d

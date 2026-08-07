@@ -37,6 +37,7 @@ import {
   DEVELOPMENT_CERTIFICATE_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
+  INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
   type ContentAddressedReference,
   type DevelopmentCase,
@@ -58,6 +59,7 @@ export const DEVELOPMENT_NODE_IDS = {
   planner: 'plan-task-graph',
   resolveTaskGraph: 'resolve-task-graph',
   settlement: 'settle-development',
+  freezeIntegratedCandidate: 'freeze-integrated-candidate',
 } as const;
 
 /**
@@ -102,8 +104,59 @@ export function createDevelopmentKernelHandlers(
           ],
         },
       ),
+    [DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate]:
+      createIntegratedCandidateFreezeHandler(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.settle]:
       createDevelopmentSettlementHandler(deps),
+  };
+}
+
+function createIntegratedCandidateFreezeHandler(
+  deps: DevelopmentModuleInstallationDependencies,
+): KernelHandler {
+  return ctx => {
+    const developmentCase = requireDevelopmentCase(ctx);
+    const result = deps.settlementState.freezeIntegratedCandidate({
+      processRunId: ctx.processRunId,
+      developmentCase,
+    });
+    if (result.status === 'waiting') {
+      const contentHash = sha256Hex(result);
+      return {
+        event: 'waiting',
+        runtimeEvent: 'paused',
+        production: {
+          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          artifactRef: `development-candidate-wait:${ctx.processRunId}:${contentHash}`,
+          contentHash,
+          bindings: { reasonCodes: result.reasonCodes },
+        },
+      };
+    }
+    if (result.status === 'failed') {
+      const contentHash = sha256Hex(result);
+      return {
+        event: 'failed',
+        production: {
+          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          artifactRef: `development-candidate-failed:${ctx.processRunId}:${contentHash}`,
+          contentHash,
+          bindings: { reasonCodes: result.reasonCodes },
+        },
+      };
+    }
+    return {
+      event: 'frozen',
+      production: {
+        schema: INTEGRATED_CANDIDATE_SCHEMA,
+        artifactRef: result.reference.ref,
+        contentHash: result.reference.hash,
+        bindings: {
+          candidate: result.candidate,
+          candidateRef: result.reference,
+        },
+      },
+    };
   };
 }
 

@@ -22,5 +22,9 @@ test('Development settlement reads accepted Production Cell products, not task l
   assert.match(source, /readAcceptedCellProducts/);
   assert.match(source, /factory_candidate_sets/);
   assert.match(source, /factory_managed_node_submissions/);
-  assert.doesNotMatch(source, /FROM tasks[\s\S]{0,160}(status|integration_state)/i);
+  const settlementBody = source.slice(
+    source.indexOf('  buildSettlementInput(input:'),
+    source.indexOf('  // ----- inner workset reconstruction'),
+  );
+  assert.doesNotMatch(settlementBody, /FROM tasks[\s\S]{0,160}(status|integration_state)/i);
 });

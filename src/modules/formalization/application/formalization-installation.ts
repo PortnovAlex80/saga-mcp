@@ -447,12 +447,12 @@ function ensureBriefRootTrace(
 
 function createResolveProductHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveProduct, () => {
-    const writes = readExecutionWrites(
+    const writes = selectActiveExecutionWrites(readExecutionWrites(
       deps,
       ctx,
       SOURCE_NODES.product,
       FORMALIZATION_HANDLER_IDS.resolveProduct,
-    );
+    ));
     if (writes.artifacts.length === 0) {
       return semanticMissing(
         ctx,
@@ -549,12 +549,12 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
 
 function createResolveUseCasesHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveUseCases, () => {
-    const writes = readExecutionWrites(
+    const writes = selectActiveExecutionWrites(readExecutionWrites(
       deps,
       ctx,
       SOURCE_NODES.useCases,
       FORMALIZATION_HANDLER_IDS.resolveUseCases,
-    );
+    ));
     if (writes.artifacts.length === 0) {
       return semanticMissing(
         ctx,
@@ -613,12 +613,12 @@ function createResolveUseCasesHandler(deps: FormalizationInstallationDeps): Kern
 
 function createResolveAcceptanceHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveAcceptance, () => {
-    const writes = readExecutionWrites(
+    const writes = selectActiveExecutionWrites(readExecutionWrites(
       deps,
       ctx,
       SOURCE_NODES.acceptance,
       FORMALIZATION_HANDLER_IDS.resolveAcceptance,
-    );
+    ));
     if (writes.artifacts.length === 0) {
       // CGAD P18: readExecutionWrites already queries the DURABLE node-scope
       // (all managed AC writes for this process+node, across every task). An
@@ -690,12 +690,12 @@ function createResolveAcceptanceHandler(deps: FormalizationInstallationDeps): Ke
 
 function createResolveReconciliationHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveReconciliation, () => {
-    const writes = readExecutionWrites(
+    const writes = selectActiveExecutionWrites(readExecutionWrites(
       deps,
       ctx,
       SOURCE_NODES.reconciliation,
       FORMALIZATION_HANDLER_IDS.resolveReconciliation,
-    );
+    ));
     const exactArtifacts = uniqueArtifacts([
       ...readProductionArtifacts(
         deps.graph,
@@ -831,12 +831,12 @@ function createBaselineFreezerHandler(deps: FormalizationInstallationDeps): Kern
 
 function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveArchitecture, () => {
-    const writes = readExecutionWrites(
+    const writes = selectActiveExecutionWrites(readExecutionWrites(
       deps,
       ctx,
       SOURCE_NODES.architecture,
       FORMALIZATION_HANDLER_IDS.resolveArchitecture,
-    );
+    ));
     if (writes.artifacts.length === 0) {
       return semanticMissing(
         ctx,
@@ -1372,9 +1372,12 @@ function readExecutionWrites(
     }
   }
   const traces = deps.graph.readTracesByIds(traceWrites.map(write => write.traceId));
-  if (!borrowedFromEpic && traces.length !== traceWrites.length) {
-    throw new Error(`${handlerId}: one or more ledger traces no longer exist`);
-  }
+  // The ledger is an append-only provenance journal, while a worker may
+  // explicitly delete a defective trace before creating its corrected
+  // replacement in the same fenced execution. Missing historical trace rows
+  // therefore cannot be treated as products. Keep only canonical rows; if a
+  // required trace for the active artifact is missing, the semantic graph gate
+  // below will fail closed on the actual current graph.
   const tracesById = new Map(traces.map(trace => [trace.id, trace]));
   const validTraceWrites = traceWrites.filter(write => tracesById.has(write.traceId));
   for (const write of validTraceWrites) {
@@ -1410,7 +1413,13 @@ function readExecutionWrites(
   const finalReceipt = (ledgerProducerExec && ledgerProducerExec !== receipt.executionId)
     ? { ...receipt, executionId: ledgerProducerExec }
     : receipt;
-  return { receipt: finalReceipt, artifactWrites, traceWrites, artifacts, traces };
+  return {
+    receipt: finalReceipt,
+    artifactWrites: validArtifactWrites,
+    traceWrites: validTraceWrites,
+    artifacts,
+    traces,
+  };
 }
 
 /**
@@ -1449,6 +1458,44 @@ function latestArtifactWrites(
     latest.set(record.artifactId, record);
   }
   return [...latest.values()].sort((a, b) => a.artifactId - b.artifactId);
+}
+
+/**
+ * A workplace ledger retains every authored revision for provenance, including
+ * rows later marked `superseded`.  The node product, candidate set and semantic
+ * gate must represent the active revision set only; otherwise a worker that
+ * repairs a draft in-place appears to have authored several simultaneous
+ * contracts and exact acceptance tries to recommit obsolete rows.
+ */
+function selectActiveExecutionWrites(writes: ExecutionWrites): ExecutionWrites {
+  const nonSuperseded = writes.artifacts.filter(artifact => artifact.status !== 'superseded');
+  const writeByArtifactId = new Map(
+    writes.artifactWrites.map(write => [write.artifactId, write]),
+  );
+  const latestSingular = new Map<string, number>();
+  for (const artifact of nonSuperseded) {
+    if (artifact.type !== 'PRD' && artifact.type !== 'SRS') continue;
+    const currentId = latestSingular.get(artifact.type);
+    const currentWrite = currentId === undefined ? undefined : writeByArtifactId.get(currentId);
+    const candidateWrite = writeByArtifactId.get(artifact.id);
+    if (currentId === undefined
+      || (candidateWrite?.ledgerId ?? artifact.id) > (currentWrite?.ledgerId ?? currentId)) {
+      latestSingular.set(artifact.type, artifact.id);
+    }
+  }
+  const artifacts = nonSuperseded.filter(artifact =>
+    (artifact.type !== 'PRD' && artifact.type !== 'SRS')
+    || latestSingular.get(artifact.type) === artifact.id);
+  const artifactIds = new Set(artifacts.map(artifact => artifact.id));
+  const traces = writes.traces.filter(trace => artifactIds.has(trace.sourceArtifactId));
+  const traceIds = new Set(traces.map(trace => trace.id));
+  return {
+    ...writes,
+    artifacts,
+    artifactWrites: writes.artifactWrites.filter(write => artifactIds.has(write.artifactId)),
+    traces,
+    traceWrites: writes.traceWrites.filter(write => traceIds.has(write.traceId)),
+  };
 }
 
 function latestTraceWrites(
@@ -2246,7 +2293,7 @@ function categorize(
   artifacts: readonly FormalizationArtifactSnapshot[],
 ): ProductCategories {
   const type = (wanted: string) => artifacts
-    .filter(artifact => artifact.type === wanted)
+    .filter(artifact => artifact.type === wanted && artifact.status !== 'superseded')
     .sort((a, b) => a.id - b.id);
   return {
     prd: type('PRD'),

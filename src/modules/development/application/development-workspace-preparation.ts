@@ -89,55 +89,39 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
   const repositories = [...developmentCase.repositories]
     .sort((left, right) =>
       left.projectRepositoryId - right.projectRepositoryId);
-  const primaryRepositoryId = repositories[0]!.projectRepositoryId;
   const criteria = [...developmentCase.acceptanceCriteria]
     .sort((left, right) => left.artifactId - right.artifactId);
 
+  // Deliberately not policy-submittable: repository ids and verification
+  // lineage are machine-filled, while semantic implementation decomposition
+  // remains planner-owned. AC cardinality must never silently become task
+  // cardinality.
   const implementationItems: Record<string, unknown>[] = [];
-  const implementationKeyByCriterion = new Map<number, string>();
-  for (const criterion of criteria) {
-    if (!criterion.implementationRequired) continue;
-    const key = `impl-${keySuffix(criterion.code, criterion.artifactId)}`;
-    implementationKeyByCriterion.set(criterion.artifactId, key);
-    implementationItems.push({
-      key,
-      kind: 'implementation',
-      taskKind: 'development.code',
-      executionSkill: 'saga-worker',
-      executionMode: 'git_change',
-      projectRepositoryId: primaryRepositoryId,
-      acceptanceCriterionIds: [criterion.artifactId],
-      dependsOnKeys: [],
-      required: true,
-      criticality: criterion.criticality,
-    });
-  }
 
   const verificationItems = criteria.map(criterion => {
-    const implementationKey =
-      implementationKeyByCriterion.get(criterion.artifactId);
     return {
       key: `verify-${keySuffix(criterion.code, criterion.artifactId)}`,
       kind: 'verification',
       taskKind: 'verification.ac',
       executionSkill: 'saga-verifier',
       executionMode: 'read_only_evidence',
-      projectRepositoryId: primaryRepositoryId,
+      // A single-repository case can be bound completely by the kernel. For
+      // multi-repository work the planner must replace this sentinel with the
+      // exact repository whose frozen candidate is to be inspected.
+      projectRepositoryId: repositories.length === 1
+        ? repositories[0]!.projectRepositoryId
+        : 0,
       acceptanceCriterionIds: [criterion.artifactId],
-      dependsOnKeys: implementationKey ? [implementationKey] : [],
+      dependsOnKeys: [],
+      changeScopes: [],
       required: true,
       criticality: criterion.criticality,
     };
   });
 
-  const implementationKeys = implementationItems
-    .map(item => String(item.key));
   const integrationTargets = repositories.map(repository => ({
     projectRepositoryId: repository.projectRepositoryId,
-    sourceWorkItemKeys:
-      repository.projectRepositoryId === primaryRepositoryId
-        ? implementationKeys
-        : [],
+    sourceWorkItemKeys: [],
     targetBranch: repository.integrationBranch,
     expectedBaseCommit: repository.expectedBaseCommit,
   }));

@@ -1,18 +1,20 @@
-# Development task-graph proposal checklist
+# Development planning checklist
 
 Before `process_node_submit`:
 
-- The schema is exactly `factory.development-task-graph-proposal.v1`.
-- Every placeholder is replaced with the correct JSON type; ids are integers,
-  and a missing repository binding is JSON `null`, not a string.
-- Work-item keys are non-empty and unique across both arrays.
-- Implementation items cover every AC marked `implementationRequired`.
-- There is exactly one required verification item for every accepted AC.
-- Every dependency names another proposed item; there are no cycles.
-- Implementation items depend only on implementation items.
-- Integration targets exactly equal the repositories in the frozen input.
-- Each target branch and base commit are copied exactly from that input.
-- No `task_create`, dependency write, Git mutation or CI action was attempted.
-- `process_node_submit` is called before `worker_done`.
-
-The kernel may reject the proposal. Only a policy-valid graph is materialized.
+- Frozen AC and repository ids, branches and base commits are unchanged.
+- Implementation tasks express coherent product increments, not AC cardinality.
+- Shared foundations precede dependent work through `dependsOnKeys`.
+- Every implementation task has one repository and non-empty AC coverage.
+- Every implementation task has conservative non-empty `changeScopes`.
+- Same-repository scope overlaps are ordered by a dependency path.
+- Parallel tasks are independent from the same frozen base.
+- All dependencies are closed, acyclic and implementation-to-implementation.
+- Required implementation work covers every implementation-required AC.
+- Exactly one required verification item covers each accepted AC.
+- Verification items have one AC, one frozen repository and empty `changeScopes`.
+- Integration targets match frozen repositories exactly.
+- Required implementation keys form an exact one-target partition.
+- No placeholder remains; JSON parses; the declared schema is exact.
+- No task, Git, CI or repository mutation was attempted.
+- `process_node_submit` precedes the single `worker_done` call.

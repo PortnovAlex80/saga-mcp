@@ -275,6 +275,16 @@ WorkplaceRef {
 }
 ```
 
+Materialization also projects the accepted dependency graph onto the Kanban.
+Every future Workplace is visible immediately, but a card whose predecessors
+have not reached their declared terminal condition is `blocked` and is not
+dispatchable. Completion of a predecessor causes the coordinator to reevaluate
+its downstream cards. When the predecessor declares an integration effect,
+`done` alone is insufficient: its exact product must also have an accepted
+integration receipt before the dependent card can enter `todo`. This is the
+universal ordering mechanism for every fan-out workshop, not a Development
+queue hidden beside the board.
+
 Singleton cells use `workKey=default`; fan-out derives a deterministic workKey
 from an accepted upstream binding and stable item id, never from array order,
 worker or attempt identity. Every GateRun carries the exact `subjectWorkplaceRef`; it must
@@ -559,7 +569,7 @@ product meaning differ:
 |---|---|
 | Discovery | Proposals, assessments and certificates are typed text products; readiness and settlement are declared checks and decisions. |
 | Formalization | Requirements and architecture documents are typed text products sealed into CandidateSets and accepted by GateDecisions. |
-| Development | An accepted task graph fans out one cell instance and deterministic `workKey` per item; patches and TextSets are products; test/build are checks and integration is an effect. |
+| Development | An accepted task graph fans out one cell instance and deterministic `workKey` per item; dependency edges project later cards as `blocked`; patches and TextSets are products; test/build are checks; accepted commits are integrated by an effect provider; verification reads one frozen integrated candidate. |
 | Delivery | A cell authors desired state when LM work is required; approval, publish/deploy, observation and certification are control/effect nodes with text receipts. |
 
 The **production kernel** is universal for LM work, while the **conveyor

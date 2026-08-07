@@ -65,6 +65,7 @@ function harness() {
   const plans = [];
   const activations = [];
   const products = new Map();
+  const dependencyBindings = [];
   let id = 100;
   const persistence = {
     ensureExecutionPlan(input) {
@@ -80,6 +81,9 @@ function harness() {
     activateRoleTask(input) { activations.push(input); },
     concludeExecutionIntent() {},
     projectWorkplace() {},
+    bindTaskDependencies(taskId, dependencyTaskIds) {
+      dependencyBindings.push({ taskId, dependencyTaskIds: [...dependencyTaskIds] });
+    },
   };
   const executor = new ProductionCellNodeExecutor({
     coordinator,
@@ -97,7 +101,7 @@ function harness() {
     resolveInstallationDigest: () => sha('installation'),
     now: () => new Date(),
   });
-  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products };
+  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products, dependencyBindings };
 }
 
 function context(definition, frame = { productions: {}, receipts: {}, runInput: {} }) {
@@ -108,8 +112,8 @@ function context(definition, frame = { productions: {}, receipts: {}, runInput: 
     module: {
       identity: { name: 'test-module', version: '1.0.0', kind: 'development' },
       executionProfiles: [
-        { id: 'author-profile', taskKind: 'test.author', executionSkill: 'author-skill', allowedTools: ['Read'], retryPolicy: { maxAttempts: 2 } },
-        { id: 'reviewer-profile', taskKind: 'test.review', executionSkill: 'review-skill', allowedTools: ['Read'], retryPolicy: { maxAttempts: 2 } },
+        { id: 'author-profile', taskKind: 'test.author', executionSkill: 'author-skill', executionMode: 'tracker_only', allowedTools: ['Read'], retryPolicy: { maxAttempts: 2 } },
+        { id: 'reviewer-profile', taskKind: 'test.review', executionSkill: 'review-skill', executionMode: 'tracker_only', allowedTools: ['Read'], retryPolicy: { maxAttempts: 2 } },
       ],
     },
     node: { id: 'cell-node', kind: 'production-cell', label: 'Cell', description: 'Test cell', cellDefinition: definition },
@@ -228,5 +232,36 @@ test('fan-out materializes every stable item and completes only after all pass',
   assert.equal(result.runtimeEvent, 'completed');
   assert.equal(result.production.bindings.items.length, 2);
   assert.ok(result.production.bindings.items.every(item => item.accepted));
+  h.db.close();
+});
+
+test('fan-out dependencies are projected to the Kanban before dispatch', async () => {
+  const h = harness();
+  const definition = cell({ fanout: true });
+  definition.materialization.dependencySelector = 'dependsOnKeys';
+  const frame = {
+    runInput: {}, receipts: {},
+    productions: {
+      source: {
+        schema: 'factory.source.v1', artifactRef: 'source:dag', contentHash: sha('source:dag'),
+        bindings: {
+          items: [
+            { key: 'foundation', dependsOnKeys: [] },
+            { key: 'feature', dependsOnKeys: ['foundation'] },
+          ],
+        },
+      },
+    },
+  };
+  await h.executor.execute(context(definition, frame));
+  assert.equal(h.plans.length, 2);
+  const taskByItem = new Map(h.plans.map(entry => [
+    entry.input.task.metadata.cell_input_item.key,
+    entry.result.taskId,
+  ]));
+  assert.deepEqual(h.dependencyBindings, [
+    { taskId: taskByItem.get('foundation'), dependencyTaskIds: [] },
+    { taskId: taskByItem.get('feature'), dependencyTaskIds: [taskByItem.get('foundation')] },
+  ]);
   h.db.close();
 });

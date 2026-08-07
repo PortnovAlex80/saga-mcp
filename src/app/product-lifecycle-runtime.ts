@@ -55,6 +55,7 @@ import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-n
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
 import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
 import {
@@ -94,6 +95,7 @@ import type {
   DeliveryProviderConfiguration,
 } from '../modules/delivery/index.js';
 import { SqliteResumeDirectiveRepository } from '../checkpoints/sqlite-resume-directive-repository.js';
+import { reevaluateDownstream, replaceTaskDependencies } from '../tools/tasks.js';
 
 export type { DevelopmentCompositionDependencies };
 export type {
@@ -376,6 +378,17 @@ export function createProductLifecycleRuntime(
           if (!row) throw new Error(`PROCESS_RUN_NOT_FOUND: ${processRunId}`);
           return row.input_hash;
         },
+        readTrustedProviders: (projectId) => db.prepare(
+          `SELECT id AS providerId,name,version,category
+             FROM trusted_providers
+            WHERE status='active' AND (project_id=? OR project_id IS NULL)
+            ORDER BY project_id IS NOT NULL DESC,id`,
+        ).all(projectId) as Array<{
+          providerId: number;
+          name: string;
+          version: string | null;
+          category: string;
+        }>,
         projectWorkplace: (workplaceRef) => {
           const workplace = serializeWorkplaceRef(workplaceRef);
           const state = db.prepare(
@@ -384,12 +397,19 @@ export function createProductLifecycleRuntime(
           ).get(workplace) as { kanban_phase: string; loop_state: string; next_role: string } | undefined;
           if (!state) throw new Error(`WORKPLACE_NOT_FOUND: ${workplace}`);
           if (state.loop_state === 'terminal') {
+            const taskIds = (db.prepare(
+              'SELECT id FROM tasks WHERE workplace_ref=?',
+            ).all(workplace) as Array<{ id: number }>).map(row => row.id);
             completeProductionCellTaskProjections(db, workplace);
+            for (const taskId of taskIds) reevaluateDownstream(db, taskId);
           }
+        },
+        bindTaskDependencies: (taskId, dependencyTaskIds) => {
+          replaceTaskDependencies(db, taskId, dependencyTaskIds);
         },
       } as ProductionCellProjectionPersistence,
       productReader: {
-        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs }) => {
+        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs, requireTypedSubmission }) => {
           const submission = db.prepare(
             `SELECT id,schema_version,content_hash
                FROM factory_managed_node_submissions
@@ -405,6 +425,7 @@ export function createProductLifecycleRuntime(
               digest: submission.content_hash,
             }];
           }
+          if (requireTypedSubmission) return [];
           const artifacts = centralLedger.listArtifactsForNodeInProcessRun(
             processRunId, moduleRef, nodeId,
           ).filter(a => a.executionId === executionRef && a.contentHash);
@@ -441,6 +462,7 @@ export function createProductLifecycleRuntime(
           }));
         },
       } as ProductionCellProductReader,
+      integrationPort: new SqliteProductionCellIntegration(db),
       resolveInstallationDigest: moduleName =>
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
     })],

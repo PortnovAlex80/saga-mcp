@@ -45,8 +45,11 @@
  * by `tests/installation/agent-launch-spec.test.mjs`.
  */
 
-import type { PackageRegistry } from '../installation/domain/package-registry.js';
-import type { ModuleInstallationRecord } from '../installation/domain/installation.js';
+import type { WorkspacePackageRegistry } from './workspace-projection.js';
+import {
+  asModuleInstallationId,
+  type ModuleInstallationRecord,
+} from '../installation/domain/installation.js';
 import type {
   CapabilityRequirement,
 } from '../domain/spi/tool-contribution.js';
@@ -216,7 +219,7 @@ export const PROCESS_RUN_PIN_DIGEST_MISMATCH = 'PROCESS_RUN_PIN_DIGEST_MISMATCH'
 export function resolveAgentLaunchSpec(
   processRun: ProcessRunRecord,
   node: FlowNodeDefinition,
-  registry: PackageRegistry,
+  registry: WorkspacePackageRegistry,
 ): AgentLaunchSpec {
   const installation = resolveInstallation(processRun, registry);
   const manifest = installation.manifestSnapshot;
@@ -310,39 +313,39 @@ export function resolveAgentLaunchSpec(
  */
 function resolveInstallation(
   processRun: ProcessRunRecord,
-  registry: PackageRegistry,
+  registry: WorkspacePackageRegistry,
 ): ModuleInstallationRecord {
   if (processRun.installationId === null || processRun.packageDigest === null) {
     throw new Error(
       'PROCESS_RUN_PIN_REQUIRED: worker launch is forbidden for an unpinned ProcessRun',
     );
   }
-  const name = processRun.moduleRef.name;
-  // module_version (ranges are resolved at install time, not at run time).
-  const versionRange = processRun.moduleRef.version;
-
-  const resolved = registry.select({ name, versionRange });
-
-  if (processRun.installationId !== null) {
-    // Pinned run: the resolved installation MUST be the pinned one. Verify id
-    // AND digest. An id mismatch means the registry returned a different row
-    // (e.g. a higher semver under a range — impossible here because we pass an
-    // exact version, but defended). A digest mismatch means the pin is corrupt.
-    if (resolved.id !== processRun.installationId
-      || processRun.packageDigest === null
-      || resolved.packageDigest !== processRun.packageDigest) {
-      throw new Error(
-        `${PROCESS_RUN_PIN_DIGEST_MISMATCH}: process_run ${processRun.id} is pinned to `
-        + `installation_id=${processRun.installationId} `
-        + `package_digest=${processRun.packageDigest === null ? 'null' : `<${processRun.packageDigest.slice(0, 12)}…>`} `
-        + `but the registry resolved installation_id=${resolved.id} `
-        + `package_digest=<${resolved.packageDigest.slice(0, 12)}…>. The pin is corrupt.`,
-      );
-    }
-    return resolved;
+  const resolved = registry.getById(asModuleInstallationId(processRun.installationId));
+  if (resolved === null) {
+    throw new Error(
+      `${PROCESS_RUN_PIN_DIGEST_MISMATCH}: process_run ${processRun.id} is pinned to `
+      + `missing installation_id=${processRun.installationId}.`,
+    );
   }
-
-  throw new Error('PROCESS_RUN_PIN_REQUIRED: unreachable unpinned ProcessRun branch');
+  if (resolved.status !== 'active' && resolved.status !== 'retired') {
+    throw new Error(
+      `${PROCESS_RUN_PIN_DIGEST_MISMATCH}: process_run ${processRun.id} is pinned to `
+      + `installation_id=${processRun.installationId} with unusable status=${resolved.status}.`,
+    );
+  }
+  if (resolved.name !== processRun.moduleRef.name
+      || resolved.version !== processRun.moduleRef.version
+      || resolved.packageDigest !== processRun.packageDigest) {
+    throw new Error(
+      `${PROCESS_RUN_PIN_DIGEST_MISMATCH}: process_run ${processRun.id} is pinned to `
+      + `installation_id=${processRun.installationId} `
+      + `package_digest=<${processRun.packageDigest.slice(0, 12)}…> `
+      + `but exact installation_id=${resolved.id} has `
+      + `module=${resolved.name}@${resolved.version} `
+      + `package_digest=<${resolved.packageDigest.slice(0, 12)}…>. The pin is corrupt.`,
+    );
+  }
+  return resolved;
 }
 
 /**

@@ -16,6 +16,9 @@
             "FILL_INTEGER_ACCEPTANCE_ARTIFACT_ID"
           ],
           "dependsOnKeys": [],
+          "changeScopes": [
+            "FILL_REPOSITORY_LOCAL_OWNERSHIP_SCOPE"
+          ],
           "required": true
         }
       ],
@@ -26,13 +29,14 @@
           "taskKind": "verification.ac",
           "executionSkill": "saga-verifier",
           "executionMode": "read_only_evidence",
-          "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID_OR_NULL",
+          "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID",
           "acceptanceCriterionIds": [
             "FILL_EXACTLY_ONE_INTEGER_ACCEPTANCE_ARTIFACT_ID"
           ],
           "dependsOnKeys": [
             "FILL_REQUIRED_IMPLEMENTATION_KEY"
           ],
+          "changeScopes": [],
           "required": true
         }
       ],

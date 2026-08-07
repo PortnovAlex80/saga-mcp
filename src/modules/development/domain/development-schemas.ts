@@ -38,7 +38,7 @@ export const DEVELOPMENT_CERTIFICATE_SCHEMA =
 
 // ADR-030 — typed schema'd products that Development cell workers publish.
 // These payloads carry the exact structured lineage the settlement policy
-// consumes (reviewedSourceCommit, integratedCommit, treeHash,
+// consumes (source commit, integrated commit, tree hash,
 // acceptanceCriterionId, acceptedCriterionHash, candidateHash, provider).
 // The generic CandidateSet seals only {schemaId, ref, digest} ProductRefs;
 // Development semantics live in these product bodies, keeping the universal
@@ -51,13 +51,25 @@ export const DEVELOPMENT_REVIEW_VERDICT_SCHEMA =
   'factory.development-review-verdict.v1';
 
 export interface DevelopmentImplementationResultProduct {
-  schemaVersion: typeof DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA;
   workItemKey: string;
-  status: WorkItemTerminalStatus;
-  reviewedSourceCommit: string | null;
-  repository: CandidateRepositorySnapshot | null;
-  buildProducts: readonly CandidateBuildProduct[];
-  result: ContentAddressedReference | null;
+  terminalStatus: 'complete' | 'blocked' | 'failed';
+  source: {
+    branch: string;
+    commitSha: string;
+    workItemKey: string;
+  };
+  snapshot: {
+    commitSha: string;
+    treeSha: string;
+    files: readonly unknown[];
+  };
+  repository: {
+    projectRepositoryId: number;
+    integrationBranch: string;
+    baseCommit: string;
+    name: string;
+  };
+  buildProducts: readonly unknown[];
   reasonCodes: readonly string[];
 }
 
@@ -66,6 +78,7 @@ export interface DevelopmentVerificationEvidenceProduct {
   verificationItemKey: string;
   acceptanceCriterionId: number;
   acceptedCriterionHash: string;
+  candidateHash: string;
   outcome: VerificationOutcome;
   evidence: ContentAddressedReference;
   provider: VerificationProviderBinding;
@@ -148,9 +161,11 @@ export interface DevelopmentTaskGraphItem {
   taskKind: string;
   executionSkill: string;
   executionMode: string;
-  projectRepositoryId: number | null;
+  projectRepositoryId: number;
   acceptanceCriterionIds: readonly number[];
   dependsOnKeys: readonly string[];
+  /** Repository-local ownership units used to prevent unsafe parallel edits. */
+  changeScopes: readonly string[];
   required: boolean;
   /**
    * Criticality carried from the AC binding. Stamped onto task metadata
@@ -331,6 +346,8 @@ export type DevelopmentReasonCode =
   | 'task-graph-lineage-mismatch'
   | 'task-graph-dependency-invalid'
   | 'implementation-coverage-gap'
+  | 'implementation-scope-overlap'
+  | 'integration-source-partition-invalid'
   | 'verification-plan-coverage-gap'
   | 'implementation-workset-missing'
   | 'implementation-workset-hash-invalid'

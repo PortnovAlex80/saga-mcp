@@ -394,6 +394,39 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         };
       }
       const call = buildDevelopmentTaskGraphSubmitCallFromCase(nodeInput);
+      const requiredCriteria = nodeInput.acceptanceCriteria
+        .filter(criterion => criterion.implementationRequired);
+      const repository = nodeInput.repositories[0];
+      const implementationKey = 'implement-coherent-product';
+      call.arguments.payload.implementationItems = [{
+        key: implementationKey,
+        kind: 'implementation',
+        taskKind: 'development.code',
+        executionSkill: 'saga-worker',
+        executionMode: 'git_change',
+        projectRepositoryId: repository.projectRepositoryId,
+        acceptanceCriterionIds: requiredCriteria.map(criterion => criterion.artifactId),
+        dependsOnKeys: [],
+        changeScopes: ['product'],
+        required: true,
+        criticality: 'blocker',
+      }];
+      call.arguments.payload.verificationItems = call.arguments.payload.verificationItems
+        .map(item => ({
+          ...item,
+          projectRepositoryId: repository.projectRepositoryId,
+          dependsOnKeys: requiredCriteria.some(criterion =>
+            criterion.artifactId === item.acceptanceCriterionIds[0])
+            ? [implementationKey]
+            : [],
+        }));
+      call.arguments.payload.integrationTargets = call.arguments.payload.integrationTargets
+        .map(target => ({
+          ...target,
+          sourceWorkItemKeys: target.projectRepositoryId === repository.projectRepositoryId
+            ? [implementationKey]
+            : [],
+        }));
       return {
         id: `button-color/development/plan-task-graph${ctx.isRetry ? '/retry' : ''}`,
         steps: [
@@ -419,17 +452,8 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       id: `button-color/reviewer/${verdict}`,
       steps: [
         ...(ctx.process_node_id === 'implement-work-items' ? [{
-          type: 'process_node_submit',
-          args: {
-            schema: 'factory.development-review-verdict.v1',
-            payload: {
-              schemaVersion: 'factory.development-review-verdict.v1',
-              verdict,
-              rationale: verdict === 'approved'
-                ? 'Deterministic review accepted the pinned author product.'
-                : 'Injected deterministic correction request.',
-            },
-          },
+          type: 'development_review_submit',
+          verdict,
         }] : []),
         {
           type: 'worker_done',

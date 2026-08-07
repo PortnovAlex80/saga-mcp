@@ -43,6 +43,7 @@ import {
 } from '../domain/development-settlement-policy.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
+const PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE = 'development.integrated-candidate';
 
 
 /**
@@ -120,6 +121,113 @@ export class SqliteDevelopmentModuleStore implements
 
   // ----- DevelopmentSettlementStatePort --------------------------------
 
+  freezeIntegratedCandidate(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+  }):
+    | { status: 'frozen'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
+    | { status: 'waiting'; reasonCodes: readonly string[] }
+    | { status: 'failed'; reasonCodes: readonly string[] } {
+    const existing = this.products.read<IntegratedReleaseCandidate>(
+      input.processRunId,
+      PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+    );
+    if (existing) {
+      if (hashIntegratedCandidate(existing.payload) !== existing.payload.candidateHash) {
+        return { status: 'failed', reasonCodes: ['frozen-candidate-corrupt'] };
+      }
+      return {
+        status: 'frozen',
+        candidate: existing.payload,
+        reference: existing.reference,
+      };
+    }
+    const graphProduct = this.products.read<DevelopmentTaskGraphSnapshot>(
+      input.processRunId,
+      PROCESS_PRODUCT_KIND_TASK_GRAPH,
+    );
+    if (!graphProduct) return { status: 'failed', reasonCodes: ['task-graph-missing'] };
+    const workset = this.buildImplementationWorkset(input.processRunId, graphProduct.payload);
+    if (!workset || !workset.complete) {
+      return { status: 'failed', reasonCodes: ['implementation-products-incomplete'] };
+    }
+    const accepted = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
+      input.processRunId,
+      'development-implementation',
+      DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+    );
+    const taskRows = accepted.map(product => this.db.prepare(
+      `SELECT integration_state,integrated_commit
+         FROM tasks WHERE id=?`,
+    ).get(product.taskId) as {
+      integration_state: string;
+      integrated_commit: string | null;
+    } | undefined);
+    if (taskRows.some(row => row?.integration_state === 'pending')) {
+      return { status: 'waiting', reasonCodes: ['implementation-integration-pending'] };
+    }
+    if (taskRows.some(row => row?.integration_state !== 'merged' || !row.integrated_commit)) {
+      return { status: 'failed', reasonCodes: ['implementation-integration-not-merged'] };
+    }
+    try {
+      this.assertDevelopmentScope(input.developmentCase);
+      const repositories = graphProduct.payload.integrationTargets.map(target => {
+        const binding = this.readRepositoryPath(target.projectRepositoryId);
+        if (!binding || binding.projectId !== input.developmentCase.projectId) {
+          throw new Error('repository checkout missing');
+        }
+        const commitSha = this.git.read(binding.localPath, [
+          'rev-parse', `refs/heads/${target.targetBranch}`,
+        ]);
+        if (!commitSha || !this.git.ok(binding.localPath, [
+          'merge-base', '--is-ancestor', target.expectedBaseCommit, commitSha,
+        ])) throw new Error('integration branch lineage mismatch');
+        const treeHash = this.git.read(binding.localPath, [
+          'rev-parse', `${commitSha}^{tree}`,
+        ]);
+        if (!treeHash) throw new Error('integration tree missing');
+        return {
+          projectRepositoryId: target.projectRepositoryId,
+          branch: target.targetBranch,
+          commitSha,
+          treeHash,
+        };
+      }).sort((left, right) => left.projectRepositoryId - right.projectRepositoryId);
+      const buildProducts = repositories.map(repository => ({
+        kind: 'source-tree',
+        ref: `project-repository:${repository.projectRepositoryId}:${repository.commitSha}`,
+        digest: repository.treeHash,
+      }));
+      const integrationIntentRefs = accepted.map((product, index) =>
+        `task-integration:${product.taskId}:${taskRows[index]!.integrated_commit}`)
+        .sort();
+      const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
+        schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
+        taskGraphHash: graphProduct.payload.graphHash,
+        implementationWorksetHash: workset.worksetHash,
+        repositories,
+        buildProducts,
+        integrationIntentRefs,
+        frozen: true,
+      };
+      const candidate = {
+        ...body,
+        candidateHash: hashIntegratedCandidate({ ...body, candidateHash: '' }),
+      };
+      const stored = this.products.persist({
+        processRunId: input.processRunId,
+        productKind: PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+        schema: INTEGRATED_CANDIDATE_SCHEMA,
+        productHash: candidate.candidateHash,
+        payload: candidate,
+        artifactRefPrefix: 'development-integrated-candidate',
+      }).record;
+      return { status: 'frozen', candidate: stored.payload, reference: stored.reference };
+    } catch {
+      return { status: 'failed', reasonCodes: ['candidate-freeze-lineage-invalid'] };
+    }
+  }
+
   buildSettlementInput(input: {
     processRunId: number;
     developmentCase: DevelopmentCase;
@@ -140,14 +248,11 @@ export class SqliteDevelopmentModuleStore implements
         taskGraph,
       )
       : null;
-    const candidate = implementation && taskGraph
-      ? this.buildIntegratedCandidate(
-        input.processRunId,
-        input.developmentCase,
-        taskGraph,
-        implementation,
-      )
-      : null;
+    const candidateProduct = this.products.read<IntegratedReleaseCandidate>(
+      input.processRunId,
+      PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+    );
+    const candidate = candidateProduct?.payload ?? null;
     const verification = candidate && taskGraph
       ? this.buildAcceptanceVerification(
         input.processRunId,
@@ -175,9 +280,7 @@ export class SqliteDevelopmentModuleStore implements
         implementationWorkset: implementation
           ? refOfWorkset(input.processRunId, implementation)
           : null,
-        integratedCandidate: candidate
-          ? refOfCandidate(input.processRunId, candidate)
-          : null,
+        integratedCandidate: candidateProduct?.reference ?? null,
         acceptanceVerification: verification
           ? refOfVerification(input.processRunId, verification)
           : null,
@@ -215,12 +318,14 @@ export class SqliteDevelopmentModuleStore implements
       }
       return {
         key: item.key,
-        status: product.payload.status,
+        status: product.payload.terminalStatus === 'complete'
+          ? 'succeeded' as const
+          : product.payload.terminalStatus,
         taskId: product.taskId,
         implementationExecutionId: product.executionId,
         reviewExecutionId: product.reviewExecutionId,
-        reviewedSourceCommit: product.payload.reviewedSourceCommit,
-        result: product.payload.result ?? product.reference,
+        reviewedSourceCommit: product.payload.source.commitSha,
+        result: product.reference,
         reasonCodes: [...product.payload.reasonCodes],
       };
     });
@@ -245,85 +350,6 @@ export class SqliteDevelopmentModuleStore implements
       ...body,
       worksetHash: hashImplementationWorkset({ ...body, worksetHash: '' }),
     };
-  }
-
-  private buildIntegratedCandidate(
-    processRunId: number,
-    developmentCase: DevelopmentCase,
-    taskGraph: DevelopmentTaskGraphSnapshot,
-    workset: DevelopmentImplementationWorkset,
-  ): IntegratedReleaseCandidate | null {
-    // Only freeze a candidate once required implementation is complete; a
-    // partial workset means integration has not happened yet.
-    const requiredKeys = new Set(
-      taskGraph.implementationItems
-        .filter(item => item.required)
-        .map(item => item.key),
-    );
-    const requiredSucceeded = workset.results.every(result =>
-      !requiredKeys.has(result.key) || result.status === 'succeeded');
-    if (!workset.complete || !requiredSucceeded) return null;
-
-    try {
-      const accepted = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
-        processRunId,
-        'development-implementation',
-        DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
-      );
-      const repositoryById = new Map<number, NonNullable<DevelopmentImplementationResultProduct['repository']>>();
-      for (const product of accepted) {
-        const repository = product.payload.repository;
-        if (!repository) continue;
-        const prior = repositoryById.get(repository.projectRepositoryId);
-        if (prior && (
-          prior.branch !== repository.branch
-          || prior.commitSha !== repository.commitSha
-          || prior.treeHash !== repository.treeHash
-        )) {
-          // Multiple desks may contribute to one integration target, but they
-          // must agree on the exact frozen repository snapshot.
-          return null;
-        }
-        repositoryById.set(repository.projectRepositoryId, repository);
-      }
-      const repositories = [...repositoryById.values()]
-        .sort((left, right) => left.projectRepositoryId - right.projectRepositoryId);
-      const expectedRepositoryIds = new Set(
-        developmentCase.repositories.map(repository => repository.projectRepositoryId),
-      );
-      if (repositories.length !== expectedRepositoryIds.size
-        || repositories.some(repository => !expectedRepositoryIds.has(repository.projectRepositoryId))) {
-        return null;
-      }
-      const integrationIntentRefs = accepted.map(product => product.candidateSetRef).sort();
-      const buildProductByIdentity = new Map<string, (typeof accepted)[number]['payload']['buildProducts'][number]>();
-      for (const product of accepted.flatMap(item => item.payload.buildProducts)) {
-        const key = `${product.kind}\u0000${product.ref}`;
-        const prior = buildProductByIdentity.get(key);
-        if (prior && prior.digest !== product.digest) return null;
-        buildProductByIdentity.set(key, product);
-      }
-      const buildProducts = [...buildProductByIdentity.values()]
-        .sort((left, right) => left.ref.localeCompare(right.ref));
-      const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
-        schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
-        taskGraphHash: taskGraph.graphHash,
-        implementationWorksetHash: workset.worksetHash,
-        repositories,
-        buildProducts,
-        integrationIntentRefs,
-        frozen: true as const,
-      };
-      return {
-        ...body,
-        candidateHash: hashIntegratedCandidate({
-          ...body,
-          candidateHash: '',
-        }),
-      };
-    } catch {
-      return null;
-    }
   }
 
   private buildAcceptanceVerification(
@@ -353,13 +379,18 @@ export class SqliteDevelopmentModuleStore implements
       if (criterionId === undefined) continue;
       const criterion = criterionById.get(criterionId);
       if (!criterion) continue;
+      if (
+        product.payload.acceptanceCriterionId !== criterionId
+        || product.payload.acceptedCriterionHash !== criterion.acceptedHash
+        || product.payload.candidateHash !== candidate.candidateHash
+      ) continue;
       evidence.push({
         verificationItemKey: item.key,
         taskId: product.taskId,
         executionId: product.executionId,
         acceptanceCriterionId: criterionId,
-        acceptedCriterionHash: criterion.acceptedHash,
-        candidateHash: candidate.candidateHash,
+        acceptedCriterionHash: product.payload.acceptedCriterionHash,
+        candidateHash: product.payload.candidateHash,
         outcome: product.payload.outcome,
         evidence: product.payload.evidence,
         provider: product.payload.provider,
@@ -386,7 +417,7 @@ export class SqliteDevelopmentModuleStore implements
     };
   }
 
-  private readAcceptedCellProducts<T extends { schemaVersion: string }>(
+  private readAcceptedCellProducts<T>(
     processRunId: number,
     cellId: string,
     schemaId: string,
@@ -441,7 +472,7 @@ export class SqliteDevelopmentModuleStore implements
       if (seen.has(row.workplaceRef)) return [];
       seen.add(row.workplaceRef);
       const payload = JSON.parse(row.payloadSnapshot) as T;
-      if (payload.schemaVersion !== schemaId || sha256Hex(payload) !== row.contentHash) {
+      if (sha256Hex(payload) !== row.contentHash) {
         throw new Error(`DEVELOPMENT_CELL_PRODUCT_CORRUPT: ${row.candidateSetRef}`);
       }
       return [{
@@ -697,17 +728,6 @@ function refOfWorkset(
     schema: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
     ref: `development-implementation-workset:${processRunId}:${workset.worksetHash}`,
     hash: workset.worksetHash,
-  };
-}
-
-function refOfCandidate(
-  processRunId: number,
-  candidate: IntegratedReleaseCandidate,
-): ContentAddressedReference {
-  return {
-    schema: INTEGRATED_CANDIDATE_SCHEMA,
-    ref: `development-integrated-candidate:${processRunId}:${candidate.candidateHash}`,
-    hash: candidate.candidateHash,
   };
 }
 

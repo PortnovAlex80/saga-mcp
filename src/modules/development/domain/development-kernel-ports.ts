@@ -31,6 +31,7 @@ import type {
 import type {
   DevelopmentSettlementInput,
   DevelopmentTaskGraphSnapshot,
+  IntegratedReleaseCandidate,
   VerifiedIntegrationBundle,
   ContentAddressedReference,
   DevelopmentCase,
@@ -73,6 +74,7 @@ import type {
 
 export const DEVELOPMENT_KERNEL_HANDLER_IDS = {
   resolveTaskGraph: 'development-resolve-task-graph',
+  freezeIntegratedCandidate: 'development-freeze-integrated-candidate',
   settle: 'development-settlement-policy',
 } as const;
 
@@ -141,6 +143,14 @@ export interface DevelopmentTaskGraphPort {
 }
 
 export interface DevelopmentSettlementStatePort {
+  freezeIntegratedCandidate(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+  }):
+    | { status: 'frozen'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
+    | { status: 'waiting'; reasonCodes: readonly string[] }
+    | { status: 'failed'; reasonCodes: readonly string[] };
+
   /**
    * Re-read the validated task graph and accepted cell products by exact
    * refs/hashes, then observe the candidate again. This is the only input to deterministic

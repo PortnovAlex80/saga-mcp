@@ -341,11 +341,24 @@ export function createPinnedClaudeWorkerExecutorFactory(
               });
             }
           }
-          return releaseExecutionAtomically(db, {
+          const reason = command.reason ?? 'worker execution failed before completion';
+          const released = releaseExecutionAtomically(db, {
             executionId,
-            terminalState: 'lost',
-            reason: command.reason ?? 'worker execution failed before completion',
+            terminalState: 'spawn_failed',
+            reason,
+            lastError: reason,
           }).taskReleased;
+          if (released && task?.workplace_ref) {
+            // A failure before the process starts is an infrastructure/config
+            // fault, not model-authored repair work. Pause the Workplace and
+            // reverse-project it to the Saga blocked column so the dispatcher
+            // cannot create an unbounded reserve/fail/requeue loop.
+            new ConveyorRuntime(db).pauseForHuman({
+              workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
+              taskId: command.taskId,
+            });
+          }
+          return released;
         })();
       },
       resolveWorkspace: () => context.workspaceRoot,

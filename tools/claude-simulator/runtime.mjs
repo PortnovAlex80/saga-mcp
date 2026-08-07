@@ -345,36 +345,81 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         const item = ctx.metadata?.cell_input_item;
         if (!item?.key) throw new Error('SIMULATOR_DEVELOPMENT_ITEM_MISSING');
         const repository = db.prepare(
-          `SELECT id,local_path,integration_branch
-             FROM project_repositories
-            WHERE project_id=? AND status='active'
-            ORDER BY id LIMIT 1`,
-        ).get(ctx.project_id);
-        if (!repository?.local_path) throw new Error('SIMULATOR_REPOSITORY_MISSING');
-        const commit = spawnSync('git', ['-C', repository.local_path, 'rev-parse', repository.integration_branch], { encoding: 'utf8' });
-        const tree = spawnSync('git', ['-C', repository.local_path, 'rev-parse', `${repository.integration_branch}^{tree}`], { encoding: 'utf8' });
+          `SELECT pr.id,pr.local_path,pr.integration_branch
+             FROM tasks t JOIN project_repositories pr ON pr.id=t.project_repository_id
+            WHERE t.id=?`,
+        ).get(ctx.task_id);
+        if (!repository?.local_path || !ctx.workspace_root) throw new Error('SIMULATOR_REPOSITORY_MISSING');
+        const simulatorBranch = `sim/task/${ctx.task_id}`;
+        const branchCreate = spawnSync('git', ['-C', ctx.workspace_root, 'checkout',
+          '-b', simulatorBranch, repository.integration_branch], { encoding: 'utf8' });
+        if (branchCreate.status !== 0) throw new Error(`SIMULATOR_TASK_BRANCH_FAILED: ${branchCreate.stderr}`);
+        spawnSync('git', ['-C', ctx.workspace_root, 'add', '-A'], { encoding: 'utf8' });
+        const committed = spawnSync('git', ['-C', ctx.workspace_root, 'commit',
+          '-m', `simulator: implement task #${ctx.task_id}`], { encoding: 'utf8' });
+        if (committed.status !== 0) throw new Error(`SIMULATOR_IMPLEMENTATION_COMMIT_FAILED: ${committed.stderr}`);
+        const commit = spawnSync('git', ['-C', ctx.workspace_root, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+        const tree = spawnSync('git', ['-C', ctx.workspace_root, 'rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' });
+        const branch = spawnSync('git', ['-C', ctx.workspace_root, 'branch', '--show-current'], { encoding: 'utf8' });
         if (commit.status !== 0 || tree.status !== 0) throw new Error('SIMULATOR_REPOSITORY_SNAPSHOT_FAILED');
         const htmlDigest = sha256(step.content);
         const payload = {
           schemaVersion: 'factory.development-implementation-result.v1',
           workItemKey: item.key,
-          status: 'succeeded',
-          reviewedSourceCommit: commit.stdout.trim(),
+          terminalStatus: 'complete',
+          source: {
+            branch: branch.stdout.trim(),
+            commitSha: commit.stdout.trim(),
+            workItemKey: item.key,
+          },
+          snapshot: {
+            commitSha: commit.stdout.trim(),
+            treeSha: tree.stdout.trim(),
+            files: [{ path: 'index.html' }],
+          },
           repository: {
             projectRepositoryId: repository.id,
-            branch: repository.integration_branch,
-            commitSha: commit.stdout.trim(),
-            treeHash: tree.stdout.trim(),
+            integrationBranch: repository.integration_branch,
+            baseCommit: '',
+            name: 'simulator-repository',
           },
-          buildProducts: [{ kind: 'text-file', ref: 'workspace:index.html', digest: htmlDigest }],
-          result: { schema: 'factory.text-file.v1', ref: 'workspace:index.html', hash: htmlDigest },
+          buildProducts: [{ kind: 'text-file', path: 'index.html', digest: htmlDigest }],
           reasonCodes: [],
         };
         const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
-          schema: payload.schemaVersion,
+          schema: 'factory.development-implementation-result.v1',
           payload,
         });
         stream.text(`simulator: implementation product ref=${result.submission_ref}`);
+        break;
+      }
+      case 'development_review_submit': {
+        const task = db.prepare('SELECT workplace_ref FROM tasks WHERE id=?').get(ctx.task_id);
+        const author = task?.workplace_ref ? db.prepare(
+          `SELECT s.payload_snapshot
+             FROM tasks t
+             JOIN factory_managed_node_submissions s ON s.task_id=t.id
+            WHERE t.workplace_ref=?
+              AND s.schema_version='factory.development-implementation-result.v1'
+            ORDER BY s.id DESC LIMIT 1`,
+        ).get(task.workplace_ref) : null;
+        if (!author?.payload_snapshot) throw new Error('SIMULATOR_REVIEW_AUTHOR_PRODUCT_MISSING');
+        const product = JSON.parse(author.payload_snapshot);
+        const payload = {
+          verdict: step.verdict,
+          workItemKey: product.workItemKey,
+          reviewedCandidate: {
+            sourceCommit: product.source.commitSha,
+            sourceTree: product.snapshot.treeSha,
+          },
+          rationale: step.verdict === 'approved'
+            ? 'Deterministic review accepted the pinned author product.'
+            : 'Injected deterministic correction request.',
+        };
+        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
+          schema: 'factory.development-review-verdict.v1', payload,
+        });
+        stream.text(`simulator: development review ref=${result.submission_ref}`);
         break;
       }
       case 'development_verification_submit': {
@@ -393,6 +438,11 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         if (!item?.key || !criterion?.accepted_hash || !provider) {
           throw new Error('SIMULATOR_VERIFICATION_LINEAGE_MISSING');
         }
+        const candidateHash = findStringProperty(
+          ctx.metadata?.process_node_input,
+          'candidateHash',
+        );
+        if (!candidateHash) throw new Error('SIMULATOR_FROZEN_CANDIDATE_MISSING');
         const evidenceBody = {
           item: item.key,
           criterionId,
@@ -404,6 +454,7 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
           verificationItemKey: item.key,
           acceptanceCriterionId: criterionId,
           acceptedCriterionHash: criterion.accepted_hash,
+          candidateHash,
           outcome: 'passed',
           evidence: {
             schema: 'factory.deterministic-verification-evidence.v1',
@@ -472,4 +523,15 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
     }
   }
   return vars;
+}
+
+function findStringProperty(value, key, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return null;
+  seen.add(value);
+  if (typeof value[key] === 'string' && value[key]) return value[key];
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    const found = findStringProperty(child, key, seen);
+    if (found) return found;
+  }
+  return null;
 }
