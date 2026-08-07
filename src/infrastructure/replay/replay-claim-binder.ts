@@ -77,21 +77,37 @@ export function resolveReplayKeyMaterial(
   };
 }
 
+function parseStringArray(raw: string, label: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`REPLAY_CERTIFICATION_INVALID: ${label} is not JSON`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every(value => typeof value === 'string')) {
+    throw new Error(`REPLAY_CERTIFICATION_INVALID: ${label} must be a string array`);
+  }
+  return parsed;
+}
+
 /**
- * Materialize missing replay capsules only from already-authoritative factory
- * state. This function is intentionally invoked at the pre-spawn assignment
- * boundary, after the claim transaction has committed and before the next
- * capsule lookup.
+ * Materialize missing capsules only from authoritative final acceptance.
  *
- * A CandidateSet is certifiable only when its Workplace is durably
- * `terminal(accepted)`. For a reviewed cell that means BOTH the author set and
- * the reviewer assessment set become eligible together, after the final gate
- * transition. Rejected, repair, paused, stale-decision and merely author-gate-
- * accepted candidates never enter the replay corpus.
+ * The source of certification is NOT "all CandidateSets on a terminal
+ * Workplace". Repair attempts remain in that history. Instead we select the
+ * exact subject + assessment CandidateSet refs named by the latest FINAL
+ * `GateDecision(verdict=accepted)` for a Workplace that is durably
+ * `terminal(accepted)`.
  *
- * The sweep is idempotent because capsule identity is content addressed and the
- * repository has uniqueness guards. Capture failure is best-effort: replay is
- * an optimization and cannot revoke an already accepted factory transition.
+ * Author-only cell:
+ *   final decision subject -> author capsule
+ *
+ * Reviewed cell:
+ *   final decision subject -> exact author capsule
+ *   final decision assessments -> exact reviewer capsule(s)
+ *
+ * This excludes rejected/superseded author attempts and invalid reviewer
+ * attempts even if the same Workplace later succeeds.
  */
 export function certifyAcceptedReplayCapsules(
   db: Database.Database,
@@ -99,38 +115,71 @@ export function certifyAcceptedReplayCapsules(
 ): void {
   ensureReplayCapsuleSchema(db);
   const repo = new SqliteReplayCapsuleRepository(db);
-  const candidates = db.prepare(
-    `SELECT cs.candidate_set_ref,cs.producer_execution_ref,cs.role
-       FROM factory_candidate_sets cs
-       JOIN factory_workplaces w
-         ON w.workplace_ref=cs.workplace_ref
-       JOIN factory_process_runs pr
-         ON pr.id=w.process_run_id
-       LEFT JOIN factory_replay_capsules rc
-         ON rc.source_execution_ref=cs.producer_execution_ref
-        AND rc.source_candidate_set_ref=cs.candidate_set_ref
+  const workplaces = db.prepare(
+    `SELECT w.workplace_ref
+       FROM factory_workplaces w
+       JOIN factory_process_runs pr ON pr.id=w.process_run_id
       WHERE pr.project_id=?
         AND w.loop_state='terminal'
-        AND w.terminal_reason='accepted'
-        AND rc.id IS NULL
-      ORDER BY cs.sealed_at,cs.candidate_set_ref`,
-  ).all(projectId) as Array<{
-    candidate_set_ref: string;
-    producer_execution_ref: string;
-    role: 'author' | 'reviewer';
-  }>;
+        AND w.terminal_reason='accepted'`,
+  ).all(projectId) as Array<{ workplace_ref: string }>;
 
-  for (const candidate of candidates) {
+  for (const workplace of workplaces) {
     try {
-      repo.captureAcceptedExecution({
-        executionRef: candidate.producer_execution_ref,
-        candidateSetRef: candidate.candidate_set_ref,
-      });
+      const decision = db.prepare(
+        `SELECT subject_candidate_set_ref,assessment_candidate_set_refs
+           FROM factory_gate_decisions
+          WHERE workplace_ref=?
+            AND gate_phase='final'
+            AND verdict='accepted'
+          ORDER BY decided_at DESC,rowid DESC
+          LIMIT 1`,
+      ).get(workplace.workplace_ref) as {
+        subject_candidate_set_ref: string;
+        assessment_candidate_set_refs: string;
+      } | undefined;
+      if (!decision) {
+        process.stderr.write(
+          `[replay-certification] terminal accepted workplace has no final accepted GateDecision: `
+          + `${workplace.workplace_ref}\n`,
+        );
+        continue;
+      }
+
+      const candidateRefs = [
+        decision.subject_candidate_set_ref,
+        ...parseStringArray(
+          decision.assessment_candidate_set_refs,
+          'assessment_candidate_set_refs',
+        ),
+      ];
+
+      for (const candidateSetRef of [...new Set(candidateRefs)]) {
+        const candidate = db.prepare(
+          `SELECT cs.candidate_set_ref,cs.producer_execution_ref,cs.role
+             FROM factory_candidate_sets cs
+             LEFT JOIN factory_replay_capsules rc
+               ON rc.source_execution_ref=cs.producer_execution_ref
+              AND rc.source_candidate_set_ref=cs.candidate_set_ref
+            WHERE cs.candidate_set_ref=?
+              AND cs.workplace_ref=?
+              AND rc.id IS NULL`,
+        ).get(candidateSetRef, workplace.workplace_ref) as {
+          candidate_set_ref: string;
+          producer_execution_ref: string;
+          role: 'author' | 'reviewer';
+        } | undefined;
+        if (!candidate) continue;
+
+        repo.captureAcceptedExecution({
+          executionRef: candidate.producer_execution_ref,
+          candidateSetRef: candidate.candidate_set_ref,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(
-        `[replay-certification] skipped candidate=${candidate.candidate_set_ref} `
-        + `execution=${candidate.producer_execution_ref} role=${candidate.role}: ${message}\n`,
+        `[replay-certification] workplace=${workplace.workplace_ref}: ${message}\n`,
       );
     }
   }
@@ -139,16 +188,15 @@ export function certifyAcceptedReplayCapsules(
 /**
  * Final pre-spawn step for a fenced assignment.
  *
- * Before lookup, archive any accepted production from earlier cells/runs that
- * has not yet been materialized into capsules. This gives replay a crash-safe
- * certification boundary without a second orchestration mode or a pending
- * capture aggregate.
+ * The WorkAssignment adapter invokes this after its IMMEDIATE claim transaction
+ * commits and before spawn. We first materialize any still-missing capsules
+ * from prior authoritative acceptance, then perform the exact current replay
+ * lookup.
  *
  * Miss: freeze the replay key and leave the front-selected LLM route untouched.
  * Hit: freeze the exact capsule and switch only THIS WorkerExecution to the
- * existing deterministic CLI-compatible executor. The project's selected model
- * remains stored in lifecycle controls for future misses; replay is not a model
- * selection and does not alter workshop model inheritance.
+ * existing deterministic CLI-compatible executor. Project/workshop model
+ * configuration remains untouched for future misses.
  */
 export function bindReplayToClaim(
   db: Database.Database,
@@ -162,8 +210,6 @@ export function bindReplayToClaim(
   const keyMaterial = resolveReplayKeyMaterial(db, input.task, input.role);
   if (!keyMaterial) return null;
 
-  // The work assignment adapter calls this after its IMMEDIATE claim
-  // transaction commits, so filesystem/Git capture cannot hold the claim lock.
   certifyAcceptedReplayCapsules(db, keyMaterial.projectId);
 
   const replayKey = computeReplayKey(keyMaterial);
