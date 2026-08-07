@@ -1,83 +1,46 @@
 /**
  * ExecutionContextSnapshot — the immutable per-execution context frozen at
- * claim time (D1.1). One snapshot is the single source of truth for THREE
- * independent consumers:
+ * claim time. One snapshot is the single source of truth for three independent
+ * consumers:
  *
- *   1. Worker launch model/provider/effort  (spawn args)
- *   2. Saga MCP tool authorization           (gateway allow/deny)
- *   3. Proposal provenance                   (recorded by proposal_submit)
+ *   1. Worker launch executor/provider/model/effort (spawn args)
+ *   2. Saga MCP tool authorization               (gateway allow/deny)
+ *   3. Production provenance                     (journal / product receipts)
  *
- * The D1 claim↔spawn model-route race (claim read route A, spawn read route B)
- * is eliminated by reading the model route ONCE at claim, freezing it into
- * this snapshot, and having spawn + provenance read from the frozen value.
- *
- * The snapshot is persisted as JSON in `worker_executions.metadata.execution_context`
- * and never mutated after claim. A WorkIntent changed post-claim does NOT
- * change the authority of an already-running execution — the worker cannot
- * expand its own authority; only a new WorkIntent can grant more.
- *
- * This is a pure-domain module — no `getDb`, no I/O. Hashing helpers are
- * deterministic (canonical JSON with sorted keys) so the same authority always
- * produces the same hash, which lets certificates (D4) cite it reproducibly.
+ * The route is read once at claim, frozen here, and never re-resolved at
+ * spawn. A WorkIntent changed post-claim likewise does not change the authority
+ * of an already-running execution.
  */
 import { createHash } from 'node:crypto';
 
-/**
- * Policy version baked into every snapshot. Bumped on shape-incompatible change.
- *
- * v2 (routing cutover): added `executor_kind` alongside `model_route`. The
- * `model` string no longer encodes the executor (the `model === "mock"` defect);
- * the executor kind is now an orthogonal dimension frozen into the snapshot.
- * The gateway still accepts v1 snapshots for in-flight executions, but every
- * NEW claim produces v2.
- */
+/** Shape version for the immutable execution snapshot. */
 export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
 
 /**
- * Model route frozen into the snapshot. `provider`/`model`/`effort` mirror the
- * existing `WorkerModelRoute` shape (worker-executor.ts) so spawn-side code can
- * consume it unchanged.
+ * Inference route frozen into the snapshot.
+ *
+ * `provider` is null for executors that do not perform inference (for example
+ * `claude-cli-simulator`). Keeping it nullable is important provenance: a
+ * deterministic simulator must never be journaled as if it contacted z.ai.
  */
 export interface ExecutionModelRoute {
-  provider: string;
+  provider: string | null;
   model: string | null;
   effort: string | null;
 }
 
-/**
- * Executor kind frozen into the snapshot (v2). Orthogonal to the model: selects
- * which OS binary spawn runs (`claude-cli` vs `claude-cli-simulator`). Mirrors
- * {@link WorkerExecutionRoute.executor.kind}.
- */
+/** Executor kind is orthogonal to provider/model. */
 export type ExecutionContextExecutorKind =
   | 'claude-cli'
   | 'claude-cli-simulator';
 
-/**
- * Citation of the routing policy that resolved this execution's route. Frozen
- * at claim so the production journal can always explain WHY a WorkIntent ran
- * on a given backend, even after the policy file is edited. See ADR: "route
- * must be a durable decision, not a live config read".
- */
+/** Citation of the routing policy used to resolve this execution. */
 export interface ExecutionRoutePolicyRef {
-  /** Human-readable policy source (file path or env marker). */
   ref: string;
-  /** Stable digest of the policy that produced this route. */
   digest: string;
 }
 
-/**
- * the gateway. `work_intent_id` is included so the gateway can cite it in a
- * denial without re-reading the (mutable) WorkIntent row.
- *
- * `authority_hash` covers the immutable authority fields
- * ({enforcement, allowed_saga_tools, scope, snapshot_ref, work_intent_id}).
- * Enforcement is included because changing runtime→advisory changes the actual
- * authority boundary and must invalidate the snapshot. The model route is NOT
- * the model route (which lives on the snapshot, not the authority). This hash
- * is what an OutcomeCertificate (D4) will cite as "the authority this run
- * operated under".
- */
+/** Immutable Saga-tool authority granted to this execution. */
 export interface ExecutionAuthority {
   enforcement: 'advisory' | 'runtime';
   allowed_saga_tools: string[];
@@ -87,17 +50,12 @@ export interface ExecutionAuthority {
   authority_hash: string;
 }
 
-/**
- * (no WorkIntent); non-null for Saga 3 managed executions.
- */
 export interface ExecutionContextSnapshot {
   policy_version: typeof EXECUTION_CONTEXT_POLICY_VERSION;
   work_intent_id: number | null;
   authority: ExecutionAuthority | null;
   model_route: ExecutionModelRoute;
-  /** v2: executor kind (orthogonal to model). Spawn selects the binary from this. */
   executor_kind: ExecutionContextExecutorKind;
-  /** v2: routing policy citation (ref + digest). Null only on legacy v1 snapshots. */
   route_policy: ExecutionRoutePolicyRef | null;
   captured_at: string;
 }
@@ -125,11 +83,7 @@ function sha256Hex(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-/**
- * Deterministic hash over the immutable authority surface
- * ({enforcement, allowed_saga_tools, scope, snapshot_ref, work_intent_id}).
- * `authority_hash` itself is excluded to avoid a circular dependency.
- */
+/** Deterministic hash over the immutable authority surface. */
 export function authorityHash(input: {
   enforcement: 'advisory' | 'runtime';
   allowed_saga_tools: string[];
@@ -149,15 +103,10 @@ export function authorityHash(input: {
 }
 
 /**
- * Deterministic hash over the full snapshot (excluding the hash fields that
- * would make it self-referential: `authority.authority_hash`). Used to detect
- * drift between the persisted snapshot and a recomputed one, and as the
- * `execution_context_hash` recorded alongside `execution_context` in metadata.
- *
- * Accepts a structural input so BOTH v1 (no executor_kind/route_policy) and v2
- * snapshots hash consistently — the validator reconstructs exactly the stored
- * shape and recomputes, so a v1 in-flight execution is not invalidated by the
- * v2 cutover.
+ * Deterministic hash over the full stored snapshot, excluding the nested
+ * authority hash to avoid self-reference. The helper remains structural so an
+ * already-persisted pre-cutover snapshot can still be verified against exactly
+ * the shape that was stored.
  */
 export function executionContextHash(
   snapshot: ExecutionContextSnapshot | Record<string, unknown>,
