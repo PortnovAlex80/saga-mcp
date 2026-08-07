@@ -1,21 +1,11 @@
 /**
  * SQLite adapter for WorkAssignmentPort — the conveyor-physics seam.
  *
- * assignTask() atomically selects a claimable card, flips its status, sets the
- * fence (current_execution_id), and inserts the worker_executions row with the
- * frozen execution context — all in ONE IMMEDIATE transaction, BEFORE the worker
- * process is spawned. This closes the race window that existed when the dispatch
- * loop only *suggested* a candidate (claimScope.taskIds) and the real claim
- * happened later inside the runner's pump() → worker_next.
- *
- * The SELECT/UPDATE/INSERT logic is the EXACT same code path as the worker_next
- * MCP tool (src/tools/dispatcher.ts findNextClaimable). We delegate to that
- * proven-correct function rather than duplicating the SQL, so the dispatcher-race
- * test suite (tests/dispatcher-race/*) covers both paths. The two paths diverge
- * only in how they surface the result: worker_next returns an MCP-shaped object,
- * assignTask returns a typed AssignedWork for the runner to consume directly.
- *
- * See docs/architecture/WORK-ASSIGNMENT-REFACTOR-SPEC.md §2 (target contracts).
+ * Claim/fence creation stays in the existing immediate transaction. Before the
+ * worker process is returned to the host, the adapter freezes one additional
+ * immutable fact: the exact replay key and, on a hit, the exact certified
+ * capsule. No worker exists yet, so the resulting execution context is the
+ * only context ever observed by spawn/MCP/provenance.
  */
 
 import type Database from 'better-sqlite3';
@@ -26,17 +16,14 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import type { WorkerExecutionRoute } from '../../application/routing/worker-execution-route.js';
 import { reserveTaskExecution } from '../../tools/conveyor-runtime-helper.js';
-// CONVEYOR #7: the adapter imports the atomic assignment core from the
-// lifecycle layer (infrastructure-side), NOT from the MCP/tool layer. This
-// keeps the dependency direction inward: outbound adapter → lifecycle core.
 import {
   buildAssignedWorkFromClaim,
   findNextClaimable,
   withImmediateTransaction,
 } from '../../lifecycle/work-assignment-core.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
+import { bindReplayToClaim } from '../replay/replay-claim-binder.js';
 
-/** Optional route resolver wired in at factory composition. */
 export type RouteResolverFn = (key: {
   module: string | null;
   cell: string | null;
@@ -47,12 +34,6 @@ export type RouteResolverFn = (key: {
 export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
   constructor(
     private readonly db: Database.Database,
-    /**
-     * Route resolver for the routing cutover. When set, the route is resolved
-     * at claim and frozen into the execution_context (executor_kind +
-     * model_route + route_policy). Optional so existing tests and the MCP
-     * worker_next path keep working unchanged.
-     */
     private readonly routeResolver?: RouteResolverFn,
   ) {}
 
@@ -62,11 +43,6 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
       runId: input.runId,
       machineId: input.machineId,
     };
-    // One IMMEDIATE transaction: SELECT (with all gates) + conditional UPDATE
-    // (status flip + assigned_to + current_execution_id) + INSERT
-    // worker_executions (frozen execution_context). This is the same atomic
-    // boundary findNextClaimable uses under worker_next — proven by
-    // tests/dispatcher-race/run.mjs (N concurrent workers, no double-claim).
     const task = withImmediateTransaction(this.db, () => {
       const claimed = findNextClaimable(
         this.db,
@@ -94,16 +70,16 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
       return claimed;
     });
     if (!task) return null;
-    // Conveyor v4: bind the task to its workplace + lease the loop channel.
-    // This is the engine-path equivalent of reserveTaskExecution in the MCP
-    // dispatcher. The workplace becomes authoritative for the loop state.
-    // The claim is committed (card assigned + execution reserved). The snapshot
-    // build below reads repository bindings + execution context AFTER the
-    // transaction. If it throws (e.g. a dangling project_repository_id, a
-    // malformed execution_context), we MUST release the assignment so the card
-    // is not left fenced by a zombie reservation that no worker will ever own.
-    // This is the #3 review fix: build failure → fenced release, not a leak.
+
     try {
+      // Replay-first is a property of every normal factory assignment, not a
+      // test mode. Missing capsule = ordinary selected-model execution.
+      bindReplayToClaim(this.db, {
+        task,
+        executionId: input.workerExecutionId,
+        role: task.status === 'review_in_progress' ? 'reviewer' : 'author',
+      });
+
       return buildAssignedWorkFromClaim({
         db: this.db,
         task,
@@ -121,7 +97,7 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
           reason: `AssignedWork build failed: ${buildError instanceof Error ? buildError.message : String(buildError)}`,
         });
       } catch {
-        // Best-effort release; the original build error is the actionable one.
+        // Best effort. The original error remains the actionable one.
       }
       throw buildError;
     }
@@ -142,10 +118,6 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
     workerExecutionId: string;
     reason: string;
   }): void {
-    // releaseExecutionAtomically is idempotent and terminalizes the execution
-    // + returns the card to the queue (todo/review) when this execution still
-    // owns the fence. If a newer execution already took over, it terminalizes
-    // only — safe. Used when a worker spawn fails after assignment.
     releaseExecutionAtomically(this.db, {
       executionId: input.workerExecutionId,
       terminalState: 'spawn_failed',
@@ -154,18 +126,14 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
   }
 }
 
-/**
- * Factory: builds an adapter over the global saga DB. Convenience for the
- * composition root; tests inject a db directly via the constructor.
- */
 export function createSqliteWorkAssignmentAdapter(
   getDb: () => Database.Database,
   routeResolver?: RouteResolverFn,
 ): WorkAssignmentPort {
   return {
-    assignTask: (input) => new SqliteWorkAssignmentAdapter(getDb(), routeResolver).assignTask(input),
-    countClaimable: (projectId) => new SqliteWorkAssignmentAdapter(getDb()).countClaimable(projectId),
-    releaseAssignment: (input) =>
-      new SqliteWorkAssignmentAdapter(getDb()).releaseAssignment(input),
+    assignTask: input => new SqliteWorkAssignmentAdapter(getDb(), routeResolver).assignTask(input),
+    countClaimable: projectId => new SqliteWorkAssignmentAdapter(getDb(), routeResolver).countClaimable(projectId),
+    releaseAssignment: input =>
+      new SqliteWorkAssignmentAdapter(getDb(), routeResolver).releaseAssignment(input),
   };
 }
