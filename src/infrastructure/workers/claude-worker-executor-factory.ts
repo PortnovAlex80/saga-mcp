@@ -222,6 +222,10 @@ export interface PinnedClaudeWorkerExecutorFactoryOptions {
   resolveNodeId: (assignment: RunnerAssignment) => string | null;
   workspaceTemplatePreparers?: ProcessWorkspaceTemplatePreparerRegistry;
   workAssignment: WorkAssignmentPort;
+  /** Routing cutover: explicit real-claude CLI path (executor_kind=claude-cli). */
+  realClaudePath?: string;
+  /** Routing cutover: explicit simulator path (executor_kind=claude-cli-simulator). */
+  simulatorPath?: string;
 }
 
 export function createPinnedClaudeWorkerExecutorFactory(
@@ -366,6 +370,8 @@ export function createPinnedClaudeWorkerExecutorFactory(
       sagaEntry: context.sagaEntry,
       sagaSkillRoot: context.sagaSkillRoot,
       claudePath: context.claudePath,
+      realClaudePath: options.realClaudePath,
+      simulatorPath: options.simulatorPath,
       spawn: options.spawn ?? nodeSpawn,
       logRoot: context.logRoot,
       heartbeatLog: context.heartbeatLog,

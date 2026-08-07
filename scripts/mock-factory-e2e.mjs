@@ -97,6 +97,18 @@ try {
       ...process.env,
       DB_PATH: dbPath,
       SAGA_SIM_SCENARIO: 'button-color',
+      // Routing cutover: every module runs on the deterministic simulator in
+      // this e2e. The route resolver reads this inline policy (no
+      // factory-execution-routes.json on disk), so the simulator is selected
+      // from the FROZEN executor_kind in each execution_context — no
+      // proxy-claude.mjs, no model==="mock" string trick.
+      SAGA_EXECUTION_ROUTES_JSON: JSON.stringify({
+        version: '1',
+        default: { executor: { kind: 'claude-cli-simulator' } },
+        routes: [],
+      }),
+      SAGA_SIMULATOR_PATH: `node ${join(root, 'tools', 'claude-cli-simulator.mjs')}`,
+      // Legacy fallback binary (pre-v2 executions and the runner's last-resort).
       SAGA_CLAUDE_PATH: `node ${join(root, 'tools', 'claude-cli-simulator.mjs')}`,
       SAGA_PRODUCT_LIFECYCLE_COMPOSITION: join(root, 'product-lifecycle-composition.mjs'),
       SAGA_ORCHESTRATION_LOG: join(sandbox, 'logs'),

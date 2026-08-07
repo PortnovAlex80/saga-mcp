@@ -24,6 +24,7 @@ import type {
   AssignedWork,
   WorkAssignmentPort,
 } from '../../application/ports/worker-executor.js';
+import type { WorkerExecutionRoute } from '../../application/routing/worker-execution-route.js';
 import { reserveTaskExecution } from '../../tools/conveyor-runtime-helper.js';
 // CONVEYOR #7: the adapter imports the atomic assignment core from the
 // lifecycle layer (infrastructure-side), NOT from the MCP/tool layer. This
@@ -35,8 +36,25 @@ import {
 } from '../../lifecycle/work-assignment-core.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 
+/** Optional route resolver wired in at factory composition. */
+export type RouteResolverFn = (key: {
+  module: string | null;
+  cell: string | null;
+  role: 'author' | 'reviewer' | null;
+  executionProfile: string | null;
+}) => WorkerExecutionRoute;
+
 export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    /**
+     * Route resolver for the routing cutover. When set, the route is resolved
+     * at claim and frozen into the execution_context (executor_kind +
+     * model_route + route_policy). Optional so existing tests and the MCP
+     * worker_next path keep working unchanged.
+     */
+    private readonly routeResolver?: RouteResolverFn,
+  ) {}
 
   assignTask(input: AssignTaskInput): AssignedWork | null {
     const reservation = {
@@ -60,6 +78,7 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
         input.epicId,
         reservation,
         input.taskIds,
+        this.routeResolver,
       );
       if (claimed) {
         reserveTaskExecution(this.db, {
@@ -141,9 +160,10 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
  */
 export function createSqliteWorkAssignmentAdapter(
   getDb: () => Database.Database,
+  routeResolver?: RouteResolverFn,
 ): WorkAssignmentPort {
   return {
-    assignTask: (input) => new SqliteWorkAssignmentAdapter(getDb()).assignTask(input),
+    assignTask: (input) => new SqliteWorkAssignmentAdapter(getDb(), routeResolver).assignTask(input),
     countClaimable: (projectId) => new SqliteWorkAssignmentAdapter(getDb()).countClaimable(projectId),
     releaseAssignment: (input) =>
       new SqliteWorkAssignmentAdapter(getDb()).releaseAssignment(input),

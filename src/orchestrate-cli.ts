@@ -17,7 +17,7 @@
  *                         (required; the lifecycle runtime is the only engine)
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
@@ -28,12 +28,6 @@ import {
   type FactoryCompositionOverrides,
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
-import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
-import { createPinnedClaudeWorkerExecutorFactory } from './infrastructure/workers/claude-worker-executor-factory.js';
-import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-assignment-adapter.js';
-import { prepareDevelopmentWorkspaceTemplate } from './modules/development/application/development-workspace-preparation.js';
-import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
-import type { ProductionInstallation } from './process-modules/installation/production-install.js';
 import { getDb } from './db.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
@@ -70,153 +64,6 @@ function parseArgs(argv: string[]): { launchRef: string } {
   return { launchRef };
 }
 
-
-/**
- * Per-module model routing. Reads factory-models.json (or
- * SAGA_FACTORY_MODELS env) to decide which model each module uses.
- * "mock" routes to the simulator (SAGA_CLAUDE_PATH); any other value
- * routes to the real claude CLI with that --model. This lets the operator
- * run cheap stages on the simulator and expensive stages on a real LM,
- * all in one continuous factory run.
- */
-interface FactoryModelConfig { [moduleName: string]: string }
-
-function loadFactoryModelConfig(): FactoryModelConfig {
-  const envConfig = process.env.SAGA_FACTORY_MODELS;
-  if (envConfig) {
-    try { return JSON.parse(envConfig) as FactoryModelConfig; } catch { /* fall through */ }
-  }
-  const configPath = process.env.SAGA_FACTORY_MODELS_PATH
-    ?? path.join(process.env.SAGA_REPO_ROOT ?? process.cwd(), 'factory-models.json');
-  if (existsSync(configPath)) {
-    try { return JSON.parse(readFileSync(configPath, 'utf8')) as FactoryModelConfig; } catch { /* empty */ }
-  }
-  return {};
-}
-
-/** Map lifecycle stage id → module name for model lookup. */
-const STAGE_TO_MODULE: Record<string, string> = {
-  'initial-discovery': 'product-discovery',
-  'solution-formalization': 'solution-formalization',
-  'solution-development': 'solution-development',
-  'delivery-release': 'delivery-release',
-};
-
-/**
- * Mutable stage tracker — updated by the main loop after each runEpisode.
- * The modelRouteReader closure reads this to return the per-stage model.
- */
-const currentStageRef: { stage: string | null } = { stage: 'initial-discovery' };
-
-/**
- * Create a pinned WorkerExecutorFactory for the dispatch loop — identical to
- * what composition-root creates for LM-node workers. This ensures impl-task
- * workers get the SAME desk (materializer, hooks, fence, authority) as
- * Flow-node workers. One spawn path, one mechanic.
- */
-/**
- * CONVEYOR v4 — the SINGLE workerExecutorFactory for the entire conveyor.
- * dispatch-loop (distributeQueuedTasks) consume this exact factory instance.
- *
- * Previously two factories existed (createPinnedWorkerFactory in
- * composition-root vs createPinnedWorkerFactoryForDispatch here), and the
- * dispatch factory was a HAND-ROLLED SUBSET missing modelRouteReader and
- * workspaceTemplatePreparers. This caused development-card workers spawned
- * through the dispatch path to skip workspace template preparation and ignore
- * the episode's pinned model route — a silent divergence that violated the
- * single-launch-path invariant (CONVEYOR-MENTAL-MODEL INV-3.1).
- *
- * This factory is feature-complete: it resolves installation/digest/nodeId
- * from task metadata, reads the episode's worker model route from the DB,
- * applies the development workspace template preparer, and routes card
- * assignment through the atomic WorkAssignmentPort.
- */
-function createUnifiedWorkerFactory(
-  installation: ProductionInstallation | undefined,
-): WorkerExecutorFactory {
-  if (!installation) {
-    throw new Error(
-      'PACKAGE_INSTALLATION_REQUIRED: the conveyor needs a ProductionInstallation '
-      + 'to create pinned worker desks.',
-    );
-  }
-  const factoryModelConfig = loadFactoryModelConfig();
-  return createPinnedClaudeWorkerExecutorFactory({
-    // Per-module model routing: read the current stage from currentStageRef,
-    // map it to a module name, look up the model in factory-models.json.
-    // The model name is passed as --model to the proxy-claude, which routes
-    // "mock" to the simulator and everything else to the real CLI.
-    modelRouteReader: (epicId: number | null) => {
-      // Check per-module config first
-      const moduleName = currentStageRef.stage
-        ? STAGE_TO_MODULE[currentStageRef.stage] ?? null
-        : null;
-      const configuredModel = moduleName ? factoryModelConfig[moduleName] : undefined;
-      if (configuredModel) {
-        return { provider: configuredModel === 'mock' ? 'mock' : 'zai', model: configuredModel, effort: null };
-      }
-      // Fallback: legacy DB route or default
-      if (epicId !== null) {
-        const row = getDb().prepare(
-          'SELECT worker_model_route FROM episode_workflows WHERE epic_id=?',
-        ).get(epicId) as { worker_model_route?: string | null } | undefined;
-        const route = row?.worker_model_route ?? null;
-        if (route) {
-          try {
-            const parsed = JSON.parse(route) as { provider: string; model?: string | null; effort?: string | null };
-            return { provider: parsed.provider, model: parsed.model ?? null, effort: parsed.effort ?? null };
-          } catch { /* fall through to default */ }
-        }
-      }
-      return { provider: 'zai', model: null, effort: null };
-    },
-    packageRegistry: installation.registry,
-    packageSnapshots: installation.packages,
-    resolveInstallationId: assignment => {
-      const md = typeof assignment.task?.metadata === 'string'
-        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
-        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
-      const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
-      if (runId === null) return null;
-      const row = getDb().prepare(
-        'SELECT installation_id FROM factory_process_runs WHERE id=?',
-      ).get(runId) as { installation_id?: number | null } | undefined;
-      const id = row?.installation_id ?? null;
-      return id === null ? null : asModuleInstallationId(id);
-    },
-    resolvePackageDigest: assignment => {
-      const md = typeof assignment.task?.metadata === 'string'
-        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
-        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
-      const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
-      if (runId === null) return null;
-      const row = getDb().prepare(
-        'SELECT package_digest FROM factory_process_runs WHERE id=?',
-      ).get(runId) as { package_digest?: string | null } | undefined;
-      return row?.package_digest ?? null;
-    },
-    resolveNodeId: assignment => {
-      const md = typeof assignment.task?.metadata === 'string'
-        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
-        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
-      const nodeId = md.process_node_id;
-      return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
-    },
-    // Development workspace template preparation (was missing in the dispatch
-    // factory — development cards need the per-repository template to resolve
-    // test/build integration branches correctly).
-    workspaceTemplatePreparers: new Map([
-      ['solution-development@1.0.0', prepareDevelopmentWorkspaceTemplate],
-    ]),
-    // CONVEYOR: atomic card assignment before spawn. Same port wired in
-    // composition-root; the dispatch loop and LM-node workers share one
-    // assignment path.
-    workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
-    // Per-module spawn override: when the current stage maps to a module
-    // configured as "mock" in factory-models.json, route the spawn to the
-    // simulator binary instead of the real claude CLI. For all other models
-  });
-}
 
 function writeLifecycleStartReceipt(run: {
   id: number;
@@ -354,8 +201,9 @@ async function main() {
       }
       lastResult = result;
       isFirstCycle = false;
-      // Track current stage for per-module model routing (factory-models.json).
-      if (result.finalStage) currentStageRef.stage = result.finalStage;
+      // The route is resolved per-execution at claim time from the task's
+      // (module, cell, role, executionProfile) key — no per-stage tracking is
+      // needed anymore (the model==mock / currentStageRef machinery is gone).
       process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
       // Optional online factory checkpoint. It snapshots SQLite through the
       // backup API and content-addresses referenced artifact bytes. A failed
@@ -403,10 +251,13 @@ async function main() {
       if (result.reason !== 'paused') break;
 
       // Paused — the lifecycle is waiting for kanban tasks (impl/verify) to drain.
-      // Distribute them to workers through the SAME WorkerExecutorFactory that
-      // LM-node workers use — one spawn path, one desk, one mechanic.
+      // Distribute them to workers through the SAME WorkerExecutorFactory AND
+      // the SAME WorkAssignmentPort that composition-root created — one spawn
+      // point, one assignment authority, one route resolver. There is no second
+      // factory and no second claudePath here.
       const { distributeQueuedTasks } = await import('./app/dispatch-loop.js');
       const { loadSagaRuntimeConfig } = await import('./runtime/saga-runtime-config.js');
+      const { getLastFactoryWorkAssignment, getLastFactoryWorkerExecutorFactory } = await import('./app/composition-root.js');
       const dispatchConfig = loadSagaRuntimeConfig(process.env);
       const sagaEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'index.js');
       const workspaceRoot = (() => {
@@ -415,8 +266,26 @@ async function main() {
         ).get(projectId, 'active') as { local_path: string } | undefined;
         return row?.local_path ?? process.cwd();
       })();
-      // overrides.modulePackages IS the ProductionInstallation — use it to
-      // create the same pinned factory that composition-root uses for LM nodes.
+      // The single WorkAssignmentPort created by composition-root (carrying the
+      // route resolver). Fallback to a fresh adapter is intentionally absent: a
+      // missing port means composition-root was not wired, which is a fatal
+      // configuration error, not a degraded mode.
+      const factoryWorkAssignment = getLastFactoryWorkAssignment();
+      if (!factoryWorkAssignment) {
+        throw new Error(
+          'FACTORY_WORK_ASSIGNMENT_UNAVAILABLE: composition-root did not publish '
+          + 'a WorkAssignmentPort. The dispatch loop requires the single shared '
+          + 'assignment authority (routing cutover invariant).',
+        );
+      }
+      const factoryExecutor = getLastFactoryWorkerExecutorFactory();
+      if (!factoryExecutor) {
+        throw new Error(
+          'FACTORY_WORKER_EXECUTOR_FACTORY_UNAVAILABLE: composition-root did not publish '
+          + 'a WorkerExecutorFactory. The dispatch loop requires the single shared '
+          + 'spawn point (routing cutover invariant).',
+        );
+      }
       const dispatched = await distributeQueuedTasks({
         projectId,
         epicId,
@@ -425,11 +294,12 @@ async function main() {
         // global concurrency budget. It atomically assigns each exact card
         // before constructing the worker process; the runner only hosts the
         // already-assigned worker and never searches the queue.
-        workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
+        workAssignment: factoryWorkAssignment,
         idGenerator: uuidIdGenerator,
         machineId: os.hostname(),
-        workerExecutorFactory: overrides.workerExecutorFactory
-          ?? createUnifiedWorkerFactory(overrides.modulePackages),
+        // The workerExecutorFactory is the SAME instance composition-root built.
+        // One factory, one spawn path — no second claudePath, no second adapter.
+        workerExecutorFactory: factoryExecutor,
         factoryContext: {
           projectId,
           epicId,
@@ -437,6 +307,10 @@ async function main() {
           dbPath: process.env.DB_PATH!,
           sagaEntry,
           sagaSkillRoot: process.cwd(),
+          // claudePath is the legacy fallback binary. The executor backend is
+          // selected by the runner from the FROZEN executor_kind in each
+          // assignment's execution_context — this string is only used when no
+          // frozen executor_kind is present (pre-v2 executions).
           claudePath: process.env.SAGA_CLAUDE_PATH,
           logRoot: dispatchConfig.orchestrationLogRoot,
           heartbeatLog: dispatchConfig.orchestrationLogRoot
@@ -623,14 +497,14 @@ async function loadCompositionOverrides(
       packageInstallation,
       onLifecycleStarted: writeLifecycleStartReceipt,
     },
-    // CONVEYOR v4 — ONE workerExecutorFactory for BOTH launch paths
-    // used two different factories: createPinnedWorkerFactory (full: has
-    // modelRouteReader + workspaceTemplatePreparers) vs
-    // createPinnedWorkerFactoryForDispatch (subset: missing both). The subset
-    // factory caused development-card workers to skip workspace template
-    // preparation and use the default model route instead of the episode's
-    // pinned route. Now both paths get the same factory.
-    workerExecutorFactory: createUnifiedWorkerFactory(packageInstallation),
+    // Routing cutover: the route resolver is constructed ONCE by the
+    // composition root from factory-execution-routes.json (or the
+    // SAGA_EXECUTION_ROUTES_JSON env). It is the SINGLE spawn-side authority —
+    // there is no second factory and no second claudePath. The composition root
+    // wires the resolver into the WorkAssignmentPort (freezes the route at
+    // claim), the MCP worker_next path, and the worker executor (binary
+    // selection from the frozen executor_kind).
+    executionRouteResolverOptions: {},
   };
 }
 

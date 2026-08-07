@@ -12,7 +12,22 @@ import { sha256Hex } from '../dist/shared/canonical-json.js';
 const root = resolve(process.env.SAGA_REAL_SMOKE_ROOT ?? '.real-factory-smoke');
 const repositoryPath = join(root, 'product');
 const dbPath = join(root, 'factory.sqlite');
-if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+// SAFETY: never destroy an existing sandbox unconditionally. A prior run's DB
+// holds durable execution state, formalization certificates and checkpoints
+// that cannot be recreated. Only reset when the operator EXPLICITLY sets
+// SAGA_REAL_SMOKE_RESET=1. This is the lesson from the protected-sandbox
+// incident: rmSync(root) destroyed hours of real-model progress.
+if (existsSync(root)) {
+  if (process.env.SAGA_REAL_SMOKE_RESET === '1') {
+    rmSync(root, { recursive: true, force: true });
+  } else {
+    process.stderr.write(
+      `[real-factory-smoke] root '${root}' already exists — refusing to delete. `
+      + `Set SAGA_REAL_SMOKE_RESET=1 to force a clean reset.\n`,
+    );
+    process.exit(2);
+  }
+}
 mkdirSync(repositoryPath, { recursive: true });
 
 function git(args) {

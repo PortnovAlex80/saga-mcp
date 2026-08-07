@@ -73,6 +73,10 @@ export interface ClaudeBoardRunnerOptions {
   resolveWorkspace: (project: unknown) => string | null;
   spawn?: typeof nodeSpawnType;
   claudePath?: string;
+  /** Routing cutover: explicit real-claude CLI path (executor_kind=claude-cli). */
+  realClaudePath?: string;
+  /** Routing cutover: explicit simulator path (executor_kind=claude-cli-simulator). */
+  simulatorPath?: string;
   dbPath: string;
   sagaEntry: string;
   sagaSkillRoot: string;

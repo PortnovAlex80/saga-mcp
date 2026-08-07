@@ -12,7 +12,9 @@ import type { Task } from '../types.js';
 import type { AssignedWork } from '../application/ports/worker-executor.js';
 import type { AuthorityScope, WorkIntent } from '../shared/work-intent.js';
 import { buildExecutionContext } from '../shared/authority/build-execution-context.js';
+import type { ExecutionContextExecutorKind, ExecutionRoutePolicyRef } from '../shared/authority/execution-context.js';
 import { executionContextHash } from '../shared/authority/execution-context.js';
+import { routeToModelRoute } from '../application/routing/worker-execution-route.js';
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 import { logActivity } from '../helpers/activity-logger.js';
 
@@ -85,6 +87,99 @@ export function readModelRouteAtClaim(
     provider: row?.p ?? 'zai',
     effort: row?.e ?? null,
   };
+}
+
+/**
+ * Build the routing key for one task at claim time. Resolves the module name
+ * from the task's process_run_id (factory_process_runs.module_name), the
+ * production cell id from the task's workplace_ref, the execution profile id
+ * from task metadata (process_workspace.profile_id or
+ * process_execution_profile_id), and the role from the claimed status
+ * (review_in_progress → reviewer; in_progress → author) overridable by a
+ * `role:<x>` tag.
+ *
+ * Pure read — no mutation. Called inside the claim transaction.
+ */
+export function readRouteKeyForTask(
+  db: Database.Database,
+  task: Task,
+  isReview: boolean,
+): {
+  module: string | null;
+  cell: string | null;
+  role: 'author' | 'reviewer' | null;
+  executionProfile: string | null;
+} {
+  let module: string | null = null;
+  let cell: string | null = null;
+  let executionProfile: string | null = null;
+  let role: 'author' | 'reviewer' | null = isReview ? 'reviewer' : 'author';
+
+  // Role override from tags (e.g. role:reviewer on an author cycle).
+  try {
+    const tagsParsed = typeof task.tags === 'string' ? JSON.parse(task.tags) : task.tags;
+    if (Array.isArray(tagsParsed)) {
+      const roleTag = tagsParsed.find(
+        (t: unknown) => typeof t === 'string' && (t as string).startsWith('role:'),
+      ) as string | undefined;
+      if (roleTag) {
+        const v = roleTag.slice('role:'.length);
+        if (v === 'author' || v === 'reviewer') role = v;
+      }
+    }
+  } catch { /* best-effort */ }
+
+  // Metadata: process_run_id + process_execution_profile_id + process_workspace.profile_id.
+  let processRunId: number | null = null;
+  if (task.metadata) {
+    const md = typeof task.metadata === 'string'
+      ? (safeParseMetadata(task.metadata)) : task.metadata;
+    if (md && typeof md === 'object') {
+      const obj = md as Record<string, unknown>;
+      if (typeof obj.process_run_id === 'number' && Number.isFinite(obj.process_run_id)) {
+        processRunId = obj.process_run_id;
+      } else if (typeof obj.process_run_id === 'string' && /^\d+$/.test(obj.process_run_id)) {
+        processRunId = Number(obj.process_run_id);
+      }
+      if (typeof obj.process_execution_profile_id === 'string') {
+        executionProfile = obj.process_execution_profile_id;
+      }
+      const pw = obj.process_workspace;
+      if (pw && typeof pw === 'object' && !executionProfile) {
+        const profileId = (pw as Record<string, unknown>).profile_id;
+        if (typeof profileId === 'string') executionProfile = profileId;
+      }
+    }
+  }
+
+  // Module name from the process run.
+  if (processRunId !== null) {
+    const runRow = db.prepare(
+      'SELECT module_name FROM factory_process_runs WHERE id=?',
+    ).get(processRunId) as { module_name?: string } | undefined;
+    if (runRow?.module_name) module = runRow.module_name;
+  }
+
+  // Production cell id from the workplace.
+  if (task.workplace_ref) {
+    const wpRow = db.prepare(
+      'SELECT production_cell_id FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(task.workplace_ref) as { production_cell_id?: string } | undefined;
+    if (wpRow?.production_cell_id) cell = wpRow.production_cell_id;
+  }
+
+  return { module, cell, role, executionProfile };
+}
+
+function safeParseMetadata(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function strictAuthorityScope(raw: unknown): AuthorityScope {
@@ -279,6 +374,20 @@ export function findNextClaimable(
     machineId: string;
   },
   taskIds?: number[],
+  /**
+   * Optional execution-route resolver (routing cutover). When supplied, the
+   * route is resolved at claim from the task's (module, cell, role,
+   * executionProfile) key and frozen into the execution_context — spawn,
+   * gateway and provenance then read the SAME immutable value. When omitted,
+   * the legacy model-route-only path is used (the resolver is optional so
+   * existing callers and tests keep working unchanged).
+   */
+  routeResolver?: (key: {
+    module: string | null;
+    cell: string | null;
+    role: 'author' | 'reviewer' | null;
+    executionProfile: string | null;
+  }) => import('../application/routing/worker-execution-route.js').WorkerExecutionRoute,
 ): Task | null {
   if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
 
@@ -407,6 +516,7 @@ export function findNextClaimable(
       epicId,
       reservation,
       taskIds,
+      routeResolver,
     );
   }
 
@@ -418,10 +528,28 @@ export function findNextClaimable(
   } as Task;
 
   if (reservation) {
-    const modelRoute = readModelRouteAtClaim(db, task.epic_id);
     const workIntent = readWorkIntentForTaskClaim(db, task);
+    // Routing cutover: when a route resolver is wired in, the route is resolved
+    // ONCE at claim from the task's (module, cell, role, executionProfile) key
+    // and frozen into the snapshot. Spawn then selects the binary from
+    // `executor_kind` — no re-reading config at spawn. When no resolver is
+    // supplied, fall back to the legacy model-route-only path.
+    let modelRoute = readModelRouteAtClaim(db, task.epic_id);
+    let executorKind: ExecutionContextExecutorKind = 'claude-cli';
+    let routePolicy: ExecutionRoutePolicyRef | null = null;
+    if (routeResolver) {
+      const routeKey = readRouteKeyForTask(db, task, claimedStatus === 'review_in_progress');
+      const route = routeResolver(routeKey);
+      modelRoute = routeToModelRoute(route);
+      executorKind = route.executor.kind;
+      routePolicy = route.policyRef && route.policyDigest
+        ? { ref: route.policyRef, digest: route.policyDigest }
+        : null;
+    }
     const executionContext = buildExecutionContext({
       modelRoute,
+      executorKind,
+      routePolicy,
       workIntent,
       capturedAt: new Date().toISOString(),
     });

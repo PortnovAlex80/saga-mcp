@@ -383,7 +383,7 @@ test('authority: managed execution allows a tool in the frozen allowed_saga_tool
 });
 
 test('authority: managed execution denies a tool NOT in the frozen allowed_saga_tools set (AUTHORITY_DENIED)', async () => {
-  const { authority } = await loadModules();
+  const { authority, ctxDomain } = await loadModules();
   const db = await buildManagedAuthorityDb({ allowedTools: ['task_get', 'task_update'] });
   const decision = authority.authorizeSagaToolCall({
     toolName: 'project_delete', db, executionId: 'exec-1', managedExecution: '1',
@@ -400,7 +400,7 @@ test('authority: managed execution denies a tool NOT in the frozen allowed_saga_
   assert.equal(decision.details.work_intent_id, 7);
   assert.equal(decision.details.requested_tool, 'project_delete');
   assert.deepEqual(decision.details.allowed_tools, ['task_get', 'task_update']);
-  assert.equal(decision.details.policy_version, 'factory.execution.v1');
+  assert.equal(decision.details.policy_version, ctxDomain.EXECUTION_CONTEXT_POLICY_VERSION);
   assert.ok(typeof decision.details.recovery === 'string' && decision.details.recovery.length > 0);
 });
 

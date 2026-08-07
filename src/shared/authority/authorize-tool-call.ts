@@ -13,8 +13,23 @@ import {
   EXECUTION_CONTEXT_POLICY_VERSION,
   type ExecutionAuthority,
   type ExecutionContextSnapshot,
+  type ExecutionContextExecutorKind,
   type ExecutionModelRoute,
+  type ExecutionRoutePolicyRef,
 } from './execution-context.js';
+
+/**
+ * Policy versions the gateway accepts. v1 snapshots (no executor_kind /
+ * route_policy) are still honored for in-flight executions started before the
+ * routing cutover; every NEW claim produces v2. Adding a version here is the
+ * ONLY change needed to accept a new shape — the structural hash check still
+ * guards integrity because {@link executionContextHash} hashes whatever shape
+ * was stored.
+ */
+const ACCEPTED_POLICY_VERSIONS = new Set<string>([
+  EXECUTION_CONTEXT_POLICY_VERSION, // v2
+  'factory.execution.v1',           // legacy
+]);
 
 export type AuthorizationDecision =
   | { allow: true; advisory?: boolean; observation?: string; executionId?: string }
@@ -120,6 +135,20 @@ function parseModelRoute(raw: unknown): ExecutionModelRoute | null {
   return { provider: raw.provider, model: raw.model, effort: raw.effort };
 }
 
+/**
+ * Parse the v2 `route_policy` citation. Returns null for absent/malformed
+ * values (v1 snapshots omit it entirely). A present-but-malformed value fails
+ * closed by returning null only when the shape is wrong, which the validator
+ * then excludes from the structural hash.
+ */
+function parseRoutePolicy(raw: unknown): ExecutionRoutePolicyRef | null {
+  if (raw === null || raw === undefined) return null;
+  if (!isRecord(raw)) return null;
+  if (typeof raw.ref !== 'string' || raw.ref.trim() === '') return null;
+  if (typeof raw.digest !== 'string' || raw.digest.trim() === '') return null;
+  return { ref: raw.ref, digest: raw.digest };
+}
+
 function parseAuthority(raw: unknown, topLevelIntentId: number | null): ExecutionAuthority | null | undefined {
   if (raw === null) return topLevelIntentId === null ? null : undefined;
   if (!isRecord(raw)) return undefined;
@@ -178,7 +207,7 @@ export function readExecutionContextStrict(
   }
 
   const raw = envelope.execution_context;
-  if (raw.policy_version !== EXECUTION_CONTEXT_POLICY_VERSION) {
+  if (typeof raw.policy_version !== 'string' || !ACCEPTED_POLICY_VERSIONS.has(raw.policy_version)) {
     return { ok: false, reason: `unsupported policy_version '${String(raw.policy_version)}'` };
   }
   const workIntentId = raw.work_intent_id === null
@@ -193,14 +222,36 @@ export function readExecutionContextStrict(
   const authority = parseAuthority(raw.authority, workIntentId);
   if (authority === undefined) return { ok: false, reason: 'authority missing, malformed, or hash-mismatched' };
 
+  // executor_kind / route_policy are v2-only. On a v1 snapshot they are absent;
+  // we treat them as the v1 default (claude-cli, no policy citation). The
+  // structural hash below is computed over the EXACT stored shape (whatever
+  // fields are present), so v1 snapshots still validate.
+  const executorKind = typeof raw.executor_kind === 'string'
+    ? (raw.executor_kind as ExecutionContextExecutorKind)
+    : 'claude-cli';
+  const routePolicy = parseRoutePolicy(raw.route_policy);
+
   const snapshot: ExecutionContextSnapshot = {
-    policy_version: EXECUTION_CONTEXT_POLICY_VERSION,
+    policy_version: raw.policy_version as typeof EXECUTION_CONTEXT_POLICY_VERSION,
     work_intent_id: workIntentId,
     authority,
     model_route: modelRoute,
+    executor_kind: executorKind,
+    route_policy: routePolicy,
     captured_at: raw.captured_at,
   };
-  const expectedContextHash = executionContextHash(snapshot);
+  // Reconstruct the stored shape for hash verification. For v1 snapshots, omit
+  // executor_kind/route_policy so the hash matches what was persisted.
+  const hashInput: Record<string, unknown> = {
+    policy_version: snapshot.policy_version,
+    work_intent_id: snapshot.work_intent_id,
+    authority,
+    model_route: snapshot.model_route,
+    captured_at: snapshot.captured_at,
+  };
+  if (raw.executor_kind !== undefined) hashInput.executor_kind = snapshot.executor_kind;
+  if (raw.route_policy !== undefined) hashInput.route_policy = snapshot.route_policy;
+  const expectedContextHash = executionContextHash(hashInput);
   if (expectedContextHash !== envelope.execution_context_hash) {
     return { ok: false, reason: 'execution_context_hash mismatch' };
   }

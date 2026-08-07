@@ -25,6 +25,32 @@ import {
   workerDonePayload,
   hashPayload,
 } from '../lifecycle/idempotency.js';
+import type { WorkerExecutionRoute } from '../application/routing/worker-execution-route.js';
+
+/**
+ * Optional route resolver injected by the factory host (composition root).
+ * When set, the MCP `worker_next` claim path resolves the execution route at
+ * claim and freezes it into the execution_context — same as the engine
+ * dispatch path. The dispatcher falls back to the legacy model-route read when
+ * this is unset (e.g. MCP-only sessions without a factory host).
+ */
+let injectedRouteResolver: ((key: {
+  module: string | null;
+  cell: string | null;
+  role: 'author' | 'reviewer' | null;
+  executionProfile: string | null;
+}) => WorkerExecutionRoute) | null = null;
+
+export function setWorkerRouteResolver(
+  resolver: ((key: {
+    module: string | null;
+    cell: string | null;
+    role: 'author' | 'reviewer' | null;
+    executionProfile: string | null;
+  }) => WorkerExecutionRoute) | null,
+): void {
+  injectedRouteResolver = resolver;
+}
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -334,6 +360,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const task = withImmediateTransaction(db, () => {
     const claimed = findNextClaimable(
       db, workerId, projectId, undefined, 0, role, epicId, reservation, taskIds,
+      injectedRouteResolver ?? undefined,
     );
     if (claimed) {
       reserveTaskExecution(db, {

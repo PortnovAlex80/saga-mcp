@@ -32,6 +32,7 @@ saga4-*.db*
 
 # Real/model factory smoke outputs (DB, logs, generated product repositories)
 .real-factory-smoke/
+.real-factory-smoke-*/
 
 # Factory run artifacts — leftover from mock/real factory runs in the repo root.
 # These are never source; the orchestrator and simulator regenerate them per run.

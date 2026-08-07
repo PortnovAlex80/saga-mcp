@@ -2,7 +2,7 @@ import type { BoardProjectionReader } from '../application/ports/board-projectio
 import type { EngineAdministration } from '../application/ports/engine-administration.js';
 import type { WorkerHostRuntime } from '../application/ports/worker-host-runtime.js';
 import type { FactoryRuntimePersistence } from '../application/ports/factory-runtime-persistence.js';
-import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
+import type { WorkerExecutorFactory, WorkAssignmentPort } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +26,12 @@ import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlit
 import { NodeWorkerHostRuntime } from '../infrastructure/runtime/node-worker-host-runtime.js';
 import { createPinnedClaudeWorkerExecutorFactory } from '../infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
+import {
+  createExecutionRouteResolver,
+  type ExecutionRouteResolverOptions,
+} from '../application/routing/execution-route-resolver.js';
+import type { RouteResolverFn } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
+import { setWorkerRouteResolver } from '../tools/dispatcher.js';
 import { SqliteWorkspaceResolver } from '../infrastructure/workspaces/sqlite-workspace-resolver.js';
 import {
   loadSagaRuntimeConfig,
@@ -63,6 +69,14 @@ export interface FactoryCompositionOverrides {
    * factory; no deployment success or human decision is silently selected.
    */
   productLifecycle?: ProductLifecycleCompositionOverrides;
+  /**
+   * Execution-route resolver options (routing cutover). When supplied, a route
+   * resolver is constructed ONCE here (the single spawn-side authority) and
+   * wired into BOTH the WorkAssignmentPort (so the route is frozen at claim)
+   * and the MCP worker_next path. When omitted, the legacy model-route-only
+   * path is used (every execution runs on the real claude CLI).
+   */
+  executionRouteResolverOptions?: ExecutionRouteResolverOptions;
   close?: () => void;
 }
 
@@ -110,6 +124,36 @@ export function createFactoryApplication(
   };
   const packageInstallation = overrides.modulePackages
     ?? overrides.productLifecycle?.packageInstallation;
+
+  // Routing cutover: construct the route resolver ONCE here. This is the single
+  // spawn-side authority — it decides which backend (executor + provider +
+  // model) runs each worker, by matching the task's (module, cell, role,
+  // executionProfile) key against the policy. The resolver is frozen at claim
+  // time (immutable per run), so a config edit mid-run cannot change the route
+  // of an already-reserved execution.
+  const routeResolver = overrides.executionRouteResolverOptions
+    ? createExecutionRouteResolver(overrides.executionRouteResolverOptions)
+    : null;
+  const routeResolverFn: RouteResolverFn | undefined = routeResolver
+    ? (key => routeResolver.resolve(key))
+    : undefined;
+  // Register the resolver globally so the MCP worker_next path (when a worker
+  // calls worker_next directly) also freezes the route at claim. This is the
+  // ONE route authority for every claim path.
+  if (routeResolverFn) setWorkerRouteResolver(routeResolverFn);
+  else setWorkerRouteResolver(null);
+
+  // ONE WorkAssignmentPort for the whole factory, carrying the route resolver.
+  // Both the lifecycle-node path (engine) and the dispatch-loop path use this
+  // exact port — there is no second assignment authority.
+  const workAssignment: WorkAssignmentPort = new SqliteWorkAssignmentAdapter(
+    getDb(),
+    routeResolverFn,
+  );
+  // Publish the port so the dispatch-loop (orchestrate-cli) reuses it instead
+  // of constructing a second adapter. One spawn point, one assignment authority.
+  lastFactoryWorkAssignment = workAssignment;
+
   // Claude worker factory is GONE — the only legal desk creator is
   // `materializePinnedWorkspace`, which resolves from an immutable package
   // snapshot. A missing packageInstallation is now a configuration error
@@ -117,7 +161,10 @@ export function createFactoryApplication(
   // Callers may still inject `overrides.workerExecutorFactory` to bypass.
   const workerExecutorFactory = overrides.workerExecutorFactory
     ?? (packageInstallation
-      ? createPinnedWorkerFactory(persistence, packageInstallation)
+      ? createPinnedWorkerFactory(persistence, packageInstallation, workAssignment, {
+        realClaudePath: env.SAGA_REAL_CLAUDE_PATH,
+        simulatorPath: env.SAGA_SIMULATOR_PATH,
+      })
       : (() => {
         throw new Error(
           'PACKAGE_INSTALLATION_REQUIRED: createFactoryApplication did not receive '
@@ -126,6 +173,8 @@ export function createFactoryApplication(
           + 'immutable pinned package snapshot.',
         );
       })());
+  // Publish the factory so the dispatch-loop reuses it — one spawn point.
+  lastFactoryWorkerExecutorFactory = workerExecutorFactory;
   const host = overrides.host ?? new NodeWorkerHostRuntime({
     workerPaths: config.orchestrationLogRoot
       ? {
@@ -152,6 +201,38 @@ export function createFactoryApplication(
     engineAdministration,
     close: overrides.close ?? closeDb,
   });
+}
+
+/**
+ * Module-scoped handle to the single WorkAssignmentPort created by the most
+ * recent createFactoryApplication call. The dispatch-loop (orchestrate-cli)
+ * retrieves it via {@link getLastFactoryWorkAssignment} so it shares the SAME
+ * assignment authority + route resolver as the lifecycle-node path — no second
+ * SqliteWorkAssignmentAdapter is constructed. One spawn point, one assignment
+ * authority.
+ *
+ * This is intentionally a side-channel rather than a SagaApplication field:
+ * SagaApplication is an engine-neutral boundary and must not carry worker
+ * assignment infrastructure.
+ */
+let lastFactoryWorkAssignment: WorkAssignmentPort | null = null;
+let lastFactoryWorkerExecutorFactory: WorkerExecutorFactory | null = null;
+
+/**
+ * Retrieve the WorkAssignmentPort from the most recent createFactoryApplication
+ * call. Used by the dispatch-loop so it does not construct a second adapter.
+ */
+export function getLastFactoryWorkAssignment(): WorkAssignmentPort | null {
+  return lastFactoryWorkAssignment;
+}
+
+/**
+ * Retrieve the WorkerExecutorFactory from the most recent createFactoryApplication
+ * call. Used by the dispatch-loop so it shares the SAME factory as the
+ * lifecycle-node path — one spawn point, one factory.
+ */
+export function getLastFactoryWorkerExecutorFactory(): WorkerExecutorFactory | null {
+  return lastFactoryWorkerExecutorFactory;
 }
 
 /**
@@ -264,10 +345,17 @@ function resolveSagaMcpEntry(): string {
  * Build the existing Claude worker adapter against immutable module packages.
  * This is host wiring shared by standalone module runs and lifecycle scenarios;
  * module-specific behavior remains in the package definition and handlers.
+ *
+ * Routing cutover: the WorkAssignmentPort is now supplied by the caller so the
+ * SAME port (with the SAME route resolver) is shared between the lifecycle node
+ * path and the dispatch-loop path. There is ONE spawn point, ONE assignment
+ * authority, and ONE route resolver — not two parallel factories.
  */
 function createPinnedWorkerFactory(
   persistence: FactoryRuntimePersistence,
   installation: ProductionInstallation,
+  workAssignment: WorkAssignmentPort,
+  executorPaths: { realClaudePath?: string; simulatorPath?: string } = {},
 ): WorkerExecutorFactory {
   return createPinnedClaudeWorkerExecutorFactory({
     modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
@@ -300,7 +388,13 @@ function createPinnedWorkerFactory(
     // CONVEYOR: route card assignment through the atomic WorkAssignmentPort —
     // the card is assigned + fenced in one IMMEDIATE transaction before the
     // worker process is spawned, closing the loose-preselector race window.
-    workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
+    // The port is supplied by the caller (createFactoryApplication) so the
+    // dispatch-loop path shares the SAME assignment authority + route resolver.
+    workAssignment,
+    // Routing cutover: explicit executor backend paths. The runner selects the
+    // binary from the FROZEN executor_kind; these two paths are the targets.
+    realClaudePath: executorPaths.realClaudePath,
+    simulatorPath: executorPaths.simulatorPath,
   });
 }
 

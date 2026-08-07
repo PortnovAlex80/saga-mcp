@@ -17,14 +17,26 @@
 import {
   authorityHash,
   EXECUTION_CONTEXT_POLICY_VERSION,
+  type ExecutionContextExecutorKind,
   type ExecutionContextSnapshot,
   type ExecutionModelRoute,
+  type ExecutionRoutePolicyRef,
 } from './execution-context.js';
 import type { WorkIntent } from '../work-intent.js';
 
 export interface BuildExecutionContextInput {
   /** Model route read ONCE by the caller (dispatcher) inside its claim transaction. */
   modelRoute: ExecutionModelRoute;
+  /**
+   * v2: executor kind (orthogonal to model). Selects which binary spawn runs.
+   * Defaults to `claude-cli` when omitted (legacy callers).
+   */
+  executorKind?: ExecutionContextExecutorKind;
+  /**
+   * v2: routing policy citation (ref + digest). Frozen so the journal can
+   * explain the routing decision. Null/omitted only on legacy v1 snapshots.
+   */
+  routePolicy?: ExecutionRoutePolicyRef | null;
   /**
    * `work_intent_id`. Null authority → gateway compatibility-allow.
    */
@@ -39,7 +51,13 @@ export interface BuildExecutionContextInput {
  * gateway treats the execution as compatibility-allow.
  */
 export function buildExecutionContext(input: BuildExecutionContextInput): ExecutionContextSnapshot {
-  const { modelRoute, workIntent, capturedAt } = input;
+  const {
+    modelRoute,
+    executorKind = 'claude-cli',
+    routePolicy = null,
+    workIntent,
+    capturedAt,
+  } = input;
 
   const authority = workIntent
     ? {
@@ -63,6 +81,8 @@ export function buildExecutionContext(input: BuildExecutionContextInput): Execut
     work_intent_id: workIntent?.id ?? null,
     authority,
     model_route: { ...modelRoute },
+    executor_kind: executorKind,
+    route_policy: routePolicy,
     captured_at: capturedAt,
   };
 }

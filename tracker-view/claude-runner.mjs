@@ -317,6 +317,12 @@ export class ClaudeBoardRunner {
       readBirthToken: readProcessBirthToken,
     };
     this.claudePath = options.claudePath ?? process.env.SAGA_CLAUDE_PATH ?? 'claude';
+    // Routing cutover: the binary for each spawn is now selected from the
+    // FROZEN execution_context.executor_kind. These two paths are the explicit
+    // backend targets — `claudePath` remains as the legacy fallback. When unset,
+    // resolveExecutorPath falls back to claudePath, preserving pre-cutover runs.
+    this.realClaudePath = options.realClaudePath ?? process.env.SAGA_REAL_CLAUDE_PATH ?? null;
+    this.simulatorPath = options.simulatorPath ?? process.env.SAGA_SIMULATOR_PATH ?? null;
     this.dbPath = options.dbPath;
     this.sagaEntry = options.sagaEntry;
     this.sagaSkillRoot = options.sagaSkillRoot;
@@ -382,6 +388,41 @@ export class ClaudeBoardRunner {
       return this.spawn(cmd, [...prefixArgs, ...args], options);
     }
     return this.spawn(claudePath, args, options);
+  }
+
+  /**
+   * Resolve the executor binary for one assignment from the FROZEN route in
+   * execution_context.executor_kind (routing cutover, v2). The simulator and
+   * the real claude CLI are now orthogonal to the model — spawn selects the
+   * binary from executor_kind, and --model is forwarded only for model-backed
+   * executors.
+   *
+   * Fallback chain (preserves pre-cutover behavior when no frozen executor_kind):
+   *   1. frozen execution_context.executor_kind   (v2 — authoritative)
+   *   2. this.simulatorPath when set + provider 'mock' signal   (transition)
+   *   3. this.claudePath / SAGA_CLAUDE_PATH / 'claude'          (legacy default)
+   *
+   * Returns { claudePath, isSimulator }.
+   */
+  resolveExecutorPath(assignment) {
+    const ctx = assignment?.execution_context;
+    const frozenKind = ctx && typeof ctx === 'object'
+      ? ctx.executor_kind
+      : undefined;
+    if (frozenKind === 'claude-cli-simulator') {
+      // The deterministic simulator. It is NOT a model; --model is omitted.
+      const sim = this.simulatorPath
+        ?? process.env.SAGA_SIMULATOR_PATH
+        ?? `node ${path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..', 'tools', 'claude-cli-simulator.mjs')}`;
+      return { claudePath: sim, isSimulator: true };
+    }
+    if (frozenKind === 'claude-cli') {
+      // The real Claude CLI. Provider/model/effort come from model_route.
+      return { claudePath: this.realClaudePath ?? this.claudePath, isSimulator: false };
+    }
+    // Legacy / pre-v2: use the configured claudePath (which may itself point
+    // at the simulator via the SAGA_CLAUDE_PATH compound-path trick).
+    return { claudePath: this.claudePath, isSimulator: false };
   }
 
   // Записать строку в heartbeat-лог. Формат:
@@ -701,15 +742,28 @@ export class ClaudeBoardRunner {
     const snapshotRoute = assignment.execution_context?.model_route;
     if (!snapshotRoute) throw new Error('FROZEN_MODEL_ROUTE_REQUIRED');
     const am = snapshotRoute;
-    const isLmstudio = am.provider === 'lmstudio' && am.model;
-    // For LM Studio we must pass the concrete model id (--model <lmstudio-id>);
-    // for z.ai we keep the 'opus' alias (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL).
-    const modelArg = isLmstudio ? am.model : 'opus';
-    // --effort is model-config-driven, not a global constant. LM Studio: omit
-    // entirely (its chat template owns the reasoning default). z.ai: use the
-    // per-model effort from the catalog, falling back to 'high' (the previous
-    // 'xhigh' was excessive even for cloud and burned tokens at x3 peak rate).
-    const effortArg = isLmstudio ? null : (am.effort || 'high');
+    // Routing cutover: select the spawn binary from the FROZEN executor_kind.
+    // The simulator is not a model, so --model is omitted when isSimulator.
+    const executorSelection = this.resolveExecutorPath(assignment);
+    const isSimulator = executorSelection.isSimulator;
+    const isLmstudio = !isSimulator && am.provider === 'lmstudio' && am.model;
+    // For the simulator there is no model id. For LM Studio we pass the concrete
+    // model id (--model <lmstudio-id>); for z.ai we keep the 'opus' alias
+    // (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL). When the frozen route carries
+    // an explicit model id for a z.ai provider, honor it.
+    const modelArg = isSimulator
+      ? null
+      : isLmstudio
+        ? am.model
+        : (am.model || 'opus');
+    // --effort is model-config-driven, not a global constant. The simulator
+    // gets no --effort (it is not a model). LM Studio: omit entirely (its chat
+    // template owns the reasoning default). z.ai: use the per-model effort from
+    // the catalog, falling back to 'high' (the previous 'xhigh' was excessive
+    // even for cloud and burned tokens at x3 peak rate).
+    const effortArg = isSimulator
+      ? null
+      : isLmstudio ? null : (am.effort || 'high');
 
     // D1.1: per-execution MCP config carrying SAGA_EXECUTION_ID/TASK_ID/WORKER_ID
     // into the spawned saga MCP child. Falls back to the shared PID config when
@@ -757,7 +811,9 @@ export class ClaudeBoardRunner {
       // Saga tool surface are preserved.
       '--bare',
       '--disable-slash-commands',
-      '--model', modelArg,
+      // --model is omitted for the simulator (it is not a model-backed
+      // executor). The simulator parses its own argv and ignores --model.
+      ...(modelArg !== null ? ['--model', modelArg] : []),
       // --effort is injected conditionally below (LM Studio → omitted).
       '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
@@ -890,7 +946,7 @@ export class ClaudeBoardRunner {
       // и anthropics/claude-code#46416.
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
     } : {};
-    const child = this.spawnClaude(this.claudePath, args, {
+    const child = this.spawnClaude(executorSelection.claudePath, args, {
       cwd: workspaceRoot,
       env: {
         ...process.env,
@@ -917,8 +973,8 @@ export class ClaudeBoardRunner {
     const _diagLogPath = path.join(this.logRoot, safeName(run.id), `task-${task.id}-${safeName(workerId)}.jsonl`);
     try {
       const _diag = createWriteStream(_diagLogPath, { flags: 'a' });
-      _diag.write(`[runner] spawn: claudePath=${JSON.stringify(this.claudePath)} pid=${child.pid} cwd=${JSON.stringify(workspaceRoot)} task=${task.id} exec=${assignment.execution_id || 'none'}\n`);
-      _diag.write(`[runner] spawnClaude split: cmd=${JSON.stringify(this.claudePath.trim().split(/\s+/)[0])} prefixArgs=${JSON.stringify(this.claudePath.trim().split(/\s+/).slice(1))}\n`);
+      _diag.write(`[runner] spawn: claudePath=${JSON.stringify(executorSelection.claudePath)} pid=${child.pid} cwd=${JSON.stringify(workspaceRoot)} task=${task.id} exec=${assignment.execution_id || 'none'}\n`);
+      _diag.write(`[runner] spawnClaude split: cmd=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/)[0])} prefixArgs=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/).slice(1))}\n`);
       _diag.end();
     } catch { /* diagnostic is best-effort */ }
     // Pipe the prompt through stdin instead of passing it as a command-line

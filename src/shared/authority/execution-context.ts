@@ -22,8 +22,16 @@
  */
 import { createHash } from 'node:crypto';
 
-/** Policy version baked into every snapshot. Bumped on shape-incompatible change. */
-export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v1';
+/**
+ * Policy version baked into every snapshot. Bumped on shape-incompatible change.
+ *
+ * v2 (routing cutover): added `executor_kind` alongside `model_route`. The
+ * `model` string no longer encodes the executor (the `model === "mock"` defect);
+ * the executor kind is now an orthogonal dimension frozen into the snapshot.
+ * The gateway still accepts v1 snapshots for in-flight executions, but every
+ * NEW claim produces v2.
+ */
+export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
 
 /**
  * Model route frozen into the snapshot. `provider`/`model`/`effort` mirror the
@@ -34,6 +42,28 @@ export interface ExecutionModelRoute {
   provider: string;
   model: string | null;
   effort: string | null;
+}
+
+/**
+ * Executor kind frozen into the snapshot (v2). Orthogonal to the model: selects
+ * which OS binary spawn runs (`claude-cli` vs `claude-cli-simulator`). Mirrors
+ * {@link WorkerExecutionRoute.executor.kind}.
+ */
+export type ExecutionContextExecutorKind =
+  | 'claude-cli'
+  | 'claude-cli-simulator';
+
+/**
+ * Citation of the routing policy that resolved this execution's route. Frozen
+ * at claim so the production journal can always explain WHY a WorkIntent ran
+ * on a given backend, even after the policy file is edited. See ADR: "route
+ * must be a durable decision, not a live config read".
+ */
+export interface ExecutionRoutePolicyRef {
+  /** Human-readable policy source (file path or env marker). */
+  ref: string;
+  /** Stable digest of the policy that produced this route. */
+  digest: string;
 }
 
 /**
@@ -65,6 +95,10 @@ export interface ExecutionContextSnapshot {
   work_intent_id: number | null;
   authority: ExecutionAuthority | null;
   model_route: ExecutionModelRoute;
+  /** v2: executor kind (orthogonal to model). Spawn selects the binary from this. */
+  executor_kind: ExecutionContextExecutorKind;
+  /** v2: routing policy citation (ref + digest). Null only on legacy v1 snapshots. */
+  route_policy: ExecutionRoutePolicyRef | null;
   captured_at: string;
 }
 
@@ -119,11 +153,20 @@ export function authorityHash(input: {
  * would make it self-referential: `authority.authority_hash`). Used to detect
  * drift between the persisted snapshot and a recomputed one, and as the
  * `execution_context_hash` recorded alongside `execution_context` in metadata.
+ *
+ * Accepts a structural input so BOTH v1 (no executor_kind/route_policy) and v2
+ * snapshots hash consistently — the validator reconstructs exactly the stored
+ * shape and recomputes, so a v1 in-flight execution is not invalidated by the
+ * v2 cutover.
  */
-export function executionContextHash(snapshot: Omit<ExecutionContextSnapshot, never>): string {
-  const { authority, ...rest } = snapshot;
-  const authorityWithoutHash = authority
-    ? { ...authority, authority_hash: undefined }
+export function executionContextHash(
+  snapshot: ExecutionContextSnapshot | Record<string, unknown>,
+): string {
+  const authority = (snapshot as { authority?: unknown }).authority;
+  const rest: Record<string, unknown> = { ...(snapshot as Record<string, unknown>) };
+  delete rest.authority;
+  const authorityWithoutHash = authority && typeof authority === 'object'
+    ? { ...(authority as Record<string, unknown>), authority_hash: undefined }
     : null;
   return sha256Hex(
     canonicalJson({ ...rest, authority: authorityWithoutHash }),
