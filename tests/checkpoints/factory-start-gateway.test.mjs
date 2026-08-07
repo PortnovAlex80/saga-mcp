@@ -17,8 +17,20 @@ test('factory start accepts exactly one public selector and no launch coordinate
     kind:'resume', projectId:7,
   });
   assert.deepEqual(decodeFactoryStartCommand({ idea_url:'https://example.com/idea#x' }), {
-    kind:'new', ideaUrl:'https://example.com/idea',
+    kind:'new', ideaUrl:'https://example.com/idea', idempotencyKey:undefined,
   });
+  // new_start mode: intentional new Factory Run for an existing project (§7)
+  assert.deepEqual(decodeFactoryStartCommand({ project_id:7, mode:'new_start' }), {
+    kind:'new_start', projectId:7, idempotencyKey:undefined,
+  });
+  assert.deepEqual(
+    decodeFactoryStartCommand({ project_id:7, mode:'new_start', idempotency_key:'K1' }),
+    { kind:'new_start', projectId:7, idempotencyKey:'K1' },
+  );
+  assert.deepEqual(
+    decodeFactoryStartCommand({ idea_url:'https://x.example/i', idempotency_key:'K2' }),
+    { kind:'new', ideaUrl:'https://x.example/i', idempotencyKey:'K2' },
+  );
   assert.throws(() => decodeFactoryStartCommand({}), /exactly one/);
   assert.throws(
     () => decodeFactoryStartCommand({ project_id:7, idea_url:'https://example.com' }),

@@ -118,7 +118,10 @@ export function createFactoryLaunchStarter(
           lifecycleInputSchema: params.lifecycleInputSchema,
           initiatedBy: params.initiatedBy,
           idempotencyKey: params.idempotencyKey
-            ?? `product-delivery:epic:${params.epicId}`,
+            // Per-start default (NOT per-epic): an intentional new Factory Start
+            // for the same project/epic must get a fresh idempotency key so it
+            // creates a new order/run (CONVEYOR v4.3 §7).
+            ?? `product-delivery:project:${params.projectId}:start:${randomUUID()}`,
           concurrency: params.concurrency,
         }, db);
       } finally {

@@ -7,6 +7,7 @@
  */
 
 import type Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { sha256Hex } from '../shared/canonical-json.js';
 import type {
   WorkAssignmentPort,
@@ -649,7 +650,11 @@ export function createProductLifecycleRuntime(
           command.initiatedBy ?? 'product-lifecycle-orchestrator',
         idempotencyKey:
           command.idempotencyKey
-          ?? `product-delivery:epic:${command.epicId}`,
+          // Per-start default (NOT per-epic): an intentional new Factory Start
+          // for the same project/epic must get a fresh idempotency key so it
+          // creates a new LifecycleRun (CONVEYOR v4.3 §7). The per-epic constant
+          // would collapse Project → one run, forbidding Run B.
+          ?? `product-delivery:project:${command.projectId}:start:${randomUUID()}`,
         resumePaused: command.resumePaused,
       };
     },

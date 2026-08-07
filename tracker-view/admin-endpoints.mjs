@@ -476,6 +476,86 @@ export function createAdminEndpointsApi({
         }
       }
 
+      // Intentional NEW Factory Start for an EXISTING project (CONVEYOR v4.3 §7).
+      // Same project_id + epic_id, NEW order_ref + lifecycle_run_id + workplaces.
+      // The new run reuses the project's accumulated certified ReplayCapsules —
+      // replay keys are semantic and stable across runs (§9). This is NOT resume
+      // (which continues one existing interrupted run).
+      if (command.kind === 'new_start') {
+        try {
+          const result = withDbWrite(db => {
+            const project = db.prepare(
+              'SELECT id, description FROM projects WHERE id=?',
+            ).get(command.projectId);
+            if (!project) {
+              throw Object.assign(new Error(`project ${command.projectId} does not exist`), { code:'FACTORY_PROJECT_NOT_FOUND' });
+            }
+            // Reuse the project's existing epic — new Factory Start, not a new
+            // product. The epic is the durable product backlog for this project.
+            const epic = db.prepare(
+              'SELECT id FROM epics WHERE project_id=? ORDER BY id DESC LIMIT 1',
+            ).get(command.projectId);
+            if (!epic) {
+              throw Object.assign(new Error(`project ${command.projectId} has no epic`), { code:'FACTORY_PROJECT_NOT_FOUND' });
+            }
+            const epicId = epic.id;
+            const orderRef = `order-${randomUUID()}`;
+            db.prepare(
+              `INSERT INTO factory_orders
+                 (order_ref, project_id, epic_id, source_kind, state)
+               VALUES (?, ?, ?, 'existing_project', 'provisioned')`,
+            ).run(orderRef, command.projectId, epicId);
+            return { projectId: command.projectId, epicId, orderRef };
+          });
+          // Start the lifecycle with the SAME idea (initiative subject) as the
+          // original — projects.description holds it. Same idea + same repo +
+          // same package => same semantic replay keys => Run B capsule HITs.
+          const idea = withDbWrite(db => db.prepare(
+            'SELECT description FROM projects WHERE id=?',
+          ).get(result.projectId)).description || '';
+          const mode = runtimeConfig.orchestrationMode;
+          let lifecycleRunId = null;
+          let lifecycleStarted = false;
+          if (requiresBackgroundEngine(mode)) {
+            withDbWrite(db => db.prepare(
+              `UPDATE factory_orders SET state='starting', last_error=NULL,
+                      updated_at=datetime('now') WHERE order_ref=?`,
+            ).run(result.orderRef));
+            const selectedModel = factoryModel(DEFAULT_FACTORY_MODEL);
+            const starter = createFactoryLaunchStarter({
+              dbPath,
+              baseEnv: selectedModel
+                ? { ...process.env, ...modelEnvironment(selectedModel.id) }
+                : { ...process.env },
+            });
+            const started = await startProductLifecycleFromIdea({
+              orderRef: result.orderRef,
+              projectId: result.projectId,
+              epicId: result.epicId,
+              idea,
+              initiatedBy: `factory-start:${result.orderRef}`,
+              concurrency: DEFAULT_FACTORY_CONCURRENCY,
+              starter,
+              idempotencyKey: command.idempotencyKey,
+            });
+            lifecycleStarted = true;
+            lifecycleRunId = started.lifecycleRunId;
+          }
+          return respondJson(res, 200, {
+            ok:true,
+            mode:'new_start',
+            order_ref:result.orderRef,
+            project_id:result.projectId,
+            epic_id:result.epicId,
+            lifecycle_started:lifecycleStarted,
+            lifecycle_run_id:lifecycleRunId,
+          });
+        } catch (error) {
+          const status = error?.code === 'FACTORY_PROJECT_NOT_FOUND' ? 404 : 500;
+          return respondJson(res, status, { ok:false, error:error.message, code:error.code });
+        }
+      }
+
       let source;
       try {
         source = await captureIdeaSource(command.ideaUrl);
@@ -505,24 +585,11 @@ export function createAdminEndpointsApi({
 
       try {
         const result = withDbWrite(db => {
-          const existing = db.prepare(
-            `SELECT fo.order_ref, fo.project_id, fo.epic_id,
-                    fo.lifecycle_run_id, pr.repository_id AS repo_id
-               FROM factory_orders fo
-               JOIN project_repositories pr ON pr.project_id=fo.project_id
-                AND pr.status='active'
-              WHERE fo.source_digest=?`,
-          ).get(source.digest);
-          if (existing) return {
-            projectId:existing.project_id,
-            repoId:existing.repo_id,
-            epicId:existing.epic_id,
-            lifecycleRunId:existing.lifecycle_run_id,
-            orderRef:existing.order_ref,
-            taskId:null,
-            replayed:true,
-          };
-
+          // Source bytes are provenance, not start-command idempotency (CONVEYOR
+          // v4.3 §3). Matching source_digest is NO LONGER sufficient reason to
+          // return an old order — an intentional new start with the same source
+          // bytes is legal and must provision a new order/run. Start-command
+          // idempotency lives on factory_launch_requests.idempotency_key.
           const projectInfo = db.prepare(
             "INSERT INTO projects (name,description,status) VALUES (?,?,'active')",
           ).run(name, idea);
@@ -570,19 +637,6 @@ export function createAdminEndpointsApi({
           return { projectId, repoId, epicId, orderRef, taskId:null };
         });
 
-        if (result.lifecycleRunId) {
-          const state = sagaApplication.startEngine({ epicId:result.epicId });
-          return respondJson(res, 200, {
-            ok:true, mode:'resume', replayed:true,
-            order_ref:result.orderRef,
-            project_id:result.projectId,
-            epic_id:result.epicId,
-            lifecycle_run_id:result.lifecycleRunId,
-            engine_pid:state.pid,
-            running:state.running,
-          });
-        }
-
         try {
           ensureInitializedGitRepository(localPath, name);
         } catch (error) {
@@ -624,6 +678,7 @@ export function createAdminEndpointsApi({
               initiatedBy:`factory-start:${result.orderRef}`,
               concurrency,
               starter,
+              idempotencyKey: command.idempotencyKey,
             });
             lifecycleStarted = true;
             lifecycleRunId = started.lifecycleRunId;

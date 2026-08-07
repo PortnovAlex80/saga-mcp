@@ -1264,14 +1264,24 @@ CREATE TABLE IF NOT EXISTS factory_database_identity (
   created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- One durable factory order is the public identity behind a project.  A
--- caller never supplies epic/run/input coordinates: the start gateway resolves
--- them from this record.  Source bytes are frozen before provisioning so a
--- retry cannot observe a different "idea on a napkin".
+-- A factory order is one intentional Factory Start. A Project may own MANY
+-- historical orders (CONVEYOR v4.3 §7): Run A, Run B, Run C... each with its
+-- own order_ref, lifecycle_run_id, workplaces and worker executions, while
+-- retaining the same project_id/epic_id and the project's accumulated
+-- certified ReplayCapsules. Resume continues one existing order/run; a new
+-- Factory Start creates a new order for the same project.
+--
+-- Therefore project_id and epic_id are NOT globally unique: one project/epic
+-- may participate in multiple sequential orders. lifecycle_run_id remains
+-- UNIQUE because one order still owns at most one LifecycleRun.
+-- source_digest is provenance ("these were the captured source bytes"), not
+-- a lifetime identity — a later intentional start with the same source bytes
+-- is legal and must create a new order. Start-command idempotency lives on
+-- factory_launch_requests.idempotency_key, not on raw source bytes.
 CREATE TABLE IF NOT EXISTS factory_orders (
   order_ref            TEXT PRIMARY KEY,
-  project_id           INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE RESTRICT,
-  epic_id              INTEGER NOT NULL UNIQUE REFERENCES epics(id) ON DELETE RESTRICT,
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  epic_id              INTEGER NOT NULL REFERENCES epics(id) ON DELETE RESTRICT,
   lifecycle_run_id     INTEGER UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
   source_kind          TEXT NOT NULL CHECK (source_kind IN ('idea_url','existing_project')),
   source_url           TEXT,
@@ -1287,7 +1297,9 @@ CREATE TABLE IF NOT EXISTS factory_orders (
   created_at           TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_orders_source_digest
+-- Non-unique: source_digest is provenance, not a lifetime idempotency key.
+-- Multiple intentional starts may share the same source bytes.
+CREATE INDEX IF NOT EXISTS idx_factory_orders_source_digest
   ON factory_orders(source_digest) WHERE source_digest IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS factory_launch_requests (
@@ -1313,6 +1325,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_pending_launch
   ON factory_launch_requests(order_ref) WHERE state='requested';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
   ON factory_launch_requests(order_ref)
+  WHERE state IN ('requested','claimed','running');
+-- Start-command idempotency (CONVEYOR v4.3 §3): a retry of the SAME start
+-- command (same idempotency_key) while it is still in-flight deduplicates to
+-- the same launch. Once the launch completes/fails, the key is free for a new
+-- intentional start. This is NOT source-bytes dedup — source_digest lives on
+-- factory_orders as non-unique provenance.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency
+  ON factory_launch_requests(idempotency_key)
   WHERE state IN ('requested','claimed','running');
 
 CREATE TABLE IF NOT EXISTS factory_checkpoints (
@@ -1655,5 +1675,89 @@ export function migrateSyntheticBriefsToDbNative(db: {
     if (info.changes === 1) migrated += 1; else skipped += 1;
   }
   return { inspected: synthetic.length, migrated, skipped };
+}
+
+/**
+ * Rebuild factory_orders without the legacy lifetime-UNIQUE constraints on
+ * project_id and epic_id (CONVEYOR v4.3 §7: Project → many historical Factory
+ * Runs). SQLite cannot DROP an inline column UNIQUE via ALTER, so this performs
+ * the safe table-rebuild idiom: create a copy without the constraints, copy all
+ * rows preserving PK/FK relationships, drop the old table, rename.
+ *
+ * Detection: the migration is a no-op once the table no longer carries the
+ * inline `UNIQUE` keyword on project_id (inspected via sqlite_master.sql). On a
+ * fresh DB (created from the updated SCHEMA_SQL above) the table is already
+ * correct and this helper returns immediately.
+ *
+ * The source_digest index is recreated as NON-unique: source bytes are
+ * provenance, not start-command idempotency (§3). Start-command idempotency
+ * lives on factory_launch_requests.idempotency_key.
+ *
+ * Preserves: order_ref PK, lifecycle_run_id UNIQUE (one order → one run),
+ * all CHECK constraints, all existing rows, FK references from
+ * factory_launch_requests.order_ref.
+ *
+ * Idempotent.
+ */
+export function rebuildFactoryOrdersWithoutColumnUniques(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { get(...params: unknown[]): { sql?: string } | undefined };
+}): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_orders'",
+  ).get();
+  const sql = row?.sql ?? '';
+  // Only rebuild if the OLD inline-UNIQUE shape is present. The updated
+  // SCHEMA_SQL declares `project_id INTEGER NOT NULL REFERENCES` (no UNIQUE),
+  // so a fresh or already-migrated DB is skipped.
+  if (!/project_id\s+INTEGER\s+NOT\s+NULL\s+UNIQUE/i.test(sql)) return;
+
+  // foreign_keys must be OFF for the swap (SQLite rebuild idiom); restored
+  // after. The whole operation is one transaction so a failure rolls back
+  // leaving the original table intact.
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE factory_orders__new (
+        order_ref            TEXT PRIMARY KEY,
+        project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+        epic_id              INTEGER NOT NULL REFERENCES epics(id) ON DELETE RESTRICT,
+        lifecycle_run_id     INTEGER UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+        source_kind          TEXT NOT NULL CHECK (source_kind IN ('idea_url','existing_project')),
+        source_url           TEXT,
+        source_final_url     TEXT,
+        source_media_type    TEXT,
+        source_digest        TEXT,
+        source_body          BLOB,
+        state                TEXT NOT NULL CHECK (
+                               state IN ('provisioned','starting','running',
+                                         'paused','completed','start_failed')
+                             ),
+        last_error           TEXT,
+        created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO factory_orders__new
+        (order_ref, project_id, epic_id, lifecycle_run_id, source_kind,
+         source_url, source_final_url, source_media_type, source_digest,
+         source_body, state, last_error, created_at, updated_at)
+      SELECT order_ref, project_id, epic_id, lifecycle_run_id, source_kind,
+             source_url, source_final_url, source_media_type, source_digest,
+             source_body, state, last_error, created_at, updated_at
+        FROM factory_orders;
+      DROP TABLE factory_orders;
+      ALTER TABLE factory_orders__new RENAME TO factory_orders;
+      -- source_digest is provenance, not identity: NON-unique index.
+      CREATE INDEX IF NOT EXISTS idx_factory_orders_source_digest
+        ON factory_orders(source_digest) WHERE source_digest IS NOT NULL;
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* best-effort */ }
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys=ON');
+  }
 }
 

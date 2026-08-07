@@ -4,7 +4,8 @@ export const FACTORY_START_SCHEMA = 'saga.factory-start.v1' as const;
 
 export type FactoryStartCommand =
   | { readonly kind: 'resume'; readonly projectId: number }
-  | { readonly kind: 'new'; readonly ideaUrl: string };
+  | { readonly kind: 'new'; readonly ideaUrl: string; readonly idempotencyKey?: string }
+  | { readonly kind: 'new_start'; readonly projectId: number; readonly idempotencyKey?: string };
 
 export class FactoryStartError extends Error {
   constructor(
@@ -37,7 +38,7 @@ export function decodeFactoryStartCommand(
       'body must contain exactly one of project_id or idea_url',
     );
   }
-  const allowed = new Set(['project_id', 'idea_url']);
+  const allowed = new Set(['project_id', 'idea_url', 'mode', 'idempotency_key']);
   const unknown = Object.keys(value).filter(key => !allowed.has(key));
   if (unknown.length > 0) {
     throw new FactoryStartError(
@@ -55,12 +56,31 @@ export function decodeFactoryStartCommand(
       'pass exactly one of project_id or idea_url',
     );
   }
+  // Optional client-supplied start-command idempotency key. When absent the
+  // starter mints a per-start key. Source bytes are NOT idempotency (§3).
+  const idempotencyKey = typeof value.idempotency_key === 'string'
+    && value.idempotency_key.trim().length > 0
+      ? value.idempotency_key.trim()
+      : undefined;
   if (hasProject) {
     const projectId = Number(value.project_id);
     if (!Number.isSafeInteger(projectId) || projectId < 1) {
       throw new FactoryStartError(
         'FACTORY_PROJECT_ID_INVALID',
         'project_id must be a positive integer',
+      );
+    }
+    // mode disambiguates resume (continue existing run) vs new_start (intentional
+    // new Factory Run for the same Project — CONVEYOR v4.3 §7). Default is resume
+    // for backward compatibility.
+    const mode = typeof value.mode === 'string' ? value.mode : 'resume';
+    if (mode === 'new_start') {
+      return { kind: 'new_start', projectId, idempotencyKey };
+    }
+    if (mode !== 'resume') {
+      throw new FactoryStartError(
+        'FACTORY_START_UNKNOWN_FIELD',
+        `mode must be 'resume' or 'new_start', got '${mode}'`,
       );
     }
     return { kind: 'resume', projectId };
@@ -88,7 +108,7 @@ export function decodeFactoryStartCommand(
     );
   }
   url.hash = '';
-  return { kind: 'new', ideaUrl: url.toString() };
+  return { kind: 'new', ideaUrl: url.toString(), idempotencyKey };
 }
 
 export interface FactoryResumeTarget {

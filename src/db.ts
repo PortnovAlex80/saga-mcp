@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -29,14 +29,18 @@ let db: Database.Database | null = null;
  *       the 7 `factory_*` authoritative Workplace/CandidateSet/Gate tables plus
  *       4 immutability triggers are now a required part of the schema, and
  *       tables are retained as projections through the cutover window.
+ *   3 = Replay-first cardinality (CONVEYOR v4.3 §7): drop lifetime UNIQUE on
+ *       factory_orders.project_id/epic_id so one Project may own many
+ *       historical Factory Runs. source_digest becomes provenance (non-unique).
+ *       Applied via table rebuild for existing DBs.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).
  */
 
-/** Increment when the schema changes incompatibly. 2 = Conveyor v4 additive layer. */
-const SCHEMA_VERSION = 2;
+/** Increment when the schema changes incompatibly. 3 = Replay-first cardinality. */
+const SCHEMA_VERSION = 3;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -72,6 +76,10 @@ export function getDb(): Database.Database {
 
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
+  // Replay-first cardinality (v3): rebuild factory_orders without the legacy
+  // lifetime-UNIQUE on project_id/epic_id so one Project may own many
+  // historical Factory Runs. No-op on fresh DBs (SCHEMA_SQL already correct).
+  rebuildFactoryOrdersWithoutColumnUniques(db);
   // Additive migration: artifacts.storage_kind (file_backed | db_native |
   // external_ref). Fresh DBs get the column from CREATE TABLE; pre-existing
   // DBs created before this column get it added here with the safe default
