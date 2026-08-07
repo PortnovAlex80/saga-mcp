@@ -1,8 +1,7 @@
 {
   "version": "1",
   "default": {
-    "executor": { "kind": "claude-cli" },
-    "provider": "zai"
+    "executor": { "kind": "claude-cli" }
   },
   "routes": []
 }
