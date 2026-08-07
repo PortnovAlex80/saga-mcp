@@ -16,7 +16,7 @@ import type {
 import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
 import type { ProcessOutcomeCertificateRepository } from '../../../process-modules/persistence/process-outcome-certificate-repository.js';
 import type { IssueProcessOutcomeCertificateCommand } from '../../../process-modules/persistence/process-outcome-certificate.js';
-import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   FORMALIZATION_PROCESS_MODULE_REF,
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
@@ -39,12 +39,15 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
-  type AcceptanceCriticality,
   type FormalizationCase,
   type FormalizationSolutionContractPayload,
   type FormalizationSettlementInput,
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
+import {
+  extractD2Stanzas,
+  parseD2CriticalityByAc,
+} from './srs-d2-parser.js';
 
 export const FORMALIZATION_KERNEL_HANDLER_IDS = {
   freezeBaseline: 'formalization-baseline-freezer',
@@ -57,6 +60,8 @@ export interface FormalizationProductionCellInstallationDeps {
   readonly solutionContractRepository: FormalizationSolutionContractRepository;
   readonly settlementPolicy: FormalizationSettlementPolicyPort;
   readonly certificateRepository: ProcessOutcomeCertificateRepository;
+  /** Exact accepted artifact bytes; settlement never derives HOW from AC tags. */
+  readonly readArtifactContent: (artifactId: number) => string;
 }
 
 export function createFormalizationProductionCellKernelHandlers(
@@ -89,10 +94,10 @@ function createBaselineFreezer(
         };
       }
       const acs = deps.graph.readArtifactsByIds(accepted.acs);
-      const hashes = Object.fromEntries(acs.map(artifact => {
-        const hash = acceptedHash(artifact);
-        return [String(artifact.id), hash];
-      }));
+      const hashes = Object.fromEntries(acs.map(artifact => [
+        String(artifact.id),
+        acceptedHash(artifact),
+      ]));
       const source = requireProduction(ctx.input, 'reconcile-what');
       const payload = {
         schemaVersion: ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
@@ -280,6 +285,12 @@ function buildSolutionContractPayload(
     .sort((a, b) => a.id - b.id);
   const srs = artifacts.find(artifact => artifact.id === bundle.srsArtifactId);
   if (!srs) throw new Error('formalized contract has no accepted SRS');
+
+  const srsContent = deps.readArtifactContent(srs.id);
+  const d2ByCode = new Map(
+    extractD2Stanzas(srsContent).map(stanza => [stanza.ac, stanza]),
+  );
+  const criticalityByCode = parseD2CriticalityByAc(srsContent);
   const acs = artifacts
     .filter(artifact => bundle.acArtifactIds.includes(artifact.id))
     .sort((a, b) => a.id - b.id);
@@ -301,13 +312,28 @@ function buildSolutionContractPayload(
       ref: `artifact:${srs.id}`,
       hash: acceptedHash(srs),
     },
-    acceptanceCriteria: acs.map(artifact => ({
-      artifactId: artifact.id,
-      code: artifact.code,
-      acceptedHash: acceptedHash(artifact),
-      implementationRequired: !artifact.tags.includes('ac_kind:verification'),
-      criticality: readCriticality(artifact.tags),
-    })),
+    acceptanceCriteria: acs.map(artifact => {
+      if (!artifact.code) {
+        throw new Error(`accepted AC ${artifact.id} has no stable code`);
+      }
+      const stanza = d2ByCode.get(artifact.code);
+      if (!stanza) {
+        throw new Error(
+          `SRS §D2 does not decompose accepted ${artifact.code}; downstream binding denied`,
+        );
+      }
+      const acKind = stanza.fields.get('ac_kind');
+      if (acKind !== 'implementation' && acKind !== 'verification') {
+        throw new Error(`SRS §D2 ${artifact.code} has invalid ac_kind '${acKind ?? ''}'`);
+      }
+      return {
+        artifactId: artifact.id,
+        code: artifact.code,
+        acceptedHash: acceptedHash(artifact),
+        implementationRequired: acKind === 'implementation',
+        criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
+      };
+    }),
   };
 }
 
@@ -421,12 +447,6 @@ function acceptedHash(artifact: {
     throw new Error(`artifact ${artifact.id} is not accepted+clean`);
   }
   return artifact.acceptedHash;
-}
-
-function readCriticality(tags: readonly string[]): AcceptanceCriticality {
-  if (tags.includes('criticality:degradable')) return 'degradable';
-  if (tags.includes('criticality:nice_to_have')) return 'nice_to_have';
-  return 'blocker';
 }
 
 function moduleCompletion(outcome: string, certificateRef: ProductRef): ModuleCompletion {
