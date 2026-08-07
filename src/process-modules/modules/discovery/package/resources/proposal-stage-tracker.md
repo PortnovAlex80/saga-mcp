@@ -1,4 +1,4 @@
-# Discovery Proposal Worker Tracker
+# Discovery Proposal Cell Tracker
 
 ## Machine binding
 
@@ -15,34 +15,25 @@
 - output_schema: `{OUTPUT_SCHEMA}`
 - allowed_tools: `{ALLOWED_TOOLS}`
 
-## Current Step: 1
-
 ## Step progress
 
-- [ ] 1. Read this tracker and `task_get({ id: task_id })`; verify every machine binding.
-- [ ] 2. Inspect only the allowed repository/artifact context needed for the product idea.
-- [ ] 3. Fill the machine-provisioned discovery document.
-- [ ] 4. Fill the machine-provisioned proposal call JSON without changing machine-owned fields.
-- [ ] 5. Read the proposal checklist and call JSON back; verify every field and no unresolved required placeholder.
-- [ ] 6. Call `proposal_submit` once using the verified JSON.
-- [ ] 7. Re-read the accepted result, update this tracker, call `worker_done` once and exit.
+- [ ] 1. Read this tracker and `task_get({id: task_id})`; verify the machine binding.
+- [ ] 2. If gate/recovery feedback is present, read it before changing the product.
+- [ ] 3. Inspect only the bounded evidence/context required for this DiscoveryCase.
+- [ ] 4. Fill the machine-provisioned discovery document.
+- [ ] 5. Fill and re-read the machine-provisioned product call JSON.
+- [ ] 6. Verify the Proposal product checklist and remove every placeholder.
+- [ ] 7. Call `product_submit` exactly once with the verified schema/content.
+- [ ] 8. Record the returned exact ProductRef, call `worker_done` exactly once, exit.
 
-## Durable results
+## Durable result
 
-- discovery_document:
-- raw_submission_id:
-- proposal_id:
-- proposal_content_hash:
+- product_schema:
+- product_ref:
+- product_digest:
 
-## Errors and recovery
+## Repair rule
 
-| Step | Error/code | Durable state found | Resume action |
-|---:|---|---|---|
-|  |  |  |  |
-
-
-Rework rules (CGAD P18 — a rework worker arrives at the workplace and must see the feedback):
-
-- If `recovery-feedback.json` exists in this execution directory, READ IT FIRST — it carries the gate's findings about what to fix.
-- If `review-feedback.json` exists, READ IT FIRST — it carries the reviewer's findings (changes_requested) about what to fix.
-- Never rework blind.
+A rejected CandidateSet never becomes accepted by editing task status. A repair
+is a new fenced execution in this same Workplace. Reuse accepted context, change
+only what the GateDecision/feedback identifies, submit a new immutable product.
