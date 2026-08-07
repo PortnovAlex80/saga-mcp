@@ -7,10 +7,13 @@ import {
 import {
   SqliteProcessProductRepositoryV2,
 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
+import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { writeProduct } from './universal-desk-helper.js';
 
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
+let candidates: SqliteCandidateSetRepository | null = null;
 
 function submissionRepo(): SqliteManagedNodeSubmissionRepository {
   return submissions ??= new SqliteManagedNodeSubmissionRepository(getDb());
@@ -18,10 +21,14 @@ function submissionRepo(): SqliteManagedNodeSubmissionRepository {
 function productRepo(): SqliteProcessProductRepositoryV2 {
   return products ??= new SqliteProcessProductRepositoryV2(getDb());
 }
+function candidateRepo(): SqliteCandidateSetRepository {
+  return candidates ??= new SqliteCandidateSetRepository(getDb());
+}
 
 export function _resetProductToolRepositoriesForTests(): void {
   submissions = null;
   products = null;
+  candidates = null;
 }
 
 const productSubmit: ToolHandler = args => {
@@ -108,6 +115,28 @@ const productRead: ToolHandler = args => {
   };
 };
 
+const candidateRead: ToolHandler = args => {
+  const workplaceRef = deserializeWorkplaceRef(requiredString(args, 'workplace_ref'));
+  const role = requiredString(args, 'role');
+  if (role !== 'author' && role !== 'reviewer') {
+    throw new Error('role must be author|reviewer');
+  }
+  const sets = candidateRepo().listForWorkplace(workplaceRef)
+    .filter(set => set.role === role);
+  if (sets.length === 0) throw new Error('CANDIDATE_SET_NOT_FOUND');
+  const set = sets[0]!;
+  return {
+    candidate_set_ref: set.candidateSetRef,
+    workplace_ref: requiredString(args, 'workplace_ref'),
+    role: set.role,
+    producer_execution_ref: set.producerExecutionRef,
+    subject_candidate_set_ref: set.subjectCandidateSetRef,
+    product_refs: set.members.map(member => member.productRef),
+    candidate_set_digest: set.candidateSetDigest,
+    sealed_at: set.sealedAt,
+  };
+};
+
 export const definitions: Tool[] = [
   {
     name: 'product_submit',
@@ -150,11 +179,32 @@ export const definitions: Tool[] = [
       required: ['schema_id', 'ref', 'digest'],
     },
   },
+  {
+    name: 'candidate_read',
+    description:
+      'Read the immutable current CandidateSet for one exact Workplace and role. Intended for reviewer desks; the Workplace state machine prevents author drift while review is active.',
+    annotations: {
+      title: 'Factory: Read Candidate Set',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workplace_ref: { type: 'string' },
+        role: { type: 'string', enum: ['author', 'reviewer'] },
+      },
+      required: ['workplace_ref', 'role'],
+    },
+  },
 ];
 
 export const handlers: Record<string, ToolHandler> = {
   product_submit: productSubmit,
   product_read: productRead,
+  candidate_read: candidateRead,
 };
 
 function requiredString(args: Record<string, unknown>, key: string): string {
