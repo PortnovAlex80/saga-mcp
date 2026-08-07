@@ -7,11 +7,12 @@
  *   2. Saga MCP tool authorization               (gateway allow/deny)
  *   3. Production provenance                     (journal / product receipts)
  *
- * The route is read once at claim, frozen here, and never re-resolved at
- * spawn. A WorkIntent changed post-claim likewise does not change the authority
- * of an already-running execution.
+ * Replay-first execution is also resolved here. A capsule hit is frozen before
+ * spawn just like a model route: the worker cannot switch between replay and a
+ * model after it starts.
  */
 import { createHash } from 'node:crypto';
+import type { ReplayKeyMaterial } from '../../replay/replay-capsule.js';
 
 /** Shape version for the immutable execution snapshot. */
 export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
@@ -19,9 +20,9 @@ export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
 /**
  * Inference route frozen into the snapshot.
  *
- * `provider` is null for executors that do not perform inference (for example
- * `claude-cli-simulator`). Keeping it nullable is important provenance: a
- * deterministic simulator must never be journaled as if it contacted z.ai.
+ * `provider` is null for executors that do not perform inference (simulator or
+ * certified replay). Keeping it nullable is important provenance: a
+ * deterministic execution must never be journaled as if it contacted z.ai.
  */
 export interface ExecutionModelRoute {
   provider: string | null;
@@ -32,12 +33,23 @@ export interface ExecutionModelRoute {
 /** Executor kind is orthogonal to provider/model. */
 export type ExecutionContextExecutorKind =
   | 'claude-cli'
-  | 'claude-cli-simulator';
+  | 'claude-cli-simulator'
+  | 'factory-replay';
 
 /** Citation of the routing policy used to resolve this execution. */
 export interface ExecutionRoutePolicyRef {
   ref: string;
   digest: string;
+}
+
+/** Exact replay lookup frozen in the same claim transaction as the fence. */
+export interface ExecutionReplayBinding {
+  /** Always present for a Production Cell execution, hit or miss. */
+  key: string;
+  key_material: ReplayKeyMaterial;
+  /** Null means replay miss and the selected LLM is used normally. */
+  capsule_ref: string | null;
+  capsule_payload_hash: string | null;
 }
 
 /** Immutable Saga-tool authority granted to this execution. */
@@ -57,6 +69,7 @@ export interface ExecutionContextSnapshot {
   model_route: ExecutionModelRoute;
   executor_kind: ExecutionContextExecutorKind;
   route_policy: ExecutionRoutePolicyRef | null;
+  replay: ExecutionReplayBinding | null;
   captured_at: string;
 }
 
