@@ -17,6 +17,7 @@ export function submissionValidatorCheckProviderRef(input: {
   validatorVersion: string;
   nodeId: string;
   contractRef?: ContractRef;
+  requireManagedProduction?: boolean;
 }) {
   const providerId = `factory.submission-validator.${input.validatorId}`;
   const version = input.validatorVersion;
@@ -27,6 +28,7 @@ export function submissionValidatorCheckProviderRef(input: {
     validatorVersion: input.validatorVersion,
     nodeId: input.nodeId,
     contractRef: input.contractRef ?? null,
+    requireManagedProduction: input.requireManagedProduction === true,
   });
   return { providerId, version, providerDigest } as const;
 }
@@ -37,12 +39,14 @@ export function submissionValidatorCheckProvider(input: {
   validator: NodeSubmissionValidator;
   nodeId: string;
   contractRef?: ContractRef;
+  requireManagedProduction?: boolean;
 }): CheckProvider & { readonly providerDigest: string } {
   const ref = submissionValidatorCheckProviderRef({
     validatorId: input.validator.validatorId,
     validatorVersion: input.validator.validatorVersion,
     nodeId: input.nodeId,
     ...(input.contractRef ? { contractRef: input.contractRef } : {}),
+    requireManagedProduction: input.requireManagedProduction,
   });
   return {
     ...ref,
@@ -58,6 +62,25 @@ export function submissionValidatorCheckProvider(input: {
           || candidate.workplaceRef.processRunId !== processRunId
           || !moduleRef
         ) return 'error';
+        if (input.requireManagedProduction) {
+          const produced = input.db.prepare(
+            `SELECT 1 AS present
+               FROM factory_managed_artifact_productions
+              WHERE process_run_id=? AND execution_id=?
+              LIMIT 1`,
+          ).get(processRunId, candidate.producerExecutionRef) as
+            | { present: number }
+            | undefined;
+          const traced = input.db.prepare(
+            `SELECT 1 AS present
+               FROM factory_managed_trace_productions
+              WHERE process_run_id=? AND execution_id=?
+              LIMIT 1`,
+          ).get(processRunId, candidate.producerExecutionRef) as
+            | { present: number }
+            | undefined;
+          if (!produced && !traced) return 'failed';
+        }
         const row = input.db.prepare(
           `SELECT t.id AS task_id,t.epic_id,e.project_id
              FROM worker_executions we
