@@ -1,7 +1,7 @@
 import type { PostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
 import { SqliteProductionCellIntegration } from './sqlite-production-cell-integration.js';
 
-export const GIT_INTEGRATION_EFFECT_ID = 'factory.git-integration.v1';
+export const GIT_INTEGRATION_EFFECT_ID = 'git-integration';
 
 export function createGitIntegrationEffect(
   integration: SqliteProductionCellIntegration,
