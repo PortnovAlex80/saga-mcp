@@ -2,8 +2,8 @@
  * Shared registration contract for installable Process Modules.
  *
  * A module contributes declarations, kernel handlers, human interactions and
- * quality CheckProviders. The composition root owns the registries; modules
- * register by opaque ids and never change the runtime dispatcher/state machine.
+ * quality providers through platform extension points. The composition root
+ * owns runtime mechanics; modules never add a dispatcher or state machine.
  */
 
 import type Database from 'better-sqlite3';
@@ -12,7 +12,6 @@ import type { HumanInteractionRegistry } from '../process-modules/application/hu
 import type { ProcessModuleRegistry } from '../process-modules/application/process-module-registry.js';
 import type { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import type { NodeExecutor, NodeProducts } from '../process-modules/application/node-executor.js';
-import type { FactoryCheckProviderRegistry } from '../process-modules/application/standard-check-providers.js';
 import type { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import type { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
 import type { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
@@ -30,7 +29,6 @@ import type { AdoptedNodeResultPort } from '../checkpoints/sqlite-resume-directi
 export interface ModuleRegistries {
   kernelHandlers: KernelHandlerRegistry;
   humanInteractions: HumanInteractionRegistry;
-  checkProviders: FactoryCheckProviderRegistry;
   moduleRegistry: ProcessModuleRegistry;
   installationRegistry: ProcessModuleInstallationRegistry;
 }
@@ -47,7 +45,7 @@ export interface ModuleSharedDeps {
   readonly processRunRepo: SqliteProcessRunRepository;
   readonly nodeRunRepo: SqliteNodeRunRepository;
   readonly certificateRepo: SqliteProcessOutcomeCertificateRepository;
-  /** Legacy FlowRecovery store. Removed once the last old module is cut over. */
+  /** Legacy FlowRecovery store. Removed when no installed flow references it. */
   readonly recoveryCaseRepo: SqliteRecoveryCaseRepository;
   readonly managedNodeSubmissions: SqliteManagedNodeSubmissionRepository;
   readonly processProductRepo: SqliteProcessProductRepository;
@@ -65,7 +63,6 @@ export interface ModuleSharedDeps {
 
   readonly runtimePersistence: FactoryDiscoveryRuntimePersistence;
   readonly exactCandidateAcceptance: SqliteExactCandidateAcceptance;
-  /** Production Cell infrastructure is mandatory in the target factory. */
   readonly candidateSetRepo: SqliteCandidateSetRepository;
   readonly gateRepo: SqliteGateRepository;
   readonly workplaceProductPort: WorkplaceProductPort;
