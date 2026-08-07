@@ -12,21 +12,20 @@ import {
   resolveDbPath,
   setExecutionEnv,
 } from './claude-simulator/runtime.mjs';
-import { maybeIntegrateApprovedReview } from './claude-simulator/post-scenario.mjs';
+import {
+  assertScenarioMatchesContract,
+  assertStandardWorkerCoverage,
+} from './claude-simulator/scenario-contracts.mjs';
 import { selectButtonColorScenario } from './claude-simulator/scenarios/button-color.mjs';
 
 async function main() {
   const startedAt = Date.now();
-  // Diagnostic: write startup trace to stderr (piped to JSONL log by runner).
   process.stderr.write(`[simulator] started pid=${process.pid} argv=${JSON.stringify(process.argv.slice(2))}\n`);
   process.stderr.write(`[simulator] env: DB_PATH=${process.env.DB_PATH ? 'set' : 'MISSING'} SAGA_SIM_SCENARIO=${process.env.SAGA_SIM_SCENARIO || 'unset'} SAGA_TASK_ID=${process.env.SAGA_TASK_ID || 'unset'}\n`);
 
   const stream = createStreamEmitter(process.stdout);
   const { mcpConfigPath, prompt: argvPrompt } = parseClaudeArgv(process.argv);
 
-  // The claude-runner passes the prompt via stdin (child.stdin.write(prompt))
-  // when no positional prompt is present in argv. Read stdin synchronously
-  // when argv yielded no prompt.
   let prompt = argvPrompt;
   if (!prompt) {
     try {
@@ -60,6 +59,7 @@ async function main() {
 
   let ctx = promptContext;
   try {
+    assertStandardWorkerCoverage();
     const runtime = await loadSagaRuntime(dbPath);
     ctx = enrichContext(runtime, promptContext);
     setExecutionEnv(ctx);
@@ -74,10 +74,14 @@ async function main() {
       throw new Error(`SIMULATOR_SCENARIO_UNKNOWN: ${scenarioName}`);
     }
     const scenario = selectButtonColorScenario(ctx, process.env);
+    assertScenarioMatchesContract(ctx, scenario);
     stream.text(`simulator: selected ${scenario.id}`);
     await executeSteps(runtime, ctx, scenario, stream);
-    maybeIntegrateApprovedReview(runtime, ctx, scenario, stream);
 
+    // Do not merge, accept, settle or advance the flow here. The simulator is
+    // only a deterministic replacement for an LLM WorkerExecution. Candidate
+    // sealing, GateDecision, git integration, freeze, verification settlement
+    // and Delivery remain authoritative factory runtime responsibilities.
     const durationMs = Date.now() - startedAt;
     heartbeat(ctx, 'SIM_DONE', `scenario=${scenario.id} duration=${durationMs}ms`);
     stream.result({ durationMs, success: true, summary: `deterministic scenario '${scenario.id}' completed` });
