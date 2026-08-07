@@ -1,9 +1,9 @@
-# Conveyor Mental Model — Saga4 (Version 4.2)
+# Conveyor Mental Model — Saga4 (Version 4.3)
 
-This document is the plain-language architectural model for the Saga conveyor.
-The formal invariant remains **CGAD P18** (`cgad-v2-spec.md`). Every runtime,
-module, test, replay, recovery and delivery change must be checked against this
-model.
+This document is the architectural compass for the Saga conveyor. It is the
+plain-language interpretation of the formal CGAD invariants and must be used to
+review runtime, persistence, module, testing, replay, recovery and delivery
+changes.
 
 The governing rule is:
 
@@ -15,136 +15,112 @@ runtime or recovery runtime.
 
 ---
 
-## 1. One production interface, one material, one desk
+## 1. One production interface
 
 Saga does not fundamentally care whether a worker is backed by GLM, Claude,
 Qwen, LM Studio or deterministic replay.
 
-The factory sees one production contract:
+The factory sees one contract:
 
 ```text
 WorkerExecution
-  -> receives exact immutable execution context
+  -> receives one immutable execution context
   -> reads exact authorized inputs
   -> produces text / canonical JSON / TextSet / patch products
   -> submits through the normal worker protocol
-  -> leaves one immutable CandidateSet
+  -> seals one immutable CandidateSet
 ```
 
-The physical worker implementation is replaceable. The production contract is
-not.
+The physical worker implementation is replaceable. Production physics are not.
 
-The material crossing the worker boundary is text or a content-addressed set of
-text documents. A proposal, PRD, SRS, TypeScript file, review verdict and
-verification report are different schemas of the same physical material.
+The material crossing the worker boundary is text or content-addressed textual
+material. Proposal, PRD, SRS, source code, reviewer verdict and verification
+report differ by schema, not by runtime mechanism.
 
-External actions are different. Compilation, tests, Git integration, publish,
-deploy and other effects are performed by deterministic kernel/provider ports.
-A worker may produce a textual desired-state product, but it never gains
-transition or effect authority merely by producing text.
-
-### Product identity
-
-```text
-ProductEnvelope {
-  ref: ProductRef
-  mediaType
-  body: InlineText | CanonicalJson | TextSetManifestRef | ImmutableBlobRef
-  lineageRefs[]
-  producerAuthority {
-    kind
-    ref
-  }
-  workplaceRef?
-}
-```
-
-`ProductRef` is exact identity. Consumers use exact refs/hashes or accepted
-output bindings. They never use a mutable “latest worker output” heuristic.
-
-### One logical desk
-
-There is no proposal desk, requirements desk and code desk in conveyor physics.
-There is one Workplace-scoped production surface:
-
-```text
-Worker
-  -> product_read(exact ProductRef)
-  -> product_submit(schemaRef, content)
-  -> execution_complete(...)
-  -> CandidateSet
-```
-
-Schema determines meaning. It does not select another runtime mechanism.
+External state changes are different. Compilation, tests, Git integration,
+publish and deploy are performed by deterministic kernel/provider capabilities.
+A worker may describe desired state, but text does not grant effect or
+transition authority.
 
 ---
 
-## 2. The LEGO principle
+## 2. One logical desk
 
-A workshop declares **WHAT** must happen:
+All workers use one Workplace-scoped production surface:
 
-- Flow and Production Cells;
-- execution profiles and skills;
-- input/output contracts;
+```text
+product_read(exact ProductRef)
+product_submit(schemaRef, content)
+execution_complete(...)
+```
+
+`ProductRef` is exact product identity. Consumers use exact refs/digests or
+accepted output bindings, never “latest worker output”.
+
+Schema determines product meaning. It must not select another persistence,
+submit or lifecycle mechanism.
+
+---
+
+## 3. LEGO principle
+
+Workshop packages declare WHAT:
+
+- Flow / Production Cells;
+- skills and execution profiles;
+- product contracts;
 - CheckPlans;
-- decision and recovery policies;
-- optional external effects.
+- decision/recovery policy;
+- optional effects.
 
-The factory owns **HOW**:
+Factory runtime owns HOW:
 
-- dispatch;
+- dispatch and concurrency;
 - worker selection and launch;
-- concurrency;
-- Workplace identity;
-- desk provisioning;
-- fencing and supervision;
+- Workplace and desk identity;
+- fencing/supervision;
 - product persistence;
 - CandidateSet sealing;
+- GateRun/GateDecision;
 - review;
-- GateRun and GateDecision;
 - replay lookup;
 - recovery;
 - lifecycle progression.
 
-Adding a normal workshop must not require a new dispatcher, worker runner,
-lifecycle engine, task status family, submit/read protocol or module-specific
-acceptance state machine.
+Adding a normal workshop must not add another dispatcher, worker runner,
+lifecycle engine, submit/read protocol or acceptance state machine.
 
-If core runtime branches on module name or worker profession, the LEGO contract
-is broken.
+Core runtime must not branch on workshop name or worker profession.
 
 ---
 
-## 3. Production Cell is the universal cognitive-production unit
-
-A Production Cell contains the whole bounded worker/quality loop:
+## 4. Production Cell is the universal worker-quality loop
 
 ```text
-exact inputs
+exact semantic inputs
   -> fenced author WorkerExecution
-  -> sealed author CandidateSet
+  -> author CandidateSet
   -> author GateRun
-     | accepted(final) -> terminal(accepted)
-     | accepted(author) -> reviewer role
-     | repair_required -> repair_wait
-     | human_required -> paused
-     | failed -> terminal(failed)
+       | accepted(final) -> final acceptance
+       | accepted(author) -> reviewer
+       | repair_required -> repair_wait
+       | human_required -> paused
+       | failed -> terminal(failed)
 
 optional reviewer
   -> reviewer WorkerExecution pinned to exact author CandidateSet
   -> reviewer CandidateSet
   -> final GateRun
-     | accepted -> terminal(accepted)
-     | repair_required -> author or reviewer repair
-     | human_required -> paused
-     | failed -> terminal(failed)
+       | accepted -> final acceptance
+       | repair_required -> author/reviewer repair
+       | human_required -> paused
+       | failed -> terminal(failed)
 ```
 
-WorkerExecution, reviewer execution, CheckRun and GateRun are internal attempts
-of the cell. They are not hidden Flow nodes.
+WorkerExecution, reviewer execution and GateRun are attempts inside the cell,
+not hidden Flow nodes.
 
-One definition may materialize many Workplaces, for example Development
-fan-out.
+A cell definition may materialize many Workplaces. Stable instance identity is:
 
 ```text
 WorkplaceRef {
@@ -155,14 +131,14 @@ WorkplaceRef {
 }
 ```
 
-`workKey` is stable and derived from accepted input identity, never worker or
-attempt identity.
+`workKey` is semantic/stable inside the run and never contains worker-attempt
+identity.
 
 ---
 
-## 4. CandidateSet is the QC handoff
+## 5. CandidateSet is the QC handoff
 
-Worker completion seals one exact immutable CandidateSet:
+Worker completion seals exact products:
 
 ```text
 CandidateSet {
@@ -171,77 +147,43 @@ CandidateSet {
   producerExecutionRef
   role                    // author | reviewer
   subjectCandidateSetRef? // reviewer only
-  members[] {
-    productRef
-    origin
-    sourceCandidateSetRef?
-  }
+  members[] { productRef, origin, sourceCandidateSetRef? }
   candidateSetDigest
   sealedAt
 }
 ```
 
-The seal key `(workplaceRef, producerExecutionRef, role)` is deterministic.
-Repeating the same seal is idempotent; a different payload under the same key is
-rejected.
-
-A reviewer is pinned to one exact author CandidateSet. Reviewer output is
-assessment evidence; it never replaces authored production.
-
 Worker completion means only:
 
-> this execution stopped and left a candidate on the desk.
+> this execution stopped and left a candidate batch on the desk.
 
-It does **not** mean acceptance.
+It does not mean acceptance.
+
+CandidateSet authority identity may include current run/execution provenance.
+That is correct for QC and audit, but it is **not automatically a cross-run
+replay identity**.
 
 ---
 
-## 5. GateDecision is acceptance authority
+## 6. GateDecision and CellFinalAcceptance
 
-A GateRun inspects exact CandidateSets through declared checks and emits one
-append-only GateDecision:
+GateRun emits one append-only GateDecision over exact CandidateSets.
 
-```text
-GateDecision {
-  workplaceRef
-  gateRunRef
-  gatePhase
-  subjectCandidateSetRef
-  assessmentCandidateSetRefs[]
-  verdict                  // accepted | repair_required | human_required | failed
-  repairTargetRole?
-  checkPlanRef
-  checkPlanDigest
-  checkReceiptRefs[]
-  installationDigest
-  decisionKey
-  acceptedOutputBindings[]
-  decisionDigest
-}
-```
-
-These are different facts:
+These are distinct facts:
 
 ```text
-Gate computation returned accepted
+check/gate computation says accepted
 !=
-GateDecision was durably applied
+GateDecision is persisted
 !=
-Production Cell reached terminal(accepted)
+GateDecision is applied to expected Workplace revision
+!=
+Workplace reaches terminal(accepted)
 ```
 
-Only application of a **cell-final accepted GateDecision** may publish accepted
-output bindings and move the cell forward.
+Only the last condition is cell-final acceptance.
 
-A persisted decision that loses the expected Workplace revision remains audit
-evidence but cannot advance the cell.
-
-### CellFinalAcceptance
-
-Code must not repeatedly reconstruct the final-acceptance predicate from
-`decision.verdict === 'accepted'`.
-
-The application layer should expose one typed proof/value such as:
+Code should expose one typed proof/value, conceptually:
 
 ```text
 CellFinalAcceptance {
@@ -255,114 +197,99 @@ CellFinalAcceptance {
 It is constructible only after proving:
 
 ```text
-final GateDecision verdict = accepted
-AND
-that decision was applied to the expected Workplace revision
-AND
-Workplace.loopState = terminal
-AND
-Workplace.terminalReason = accepted
+final GateDecision.verdict = accepted
+AND decision applied to expected Workplace revision
+AND Workplace.loopState = terminal
+AND Workplace.terminalReason = accepted
 ```
 
-Replay certification and other post-finalization capabilities should consume
-this proof rather than a raw `accepted` verdict.
+Replay certification consumes `CellFinalAcceptance`, not a raw `accepted`
+verdict.
 
 ---
 
-## 6. Replay-first is normal factory execution
-
-There is no production mode, mock mode, hybrid mode or replay mode. There is one
-normal Factory Start.
-
-Every worker assignment follows the same algorithm:
-
-```text
-materialize Workplace
-  -> atomic claim/fence WorkerExecution
-  -> freeze exact ReplayKey
-  -> resolve certified capsule eligibility
-       | HIT  -> deterministic replay worker
-       | MISS -> model selected by normal frontend/workshop routing
-  -> normal MCP/product protocol
-  -> CandidateSet
-  -> CURRENT GateRun
-  -> CURRENT GateDecision
-  -> normal Workplace/lifecycle transition
-```
-
-Replay replaces only expensive/non-deterministic **worker production**.
-
-Replay never restores:
-
-- GateDecision;
-- Workplace transition;
-- task/Kanban status;
-- lifecycle cursor;
-- settlement;
-- release certificate;
-- external-effect completion.
-
-Those mechanisms always execute through current code.
-
-This is why replay is useful for regression testing: previously accepted worker
-production can be reconstructed cheaply while the current factory physics are
-executed again.
-
----
-
-## 7. Factory Start, Resume and Project scope are different identities
-
-Replay-first requires a precise distinction between product identity and run
-identity.
+## 7. Project, Factory Start and Resume are different identities
 
 ### Project
 
-A Project is the stable product scope. Replay capsules are project-scoped unless
-a narrower declared scope is required.
+Project is stable product scope and the normal replay namespace.
 
-### Factory Start
+### New Factory Start
 
-A **new Factory Start** means a new production run identity for the same project.
-It begins lifecycle progression from the beginning using current runtime code.
-It may reuse exact certified capsules from previous runs of that project.
+An intentional new Factory Start creates a **new run identity** for the same
+Project and starts lifecycle progression from the beginning using current code.
 
 ```text
-same Project
+Project P
   -> Factory Run A
   -> Factory Run B
   -> Factory Run C
 ```
 
-Run identity must not be conflated with Project identity.
+The new run gets new ProcessRun/LifecycleRun/Workplace/WorkerExecution identities
+but may reuse semantically compatible capsules belonging to Project P.
 
 ### Resume
 
-`resume` continues the **same** interrupted run and its existing Workplaces. It
-does not intentionally re-run already completed Production Cells from the
-beginning.
-
-Therefore:
+Resume continues the same interrupted run and its existing Workplaces. It does
+not intentionally re-run completed cells from the beginning.
 
 ```text
-new start      = new ProcessRun/LifecycleRun identity for the same project
-resume         = continue the same run identity
-replay capsule = reusable worker production across compatible runs
+new start = new run identity, same project
+resume    = same run identity
 ```
 
-A persistence rule that permits only one lifetime production run per project is
-not an architectural invariant of Saga4 replay-first. It is a legacy/schema
-constraint and must not force test harnesses to copy capsules between fake
-projects, reset production tables or invent a second runtime.
+Persistence must not collapse Project identity into “one lifetime Factory Run”.
+A legacy schema that permits only one order/lifecycle per Project is a migration
+constraint, not Saga4 architecture.
 
-Idempotency may deduplicate the **same start request**. It must not forbid a
-later intentional new Factory Start for the same project.
+Idempotency deduplicates the **same start command**. It must not prohibit a later
+intentional new start of the same Project with the same source bytes.
 
 ---
 
-## 8. ReplayKey is exact semantic invocation identity
+## 8. Replay-first is normal execution
 
-A capsule is reusable only when the current worker invocation is semantically
-the same as the accepted invocation that produced it.
+There is no production mode, mock mode, hybrid mode or replay mode.
+
+Every worker assignment follows one algorithm:
+
+```text
+materialize Workplace
+  -> claim + fence WorkerExecution
+  -> freeze replay semantic identity
+  -> resolve capsule eligibility
+       | HIT  -> deterministic replay worker
+       | MISS -> normally selected model
+  -> same MCP/product surface
+  -> NEW CandidateSet
+  -> CURRENT GateRun
+  -> CURRENT GateDecision
+  -> CURRENT Workplace/lifecycle transition
+```
+
+Replay substitutes only worker production.
+
+Replay never restores:
+
+- CandidateSet from another run as current QC state;
+- GateDecision;
+- Workplace state;
+- task/Kanban status;
+- lifecycle cursor;
+- settlement/certificate;
+- external-effect completion.
+
+Current factory code always performs those steps again.
+
+---
+
+## 9. Replay identity must be semantic and cross-run stable
+
+This is a critical invariant.
+
+A replay key identifies **the semantic worker invocation**, not its current
+runtime envelope.
 
 Conceptually:
 
@@ -374,65 +301,113 @@ ReplayKeyMaterial {
   productionCellId
   workKey
   role
-  packageDigest
-  nodeInputHash
-  subjectCandidateDigest? // reviewer
+  packageContractDigest
+  semanticInputDigest
+  subjectProductionDigest? // reviewer
+  repositoryBaseDigest?    // when not already inside semanticInputDigest
 }
 ```
 
-For repository-changing work, the exact repository base commit/tree must be
-covered either directly or transitively by frozen input identity.
+### `semanticInputDigest`
 
-Replay identity must not depend on:
+`semanticInputDigest` is computed from the information that may materially
+change worker output, for example:
 
-- WorkerExecution ID;
-- task row ID merely as identity;
-- ProcessRun ID merely as identity;
+- exact input product schema + content digest;
+- stable business/initiative values;
+- stable fan-out item identity/content;
+- exact RecoveryIssue semantic content when relevant;
+- immutable external observation products;
+- repository base commit/tree for code-changing work.
+
+It MUST exclude runtime/provenance identities that naturally differ between
+Factory Runs:
+
+- ProcessRun/LifecycleRun ids;
+- WorkplaceRef;
+- WorkerExecution id;
+- task/intent row ids;
+- CandidateSetRef;
+- producerExecutionRef;
 - timestamps;
-- selected provider/model;
-- transient filesystem path.
+- transient filesystem paths.
 
-Changing configured model does not invalidate a capsule. A capsule proves that
-production was accepted for exact semantic inputs, not that one model brand
-must reproduce it.
+A raw `nodeInputHash` may remain useful for current-run authority/audit, but it
+must not be used as ReplayKey input unless its canonicalization is explicitly
+proven to exclude all run-specific envelope fields.
 
-Meaningful input/package/contract/author-candidate/repository-base change causes
-a miss.
+### Production manifests must separate semantics from provenance
 
-### Closed-world replay input rule
+A Production Cell output manifest may contain both:
 
-Replay is safe only if all information that may materially influence worker
-output is pinned into the execution input identity.
+```text
+semantic products/digests
+AND
+current-run provenance refs
+```
 
-A replayable WorkerExecution may consume:
-
-1. exact ProductRefs in its frozen read set;
-2. exact Workplace/CandidateSet/RecoveryIssue refs authorized for that attempt;
-3. external observations that have first been converted to immutable,
-   content-addressed products and included in the frozen read set.
-
-An unpinned live read from search, web, API, mutable database state or filesystem
-state makes the invocation **non-replayable** unless that observation is captured
-as an exact input product.
-
-The safety property comes from the closed input surface, not from SHA-256 alone.
+Its audit `contentHash` is not automatically a replay semantic digest.
+Downstream replay identity must derive from accepted product content, not from a
+manifest hash that includes Workplace/CandidateSet/execution/task identities.
 
 ---
 
-## 9. Capsule is certified worker production
+## 10. Reviewer replay uses semantic author production identity
 
-ReplayCapsule is not a cached chat response, checkpoint or old runtime state. It
-is an immutable declarative recipe for reproducing one accepted worker
-execution's products.
+Reviewer execution is authoritatively pinned to the **exact current-run author
+CandidateSetRef**. That remains required for QC.
+
+But cross-run replay identity cannot use a CandidateSet digest that includes
+WorkplaceRef or producerExecutionRef.
+
+Reviewer ReplayKey therefore uses a semantic digest such as:
+
+```text
+subjectProductionDigest = hash(
+  ordered/multiset of accepted author product { schemaId, contentDigest }
+  + contract-relevant semantic metadata
+)
+```
+
+Do not use current-run CandidateSetRef or run-scoped CandidateSet digest as the
+cross-run reviewer replay key.
+
+This preserves both requirements:
+
+```text
+QC authority       -> exact current CandidateSetRef
+Replay equivalence -> stable semantic author-production digest
+```
+
+---
+
+## 11. Closed-world replay input rule
+
+Replay safety depends on a closed input surface, not on hashing alone.
+
+A replayable WorkerExecution may consume only:
+
+1. exact ProductRefs in its frozen read set;
+2. exact Workplace/CandidateSet/RecoveryIssue material authorized for the
+   attempt;
+3. external observations first materialized as immutable content-addressed
+   input products.
+
+An unpinned live read from web/search/API/mutable DB/filesystem makes the
+invocation non-replayable unless that observation is first captured into the
+semantic input set.
+
+---
+
+## 12. ReplayCapsule is certified worker production
 
 ```text
 ReplayCapsule {
   replayKey
   keyMaterial
-  sourceCandidateSetRef
-  sourceExecutionRef       // audit only
+  sourceCandidateSetRef   // audit provenance
+  sourceExecutionRef      // audit provenance
   payloadHash
-
   typedProducts[]
   artifacts[]
   traces[]
@@ -440,628 +415,299 @@ ReplayCapsule {
 }
 ```
 
-Old database row IDs are never replay authority.
+Old DB ids are never replay authority.
 
-Artifacts/traces use semantic selectors or replay-local mappings. Git replay
-uses exact base identity plus patch/content recipe and verifies the resulting
-tree.
+Artifacts/traces use semantic selectors or replay-local mappings. Git recipe
+pins exact repository base and verifies resulting tree.
 
-### Certification boundary
+### Certification
 
-A capsule can become reusable only from **CellFinalAcceptance**.
+Only `CellFinalAcceptance` can certify reusable capsules.
 
-For a cell without review, final acceptance certifies its exact author
-CandidateSet.
+No-review cell:
 
-For a reviewed cell, final acceptance certifies exactly:
+```text
+final accepted decision -> exact author CandidateSet -> author capsule
+```
 
-- the final decision's `subjectCandidateSetRef` (author);
-- its `assessmentCandidateSetRefs[]` (reviewer evidence).
+Reviewed cell:
 
-Do not scan all historical CandidateSets of a terminal Workplace: old rejected
-repair/reviewer attempts remain durable history and must not become capsules.
+```text
+final accepted decision
+  -> exact subject author CandidateSet
+  -> exact assessment reviewer CandidateSet(s)
+  -> author + reviewer capsules
+```
 
-Rejected, repair, paused, human-required, failed, stale-decision and superseded
-candidates never enter the certified replay corpus.
+Never scan every historical CandidateSet of a terminal Workplace. Rejected
+repair/reviewer attempts remain durable audit history but are not certified.
 
 ### Direct capture and lazy reconstruction
 
 Normal path:
 
 ```text
-CellFinalAcceptance
-  -> capture exact accepted worker execution(s)
-  -> ReplayCapsule(s)
+CellFinalAcceptance -> capture capsule(s)
 ```
 
 Crash fallback:
 
 ```text
-terminal(accepted) durable evidence exists
-  -> capsule archive missing
-  -> later certification sweep reconstructs exact capsule(s)
+durable final acceptance exists
+capsule archive missing
+  -> later certification sweep reconstructs it
 ```
 
-Direct capture is the normal path. Lazy reconstruction is crash/reconciliation
-fallback. No second pending-capture state machine is required.
-
-The accepted Workplace/CandidateSet/Gate evidence is authoritative. Capsule is
-derived reusable evidence.
+Direct capture is normal. Lazy reconstruction is recovery for missed archive
+materialization. No second capture state machine is needed.
 
 ---
 
-## 10. Replay worker is indistinguishable at the production boundary
+## 13. Replay worker is ordinary at the production boundary
 
-On capsule hit the physical execution uses deterministic replay. On miss it uses
-the selected inference route.
+Hit and miss use the same WorkerExecution protocol, authority, Product Desk,
+RepositoryDesk, completion command, CandidateSet and current gates.
 
-After product submission the factory must not need to know which physical worker
-produced the bytes.
+Replay worker cannot mutate Workplace, create GateDecision, advance lifecycle or
+expand tool authority.
 
-Both paths use the same:
-
-- immutable ExecutionContext;
-- WorkIntent authority;
-- Workplace desk;
-- product/artifact/trace tools;
-- RepositoryDesk where applicable;
-- execution completion protocol;
-- CandidateSet sealing;
-- quality gates.
-
-Replay worker cannot set Workplace status, create GateDecision, advance lifecycle,
-expand tool authority or mutate another execution's products.
-
-### Provenance remains truthful
-
-Replay hit records deterministic replay provenance and exact capsule ref. It must
-not pretend an inference provider/model generated the output.
-
-Project/workshop model configuration remains unchanged. A later miss still uses
-that configured model.
-
----
-
-## 11. A rejected replay capsule is not immediately replayed again
-
-Current gates may reject production that was accepted in an earlier run. This is
-expected and valuable.
-
-The dangerous loop is forbidden:
+Provenance must remain truthful:
 
 ```text
-capsule C -> replay -> current Gate rejects
-repair worker claim -> capsule C again
-capsule C -> replay -> current Gate rejects
-...
+inference execution -> real provider/model provenance
+replay execution    -> deterministic executor + exact capsule ref
 ```
 
-After a replay-produced CandidateSet is rejected for a Workplace, that exact
-capsule is **ineligible for subsequent recovery attempts of that Workplace**.
-The next attempt resolves as an ordinary replay miss and uses the selected model
-(or another eligible capsule only if its identity is genuinely different).
-
-No separate blacklist aggregate is required. Ineligibility should be derived
-from existing durable evidence:
-
-```text
-WorkerExecution.replay.capsuleRef
-  -> CandidateSet.producerExecutionRef
-  -> rejecting GateDecision / RecoveryIssue
-  -> WorkplaceRef
-```
-
-A replay hit that corrupts/fails during execution is also fail-closed. It does
-not silently fall through to a paid LLM inside the same execution. Recovery
-creates a new WorkerExecution, which then resolves eligibility normally.
+Replay does not rewrite project/workshop model settings.
 
 ---
 
-## 12. Model selection remains orthogonal
+## 14. Model selection remains orthogonal
 
-Model selection is operational/cost-control policy, not domain behavior.
-
-Normal inheritance remains conceptually:
+Normal model inheritance remains operational/cost policy:
 
 ```text
 factory default
   -> workshop default
   -> cell/role override
-  -> frontend/run selection where applicable
+  -> frontend/run selection
 ```
 
-At claim, the selected route is frozen into WorkerExecution.
+Replay key deliberately excludes model identity. Capsule proves accepted
+production for semantic inputs, not allegiance to a model vendor/version.
 
-Replay never rewrites the project's model settings. It only substitutes one
-physical worker on exact capsule hit.
-
-Model identity deliberately does not belong in ReplayKey. A future user command
-that explicitly asks for another answer is a replay-bypass command, not a model
-key mutation.
+A future explicit “Regenerate” command may bypass replay for one invocation. It
+is not another runtime mode.
 
 ---
 
-## 13. Future regeneration semantics
+## 15. Rejected replay cannot loop forever
 
-Normal execution is `prefer replay`:
+If current QC rejects replayed production, the same capsule must not be selected
+again for the next recovery attempt of that Workplace.
 
-```text
-eligible capsule -> replay
-otherwise        -> selected model
-```
-
-A future “Regenerate” action may request a one-invocation replay bypass:
+Forbidden:
 
 ```text
-bypass replay once
-  -> selected model
-  -> new CandidateSet
-  -> current Gate
+capsule C -> replay -> reject
+repair -> capsule C -> replay -> reject
+...
 ```
 
-This is a local execution directive, not another factory mode.
+Eligibility is derived from durable existing evidence:
 
-Old accepted capsules may remain audit/version history; regeneration does not
-require deleting them.
+```text
+WorkerExecution.replay.capsuleRef
+  -> produced CandidateSet
+  -> rejecting GateDecision / RecoveryIssue
+  -> WorkplaceRef
+```
+
+The next recovery WorkerExecution treats that capsule as ineligible and normally
+falls through to the selected model.
+
+A corrupt capsule hit also fails closed. It does not silently call a paid model
+inside the same execution. Recovery creates a new execution and resolves again.
 
 ---
 
-## 14. Test project and production projects use the same runtime
+## 16. Test projects and production projects use the same runtime
 
-A service/conformance project may be seeded with certified fixture capsules. A
-production project normally starts empty and builds capsules from accepted work.
+Factory must not branch on project name, `isTest`, mock mode or hybrid mode.
 
-Factory runtime must not branch on `isTest`, project name, mock mode or hybrid
-mode.
+### Fixture/conformance project
 
-A conformance harness may:
+A service test project may be seeded with certified fixture capsules and then
+invoke normal Factory Start. The test asserts current CandidateSets, gates,
+transitions and terminal outcome.
 
-- create project/input/repository fixtures;
-- seed certified capsule fixtures;
-- invoke normal Factory Start;
-- assert durable results.
-
-It must not:
-
-- override all stages to a simulator through special routing;
-- copy production state to fake a second lifecycle;
-- reset runtime tables to force replay;
-- implement its own lifecycle progression.
-
-### Canonical two-pass proof
-
-For a normal project whose model provider is available:
+### Canonical two-pass integration proof
 
 ```text
-Run A: same project, no capsules
-  -> model workers
+Run A — same Project, no capsules
+  -> selected model workers
   -> current gates
   -> final accepted cells
   -> capsules captured
 
-Run B: intentional new Factory Start for same project
-  -> new run identities / new Workplaces
-  -> same semantic invocation keys
+Run B — intentional NEW Factory Start for same Project
+  -> new run/workplace/execution identities
+  -> same semantic replay keys
   -> capsule hits
-  -> new CandidateSets
-  -> current gates and lifecycle execute again
+  -> NEW CandidateSets
+  -> CURRENT gates/lifecycle execute again
 ```
 
-The persistence model must support this directly. Tests must not work around a
-one-run-per-project schema by using two databases or rewriting project IDs.
+The persistence model must support this directly.
+
+A canonical E2E must NOT:
+
+- copy capsules between two databases;
+- change Project id to manufacture a hit;
+- reset lifecycle/process/workplace tables;
+- route every stage to a simulator;
+- implement a private lifecycle harness.
+
+Those techniques can test serialization/adapters, but they do not prove the
+accepted replay-first factory architecture.
 
 ---
 
-## 15. Checkpoints and replay are related but not the same
+## 17. Recovery and checkpoint remain separate semantics
 
-Replay answers:
+Recovery brings a new WorkerExecution to the same Workplace/desk with exact
+RecoveryIssue/rejected products. Replay may satisfy it only if an eligible
+capsule exists.
 
-> Can current factory code reconstruct previously accepted expensive worker
-> production and run current transitions again?
+Checkpoint restores operational state of the same interrupted run.
 
-Checkpoint answers:
-
-> Can operational state of an interrupted live run be restored?
+Replay reconstructs certified worker production while running current factory
+transitions again.
 
 ```text
-ReplayCapsule = reconstruct certified worker production
-Checkpoint    = restore runtime/machine state
+Recovery   = repair same Workplace
+Checkpoint = restore same run machine state
+Replay     = reuse semantic worker production across compatible invocations
 ```
 
-Future checkpoints may reuse content-addressed accepted material and capsule
-storage, but checkpoint restore does not replace replay-first execution.
+---
+
+## 18. RepositoryDesk is factory-owned
+
+Factory provisions worktree/branch/base before code worker launch.
+
+Model/replay worker does not invent or switch arbitrary worktrees.
+
+Git replay requires exact base compatibility, applies recorded patch/content to
+factory-provisioned desk and verifies resulting tree before submitting current
+implementation product.
+
+Old commit SHA alone is not replay proof.
 
 ---
 
-## 16. Workplace is primary; worker is temporary
+## 19. Two-channel state and repair projection
 
-| Entity | Lifetime | Meaning |
-|---|---|---|
-| Workplace | durable for one materialized cell in one run | primary production place |
-| WorkerExecution | one attempt | temporary worker visit |
-| WorkItem/Card | rebuildable projection | human Kanban view |
-| Desk | Workplace-scoped | workspace/product view |
-| CandidateSet | immutable | exact batch sent to QC |
-| GateDecision | immutable | QC authority |
-| ReplayCapsule | immutable/derived | certified reconstruction recipe |
+Kanban and Workplace loop state remain separate.
 
-Worker replacement never changes Workplace identity inside one run.
-
-A new Factory Start creates new run/Workplace identities while remaining in the
-same Project capsule scope.
-
----
-
-## 17. Repository desk is factory-owned
-
-For code-changing work, factory prepares RepositoryDesk before worker launch.
-Model/replay worker does not invent its own worktree or branch.
-
-Launch context pins repository identity and expected base commit/tree.
-
-A Git replay recipe may apply only when exact base binding matches. Replayer
-applies recorded patch/content and verifies resulting tree before submitting
-current-run implementation product.
-
-Copying an old commit SHA without proving repository identity is not replay.
-
----
-
-## 18. Two-channel state and repair-role mapping
-
-Human Kanban and machine loop are separate.
-
-```text
-Kanban:
-todo -> in_progress -> review -> review_in_progress -> done
- * -> blocked
- * -> failed
- * -> cancelled
-
-Workplace loop:
-idle -> queued -> leased -> running -> verifying
-                              |
-                              -> repair_wait -> queued ...
-terminal / paused
-```
-
-Repair projection is explicit:
+Explicit repair mapping:
 
 ```text
 repairTargetRole = author
-  -> Kanban = in_progress
+  -> Kanban in_progress
 
 repairTargetRole = reviewer
-  -> Kanban = review_in_progress
+  -> Kanban review_in_progress
 ```
 
-The projection layer does not guess from prose, prior card status or module
-name.
+Projection never guesses from prose/module name.
 
-Worker crash/replay miss does not return started work to `todo` as domain truth.
-
----
-
-## 19. Review is universal
-
-If review is declared:
-
-```text
-author CandidateSet passes author gate
-  -> same Workplace queues reviewer
-  -> reviewer pinned to exact author CandidateSet
-  -> reviewer CandidateSet
-  -> final GateDecision
-```
-
-Invalid reviewer output retries reviewer role.
-
-A valid reviewer verdict proving author defect returns same Workplace to author
-repair.
-
-Only final accepted review creates CellFinalAcceptance and makes exact author +
-reviewer production certifiable for replay.
+Worker crash/replay miss/replacement does not reset domain work to `todo`.
 
 ---
 
-## 20. Recovery remains Workplace repair, not replay
+## 20. Checks, effects and compensation
 
-Recovery creates a **new WorkerExecution** on the same Workplace/desk with exact
-RecoveryIssue and rejected CandidateSet inputs.
-
-Replay may satisfy the new worker only if a still-eligible exact capsule exists.
-A capsule just rejected by current QC on that Workplace is not eligible again.
-
-Recovery budget remains durable/sticky. Replay does not reset it.
-
----
-
-## 21. Quality-control layers
-
-Every gate has three conceptual layers:
-
-1. **Core integrity** — exact refs, hashes, schema/cardinality, lineage and
-   producer authority.
-2. **Declared CheckPlan** — versioned schema/policy/lint/build/test/provider
-   checks.
-3. **Decision policy** — deterministic reduction to accepted / repair_required /
-   human_required / failed.
-
-Replay bypasses none of them.
-
-If current checks become stricter, replayed old production may fail. That is
-correct. Recovery then uses a real model rather than replaying the same rejected
-capsule forever.
-
----
-
-## 22. Checks, effects and compensation
-
-Checks inspect immutable candidates and do not mutate authoritative/external
+Checks inspect immutable candidates and cannot change authoritative/external
 state.
 
-Effects perform authorized external changes after the required acceptance
-boundary, using exact desired-state identity, idempotency key, durable
-EffectAttempt and EffectReceipt.
+Effects perform authorized external changes with exact desired-state identity,
+idempotency key, durable EffectAttempt and EffectReceipt.
 
 ```text
-lint/build/test              = check
-Git integration/merge/push   = effect
-publish/deploy               = effect
+lint/build/test            = check
+Git merge/push             = effect
+publish/deploy             = effect
 ```
 
-Replay reconstructs worker production. It never treats an old effect receipt as
-new worker output and never repeats an external effect merely because a capsule
-was replayed.
+Replay never substitutes old external-effect completion.
 
 ### No implicit rollback
 
-Saga must never infer an automatic rollback for an external effect.
-
-An effect capability/policy explicitly declares its recovery regime:
+Effect recovery policy is explicit:
 
 ```text
-EffectRecoveryPolicy =
-    retry-idempotently
-  | compensate-explicitly
-  | roll-forward
-  | human-required
+retry-idempotently
+compensate-explicitly
+roll-forward
+human-required
 ```
 
-Default for effects without a proven compensator is roll-forward or
-human-required.
+Default without a proven compensator is roll-forward or human-required.
 
-A compensating action, when supported, is itself an authorized Effect with its
-own desired-state ref, idempotency key, attempt and receipt. It is not hidden
-undo logic.
+A compensating action is itself an authorized Effect with its own identity,
+attempt and receipt.
 
 ---
 
-## 23. Observation is a control/provider loop, not another worker engine
+## 21. Observation is a control/provider operation
 
-Delivery observation does not justify a second Production Cell/runtime.
-
-Canonical shape:
+Delivery observation does not create another worker engine.
 
 ```text
 Deploy Effect
   -> EffectReceipt
-  -> ObservationProvider reads exact deployment target
+  -> ObservationProvider
   -> Observation Product/Receipt
   -> deterministic policy
        | healthy
        | degraded
        | failed
-       | not-ready
+       | not-ready -> durable retry
 ```
 
-If observation is not ready, the same control operation may schedule a durable
-retry according to policy:
-
-```text
-not-ready
-  -> durable next-observation time
-  -> observe again
-```
-
-This is a retryable control/provider operation. It does not hire an LM worker,
-create another worker queue or mutate Production Cell state outside declared
-control transitions.
+Observation retry is a bounded/durable control operation, not a private worker
+queue or second Production Cell runtime.
 
 ---
 
-## 24. Workshop instances of the same core
-
-| Workshop | Production meaning |
-|---|---|
-| Discovery | proposal/readiness products, deterministic settlement |
-| Formalization | PRD/FR/NFR/RULE/UC/AC/SRS and traceability |
-| Development | task graph, patches/TextSets, reviews, verification; Git integration as effect |
-| Delivery | desired state where cognition is required; authorization/effects/observation as control operations |
-
-Development may have more fan-out/fan-in topology. It is not another worker
-runtime.
-
----
-
-## 25. One queue and one dispatch authority
-
-There is one infrastructure dispatch/concurrency mechanism.
+## 22. One dispatch authority and one execution authority
 
 Infrastructure selects eligible queued Workplaces, records reservation/fence,
-builds immutable execution context, resolves replay eligibility, then launches
-the chosen physical worker.
+builds immutable execution context, resolves replay eligibility and launches the
+physical worker.
 
-Worker never chooses work. Module never starts workers. Replay lookup is part of
-normal assignment, not another queue.
+Worker never chooses work. Workshop never launches workers.
 
----
-
-## 26. Execution authority and supervision
-
-Every WorkerExecution has unique execution identity, fence and immutable
-execution context.
-
-Execution context pins:
-
-- Workplace/WorkIntent authority;
-- allowed Saga tools;
-- exact read set / input identity;
-- model/executor route;
-- replay key and exact capsule ref on hit;
-- provenance hashes.
-
-All managed MCP calls validate this fail-closed.
-
-Replay worker receives no broader authority than corresponding LLM worker.
-
-Liveness, progress, process identity and lease supervision remain execution
-concerns independent of Workplace continuity.
+All managed tools validate execution authority fail-closed. Replay workers get
+no broader capability set than corresponding inference workers.
 
 ---
 
-## 27. Production journal
+## 23. DDD and dependency direction
 
-Journal explains production; it does not authorize transitions by itself.
+Key conceptual ownership:
 
-It records exact provenance for WorkerExecutions, product submissions,
-CandidateSets, CheckReceipts, GateDecisions, EffectAttempts and replay source.
+- **Project** — stable product/replay scope; multiple intentional Factory Runs.
+- **ProcessRun/LifecycleRun** — one lifecycle execution; Resume preserves it.
+- **Workplace** — one materialized cell in one run.
+- **WorkerExecution** — one fenced attempt.
+- **CandidateSet** — exact QC handoff in the current run.
+- **GateDecision** — append-only QC authority.
+- **ReplayCapsule** — derived reusable worker-production archive.
+- **EffectAttempt** — idempotent external-effect attempt.
 
-Journal distinguishes inference production from deterministic replay without
-changing downstream semantics.
-
-Accepted products/GateDecisions remain immutable authority evidence. Capsule is
-derived reusable evidence.
-
----
-
-## 28. Mandatory replay/certification scenarios
-
-The shared conformance suite must prove at least:
-
-1. Capsule miss preserves selected provider/model/effort and launches normal
-   model path.
-2. Exact capsule hit uses deterministic replay but leaves project model settings
-   unchanged.
-3. Input/package/contract change creates a miss.
-4. Reviewer capsule key is pinned to exact author CandidateSet digest.
-5. Repository base mismatch prevents Git replay.
-6. Replay produces a new current CandidateSet and current GateRun.
-7. Old GateDecision/lifecycle/Workplace state is never replayed.
-8. Capsule is certified only from CellFinalAcceptance.
-9. Reviewed cell certifies exactly final author + reviewer sets, not historical
-   rejected attempts.
-10. Rejected/repair/human-required/failed candidates never become capsules.
-11. Stale accepted GateDecision that loses transition authority cannot certify.
-12. Crash after final acceptance but before archive capture is repaired by lazy
-   reconstruction.
-13. Replay MCP calls pass through same authority gateway as LLM calls.
-14. Corrupt replay hit fails closed and does not silently call a model in the
-   same execution.
-15. A replayed capsule rejected by current Gate is not replayed again in the
-   next recovery attempt of that Workplace.
-16. Unpinned live external input marks execution non-replayable or is first
-   materialized as immutable input product.
-17. Same project supports Run A (model production) then intentional new Run B
-   from beginning (capsule replay) without table resets, cross-project copying
-   or another runtime.
-18. Conformance fixture project can complete through normal Factory Start from
-   prebuilt capsules without mock/hybrid routing.
-
----
-
-## 29. Mandatory effect/observation scenarios
-
-External-effect conformance is at least as important as replay conformance.
-
-Prove:
-
-1. Crash after an effect happened externally but before receipt consumption
-   converges without a duplicate external change.
-2. Duplicate EffectAttempt with same idempotency identity has one effective
-   external result.
-3. Retry observes external state before repeating the action.
-4. Unsupported compensation never occurs implicitly.
-5. Explicit compensation is a separate authorized Effect with its own receipt.
-6. Observation retry does not create another worker/runtime/queue.
-7. Deployment observation eventually reaches healthy/degraded/failed or an
-   explicit bounded/human-required terminal policy.
-
----
-
-## 30. Fitness functions, not only prose
-
-This document is architectural source of truth, but important invariants must be
-mechanically enforced.
-
-CI/architecture tests should reject at least:
-
-- module-name/task-kind switches in universal dispatch/cell physics;
-- module-specific submit/read protocols;
-- mock/hybrid factory execution modes;
-- replay code mutating GateDecision/Workplace/lifecycle directly;
-- capsule payload containing old GateDecision as replay authority;
-- capsule certification from raw `verdict === accepted` without
-  CellFinalAcceptance;
-- repeat use of a capsule already rejected by current Gate in the same
-  Workplace recovery chain;
-- replayable worker with unpinned live-read capability;
-- direct domain imports of SQLite/replay/simulator adapters;
-- test harness that resets production tables or copies capsules across projects
-  merely to simulate a second normal Factory Start.
-
-Architecture review checklists complement executable fitness functions; they do
-not replace them.
-
----
-
-## 31. DDD interpretation
-
-The metaphor supplies ubiquitous language, not one giant aggregate.
-
-### Bounded contexts
-
-**Conveyor Runtime** owns ProcessRun, Workplace state, Flow progression and
-recovery policy.
-
-**Execution Control** owns WorkerExecution, reservations, launch, fences,
-leases, supervision and physical executor choice.
-
-**Production and Evidence** owns ProductRefs, CandidateSets, CheckReceipts and
-GateDecisions.
-
-**Work Projection** owns rebuildable human WorkItems.
-
-**Module Contracts** owns Process Module/Production Cell declarations, skills,
-schemas and policies.
-
-**Module Catalog/Installation** owns installed package identity/digest.
-
-**Lifecycle Composition** owns stage routing.
-
-Replay persistence is infrastructure/production-evidence support. It is not a
-workshop, lifecycle or acceptance aggregate.
-
-### Important aggregates
-
-| Aggregate | Core invariant |
-|---|---|
-| Project | stable product/replay scope; may have multiple intentional Factory Runs |
-| ProcessRun/LifecycleRun | one execution of lifecycle; resume continues this identity |
-| Workplace | one active mutation actor; final accepted gate is forward authority |
-| WorkerExecution | unique fence; terminal once |
-| CandidateSet | immutable exact producer handoff |
-| GateDecision | append-only exact decision |
-| RecoveryCase | bounded sticky repair history |
-| Product | immutable schema/ref/digest/provenance |
-| EffectAttempt | idempotent observe-before-retry external effect |
-
-ReplayCapsule is derived immutable archive data. Its existence never substitutes
-for a GateDecision.
-
----
-
-## 32. Hexagonal dependency rule
+Dependency direction:
 
 ```text
 CLI / MCP / UI / scheduler
@@ -1071,32 +717,91 @@ CLI / MCP / UI / scheduler
         <- SQLite / filesystem / model / replay / Git adapters
 ```
 
-Replay implementation belongs behind execution/production ports. Domain code
-must not import SQLite replay repositories or simulator scripts.
-
-A replay executor is an outbound adapter implementing the same physical worker
-contract as an inference driver.
+Domain/application code must not depend directly on simulator scripts or SQLite
+replay adapters.
 
 ---
 
-## 33. Canonical factory glossary
+## 24. Mandatory replay fitness tests
+
+At minimum prove:
+
+1. Miss preserves selected provider/model/effort.
+2. Exact semantic hit uses replay and leaves model settings unchanged.
+3. New ProcessRun/Workplace/execution refs do not change ReplayKey by
+   themselves.
+4. Meaningful product input/package/contract change causes miss.
+5. Reviewer key is stable across runs when author product content is identical.
+6. Reviewer key changes when author product content changes.
+7. Repository base mismatch prevents Git replay.
+8. Replay creates NEW current CandidateSet and CURRENT GateRun.
+9. GateDecision/Workplace/lifecycle from old run are never replayed.
+10. Capsule certification requires CellFinalAcceptance.
+11. Reviewed cell certifies only exact final author+reviewer sets.
+12. Rejected historical repair attempts never become capsules.
+13. Crash after final acceptance but before archive capture can lazily rebuild
+    capsule.
+14. Replay tool calls use the same authority gateway.
+15. Corrupt hit fails closed without hidden LLM fallback.
+16. Capsule rejected by current gate is ineligible on next recovery attempt.
+17. Unpinned live external read is non-replayable.
+18. Same Project supports Run A model production followed by Run B replay from
+    beginning in the same persistence system, with no table reset/capsule copy.
+19. Fixture project completes through normal Factory Start without mock/hybrid
+    routing.
+
+---
+
+## 25. Mandatory effect fitness tests
+
+Prove:
+
+1. Crash after external change but before receipt consumption does not duplicate
+   the effect.
+2. Duplicate idempotency identity creates one effective external change.
+3. Retry observes external state before repeating.
+4. Unsupported compensation never happens implicitly.
+5. Explicit compensation is its own authorized Effect.
+6. Observation retry does not create a second runtime/queue.
+
+---
+
+## 26. Architecture fitness functions
+
+CI should mechanically reject at least:
+
+- module-name/task-kind branches in universal runtime physics;
+- module-specific submit/read protocols;
+- mock/hybrid factory modes;
+- replay code mutating GateDecision/Workplace/lifecycle;
+- certification from raw `verdict === accepted`;
+- ReplayKey derived from run-specific envelope refs;
+- reviewer ReplayKey derived from run-scoped CandidateSet identity;
+- repeated same-capsule replay after current rejection;
+- replayable workers with unpinned live-read authority;
+- canonical E2E using DB reset/cross-DB capsule copy to fake a new Factory Run;
+- one-run-per-project persistence constraints treated as target architecture.
+
+Markdown is an architectural source of truth; executable fitness functions are
+its enforcement.
+
+---
+
+## 27. Canonical glossary
 
 | Human term | Machine meaning |
 |---|---|
-| Factory / conveyor | Saga runtime |
 | Project / product | stable product scope and replay namespace |
-| Factory Run | one intentional ProcessRun/LifecycleRun execution |
+| Factory Start | intentional creation of a new Factory Run |
+| Factory Run | one ProcessRun/LifecycleRun execution |
 | Resume | continuation of the same Factory Run |
 | Workshop | Process Module package |
-| Production Cell | declarative worker/check/review/gate loop |
-| Workplace | materialized Production Cell instance in one run |
-| Worker | one WorkerExecution, regardless of physical implementation |
-| LLM worker | WorkerExecution backed by inference |
-| Replay worker | WorkerExecution backed by certified capsule recipe |
-| Card | WorkItem projection |
-| Desk | Workplace-scoped workspace/product view |
-| Candidate batch | CandidateSet |
-| Quality engineer | GateRun |
+| Production Cell | worker/check/review/gate loop |
+| Workplace | materialized cell instance in one run |
+| Worker | one WorkerExecution |
+| Replay worker | deterministic WorkerExecution using capsule recipe |
+| Desk | Workplace-scoped workspace/product surface |
+| Candidate batch | current-run CandidateSet |
 | QC act | GateDecision |
 | Final QC acceptance | CellFinalAcceptance proof/value |
 | Defect sheet | RecoveryIssue |
@@ -1104,128 +809,26 @@ contract as an inference driver.
 | Effect | authorized external state change |
 | Observation | retryable provider/control read of external state |
 
-The quality department is not another workshop. Replay is not another factory.
-Observation is not another worker engine.
+Replay is not another factory. Observation is not another worker engine.
 
 ---
 
-## 34. Architecture review questions
+## 28. Architectural rule of thumb
 
-For every change ask:
+Two questions catch most design drift.
 
-1. Does it introduce another factory/runtime path?
-2. Does core branch on workshop/module names?
-3. Is physical worker implementation leaking into Production Cell semantics?
-4. Does worker completion merely seal CandidateSet?
-5. Is final acceptance proven rather than inferred from raw `accepted`?
-6. Could stale/superseded decision advance or certify anything?
-7. Is ReplayCapsule treated as derived production rather than authority?
-8. Does replay traverse current CandidateSet, Gate, settlement and lifecycle?
-9. Does replay preserve normal authority and RepositoryDesk?
-10. Does model selection remain independent from replay availability?
-11. Are all semantically relevant worker inputs exact/pinned?
-12. If replayed production fails current Gate, can the same capsule loop again?
-13. Can crash after final acceptance reconstruct missing capsule safely?
-14. Can same Project intentionally start a new Factory Run from beginning without
-    resetting tables or copying capsules to another project?
-15. Is external effect retry idempotent and observe-before-retry?
-16. Is compensation explicit rather than implicit rollback?
-17. Is an observation loop a control/provider operation rather than a hidden
-    second runtime?
-18. Does the test harness start the same normal Factory rather than simulate it?
+> **After worker products are submitted, can the rest of the factory execute
+> identically without knowing whether the bytes came from GLM, Claude, Qwen or
+> replay?**
 
-If an answer requires a second engine, second acceptance mechanism or
-module-specific replay path, the design is wrong.
+And:
 
----
+> **Can the same Project intentionally start a new Factory Run, reuse only
+> semantically compatible capsules, and still execute all current QC/lifecycle
+> code without resetting production state?**
 
-## 35. Condensed conformance checklist
-
-### Factory
-
-- one normal Factory Start mechanism;
-- Project may have multiple intentional Factory Runs;
-- resume continues same run;
-- one dispatch/concurrency mechanism;
-- one Production Cell runtime;
-- no mock/hybrid lifecycle mode;
-- modules never launch workers.
-
-### Worker production
-
-- immutable execution context before spawn;
-- closed exact read surface for replayable executions;
-- one normal MCP/product surface;
-- inference/replay workers have identical product authority;
-- stale execution cannot submit;
-- completion seals CandidateSet only.
-
-### Quality
-
-- exact CandidateSet subjects;
-- reviewer pinned to exact author set;
-- current CheckPlan always runs;
-- GateDecision append-only;
-- CellFinalAcceptance proves final durable acceptance;
-- only final accepted transition publishes output/advances.
-
-### Replay
-
-- lookup replay-first by default;
-- miss = selected model;
-- hit = deterministic worker;
-- key excludes model/transient/run attempt IDs;
-- capsule certified only from CellFinalAcceptance;
-- reviewed cell certifies exact final author + reviewer;
-- rejected capsule is ineligible for immediate same-Workplace recovery replay;
-- corrupt hit fails closed;
-- GateDecision/Workplace/lifecycle never replayed;
-- archive may be reconstructed lazily from durable accepted evidence.
-
-### Desk/Git
-
-- factory prepares repository desk;
-- worker does not create/switch arbitrary worktree;
-- Git replay validates exact base and resulting tree.
-
-### Effects
-
-- exact desired-state identity;
-- idempotent EffectAttempt/EffectReceipt;
-- observe-before-retry;
-- no implicit rollback;
-- compensation explicit when supported;
-- observation control retries do not create another worker engine.
-
-### Recovery/checkpoint
-
-- repair stays on same Workplace;
-- recovery budget durable/sticky;
-- replay does not reset recovery;
-- checkpoint restores machine state;
-- replay reconstructs certified worker production.
-
----
-
-## 36. Operational rule of thumb
-
-The fastest test for any new mechanism is:
-
-> **After a worker has submitted exact products, can the rest of the factory run
-> identically without knowing whether those products came from GLM, Claude,
-> Qwen or a replay capsule?**
-
-If yes, the design respects the conveyor.
-
-If no, physical worker implementation leaked into factory physics.
-
-A second equally important test is:
-
-> **Can the same Project be intentionally started again as a new Factory Run,
-> reuse eligible capsules, and still execute all current quality/lifecycle code
-> without resetting production state?**
-
-If no, run identity has been incorrectly collapsed into project identity.
+If either answer is no, worker/run implementation details have leaked into
+factory physics.
 
 ---
 
@@ -1236,5 +839,5 @@ If no, run identity has been incorrectly collapsed into project identity.
 - [Factory Domain Acceptance Registry](FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md)
 
 Workshops are configuration instances of this protocol, not separate lifecycle
-engines. Replay is a standard worker-production optimization inside the same
-protocol, not another mode of the factory.
+engines. Replay is a standard optimization of worker production inside the same
+protocol, never another mode of the factory.
