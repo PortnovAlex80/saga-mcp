@@ -15,29 +15,43 @@ choosing **four independent dimensions**:
 A deterministic simulator is an executor, not an inference provider or model.
 The factory must never encode executor selection through a fake model name.
 
-## Solution: ExecutionRouteResolver + frozen snapshot
+## Solution: claim-time merge + frozen snapshot
+
+The lifecycle execution controls contain the provider/model/effort selected by
+the user/front. The execution-routing policy selects the executor and MAY
+explicitly override any inference field for a particular module/cell/role/profile.
+Both inputs are read inside the claim transaction and merged once:
 
 ```
-Production Cell needs Worker
-        │
-        ▼
-ExecutionRouteResolver.resolve({ module, cell, role, executionProfile })
-        │
-        ▼
-WorkerExecutionRoute { executor.kind, provider.id|null, model.id|null,
-                       inference.effort, policyRef, policyDigest }
-        │
-        ▼  (frozen at claim — ONE transaction)
-ExecutionContextSnapshot { model_route, executor_kind, route_policy }
-        │
-        ▼  (persisted in worker_executions.metadata)
-spawn ← reads executor_kind → selects binary
-gateway ← validates the exact frozen route
-provenance ← records the exact frozen route
+Lifecycle execution controls          Routing policy
+(provider/model/effort from UI)       (executor + optional overrides)
+              │                                 │
+              └──────────────┬──────────────────┘
+                             ▼
+                      atomic task claim
+                             │
+                             ▼
+                 FINAL WorkerExecutionRoute
+                 executor.kind
+                 provider/model/effort
+                 policyRef/policyDigest
+                             │
+                             ▼
+                 ExecutionContextSnapshot v2
+                             │
+                    persisted before spawn
 ```
+
+After the snapshot is persisted, spawn/gateway/provenance never re-read model
+or routing configuration.
 
 For `claude-cli-simulator`, `model_route.provider`, `model_route.model` and
 `model_route.effort` are all `null`. No fake provider is recorded.
+
+For `claude-cli`, a routing rule that omits provider/model/effort inherits those
+fields from the lifecycle execution controls. This is what keeps the front model
+selector authoritative by default while still permitting explicit per-cell
+routing overrides.
 
 ### Resolution precedence (most-specific-first)
 
@@ -52,20 +66,30 @@ are rejected as ambiguous.
 
 ### Production policy vs test policy
 
-`factory-execution-routes.json` is the production-safe repository policy. It
-must never silently switch production workshops to the deterministic simulator.
-The checked-in default therefore selects the real `claude-cli` executor only.
-
-Hybrid/mock routing belongs to an explicit test/run override such as
-`SAGA_EXECUTION_ROUTES_JSON` or `SAGA_EXECUTION_ROUTES_PATH` pointing at a test
-policy. Example:
+`factory-execution-routes.json` is production-safe and only selects the real
+executor by default:
 
 ```json
 {
   "version": "1",
   "default": {
-    "executor": { "kind": "claude-cli" },
-    "provider": "zai"
+    "executor": { "kind": "claude-cli" }
+  },
+  "routes": []
+}
+```
+
+Because provider/model/effort are omitted, the final route inherits the values
+selected for the lifecycle episode.
+
+Hybrid/mock routing belongs to an explicit test/run override such as
+`SAGA_EXECUTION_ROUTES_JSON` or `SAGA_EXECUTION_ROUTES_PATH`. Example:
+
+```json
+{
+  "version": "1",
+  "default": {
+    "executor": { "kind": "claude-cli" }
   },
   "routes": [
     {
@@ -76,6 +100,17 @@ policy. Example:
       },
       "route": {
         "executor": { "kind": "claude-cli-simulator" }
+      }
+    },
+    {
+      "match": {
+        "executionProfile": "development-implementation-author"
+      },
+      "route": {
+        "executor": { "kind": "claude-cli" },
+        "provider": "zai",
+        "model": "glm-5.2",
+        "effort": "high"
       }
     }
   ]
@@ -136,13 +171,13 @@ pipeline. Test routing never becomes the repository production default.
 
 | file | role |
 |------|------|
-| `src/application/routing/worker-execution-route.ts` | executor/provider/model/inference route type |
+| `src/application/routing/worker-execution-route.ts` | executor + inference override semantics |
 | `src/application/routing/execution-route-resolver.ts` | validated policy loader + matcher |
-| `factory-execution-routes.json` | production-safe repository policy |
-| `src/shared/authority/execution-context.ts` | immutable execution snapshot |
-| `src/shared/authority/build-execution-context.ts` | freezes the route at claim |
+| `factory-execution-routes.json` | production-safe executor policy |
+| `src/shared/authority/execution-context.ts` | immutable final execution snapshot |
+| `src/shared/authority/build-execution-context.ts` | freezes the merged route at claim |
 | `src/shared/authority/authorize-tool-call.ts` | fail-closed route + authority validation |
-| `src/lifecycle/work-assignment-core.ts` | claim-time route freezing |
+| `src/lifecycle/work-assignment-core.ts` | reads lifecycle controls, merges policy, persists snapshot |
 | `src/infrastructure/work/sqlite-work-assignment-adapter.ts` | atomic assignment seam |
 | `src/infrastructure/workers/claude-board-worker-executor.ts` | production pre-spawn fail-closed boundary |
 | `src/app/composition-root.ts` | shared factory composition |
