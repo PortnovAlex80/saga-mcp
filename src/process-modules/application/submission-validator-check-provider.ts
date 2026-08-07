@@ -12,6 +12,25 @@ interface DbHandle {
   };
 }
 
+export function submissionValidatorCheckProviderRef(input: {
+  validatorId: string;
+  validatorVersion: string;
+  nodeId: string;
+  contractRef?: ContractRef;
+}) {
+  const providerId = `factory.submission-validator.${input.validatorId}`;
+  const version = input.validatorVersion;
+  const providerDigest = sha256Hex({
+    providerId,
+    version,
+    validatorId: input.validatorId,
+    validatorVersion: input.validatorVersion,
+    nodeId: input.nodeId,
+    contractRef: input.contractRef ?? null,
+  });
+  return { providerId, version, providerDigest } as const;
+}
+
 export function submissionValidatorCheckProvider(input: {
   db: DbHandle;
   candidateSets: SqliteCandidateSetRepository;
@@ -19,20 +38,14 @@ export function submissionValidatorCheckProvider(input: {
   nodeId: string;
   contractRef?: ContractRef;
 }): CheckProvider & { readonly providerDigest: string } {
-  const providerId = `factory.submission-validator.${input.validator.validatorId}`;
-  const version = input.validator.validatorVersion;
-  const providerDigest = sha256Hex({
-    providerId,
-    version,
+  const ref = submissionValidatorCheckProviderRef({
     validatorId: input.validator.validatorId,
     validatorVersion: input.validator.validatorVersion,
     nodeId: input.nodeId,
-    contractRef: input.contractRef ?? null,
+    ...(input.contractRef ? { contractRef: input.contractRef } : {}),
   });
   return {
-    providerId,
-    version,
-    providerDigest,
+    ...ref,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
