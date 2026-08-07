@@ -80,6 +80,7 @@ function harness() {
     readProcessInputHash() { return sha('factory-order'); },
     activateRoleTask(input) { activations.push(input); },
     concludeExecutionIntent() {},
+    readExecutionReceipt(executionRef) { return { intentId: 1, taskId: 1, executionRef }; },
     projectWorkplace() {},
     bindTaskDependencies(taskId, dependencyTaskIds) {
       dependencyBindings.push({ taskId, dependencyTaskIds: [...dependencyTaskIds] });
@@ -90,6 +91,7 @@ function harness() {
     candidateSetRepo,
     gateRepo,
     persistence,
+    postAcceptanceEffects: { run() { /* no-op test registry */ } },
     productReader: { readExecutionProducts: ({ executionRef }) => products.get(executionRef) ?? [] },
     checkProviders: {
       resolve(providerId) {
