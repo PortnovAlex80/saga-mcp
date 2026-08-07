@@ -5,7 +5,7 @@
  * workers. It materializes deterministic Workplaces, projects the next desk,
  * reconciles completed executions into CandidateSets/GateDecisions, and pauses
  * the ProcessRun while the application-wide dispatcher staffs queued
- * Workplaces. ADR-030.
+ * Workplaces.
  */
 
 import { createHash } from 'node:crypto';
@@ -84,7 +84,6 @@ export interface ProductionCellProjectionPersistence {
     projectRepositoryId?: number | null;
   }): void;
   readTaskProjectRepositoryId(taskId: number): number | null;
-  /** Read the immutable hash of the factory order bound to this ProcessRun. */
   readProcessInputHash(processRunId: number): string;
   readTrustedProviders?(projectId: number): readonly {
     providerId: number;
@@ -92,7 +91,6 @@ export interface ProductionCellProjectionPersistence {
     version: string | null;
     category: string;
   }[];
-  /** Make this the sole claimable task projection for the Workplace. */
   activateRoleTask(input: {
     taskId: number;
     intentId: number;
@@ -100,10 +98,8 @@ export interface ProductionCellProjectionPersistence {
     role: 'author' | 'reviewer';
     executionProfileId: string;
   }): void;
-  /** Conclude the physical attempt without deciding product acceptance. */
   concludeExecutionIntent(executionRef: string): void;
   readExecutionReceipt(executionRef: string): { intentId: number; taskId: number };
-  /** Rebuild all task projections after a Workplace transition. */
   projectWorkplace(workplaceRef: WorkplaceRef): void;
   bindTaskDependencies?(taskId: number, dependencyTaskIds: readonly number[]): void;
 }
@@ -148,7 +144,9 @@ interface MaterializedWorkplace {
 
 interface ReconcileOutcome {
   readonly pending: boolean;
+  readonly paused: boolean;
   readonly accepted: boolean;
+  readonly failed: boolean;
   readonly products: readonly ProductRef[];
   readonly candidateSetRef: string | null;
   readonly executionRef: string | null;
@@ -191,20 +189,38 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         this.opts.persistence.bindTaskDependencies?.(taskId, dependencyTaskIds);
       }
     }
+
     const outcomes: ReconcileOutcome[] = [];
     const byItemId = new Map(workplaces.map(workplace => [workplace.itemId, workplace]));
     for (const workplace of workplaces) {
       outcomes.push(await this.reconcile(
-        ctx, node, cell, moduleRef, workplace, byItemId,
+        ctx,
+        node,
+        cell,
+        moduleRef,
+        workplace,
+        byItemId,
         initialTaskIds.has(workplace.itemId),
       ));
     }
 
+    if (outcomes.some(outcome => outcome.paused)) {
+      return {
+        runtimeEvent: 'paused',
+        production: this.manifestProduction(cell, workplaces, outcomes, false),
+      };
+    }
     if (outcomes.some(outcome => outcome.pending)) {
       return {
         runtimeEvent: 'paused',
-        domainEvent: 'await-workplace',
         production: this.manifestProduction(cell, workplaces, outcomes, false),
+      };
+    }
+    if (outcomes.some(outcome => outcome.failed)) {
+      return {
+        runtimeEvent: 'completed',
+        domainEvent: 'failed',
+        production: this.manifestProduction(cell, workplaces, outcomes, true),
       };
     }
 
@@ -282,6 +298,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   ): Promise<ReconcileOutcome> {
     let state = this.requireState(workplace.ref);
     if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
+    if (state.loopState === 'paused') return pausedOutcome();
 
     if (state.loopState === 'idle') {
       const dependencies = cell.materialization.dependencySelector
@@ -297,14 +314,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           );
         }
         const dependencyState = this.requireState(dependency.ref);
+        if (dependencyState.loopState === 'paused') return pausedOutcome();
         if (dependencyState.loopState !== 'terminal') return pendingOutcome();
-        if (dependencyState.terminalReason !== 'accepted') {
-          throw new NodeExecutionError(
-            this.kind,
-            node.id,
-            `cell '${cell.id}' dependency '${dependencyId}' was not accepted`,
-          );
-        }
+        if (dependencyState.terminalReason !== 'accepted') return failedOutcome();
       }
       this.opts.coordinator.admitWork(workplace.ref);
       state = this.requireState(workplace.ref);
@@ -323,7 +335,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           });
         }
         this.opts.persistence.projectWorkplace(workplace.ref);
-        return this.terminalOutcome(workplace.ref, this.requireState(workplace.ref));
+        state = this.requireState(workplace.ref);
+        return state.loopState === 'paused'
+          ? pausedOutcome()
+          : this.terminalOutcome(workplace.ref, state);
       }
       this.opts.coordinator.requeue(workplace.ref, state.nextRole);
       this.opts.persistence.projectWorkplace(workplace.ref);
@@ -334,9 +349,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       if (!initiallyProjected) this.ensureRoleProjection(ctx, node, cell, workplace, state);
       return pendingOutcome();
     }
-    if (state.loopState === 'leased' || state.loopState === 'running' || state.loopState === 'paused') {
+    if (state.loopState === 'leased' || state.loopState === 'running') {
       return pendingOutcome();
     }
+    if (state.loopState === 'paused') return pausedOutcome();
     if (state.loopState !== 'verifying') {
       throw new NodeExecutionError(this.kind, node.id, `unsupported Workplace loop state '${state.loopState}'`);
     }
@@ -411,13 +427,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
     state = this.requireState(workplace.ref);
     if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
+    if (state.loopState === 'paused') return pausedOutcome(candidate.candidateSetRef);
     if (state.loopState === 'queued') {
-      // Materialize the next desk before returning control to the global
-      // dispatcher. Otherwise the just-concluded author projection could be
-      // mistaken for a reviewer card during the hand-off window.
       this.ensureRoleProjection(ctx, node, cell, workplace, state);
     }
-    return { ...pendingOutcome(), candidateSetRef: candidate.candidateSetRef };
+    return pendingOutcome(candidate.candidateSetRef);
   }
 
   private runPostAcceptanceEffect(
@@ -631,13 +645,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private terminalOutcome(ref: WorkplaceRef, state: WorkplaceState): ReconcileOutcome {
-    if (state.terminalReason !== 'accepted') {
-      return { pending: false, accepted: false, products: [], candidateSetRef: null, executionRef: null };
+    if (state.loopState !== 'terminal') {
+      throw new Error(
+        `WORKPLACE_NOT_TERMINAL: ${serializeWorkplaceRef(ref)} is ${state.loopState}`,
+      );
     }
+    if (state.terminalReason !== 'accepted') return failedOutcome();
     const author = this.latestCandidate(ref, 'author');
     return {
       pending: false,
+      paused: false,
       accepted: true,
+      failed: false,
       products: author?.members.map(member => member.productRef) ?? [],
       candidateSetRef: author?.candidateSetRef ?? null,
       executionRef: author?.producerExecutionRef ?? null,
@@ -677,6 +696,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         workKey: workplace.workKey,
         workplaceRef: serializeWorkplaceRef(workplace.ref),
         accepted: outcome.accepted,
+        failed: outcome.failed,
+        paused: outcome.paused,
         candidateSetRef: outcome.candidateSetRef,
         producerExecutionRef: outcome.executionRef,
         execution: execution && outcome.executionRef
@@ -800,8 +821,40 @@ function completionSatisfied(
   }
 }
 
-function pendingOutcome(): ReconcileOutcome {
-  return { pending: true, accepted: false, products: [], candidateSetRef: null, executionRef: null };
+function pendingOutcome(candidateSetRef: string | null = null): ReconcileOutcome {
+  return {
+    pending: true,
+    paused: false,
+    accepted: false,
+    failed: false,
+    products: [],
+    candidateSetRef,
+    executionRef: null,
+  };
+}
+
+function pausedOutcome(candidateSetRef: string | null = null): ReconcileOutcome {
+  return {
+    pending: false,
+    paused: true,
+    accepted: false,
+    failed: false,
+    products: [],
+    candidateSetRef,
+    executionRef: null,
+  };
+}
+
+function failedOutcome(): ReconcileOutcome {
+  return {
+    pending: false,
+    paused: false,
+    accepted: false,
+    failed: true,
+    products: [],
+    candidateSetRef: null,
+    executionRef: null,
+  };
 }
 
 function hash(value: unknown): string {
