@@ -73,7 +73,7 @@ export function skillForTask(task: Task, sourceStatus: string): WorkerSkill {
 export function readModelRouteAtClaim(
   db: Database.Database,
   epicId: number,
-): { provider: string; model: string | null; effort: string | null } {
+): { provider: string | null; model: string | null; effort: string | null } {
   const row = db.prepare(
     `SELECT model_name AS m, model_provider AS p, model_effort AS e
        FROM lifecycle_execution_controls WHERE epic_id=?`,

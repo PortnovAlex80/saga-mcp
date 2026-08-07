@@ -147,7 +147,8 @@ export type DiagnosisDecision = 'go' | 'clarify' | 'reject';
 
 export interface ExecutionProvenance {
   model: string | null;
-  provider: string;
+  /** Null when the execution ran on a non-model-backed executor (simulator). */
+  provider: string | null;
   effort: string | null;
   worker_id: string;
   execution_id: string;

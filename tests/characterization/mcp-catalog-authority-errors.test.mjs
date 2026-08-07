@@ -360,6 +360,8 @@ async function buildManagedAuthorityDb({ allowedTools, workIntentId = 7 }) {
     work_intent_id: workIntentId,
     authority,
     model_route: { provider: 'anthropic', model: 'claude', effort: 'high' },
+    executor_kind: 'claude-cli',
+    route_policy: null,
     captured_at: '2026-07-28T00:00:00Z',
   };
   const metadata = {

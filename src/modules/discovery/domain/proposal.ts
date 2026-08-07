@@ -25,7 +25,12 @@ export interface Proposal {
 /** One immutable execution identity captured by the kernel. */
 export interface ExecutionProvenance {
   model: string | null;
-  provider: string;
+  /**
+   * Inference provider. Null when the execution ran on a non-model-backed
+   * executor (e.g. claude-cli-simulator) — a deterministic simulator must never
+   * be journaled as if it contacted a real provider.
+   */
+  provider: string | null;
   effort: string | null;
   worker_id: string;
   execution_id: string;
