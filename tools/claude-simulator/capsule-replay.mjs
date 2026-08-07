@@ -75,12 +75,22 @@ export async function executeCapsuleReplay(runtime, ctx, stream) {
     return `${selector.type}::${selector.code ?? ''}::${selector.title}::${selector.path}`;
   }
 
-  // 3. Recreate managed artifacts.
-  const handlerContainer = runtime.handlerContainer;
+  // 3. Handler resolution. The saga runtime exposes handlers grouped by
+  // domain module: products (product_submit), artifacts (artifact_create),
+  // lifecycle (trace_add), dispatcher (worker_done). Each module carries a
+  // `.handlers` map. We resolve the right module per tool name.
   function getHandler(name) {
-    const handler = handlerContainer?.handlers?.[name];
-    if (!handler) throw new Error(`CAPSULE_REPLAY_HANDLER_MISSING: ${name}`);
-    return handler;
+    const containers = [
+      runtime.products,
+      runtime.artifacts,
+      runtime.lifecycle,
+      runtime.dispatcher,
+    ];
+    for (const container of containers) {
+      const handler = container?.handlers?.[name];
+      if (typeof handler === 'function') return handler;
+    }
+    throw new Error(`CAPSULE_REPLAY_HANDLER_MISSING: ${name}`);
   }
 
   for (const artifact of payload.artifacts ?? []) {

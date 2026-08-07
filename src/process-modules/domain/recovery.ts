@@ -93,6 +93,8 @@ export interface RecoverySourceProduction {
   schema: string;
   artifactRef: string;
   contentHash: string;
+  /** Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6 mirror). */
+  semanticDigest?: string;
   bindings: Record<string, unknown>;
 }
 

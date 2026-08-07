@@ -226,6 +226,23 @@ export interface NodeProduction {
   artifactRef: string;
   contentHash: string;
   /**
+   * Cross-run-stable semantic digest of this production (CONVEYOR v4.3 §5-6).
+   *
+   * Authored by the producer from KNOWN semantic material (cell/contract
+   * identity, stable item identity, canonical ProductRefs as
+   * `{ schemaId, digest }`). It MUST exclude run-specific provenance
+   * (WorkplaceRef, processRunId, CandidateSetRef, producerExecutionRef,
+   * task/intent row ids, timestamps, transient paths). `contentHash` above
+   * remains the current-run audit hash and may carry provenance; this field
+   * is the cross-run replay identity.
+   *
+   * Downstream fan-out WorkKey derivation and ReplayKey semanticInputDigest
+   * use this (falling back to contentHash only when a producer has not yet
+   * authored one). Optional so non-cell producers are not broken, but a
+   * Production Cell manifest always sets it.
+   */
+  semanticDigest?: string;
+  /**
    * Machine-filled параметры для downstream-узлов. Значения — примитивы
    * (string/number/boolean) ИЛИ вложенные объекты (например certificatePayload
    * — полный envelope, который settlement kernel сформировал и Runtime должен

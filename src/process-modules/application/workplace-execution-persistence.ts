@@ -6,7 +6,7 @@ export interface WorkplaceExecutionPersistence {
   createIntent(input: { epicId: number; kind: string; objective: string; authorityScope: { snapshot_ref: string; scope: string; allowed_tools: string[]; enforcement: 'advisory' | 'runtime' }; outputSchema: string; tokenBudget: number; retryBudget: number }): { id: number };
   ensureProjectedTask(input: { epicId: number; projectId: number; intentId: number; objective: string; taskKind: string; executionSkill: string; reviewSkill?: string | null; generationKey: string; workflowStage?: string; executionMode?: string; titlePrefix?: string; metadata?: Record<string, unknown>; sourceArtifactIds?: readonly number[]; verificationTargetArtifactId?: number | null }): number;
   setProjectedTask(intentId: number, taskId: number): void;
-  bindProjectedTaskProcessContext?(input: { taskId: number; processRunId: number; nodeId: string; moduleRef: string; processInputHash: string; nodeInput: unknown; nodeInputHash: string; projectRepositoryId?: number | null; managedReviewBudget?: number | null; recoveryFeedback?: unknown }): void;
+  bindProjectedTaskProcessContext?(input: { taskId: number; processRunId: number; nodeId: string; moduleRef: string; processInputHash: string; nodeInput: unknown; nodeInputHash: string; semanticInputDigest: string; projectRepositoryId?: number | null; managedReviewBudget?: number | null; recoveryFeedback?: unknown }): void;
   setIntentStatus(intentId: number, expected: string, next: string): boolean;
   prepareIntentForExecution(intentId: number, taskId: number): { status: 'ready' | 'active' | 'blocked' | 'done'; intentStatus: string };
   transitionToInRepair(taskId: number): boolean;

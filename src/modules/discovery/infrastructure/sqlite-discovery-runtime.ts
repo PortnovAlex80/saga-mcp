@@ -202,6 +202,8 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
     processInputHash: string;
     nodeInput: unknown;
     nodeInputHash: string;
+    /** Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). */
+    semanticInputDigest: string;
     projectRepositoryId?: number | null;
     managedReviewBudget?: number | null;
     recoveryFeedback?: unknown;
@@ -226,6 +228,10 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       process_input_hash: input.processInputHash,
       process_node_input: input.nodeInput,
       process_node_input_hash: input.nodeInputHash,
+      // Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). The raw
+      // process_node_input_hash above carries run-specific provenance and is
+      // kept for current-run audit; this is the ReplayKey input.
+      semantic_input_digest: input.semanticInputDigest,
     };
     // CGAD P18 — recovery_feedback is a SEPARATE metadata field, not inside
     // process_node_input (which is stripped for hash stability). The materializer

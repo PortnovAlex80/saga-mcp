@@ -82,6 +82,8 @@ export interface ProductionCellProjectionPersistence {
     processInputHash: string;
     nodeInput: unknown;
     nodeInputHash: string;
+    /** Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). */
+    semanticInputDigest: string;
     projectRepositoryId?: number | null;
   }): void;
   readTaskProjectRepositoryId(taskId: number): number | null;
@@ -250,7 +252,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (items.length === 0) {
       throw new NodeExecutionError(this.kind, node.id, `fan-out source '${source}' has no stable items`);
     }
-    const sourceHash = production?.contentHash ?? source;
+    // Fan-out WorkKey MUST derive from the cross-run-stable semantic source
+    // identity, not the provenance-contaminated contentHash (CONVEYOR v4.3 §7).
+    // Otherwise two equivalent Factory Runs produce different workKeys and
+    // ReplayKey always misses downstream. Fall back to contentHash only when a
+    // producer has not authored a semanticDigest (backward compat).
+    const sourceHash = production?.semanticDigest ?? production?.contentHash ?? source;
     return items.map(({ id, value }) =>
       this.materializeOne(ctx, cell, moduleRef, deriveWorkKey(sourceHash, id), id, value));
   }
@@ -382,10 +389,17 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       subjectAuthorSet?.candidateSetRef ?? null,
       products,
     );
+    // Post-acceptance effects must run AFTER the durable transition. Running
+    // them before applyGateDecision/applyReviewerVerdict is invalid: replay
+    // capture's authority boundary is `terminal(accepted)`, which only exists
+    // after the transition. Track the accepted candidate, apply the transition,
+    // then fire effects only when the workplace is durably terminal(accepted).
+    let postAcceptanceCandidate: CandidateSet | null = null;
+
     if (role === 'author') {
       const decision = this.runGate(ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef);
       if (decision.verdict === 'accepted') {
-        if (!cell.review) this.runPostAcceptanceEffect(ctx, cell, workplace.ref, candidate);
+        if (!cell.review) postAcceptanceCandidate = candidate;
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'accepted', isFinal: !cell.review,
         });
@@ -408,7 +422,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         [candidate.candidateSetRef],
       );
       if (decision.verdict === 'accepted') {
-        this.runPostAcceptanceEffect(ctx, cell, workplace.ref, subjectAuthorSet);
+        postAcceptanceCandidate = subjectAuthorSet;
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -419,7 +433,17 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     this.opts.persistence.projectWorkplace(workplace.ref);
 
     state = this.requireState(workplace.ref);
-    if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
+    if (state.loopState === 'terminal') {
+      // Direct capture path: the transition is durable and the workplace is
+      // terminal(accepted). Replay capture (and other post-acceptance effects)
+      // run NOW — on the authoritative post-transition state. This is the
+      // normal certification mechanism; the lazy claim-bound sweep remains as
+      // a crash/reconciliation fallback only.
+      if (postAcceptanceCandidate) {
+        this.runPostAcceptanceEffect(ctx, cell, workplace.ref, postAcceptanceCandidate);
+      }
+      return this.terminalOutcome(workplace.ref, state);
+    }
     if (state.loopState === 'paused') return pausedOutcome(candidate.candidateSetRef);
     if (state.loopState === 'queued') {
       this.ensureRoleProjection(ctx, node, cell, workplace, state);
@@ -543,6 +567,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const nodeInput = cell.materialization.sourceBinding
       ? { upstream: ctx.input, item: workplace.item }
       : ctx.input;
+    // Semantic input digest for cross-run replay identity (CONVEYOR v4.3 §8).
+    // NOT the raw nodeInputHash (which includes run-specific provenance from
+    // the upstream manifest). For an entry cell (no sourceBinding) ctx.input is
+    // the canonical lifecycle business input — stable across runs — so its
+    // canonical hash is the semantic identity. For a fan-out cell the semantic
+    // identity is the upstream production's semanticDigest + the stable item
+    // id + the item's semantic content. Fail closed if a fan-out upstream
+    // lacks a semanticDigest (the WorkKey would also be unstable).
+    const semanticInputDigest = computeSemanticInputDigest(ctx, cell, workplace);
     this.opts.persistence.bindProjectedTaskProcessContext?.({
       taskId: plan.taskId,
       processRunId: ctx.processRunId,
@@ -551,6 +584,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       processInputHash: this.opts.persistence.readProcessInputHash(ctx.processRunId),
       nodeInput,
       nodeInputHash: sha256Hex(nodeInput),
+      semanticInputDigest,
       projectRepositoryId,
     });
     this.opts.persistence.activateRoleTask({
@@ -718,13 +752,96 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       };
     });
     const contentHash = hash({ cellId: cell.id, final, items });
+    // Cross-run-stable semantic digest (CONVEYOR v4.3 §6). Authored here from
+    // a STABLE projection: cell/contract identity + stable item identity +
+    // canonical ProductRefs ({ schemaId, digest }). Run-specific provenance
+    // (workplaceRef, candidateSetRef, producerExecutionRef, execution ids) is
+    // excluded — those remain in `items`/`contentHash` for current-run audit.
+    // Products are sorted per-item (multiset) and items sorted by id, so the
+    // digest is order-independent and identical across two runs that produce
+    // the same semantic output with different runtime identities.
+    const semanticProjection = {
+      cellId: cell.id,
+      final,
+      items: items
+        .map(item => ({
+          id: item.id,
+          accepted: item.accepted,
+          products: canonicalProductMultiset(item.products),
+        }))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    };
+    const semanticDigest = sha256Hex(semanticProjection);
     return {
       schema: 'factory.production-cell-output-manifest.v1',
       artifactRef: `production-cell-manifest:${cell.id}:${contentHash}`,
       contentHash,
+      semanticDigest,
       bindings: { cellId: cell.id, final, items },
     };
   }
+}
+
+/**
+ * Canonical multiset representation of a ProductRef list for cross-run semantic
+ * identity: each product reduced to `{ schemaId, digest }` (the content atoms,
+ * never the opaque `ref` which may carry run-specific ids), sorted so order is
+ * irrelevant. Two runs producing the same products in different orders yield
+ * the same multiset.
+ */
+function canonicalProductMultiset(
+  products: readonly ProductRef[],
+): readonly { schemaId: string; digest: string }[] {
+  return products
+    .map(p => ({ schemaId: p.schemaId, digest: p.digest }))
+    .sort((a, b) =>
+      a.schemaId < b.schemaId ? -1
+      : a.schemaId > b.schemaId ? 1
+      : a.digest < b.digest ? -1
+      : a.digest > b.digest ? 1
+      : 0,
+    );
+}
+
+/**
+ * Compute the cross-run-stable semantic input digest for a Production Cell
+ * (CONVEYOR v4.3 §8).
+ *
+ * - Entry cell (no sourceBinding): ctx.input is the canonical lifecycle/module
+ *   business input, stable across runs. Its canonical hash IS the semantic
+ *   identity. (We deliberately hash ctx.input directly here because the entry
+ *   input is pure business content with no runtime envelope.)
+ * - Fan-out cell: the semantic identity is the upstream production's
+ *   semanticDigest + the stable item id + the item's semantic content. The
+ *   upstream is resolved via the same path as materialize (frame production or
+ *   ctx.input). We fall back to contentHash if the upstream producer did not
+ *   author a semanticDigest (non-cell upstreams); fail closed only if neither
+ *   is present.
+ */
+function computeSemanticInputDigest(
+  ctx: NodeExecutionContext,
+  cell: ProductionCellDefinition,
+  workplace: MaterializedWorkplace,
+): string {
+  if (!cell.materialization.sourceBinding) {
+    // Entry cell: canonical business input.
+    return sha256Hex(ctx.input);
+  }
+  const upstream = resolveSourceProduction(ctx, cell.materialization.sourceBinding);
+  const upstreamSemanticDigest = upstream?.semanticDigest ?? upstream?.contentHash ?? null;
+  if (!upstreamSemanticDigest) {
+    throw new NodeExecutionError(
+      'production-cell',
+      cell.id,
+      `REPLAY_SEMANTIC_IDENTITY_UNPROVEN: fan-out cell '${cell.id}' upstream has no semanticDigest; `
+      + `cross-run replay identity cannot be derived. The upstream producer must author a semanticDigest.`,
+    );
+  }
+  return sha256Hex({
+    upstreamSemanticDigest,
+    itemId: workplace.itemId,
+    itemDigest: sha256Hex(workplace.item),
+  });
 }
 
 function integerSelector(value: unknown, selector: string): number[] {
@@ -777,17 +894,26 @@ function resolveExecutionProfile(
 function resolveSourceProduction(
   ctx: NodeExecutionContext,
   sourceBinding: string,
-): { contentHash: string; bindings: Record<string, unknown> } | null {
+): { contentHash: string; semanticDigest?: string; bindings: Record<string, unknown> } | null {
   const direct = ctx.frame.productions[sourceBinding];
   if (direct) {
     return {
       contentHash: direct.contentHash,
+      semanticDigest: direct.semanticDigest,
       bindings: direct.bindings as Record<string, unknown>,
     };
   }
-  const input = ctx.input as { contentHash?: unknown; bindings?: unknown } | null;
+  const input = ctx.input as {
+    contentHash?: unknown;
+    semanticDigest?: unknown;
+    bindings?: unknown;
+  } | null;
   if (input && typeof input.contentHash === 'string' && isRecord(input.bindings)) {
-    return { contentHash: input.contentHash, bindings: input.bindings };
+    return {
+      contentHash: input.contentHash,
+      semanticDigest: typeof input.semanticDigest === 'string' ? input.semanticDigest : undefined,
+      bindings: input.bindings,
+    };
   }
   return null;
 }

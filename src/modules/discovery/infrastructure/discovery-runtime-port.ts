@@ -83,6 +83,8 @@ export interface FactoryDiscoveryRuntimePersistence {
     processInputHash: string;
     nodeInput: unknown;
     nodeInputHash: string;
+    /** Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). */
+    semanticInputDigest: string;
     projectRepositoryId?: number | null;
     managedReviewBudget?: number | null;
     recoveryFeedback?: unknown;

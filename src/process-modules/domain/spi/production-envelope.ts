@@ -233,6 +233,12 @@ export interface NodeProductionEnvelope {
   /** Mirrored from NodeProduction. SHA-256 over the canonical production body. */
   readonly contentHash: string;
   /**
+   * Mirrored from NodeProduction. Cross-run-stable semantic digest authored by
+   * the producer from known semantic material (CONVEYOR v4.3 §5-6). Excludes
+   * run-specific provenance; used for downstream WorkKey + ReplayKey identity.
+   */
+  readonly semanticDigest?: string;
+  /**
    * Mirrored from NodeProduction. Machine-filled parameters for downstream
    * nodes. Primitive or nested-plain-object values only — the module contract
    * restricts what it puts here, and assertCanonicalSerializable enforces

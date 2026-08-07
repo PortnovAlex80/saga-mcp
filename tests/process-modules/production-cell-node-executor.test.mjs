@@ -211,6 +211,7 @@ test('fan-out materializes every stable item and completes only after all pass',
     productions: {
       source: {
         schema: 'factory.source.v1', artifactRef: 'source:1', contentHash: sha('source'),
+        semanticDigest: sha('source'), // cross-run-stable semantic identity (§5-6)
         bindings: { items: [{ key: 'a' }, { key: 'b' }] },
       },
     },
@@ -244,6 +245,7 @@ test('fan-out dependencies are projected to the Kanban before dispatch', async (
     productions: {
       source: {
         schema: 'factory.source.v1', artifactRef: 'source:dag', contentHash: sha('source:dag'),
+        semanticDigest: sha('source:dag'), // cross-run-stable semantic identity (§5-6)
         bindings: {
           items: [
             { key: 'foundation', dependsOnKeys: [] },

@@ -86,10 +86,10 @@ function requireKeyMaterial(value: unknown): ReplayKeyMaterial {
     workKey: requireString(row.workKey, 'workKey'),
     role,
     packageDigest: requireString(row.packageDigest, 'packageDigest'),
-    nodeInputHash: requireString(row.nodeInputHash, 'nodeInputHash'),
-    subjectCandidateDigest: row.subjectCandidateDigest === null
+    semanticInputDigest: requireString(row.semanticInputDigest, 'semanticInputDigest'),
+    subjectProductionDigest: row.subjectProductionDigest === null
       ? null
-      : requireString(row.subjectCandidateDigest, 'subjectCandidateDigest'),
+      : requireString(row.subjectProductionDigest, 'subjectProductionDigest'),
   };
 }
 
@@ -257,9 +257,14 @@ export class SqliteReplayCapsuleRepository {
     const moduleRef = typeof metadata.process_module_ref === 'string' ? metadata.process_module_ref : '';
     const cellId = typeof metadata.production_cell_id === 'string' ? metadata.production_cell_id : '';
     const workKey = typeof metadata.work_key === 'string' ? metadata.work_key : '';
-    const nodeInputHash = typeof metadata.process_node_input_hash === 'string'
-      ? metadata.process_node_input_hash : '';
-    if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !nodeInputHash) {
+    // Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). Fall back to
+    // the legacy process_node_input_hash for tasks projected before this field
+    // existed, so an in-flight migration does not break lookups.
+    const semanticInputDigest = (typeof metadata.semantic_input_digest === 'string'
+      ? metadata.semantic_input_digest : '')
+      || (typeof metadata.process_node_input_hash === 'string'
+        ? metadata.process_node_input_hash : '');
+    if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !semanticInputDigest) {
       // Non-Production-Cell / transitional cards simply cannot replay. The key
       // still remains deterministic so capture/lookups never guess.
       const epicRow = this.db.prepare(
@@ -276,15 +281,33 @@ export class SqliteReplayCapsuleRepository {
       const replayKey = sha256Hex({ processRunId, nodeId, role, missingPackagePin: true });
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
-    let subjectCandidateDigest: string | null = null;
+    // Reviewer replay identity: semantic author production digest (§10), not the
+    // run-specific candidate_set_digest. Derived from the subject author
+    // CandidateSet's product content atoms.
+    let subjectProductionDigest: string | null = null;
     if (role === 'reviewer' && task.workplace_ref) {
-      const candidate = this.db.prepare(
-        `SELECT candidate_set_digest
+      const authorSet = this.db.prepare(
+        `SELECT candidate_set_ref
            FROM factory_candidate_sets
           WHERE workplace_ref=? AND role='author'
           ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
-      ).get(task.workplace_ref) as { candidate_set_digest: string } | undefined;
-      subjectCandidateDigest = candidate?.candidate_set_digest ?? null;
+      ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
+      if (authorSet) {
+        const members = this.db.prepare(
+          `SELECT product_schema, product_digest
+             FROM factory_candidate_set_members
+            WHERE candidate_set_ref=?
+            ORDER BY product_schema, product_digest`,
+        ).all(authorSet.candidate_set_ref) as Array<{
+          product_schema: string;
+          product_digest: string;
+        }>;
+        if (members.length > 0) {
+          subjectProductionDigest = sha256Hex(
+            members.map(m => ({ schemaId: m.product_schema, digest: m.product_digest })),
+          );
+        }
+      }
     }
     const keyMaterial: ReplayKeyMaterial = {
       projectId: run.project_id,
@@ -294,8 +317,8 @@ export class SqliteReplayCapsuleRepository {
       workKey,
       role,
       packageDigest: run.package_digest,
-      nodeInputHash,
-      subjectCandidateDigest,
+      semanticInputDigest,
+      subjectProductionDigest,
     };
     const replayKey = computeReplayKey(keyMaterial);
     const capsule = this.db.prepare(

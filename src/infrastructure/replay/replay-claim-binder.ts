@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { Task } from '../../types.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 import { executionContextHash } from '../../shared/authority/execution-context.js';
 import {
   REPLAY_POLICY_DIGEST,
@@ -41,9 +42,15 @@ export function resolveReplayKeyMaterial(
   const moduleRef = requiredString(metadata.process_module_ref);
   const productionCellId = requiredString(metadata.production_cell_id);
   const workKey = requiredString(metadata.work_key);
-  const nodeInputHash = requiredString(metadata.process_node_input_hash);
+  // Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). The raw
+  // process_node_input_hash carries run-specific provenance and is NOT ReplayKey
+  // material. Fall back to it only for legacy tasks authored before this field
+  // existed (so an in-flight migration does not break replay lookups); new
+  // projections always write semantic_input_digest.
+  const semanticInputDigest = requiredString(metadata.semantic_input_digest)
+    ?? requiredString(metadata.process_node_input_hash);
   if (!Number.isSafeInteger(processRunId) || processRunId <= 0
-      || !nodeId || !moduleRef || !productionCellId || !workKey || !nodeInputHash) {
+      || !nodeId || !moduleRef || !productionCellId || !workKey || !semanticInputDigest) {
     return null;
   }
   const run = db.prepare(
@@ -51,17 +58,36 @@ export function resolveReplayKeyMaterial(
   ).get(processRunId) as { project_id: number; package_digest: string | null } | undefined;
   if (!run?.package_digest) return null;
 
-  let subjectCandidateDigest: string | null = null;
+  let subjectProductionDigest: string | null = null;
   if (role === 'reviewer') {
     if (!task.workplace_ref) return null;
-    const subject = db.prepare(
-      `SELECT candidate_set_digest
+    // Reviewer replay identity is pinned to the semantic AUTHOR production
+    // (CONVEYOR v4.3 §10), NOT the run-specific candidate_set_digest (which
+    // includes WorkplaceRef/processRunId + producerExecutionRef). Derive a
+    // stable digest from the subject author CandidateSet's product content
+    // atoms: canonical ordered { schemaId, digest } multiset. This is stable
+    // across runs as long as the author produced the same products, even though
+    // the CandidateSet ref/digest differ.
+    const authorSet = db.prepare(
+      `SELECT candidate_set_ref
          FROM factory_candidate_sets
         WHERE workplace_ref=? AND role='author'
         ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
-    ).get(task.workplace_ref) as { candidate_set_digest: string } | undefined;
-    if (!subject) return null;
-    subjectCandidateDigest = subject.candidate_set_digest;
+    ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
+    if (!authorSet) return null;
+    const members = db.prepare(
+      `SELECT product_schema, product_digest
+         FROM factory_candidate_set_members
+        WHERE candidate_set_ref=?
+        ORDER BY product_schema, product_digest`,
+    ).all(authorSet.candidate_set_ref) as Array<{
+      product_schema: string;
+      product_digest: string;
+    }>;
+    if (members.length === 0) return null;
+    subjectProductionDigest = sha256Hex(
+      members.map(m => ({ schemaId: m.product_schema, digest: m.product_digest })),
+    );
   }
 
   return {
@@ -72,8 +98,8 @@ export function resolveReplayKeyMaterial(
     workKey,
     role,
     packageDigest: run.package_digest,
-    nodeInputHash,
-    subjectCandidateDigest,
+    semanticInputDigest,
+    subjectProductionDigest,
   };
 }
 

@@ -122,6 +122,14 @@ export function ensureFactoryNodeRunSchema(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'completion_hash')) {
     db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion_hash TEXT');
   }
+  // Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6): 10th additive
+  // nullable column. Authored by the producer from known semantic material;
+  // downstream WorkKey derivation and ReplayKey semanticInputDigest use it.
+  // Null for producers that have not authored one (legacy/non-cell). The
+  // audit contentHash remains in output_hash.
+  if (!cols.some((c) => c.name === 'semantic_digest')) {
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN semantic_digest TEXT');
+  }
   // Resume index: exact-cursor lookup by (process_run_id, node_id, attempt).
   // The attempt column is 1-based and unique per (run, node), so this index
   // makes readByExactCursor an equality probe (§9.11).
@@ -162,6 +170,9 @@ interface NodeRunRow {
   // WAVE 8 HIGH 4: SHA-256 over canonical JSON of `completion`. Null when the
   // completion column is null. Verified on read — mismatch throws.
   completion_hash?: string | null;
+  // Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6). Null when the
+  // producer did not author one.
+  semantic_digest?: string | null;
 }
 
 function rowToRecord(row: NodeRunRow): NodeRunRecord {
@@ -287,6 +298,7 @@ function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
     ),
     completion: parseVerifiedCompletion(row.completion, row.completion_hash),
     completionHash: row.completion_hash ?? null,
+    semanticDigest: row.semantic_digest ?? null,
   };
 }
 
@@ -488,6 +500,11 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     // are written atomically in the same UPDATE. Null when the caller passes
     const completionText = input.completion ? canonicalJson(input.completion) : null;
     const completionHash = input.completion ? sha256Hex(input.completion) : null;
+    // Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6): derived from the
+    // production envelope when the producer authored one. Persisted so crash-
+    // resume restores it on chainInput and downstream WorkKey/ReplayKey stay
+    // stable across runs.
+    const semanticDigest = input.productionEnvelope?.semanticDigest ?? null;
     // pre-Wave-3 readers working; the v2 columns let Wave-3 readers resume by
     // exact cursor (§9.11). `completion` (FU-A Wave 3) carries the explicit
     // terminal envelope so crash-resume rebuilds NodeExecutionResult.completion
@@ -499,6 +516,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
               execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
               production_envelope=?, transition_cursor=?, completion=?, completion_hash=?,
+              semantic_digest=?,
               completed_at=datetime('now')
         WHERE id=?`,
     ).run(
@@ -514,6 +532,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       input.transitionCursor ?? null,
       completionText,
       completionHash,
+      semanticDigest,
       input.id,
     );
     const row = this.db.prepare(

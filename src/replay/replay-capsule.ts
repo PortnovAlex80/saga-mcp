@@ -15,9 +15,20 @@ export interface ReplayKeyMaterial {
   readonly workKey: string;
   readonly role: 'author' | 'reviewer';
   readonly packageDigest: string;
-  readonly nodeInputHash: string;
-  /** Reviewer capsules are additionally pinned to the exact author candidate. */
-  readonly subjectCandidateDigest: string | null;
+  /**
+   * Cross-run-stable semantic input digest (CONVEYOR v4.3 §8-9). Authored by
+   * the Production Cell from known semantic material (canonical business input
+   * for entry cells; upstream semanticDigest + stable item for fan-out). NOT
+   * the raw nodeInputHash, which carries run-specific provenance.
+   */
+  readonly semanticInputDigest: string;
+  /**
+   * Reviewer capsules are pinned to the semantic author production digest
+   * (CONVEYOR v4.3 §10): a canonical { schemaId, digest } multiset of the
+   * subject author CandidateSet's products. Stable across runs even though
+   * the CandidateSet's own digest includes WorkplaceRef/executionRef.
+   */
+  readonly subjectProductionDigest: string | null;
 }
 
 export function computeReplayKey(input: ReplayKeyMaterial): string {

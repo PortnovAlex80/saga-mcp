@@ -138,12 +138,20 @@ function parseReplayKeyMaterial(raw: unknown): ReplayKeyMaterial | null {
   const role = raw.role;
   if (!Number.isSafeInteger(projectId) || projectId <= 0) return null;
   if (role !== 'author' && role !== 'reviewer') return null;
-  for (const key of ['moduleRef','nodeId','productionCellId','workKey','packageDigest','nodeInputHash'] as const) {
+  for (const key of ['moduleRef','nodeId','productionCellId','workKey','packageDigest'] as const) {
     if (typeof raw[key] !== 'string' || (raw[key] as string).trim() === '') return null;
   }
-  if (!(raw.subjectCandidateDigest === null || (typeof raw.subjectCandidateDigest === 'string' && raw.subjectCandidateDigest.length > 0))) {
-    return null;
-  }
+  // semanticInputDigest is the cross-run-stable replay input identity (§8).
+  // Accept the legacy nodeInputHash field name too for in-flight executions
+  // frozen before the v4.3 rename, so a rolling deploy does not reject claims.
+  const semanticInputDigest = typeof raw.semanticInputDigest === 'string'
+    ? raw.semanticInputDigest
+    : (typeof raw.nodeInputHash === 'string' ? raw.nodeInputHash : '');
+  if (semanticInputDigest.trim() === '') return null;
+  const subjectProductionDigest = typeof raw.subjectProductionDigest === 'string'
+    ? raw.subjectProductionDigest
+    : (typeof raw.subjectCandidateDigest === 'string' ? raw.subjectCandidateDigest : null);
+  if (!(subjectProductionDigest === null || subjectProductionDigest.length > 0)) return null;
   return {
     projectId,
     moduleRef: raw.moduleRef as string,
@@ -152,8 +160,8 @@ function parseReplayKeyMaterial(raw: unknown): ReplayKeyMaterial | null {
     workKey: raw.workKey as string,
     role,
     packageDigest: raw.packageDigest as string,
-    nodeInputHash: raw.nodeInputHash as string,
-    subjectCandidateDigest: raw.subjectCandidateDigest as string | null,
+    semanticInputDigest,
+    subjectProductionDigest,
   };
 }
 

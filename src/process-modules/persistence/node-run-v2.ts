@@ -98,6 +98,13 @@ export interface NodeRunRecordV2 extends NodeRunRecord {
    * value without verifying).
    */
   completionHash: string | null;
+  /**
+   * Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6). Authored by the
+   * producer from known semantic material; null when the producer did not
+   * author one. Restore-on-resume forwards it so downstream WorkKey and
+   * ReplayKey semanticInputDigest stay stable across Factory Runs.
+   */
+  semanticDigest: string | null;
 }
 
 /**

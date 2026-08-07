@@ -1288,13 +1288,22 @@ function restoreProduction(run: {
   outputSchema: string | null;
   outputHash: string | null;
   outputBindings: Record<string, unknown> | null;
+  semanticDigest?: string | null;
 }): NodeProduction {
-  return {
+  const production: NodeProduction = {
     schema: run.outputSchema ?? '',
     artifactRef: run.outputRef ?? '',
     contentHash: run.outputHash ?? '',
     bindings: run.outputBindings ?? {},
   };
+  // Restore the cross-run-stable semantic digest so crash-resume preserves
+  // it on chainInput and downstream WorkKey/ReplayKey stay stable (§5-6).
+  // Only set when actually present, so rows without it produce the same
+  // NodeProduction shape as before (no spurious undefined key).
+  if (run.semanticDigest) {
+    production.semanticDigest = run.semanticDigest;
+  }
+  return production;
 }
 
 // PRIMARY frame construction path: reads durable NodeRun rows DIRECTLY into a
@@ -1505,6 +1514,9 @@ function deriveEnvelope(
     schema: production.schema,
     artifactRef: production.artifactRef,
     contentHash: production.contentHash,
+    // Only surface semanticDigest when the producer authored one, so the
+    // envelope shape stays stable for producers that have not opted in.
+    ...(production.semanticDigest ? { semanticDigest: production.semanticDigest } : {}),
     bindings: production.bindings,
     schemaId: production.schema,
     productRef,

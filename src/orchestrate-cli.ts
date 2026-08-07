@@ -378,6 +378,26 @@ async function main() {
     const logPath = process.env.SAGA_ENGINE_LOG ?? `${tmpdir()}/saga-engine-manual.log`;
     const ts = new Date().toISOString();
     appendFileSync(logPath, `[${ts}] PIPELINE RESULT: ${JSON.stringify(result)}\n`);
+    // Crash/reconciliation fallback: the direct post-terminal capture effect
+    // (replay-capture) is the normal certification path, but if it was skipped
+    // (process crash between transition and capture, or an effect error that
+    // left a terminal-accepted workplace uncertified), run the project-wide
+    // sweep before exit so the next replay run can find these capsules. This
+    // sweep is idempotent and only backfills missing capsules. Not run for
+    // `paused` (lifecycle suspended, not finished).
+    if (result.reason !== 'paused') {
+      try {
+        const { certifyAcceptedReplayCapsules } = await import(
+          './infrastructure/replay/replay-claim-binder.js'
+        );
+        certifyAcceptedReplayCapsules(getDb(), projectId);
+      } catch (certifyError) {
+        process.stderr.write(
+          `[orchestrate-cli] replay certification sweep failed: `
+          + `${certifyError instanceof Error ? certifyError.message : String(certifyError)}\n`,
+        );
+      }
+    }
     finishFactoryLaunch(
       launchRef,
       claimToken,

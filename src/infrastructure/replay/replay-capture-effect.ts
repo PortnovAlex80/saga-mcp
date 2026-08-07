@@ -1,18 +1,21 @@
 /**
- * Replay capture effect.
+ * Replay capture effect — the DIRECT certification path.
  *
  * IMPORTANT: a GateRun returning `accepted` is not by itself enough to certify
  * replay data. A decision may still lose the Workplace revision CAS or remain
  * audit-only. A reusable capsule may be created only from a durable
  * `terminal(accepted)` Workplace.
  *
- * ProductionCellNodeExecutor still invokes this extension point before applying
- * the transition for historical post-acceptance-effect ordering. Therefore this
- * effect is deliberately guarded and normally becomes a no-op at that call
- * site. The replay claim boundary performs a lazy certification sweep before
- * every subsequent lookup, after prior accepted transitions are durable. This
- * keeps replay best-effort without inventing another state machine or pending
- * capture entity.
+ * ProductionCellNodeExecutor invokes this effect AFTER applying the durable
+ * transition, and only when the workplace has become durably `terminal(accepted)`.
+ * The guard below therefore passes on the normal path — this is the primary
+ * certification mechanism.
+ *
+ * The lazy claim-bound sweep (`certifyAcceptedReplayCapsules`) remains as a
+ * crash/reconciliation fallback: if this effect never ran (process crash between
+ * the transition and capture), the sweep backfills the missing capsules before
+ * the next replay lookup. No second state machine or pending-capture entity
+ * exists: direct capture is the path, lazy sweep is the safety net.
  */
 import type Database from 'better-sqlite3';
 import type { PostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
