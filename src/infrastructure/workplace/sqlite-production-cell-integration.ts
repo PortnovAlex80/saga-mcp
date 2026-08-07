@@ -19,12 +19,20 @@ export class SqliteProductionCellIntegration {
 
   integrateAcceptedWorkplace(input: SqliteProductionCellIntegrationInput): void {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
+    // Repository Desk consistency fix: use COALESCE(rc.local_path, pr.local_path)
+    // so the integration operates on the SAME machine-specific checkout that the
+    // worker used (and that the dispatcher/freeze use). The previous raw
+    // pr.local_path could point at a stale directory when a per-machine
+    // repository_checkouts override was active.
     const task = this.db.prepare(
       `SELECT t.id,t.integration_state,t.project_repository_id,t.metadata,
-              pr.local_path,pr.integration_branch,
+              COALESCE(rc.local_path, pr.local_path) AS local_path,
+              pr.integration_branch,
               s.payload_snapshot
          FROM tasks t
          JOIN project_repositories pr ON pr.id=t.project_repository_id
+         LEFT JOIN repository_checkouts rc
+           ON rc.project_repository_id=pr.id AND rc.status='active'
          JOIN factory_managed_node_submissions s
            ON s.task_id=t.id AND s.process_run_id=? AND s.schema_version=?
         WHERE t.workplace_ref=? AND t.execution_mode='git_change'

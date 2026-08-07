@@ -27,6 +27,8 @@ import type { ResolvedExecutionProfile } from '../../process-modules/application
 import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
 import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
 import { materializePinnedWorkspace, type WorkplaceDesk } from '../../process-modules/application/pinned-workspace-materializer.js';
+import type { RepositoryDesk } from '../../process-modules/application/repository-desk.js';
+import { RepositoryDeskProvisioner } from './repository-desk-provisioner.js';
 import {
   applyTestWarmStart,
   captureTestWarmStart,
@@ -517,6 +519,35 @@ export function createPinnedClaudeWorkerExecutorFactory(
             WHERE id=?`,
         ).run(JSON.stringify(metadata), task.id);
         task.metadata = metadata;
+
+        // Repository Desk provisioning: for git_change tasks, the factory (not
+        // the LM) creates the worktree, selects the branch, and freezes the
+        // base commit BEFORE the worker is spawned. The runner then starts the
+        // worker with cwd = desk.executionPath, and the prompt shows the exact
+        // machine-provisioned bindings. This eliminates the class of errors
+        // where the model committed to the wrong branch or invented a worktree.
+        if (task.execution_mode === 'git_change') {
+          const repositoryDesk = provisionRepositoryDesk(task);
+          if (repositoryDesk) {
+            resolvedWorkspace = { ...resolvedWorkspace, repositoryDesk };
+            // Persist the desk binding into task metadata so settlement and the
+            // runner can verify the worker operated within the prepared desk.
+            metadata.process_workspace = {
+              ...(metadata.process_workspace as Record<string, unknown>),
+              repository_desk: {
+                role: repositoryDesk.role,
+                execution_path: repositoryDesk.executionPath,
+                repository_root: repositoryDesk.repositoryRoot,
+                project_repository_id: repositoryDesk.projectRepositoryId,
+                git: repositoryDesk.git,
+              },
+            };
+            getDb().prepare(
+              `UPDATE tasks SET metadata=?, updated_at=datetime('now') WHERE id=?`,
+            ).run(JSON.stringify(metadata), task.id);
+            task.metadata = metadata;
+          }
+        }
         return resolvedWorkspace;
       },
       captureWorkspace: input => {
@@ -557,4 +588,126 @@ function positiveInteger(value: unknown): number | null {
       ? Number(value)
       : Number.NaN;
   return Number.isSafeInteger(candidate) && candidate > 0 ? candidate : null;
+}
+
+/**
+ * Provision a RepositoryDesk for one git_change task. Determines the role
+ * (author/reviewer), resolves the repository binding + base commit, and calls
+ * the provisioner. Returns null when the task has no repository binding
+ * (non-git modules like planner — execution_mode='tracker_only').
+ */
+function provisionRepositoryDesk(
+  task: { id: number; status: string; project_repository_id?: number | null; metadata?: unknown },
+): RepositoryDesk | null {
+  const db = getDb();
+  const taskRepoId = typeof task.project_repository_id === 'number'
+    ? task.project_repository_id
+    : null;
+  if (taskRepoId === null) return null;
+
+  // Resolve the repository binding (consistent with dispatcher COALESCE).
+  const repoRow = db.prepare(
+    `SELECT pr.id, pr.integration_branch, pr.local_path,
+            COALESCE(rc.local_path, pr.local_path) AS resolved_local_path
+       FROM project_repositories pr
+       LEFT JOIN repository_checkouts rc
+         ON rc.project_repository_id=pr.id AND rc.status='active'
+      WHERE pr.id=?`,
+  ).get(taskRepoId) as {
+    id: number;
+    integration_branch: string;
+    local_path: string;
+    resolved_local_path: string;
+  } | undefined;
+  if (!repoRow || !repoRow.resolved_local_path) return null;
+
+  const provisioner = new RepositoryDeskProvisioner();
+  const isReview = task.status === 'review' || task.status === 'review_in_progress';
+  const integrationBranch = repoRow.integration_branch || 'dev';
+
+  if (isReview) {
+    // Reviewer: read-only detached checkout of the frozen CandidateSet source
+    // commit from the latest accepted implementation product.
+    const sourceCommit = readAcceptedSourceCommit(db, task.id);
+    if (!sourceCommit) return null;
+    return provisioner.provisionReviewerDesk({
+      repositoryRoot: repoRow.resolved_local_path,
+      taskId: task.id,
+      sourceCommit,
+      projectRepositoryId: taskRepoId,
+      integrationBranch,
+    });
+  }
+
+  // Author: writable worktree on task/<id> based on the integration branch
+  // frozen commit. Try to read expectedBaseCommit from DevelopmentCase; fall
+  // back to the integration branch HEAD.
+  const baseCommit = readExpectedBaseCommit(db, task) ?? undefined;
+  return provisioner.provisionAuthorDesk({
+    repositoryRoot: repoRow.resolved_local_path,
+    taskId: task.id,
+    integrationBranch,
+    baseCommit: baseCommit ?? null,
+    projectRepositoryId: taskRepoId,
+  });
+}
+
+/**
+ * Read the source commit from the latest accepted implementation product for
+ * this task (used to provision the reviewer desk).
+ */
+function readAcceptedSourceCommit(
+  db: ReturnType<typeof getDb>,
+  taskId: number,
+): string | null {
+  const row = db.prepare(
+    `SELECT payload_snapshot FROM factory_managed_node_submissions
+      WHERE task_id=? ORDER BY id DESC LIMIT 1`,
+  ).get(taskId) as { payload_snapshot: string } | undefined;
+  if (!row?.payload_snapshot) return null;
+  try {
+    const payload = JSON.parse(row.payload_snapshot) as {
+      source?: { commitSha?: unknown };
+    };
+    const sha = payload.source?.commitSha;
+    return typeof sha === 'string' && sha ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the expectedBaseCommit from the frozen DevelopmentCase integration
+ * targets, scoped to this task's repository. Falls back to null → provisioner
+ * uses the integration branch HEAD.
+ */
+function readExpectedBaseCommit(
+  db: ReturnType<typeof getDb>,
+  task: { id: number; project_repository_id?: number | null; metadata?: unknown },
+): string | null {
+  const md = parseTaskMetadata(task.metadata);
+  const processRunId = positiveInteger(md.process_run_id);
+  if (processRunId === null) return null;
+
+  // The DevelopmentCase is frozen as the process run input. Its repositories
+  // carry expectedBaseCommit per integration target.
+  const row = db.prepare(
+    'SELECT input_snapshot FROM factory_process_runs WHERE id=?',
+  ).get(processRunId) as { input_snapshot: string | null } | undefined;
+  if (!row?.input_snapshot) return null;
+  try {
+    const input = JSON.parse(row.input_snapshot) as {
+      repositories?: Array<{
+        projectRepositoryId?: unknown;
+        expectedBaseCommit?: unknown;
+      }>;
+    };
+    const target = input.repositories?.find(
+      r => r.projectRepositoryId === task.project_repository_id,
+    );
+    const base = target?.expectedBaseCommit;
+    return typeof base === 'string' && base ? base : null;
+  } catch {
+    return null;
+  }
 }

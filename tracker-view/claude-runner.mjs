@@ -281,7 +281,29 @@ function buildPrompt({
         ].join('\n')
       : null,
     task.execution_mode === 'git_change'
-      ? '5. Use the existing task worktree/branch conventions from the skill.'
+      ? (processWorkspace?.repositoryDesk
+        ? [
+            '5. Your repository workspace has been prepared by the factory. Work ONLY inside it.',
+            '--- REPOSITORY DESK (machine-provisioned, do not change) ---',
+            `repository_root=${processWorkspace.repositoryDesk.repositoryRoot}`,
+            `execution_path=${processWorkspace.repositoryDesk.executionPath}`,
+            processWorkspace.repositoryDesk.git.detached
+              ? `head=detached at ${processWorkspace.repositoryDesk.git.headCommit ?? 'unknown'}`
+              : `task_branch=${processWorkspace.repositoryDesk.git.branch}`,
+            `base_commit=${processWorkspace.repositoryDesk.git.baseCommit}`,
+            `integration_branch=${processWorkspace.repositoryDesk.git.integrationBranch}`,
+            `role=${processWorkspace.repositoryDesk.role}`,
+            '',
+            'This worktree has already been prepared by the factory.',
+            'Do NOT create or switch branches.',
+            'Do NOT create another worktree.',
+            `All repository changes MUST be made under: ${processWorkspace.repositoryDesk.executionPath}`,
+            processWorkspace.repositoryDesk.git.detached
+              ? 'This is a read-only review/verify desk. Do NOT commit or push.'
+              : 'Commit your work on the task branch already checked out for you.',
+            '--- END REPOSITORY DESK ---',
+          ].join('\n')
+        : '5. Use the existing task worktree/branch conventions from the skill.')
       : '5. This task is not a git-change task. Do not create a worktree or merge unless the assigned skill explicitly requires one.',
     isReview
       ? `6. Review the assigned implementation and call worker_done exactly once with verdict approved or changes_requested${assignment.execution_id ? ` and execution_id="${assignment.execution_id}"` : ''}.`
@@ -790,6 +812,18 @@ export class ClaudeBoardRunner {
         })
       : null;
 
+    // Repository Desk: when the factory provisioned a git worktree, the worker
+    // process MUST start in the worktree — not the shared checkout. This is the
+    // physical workspace boundary: the LM operates only within executionPath.
+    // Legacy fallback (no desk) keeps cwd = repository local_path.
+    const executionCwd = processWorkspace?.repositoryDesk?.executionPath
+      ?? workspaceRoot;
+    if (processWorkspace?.repositoryDesk && !existsSync(executionCwd)) {
+      throw new Error(
+        `REPOSITORY_DESK_PATH_MISSING: provisioned worktree '${executionCwd}' does not exist`,
+      );
+    }
+
     const prompt = buildPrompt({
       assignment,
       project: { id: run.projectId, name: run.projectName },
@@ -947,7 +981,7 @@ export class ClaudeBoardRunner {
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
     } : {};
     const child = this.spawnClaude(executorSelection.claudePath, args, {
-      cwd: workspaceRoot,
+      cwd: executionCwd,
       env: {
         ...process.env,
         ...lmstudioEnv,

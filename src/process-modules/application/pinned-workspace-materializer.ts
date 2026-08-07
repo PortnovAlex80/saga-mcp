@@ -30,6 +30,7 @@ import path from 'node:path';
 
 import type { WorkspaceProjection } from './workspace-projection.js';
 import type { ProcessExecutionWorkspaceTask } from './process-execution-workspace.js';
+import type { RepositoryDesk } from './repository-desk.js';
 import {
   buildMachineBindings,
   fillKnownPlaceholders,
@@ -115,6 +116,14 @@ export interface WorkplaceDesk {
       readonly inputHash: string | null;
     }[];
   };
+
+  /**
+   * Machine-provisioned git execution environment for code-changing workers.
+   * Present only for git_change tasks. The factory (not the LM) creates the
+   * worktree, selects the branch, and freezes the base commit. The runner
+   * spawns the worker with `cwd = repositoryDesk.executionPath`.
+   */
+  readonly repositoryDesk?: RepositoryDesk;
 }
 
 /**
