@@ -37,7 +37,7 @@ export const FORMALIZATION_CHECK_REFS = {
     validatorId: 'formalization.reconciliation.v1',
     validatorVersion: VERSION,
     nodeId: 'reconcile-what',
-    requireManagedProduction: true,
+    requireManagedProduction: false,
   }),
   architecture: submissionValidatorCheckProviderRef({
     validatorId: 'formalization.srs-contract.v1',
@@ -52,47 +52,38 @@ export function registerFormalizationCheckProviders(input: {
   db: Database.Database;
   candidateSets: SqliteCandidateSetRepository;
 }): void {
-  const validators = [
-    {
-      nodeId: 'define-product-contract',
-      validator: createFormalizationContractValidator(
-        input.db,
-        'formalization.product-contract.v1',
-        'define-product-contract',
-        { product: true },
-      ),
-    },
-    {
-      nodeId: 'model-use-cases',
-      validator: createFormalizationContractValidator(
-        input.db,
-        'formalization.use-cases.v1',
-        'model-use-cases',
-        { product: true, useCases: true },
-      ),
-    },
-    {
-      nodeId: 'define-acceptance-contract',
-      validator: createAcceptanceContractValidator(input.db),
-    },
-    {
-      nodeId: 'reconcile-what',
-      validator: createFormalizationContractValidator(
-        input.db,
-        'formalization.reconciliation.v1',
-        'reconcile-what',
-        { product: true, useCases: true, acceptance: true },
-      ),
-    },
-  ];
+  const productValidator = createFormalizationContractValidator(
+    input.db,
+    'formalization.product-contract.v1',
+    'define-product-contract',
+    { product: true },
+  );
+  const useCaseValidator = createFormalizationContractValidator(
+    input.db,
+    'formalization.use-cases.v1',
+    'model-use-cases',
+    { product: true, useCases: true },
+  );
+  const acceptanceValidator = createAcceptanceContractValidator(input.db);
+  const reconciliationValidator = createFormalizationContractValidator(
+    input.db,
+    'formalization.reconciliation.v1',
+    'reconcile-what',
+    { product: true, useCases: true, acceptance: true },
+  );
 
-  for (const entry of validators) {
+  for (const entry of [
+    { nodeId: 'define-product-contract', validator: productValidator, requireManagedProduction: true },
+    { nodeId: 'model-use-cases', validator: useCaseValidator, requireManagedProduction: true },
+    { nodeId: 'define-acceptance-contract', validator: acceptanceValidator, requireManagedProduction: true },
+    { nodeId: 'reconcile-what', validator: reconciliationValidator, requireManagedProduction: false },
+  ]) {
     registerFactoryCheckProvider(submissionValidatorCheckProvider({
       db: input.db,
       candidateSets: input.candidateSets,
       validator: entry.validator,
       nodeId: entry.nodeId,
-      requireManagedProduction: true,
+      requireManagedProduction: entry.requireManagedProduction,
     }));
   }
   registerFactoryCheckProvider(submissionValidatorCheckProvider({
