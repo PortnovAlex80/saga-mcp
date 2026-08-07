@@ -20,9 +20,13 @@ export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
 /**
  * Inference route frozen into the snapshot.
  *
- * `provider` is null for executors that do not perform inference (simulator or
- * certified replay). Keeping it nullable is important provenance: a
- * deterministic execution must never be journaled as if it contacted z.ai.
+ * `provider` is always required on the normal runtime path: every execution
+ * runs under the `claude-cli` executor kind. When the execution is replay-bound
+ * (replay.capsule_ref != null) the executor resolves the production source
+ * internally and never contacts the provider, but the frozen route still
+ * records what would have been selected — this is provenance, and it keeps
+ * inference and replay on the exact same authorization path (CONVEYOR v4.3
+ * PART 1,2: the Gate cannot distinguish how a product was produced).
  */
 export interface ExecutionModelRoute {
   provider: string | null;
@@ -30,10 +34,16 @@ export interface ExecutionModelRoute {
   effort: string | null;
 }
 
-/** Executor kind is orthogonal to provider/model. */
+/**
+ * Executor kind is orthogonal to provider/model.
+ *
+ * CONVEYOR v4.3 PART 1,3,12: there is no `claude-cli-simulator` executor kind
+ * on the runtime path. Replay is an internal production source resolved from
+ * replay.capsule_ref; the executor_kind stays `claude-cli` for both inference
+ * and replay.
+ */
 export type ExecutionContextExecutorKind =
-  | 'claude-cli'
-  | 'claude-cli-simulator';
+  | 'claude-cli';
 
 /** Citation of the routing policy used to resolve this execution. */
 export interface ExecutionRoutePolicyRef {

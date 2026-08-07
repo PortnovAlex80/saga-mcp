@@ -180,10 +180,14 @@ test('H: capture is invoked only from post-acceptance effect, not from worker', 
 
 // --- I. Replay provenance -------------------------------------------------
 
-test('I: capsule hit freezes null provider/model (not fake inference)', () => {
+test('I: capsule hit keeps claude-cli executor with real route as provenance', () => {
+  // CONVEYOR v4.3 PART 1,2: a capsule hit runs under the SAME claude-cli
+  // executor as inference. The frozen model_route stays intact as provenance —
+  // the executor resolves the production source internally from
+  // replay.capsule_ref. The Gate cannot distinguish inference from replay.
   const snapshot = buildV2Snapshot({
-    executorKind: 'claude-cli-simulator',
-    modelRoute: { provider: null, model: null, effort: null },
+    executorKind: 'claude-cli',
+    modelRoute: { provider: 'zai', model: 'glm-5.2', effort: 'high' },
     replay: {
       key: computeReplayKey(baseKeyMaterial()),
       key_material: baseKeyMaterial(),
@@ -191,9 +195,9 @@ test('I: capsule hit freezes null provider/model (not fake inference)', () => {
       capsule_payload_hash: '0'.repeat(64),
     },
   });
-  assert.equal(snapshot.executor_kind, 'claude-cli-simulator');
-  assert.equal(snapshot.model_route.provider, null);
-  assert.equal(snapshot.model_route.model, null);
+  assert.equal(snapshot.executor_kind, 'claude-cli');
+  assert.equal(snapshot.model_route.provider, 'zai');
+  assert.equal(snapshot.replay.capsule_ref, 'replay-capsule:abc:def');
 });
 
 // --- J. Replay authority --------------------------------------------------
@@ -206,13 +210,13 @@ test('J: replay binding participates in execution_context_hash', () => {
     capsule_payload_hash: '0'.repeat(64),
   };
   const snapshotWithReplay = buildV2Snapshot({
-    executorKind: 'claude-cli-simulator',
-    modelRoute: { provider: null, model: null, effort: null },
+    executorKind: 'claude-cli',
+    modelRoute: { provider: 'zai', model: 'glm-5.2', effort: 'high' },
     replay: baseReplay,
   });
   const snapshotWithoutReplay = buildV2Snapshot({
-    executorKind: 'claude-cli-simulator',
-    modelRoute: { provider: null, model: null, effort: null },
+    executorKind: 'claude-cli',
+    modelRoute: { provider: 'zai', model: 'glm-5.2', effort: 'high' },
     replay: null,
   });
   const hashWith = executionContextHash(snapshotWithReplay);

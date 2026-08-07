@@ -6,6 +6,8 @@ import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { writeProduct } from './universal-desk-helper.js';
+import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../modules/discovery/infrastructure/discovery-proposal-projection.js';
+import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
@@ -41,6 +43,31 @@ const productSubmit: ToolHandler = args => {
     executionRef: result.record.executionId,
     productKey: `content:${result.record.contentHash}`,
   });
+  // CONVEYOR v4.3 PART 5-7: Discovery proposal compatibility projection. When
+  // the managed submission is a Discovery proposal, deterministically project
+  // it into factory_proposals (the D3/D4/D5 settlement spine). This makes
+  // inference and replay follow the EXACT same path: both call product_submit,
+  // both produce a managed submission, both get the same projection. The
+  // readiness Gate reads factory_proposals and cannot distinguish how the
+  // product was produced. This is the architectural criterion.
+  let discoveryProjection: { proposalId: number; contentHash: string } | null = null;
+  if (requiresDiscoveryProjection(schema)) {
+    discoveryProjection = projectDiscoveryProposal(getDb(), {
+      submissionId: result.record.submissionId,
+    });
+    if (discoveryProjection) {
+      // Place the proposal-ref on the universal desk so downstream modules can
+      // discover the proposal via the content-addressed pointer.
+      writeProduct(getDb(), {
+        schemaRef: PROPOSAL_REF_SCHEMA,
+        content: {
+          proposalId: discoveryProjection.proposalId,
+          contentHash: discoveryProjection.contentHash,
+        },
+        executionRef: result.record.executionId,
+      });
+    }
+  }
   return {
     accepted: true,
     replayed: result.replayed,
@@ -55,6 +82,7 @@ const productSubmit: ToolHandler = args => {
     module_ref: result.record.moduleRef,
     node_id: result.record.nodeId,
     execution_id: result.record.executionId,
+    discovery_proposal_id: discoveryProjection?.proposalId ?? null,
     _workflow_hint: 'Product sealed on the desk. Call worker_done exactly once.',
   };
 };

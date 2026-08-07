@@ -39,24 +39,48 @@ export function requestFactoryLaunch(
     ) {
       throw new Error('FACTORY_LAUNCH_ORDER_SCOPE_MISMATCH');
     }
-    const pending = db.prepare(
-      `SELECT launch_ref, mode, project_id, epic_id, idempotency_key
+    // CONVEYOR v4.3 PART 8: durable idempotency. The SAME idempotency key
+    // always identifies the SAME Start command, including after the launch
+    // reaches a terminal state (completed/failed). A retry resolves to the
+    // existing launch_ref; a new intentional Start MUST use a different key.
+    const existing = db.prepare(
+      `SELECT launch_ref, mode, project_id, epic_id, idempotency_key, order_ref
          FROM factory_launch_requests
-        WHERE order_ref=? AND state IN ('requested','claimed','running')`,
-    ).get(input.orderRef) as {
+        WHERE idempotency_key=?`,
+    ).get(input.idempotencyKey) as {
       launch_ref: string;
       mode: 'new' | 'resume';
       project_id: number;
       epic_id: number;
       idempotency_key: string;
+      order_ref: string;
+    } | undefined;
+    if (existing) {
+      if (
+        existing.mode !== input.mode
+        || existing.project_id !== input.projectId
+        || existing.epic_id !== input.epicId
+        || existing.order_ref !== input.orderRef
+      ) {
+        throw new Error('FACTORY_LAUNCH_IDEMPOTENT_REQUEST_MISMATCH');
+      }
+      return existing.launch_ref;
+    }
+    // No existing launch for this key — but there may still be an active launch
+    // on the same order with a DIFFERENT key. That is a concurrent start attempt
+    // and must be rejected (one active launch per order).
+    const pending = db.prepare(
+      `SELECT launch_ref, idempotency_key
+         FROM factory_launch_requests
+        WHERE order_ref=? AND state IN ('requested','claimed','running')`,
+    ).get(input.orderRef) as {
+      launch_ref: string;
+      idempotency_key: string;
     } | undefined;
     if (pending) {
-      if (
-        pending.mode !== input.mode
-        || pending.project_id !== input.projectId
-        || pending.epic_id !== input.epicId
-        || pending.idempotency_key !== input.idempotencyKey
-      ) throw new Error('FACTORY_LAUNCH_ACTIVE_REQUEST_MISMATCH');
+      if (pending.idempotency_key !== input.idempotencyKey) {
+        throw new Error('FACTORY_LAUNCH_ACTIVE_REQUEST_MISMATCH');
+      }
       return pending.launch_ref;
     }
     const launchRef = `launch-${randomUUID()}`;

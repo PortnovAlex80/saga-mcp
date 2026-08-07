@@ -5,6 +5,12 @@
  * executor and may optionally override provider/model/effort. Missing inference
  * fields are intentionally left null here and inherit the already-read
  * lifecycle execution controls inside the atomic claim transaction.
+ *
+ * CONVEYOR v4.3 PART 1,3,12: there is exactly ONE Factory execution path. The
+ * `claude-cli-simulator` executor kind is no longer supported — replay is an
+ * internal production source, not a route. `SAGA_EXECUTION_ROUTES_JSON` may no
+ * longer be used to force deterministic workers; it only overrides real
+ * provider/model/effort selection.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -70,16 +76,6 @@ export function createExecutionRouteResolver(
   }
 
   function toRoute(ruleRoute: RouteRule['route']): WorkerExecutionRoute {
-    if (ruleRoute.executor.kind === 'claude-cli-simulator') {
-      return {
-        executor: { kind: 'claude-cli-simulator' },
-        provider: null,
-        model: null,
-        inference: { effort: null },
-        policyRef,
-        policyDigest,
-      };
-    }
     return {
       executor: { kind: 'claude-cli' },
       provider: ruleRoute.provider ? { id: ruleRoute.provider } : null,
@@ -230,17 +226,12 @@ function validateRoute(route: RouteRule['route'], location: string): RouteRule['
     throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.executor is required`);
   }
   const kind = route.executor.kind;
-  if (kind !== 'claude-cli' && kind !== 'claude-cli-simulator') {
-    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.executor.kind is unsupported`);
-  }
-
-  if (kind === 'claude-cli-simulator') {
-    if (route.provider !== undefined || route.model !== undefined || route.effort != null) {
-      throw new Error(
-        `EXECUTION_ROUTES_INVALID: ${location} simulator route must not declare provider/model/effort`,
-      );
-    }
-    return { executor: { kind } };
+  // CONVEYOR v4.3 PART 1,3,12: only the real CLI executor is supported. The
+  // simulator is not a route — replay is an internal production source.
+  if (kind !== 'claude-cli') {
+    throw new Error(
+      `EXECUTION_ROUTES_INVALID: ${location}.executor.kind '${String(kind)}' is unsupported (only 'claude-cli' is supported; replay is internal)`,
+    );
   }
 
   if (route.provider !== undefined

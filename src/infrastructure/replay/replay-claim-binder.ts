@@ -3,8 +3,6 @@ import type { Task } from '../../types.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import { executionContextHash } from '../../shared/authority/execution-context.js';
 import {
-  REPLAY_POLICY_DIGEST,
-  REPLAY_POLICY_REF,
   computeReplayKey,
   type ReplayClaimSelection,
   type ReplayKeyMaterial,
@@ -13,6 +11,50 @@ import {
   ensureReplayCapsuleSchema,
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
+
+/**
+ * Read the workplace_ref for a task. The dispatcher stamps it on the task row
+ * (tasks.workplace_ref) during Production Cell assignment.
+ */
+function readWorkplaceRefForTask(db: Database.Database, task: Task): string | null {
+  if (task.workplace_ref) return task.workplace_ref;
+  const row = db.prepare(
+    'SELECT workplace_ref FROM tasks WHERE id=?',
+  ).get(task.id) as { workplace_ref: string | null } | undefined;
+  return row?.workplace_ref ?? null;
+}
+
+/**
+ * CONVEYOR v4.3 PART 10: determine whether a capsule was already replayed in
+ * the given Workplace and the CURRENT Gate rejected the resulting CandidateSet.
+ *
+ * Derive ineligibility from durable Gate evidence: join the subject
+ * CandidateSet's producer execution to its frozen replay.capsule_ref, and check
+ * for a non-accepted Gate decision. No blacklist aggregate.
+ */
+function isCapsuleRejectedInWorkplace(
+  db: Database.Database,
+  workplaceRef: string,
+  capsuleRef: string,
+): boolean {
+  // Find Gate decisions for this Workplace where the subject CandidateSet was
+  // produced by an execution that had this capsule_ref frozen, and the verdict
+  // was not 'accepted'. Any such decision means the capsule's replay production
+  // was already judged insufficient by the current Gate.
+  const rejected = db.prepare(
+    `SELECT 1
+       FROM factory_gate_decisions gd
+       JOIN factory_candidate_sets cs
+         ON cs.candidate_set_ref = gd.subject_candidate_set_ref
+        AND cs.workplace_ref = gd.workplace_ref
+       JOIN worker_executions we
+         ON we.execution_id = cs.producer_execution_ref
+      WHERE gd.workplace_ref = ?
+        AND gd.verdict != 'accepted'
+        AND we.metadata LIKE ?`,
+  ).get(workplaceRef, `%"capsule_ref":"${capsuleRef}"%`) as { 1: number } | undefined;
+  return rejected !== undefined;
+}
 
 function metadataObject(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -219,10 +261,16 @@ export function certifyAcceptedReplayCapsules(
  * from prior authoritative acceptance, then perform the exact current replay
  * lookup.
  *
- * Miss: freeze the replay key and leave the front-selected LLM route untouched.
- * Hit: freeze the exact capsule and switch only THIS WorkerExecution to the
- * existing deterministic CLI-compatible executor. Project/workshop model
- * configuration remains untouched for future misses.
+ * Miss: freeze the replay key, leave the front-selected LLM route untouched.
+ * Hit: freeze the exact capsule ref + payload hash alongside the normal route.
+ *
+ * CONVEYOR v4.3 (PART 1 — simulator removed from runtime): replay is an
+ * internal source of WorkerExecution production, NOT an executor mode. This
+ * binder must NOT mutate executor_kind, model_route, or route_policy. The
+ * normal WorkerExecution executor resolves the production source internally
+ * from execution_context.replay.capsule_ref — the same executor abstraction
+ * serves both inference and replay. Project/workshop model configuration is
+ * never touched.
  */
 export function bindReplayToClaim(
   db: Database.Database,
@@ -249,6 +297,21 @@ export function bindReplayToClaim(
     payload_hash: string;
   } | undefined;
 
+  // CONVEYOR v4.3 PART 10: replay rejection ineligibility. If this capsule was
+  // already replayed in this Workplace and the CURRENT Gate rejected the
+  // resulting CandidateSet, the capsule is ineligible for the recovery
+  // execution. It resolves as an ordinary miss and the selected inference model
+  // runs. Derive ineligibility from durable Gate evidence — no blacklist
+  // aggregate.
+  const workplaceRef = readWorkplaceRefForTask(db, input.task);
+  let ineligibleCapsuleRef: string | null = null;
+  if (capsule && workplaceRef) {
+    ineligibleCapsuleRef = isCapsuleRejectedInWorkplace(db, workplaceRef, capsule.capsule_ref)
+      ? capsule.capsule_ref
+      : null;
+  }
+  const effectiveCapsule = ineligibleCapsuleRef ? null : capsule;
+
   const execution = db.prepare(
     'SELECT metadata FROM worker_executions WHERE execution_id=?',
   ).get(input.executionId) as { metadata: string } | undefined;
@@ -259,20 +322,18 @@ export function bindReplayToClaim(
     throw new Error(`REPLAY_BIND_EXECUTION_CONTEXT_MISSING: ${input.executionId}`);
   }
 
+  // Freeze only the replay provenance. The normal front-selected executor_kind
+  // and model_route remain authoritative; the executor resolves replay as an
+  // internal production source when capsule_ref is non-null. We deliberately do
+  // NOT set executor_kind='claude-cli-simulator' or null out model_route.
+  // When the capsule was rejected in this Workplace (PART 10), capsule_ref is
+  // null so the executor runs inference normally.
   context.replay = {
     key: replayKey,
     key_material: keyMaterial,
-    capsule_ref: capsule?.capsule_ref ?? null,
-    capsule_payload_hash: capsule?.payload_hash ?? null,
+    capsule_ref: effectiveCapsule?.capsule_ref ?? null,
+    capsule_payload_hash: effectiveCapsule?.payload_hash ?? null,
   };
-  if (capsule) {
-    context.executor_kind = 'claude-cli-simulator';
-    context.model_route = { provider: null, model: null, effort: null };
-    context.route_policy = {
-      ref: REPLAY_POLICY_REF,
-      digest: REPLAY_POLICY_DIGEST,
-    };
-  }
   envelope.execution_context = context;
   envelope.execution_context_hash = executionContextHash(context);
   db.prepare('UPDATE worker_executions SET metadata=? WHERE execution_id=?')
@@ -280,7 +341,7 @@ export function bindReplayToClaim(
 
   return {
     replayKey,
-    capsuleRef: capsule?.capsule_ref ?? null,
-    capsulePayloadHash: capsule?.payload_hash ?? null,
+    capsuleRef: effectiveCapsule?.capsule_ref ?? null,
+    capsulePayloadHash: effectiveCapsule?.payload_hash ?? null,
   };
 }

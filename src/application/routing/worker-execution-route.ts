@@ -4,10 +4,9 @@
  * Four independent dimensions the factory must select when hiring a worker:
  *
  *   1. executor   — the OS binary / transport: `claude-cli`,
- *                   `claude-cli-simulator`, future `codex-cli`, `local-agent-cli`.
+ *                   future `codex-cli`, `local-agent-cli`.
  *   2. provider   — the inference provider: `zai`, `anthropic`, `lmstudio`, ...
- *   3. model      — the model id: `glm-5.2`, `claude-opus-4.6`, ...; `null` for
- *                   executors that are not model-backed (the simulator).
+ *   3. model      — the model id: `glm-5.2`, `claude-opus-4.6`, ...
  *   4. inference  — execution policy: `effort`, plus future `timeout`,
  *                   `concurrency`, `tool policy`.
  *
@@ -15,10 +14,13 @@
  * not explicitly override one of them the claim-time lifecycle selection is
  * inherited. This preserves the model/provider selected from the front while
  * still allowing cell/role/profile-specific overrides.
+ *
+ * CONVEYOR v4.3 PART 1,3,12: there is no `claude-cli-simulator` executor kind.
+ * Replay is an internal production source resolved from
+ * execution_context.replay.capsule_ref inside the normal executor — NOT a route.
  */
 export type ExecutorKind =
-  | 'claude-cli'
-  | 'claude-cli-simulator';
+  | 'claude-cli';
 
 export type ExecutorKindFuture = 'codex-cli' | 'local-agent-cli';
 
@@ -26,16 +28,16 @@ export interface WorkerExecutionRoute {
   executor: {
     kind: ExecutorKind;
   };
-  /** Null on simulator; on claude-cli null means "inherit claim-time provider". */
+  /** Null means "inherit claim-time provider". */
   provider: {
     id: string;
   } | null;
-  /** Null on simulator; on claude-cli null means "inherit claim-time model". */
+  /** Null means "inherit claim-time model". */
   model: {
     id: string;
   } | null;
   inference: {
-    /** Null on simulator; on claude-cli null means "inherit claim-time effort". */
+    /** Null means "inherit claim-time effort". */
     effort: string | null;
   };
   policyRef: string | null;
@@ -72,7 +74,6 @@ export interface ClaimTimeInferenceRoute {
 /**
  * Produce the FINAL inference route that is persisted in execution_context.
  *
- * Simulator: inference is always null in all dimensions.
  * Real executor: policy values override only the fields they explicitly carry;
  * all other fields inherit the already-read claim-time lifecycle selection.
  * No config is read again after this projection.
@@ -85,9 +86,6 @@ export function routeToModelRoute(
     effort: null,
   },
 ): ClaimTimeInferenceRoute {
-  if (route.executor.kind === 'claude-cli-simulator') {
-    return { provider: null, model: null, effort: null };
-  }
   return {
     provider: route.provider?.id ?? claimTime.provider,
     model: route.model?.id ?? claimTime.model,

@@ -7,8 +7,7 @@
   "main": "dist/index.js",
   "bin": {
     "saga-mcp": "dist/index.js",
-    "saga-checkpoint": "dist/checkpoint-cli.js",
-    "saga-claude-sim": "tools/claude-cli-simulator.mjs"
+    "saga-checkpoint": "dist/checkpoint-cli.js"
   },
   "files": [
     "dist",

@@ -1326,14 +1326,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_pending_launch
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
   ON factory_launch_requests(order_ref)
   WHERE state IN ('requested','claimed','running');
--- Start-command idempotency (CONVEYOR v4.3 §3): a retry of the SAME start
--- command (same idempotency_key) while it is still in-flight deduplicates to
--- the same launch. Once the launch completes/fails, the key is free for a new
--- intentional start. This is NOT source-bytes dedup — source_digest lives on
--- factory_orders as non-unique provenance.
+-- Start-command idempotency (CONVEYOR v4.3 §3, PART 8): the SAME idempotency
+-- key always identifies the SAME Start command, DURABLY — including after the
+-- launch reaches a terminal state (completed/failed). A retry with the same
+-- key resolves to the same FactoryOrder/launch; it never creates a new one.
+-- A new intentional Start MUST use a different idempotency key (source_digest
+-- on factory_orders is non-unique provenance, not a lifetime identity).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency
-  ON factory_launch_requests(idempotency_key)
-  WHERE state IN ('requested','claimed','running');
+  ON factory_launch_requests(idempotency_key);
 
 CREATE TABLE IF NOT EXISTS factory_checkpoints (
   checkpoint_ref       TEXT PRIMARY KEY,
@@ -1761,3 +1761,35 @@ export function rebuildFactoryOrdersWithoutColumnUniques(db: {
   }
 }
 
+/**
+ * Rebuild the factory_launch_requests idempotency index from a partial UNIQUE
+ * (only active states) to a DURABLE full UNIQUE (CONVEYOR v4.3 PART 8).
+ *
+ * The same idempotency key must ALWAYS identify the same Start command, even
+ * after the launch reaches a terminal state (completed/failed). A retry with
+ * the same key resolves to the same launch; a new intentional Start MUST use a
+ * different key.
+ *
+ * Detection: the migration inspects sqlite_master for the partial-index SQL
+ * signature (`WHERE state IN (...)`). On a fresh DB (created from the updated
+ * SCHEMA_SQL) the index is already full-UNIQUE and this helper is a no-op.
+ *
+ * Idempotent.
+ */
+export function rebuildLaunchIdempotencyIndex(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { get(...params: unknown[]): { sql?: string } | undefined };
+}): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_factory_launch_idempotency'",
+  ).get();
+  const sql = row?.sql ?? '';
+  // Only rebuild if the OLD partial-UNIQUE shape is present. The updated
+  // SCHEMA_SQL declares a full UNIQUE (no WHERE clause).
+  if (!/state\s+IN\s+\(/i.test(sql)) return;
+  db.exec('DROP INDEX IF EXISTS idx_factory_launch_idempotency');
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency'
+    + ' ON factory_launch_requests(idempotency_key)',
+  );
+}

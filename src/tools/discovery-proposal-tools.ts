@@ -149,6 +149,23 @@ export function createDiscoveryProposalHandlers(
         normalization_mode: 'deterministic',
         source_submission_id: raw.record.id,
       };
+      // CONVEYOR v4.3 PART 5-7: route worker production through the UNIVERSAL
+      // product_submit / managed-node-submission boundary FIRST. The managed
+      // submission IS the worker production; the factory_proposals row below is
+      // a deterministic COMPATIBILITY PROJECTION recreated from current-run
+      // worker production. Inference and replay follow the same path: both
+      // produce a managed submission, both get the same projection. The
+      // readiness Gate cannot distinguish how the product was produced.
+      const managedResult = recordExecutionProduct(db, {
+        schema: submission.schema_version,
+        content: deterministic.normalized_payload,
+        executionRef: submission.execution_id,
+        taskId: submission.task_id,
+      });
+      // Compatibility projection: factory_proposals is the D3/D4/D5 settlement
+      // spine. The kernel readers (readiness/settlement/certificate) FK-reference
+      // it and depend on its source_submission_id lineage column. This projection
+      // is recreated deterministically from the current-run managed submission.
       const inserted = db.prepare(
         `INSERT INTO factory_proposals
            (intent_id, task_id, execution_id, kind, schema_version, payload, content_hash, status, provenance, source_submission_id)
@@ -166,18 +183,15 @@ export function createDiscoveryProposalHandlers(
           `Proposal accepted deterministically: source=${raw.record.id} proposal=${proposal.id} hash=${contentHash.slice(0, 12)}…`,
         );
       }
-      // Conveyor v4 step 3.B.2: dual-write proposal-ref onto the universal desk.
+      // Proposal-ref on the universal desk (references the factory_proposals row
+      // by id + content-hash — the settlement spine stays the single source of
+      // truth for D3/D4/D5; the desk carries the content-addressed pointer).
       writeProduct(db, {
         schemaRef: PROPOSAL_REF_SCHEMA,
         content: { proposalId: proposal.id, contentHash },
         executionRef: submission.execution_id,
       });
-      recordExecutionProduct(db, {
-        schema: submission.schema_version,
-        content: deterministic.normalized_payload,
-        executionRef: submission.execution_id,
-        taskId: submission.task_id,
-      });
+      void managedResult;
       return {
         raw_submission_id: raw.record.id,
         raw_hash: raw.record.raw_hash,

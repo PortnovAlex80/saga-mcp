@@ -9,6 +9,7 @@ import type {
   RunnerAssignment,
 } from '../../../tracker-view/claude-runner.mjs';
 import type {
+  AssignedWork,
   WorkerExecutorFactory,
   WorkerModelRouteReader,
   WorkAssignmentPort,
@@ -21,7 +22,16 @@ import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/
 import {
   ClaudeBoardWorkerExecutor,
   type ClaudeBoardRunner,
+  type InProcessReplayFn,
 } from './claude-board-worker-executor.js';
+import * as productHandlers from '../../tools/products.js';
+import * as artifactHandlers from '../../tools/artifacts.js';
+import * as lifecycleHandlers from '../../tools/lifecycle.js';
+import * as dispatcherHandlers from '../../tools/dispatcher.js';
+import {
+  executeCapsuleReplay,
+  type CapsuleReplayHandlers,
+} from '../replay/capsule-replay-executor.js';
 import { resolveExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
 import type { ResolvedExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
 import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
@@ -226,8 +236,6 @@ export interface PinnedClaudeWorkerExecutorFactoryOptions {
   workAssignment: WorkAssignmentPort;
   /** Routing cutover: explicit real-claude CLI path (executor_kind=claude-cli). */
   realClaudePath?: string;
-  /** Routing cutover: explicit simulator path (executor_kind=claude-cli-simulator). */
-  simulatorPath?: string;
 }
 
 export function createPinnedClaudeWorkerExecutorFactory(
@@ -373,7 +381,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
       sagaSkillRoot: context.sagaSkillRoot,
       claudePath: context.claudePath,
       realClaudePath: options.realClaudePath,
-      simulatorPath: options.simulatorPath,
       spawn: options.spawn ?? nodeSpawn,
       logRoot: context.logRoot,
       heartbeatLog: context.heartbeatLog,
@@ -560,10 +567,68 @@ export function createPinnedClaudeWorkerExecutorFactory(
     };
 
     const runner = createClaudeBoardRunner(runnerOptions);
+    // CONVEYOR v4.3 PART 1-2: in-process replay production source. When a
+    // frozen capsule_ref is present on the assignment, the executor runs this
+    // instead of spawning the CLI. The replay adapter publishes through the
+    // SAME MCP handler surface (product_submit, artifact_create, trace_add,
+    // worker_done) and the normal GateRun decides acceptance. This is the ONE
+    // replay path; there is no simulator route.
+    const replayRunner = createInProcessReplayRunner();
     return new ClaudeBoardWorkerExecutor(
       runner as unknown as ClaudeBoardRunner,
+      replayRunner,
     );
   };
+}
+
+/**
+ * Build the in-process replay function. Resolves the saga handler containers
+ * (the SAME handlers exposed over MCP to a spawned worker), locates the
+ * RepositoryDesk cwd from the frozen execution context, and runs the capsule
+ * replay executor. Invoked only when the assignment carries a frozen
+ * execution_context.replay.capsule_ref.
+ */
+function createInProcessReplayRunner(): InProcessReplayFn {
+  const handlers: CapsuleReplayHandlers = {
+    product_submit: input =>
+      (productHandlers.handlers['product_submit'] as (input: unknown) => unknown)(input),
+    artifact_create: input =>
+      (artifactHandlers.handlers['artifact_create'] as (input: unknown) => {
+        artifact?: { id?: number };
+      })(input),
+    trace_add: input =>
+      (lifecycleHandlers.handlers['trace_add'] as (input: unknown) => unknown)(input),
+    worker_done: input =>
+      (dispatcherHandlers.handlers['worker_done'] as (input: unknown) => unknown)(input),
+  };
+  return ({ assignment }) => {
+    const cwd = readRepositoryDeskCwd(assignment);
+    const db = getDb();
+    executeCapsuleReplay(db, handlers, {
+      taskId: Number(assignment.taskId),
+      workerId: assignment.workerId,
+      executionId: assignment.workerExecutionId,
+      cwd,
+    });
+    // The capsule replay submits products/artifacts/traces and the recorded
+    // git commit, then completes via worker_done so the normal lifecycle
+    // advancement and GateRun run exactly as after a real inference execution.
+    handlers.worker_done({
+      task_id: Number(assignment.taskId),
+      worker_id: assignment.workerId,
+      result: 'capsule replay: reconstructed accepted worker production',
+      execution_id: assignment.workerExecutionId,
+    });
+  };
+}
+
+function readRepositoryDeskCwd(assignment: AssignedWork): string {
+  const ctx = assignment.executionContext as
+    | { repository_desk?: { execution_path?: string } }
+    | null
+    | undefined;
+  const p = ctx?.repository_desk?.execution_path;
+  return typeof p === 'string' && p ? p : process.cwd();
 }
 
 function parseTaskMetadata(value: unknown): Record<string, unknown> {

@@ -344,7 +344,6 @@ export class ClaudeBoardRunner {
     // backend targets — `claudePath` remains as the legacy fallback. When unset,
     // resolveExecutorPath falls back to claudePath, preserving pre-cutover runs.
     this.realClaudePath = options.realClaudePath ?? process.env.SAGA_REAL_CLAUDE_PATH ?? null;
-    this.simulatorPath = options.simulatorPath ?? process.env.SAGA_SIMULATOR_PATH ?? null;
     this.dbPath = options.dbPath;
     this.sagaEntry = options.sagaEntry;
     this.sagaSkillRoot = options.sagaSkillRoot;
@@ -414,15 +413,18 @@ export class ClaudeBoardRunner {
 
   /**
    * Resolve the executor binary for one assignment from the FROZEN route in
-   * execution_context.executor_kind (routing cutover, v2). The simulator and
-   * the real claude CLI are now orthogonal to the model — spawn selects the
-   * binary from executor_kind, and --model is forwarded only for model-backed
-   * executors.
+   * execution_context.executor_kind (routing cutover, v2).
+   *
+   * CONVEYOR v4.3 PART 1,3,12: there is exactly ONE Factory execution path.
+   * The `claude-cli-simulator` executor kind is no longer supported — replay
+   * is an internal production source resolved from
+   * execution_context.replay.capsule_ref inside the normal WorkerExecutor, so
+   * spawn is never reached for a capsule-bound execution. This resolver only
+   * ever returns the real Claude CLI binary.
    *
    * Fallback chain (preserves pre-cutover behavior when no frozen executor_kind):
-   *   1. frozen execution_context.executor_kind   (v2 — authoritative)
-   *   2. this.simulatorPath when set + provider 'mock' signal   (transition)
-   *   3. this.claudePath / SAGA_CLAUDE_PATH / 'claude'          (legacy default)
+   *   1. frozen execution_context.executor_kind='claude-cli'  (v2 — authoritative)
+   *   2. this.claudePath / SAGA_CLAUDE_PATH / 'claude'         (legacy default)
    *
    * Returns { claudePath, isSimulator }.
    */
@@ -431,20 +433,13 @@ export class ClaudeBoardRunner {
     const frozenKind = ctx && typeof ctx === 'object'
       ? ctx.executor_kind
       : undefined;
-    if (frozenKind === 'claude-cli-simulator') {
-      // The deterministic simulator. It is NOT a model; --model is omitted.
-      const sim = this.simulatorPath
-        ?? process.env.SAGA_SIMULATOR_PATH
-        ?? `node ${path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..', 'tools', 'claude-cli-simulator.mjs')}`;
-      return { claudePath: sim, isSimulator: true };
-    }
-    if (frozenKind === 'claude-cli') {
+    if (frozenKind === 'claude-cli' || frozenKind === undefined) {
       // The real Claude CLI. Provider/model/effort come from model_route.
       return { claudePath: this.realClaudePath ?? this.claudePath, isSimulator: false };
     }
-    // Legacy / pre-v2: use the configured claudePath (which may itself point
-    // at the simulator via the SAGA_CLAUDE_PATH compound-path trick).
-    return { claudePath: this.claudePath, isSimulator: false };
+    // Any other frozen kind is rejected upstream by the authority layer. We
+    // never select a simulator here.
+    return { claudePath: this.realClaudePath ?? this.claudePath, isSimulator: false };
   }
 
   // Записать строку в heartbeat-лог. Формат:

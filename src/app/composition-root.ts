@@ -163,7 +163,6 @@ export function createFactoryApplication(
     ?? (packageInstallation
       ? createPinnedWorkerFactory(persistence, packageInstallation, workAssignment, {
         realClaudePath: env.SAGA_REAL_CLAUDE_PATH,
-        simulatorPath: env.SAGA_SIMULATOR_PATH,
       })
       : (() => {
         throw new Error(
@@ -355,7 +354,7 @@ function createPinnedWorkerFactory(
   persistence: FactoryRuntimePersistence,
   installation: ProductionInstallation,
   workAssignment: WorkAssignmentPort,
-  executorPaths: { realClaudePath?: string; simulatorPath?: string } = {},
+  executorPaths: { realClaudePath?: string } = {},
 ): WorkerExecutorFactory {
   return createPinnedClaudeWorkerExecutorFactory({
     modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
@@ -391,10 +390,9 @@ function createPinnedWorkerFactory(
     // The port is supplied by the caller (createFactoryApplication) so the
     // dispatch-loop path shares the SAME assignment authority + route resolver.
     workAssignment,
-    // Routing cutover: explicit executor backend paths. The runner selects the
-    // binary from the FROZEN executor_kind; these two paths are the targets.
+    // Routing cutover: explicit executor backend path. The runner selects the
+    // binary from the FROZEN executor_kind; replay is resolved internally.
     realClaudePath: executorPaths.realClaudePath,
-    simulatorPath: executorPaths.simulatorPath,
   });
 }
 

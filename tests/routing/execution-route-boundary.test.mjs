@@ -18,29 +18,21 @@ const key = {
   executionProfile: 'formalization-architect',
 };
 
-test('simulator is an executor, not a provider/model', () => {
-  const resolver = createExecutionRouteResolver({
-    policy: {
-      version: '1',
-      routes: [{
-        match: { module: 'solution-formalization' },
-        route: { executor: { kind: 'claude-cli-simulator' } },
-      }],
-    },
-  });
-  const route = resolver.resolve(key);
-  assert.equal(route.executor.kind, 'claude-cli-simulator');
-  assert.equal(route.provider, null);
-  assert.equal(route.model, null);
-  assert.equal(route.inference.effort, null);
-  assert.deepEqual(routeToModelRoute(route, {
-    provider: 'zai', model: 'glm-4.7', effort: 'medium',
-  }), {
-    provider: null,
-    model: null,
-    effort: null,
-  });
-  assert.match(route.policyDigest, /^[0-9a-f]{64}$/);
+// CONVEYOR v4.3 PART 1,3,12: there is no simulator route. Replay is an internal
+// production source resolved from execution_context.replay.capsule_ref — NOT an
+// executor kind selectable by routing configuration.
+test('simulator executor kind is rejected by the routing policy', () => {
+  assert.throws(
+    () => createExecutionRouteResolver({
+      policy: {
+        routes: [{
+          match: { module: 'solution-formalization' },
+          route: { executor: { kind: 'claude-cli-simulator' } },
+        }],
+      },
+    }),
+    /unsupported.*only 'claude-cli' is supported/i,
+  );
 });
 
 test('real executor inherits front-selected inference unless policy overrides it', () => {
@@ -78,33 +70,18 @@ test('real executor inherits front-selected inference unless policy overrides it
   });
 });
 
-test('routing policy rejects executor/model conflation and duplicate matches', () => {
-  assert.throws(
-    () => createExecutionRouteResolver({
-      policy: {
-        routes: [{
-          match: { module: 'product-discovery' },
-          route: {
-            executor: { kind: 'claude-cli-simulator' },
-            provider: 'zai',
-          },
-        }],
-      },
-    }),
-    /simulator route must not declare provider\/model\/effort/,
-  );
-
+test('routing policy rejects duplicate matches', () => {
   assert.throws(
     () => createExecutionRouteResolver({
       policy: {
         routes: [
           {
             match: { module: 'product-discovery' },
-            route: { executor: { kind: 'claude-cli-simulator' } },
+            route: { executor: { kind: 'claude-cli' } },
           },
           {
             match: { module: 'product-discovery' },
-            route: { executor: { kind: 'claude-cli-simulator' } },
+            route: { executor: { kind: 'claude-cli' } },
           },
         ],
       },
@@ -147,15 +124,33 @@ test('production worker executor refuses an unfrozen or legacy route', () => {
   );
   assert.equal(starts, 0);
 
-  const snapshot = {
+  // CONVEYOR v4.3 PART 1: only claude-cli is accepted. A simulator kind is
+  // rejected because it is no longer a runtime route.
+  const simulatorSnapshot = {
     policy_version: 'factory.execution.v2',
     executor_kind: 'claude-cli-simulator',
     model_route: { provider: null, model: null, effort: null },
   };
+  assert.throws(
+    () => executor.start({
+      projectId: 1,
+      concurrency: 1,
+      assignment: { ...base, executionContext: simulatorSnapshot },
+    }),
+    /FROZEN_EXECUTOR_KIND_REQUIRED/,
+  );
+  assert.equal(starts, 0);
+
+  // Normal claude-cli route is accepted and spawns the runner.
+  const realSnapshot = {
+    policy_version: 'factory.execution.v2',
+    executor_kind: 'claude-cli',
+    model_route: { provider: 'zai', model: 'glm-5.2', effort: 'high' },
+  };
   executor.start({
     projectId: 1,
     concurrency: 1,
-    assignment: { ...base, executionContext: snapshot },
+    assignment: { ...base, executionContext: realSnapshot },
   });
   assert.equal(starts, 1);
 });

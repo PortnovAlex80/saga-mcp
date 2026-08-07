@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -80,6 +80,10 @@ export function getDb(): Database.Database {
   // lifetime-UNIQUE on project_id/epic_id so one Project may own many
   // historical Factory Runs. No-op on fresh DBs (SCHEMA_SQL already correct).
   rebuildFactoryOrdersWithoutColumnUniques(db);
+  // CONVEYOR v4.3 PART 8: durable start-command idempotency. Rebuild the
+  // launch_requests idempotency index from partial-UNIQUE (active states only)
+  // to full-UNIQUE (all states). No-op on fresh DBs.
+  rebuildLaunchIdempotencyIndex(db);
   // Additive migration: artifacts.storage_kind (file_backed | db_native |
   // external_ref). Fresh DBs get the column from CREATE TABLE; pre-existing
   // DBs created before this column get it added here with the safe default

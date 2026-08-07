@@ -99,25 +99,24 @@ function parseExecutorKind(raw: unknown, policyVersion: string): ExecutionContex
   if (policyVersion === 'factory.execution.v1') {
     return raw === undefined || raw === 'claude-cli' ? 'claude-cli' : null;
   }
-  return raw === 'claude-cli'
-    || raw === 'claude-cli-simulator'
-    ? raw
-    : null;
+  // CONVEYOR v4.3 PART 1,3,12: only the real CLI executor is supported.
+  // Replay is an internal production source, NOT an executor kind.
+  return raw === 'claude-cli' ? 'claude-cli' : null;
 }
 
 function parseModelRoute(
   raw: unknown,
-  executorKind: ExecutionContextExecutorKind,
+  _executorKind: ExecutionContextExecutorKind,
 ): ExecutionModelRoute | null {
   if (!isRecord(raw)) return null;
   if (!(raw.provider === null || typeof raw.provider === 'string')) return null;
   if (!(raw.model === null || typeof raw.model === 'string')) return null;
   if (!(raw.effort === null || typeof raw.effort === 'string')) return null;
 
-  if (executorKind === 'claude-cli-simulator') {
-    if (raw.provider !== null || raw.model !== null || raw.effort !== null) return null;
-    return { provider: null, model: null, effort: null };
-  }
+  // The normal claude-cli executor always carries a provider. Replay-bound
+  // executions keep the frozen route intact as provenance — the executor
+  // resolves the production source internally from replay.capsule_ref, so the
+  // Gate cannot distinguish inference from replay (CONVEYOR v4.3 PART 1,2).
   if (typeof raw.provider !== 'string' || raw.provider.trim() === '') return null;
   if (typeof raw.model === 'string' && raw.model.trim() === '') return null;
   if (typeof raw.effort === 'string' && raw.effort.trim() === '') return null;
@@ -253,13 +252,11 @@ export function readExecutionContextStrict(db: Database, executionId: string): S
   const routePolicy = parseRoutePolicy(raw.route_policy);
   const replay = parseReplay(raw.replay);
   if (replay === undefined) return { ok: false, reason: 'replay binding is malformed or key-mismatched' };
-  // Consistency: a capsule hit (replay.capsule_ref != null) MUST use the
-  // deterministic simulator executor — never the real claude-cli, which would
-  // call an LLM. Conversely, the simulator executor may run without a capsule
-  // (e.g. the fixture compatibility path).
-  if (replay?.capsule_ref != null && executorKind !== 'claude-cli-simulator') {
-    return { ok: false, reason: 'capsule-bound execution must use claude-cli-simulator executor' };
-  }
+  // CONVEYOR v4.3 PART 1,2: a capsule hit (replay.capsule_ref != null) runs
+  // under the SAME claude-cli executor as inference. The executor resolves the
+  // production source internally — there is no simulator executor kind. The
+  // frozen model_route stays intact as provenance, so the authorization path is
+  // identical for inference and replay (the Gate cannot distinguish them).
 
   const snapshot: ExecutionContextSnapshot = {
     policy_version: raw.policy_version as typeof EXECUTION_CONTEXT_POLICY_VERSION,
