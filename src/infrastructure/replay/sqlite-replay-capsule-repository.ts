@@ -1,0 +1,473 @@
+import type Database from 'better-sqlite3';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { sha256Hex } from '../../shared/canonical-json.js';
+import type { Task } from '../../types.js';
+import {
+  REPLAY_CAPSULE_SCHEMA,
+  computeReplayKey,
+  type ReplayArtifactSelector,
+  type ReplayCapsulePayload,
+  type ReplayCapsuleRecord,
+  type ReplayClaimSelection,
+  type ReplayGitRecipe,
+  type ReplayKeyMaterial,
+} from '../../replay/replay-capsule.js';
+
+interface ExecutionEnvelope {
+  execution_context?: {
+    replay?: {
+      key?: unknown;
+      key_material?: unknown;
+      capsule_ref?: unknown;
+    };
+  };
+}
+
+export function ensureReplayCapsuleSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS factory_replay_capsules (
+      id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+      capsule_ref               TEXT NOT NULL UNIQUE,
+      replay_key                TEXT NOT NULL,
+      project_id                INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      source_execution_ref      TEXT NOT NULL,
+      source_candidate_set_ref  TEXT NOT NULL,
+      payload_hash              TEXT NOT NULL,
+      payload_snapshot          TEXT NOT NULL,
+      created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(replay_key, payload_hash)
+    );
+    CREATE INDEX IF NOT EXISTS idx_factory_replay_capsules_lookup
+      ON factory_replay_capsules(project_id, replay_key, id DESC);
+  `);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function parseJsonObject(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== 'string' || raw.trim() === '') return {};
+  try {
+    return asRecord(JSON.parse(raw)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function requireString(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`REPLAY_CAPSULE_CONTEXT_INVALID: ${label} is required`);
+  }
+  return value;
+}
+
+function requireKeyMaterial(value: unknown): ReplayKeyMaterial {
+  const row = asRecord(value);
+  if (!row) throw new Error('REPLAY_CAPSULE_CONTEXT_INVALID: replay key material is missing');
+  const role = row.role;
+  if (role !== 'author' && role !== 'reviewer') {
+    throw new Error('REPLAY_CAPSULE_CONTEXT_INVALID: replay role is invalid');
+  }
+  const projectId = Number(row.projectId);
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error('REPLAY_CAPSULE_CONTEXT_INVALID: projectId is invalid');
+  }
+  return {
+    projectId,
+    moduleRef: requireString(row.moduleRef, 'moduleRef'),
+    nodeId: requireString(row.nodeId, 'nodeId'),
+    productionCellId: requireString(row.productionCellId, 'productionCellId'),
+    workKey: requireString(row.workKey, 'workKey'),
+    role,
+    packageDigest: requireString(row.packageDigest, 'packageDigest'),
+    nodeInputHash: requireString(row.nodeInputHash, 'nodeInputHash'),
+    subjectCandidateDigest: row.subjectCandidateDigest === null
+      ? null
+      : requireString(row.subjectCandidateDigest, 'subjectCandidateDigest'),
+  };
+}
+
+function collectIdentityBindings(
+  value: unknown,
+  pathPrefix = '$',
+  out: Array<{ path: string; value: string | number | boolean | null }> = [],
+): Array<{ path: string; value: string | number | boolean | null }> {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    out.push({ path: pathPrefix, value });
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectIdentityBindings(item, `${pathPrefix}[${index}]`, out));
+    return out;
+  }
+  const record = asRecord(value);
+  if (record) {
+    for (const [key, item] of Object.entries(record)) {
+      collectIdentityBindings(item, `${pathPrefix}.${key}`, out);
+    }
+  }
+  return out;
+}
+
+function replayIdentityCandidate(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
+  if (typeof value !== 'string') return false;
+  return /^[0-9a-f]{64}$/i.test(value)
+    || value.startsWith('managed-node-submission:')
+    || value.startsWith('candidate-set:')
+    || value.startsWith('workplace/')
+    || value.startsWith('product:')
+    || value.length >= 32;
+}
+
+function templateAgainstInput(value: unknown, bindings: readonly { path: string; value: string | number | boolean | null }[]): unknown {
+  const candidates = new Map<string, string[]>();
+  for (const binding of bindings) {
+    if (!replayIdentityCandidate(binding.value)) continue;
+    const key = `${typeof binding.value}:${String(binding.value)}`;
+    const paths = candidates.get(key) ?? [];
+    paths.push(binding.path);
+    candidates.set(key, paths);
+  }
+  const visit = (item: unknown): unknown => {
+    if (item === null || typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+      if (!replayIdentityCandidate(item)) return item;
+      const matches = candidates.get(`${typeof item}:${String(item)}`) ?? [];
+      return matches.length === 1
+        ? { $sagaReplayInput: matches[0] }
+        : item;
+    }
+    if (Array.isArray(item)) return item.map(visit);
+    const record = asRecord(item);
+    if (!record) return item;
+    return Object.fromEntries(Object.entries(record).map(([key, child]) => [key, visit(child)]));
+  };
+  return visit(value);
+}
+
+function artifactSelector(row: {
+  type: string;
+  code: string | null;
+  title: string;
+  path: string;
+  content_hash: string | null;
+}): ReplayArtifactSelector {
+  return {
+    type: row.type,
+    code: row.code,
+    title: row.title,
+    path: row.path,
+    contentHash: row.content_hash,
+  };
+}
+
+function readArtifactBytes(
+  db: Database.Database,
+  artifact: { path: string; project_repository_id: number | null },
+): { encoding: 'base64'; bytes: string } | null {
+  const rawPath = artifact.path.split('#')[0]!;
+  let resolved = rawPath;
+  if (!path.isAbsolute(rawPath) && artifact.project_repository_id !== null) {
+    const repository = db.prepare(
+      `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
+         FROM project_repositories pr
+         LEFT JOIN repository_checkouts rc
+           ON rc.project_repository_id=pr.id AND rc.status='active'
+        WHERE pr.id=?`,
+    ).get(artifact.project_repository_id) as { local_path: string | null } | undefined;
+    if (repository?.local_path) resolved = path.resolve(repository.local_path, rawPath);
+  }
+  if (!existsSync(resolved)) return null;
+  return { encoding: 'base64', bytes: readFileSync(resolved).toString('base64') };
+}
+
+function gitText(repo: string, args: string[]): string {
+  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trimEnd();
+}
+
+function captureGitRecipe(
+  db: Database.Database,
+  typedContents: readonly { schema: string; content: unknown }[],
+): ReplayGitRecipe | null {
+  const implementation = typedContents.find(item =>
+    item.schema === 'factory.development-implementation-result.v1');
+  const content = asRecord(implementation?.content);
+  const source = asRecord(content?.source);
+  const snapshot = asRecord(content?.snapshot);
+  const repository = asRecord(content?.repository);
+  if (!source || !snapshot || !repository) return null;
+  const projectRepositoryId = Number(repository.projectRepositoryId);
+  const baseCommit = typeof repository.baseCommit === 'string' ? repository.baseCommit : '';
+  const sourceCommit = typeof source.commitSha === 'string' ? source.commitSha : '';
+  const sourceTree = typeof snapshot.treeSha === 'string' ? snapshot.treeSha : '';
+  const sourceBranch = typeof source.branch === 'string' ? source.branch : '';
+  const integrationBranch = typeof repository.integrationBranch === 'string'
+    ? repository.integrationBranch : '';
+  if (!Number.isSafeInteger(projectRepositoryId) || !baseCommit || !sourceCommit || !sourceTree) return null;
+  const repo = db.prepare(
+    `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
+       FROM project_repositories pr
+       LEFT JOIN repository_checkouts rc
+         ON rc.project_repository_id=pr.id AND rc.status='active'
+      WHERE pr.id=?`,
+  ).get(projectRepositoryId) as { local_path: string | null } | undefined;
+  if (!repo?.local_path) return null;
+  try {
+    const patchBytes = execFileSync('git', [
+      '-C', repo.local_path, 'diff', '--binary', `${baseCommit}..${sourceCommit}`,
+    ]);
+    const format = '%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B';
+    const parts = gitText(repo.local_path, ['show', '-s', `--format=${format}`, sourceCommit]).split('\u0000');
+    if (parts.length < 7) return null;
+    return {
+      projectRepositoryId,
+      integrationBranch,
+      baseCommit,
+      sourceCommit,
+      sourceTree,
+      sourceBranch,
+      patchBase64: patchBytes.toString('base64'),
+      commit: {
+        authorName: parts[0]!, authorEmail: parts[1]!, authorDate: parts[2]!,
+        committerName: parts[3]!, committerEmail: parts[4]!, committerDate: parts[5]!,
+        message: parts.slice(6).join('\u0000'),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export class SqliteReplayCapsuleRepository {
+  constructor(private readonly db: Database.Database) {
+    ensureReplayCapsuleSchema(db);
+  }
+
+  /** Build the exact replay identity at claim time from server-authored bindings. */
+  resolveClaim(task: Task, role: 'author' | 'reviewer'): ReplayClaimSelection {
+    const metadata = parseJsonObject(task.metadata);
+    const processRunId = Number(metadata.process_run_id);
+    const nodeId = typeof metadata.process_node_id === 'string' ? metadata.process_node_id : '';
+    const moduleRef = typeof metadata.process_module_ref === 'string' ? metadata.process_module_ref : '';
+    const cellId = typeof metadata.production_cell_id === 'string' ? metadata.production_cell_id : '';
+    const workKey = typeof metadata.work_key === 'string' ? metadata.work_key : '';
+    const nodeInputHash = typeof metadata.process_node_input_hash === 'string'
+      ? metadata.process_node_input_hash : '';
+    if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !nodeInputHash) {
+      // Non-Production-Cell / transitional cards simply cannot replay. The key
+      // still remains deterministic so capture/lookups never guess.
+      const replayKey = sha256Hex({ projectId: task.project_id ?? 0, taskId: task.id, role, nonReplayable: true });
+      return { replayKey, capsuleRef: null, capsulePayloadHash: null };
+    }
+    const run = this.db.prepare(
+      `SELECT project_id,package_digest FROM factory_process_runs WHERE id=?`,
+    ).get(processRunId) as { project_id: number; package_digest: string | null } | undefined;
+    if (!run?.package_digest) {
+      const replayKey = sha256Hex({ processRunId, nodeId, role, missingPackagePin: true });
+      return { replayKey, capsuleRef: null, capsulePayloadHash: null };
+    }
+    let subjectCandidateDigest: string | null = null;
+    if (role === 'reviewer' && task.workplace_ref) {
+      const candidate = this.db.prepare(
+        `SELECT candidate_set_digest
+           FROM factory_candidate_sets
+          WHERE workplace_ref=? AND role='author'
+          ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
+      ).get(task.workplace_ref) as { candidate_set_digest: string } | undefined;
+      subjectCandidateDigest = candidate?.candidate_set_digest ?? null;
+    }
+    const keyMaterial: ReplayKeyMaterial = {
+      projectId: run.project_id,
+      moduleRef,
+      nodeId,
+      productionCellId: cellId,
+      workKey,
+      role,
+      packageDigest: run.package_digest,
+      nodeInputHash,
+      subjectCandidateDigest,
+    };
+    const replayKey = computeReplayKey(keyMaterial);
+    const capsule = this.db.prepare(
+      `SELECT capsule_ref,payload_hash
+         FROM factory_replay_capsules
+        WHERE project_id=? AND replay_key=?
+        ORDER BY id DESC LIMIT 1`,
+    ).get(run.project_id, replayKey) as { capsule_ref: string; payload_hash: string } | undefined;
+    return {
+      replayKey,
+      capsuleRef: capsule?.capsule_ref ?? null,
+      capsulePayloadHash: capsule?.payload_hash ?? null,
+    };
+  }
+
+  read(capsuleRef: string): ReplayCapsuleRecord | null {
+    const row = this.db.prepare(
+      `SELECT capsule_ref,replay_key,project_id,source_execution_ref,
+              source_candidate_set_ref,payload_hash,payload_snapshot,created_at
+         FROM factory_replay_capsules WHERE capsule_ref=?`,
+    ).get(capsuleRef) as {
+      capsule_ref: string; replay_key: string; project_id: number;
+      source_execution_ref: string; source_candidate_set_ref: string;
+      payload_hash: string; payload_snapshot: string; created_at: string;
+    } | undefined;
+    if (!row) return null;
+    return {
+      capsuleRef: row.capsule_ref,
+      replayKey: row.replay_key,
+      projectId: row.project_id,
+      sourceExecutionRef: row.source_execution_ref,
+      sourceCandidateSetRef: row.source_candidate_set_ref,
+      payloadHash: row.payload_hash,
+      payload: JSON.parse(row.payload_snapshot) as ReplayCapsulePayload,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Capture one accepted WorkerExecution. This is deliberately best-effort at
+   * the call site: inability to archive replay data must never revoke an
+   * already-authoritative GateDecision.
+   */
+  captureAcceptedExecution(input: {
+    executionRef: string;
+    candidateSetRef: string;
+  }): ReplayCapsuleRecord {
+    const execution = this.db.prepare(
+      `SELECT we.metadata,we.task_id,t.metadata AS task_metadata
+         FROM worker_executions we JOIN tasks t ON t.id=we.task_id
+        WHERE we.execution_id=?`,
+    ).get(input.executionRef) as { metadata: string; task_id: number; task_metadata: string } | undefined;
+    if (!execution) throw new Error(`REPLAY_CAPTURE_EXECUTION_NOT_FOUND: ${input.executionRef}`);
+    const envelope = JSON.parse(execution.metadata) as ExecutionEnvelope;
+    const replay = envelope.execution_context?.replay;
+    const keyMaterial = requireKeyMaterial(replay?.key_material);
+    const replayKey = requireString(replay?.key, 'replay.key');
+    if (replayKey !== computeReplayKey(keyMaterial)) {
+      throw new Error('REPLAY_CAPTURE_KEY_MISMATCH: frozen key does not match key material');
+    }
+    const taskMetadata = parseJsonObject(execution.task_metadata);
+    const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
+    const inputBindings = collectIdentityBindings(inputValue);
+
+    const typedRows = this.db.prepare(
+      `SELECT schema_version,payload_snapshot,content_hash
+         FROM factory_managed_node_submissions
+        WHERE execution_id=? ORDER BY id`,
+    ).all(input.executionRef) as Array<{
+      schema_version: string; payload_snapshot: string; content_hash: string;
+    }>;
+    const typedProducts = typedRows.map(row => ({
+      schema: row.schema_version,
+      content: templateAgainstInput(JSON.parse(row.payload_snapshot), inputBindings),
+      contentHash: row.content_hash,
+    }));
+
+    const productionRows = this.db.prepare(
+      `SELECT DISTINCT artifact_id
+         FROM factory_managed_artifact_productions
+        WHERE execution_id=? ORDER BY artifact_id`,
+    ).all(input.executionRef) as Array<{ artifact_id: number }>;
+    const artifactRows = productionRows.map(row => this.db.prepare(
+      `SELECT id,project_repository_id,type,title,path,code,status,parent_artifact_id,
+              tags,metadata,content_hash
+         FROM artifacts WHERE id=?`,
+    ).get(row.artifact_id) as {
+      id: number; project_repository_id: number | null; type: string; title: string;
+      path: string; code: string | null; status: string; parent_artifact_id: number | null;
+      tags: string; metadata: string; content_hash: string | null;
+    }).filter(Boolean);
+    const artifactById = new Map(artifactRows.map(row => [row.id, row]));
+    const artifacts = artifactRows.map(row => {
+      let parent: ReplayArtifactSelector | null = null;
+      if (row.parent_artifact_id !== null) {
+        const parentRow = artifactById.get(row.parent_artifact_id) ?? this.db.prepare(
+          'SELECT type,code,title,path,content_hash FROM artifacts WHERE id=?',
+        ).get(row.parent_artifact_id) as {
+          type: string; code: string | null; title: string; path: string; content_hash: string | null;
+        } | undefined;
+        if (parentRow) parent = artifactSelector(parentRow);
+      }
+      return {
+        selector: artifactSelector(row),
+        projectRepositoryId: row.project_repository_id,
+        // Gate acceptance is authority. Replay workers always recreate a
+        // candidate; they never write accepted status themselves.
+        status: 'draft' as const,
+        tags: JSON.parse(row.tags || '[]') as string[],
+        metadata: parseJsonObject(row.metadata),
+        parent,
+        file: readArtifactBytes(this.db, row),
+      };
+    });
+
+    const traceRows = this.db.prepare(
+      `SELECT source_id,target_type,target_id,link_type
+         FROM factory_managed_trace_productions
+        WHERE execution_id=? ORDER BY id`,
+    ).all(input.executionRef) as Array<{
+      source_id: number; target_type: 'artifact' | 'task'; target_id: number; link_type: string;
+    }>;
+    const selectorForArtifactId = (id: number): ReplayArtifactSelector | null => {
+      const row = artifactById.get(id) ?? this.db.prepare(
+        'SELECT type,code,title,path,content_hash FROM artifacts WHERE id=?',
+      ).get(id) as {
+        type: string; code: string | null; title: string; path: string; content_hash: string | null;
+      } | undefined;
+      return row ? artifactSelector(row) : null;
+    };
+    const traces = traceRows.flatMap(trace => {
+      const source = selectorForArtifactId(trace.source_id);
+      if (!source) return [];
+      const targetArtifact = trace.target_type === 'artifact'
+        ? selectorForArtifactId(trace.target_id) : null;
+      const targetTask = trace.target_type === 'task'
+        ? this.db.prepare('SELECT generation_key FROM tasks WHERE id=?').get(trace.target_id) as { generation_key: string | null } | undefined
+        : undefined;
+      return [{
+        source,
+        targetType: trace.target_type,
+        targetArtifact,
+        targetTaskGenerationKey: targetTask?.generation_key ?? null,
+        linkType: trace.link_type,
+      }];
+    });
+
+    const git = captureGitRecipe(this.db, typedProducts);
+    const payload: ReplayCapsulePayload = {
+      schemaVersion: REPLAY_CAPSULE_SCHEMA,
+      key: keyMaterial,
+      replayKey,
+      inputBindings,
+      typedProducts,
+      artifacts,
+      traces,
+      git,
+    };
+    const payloadHash = sha256Hex(payload);
+    const capsuleRef = `replay-capsule:${replayKey}:${payloadHash}`;
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_replay_capsules
+         (capsule_ref,replay_key,project_id,source_execution_ref,
+          source_candidate_set_ref,payload_hash,payload_snapshot)
+       VALUES (?,?,?,?,?,?,?)`,
+    ).run(
+      capsuleRef,
+      replayKey,
+      keyMaterial.projectId,
+      input.executionRef,
+      input.candidateSetRef,
+      payloadHash,
+      JSON.stringify(payload),
+    );
+    const record = this.read(capsuleRef);
+    if (!record) throw new Error(`REPLAY_CAPSULE_PERSIST_FAILED: ${capsuleRef}`);
+    return record;
+  }
+}
