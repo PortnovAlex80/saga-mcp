@@ -32,7 +32,7 @@
 - [ ] 6. Match integration targets exactly to the bound repositories and bases.
 - [ ] 7. Check unique keys, closed dependencies and an acyclic graph.
 - [ ] 8. Fill and validate the submission call template.
-- [ ] 9. Call `process_node_submit` exactly once.
+- [ ] 9. Call `product_submit` exactly once.
 - [ ] 10. Record its submission ref/hash, then call `worker_done` and exit.
 
 ## Submission checkpoint

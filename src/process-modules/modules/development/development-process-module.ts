@@ -50,7 +50,7 @@ const COMMON_WRITE_TOOLS = [
   'worker_done',
   'worker_merge_acquire', 'worker_merge_release',
   'verification_record',
-  'process_node_submit',
+  'product_submit',
   'Write', 'Edit', 'Bash',
 ] as const;
 
@@ -314,7 +314,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       executionMode: 'tracker_only',
       allowedTools: [
         ...COMMON_READ_TOOLS,
-        'artifact_get', 'conflict_check', 'process_node_submit', 'worker_done',
+        'artifact_get', 'conflict_check', 'product_submit', 'worker_done',
         'Write', 'Edit', 'Bash',
       ],
       trackerTemplate: DEVELOPMENT_TRACKER,

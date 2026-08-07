@@ -20,7 +20,7 @@ Read these task metadata fields before acting:
 - `trusted_provider_bindings`: exact provider identities allowed for evidence.
 
 The declared output schema is mandatory. Before `worker_done`, call
-`process_node_submit` exactly once with a complete JSON product matching that
+`product_submit` exactly once with a complete JSON product matching that
 schema. A prose completion message is not a product.
 
 ## Author desk
@@ -68,7 +68,7 @@ schema. A prose completion message is not a product.
 ## Hard invariants
 
 - The live task/execution fence must match every write.
-- `process_node_submit` precedes `worker_done`.
+- `product_submit` precedes `worker_done`.
 - Repository work is complete only after approved integration is recorded.
 - Do not continue after the terminal tool response.
 - `worker_ask_need` is terminal for the launch: its `stop: true` response means

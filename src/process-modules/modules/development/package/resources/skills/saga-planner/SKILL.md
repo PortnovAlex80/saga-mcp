@@ -95,7 +95,7 @@ from the same execution or mutate an earlier CandidateSet.
 
 ## Never
 
-- call `process_node_submit`;
+- call `product_submit`;
 - create/move tasks or dependencies directly;
 - mutate Git/repository state;
 - equate §D2 row count with implementation task count;
