@@ -1,18 +1,7 @@
 /**
  * buildExecutionContext — freezes the immutable per-execution snapshot at claim
- * time (D1.1). This is the SINGLE place the model route is read for a Saga 3
- * managed execution; spawn-side and proposal-provenance-side both consume the
- * frozen value from `worker_executions.metadata.execution_context`, eliminating
- * the D1 claim↔spawn model-route race.
- *
- * Authority is frozen from the WorkIntent bound to the task
- * (`task.metadata.work_intent_id`). A WorkIntent mutated AFTER claim does not
- * change this snapshot — the gateway reads the frozen `execution_context`, not
- * the live WorkIntent row, so the worker cannot expand its own authority
- * mid-run.
- *
- * Pure function: takes the WorkIntent (or null) and the model route as inputs;
- * the caller (dispatcher) is responsible for reading them. No `getDb` here.
+ * time. Model route, replay selection and authority are read once and never
+ * re-resolved after the execution fence exists.
  */
 import {
   authorityHash,
@@ -20,41 +9,32 @@ import {
   type ExecutionContextExecutorKind,
   type ExecutionContextSnapshot,
   type ExecutionModelRoute,
+  type ExecutionReplayBinding,
   type ExecutionRoutePolicyRef,
 } from './execution-context.js';
 import type { WorkIntent } from '../work-intent.js';
 
 export interface BuildExecutionContextInput {
-  /** Model route read ONCE by the caller (dispatcher) inside its claim transaction. */
+  /** Model route read ONCE by the caller inside its claim transaction. */
   modelRoute: ExecutionModelRoute;
-  /**
-   * v2: executor kind (orthogonal to model). Selects which binary spawn runs.
-   * Defaults to `claude-cli` when omitted (legacy callers).
-   */
+  /** Physical executor actually used by this execution. */
   executorKind?: ExecutionContextExecutorKind;
-  /**
-   * v2: routing policy citation (ref + digest). Frozen so the journal can
-   * explain the routing decision. Null/omitted only on legacy v1 snapshots.
-   */
+  /** Routing/replay policy citation. */
   routePolicy?: ExecutionRoutePolicyRef | null;
-  /**
-   * `work_intent_id`. Null authority → gateway compatibility-allow.
-   */
+  /** Exact replay lookup frozen at claim. Null for non-Production-Cell work. */
+  replay?: ExecutionReplayBinding | null;
+  /** `work_intent_id`. */
   workIntent: WorkIntent | null;
-  /** ISO timestamp captured at claim (caller-supplied so tests are deterministic). */
+  /** ISO timestamp captured at claim. */
   capturedAt: string;
 }
 
-/**
- * Build the immutable snapshot. For a Saga 3 task (workIntent != null) the
- * authority is frozen with an `authority_hash` over the granted tool surface.
- * gateway treats the execution as compatibility-allow.
- */
 export function buildExecutionContext(input: BuildExecutionContextInput): ExecutionContextSnapshot {
   const {
     modelRoute,
     executorKind = 'claude-cli',
     routePolicy = null,
+    replay = null,
     workIntent,
     capturedAt,
   } = input;
@@ -83,6 +63,7 @@ export function buildExecutionContext(input: BuildExecutionContextInput): Execut
     model_route: { ...modelRoute },
     executor_kind: executorKind,
     route_policy: routePolicy,
+    replay,
     captured_at: capturedAt,
   };
 }
