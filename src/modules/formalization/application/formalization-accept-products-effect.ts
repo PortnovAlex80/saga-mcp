@@ -30,12 +30,30 @@ export function createFormalizationAcceptProductsEffect(
   return {
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     run(input) {
+      // Select the LATEST production per artifact_id. A worker may edit the
+      // same artifact multiple times within one execution (iterating on format,
+      // fixing validation errors). Each edit appends a new production row. The
+      // acceptance effect must compare the artifact's current content_hash
+      // against the FINAL production (the last write), not every intermediate
+      // write — otherwise an artifact that was edited N times before the worker
+      // settled on the accepted version would always fail with content drift on
+      // the first intermediate hash.
       const produced = db.prepare(
         `SELECT artifact_id,content_hash
            FROM factory_managed_artifact_productions
           WHERE process_run_id=? AND execution_id=?
+            AND id IN (
+              SELECT MAX(id) FROM factory_managed_artifact_productions
+               WHERE process_run_id=? AND execution_id=?
+               GROUP BY artifact_id
+            )
           ORDER BY id`,
-      ).all(input.processRunId, input.producerExecutionRef) as ProducedArtifactRow[];
+      ).all(
+        input.processRunId,
+        input.producerExecutionRef,
+        input.processRunId,
+        input.producerExecutionRef,
+      ) as ProducedArtifactRow[];
 
       const apply = db.transaction(() => {
         for (const item of produced) {
