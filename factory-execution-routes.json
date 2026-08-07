@@ -4,27 +4,5 @@
     "executor": { "kind": "claude-cli" },
     "provider": "zai"
   },
-  "routes": [
-    {
-      "match": { "module": "product-discovery" },
-      "route": { "executor": { "kind": "claude-cli-simulator" } }
-    },
-    {
-      "match": { "module": "solution-formalization" },
-      "route": { "executor": { "kind": "claude-cli-simulator" } }
-    },
-    {
-      "match": { "module": "delivery-release" },
-      "route": { "executor": { "kind": "claude-cli-simulator" } }
-    },
-    {
-      "match": { "module": "solution-development" },
-      "route": {
-        "executor": { "kind": "claude-cli" },
-        "provider": "zai",
-        "model": "glm-5.2",
-        "effort": "medium"
-      }
-    }
-  ]
+  "routes": []
 }
