@@ -6,10 +6,10 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import { EXECUTION_CONTEXT_POLICY_VERSION } from '../../shared/authority/execution-context.js';
 import { getDb } from '../../db.js';
-import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
-import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
-import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
-import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import {
+  finalizeManagedWorkerProcess,
+  hasAcceptedWorkerDone,
+} from './worker-process-termination.js';
 
 export interface ClaudeBoardRunner {
   start(command: {
@@ -78,8 +78,6 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
       };
       this.replayRuns.set(command.projectId, replayRun);
 
-      // Same asynchronous host contract as a spawned worker: start() returns
-      // running, then the execution becomes terminal and status() observes it.
       queueMicrotask(() => {
         try {
           this.replayRunner!({ assignment: command.assignment });
@@ -95,10 +93,12 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           try {
-            // If worker_done was durably accepted before a later physical-close
-            // error, semantic completion wins. Reconcile the fence instead of
-            // falsely turning accepted work into a crash repair.
-            if (hasAcceptedWorkerDone(String(command.assignment.workerExecutionId))) {
+            // A durable worker_done is semantic completion. A later physical
+            // close/replay error must never turn accepted work into repair.
+            if (hasAcceptedWorkerDone(
+              getDb(),
+              String(command.assignment.workerExecutionId),
+            )) {
               finalizeReplaySuccess(command.assignment);
               replayRun.completed = true;
               replayRun.snapshot = {
@@ -178,85 +178,26 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
 }
 
 function finalizeReplaySuccess(assignment: AssignedWork): void {
-  const executionId = String(assignment.workerExecutionId);
-  const db = getDb();
-  const outcome = releaseExecutionAtomically(db, {
-    executionId,
-    terminalState: 'exited',
+  const outcome = finalizeManagedWorkerProcess(getDb(), {
+    taskId: Number(assignment.taskId),
+    executionId: String(assignment.workerExecutionId),
     exitCode: 0,
     reason: 'in-process replay completed after durable worker_done',
-    preserveTaskStatus: true,
   });
-  const task = db.prepare(
-    'SELECT current_execution_id FROM tasks WHERE id=?',
-  ).get(Number(assignment.taskId)) as { current_execution_id: string | null } | undefined;
-  if (task?.current_execution_id === executionId) {
+  if (!outcome.semanticCompletion) {
     throw new Error(
-      `REPLAY_EXECUTION_FENCE_STRANDED: task ${String(assignment.taskId)} `
-      + `still fenced by ${executionId} after successful replay`,
+      `REPLAY_EXECUTION_FINALIZE_FAILED: execution ${String(assignment.workerExecutionId)} `
+      + 'has no accepted worker_done receipt',
     );
-  }
-  if (!outcome.terminalized && !outcome.taskReleased) {
-    const row = db.prepare(
-      'SELECT state FROM worker_executions WHERE execution_id=?',
-    ).get(executionId) as { state: string } | undefined;
-    if (!row || !['exited', 'terminated'].includes(row.state)) {
-      throw new Error(
-        `REPLAY_EXECUTION_FINALIZE_FAILED: execution ${executionId} `
-        + `was not terminalized (${outcome.blockedReason})`,
-      );
-    }
   }
 }
 
 function recoverReplayFailure(assignment: AssignedWork, reason: string): void {
-  const executionId = String(assignment.workerExecutionId);
-  const taskId = Number(assignment.taskId);
-  const db = getDb();
-  const task = db.prepare(
-    'SELECT workplace_ref FROM tasks WHERE id=?',
-  ).get(taskId) as { workplace_ref: string | null } | undefined;
-
-  if (task?.workplace_ref) {
-    const workplaceRef = deserializeWorkplaceRef(task.workplace_ref);
-    const workplaceRepo = new SqliteWorkplaceRepository(db);
-    const state = workplaceRepo.read(workplaceRef);
-    const actors = workplaceRepo.readActiveActors(workplaceRef);
-    if (
-      state
-      && (state.loopState === 'leased' || state.loopState === 'running')
-      && actors?.activeReservationRef === executionId
-    ) {
-      new ConveyorRuntime(db).releaseExecution({
-        workplaceRef,
-        reservationRef: executionId,
-        taskId,
-        outcome: 'crashed',
-      });
-    }
-  }
-
-  // Keep the current Workplace-derived Kanban phase. Production Cell recovery
-  // owns requeue/repair; physical failure must only clear this execution fence.
-  releaseExecutionAtomically(db, {
-    executionId,
-    terminalState: 'lost',
+  finalizeManagedWorkerProcess(getDb(), {
+    taskId: Number(assignment.taskId),
+    executionId: String(assignment.workerExecutionId),
     reason: `capsule replay failed: ${reason}`,
-    lastError: reason,
-    preserveTaskStatus: true,
   });
-}
-
-function hasAcceptedWorkerDone(executionId: string): boolean {
-  try {
-    return Boolean(getDb().prepare(
-      `SELECT 1 FROM command_receipts
-        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
-        LIMIT 1`,
-    ).get(executionId));
-  } catch {
-    return false;
-  }
 }
 
 function hasFrozenCapsule(assignment: AssignedWork): boolean {
