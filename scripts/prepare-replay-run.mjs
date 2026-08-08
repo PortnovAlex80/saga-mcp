@@ -8,19 +8,21 @@
  * Usage: node prepare-replay-run.mjs
  */
 import Database from 'better-sqlite3';
-import { copyFileSync, existsSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
+const sandboxName = process.argv[2] ?? 'replay-proof';
 const srcDb = '.real-factory-smoke/factory.sqlite';
-const dstDb = '.factory-sandboxes/replay-proof/factory.sqlite';
+const sandboxRoot = `.factory-sandboxes/${sandboxName}`;
+const dstDb = `${sandboxRoot}/factory.sqlite`;
 
 // Copy the completed Run A DB
-if (existsSync('.factory-sandboxes/replay-proof')) {
-  rmSync('.factory-sandboxes/replay-proof', { recursive: true, force: true });
+if (existsSync(sandboxRoot)) {
+  rmSync(sandboxRoot, { recursive: true, force: true });
 }
-import { mkdirSync } from 'node:fs';
-mkdirSync('.factory-sandboxes/replay-proof', { recursive: true });
-mkdirSync('.factory-sandboxes/replay-proof/product', { recursive: true });
+mkdirSync(sandboxRoot, { recursive: true });
+mkdirSync(`${sandboxRoot}/product`, { recursive: true });
+copyFileSync(srcDb, dstDb);
 copyFileSync(srcDb, dstDb);
 
 const db = new Database(dstDb);
@@ -84,7 +86,7 @@ console.log('capsules after strip:', capsAfter);
 // Re-init the product repo to a clean state
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-const repoPath = '.factory-sandboxes/replay-proof/product';
+const repoPath = `${sandboxRoot}/product`;
 function git(args) {
   const r = spawnSync('git', args, { cwd: repoPath, encoding: 'utf8' });
   if (r.status !== 0) throw new Error(r.stderr);

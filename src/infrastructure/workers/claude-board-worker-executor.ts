@@ -43,8 +43,22 @@ export type InProcessReplayFn = (input: {
  * surface) instead of spawning the selected inference model. The executor_kind
  * and model_route are NEVER mutated by replay; the decision to replay is
  * resolved internally from the frozen capsule_ref.
+ *
+ * The replay runs ASYNCHRONOUSLY via queueMicrotask, mirroring the real CLI
+ * worker lifecycle: start() returns a 'running' snapshot, the replay does its
+ * work in the background, calls worker_done, and the next status() poll sees a
+ * 'completed' snapshot. This lets the dispatch loop's waitForAssignedWorker
+ * poll correctly — same contract as a real worker process.
  */
 export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
+  /** Active replay runs keyed by projectId. */
+  private readonly replayRuns = new Map<number, {
+    runId: string;
+    assignment: AssignedWork;
+    completed: boolean;
+    snapshot: WorkerRunSnapshot;
+  }>();
+
   constructor(
     private readonly runner: ClaudeBoardRunner,
     private readonly replayRunner?: InProcessReplayFn,
@@ -57,20 +71,80 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
     // CLI. The replay adapter publishes through the SAME MCP surface and the
     // current GateRun decides acceptance — exactly as if inference ran.
     if (this.replayRunner && hasFrozenCapsule(command.assignment)) {
-      this.replayRunner({ assignment: command.assignment });
-      // The replay completed synchronously through worker_done. Synthesize a
-      // terminal snapshot so the dispatcher's status() poll observes completion
-      // exactly as it would for a real CLI run that called worker_done.
-      return synthesizeTerminalSnapshot(command);
+      const runId = `replay-${command.projectId}-${Date.now()}`;
+      const initialSnapshot: WorkerRunSnapshot = {
+        id: runId,
+        project_id: command.projectId,
+        concurrency: command.concurrency,
+        status: 'running',
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        active: [{
+          task_id: Number(command.assignment.taskId),
+          title: '',
+          worker_id: command.assignment.workerId,
+          pid: null,
+          started_at: new Date().toISOString(),
+          log_path: undefined,
+        }],
+        completed: 0,
+        failed: 0,
+        claimed: 1,
+        last_error: null,
+      };
+      const replayRun = {
+        runId,
+        assignment: command.assignment,
+        completed: false,
+        snapshot: initialSnapshot,
+      };
+      this.replayRuns.set(command.projectId, replayRun);
+      // Run the replay asynchronously so the dispatch loop's status() poll
+      // observes 'running' first, then 'completed' after worker_done. This
+      // mirrors the real CLI worker lifecycle.
+      queueMicrotask(() => {
+        try {
+          this.replayRunner!({ assignment: command.assignment });
+          replayRun.completed = true;
+          replayRun.snapshot = {
+            ...replayRun.snapshot,
+            status: 'completed',
+            finished_at: new Date().toISOString(),
+            active: [],
+            completed: 1,
+          };
+        } catch (error) {
+          replayRun.snapshot = {
+            ...replayRun.snapshot,
+            status: 'failed',
+            finished_at: new Date().toISOString(),
+            active: [],
+            failed: 1,
+            last_error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      });
+      return { ...replayRun.snapshot };
     }
     return this.runner.start(command);
   }
 
   stop(projectId: number): WorkerRunSnapshot | null {
+    const replay = this.replayRuns.get(projectId);
+    if (replay) {
+      this.replayRuns.delete(projectId);
+      return { ...replay.snapshot, status: 'stopped', finished_at: new Date().toISOString() };
+    }
     return this.runner.stop(projectId);
   }
 
   status(projectId: number): WorkerRunSnapshot | null {
+    const replay = this.replayRuns.get(projectId);
+    if (replay) {
+      const snap = { ...replay.snapshot };
+      if (replay.completed) this.replayRuns.delete(projectId);
+      return snap;
+    }
     return this.runner.status(projectId);
   }
 
@@ -79,6 +153,7 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
   }
 
   dispose(): void {
+    this.replayRuns.clear();
     this.runner.dispose();
   }
 }
@@ -90,22 +165,6 @@ function hasFrozenCapsule(assignment: AssignedWork): boolean {
     | undefined;
   return typeof ctx?.replay?.capsule_ref === 'string'
     && ctx.replay.capsule_ref.length > 0;
-}
-
-function synthesizeTerminalSnapshot(command: WorkerExecutorStart): WorkerRunSnapshot {
-  return {
-    id: `replay-${command.projectId}-${Date.now()}`,
-    project_id: command.projectId,
-    concurrency: command.concurrency,
-    status: 'completed',
-    started_at: new Date().toISOString(),
-    finished_at: new Date().toISOString(),
-    active: [],
-    completed: 1,
-    failed: 0,
-    claimed: 1,
-    last_error: null,
-  };
 }
 
 function assertFrozenExecutionRoute(assignment: AssignedWork): void {

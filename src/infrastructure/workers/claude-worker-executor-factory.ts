@@ -639,16 +639,6 @@ function createInProcessReplayRunner(): InProcessReplayFn {
         result: 'capsule replay: reconstructed accepted worker production',
         execution_id: assignment.workerExecutionId,
       });
-      // The in-process replay has no OS process; mark the execution exited so
-      // the supervisor does not reap it as lost. worker_done already
-      // transitioned the phase to 'finishing'; this sets the terminal state
-      // synchronously before start() returns.
-      db.prepare(
-        `UPDATE worker_executions
-            SET state='exited', exit_code=0, finished_at=datetime('now'),
-                phase_updated_at=datetime('now')
-          WHERE execution_id=? AND state IN ('running','finishing')`,
-      ).run(assignment.workerExecutionId);
     } finally {
       // Clean up the env vars so they don't leak to the next non-replay
       // execution (which resolves provenance from the spawned worker's env).
