@@ -1,69 +1,112 @@
 import type Database from 'better-sqlite3';
 import type { ReplayCapsuleRecord } from '../../replay/replay-capsule.js';
+import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 
-function scalarCount(
+interface CandidateMemberRow {
+  product_schema: string;
+  product_ref: string;
+  product_digest: string;
+}
+
+function candidateMembers(
   db: Database.Database,
-  sql: string,
-  executionRef: string,
-): number {
-  const row = db.prepare(sql).get(executionRef) as { n: number } | undefined;
-  return Number(row?.n ?? 0);
+  candidateSetRef: string,
+): CandidateMemberRow[] {
+  const candidate = db.prepare(
+    'SELECT candidate_set_ref FROM factory_candidate_sets WHERE candidate_set_ref=?',
+  ).get(candidateSetRef) as { candidate_set_ref: string } | undefined;
+  if (!candidate) {
+    throw new Error(`REPLAY_CAPTURE_CANDIDATE_NOT_FOUND: ${candidateSetRef}`);
+  }
+  return db.prepare(
+    `SELECT product_schema,product_ref,product_digest
+       FROM factory_candidate_set_members
+      WHERE candidate_set_ref=? ORDER BY ordinal`,
+  ).all(candidateSetRef) as CandidateMemberRow[];
+}
+
+function readPersistedProduct(
+  db: Database.Database,
+  member: CandidateMemberRow,
+): unknown {
+  const row = db.prepare(
+    `SELECT payload_snapshot
+       FROM factory_process_products
+      WHERE schema_id=? AND artifact_ref=? AND product_hash=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(member.product_schema, member.product_ref, member.product_digest) as {
+    payload_snapshot: string;
+  } | undefined;
+  if (!row) throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
+  return JSON.parse(row.payload_snapshot) as unknown;
 }
 
 /**
- * Prove that a captured capsule is a complete reconstruction recipe for the
- * generic worker production/evidence recorded by one execution.
- *
- * This validator is shared by direct post-terminal capture and lazy crash
- * reconstruction. A capsule is reusable only if both paths certify the exact
- * same completeness invariant.
+ * Prove that a capsule is a complete reconstruction recipe for the exact
+ * accepted CandidateSet. The CandidateSet ProductRefs are the oracle; physical
+ * writes made by sourceExecutionRef are provenance only and may legitimately
+ * be empty after P18 cross-execution repair.
  */
 export function assertReplayCapsuleComplete(
   db: Database.Database,
   executionRef: string,
   record: ReplayCapsuleRecord,
 ): void {
-  const typedCount = scalarCount(
-    db,
-    'SELECT COUNT(*) AS n FROM factory_managed_node_submissions WHERE execution_id=?',
-    executionRef,
-  );
-  const artifactCount = scalarCount(
-    db,
-    `SELECT COUNT(DISTINCT artifact_id) AS n
-       FROM factory_managed_artifact_productions WHERE execution_id=?`,
-    executionRef,
-  );
-  const traceCount = scalarCount(
-    db,
-    'SELECT COUNT(*) AS n FROM factory_managed_trace_productions WHERE execution_id=?',
-    executionRef,
-  );
-
-  if (record.payload.typedProducts.length !== typedCount) {
+  if (record.sourceExecutionRef !== executionRef) {
     throw new Error(
-      `REPLAY_CAPTURE_INCOMPLETE_TYPED_PRODUCTS: expected ${typedCount}, captured ${record.payload.typedProducts.length}`,
-    );
-  }
-  if (record.payload.artifacts.length !== artifactCount) {
-    throw new Error(
-      `REPLAY_CAPTURE_INCOMPLETE_ARTIFACTS: expected ${artifactCount}, captured ${record.payload.artifacts.length}`,
-    );
-  }
-  if (record.payload.traces.length !== traceCount) {
-    throw new Error(
-      `REPLAY_CAPTURE_INCOMPLETE_TRACES: expected ${traceCount}, captured ${record.payload.traces.length}`,
+      `REPLAY_CAPTURE_SOURCE_EXECUTION_MISMATCH: expected ${executionRef}, got ${record.sourceExecutionRef}`,
     );
   }
 
-  const sourceArtifacts = db.prepare(
-    `SELECT a.id,a.type,a.code,a.title,a.path,a.content_hash,a.storage_kind,
-            a.parent_artifact_id
-       FROM factory_managed_artifact_productions p
-       JOIN artifacts a ON a.id=p.artifact_id
-      WHERE p.execution_id=?
-      GROUP BY a.id`,
-  ).all(executionRef) as Array<{
+  const members = candidateMembers(db, record.sourceCandidateSetRef);
+  if (members.length === 0) {
+    throw new Error(`REPLAY_CAPTURE_CANDIDATE_EMPTY: ${record.sourceCandidateSetRef}`);
+  }
+
+  const expectedTyped = new Map<string, CandidateMemberRow>();
+  const expectedArtifactIds = new Set<number>();
+  const expectedTraceIds = new Set<number>();
+
+  for (const member of members) {
+    if (member.product_ref.startsWith('managed-node-submission:')) {
+      expectedTyped.set(`${member.product_schema}:${member.product_digest}`, member);
+      continue;
+    }
+    const product = readPersistedProduct(db, member);
+    if (!isWorkplaceProductionSnapshot(product)) {
+      throw new Error(
+        `REPLAY_CAPTURE_UNSUPPORTED_CANDIDATE_PRODUCT: ${member.product_ref}`,
+      );
+    }
+    for (const artifact of product.artifacts) expectedArtifactIds.add(artifact.artifactId);
+    for (const trace of product.traces) expectedTraceIds.add(trace.traceId);
+  }
+
+  const actualTyped = new Set(
+    record.payload.typedProducts.map(item => `${item.schema}:${item.contentHash}`),
+  );
+  if (actualTyped.size !== expectedTyped.size
+      || [...expectedTyped.keys()].some(key => !actualTyped.has(key))) {
+    throw new Error(
+      `REPLAY_CAPTURE_INCOMPLETE_TYPED_PRODUCTS: expected ${expectedTyped.size}, captured ${actualTyped.size}`,
+    );
+  }
+
+  if (record.payload.artifacts.length !== expectedArtifactIds.size) {
+    throw new Error(
+      `REPLAY_CAPTURE_INCOMPLETE_ARTIFACTS: expected ${expectedArtifactIds.size}, captured ${record.payload.artifacts.length}`,
+    );
+  }
+  if (record.payload.traces.length !== expectedTraceIds.size) {
+    throw new Error(
+      `REPLAY_CAPTURE_INCOMPLETE_TRACES: expected ${expectedTraceIds.size}, captured ${record.payload.traces.length}`,
+    );
+  }
+
+  const sourceArtifacts = [...expectedArtifactIds].map(id => db.prepare(
+    `SELECT id,type,code,title,path,content_hash,storage_kind,parent_artifact_id
+       FROM artifacts WHERE id=?`,
+  ).get(id) as {
     id: number;
     type: string;
     code: string | null;
@@ -72,7 +115,12 @@ export function assertReplayCapsuleComplete(
     content_hash: string | null;
     storage_kind: string;
     parent_artifact_id: number | null;
-  }>;
+  } | undefined).filter((row): row is NonNullable<typeof row> => row !== undefined);
+  if (sourceArtifacts.length !== expectedArtifactIds.size) {
+    throw new Error(
+      `REPLAY_CAPTURE_ARTIFACT_NOT_FOUND: expected ${expectedArtifactIds.size}, resolved ${sourceArtifacts.length}`,
+    );
+  }
 
   for (const source of sourceArtifacts) {
     const captured = record.payload.artifacts.find(item =>
