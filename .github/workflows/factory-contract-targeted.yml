@@ -21,6 +21,32 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Apply replay authority rebinding experiment
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/infrastructure/replay/capsule-replay-executor.ts')
+          s = p.read_text()
+          import_needle = "import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';"
+          import_replacement = import_needle + "\nimport { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';"
+          call_needle = '''    const rebound = rehydrateReplayValue(
+              product.content,
+              currentInput,
+              allowedBindingPaths,
+            );'''
+          call_replacement = '''    const rebound = rebindReplayAuthorityReferences(
+              db,
+              taskMetadata,
+              rehydrateReplayValue(
+                product.content,
+                currentInput,
+                allowedBindingPaths,
+              ),
+            );'''
+          if import_needle not in s or call_needle not in s:
+              raise SystemExit('replay patch insertion point not found')
+          p.write_text(s.replace(import_needle, import_replacement, 1).replace(call_needle, call_replacement, 1))
+          PY
       - name: Build (strict TypeScript)
         run: npm run build
       - name: Instrument failure-only Run B diagnostics
