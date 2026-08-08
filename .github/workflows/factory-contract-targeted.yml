@@ -21,16 +21,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Apply replay authority rebinding experiment
+      - name: Apply replay fixes under validation
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
+
+          # Read-derived authority/source identities are rebound to current Run.
           p = Path('src/infrastructure/replay/capsule-replay-executor.ts')
           s = p.read_text()
           import_needle = "import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';"
-          if import_needle not in s:
-              raise SystemExit('replay import insertion point not found')
           s = s.replace(import_needle, import_needle + "\nimport { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';", 1)
           pattern = r"(\s*)const rebound = rehydrateReplayValue\(\s*product\.content,\s*currentInput,\s*allowedBindingPaths,\s*\);"
           m = re.search(pattern, s)
@@ -49,47 +49,35 @@ jobs:
               f"{indent}  ),\n"
               f"{indent});"
           )
-          s = re.sub(pattern, replacement, s, count=1)
-          p.write_text(s)
+          p.write_text(re.sub(pattern, replacement, s, count=1))
+
+          # Kernel audit hashes remain exact/current-run, while semanticDigest
+          # projects only cross-run-stable Development meaning.
+          p = Path('src/modules/development/application/development-installation.ts')
+          s = p.read_text()
+          taskgraph_needle = '''          contentHash: materialized.reference.hash,\n          bindings: {\n            graphHash: materialized.graph.graphHash,'''
+          taskgraph_replacement = '''          contentHash: materialized.reference.hash,\n          semanticDigest: sha256Hex({\n            schema: DEVELOPMENT_TASK_GRAPH_SCHEMA,\n            acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,\n            acceptanceCriteria: developmentCase.acceptanceCriteria,\n            repositories: developmentCase.repositories,\n            implementationItems: materialized.graph.implementationItems,\n            verificationItems: materialized.graph.verificationItems,\n            integrationTargets: materialized.graph.integrationTargets,\n          }),\n          bindings: {\n            graphHash: materialized.graph.graphHash,'''
+          if taskgraph_needle not in s:
+              raise SystemExit('taskgraph semantic insertion point not found')
+          s = s.replace(taskgraph_needle, taskgraph_replacement, 1)
+          frozen_needle = '''        contentHash: result.reference.hash,\n        bindings: {\n          candidate: result.candidate,'''
+          frozen_replacement = '''        contentHash: result.reference.hash,\n        semanticDigest: sha256Hex({\n          schema: INTEGRATED_CANDIDATE_SCHEMA,\n          frozen: result.candidate.frozen,\n          repositories: result.candidate.repositories,\n          buildProducts: result.candidate.buildProducts,\n        }),\n        bindings: {\n          candidate: result.candidate,'''
+          if frozen_needle not in s:
+              raise SystemExit('integrated candidate semantic insertion point not found')
+          p.write_text(s.replace(frozen_needle, frozen_replacement, 1))
+
+          # A fan-out worker can depend on both the materialization source and
+          # the immediate upstream production (verification depends on the
+          # frozen candidate). Include both semantic identities.
+          p = Path('src/process-modules/application/node-executors/production-cell-node-executor.ts')
+          s = p.read_text()
+          fanout_needle = '''    return sha256Hex({\n      upstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
+          fanout_replacement = '''    const immediateInput = readInputAsProduction(ctx.input);\n    const immediateInputSemanticDigest = immediateInput\n      ? (immediateInput.semanticDigest ?? immediateInput.contentHash)\n      : null;\n    return sha256Hex({\n      upstreamSemanticDigest,\n      immediateInputSemanticDigest:\n        immediateInputSemanticDigest === upstreamSemanticDigest\n          ? null\n          : immediateInputSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
+          if fanout_needle not in s:
+              raise SystemExit('fanout semantic insertion point not found')
+          p.write_text(s.replace(fanout_needle, fanout_replacement, 1))
           PY
       - name: Build (strict TypeScript)
         run: npm run build
-      - name: Instrument Development replay identity comparison
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('tests/factory-contract/golden-path.test.mjs')
-          s = p.read_text()
-          needle = "    assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);"
-          replacement = r'''    const devCapsules = resultDb.prepare(`
-              SELECT id,replay_key,source_execution_ref,
-                     json_extract(payload_snapshot,'$.key.nodeId') AS nodeId,
-                     json_extract(payload_snapshot,'$.key.productionCellId') AS cellId,
-                     json_extract(payload_snapshot,'$.key.workKey') AS workKey,
-                     json_extract(payload_snapshot,'$.key.role') AS role,
-                     json_extract(payload_snapshot,'$.key.semanticInputDigest') AS semanticInputDigest,
-                     json_extract(payload_snapshot,'$.key.subjectProductionDigest') AS subjectProductionDigest
-                FROM factory_replay_capsules
-               WHERE json_extract(payload_snapshot,'$.key.moduleRef')='solution-development@1.0.0'
-               ORDER BY id
-            `).all();
-            const devExecutions = resultDb.prepare(`
-              SELECT we.execution_id,t.id AS taskId,t.metadata,we.metadata AS executionMetadata
-                FROM worker_executions we JOIN tasks t ON t.id=we.task_id
-               WHERE json_extract(t.metadata,'$.process_module_ref')='solution-development@1.0.0'
-               ORDER BY we.rowid
-            `).all().map(row => ({
-              executionId: row.execution_id,
-              taskId: row.taskId,
-              task: JSON.parse(row.metadata || '{}'),
-              replay: JSON.parse(row.executionMetadata || '{}').execution_context?.replay || null,
-            }));
-            process.stderr.write(`DEV_CAPSULES=${JSON.stringify(devCapsules)}\n`);
-            process.stderr.write(`DEV_EXECUTIONS=${JSON.stringify(devExecutions)}\n`);
-            assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);'''
-          if needle not in s:
-              raise SystemExit('diagnostic insertion point not found')
-          p.write_text(s.replace(needle, replacement, 1))
-          PY
       - name: Canonical cold plus replay theorem
         run: node --test tests/factory-contract/golden-path.test.mjs
