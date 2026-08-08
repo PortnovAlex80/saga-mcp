@@ -50,6 +50,10 @@ import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sql
 import { lifecycleRefKey } from '../process-modules/persistence/lifecycle-run.js';
 import { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
+import type {
+  ManagedArtifactProductionRecord,
+  ManagedTraceProductionRecord,
+} from '../process-modules/shared/managed-production.js';
 import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteWorkplaceProductAdapter } from '../process-modules/persistence/sqlite-workplace-product-adapter.js';
@@ -129,6 +133,38 @@ export interface ProductLifecycleRuntimeOptions {
   onLifecycleStarted?: (
     run: import('../process-modules/persistence/lifecycle-run.js').LifecycleRunRecord,
   ) => Promise<void> | void;
+}
+
+/**
+ * Deduplicate node-scoped managed-production artifact rows by artifactId,
+ * keeping the LATEST write (highest ledger id). A later retry fence of the
+ * same node may update an artifact created by an earlier fence; the gate must
+ * see the latest content, not a stale row. CGAD P18 node-durable identity.
+ */
+function dedupeLatestByArtifactId(
+  rows: readonly ManagedArtifactProductionRecord[],
+): readonly ManagedArtifactProductionRecord[] {
+  const latest = new Map<number, ManagedArtifactProductionRecord>();
+  for (const row of rows) {
+    const prev = latest.get(row.artifactId);
+    if (!prev || row.ledgerId > prev.ledgerId) latest.set(row.artifactId, row);
+  }
+  return [...latest.values()];
+}
+
+/**
+ * Deduplicate node-scoped managed-production trace rows by traceId, keeping
+ * the LATEST write (highest ledger id). Mirrors dedupeLatestByArtifactId.
+ */
+function dedupeLatestByTraceId(
+  rows: readonly ManagedTraceProductionRecord[],
+): readonly ManagedTraceProductionRecord[] {
+  const latest = new Map<number, ManagedTraceProductionRecord>();
+  for (const row of rows) {
+    const prev = latest.get(row.traceId);
+    if (!prev || row.ledgerId > prev.ledgerId) latest.set(row.traceId, row);
+  }
+  return [...latest.values()];
 }
 
 export function createProductLifecycleRuntime(
@@ -436,12 +472,25 @@ export function createProductLifecycleRuntime(
             }];
           }
           if (requireTypedSubmission) return [];
-          const artifacts = centralLedger.listArtifactsForNodeInProcessRun(
+          // CGAD P18 — node-durable identity: the gate reads managed productions
+          // by DURABLE node-scope (processRunId + moduleRef + nodeId), NOT by
+          // transient executionRef. A retry after a lost execution (worker died
+          // before worker_done) must inherit the producer's prior artifacts;
+          // filtering by executionRef blinds the gate to earlier fences of the
+          // same node — exactly the violation tests/architecture/
+          // no-execution-scoped-lookup.test.mjs forbids. The ledger methods are
+          // already node-scoped; we keep only the contentHash guard here.
+          // Deduplicate by artifactId/traceId keeping the LATEST write (highest
+          // ledger id) so an update in a later attempt supersedes the original.
+          const artifactRows = centralLedger.listArtifactsForNodeInProcessRun(
             processRunId, moduleRef, nodeId,
-          ).filter(a => a.executionId === executionRef && a.contentHash);
-          const traces = centralLedger.listTracesForNodeInProcessRun(
-            processRunId, moduleRef, nodeId,
-          ).filter(trace => trace.executionId === executionRef);
+          ).filter(a => a.contentHash);
+          const artifacts = dedupeLatestByArtifactId(artifactRows);
+          const traces = dedupeLatestByTraceId(
+            centralLedger.listTracesForNodeInProcessRun(
+              processRunId, moduleRef, nodeId,
+            ),
+          );
           if (artifacts.length === 0 && traces.length === 0) {
             return [];
           }
@@ -456,7 +505,14 @@ export function createProductLifecycleRuntime(
           }));
           return expectedSchemaRefs.filter(Boolean).map(schemaId => ({
             schemaId,
-            ref: `execution-product-set:${executionRef}:${schemaId}`,
+            // Node-durable ProductRef: the bundle is the CURRENT accumulated
+            // production of the durable Workplace (node), not of a transient
+            // execution. Using executionRef here would re-introduce execution
+            // identity into the product ref even though the digest is
+            // node-scoped — the exact leak the Wave 6 cutover retired. The
+            // ref is canonical and stable for the same (processRun, module,
+            // node, schema) + accumulated content.
+            ref: `node-product-set:${processRunId}:${moduleRef}:${nodeId}:${schemaId}`,
             digest: sha256Hex({ artifactRefs, traceRefs }),
           }));
         },

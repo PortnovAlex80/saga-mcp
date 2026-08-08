@@ -356,3 +356,86 @@ test('WAVE 5 CUTOVER: no certificate envelope read out of opaque production.bind
       violations.join('\n  - '),
   );
 });
+
+// ===========================================================================
+// CGAD P18 guard for src/app/ — no execution-scoped filtering of node-scoped
+// managed-production product reads.
+//
+// The Wave 6 cutover test above forbids `listArtifactsForExecution` /
+// `listTracesForExecution` under src/process-modules/. But the runtime
+// composition root (src/app/product-lifecycle-runtime.ts) lived outside that
+// gate's scope and re-introduced the SAME violation as an IN-MEMORY filter:
+//
+//     centralLedger.listArtifactsForNodeInProcessRun(...)
+//       .filter(a => a.executionId === executionRef && a.contentHash);
+//
+// The ledger methods are deliberately node-scoped (no execution_id filter in
+// SQL) so a retry after a lost execution inherits the producer's prior work.
+// Adding `.filter(...executionId === executionRef...)` in memory blinds the
+// gate to earlier fences of the same node — exactly the P18 violation the
+// cutover retired. This test catches that pattern under src/app/ so it cannot
+// drift back through the composition root.
+//
+// The pattern is matched as: a `.filter(` call (possibly across lines) whose
+// arrow/predicate body references `executionId` compared to `executionRef`
+// (either direction). String literals are not stripped here — there is no
+// legitimate reason to put this anti-pattern in a string.
+// ===========================================================================
+
+const APP_ROOT = path.join(REPO_ROOT, 'src', 'app');
+
+// Match `.filter(` followed (allowing whitespace/newlines) by a predicate that
+// compares `executionId` to `executionRef` in either direction. We look for
+// the two identifiers co-occurring inside the same filter predicate. This is
+// intentionally narrower than "any executionId mention" — executionId is a
+// legitimate field on ledger records and may be read for audit/provenance.
+const EXECUTION_SCOPED_FILTER_RE = /\.filter\s*\(\s*[^)]*\bexecutionId\b[^)]*===\s*executionRef\b/s;
+
+test('CGAD P18: no execution-scoped .filter(...executionId === executionRef...) on node-scoped managed-production reads under src/app/', () => {
+  const files = listTypeScriptFiles(APP_ROOT);
+  assert.ok(files.length > 0, 'discovered .ts files under src/app/');
+
+  const violations = [];
+  for (const { rel, abs } of files) {
+    let src;
+    try {
+      src = readFileSync(abs, 'utf8');
+    } catch (err) {
+      violations.push(`${rel}: UNREADABLE (${err.code ?? err.message})`);
+      continue;
+    }
+    const stripped = stripComments(src);
+    // Also scan the reversed comparison (executionRef === ... executionId).
+    // We do a second pass with the operands swapped.
+    const reversedRe = /\.filter\s*\(\s*[^)]*\bexecutionRef\b[^)]*===\s*[^)]*\bexecutionId\b/s;
+    if (EXECUTION_SCOPED_FILTER_RE.test(stripped) || reversedRe.test(stripped)) {
+      // Find the offending line(s) for a clearer message.
+      const lines = stripped.split(/\r?\n/);
+      const hitLines = [];
+      for (let i = 0; i < lines.length; i += 1) {
+        const window = lines.slice(i, i + 4).join('\n');
+        if (EXECUTION_SCOPED_FILTER_RE.test(window) || reversedRe.test(window)) {
+          hitLines.push(i + 1);
+        }
+      }
+      violations.push(
+        `${rel}:${[...new Set(hitLines)].join(',')}: `
+          + `execution-scoped .filter on node-scoped managed-production read (CGAD P18 violation)`,
+      );
+    }
+  }
+
+  assert.deepEqual(
+    violations,
+    [],
+    'CGAD P18 forbids filtering node-scoped managed-production reads '
+      + '(listArtifactsForNodeInProcessRun / listTracesForNodeInProcessRun) '
+      + 'by transient executionRef under src/app/. The ledger methods are '
+      + 'deliberately node-scoped so a retry after a lost execution inherits '
+      + 'the producer\'s prior work; an in-memory `.filter(a => a.executionId '
+      + '=== executionRef)` blinds the gate to earlier fences of the same '
+      + 'node — the exact violation the Wave 6 cutover retired. Read by '
+      + 'DURABLE node-scope only. Offending files:\n  - '
+      + violations.join('\n  - '),
+  );
+});
