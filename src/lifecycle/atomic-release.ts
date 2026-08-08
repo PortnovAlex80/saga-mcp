@@ -10,33 +10,19 @@
 import type { Database } from 'better-sqlite3';
 
 const ACTIVE_STATE_SQL = "'reserved','running','cancel_requested'";
-
-/** Active execution state names. Mirrors worker-executions.ts. */
 const ACTIVE_EXECUTION_STATES = new Set(['reserved', 'running', 'cancel_requested']);
-
-/** Terminal execution states — fence MUST be cleared. */
 const TERMINAL_EXECUTION_STATES = new Set(['exited', 'terminated', 'lost', 'spawn_failed']);
-
-/** Tag that blocks recovery from releasing the task. */
 const NEEDS_HUMAN_TAG = 'needs-human';
 
 export interface ReleaseInput {
-  /** The execution to terminalize. */
   readonly executionId: string;
-  /** Terminal state to write. */
   readonly terminalState: 'exited' | 'terminated' | 'lost' | 'spawn_failed';
-  /** Process exit code, when available. */
   readonly exitCode?: number | null;
-  /** Human-readable reason for audit. */
   readonly reason: string;
-  /** Optional last error to persist on the execution. */
   readonly lastError?: string | null;
   /**
    * Preserve the task's current status while clearing ownership and the fence.
-   *
-   * When omitted, the release primitive derives this automatically from an
-   * accepted worker_done receipt for the exact execution. Explicit true/false
-   * remains available for callers that already know the semantic outcome.
+   * When omitted this is derived from an accepted worker_done receipt.
    */
   readonly preserveTaskStatus?: boolean;
 }
@@ -49,9 +35,7 @@ export interface ReleaseOutcome {
   readonly taskId: number | null;
 }
 
-/**
- * Terminalize an execution and release its task in one transaction.
- */
+/** Terminalize an execution and release its task in one transaction. */
 export function releaseExecutionAtomically(
   db: Database,
   input: ReleaseInput,
@@ -66,12 +50,7 @@ export function releaseExecutionAtomically(
     | { execution_id: string; task_id: number; state: string }
     | undefined;
 
-  if (!exec) {
-    return noRelease('execution not found', null);
-  }
-  if (!ACTIVE_EXECUTION_STATES.has(exec.state)) {
-    return noRelease(`execution already in terminal state ${exec.state}`, exec.task_id);
-  }
+  if (!exec) return noRelease('execution not found', null);
 
   const task = db
     .prepare(
@@ -90,14 +69,54 @@ export function releaseExecutionAtomically(
     | undefined;
 
   if (!task) {
-    db.transaction(() => writeExecutionTerminal(db, input))();
-    return {
-      terminalized: true,
-      taskReleased: false,
-      restoredStatus: null,
-      blockedReason: 'task no longer exists',
-      taskId: exec.task_id,
-    };
+    if (ACTIVE_EXECUTION_STATES.has(exec.state)) {
+      db.transaction(() => writeExecutionTerminal(db, input))();
+      return {
+        terminalized: true,
+        taskReleased: false,
+        restoredStatus: null,
+        blockedReason: 'task no longer exists',
+        taskId: exec.task_id,
+      };
+    }
+    return noRelease(`execution already in terminal state ${exec.state}`, exec.task_id);
+  }
+
+  /**
+   * Reconciliation case: a physical adapter may have observed/recorded process
+   * terminality before the atomic task-fence close ran. If durable worker_done
+   * already proves semantic completion and this exact terminal execution still
+   * owns the task fence, clear the stranded fence while preserving the current
+   * Workplace-derived task status. This is intentionally narrow: abnormal
+   * terminal executions without worker_done are NOT allowed to clear ownership
+   * through this path.
+   */
+  if (!ACTIVE_EXECUTION_STATES.has(exec.state)) {
+    if (
+      TERMINAL_EXECUTION_STATES.has(exec.state)
+      && task.current_execution_id === input.executionId
+      && hasAcceptedWorkerDoneReceipt(db, input.executionId)
+    ) {
+      let taskReleased = false;
+      db.transaction(() => {
+        taskReleased = clearTaskFence(
+          db,
+          task.id,
+          input.executionId,
+          task.status,
+          input.reason,
+          true,
+        );
+      })();
+      return {
+        terminalized: false,
+        taskReleased,
+        restoredStatus: taskReleased ? task.status : null,
+        blockedReason: taskReleased ? '' : 'fence CAS failed while reconciling terminal execution',
+        taskId: task.id,
+      };
+    }
+    return noRelease(`execution already in terminal state ${exec.state}`, exec.task_id);
   }
 
   if (task.current_execution_id !== input.executionId) {
@@ -133,31 +152,14 @@ export function releaseExecutionAtomically(
   let taskReleased = false;
   db.transaction(() => {
     writeExecutionTerminal(db, input);
-
-    const releaseInfo = db
-      .prepare(
-        `UPDATE tasks
-            SET status = ?,
-                assigned_to = NULL,
-                current_execution_id = NULL,
-                metadata = json_remove(metadata, '$.worker_pid', '$.worker_started_at'),
-                updated_at = datetime('now')
-          WHERE id = ?
-            AND current_execution_id = ?`,
-      )
-      .run(restoredStatus, task.id, input.executionId);
-
-    if (releaseInfo.changes === 1) {
-      taskReleased = true;
-      appendReleaseEvent(
-        db,
-        task.id,
-        input.executionId,
-        restoredStatus,
-        input.reason,
-        preserveTaskStatus,
-      );
-    }
+    taskReleased = clearTaskFence(
+      db,
+      task.id,
+      input.executionId,
+      restoredStatus,
+      input.reason,
+      preserveTaskStatus,
+    );
   })();
 
   return {
@@ -167,6 +169,39 @@ export function releaseExecutionAtomically(
     blockedReason: taskReleased ? '' : 'fence CAS failed (task reassigned mid-release)',
     taskId: task.id,
   };
+}
+
+function clearTaskFence(
+  db: Database,
+  taskId: number,
+  executionId: string,
+  restoredStatus: string,
+  reason: string,
+  preservedProjection: boolean,
+): boolean {
+  const releaseInfo = db
+    .prepare(
+      `UPDATE tasks
+          SET status = ?,
+              assigned_to = NULL,
+              current_execution_id = NULL,
+              metadata = json_remove(metadata, '$.worker_pid', '$.worker_started_at'),
+              updated_at = datetime('now')
+        WHERE id = ?
+          AND current_execution_id = ?`,
+    )
+    .run(restoredStatus, taskId, executionId);
+
+  if (releaseInfo.changes !== 1) return false;
+  appendReleaseEvent(
+    db,
+    taskId,
+    executionId,
+    restoredStatus,
+    reason,
+    preservedProjection,
+  );
+  return true;
 }
 
 function physicalRetryExhausted(db: Database, taskId: number): boolean {
@@ -180,9 +215,12 @@ function physicalRetryExhausted(db: Database, taskId: number): boolean {
        LEFT JOIN factory_work_intents intent
          ON intent.id=json_extract(task.metadata,'$.work_intent_id')
       WHERE task.id=?`,
-  ).get(taskId) as { retryBudget: number; failedAttempts: number; productionCellId: string | null } | undefined;
+  ).get(taskId) as {
+    retryBudget: number;
+    failedAttempts: number;
+    productionCellId: string | null;
+  } | undefined;
   if (!row || !row.productionCellId) return false;
-  // retry_budget counts retries after the first physical attempt.
   return row.failedAttempts + 1 > row.retryBudget;
 }
 
@@ -205,11 +243,7 @@ function hasNeedsHumanTag(raw: string | null): boolean {
   }
 }
 
-/**
- * An accepted worker_done command is the durable completion authority for one
- * execution. The OS close that follows must release the fence without applying
- * crash recovery to the task projection.
- */
+/** An accepted worker_done receipt is semantic completion authority. */
 function hasAcceptedWorkerDoneReceipt(db: Database, executionId: string): boolean {
   try {
     return Boolean(db.prepare(
@@ -226,7 +260,6 @@ function hasAcceptedWorkerDoneReceipt(db: Database, executionId: string): boolea
   }
 }
 
-/** Recovery mapping used only when no accepted worker_done receipt exists. */
 function computeRestoredStatus(
   currentStatus: string,
   integrationState: string | null,
@@ -304,7 +337,7 @@ function appendReleaseEvent(
       }),
     );
   } catch {
-    // and fence transition remains authoritative.
+    // Observability must not roll back the authoritative fence transition.
   }
 }
 
