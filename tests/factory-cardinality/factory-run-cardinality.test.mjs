@@ -12,7 +12,6 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import {
   requestFactoryLaunch,
-  claimFactoryLaunch,
 } from '../../dist/infrastructure/factory/sqlite-factory-launch-repository.js';
 import { decodeFactoryStartCommand } from '../../dist/app/factory-start.js';
 
@@ -123,9 +122,11 @@ test('B: a different idempotency key for the same source creates a new order/run
   db.close();
 });
 
-test('B: in-flight idempotency key is globally unique across orders', () => {
-  // The unique partial index idx_factory_launch_idempotency enforces that the
-  // SAME key cannot be in-flight on two orders at once.
+test('B: same key on a different order is rejected (durable key = same command identity)', () => {
+  // CONVEYOR v4.3 PART 8: the idempotency key identifies a Start command
+  // DURABLY. Reusing a key against a different order contradicts the command
+  // the key already recorded → must be rejected (not silently deduped to the
+  // first order, and not freed when the first launch completes).
   const db = freshDb();
   seedProjectEpic(db);
   insertOrder(db, 'order-A', 1, 1, 'provisioned');
@@ -134,21 +135,22 @@ test('B: in-flight idempotency key is globally unique across orders', () => {
     orderRef: 'order-A', mode: 'new', projectId: 1, epicId: 1,
     initiatedBy: 'actor', idempotencyKey: 'shared-key', concurrency: 2,
   }, db);
-  // Same key on a DIFFERENT order while still in-flight → must fail.
+  // Same key on a DIFFERENT order contradicts the recorded command identity.
   assert.throws(
     () => requestFactoryLaunch({
       orderRef: 'order-B', mode: 'new', projectId: 1, epicId: 1,
       initiatedBy: 'actor', idempotencyKey: 'shared-key', concurrency: 2,
     }, db),
-    /UNIQUE constraint failed/,
+    /FACTORY_LAUNCH_IDEMPOTENT_REQUEST_MISMATCH/,
   );
   db.close();
 });
 
-test('B: a completed launch frees its idempotency key for a new start', () => {
-  // Once Run A's launch completes, the same key may be reused (though in
-  // practice a new start mints a fresh key — this proves the partial index
-  // only covers in-flight states).
+test('B: a completed launch does NOT free its idempotency key (PART 8 durable binding)', () => {
+  // CONVEYOR v4.3 PART 8: "Do not 'free' K1 after completion."
+  // Same idempotency key identifies the same Start command even after the
+  // launch reaches terminal state. A new intentional Start MUST mint a
+  // different key; reusing K1 against a different order is rejected.
   const db = freshDb();
   seedProjectEpic(db);
   insertOrder(db, 'order-A', 1, 1, 'provisioned');
@@ -156,16 +158,24 @@ test('B: a completed launch frees its idempotency key for a new start', () => {
     orderRef: 'order-A', mode: 'new', projectId: 1, epicId: 1,
     initiatedBy: 'actor', idempotencyKey: 'K1', concurrency: 2,
   }, db);
-  const ticket = claimFactoryLaunch(ref, 'fence', db);
   // Simulate the launch completing.
   db.prepare('UPDATE factory_launch_requests SET state=\'completed\' WHERE launch_ref=?').run(ref);
-  // The same key is now free (a new start would use a new key, but the point
-  // is the in-flight constraint no longer holds).
+  // Reusing K1 on a NEW order is rejected — the key still identifies order-A.
   insertOrder(db, 'order-B', 1, 1, 'provisioned');
-  assert.doesNotThrow(() => requestFactoryLaunch({
-    orderRef: 'order-B', mode: 'new', projectId: 1, epicId: 1,
+  assert.throws(
+    () => requestFactoryLaunch({
+      orderRef: 'order-B', mode: 'new', projectId: 1, epicId: 1,
+      initiatedBy: 'actor', idempotencyKey: 'K1', concurrency: 2,
+    }, db),
+    /FACTORY_LAUNCH_IDEMPOTENT_REQUEST_MISMATCH/,
+  );
+  // But reissuing K1 against the SAME order/order_ref retried after completion
+  // resolves to the original launch (durable idempotent return).
+  const retried = requestFactoryLaunch({
+    orderRef: 'order-A', mode: 'new', projectId: 1, epicId: 1,
     initiatedBy: 'actor', idempotencyKey: 'K1', concurrency: 2,
-  }, db));
+  }, db);
+  assert.equal(retried, ref);
   db.close();
 });
 

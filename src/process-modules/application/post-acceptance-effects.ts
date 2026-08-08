@@ -18,11 +18,12 @@ export class FactoryPostAcceptanceEffectRegistry {
 
   register(effect: PostAcceptanceEffect): void {
     if (!effect.effectId.trim()) throw new Error('POST_ACCEPTANCE_EFFECT_ID_REQUIRED');
-    const existing = this.effects.get(effect.effectId);
-    if (existing) {
-      if (existing === effect) return;
-      throw new Error(`POST_ACCEPTANCE_EFFECT_DUPLICATE: ${effect.effectId}`);
-    }
+    // Idempotent on effectId: a fresh instance of the same capability wired to
+    // the same db may be re-registered (e.g. createProductLifecycleRuntime is
+    // called once per process, but tests and the dispatch loop may rebuild the
+    // runtime). Post-acceptance effects are stateless capabilities, so replacing
+    // is safe and avoids a process-singleton accumulation bug. A genuinely
+    // different effect would carry a different effectId by design.
     this.effects.set(effect.effectId, effect);
   }
 
