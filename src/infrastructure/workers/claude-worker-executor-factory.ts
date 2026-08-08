@@ -604,21 +604,59 @@ function createInProcessReplayRunner(): InProcessReplayFn {
   return ({ assignment }) => {
     const cwd = readRepositoryDeskCwd(assignment);
     const db = getDb();
-    executeCapsuleReplay(db, handlers, {
-      taskId: Number(assignment.taskId),
-      workerId: assignment.workerId,
-      executionId: assignment.workerExecutionId,
-      cwd,
-    });
-    // The capsule replay submits products/artifacts/traces and the recorded
-    // git commit, then completes via worker_done so the normal lifecycle
-    // advancement and GateRun run exactly as after a real inference execution.
-    handlers.worker_done({
-      task_id: Number(assignment.taskId),
-      worker_id: assignment.workerId,
-      result: 'capsule replay: reconstructed accepted worker production',
-      execution_id: assignment.workerExecutionId,
-    });
+    // The in-process replay calls the SAME MCP handlers a spawned worker uses.
+    // Those handlers resolve managed-execution provenance from process.env
+    // (SAGA_MANAGED_EXECUTION / SAGA_EXECUTION_ID / SAGA_TASK_ID /
+    // SAGA_WORKER_ID). A spawned MCP worker gets these from the runner's spawn
+    // env; the in-process replay must set them itself so product_submit /
+    // artifact_create / worker_done bind to the frozen execution authority.
+    process.env.SAGA_MANAGED_EXECUTION = '1';
+    process.env.SAGA_EXECUTION_ID = assignment.workerExecutionId;
+    process.env.SAGA_TASK_ID = String(assignment.taskId);
+    process.env.SAGA_WORKER_ID = assignment.workerId;
+    // Mark the execution as running so product_submit / worker_done accept it.
+    // A spawned worker is marked running by the runner after spawn; the
+    // in-process replay must transition the execution from reserved → running
+    // itself. No PID/birthToken needed (no OS process).
+    db.prepare(
+      `UPDATE worker_executions
+          SET state='running', started_at=datetime('now'), phase_updated_at=datetime('now')
+        WHERE execution_id=? AND state='reserved'`,
+    ).run(assignment.workerExecutionId);
+    try {
+      executeCapsuleReplay(db, handlers, {
+        taskId: Number(assignment.taskId),
+        workerId: assignment.workerId,
+        executionId: assignment.workerExecutionId,
+        cwd,
+      });
+      // The capsule replay submits products/artifacts/traces and the recorded
+      // git commit, then completes via worker_done so the normal lifecycle
+      // advancement and GateRun run exactly as after a real inference execution.
+      handlers.worker_done({
+        task_id: Number(assignment.taskId),
+        worker_id: assignment.workerId,
+        result: 'capsule replay: reconstructed accepted worker production',
+        execution_id: assignment.workerExecutionId,
+      });
+      // The in-process replay has no OS process; mark the execution exited so
+      // the supervisor does not reap it as lost. worker_done already
+      // transitioned the phase to 'finishing'; this sets the terminal state
+      // synchronously before start() returns.
+      db.prepare(
+        `UPDATE worker_executions
+            SET state='exited', exit_code=0, finished_at=datetime('now'),
+                phase_updated_at=datetime('now')
+          WHERE execution_id=? AND state IN ('running','finishing')`,
+      ).run(assignment.workerExecutionId);
+    } finally {
+      // Clean up the env vars so they don't leak to the next non-replay
+      // execution (which resolves provenance from the spawned worker's env).
+      delete process.env.SAGA_MANAGED_EXECUTION;
+      delete process.env.SAGA_EXECUTION_ID;
+      delete process.env.SAGA_TASK_ID;
+      delete process.env.SAGA_WORKER_ID;
+    }
   };
 }
 
