@@ -14,6 +14,7 @@ import {
   type ReplayGitRecipe,
   type ReplayKeyMaterial,
 } from '../../replay/replay-capsule.js';
+import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -244,6 +245,79 @@ function captureGitRecipe(
   }
 }
 
+interface CandidateMemberRow {
+  product_schema: string;
+  product_ref: string;
+  product_digest: string;
+}
+
+function readCandidateMembers(
+  db: Database.Database,
+  candidateSetRef: string,
+): { workplaceRef: string; members: CandidateMemberRow[] } {
+  const candidate = db.prepare(
+    `SELECT workplace_ref FROM factory_candidate_sets WHERE candidate_set_ref=?`,
+  ).get(candidateSetRef) as { workplace_ref: string } | undefined;
+  if (!candidate) {
+    throw new Error(`REPLAY_CAPTURE_CANDIDATE_NOT_FOUND: ${candidateSetRef}`);
+  }
+  const members = db.prepare(
+    `SELECT product_schema,product_ref,product_digest
+       FROM factory_candidate_set_members
+      WHERE candidate_set_ref=? ORDER BY ordinal`,
+  ).all(candidateSetRef) as CandidateMemberRow[];
+  if (members.length === 0) {
+    throw new Error(`REPLAY_CAPTURE_CANDIDATE_EMPTY: ${candidateSetRef}`);
+  }
+  return { workplaceRef: candidate.workplace_ref, members };
+}
+
+function readTypedCandidateProduct(
+  db: Database.Database,
+  member: CandidateMemberRow,
+): { schema: string; content: unknown; contentHash: string } | null {
+  if (!member.product_ref.startsWith('managed-node-submission:')) return null;
+  const id = Number(member.product_ref.slice('managed-node-submission:'.length));
+  if (!Number.isSafeInteger(id) || id < 1) {
+    throw new Error(`REPLAY_CAPTURE_PRODUCT_REF_INVALID: ${member.product_ref}`);
+  }
+  const row = db.prepare(
+    `SELECT schema_version,payload_snapshot,content_hash
+       FROM factory_managed_node_submissions WHERE id=?`,
+  ).get(id) as {
+    schema_version: string;
+    payload_snapshot: string;
+    content_hash: string;
+  } | undefined;
+  if (!row
+      || row.schema_version !== member.product_schema
+      || row.content_hash !== member.product_digest) {
+    throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
+  }
+  return {
+    schema: row.schema_version,
+    content: JSON.parse(row.payload_snapshot),
+    contentHash: row.content_hash,
+  };
+}
+
+function readPersistedCandidateProduct(
+  db: Database.Database,
+  member: CandidateMemberRow,
+): unknown {
+  const row = db.prepare(
+    `SELECT payload_snapshot,product_hash
+       FROM factory_process_products
+      WHERE schema_id=? AND artifact_ref=? AND product_hash=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(member.product_schema, member.product_ref, member.product_digest) as {
+    payload_snapshot: string;
+    product_hash: string;
+  } | undefined;
+  if (!row) throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
+  return JSON.parse(row.payload_snapshot) as unknown;
+}
+
 export class SqliteReplayCapsuleRepository {
   constructor(private readonly db: Database.Database) {
     ensureReplayCapsuleSchema(db);
@@ -257,16 +331,11 @@ export class SqliteReplayCapsuleRepository {
     const moduleRef = typeof metadata.process_module_ref === 'string' ? metadata.process_module_ref : '';
     const cellId = typeof metadata.production_cell_id === 'string' ? metadata.production_cell_id : '';
     const workKey = typeof metadata.work_key === 'string' ? metadata.work_key : '';
-    // Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). Fall back to
-    // the legacy process_node_input_hash for tasks projected before this field
-    // existed, so an in-flight migration does not break lookups.
     const semanticInputDigest = (typeof metadata.semantic_input_digest === 'string'
       ? metadata.semantic_input_digest : '')
       || (typeof metadata.process_node_input_hash === 'string'
         ? metadata.process_node_input_hash : '');
     if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !semanticInputDigest) {
-      // Non-Production-Cell / transitional cards simply cannot replay. The key
-      // still remains deterministic so capture/lookups never guess.
       const epicRow = this.db.prepare(
         'SELECT project_id FROM epics WHERE id=?',
       ).get(task.epic_id) as { project_id: number } | undefined;
@@ -281,9 +350,6 @@ export class SqliteReplayCapsuleRepository {
       const replayKey = sha256Hex({ processRunId, nodeId, role, missingPackagePin: true });
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
-    // Reviewer replay identity: semantic author production digest (§10), not the
-    // run-specific candidate_set_digest. Derived from the subject author
-    // CandidateSet's product content atoms.
     let subjectProductionDigest: string | null = null;
     if (role === 'reviewer' && task.workplace_ref) {
       const authorSet = this.db.prepare(
@@ -358,17 +424,12 @@ export class SqliteReplayCapsuleRepository {
   }
 
   /**
-   * Capture one accepted WorkerExecution. This is deliberately best-effort at
-   * the call site: inability to archive replay data must never revoke an
-   * already-authoritative GateDecision.
+   * Capture the exact accepted CandidateSet material.
    *
-   * CGAD P18 / Conveyor §Replay: the capsule payload must represent the
-   * certified accepted CandidateSet production snapshot, NOT merely the writes
-   * of one execution. Managed artifacts/traces are read from the durable
-   * node-scope (processRunId + moduleRef + nodeId), so a replacement execution
-   * that inherits and presents prior production captures ALL of it — not just
-   * its own writes. Typed submissions remain per-execution (they ARE the
-   * worker's direct product).
+   * sourceExecutionRef remains audit/key provenance (the execution that
+   * presented the set), but product material is resolved exclusively from the
+   * immutable CandidateSet ProductRefs. This is the P18 boundary: an accepted
+   * replacement execution may have written nothing itself.
    */
   captureAcceptedExecution(input: {
     executionRef: string;
@@ -391,51 +452,59 @@ export class SqliteReplayCapsuleRepository {
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
     const inputBindings = collectIdentityBindings(inputValue);
 
-    // Derive the durable node scope from the execution's task metadata.
-    const processRunId = taskMetadata.process_run_id;
-    const moduleRef = taskMetadata.process_module_ref;
-    const nodeId = taskMetadata.process_node_id;
+    const candidate = readCandidateMembers(this.db, input.candidateSetRef);
+    const expectedWorkplace = typeof taskMetadata.workplace_ref === 'string'
+      ? taskMetadata.workplace_ref : null;
+    if (expectedWorkplace && candidate.workplaceRef !== expectedWorkplace) {
+      throw new Error(
+        `REPLAY_CAPTURE_CANDIDATE_WORKPLACE_MISMATCH: expected ${expectedWorkplace}, got ${candidate.workplaceRef}`,
+      );
+    }
 
-    // Typed submissions remain per-execution: they are the worker's direct
-    // product submitted through product_submit, not durable managed production.
-    const typedRows = this.db.prepare(
-      `SELECT schema_version,payload_snapshot,content_hash
-         FROM factory_managed_node_submissions
-        WHERE execution_id=? ORDER BY id`,
-    ).all(input.executionRef) as Array<{
-      schema_version: string; payload_snapshot: string; content_hash: string;
-    }>;
-    const typedProducts = typedRows.map(row => ({
-      schema: row.schema_version,
-      content: templateAgainstInput(JSON.parse(row.payload_snapshot), inputBindings),
-      contentHash: row.content_hash,
-    }));
+    const typedProducts: Array<{ schema: string; content: unknown; contentHash: string }> = [];
+    const artifactIds = new Set<number>();
+    const traceIds = new Set<number>();
 
-    // CGAD P18: managed artifacts/traces are node-durable. A replacement
-    // execution that inherits prior production must capture ALL of it.
-    // When node scope metadata is available, use it; otherwise fall back to
-    // execution scope (legacy safety net for executions without process metadata).
-    const scopeFilter = (processRunId && moduleRef && nodeId)
-      ? 'WHERE process_run_id=? AND module_ref=? AND node_id=?'
-      : 'WHERE execution_id=?';
-    const scopeParams = (processRunId && moduleRef && nodeId)
-      ? [processRunId, moduleRef, nodeId]
-      : [input.executionRef];
+    for (const member of candidate.members) {
+      const typed = readTypedCandidateProduct(this.db, member);
+      if (typed) {
+        typedProducts.push({
+          schema: typed.schema,
+          content: templateAgainstInput(typed.content, inputBindings),
+          contentHash: typed.contentHash,
+        });
+        continue;
+      }
 
-    const productionRows = this.db.prepare(
-      `SELECT DISTINCT artifact_id
-         FROM factory_managed_artifact_productions
-        ${scopeFilter} ORDER BY artifact_id`,
-    ).all(...scopeParams) as Array<{ artifact_id: number }>;
-    const artifactRows = productionRows.map(row => this.db.prepare(
+      const content = readPersistedCandidateProduct(this.db, member);
+      if (!isWorkplaceProductionSnapshot(content)) {
+        throw new Error(
+          `REPLAY_CAPTURE_UNSUPPORTED_CANDIDATE_PRODUCT: ${member.product_ref}`,
+        );
+      }
+      if (content.workplaceRef !== candidate.workplaceRef) {
+        throw new Error(
+          `REPLAY_CAPTURE_SNAPSHOT_WORKPLACE_MISMATCH: ${member.product_ref}`,
+        );
+      }
+      for (const artifact of content.artifacts) artifactIds.add(artifact.artifactId);
+      for (const trace of content.traces) traceIds.add(trace.traceId);
+    }
+
+    const artifactRows = [...artifactIds].map(id => this.db.prepare(
       `SELECT id,project_repository_id,type,title,path,code,status,parent_artifact_id,
               tags,metadata,content_hash
          FROM artifacts WHERE id=?`,
-    ).get(row.artifact_id) as {
+    ).get(id) as {
       id: number; project_repository_id: number | null; type: string; title: string;
       path: string; code: string | null; status: string; parent_artifact_id: number | null;
       tags: string; metadata: string; content_hash: string | null;
-    }).filter(Boolean);
+    } | undefined).filter((row): row is NonNullable<typeof row> => row !== undefined);
+    if (artifactRows.length !== artifactIds.size) {
+      throw new Error(
+        `REPLAY_CAPTURE_ARTIFACT_NOT_FOUND: expected ${artifactIds.size}, resolved ${artifactRows.length}`,
+      );
+    }
     const artifactById = new Map(artifactRows.map(row => [row.id, row]));
     const artifacts = artifactRows.map(row => {
       let parent: ReplayArtifactSelector | null = null;
@@ -450,8 +519,6 @@ export class SqliteReplayCapsuleRepository {
       return {
         selector: artifactSelector(row),
         projectRepositoryId: row.project_repository_id,
-        // Gate acceptance is authority. Replay workers always recreate a
-        // candidate; they never write accepted status themselves.
         status: 'draft' as const,
         tags: JSON.parse(row.tags || '[]') as string[],
         metadata: parseJsonObject(row.metadata),
@@ -460,13 +527,17 @@ export class SqliteReplayCapsuleRepository {
       };
     });
 
-    const traceRows = this.db.prepare(
-      `SELECT source_id,target_type,target_id,link_type
-         FROM factory_managed_trace_productions
-        ${scopeFilter} ORDER BY id`,
-    ).all(...scopeParams) as Array<{
-      source_id: number; target_type: 'artifact' | 'task'; target_id: number; link_type: string;
-    }>;
+    const traceRows = [...traceIds].map(id => this.db.prepare(
+      `SELECT id,source_id,target_type,target_id,link_type
+         FROM artifact_traces WHERE id=?`,
+    ).get(id) as {
+      id: number; source_id: number; target_type: 'artifact' | 'task'; target_id: number; link_type: string;
+    } | undefined).filter((row): row is NonNullable<typeof row> => row !== undefined);
+    if (traceRows.length !== traceIds.size) {
+      throw new Error(
+        `REPLAY_CAPTURE_TRACE_NOT_FOUND: expected ${traceIds.size}, resolved ${traceRows.length}`,
+      );
+    }
     const selectorForArtifactId = (id: number): ReplayArtifactSelector | null => {
       const row = artifactById.get(id) ?? this.db.prepare(
         'SELECT type,code,title,path,content_hash FROM artifacts WHERE id=?',
