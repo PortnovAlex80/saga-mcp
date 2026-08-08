@@ -5,6 +5,11 @@ import type {
   WorkerRunSnapshot,
 } from '../../application/ports/worker-executor.js';
 import { EXECUTION_CONTEXT_POLICY_VERSION } from '../../shared/authority/execution-context.js';
+import { getDb } from '../../db.js';
+import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
+import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
+import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
+import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 
 export interface ClaudeBoardRunner {
   start(command: {
@@ -20,38 +25,14 @@ export interface ClaudeBoardRunner {
 }
 
 /**
- * In-process replay function type. When non-null on an assignment's frozen
- * execution context, the executor runs this instead of spawning the CLI. This
- * is the normal WorkerExecution production source for replay — NOT a separate
- * executor mode. The same executor abstraction serves inference and replay.
+ * In-process replay function type. Replay is an internal production source of
+ * the normal WorkerExecution abstraction, not another executor/factory mode.
  */
 export type InProcessReplayFn = (input: {
   assignment: AssignedWork;
 }) => void;
 
-/**
- * Infrastructure adapter over tracker-view/claude-runner.mjs.
- *
- * The factory cutover requires every managed spawn to arrive with a frozen v2
- * execution route. The tracker runner still contains defensive legacy fallbacks
- * for direct characterization tests, but those fallbacks are intentionally not
- * reachable through this production WorkerExecutor boundary.
- *
- * CONVEYOR v4.3 PART 1-2: replay is an internal production source. When the
- * frozen execution_context.replay.capsule_ref is non-null, start() runs the
- * in-process replay adapter (same product_submit/artifact/trace/worker_done
- * surface) instead of spawning the selected inference model. The executor_kind
- * and model_route are NEVER mutated by replay; the decision to replay is
- * resolved internally from the frozen capsule_ref.
- *
- * The replay runs ASYNCHRONOUSLY via queueMicrotask, mirroring the real CLI
- * worker lifecycle: start() returns a 'running' snapshot, the replay does its
- * work in the background, calls worker_done, and the next status() poll sees a
- * 'completed' snapshot. This lets the dispatch loop's waitForAssignedWorker
- * poll correctly — same contract as a real worker process.
- */
 export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
-  /** Active replay runs keyed by projectId. */
   private readonly replayRuns = new Map<number, {
     runId: string;
     assignment: AssignedWork;
@@ -66,25 +47,22 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
 
   start(command: WorkerExecutorStart): WorkerRunSnapshot {
     assertFrozenExecutionRoute(command.assignment);
-    // Replay-first: a frozen capsule_ref selects in-process replay production.
-    // This is NOT a simulator route; the normal executor_kind remains the real
-    // CLI. The replay adapter publishes through the SAME MCP surface and the
-    // current GateRun decides acceptance — exactly as if inference ran.
     if (this.replayRunner && hasFrozenCapsule(command.assignment)) {
-      const runId = `replay-${command.projectId}-${Date.now()}`;
+      const runId = `replay-${String(command.assignment.workerExecutionId)}`;
+      const startedAt = new Date().toISOString();
       const initialSnapshot: WorkerRunSnapshot = {
         id: runId,
         project_id: command.projectId,
         concurrency: command.concurrency,
         status: 'running',
-        started_at: new Date().toISOString(),
+        started_at: startedAt,
         finished_at: null,
         active: [{
           task_id: Number(command.assignment.taskId),
           title: '',
           worker_id: command.assignment.workerId,
           pid: null,
-          started_at: new Date().toISOString(),
+          started_at: startedAt,
           log_path: undefined,
         }],
         completed: 0,
@@ -99,12 +77,13 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
         snapshot: initialSnapshot,
       };
       this.replayRuns.set(command.projectId, replayRun);
-      // Run the replay asynchronously so the dispatch loop's status() poll
-      // observes 'running' first, then 'completed' after worker_done. This
-      // mirrors the real CLI worker lifecycle.
+
+      // Same asynchronous host contract as a spawned worker: start() returns
+      // running, then the execution becomes terminal and status() observes it.
       queueMicrotask(() => {
         try {
           this.replayRunner!({ assignment: command.assignment });
+          finalizeReplaySuccess(command.assignment);
           replayRun.completed = true;
           replayRun.snapshot = {
             ...replayRun.snapshot,
@@ -114,13 +93,46 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
             completed: 1,
           };
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          try {
+            // If worker_done was durably accepted before a later physical-close
+            // error, semantic completion wins. Reconcile the fence instead of
+            // falsely turning accepted work into a crash repair.
+            if (hasAcceptedWorkerDone(String(command.assignment.workerExecutionId))) {
+              finalizeReplaySuccess(command.assignment);
+              replayRun.completed = true;
+              replayRun.snapshot = {
+                ...replayRun.snapshot,
+                status: 'completed',
+                finished_at: new Date().toISOString(),
+                active: [],
+                completed: 1,
+                last_error: null,
+              };
+              return;
+            }
+            recoverReplayFailure(command.assignment, message);
+          } catch (recoveryError) {
+            const recoveryMessage = recoveryError instanceof Error
+              ? recoveryError.message
+              : String(recoveryError);
+            replayRun.snapshot = {
+              ...replayRun.snapshot,
+              status: 'failed',
+              finished_at: new Date().toISOString(),
+              active: [],
+              failed: 1,
+              last_error: `${message}; replay recovery failed: ${recoveryMessage}`,
+            };
+            return;
+          }
           replayRun.snapshot = {
             ...replayRun.snapshot,
             status: 'failed',
             finished_at: new Date().toISOString(),
             active: [],
             failed: 1,
-            last_error: error instanceof Error ? error.message : String(error),
+            last_error: message,
           };
         }
       });
@@ -133,7 +145,12 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
     const replay = this.replayRuns.get(projectId);
     if (replay) {
       this.replayRuns.delete(projectId);
-      return { ...replay.snapshot, status: 'stopped', finished_at: new Date().toISOString() };
+      return {
+        ...replay.snapshot,
+        status: 'stopped',
+        finished_at: new Date().toISOString(),
+        active: [],
+      };
     }
     return this.runner.stop(projectId);
   }
@@ -142,7 +159,9 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
     const replay = this.replayRuns.get(projectId);
     if (replay) {
       const snap = { ...replay.snapshot };
-      if (replay.completed) this.replayRuns.delete(projectId);
+      if (replay.completed || snap.status === 'failed' || snap.status === 'stopped') {
+        this.replayRuns.delete(projectId);
+      }
       return snap;
     }
     return this.runner.status(projectId);
@@ -155,6 +174,88 @@ export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
   dispose(): void {
     this.replayRuns.clear();
     this.runner.dispose();
+  }
+}
+
+function finalizeReplaySuccess(assignment: AssignedWork): void {
+  const executionId = String(assignment.workerExecutionId);
+  const db = getDb();
+  const outcome = releaseExecutionAtomically(db, {
+    executionId,
+    terminalState: 'exited',
+    exitCode: 0,
+    reason: 'in-process replay completed after durable worker_done',
+    preserveTaskStatus: true,
+  });
+  const task = db.prepare(
+    'SELECT current_execution_id FROM tasks WHERE id=?',
+  ).get(Number(assignment.taskId)) as { current_execution_id: string | null } | undefined;
+  if (task?.current_execution_id === executionId) {
+    throw new Error(
+      `REPLAY_EXECUTION_FENCE_STRANDED: task ${String(assignment.taskId)} `
+      + `still fenced by ${executionId} after successful replay`,
+    );
+  }
+  if (!outcome.terminalized && !outcome.taskReleased) {
+    const row = db.prepare(
+      'SELECT state FROM worker_executions WHERE execution_id=?',
+    ).get(executionId) as { state: string } | undefined;
+    if (!row || !['exited', 'terminated'].includes(row.state)) {
+      throw new Error(
+        `REPLAY_EXECUTION_FINALIZE_FAILED: execution ${executionId} `
+        + `was not terminalized (${outcome.blockedReason})`,
+      );
+    }
+  }
+}
+
+function recoverReplayFailure(assignment: AssignedWork, reason: string): void {
+  const executionId = String(assignment.workerExecutionId);
+  const taskId = Number(assignment.taskId);
+  const db = getDb();
+  const task = db.prepare(
+    'SELECT workplace_ref FROM tasks WHERE id=?',
+  ).get(taskId) as { workplace_ref: string | null } | undefined;
+
+  if (task?.workplace_ref) {
+    const workplaceRef = deserializeWorkplaceRef(task.workplace_ref);
+    const workplaceRepo = new SqliteWorkplaceRepository(db);
+    const state = workplaceRepo.read(workplaceRef);
+    const actors = workplaceRepo.readActiveActors(workplaceRef);
+    if (
+      state
+      && (state.loopState === 'leased' || state.loopState === 'running')
+      && actors?.activeReservationRef === executionId
+    ) {
+      new ConveyorRuntime(db).releaseExecution({
+        workplaceRef,
+        reservationRef: executionId,
+        taskId,
+        outcome: 'crashed',
+      });
+    }
+  }
+
+  // Keep the current Workplace-derived Kanban phase. Production Cell recovery
+  // owns requeue/repair; physical failure must only clear this execution fence.
+  releaseExecutionAtomically(db, {
+    executionId,
+    terminalState: 'lost',
+    reason: `capsule replay failed: ${reason}`,
+    lastError: reason,
+    preserveTaskStatus: true,
+  });
+}
+
+function hasAcceptedWorkerDone(executionId: string): boolean {
+  try {
+    return Boolean(getDb().prepare(
+      `SELECT 1 FROM command_receipts
+        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+        LIMIT 1`,
+    ).get(executionId));
+  } catch {
+    return false;
   }
 }
 
@@ -179,9 +280,6 @@ function assertFrozenExecutionRoute(assignment: AssignedWork): void {
     );
   }
   const kind = context.executor_kind;
-  // CONVEYOR v4.3 PART 1: only the real CLI executor_kind is supported on the
-  // normal runtime path. 'claude-cli-simulator' is no longer a runtime route;
-  // replay is resolved internally from execution_context.replay.capsule_ref.
   if (kind !== 'claude-cli') {
     throw new Error(
       `FROZEN_EXECUTOR_KIND_REQUIRED: expected 'claude-cli', got ${String(kind)}`,
