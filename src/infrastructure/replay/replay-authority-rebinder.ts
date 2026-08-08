@@ -5,13 +5,18 @@ const DISCOVERY_READINESS_NODE = 'assess-readiness';
 const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 const DISCOVERY_READINESS_SCHEMA = 'factory.discovery-readiness-assessment.v1';
 
+const DEVELOPMENT_MODULE_REF = 'solution-development@1.0.0';
+const DEVELOPMENT_VERIFICATION_NODE = 'verify-acceptance';
+const DEVELOPMENT_INTEGRATED_CANDIDATE_SCHEMA = 'factory.integrated-release-candidate.v1';
+const DEVELOPMENT_VERIFICATION_EVIDENCE_SCHEMA = 'factory.candidate-verification-evidence-product.v1';
+
 /**
- * Rebind opaque identities that a worker learned through Factory read APIs,
- * rather than receiving as ordinary business input.
+ * Rebind opaque identities that a worker learned through Factory read APIs or
+ * current-run authority inputs, rather than producing as semantic business data.
  *
  * Replay restores certified worker production, but opaque refs/ids that belong
  * to the source Factory Run cannot be authoritative in the current Run. This
- * adapter changes only those read-derived identities. Current CandidateSets,
+ * adapter changes only those authority-bound identities. Current CandidateSets,
  * ProductRefs and Gates remain the authority and validate the rebound product.
  */
 export function rebindReplayAuthorityReferences(
@@ -33,6 +38,15 @@ export function rebindReplayAuthorityReferences(
     && schemaId === DISCOVERY_READINESS_SCHEMA
   ) {
     rebound = rebindDiscoveryProposal(taskMetadata, rebound);
+  }
+
+  if (
+    taskMetadata.process_module_ref === DEVELOPMENT_MODULE_REF
+    && taskMetadata.process_node_id === DEVELOPMENT_VERIFICATION_NODE
+    && taskMetadata.role === 'author'
+    && schemaId === DEVELOPMENT_VERIFICATION_EVIDENCE_SCHEMA
+  ) {
+    rebound = rebindDevelopmentVerificationCandidate(taskMetadata, rebound);
   }
 
   return rebound;
@@ -118,6 +132,49 @@ function rebindDiscoveryProposal(
     proposal_id: proposalId,
     proposal_content_hash: proposalRef.digest,
   };
+}
+
+function rebindDevelopmentVerificationCandidate(
+  taskMetadata: Readonly<Record<string, unknown>>,
+  value: unknown,
+): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(
+      'CAPSULE_REPLAY_DEVELOPMENT_VERIFICATION_INVALID: verification product must be an object',
+    );
+  }
+  const currentInput = taskMetadata.process_node_input ?? taskMetadata.cell_input_item;
+  const candidate = findObject(
+    currentInput,
+    row => row.schemaVersion === DEVELOPMENT_INTEGRATED_CANDIDATE_SCHEMA
+      && typeof row.candidateHash === 'string'
+      && row.candidateHash.length > 0,
+  );
+  if (!candidate || typeof candidate.candidateHash !== 'string') {
+    throw new Error(
+      'CAPSULE_REPLAY_DEVELOPMENT_CANDIDATE_MISSING: current verification input has no frozen candidate',
+    );
+  }
+  return {
+    ...(value as Record<string, unknown>),
+    candidateHash: candidate.candidateHash,
+  };
+}
+
+function findObject(
+  value: unknown,
+  predicate: (row: Record<string, unknown>) => boolean,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  if (!Array.isArray(value)) {
+    const row = value as Record<string, unknown>;
+    if (predicate(row)) return row;
+  }
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    const found = findObject(child, predicate);
+    if (found) return found;
+  }
+  return null;
 }
 
 function findExactProductRef(
