@@ -361,6 +361,14 @@ export class SqliteReplayCapsuleRepository {
    * Capture one accepted WorkerExecution. This is deliberately best-effort at
    * the call site: inability to archive replay data must never revoke an
    * already-authoritative GateDecision.
+   *
+   * CGAD P18 / Conveyor §Replay: the capsule payload must represent the
+   * certified accepted CandidateSet production snapshot, NOT merely the writes
+   * of one execution. Managed artifacts/traces are read from the durable
+   * node-scope (processRunId + moduleRef + nodeId), so a replacement execution
+   * that inherits and presents prior production captures ALL of it — not just
+   * its own writes. Typed submissions remain per-execution (they ARE the
+   * worker's direct product).
    */
   captureAcceptedExecution(input: {
     executionRef: string;
@@ -383,6 +391,13 @@ export class SqliteReplayCapsuleRepository {
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
     const inputBindings = collectIdentityBindings(inputValue);
 
+    // Derive the durable node scope from the execution's task metadata.
+    const processRunId = taskMetadata.process_run_id;
+    const moduleRef = taskMetadata.process_module_ref;
+    const nodeId = taskMetadata.process_node_id;
+
+    // Typed submissions remain per-execution: they are the worker's direct
+    // product submitted through product_submit, not durable managed production.
     const typedRows = this.db.prepare(
       `SELECT schema_version,payload_snapshot,content_hash
          FROM factory_managed_node_submissions
@@ -396,11 +411,22 @@ export class SqliteReplayCapsuleRepository {
       contentHash: row.content_hash,
     }));
 
+    // CGAD P18: managed artifacts/traces are node-durable. A replacement
+    // execution that inherits prior production must capture ALL of it.
+    // When node scope metadata is available, use it; otherwise fall back to
+    // execution scope (legacy safety net for executions without process metadata).
+    const scopeFilter = (processRunId && moduleRef && nodeId)
+      ? 'WHERE process_run_id=? AND module_ref=? AND node_id=?'
+      : 'WHERE execution_id=?';
+    const scopeParams = (processRunId && moduleRef && nodeId)
+      ? [processRunId, moduleRef, nodeId]
+      : [input.executionRef];
+
     const productionRows = this.db.prepare(
       `SELECT DISTINCT artifact_id
          FROM factory_managed_artifact_productions
-        WHERE execution_id=? ORDER BY artifact_id`,
-    ).all(input.executionRef) as Array<{ artifact_id: number }>;
+        ${scopeFilter} ORDER BY artifact_id`,
+    ).all(...scopeParams) as Array<{ artifact_id: number }>;
     const artifactRows = productionRows.map(row => this.db.prepare(
       `SELECT id,project_repository_id,type,title,path,code,status,parent_artifact_id,
               tags,metadata,content_hash
@@ -437,8 +463,8 @@ export class SqliteReplayCapsuleRepository {
     const traceRows = this.db.prepare(
       `SELECT source_id,target_type,target_id,link_type
          FROM factory_managed_trace_productions
-        WHERE execution_id=? ORDER BY id`,
-    ).all(input.executionRef) as Array<{
+        ${scopeFilter} ORDER BY id`,
+    ).all(...scopeParams) as Array<{
       source_id: number; target_type: 'artifact' | 'task'; target_id: number; link_type: string;
     }>;
     const selectorForArtifactId = (id: number): ReplayArtifactSelector | null => {

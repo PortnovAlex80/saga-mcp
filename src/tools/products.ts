@@ -145,12 +145,23 @@ const candidateRead: ToolHandler = args => {
   if (sets.length === 0) throw new Error('CANDIDATE_SET_NOT_FOUND');
   const set = sets[0]!;
   const db = getDb();
+  // CGAD P18 / Conveyor §CandidateSet: the CandidateSet is an exact immutable
+  // QC handoff. Reading it must NOT discover artifacts/traces by the
+  // presenter execution_id alone — durable production belongs to the Workplace
+  // (node scope), and a replacement execution that inherits and presents prior
+  // production must show all of it. Query by node scope
+  // (processRunId + moduleRef + nodeId), NOT by execution_id.
+  // The CandidateSet's product_refs already carry the exact immutable ProductRef
+  // triples sealed at gate time; produced_artifacts/traces provide the
+  // human-readable lineage detail derived from the same node-durable scope.
   const artifacts = db.prepare(
     `SELECT artifact_id,artifact_type,content_hash,operation
        FROM factory_managed_artifact_productions
-      WHERE process_run_id=? AND execution_id=?
+      WHERE process_run_id=? AND module_ref=? AND node_id=?
       ORDER BY id`,
-  ).all(workplaceRef.processRunId, set.producerExecutionRef) as Array<{
+  ).all(
+    workplaceRef.processRunId, workplaceRef.moduleRef, workplaceRef.productionCellId,
+  ) as Array<{
     artifact_id: number;
     artifact_type: string;
     content_hash: string | null;
@@ -159,9 +170,11 @@ const candidateRead: ToolHandler = args => {
   const traces = db.prepare(
     `SELECT trace_id,source_id,target_type,target_id,link_type,trace_hash
        FROM factory_managed_trace_productions
-      WHERE process_run_id=? AND execution_id=?
+      WHERE process_run_id=? AND module_ref=? AND node_id=?
       ORDER BY id`,
-  ).all(workplaceRef.processRunId, set.producerExecutionRef) as Array<{
+  ).all(
+    workplaceRef.processRunId, workplaceRef.moduleRef, workplaceRef.productionCellId,
+  ) as Array<{
     trace_id: number;
     source_id: number;
     target_type: string;

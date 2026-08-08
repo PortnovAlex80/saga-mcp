@@ -146,11 +146,11 @@ try {
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', c => process.stderr.write(c));
 
-  // Hard timeout: 120s for e2e. Formalization has 5 cells × 2 (author+reviewer) = 10 tasks.
+  // Hard timeout: 300s for full e2e (Discovery + Formalization + Development).
   const timeout = setTimeout(() => {
-    console.error('\n[button] TIMEOUT — killing orchestrate-cli after 120s');
+    console.error('\n[button] TIMEOUT — killing orchestrate-cli after 300s');
     try { child.kill('SIGTERM'); } catch {}
-  }, 120000);
+  }, 300000);
 
   const exitCode = await new Promise(resolve => child.once('close', (code) => {
     clearTimeout(timeout);

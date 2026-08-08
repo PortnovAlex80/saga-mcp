@@ -39,7 +39,12 @@ const KIND_TO_SCRIPT = {
   'formalization.acceptance': 'workshops/formalization/generic-author.mjs',
   'formalization.reconcile': 'workshops/formalization/generic-author.mjs',
   'formalization.architecture': 'workshops/formalization/generic-author.mjs',
-  // Development (TODO)
+  // Development
+  'development.plan': 'workshops/development/task-graph-planner.mjs',
+  'planning.decomposition': 'workshops/development/task-graph-planner.mjs',
+  'development.code': 'workshops/development/implementation-worker.mjs',
+  'development.review': 'workshops/development/review-worker.mjs',
+  'verification.ac': 'workshops/development/verification-worker.mjs',
   // Delivery (kernel + human — не нужны mock-воркеры)
 };
 

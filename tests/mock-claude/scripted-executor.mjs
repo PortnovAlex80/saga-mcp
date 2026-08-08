@@ -123,17 +123,14 @@ export function createScriptedWorkerExecutorFactory() {
 
         // Mark execution as running (same as markExecutionRunning in production).
         // Without this, product_submit fence-check sees state='reserved' and rejects.
-        // markExecutionRunning requires processBirthToken when pid is non-null.
-        if (markExecutionRunning) {
-          try {
-            // PID null → no birth token needed, but also no liveness supervision.
-            // For scripted workers this is fine — they're deterministic and short-lived.
-            markExecutionRunning(context.dbPath, assignment.workerExecutionId, null, null,
-              `scripted-${runId}`, new Date().toISOString());
-          } catch (e) {
-            process.stderr.write(`[scripted-executor] markExecutionRunning failed: ${e.message}\n`);
-          }
+        // AC-21: fail closed — infrastructure lifecycle failures must not be swallowed.
+        if (!markExecutionRunning) {
+          throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: markExecutionRunning unavailable');
         }
+        markExecutionRunning(
+          context.dbPath, assignment.workerExecutionId, null, null,
+          `scripted-${runId}`, new Date().toISOString(),
+        );
 
         // Log stdout/stderr (diagnostic)
         const logDir = context.logRoot || path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
@@ -157,27 +154,32 @@ export function createScriptedWorkerExecutorFactory() {
           // the supervision reaper eventually marks it 'lost'. We preserve the
           // task status because worker_done already set the Workplace-derived
           // projection (two-channel model — Kanban reflects gate outcome).
-          if (releaseExecutionAtomically && openDb) {
-            try {
-              process.env.DB_PATH = context.dbPath;
-              const db = openDb();
-              const outcome = releaseExecutionAtomically(db, {
-                executionId: assignment.workerExecutionId,
-                terminalState: 'exited',
-                exitCode: code ?? 0,
-                reason: code === 0
-                  ? 'scripted worker exited normally'
-                  : 'scripted worker exited non-zero',
-                preserveTaskStatus: true,
-              });
-              process.stderr.write(
-                `[scripted-executor] release: terminalized=${outcome.terminalized} ` +
-                `taskReleased=${outcome.taskReleased} status=${outcome.restoredStatus} ` +
-                `blocked=${outcome.blockedReason || '(none)'}\n`,
-              );
-            } catch (e) {
-              process.stderr.write(`[scripted-executor] releaseExecutionAtomically failed: ${e.message}\n`);
-            }
+          // AC-21: fail closed — lifecycle terminalization failures must surface.
+          if (!releaseExecutionAtomically || !openDb) {
+            throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: releaseExecutionAtomically unavailable');
+          }
+          try {
+            process.env.DB_PATH = context.dbPath;
+            const db = openDb();
+            const outcome = releaseExecutionAtomically(db, {
+              executionId: assignment.workerExecutionId,
+              terminalState: 'exited',
+              exitCode: code ?? 0,
+              reason: code === 0
+                ? 'scripted worker exited normally'
+                : 'scripted worker exited non-zero',
+              preserveTaskStatus: true,
+            });
+            process.stderr.write(
+              `[scripted-executor] release: terminalized=${outcome.terminalized} ` +
+              `taskReleased=${outcome.taskReleased} status=${outcome.restoredStatus} ` +
+              `blocked=${outcome.blockedReason || '(none)'}\n`,
+            );
+          } catch (e) {
+            // The execution terminalization failed — this is an infrastructure
+            // contract violation. Surface it loudly; the test must fail.
+            process.stderr.write(`[scripted-executor] FATAL release failure: ${e.message}\n`);
+            throw e;
           }
 
           activeChild = null;

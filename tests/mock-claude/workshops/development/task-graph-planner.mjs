@@ -113,7 +113,7 @@ async function main() {
   try {
     await client.init();
 
-    // Read task to get process_run_id
+    // Read task to get process_node_input (contains the DevelopmentCase)
     const taskResult = await client.call('task_get', { id: Number(prompt.task_id) });
     const taskData = JSON.parse(taskResult[0]?.text ?? '{}');
     const meta = typeof taskData.metadata === 'string'
@@ -121,21 +121,14 @@ async function main() {
       : (taskData.metadata || {});
     const processRunId = meta.process_run_id;
     if (!processRunId) throw new Error('No process_run_id in metadata');
-    process.stderr.write(`[dev-planner] processRunId=${processRunId}\n`);
 
-    // Read the DevelopmentCase from process_run input_snapshot
-    // Use lifecycle_run_get or process_run_get to read the input
-    const runResult = await client.call('process_run_get', { process_run_id: processRunId });
-    const runData = JSON.parse(runResult[0]?.text ?? '{}');
-    const developmentCase = runData.input_snapshot
-      ? JSON.parse(runData.input_snapshot)
-      : runData.input?.input_snapshot
-        ? JSON.parse(runData.input.input_snapshot)
-        : null;
+    // The DevelopmentCase IS the process_node_input for the plan-task-graph node
+    // (it's the lifecycle input for this stage — no sourceBinding upstream).
+    const developmentCase = meta.process_node_input || meta.cell_input_item;
     if (!developmentCase) {
-      throw new Error(`No input_snapshot in process_run ${processRunId}: ${JSON.stringify(runData).slice(0, 200)}`);
+      throw new Error(`No process_node_input in task metadata. Keys: ${Object.keys(meta).join(', ')}`);
     }
-    process.stderr.write(`[dev-planner] DevelopmentCase: epic=${developmentCase.epicId} acs=${developmentCase.acceptanceCriteria?.length} repos=${developmentCase.repositories?.length}\n`);
+    process.stderr.write(`[dev-planner] processRunId=${processRunId} epic=${developmentCase.epicId} acs=${developmentCase.acceptanceCriteria?.length} repos=${developmentCase.repositories?.length}\n`);
 
     // Build the task graph proposal from the DevelopmentCase
     const acs = developmentCase.acceptanceCriteria || [];
