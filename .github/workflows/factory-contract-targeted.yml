@@ -33,20 +33,13 @@ jobs:
           s = s.replace(import_needle, import_needle + "\nimport { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';", 1)
           pattern = r"(\s*)const rebound = rehydrateReplayValue\(\s*product\.content,\s*currentInput,\s*allowedBindingPaths,\s*\);"
           m = re.search(pattern, s)
-          if not m:
-              raise SystemExit('replay product insertion point not found')
+          if not m: raise SystemExit('replay product insertion point not found')
           indent = m.group(1)
           replacement = (
               f"{indent}const rebound = rebindReplayAuthorityReferences(\n"
-              f"{indent}  db,\n"
-              f"{indent}  taskMetadata,\n"
-              f"{indent}  product.schema,\n"
-              f"{indent}  rehydrateReplayValue(\n"
-              f"{indent}    product.content,\n"
-              f"{indent}    currentInput,\n"
-              f"{indent}    allowedBindingPaths,\n"
-              f"{indent}  ),\n"
-              f"{indent});"
+              f"{indent}  db,\n{indent}  taskMetadata,\n{indent}  product.schema,\n"
+              f"{indent}  rehydrateReplayValue(\n{indent}    product.content,\n"
+              f"{indent}    currentInput,\n{indent}    allowedBindingPaths,\n{indent}  ),\n{indent});"
           )
           p.write_text(re.sub(pattern, replacement, s, count=1))
 
@@ -54,21 +47,33 @@ jobs:
           s = p.read_text()
           taskgraph_needle = '''          contentHash: materialized.reference.hash,\n          bindings: {\n            graphHash: materialized.graph.graphHash,'''
           taskgraph_replacement = '''          contentHash: materialized.reference.hash,\n          semanticDigest: sha256Hex({\n            schema: DEVELOPMENT_TASK_GRAPH_SCHEMA,\n            acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,\n            acceptanceCriteria: developmentCase.acceptanceCriteria,\n            repositories: developmentCase.repositories,\n            implementationItems: materialized.graph.implementationItems,\n            verificationItems: materialized.graph.verificationItems,\n            integrationTargets: materialized.graph.integrationTargets,\n          }),\n          bindings: {\n            graphHash: materialized.graph.graphHash,'''
-          if taskgraph_needle not in s:
-              raise SystemExit('taskgraph semantic insertion point not found')
+          if taskgraph_needle not in s: raise SystemExit('taskgraph semantic insertion point not found')
           s = s.replace(taskgraph_needle, taskgraph_replacement, 1)
           frozen_needle = '''        contentHash: result.reference.hash,\n        bindings: {\n          candidate: result.candidate,'''
           frozen_replacement = '''        contentHash: result.reference.hash,\n        semanticDigest: sha256Hex({\n          schema: INTEGRATED_CANDIDATE_SCHEMA,\n          frozen: result.candidate.frozen,\n          repositories: result.candidate.repositories,\n          buildProducts: result.candidate.buildProducts,\n        }),\n        bindings: {\n          candidate: result.candidate,'''
-          if frozen_needle not in s:
-              raise SystemExit('integrated candidate semantic insertion point not found')
+          if frozen_needle not in s: raise SystemExit('integrated candidate semantic insertion point not found')
           p.write_text(s.replace(frozen_needle, frozen_replacement, 1))
+
+          p = Path('src/process-modules/application/generic-flow-executor.ts')
+          s = p.read_text()
+          frame_needle = '''    const flow = module.flow;\n    const allRuns = nodeRunRepo.list(context.processRunId);\n    // throws V2_WIRING_REQUIRED / NODE_RUN_REPO_V2_REQUIRED on misconfiguration\n    // instead of silently degrading to the v1 path.\n    const v2 = this.resolveV2Channel(nodeRunRepo);'''
+          frame_replacement = '''    const flow = module.flow;\n    // v2 is mandatory; reconstruct the frame from v2 rows so semanticDigest\n    // survives the durable boundary instead of being erased by the v1 adapter.\n    const v2 = this.resolveV2Channel(nodeRunRepo);\n    const allRuns = v2.repo.listV2(context.processRunId);'''
+          if frame_needle not in s: raise SystemExit('v2 frame insertion point not found')
+          s = s.replace(frame_needle, frame_replacement, 1)
+          resume_needle = '''    const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);'''
+          resume_replacement = '''    const lastCompletedForChain =\n      v2.repo.readLastCompletedV2(context.processRunId)\n      ?? nodeRunRepo.readLastCompleted(context.processRunId);'''
+          if resume_needle not in s: raise SystemExit('v2 chain resume insertion point not found')
+          s = s.replace(resume_needle, resume_replacement, 1)
+          frame_type_needle = '''    executionReceipt: Record<string, unknown> | null;\n  }[],'''
+          frame_type_replacement = '''    executionReceipt: Record<string, unknown> | null;\n    semanticDigest?: string | null;\n  }[],'''
+          if frame_type_needle not in s: raise SystemExit('frame semantic type insertion point not found')
+          p.write_text(s.replace(frame_type_needle, frame_type_replacement, 1))
 
           p = Path('src/process-modules/application/node-executors/production-cell-node-executor.ts')
           s = p.read_text()
           fanout_needle = '''    return sha256Hex({\n      upstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
           fanout_replacement = '''    const inputRecord = isRecord(ctx.input) ? ctx.input : null;\n    const immediateUpstream = inputRecord\n      ? readInputAsProduction(inputRecord.upstream)\n      : null;\n    const immediateUpstreamSemanticDigest = immediateUpstream\n      ? (immediateUpstream.semanticDigest ?? immediateUpstream.contentHash)\n      : null;\n    return sha256Hex({\n      upstreamSemanticDigest,\n      immediateUpstreamSemanticDigest:\n        immediateUpstreamSemanticDigest === upstreamSemanticDigest\n          ? null\n          : immediateUpstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
-          if fanout_needle not in s:
-              raise SystemExit('fanout semantic insertion point not found')
+          if fanout_needle not in s: raise SystemExit('fanout semantic insertion point not found')
           p.write_text(s.replace(fanout_needle, fanout_replacement, 1))
           PY
       - name: Build (strict TypeScript)
