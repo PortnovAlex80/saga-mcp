@@ -42,8 +42,8 @@ const IMPLEMENTATION_CHECKLIST =
   `${DEVELOPMENT_RESOURCE_ROOT}/implementation-worker-checklist.md`;
 
 const COMMON_READ_TOOLS = [
-  'task_get', 'task_list', 'artifact_list', 'trace_list', 'repository_list',
-  'repository_checkout_list', 'Read', 'Glob', 'Grep',
+  'task_get', 'task_list', 'artifact_list', 'artifact_get', 'trace_list', 'repository_list',
+  'repository_checkout_list', 'candidate_read', 'product_read', 'Read', 'Glob', 'Grep',
 ] as const;
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
@@ -314,7 +314,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       executionMode: 'tracker_only',
       allowedTools: [
         ...COMMON_READ_TOOLS,
-        'artifact_get', 'conflict_check', 'product_submit', 'worker_done',
+        'conflict_check', 'product_submit', 'worker_done',
         'Write', 'Edit', 'Bash',
       ],
       trackerTemplate: DEVELOPMENT_TRACKER,

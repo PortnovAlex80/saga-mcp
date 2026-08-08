@@ -23,11 +23,14 @@ import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/
 export interface CapsuleReplayHandlers {
   product_submit: (input: { schema: string; content: unknown }) => unknown;
   artifact_create: (input: {
+    project_id?: number;
+    epic_id?: number;
     type: string;
     code?: string;
     title: string;
     path: string;
     status: string;
+    content_hash?: string;
     tags: readonly string[];
     metadata: Readonly<Record<string, unknown>>;
     parent_artifact_id?: number;
@@ -71,7 +74,7 @@ export function executeCapsuleReplay(
   context: CapsuleReplayContext,
 ): CapsuleReplayOutcome {
   const execRow = db.prepare(
-    `SELECT we.metadata,t.metadata AS task_metadata,we.project_id
+    `SELECT we.metadata,t.metadata AS task_metadata,we.project_id,t.epic_id
        FROM worker_executions we
        JOIN tasks t ON t.id=we.task_id
       WHERE we.execution_id=? AND we.task_id=?`,
@@ -79,6 +82,7 @@ export function executeCapsuleReplay(
     metadata: string;
     task_metadata: string;
     project_id: number;
+    epic_id: number | null;
   } | undefined;
   if (!execRow) {
     throw new Error(`CAPSULE_REPLAY_EXECUTION_NOT_FOUND: ${context.executionId}`);
@@ -157,17 +161,20 @@ export function executeCapsuleReplay(
     }
     try {
       const result = handlers.artifact_create({
+        project_id: execRow.project_id,
+        epic_id: execRow.epic_id ?? undefined,
         type: artifact.selector.type,
         code: artifact.selector.code ?? undefined,
         title: artifact.selector.title,
         path: artifact.selector.path,
         status: artifact.status,
+        content_hash: artifact.selector.contentHash ?? undefined,
         tags: artifact.tags,
         metadata: reboundMetadata as Readonly<Record<string, unknown>>,
         parent_artifact_id: parentArtifactId,
         project_repository_id: artifact.projectRepositoryId ?? undefined,
       });
-      const createdId = result?.artifact?.id;
+      const createdId = result?.artifact?.id ?? (result as { id?: unknown })?.id;
       if (!Number.isSafeInteger(createdId) || Number(createdId) < 1) {
         throw new Error('artifact_create did not return a valid artifact id');
       }
