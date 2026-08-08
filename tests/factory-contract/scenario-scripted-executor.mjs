@@ -1,52 +1,29 @@
 // tests/factory-contract/scenario-scripted-executor.mjs
 //
-// ScriptedWorkerExecutor that spawns the scenario dispatcher as a child process.
-// Implements the same WorkerExecutor port as the production Claude executor.
-// The child process communicates with saga via the real MCP protocol.
-//
-// This executor uses production lifecycle primitives (markExecutionRunning,
-// releaseExecutionAtomically) — it does NOT invent its own lifecycle.
-// AC-21: fails closed on all lifecycle operations.
+// Test-only physical worker substitution behind the real WorkerExecutorFactory
+// port. Process termination is interpreted by the SAME production finalizer as
+// in-process replay: OS exit alone never fabricates semantic completion.
 
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
+import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
-// Load production lifecycle primitives — same dist the factory uses
 const execMod = await import(pathToFileURL(path.resolve('dist/worker-executions.js')).href);
 const markExecutionRunning = execMod.markExecutionRunning;
 
-const relMod = await import(pathToFileURL(path.resolve('dist/lifecycle/atomic-release.js')).href);
-const releaseExecutionAtomically = relMod.releaseExecutionAtomically;
+const terminationMod = await import(
+  pathToFileURL(path.resolve('dist/infrastructure/workers/worker-process-termination.js')).href
+);
+const finalizeManagedWorkerProcess = terminationMod.finalizeManagedWorkerProcess;
 
 const dbMod = await import(pathToFileURL(path.resolve('dist/db.js')).href);
 const openDb = dbMod.getDb;
 
-// ConveyorRuntime — the Factory's authority for Workplace loop transitions.
-// On crash (no worker_done), the scripted executor must advance the Workplace
-// loop from 'running' to 'repair_wait' via releaseExecution({outcome:'crashed'}),
-// mirroring what the production claude executor does in recoverAssignment.
-const conveyorMod = await import(pathToFileURL(path.resolve('dist/application/conveyor-runtime.js')).href);
-const ConveyorRuntime = conveyorMod.ConveyorRuntime;
-
-// WorkplaceRef deserialization for ConveyorRuntime calls
-const wpRefMod = await import(pathToFileURL(path.resolve('dist/process-modules/domain/workplace/workplace-ref.js')).href);
-const deserializeWorkplaceRef = wpRefMod.deserializeWorkplaceRef;
-
-const wpRepoMod = await import(pathToFileURL(path.resolve('dist/infrastructure/workplace/sqlite-workplace-repository.js')).href);
-const SqliteWorkplaceRepository = wpRepoMod.SqliteWorkplaceRepository;
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/**
- * @param {object} opts
- * @param {string} opts.dispatcherPath - path to scenario-dispatcher.mjs
- * @param {string} [opts.scenariosPath] - path to scenario module (SAGA_SCENARIOS)
- * @param {string} [opts.invocationLogPath] - path to write invocation log
- */
 export function createScriptedWorkerExecutorFactory(opts = {}) {
   const dispatcherPath = opts.dispatcherPath || path.join(__dirname, 'scenario-dispatcher.mjs');
   return (context) => {
@@ -58,6 +35,7 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
     let claimed = 0;
     let startedAt = null;
     let finishedAt = null;
+    let lastError = null;
 
     const sagaEntry = path.resolve('dist/index.js');
 
@@ -69,8 +47,9 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
 
         claimed++;
         startedAt = new Date().toISOString();
+        lastError = null;
+        let terminationHandled = false;
 
-        // Write per-execution MCP config (same shape as production writeExecutionMcpConfig)
         const mcpConfigPath = path.join(os.tmpdir(), `saga-scenario-mcp-${randomUUID().slice(0, 8)}.json`);
         writeFileSync(mcpConfigPath, JSON.stringify({
           mcpServers: {
@@ -90,7 +69,6 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
           },
         }, null, 2));
 
-        // Build prompt — same key=value format as buildPrompt
         const task = assignment;
         const prompt = [
           `project_id=${task.projectId}`,
@@ -102,7 +80,6 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
           'You are a single-use Saga CLI worker.',
         ].join('\n');
 
-        // Spawn the scenario dispatcher
         activeChild = spawn('node', [
           dispatcherPath,
           '-p', '--bare',
@@ -127,9 +104,8 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
         activeChild.stdin.write(prompt);
         activeChild.stdin.end();
 
-        // AC-21: fail closed — markExecutionRunning must succeed
-        if (!markExecutionRunning) {
-          throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: markExecutionRunning unavailable');
+        if (!markExecutionRunning || !finalizeManagedWorkerProcess || !openDb) {
+          throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: production lifecycle primitive unavailable');
         }
         markExecutionRunning(
           context.dbPath, assignment.workerExecutionId, null, null,
@@ -139,94 +115,50 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
         activeChild.stderr?.setEncoding('utf8');
         activeChild.stderr?.on('data', c => process.stderr.write(c));
 
-        activeChild.once('close', (code) => {
-          process.stderr.write(`[scenario-executor] child closed: code=${code}\n`);
+        const finalize = ({ code = null, spawnFailure = false, reason }) => {
+          if (terminationHandled) return;
+          terminationHandled = true;
           try { if (existsSync(mcpConfigPath)) unlinkSync(mcpConfigPath); } catch {}
-
-          // AC-21: fail closed — terminalization must succeed.
-          // AC-28: if the worker exited WITHOUT calling worker_done (no accepted
-          // receipt), the execution is treated as a crash/loss — NOT a normal
-          // exit. releaseExecutionAtomically checks hasAcceptedWorkerDoneReceipt:
-          //   - receipt exists → preserveTaskStatus=true (worker_done already set status)
-          //   - no receipt → preserveTaskStatus=false → task restored to todo/blocked
-          //     for requeue (the Factory's repair/recovery path).
-          // We do NOT force preserveTaskStatus=true unconditionally — that would
-          // mask crash scenarios and prevent the Factory from exercising repair.
-          if (!releaseExecutionAtomically || !openDb) {
-            throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: releaseExecutionAtomically unavailable');
-          }
+          process.env.DB_PATH = context.dbPath;
           try {
-            process.env.DB_PATH = context.dbPath;
-            const db = openDb();
-            // Check if worker_done was accepted for this execution
-            const hasReceipt = db.prepare(
-              `SELECT 1 FROM command_receipts WHERE execution_id=? AND command_kind='worker_done' AND accepted=1 LIMIT 1`,
-            ).get(assignment.workerExecutionId);
-
-            // CRASH PATH: if no worker_done receipt, the worker crashed.
-            // The production claude executor does TWO things on crash:
-            //   1. ConveyorRuntime.releaseExecution({outcome:'crashed'}) — advances
-            //      Workplace running → repair_wait
-            //   2. releaseExecutionAtomically({terminalState:'lost'}) — terminalizes
-            //      the execution row and restores the task to todo for requeue
-            // We mirror both steps so the Factory's repair/recovery path works.
-            if (!hasReceipt) {
-              // Step 1: advance the Workplace loop to repair_wait (if the
-              // workplace is in leased/running and we hold the reservation).
-              const taskRow = db.prepare(
-                'SELECT workplace_ref FROM tasks WHERE id=?',
-              ).get(assignment.taskId);
-              if (taskRow?.workplace_ref) {
-                try {
-                  const wpRef = deserializeWorkplaceRef(taskRow.workplace_ref);
-                  const wpRepo = new SqliteWorkplaceRepository(db);
-                  const wpState = wpRepo.read(wpRef);
-                  const actors = wpRepo.readActiveActors(wpRef);
-                  if (
-                    wpState
-                    && (wpState.loopState === 'leased' || wpState.loopState === 'running')
-                    && actors?.activeReservationRef === assignment.workerExecutionId
-                  ) {
-                    new ConveyorRuntime(db).releaseExecution({
-                      workplaceRef: wpRef,
-                      reservationRef: assignment.workerExecutionId,
-                      taskId: assignment.taskId,
-                      outcome: 'crashed',
-                    });
-                    process.stderr.write(`[scenario-executor] workplace advanced to repair_wait (crash)\n`);
-                  }
-                } catch (e) {
-                  process.stderr.write(`[scenario-executor] workplace crash-release skipped: ${e.message}\n`);
-                }
-              }
-            }
-
-            // Step 2: terminalize the execution row.
-            const outcome = releaseExecutionAtomically(db, {
-              executionId: assignment.workerExecutionId,
-              terminalState: hasReceipt ? 'exited' : 'lost',
-              exitCode: code ?? 0,
-              reason: hasReceipt
-                ? 'scenario worker completed with worker_done'
-                : (code === 0
-                  ? 'scenario worker exited without worker_done (crash simulation)'
-                  : 'scenario worker exited non-zero (failure simulation)'),
-              preserveTaskStatus: Boolean(hasReceipt),
+            const outcome = finalizeManagedWorkerProcess(openDb(), {
+              taskId: Number(assignment.taskId),
+              executionId: String(assignment.workerExecutionId),
+              exitCode: code,
+              reason,
+              spawnFailure,
             });
             process.stderr.write(
-              `[scenario-executor] release: terminalized=${outcome.terminalized} ` +
-              `taskReleased=${outcome.taskReleased} status=${outcome.restoredStatus} ` +
-              `blocked=${outcome.blockedReason || '(none)'} ` +
-              `hasReceipt=${Boolean(hasReceipt)}\n`,
+              `[scenario-executor] finalizer: state=${outcome.executionState} ` +
+              `semantic=${outcome.semanticCompletion} repair=${outcome.workplaceRepairRequested} ` +
+              `released=${outcome.taskReleased} blocked=${outcome.blockedReason || '(none)'}\n`,
             );
-          } catch (e) {
-            process.stderr.write(`[scenario-executor] FATAL release failure: ${e.message}\n`);
-            throw e;
+            if (outcome.semanticCompletion) completed++;
+            else failed++;
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            failed++;
+            process.stderr.write(`[scenario-executor] FATAL finalizer failure: ${lastError}\n`);
           }
-
           activeChild = null;
           finishedAt = new Date().toISOString();
-          if (code === 0) completed++; else failed++;
+        };
+
+        activeChild.once('close', code => {
+          process.stderr.write(`[scenario-executor] child closed: code=${code}\n`);
+          finalize({
+            code: code ?? 0,
+            reason: code === 0
+              ? 'scenario worker process exited'
+              : `scenario worker process exited non-zero (${code})`,
+          });
+        });
+
+        activeChild.once('error', error => {
+          finalize({
+            spawnFailure: true,
+            reason: `scenario worker spawn failed: ${error.message}`,
+          });
         });
 
         return {
@@ -242,7 +174,7 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
             pid: activeChild.pid,
             started_at: startedAt,
           }],
-          completed, failed, claimed, last_error: null,
+          completed, failed, claimed, last_error: lastError,
         };
       },
 
@@ -261,7 +193,7 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
           started_at: startedAt,
           finished_at: finishedAt,
           active: activeChild ? [{ task_id: null, worker_id: null, pid: activeChild.pid }] : [],
-          completed, failed, claimed, last_error: null,
+          completed, failed, claimed, last_error: lastError,
         };
       },
 

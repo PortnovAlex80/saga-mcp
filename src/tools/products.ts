@@ -8,6 +8,7 @@ import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/wor
 import { writeProduct } from './universal-desk-helper.js';
 import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../modules/discovery/infrastructure/discovery-proposal-projection.js';
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
+import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
@@ -56,8 +57,6 @@ const productSubmit: ToolHandler = args => {
       submissionId: result.record.submissionId,
     });
     if (discoveryProjection) {
-      // Place the proposal-ref on the universal desk so downstream modules can
-      // discover the proposal via the content-addressed pointer.
       writeProduct(getDb(), {
         schemaRef: PROPOSAL_REF_SCHEMA,
         content: {
@@ -144,53 +143,54 @@ const candidateRead: ToolHandler = args => {
     .filter(set => set.role === role);
   if (sets.length === 0) throw new Error('CANDIDATE_SET_NOT_FOUND');
   const set = sets[0]!;
-  const db = getDb();
-  // CGAD P18 / Conveyor §CandidateSet: the CandidateSet is an exact immutable
-  // QC handoff. Reading it must NOT discover artifacts/traces by the
-  // presenter execution_id alone — durable production belongs to the Workplace
-  // (node scope), and a replacement execution that inherits and presents prior
-  // production must show all of it. Query by node scope
-  // (processRunId + moduleRef + nodeId), NOT by execution_id.
-  // The CandidateSet's product_refs already carry the exact immutable ProductRef
-  // triples sealed at gate time; produced_artifacts/traces provide the
-  // human-readable lineage detail derived from the same node-durable scope.
-  const artifacts = db.prepare(
-    `SELECT artifact_id,artifact_type,content_hash,operation
-       FROM factory_managed_artifact_productions
-      WHERE process_run_id=? AND module_ref=? AND node_id=?
-      ORDER BY id`,
-  ).all(
-    workplaceRef.processRunId, workplaceRef.moduleRef, workplaceRef.productionCellId,
-  ) as Array<{
-    artifact_id: number;
-    artifact_type: string;
-    content_hash: string | null;
-    operation: string;
-  }>;
-  const traces = db.prepare(
-    `SELECT trace_id,source_id,target_type,target_id,link_type,trace_hash
-       FROM factory_managed_trace_productions
-      WHERE process_run_id=? AND module_ref=? AND node_id=?
-      ORDER BY id`,
-  ).all(
-    workplaceRef.processRunId, workplaceRef.moduleRef, workplaceRef.productionCellId,
-  ) as Array<{
-    trace_id: number;
-    source_id: number;
-    target_type: string;
-    target_id: number;
-    link_type: string;
-    trace_hash: string;
-  }>;
+
+  // CandidateSet is the immutable QC handoff. Do NOT reconstruct its material
+  // from presenter execution provenance or from the current live Workplace.
+  // Read the exact sealed ProductRefs and, for managed-production members,
+  // expose the artifact/trace snapshot persisted BEFORE CandidateSet sealing.
+  const sealedProducts = set.members.map(member => {
+    const productRef = member.productRef;
+    if (productRef.ref.startsWith('managed-node-submission:')) {
+      const id = Number(productRef.ref.slice('managed-node-submission:'.length));
+      const row = getDb().prepare(
+        `SELECT schema_version,payload_snapshot,content_hash
+           FROM factory_managed_node_submissions WHERE id=?`,
+      ).get(id) as {
+        schema_version: string;
+        payload_snapshot: string;
+        content_hash: string;
+      } | undefined;
+      if (!row
+          || row.schema_version !== productRef.schemaId
+          || row.content_hash !== productRef.digest) {
+        throw new Error(`CANDIDATE_PRODUCT_NOT_FOUND: ${productRef.ref}`);
+      }
+      return { productRef, content: JSON.parse(row.payload_snapshot) as unknown };
+    }
+    const row = productRepo().getByProductRef(productRef);
+    if (!row) throw new Error(`CANDIDATE_PRODUCT_NOT_FOUND: ${productRef.ref}`);
+    return { productRef, content: row.payload };
+  });
+
+  const managedSnapshots = sealedProducts
+    .map(item => item.content)
+    .filter(isWorkplaceProductionSnapshot);
+  const artifacts = managedSnapshots.flatMap(snapshot => snapshot.artifacts);
+  const traces = managedSnapshots.flatMap(snapshot => snapshot.traces);
+
   return {
     candidate_set_ref: set.candidateSetRef,
     workplace_ref: serializedRef,
     role: set.role,
+    presenter_execution_ref: set.producerExecutionRef,
     producer_execution_ref: set.producerExecutionRef,
     subject_candidate_set_ref: set.subjectCandidateSetRef,
     product_refs: set.members.map(member => member.productRef),
     produced_artifacts: artifacts,
     produced_traces: traces,
+    contributing_execution_refs: [
+      ...new Set(managedSnapshots.flatMap(snapshot => snapshot.contributingExecutionRefs)),
+    ].sort(),
     candidate_set_digest: set.candidateSetDigest,
     sealed_at: set.sealedAt,
   };
@@ -224,7 +224,7 @@ export const definitions: Tool[] = [
   {
     name: 'candidate_read',
     description:
-      'Read the immutable current CandidateSet for one exact Workplace and role, including exact artifact/trace productions of its producer execution.',
+      'Read the immutable current CandidateSet for one exact Workplace and role. Managed-production details are derived from the exact sealed ProductRef snapshot, never from presenter execution or current live desk state.',
     annotations: { title: 'Factory: Read Candidate Set', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

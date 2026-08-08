@@ -50,10 +50,6 @@ import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sql
 import { lifecycleRefKey } from '../process-modules/persistence/lifecycle-run.js';
 import { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
-import type {
-  ManagedArtifactProductionRecord,
-  ManagedTraceProductionRecord,
-} from '../process-modules/shared/managed-production.js';
 import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteWorkplaceProductAdapter } from '../process-modules/persistence/sqlite-workplace-product-adapter.js';
@@ -66,6 +62,7 @@ import {
   createGitIntegrationEffect,
 } from '../infrastructure/workplace/git-integration-effect.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
+import { SqliteWorkplaceProductionResolver } from '../infrastructure/workplace/sqlite-workplace-production-resolver.js';
 import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
 import {
   ProductionCellNodeExecutor,
@@ -82,7 +79,11 @@ import {
   registerFactoryPostAcceptanceEffect,
 } from '../process-modules/application/post-acceptance-effects.js';
 import { createReplayCaptureEffect } from '../infrastructure/replay/replay-capture-effect.js';
-import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
+import {
+  deserializeWorkplaceRef,
+  serializeWorkplaceRef,
+} from '../process-modules/domain/workplace/workplace-ref.js';
+import { buildWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -135,38 +136,6 @@ export interface ProductLifecycleRuntimeOptions {
   ) => Promise<void> | void;
 }
 
-/**
- * Deduplicate node-scoped managed-production artifact rows by artifactId,
- * keeping the LATEST write (highest ledger id). A later retry fence of the
- * same node may update an artifact created by an earlier fence; the gate must
- * see the latest content, not a stale row. CGAD P18 node-durable identity.
- */
-function dedupeLatestByArtifactId(
-  rows: readonly ManagedArtifactProductionRecord[],
-): readonly ManagedArtifactProductionRecord[] {
-  const latest = new Map<number, ManagedArtifactProductionRecord>();
-  for (const row of rows) {
-    const prev = latest.get(row.artifactId);
-    if (!prev || row.ledgerId > prev.ledgerId) latest.set(row.artifactId, row);
-  }
-  return [...latest.values()];
-}
-
-/**
- * Deduplicate node-scoped managed-production trace rows by traceId, keeping
- * the LATEST write (highest ledger id). Mirrors dedupeLatestByArtifactId.
- */
-function dedupeLatestByTraceId(
-  rows: readonly ManagedTraceProductionRecord[],
-): readonly ManagedTraceProductionRecord[] {
-  const latest = new Map<number, ManagedTraceProductionRecord>();
-  for (const row of rows) {
-    const prev = latest.get(row.traceId);
-    if (!prev || row.ledgerId > prev.ledgerId) latest.set(row.traceId, row);
-  }
-  return [...latest.values()];
-}
-
 export function createProductLifecycleRuntime(
   options: ProductLifecycleRuntimeOptions,
 ) {
@@ -184,6 +153,7 @@ export function createProductLifecycleRuntime(
     db,
     processProductRepoV2,
   );
+  const workplaceProductionResolver = new SqliteWorkplaceProductionResolver(db);
 
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
@@ -308,14 +278,9 @@ export function createProductLifecycleRuntime(
     now: () => new Date(),
   });
 
-  // Package-extensible post-acceptance capabilities. Git integration is a
-  // platform capability, not a Development branch inside ProductionCell.
   registerFactoryPostAcceptanceEffect(
     createGitIntegrationEffect(new SqliteProductionCellIntegration(db)),
   );
-  // Replay capture is a UNIVERSAL factory capability: it runs for EVERY
-  // accepted candidate regardless of module, archiving the accepted worker
-  // production into a reusable capsule for future deterministic replay.
   registerFactoryPostAcceptanceEffect(createReplayCaptureEffect(db));
 
   const resolveNodeProducts = (
@@ -453,6 +418,8 @@ export function createProductLifecycleRuntime(
         bindTaskDependencies: (taskId, dependencyTaskIds) => {
           replaceTaskDependencies(db, taskId, dependencyTaskIds);
         },
+        // Keep the crash-attempt accounting added on saga4. A process that
+        // dies before CandidateSet seal still consumes the cell recovery budget.
         readTaskForWorkplace: (workplaceRef) => {
           const serialized = serializeWorkplaceRef(workplaceRef);
           const row = db.prepare(
@@ -470,6 +437,8 @@ export function createProductLifecycleRuntime(
       } as ProductionCellProjectionPersistence,
       productReader: {
         readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs, requireTypedSubmission }) => {
+          // Typed submissions are immutable products of one exact execution and
+          // therefore remain execution-scoped.
           const submission = db.prepare(
             `SELECT id,schema_version,content_hash
                FROM factory_managed_node_submissions
@@ -486,58 +455,65 @@ export function createProductLifecycleRuntime(
             }];
           }
           if (requireTypedSubmission) return [];
-          // CGAD P18 — node-durable identity: the gate reads managed productions
-          // by DURABLE node-scope (processRunId + moduleRef + nodeId), NOT by
-          // transient executionRef. A retry after a lost execution (worker died
-          // before worker_done) must inherit the producer's prior artifacts;
-          // filtering by executionRef blinds the gate to earlier fences of the
-          // same node — exactly the violation tests/architecture/
-          // no-execution-scoped-lookup.test.mjs forbids. The ledger methods are
-          // already node-scoped; we keep only the contentHash guard here.
-          // Deduplicate by artifactId/traceId keeping the LATEST write (highest
-          // ledger id) so an update in a later attempt supersedes the original.
-          const artifactRows = centralLedger.listArtifactsForNodeInProcessRun(
-            processRunId, moduleRef, nodeId,
-          ).filter(a => a.contentHash);
-          const artifacts = dedupeLatestByArtifactId(artifactRows);
-          const traces = dedupeLatestByTraceId(
-            centralLedger.listTracesForNodeInProcessRun(
-              processRunId, moduleRef, nodeId,
-            ),
-          );
-          if (artifacts.length === 0 && traces.length === 0) {
+
+          // Managed production is durable at the Workplace desk, not at the
+          // WorkerExecution and not at the Flow node. Resolve the exact
+          // Workplace from the server-authored execution -> task binding, then
+          // include contributions from every execution belonging to that desk.
+          const executionContext = db.prepare(
+            `SELECT t.workplace_ref AS workplaceRef
+               FROM worker_executions we
+               JOIN tasks t ON t.id=we.task_id
+              WHERE we.execution_id=?`,
+          ).get(executionRef) as { workplaceRef: string | null } | undefined;
+          if (!executionContext?.workplaceRef) {
+            throw new Error(
+              `WORKPLACE_PRODUCT_CONTEXT_MISSING: execution ${executionRef} has no workplace_ref`,
+            );
+          }
+          const workplaceRef = deserializeWorkplaceRef(executionContext.workplaceRef);
+          if (
+            workplaceRef.processRunId !== processRunId
+            || workplaceRef.moduleRef !== moduleRef
+          ) {
+            throw new Error(
+              `WORKPLACE_PRODUCT_CONTEXT_MISMATCH: ${executionContext.workplaceRef}`,
+            );
+          }
+          const production = workplaceProductionResolver.read(workplaceRef);
+          if (production.artifacts.length === 0 && production.traces.length === 0) {
             return [];
           }
-          const artifactRefs = artifacts.map(a => ({
-            artifactId: a.artifactId,
-            artifactType: a.artifactType,
-            digest: a.contentHash,
-          }));
-          const traceRefs = traces.map(trace => ({
-            traceId: trace.traceId,
-            digest: trace.traceHash,
-          }));
-          return expectedSchemaRefs.filter(Boolean).map(schemaId => ({
-            schemaId,
-            // Node-durable ProductRef: the bundle is the CURRENT accumulated
-            // production of the durable Workplace (node), not of a transient
-            // execution. Using executionRef here would re-introduce execution
-            // identity into the product ref even though the digest is
-            // node-scoped — the exact leak the Wave 6 cutover retired. The
-            // ref is canonical and stable for the same (processRun, module,
-            // node, schema) + accumulated content.
-            ref: `node-product-set:${processRunId}:${moduleRef}:${nodeId}:${schemaId}`,
-            digest: sha256Hex({ artifactRefs, traceRefs }),
-          }));
+
+          // Freeze the exact desk state into the universal exact-product store
+          // BEFORE sealing CandidateSet. Later repairs can change the live desk,
+          // but this ProductRef remains immutable and therefore candidate_read,
+          // Gate audit and replay all observe the same QC snapshot.
+          return expectedSchemaRefs.filter(Boolean).map(schemaId => {
+            const snapshot = buildWorkplaceProductionSnapshot({
+              workplaceRef: executionContext.workplaceRef!,
+              expectedSchemaRef: schemaId,
+              presenterExecutionRef: executionRef,
+              artifacts: production.artifacts,
+              traces: production.traces,
+            });
+            const contentHash = sha256Hex(snapshot);
+            return workplaceProductPort.submitProduct({
+              processRunId,
+              nodeId,
+              moduleRef,
+              schema: schemaId,
+              content: snapshot,
+              contentHash,
+              executionRef,
+            }).productRef;
+          });
         },
       } as ProductionCellProductReader,
       resolveInstallationDigest: moduleName =>
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
     })],
   ]);
-  // Temporary only until the last installed package definition is migrated.
-  // The ProductionCell executor no longer contains a hidden lm compatibility
-  // branch, so an lm node without a cellDefinition fails closed.
   nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);
 
   const sharedDeps: ModuleSharedDeps = {
@@ -720,10 +696,6 @@ export function createProductLifecycleRuntime(
           command.initiatedBy ?? 'product-lifecycle-orchestrator',
         idempotencyKey:
           command.idempotencyKey
-          // Per-start default (NOT per-epic): an intentional new Factory Start
-          // for the same project/epic must get a fresh idempotency key so it
-          // creates a new LifecycleRun (CONVEYOR v4.3 §7). The per-epic constant
-          // would collapse Project → one run, forbidding Run B.
           ?? `product-delivery:project:${command.projectId}:start:${randomUUID()}`,
         resumePaused: command.resumePaused,
       };
