@@ -1,11 +1,10 @@
 /**
  * Generic in-process ReplayCapsule production adapter.
  *
- * Replay is not a Factory/executor mode. A normal fenced WorkerExecution whose
- * immutable context contains an eligible capsule uses this adapter as its
- * production source instead of inference. The adapter reconstructs products
- * only through the same authorized product/artifact/trace handlers used by a
- * model-backed worker; CandidateSet, GateDecision and lifecycle remain current.
+ * Replay is an internal production source of the normal fenced WorkerExecution,
+ * not another Factory/executor mode. It reconstructs worker products through
+ * the same authorized product/artifact/trace boundary as inference; the current
+ * CandidateSet, GateDecision and lifecycle always run afterwards.
  */
 import type Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
@@ -16,8 +15,10 @@ import type {
   ReplayCapsulePayload,
   ReplayArtifactSelector,
   ReplayArtifactProduct,
+  ReplayInputBinding,
 } from '../../replay/replay-capsule.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 
 export interface CapsuleReplayHandlers {
   product_submit: (input: { schema: string; content: unknown }) => unknown;
@@ -38,7 +39,6 @@ export interface CapsuleReplayHandlers {
     target_id?: number;
     link_type: string;
   }) => unknown;
-  /** Completion stays outside executeCapsuleReplay; factory calls it afterwards. */
   worker_done: (input: {
     task_id: number;
     worker_id: string;
@@ -65,7 +65,6 @@ function selectorKey(selector: ReplayArtifactSelector): string {
   return `${selector.type}::${selector.code ?? ''}::${selector.title}::${selector.path}::${selector.contentHash ?? ''}`;
 }
 
-/** Execute one certified capsule recipe under the current execution fence. */
 export function executeCapsuleReplay(
   db: Database.Database,
   handlers: CapsuleReplayHandlers,
@@ -93,11 +92,9 @@ export function executeCapsuleReplay(
       };
     };
   };
-  const replayBinding = envelope?.execution_context?.replay;
+  const replayBinding = envelope.execution_context?.replay;
   const capsuleRef = replayBinding?.capsule_ref;
-  if (!capsuleRef) {
-    throw new Error('CAPSULE_REPLAY_NO_CAPSULE_REF');
-  }
+  if (!capsuleRef) throw new Error('CAPSULE_REPLAY_NO_CAPSULE_REF');
 
   const capsuleRow = db.prepare(
     `SELECT project_id,payload_snapshot,payload_hash
@@ -113,8 +110,7 @@ export function executeCapsuleReplay(
   }
 
   const payload = JSON.parse(capsuleRow.payload_snapshot) as ReplayCapsulePayload;
-  const computedHash = sha256Hex(payload);
-  if (capsuleRow.payload_hash !== computedHash) {
+  if (capsuleRow.payload_hash !== sha256Hex(payload)) {
     throw new Error(`CAPSULE_REPLAY_HASH_MISMATCH: ${capsuleRef}`);
   }
   if (
@@ -134,8 +130,9 @@ export function executeCapsuleReplay(
 
   const artifactIdBySelector = new Map<string, number>();
 
-  // 1. Recreate artifacts. Parent may be produced by this execution OR be an
-  // already-existing current-run artifact resolved by the exact semantic selector.
+  // Artifacts may contain run-local input identities in metadata even for old
+  // capsules created before explicit metadata markers existed. Rebind only
+  // values that correspond uniquely to the capsule's own exact inputBindings.
   for (const artifact of payload.artifacts ?? []) {
     const key = selectorKey(artifact.selector);
     const parentArtifactId = artifact.parent
@@ -150,6 +147,14 @@ export function executeCapsuleReplay(
     }
 
     materializeArtifactFile(db, artifact, context.cwd);
+    const reboundMetadata = rebindCapturedIdentityValues(
+      artifact.metadata,
+      payload.inputBindings ?? [],
+      currentInput,
+    );
+    if (!reboundMetadata || typeof reboundMetadata !== 'object' || Array.isArray(reboundMetadata)) {
+      throw new Error(`CAPSULE_REPLAY_ARTIFACT_METADATA_INVALID: ${key}`);
+    }
     try {
       const result = handlers.artifact_create({
         type: artifact.selector.type,
@@ -158,7 +163,7 @@ export function executeCapsuleReplay(
         path: artifact.selector.path,
         status: artifact.status,
         tags: artifact.tags,
-        metadata: artifact.metadata,
+        metadata: reboundMetadata as Readonly<Record<string, unknown>>,
         parent_artifact_id: parentArtifactId,
         project_repository_id: artifact.projectRepositoryId ?? undefined,
       });
@@ -174,7 +179,6 @@ export function executeCapsuleReplay(
     }
   }
 
-  // 2. Recreate traces. Certified evidence is never silently skipped.
   let tracesRecreated = 0;
   for (const trace of payload.traces ?? []) {
     const sourceKey = selectorKey(trace.source);
@@ -194,20 +198,19 @@ export function executeCapsuleReplay(
       targetId = resolved;
     } else if (trace.targetType === 'task') {
       if (!trace.targetTaskGenerationKey) {
-        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: task generation key absent');
+        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: task identity absent');
       }
-      const taskRow = db.prepare(
-        `SELECT t.id
-           FROM tasks t JOIN epics e ON e.id=t.epic_id
-          WHERE e.project_id=? AND t.generation_key=?
-          ORDER BY t.id DESC LIMIT 1`,
-      ).get(execRow.project_id, trace.targetTaskGenerationKey) as { id: number } | undefined;
-      if (!taskRow) {
+      const resolved = resolveCurrentTaskFromCapturedGenerationKey(
+        db,
+        execRow.project_id,
+        trace.targetTaskGenerationKey,
+      );
+      if (!resolved) {
         throw new Error(
-          `CAPSULE_REPLAY_TRACE_TARGET_MISSING: task generation_key=${trace.targetTaskGenerationKey}`,
+          `CAPSULE_REPLAY_TRACE_TARGET_MISSING: task=${trace.targetTaskGenerationKey}`,
         );
       }
-      targetId = taskRow.id;
+      targetId = resolved;
     } else {
       throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_TYPE_INVALID: ${String(trace.targetType)}`);
     }
@@ -225,14 +228,9 @@ export function executeCapsuleReplay(
     }
   }
 
-  // 3. Reconstruct code only inside the factory-owned RepositoryDesk.
   let gitCommit: string | undefined;
   if (payload.git) gitCommit = applyGitRecipe(payload.git, context.cwd);
 
-  // 4. Rebind run-local identities to the CURRENT invocation, then submit via
-  // the universal Product Desk. Source contentHash is audit evidence for the
-  // accepted source execution; it is not required to remain byte-identical
-  // after legitimate current-run identity rebinding.
   let productsSubmitted = 0;
   for (const product of payload.typedProducts ?? []) {
     const rebound = rehydrateReplayValue(
@@ -287,6 +285,57 @@ function rehydrateReplayValue(
   );
 }
 
+function replayIdentityCandidate(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
+  if (typeof value !== 'string') return false;
+  return /^[0-9a-f]{64}$/i.test(value)
+    || value.startsWith('managed-node-submission:')
+    || value.startsWith('candidate-set:')
+    || value.startsWith('workplace/')
+    || value.startsWith('product:')
+    || value.length >= 32;
+}
+
+/**
+ * Compatibility rebind for metadata captured before marker templating was
+ * extended beyond typed products. The mapping is exact and conservative: only
+ * identity-like primitive values that occur at exactly one captured input path
+ * are replaced with the value at that same path in the CURRENT input.
+ */
+function rebindCapturedIdentityValues(
+  value: unknown,
+  bindings: readonly ReplayInputBinding[],
+  currentInput: unknown,
+): unknown {
+  const candidates = new Map<string, string[]>();
+  for (const binding of bindings) {
+    if (!replayIdentityCandidate(binding.value)) continue;
+    const key = `${typeof binding.value}:${String(binding.value)}`;
+    const paths = candidates.get(key) ?? [];
+    paths.push(binding.path);
+    candidates.set(key, paths);
+  }
+
+  const visit = (item: unknown): unknown => {
+    if (item === null || typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+      if (!replayIdentityCandidate(item)) return item;
+      const paths = candidates.get(`${typeof item}:${String(item)}`) ?? [];
+      if (paths.length !== 1) return item;
+      const resolved = readPath(currentInput, paths[0]!);
+      if (!resolved.found) {
+        throw new Error(`CAPSULE_REPLAY_INPUT_BINDING_MISSING: ${paths[0]}`);
+      }
+      return resolved.value;
+    }
+    if (Array.isArray(item)) return item.map(visit);
+    if (!item || typeof item !== 'object') return item;
+    return Object.fromEntries(
+      Object.entries(item as Record<string, unknown>).map(([key, child]) => [key, visit(child)]),
+    );
+  };
+  return visit(value);
+}
+
 function readPath(root: unknown, replayPath: string): { found: boolean; value: unknown } {
   if (replayPath === '$') return { found: true, value: root };
   if (!replayPath.startsWith('$')) return { found: false, value: undefined };
@@ -331,6 +380,53 @@ function parseObject(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function resolveCurrentTaskFromCapturedGenerationKey(
+  db: Database.Database,
+  projectId: number,
+  capturedGenerationKey: string,
+): number | null {
+  // Same-run replay/debug may still resolve the exact key directly.
+  const exact = db.prepare(
+    `SELECT t.id
+       FROM tasks t JOIN epics e ON e.id=t.epic_id
+      WHERE e.project_id=? AND t.generation_key=?
+      ORDER BY t.id DESC LIMIT 1`,
+  ).get(projectId, capturedGenerationKey) as { id: number } | undefined;
+  if (exact) return exact.id;
+
+  const role = capturedGenerationKey.endsWith(':author')
+    ? 'author'
+    : capturedGenerationKey.endsWith(':reviewer') ? 'reviewer' : null;
+  if (!role) return null;
+  const workplaceString = capturedGenerationKey.slice(0, -(role.length + 1));
+  let oldRef;
+  try {
+    oldRef = deserializeWorkplaceRef(workplaceString);
+  } catch {
+    return null;
+  }
+
+  // Cross-run semantic task identity excludes old processRunId but retains the
+  // module/cell/workKey/role that define the same materialized work item.
+  const current = db.prepare(
+    `SELECT t.id
+       FROM tasks t JOIN epics e ON e.id=t.epic_id
+      WHERE e.project_id=?
+        AND json_extract(t.metadata,'$.process_module_ref')=?
+        AND json_extract(t.metadata,'$.production_cell_id')=?
+        AND json_extract(t.metadata,'$.work_key')=?
+        AND json_extract(t.metadata,'$.role')=?
+      ORDER BY t.id DESC LIMIT 1`,
+  ).get(
+    projectId,
+    oldRef.moduleRef,
+    oldRef.productionCellId,
+    oldRef.workKey,
+    role,
+  ) as { id: number } | undefined;
+  return current?.id ?? null;
 }
 
 function resolveExistingArtifactId(
@@ -493,7 +589,7 @@ export function readFrozenCapsuleRef(
     const envelope = JSON.parse(row.metadata) as {
       execution_context?: { replay?: { capsule_ref?: string | null } };
     };
-    const ref = envelope?.execution_context?.replay?.capsule_ref;
+    const ref = envelope.execution_context?.replay?.capsule_ref;
     return typeof ref === 'string' && ref ? ref : null;
   } catch {
     return null;
