@@ -311,6 +311,15 @@ export function readWorkIntentForTaskClaim(
     || (
       row.status === 'paused'
       && (task.status === 'review' || task.status === 'todo')
+    )
+    // A concluded WorkIntent whose projected task is still in todo/review may
+    // still need a worker execution. The lifecycle engine may have advanced
+    // the intent state (e.g. during an in-process capsule replay that
+    // synchronously produced products) before the dispatch loop claimed the
+    // task. The task still needs its fenced execution authority.
+    || (
+      row.status === 'concluded'
+      && (task.status === 'todo' || task.status === 'review')
     );
   if (!claimable) {
     throw new Error(
