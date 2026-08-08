@@ -16,23 +16,31 @@
  *   4. For Git: applies the recorded patch to the RepositoryDesk worktree,
  *      recreates the commit with recorded metadata, verifies expected tree.
  *   5. For typed products: calls product_submit with the preserved payload.
- *   6. Finishes via the normal worker_done protocol.
  *
  * The normal Production Cell then seals the CandidateSet, the current GateRun
  * runs, and the current GateDecision decides acceptance — exactly as if a real
  * LLM had produced the work. The adapter operates under the exact frozen
  * WorkerExecution authority and cannot create CandidateSets, run Gates, change
  * Workplaces, advance lifecycle, or write acceptance state.
+ *
+ * Exactness rule: replay is all-or-nothing. Missing semantic references,
+ * unsafe artifact paths, unresolved parents/trace targets, corrupt payloads or
+ * Git mismatches fail the WorkerExecution. A certified capsule is never
+ * "partially" replayed by silently dropping evidence.
  */
 import type Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { ReplayCapsulePayload, ReplayArtifactSelector, ReplayArtifactProduct } from '../../replay/replay-capsule.js';
+import type {
+  ReplayCapsulePayload,
+  ReplayArtifactSelector,
+  ReplayArtifactProduct,
+} from '../../replay/replay-capsule.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 
-/** Minimal handler-shape mirror of the MCP tool handler containers. */
+/** Minimal handler-shape mirror of the normal MCP tool handler containers. */
 export interface CapsuleReplayHandlers {
   product_submit: (input: { schema: string; content: unknown }) => unknown;
   artifact_create: (input: {
@@ -52,19 +60,13 @@ export interface CapsuleReplayHandlers {
     target_id?: number;
     link_type: string;
   }) => unknown;
-  worker_done: (input: {
-    task_id: number;
-    worker_id: string;
-    result: string;
-    execution_id?: string;
-  }) => unknown;
 }
 
 export interface CapsuleReplayContext {
   taskId: number;
   workerId: string;
   executionId: string;
-  /** The cwd the worker would have run in (RepositoryDesk worktree). */
+  /** The cwd the worker would have run in (RepositoryDesk/workspace root). */
   cwd: string;
 }
 
@@ -79,13 +81,7 @@ function selectorKey(selector: ReplayArtifactSelector): string {
   return `${selector.type}::${selector.code ?? ''}::${selector.title}::${selector.path}`;
 }
 
-/**
- * Execute generic capsule replay. Mutates nothing outside the normal MCP
- * surface (product_submit, artifact_create, trace_add, worker_done).
- *
- * Returns a structured outcome. Throws on integrity failure (hash mismatch,
- * missing capsule, git tree mismatch) so the caller can release the execution.
- */
+/** Execute generic capsule replay through the normal production surface. */
 export function executeCapsuleReplay(
   db: Database.Database,
   handlers: CapsuleReplayHandlers,
@@ -98,9 +94,15 @@ export function executeCapsuleReplay(
     throw new Error(`CAPSULE_REPLAY_EXECUTION_NOT_FOUND: ${context.executionId}`);
   }
   const envelope = JSON.parse(execRow.metadata) as {
-    execution_context?: { replay?: { capsule_ref?: string | null } };
+    execution_context?: {
+      replay?: {
+        capsule_ref?: string | null;
+        capsule_payload_hash?: string | null;
+      };
+    };
   };
-  const capsuleRef = envelope?.execution_context?.replay?.capsule_ref;
+  const replayBinding = envelope?.execution_context?.replay;
+  const capsuleRef = replayBinding?.capsule_ref;
   if (!capsuleRef) {
     throw new Error(
       'CAPSULE_REPLAY_NO_CAPSULE_REF: execution_context.replay.capsule_ref is null',
@@ -116,17 +118,37 @@ export function executeCapsuleReplay(
 
   const payload = JSON.parse(capsuleRow.payload_snapshot) as ReplayCapsulePayload;
   const computedHash = sha256Hex(payload);
-  if (capsuleRow.payload_hash && capsuleRow.payload_hash !== computedHash) {
+  if (capsuleRow.payload_hash !== computedHash) {
     throw new Error(
       `CAPSULE_REPLAY_HASH_MISMATCH: capsule ${capsuleRef} payload hash mismatch — corruption detected`,
+    );
+  }
+  if (
+    replayBinding?.capsule_payload_hash
+    && replayBinding.capsule_payload_hash !== capsuleRow.payload_hash
+  ) {
+    throw new Error(
+      `CAPSULE_REPLAY_FROZEN_HASH_MISMATCH: execution froze ${replayBinding.capsule_payload_hash} `
+      + `but capsule ${capsuleRef} now resolves to ${capsuleRow.payload_hash}`,
     );
   }
 
   const artifactIdBySelector = new Map<string, number>();
 
-  // 1. Recreate artifacts.
+  // 1. Recreate artifacts. Ordering is part of the capsule recipe: a declared
+  // parent must already have been materialized, otherwise the recipe is invalid.
   for (const artifact of payload.artifacts ?? []) {
     const key = selectorKey(artifact.selector);
+    const parentArtifactId = artifact.parent
+      ? artifactIdBySelector.get(selectorKey(artifact.parent))
+      : undefined;
+    if (artifact.parent && parentArtifactId === undefined) {
+      throw new Error(
+        `CAPSULE_REPLAY_PARENT_ARTIFACT_MISSING: ${key} references `
+        + `${selectorKey(artifact.parent)} before it was materialized`,
+      );
+    }
+
     materializeArtifactFile(artifact, context.cwd);
     try {
       const result = handlers.artifact_create({
@@ -137,14 +159,14 @@ export function executeCapsuleReplay(
         status: artifact.status,
         tags: artifact.tags,
         metadata: artifact.metadata,
-        parent_artifact_id: artifact.parent
-          ? artifactIdBySelector.get(selectorKey(artifact.parent))
-          : undefined,
+        parent_artifact_id: parentArtifactId,
         project_repository_id: artifact.projectRepositoryId ?? undefined,
       });
-      if (result?.artifact?.id) {
-        artifactIdBySelector.set(key, result.artifact.id);
+      const createdId = result?.artifact?.id;
+      if (!Number.isSafeInteger(createdId) || Number(createdId) < 1) {
+        throw new Error('artifact_create did not return a valid artifact id');
       }
+      artifactIdBySelector.set(key, Number(createdId));
     } catch (error) {
       throw new Error(
         `CAPSULE_REPLAY_ARTIFACT_FAILED: ${key}: ${
@@ -154,20 +176,45 @@ export function executeCapsuleReplay(
     }
   }
 
-  // 2. Recreate traces.
+  // 2. Recreate traces. A trace is accepted evidence; silently skipping a
+  // missing source/target would create a different CandidateSet than certified.
   let tracesRecreated = 0;
   for (const trace of payload.traces ?? []) {
-    const sourceId = artifactIdBySelector.get(selectorKey(trace.source));
-    if (!sourceId) continue;
+    const sourceKey = selectorKey(trace.source);
+    const sourceId = artifactIdBySelector.get(sourceKey);
+    if (!sourceId) {
+      throw new Error(`CAPSULE_REPLAY_TRACE_SOURCE_MISSING: ${sourceKey}`);
+    }
+
     let targetId: number | undefined;
-    if (trace.targetType === 'artifact' && trace.targetArtifact) {
-      targetId = artifactIdBySelector.get(selectorKey(trace.targetArtifact));
-    } else if (trace.targetType === 'task' && trace.targetTaskGenerationKey) {
+    if (trace.targetType === 'artifact') {
+      if (!trace.targetArtifact) {
+        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: artifact trace has no target selector');
+      }
+      const targetKey = selectorKey(trace.targetArtifact);
+      targetId = artifactIdBySelector.get(targetKey);
+      if (!targetId) {
+        throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_MISSING: ${targetKey}`);
+      }
+    } else if (trace.targetType === 'task') {
+      if (!trace.targetTaskGenerationKey) {
+        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: task trace has no generation key');
+      }
       const taskRow = db.prepare(
-        'SELECT id FROM tasks WHERE generation_key=? ORDER BY id DESC LIMIT 1',
+        `SELECT id FROM tasks
+          WHERE generation_key=?
+          ORDER BY id DESC LIMIT 1`,
       ).get(trace.targetTaskGenerationKey) as { id: number } | undefined;
       targetId = taskRow?.id;
+      if (!targetId) {
+        throw new Error(
+          `CAPSULE_REPLAY_TRACE_TARGET_MISSING: task generation_key=${trace.targetTaskGenerationKey}`,
+        );
+      }
+    } else {
+      throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_TYPE_INVALID: ${String(trace.targetType)}`);
     }
+
     try {
       handlers.trace_add({
         source_id: sourceId,
@@ -186,7 +233,7 @@ export function executeCapsuleReplay(
   }
 
   // 3. Git recipe: apply patch to the RepositoryDesk worktree BEFORE products,
-  // so the worker_done that follows sees the committed source.
+  // so worker completion sees the committed source.
   let gitCommit: string | undefined;
   if (payload.git) {
     gitCommit = applyGitRecipe(payload.git, context.cwd);
@@ -195,6 +242,11 @@ export function executeCapsuleReplay(
   // 4. Submit typed products through the normal product_submit handler.
   let productsSubmitted = 0;
   for (const product of payload.typedProducts ?? []) {
+    if (sha256Hex(product.content) !== product.contentHash) {
+      throw new Error(
+        `CAPSULE_REPLAY_PRODUCT_HASH_MISMATCH: schema=${product.schema}`,
+      );
+    }
     try {
       handlers.product_submit({ schema: product.schema, content: product.content });
       productsSubmitted += 1;
@@ -220,10 +272,34 @@ function materializeArtifactFile(
   cwd: string,
 ): void {
   if (!artifact.file) return;
+  if (path.isAbsolute(artifact.selector.path)) {
+    throw new Error(
+      `CAPSULE_REPLAY_ARTIFACT_PATH_ABSOLUTE: '${artifact.selector.path}' must be workspace-relative`,
+    );
+  }
+
+  const root = path.resolve(cwd);
+  const artifactPath = path.resolve(root, artifact.selector.path);
+  const relative = path.relative(root, artifactPath);
+  if (
+    relative === '..'
+    || relative.startsWith(`..${path.sep}`)
+    || path.isAbsolute(relative)
+  ) {
+    throw new Error(
+      `CAPSULE_REPLAY_ARTIFACT_PATH_ESCAPE: '${artifact.selector.path}' escapes '${root}'`,
+    );
+  }
+
   const bytes = Buffer.from(artifact.file.bytes, 'base64');
-  const artifactPath = path.isAbsolute(artifact.selector.path)
-    ? artifact.selector.path
-    : path.resolve(cwd, artifact.selector.path);
+  if (artifact.selector.contentHash) {
+    const actualHash = createHash('sha256').update(bytes).digest('hex');
+    if (actualHash !== artifact.selector.contentHash) {
+      throw new Error(
+        `CAPSULE_REPLAY_ARTIFACT_HASH_MISMATCH: ${selectorKey(artifact.selector)}`,
+      );
+    }
+  }
   const dir = path.dirname(artifactPath);
   if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(artifactPath, bytes);
@@ -233,49 +309,61 @@ function applyGitRecipe(
   recipe: NonNullable<ReplayCapsulePayload['git']>,
   cwd: string,
 ): string {
-  const worktreePath = cwd;
+  const worktreePath = path.resolve(cwd);
   const currentHead = gitExec(worktreePath, ['rev-parse', 'HEAD']);
   if (currentHead !== recipe.baseCommit) {
     throw new Error(
-      `CAPSULE_REPLAY_GIT_BASE_MISMATCH: worktree HEAD ${currentHead.slice(0, 12)} != expected base ${recipe.baseCommit.slice(0, 12)}`,
+      `CAPSULE_REPLAY_GIT_BASE_MISMATCH: worktree HEAD ${currentHead.slice(0, 12)} `
+      + `!= expected base ${recipe.baseCommit.slice(0, 12)}`,
     );
   }
+  const dirty = gitExec(worktreePath, ['status', '--porcelain']);
+  if (dirty) {
+    throw new Error('CAPSULE_REPLAY_GIT_WORKTREE_DIRTY: factory RepositoryDesk must be clean before replay');
+  }
+
   const patchBytes = Buffer.from(recipe.patchBase64, 'base64');
+  let mutated = false;
   try {
     execFileSync('git', ['-C', worktreePath, 'apply', '--whitespace=nowarn'], {
       input: patchBytes,
       encoding: 'utf8',
       timeout: 30_000,
     });
+    mutated = true;
+    gitExec(worktreePath, ['add', '-A']);
+    const commitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: recipe.commit.authorName,
+      GIT_AUTHOR_EMAIL: recipe.commit.authorEmail,
+      GIT_AUTHOR_DATE: recipe.commit.authorDate,
+      GIT_COMMITTER_NAME: recipe.commit.committerName,
+      GIT_COMMITTER_EMAIL: recipe.commit.committerEmail,
+      GIT_COMMITTER_DATE: recipe.commit.committerDate,
+    };
+    execFileSync(
+      'git',
+      ['-C', worktreePath, 'commit', '--allow-empty', '-m', recipe.commit.message],
+      { encoding: 'utf8', timeout: 30_000, env: commitEnv },
+    );
+    const actualTree = gitExec(worktreePath, ['rev-parse', 'HEAD^{tree}']);
+    if (actualTree !== recipe.sourceTree) {
+      throw new Error(
+        `CAPSULE_REPLAY_GIT_TREE_MISMATCH: produced tree ${actualTree.slice(0, 12)} `
+        + `!= expected ${recipe.sourceTree.slice(0, 12)}`,
+      );
+    }
+    return gitExec(worktreePath, ['rev-parse', 'HEAD']);
   } catch (error) {
+    if (mutated) {
+      try { gitExec(worktreePath, ['reset', '--hard', recipe.baseCommit]); } catch { /* preserve original error */ }
+      try { gitExec(worktreePath, ['clean', '-fd']); } catch { /* preserve original error */ }
+    }
+    if (error instanceof Error && error.message.startsWith('CAPSULE_REPLAY_')) throw error;
     throw new Error(
-      `CAPSULE_REPLAY_GIT_PATCH_FAILED: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `CAPSULE_REPLAY_GIT_FAILED: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  gitExec(worktreePath, ['add', '-A']);
-  const commitEnv = {
-    ...process.env,
-    GIT_AUTHOR_NAME: recipe.commit.authorName,
-    GIT_AUTHOR_EMAIL: recipe.commit.authorEmail,
-    GIT_AUTHOR_DATE: recipe.commit.authorDate,
-    GIT_COMMITTER_NAME: recipe.commit.committerName,
-    GIT_COMMITTER_EMAIL: recipe.commit.committerEmail,
-    GIT_COMMITTER_DATE: recipe.commit.committerDate,
-  };
-  execFileSync(
-    'git',
-    ['-C', worktreePath, 'commit', '--allow-empty', '-m', recipe.commit.message],
-    { encoding: 'utf8', timeout: 30_000, env: commitEnv },
-  );
-  const actualTree = gitExec(worktreePath, ['rev-parse', 'HEAD^{tree}']);
-  if (actualTree !== recipe.sourceTree) {
-    throw new Error(
-      `CAPSULE_REPLAY_GIT_TREE_MISMATCH: produced tree ${actualTree.slice(0, 12)} != expected ${recipe.sourceTree.slice(0, 12)}`,
-    );
-  }
-  return gitExec(worktreePath, ['rev-parse', 'HEAD']);
 }
 
 function gitExec(repo: string, args: string[]): string {
@@ -285,10 +373,7 @@ function gitExec(repo: string, args: string[]): string {
   }).trim();
 }
 
-/**
- * Resolve the replay capsule_ref frozen on a worker execution, if any.
- * Returns null when this execution is a normal inference execution.
- */
+/** Resolve the replay capsule_ref frozen on a worker execution, if any. */
 export function readFrozenCapsuleRef(
   db: Database.Database,
   executionId: string,
@@ -308,7 +393,7 @@ export function readFrozenCapsuleRef(
   }
 }
 
-/** Stable digest helper kept for symmetry with the legacy .mjs replayer. */
+/** Stable digest helper for tests/diagnostics. */
 export function replayPayloadDigest(payload: unknown): string {
-  return createHash('sha256').update(sha256Hex(payload)).digest('hex');
+  return sha256Hex(payload);
 }
