@@ -105,6 +105,19 @@ export interface ProductionCellProjectionPersistence {
   readExecutionReceipt(executionRef: string): { intentId: number; taskId: number };
   projectWorkplace(workplaceRef: WorkplaceRef): void;
   bindTaskDependencies?(taskId: number, dependencyTaskIds: readonly number[]): void;
+  /**
+   * Read the task associated with a workplace (for crash-recovery attempt
+   * counting). Optional — when absent, attemptCount falls back to sealed
+   * CandidateSet count only.
+   */
+  readTaskForWorkplace?(workplaceRef: WorkplaceRef): { taskId: number } | null;
+  /**
+   * Count terminal (lost/terminated/failed) worker executions for a task.
+   * Used by crash recovery to prevent infinite crash loops when sealed
+   * CandidateSets are absent. Optional — when absent, falls back to sealed
+   * CandidateSet count.
+   */
+  countTerminalExecutionsForTask?(taskId: number): number;
 }
 
 export interface ProductionCellProductReader {
@@ -711,8 +724,31 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {
-    return this.opts.candidateSetRepo.listForWorkplace(ref)
+    // Count sealed CandidateSets for this role as the primary attempt counter.
+    // Each CandidateSet represents one completed gate-evaluated attempt.
+    const sealedAttempts = this.opts.candidateSetRepo.listForWorkplace(ref)
       .filter(set => set.role === role).length;
+    // CGAD P18 / crash recovery: a crashed execution that never sealed a
+    // CandidateSet still counts as an attempt. The Workplace's revision
+    // reflects the number of transitions, which includes crash → repair_wait
+    // cycles. When there are NO sealed CandidateSets but the workplace has
+    // been through repair_wait, use the durable execution history to count
+    // failed attempts. This prevents infinite crash loops where the worker
+    // crashes before sealing, attemptCount stays 0, and maxAttempts is never
+    // reached.
+    // We use the higher of sealed attempts and the execution count from the
+    // workplace's lifecycle events (stored in worker_executions).
+    const state = this.opts.coordinator.readState(ref);
+    if (state && sealedAttempts === 0 && state.loopState === 'repair_wait') {
+      // Count terminal (failed/lost) executions for this workplace's task.
+      // The task's workplace_ref identifies all executions that attempted work.
+      const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
+      if (taskRow) {
+        const failedExecs = this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0;
+        return Math.max(sealedAttempts, failedExecs);
+      }
+    }
+    return sealedAttempts;
   }
 
   private requireState(ref: WorkplaceRef): WorkplaceState {

@@ -453,6 +453,20 @@ export function createProductLifecycleRuntime(
         bindTaskDependencies: (taskId, dependencyTaskIds) => {
           replaceTaskDependencies(db, taskId, dependencyTaskIds);
         },
+        readTaskForWorkplace: (workplaceRef) => {
+          const serialized = serializeWorkplaceRef(workplaceRef);
+          const row = db.prepare(
+            'SELECT id AS taskId FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1',
+          ).get(serialized) as { taskId: number } | undefined;
+          return row ?? null;
+        },
+        countTerminalExecutionsForTask: (taskId) => {
+          const row = db.prepare(
+            `SELECT COUNT(*) AS n FROM worker_executions
+              WHERE task_id=? AND state IN ('lost','terminated','spawn_failed')`,
+          ).get(taskId) as { n: number } | undefined;
+          return row?.n ?? 0;
+        },
       } as ProductionCellProjectionPersistence,
       productReader: {
         readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs, requireTypedSubmission }) => {

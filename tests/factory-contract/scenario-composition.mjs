@@ -8,6 +8,7 @@
 // This is the ONLY test infrastructure that touches the production composition.
 // Production code never imports this file.
 
+import { fileURLToPath } from 'node:url';
 import { createScriptedWorkerExecutorFactory } from './scenario-scripted-executor.mjs';
 import {
   ReferenceDevelopmentSettlementPolicy,
@@ -23,7 +24,7 @@ export async function createProductLifecycleComposition(context) {
 
   return {
     workerExecutorFactory: createScriptedWorkerExecutorFactory({
-      dispatcherPath: new URL('./scenario-dispatcher.mjs', import.meta.url).pathname.replace(/^\//, ''),
+      dispatcherPath: fileURLToPath(new URL('./scenario-dispatcher.mjs', import.meta.url)),
       scenariosPath: env.SAGA_SCENARIOS,
       invocationLogPath: env.SAGA_INVOCATION_LOG,
     }),

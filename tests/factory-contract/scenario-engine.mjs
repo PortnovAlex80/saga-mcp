@@ -89,7 +89,13 @@ class McpClient {
   /** Call an MCP tool and parse the text content as JSON. */
   async callJson(name, args) {
     const content = await this.call(name, args);
-    return JSON.parse(content[0]?.text ?? '{}');
+    const text = content[0]?.text ?? '{}';
+    try {
+      return JSON.parse(text);
+    } catch {
+      // The response is not JSON — likely an error message like "Error: ..."
+      throw new Error(`MCP_RESPONSE_PARSE_ERROR (${name}): ${text.slice(0, 200)}`);
+    }
   }
   close() {
     try { this.child.stdin.end(); } catch {}
@@ -151,11 +157,17 @@ export async function runScenarioWorker(opts) {
     const key = scenarioKey(task);
     const keyStr = scenarioKeyString(key);
 
-    // Log invocation for assertion in tests
-    invocationLog.push({ keyStr, key, taskId, executionId, at: new Date().toISOString() });
+    // Count prior invocations for this scenario key to determine attempt number.
+    // This allows scenarios to behave differently on repair/retry attempts.
+    const attempt = invocationLog.filter(i => i.keyStr === keyStr).length + 1;
 
-    // Find the handler
-    const handler = scenarios[keyStr] || scenarios[`${key.module}/${key.node}/${key.role}/*`] || scenarios['*'];
+    // Log invocation for assertion in tests
+    invocationLog.push({ keyStr, key, taskId, executionId, attempt, at: new Date().toISOString() });
+
+    // Find the handler — support exact match, wildcard role, and global fallback
+    const handler = scenarios[keyStr]
+      || scenarios[`${key.module}/${key.node}/${key.role}/*`]
+      || scenarios['*'];
 
     if (!handler) {
       throw new Error(`SCENARIO_NOT_FOUND: no handler for ${keyStr}`);
@@ -167,6 +179,7 @@ export async function runScenarioWorker(opts) {
       task,
       key,
       prompt,
+      attempt,
       repoPath,
       taskId,
       executionId,
@@ -221,6 +234,27 @@ export const actions = {
     return client.callJson('worker_done', {
       task_id: taskId, worker_id: workerId, result, execution_id: executionId,
     });
+  },
+
+  /**
+   * Exit(0) without calling worker_done — simulates a worker crash where
+   * the process exited cleanly but never completed the protocol.
+   * The Factory's repair/recovery path will detect the missing receipt and
+   * requeue the Workplace.
+   */
+  exitWithoutDone() {
+    // Simply return without calling worker_done. The scenario dispatcher
+    // exits normally (process.exit(0)), but the scripted executor sees no
+    // worker_done receipt and treats it as a crash.
+  },
+
+  /**
+   * Exit non-zero — simulates a worker failure.
+   * The scenario dispatcher exits with code 1.
+   */
+  exitWithFailure() {
+    // Throw to cause the dispatcher to exit(1).
+    throw new Error('SCENARIO_INTENTIONAL_FAILURE');
   },
 
   /** Write a file to disk (for SRS/git scenarios). */
