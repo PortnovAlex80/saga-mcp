@@ -12,10 +12,7 @@ import {
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
 
-/**
- * Read the workplace_ref for a task. The dispatcher stamps it on the task row
- * (tasks.workplace_ref) during Production Cell assignment.
- */
+/** Read the authoritative Workplace projection for a task. */
 function readWorkplaceRefForTask(db: Database.Database, task: Task): string | null {
   if (task.workplace_ref) return task.workplace_ref;
   const row = db.prepare(
@@ -25,23 +22,22 @@ function readWorkplaceRefForTask(db: Database.Database, task: Task): string | nu
 }
 
 /**
- * CONVEYOR v4.3 PART 10: determine whether a capsule was already replayed in
- * the given Workplace and the CURRENT Gate rejected the resulting CandidateSet.
+ * A capsule becomes ineligible for subsequent recovery attempts in the SAME
+ * Workplace after either:
  *
- * Derive ineligibility from durable Gate evidence: join the subject
- * CandidateSet's producer execution to its frozen replay.capsule_ref, and check
- * for a non-accepted Gate decision. No blacklist aggregate.
+ * 1. replay produced a CandidateSet and the CURRENT Gate rejected it; or
+ * 2. replay itself failed/corrupted before a valid CandidateSet reached Gate.
+ *
+ * Both facts are derived from durable execution/Gate evidence. No blacklist
+ * aggregate exists. A fresh WorkerExecution then resolves the capsule as a
+ * normal miss and uses the already-selected inference route.
  */
-function isCapsuleRejectedInWorkplace(
+function isCapsuleIneligibleInWorkplace(
   db: Database.Database,
   workplaceRef: string,
   capsuleRef: string,
 ): boolean {
-  // Find Gate decisions for this Workplace where the subject CandidateSet was
-  // produced by an execution that had this capsule_ref frozen, and the verdict
-  // was not 'accepted'. Any such decision means the capsule's replay production
-  // was already judged insufficient by the current Gate.
-  const rejected = db.prepare(
+  const rejectedByGate = db.prepare(
     `SELECT 1
        FROM factory_gate_decisions gd
        JOIN factory_candidate_sets cs
@@ -51,9 +47,21 @@ function isCapsuleRejectedInWorkplace(
          ON we.execution_id = cs.producer_execution_ref
       WHERE gd.workplace_ref = ?
         AND gd.verdict != 'accepted'
-        AND we.metadata LIKE ?`,
-  ).get(workplaceRef, `%"capsule_ref":"${capsuleRef}"%`) as { 1: number } | undefined;
-  return rejected !== undefined;
+        AND json_extract(we.metadata, '$.execution_context.replay.capsule_ref') = ?
+      LIMIT 1`,
+  ).get(workplaceRef, capsuleRef);
+  if (rejectedByGate) return true;
+
+  const failedReplay = db.prepare(
+    `SELECT 1
+       FROM worker_executions we
+       JOIN tasks t ON t.id=we.task_id
+      WHERE t.workplace_ref=?
+        AND we.state IN ('lost','spawn_failed','terminated')
+        AND json_extract(we.metadata, '$.execution_context.replay.capsule_ref') = ?
+      LIMIT 1`,
+  ).get(workplaceRef, capsuleRef);
+  return failedReplay !== undefined;
 }
 
 function metadataObject(raw: unknown): Record<string, unknown> {
@@ -84,13 +92,13 @@ export function resolveReplayKeyMaterial(
   const moduleRef = requiredString(metadata.process_module_ref);
   const productionCellId = requiredString(metadata.production_cell_id);
   const workKey = requiredString(metadata.work_key);
-  // Cross-run-stable semantic input digest (CONVEYOR v4.3 §8). The raw
-  // process_node_input_hash carries run-specific provenance and is NOT ReplayKey
-  // material. Fall back to it only for legacy tasks authored before this field
-  // existed (so an in-flight migration does not break replay lookups); new
-  // projections always write semantic_input_digest.
-  const semanticInputDigest = requiredString(metadata.semantic_input_digest)
-    ?? requiredString(metadata.process_node_input_hash);
+
+  // Cross-run replay identity MUST be explicitly proven semantic input. The raw
+  // process_node_input_hash is intentionally NOT a compatibility fallback: it
+  // may contain Workplace/CandidateSet/execution provenance and therefore may
+  // change between equivalent Factory Runs. Legacy tasks lacking the semantic
+  // digest simply miss replay and use their selected inference route.
+  const semanticInputDigest = requiredString(metadata.semantic_input_digest);
   if (!Number.isSafeInteger(processRunId) || processRunId <= 0
       || !nodeId || !moduleRef || !productionCellId || !workKey || !semanticInputDigest) {
     return null;
@@ -102,20 +110,16 @@ export function resolveReplayKeyMaterial(
 
   let subjectProductionDigest: string | null = null;
   if (role === 'reviewer') {
-    if (!task.workplace_ref) return null;
-    // Reviewer replay identity is pinned to the semantic AUTHOR production
-    // (CONVEYOR v4.3 §10), NOT the run-specific candidate_set_digest (which
-    // includes WorkplaceRef/processRunId + producerExecutionRef). Derive a
-    // stable digest from the subject author CandidateSet's product content
-    // atoms: canonical ordered { schemaId, digest } multiset. This is stable
-    // across runs as long as the author produced the same products, even though
-    // the CandidateSet ref/digest differ.
+    const workplaceRef = readWorkplaceRefForTask(db, task);
+    if (!workplaceRef) return null;
+    // QC remains pinned to the exact current-run CandidateSetRef. Replay
+    // equivalence uses only semantic author production atoms.
     const authorSet = db.prepare(
       `SELECT candidate_set_ref
          FROM factory_candidate_sets
         WHERE workplace_ref=? AND role='author'
         ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
-    ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
+    ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
     if (!authorSet) return null;
     const members = db.prepare(
       `SELECT product_schema, product_digest
@@ -160,22 +164,9 @@ function parseStringArray(raw: string, label: string): string[] {
 
 /**
  * Materialize missing capsules only from authoritative final acceptance.
- *
- * The source of certification is NOT "all CandidateSets on a terminal
- * Workplace". Repair attempts remain in that history. Instead we select the
- * exact subject + assessment CandidateSet refs named by the latest FINAL
- * `GateDecision(verdict=accepted)` for a Workplace that is durably
- * `terminal(accepted)`.
- *
- * Author-only cell:
- *   final decision subject -> author capsule
- *
- * Reviewed cell:
- *   final decision subject -> exact author capsule
- *   final decision assessments -> exact reviewer capsule(s)
- *
- * This excludes rejected/superseded author attempts and invalid reviewer
- * attempts even if the same Workplace later succeeds.
+ * Exact subject + assessment CandidateSets come from the final accepted
+ * GateDecision of a durably terminal(accepted) Workplace; historical repair
+ * attempts are never scanned into the replay corpus.
  */
 export function certifyAcceptedReplayCapsules(
   db: Database.Database,
@@ -256,21 +247,10 @@ export function certifyAcceptedReplayCapsules(
 /**
  * Final pre-spawn step for a fenced assignment.
  *
- * The WorkAssignment adapter invokes this after its IMMEDIATE claim transaction
- * commits and before spawn. We first materialize any still-missing capsules
- * from prior authoritative acceptance, then perform the exact current replay
- * lookup.
- *
- * Miss: freeze the replay key, leave the front-selected LLM route untouched.
- * Hit: freeze the exact capsule ref + payload hash alongside the normal route.
- *
- * CONVEYOR v4.3 (PART 1 — simulator removed from runtime): replay is an
- * internal source of WorkerExecution production, NOT an executor mode. This
- * binder must NOT mutate executor_kind, model_route, or route_policy. The
- * normal WorkerExecution executor resolves the production source internally
- * from execution_context.replay.capsule_ref — the same executor abstraction
- * serves both inference and replay. Project/workshop model configuration is
- * never touched.
+ * Miss: freeze the replay key and leave the front-selected inference route
+ * untouched. Hit: freeze only the exact capsule ref/hash alongside that route.
+ * Replay never mutates executor_kind/model_route and never creates another
+ * launch mode.
  */
 export function bindReplayToClaim(
   db: Database.Database,
@@ -297,20 +277,11 @@ export function bindReplayToClaim(
     payload_hash: string;
   } | undefined;
 
-  // CONVEYOR v4.3 PART 10: replay rejection ineligibility. If this capsule was
-  // already replayed in this Workplace and the CURRENT Gate rejected the
-  // resulting CandidateSet, the capsule is ineligible for the recovery
-  // execution. It resolves as an ordinary miss and the selected inference model
-  // runs. Derive ineligibility from durable Gate evidence — no blacklist
-  // aggregate.
   const workplaceRef = readWorkplaceRefForTask(db, input.task);
-  let ineligibleCapsuleRef: string | null = null;
-  if (capsule && workplaceRef) {
-    ineligibleCapsuleRef = isCapsuleRejectedInWorkplace(db, workplaceRef, capsule.capsule_ref)
-      ? capsule.capsule_ref
-      : null;
-  }
-  const effectiveCapsule = ineligibleCapsuleRef ? null : capsule;
+  const effectiveCapsule = capsule && workplaceRef
+    && isCapsuleIneligibleInWorkplace(db, workplaceRef, capsule.capsule_ref)
+      ? undefined
+      : capsule;
 
   const execution = db.prepare(
     'SELECT metadata FROM worker_executions WHERE execution_id=?',
@@ -322,12 +293,6 @@ export function bindReplayToClaim(
     throw new Error(`REPLAY_BIND_EXECUTION_CONTEXT_MISSING: ${input.executionId}`);
   }
 
-  // Freeze only the replay provenance. The normal front-selected executor_kind
-  // and model_route remain authoritative; the executor resolves replay as an
-  // internal production source when capsule_ref is non-null. We deliberately do
-  // NOT set executor_kind='claude-cli-simulator' or null out model_route.
-  // When the capsule was rejected in this Workplace (PART 10), capsule_ref is
-  // null so the executor runs inference normally.
   context.replay = {
     key: replayKey,
     key_material: keyMaterial,
