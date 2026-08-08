@@ -1,33 +1,37 @@
 // tests/factory-contract/p18-cross-execution-durability.test.mjs
 //
-// CGAD P18 — Workplace production durability across WorkerExecution replacement.
-//
-// Regression test for the cross-execution production inheritance scenario:
-//
-//   Execution A: writes PRD, FR, NFR to the managed-production ledger.
-//                crashes/exits before worker_done.
-//   Execution B: replaces A in the SAME Workplace.
-//                inherits A's durable production (node-scoped).
-//                successfully completes.
-//                presents CandidateSet B.
-//
-// Assertions:
-//   1. candidate_read for the Workplace shows ALL artifacts (PRD+FR+NFR),
-//      not just B's writes.
-//   2. The node-durable product reader returns all three artifact types.
-//   3. A sibling Workplace under the same node CANNOT see A or B's products.
-//
-// This test directly exercises the production DB layer (not the full factory)
-// to isolate the P18 durability semantics. The full factory integration is
-// covered by the golden-path tests.
+// CGAD P18 / Conveyor v4.3 — durable managed production belongs to the exact
+// Workplace. WorkerExecution is transient provenance; Flow node is too broad.
+
 import { test } from 'node:test';
 import assert from 'node:assert';
 import Database from 'better-sqlite3';
+import { SqliteWorkplaceProductionResolver } from '../../dist/infrastructure/workplace/sqlite-workplace-production-resolver.js';
+import { buildWorkplaceProductionSnapshot } from '../../dist/process-modules/shared/workplace-production-snapshot.js';
+import { SqliteProcessProductRepositoryV2 } from '../../dist/process-modules/persistence/sqlite-process-product-repository-v2.js';
+import { SqliteWorkplaceProductAdapter } from '../../dist/process-modules/persistence/sqlite-workplace-product-adapter.js';
+import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
-// Schema helpers — create minimal managed-production tables
-function ensureManagedProductionSchema(db) {
+const processRunId = 1;
+const moduleRef = 'solution-development@1.0.0';
+const nodeId = 'implement-work-items';
+const workplaceA = { processRunId, moduleRef, productionCellId: 'development-implementation', workKey: 'AC-1' };
+const workplaceB = { processRunId, moduleRef, productionCellId: 'development-implementation', workKey: 'AC-2' };
+const serializedA = `workplace/${processRunId}/${moduleRef}/development-implementation/AC-1`;
+const serializedB = `workplace/${processRunId}/${moduleRef}/development-implementation/AC-2`;
+
+function createDb() {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
   db.exec(`
-    CREATE TABLE IF NOT EXISTS factory_managed_artifact_productions (
+    CREATE TABLE projects (id INTEGER PRIMARY KEY);
+    INSERT INTO projects(id) VALUES (1);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY,
+      workplace_ref TEXT
+    );
+    CREATE TABLE factory_managed_artifact_productions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id INTEGER NOT NULL,
       module_ref TEXT NOT NULL,
@@ -37,12 +41,12 @@ function ensureManagedProductionSchema(db) {
       execution_id TEXT NOT NULL,
       artifact_id INTEGER NOT NULL,
       artifact_type TEXT NOT NULL,
-      artifact_status TEXT,
+      artifact_status TEXT NOT NULL,
       content_hash TEXT,
-      operation TEXT DEFAULT 'create',
+      operation TEXT NOT NULL,
       recorded_at TEXT DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS factory_managed_trace_productions (
+    CREATE TABLE factory_managed_trace_productions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id INTEGER NOT NULL,
       module_ref TEXT NOT NULL,
@@ -55,23 +59,10 @@ function ensureManagedProductionSchema(db) {
       target_type TEXT NOT NULL,
       target_id INTEGER NOT NULL,
       link_type TEXT NOT NULL,
-      trace_hash TEXT,
+      trace_hash TEXT NOT NULL,
       recorded_at TEXT DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS artifacts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER,
-      epic_id INTEGER,
-      type TEXT,
-      code TEXT,
-      title TEXT,
-      path TEXT,
-      status TEXT DEFAULT 'draft',
-      content_hash TEXT,
-      metadata TEXT DEFAULT '{}',
-      tags TEXT DEFAULT '[]'
-    );
-    CREATE TABLE IF NOT EXISTS factory_candidate_sets (
+    CREATE TABLE factory_candidate_sets (
       candidate_set_ref TEXT PRIMARY KEY,
       workplace_ref TEXT NOT NULL,
       producer_execution_ref TEXT NOT NULL,
@@ -81,7 +72,7 @@ function ensureManagedProductionSchema(db) {
       seal_receipt_ref TEXT,
       sealed_at TEXT DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS factory_candidate_set_members (
+    CREATE TABLE factory_candidate_set_members (
       candidate_set_ref TEXT NOT NULL,
       ordinal INTEGER NOT NULL,
       product_schema TEXT NOT NULL,
@@ -92,155 +83,137 @@ function ensureManagedProductionSchema(db) {
       PRIMARY KEY (candidate_set_ref, ordinal)
     );
   `);
+  const productRepo = new SqliteProcessProductRepositoryV2(db);
+  db.prepare(`INSERT INTO factory_process_runs
+    (id,project_id,module_name,module_version,module_ref_key,idempotency_key,
+     executor_kind,input_schema,input_snapshot,input_hash)
+    VALUES (1,1,'solution-development','1.0.0',?,'p18','generic-flow','test.input','{}','input-hash')`)
+    .run(moduleRef);
+  return { db, productRepo };
 }
 
-test('P18-AC-1: candidate_read returns ALL node-durable artifacts, not just presenter execution', () => {
-  const db = new Database(':memory:');
-  ensureManagedProductionSchema(db);
-
-  const processRunId = 1;
-  const moduleRef = 'solution-formalization@1.0.0';
-  const nodeId = 'define-product-contract';
-  const execA = 'worker-execution:AAA';
-  const execB = 'worker-execution:BBB';
-
-  // Insert artifacts
-  db.prepare('INSERT INTO artifacts (id, project_id, epic_id, type, code, title, content_hash) VALUES (?,?,?,?,?,?,?)')
-    .run(1, 1, 1, 'PRD', 'PRD', 'Product Requirements', 'hash-prd');
-  db.prepare('INSERT INTO artifacts (id, project_id, epic_id, type, code, title, content_hash) VALUES (?,?,?,?,?,?,?)')
-    .run(2, 1, 1, 'FR', 'FR-1', 'Functional Req', 'hash-fr');
-  db.prepare('INSERT INTO artifacts (id, project_id, epic_id, type, code, title, content_hash) VALUES (?,?,?,?,?,?,?)')
-    .run(3, 1, 1, 'NFR', 'NFR-1', 'Non-Functional Req', 'hash-nfr');
-
-  // Execution A writes PRD + FR
+function addArtifact(db, { taskId, executionId, artifactId, type, hash, operation = 'create' }) {
   db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash, operation)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(processRunId, moduleRef, nodeId, 1, 10, execA, 1, 'PRD', 'hash-prd', 'create');
-  db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash, operation)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(processRunId, moduleRef, nodeId, 1, 10, execA, 2, 'FR', 'hash-fr', 'create');
+    (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
+     artifact_id,artifact_type,artifact_status,content_hash,operation)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(processRunId, moduleRef, nodeId, taskId, taskId, executionId,
+      artifactId, type, 'draft', hash, operation);
+}
 
-  // Execution B writes NFR only
-  db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash, operation)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(processRunId, moduleRef, nodeId, 1, 10, execB, 3, 'NFR', 'hash-nfr', 'create');
+function addTrace(db, { taskId, executionId, traceId, sourceId, targetId }) {
+  db.prepare(`INSERT INTO factory_managed_trace_productions
+    (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
+     trace_id,source_id,target_type,target_id,link_type,trace_hash)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(processRunId, moduleRef, nodeId, taskId, taskId, executionId,
+      traceId, sourceId, 'artifact', targetId, 'derived_from', `trace-${traceId}`);
+}
 
-  // OLD (broken) query: execution-scoped by execB
-  const brokenArtifacts = db.prepare(
-    `SELECT artifact_id,artifact_type FROM factory_managed_artifact_productions
-      WHERE process_run_id=? AND execution_id=? ORDER BY id`,
-  ).all(processRunId, execB);
-  assert.equal(brokenArtifacts.length, 1, 'broken query: only sees execB writes');
+test('P18-AC-1: replacement execution inherits all production from SAME Workplace', () => {
+  const { db } = createDb();
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(10, serializedA);
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(11, serializedA);
+  addArtifact(db, { taskId: 10, executionId: 'exec-A', artifactId: 1, type: 'PRD', hash: 'hash-prd' });
+  addArtifact(db, { taskId: 10, executionId: 'exec-A', artifactId: 2, type: 'FR', hash: 'hash-fr' });
+  addArtifact(db, { taskId: 11, executionId: 'exec-B', artifactId: 3, type: 'NFR', hash: 'hash-nfr' });
+  addTrace(db, { taskId: 10, executionId: 'exec-A', traceId: 1, sourceId: 2, targetId: 1 });
 
-  // FIXED query: node-durable scope
-  const fixedArtifacts = db.prepare(
-    `SELECT artifact_id,artifact_type FROM factory_managed_artifact_productions
-      WHERE process_run_id=? AND module_ref=? AND node_id=? ORDER BY id`,
-  ).all(processRunId, moduleRef, nodeId);
-  assert.equal(fixedArtifacts.length, 3, 'fixed query: sees ALL node-durable artifacts');
-  const types = fixedArtifacts.map(a => a.artifact_type);
-  assert.ok(types.includes('PRD'), 'PRD present');
-  assert.ok(types.includes('FR'), 'FR present');
-  assert.ok(types.includes('NFR'), 'NFR present');
+  const production = new SqliteWorkplaceProductionResolver(db).read(workplaceA);
+  assert.deepEqual(production.artifacts.map(a => a.artifactId), [1, 2, 3]);
+  assert.deepEqual(production.traces.map(t => t.traceId), [1]);
+
+  const snapshot = buildWorkplaceProductionSnapshot({
+    workplaceRef: serializedA,
+    expectedSchemaRef: 'factory.formalization-product-contract.v1',
+    presenterExecutionRef: 'exec-B',
+    artifacts: production.artifacts,
+    traces: production.traces,
+  });
+  assert.deepEqual(snapshot.contributingExecutionRefs, ['exec-A', 'exec-B']);
+  assert.equal(snapshot.presenterExecutionRef, 'exec-B');
+  assert.ok(snapshot.artifacts.some(a => a.lastProducerExecutionRef === 'exec-A'));
 });
 
-test('P18-AC-2: sibling Workplaces under the same node cannot see each other products', () => {
-  const db = new Database(':memory:');
-  ensureManagedProductionSchema(db);
+test('P18-AC-2: sibling Workplaces under SAME node are strictly isolated', () => {
+  const { db } = createDb();
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(10, serializedA);
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(20, serializedB);
+  addArtifact(db, { taskId: 10, executionId: 'exec-A', artifactId: 1, type: 'FR', hash: 'hash-A' });
+  addArtifact(db, { taskId: 20, executionId: 'exec-C', artifactId: 2, type: 'FR', hash: 'hash-B' });
 
-  const processRunId = 1;
-  const moduleRef = 'solution-development@1.0.0';
-  const nodeId = 'implement-work-items';
-
-  // Workplace 1 (impl-AC-1): execution A writes an artifact
-  db.prepare('INSERT INTO artifacts (id, project_id, epic_id, type, code, content_hash) VALUES (?,?,?,?,?,?)')
-    .run(10, 1, 1, 'FR', 'FR-impl-1', 'hash-impl-1');
-
-  // In a fan-out, sibling items share the node but have different work_keys.
-  // The managed-production ledger is scoped by node, but in fan-out the
-  // cell executor materializes DIFFERENT workplaces per item. The key question:
-  // does the product reader (readExecutionProducts) correctly scope?
-  // Answer: yes — readExecutionProducts filters by executionRef, and each
-  // sibling has its own execution. The node-scope query in the GATE path
-  // (listArtifactsForNodeInProcessRun) returns all items' artifacts — but the
-  // gate runs per-workplace, not per-node, so each workplace's gate sees only
-  // its own CandidateSet members.
-
-  // This test verifies the node-scope query returns ALL sibling artifacts
-  // (which is correct for node-wide audit), but the CandidateSet sealing
-  // isolates per-workplace because each execution submits only its own products.
-  db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(processRunId, moduleRef, nodeId, 1, 100, 'exec-sibling-1', 10, 'FR', 'hash-impl-1');
-
-  db.prepare('INSERT INTO artifacts (id, project_id, epic_id, type, code, content_hash) VALUES (?,?,?,?,?,?)')
-    .run(11, 1, 1, 'FR', 'FR-impl-2', 'hash-impl-2');
-  db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(processRunId, moduleRef, nodeId, 2, 101, 'exec-sibling-2', 11, 'FR', 'hash-impl-2');
-
-  // Node-scope audit query returns both
-  const nodeScoped = db.prepare(
-    `SELECT DISTINCT artifact_id FROM factory_managed_artifact_productions
-      WHERE process_run_id=? AND module_ref=? AND node_id=? ORDER BY artifact_id`,
-  ).all(processRunId, moduleRef, nodeId);
-  assert.equal(nodeScoped.length, 2, 'node-scope audit sees both siblings');
-
-  // But execution-scoped queries isolate siblings (the typed-submission path)
-  const exec1Scoped = db.prepare(
-    `SELECT DISTINCT artifact_id FROM factory_managed_artifact_productions WHERE execution_id=?`,
-  ).all('exec-sibling-1');
-  assert.equal(exec1Scoped.length, 1, 'execution-scoped isolates sibling 1');
-  assert.equal(exec1Scoped[0].artifact_id, 10);
+  const resolver = new SqliteWorkplaceProductionResolver(db);
+  assert.deepEqual(resolver.read(workplaceA).artifacts.map(a => a.artifactId), [1]);
+  assert.deepEqual(resolver.read(workplaceB).artifacts.map(a => a.artifactId), [2]);
 });
 
-test('P18-AC-3: CandidateSet members are stored explicitly, not derived from execution', () => {
-  const db = new Database(':memory:');
-  ensureManagedProductionSchema(db);
+test('P18-AC-3: latest write wins only inside the same Workplace', () => {
+  const { db } = createDb();
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(10, serializedA);
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(11, serializedA);
+  addArtifact(db, { taskId: 10, executionId: 'exec-A', artifactId: 1, type: 'FR', hash: 'old-hash' });
+  addArtifact(db, { taskId: 11, executionId: 'exec-B', artifactId: 1, type: 'FR', hash: 'new-hash', operation: 'update' });
 
-  // CandidateSet members are stored in factory_candidate_set_members at seal time.
-  // They are NOT derived by querying execution_id at read time.
-  // This test verifies the storage model: members persist independently.
-  const csRef = 'candidate-set/1/mod/cell/execB/author';
-  db.prepare(`INSERT INTO factory_candidate_sets
-    (candidate_set_ref, workplace_ref, producer_execution_ref, role, candidate_set_digest)
-    VALUES (?,?,?,?,?)`)
-    .run(csRef, 'workplace/1/mod/cell/singleton', 'execB', 'author', 'digest-123');
+  const production = new SqliteWorkplaceProductionResolver(db).read(workplaceA);
+  assert.equal(production.artifacts.length, 1);
+  assert.equal(production.artifacts[0].contentHash, 'new-hash');
+  assert.equal(production.artifacts[0].executionId, 'exec-B');
+});
 
-  db.prepare(`INSERT INTO factory_candidate_set_members
-    (candidate_set_ref, ordinal, product_schema, product_ref, product_digest, origin)
-    VALUES (?,?,?,?,?,?)`)
-    .run(csRef, 0, 'factory.product-bundle.v1', 'node-product-set:1:mod:node:schema', 'bundle-digest', 'produced');
-  db.prepare(`INSERT INTO factory_candidate_set_members
-    (candidate_set_ref, ordinal, product_schema, product_ref, product_digest, origin)
-    VALUES (?,?,?,?,?,?)`)
-    .run(csRef, 1, 'factory.review-verdict.v1', 'managed-node-submission:42', 'verdict-digest', 'produced');
+test('P18-AC-4: CandidateSet freezes readable snapshot and fanout products coexist', () => {
+  const { db, productRepo } = createDb();
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(10, serializedA);
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(20, serializedB);
+  addArtifact(db, { taskId: 10, executionId: 'exec-A', artifactId: 1, type: 'FR', hash: 'hash-A' });
+  addArtifact(db, { taskId: 20, executionId: 'exec-C', artifactId: 2, type: 'FR', hash: 'hash-B' });
 
-  // Reading the CandidateSet returns exactly the stored members
-  const members = db.prepare(
-    `SELECT product_schema,product_ref,product_digest FROM factory_candidate_set_members
-      WHERE candidate_set_ref=? ORDER BY ordinal`,
-  ).all(csRef);
-  assert.equal(members.length, 2);
-  assert.equal(members[0].product_schema, 'factory.product-bundle.v1');
-  assert.equal(members[1].product_schema, 'factory.review-verdict.v1');
+  const resolver = new SqliteWorkplaceProductionResolver(db);
+  const productPort = new SqliteWorkplaceProductAdapter(db, productRepo);
+  const persistSnapshot = (workplace, serialized, presenter) => {
+    const production = resolver.read(workplace);
+    const snapshot = buildWorkplaceProductionSnapshot({
+      workplaceRef: serialized,
+      expectedSchemaRef: 'factory.test-bundle.v1',
+      presenterExecutionRef: presenter,
+      artifacts: production.artifacts,
+      traces: production.traces,
+    });
+    return productPort.submitProduct({
+      processRunId,
+      nodeId,
+      moduleRef,
+      schema: 'factory.test-bundle.v1',
+      content: snapshot,
+      contentHash: sha256Hex(snapshot),
+      executionRef: presenter,
+    }).productRef;
+  };
 
-  // These members are stable — they don't change when later writes occur
-  // to the same node (a repair attempt adding new artifacts won't mutate
-  // the sealed CandidateSet).
-  db.prepare(`INSERT INTO factory_managed_artifact_productions
-    (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, content_hash)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(1, 'mod', 'node', 1, 1, 'execC', 99, 'FR', 'new-hash');
+  const refA = persistSnapshot(workplaceA, serializedA, 'exec-A');
+  const refB = persistSnapshot(workplaceB, serializedB, 'exec-C');
+  assert.notEqual(refA.ref, refB.ref, 'same-schema fanout products have distinct exact refs');
+  assert.equal(productPort.readNodeProducts(processRunId, nodeId).length, 2, 'both same-schema fanout snapshots coexist');
 
-  const membersAfterLaterWrite = db.prepare(
-    `SELECT product_schema,product_ref,product_digest FROM factory_candidate_set_members
-      WHERE candidate_set_ref=? ORDER BY ordinal`,
-  ).all(csRef);
-  assert.equal(membersAfterLaterWrite.length, 2, 'CandidateSet members are immutable after seal');
+  const candidateRepo = new SqliteCandidateSetRepository(db);
+  const sealed = candidateRepo.seal({
+    workplaceRef: workplaceA,
+    producerExecutionRef: 'exec-B',
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [{ productRef: refA, origin: 'produced', sourceCandidateSetRef: null }],
+    sealReceiptRef: 'seal:exec-B:author',
+    candidateSetDigest: sha256Hex({ refA }),
+    sealedAt: '2026-08-08T00:00:00.000Z',
+  }).set;
+
+  // Live desk changes after seal.
+  db.prepare('INSERT INTO tasks (id,workplace_ref) VALUES (?,?)').run(11, serializedA);
+  addArtifact(db, { taskId: 11, executionId: 'exec-D', artifactId: 3, type: 'NFR', hash: 'hash-D' });
+  assert.equal(resolver.read(workplaceA).artifacts.length, 2);
+
+  // Sealed exact ProductRef still resolves to original one-artifact snapshot.
+  const stored = productPort.readProduct(sealed.members[0].productRef);
+  assert.ok(stored);
+  assert.equal(stored.content.artifacts.length, 1);
+  assert.equal(stored.content.artifacts[0].artifactId, 1);
 });
