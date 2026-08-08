@@ -23,5 +23,32 @@ jobs:
         run: npm ci
       - name: Build (strict TypeScript)
         run: npm run build
+      - name: Instrument failure-only Run B diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/factory-contract/golden-path.test.mjs')
+          s = p.read_text()
+          needle = "    assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);"
+          replacement = r'''    const runBFormalization = resultDb.prepare(
+              "SELECT id FROM factory_process_runs WHERE module_name='solution-formalization' ORDER BY id DESC LIMIT 1",
+            ).get();
+            if (runBFormalization) {
+              const runBDebug = {
+                invocations: JSON.parse(readFileSync(invocationLogPath, 'utf8')),
+                processRun: resultDb.prepare('SELECT * FROM factory_process_runs WHERE id=?').get(runBFormalization.id),
+                workplaces: resultDb.prepare('SELECT * FROM factory_workplaces WHERE process_run_id=? ORDER BY workplace_ref').all(runBFormalization.id),
+                tasks: resultDb.prepare("SELECT id,status,workplace_ref,metadata FROM tasks WHERE json_extract(metadata,'$.process_run_id')=? ORDER BY id").all(runBFormalization.id),
+                executions: resultDb.prepare("SELECT we.execution_id,we.task_id,we.state,we.exit_code,we.metadata FROM worker_executions we JOIN tasks t ON t.id=we.task_id WHERE json_extract(t.metadata,'$.process_run_id')=? ORDER BY we.rowid").all(runBFormalization.id),
+                candidates: resultDb.prepare('SELECT cs.* FROM factory_candidate_sets cs JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref WHERE w.process_run_id=? ORDER BY cs.sealed_at').all(runBFormalization.id),
+                gates: resultDb.prepare('SELECT gd.* FROM factory_gate_decisions gd JOIN factory_workplaces w ON w.workplace_ref=gd.workplace_ref WHERE w.process_run_id=? ORDER BY gd.decided_at').all(runBFormalization.id),
+              };
+              process.stderr.write(`RUN_B_DEBUG=${JSON.stringify(runBDebug)}\n`);
+            }
+            assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);'''
+          if needle not in s:
+              raise SystemExit('diagnostic insertion point not found')
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
       - name: Canonical cold plus replay theorem
         run: node --test tests/factory-contract/golden-path.test.mjs
