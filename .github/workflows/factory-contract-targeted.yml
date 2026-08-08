@@ -27,7 +27,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # Read-derived authority/source identities are rebound to current Run.
           p = Path('src/infrastructure/replay/capsule-replay-executor.ts')
           s = p.read_text()
           import_needle = "import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';"
@@ -51,8 +50,6 @@ jobs:
           )
           p.write_text(re.sub(pattern, replacement, s, count=1))
 
-          # Kernel audit hashes remain exact/current-run, while semanticDigest
-          # projects only cross-run-stable Development meaning.
           p = Path('src/modules/development/application/development-installation.ts')
           s = p.read_text()
           taskgraph_needle = '''          contentHash: materialized.reference.hash,\n          bindings: {\n            graphHash: materialized.graph.graphHash,'''
@@ -66,13 +63,10 @@ jobs:
               raise SystemExit('integrated candidate semantic insertion point not found')
           p.write_text(s.replace(frozen_needle, frozen_replacement, 1))
 
-          # A fan-out worker can depend on both the materialization source and
-          # the immediate upstream production (verification depends on the
-          # frozen candidate). Include both semantic identities.
           p = Path('src/process-modules/application/node-executors/production-cell-node-executor.ts')
           s = p.read_text()
           fanout_needle = '''    return sha256Hex({\n      upstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
-          fanout_replacement = '''    const immediateInput = readInputAsProduction(ctx.input);\n    const immediateInputSemanticDigest = immediateInput\n      ? (immediateInput.semanticDigest ?? immediateInput.contentHash)\n      : null;\n    return sha256Hex({\n      upstreamSemanticDigest,\n      immediateInputSemanticDigest:\n        immediateInputSemanticDigest === upstreamSemanticDigest\n          ? null\n          : immediateInputSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
+          fanout_replacement = '''    const inputRecord = isRecord(ctx.input) ? ctx.input : null;\n    const immediateUpstream = inputRecord\n      ? readInputAsProduction(inputRecord.upstream)\n      : null;\n    const immediateUpstreamSemanticDigest = immediateUpstream\n      ? (immediateUpstream.semanticDigest ?? immediateUpstream.contentHash)\n      : null;\n    return sha256Hex({\n      upstreamSemanticDigest,\n      immediateUpstreamSemanticDigest:\n        immediateUpstreamSemanticDigest === upstreamSemanticDigest\n          ? null\n          : immediateUpstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
           if fanout_needle not in s:
               raise SystemExit('fanout semantic insertion point not found')
           p.write_text(s.replace(fanout_needle, fanout_replacement, 1))
