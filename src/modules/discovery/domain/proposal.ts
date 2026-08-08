@@ -1,10 +1,10 @@
 /**
- * Proposal — a typed, non-authoritative output of an LM product-worker
- * execution against a WorkIntent.
+ * Proposal — a typed, non-authoritative output of one product-worker execution
+ * against a WorkIntent.
  *
- * Roadmap §7.3 + §6.4 settlement. The worker submits ONLY the semantic payload;
- * the infrastructure records runtime provenance automatically. The worker must
- * never hand-author provenance.
+ * The worker submits semantic payload only. Infrastructure records truthful
+ * runtime provenance automatically; a replay-backed execution must never be
+ * journaled as though the selected inference route actually produced bytes.
  */
 
 export type ProposalStatus = 'submitted' | 'superseded' | 'rejected_by_kernel';
@@ -24,17 +24,19 @@ export interface Proposal {
 
 /** One immutable execution identity captured by the kernel. */
 export interface ExecutionProvenance {
+  /** Actual inference model that produced the payload; null for replay. */
   model: string | null;
-  /**
-   * Inference provider. Null when the execution ran on a non-model-backed
-   * executor (e.g. claude-cli-simulator) — a deterministic simulator must never
-   * be journaled as if it contacted a real provider.
-   */
+  /** Actual inference provider that produced the payload; null for replay. */
   provider: string | null;
+  /** Actual inference effort; null for replay. */
   effort: string | null;
   worker_id: string;
   execution_id: string;
   submitted_at: string;
+  /** Physical source of worker production. Not a Factory mode. */
+  production_source?: 'inference' | 'replay';
+  /** Exact certified capsule used when production_source='replay'. */
+  capsule_ref?: string | null;
 }
 
 /**
@@ -44,7 +46,6 @@ export interface ExecutionProvenance {
  * product-worker execution that owns Proposal.task_id. Transformation lineage
  * is additive: `normalizer` identifies the separate control execution and
  * `normalization_proposal_id` links its non-authoritative transform proposal.
- * This preserves the invariant Proposal.task_id ↔ Proposal.execution_id.
  */
 export interface ProposalProvenance extends ExecutionProvenance {
   normalization_mode?: 'deterministic' | 'lm_transformation';
