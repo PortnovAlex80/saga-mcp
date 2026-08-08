@@ -1,21 +1,15 @@
 /**
  * Replay capture effect — the DIRECT certification path.
  *
- * IMPORTANT: a GateRun returning `accepted` is not by itself enough to certify
- * replay data. A decision may still lose the Workplace revision CAS or remain
- * audit-only. A reusable capsule may be created only from a durable
- * `terminal(accepted)` Workplace.
+ * A raw GateRun verdict is not certification authority. Reusable capsules are
+ * derived only after the Workplace is durably terminal(accepted), and the
+ * exact certifiable CandidateSets are taken from the FINAL accepted
+ * GateDecision. This is especially important for reviewed cells: final
+ * acceptance certifies BOTH the exact author subject and the exact reviewer
+ * assessment set(s), while rejected/superseded attempts remain audit history.
  *
- * ProductionCellNodeExecutor invokes this effect AFTER applying the durable
- * transition, and only when the workplace has become durably `terminal(accepted)`.
- * The guard below therefore passes on the normal path — this is the primary
- * certification mechanism.
- *
- * The lazy claim-bound sweep (`certifyAcceptedReplayCapsules`) remains as a
- * crash/reconciliation fallback: if this effect never ran (process crash between
- * the transition and capture), the sweep backfills the missing capsules before
- * the next replay lookup. No second state machine or pending-capture entity
- * exists: direct capture is the path, lazy sweep is the safety net.
+ * Lazy certification in the replay claim boundary remains only a crash/
+ * reconciliation fallback when direct archive materialization was interrupted.
  */
 import type Database from 'better-sqlite3';
 import type { PostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
@@ -23,6 +17,19 @@ import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/wo
 import { SqliteReplayCapsuleRepository } from './sqlite-replay-capsule-repository.js';
 
 export const REPLAY_CAPTURE_EFFECT_ID = 'replay-capture' as const;
+
+function parseAssessmentRefs(raw: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('REPLAY_CERTIFICATION_INVALID: assessment_candidate_set_refs is not JSON');
+  }
+  if (!Array.isArray(parsed) || !parsed.every(value => typeof value === 'string')) {
+    throw new Error('REPLAY_CERTIFICATION_INVALID: assessment_candidate_set_refs must be string[]');
+  }
+  return parsed;
+}
 
 export function createReplayCaptureEffect(db: Database.Database): PostAcceptanceEffect {
   const repo = new SqliteReplayCapsuleRepository(db);
@@ -39,8 +46,6 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
         terminal_reason: string | null;
       } | undefined;
 
-      // Certification boundary: never archive a merely proposed/checked
-      // acceptance. Only the durable terminal accepted state is replayable.
       if (!state
           || state.loop_state !== 'terminal'
           || state.terminal_reason !== 'accepted') {
@@ -48,16 +53,57 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
       }
 
       try {
-        repo.captureAcceptedExecution({
-          executionRef: input.producerExecutionRef,
-          candidateSetRef: input.candidateSetRef,
-        });
+        // Do not trust the single CandidateSet carried by the extension-point
+        // call. For a reviewed cell that value is normally the author subject.
+        // Certification authority is the exact FINAL accepted GateDecision.
+        const decision = db.prepare(
+          `SELECT subject_candidate_set_ref,assessment_candidate_set_refs
+             FROM factory_gate_decisions
+            WHERE workplace_ref=?
+              AND gate_phase='final'
+              AND verdict='accepted'
+            ORDER BY decided_at DESC,rowid DESC
+            LIMIT 1`,
+        ).get(workplaceRef) as {
+          subject_candidate_set_ref: string;
+          assessment_candidate_set_refs: string;
+        } | undefined;
+        if (!decision) {
+          throw new Error(
+            `REPLAY_CERTIFICATION_FINAL_DECISION_MISSING: ${workplaceRef}`,
+          );
+        }
+
+        const candidateRefs = [
+          decision.subject_candidate_set_ref,
+          ...parseAssessmentRefs(decision.assessment_candidate_set_refs),
+        ];
+
+        for (const candidateSetRef of [...new Set(candidateRefs)]) {
+          const candidate = db.prepare(
+            `SELECT candidate_set_ref,producer_execution_ref
+               FROM factory_candidate_sets
+              WHERE candidate_set_ref=? AND workplace_ref=?`,
+          ).get(candidateSetRef, workplaceRef) as {
+            candidate_set_ref: string;
+            producer_execution_ref: string;
+          } | undefined;
+          if (!candidate) {
+            throw new Error(
+              `REPLAY_CERTIFICATION_CANDIDATE_MISSING: ${candidateSetRef}`,
+            );
+          }
+          repo.captureAcceptedExecution({
+            executionRef: candidate.producer_execution_ref,
+            candidateSetRef: candidate.candidate_set_ref,
+          });
+        }
       } catch (error) {
-        // Replay archive is an optimization. Failure must not rewrite an
-        // already-authoritative accepted transition.
+        // Capsule materialization is derived optimization. The already-durable
+        // final acceptance remains authoritative; lazy certification can retry.
         const msg = error instanceof Error ? error.message : String(error);
         process.stderr.write(
-          `[replay-capture] certification failed for execution=${input.producerExecutionRef}: ${msg}\n`,
+          `[replay-capture] direct certification failed for workplace=${workplaceRef}: ${msg}\n`,
         );
       }
     },
