@@ -1,32 +1,11 @@
 /**
- * In-process ReplayCapsule executor (CONVEYOR v4.3 PART 2).
+ * Generic in-process ReplayCapsule production adapter.
  *
- * This is the ONE normal WorkerExecution production source for replay. It is
- * NOT an executor mode and NOT a simulator. When `execution_context.replay
- * .capsule_ref` is non-null, the normal WorkerExecutor resolves the production
- * source internally and runs this adapter instead of invoking the selected
- * inference model.
- *
- * The adapter reconstructs accepted worker production from a frozen capsule
- * through the SAME normal MCP/tool handler boundary a real worker uses:
- *
- *   1. Reads the capsule payload from factory_replay_capsules.
- *   2. For artifacts: recreates artifact files + calls artifact_create.
- *   3. For traces: resolves source/target via semantic selectors, calls trace_add.
- *   4. For Git: applies the recorded patch to the RepositoryDesk worktree,
- *      recreates the commit with recorded metadata, verifies expected tree.
- *   5. For typed products: calls product_submit with the preserved payload.
- *
- * The normal Production Cell then seals the CandidateSet, the current GateRun
- * runs, and the current GateDecision decides acceptance — exactly as if a real
- * LLM had produced the work. The adapter operates under the exact frozen
- * WorkerExecution authority and cannot create CandidateSets, run Gates, change
- * Workplaces, advance lifecycle, or write acceptance state.
- *
- * Exactness rule: replay is all-or-nothing. Missing semantic references,
- * unsafe artifact paths, unresolved parents/trace targets, corrupt payloads or
- * Git mismatches fail the WorkerExecution. A certified capsule is never
- * "partially" replayed by silently dropping evidence.
+ * Replay is not a Factory/executor mode. A normal fenced WorkerExecution whose
+ * immutable context contains an eligible capsule uses this adapter as its
+ * production source instead of inference. The adapter reconstructs products
+ * only through the same authorized product/artifact/trace handlers used by a
+ * model-backed worker; CandidateSet, GateDecision and lifecycle remain current.
  */
 import type Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
@@ -40,7 +19,6 @@ import type {
 } from '../../replay/replay-capsule.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 
-/** Minimal handler-shape mirror of the normal MCP tool handler containers. */
 export interface CapsuleReplayHandlers {
   product_submit: (input: { schema: string; content: unknown }) => unknown;
   artifact_create: (input: {
@@ -60,13 +38,19 @@ export interface CapsuleReplayHandlers {
     target_id?: number;
     link_type: string;
   }) => unknown;
+  /** Completion stays outside executeCapsuleReplay; factory calls it afterwards. */
+  worker_done: (input: {
+    task_id: number;
+    worker_id: string;
+    result: string;
+    execution_id?: string;
+  }) => unknown;
 }
 
 export interface CapsuleReplayContext {
   taskId: number;
   workerId: string;
   executionId: string;
-  /** The cwd the worker would have run in (RepositoryDesk/workspace root). */
   cwd: string;
 }
 
@@ -78,21 +62,29 @@ export interface CapsuleReplayOutcome {
 }
 
 function selectorKey(selector: ReplayArtifactSelector): string {
-  return `${selector.type}::${selector.code ?? ''}::${selector.title}::${selector.path}`;
+  return `${selector.type}::${selector.code ?? ''}::${selector.title}::${selector.path}::${selector.contentHash ?? ''}`;
 }
 
-/** Execute generic capsule replay through the normal production surface. */
+/** Execute one certified capsule recipe under the current execution fence. */
 export function executeCapsuleReplay(
   db: Database.Database,
   handlers: CapsuleReplayHandlers,
   context: CapsuleReplayContext,
 ): CapsuleReplayOutcome {
   const execRow = db.prepare(
-    'SELECT metadata FROM worker_executions WHERE execution_id=?',
-  ).get(context.executionId) as { metadata: string } | undefined;
+    `SELECT we.metadata,t.metadata AS task_metadata,we.project_id
+       FROM worker_executions we
+       JOIN tasks t ON t.id=we.task_id
+      WHERE we.execution_id=? AND we.task_id=?`,
+  ).get(context.executionId, context.taskId) as {
+    metadata: string;
+    task_metadata: string;
+    project_id: number;
+  } | undefined;
   if (!execRow) {
     throw new Error(`CAPSULE_REPLAY_EXECUTION_NOT_FOUND: ${context.executionId}`);
   }
+
   const envelope = JSON.parse(execRow.metadata) as {
     execution_context?: {
       replay?: {
@@ -104,52 +96,60 @@ export function executeCapsuleReplay(
   const replayBinding = envelope?.execution_context?.replay;
   const capsuleRef = replayBinding?.capsule_ref;
   if (!capsuleRef) {
-    throw new Error(
-      'CAPSULE_REPLAY_NO_CAPSULE_REF: execution_context.replay.capsule_ref is null',
-    );
+    throw new Error('CAPSULE_REPLAY_NO_CAPSULE_REF');
   }
 
   const capsuleRow = db.prepare(
-    'SELECT payload_snapshot,payload_hash FROM factory_replay_capsules WHERE capsule_ref=?',
-  ).get(capsuleRef) as { payload_snapshot: string; payload_hash: string } | undefined;
-  if (!capsuleRow) {
-    throw new Error(`CAPSULE_REPLAY_CAPSULE_NOT_FOUND: ${capsuleRef}`);
+    `SELECT project_id,payload_snapshot,payload_hash
+       FROM factory_replay_capsules WHERE capsule_ref=?`,
+  ).get(capsuleRef) as {
+    project_id: number;
+    payload_snapshot: string;
+    payload_hash: string;
+  } | undefined;
+  if (!capsuleRow) throw new Error(`CAPSULE_REPLAY_CAPSULE_NOT_FOUND: ${capsuleRef}`);
+  if (capsuleRow.project_id !== execRow.project_id) {
+    throw new Error('CAPSULE_REPLAY_PROJECT_SCOPE_MISMATCH');
   }
 
   const payload = JSON.parse(capsuleRow.payload_snapshot) as ReplayCapsulePayload;
   const computedHash = sha256Hex(payload);
   if (capsuleRow.payload_hash !== computedHash) {
-    throw new Error(
-      `CAPSULE_REPLAY_HASH_MISMATCH: capsule ${capsuleRef} payload hash mismatch — corruption detected`,
-    );
+    throw new Error(`CAPSULE_REPLAY_HASH_MISMATCH: ${capsuleRef}`);
   }
   if (
-    replayBinding?.capsule_payload_hash
+    replayBinding.capsule_payload_hash
     && replayBinding.capsule_payload_hash !== capsuleRow.payload_hash
   ) {
-    throw new Error(
-      `CAPSULE_REPLAY_FROZEN_HASH_MISMATCH: execution froze ${replayBinding.capsule_payload_hash} `
-      + `but capsule ${capsuleRef} now resolves to ${capsuleRow.payload_hash}`,
-    );
+    throw new Error(`CAPSULE_REPLAY_FROZEN_HASH_MISMATCH: ${capsuleRef}`);
   }
+
+  const taskMetadata = parseObject(execRow.task_metadata);
+  const currentInput = taskMetadata.process_node_input
+    ?? taskMetadata.cell_input_item
+    ?? {};
+  const allowedBindingPaths = new Set(
+    (payload.inputBindings ?? []).map(binding => binding.path),
+  );
 
   const artifactIdBySelector = new Map<string, number>();
 
-  // 1. Recreate artifacts. Ordering is part of the capsule recipe: a declared
-  // parent must already have been materialized, otherwise the recipe is invalid.
+  // 1. Recreate artifacts. Parent may be produced by this execution OR be an
+  // already-existing current-run artifact resolved by the exact semantic selector.
   for (const artifact of payload.artifacts ?? []) {
     const key = selectorKey(artifact.selector);
     const parentArtifactId = artifact.parent
       ? artifactIdBySelector.get(selectorKey(artifact.parent))
+        ?? resolveExistingArtifactId(db, execRow.project_id, artifact.parent)
+        ?? undefined
       : undefined;
     if (artifact.parent && parentArtifactId === undefined) {
       throw new Error(
-        `CAPSULE_REPLAY_PARENT_ARTIFACT_MISSING: ${key} references `
-        + `${selectorKey(artifact.parent)} before it was materialized`,
+        `CAPSULE_REPLAY_PARENT_ARTIFACT_MISSING: ${selectorKey(artifact.parent)}`,
       );
     }
 
-    materializeArtifactFile(artifact, context.cwd);
+    materializeArtifactFile(db, artifact, context.cwd);
     try {
       const result = handlers.artifact_create({
         type: artifact.selector.type,
@@ -169,48 +169,45 @@ export function executeCapsuleReplay(
       artifactIdBySelector.set(key, Number(createdId));
     } catch (error) {
       throw new Error(
-        `CAPSULE_REPLAY_ARTIFACT_FAILED: ${key}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `CAPSULE_REPLAY_ARTIFACT_FAILED: ${key}: ${errorMessage(error)}`,
       );
     }
   }
 
-  // 2. Recreate traces. A trace is accepted evidence; silently skipping a
-  // missing source/target would create a different CandidateSet than certified.
+  // 2. Recreate traces. Certified evidence is never silently skipped.
   let tracesRecreated = 0;
   for (const trace of payload.traces ?? []) {
     const sourceKey = selectorKey(trace.source);
-    const sourceId = artifactIdBySelector.get(sourceKey);
-    if (!sourceId) {
-      throw new Error(`CAPSULE_REPLAY_TRACE_SOURCE_MISSING: ${sourceKey}`);
-    }
+    const sourceId = artifactIdBySelector.get(sourceKey)
+      ?? resolveExistingArtifactId(db, execRow.project_id, trace.source);
+    if (!sourceId) throw new Error(`CAPSULE_REPLAY_TRACE_SOURCE_MISSING: ${sourceKey}`);
 
-    let targetId: number | undefined;
+    let targetId: number;
     if (trace.targetType === 'artifact') {
       if (!trace.targetArtifact) {
-        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: artifact trace has no target selector');
+        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: artifact selector absent');
       }
       const targetKey = selectorKey(trace.targetArtifact);
-      targetId = artifactIdBySelector.get(targetKey);
-      if (!targetId) {
-        throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_MISSING: ${targetKey}`);
-      }
+      const resolved = artifactIdBySelector.get(targetKey)
+        ?? resolveExistingArtifactId(db, execRow.project_id, trace.targetArtifact);
+      if (!resolved) throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_MISSING: ${targetKey}`);
+      targetId = resolved;
     } else if (trace.targetType === 'task') {
       if (!trace.targetTaskGenerationKey) {
-        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: task trace has no generation key');
+        throw new Error('CAPSULE_REPLAY_TRACE_TARGET_MISSING: task generation key absent');
       }
       const taskRow = db.prepare(
-        `SELECT id FROM tasks
-          WHERE generation_key=?
-          ORDER BY id DESC LIMIT 1`,
-      ).get(trace.targetTaskGenerationKey) as { id: number } | undefined;
-      targetId = taskRow?.id;
-      if (!targetId) {
+        `SELECT t.id
+           FROM tasks t JOIN epics e ON e.id=t.epic_id
+          WHERE e.project_id=? AND t.generation_key=?
+          ORDER BY t.id DESC LIMIT 1`,
+      ).get(execRow.project_id, trace.targetTaskGenerationKey) as { id: number } | undefined;
+      if (!taskRow) {
         throw new Error(
           `CAPSULE_REPLAY_TRACE_TARGET_MISSING: task generation_key=${trace.targetTaskGenerationKey}`,
         );
       }
+      targetId = taskRow.id;
     } else {
       throw new Error(`CAPSULE_REPLAY_TRACE_TARGET_TYPE_INVALID: ${String(trace.targetType)}`);
     }
@@ -224,37 +221,31 @@ export function executeCapsuleReplay(
       });
       tracesRecreated += 1;
     } catch (error) {
-      throw new Error(
-        `CAPSULE_REPLAY_TRACE_FAILED: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      throw new Error(`CAPSULE_REPLAY_TRACE_FAILED: ${errorMessage(error)}`);
     }
   }
 
-  // 3. Git recipe: apply patch to the RepositoryDesk worktree BEFORE products,
-  // so worker completion sees the committed source.
+  // 3. Reconstruct code only inside the factory-owned RepositoryDesk.
   let gitCommit: string | undefined;
-  if (payload.git) {
-    gitCommit = applyGitRecipe(payload.git, context.cwd);
-  }
+  if (payload.git) gitCommit = applyGitRecipe(payload.git, context.cwd);
 
-  // 4. Submit typed products through the normal product_submit handler.
+  // 4. Rebind run-local identities to the CURRENT invocation, then submit via
+  // the universal Product Desk. Source contentHash is audit evidence for the
+  // accepted source execution; it is not required to remain byte-identical
+  // after legitimate current-run identity rebinding.
   let productsSubmitted = 0;
   for (const product of payload.typedProducts ?? []) {
-    if (sha256Hex(product.content) !== product.contentHash) {
-      throw new Error(
-        `CAPSULE_REPLAY_PRODUCT_HASH_MISMATCH: schema=${product.schema}`,
-      );
-    }
+    const rebound = rehydrateReplayValue(
+      product.content,
+      currentInput,
+      allowedBindingPaths,
+    );
     try {
-      handlers.product_submit({ schema: product.schema, content: product.content });
+      handlers.product_submit({ schema: product.schema, content: rebound });
       productsSubmitted += 1;
     } catch (error) {
       throw new Error(
-        `CAPSULE_REPLAY_PRODUCT_FAILED schema=${product.schema}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `CAPSULE_REPLAY_PRODUCT_FAILED schema=${product.schema}: ${errorMessage(error)}`,
       );
     }
   }
@@ -267,9 +258,112 @@ export function executeCapsuleReplay(
   };
 }
 
+function rehydrateReplayValue(
+  value: unknown,
+  currentInput: unknown,
+  allowedPaths: ReadonlySet<string>,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => rehydrateReplayValue(item, currentInput, allowedPaths));
+  }
+  if (!value || typeof value !== 'object') return value;
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).length === 1 && typeof row.$sagaReplayInput === 'string') {
+    const bindingPath = row.$sagaReplayInput;
+    if (!allowedPaths.has(bindingPath)) {
+      throw new Error(`CAPSULE_REPLAY_INPUT_BINDING_UNDECLARED: ${bindingPath}`);
+    }
+    const resolved = readPath(currentInput, bindingPath);
+    if (!resolved.found) {
+      throw new Error(`CAPSULE_REPLAY_INPUT_BINDING_MISSING: ${bindingPath}`);
+    }
+    return resolved.value;
+  }
+  return Object.fromEntries(
+    Object.entries(row).map(([key, child]) => [
+      key,
+      rehydrateReplayValue(child, currentInput, allowedPaths),
+    ]),
+  );
+}
+
+function readPath(root: unknown, replayPath: string): { found: boolean; value: unknown } {
+  if (replayPath === '$') return { found: true, value: root };
+  if (!replayPath.startsWith('$')) return { found: false, value: undefined };
+  const tokens: Array<string | number> = [];
+  const suffix = replayPath.slice(1);
+  const pattern = /\.([^.[\]]+)|\[(\d+)\]/g;
+  let consumed = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(suffix)) !== null) {
+    if (match.index !== consumed) return { found: false, value: undefined };
+    tokens.push(match[1] !== undefined ? match[1] : Number(match[2]));
+    consumed = pattern.lastIndex;
+  }
+  if (consumed !== suffix.length) return { found: false, value: undefined };
+
+  let current = root;
+  for (const token of tokens) {
+    if (typeof token === 'number') {
+      if (!Array.isArray(current) || token >= current.length) {
+        return { found: false, value: undefined };
+      }
+      current = current[token];
+    } else {
+      if (!current || typeof current !== 'object' || Array.isArray(current)
+          || !Object.hasOwn(current as object, token)) {
+        return { found: false, value: undefined };
+      }
+      current = (current as Record<string, unknown>)[token];
+    }
+  }
+  return { found: true, value: current };
+}
+
+function parseObject(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== 'string') return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveExistingArtifactId(
+  db: Database.Database,
+  projectId: number,
+  selector: ReplayArtifactSelector,
+): number | null {
+  const row = db.prepare(
+    `SELECT id
+       FROM artifacts
+      WHERE project_id=?
+        AND type=?
+        AND COALESCE(code,'')=COALESCE(?,'')
+        AND title=?
+        AND path=?
+        AND (? IS NULL OR content_hash=?)
+      ORDER BY id DESC LIMIT 1`,
+  ).get(
+    projectId,
+    selector.type,
+    selector.code,
+    selector.title,
+    selector.path,
+    selector.contentHash,
+    selector.contentHash,
+  ) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
 function materializeArtifactFile(
+  db: Database.Database,
   artifact: ReplayArtifactProduct,
-  cwd: string,
+  fallbackRoot: string,
 ): void {
   if (!artifact.file) return;
   if (path.isAbsolute(artifact.selector.path)) {
@@ -278,7 +372,23 @@ function materializeArtifactFile(
     );
   }
 
-  const root = path.resolve(cwd);
+  let root = path.resolve(fallbackRoot);
+  if (artifact.projectRepositoryId !== null) {
+    const repository = db.prepare(
+      `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
+         FROM project_repositories pr
+         LEFT JOIN repository_checkouts rc
+           ON rc.project_repository_id=pr.id AND rc.status='active'
+        WHERE pr.id=?`,
+    ).get(artifact.projectRepositoryId) as { local_path: string | null } | undefined;
+    if (!repository?.local_path) {
+      throw new Error(
+        `CAPSULE_REPLAY_ARTIFACT_REPOSITORY_MISSING: ${artifact.projectRepositoryId}`,
+      );
+    }
+    root = path.resolve(repository.local_path);
+  }
+
   const artifactPath = path.resolve(root, artifact.selector.path);
   const relative = path.relative(root, artifactPath);
   if (
@@ -295,13 +405,10 @@ function materializeArtifactFile(
   if (artifact.selector.contentHash) {
     const actualHash = createHash('sha256').update(bytes).digest('hex');
     if (actualHash !== artifact.selector.contentHash) {
-      throw new Error(
-        `CAPSULE_REPLAY_ARTIFACT_HASH_MISMATCH: ${selectorKey(artifact.selector)}`,
-      );
+      throw new Error(`CAPSULE_REPLAY_ARTIFACT_HASH_MISMATCH: ${selectorKey(artifact.selector)}`);
     }
   }
-  const dir = path.dirname(artifactPath);
-  if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  mkdirSync(path.dirname(artifactPath), { recursive: true });
   writeFileSync(artifactPath, bytes);
 }
 
@@ -317,9 +424,8 @@ function applyGitRecipe(
       + `!= expected base ${recipe.baseCommit.slice(0, 12)}`,
     );
   }
-  const dirty = gitExec(worktreePath, ['status', '--porcelain']);
-  if (dirty) {
-    throw new Error('CAPSULE_REPLAY_GIT_WORKTREE_DIRTY: factory RepositoryDesk must be clean before replay');
+  if (gitExec(worktreePath, ['status', '--porcelain'])) {
+    throw new Error('CAPSULE_REPLAY_GIT_WORKTREE_DIRTY');
   }
 
   const patchBytes = Buffer.from(recipe.patchBase64, 'base64');
@@ -356,13 +462,11 @@ function applyGitRecipe(
     return gitExec(worktreePath, ['rev-parse', 'HEAD']);
   } catch (error) {
     if (mutated) {
-      try { gitExec(worktreePath, ['reset', '--hard', recipe.baseCommit]); } catch { /* preserve original error */ }
-      try { gitExec(worktreePath, ['clean', '-fd']); } catch { /* preserve original error */ }
+      try { gitExec(worktreePath, ['reset', '--hard', recipe.baseCommit]); } catch { /* preserve original */ }
+      try { gitExec(worktreePath, ['clean', '-fd']); } catch { /* preserve original */ }
     }
     if (error instanceof Error && error.message.startsWith('CAPSULE_REPLAY_')) throw error;
-    throw new Error(
-      `CAPSULE_REPLAY_GIT_FAILED: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new Error(`CAPSULE_REPLAY_GIT_FAILED: ${errorMessage(error)}`);
   }
 }
 
@@ -373,7 +477,10 @@ function gitExec(repo: string, args: string[]): string {
   }).trim();
 }
 
-/** Resolve the replay capsule_ref frozen on a worker execution, if any. */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function readFrozenCapsuleRef(
   db: Database.Database,
   executionId: string,
@@ -393,7 +500,6 @@ export function readFrozenCapsuleRef(
   }
 }
 
-/** Stable digest helper for tests/diagnostics. */
 export function replayPayloadDigest(payload: unknown): string {
   return sha256Hex(payload);
 }
