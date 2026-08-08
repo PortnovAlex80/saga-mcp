@@ -322,6 +322,7 @@ export function createPinnedClaudeWorkerExecutorFactory(
         originalStatus: string;
         executionId?: string | null;
         reason: string;
+        spawnFailure?: boolean;
       }) => {
         if (!command.executionId) {
           throw new Error('EXECUTION_FENCE_REQUIRED: cannot recover an unfenced assignment');
@@ -347,6 +348,9 @@ export function createPinnedClaudeWorkerExecutorFactory(
               && (state.loopState === 'leased' || state.loopState === 'running')
               && actors?.activeReservationRef === executionId
             ) {
+              // running → repair_wait (REG-28-AC-02). The Production Cell's own
+              // recovery policy (gated by cell.recovery.maxAttempts / onExhausted)
+              // owns the retry decision when the flow node is next reconciled.
               new ConveyorRuntime(db).releaseExecution({
                 workplaceRef,
                 reservationRef: executionId,
@@ -355,23 +359,47 @@ export function createPinnedClaudeWorkerExecutorFactory(
               });
             }
           }
-          const reason = command.reason ?? 'worker execution failed before completion';
+          const reason = command.reason ?? 'worker execution ended without terminal worker_done';
+          const isSpawnFailure = command.spawnFailure === true;
+          if (isSpawnFailure) {
+            // Genuine spawn failure: the Claude process could not be created
+            // (binary missing, CreateProcess failed, bad config). This IS an
+            // infrastructure fault — label it 'spawn_failed' and pause for a
+            // human, because retrying the same spawn will fail identically.
+            const released = releaseExecutionAtomically(db, {
+              executionId,
+              terminalState: 'spawn_failed',
+              reason,
+              lastError: reason,
+            }).taskReleased;
+            if (released && task?.workplace_ref) {
+              new ConveyorRuntime(db).pauseForHuman({
+                workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
+                taskId: command.taskId,
+              });
+            }
+            return released;
+          }
+          // The Claude process was spawned and ran (possibly to exit code 0)
+          // but never emitted a durable worker_done. This is a protocol
+          // completion failure, NOT an infrastructure spawn failure. Label it
+          // 'lost' (process started, ended abnormally) — never 'spawn_failed',
+          // which is reserved for cases where the process could not be created.
+          // Do NOT call pauseForHuman here: the Workplace is already in
+          // repair_wait from the releaseExecution({outcome:'crashed'}) above,
+          // and ProductionCellNodeExecutor.reconcile() will requeue it (subject
+          // to cell.recovery.maxAttempts) when the flow node is next driven.
+          // pauseForHuman would bypass the retry budget and immediately escalate
+          // to blocked/paused, defeating the repair machine.
           const released = releaseExecutionAtomically(db, {
             executionId,
-            terminalState: 'spawn_failed',
+            terminalState: 'lost',
             reason,
             lastError: reason,
+            // Preserve the Workplace-derived task status: the repair_wait state
+            // owns the retry/escalation decision, not physicalRetryExhausted.
+            preserveTaskStatus: true,
           }).taskReleased;
-          if (released && task?.workplace_ref) {
-            // A failure before the process starts is an infrastructure/config
-            // fault, not model-authored repair work. Pause the Workplace and
-            // reverse-project it to the Saga blocked column so the dispatcher
-            // cannot create an unbounded reserve/fail/requeue loop.
-            new ConveyorRuntime(db).pauseForHuman({
-              workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
-              taskId: command.taskId,
-            });
-          }
           return released;
         })();
       },

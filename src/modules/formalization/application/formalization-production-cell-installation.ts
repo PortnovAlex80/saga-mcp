@@ -98,6 +98,10 @@ function createBaselineFreezer(
         String(artifact.id),
         acceptedHash(artifact),
       ]));
+      // Cross-run semantic digest (CONVEYOR v4.3 §5-6): stable AC codes +
+      // accepted hashes, no DB IDs/processRunId/refs. See the sibling
+      // acceptanceBaselineSemanticDigest in formalization-installation.ts.
+      const semanticDigest = acceptanceBaselineSemanticDigest(acs);
       const source = requireProduction(ctx.input, 'reconcile-what');
       const payload = {
         schemaVersion: ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
@@ -116,6 +120,7 @@ function createBaselineFreezer(
           schema: ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
           artifactRef: frozen.record.artifactRef,
           contentHash: frozen.record.snapshotHash,
+          semanticDigest,
           bindings: {
             baselineHash: frozen.record.baselineHash,
             snapshotHash: frozen.record.snapshotHash,
@@ -447,6 +452,32 @@ function acceptedHash(artifact: {
     throw new Error(`artifact ${artifact.id} is not accepted+clean`);
   }
   return artifact.acceptedHash;
+}
+
+/**
+ * Cross-run-stable semantic digest of the acceptance baseline (CONVEYOR v4.3
+ * §5-6). Computed from stable AC codes + accepted hashes only — no DB row IDs,
+ * no processRunId, no refs, no timestamps. See the sibling function in
+ * formalization-installation.ts for the full rationale.
+ */
+function acceptanceBaselineSemanticDigest(
+  artifacts: ReadonlyArray<{
+    code: string | null;
+    type: string;
+    acceptedHash: string | null;
+    contentHash: string | null;
+    status: string;
+    driftState: string;
+    id: number;
+  }>,
+): string {
+  const rows = [...artifacts]
+    .map((artifact, index) => ({
+      key: artifact.code ?? `${artifact.type}:${index}`,
+      hash: acceptedHash(artifact),
+    }))
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  return sha256Hex(rows.map(row => `${row.key}:${row.hash}`).join('\n'));
 }
 
 function moduleCompletion(outcome: string, certificateRef: ProductRef): ModuleCompletion {

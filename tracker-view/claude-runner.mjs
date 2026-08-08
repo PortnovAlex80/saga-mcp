@@ -685,8 +685,8 @@ export class ClaudeBoardRunner {
           originalStatus: work.status === 'review_in_progress' ? 'review' : 'todo',
           executionId: work.workerExecutionId,
           reason: `Claude spawn failed (pre-assigned): ${run.lastError}`,
+          spawnFailure: true,
         });
-        this.executionStore.markSpawnFailed(this.dbPath, work.workerExecutionId, run.lastError);
         this.finish(run, 'failed');
       }
       return;
@@ -1142,6 +1142,7 @@ export class ClaudeBoardRunner {
           originalStatus: task.status,
           executionId: execution.executionId,
           reason: run.lastError,
+          spawnFailure: false,
         });
       }
       if (execution.executionId) {

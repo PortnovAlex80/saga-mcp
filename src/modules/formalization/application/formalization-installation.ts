@@ -790,6 +790,15 @@ function createBaselineFreezerHandler(deps: FormalizationInstallationDeps): Kern
       }
       const acArtifactHashes = artifactHashMap(categories.acs);
       const baselineHash = acceptanceBaselineHash(categories.acs);
+      // Cross-run semantic digest (CONVEYOR v4.3 §5-6). The downstream SRS cell
+      // uses this (falling back to contentHash only if absent) to derive its
+      // ReplayKey. contentHash/snapshotHash carries run-specific provenance
+      // (processRunId, artifact IDs, reconciliation ref), so without an explicit
+      // semanticDigest the SRS ReplayKey would change across runs even for
+      // identical AC content — defeating replay. This digest is computed from
+      // stable AC codes + accepted hashes only: no DB row IDs, no processRunId,
+      // no refs, no timestamps.
+      const semanticDigest = acceptanceBaselineSemanticDigest(categories.acs);
       const { record, replayed } = deps.baselineRepository.freeze({
         schemaVersion: ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
         processRunId: ctx.processRunId,
@@ -806,6 +815,7 @@ function createBaselineFreezerHandler(deps: FormalizationInstallationDeps): Kern
           schema: ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
           artifactRef: record.artifactRef,
           contentHash: record.snapshotHash,
+          semanticDigest,
           bindings: {
             acceptanceBaselineHash: record.baselineHash,
             baselineSnapshotRef: record.artifactRef,
@@ -2403,6 +2413,35 @@ function acceptanceBaselineHash(
   const rows = [...artifacts].sort((a, b) => a.id - b.id);
   return createHash('sha256')
     .update(rows.map(artifact => `${artifact.id}:${artifact.acceptedHash ?? ''}`).join('\n'))
+    .digest('hex');
+}
+
+/**
+ * Cross-run-stable semantic digest of the acceptance baseline (CONVEYOR v4.3
+ * §5-6). Unlike {@link acceptanceBaselineHash}, this excludes all run-specific
+ * provenance: no DB row IDs, no processRunId, no artifact refs. It is computed
+ * from stable AC codes (falling back to type+index when code is absent) paired
+ * with accepted content hashes — the semantic identity of the baseline that
+ * downstream cells (SRS) use for cross-run ReplayKey derivation.
+ *
+ * Two runs with the same AC content (same codes, same accepted hashes) produce
+ * the same digest even though they have different DB artifact IDs, different
+ * processRunIds, and different reconciliation refs.
+ */
+function acceptanceBaselineSemanticDigest(
+  artifacts: readonly FormalizationArtifactSnapshot[],
+): string {
+  const rows = [...artifacts]
+    .map((artifact, index) => ({
+      // Stable identity: prefer the artifact code (e.g. "AC-1"), which is
+      // human-assigned and stable across runs. If code is absent (edge case),
+      // fall back to type + ordinal index — still independent of DB row ID.
+      key: artifact.code ?? `${artifact.type}:${index}`,
+      hash: artifact.acceptedHash ?? '',
+    }))
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  return createHash('sha256')
+    .update(rows.map(row => `${row.key}:${row.hash}`).join('\n'))
     .digest('hex');
 }
 

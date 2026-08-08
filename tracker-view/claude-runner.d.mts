@@ -69,6 +69,9 @@ export interface ClaudeBoardRunnerOptions {
     originalStatus: string;
     executionId?: string | null;
     reason: string;
+    /** true = launch() threw (process never started) → spawn_failed + human pause.
+     *  false/absent = process started but ended without worker_done → lost + repair_wait. */
+    spawnFailure?: boolean;
   }) => boolean;
   resolveWorkspace: (project: unknown) => string | null;
   spawn?: typeof nodeSpawnType;
