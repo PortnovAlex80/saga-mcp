@@ -894,8 +894,15 @@ function computeSemanticInputDigest(
         + `cross-run replay identity cannot be derived. The upstream producer must author a semanticDigest.`,
       );
     }
+    const inputRecord = isRecord(ctx.input) ? ctx.input : null;
+    const immediateUpstream = inputRecord ? readInputAsProduction(inputRecord.upstream) : null;
+    const immediateUpstreamSemanticDigest = immediateUpstream
+      ? (immediateUpstream.semanticDigest ?? immediateUpstream.contentHash)
+      : null;
     return sha256Hex({
       upstreamSemanticDigest,
+      immediateUpstreamSemanticDigest:
+        immediateUpstreamSemanticDigest === upstreamSemanticDigest ? null : immediateUpstreamSemanticDigest,
       itemId: workplace.itemId,
       itemDigest: sha256Hex(workplace.item),
     });

@@ -19,6 +19,7 @@ import type {
 } from '../../replay/replay-capsule.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';
 
 export interface CapsuleReplayHandlers {
   product_submit: (input: { schema: string; content: unknown }) => unknown;
@@ -240,10 +241,24 @@ export function executeCapsuleReplay(
 
   let productsSubmitted = 0;
   for (const product of payload.typedProducts ?? []) {
-    const rebound = rehydrateReplayValue(
-      product.content,
-      currentInput,
-      allowedBindingPaths,
+    const rebound = rebindReplayAuthorityReferences(
+
+      db,
+
+      taskMetadata,
+
+      product.schema,
+
+      rehydrateReplayValue(
+
+        product.content,
+
+        currentInput,
+
+        allowedBindingPaths,
+
+      ),
+
     );
     try {
       handlers.product_submit({ schema: product.schema, content: rebound });
@@ -528,20 +543,32 @@ function applyGitRecipe(
       + `!= expected base ${recipe.baseCommit.slice(0, 12)}`,
     );
   }
-  if (gitExec(worktreePath, ['status', '--porcelain'])) {
+  const integrationHead = gitExec(
+    worktreePath,
+    ['rev-parse', `refs/heads/${recipe.integrationBranch}`],
+  );
+  if (integrationHead !== recipe.baseCommit) {
+    throw new Error(
+      `CAPSULE_REPLAY_GIT_BASE_MISMATCH: integration branch ${recipe.integrationBranch} `
+      + `${integrationHead.slice(0, 12)} != expected base ${recipe.baseCommit.slice(0, 12)}`,
+    );
+  }
+  // Untracked Factory artifacts are not Git mutations and must not be captured
+  // into the replayed commit. Tracked/index changes still fail closed.
+  if (gitExec(worktreePath, ['status', '--porcelain', '--untracked-files=no'])) {
     throw new Error('CAPSULE_REPLAY_GIT_WORKTREE_DIRTY');
   }
 
   const patchBytes = Buffer.from(recipe.patchBase64, 'base64');
-  let mutated = false;
+  let sourceBranchCheckedOut = false;
   try {
-    execFileSync('git', ['-C', worktreePath, 'apply', '--whitespace=nowarn'], {
-      input: patchBytes,
-      encoding: 'utf8',
-      timeout: 30_000,
-    });
-    mutated = true;
-    gitExec(worktreePath, ['add', '-A']);
+    gitExec(worktreePath, ['checkout', '-B', recipe.sourceBranch, recipe.baseCommit]);
+    sourceBranchCheckedOut = true;
+    execFileSync(
+      'git',
+      ['-C', worktreePath, 'apply', '--index', '--whitespace=nowarn'],
+      { input: patchBytes, encoding: 'utf8', timeout: 30_000 },
+    );
     const commitEnv = {
       ...process.env,
       GIT_AUTHOR_NAME: recipe.commit.authorName,
@@ -553,7 +580,7 @@ function applyGitRecipe(
     };
     execFileSync(
       'git',
-      ['-C', worktreePath, 'commit', '--allow-empty', '-m', recipe.commit.message],
+      ['-C', worktreePath, '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', recipe.commit.message],
       { encoding: 'utf8', timeout: 30_000, env: commitEnv },
     );
     const actualTree = gitExec(worktreePath, ['rev-parse', 'HEAD^{tree}']);
@@ -563,11 +590,19 @@ function applyGitRecipe(
         + `!= expected ${recipe.sourceTree.slice(0, 12)}`,
       );
     }
-    return gitExec(worktreePath, ['rev-parse', 'HEAD']);
+    const actualCommit = gitExec(worktreePath, ['rev-parse', 'HEAD']);
+    if (actualCommit !== recipe.sourceCommit) {
+      throw new Error(
+        `CAPSULE_REPLAY_GIT_COMMIT_MISMATCH: produced commit ${actualCommit.slice(0, 12)} `
+        + `!= expected ${recipe.sourceCommit.slice(0, 12)}`,
+      );
+    }
+    gitExec(worktreePath, ['checkout', recipe.integrationBranch]);
+    return actualCommit;
   } catch (error) {
-    if (mutated) {
+    if (sourceBranchCheckedOut) {
       try { gitExec(worktreePath, ['reset', '--hard', recipe.baseCommit]); } catch { /* preserve original */ }
-      try { gitExec(worktreePath, ['clean', '-fd']); } catch { /* preserve original */ }
+      try { gitExec(worktreePath, ['checkout', recipe.integrationBranch]); } catch { /* preserve original */ }
     }
     if (error instanceof Error && error.message.startsWith('CAPSULE_REPLAY_')) throw error;
     throw new Error(`CAPSULE_REPLAY_GIT_FAILED: ${errorMessage(error)}`);

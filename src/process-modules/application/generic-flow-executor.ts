@@ -431,10 +431,8 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     heartbeat: () => void,
   ): Promise<{ outcome: string; nodeId: string; result: NodeExecutionResult }> {
     const flow = module.flow;
-    const allRuns = nodeRunRepo.list(context.processRunId);
-    // throws V2_WIRING_REQUIRED / NODE_RUN_REPO_V2_REQUIRED on misconfiguration
-    // instead of silently degrading to the v1 path.
     const v2 = this.resolveV2Channel(nodeRunRepo);
+    const allRuns = v2.repo.listV2(context.processRunId);
     // DIRECTLY by the boundary adapter `assembleFrameFromDurableNodeRuns`,
     // which reads the durable NodeRun columns (outputRef/outputSchema/
     // outputHash/outputBindings/executionReceipt).
@@ -628,7 +626,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // (proposalId, controlIntentId, certificatePayload, …) the previous run
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
-    const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
+    const lastCompletedForChain =
+      v2.repo.readLastCompletedV2(context.processRunId)
+      ?? nodeRunRepo.readLastCompleted(context.processRunId);
     let productSourceNodeId: string | null = lastCompletedForChain?.nodeId ?? null;
     if (reexecutePausedNode) {
       chainInput = pausedVerifierInput;
@@ -1336,6 +1336,7 @@ export function assembleFrameFromDurableNodeRuns(
     outputHash: string | null;
     outputBindings: Record<string, unknown> | null;
     executionReceipt: Record<string, unknown> | null;
+    semanticDigest?: string | null;
   }[],
 ): NodeExecutionFrame {
   const frame: NodeExecutionFrame = {
