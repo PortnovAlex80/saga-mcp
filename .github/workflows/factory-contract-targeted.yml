@@ -25,27 +25,31 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('src/infrastructure/replay/capsule-replay-executor.ts')
           s = p.read_text()
           import_needle = "import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';"
-          import_replacement = import_needle + "\nimport { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';"
-          call_needle = '''    const rebound = rehydrateReplayValue(
-              product.content,
-              currentInput,
-              allowedBindingPaths,
-            );'''
-          call_replacement = '''    const rebound = rebindReplayAuthorityReferences(
-              db,
-              taskMetadata,
-              rehydrateReplayValue(
-                product.content,
-                currentInput,
-                allowedBindingPaths,
-              ),
-            );'''
-          if import_needle not in s or call_needle not in s:
-              raise SystemExit('replay patch insertion point not found')
-          p.write_text(s.replace(import_needle, import_replacement, 1).replace(call_needle, call_replacement, 1))
+          if import_needle not in s:
+              raise SystemExit('replay import insertion point not found')
+          s = s.replace(import_needle, import_needle + "\nimport { rebindReplayAuthorityReferences } from './replay-authority-rebinder.js';", 1)
+          pattern = r"(\s*)const rebound = rehydrateReplayValue\(\s*product\.content,\s*currentInput,\s*allowedBindingPaths,\s*\);"
+          m = re.search(pattern, s)
+          if not m:
+              raise SystemExit('replay product insertion point not found')
+          indent = m.group(1)
+          replacement = (
+              f"{indent}const rebound = rebindReplayAuthorityReferences(\n"
+              f"{indent}  db,\n"
+              f"{indent}  taskMetadata,\n"
+              f"{indent}  rehydrateReplayValue(\n"
+              f"{indent}    product.content,\n"
+              f"{indent}    currentInput,\n"
+              f"{indent}    allowedBindingPaths,\n"
+              f"{indent}  ),\n"
+              f"{indent});"
+          )
+          s = re.sub(pattern, replacement, s, count=1)
+          p.write_text(s)
           PY
       - name: Build (strict TypeScript)
         run: npm run build
