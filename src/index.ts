@@ -50,9 +50,6 @@ import {
   definitions as settlementDebugDefs,
   handlers as settlementDebugHandlers,
 } from './tools/settlement-debug.js';
-import { createDiscoveryProposalHandlers } from './tools/discovery-proposal-tools.js';
-import { createDiscoveryNormalizationHandlers } from './tools/discovery-normalization-tools.js';
-import { createDiscoveryReadinessHandlers } from './tools/discovery-readiness-tools.js';
 import {
   authorizeSagaToolCall,
   visibleSagaToolNames,
@@ -76,13 +73,17 @@ export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.
   }
 }
 
-// Legacy Discovery-specific submit tools remain registered only until the
-// Discovery package cutover below is complete. The target worker surface is
-// product_submit/product_read for every workshop.
-const discoveryProposals = createDiscoveryProposalHandlers();
-const discoveryNormalization = createDiscoveryNormalizationHandlers();
-const discoveryReadiness = createDiscoveryReadinessHandlers();
-
+/**
+ * Saga4 exposes one worker-production desk for every workshop:
+ *
+ *   product_submit / product_read / candidate_read
+ *
+ * Discovery-specific proposal/normalization/readiness submit protocols are no
+ * longer registered on the MCP surface. Discovery compatibility tables may
+ * still exist as deterministic kernel/read-model projections behind
+ * `product_submit`, but a worker cannot select another persistence protocol by
+ * choosing a module-specific tool.
+ */
 const INTERNAL_ONLY_TOOL_NAMES = new Set([
   'project_create',
   'project_resolve_by_name',
@@ -117,9 +118,6 @@ const ALL_TOOLS: Tool[] = [
   ...deliveryApprovalDefs,
   ...lifecycleRunDefs,
   ...settlementDebugDefs,
-  ...discoveryProposals.definitions,
-  ...discoveryNormalization.definitions,
-  ...discoveryReadiness.definitions,
 ].filter(tool => !INTERNAL_ONLY_TOOL_NAMES.has(tool.name));
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -147,9 +145,6 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...deliveryApprovalHandlers,
   ...lifecycleRunHandlers,
   ...settlementDebugHandlers,
-  ...discoveryProposals.handlers,
-  ...discoveryNormalization.handlers,
-  ...discoveryReadiness.handlers,
 };
 for (const name of INTERNAL_ONLY_TOOL_NAMES) delete ALL_HANDLERS[name];
 
