@@ -1,20 +1,13 @@
 // tests/factory-contract/golden-path.test.mjs
 //
-// Factory Contract Test: Discovery + Formalization golden path.
-//
-// This is a REAL automated test with assertions — not log inspection.
-// It launches the real Factory via orchestrate-cli with scenario-driven workers,
-// then asserts exact Factory state in the DB.
-//
-// AC-23: assertions, not log inspection.
-// AC-24: non-zero child exit fails the test.
-// AC-25: timeout fails the test.
-// AC-26: dedicated package.json command.
+// Factory Contract golden path: a FRESH DB with ZERO replay capsules runs
+// Idea -> Discovery -> Formalization -> Development -> Delivery using scripted
+// physical workers through the real WorkerExecutorFactory port.
 
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { spawn, execSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -22,7 +15,6 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 const REPO_ROOT = process.cwd();
-const SRC_DB = path.join(REPO_ROOT, '.button-color-replay-e2e', 'factory.sqlite');
 
 async function setupFreshDb(repoPath, baseCommit) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-golden-'));
@@ -30,61 +22,117 @@ async function setupFreshDb(repoPath, baseCommit) {
   process.env.DB_PATH = dbPath;
 
   const { getDb, closeDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'db.js')).href);
-  const db = getDb();
-
-  // Copy project + repo from source DB
-  const srcDb = new Database(SRC_DB, { readonly: true });
-  const srcProject = srcDb.prepare('SELECT * FROM projects WHERE id=1').get();
-  db.prepare('INSERT INTO projects (id, name, description, status, tags, metadata) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(srcProject.id, srcProject.name, srcProject.description || 'Test', 'active', '[]', '{}');
-  db.prepare('INSERT INTO epics (id, project_id, name, status, priority) VALUES (?, ?, ?, ?, ?)')
-    .run(1, srcProject.id, 'Pipeline', 'planned', 'high');
-  db.prepare('INSERT INTO repositories (id, name, default_branch, metadata) VALUES (?, ?, ?, ?)')
-    .run(1, 'golden-repo', 'main', '{}');
-  db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(1, srcProject.id, 1, 'component', repoPath, 'dev', 'active');
-
-  // Copy capsules
-  const { ensureReplayCapsuleSchema } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'replay', 'sqlite-replay-capsule-repository.js')).href);
-  ensureReplayCapsuleSchema(db);
-  const capsules = srcDb.prepare('SELECT * FROM factory_replay_capsules').all();
-  const insertCap = db.prepare(
-    'INSERT OR IGNORE INTO factory_replay_capsules (capsule_ref, replay_key, project_id, source_execution_ref, source_candidate_set_ref, payload_hash, payload_snapshot, created_at) VALUES (?,?,?,?,?,?,?,?)',
-  );
-  for (const cap of capsules) {
-    insertCap.run(
-      cap.capsule_ref || `cap-${cap.replay_key.slice(0,12)}`, cap.replay_key, 1,
-      cap.source_execution_ref, cap.source_candidate_set_ref,
-      cap.payload_hash, cap.payload_snapshot, cap.created_at,
-    );
-  }
-  srcDb.close();
-
-  // Create factory order + launch
   const { hashDevelopmentPolicy } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'development', 'domain', 'development-settlement-policy.js')).href);
-  const { hashDeliveryDeferredProfile } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'delivery', 'domain', 'delivery-settlement-policy.js')).href);
+  const { hashDeliveryReleasePolicy } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'delivery', 'domain', 'delivery-settlement-policy.js')).href);
+  const { sha256Hex } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'shared', 'canonical-json.js')).href);
   const { requestFactoryLaunch } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'factory', 'sqlite-factory-launch-repository.js')).href);
+  const { ensureReplayCapsuleSchema } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'replay', 'sqlite-replay-capsule-repository.js')).href);
 
-  const devPolicy = { id: 'reference-development-policy', version: '1.0.0' };
+  const db = getDb();
+  db.prepare(`INSERT INTO projects (id,name,description,status,tags,metadata)
+              VALUES (1,'Factory Contract Golden','Cold deterministic factory test','active','[]','{}')`).run();
+  db.prepare(`INSERT INTO epics (id,project_id,name,status,priority)
+              VALUES (1,1,'Pipeline','planned','high')`).run();
+  db.prepare(`INSERT INTO repositories (id,name,default_branch,metadata)
+              VALUES (1,'golden-repo','dev','{}')`).run();
+  db.prepare(`INSERT INTO project_repositories
+              (id,project_id,repository_id,role,local_path,integration_branch,status)
+              VALUES (1,1,1,'component',?,'dev','active')`).run(repoPath);
+
+  // Delivery resolves provider trust from the real registry. These are test
+  // provider implementations injected through the normal Delivery ports.
+  db.prepare(`INSERT INTO trusted_providers
+    (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
+    VALUES (9101,1,'deterministic_evidence','factory-contract-preflight',
+            'factory contract deterministic fixture','full','factory-contract','L0','1.0.0','active')`).run();
+  db.prepare(`INSERT INTO trusted_providers
+    (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
+    VALUES (9102,1,'authoritative_state','factory-contract-deployment-state',
+            'factory contract authoritative fixture','partial','factory-contract','L4','1.0.0','active')`).run();
+
+  ensureReplayCapsuleSchema(db);
+  const capsuleCount = db.prepare('SELECT COUNT(*) AS n FROM factory_replay_capsules').get();
+  assert.equal(capsuleCount.n, 0, 'Run A starts with zero replay capsules');
+
+  const devPolicy = { id: 'reference-development-policy', version: '1.0.0', contentHash: '' };
   devPolicy.contentHash = hashDevelopmentPolicy(devPolicy);
-  const deferredProfile = { schemaVersion: 'factory.delivery-deferred-profile.v1', reason: 'authorization-required', source: 'start-from-idea' };
-  deferredProfile.profileHash = hashDeliveryDeferredProfile(deferredProfile);
+
+  const releaseAction = {
+    actionId: 'deploy-factory-contract',
+    kind: 'deployment',
+    target: 'factory-contract-test-target',
+    desiredStateHash: sha256Hex({ target: 'factory-contract-test-target', state: 'released-v1' }),
+    payloadHash: sha256Hex({ package: 'factory-contract-v1' }),
+    required: true,
+  };
+  const releasePolicy = {
+    id: 'factory-contract-release-policy',
+    version: '1.0.0',
+    contentHash: '',
+    channel: 'test',
+    releaseVersion: '1.0.0',
+    releaseTag: 'factory-contract-v1',
+    humanApprovalRequired: false,
+    requiredPreflightCheckIds: ['candidate-integrity'],
+    actions: [releaseAction],
+  };
+  releasePolicy.contentHash = hashDeliveryReleasePolicy(releasePolicy);
+  const grantBody = {
+    requestedBy: 'factory-contract-test',
+    releasePolicyHash: releasePolicy.contentHash,
+    candidateScope: { mode: 'lifecycle-output' },
+  };
+  const operatorAuthorization = {
+    schema: 'factory.operator-release-grant.v1',
+    ref: `factory-contract-grant:${sha256Hex(grantBody)}`,
+    hash: sha256Hex(grantBody),
+    ...grantBody,
+  };
 
   const lifecycleInput = {
     schemaVersion: 'factory.product-delivery-lifecycle-input.v2',
-    initiative: { subject: 'golden path test', context: 'e2e factory contract test', evidence: [], constraints: {} },
-    development: { repositories: [{ repositoryRef: { repositoryName: 'golden-repo', role: 'component' }, integrationBranch: 'dev', expectedBaseCommit: baseCommit }], policy: devPolicy },
-    delivery: { mode: 'deferred', policy: null, operatorAuthorization: null, deferredProfile },
+    initiative: {
+      subject: 'golden path test',
+      context: 'cold end-to-end Factory Contract test',
+      evidence: [],
+      constraints: {},
+    },
+    development: {
+      repositories: [{
+        repositoryRef: { repositoryName: 'golden-repo', role: 'component' },
+        integrationBranch: 'dev',
+        expectedBaseCommit: baseCommit,
+      }],
+      policy: devPolicy,
+    },
+    delivery: {
+      mode: 'authorized',
+      policy: releasePolicy,
+      operatorAuthorization,
+      deferredProfile: null,
+    },
   };
 
   const orderRef = `order-golden-${Date.now()}`;
-  db.prepare(`INSERT INTO factory_orders (order_ref, project_id, epic_id, source_kind, state) VALUES (?, 1, 1, 'idea_url', 'starting')`).run(orderRef);
-  const launchRef = requestFactoryLaunch({ orderRef, mode: 'new', projectId: 1, epicId: 1, initiatedBy: 'golden-test', idempotencyKey: `golden-${randomUUID()}`, concurrency: 1, lifecycleInput, lifecycleInputSchema: 'factory.product-delivery-lifecycle-input.v2' }, db);
+  db.prepare(`INSERT INTO factory_orders
+              (order_ref,project_id,epic_id,source_kind,state)
+              VALUES (?,1,1,'idea_url','starting')`).run(orderRef);
+  const launchRef = requestFactoryLaunch({
+    orderRef,
+    mode: 'new',
+    projectId: 1,
+    epicId: 1,
+    initiatedBy: 'golden-test',
+    idempotencyKey: `golden-${randomUUID()}`,
+    concurrency: 1,
+    lifecycleInput,
+    lifecycleInputSchema: 'factory.product-delivery-lifecycle-input.v2',
+  }, db);
   closeDb();
   return { dbPath, launchRef, dir };
 }
 
-async function runOrchestrateCli(launchRef, dbPath, repoPath, scenariosPath, invocationLogPath, timeoutMs = 120000) {
+async function runOrchestrateCli(launchRef, dbPath, repoPath, scenariosPath, invocationLogPath, timeoutMs = 240000) {
   const child = spawn('node', [
     path.join(REPO_ROOT, 'dist', 'orchestrate-cli.js'),
     `--launch-ref=${launchRef}`,
@@ -113,92 +161,89 @@ async function runOrchestrateCli(launchRef, dbPath, repoPath, scenariosPath, inv
   const exitCode = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       try { child.kill('SIGTERM'); } catch {}
-      reject(new Error(`TIMEOUT after ${timeoutMs}ms`));
+      reject(new Error(`TIMEOUT after ${timeoutMs}ms\n${stderr.slice(-3000)}`));
     }, timeoutMs);
-    child.once('close', (code) => { clearTimeout(timer); resolve(code); });
+    child.once('close', code => { clearTimeout(timer); resolve(code); });
   });
-
   return { exitCode, stdout, stderr };
 }
 
-test('Golden Path: Discovery GO + Formalization FORMALIZED', { timeout: 180000 }, async () => {
-  // Setup repo
+test('Golden Path: cold Idea -> released uses real Factory authority without LLM/network', { timeout: 300000 }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-golden-repo-'));
   const repoPath = path.join(dir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), '# Golden\n');
-  execSync('git init && git config user.email t@t && git config user.name t && git add -A && git commit -m init', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
+  execSync('git init && git config user.email t@t && git config user.name t && git add -A && git commit -m init && git branch -M dev', {
+    cwd: repoPath, windowsHide: true, stdio: 'pipe',
+  });
   const baseCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf8', windowsHide: true }).trim();
-
   const invocationLogPath = path.join(dir, 'invocations.json');
   writeFileSync(invocationLogPath, '[]');
-
   const scenariosPath = path.join(REPO_ROOT, 'tests', 'factory-contract', 'golden-path-scenarios.mjs');
-
   const { dbPath, launchRef, dir: dbDir } = await setupFreshDb(repoPath, baseCommit);
 
   try {
-    const { exitCode, stderr } = await runOrchestrateCli(launchRef, dbPath, repoPath, scenariosPath, invocationLogPath);
+    const { exitCode, stderr } = await runOrchestrateCli(
+      launchRef, dbPath, repoPath, scenariosPath, invocationLogPath,
+    );
+    assert.equal(exitCode, 0, `orchestrate-cli exited ${exitCode}\n${stderr.slice(-5000)}`);
 
-    // AC-24: non-zero exit fails the test
-    assert.equal(exitCode, 0, `orchestrate-cli exited with code ${exitCode}\n${stderr.slice(-2000)}`);
-
-    // Assert Factory state
     const resultDb = new Database(dbPath, { readonly: true });
-
-    // AC-23: assert expected ProcessRuns
-    const runs = resultDb.prepare('SELECT module_name, status, local_outcome FROM factory_process_runs ORDER BY id').all();
-    assert.ok(runs.length >= 2, `Expected ≥2 process runs, got ${runs.length}`);
-    const discovery = runs.find(r => r.module_name === 'product-discovery');
-    assert.ok(discovery, 'Discovery process run exists');
-    assert.equal(discovery.status, 'completed', `Discovery status: ${discovery.status}`);
-    assert.equal(discovery.local_outcome, 'go', `Discovery outcome: ${discovery.local_outcome}`);
-
-    const formalization = runs.find(r => r.module_name === 'solution-formalization');
-    if (formalization) {
-      assert.equal(formalization.status, 'completed', `Formalization status: ${formalization.status}`);
-      assert.equal(formalization.local_outcome, 'formalized', `Formalization outcome: ${formalization.local_outcome}`);
-    }
-
-    // Assert all Discovery + Formalization workplaces are terminal(accepted)
-    const workplaces = resultDb.prepare(
-      'SELECT production_cell_id, kanban_phase, loop_state, terminal_reason FROM factory_workplaces ORDER BY rowid',
+    const runs = resultDb.prepare(
+      'SELECT module_name,status,local_outcome FROM factory_process_runs ORDER BY id',
     ).all();
-    assert.ok(workplaces.length >= 2, `Expected ≥2 workplaces, got ${workplaces.length}`);
-    for (const wp of workplaces) {
-      if (wp.production_cell_id?.startsWith('discovery-') || wp.production_cell_id?.startsWith('formalization-')) {
-        assert.equal(wp.loop_state, 'terminal', `${wp.production_cell_id}: loop_state=${wp.loop_state}`);
-        assert.equal(wp.terminal_reason, 'accepted', `${wp.production_cell_id}: terminal_reason=${wp.terminal_reason}`);
-      }
+    const expected = new Map([
+      ['product-discovery', 'go'],
+      ['solution-formalization', 'formalized'],
+      ['solution-development', 'verified'],
+      ['delivery-release', 'released'],
+    ]);
+    for (const [moduleName, outcome] of expected) {
+      const run = runs.find(row => row.module_name === moduleName);
+      assert.ok(run, `${moduleName} ProcessRun exists`);
+      assert.equal(run.status, 'completed', `${moduleName} status`);
+      assert.equal(run.local_outcome, outcome, `${moduleName} outcome`);
     }
 
-    // AC-23: assert no stranded executions
+    const workplaces = resultDb.prepare(
+      'SELECT production_cell_id,kanban_phase,loop_state,terminal_reason FROM factory_workplaces ORDER BY rowid',
+    ).all();
+    assert.ok(workplaces.length >= 8, `expected full-lifecycle workplaces, got ${workplaces.length}`);
+    for (const wp of workplaces) {
+      assert.equal(wp.loop_state, 'terminal', `${wp.production_cell_id}: loop_state`);
+      assert.equal(wp.terminal_reason, 'accepted', `${wp.production_cell_id}: terminal_reason`);
+    }
+
     const activeExecs = resultDb.prepare(
       `SELECT COUNT(*) AS n FROM worker_executions WHERE state IN ('reserved','running','cancel_requested')`,
     ).get();
-    assert.equal(activeExecs.n, 0, `${activeExecs.n} worker executions still active`);
+    assert.equal(activeExecs.n, 0, 'no stranded worker executions');
 
-    // Assert worker_done receipts exist
-    const receipts = resultDb.prepare(
-      "SELECT COUNT(*) AS n FROM command_receipts WHERE command_kind='worker_done' AND accepted=1",
+    const workerDone = resultDb.prepare(
+      `SELECT COUNT(*) AS n FROM command_receipts
+        WHERE command_kind='worker_done' AND accepted=1`,
     ).get();
-    assert.ok(receipts.n >= 2, `Expected ≥2 worker_done receipts, got ${receipts.n}`);
+    assert.ok(workerDone.n >= 10, `expected full-path worker_done receipts, got ${workerDone.n}`);
 
-    // Assert CandidateSets exist
     const candidateSets = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get();
-    assert.ok(candidateSets.n >= 2, `Expected ≥2 candidate sets, got ${candidateSets.n}`);
+    const gates = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get();
+    assert.ok(candidateSets.n >= 10, `expected full-path CandidateSets, got ${candidateSets.n}`);
+    assert.ok(gates.n >= 8, `expected full-path GateDecisions, got ${gates.n}`);
 
-    // Assert GateDecisions exist
-    const gateDecisions = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get();
-    assert.ok(gateDecisions.n >= 2, `Expected ≥2 gate decisions, got ${gateDecisions.n}`);
+    const capsules = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_replay_capsules').get();
+    assert.ok(capsules.n > 0, 'cold Run A certifies replay capsules only after acceptance');
 
+    const deliveryEffects = resultDb.prepare(
+      `SELECT COUNT(*) AS n FROM factory_external_effect_actions
+        WHERE module_ref LIKE 'delivery-release@%'`,
+    ).get();
+    assert.ok(deliveryEffects.n >= 1, 'Delivery used real external-effect ledger');
     resultDb.close();
 
-    // AC-37: verify scripted worker invocations
     const invocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
-    assert.ok(invocations.length > 0, 'Scripted workers were invoked at least once');
+    assert.ok(invocations.length >= 10, `scripted workers invoked on cold path: ${invocations.length}`);
+    assert.ok(invocations.some(i => i.key?.module === 'solution-development@1.0.0'), 'Development used scripted physical workers');
   } finally {
-    // Windows: temp dirs may still be locked by git/DB handles. Best-effort cleanup.
     try { rmSync(dbDir, { recursive: true, force: true }); } catch {}
     try { rmSync(dir, { recursive: true, force: true }); } catch {}
   }
