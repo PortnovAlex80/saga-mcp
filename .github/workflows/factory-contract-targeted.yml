@@ -1,0 +1,26 @@
+name: Factory Contract Targeted
+
+on:
+  push:
+    branches:
+      - agent/replay-zero-scripted-final
+  workflow_dispatch:
+
+jobs:
+  canonical-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Strict TypeScript check
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Canonical cold plus replay theorem
+        run: node --test tests/factory-contract/golden-path.test.mjs
