@@ -75,6 +75,27 @@ jobs:
           fanout_replacement = '''    const inputRecord = isRecord(ctx.input) ? ctx.input : null;\n    const immediateUpstream = inputRecord\n      ? readInputAsProduction(inputRecord.upstream)\n      : null;\n    const immediateUpstreamSemanticDigest = immediateUpstream\n      ? (immediateUpstream.semanticDigest ?? immediateUpstream.contentHash)\n      : null;\n    return sha256Hex({\n      upstreamSemanticDigest,\n      immediateUpstreamSemanticDigest:\n        immediateUpstreamSemanticDigest === upstreamSemanticDigest\n          ? null\n          : immediateUpstreamSemanticDigest,\n      itemId: workplace.itemId,\n      itemDigest: sha256Hex(workplace.item),\n    });'''
           if fanout_needle not in s: raise SystemExit('fanout semantic insertion point not found')
           p.write_text(s.replace(fanout_needle, fanout_replacement, 1))
+
+          # The scripted physical-worker adapter must execute replay in the same
+          # project workspace as the cold worker, not the saga-mcp checkout.
+          p = Path('tests/factory-contract/scenario-scripted-executor.mjs')
+          s = p.read_text()
+          s = s.replace(
+            'function runCapsuleReplay(dbPath, assignment) {',
+            'function runCapsuleReplay(dbPath, assignment, workspaceRoot) {',
+            1,
+          )
+          s = s.replace(
+            "  const cwd = assignment?.executionContext?.repository_desk?.execution_path || process.cwd();",
+            "  const cwd = assignment?.executionContext?.repository_desk?.execution_path || workspaceRoot || process.cwd();",
+            1,
+          )
+          s = s.replace(
+            '            runCapsuleReplay(context.dbPath, assignment);',
+            '            runCapsuleReplay(context.dbPath, assignment, context.workspaceRoot);',
+            1,
+          )
+          p.write_text(s)
           PY
       - name: Build (strict TypeScript)
         run: npm run build
