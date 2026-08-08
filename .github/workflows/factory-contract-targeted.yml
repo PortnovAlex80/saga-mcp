@@ -53,28 +53,46 @@ jobs:
           PY
       - name: Build (strict TypeScript)
         run: npm run build
-      - name: Instrument failure-only Run B diagnostics
+      - name: Instrument Run B replay classification
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('tests/factory-contract/golden-path.test.mjs')
           s = p.read_text()
           needle = "    assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);"
-          replacement = r'''    const runBFormalization = resultDb.prepare(
-              "SELECT id FROM factory_process_runs WHERE module_name='solution-formalization' ORDER BY id DESC LIMIT 1",
-            ).get();
-            if (runBFormalization) {
-              const runBDebug = {
-                invocations: JSON.parse(readFileSync(invocationLogPath, 'utf8')),
-                processRun: resultDb.prepare('SELECT * FROM factory_process_runs WHERE id=?').get(runBFormalization.id),
-                workplaces: resultDb.prepare('SELECT * FROM factory_workplaces WHERE process_run_id=? ORDER BY workplace_ref').all(runBFormalization.id),
-                tasks: resultDb.prepare("SELECT id,status,workplace_ref,metadata FROM tasks WHERE json_extract(metadata,'$.process_run_id')=? ORDER BY id").all(runBFormalization.id),
-                executions: resultDb.prepare("SELECT we.execution_id,we.task_id,we.state,we.exit_code,we.metadata FROM worker_executions we JOIN tasks t ON t.id=we.task_id WHERE json_extract(t.metadata,'$.process_run_id')=? ORDER BY we.rowid").all(runBFormalization.id),
-                candidates: resultDb.prepare('SELECT cs.* FROM factory_candidate_sets cs JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref WHERE w.process_run_id=? ORDER BY cs.sealed_at').all(runBFormalization.id),
-                gates: resultDb.prepare('SELECT gd.* FROM factory_gate_decisions gd JOIN factory_workplaces w ON w.workplace_ref=gd.workplace_ref WHERE w.process_run_id=? ORDER BY gd.decided_at').all(runBFormalization.id),
+          replacement = r'''    const runBRunIds = resultDb.prepare(
+              'SELECT id FROM factory_process_runs ORDER BY id LIMIT -1 OFFSET ?',
+            ).all(processRunsAfterA).map(row => row.id);
+            const runBExecutions = runBRunIds.length === 0 ? [] : resultDb.prepare(
+              `SELECT we.execution_id,we.task_id,we.state,we.exit_code,we.metadata,t.metadata AS task_metadata
+                 FROM worker_executions we JOIN tasks t ON t.id=we.task_id
+                WHERE CAST(json_extract(t.metadata,'$.process_run_id') AS INTEGER) IN (${runBRunIds.map(() => '?').join(',')})
+                ORDER BY we.rowid`,
+            ).all(...runBRunIds).map(row => {
+              const executionMeta = JSON.parse(row.metadata || '{}');
+              const taskMeta = JSON.parse(row.task_metadata || '{}');
+              const replay = executionMeta.execution_context?.replay || {};
+              const matchingCapsules = replay.key
+                ? resultDb.prepare('SELECT capsule_ref,source_execution_ref FROM factory_replay_capsules WHERE replay_key=? ORDER BY id').all(replay.key)
+                : [];
+              return {
+                executionId: row.execution_id,
+                taskId: row.task_id,
+                module: taskMeta.process_module_ref,
+                node: taskMeta.process_node_id,
+                cell: taskMeta.production_cell_id,
+                role: taskMeta.role,
+                workKey: taskMeta.work_key,
+                semanticInputDigest: taskMeta.semantic_input_digest,
+                state: row.state,
+                exitCode: row.exit_code,
+                replayKey: replay.key || null,
+                keyMaterial: replay.key_material || null,
+                frozenCapsuleRef: replay.capsule_ref || null,
+                matchingCapsules,
               };
-              process.stderr.write(`RUN_B_DEBUG=${JSON.stringify(runBDebug)}\n`);
-            }
+            });
+            process.stderr.write(`RUN_B_REPLAY_CLASSIFICATION=${JSON.stringify(runBExecutions)}\n`);
             assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);'''
           if needle not in s:
               raise SystemExit('diagnostic insertion point not found')
