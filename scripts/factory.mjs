@@ -94,7 +94,14 @@ if (command === 'resume') {
       epicId: target.epicId,
       lifecycleRunId: target.lifecycleRunId,
       initiatedBy: 'factory-resume',
-      idempotencyKey: target.idempotencyKey,
+      // Resume is a DISTINCT launch command on the same durable lifecycle.
+      // The lifecycle run keeps its own idempotency key (target.idempotencyKey);
+      // the LAUNCH needs its own key so it doesn't collide with the original
+      // 'new' launch's idempotency binding. Each resume invocation is a fresh
+      // operator action — use a unique key so repeated resume attempts each
+      // get their own launch row (the previous launch may be in 'claimed'/
+      // 'running' state from a crashed or failed attempt).
+      idempotencyKey: `${target.idempotencyKey}:resume:${crypto.randomUUID()}`,
       concurrency: Number(process.env.SAGA_FACTORY_CONCURRENCY ?? 5),
     }, db);
   } finally {
@@ -168,7 +175,7 @@ if (command === 'start') {
   let launchRef;
   try {
     const repoRow = db.prepare(
-      `SELECT pr.local_path, r.name AS repo_name
+      `SELECT pr.local_path, pr.role AS repo_role, pr.integration_branch, r.name AS repo_name
          FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
         WHERE pr.project_id=1 AND pr.status='active' ORDER BY pr.id LIMIT 1`,
     ).get();
@@ -189,7 +196,11 @@ if (command === 'start') {
         constraints: { staticFilesOnly: true, noDependencies: true },
       },
       development: {
-        repositories: [{ repositoryRef: { repositoryName: repoRow.repo_name, role: 'component' }, integrationBranch: 'dev', expectedBaseCommit: baseCommit.stdout.trim() }],
+        repositories: [{
+          repositoryRef: { repositoryName: repoRow.repo_name, role: repoRow.repo_role },
+          integrationBranch: repoRow.integration_branch ?? 'dev',
+          expectedBaseCommit: baseCommit.stdout.trim(),
+        }],
         policy: { ...policyBase, contentHash: sha256Hex(policyBase) },
       },
       delivery: {

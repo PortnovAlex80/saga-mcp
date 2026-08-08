@@ -104,10 +104,39 @@ async function main() {
     concurrency,
     lifecycleInput,
     lifecycleInputSchema,
-    idempotencyKey,
     initiatedBy,
     mode,
   } = ticket;
+
+  // The idempotency key AND initiated_by for runEpisode MUST match the
+  // LifecycleRun's values, NOT the launch's. A resume launch has its own
+  // idempotency key (distinct from the original 'new' launch), but the
+  // lifecycle runtime resolves existing runs by the LIFECYCLE run's key AND
+  // verifies initiated_by for replay context matching. For mode='resume',
+  // look up both from the durable lifecycle run; for mode='new', use the
+  // launch ticket's values (which created the lifecycle run).
+  const { idempotencyKey, runInitiatedBy } = (() => {
+    if (mode !== 'resume' || !ticket.lifecycleRunId) {
+      return {
+        idempotencyKey: ticket.idempotencyKey,
+        runInitiatedBy: initiatedBy,
+      };
+    }
+    const runRow = getDb().prepare(
+      'SELECT idempotency_key, initiated_by FROM factory_lifecycle_runs WHERE id=?',
+    ).get(ticket.lifecycleRunId) as
+      | { idempotency_key: string; initiated_by: string }
+      | undefined;
+    if (!runRow?.idempotency_key) {
+      throw new Error(
+        `FACTORY_RESOLVE_LIFECYCLE_KEY_FAILED: lifecycle run ${ticket.lifecycleRunId} has no idempotency_key`,
+      );
+    }
+    return {
+      idempotencyKey: runRow.idempotency_key,
+      runInitiatedBy: runRow.initiated_by ?? initiatedBy,
+    };
+  })();
 
   // DIAGNOSTIC: catch silent exits. The engine dies after "drain complete"
   // without a "cycle:" or "done:" line — process disappears quietly. These
@@ -184,13 +213,11 @@ async function main() {
         lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
           ? lifecycleInputSchema ?? undefined
           : undefined,
-        idempotencyKey,
-        resumePaused: !isFirstCycle || mode === 'resume',
-        // On resume, read the original initiated_by from the lifecycle run
-        // to avoid REPLAY_CONTEXT_MISMATCH.
-        initiatedBy: (() => {
-          return initiatedBy;
-        })(),
+    idempotencyKey,
+    resumePaused: !isFirstCycle || mode === 'resume',
+    // On resume, initiated_by comes from the durable lifecycle run (resolved
+    // above as runInitiatedBy) to avoid LIFECYCLE_REPLAY_CONTEXT_MISMATCH.
+    initiatedBy: runInitiatedBy,
       });
       if (isFirstCycle && result.lifecycleRun?.id) {
         markFactoryLaunchRunning(
