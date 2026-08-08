@@ -544,6 +544,15 @@ async function loadCompositionOverrides(
       packageInstallation,
       onLifecycleStarted: writeLifecycleStartReceipt,
     },
+    // ScriptedWorkerExecutor DI override (Factory Contract Harness §8.9).
+    // When the composition module exports a workerExecutorFactory, it replaces
+    // the production Claude worker factory. Production code does not know.
+    ...(productLifecycle.workerExecutorFactory
+      ? { workerExecutorFactory: productLifecycle.workerExecutorFactory }
+      : {}),
+    ...(productLifecycle.resolveWorkerContext
+      ? { resolveWorkerContext: productLifecycle.resolveWorkerContext }
+      : {}),
     // Routing cutover: the route resolver is constructed ONCE by the
     // composition root from factory-execution-routes.json (or the
     // SAGA_EXECUTION_ROUTES_JSON env). It is the SINGLE spawn-side authority —

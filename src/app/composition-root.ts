@@ -52,7 +52,14 @@ import {
 export type ProductLifecycleCompositionOverrides = Omit<
   ProductLifecycleRuntimeOptions,
   'workerExecutorFactory' | 'resolveWorkerContext'
->;
+> & {
+  /** ScriptedWorkerExecutor DI override (Factory Contract Harness §8.9). */
+  workerExecutorFactory?: import('../application/ports/worker-executor.js').WorkerExecutorFactory;
+  resolveWorkerContext?: (context: {
+    projectId: number;
+    epicId: number | null;
+  }) => import('../application/ports/worker-executor.js').WorkerExecutorFactoryContext;
+};
 
 export interface FactoryCompositionOverrides {
   config?: SagaRuntimeConfig;
@@ -263,8 +270,8 @@ function selectEngine(
   return createProductLifecycleRuntime({
     ...productLifecycle,
     workerExecutorFactory,
-    resolveWorkerContext: context =>
-      buildDiscoveryWorkerContext(config, persistence, host, context),
+    resolveWorkerContext: productLifecycle.resolveWorkerContext
+      ?? (context => buildDiscoveryWorkerContext(config, persistence, host, context)),
     concurrency: positiveConcurrency(process.env.SAGA_CONCURRENCY),
     packageInstallation: modulePackages
       ?? productLifecycle.packageInstallation,
