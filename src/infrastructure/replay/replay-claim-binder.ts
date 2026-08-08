@@ -11,8 +11,8 @@ import {
   ensureReplayCapsuleSchema,
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
+import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
 
-/** Read the authoritative Workplace projection for a task. */
 function readWorkplaceRefForTask(db: Database.Database, task: Task): string | null {
   if (task.workplace_ref) return task.workplace_ref;
   const row = db.prepare(
@@ -23,14 +23,10 @@ function readWorkplaceRefForTask(db: Database.Database, task: Task): string | nu
 
 /**
  * A capsule becomes ineligible for subsequent recovery attempts in the SAME
- * Workplace after either:
- *
- * 1. replay produced a CandidateSet and the CURRENT Gate rejected it; or
- * 2. replay itself failed/corrupted before a valid CandidateSet reached Gate.
- *
- * Both facts are derived from durable execution/Gate evidence. No blacklist
- * aggregate exists. A fresh WorkerExecution then resolves the capsule as a
- * normal miss and uses the already-selected inference route.
+ * Workplace after either CURRENT Gate rejection or replay execution failure.
+ * The fact is derived from durable evidence; no replay-blacklist aggregate
+ * exists. The next WorkerExecution therefore resolves a normal miss and uses
+ * its already-selected inference route.
  */
 function isCapsuleIneligibleInWorkplace(
   db: Database.Database,
@@ -41,13 +37,13 @@ function isCapsuleIneligibleInWorkplace(
     `SELECT 1
        FROM factory_gate_decisions gd
        JOIN factory_candidate_sets cs
-         ON cs.candidate_set_ref = gd.subject_candidate_set_ref
-        AND cs.workplace_ref = gd.workplace_ref
+         ON cs.candidate_set_ref=gd.subject_candidate_set_ref
+        AND cs.workplace_ref=gd.workplace_ref
        JOIN worker_executions we
-         ON we.execution_id = cs.producer_execution_ref
-      WHERE gd.workplace_ref = ?
-        AND gd.verdict != 'accepted'
-        AND json_extract(we.metadata, '$.execution_context.replay.capsule_ref') = ?
+         ON we.execution_id=cs.producer_execution_ref
+      WHERE gd.workplace_ref=?
+        AND gd.verdict!='accepted'
+        AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
       LIMIT 1`,
   ).get(workplaceRef, capsuleRef);
   if (rejectedByGate) return true;
@@ -58,7 +54,7 @@ function isCapsuleIneligibleInWorkplace(
        JOIN tasks t ON t.id=we.task_id
       WHERE t.workplace_ref=?
         AND we.state IN ('lost','spawn_failed','terminated')
-        AND json_extract(we.metadata, '$.execution_context.replay.capsule_ref') = ?
+        AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
       LIMIT 1`,
   ).get(workplaceRef, capsuleRef);
   return failedReplay !== undefined;
@@ -93,11 +89,8 @@ export function resolveReplayKeyMaterial(
   const productionCellId = requiredString(metadata.production_cell_id);
   const workKey = requiredString(metadata.work_key);
 
-  // Cross-run replay identity MUST be explicitly proven semantic input. The raw
-  // process_node_input_hash is intentionally NOT a compatibility fallback: it
-  // may contain Workplace/CandidateSet/execution provenance and therefore may
-  // change between equivalent Factory Runs. Legacy tasks lacking the semantic
-  // digest simply miss replay and use their selected inference route.
+  // Raw nodeInputHash may contain run provenance. Replay is allowed only when
+  // an explicit cross-run semantic digest was frozen by the producer runtime.
   const semanticInputDigest = requiredString(metadata.semantic_input_digest);
   if (!Number.isSafeInteger(processRunId) || processRunId <= 0
       || !nodeId || !moduleRef || !productionCellId || !workKey || !semanticInputDigest) {
@@ -112,8 +105,6 @@ export function resolveReplayKeyMaterial(
   if (role === 'reviewer') {
     const workplaceRef = readWorkplaceRefForTask(db, task);
     if (!workplaceRef) return null;
-    // QC remains pinned to the exact current-run CandidateSetRef. Replay
-    // equivalence uses only semantic author production atoms.
     const authorSet = db.prepare(
       `SELECT candidate_set_ref
          FROM factory_candidate_sets
@@ -122,17 +113,20 @@ export function resolveReplayKeyMaterial(
     ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
     if (!authorSet) return null;
     const members = db.prepare(
-      `SELECT product_schema, product_digest
+      `SELECT product_schema,product_digest
          FROM factory_candidate_set_members
         WHERE candidate_set_ref=?
-        ORDER BY product_schema, product_digest`,
+        ORDER BY product_schema,product_digest`,
     ).all(authorSet.candidate_set_ref) as Array<{
       product_schema: string;
       product_digest: string;
     }>;
     if (members.length === 0) return null;
     subjectProductionDigest = sha256Hex(
-      members.map(m => ({ schemaId: m.product_schema, digest: m.product_digest })),
+      members.map(member => ({
+        schemaId: member.product_schema,
+        digest: member.product_digest,
+      })),
     );
   }
 
@@ -163,10 +157,9 @@ function parseStringArray(raw: string, label: string): string[] {
 }
 
 /**
- * Materialize missing capsules only from authoritative final acceptance.
- * Exact subject + assessment CandidateSets come from the final accepted
- * GateDecision of a durably terminal(accepted) Workplace; historical repair
- * attempts are never scanned into the replay corpus.
+ * Crash/reconciliation fallback. Direct post-terminal capture is normal; this
+ * sweep only backfills missing capsules from authoritative final acceptance.
+ * It uses the SAME fail-closed completeness proof as direct capture.
  */
 export function certifyAcceptedReplayCapsules(
   db: Database.Database,
@@ -215,7 +208,7 @@ export function certifyAcceptedReplayCapsules(
 
       for (const candidateSetRef of [...new Set(candidateRefs)]) {
         const candidate = db.prepare(
-          `SELECT cs.candidate_set_ref,cs.producer_execution_ref,cs.role
+          `SELECT cs.candidate_set_ref,cs.producer_execution_ref
              FROM factory_candidate_sets cs
              LEFT JOIN factory_replay_capsules rc
                ON rc.source_execution_ref=cs.producer_execution_ref
@@ -226,14 +219,14 @@ export function certifyAcceptedReplayCapsules(
         ).get(candidateSetRef, workplace.workplace_ref) as {
           candidate_set_ref: string;
           producer_execution_ref: string;
-          role: 'author' | 'reviewer';
         } | undefined;
         if (!candidate) continue;
 
-        repo.captureAcceptedExecution({
-          executionRef: candidate.producer_execution_ref,
-          candidateSetRef: candidate.candidate_set_ref,
-        });
+        captureReplayCapsuleFailClosed(db, () =>
+          repo.captureAcceptedExecution({
+            executionRef: candidate.producer_execution_ref,
+            candidateSetRef: candidate.candidate_set_ref,
+          }));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -247,10 +240,9 @@ export function certifyAcceptedReplayCapsules(
 /**
  * Final pre-spawn step for a fenced assignment.
  *
- * Miss: freeze the replay key and leave the front-selected inference route
- * untouched. Hit: freeze only the exact capsule ref/hash alongside that route.
- * Replay never mutates executor_kind/model_route and never creates another
- * launch mode.
+ * Miss freezes the replay semantic key and leaves the selected inference route
+ * untouched. Hit freezes only exact capsule ref/hash. Replay never changes
+ * executor_kind/model_route and never creates another launch mode.
  */
 export function bindReplayToClaim(
   db: Database.Database,
