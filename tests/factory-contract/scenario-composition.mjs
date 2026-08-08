@@ -39,7 +39,7 @@ function providerEvidence(prefix, body) {
 
 export async function createProductLifecycleComposition(context) {
   const { env, cwd } = context;
-  const releaseStateRoot = env.SAGA_BUTTON_REPO_PATH || cwd;
+  const releaseStateRoot = path.join(env.SAGA_BUTTON_REPO_PATH || cwd, '.git');
   const releaseStatePath = actionKey => path.join(
     releaseStateRoot,
     `.factory-contract-release-${sha256Hex(actionKey)}.json`,

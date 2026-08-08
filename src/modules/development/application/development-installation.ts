@@ -151,6 +151,12 @@ function createIntegratedCandidateFreezeHandler(
         schema: INTEGRATED_CANDIDATE_SCHEMA,
         artifactRef: result.reference.ref,
         contentHash: result.reference.hash,
+        semanticDigest: sha256Hex({
+          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          frozen: result.candidate.frozen,
+          repositories: result.candidate.repositories,
+          buildProducts: result.candidate.buildProducts,
+        }),
         bindings: {
           candidate: result.candidate,
           candidateRef: result.reference,
@@ -361,6 +367,15 @@ function createTaskGraphResolver(
           schema: materialized.reference.schema,
           artifactRef: materialized.reference.ref,
           contentHash: materialized.reference.hash,
+          semanticDigest: sha256Hex({
+            schema: DEVELOPMENT_TASK_GRAPH_SCHEMA,
+            acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,
+            acceptanceCriteria: developmentCase.acceptanceCriteria,
+            repositories: developmentCase.repositories,
+            implementationItems: materialized.graph.implementationItems,
+            verificationItems: materialized.graph.verificationItems,
+            integrationTargets: materialized.graph.integrationTargets,
+          }),
           bindings: {
             graphHash: materialized.graph.graphHash,
             items: materialized.graph.implementationItems,

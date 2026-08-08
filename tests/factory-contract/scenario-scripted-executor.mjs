@@ -40,11 +40,11 @@ function hasFrozenCapsule(assignment) {
   return !!replay && typeof replay.capsule_ref === 'string' && replay.capsule_ref.length > 0;
 }
 
-function runCapsuleReplay(dbPath, assignment) {
+function runCapsuleReplay(dbPath, assignment, workspaceRoot) {
   const { getDb } = dbMod;
   process.env.DB_PATH = dbPath;
   const db = getDb();
-  const cwd = assignment?.executionContext?.repository_desk?.execution_path || process.cwd();
+  const cwd = assignment?.executionContext?.repository_desk?.execution_path || workspaceRoot || process.cwd();
   process.env.SAGA_MANAGED_EXECUTION = '1';
   process.env.SAGA_EXECUTION_ID = assignment.workerExecutionId;
   process.env.SAGA_TASK_ID = String(assignment.taskId);
@@ -116,7 +116,7 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
         if (hasFrozenCapsule(assignment)) {
           const replayRunId = `replay-${assignment.workerExecutionId.slice(-8)}`;
           try {
-            runCapsuleReplay(context.dbPath, assignment);
+            runCapsuleReplay(context.dbPath, assignment, context.workspaceRoot);
             completed++;
           } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
