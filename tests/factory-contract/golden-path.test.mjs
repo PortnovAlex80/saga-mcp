@@ -175,7 +175,7 @@ async function runOrchestrateCli(launchRef, dbPath, repoPath, scenariosPath, inv
   return { exitCode, stdout, stderr };
 }
 
-function assertLifecycleOutcomes(db, runOffset = 0) {
+function assertLifecycleOutcomes(db, runOffset = 0, diagnostics = '') {
   const runs = db.prepare(
     'SELECT id,module_name,status,local_outcome FROM factory_process_runs ORDER BY id',
   ).all().slice(runOffset);
@@ -185,11 +185,12 @@ function assertLifecycleOutcomes(db, runOffset = 0) {
     ['solution-development', 'verified'],
     ['delivery-release', 'released'],
   ]);
+  const suffix = diagnostics ? `\n--- orchestrator stderr ---\n${diagnostics.slice(-8000)}` : '';
   for (const [moduleName, outcome] of expected) {
     const run = runs.find(row => row.module_name === moduleName);
-    assert.ok(run, `${moduleName} ProcessRun exists`);
-    assert.equal(run.status, 'completed', `${moduleName} status`);
-    assert.equal(run.local_outcome, outcome, `${moduleName} outcome`);
+    assert.ok(run, `${moduleName} ProcessRun exists${suffix}`);
+    assert.equal(run.status, 'completed', `${moduleName} status${suffix}`);
+    assert.equal(run.local_outcome, outcome, `${moduleName} outcome${suffix}`);
   }
 }
 
@@ -213,7 +214,7 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
     assert.equal(runA.exitCode, 0, `Run A orchestrate-cli exited ${runA.exitCode}\n${runA.stderr.slice(-5000)}`);
 
     let resultDb = new Database(dbPath, { readonly: true });
-    assertLifecycleOutcomes(resultDb);
+    assertLifecycleOutcomes(resultDb, 0, runA.stderr);
     const processRunsAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_process_runs').get().n;
     const workplacesAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_workplaces').get().n;
     const gatesAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n;
@@ -258,7 +259,7 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
     assert.equal(runB.exitCode, 0, `Run B orchestrate-cli exited ${runB.exitCode}\n${runB.stderr.slice(-5000)}`);
 
     resultDb = new Database(dbPath, { readonly: true });
-    assertLifecycleOutcomes(resultDb, processRunsAfterA);
+    assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);
     const processRunsAfterB = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_process_runs').get().n;
     const workplacesAfterB = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_workplaces').get().n;
     const gatesAfterB = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n;
@@ -273,7 +274,11 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
     resultDb.close();
 
     const runBInvocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
-    assert.equal(runBInvocations.length, 0, 'compatible Run B replay invokes ZERO scripted workers');
+    assert.equal(
+      runBInvocations.length,
+      0,
+      `compatible Run B replay invokes ZERO scripted workers; observed=${JSON.stringify(runBInvocations)}\n${runB.stderr.slice(-8000)}`,
+    );
   } finally {
     try { rmSync(dbDir, { recursive: true, force: true }); } catch {}
     try { rmSync(dir, { recursive: true, force: true }); } catch {}
