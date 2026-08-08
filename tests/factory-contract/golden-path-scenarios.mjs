@@ -104,7 +104,7 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
 // Formalization
 // ---------------------------------------------------------------------------
 
-const formalizationProduct = async ({ client, task, prompt }) => {
+const formalizationProduct = async ({ client, task, prompt, repoPath }) => {
   const projectId = task.project_id || 1;
   const epicId = task.epic_id || 1;
   const briefPayload = {
@@ -115,6 +115,7 @@ const formalizationProduct = async ({ client, task, prompt }) => {
     completeness: 'high', degraded: false,
   };
   const briefHash = actions.contentHash('brief:BRIEF-1');
+  if (repoPath) actions.writeFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = await client.callJson('artifact_create', {
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md',
@@ -123,19 +124,19 @@ const formalizationProduct = async ({ client, task, prompt }) => {
   });
   const prd = await actions.createArtifact(client, {
     projectId, epicId, type: 'PRD', code: 'PRD', title: 'Product Requirements',
-    artifactPath: 'docs/formalization/PRD.md',
+    artifactPath: 'docs/formalization/PRD.md', repoPath,
   });
   const fr = await actions.createArtifact(client, {
     projectId, epicId, type: 'FR', code: 'FR-1', title: 'Functional Requirement 1',
-    artifactPath: 'docs/formalization/FR-1.md',
+    artifactPath: 'docs/formalization/FR-1.md', repoPath,
   });
   await actions.createArtifact(client, {
     projectId, epicId, type: 'NFR', code: 'NFR-1', title: 'Non-Functional Requirement 1',
-    artifactPath: 'docs/formalization/NFR-1.md',
+    artifactPath: 'docs/formalization/NFR-1.md', repoPath,
   });
   await actions.createArtifact(client, {
     projectId, epicId, type: 'RULE', code: 'RULE-1', title: 'Business Rule 1',
-    artifactPath: 'docs/formalization/RULE-1.md',
+    artifactPath: 'docs/formalization/RULE-1.md', repoPath,
   });
   await actions.addTrace(client, prd.id, brief.id, 'derived_from');
   await actions.addTrace(client, fr.id, prd.id, 'derived_from');
@@ -143,7 +144,7 @@ const formalizationProduct = async ({ client, task, prompt }) => {
     'formalization product-contract: brief→PRD→FR/NFR/RULE');
 };
 
-const formalizationUseCases = async ({ client, task, prompt }) => {
+const formalizationUseCases = async ({ client, task, prompt, repoPath }) => {
   const projectId = task.project_id || 1;
   const epicId = task.epic_id || 1;
   const prds = await actions.findAcceptedArtifacts(client, epicId, 'PRD');
@@ -151,7 +152,7 @@ const formalizationUseCases = async ({ client, task, prompt }) => {
   if (!prds.length || !frs.length) throw new Error('No accepted PRD/FR for use-cases');
   const uc = await actions.createArtifact(client, {
     projectId, epicId, type: 'UC', code: 'UC-1', title: 'Use Case 1',
-    artifactPath: 'docs/formalization/UC-1.md',
+    artifactPath: 'docs/formalization/UC-1.md', repoPath,
   });
   await actions.addTrace(client, uc.id, prds[0].id, 'derived_from');
   await actions.addTrace(client, uc.id, frs[0].id, 'covers');
@@ -159,7 +160,7 @@ const formalizationUseCases = async ({ client, task, prompt }) => {
     'formalization use-cases: UC→PRD+FR');
 };
 
-const formalizationAcceptance = async ({ client, task, prompt }) => {
+const formalizationAcceptance = async ({ client, task, prompt, repoPath }) => {
   const projectId = task.project_id || 1;
   const epicId = task.epic_id || 1;
   const frs = await actions.findAcceptedArtifacts(client, epicId, 'FR');
@@ -168,13 +169,13 @@ const formalizationAcceptance = async ({ client, task, prompt }) => {
   if (!frs.length) throw new Error('No accepted FR for acceptance');
   const ac1 = await actions.createArtifact(client, {
     projectId, epicId, type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes',
-    artifactPath: 'docs/formalization/AC-1.md',
+    artifactPath: 'docs/formalization/AC-1.md', repoPath,
   });
   await actions.addTrace(client, ac1.id, frs[0].id, 'derived_from');
   if (ucs.length) await actions.addTrace(client, ac1.id, ucs[0].id, 'derived_from');
   const ac2 = await actions.createArtifact(client, {
     projectId, epicId, type: 'AC', code: 'AC-2', title: 'AC-2: NFR Compliance',
-    artifactPath: 'docs/formalization/AC-2.md',
+    artifactPath: 'docs/formalization/AC-2.md', repoPath,
   });
   if (nfrs.length) await actions.addTrace(client, ac2.id, nfrs[0].id, 'derived_from');
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
@@ -352,7 +353,8 @@ const developmentVerify = async ({ client, task, prompt }) => {
   if (!candidate) throw new Error('frozen candidate not found in verification input');
   const acId = Number(item.acceptanceCriterionIds?.[0] || task.verification_target_artifact_id || 0);
   if (!acId) throw new Error('verification acceptanceCriterionId missing');
-  const ac = await client.callJson('artifact_get', { id: acId });
+  const acResp = await client.callJson('artifact_get', { id: acId });
+  const ac = acResp.artifact || acResp;
   const acceptedCriterionHash = ac.accepted_hash || ac.content_hash;
   if (!acceptedCriterionHash) throw new Error(`accepted hash missing for AC ${acId}`);
   const evidenceBody = {

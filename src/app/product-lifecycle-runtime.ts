@@ -83,7 +83,7 @@ import {
   deserializeWorkplaceRef,
   serializeWorkplaceRef,
 } from '../process-modules/domain/workplace/workplace-ref.js';
-import { buildWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
+import { buildWorkplaceProductionSnapshot, isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -357,6 +357,21 @@ export function createProductLifecycleRuntime(
       postAcceptanceEffects: createPostAcceptanceEffectRegistry(),
       persistence: {
         ...workplacePersistence,
+        readAuthorSemanticDigestForWorkplace: (serializedWorkplaceRef: string): string | null => {
+          const row = db.prepare(
+            `SELECT metadata FROM tasks
+              WHERE workplace_ref=? AND metadata LIKE '%"role":"author"%'
+              ORDER BY id DESC LIMIT 1`,
+          ).get(serializedWorkplaceRef) as { metadata: string } | undefined;
+          if (!row?.metadata) return null;
+          try {
+            const meta = JSON.parse(row.metadata);
+            const sid = meta?.semantic_input_digest;
+            return typeof sid === 'string' && sid ? sid : null;
+          } catch {
+            return null;
+          }
+        },
         activateRoleTask: ({ taskId, intentId, workplaceRef, role, executionProfileId }) => {
           const workplace = serializeWorkplaceRef(workplaceRef);
           activateProductionCellRoleTask(db, {
@@ -512,6 +527,12 @@ export function createProductLifecycleRuntime(
       } as ProductionCellProductReader,
       resolveInstallationDigest: moduleName =>
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
+      resolveProductSemanticDigest: (productRef) => {
+        const content = processProductRepoV2.getByProductRef(productRef);
+        if (!content) return null;
+        if (!isWorkplaceProductionSnapshot(content.payload)) return null;
+        return workplaceProductionSemanticDigest(content.payload);
+      },
     })],
   ]);
   nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);

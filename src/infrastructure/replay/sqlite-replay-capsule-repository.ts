@@ -14,7 +14,32 @@ import {
   type ReplayGitRecipe,
   type ReplayKeyMaterial,
 } from '../../replay/replay-capsule.js';
-import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
+import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../../process-modules/shared/workplace-production-snapshot.js';
+
+/**
+ * Resolve the cross-run-stable semantic digest for a CandidateSet member.
+ */
+function resolveStableProductDigest(
+  db: Database.Database,
+  schemaId: string,
+  ref: string,
+  digest: string,
+): string {
+  if (ref.startsWith('managed-node-submission:')) return digest;
+  const row = db.prepare(
+    `SELECT payload_snapshot FROM factory_process_products
+      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
+  ).get(schemaId, ref, digest) as { payload_snapshot: string } | undefined;
+  if (!row) return digest;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(row.payload_snapshot);
+  } catch {
+    return digest;
+  }
+  if (!isWorkplaceProductionSnapshot(payload)) return digest;
+  return workplaceProductionSemanticDigest(payload);
+}
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -360,17 +385,21 @@ export class SqliteReplayCapsuleRepository {
       ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
       if (authorSet) {
         const members = this.db.prepare(
-          `SELECT product_schema, product_digest
+          `SELECT product_schema, product_ref, product_digest
              FROM factory_candidate_set_members
             WHERE candidate_set_ref=?
             ORDER BY product_schema, product_digest`,
         ).all(authorSet.candidate_set_ref) as Array<{
           product_schema: string;
+          product_ref: string;
           product_digest: string;
         }>;
         if (members.length > 0) {
           subjectProductionDigest = sha256Hex(
-            members.map(m => ({ schemaId: m.product_schema, digest: m.product_digest })),
+            members.map(m => ({
+              schemaId: m.product_schema,
+              digest: resolveStableProductDigest(this.db, m.product_schema, m.product_ref, m.product_digest),
+            })),
           );
         }
       }

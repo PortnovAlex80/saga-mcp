@@ -229,7 +229,7 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
       'Run A leaves no stranded worker executions',
     );
     assert.ok(
-      resultDb.prepare(`SELECT COUNT(*) AS n FROM factory_external_effect_actions WHERE module_ref LIKE 'delivery-release@%'`).get().n >= 1,
+      resultDb.prepare(`SELECT COUNT(*) AS n FROM factory_external_effect_actions WHERE module_ref_key LIKE 'delivery-release@%'`).get().n >= 1,
       'Run A Delivery used real external-effect ledger',
     );
     resultDb.close();

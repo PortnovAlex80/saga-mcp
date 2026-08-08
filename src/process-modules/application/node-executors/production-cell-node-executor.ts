@@ -86,6 +86,7 @@ export interface ProductionCellProjectionPersistence {
     semanticInputDigest: string;
     projectRepositoryId?: number | null;
   }): void;
+  readAuthorSemanticDigestForWorkplace?(serializedWorkplaceRef: string): string | null;
   readTaskProjectRepositoryId(taskId: number): number | null;
   readProcessInputHash(processRunId: number): string;
   readTrustedProviders?(projectId: number): readonly {
@@ -140,6 +141,7 @@ export interface ProductionCellNodeExecutorOptions {
   readonly persistence: ProductionCellProjectionPersistence;
   readonly productReader: ProductionCellProductReader;
   readonly resolveInstallationDigest: (moduleName: string) => string;
+  readonly resolveProductSemanticDigest?: (productRef: ProductRef) => string | null;
   readonly now?: () => Date;
 }
 
@@ -588,7 +590,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // identity is the upstream production's semanticDigest + the stable item
     // id + the item's semantic content. Fail closed if a fan-out upstream
     // lacks a semanticDigest (the WorkKey would also be unstable).
-    const semanticInputDigest = computeSemanticInputDigest(ctx, cell, workplace);
+    // For the reviewer, reuse the author's semantic_input_digest from the same
+    // Workplace so both roles share the same replay input identity.
+    const semanticInputDigest = role === 'reviewer'
+      ? (this.readAuthorSemanticDigest(workplace.ref) ?? computeSemanticInputDigest(ctx, cell, workplace))
+      : computeSemanticInputDigest(ctx, cell, workplace);
     this.opts.persistence.bindProjectedTaskProcessContext?.({
       taskId: plan.taskId,
       processRunId: ctx.processRunId,
@@ -751,6 +757,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     return sealedAttempts;
   }
 
+  private readAuthorSemanticDigest(workplaceRef: WorkplaceRef): string | null {
+    const serialized = serializeWorkplaceRef(workplaceRef);
+    return this.opts.persistence.readAuthorSemanticDigestForWorkplace?.(serialized) ?? null;
+  }
+
   private requireState(ref: WorkplaceRef): WorkplaceState {
     const state = this.opts.coordinator.readState(ref);
     if (!state) throw new Error(`WORKPLACE_NOT_FOUND: ${serializeWorkplaceRef(ref)}`);
@@ -803,7 +814,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         .map(item => ({
           id: item.id,
           accepted: item.accepted,
-          products: canonicalProductMultiset(item.products),
+          products: canonicalProductMultiset(item.products, this.opts.resolveProductSemanticDigest),
         }))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     };
@@ -827,9 +838,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
  */
 function canonicalProductMultiset(
   products: readonly ProductRef[],
+  semanticDigestResolver?: (productRef: ProductRef) => string | null,
 ): readonly { schemaId: string; digest: string }[] {
   return products
-    .map(p => ({ schemaId: p.schemaId, digest: p.digest }))
+    .map(p => ({
+      schemaId: p.schemaId,
+      digest: semanticDigestResolver?.(p) ?? p.digest,
+    }))
     .sort((a, b) =>
       a.schemaId < b.schemaId ? -1
       : a.schemaId > b.schemaId ? 1
@@ -891,8 +906,27 @@ function computeSemanticInputDigest(
     // which carries run-specific provenance.
     return inputProduction.semanticDigest ?? inputProduction.contentHash;
   }
-  // Entry cell: canonical business input, stable across runs.
-  return sha256Hex(ctx.input);
+  // Entry cell: canonical business input. Strip certificate/contract refs
+  // (run-specific DB ids) so the cross-run semantic digest is stable.
+  return sha256Hex(canonicalizeLifecycleInput(ctx.input));
+}
+
+/**
+ * Canonicalize a lifecycle stage input for cross-run semantic identity.
+ * Strips fields that carry run-specific provenance (certificate refs/hashes,
+ * contract refs/hashes) while preserving all business-semantic fields.
+ */
+function canonicalizeLifecycleInput(input: unknown): unknown {
+  if (input === null || input === undefined) return input;
+  if (typeof input !== 'object') return input;
+  if (Array.isArray(input)) return input.map(canonicalizeLifecycleInput);
+  const obj = input as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (/certificate/i.test(key) || /contract/i.test(key)) continue;
+    result[key] = canonicalizeLifecycleInput(value);
+  }
+  return result;
 }
 
 /**

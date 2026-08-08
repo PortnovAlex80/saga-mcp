@@ -22,6 +22,66 @@ const finalizeManagedWorkerProcess = terminationMod.finalizeManagedWorkerProcess
 const dbMod = await import(pathToFileURL(path.resolve('dist/db.js')).href);
 const openDb = dbMod.getDb;
 
+// Replay support: import the SAME capsule replay executor and MCP handler
+// containers the production claude executor uses. When an assignment carries
+// a frozen capsule_ref, the scripted executor replays the capsule instead of
+// spawning a scripted worker — proving zero scripted inference calls on
+// compatible replay hits.
+const replayMod = await import(pathToFileURL(path.resolve('dist/infrastructure/replay/capsule-replay-executor.js')).href);
+const executeCapsuleReplay = replayMod.executeCapsuleReplay;
+const productHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/products.js')).href);
+const artifactHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/artifacts.js')).href);
+const dispatcherHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/dispatcher.js')).href);
+
+function hasFrozenCapsule(assignment) {
+  const ctx = assignment?.executionContext;
+  if (!ctx || typeof ctx !== 'object') return false;
+  const replay = ctx.replay;
+  return !!replay && typeof replay.capsule_ref === 'string' && replay.capsule_ref.length > 0;
+}
+
+function runCapsuleReplay(dbPath, assignment) {
+  const { getDb } = dbMod;
+  process.env.DB_PATH = dbPath;
+  const db = getDb();
+  const cwd = assignment?.executionContext?.repository_desk?.execution_path || process.cwd();
+  process.env.SAGA_MANAGED_EXECUTION = '1';
+  process.env.SAGA_EXECUTION_ID = assignment.workerExecutionId;
+  process.env.SAGA_TASK_ID = String(assignment.taskId);
+  process.env.SAGA_WORKER_ID = assignment.workerId;
+  db.prepare(
+    `UPDATE worker_executions SET state='running', started_at=datetime('now'), phase_updated_at=datetime('now') WHERE execution_id=? AND state='reserved'`,
+  ).run(assignment.workerExecutionId);
+  try {
+    const handlers = {
+      product_submit: input => productHandlersMod.handlers.product_submit(input),
+      artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+      trace_add: input => artifactHandlersMod.handlers.trace_add(input),
+      worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
+    };
+    executeCapsuleReplay(db, handlers, {
+      taskId: Number(assignment.taskId),
+      workerId: assignment.workerId,
+      executionId: assignment.workerExecutionId,
+      cwd,
+    });
+    handlers.worker_done({
+      task_id: Number(assignment.taskId),
+      worker_id: assignment.workerId,
+      result: 'capsule replay: reconstructed accepted worker production',
+      execution_id: assignment.workerExecutionId,
+    });
+    db.prepare(
+      `UPDATE worker_executions SET state='exited', exit_code=0, finished_at=datetime('now'), phase_updated_at=datetime('now') WHERE execution_id=? AND state IN ('running','finishing')`,
+    ).run(assignment.workerExecutionId);
+  } finally {
+    delete process.env.SAGA_MANAGED_EXECUTION;
+    delete process.env.SAGA_EXECUTION_ID;
+    delete process.env.SAGA_TASK_ID;
+    delete process.env.SAGA_WORKER_ID;
+  }
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createScriptedWorkerExecutorFactory(opts = {}) {
@@ -48,6 +108,34 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
         claimed++;
         startedAt = new Date().toISOString();
         lastError = null;
+
+        // CONVEYOR v4.3 PART 1-2: when a frozen capsule_ref is present, replay
+        // the capsule instead of spawning a scripted worker. This is the SAME
+        // in-process replay path the production claude executor uses. Proves
+        // zero scripted inference calls on compatible replay hits.
+        if (hasFrozenCapsule(assignment)) {
+          const replayRunId = `replay-${assignment.workerExecutionId.slice(-8)}`;
+          try {
+            runCapsuleReplay(context.dbPath, assignment);
+            completed++;
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            failed++;
+            process.stderr.write(`[scenario-executor] capsule replay FAILED: ${lastError}\n`);
+          }
+          finishedAt = new Date().toISOString();
+          return {
+            id: replayRunId,
+            project_id: assignment.projectId,
+            concurrency: 1,
+            status: 'completed',
+            started_at: startedAt,
+            finished_at: finishedAt,
+            active: [],
+            completed, failed, claimed, last_error: lastError,
+          };
+        }
+
         let terminationHandled = false;
 
         const mcpConfigPath = path.join(os.tmpdir(), `saga-scenario-mcp-${randomUUID().slice(0, 8)}.json`);

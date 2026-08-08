@@ -12,6 +12,37 @@ import {
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
+import {
+  isWorkplaceProductionSnapshot,
+  workplaceProductionSemanticDigest,
+} from '../../process-modules/shared/workplace-production-snapshot.js';
+
+/**
+ * Resolve the cross-run-stable semantic digest for a CandidateSet member.
+ * Typed-submission products have stable digests. Managed-production products
+ * carry run-specific provenance; resolve to the stable projection.
+ */
+function resolveStableProductDigest(
+  db: Database.Database,
+  schemaId: string,
+  ref: string,
+  digest: string,
+): string {
+  if (ref.startsWith('managed-node-submission:')) return digest;
+  const row = db.prepare(
+    `SELECT payload_snapshot FROM factory_process_products
+      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
+  ).get(schemaId, ref, digest) as { payload_snapshot: string } | undefined;
+  if (!row) return digest;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(row.payload_snapshot);
+  } catch {
+    return digest;
+  }
+  if (!isWorkplaceProductionSnapshot(payload)) return digest;
+  return workplaceProductionSemanticDigest(payload);
+}
 
 function readWorkplaceRefForTask(db: Database.Database, task: Task): string | null {
   if (task.workplace_ref) return task.workplace_ref;
@@ -113,19 +144,20 @@ export function resolveReplayKeyMaterial(
     ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
     if (!authorSet) return null;
     const members = db.prepare(
-      `SELECT product_schema,product_digest
+      `SELECT product_schema,product_ref,product_digest
          FROM factory_candidate_set_members
         WHERE candidate_set_ref=?
         ORDER BY product_schema,product_digest`,
     ).all(authorSet.candidate_set_ref) as Array<{
       product_schema: string;
+      product_ref: string;
       product_digest: string;
     }>;
     if (members.length === 0) return null;
     subjectProductionDigest = sha256Hex(
       members.map(member => ({
         schemaId: member.product_schema,
-        digest: member.product_digest,
+        digest: resolveStableProductDigest(db, member.product_schema, member.product_ref, member.product_digest),
       })),
     );
   }

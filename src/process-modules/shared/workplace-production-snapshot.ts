@@ -2,6 +2,7 @@ import type {
   ManagedArtifactProductionRecord,
   ManagedTraceProductionRecord,
 } from './managed-production.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 export const WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION =
   'factory.workplace-production-snapshot.v1' as const;
@@ -96,4 +97,36 @@ export function isWorkplaceProductionSnapshot(
     && Array.isArray(row.contributingExecutionRefs)
     && Array.isArray(row.artifacts)
     && Array.isArray(row.traces);
+}
+
+/**
+ * Cross-run-stable semantic digest of a WorkplaceProductionSnapshot.
+ * Strips ALL run-specific provenance (artifactIds, traceIds, sourceId,
+ * targetId, workplaceRef, execution refs, operations, status). Two runs
+ * producing the same artifact content and trace structure yield the same
+ * digest, enabling downstream replay identity (CONVEYOR v4.3 §6).
+ */
+export function workplaceProductionSemanticDigest(
+  snapshot: WorkplaceProductionSnapshot,
+): string {
+  const artifacts = snapshot.artifacts
+    .map(a => ({ type: a.artifactType, hash: a.contentHash }))
+    .sort((a, b) =>
+      a.hash < b.hash ? -1 : a.hash > b.hash ? 1
+        : a.type < b.type ? -1 : a.type > b.type ? 1 : 0,
+    );
+  const traceCounts: Record<string, number> = {};
+  for (const t of snapshot.traces) {
+    const key = `${t.linkType}:${t.targetType}`;
+    traceCounts[key] = (traceCounts[key] ?? 0) + 1;
+  }
+  const traces = Object.entries(traceCounts)
+    .map(([key, count]) => ({ structure: key, count }))
+    .sort((a, b) => a.structure < b.structure ? -1 : 1);
+  return sha256Hex({
+    schema: snapshot.schemaVersion,
+    expectedSchemaRef: snapshot.expectedSchemaRef,
+    artifacts,
+    traces,
+  });
 }

@@ -1788,12 +1788,24 @@ function manifestResult(
     ...withoutUndefined(extraBindings),
   };
   const contentHash = sha256Hex(manifest);
+  // Cross-run-stable semantic digest (CONVEYOR v4.3 §6). Excludes run-specific
+  // provenance (processRunId, intentId, taskId, executionId, artifactIds,
+  // traceIds, ledgerIds). Uses stable artifact content hashes + trace digest.
+  const semanticProjection = {
+    moduleRef: FORMALIZATION_MODULE_KEY,
+    sourceNodeId,
+    event,
+    artifactHashes: Object.values(snapshot.artifactHashes).sort(),
+    traceDigest: snapshot.traceDigest,
+  };
+  const semanticDigest = sha256Hex(semanticProjection);
   return {
     event,
     production: {
       schema,
       artifactRef: `formalization-node-product:${ctx.processRunId}:${sourceNodeId}:${contentHash}`,
       contentHash,
+      semanticDigest,
       bindings: manifest,
     },
   };

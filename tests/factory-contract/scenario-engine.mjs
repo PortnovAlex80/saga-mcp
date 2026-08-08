@@ -202,8 +202,15 @@ export const actions = {
   },
 
   /** Create an artifact with deterministic content_hash. */
-  async createArtifact(client, { projectId, epicId, type, code, title, artifactPath, status = 'draft', contentHash, projectRepositoryId }) {
+  async createArtifact(client, { projectId, epicId, type, code, title, artifactPath, status = 'draft', contentHash, projectRepositoryId, repoPath, fileContent }) {
     const hash = contentHash || createHash('sha256').update(`${type}:${code}:${title}`).digest('hex');
+    // file_backed artifacts require real bytes on disk for replay capture.
+    if (repoPath && artifactPath) {
+      const body = fileContent || `# ${title}\n\nDeterministic ${type} artifact for ${code}.\n`;
+      const fullPath = path.join(repoPath, artifactPath.split('#')[0]);
+      mkdirSync(path.dirname(fullPath), { recursive: true });
+      writeFileSync(fullPath, body, 'utf8');
+    }
     return client.callJson('artifact_create', {
       project_id: projectId, epic_id: epicId, type, code, title,
       path: artifactPath, status, content_hash: hash,
