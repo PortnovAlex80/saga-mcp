@@ -41,6 +41,7 @@ jobs:
               f"{indent}const rebound = rebindReplayAuthorityReferences(\n"
               f"{indent}  db,\n"
               f"{indent}  taskMetadata,\n"
+              f"{indent}  product.schema,\n"
               f"{indent}  rehydrateReplayValue(\n"
               f"{indent}    product.content,\n"
               f"{indent}    currentInput,\n"
@@ -53,46 +54,38 @@ jobs:
           PY
       - name: Build (strict TypeScript)
         run: npm run build
-      - name: Instrument Run B replay classification
+      - name: Instrument Development replay identity comparison
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('tests/factory-contract/golden-path.test.mjs')
           s = p.read_text()
           needle = "    assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);"
-          replacement = r'''    const runBRunIds = resultDb.prepare(
-              'SELECT id FROM factory_process_runs ORDER BY id LIMIT -1 OFFSET ?',
-            ).all(processRunsAfterA).map(row => row.id);
-            const runBExecutions = runBRunIds.length === 0 ? [] : resultDb.prepare(
-              `SELECT we.execution_id,we.task_id,we.state,we.exit_code,we.metadata,t.metadata AS task_metadata
-                 FROM worker_executions we JOIN tasks t ON t.id=we.task_id
-                WHERE CAST(json_extract(t.metadata,'$.process_run_id') AS INTEGER) IN (${runBRunIds.map(() => '?').join(',')})
-                ORDER BY we.rowid`,
-            ).all(...runBRunIds).map(row => {
-              const executionMeta = JSON.parse(row.metadata || '{}');
-              const taskMeta = JSON.parse(row.task_metadata || '{}');
-              const replay = executionMeta.execution_context?.replay || {};
-              const matchingCapsules = replay.key
-                ? resultDb.prepare('SELECT capsule_ref,source_execution_ref FROM factory_replay_capsules WHERE replay_key=? ORDER BY id').all(replay.key)
-                : [];
-              return {
-                executionId: row.execution_id,
-                taskId: row.task_id,
-                module: taskMeta.process_module_ref,
-                node: taskMeta.process_node_id,
-                cell: taskMeta.production_cell_id,
-                role: taskMeta.role,
-                workKey: taskMeta.work_key,
-                semanticInputDigest: taskMeta.semantic_input_digest,
-                state: row.state,
-                exitCode: row.exit_code,
-                replayKey: replay.key || null,
-                keyMaterial: replay.key_material || null,
-                frozenCapsuleRef: replay.capsule_ref || null,
-                matchingCapsules,
-              };
-            });
-            process.stderr.write(`RUN_B_REPLAY_CLASSIFICATION=${JSON.stringify(runBExecutions)}\n`);
+          replacement = r'''    const devCapsules = resultDb.prepare(`
+              SELECT id,replay_key,source_execution_ref,
+                     json_extract(payload_snapshot,'$.key.nodeId') AS nodeId,
+                     json_extract(payload_snapshot,'$.key.productionCellId') AS cellId,
+                     json_extract(payload_snapshot,'$.key.workKey') AS workKey,
+                     json_extract(payload_snapshot,'$.key.role') AS role,
+                     json_extract(payload_snapshot,'$.key.semanticInputDigest') AS semanticInputDigest,
+                     json_extract(payload_snapshot,'$.key.subjectProductionDigest') AS subjectProductionDigest
+                FROM factory_replay_capsules
+               WHERE json_extract(payload_snapshot,'$.key.moduleRef')='solution-development@1.0.0'
+               ORDER BY id
+            `).all();
+            const devExecutions = resultDb.prepare(`
+              SELECT we.execution_id,t.id AS taskId,t.metadata,we.metadata AS executionMetadata
+                FROM worker_executions we JOIN tasks t ON t.id=we.task_id
+               WHERE json_extract(t.metadata,'$.process_module_ref')='solution-development@1.0.0'
+               ORDER BY we.rowid
+            `).all().map(row => ({
+              executionId: row.execution_id,
+              taskId: row.taskId,
+              task: JSON.parse(row.metadata || '{}'),
+              replay: JSON.parse(row.executionMetadata || '{}').execution_context?.replay || null,
+            }));
+            process.stderr.write(`DEV_CAPSULES=${JSON.stringify(devCapsules)}\n`);
+            process.stderr.write(`DEV_EXECUTIONS=${JSON.stringify(devExecutions)}\n`);
             assertLifecycleOutcomes(resultDb, processRunsAfterA, runB.stderr);'''
           if needle not in s:
               raise SystemExit('diagnostic insertion point not found')
