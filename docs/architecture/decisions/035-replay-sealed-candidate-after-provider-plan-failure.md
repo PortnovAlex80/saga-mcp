@@ -96,6 +96,10 @@ incidents.
 
 - 2026-08-09: classified as complicated. Candidate, accepted submission,
   partial CheckReceipt, failed NodeRun and terminal envelopes were inspected.
+- Live-data clone preflight exposed that CandidateSet sealing uses a historical
+  `JSON.stringify` digest while the first recovery verifier used canonical JSON.
+  The verifier now reproduces the owner's byte algorithm exactly; extracting a
+  single shared domain digest function is recorded as required follow-up.
 - Compatibility aliasing was rejected because it preserves the exact legacy
   identity that caused the outage and makes audit statements ambiguous.
 - Author requeue was rejected because it mutates business output to repair a

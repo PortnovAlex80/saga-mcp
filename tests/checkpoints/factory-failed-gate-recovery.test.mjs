@@ -7,7 +7,6 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
-import { sha256Hex } from '../../dist/shared/canonical-json.js';
 import { recoverFailedGateRun } from '../../dist/app/factory-start.js';
 import { ensureFactoryLifecycleRunSchema } from '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import { ensureFactoryNodeRunSchema } from '../../dist/process-modules/persistence/sqlite-node-run-repository.js';
@@ -127,12 +126,12 @@ function fixture() {
         product_hash,payload_snapshot,payload_hash,node_id)
      VALUES (2,'bundle','architecture',?,?,?,'{}','payload','define-architecture-contract')`,
   ).run(product.schemaId, product.ref, product.digest);
-  const candidateDigest = sha256Hex({
+  const candidateDigest = hash(JSON.stringify({
     workplaceRef,
     executionRef,
     role: 'author',
     products: [product],
-  });
+  }));
   const candidate = new SqliteCandidateSetRepository(db).seal({
     workplaceRef: workplace,
     producerExecutionRef: executionRef,
