@@ -1,6 +1,6 @@
 ---
 name: saga-factory-qa
-description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, package/workspace resources, product contracts, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics, make workers guess contracts, or bypass the Conveyor Mental Model."
+description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, package/workspace resources, product contracts, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, parsers/validators, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics, make workers guess contracts or representation grammar, or bypass the Conveyor Mental Model."
 ---
 
 # Saga Factory QA — pre-commit architecture regression gate
@@ -10,8 +10,10 @@ description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run be
 You are the architectural regression firewall for Saga4.
 
 Your task is NOT merely to decide whether the changed feature works locally.
-You must prove that the candidate commit still obeys the common Factory physics
-and that a worker receives the exact contract it is expected to satisfy.
+You must prove that the candidate commit still obeys the common Factory physics,
+that a worker receives the exact contract it is expected to satisfy, and that
+runtime parsers/validators do not secretly require a representation grammar the
+worker was never given.
 
 The recurring failures this skill exists to prevent are:
 
@@ -33,6 +35,16 @@ Workshop declares output schema X
   -> happy-path test does not notice missing fields
 ```
 
+and:
+
+```text
+worker-visible contract permits representation A
+  -> parser silently assumes narrower representation B
+  -> semantically valid worker output parses as empty/invalid
+  -> worker_done is rejected repeatedly
+  -> system blames the model instead of the producer/consumer contract drift
+```
+
 The governing rule is:
 
 > ONE PRODUCTION INTERFACE, ONE MATERIAL, ONE DESK, ONE FACTORY RUNTIME.
@@ -40,6 +52,16 @@ The governing rule is:
 A second governing rule follows from it:
 
 > THE WORKER MUST NOT GUESS ITS PRODUCT CONTRACT.
+
+A third governing rule is equally mandatory:
+
+> THE WORKER MUST NOT GUESS A HIDDEN SERIALIZATION OR MARKUP GRAMMAR.
+
+A parser may be stricter than generic Markdown/YAML/JSON only when that stricter
+grammar is part of the canonical contract AND is delivered to the worker through
+the pinned WorkplaceDesk. Otherwise the parser must accept every representation
+that the delivered contract legitimately permits and canonicalize it before
+domain validation.
 
 The canonical architecture source is:
 
@@ -52,7 +74,7 @@ previous QA output, or the author's explanation.
 This skill is fail-closed:
 
 ```text
-PASS_TO_COMMIT = architecture and contract delivery proven
+PASS_TO_COMMIT = architecture, contract delivery and representation parity proven
 BLOCKED        = an invariant is violated
 NOT_PROVEN     = required evidence is missing; this also blocks commit
 ```
@@ -79,11 +101,21 @@ For every affected structured worker product also read:
 ```text
 - the concrete ProcessModuleDefinition / ExecutionProfileDefinition;
 - the concrete ProductContract / output schema declaration;
+- the semantic skill that tells the worker what to produce;
 - every declared workspaceTemplate / callTemplate / checklist used to describe it;
 - the module package resource index/manifest that pins those bytes;
 - the deterministic validator / CheckProvider that decides whether the product
-  satisfies the contract.
+  satisfies the contract;
+- every parser/canonicalizer used before that validator;
+- representative examples/templates if the parser relies on textual or markup
+  structure such as Markdown headings, fenced blocks, YAML list markers, field
+  order, indentation, quoting or separators.
 ```
+
+For every parser or textual-contract change, read the producer AND consumer
+sides even if only one side is in the diff. A regex is part of an executable
+consumer contract and therefore must be audited against the worker-visible
+producer contract.
 
 Then read changed implementations and sibling consumers.
 
@@ -131,6 +163,7 @@ Production Cells
 execution profiles / semantic skills
 worker-visible templates/checklists/instructions
 product schemas/contracts
+representation grammar when a narrow grammar is genuinely required
 CheckPlans and deterministic domain validators
 policies and invariants
 bounded recovery policy
@@ -267,8 +300,9 @@ Factory Start / current ProcessRun
        -> recovery/review feedback when applicable
        -> RepositoryDesk when git-changing
   -> fenced WorkerExecution
-  -> common product_read / product_submit / execution_complete protocol
+  -> common product_read / product_submit / worker_done protocol
   -> immutable CandidateSet
+  -> representation parser/canonicalizer when applicable
   -> deterministic CheckPlan / validator over exact CandidateSet
   -> current GateRun
   -> append-only GateDecision
@@ -287,7 +321,8 @@ If one hop is unknown, verdict for that invariant is `NOT_PROVEN`.
 # Contract-on-Desk invariant
 
 A schema id is not a usable worker contract by itself.
-For every structured worker product prove BOTH channels:
+For every structured worker product prove THREE channels when textual parsing is
+involved, otherwise prove the first two:
 
 ```text
 GUIDANCE CHANNEL
@@ -298,15 +333,23 @@ canonical contract declaration
   -> exact WorkplaceDesk
   -> worker is explicitly told where/how to read it
 
+REPRESENTATION CHANNEL
+canonical semantic contract
+  -> allowed textual/serialization representations
+  -> any intentionally narrow grammar is explicitly worker-visible
+  -> parser/canonicalizer accepts exactly that declared language
+  -> canonical structure is produced
+
 AUTHORITY CHANNEL
-submitted CandidateSet
-  -> deterministic validator / CheckProvider
+submitted CandidateSet / produced artifact
+  -> deterministic validator / CheckProvider over canonical meaning
   -> current GateDecision
 ```
 
-The guidance channel helps the model produce the right shape.
-The authority channel prevents an incomplete/wrong shape from being accepted.
-Neither substitutes for the other.
+The guidance channel helps the model produce the right meaning and shape.
+The representation channel guarantees the consumer does not invent hidden
+syntax. The authority channel prevents incomplete/wrong meaning from being
+accepted. None substitutes for another.
 
 A raw invalid `product_submit` row MAY exist as worker production/audit material.
 That is not itself an architecture defect. The hard invariant is:
@@ -314,7 +357,45 @@ That is not itself an architecture defect. The hard invariant is:
 > malformed or incomplete production must be unable to obtain final acceptance.
 
 A template is guidance, not authority. A validator/CheckProvider is authority,
-not worker guidance.
+not worker guidance. A parser is neither semantic guidance nor acceptance
+authority: it is a representation boundary and must not silently redefine the
+contract.
+
+---
+
+# Representation Contract invariant
+
+For every human-readable worker artifact that is later parsed by code, define
+which of these two modes applies:
+
+```text
+MODE 1 — NORMATIVE GRAMMAR
+There is exactly one intentionally strict representation grammar.
+The canonical contract declares it, pinned worker guidance shows it exactly,
+and the parser rejects deviations consistently.
+
+MODE 2 — SEMANTIC CONTRACT WITH MULTIPLE REPRESENTATIONS
+The contract defines semantic fields/sections but does not mandate one exact
+markup serialization. The parser must accept all representations legitimately
+allowed by the delivered contract and canonicalize them before validation.
+```
+
+FAIL if the implementation is accidentally between the modes, for example:
+
+```text
+skill says "each D2 row must include ac, module, pattern..."
+parser secretly requires fenced YAML
+parser secretly requires "- ac:" instead of "ac:"
+parser treats a nested Markdown subsection as end of the parent section
+```
+
+Do not fix such drift automatically by making the parser maximally permissive.
+First determine the intended contract:
+
+```text
+if syntax is semantically important -> make it canonical + pinned + explicit
+if syntax is only representation     -> canonicalize equivalent forms
+```
 
 ---
 
@@ -328,7 +409,9 @@ not worker guidance.
 4. Read enough surrounding code to reconstruct control/data flow.
 5. Follow delegation into shared infrastructure.
 6. Search outside the diff for sibling implementations of the same concept.
-7. For changed product/schema/template code, trace both Contract-on-Desk channels.
+7. For changed product/schema/template code, trace all applicable Contract-on-Desk channels.
+8. For parser/validator changes, inspect the producer skill/template and enumerate every syntactic assumption enforced by code.
+9. For repeated worker_done/submission failures, inspect the exact validation error path before attributing failure to model behavior.
 
 Classify changed files:
 
@@ -343,6 +426,7 @@ Workplace
 RepositoryDesk
 WorkerExecution
 Product/material
+Representation parser/canonicalizer
 CandidateSet
 Check/Gate
 Review
@@ -373,7 +457,9 @@ For structured worker output add a Contract-on-Desk row containing:
 output schema
 worker-visible resource(s)
 materializer path
+representation mode + parser/canonicalizer when applicable
 validator/CheckProvider
+positive compatible-representation probe when applicable
 negative malformed-product test
 ```
 
@@ -493,22 +579,38 @@ or equivalent visible to the worker so the worker knows what to read/use.
 
 If this cannot be reconstructed, `NOT_PROVEN`.
 
-### QA-B07 — template and authority contract do not drift
+### QA-B07 — template, skill, canonical contract and authority do not drift
 
-Compare worker-visible template/schema content with the deterministic validator.
-At minimum check:
+Compare ALL producer/consumer contract surfaces, not only template vs validator:
 
 ```text
-schema id/version
+semantic skill
+canonical schema/contract constant
+worker-visible template/example/checklist
+parser/canonicalizer
+submission validator
+CheckProvider / Gate authority
+reviewer contract when applicable
+```
+
+At minimum compare:
+
+```text
+schema id/version/digest
 required top-level fields
 required nested fields
 allowed enums
 identity/binding fields
-evidence/source-reference requirements where applicable
+evidence/source-reference requirements
+cardinality/multiplicity
+representation constraints when textual parsing is involved
 ```
 
-A template that omits validator-required fields is FAIL even if happy-path tests
-currently pass.
+Any unexplained disagreement is FAIL. A permissive validator is also drift when
+the canonical producer contract forbids values. Example: if the skill permits
+only `implementation|verification` but the canonical enum still permits
+`spike|merge_with`, QA must report contract drift rather than treating the
+superset as harmless.
 
 ### QA-B08 — validator is deterministic and Gate-owned
 
@@ -572,7 +674,10 @@ Required reasoning is:
 profile declares exact resource
   -> pinned package contains exact bytes
   -> generic materializer exposes it to this worker
-  -> template matches validator contract
+  -> worker is told to use/read it
+  -> skill/template/canonical contract agree
+  -> parser accepts the declared representation language
+  -> validator checks the canonical meaning
   -> malformed candidate is rejected by current Gate
 ```
 
@@ -798,6 +903,194 @@ corrupt required data and prove current Gate authority refuses final acceptance.
 
 ---
 
+## J. Representation grammar / parser compatibility
+
+This section is mandatory whenever worker-produced text, Markdown, YAML, JSON,
+XML, code blocks, section headings or another human-readable representation is
+parsed by deterministic code.
+
+### QA-J01 — representation mode is explicit
+
+Classify the product as `NORMATIVE_GRAMMAR` or `MULTI_REPRESENTATION_SEMANTIC`.
+If neither can be proven from canonical contract + worker guidance, `NOT_PROVEN`.
+
+### QA-J02 — every parser constraint has contract provenance
+
+Enumerate syntactic assumptions actually enforced by parser code, including as
+applicable:
+
+```text
+heading text and heading level
+section boundary rules
+fenced block required/optional
+fence language tag
+list marker such as "- ac:"
+indentation
+field ordering
+field spelling/case
+quoting
+separator characters
+blank-line behavior
+nested subsection behavior
+multiple code-block behavior
+comments
+cardinality/multiplicity
+```
+
+For EACH assumption provide one provenance:
+
+```text
+canonical contract explicitly requires it
+AND pinned worker-visible guidance delivers it
+```
+
+or prove the parser does not require it.
+
+A regex implementation detail is NOT contract provenance.
+An example file that is not pinned to the worker is NOT contract provenance.
+A comment saying "LLMs usually write X" is NOT contract provenance.
+
+Any hidden syntactic requirement is FAIL.
+
+### QA-J03 — producer and consumer languages are equal
+
+Let `L_worker` be the set of representations permitted by the actual pinned
+skill/template/checklist the worker receives, and `L_parser` the set accepted by
+the parser.
+
+PASS requires:
+
+```text
+NORMATIVE_GRAMMAR:
+  L_worker == L_parser == canonical grammar
+
+MULTI_REPRESENTATION_SEMANTIC:
+  L_worker subset-or-equal L_parser
+```
+
+FAIL when there exists a representation the worker is allowed to produce but
+the parser rejects before semantic validation.
+
+### QA-J04 — equivalent representations canonicalize equivalently
+
+For multi-representation contracts require a positive compatibility proof with
+at least two semantically equivalent representations when two are legitimately
+allowed. They must produce the same canonical meaning and the same validation
+outcome.
+
+Examples when applicable:
+
+```text
+fenced YAML list item: "- ac: AC-1"
+subsection form:       "### AC-1" + "ac: AC-1"
+```
+
+Do NOT invent a second allowed form only to satisfy this test. If the grammar is
+normative and singular, prove the worker receives that exact grammar instead.
+
+### QA-J05 — hierarchical section boundaries are structurally correct
+
+When parsing Markdown-like documents, a section must not terminate merely
+because a deeper nested subsection appears. Boundary detection must respect the
+current heading level unless the canonical grammar explicitly says otherwise.
+
+Require regression probes for:
+
+```text
+same-level next section
+shallower next section
+deeper nested subsection
+end-of-document
+```
+
+### QA-J06 — mixed-content sections do not shadow valid content
+
+If raw section text and fenced blocks can coexist, prove a non-authoritative
+incidental fenced block cannot cause the parser to ignore the actual canonical
+stanzas/fields elsewhere in the same section.
+
+A parser of the form:
+
+```text
+if any code block exists -> parse only the first code block
+else -> parse raw section
+```
+
+is `NOT_PROVEN` or FAIL unless the contract guarantees that behavior is correct.
+
+### QA-J07 — canonicalize representation before domain validation
+
+Prefer and prove the separation:
+
+```text
+raw representation
+  -> parser/canonicalizer
+  -> canonical semantic structure
+  -> domain validator
+```
+
+The domain validator should not accidentally encode arbitrary Markdown/YAML
+presentation choices as business/domain requirements.
+
+If parsing and domain validation are intentionally combined, QA must still map
+every representation constraint to canonical contract provenance.
+
+### QA-J08 — field/enum drift is checked across all surfaces
+
+Compare semantic skill, canonical contract, parser, validator and reviewer.
+A producer restriction that the validator silently broadens is drift; a parser
+restriction that the producer never received is drift; a template field missing
+from the canonical contract is drift.
+
+### QA-J09 — submission rejection is actionable and retry-safe
+
+When representation parsing fails at `worker_done`/submission validation, the
+worker must receive a concrete error identifying the rejected contract element
+and remain able to repair the same execution/workplace according to policy.
+
+Repeated identical rejection caused by hidden parser grammar is a Factory defect,
+not evidence that the model is incapable of following instructions.
+
+### QA-J10 — no model-blame conclusion without boundary proof
+
+Before concluding "the model failed to call worker_done", "the model ignored the
+contract", "the model chose a wrong format", or equivalent, inspect and record:
+
+```text
+actual pinned prompt/skill/template delivered
+actual allowed tools
+actual worker_done/tool attempts if observable
+exact submission-validation errors
+parser/canonicalizer behavior on produced bytes
+Gate/receipt/recovery path
+```
+
+If the worker attempted the required protocol and the runtime rejected a
+representation allowed by its delivered contract, classify the root cause as
+producer/consumer contract drift or parser defect, not model behavior.
+
+### QA-J11 — parser changes require permanent regression tests
+
+A parser/representation fix is NOT proven by testing only the observed failing
+sample. Add or identify durable tests that falsify the relevant hidden assumption.
+
+For sectioned Markdown/YAML-like products, include applicable cases such as:
+
+```text
+canonical fenced form
+canonical raw/subsection form when allowed
+nested headings
+a same-level following section
+a shallower following section
+mixed raw text + incidental fenced block
+both "- key:" and "key:" only when both are contract-allowed
+malformed/missing required semantic fields -> rejected
+```
+
+A parser fix without tests for the failure class is `NOT_PROVEN`.
+
+---
+
 # Local-exception detector
 
 For every architectural diff search affected concepts together with:
@@ -819,6 +1112,12 @@ Checklist
 Schema
 OutputSchema
 ProductContract
+Parser
+Canonicalizer
+Regex
+Markdown
+YAML
+JSON
 Recovery
 Replay
 Gate
@@ -843,7 +1142,10 @@ Then ask:
 4. If yes, why is it not behind the common interface?
 5. Can a new Workshop obtain it by declaration only?
 6. Does the worker receive the exact product contract, or is it expected to guess?
-7. Is the worker-visible template actually consistent with the Gate validator?
+7. Is the worker-visible template/skill consistent with the canonical contract and Gate validator?
+8. Does the parser enforce any syntax that is absent from worker-visible pinned guidance?
+9. Can two semantically equivalent allowed representations produce different parser/validator outcomes?
+10. If a model is blamed, has the runtime boundary actually been disproven as the cause?
 
 If adding a normal Workshop requires copying this code, FAIL.
 
@@ -855,7 +1157,8 @@ If adding a normal Workshop requires copying this code, FAIL.
 |---|---|
 | Workshop/base contract | changed Workshop + one sibling enter through same `ProcessModuleDefinition`/Flow contract; no parallel runtime |
 | Production Cell definition/runtime | Formalization + Development trace into same `ProductionCellNodeExecutor` and Factory persistence |
-| output schema / call template / checklist | declaration -> pinned package -> profile -> generic desk materializer -> worker-visible path -> deterministic validator; malformed product must not be accepted |
+| output schema / call template / checklist | declaration -> pinned package -> profile -> generic desk materializer -> worker-visible path -> canonical contract -> deterministic validator; malformed product must not be accepted |
+| parser / canonicalizer / textual contract | worker-visible grammar -> parser constraint provenance -> positive compatible-representation probe(s) -> canonical structure -> validator; no hidden syntax |
 | workspace/package materialization | Discovery readiness + one Formalization/Development structured worker use same projection/materializer path and see only declared pinned contract resources |
 | review/Gate repair routing | accepted review + author repair + reviewer repair + retry on same Workplace |
 | recovery feedback | exact GateDecision/CheckReceipt/CandidateSet projection + stale clearing + Formalization/Development parity |
@@ -912,8 +1215,10 @@ Flow outputSchema: <...>
 ProductionCell product contract: <...>
 ExecutionProfile outputSchema: <...>
 WorkIntent output schema: <...>
+Canonical contract/version/digest: <...>
 
 Worker guidance:
+semantic skill: <path + relevant rule>
 resource: <template/schema/checklist path>
 resource index entry + digest: <...>
 pinned installation/package digest: <...>
@@ -921,10 +1226,24 @@ WorkspaceProjection: <function/path>
 WorkplaceDesk materialized path: <...>
 worker-visible pointer: <callFiles/workspaceFiles/checklists/assistance/etc>
 
+Representation:
+mode: NORMATIVE_GRAMMAR / MULTI_REPRESENTATION_SEMANTIC / N/A
+parser/canonicalizer: <file/function>
+parser constraints: <heading/fence/list-marker/indent/etc or N/A>
+constraint provenance: <canonical rule + pinned worker-visible rule>
+positive representation compatibility probe: PASS/FAIL/NOT_PROVEN/N/A
+canonical structure produced: <...>
+
 Authority:
 validator/CheckProvider: <file/function/provider id>
 required fields/enums/bindings checked: <...>
 negative malformed candidate probe: PASS/FAIL/NOT_PROVEN
+
+Cross-surface drift:
+skill vs canonical contract: PASS/FAIL/NOT_PROVEN
+contract vs parser: PASS/FAIL/NOT_PROVEN/N/A
+contract vs validator: PASS/FAIL/NOT_PROVEN
+reviewer vs contract: PASS/FAIL/NOT_PROVEN/N/A
 
 Verdict: PASS/FAIL/NOT_PROVEN
 ```
@@ -935,6 +1254,12 @@ references it, the pinned package contains it, the generic materializer exposes
 it on the current desk, and the readiness validator rejects missing
 `proposal_id`, proposal hash, required dimensions, next action, confidence,
 rationale, or malformed evidence references according to its contract.
+
+Likewise, a Markdown SRS is NOT proven merely because the semantic fields are
+listed in the architect skill. If a deterministic parser later requires fenced
+YAML, a specific heading level, a `- ac:` prefix or another syntax choice, QA
+must prove that exact grammar is canonical and pinned to the worker, or prove
+that all contract-allowed equivalent representations canonicalize correctly.
 
 ---
 
@@ -952,6 +1277,7 @@ Reason:
 architecture invariant
   -> production path inspected
   -> sibling path compared
+  -> producer/consumer language compared
   -> falsifying test selected
   -> test green
 ```
@@ -963,7 +1289,12 @@ Prefer permanent architecture ratchets that fail if someone later:
 - creates a second Workshop/ProductionCell interface;
 - forgets to declare/pin/materialize an output contract resource;
 - leaves a worker with only a schema id and no usable contract shape;
+- lets a semantic skill drift from the canonical contract enums/fields;
 - lets a call template drift from its deterministic validator;
+- lets a parser require syntax that is not in the pinned worker contract;
+- lets nested Markdown headings truncate a parent semantic section;
+- lets an incidental fenced block shadow valid raw structured content;
+- accepts one representation and rejects an equivalent contract-allowed representation;
 - accepts a malformed structured candidate because only the happy path was tested;
 - always routes reviewer repair to author;
 - bypasses reviewer verdict in Development Gate;
@@ -976,7 +1307,7 @@ Prefer permanent architecture ratchets that fail if someone later:
 
 # Findings severity
 
-## BLOCKER — architecture violation
+## BLOCKER — architecture or contract violation
 
 Examples:
 
@@ -984,8 +1315,11 @@ Examples:
 second Factory/Workshop/ProductionCell runtime
 Workshop-specific recovery or workspace materialization physics
 worker must guess required product fields
+worker must guess hidden parser/serialization grammar
 contract template exists but is not delivered through pinned WorkplaceDesk
-worker-visible template and Gate validator disagree
+worker-visible skill/template and canonical contract disagree
+canonical contract and validator enums/required fields disagree
+parser accepts a narrower language than the worker-visible contract permits
 malformed product can receive final acceptance
 direct authority mutation from worker/test code
 shared mutable RepositoryDesk for parallel workers
@@ -1004,10 +1338,14 @@ Examples:
 generic recovery changed but only Discovery tested
 workspace materializer changed but only one Workshop inspected
 output contract changed without malformed-product negative test
+parser changed without producer-contract inspection
+parser changed without positive compatible-representation test where multiple forms are allowed
+text section parser changed without nested/same-level boundary tests
 Git desk changed but only concurrency=1 tested
 replay changed without Run A/Run B proof
 common base-interface path cannot be reconstructed
 worker-visible contract path cannot be reconstructed
+model blamed without inspecting actual worker_done/submission/parser path
 ```
 
 Verdict: `NOT_PROVEN`.
@@ -1048,10 +1386,15 @@ Canonical path proof:
 Contract-on-Desk proof:
 <one block per affected structured product>
 
+Representation-contract proof:
+<representation mode, parser constraints + provenance, equivalence probes,
+canonicalization path, producer/consumer language verdict>
+
 Checklist:
 BI-01 PASS — ...
 QA-A01 PASS — ...
 QA-B01 PASS — ...
+QA-J01 PASS — ...
 ...
 Only genuinely inapplicable items may be N/A, with reason.
 
@@ -1078,6 +1421,8 @@ YES only when Final verdict = PASS_TO_COMMIT.
 Do not soften the verdict.
 Do not write "mostly passes".
 Do not convert missing evidence into optimism.
+Do not attribute a protocol/format failure to the model before producer/consumer
+contract parity has been proven.
 
 ---
 
@@ -1097,7 +1442,14 @@ Do not convert missing evidence into optimism.
 [ ] The pinned package/resource digest is proven.
 [ ] The generic materializer puts the resource on the current WorkplaceDesk.
 [ ] The worker is explicitly pointed to that file/resource.
-[ ] The worker-visible template/schema matches the deterministic validator.
+[ ] Semantic skill, canonical contract, template and validator agree on fields/enums.
+[ ] For every textual parser I classified the representation mode.
+[ ] Every parser syntactic constraint has canonical + pinned worker-visible provenance.
+[ ] The parser accepts every representation the delivered worker contract permits.
+[ ] Equivalent allowed representations canonicalize to equivalent meaning.
+[ ] Section-boundary parsing is proven against nested/same/shallow headings where applicable.
+[ ] Mixed raw/fenced content cannot silently shadow valid contract content where applicable.
+[ ] Parser changes have permanent regression tests for the failure class.
 [ ] A malformed/incomplete candidate is proven unable to obtain final acceptance.
 [ ] Workplace remains durable; WorkerExecution remains an attempt.
 [ ] RepositoryDesk remains Factory-owned and isolated.
@@ -1108,6 +1460,7 @@ Do not convert missing evidence into optimism.
 [ ] Replay substitutes production only and reruns current authority.
 [ ] Checks remain checks; Effects remain authorized mutations.
 [ ] Scripted/test workers use the same physical boundary as production workers.
+[ ] If the model was blamed, I inspected the actual prompt/tools/submission/parser path first.
 [ ] Every triggered Risk Matrix proof was actually provided.
 [ ] No NOT_PROVEN item remains.
 ```
