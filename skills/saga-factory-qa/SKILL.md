@@ -136,10 +136,12 @@ src/replay/replay-capsule.ts
 src/infrastructure/work/sqlite-work-assignment-adapter.ts
 src/infrastructure/work/worker-supervision-service.ts
 src/infrastructure/workers/claude-board-worker-executor.ts
+src/infrastructure/persistence/sqlite-factory-runtime-repositories.ts
 src/application/conveyor-runtime.ts
 src/lifecycle/atomic-release.ts
 src/lifecycle/work-assignment-core.ts
 scripts/factory.mjs
+tests/factory-contract/recovery-replay-continuity.test.mjs
 and every bootstrap/reset/smoke script used as evidence
 ```
 
@@ -498,6 +500,12 @@ business input. A flag value such as model name, sandbox name, concurrency or
 DB path must never become part of `initiative.subject`, `semanticInputDigest`,
 or another replay-semantic field merely because of argv slicing.
 
+Stabilizing an operator field at one entrypoint is NOT sufficient proof that it
+is non-semantic. If `initiatedBy` or another provenance field reaches a stage
+input, the semantic-digest canonicalization boundary itself must exclude it (or
+an explicit product contract must prove that it is semantic). QA must inspect
+the code that computes `semanticInputDigest`, not only the CLI/start facade.
+
 A replay miss is not diagnosable from `capsule_ref=null` alone. QA requires a
 component-wise comparison of ReplayKey material between expected source capsule
 and current claim:
@@ -534,6 +542,12 @@ also updates Workplace authority. Close callbacks, startup supervision/reaper,
 lease expiry and explicit recovery must converge through one semantic recovery
 use case or prove byte-for-byte equivalent atomic effects.
 
+The WorkerExecution terminalization, Workplace crash transition and task fence /
+reverse projection should commit as one DB atomic unit. If an implementation
+splits them across transactions, QA requires a crash-between-steps recovery test
+that proves deterministic convergence before a replacement can be claimed;
+otherwise the result is `NOT_PROVEN`.
+
 A replacement claim MUST NOT be allowed to run under a Workplace whose
 `activeReservationRef` still points to a terminal/lost execution. Treating an
 already `running` Workplace as an idempotent no-op when the reservation differs
@@ -556,6 +570,7 @@ is not recovery.
 9. For repeated worker_done/submission failures, inspect the exact validation error path before attributing failure to model behavior.
 10. For replay/start/resume changes, trace the actual operator entrypoint through claim-time replay binding and prove persistence is preserved.
 11. For crash/reaper changes, compare controlled close recovery with startup supervision recovery at WorkerExecution + Workplace + task authority boundaries.
+12. Distinguish architecture/source ratchets from behavioral proofs. A regex/source assertion may prevent accidental deletion but cannot by itself prove runtime crash/replay semantics.
 
 Classify changed files:
 
@@ -621,6 +636,7 @@ capsule persistence location
 ReplayKey material diff proof
 worker invocation count
 crash-reaper Workplace transition proof when applicable
+behavioral runtime proof vs source-only ratchet
 ```
 
 ## Phase 2 — explicit checklist
@@ -962,10 +978,13 @@ A dead/lost/terminated execution that owned a Workplace must cause the declared
 `running|leased -> repair_wait` (or equivalent) domain transition and clear the
 stale reservation before replacement claim. Releasing only the task fence is FAIL.
 
-### QA-E20 — recovery paths converge
+### QA-E20 — recovery paths converge atomically
 Controlled process-close recovery, startup supervision/reaper, lease expiry and
 explicit crash recovery must call the same semantic recovery use case or prove
 identical atomic effects across WorkerExecution + Workplace + task projection.
+The normal proof is one outer transaction (nested savepoints are acceptable).
+If the implementation uses separate transactions, a deterministic crash-between-
+steps test is mandatory; source comments or eventual-retry intuition are not proof.
 
 ### QA-E21 — replacement reservation is fresh and authoritative
 A replacement execution must be able to install its own reservation in the
@@ -990,6 +1009,8 @@ provenance unless genuinely semantic.
 Audit hash with current-run refs is not automatically replay semantic digest.
 Operator provenance such as `initiatedBy`, launch/order refs and idempotency keys
 must not alter replay identity unless a product contract proves semantic meaning.
+QA must inspect the semantic canonicalizer/digest computation itself. Merely
+making `initiatedBy` a stable constant in one CLI entrypoint is insufficient.
 
 ### QA-F05 — reviewer replay has split identity
 QC uses current CandidateSetRef; replay equivalence uses semantic author production.
@@ -1128,6 +1149,10 @@ corrupt required data and prove current Gate authority refuses final acceptance.
 To prove recovery, kill/terminate the host or worker process while preserving the
 DB and repository state, then invoke canonical resume. Do not reset persistence.
 Assert completed stages are unchanged and only unfinished authority is recovered.
+Also assert the lost execution becomes terminal, Workplace enters repair_wait or
+the declared exhausted state, stale reservation is cleared, and the replacement
+execution can complete without a fence mismatch. Source-text/regex ratchets are
+useful guards but DO NOT satisfy this behavioral proof by themselves.
 
 ### QA-I08 — replay probe counts physical inference invocations
 For canonical Run A/Run B, record actual model/CLI spawn or provider invocation
@@ -1395,6 +1420,8 @@ Then ask:
 13. On host/worker death, who clears the Workplace active reservation and moves loop state to repair?
 14. Do close-callback and startup-reaper recovery have identical authority effects?
 15. Does same-run resume reuse completed StageRun/ProcessRun records rather than rebuilding them?
+16. Is the semantic replay canonicalizer itself free of operator/runtime provenance, independent of entrypoint constants?
+17. Is crash/recovery behavior proven by executing the state transition, not only by matching source text?
 
 If adding a normal Workshop requires copying this code, FAIL.
 
@@ -1411,9 +1438,9 @@ If adding a normal Workshop requires copying this code, FAIL.
 | workspace/package materialization | Discovery readiness + one Formalization/Development structured worker use same projection/materializer path and see only declared pinned contract resources |
 | review/Gate repair routing | accepted review + author repair + reviewer repair + retry on same Workplace |
 | recovery feedback | exact GateDecision/CheckReceipt/CandidateSet projection + stale clearing + Formalization/Development parity |
-| crash/reaper/supervision | controlled close + killed worker + killed host; each clears stale Workplace reservation, reaches repair/requeue under same policy, and replacement completion passes fence |
+| crash/reaper/supervision | controlled close + killed worker + killed host; each clears stale Workplace reservation, reaches repair/requeue under same policy, and replacement completion passes fence; source ratchet alone is insufficient |
 | RepositoryDesk/Git | >=2 concurrent git-changing work items, isolated desks, stable source branches, both integrations governed by Effect |
-| replay key/semantic identity | same-DB same-Project Run A + intentional new-start Run B; component-wise ReplayKey equality for expected hits; zero inference calls on hits |
+| replay key/semantic identity | same-DB same-Project Run A + intentional new-start Run B; component-wise ReplayKey equality for expected hits; zero inference calls on hits; provenance excluded at semantic digest boundary |
 | factory start/bootstrap/reset | prove Run B does not delete/recreate DB, Project or capsule archive; prove CLI control flags do not enter business semantic input |
 | replay product rebinding | old authority refs are not current; current refs are rebound |
 | lifecycle start/resume | new start creates new run; resume preserves same run; completed StageRun/ProcessRun results are reused directly |
@@ -1528,12 +1555,14 @@ LifecycleRun identity before/after: <same/new as required>
 Completed StageRun/ProcessRun reuse: <refs + no-inference evidence>
 Capsule store preserved: PASS/FAIL/N/A
 ReplayKey source/current components: <component table or N/A>
+Semantic canonicalizer provenance exclusions: <evidence or N/A>
 Physical inference calls: <count>
 Workplace before crash: <loop/kanban/reservation>
 WorkerExecution after reaper: <terminal state>
 Workplace after reaper: <loop/kanban/reservation>
 Replacement reservation: <new execution ref>
 Replacement worker_done/gate: PASS/FAIL/NOT_PROVEN
+Behavioral proof: <test/run evidence; source-only ratchet is not sufficient>
 Verdict: PASS/FAIL/NOT_PROVEN
 ```
 
@@ -1555,8 +1584,9 @@ architecture invariant
   -> sibling path compared
   -> producer/consumer language compared
   -> continuity identity checked where relevant
-  -> falsifying test selected
-  -> test green
+  -> falsifying behavioral test selected
+  -> architecture ratchet confirms the path cannot silently disappear
+  -> tests green
 ```
 
 Prefer permanent architecture ratchets that fail if someone later:
@@ -1585,6 +1615,10 @@ Prefer permanent architecture ratchets that fail if someone later:
 - lets a replacement worker run without replacing the authoritative Workplace reservation;
 - reruns completed same-run stages after a pure host crash;
 - lets scripted scenarios mutate Factory authority directly.
+
+A source-level ratchet is not a substitute for runtime evidence when the claim is
+about crash ordering, transaction atomicity, process death, replay hits, model
+spawn suppression, fences or persisted state transitions.
 
 ---
 
@@ -1633,7 +1667,9 @@ text section parser changed without nested/same-level boundary tests
 Git desk changed but only concurrency=1 tested
 replay changed without SAME-DB SAME-PROJECT Run A/Run B proof
 replay miss reported without ReplayKey component comparison
-crash recovery claimed without killing a real worker/host and inspecting Workplace reservation
+semantic replay fix proves only a stable CLI initiatedBy but not exclusion at digest boundary
+crash recovery claimed from source regex assertions without executing killed-worker/host recovery
+crash recovery claimed without inspecting Workplace reservation after reaper
 resume claimed without proving completed StageRun/ProcessRun reuse and zero inference for them
 common base-interface path cannot be reconstructed
 worker-visible contract path cannot be reconstructed
@@ -1684,7 +1720,8 @@ canonicalization path, producer/consumer language verdict>
 
 Continuity proof:
 <resume/new-start/replay/crash identity, capsule persistence, ReplayKey diff,
-Workplace reservation transition and physical inference-count evidence>
+semantic canonicalizer evidence, Workplace reservation transition, behavioral
+runtime proof and physical inference-count evidence>
 
 Checklist:
 BI-01 PASS — ...
@@ -1725,6 +1762,7 @@ contract parity has been proven.
 Do not call a clean-DB second run replay.
 Do not call task release crash recovery until Workplace authority and reservation
 state have also been proven coherent.
+Do not call a source-text ratchet a behavioral recovery/replay proof.
 
 ---
 
@@ -1761,6 +1799,7 @@ state have also been proven coherent.
 [ ] Every crash/reaper path clears stale Workplace reservation and reaches repair/requeue coherently.
 [ ] A replacement execution owns a fresh authoritative Workplace reservation.
 [ ] Controlled-close and startup-reaper recovery converge on the same semantic effects.
+[ ] Crash recovery state changes are atomic, or crash-between-steps convergence is behaviorally proven.
 [ ] Reviewer repair can target reviewer; author defects can target author.
 [ ] Same-run resume reuses durably completed StageRun/ProcessRun results directly.
 [ ] Same-run host crash resumes at the unfinished authority boundary, not from Discovery.
@@ -1768,8 +1807,10 @@ state have also been proven coherent.
 [ ] Canonical replay proof uses SAME DB + SAME Project across Run A and Run B.
 [ ] Run B does not delete/reset/copy capsules or authority tables.
 [ ] ReplayKey expected hits were compared component-by-component.
-[ ] Operator provenance and CLI control values do not contaminate semantic replay identity.
+[ ] Operator provenance is excluded at the semantic-digest boundary, not merely stabilized in one entrypoint.
+[ ] CLI control values do not contaminate semantic replay identity.
 [ ] Physical inference count is zero for compatible replay hits.
+[ ] Crash/replay claims have behavioral runtime proof; source ratchets are supplemental only.
 [ ] Checks remain checks; Effects remain authorized mutations.
 [ ] Scripted/test workers use the same physical boundary as production workers.
 [ ] If the model was blamed, I inspected the actual prompt/tools/submission/parser path first.
