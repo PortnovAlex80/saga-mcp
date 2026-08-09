@@ -54,6 +54,14 @@ jobs:
           if old_role not in s:
               raise SystemExit('Production Cell recovery role narrowing point not found')
           p.write_text(s.replace(old_role, new_role, 1))
+
+          p = Path('tests/factory-contract/production-cell-recovery-feedback.test.mjs')
+          s = p.read_text()
+          old_schema = "      project_repository_id INTEGER\n    );"
+          new_schema = "      project_repository_id INTEGER,\n      updated_at TEXT\n    );"
+          if old_schema not in s:
+              raise SystemExit('repair-feedback fixture tasks schema point not found')
+          p.write_text(s.replace(old_schema, new_schema, 1))
           PY
       - name: Architecture ratchet
         run: |
