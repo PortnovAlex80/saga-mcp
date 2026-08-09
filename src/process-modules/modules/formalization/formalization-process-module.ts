@@ -32,10 +32,13 @@ export { FORMALIZATION_PROCESS_MODULE_REF };
 
 const ROOT = 'src/process-modules/modules/formalization/package/resources';
 const TRACKER = `${ROOT}/process-module-stage-tracker.md`;
+const REVIEWER_TRACKER = `${ROOT}/formalization-reviewer-tracker.md`;
 const ARTIFACT_CALL = `${ROOT}/artifact-create-call-template.json`;
 const TRACE_CALL = `${ROOT}/trace-add-call-template.json`;
 const DONE_CALL = `${ROOT}/worker-done-call-template.json`;
+const REVIEW_VERDICT_CALL = `${ROOT}/review-verdict-call-template.json`;
 const CHECKLIST = `${ROOT}/formalization-node-checklist.md`;
+const REVIEWER_CHECKLIST = `${ROOT}/formalization-reviewer-checklist.md`;
 const RECONCILIATION_CALL = `${ROOT}/reconciliation-product-call-template.json`;
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
@@ -352,10 +355,10 @@ function reviewerProfile(
     artifactAcceptanceAuthority: 'kernel-gate' as const,
     executionMode: 'tracker_only' as const,
     allowedTools: REVIEW_TOOLS,
-    trackerTemplate: TRACKER,
-    workspaceTemplates: [CHECKLIST],
-    callTemplates: [],
-    checklists: [CHECKLIST],
+    trackerTemplate: REVIEWER_TRACKER,
+    workspaceTemplates: [REVIEW_VERDICT_CALL, DONE_CALL, REVIEWER_CHECKLIST],
+    callTemplates: [REVIEW_VERDICT_CALL, DONE_CALL],
+    checklists: [REVIEWER_CHECKLIST],
     outputSchema: { id: FACTORY_REVIEW_VERDICT_SCHEMA },
     retryPolicy: { maxAttempts: 2, retryOn: ['gate-repair'], backoff: 'none' as const },
     recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' as const },

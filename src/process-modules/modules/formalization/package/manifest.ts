@@ -132,6 +132,10 @@ const RESOURCE_PATHS = {
   traceAddCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/trace-add-call-template.json`,
   workerDoneCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/worker-done-call-template.json`,
   reconciliationProductCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/reconciliation-product-call-template.json`,
+  // Reviewer-specific call template + checklist + tracker (role-contract parity).
+  reviewVerdictCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/review-verdict-call-template.json`,
+  reviewerChecklist: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/formalization-reviewer-checklist.md`,
+  reviewerTracker: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/formalization-reviewer-tracker.md`,
   // Per-node checklist + stage tracker pinned by every execution profile.
   nodeChecklist: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/formalization-node-checklist.md`,
   stageTracker: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/process-module-stage-tracker.md`,
@@ -215,6 +219,25 @@ export const FORMALIZATION_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     logicalId: 'formalization.template.reconciliation-product-call',
     path: RESOURCE_PATHS.reconciliationProductCallTemplate,
     kind: 'mcp-call-template',
+    digest: PENDING_DIGEST,
+  },
+  // --- Reviewer-specific templates (role-contract parity) -----------------
+  {
+    logicalId: 'formalization.template.review-verdict-call',
+    path: RESOURCE_PATHS.reviewVerdictCallTemplate,
+    kind: 'mcp-call-template',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'formalization.checklist.reviewer',
+    path: RESOURCE_PATHS.reviewerChecklist,
+    kind: 'checklist',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'formalization.tracker.reviewer',
+    path: RESOURCE_PATHS.reviewerTracker,
+    kind: 'template',
     digest: PENDING_DIGEST,
   },
   // --- Checklists + stage tracker ----------------------------------------
