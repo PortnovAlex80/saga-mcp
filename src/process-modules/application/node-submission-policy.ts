@@ -239,7 +239,36 @@ export class SubmissionValidationError extends Error {
       g.message
         ?? `${g.artifactCode ?? g.artifactId}: missing ${g.missing.minimum}× ${g.missing.relation} → ${g.missing.requiredTargetTypes.join('|')}`,
     ).join('; ');
-    super(`${code}: ${gapSummary}`);
+    const repairContext = renderRepairContext(details);
+    super(`${code}: ${gapSummary}${repairContext}`);
     this.name = 'SubmissionValidationError';
   }
+}
+
+/**
+ * MCP tool transports commonly reduce thrown errors to `Error.message`. Keep
+ * the full structured details on the error/ledger, but mirror the small set of
+ * author-critical contract keys into the message so a live worker can repair
+ * in the same fenced execution instead of losing the schema at the adapter
+ * boundary.
+ */
+function renderRepairContext(details: Readonly<Record<string, unknown>>): string {
+  const lines: string[] = [];
+  if (typeof details.representation === 'string' && details.representation.length > 0) {
+    lines.push(`Required representation: ${details.representation}`);
+  }
+  const fields = stringArray(details.requiredD2Fields);
+  if (fields.length > 0) lines.push(`Required fields: ${fields.join(', ')}`);
+  const codes = stringArray(details.expectedAcCodes);
+  if (codes.length > 0) lines.push(`Exact accepted codes: ${codes.join(', ')}`);
+  if (typeof details.canonicalExample === 'string' && details.canonicalExample.length > 0) {
+    lines.push(`Canonical example:\n${details.canonicalExample.slice(0, 4_000)}`);
+  }
+  return lines.length > 0 ? `\nValidator repair context:\n${lines.join('\n')}` : '';
+}
+
+function stringArray(value: unknown): readonly string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+    ? value
+    : [];
 }

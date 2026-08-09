@@ -119,6 +119,7 @@ test('rejected worker_done commits exact feedback while preserving owner and fen
              11,11,?,22,'SRS','draft',?,'create')`,
   ).run(executionId, srsHash);
 
+  let rejectionError;
   assert.throws(
     () => handlers.worker_done({
       task_id: 11,
@@ -126,9 +127,16 @@ test('rejected worker_done commits exact feedback while preserving owner and fen
       execution_id: executionId,
       result: 'attempted completion',
     }),
-    error => error?.name === 'SubmissionValidationError'
-      && error.code === 'FORMALIZATION_SRS_INCOMPLETE',
+    error => {
+      rejectionError = error;
+      return error?.name === 'SubmissionValidationError'
+        && error.code === 'FORMALIZATION_SRS_INCOMPLETE';
+    },
   );
+  assert.match(rejectionError.message, /Required representation:.*fenced YAML block/);
+  assert.match(rejectionError.message, /Required fields: ac, title, module, files/);
+  assert.match(rejectionError.message, /Exact accepted codes: AC-1/);
+  assert.match(rejectionError.message, /Canonical example:\n## §D2 AC Map\n```yaml/);
 
   const task = db.prepare(
     'SELECT status,assigned_to,current_execution_id,metadata FROM tasks WHERE id=11',

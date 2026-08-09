@@ -113,5 +113,10 @@ new validator; it must not be introduced as an unpinned compatibility guess.
   initially replaced with `null` because Production Cell projection recognized
   only GateDecision feedback. The projection now preserves the typed
   submission-preflight envelope, with a regression test at that exact boundary.
+- The next live attempt proved that generic MCP error transport serializes only
+  `Error.message`, not custom `details` fields. Author-critical representation,
+  required fields, exact codes and the bounded canonical example are therefore
+  mirrored into the error message while the complete structure remains in the
+  immutable rejection ledger.
 - Revisit the Gate-native option when CandidateSets freeze immutable content
   blobs and CheckReceipts can carry validator-owned structured evidence.
