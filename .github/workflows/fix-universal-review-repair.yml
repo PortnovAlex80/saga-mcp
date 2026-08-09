@@ -16,157 +16,40 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: saga4
-          fetch-depth: 2
+          fetch-depth: 3
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply universal reviewer-repair fixes
+      - name: Apply reviewed patch from previous validation attempt
         run: |
           python - <<'PY'
           from pathlib import Path
+          import subprocess, textwrap
 
-          # 1) CheckPlan declares repair disposition; Factory policy consumes it.
-          p = Path('src/process-modules/domain/workplace/gate.ts')
-          s = p.read_text()
-          needle = """  readonly parameters: Readonly<Record<string, unknown>>;\n  /**\n   * Optional reference to the disposable sandbox environment the check runs in.\n"""
-          replacement = """  readonly parameters: Readonly<Record<string, unknown>>;\n  /** Repair the authored product when this check deterministically refutes it. */\n  readonly repairTargetRoleOnFailure?: CandidateSetRole;\n  /** Repair the assessment producer when this check is unknown/invalid/error. */\n  readonly repairTargetRoleOnIndeterminate?: CandidateSetRole;\n  /**\n   * Optional reference to the disposable sandbox environment the check runs in.\n"""
-          if needle not in s: raise SystemExit('gate.ts CheckPlanEntry insertion point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          p = Path('src/process-modules/application/standard-check-providers.ts')
-          s = p.read_text()
-          needle = """    providerDigest: string;\n    parameters?: Readonly<Record<string, unknown>>;\n  }[] = [],\n"""
-          replacement = """    providerDigest: string;\n    parameters?: Readonly<Record<string, unknown>>;\n    repairTargetRoleOnFailure?: 'author' | 'reviewer';\n    repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';\n  }[] = [],\n"""
-          if needle not in s: raise SystemExit('buildCheckPlan input insertion point missing')
-          s = s.replace(needle, replacement, 1)
-          needle = """      parameters: { ...(check.parameters ?? {}) },\n      environmentRef: null,\n"""
-          replacement = """      parameters: { ...(check.parameters ?? {}) },\n      ...(check.repairTargetRoleOnFailure\n        ? { repairTargetRoleOnFailure: check.repairTargetRoleOnFailure }\n        : {}),\n      ...(check.repairTargetRoleOnIndeterminate\n        ? { repairTargetRoleOnIndeterminate: check.repairTargetRoleOnIndeterminate }\n        : {}),\n      environmentRef: null,\n"""
-          if needle not in s: raise SystemExit('buildCheckPlan entry insertion point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          # 2) GateRun identity includes exact assessment CandidateSets and policy chooses role.
-          p = Path('src/process-modules/application/gate-run-driver.ts')
-          s = p.read_text()
-          s = s.replace(
-            "  GateVerdict,\n} from '../domain/workplace/gate.js';",
-            "  GateVerdict,\n  RepairTargetRole,\n} from '../domain/workplace/gate.js';",
-            1,
+          source = 'a3363737c05111e173cf1584b57b9eb12a68eb78'
+          workflow = subprocess.check_output(
+              ['git', 'show', f'{source}:.github/workflows/fix-universal-review-repair.yml'],
+              text=True,
           )
-          needle = """  const gateRunRef =\n    `gate-run:${input.subjectCandidateSetRef}:${input.checkPlan.checkPlanDigest}`;\n"""
-          replacement = """  const gateRunIdentity = createHash('sha256')\n    .update(JSON.stringify({\n      gatePhase: input.gatePhase,\n      subjectCandidateSetRef: input.subjectCandidateSetRef,\n      assessmentCandidateSetRefs,\n      checkPlanDigest: input.checkPlan.checkPlanDigest,\n    }))\n    .digest('hex');\n  const gateRunRef = `gate-run:${gateRunIdentity}`;\n"""
-          if needle not in s: raise SystemExit('gateRunRef identity point missing')
-          s = s.replace(needle, replacement, 1)
-          needle = """  const verdict = reduceReceipts(receipts, input.checkPlan.unknownErrorPolicy);\n\n  repo.setGateRunState(gateRunRef, 'decided');\n"""
-          replacement = """  const reduction = reduceReceipts(receipts, input.checkPlan);\n  const verdict = reduction.verdict;\n\n  repo.setGateRunState(gateRunRef, 'decided');\n"""
-          if needle not in s: raise SystemExit('gate reduction call point missing')
-          s = s.replace(needle, replacement, 1)
-          s = s.replace(
-            "    repairTargetRole: verdict === 'repair_required' ? 'author' : null,",
-            "    repairTargetRole: reduction.repairTargetRole,",
-            1,
-          )
-          s = s.replace(
-            "    decisionDigest: hashDecision(decisionKey, verdict, receipts),",
-            "    decisionDigest: hashDecision(\n      decisionKey, verdict, reduction.repairTargetRole, receipts,\n    ),",
-            1,
-          )
-          start = s.index('function reduceReceipts(')
-          end = s.index('\nfunction hashReceipt(', start)
-          reducer = '''function reduceReceipts(\n  receipts: readonly CheckReceipt[],\n  checkPlan: CheckPlan,\n): { verdict: GateVerdict; repairTargetRole: RepairTargetRole | null } {\n  let target: RepairTargetRole | null = null;\n  let repairRequired = false;\n\n  for (let index = 0; index < receipts.length; index += 1) {\n    const receipt = receipts[index]!;\n    const entry = checkPlan.entries[index];\n    if (!entry) {\n      throw new Error(`CHECK_PLAN_RECEIPT_MISMATCH: receipt ${index} has no plan entry`);\n    }\n\n    let requestedTarget: RepairTargetRole | null = null;\n    if (receipt.outcome === 'failed') {\n      requestedTarget = entry.repairTargetRoleOnFailure ?? 'author';\n    } else if (\n      (receipt.outcome === 'unknown' || receipt.outcome === 'error')\n      && checkPlan.unknownErrorPolicy === 'fail-closed'\n    ) {\n      requestedTarget = entry.repairTargetRoleOnIndeterminate\n        ?? entry.repairTargetRoleOnFailure\n        ?? 'author';\n    }\n\n    if (requestedTarget === null) continue;\n    repairRequired = true;\n    if (target !== null && target !== requestedTarget) {\n      // Two checks disagree about who owns the repair. The Factory must not\n      // guess; stop the line for explicit resolution.\n      return { verdict: 'human_required', repairTargetRole: null };\n    }\n    target = requestedTarget;\n  }\n\n  if (repairRequired) {\n    return { verdict: 'repair_required', repairTargetRole: target ?? 'author' };\n  }\n  return { verdict: 'accepted', repairTargetRole: null };\n}\n'''
-          s = s[:start] + reducer + s[end:]
-          needle = """function hashDecision(\n  key: string,\n  verdict: GateVerdict,\n  receipts: readonly CheckReceipt[],\n): string {\n"""
-          replacement = """function hashDecision(\n  key: string,\n  verdict: GateVerdict,\n  repairTargetRole: RepairTargetRole | null,\n  receipts: readonly CheckReceipt[],\n): string {\n"""
-          if needle not in s: raise SystemExit('hashDecision signature missing')
-          s = s.replace(needle, replacement, 1)
-          s = s.replace(
-            "      verdict,\n      receiptRefs: receipts.map(r => r.checkReceiptRef),",
-            "      verdict,\n      repairTargetRole,\n      receiptRefs: receipts.map(r => r.checkReceiptRef),",
-            1,
-          )
-          p.write_text(s)
-
-          # 3) Coordinator executes the target from GateDecision; it does not infer it.
-          p = Path('src/process-modules/application/production-cell-coordinator.ts')
-          s = p.read_text()
-          needle = """      case 'repair_required':\n        // Proven author defect → return the card to author work.\n        event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };\n        break;\n"""
-          replacement = """      case 'repair_required':\n        if (decision.repairTargetRole === 'author') {\n          event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };\n        } else if (decision.repairTargetRole === 'reviewer') {\n          event = { kind: 'reviewer-verdict', verdict: 'invalid-output' };\n        } else {\n          throw new Error(\n            'applyReviewerVerdict: repair_required requires an explicit repairTargetRole',\n          );\n        }\n        break;\n"""
-          if needle not in s: raise SystemExit('coordinator reviewer repair point missing')
-          s = s.replace(needle, replacement, 1)
-          s = s.replace("    void decision;\n", "", 1)
-          p.write_text(s)
-
-          # 4) Generic review provider distinguishes a valid negative verdict from invalid reviewer output.
-          p = Path('src/process-modules/application/review-verdict-check-provider.ts')
-          s = p.read_text()
-          run_start = s.index('    run({ subjectCandidateSetRef, parameters }) {')
-          run_end = s.index('\n    },\n  };', run_start)
-          run_body = '''    run({ subjectCandidateSetRef, parameters }) {\n      try {\n        const refs = parameters.assessmentCandidateSetRefs;\n        if (!Array.isArray(refs) || refs.length !== 1 || typeof refs[0] !== 'string') {\n          return 'unknown';\n        }\n        const reviewSet = input.candidateSets.read(refs[0]);\n        if (\n          !reviewSet\n          || reviewSet.role !== 'reviewer'\n          || reviewSet.subjectCandidateSetRef !== subjectCandidateSetRef\n        ) return 'unknown';\n        const verdictSchemaRef = typeof parameters.verdictSchemaRef === 'string'\n          ? parameters.verdictSchemaRef\n          : FACTORY_REVIEW_VERDICT_SCHEMA;\n        const verdictRefs = reviewSet.members\n          .map(member => member.productRef)\n          .filter(ref => ref.schemaId === verdictSchemaRef);\n        if (verdictRefs.length !== 1) return 'unknown';\n        const ref = verdictRefs[0]!;\n        if (!ref.ref.startsWith('managed-node-submission:')) return 'unknown';\n        const id = Number(ref.ref.slice('managed-node-submission:'.length));\n        if (!Number.isSafeInteger(id) || id < 1) return 'unknown';\n        const row = input.db.prepare(\n          `SELECT schema_version,payload_snapshot,content_hash\n             FROM factory_managed_node_submissions WHERE id=?`,\n        ).get(id) as {\n          schema_version: string;\n          payload_snapshot: string;\n          content_hash: string;\n        } | undefined;\n        if (\n          !row\n          || row.schema_version !== verdictSchemaRef\n          || row.content_hash !== ref.digest\n        ) return 'unknown';\n        const payload = JSON.parse(row.payload_snapshot) as Partial<FactoryReviewVerdictProduct>;\n        if (\n          payload.subject_candidate_set_ref !== subjectCandidateSetRef\n          || !Array.isArray(payload.findings)\n          || !payload.findings.every(item => typeof item === 'string')\n          || (payload.verdict !== 'approved' && payload.verdict !== 'changes_requested')\n        ) return 'unknown';\n        return payload.verdict === 'approved' ? 'passed' : 'failed';\n      } catch {\n        return 'error';\n      }\n'''
-          s = s[:run_start] + run_body + s[run_end:]
-          p.write_text(s)
-
-          # 5) Formalization final review declares author-vs-reviewer repair semantics.
-          p = Path('src/process-modules/modules/formalization/formalization-process-module.ts')
-          s = p.read_text()
-          needle = """    providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,\n    parameters: { verdictSchemaRef: FACTORY_REVIEW_VERDICT_SCHEMA },\n"""
-          replacement = """    providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,\n    parameters: { verdictSchemaRef: FACTORY_REVIEW_VERDICT_SCHEMA },\n    repairTargetRoleOnFailure: 'author',\n    repairTargetRoleOnIndeterminate: 'reviewer',\n"""
-          if needle not in s: raise SystemExit('formalization review plan point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          # 6) Development final review runs the SAME universal review gate, not pass-through product-contract.
-          p = Path('src/process-modules/modules/development/development-process-module.ts')
-          s = p.read_text()
-          import_anchor = """import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';\n"""
-          review_import = """import {\n  REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,\n  REVIEW_VERDICT_CHECK_PROVIDER_ID,\n  REVIEW_VERDICT_CHECK_PROVIDER_VERSION,\n} from '../../application/review-verdict-check-provider.js';\n"""
-          if review_import not in s:
-            if import_anchor not in s: raise SystemExit('development review provider import anchor missing')
-            s = s.replace(import_anchor, review_import + import_anchor, 1)
-          needle = """const IMPLEMENTATION_FINAL_PLAN =\n  buildProductContractCheckPlan('development.implementation.final');\n"""
-          replacement = """const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(\n  'development.implementation.final',\n  [{\n    providerId: REVIEW_VERDICT_CHECK_PROVIDER_ID,\n    version: REVIEW_VERDICT_CHECK_PROVIDER_VERSION,\n    providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,\n    parameters: { verdictSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA },\n    repairTargetRoleOnFailure: 'author',\n    repairTargetRoleOnIndeterminate: 'reviewer',\n  }],\n);\n"""
-          if needle not in s: raise SystemExit('development final plan point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          # Development can be composed independently and still contributes the universal provider.
-          p = Path('src/modules/development/index.ts')
-          s = p.read_text()
-          anchor = """import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';\n"""
-          provider_import = """import { createReviewVerdictCheckProvider } from '../../process-modules/application/review-verdict-check-provider.js';\n"""
-          if provider_import not in s:
-            if anchor not in s: raise SystemExit('development index provider import anchor missing')
-            s = s.replace(anchor, anchor + provider_import, 1)
-          needle = """  registerFactoryCheckProvider(createDevelopmentTaskGraphCheckProvider({\n    db,\n    candidateSets: sharedDeps.candidateSetRepo,\n    taskGraphPolicy,\n  }));\n"""
-          replacement = needle + """  registerFactoryCheckProvider(createReviewVerdictCheckProvider({\n    db,\n    candidateSets: sharedDeps.candidateSetRepo,\n  }));\n"""
-          if needle not in s: raise SystemExit('development index registration point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          # 7) Final GateRun lease identity also pins the exact assessment set.
-          p = Path('src/process-modules/application/node-executors/production-cell-node-executor.ts')
-          s = p.read_text()
-          needle = """      gateLeaseRef: `gate-lease:${subjectCandidateSetRef}:${gate.gatePhase}`,\n"""
-          replacement = """      gateLeaseRef: `gate-lease:${sha256Hex({\n        gatePhase: gate.gatePhase,\n        subjectCandidateSetRef,\n        assessmentCandidateSetRefs,\n      })}`,\n"""
-          if needle not in s: raise SystemExit('gate lease identity point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          # 8) Deterministic Development reviewer emits the universal review envelope plus domain evidence.
-          p = Path('tests/factory-contract/golden-path-scenarios.mjs')
-          s = p.read_text()
-          needle = """  await actions.submitProduct(client, 'factory.development-review-verdict.v1', {\n    workItemKey: impl.workItemKey,\n    verdict: 'approved',\n"""
-          replacement = """  await actions.submitProduct(client, 'factory.development-review-verdict.v1', {\n    subject_candidate_set_ref: cand.candidate_set_ref,\n    verdict: 'approved',\n    findings: [],\n    workItemKey: impl.workItemKey,\n"""
-          if needle not in s: raise SystemExit('golden development review product point missing')
-          p.write_text(s.replace(needle, replacement, 1))
-
-          p = Path('src/process-modules/modules/development/package/resources/implementation-worker-checklist.md')
-          s = p.read_text()
-          addition = '''\nFor a reviewer execution, the submitted `factory.development-review-verdict.v1`\nmust bind the exact author CandidateSet read through `candidate_read`:\n\n- `subject_candidate_set_ref` = the exact author CandidateSet ref;\n- `verdict` = `approved` or `changes_requested`;\n- `findings` = an array of concrete findings (empty only for approval);\n- domain evidence such as `workItemKey` / reviewed source commit may be added,\n  but it never replaces the exact CandidateSet binding.\n\nA valid `changes_requested` verdict repairs the author. Malformed or unbound\nreview output repairs the reviewer on the same Workplace.\n'''
-          if 'subject_candidate_set_ref' not in s:
-            s += addition
-          p.write_text(s)
-
-          # 9) Focused executable contract for decision targeting + reviewer outcome classification.
-          Path('tests/factory-contract/gate-repair-target.test.mjs').write_text(r'''import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport Database from 'better-sqlite3';\nimport { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';\nimport { buildCheckPlan } from '../../dist/process-modules/application/standard-check-providers.js';\nimport { createReviewVerdictCheckProvider } from '../../dist/process-modules/application/review-verdict-check-provider.js';\n\nconst workplaceRef = {\n  processRunId: 1,\n  moduleRef: 'solution-development@1.0.0',\n  productionCellId: 'development-implementation',\n  workKey: 'impl-1',\n};\n\nfunction drive(outcomes, checks) {\n  const receipts = [];\n  const decisions = [];\n  const repo = {\n    createGateRun() {},\n    setGateRunState() {},\n    recordCheckReceipt(receipt) { receipts.push(receipt); return receipt; },\n    recordDecision(decision) { decisions.push(decision); return { decision, replayed: false }; },\n  };\n  const providers = {\n    resolve(providerId) {\n      const outcome = outcomes[providerId];\n      if (!outcome) return null;\n      return { providerId, version: '1.0.0', run: () => outcome };\n    },\n  };\n  const plan = buildCheckPlan('test.final', checks.map(check => ({\n    providerId: check.providerId,\n    version: '1.0.0',\n    providerDigest: `${check.providerId}:digest`,\n    repairTargetRoleOnFailure: check.failure,\n    repairTargetRoleOnIndeterminate: check.indeterminate,\n  })), { includeProductContract: false });\n  return driveGateRun(repo, providers, {\n    workplaceRef,\n    subjectCandidateSetRef: 'author-set',\n    assessmentCandidateSetRefs: ['review-set'],\n    checkPlan: plan,\n    gatePhase: 'final',\n    expectedWorkplaceRevision: 5,\n    gateLeaseRef: 'lease:1',\n    installationDigest: 'install:1',\n    checkParameters: {},\n    environmentRef: null,\n  }).decision;\n}\n\ntest('valid negative reviewer verdict targets author repair', () => {\n  const decision = drive(\n    { review: 'failed' },\n    [{ providerId: 'review', failure: 'author', indeterminate: 'reviewer' }],\n  );\n  assert.equal(decision.verdict, 'repair_required');\n  assert.equal(decision.repairTargetRole, 'author');\n});\n\ntest('invalid/unknown reviewer output targets reviewer repair', () => {\n  const decision = drive(\n    { review: 'unknown' },\n    [{ providerId: 'review', failure: 'author', indeterminate: 'reviewer' }],\n  );\n  assert.equal(decision.verdict, 'repair_required');\n  assert.equal(decision.repairTargetRole, 'reviewer');\n});\n\ntest('conflicting repair ownership stops the line instead of guessing', () => {\n  const decision = drive(\n    { semantic: 'failed', review: 'unknown' },\n    [\n      { providerId: 'semantic', failure: 'author', indeterminate: 'author' },\n      { providerId: 'review', failure: 'author', indeterminate: 'reviewer' },\n    ],\n  );\n  assert.equal(decision.verdict, 'human_required');\n  assert.equal(decision.repairTargetRole, null);\n});\n\nfunction reviewOutcome(payload) {\n  const db = new Database(':memory:');\n  db.exec(`CREATE TABLE factory_managed_node_submissions (\n    id INTEGER PRIMARY KEY, schema_version TEXT NOT NULL,\n    payload_snapshot TEXT NOT NULL, content_hash TEXT NOT NULL\n  )`);\n  db.prepare(`INSERT INTO factory_managed_node_submissions\n    (id,schema_version,payload_snapshot,content_hash) VALUES (1,?,?,?)`).run(\n      'factory.development-review-verdict.v1', JSON.stringify(payload), 'digest-1',\n    );\n  const candidateSets = {\n    read(ref) {\n      if (ref !== 'review-set') return null;\n      return {\n        role: 'reviewer',\n        subjectCandidateSetRef: 'author-set',\n        members: [{\n          productRef: {\n            schemaId: 'factory.development-review-verdict.v1',\n            ref: 'managed-node-submission:1',\n            digest: 'digest-1',\n          },\n        }],\n      };\n    },\n  };\n  const provider = createReviewVerdictCheckProvider({ db, candidateSets });\n  const outcome = provider.run({\n    subjectCandidateSetRef: 'author-set',\n    parameters: {\n      assessmentCandidateSetRefs: ['review-set'],\n      verdictSchemaRef: 'factory.development-review-verdict.v1',\n    },\n    environmentRef: null,\n    candidateSnapshot: {},\n  });\n  db.close();\n  return outcome;\n}\n\ntest('review provider distinguishes valid changes_requested from malformed review output', () => {\n  assert.equal(reviewOutcome({\n    subject_candidate_set_ref: 'author-set', verdict: 'changes_requested', findings: ['bug'],\n  }), 'failed');\n  assert.equal(reviewOutcome({ verdict: 'changes_requested', findings: ['bug'] }), 'unknown');\n  assert.equal(reviewOutcome({\n    subject_candidate_set_ref: 'author-set', verdict: 'approved', findings: [],\n  }), 'passed');\n});\n''')
-
-          Path('tests/architecture/production-cell-review-gate.test.mjs').write_text(r'''import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { readFileSync } from 'node:fs';\n\ntest('Development final review uses universal review-verdict gate, not pass-through product contract', () => {\n  const source = readFileSync('src/process-modules/modules/development/development-process-module.ts', 'utf8');\n  assert.match(source, /IMPLEMENTATION_FINAL_PLAN = buildCheckPlan/);\n  assert.match(source, /REVIEW_VERDICT_CHECK_PROVIDER_ID/);\n  assert.match(source, /repairTargetRoleOnFailure: 'author'/);\n  assert.match(source, /repairTargetRoleOnIndeterminate: 'reviewer'/);\n  assert.doesNotMatch(\n    source,\n    /IMPLEMENTATION_FINAL_PLAN =\s*buildProductContractCheckPlan/,\n    'review verdict must not be accepted by an unconditional product-contract gate',\n  );\n});\n\ntest('GateRun identity includes assessment CandidateSets and coordinator obeys explicit reviewer target', () => {\n  const driver = readFileSync('src/process-modules/application/gate-run-driver.ts', 'utf8');\n  const coordinator = readFileSync('src/process-modules/application/production-cell-coordinator.ts', 'utf8');\n  assert.match(driver, /assessmentCandidateSetRefs,/);\n  assert.doesNotMatch(driver, /repairTargetRole:\s*verdict === 'repair_required' \? 'author'/);\n  assert.match(coordinator, /decision\.repairTargetRole === 'reviewer'/);\n});\n''')
+          marker = "      - name: Apply universal reviewer-repair fixes\n        run: |\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n      - name: Build", start)
+          script = textwrap.dedent(workflow[start:end])
+          Path('/tmp/apply-review-repair.sh').write_text(script)
+          PY
+          bash /tmp/apply-review-repair.sh
+      - name: Normalize generated test sources
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in [
+              'tests/factory-contract/gate-repair-target.test.mjs',
+              'tests/architecture/production-cell-review-gate.test.mjs',
+          ]:
+              p = Path(name)
+              p.write_text(p.read_text().replace('\\n', '\n'))
           PY
       - name: Build
         run: npm run build
@@ -176,6 +59,8 @@ jobs:
           node --test tests/factory-contract/gate-repair-target.test.mjs
           node --test tests/architecture/production-cell-universal-runtime.test.mjs
           node --test tests/architecture/production-cell-review-gate.test.mjs
+      - name: Canonical Product Delivery cold plus replay
+        run: node --test tests/factory-contract/golden-path.test.mjs
       - name: Commit validated universal fix to saga4
         run: |
           git config user.name "Saga Factory Agent"
