@@ -30,25 +30,25 @@ export function createReviewVerdictCheckProvider(input: {
       try {
         const refs = parameters.assessmentCandidateSetRefs;
         if (!Array.isArray(refs) || refs.length !== 1 || typeof refs[0] !== 'string') {
-          return 'failed';
+          return 'unknown';
         }
         const reviewSet = input.candidateSets.read(refs[0]);
         if (
           !reviewSet
           || reviewSet.role !== 'reviewer'
           || reviewSet.subjectCandidateSetRef !== subjectCandidateSetRef
-        ) return 'failed';
+        ) return 'unknown';
         const verdictSchemaRef = typeof parameters.verdictSchemaRef === 'string'
           ? parameters.verdictSchemaRef
           : FACTORY_REVIEW_VERDICT_SCHEMA;
         const verdictRefs = reviewSet.members
           .map(member => member.productRef)
           .filter(ref => ref.schemaId === verdictSchemaRef);
-        if (verdictRefs.length !== 1) return 'failed';
+        if (verdictRefs.length !== 1) return 'unknown';
         const ref = verdictRefs[0]!;
-        if (!ref.ref.startsWith('managed-node-submission:')) return 'failed';
+        if (!ref.ref.startsWith('managed-node-submission:')) return 'unknown';
         const id = Number(ref.ref.slice('managed-node-submission:'.length));
-        if (!Number.isSafeInteger(id) || id < 1) return 'failed';
+        if (!Number.isSafeInteger(id) || id < 1) return 'unknown';
         const row = input.db.prepare(
           `SELECT schema_version,payload_snapshot,content_hash
              FROM factory_managed_node_submissions WHERE id=?`,
@@ -61,17 +61,19 @@ export function createReviewVerdictCheckProvider(input: {
           !row
           || row.schema_version !== verdictSchemaRef
           || row.content_hash !== ref.digest
-        ) return 'failed';
+        ) return 'unknown';
         const payload = JSON.parse(row.payload_snapshot) as Partial<FactoryReviewVerdictProduct>;
         if (
           payload.subject_candidate_set_ref !== subjectCandidateSetRef
           || !Array.isArray(payload.findings)
           || !payload.findings.every(item => typeof item === 'string')
-        ) return 'failed';
+          || (payload.verdict !== 'approved' && payload.verdict !== 'changes_requested')
+        ) return 'unknown';
         return payload.verdict === 'approved' ? 'passed' : 'failed';
       } catch {
         return 'error';
       }
+
     },
   };
 }

@@ -4,6 +4,11 @@ import {
   buildCheckPlan,
   buildProductContractCheckPlan,
 } from '../../application/standard-check-providers.js';
+import {
+  REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
+  REVIEW_VERDICT_CHECK_PROVIDER_ID,
+  REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
+} from '../../application/review-verdict-check-provider.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/domain/development-kernel-ports.js';
 import {
@@ -64,8 +69,17 @@ const PLANNER_CHECK_PLAN = buildCheckPlan(
 );
 const IMPLEMENTATION_AUTHOR_PLAN =
   buildProductContractCheckPlan('development.implementation.author');
-const IMPLEMENTATION_FINAL_PLAN =
-  buildProductContractCheckPlan('development.implementation.final');
+const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
+  'development.implementation.final',
+  [{
+    providerId: REVIEW_VERDICT_CHECK_PROVIDER_ID,
+    version: REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
+    providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
+    parameters: { verdictSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA },
+    repairTargetRoleOnFailure: 'author',
+    repairTargetRoleOnIndeterminate: 'reviewer',
+  }],
+);
 const VERIFICATION_FINAL_PLAN =
   buildProductContractCheckPlan('development.verification.final');
 

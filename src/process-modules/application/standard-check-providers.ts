@@ -70,6 +70,8 @@ export function buildCheckPlan(
     version: string;
     providerDigest: string;
     parameters?: Readonly<Record<string, unknown>>;
+    repairTargetRoleOnFailure?: 'author' | 'reviewer';
+    repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';
   }[] = [],
   options: { includeProductContract?: boolean } = {},
 ): CheckPlan {
@@ -92,6 +94,12 @@ export function buildCheckPlan(
         providerDigest: check.providerDigest,
       },
       parameters: { ...(check.parameters ?? {}) },
+      ...(check.repairTargetRoleOnFailure
+        ? { repairTargetRoleOnFailure: check.repairTargetRoleOnFailure }
+        : {}),
+      ...(check.repairTargetRoleOnIndeterminate
+        ? { repairTargetRoleOnIndeterminate: check.repairTargetRoleOnIndeterminate }
+        : {}),
       environmentRef: null,
     })),
   ];

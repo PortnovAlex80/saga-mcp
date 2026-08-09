@@ -66,6 +66,8 @@ function reviewPlan(id: string) {
     version: REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
     providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
     parameters: { verdictSchemaRef: FACTORY_REVIEW_VERDICT_SCHEMA },
+    repairTargetRoleOnFailure: 'author',
+    repairTargetRoleOnIndeterminate: 'reviewer',
   }]);
 }
 

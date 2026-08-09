@@ -10,6 +10,7 @@ import type {
   CheckOutcome,
   GateDecision,
   GateVerdict,
+  RepairTargetRole,
 } from '../domain/workplace/gate.js';
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
 
@@ -58,8 +59,15 @@ export function driveGateRun(
   input: DriveGateRunInput,
 ): DriveGateRunResult {
   const assessmentCandidateSetRefs = input.assessmentCandidateSetRefs ?? [];
-  const gateRunRef =
-    `gate-run:${input.subjectCandidateSetRef}:${input.checkPlan.checkPlanDigest}`;
+  const gateRunIdentity = createHash('sha256')
+    .update(JSON.stringify({
+      gatePhase: input.gatePhase,
+      subjectCandidateSetRef: input.subjectCandidateSetRef,
+      assessmentCandidateSetRefs,
+      checkPlanDigest: input.checkPlan.checkPlanDigest,
+    }))
+    .digest('hex');
+  const gateRunRef = `gate-run:${gateRunIdentity}`;
 
   repo.createGateRun({
     gateRunRef,
@@ -122,7 +130,8 @@ export function driveGateRun(
     receipts.push(receipt);
   }
 
-  const verdict = reduceReceipts(receipts, input.checkPlan.unknownErrorPolicy);
+  const reduction = reduceReceipts(receipts, input.checkPlan);
+  const verdict = reduction.verdict;
 
   repo.setGateRunState(gateRunRef, 'decided');
   const decisionKey = `decision:${gateRunRef}`;
@@ -136,7 +145,7 @@ export function driveGateRun(
     subjectCandidateSetRef: input.subjectCandidateSetRef,
     assessmentCandidateSetRefs,
     verdict,
-    repairTargetRole: verdict === 'repair_required' ? 'author' : null,
+    repairTargetRole: reduction.repairTargetRole,
     checkPlanRef: input.checkPlan.checkPlanId,
     checkPlanDigest: input.checkPlan.checkPlanDigest,
     decisionPolicyRef: input.checkPlan.decisionPolicyRef,
@@ -146,7 +155,9 @@ export function driveGateRun(
     decisionKey,
     acceptedOutputBindings: [],
     recoveryIssueRef: verdict === 'repair_required' ? `recovery:${decisionKey}` : null,
-    decisionDigest: hashDecision(decisionKey, verdict, receipts),
+    decisionDigest: hashDecision(
+      decisionKey, verdict, reduction.repairTargetRole, receipts,
+    ),
   };
   const recorded = repo.recordDecision(decision);
   repo.setGateRunState(gateRunRef, 'terminal');
@@ -155,18 +166,44 @@ export function driveGateRun(
 
 function reduceReceipts(
   receipts: readonly CheckReceipt[],
-  unknownErrorPolicy: 'fail-closed' | 'fail-open-safe',
-): GateVerdict {
-  for (const receipt of receipts) {
-    if (receipt.outcome === 'failed') return 'repair_required';
-    if (
-      (receipt.outcome === 'unknown' || receipt.outcome === 'error')
-      && unknownErrorPolicy === 'fail-closed'
-    ) {
-      return 'repair_required';
+  checkPlan: CheckPlan,
+): { verdict: GateVerdict; repairTargetRole: RepairTargetRole | null } {
+  let target: RepairTargetRole | null = null;
+  let repairRequired = false;
+
+  for (let index = 0; index < receipts.length; index += 1) {
+    const receipt = receipts[index]!;
+    const entry = checkPlan.entries[index];
+    if (!entry) {
+      throw new Error(`CHECK_PLAN_RECEIPT_MISMATCH: receipt ${index} has no plan entry`);
     }
+
+    let requestedTarget: RepairTargetRole | null = null;
+    if (receipt.outcome === 'failed') {
+      requestedTarget = entry.repairTargetRoleOnFailure ?? 'author';
+    } else if (
+      (receipt.outcome === 'unknown' || receipt.outcome === 'error')
+      && checkPlan.unknownErrorPolicy === 'fail-closed'
+    ) {
+      requestedTarget = entry.repairTargetRoleOnIndeterminate
+        ?? entry.repairTargetRoleOnFailure
+        ?? 'author';
+    }
+
+    if (requestedTarget === null) continue;
+    repairRequired = true;
+    if (target !== null && target !== requestedTarget) {
+      // Two checks disagree about who owns the repair. The Factory must not
+      // guess; stop the line for explicit resolution.
+      return { verdict: 'human_required', repairTargetRole: null };
+    }
+    target = requestedTarget;
   }
-  return 'accepted';
+
+  if (repairRequired) {
+    return { verdict: 'repair_required', repairTargetRole: target ?? 'author' };
+  }
+  return { verdict: 'accepted', repairTargetRole: null };
 }
 
 function hashReceipt(
@@ -186,12 +223,14 @@ function hashReceipt(
 function hashDecision(
   key: string,
   verdict: GateVerdict,
+  repairTargetRole: RepairTargetRole | null,
   receipts: readonly CheckReceipt[],
 ): string {
   return createHash('sha256')
     .update(JSON.stringify({
       key,
       verdict,
+      repairTargetRole,
       receiptRefs: receipts.map(r => r.checkReceiptRef),
     }))
     .digest('hex');

@@ -2,6 +2,7 @@
 
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
 import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';
+import { createReviewVerdictCheckProvider } from '../../process-modules/application/review-verdict-check-provider.js';
 import { SqliteDevelopmentOutputRepository } from './infrastructure/development-persistence.js';
 import { SqliteDevelopmentModuleStore } from './infrastructure/sqlite-development-settlement-state.js';
 import { SqliteManagedProductionLedger } from '../../process-modules/persistence/sqlite-managed-production-ledger.js';
@@ -75,6 +76,10 @@ export function registerDevelopment(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     taskGraphPolicy,
+  }));
+  registerFactoryCheckProvider(createReviewVerdictCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
   }));
   registries.kernelHandlers.registerAll(createDevelopmentKernelHandlers(deps));
 

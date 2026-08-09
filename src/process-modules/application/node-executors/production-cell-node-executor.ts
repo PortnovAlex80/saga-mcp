@@ -655,7 +655,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       checkPlan: gate.checkPlan,
       gatePhase: gate.gatePhase,
       expectedWorkplaceRevision: this.requireState(workplaceRef).revision,
-      gateLeaseRef: `gate-lease:${subjectCandidateSetRef}:${gate.gatePhase}`,
+      gateLeaseRef: `gate-lease:${sha256Hex({
+        gatePhase: gate.gatePhase,
+        subjectCandidateSetRef,
+        assessmentCandidateSetRefs,
+      })}`,
       installationDigest: this.opts.resolveInstallationDigest(ctx.module.identity.name),
       checkParameters: {
         processRunId: ctx.processRunId,

@@ -202,8 +202,15 @@ export class ProductionCellCoordinator {
         event = { kind: 'reviewer-verdict', verdict: 'accepted' };
         break;
       case 'repair_required':
-        // Proven author defect → return the card to author work.
-        event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };
+        if (decision.repairTargetRole === 'author') {
+          event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };
+        } else if (decision.repairTargetRole === 'reviewer') {
+          event = { kind: 'reviewer-verdict', verdict: 'invalid-output' };
+        } else {
+          throw new Error(
+            'applyReviewerVerdict: repair_required requires an explicit repairTargetRole',
+          );
+        }
         break;
       case 'failed':
         // Reviewer produced invalid output → retry the reviewer.
@@ -214,7 +221,6 @@ export class ProductionCellCoordinator {
         break;
     }
     const result = this.applyEvent(ref, event!);
-    void decision;
     return result;
   }
 

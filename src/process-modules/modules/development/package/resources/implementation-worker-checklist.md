@@ -20,3 +20,15 @@ If review requested changes or the merge conflicted:
 
 The settlement kernel reads the resulting tracker state to reconstruct the
 implementation workset; it does not trust worker-reported summaries.
+
+For a reviewer execution, the submitted `factory.development-review-verdict.v1`
+must bind the exact author CandidateSet read through `candidate_read`:
+
+- `subject_candidate_set_ref` = the exact author CandidateSet ref;
+- `verdict` = `approved` or `changes_requested`;
+- `findings` = an array of concrete findings (empty only for approval);
+- domain evidence such as `workItemKey` / reviewed source commit may be added,
+  but it never replaces the exact CandidateSet binding.
+
+A valid `changes_requested` verdict repairs the author. Malformed or unbound
+review output repairs the reviewer on the same Workplace.

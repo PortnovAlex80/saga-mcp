@@ -330,8 +330,10 @@ const developmentReview = async ({ client, task, prompt }) => {
   });
   const impl = read.content || read;
   await actions.submitProduct(client, 'factory.development-review-verdict.v1', {
-    workItemKey: impl.workItemKey,
+    subject_candidate_set_ref: cand.candidate_set_ref,
     verdict: 'approved',
+    findings: [],
+    workItemKey: impl.workItemKey,
     reviewedCandidate: {
       sourceCommit: impl.source?.commitSha,
       sourceTree: impl.snapshot?.treeSha,

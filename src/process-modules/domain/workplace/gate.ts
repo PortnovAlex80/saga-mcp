@@ -101,6 +101,10 @@ export interface CheckPlanEntry {
    * verbatim; it does NOT interpret them.
    */
   readonly parameters: Readonly<Record<string, unknown>>;
+  /** Repair the authored product when this check deterministically refutes it. */
+  readonly repairTargetRoleOnFailure?: CandidateSetRole;
+  /** Repair the assessment producer when this check is unknown/invalid/error. */
+  readonly repairTargetRoleOnIndeterminate?: CandidateSetRole;
   /**
    * Optional reference to the disposable sandbox environment the check runs in.
    * Null for checks that need no external state (pure schema validation).
