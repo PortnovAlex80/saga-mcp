@@ -23,6 +23,8 @@ The current implementation does not enforce the authority boundary it claims:
   with the canonical repository;
 - one tracker still instructs the worker to merge, while the current worker
   skill says only the runtime provider may merge;
+- the planner skill requires `product_submit` in its Finish procedure and then
+  forbids the same call in its Never list;
 - the live task graph has implementation width one and heavy scope overlap, yet
   it created three author/review/integration cycles over three files. The root
   worker already implemented material assigned to downstream items.
