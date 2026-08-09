@@ -1,0 +1,67 @@
+name: Fix Universal Production Cell Recovery
+
+on:
+  push:
+    branches: [saga4]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: saga4
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cut Production Cell persistence off Discovery runtime
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/app/product-lifecycle-runtime.ts')
+          s = p.read_text()
+          old_import = "import { createDiscoveryWorkplacePersistence } from '../modules/discovery/application/discovery-installation.js';\n"
+          if old_import not in s:
+              raise SystemExit('Discovery workplace adapter import not found')
+          new_import = "import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';\n"
+          s = s.replace(old_import, new_import, 1)
+          old_binding = "  const workplacePersistence = createDiscoveryWorkplacePersistence(runtimePersistence);\n"
+          new_binding = "  const productionCellProjectionPersistence =\n    createSqliteProductionCellProjectionPersistence(db);\n"
+          if old_binding not in s:
+              raise SystemExit('Discovery workplace persistence binding not found')
+          s = s.replace(old_binding, new_binding, 1)
+          old_spread = "        ...workplacePersistence,\n"
+          if old_spread not in s:
+              raise SystemExit('Production Cell discovery persistence spread not found')
+          s = s.replace(old_spread, "        ...productionCellProjectionPersistence,\n", 1)
+          p.write_text(s)
+          PY
+      - name: Architecture ratchet
+        run: |
+          if grep -q "createDiscoveryWorkplacePersistence" src/app/product-lifecycle-runtime.ts; then
+            echo "Universal Production Cell still depends on Discovery runtime" >&2
+            exit 1
+          fi
+          grep -q "createSqliteProductionCellProjectionPersistence" src/app/product-lifecycle-runtime.ts
+      - name: Build
+        run: npm run build
+      - name: Focused repair-feedback contract
+        run: node --test tests/factory-contract/production-cell-recovery-feedback.test.mjs
+      - name: Commit validated cutover
+        run: |
+          git config user.name "Saga Factory Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/app/product-lifecycle-runtime.ts \
+                  src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts \
+                  tests/factory-contract/production-cell-recovery-feedback.test.mjs
+          git rm .github/workflows/fix-universal-production-cell-recovery.yml
+          git commit -m "fix(factory): restore universal production-cell repair feedback"
+          git push origin HEAD:saga4
