@@ -1,6 +1,6 @@
 ---
 name: saga-factory-qa
-description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, package/workspace resources, product contracts, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, parsers/validators, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics, make workers guess contracts or representation grammar, or bypass the Conveyor Mental Model."
+description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, start/resume entrypoints, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, package/workspace resources, product contracts, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, parsers/validators, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics, make workers guess contracts or representation grammar, break replay identity, reset reusable production, or bypass the Conveyor Mental Model."
 ---
 
 # Saga Factory QA — pre-commit architecture regression gate
@@ -11,9 +11,10 @@ You are the architectural regression firewall for Saga4.
 
 Your task is NOT merely to decide whether the changed feature works locally.
 You must prove that the candidate commit still obeys the common Factory physics,
-that a worker receives the exact contract it is expected to satisfy, and that
+that a worker receives the exact contract it is expected to satisfy, that
 runtime parsers/validators do not secretly require a representation grammar the
-worker was never given.
+worker was never given, and that start/resume/replay/recovery preserve the
+intended durable production semantics.
 
 The recurring failures this skill exists to prevent are:
 
@@ -45,6 +46,26 @@ worker-visible contract permits representation A
   -> system blames the model instead of the producer/consumer contract drift
 ```
 
+and:
+
+```text
+Run A captures accepted production
+  -> test/operator entrypoint deletes or reprovisions the persistence scope
+  -> Run B starts from an empty capsule store or a different semantic identity
+  -> model work repeats
+  -> report incorrectly concludes that Replay does not work
+```
+
+and:
+
+```text
+factory host crashes while a worker owns a Workplace
+  -> startup reaper releases only the task/execution row
+  -> Workplace keeps a stale active reservation / running state
+  -> replacement worker is claimed under split authority
+  -> completion later fails a fence or the cell remains stuck
+```
+
 The governing rule is:
 
 > ONE PRODUCTION INTERFACE, ONE MATERIAL, ONE DESK, ONE FACTORY RUNTIME.
@@ -56,6 +77,10 @@ A second governing rule follows from it:
 A third governing rule is equally mandatory:
 
 > THE WORKER MUST NOT GUESS A HIDDEN SERIALIZATION OR MARKUP GRAMMAR.
+
+A fourth governing rule protects continuity:
+
+> RESUME CONTINUES THE SAME DURABLE RUN; NEW START MAY REPLAY CERTIFIED PRODUCTION, BUT MUST NOT RESET THE PERSISTENCE THAT MAKES REPLAY POSSIBLE.
 
 A parser may be stricter than generic Markdown/YAML/JSON only when that stricter
 grammar is part of the canonical contract AND is delivered to the worker through
@@ -74,7 +99,7 @@ previous QA output, or the author's explanation.
 This skill is fail-closed:
 
 ```text
-PASS_TO_COMMIT = architecture, contract delivery and representation parity proven
+PASS_TO_COMMIT = architecture, contract delivery, representation parity and continuity proven
 BLOCKED        = an invariant is violated
 NOT_PROVEN     = required evidence is missing; this also blocks commit
 ```
@@ -94,6 +119,28 @@ src/process-modules/application/node-executors/production-cell-node-executor.ts
 src/process-modules/application/workspace-projection.ts
 src/process-modules/application/pinned-workspace-materializer.ts
 src/app/product-lifecycle-runtime.ts
+```
+
+For changes touching start/resume/replay/crash recovery also read the applicable
+end-to-end control path, including:
+
+```text
+src/app/factory-start.ts
+src/app/product-lifecycle-run-starter.ts
+src/process-modules/application/lifecycle-orchestrator.ts
+src/process-modules/persistence/sqlite-lifecycle-run-repository.ts
+src/infrastructure/replay/replay-claim-binder.ts
+src/infrastructure/replay/sqlite-replay-capsule-repository.ts
+src/infrastructure/replay/replay-capture-effect.ts
+src/replay/replay-capsule.ts
+src/infrastructure/work/sqlite-work-assignment-adapter.ts
+src/infrastructure/work/worker-supervision-service.ts
+src/infrastructure/workers/claude-board-worker-executor.ts
+src/application/conveyor-runtime.ts
+src/lifecycle/atomic-release.ts
+src/lifecycle/work-assignment-core.ts
+scripts/factory.mjs
+and every bootstrap/reset/smoke script used as evidence
 ```
 
 For every affected structured worker product also read:
@@ -399,6 +446,101 @@ if syntax is only representation     -> canonicalize equivalent forms
 
 ---
 
+# Continuity invariant — Resume vs New Start vs Replay
+
+The Factory has three different continuity mechanisms. QA must never conflate
+them:
+
+```text
+RESUME
+  same LifecycleRun / ProcessRun / StageRun / Workplace authority
+  completed durable work is read directly from the same run
+  only unfinished/crashed execution is recovered
+
+NEW FACTORY START, SAME PROJECT
+  new LifecycleRun / ProcessRun / Workplace authority
+  certified worker production may be reconstructed from ReplayCapsules
+  current CandidateSets/Gates/lifecycle transitions run again
+
+CHECKPOINT ADOPTION / RESTORE
+  explicit import/restore mechanism with its own trust and compatibility checks
+  not a substitute for ordinary same-DB resume or Replay
+```
+
+For a normal host crash, previously completed stages MUST NOT be replayed through
+LLM or capsules merely to reconstruct progress. The durable LifecycleRun and its
+completed StageRun/ProcessRun records are the source of truth. Replay is the
+cross-run production reuse mechanism, not the same-run cursor mechanism.
+
+For an intentional new Factory Start, reusable capsules MUST remain available in
+the same persistence scope. Deleting the DB, deleting `factory_replay_capsules`,
+creating a new Project, or copying capsules into another DB is not a valid Run B
+proof.
+
+Replay semantic identity must contain product semantics and intentional contract
+compatibility inputs, not operator/runtime provenance. Fields such as these are
+presumptively NON-semantic unless a concrete contract proves otherwise:
+
+```text
+initiatedBy / operator name
+launch_ref / order_ref / idempotency key
+LifecycleRun / ProcessRun / StageRun ids
+Workplace / WorkerExecution / task / CandidateSet refs
+timestamps / pid / machine / log path / workspace path
+CLI option values unrelated to the product idea
+```
+
+`packageDigest` is intentionally compatibility-sensitive: changed pinned
+contract/skill/template bytes MAY and normally SHOULD cause a replay miss.
+
+The public/operator entrypoint must parse control options independently from
+business input. A flag value such as model name, sandbox name, concurrency or
+DB path must never become part of `initiative.subject`, `semanticInputDigest`,
+or another replay-semantic field merely because of argv slicing.
+
+A replay miss is not diagnosable from `capsule_ref=null` alone. QA requires a
+component-wise comparison of ReplayKey material between expected source capsule
+and current claim:
+
+```text
+projectId
+moduleRef
+nodeId
+productionCellId
+workKey
+role
+packageDigest
+semanticInputDigest
+subjectProductionDigest when reviewer
+```
+
+The report must say WHICH component differs and whether that difference is
+semantic, compatibility-sensitive, or accidental provenance.
+
+Crash recovery has an additional atomicity invariant:
+
+```text
+dead/stale WorkerExecution
+  -> same recovery authority transition
+       WorkerExecution terminalized
+       Workplace running/leased -> repair_wait (or declared equivalent)
+       stale activeReservationRef cleared
+       task reverse projection/fence released coherently
+  -> replacement execution receives a NEW reservation
+```
+
+FAIL if one crash path updates only `worker_executions/tasks` while another path
+also updates Workplace authority. Close callbacks, startup supervision/reaper,
+lease expiry and explicit recovery must converge through one semantic recovery
+use case or prove byte-for-byte equivalent atomic effects.
+
+A replacement claim MUST NOT be allowed to run under a Workplace whose
+`activeReservationRef` still points to a terminal/lost execution. Treating an
+already `running` Workplace as an idempotent no-op when the reservation differs
+is not recovery.
+
+---
+
 # QA procedure
 
 ## Phase 0 — exact commit candidate
@@ -412,12 +554,15 @@ if syntax is only representation     -> canonicalize equivalent forms
 7. For changed product/schema/template code, trace all applicable Contract-on-Desk channels.
 8. For parser/validator changes, inspect the producer skill/template and enumerate every syntactic assumption enforced by code.
 9. For repeated worker_done/submission failures, inspect the exact validation error path before attributing failure to model behavior.
+10. For replay/start/resume changes, trace the actual operator entrypoint through claim-time replay binding and prove persistence is preserved.
+11. For crash/reaper changes, compare controlled close recovery with startup supervision recovery at WorkerExecution + Workplace + task authority boundaries.
 
 Classify changed files:
 
 ```text
 Workshop declaration
 Factory runtime
+Factory start/resume entrypoint
 Lifecycle
 Production Cell
 Execution profile / contract resource
@@ -432,8 +577,11 @@ Check/Gate
 Review
 Recovery
 Replay
+Replay identity / semantic digest
+Checkpoint
 Effect
 Persistence
+Test/bootstrap/reset harness
 Test physical worker
 Test authority/harness
 Other
@@ -461,6 +609,18 @@ representation mode + parser/canonicalizer when applicable
 validator/CheckProvider
 positive compatible-representation probe when applicable
 negative malformed-product test
+```
+
+For replay/resume changes add a Continuity row containing:
+
+```text
+entrypoint
+same-run resume identity
+new-start identity
+capsule persistence location
+ReplayKey material diff proof
+worker invocation count
+crash-reaper Workplace transition proof when applicable
 ```
 
 ## Phase 2 — explicit checklist
@@ -797,6 +957,21 @@ Search outside the diff explicitly.
 If review/recovery changes, inspect/test at minimum Formalization + Development.
 Discovery-only proof is insufficient.
 
+### QA-E19 — every crash path updates Workplace authority
+A dead/lost/terminated execution that owned a Workplace must cause the declared
+`running|leased -> repair_wait` (or equivalent) domain transition and clear the
+stale reservation before replacement claim. Releasing only the task fence is FAIL.
+
+### QA-E20 — recovery paths converge
+Controlled process-close recovery, startup supervision/reaper, lease expiry and
+explicit crash recovery must call the same semantic recovery use case or prove
+identical atomic effects across WorkerExecution + Workplace + task projection.
+
+### QA-E21 — replacement reservation is fresh and authoritative
+A replacement execution must be able to install its own reservation in the
+Workplace. `activeReservationRef` may never point to a terminal execution once a
+new worker starts.
+
 ---
 
 ## F. Replay
@@ -813,6 +988,8 @@ provenance unless genuinely semantic.
 
 ### QA-F04 — provenance != semantic identity
 Audit hash with current-run refs is not automatically replay semantic digest.
+Operator provenance such as `initiatedBy`, launch/order refs and idempotency keys
+must not alter replay identity unless a product contract proves semantic meaning.
 
 ### QA-F05 — reviewer replay has split identity
 QC uses current CandidateSetRef; replay equivalence uses semantic author production.
@@ -824,12 +1001,36 @@ same failed replay execution.
 ### QA-F07 — canonical two-pass proof
 
 ```text
-Run A: same Project, zero capsules -> normal workers -> current gates -> capture
-Run B: NEW Factory Start -> replay hits -> NEW Workplaces/CandidateSets/Gates
-       -> zero scripted inference calls
+Run A: SAME Project, SAME persistence, zero capsules
+       -> normal workers -> current gates -> capture
+Run B: intentional NEW Factory Start for SAME Project and SAME persistence
+       -> replay hits -> NEW Workplaces/CandidateSets/Gates
+       -> zero inference calls for every compatible accepted production
 ```
 
-No DB/capsule copying, authority-table reset, Project-id trick or private simulator.
+No DB/capsule copying, DB deletion, capsule-table reset, authority-table reset,
+Project-id trick or private simulator. A test that starts Run B from a clean DB
+is NOT a replay test.
+
+### QA-F08 — entrypoint preserves capsule persistence
+Start/new-start/bootstrap/smoke scripts used to prove replay must not delete the
+DB, `factory_replay_capsules`, Project identity or other replay source rows
+between Run A and Run B.
+
+### QA-F09 — control argv cannot contaminate semantic input
+CLI flags and their values must be parsed structurally. Model name, sandbox name,
+concurrency, DB path and other control coordinates must not leak into product
+idea/initiative content or semantic replay digests.
+
+### QA-F10 — ReplayKey miss is component-diagnosable
+For every expected hit, record source-vs-current values for all ReplayKey
+components and identify the exact mismatch. `capsule_ref=null` alone is
+`NOT_PROVEN` as a diagnosis.
+
+### QA-F11 — package compatibility remains intentional
+Changing pinned package/skill/template/contract bytes may cause a miss through
+`packageDigest`. Do not "fix" this by removing contract compatibility from the
+key unless the architecture explicitly changes.
 
 ---
 
@@ -859,6 +1060,22 @@ Current run reconciles/observes external state.
 ### QA-G08 — compensation is explicit
 No magical rollback; retry/compensate/roll-forward/human-required is policy.
 
+### QA-G09 — same-run resume reuses durable completed stage/process results directly
+After host restart, a completed ProcessRun/StageRun in the SAME LifecycleRun must
+not invoke LLM and must not require a ReplayCapsule to remember that it finished.
+The durable run cursor/result is authoritative.
+
+### QA-G10 — crash resume starts at the unfinished authority boundary
+A resume of the same run must preserve completed earlier stages and recover only
+the current unfinished Workplace/WorkerExecution (plus any authorized repair).
+If a test shows Discovery/Formalization rerunning after a pure host crash in the
+same run, FAIL unless those stages were not durably completed.
+
+### QA-G11 — lifecycle lease takeover is bounded and fenced
+A replacement host may take over only an expired/unowned lifecycle execution
+lease and must advance the fence. A still-live lease remains busy, not silently
+stolen.
+
 ---
 
 ## H. Persistence
@@ -875,6 +1092,11 @@ Recovery/gate/effect/replay eligibility cannot live only in process memory.
 
 ### QA-H04 — legacy schema constraint is not architecture
 Do not bend the conceptual model around an old DB limitation.
+
+### QA-H05 — replay archive survives intentional new starts
+ReplayCapsules are derived reusable production for the Project scope. Normal
+`new_start` must not delete them. Explicit destructive reset is a separate test
+operation and cannot be used as evidence that replay works.
 
 ---
 
@@ -893,6 +1115,7 @@ Deterministic worker uses assigned WorkplaceDesk/RepositoryDesk just like LLM.
 Concurrency=1 does not prove parallel desk isolation.
 One Workshop does not prove a universal mechanism.
 A happy-path valid JSON does not prove contract enforcement.
+A clean-DB second run does not prove replay.
 
 ### QA-I05 — harness failure is not "just a test bug" until boundary difference is proven
 Show the exact divergence from the production worker boundary before dismissing it.
@@ -900,6 +1123,16 @@ Show the exact divergence from the production worker boundary before dismissing 
 ### QA-I06 — contract tests include a malformed-product negative case
 For changed output contracts/materialization/validators, intentionally omit or
 corrupt required data and prove current Gate authority refuses final acceptance.
+
+### QA-I07 — crash-resume probe is destructive-process, non-destructive-state
+To prove recovery, kill/terminate the host or worker process while preserving the
+DB and repository state, then invoke canonical resume. Do not reset persistence.
+Assert completed stages are unchanged and only unfinished authority is recovered.
+
+### QA-I08 — replay probe counts physical inference invocations
+For canonical Run A/Run B, record actual model/CLI spawn or provider invocation
+counts. A claimed replay hit is insufficient if a physical inference worker was
+also started.
 
 ---
 
@@ -1105,6 +1338,14 @@ Executor
 Coordinator
 Adapter
 Persistence
+FactoryStart
+new_start
+resume
+Bootstrap
+Reset
+ReplayKey
+semanticInputDigest
+initiatedBy
 WorkspaceProjection
 PinnedWorkspace
 Template
@@ -1119,6 +1360,9 @@ Markdown
 YAML
 JSON
 Recovery
+Reaper
+Supervision
+activeReservationRef
 Replay
 Gate
 Candidate
@@ -1146,6 +1390,11 @@ Then ask:
 8. Does the parser enforce any syntax that is absent from worker-visible pinned guidance?
 9. Can two semantically equivalent allowed representations produce different parser/validator outcomes?
 10. If a model is blamed, has the runtime boundary actually been disproven as the cause?
+11. Does the test preserve the same DB + Project between replay Run A and Run B?
+12. Can control argv or operator provenance change semanticInputDigest accidentally?
+13. On host/worker death, who clears the Workplace active reservation and moves loop state to repair?
+14. Do close-callback and startup-reaper recovery have identical authority effects?
+15. Does same-run resume reuse completed StageRun/ProcessRun records rather than rebuilding them?
 
 If adding a normal Workshop requires copying this code, FAIL.
 
@@ -1162,10 +1411,12 @@ If adding a normal Workshop requires copying this code, FAIL.
 | workspace/package materialization | Discovery readiness + one Formalization/Development structured worker use same projection/materializer path and see only declared pinned contract resources |
 | review/Gate repair routing | accepted review + author repair + reviewer repair + retry on same Workplace |
 | recovery feedback | exact GateDecision/CheckReceipt/CandidateSet projection + stale clearing + Formalization/Development parity |
+| crash/reaper/supervision | controlled close + killed worker + killed host; each clears stale Workplace reservation, reaches repair/requeue under same policy, and replacement completion passes fence |
 | RepositoryDesk/Git | >=2 concurrent git-changing work items, isolated desks, stable source branches, both integrations governed by Effect |
-| replay key/semantic identity | cold Run A + new-start Run B; Run B zero scripted inference; new current authority objects |
+| replay key/semantic identity | same-DB same-Project Run A + intentional new-start Run B; component-wise ReplayKey equality for expected hits; zero inference calls on hits |
+| factory start/bootstrap/reset | prove Run B does not delete/recreate DB, Project or capsule archive; prove CLI control flags do not enter business semantic input |
 | replay product rebinding | old authority refs are not current; current refs are rebound |
-| lifecycle start/resume | new start creates new run; resume preserves same run |
+| lifecycle start/resume | new start creates new run; resume preserves same run; completed StageRun/ProcessRun results are reused directly |
 | CandidateSet/product persistence | exact immutable historical read after later repair/new execution |
 | effects | idempotency + durable attempts/receipts + current desired-state observation |
 | test worker behavior | parity with production WorkerExecution + WorkplaceDesk/RepositoryDesk boundary |
@@ -1195,6 +1446,7 @@ Production Cell core       -> Formalization + Development (+ Discovery where app
 RepositoryDesk/Git         -> two sibling Development work items
 replay                     -> author + reviewer + verification where applicable
 lifecycle                  -> at least two consecutive Workshops
+crash recovery             -> author execution + reviewer execution where applicable
 ```
 
 A class named `Generic` is not proof of universality.
@@ -1263,6 +1515,30 @@ that all contract-allowed equivalent representations canonicalize correctly.
 
 ---
 
+# Continuity proof format
+
+For every affected start/resume/replay/recovery path report:
+
+```text
+Scenario: SAME_RUN_RESUME / NEW_START_REPLAY / CHECKPOINT / CRASH_RECOVERY
+Entrypoint: <file/function/command>
+DB/persistence identity before/after: <same/different + evidence>
+Project identity before/after: <same/different + evidence>
+LifecycleRun identity before/after: <same/new as required>
+Completed StageRun/ProcessRun reuse: <refs + no-inference evidence>
+Capsule store preserved: PASS/FAIL/N/A
+ReplayKey source/current components: <component table or N/A>
+Physical inference calls: <count>
+Workplace before crash: <loop/kanban/reservation>
+WorkerExecution after reaper: <terminal state>
+Workplace after reaper: <loop/kanban/reservation>
+Replacement reservation: <new execution ref>
+Replacement worker_done/gate: PASS/FAIL/NOT_PROVEN
+Verdict: PASS/FAIL/NOT_PROVEN
+```
+
+---
+
 # Test reasoning discipline
 
 Never reason:
@@ -1278,6 +1554,7 @@ architecture invariant
   -> production path inspected
   -> sibling path compared
   -> producer/consumer language compared
+  -> continuity identity checked where relevant
   -> falsifying test selected
   -> test green
 ```
@@ -1300,7 +1577,13 @@ Prefer permanent architecture ratchets that fail if someone later:
 - bypasses reviewer verdict in Development Gate;
 - shares one mutable checkout across parallel worker desks;
 - restores old CandidateSet/Gate authority during replay;
-- folds run ids into semantic replay identity;
+- folds run ids or operator provenance into semantic replay identity;
+- lets CLI control flag values leak into business semantic input;
+- destroys replay capsules between canonical Run A and Run B;
+- calls a clean-DB second execution a replay test;
+- releases a dead execution/task but leaves Workplace running under a stale reservation;
+- lets a replacement worker run without replacing the authoritative Workplace reservation;
+- reruns completed same-run stages after a pure host crash;
 - lets scripted scenarios mutate Factory authority directly.
 
 ---
@@ -1324,6 +1607,12 @@ malformed product can receive final acceptance
 direct authority mutation from worker/test code
 shared mutable RepositoryDesk for parallel workers
 replay restores old authority
+new-start destroys capsule persistence
+operator/runtime provenance changes semantic ReplayKey
+CLI control values contaminate initiative semantic input
+startup reaper releases task but leaves stale Workplace reservation
+replacement execution cannot become Workplace reservation owner
+same-run resume reruns durably completed stages without semantic invalidation
 Gate/reviewer bypass
 Effect triggered without current final acceptance
 ```
@@ -1342,7 +1631,10 @@ parser changed without producer-contract inspection
 parser changed without positive compatible-representation test where multiple forms are allowed
 text section parser changed without nested/same-level boundary tests
 Git desk changed but only concurrency=1 tested
-replay changed without Run A/Run B proof
+replay changed without SAME-DB SAME-PROJECT Run A/Run B proof
+replay miss reported without ReplayKey component comparison
+crash recovery claimed without killing a real worker/host and inspecting Workplace reservation
+resume claimed without proving completed StageRun/ProcessRun reuse and zero inference for them
 common base-interface path cannot be reconstructed
 worker-visible contract path cannot be reconstructed
 model blamed without inspecting actual worker_done/submission/parser path
@@ -1390,10 +1682,17 @@ Representation-contract proof:
 <representation mode, parser constraints + provenance, equivalence probes,
 canonicalization path, producer/consumer language verdict>
 
+Continuity proof:
+<resume/new-start/replay/crash identity, capsule persistence, ReplayKey diff,
+Workplace reservation transition and physical inference-count evidence>
+
 Checklist:
 BI-01 PASS — ...
 QA-A01 PASS — ...
 QA-B01 PASS — ...
+QA-E19 PASS — ...
+QA-F07 PASS — ...
+QA-G09 PASS — ...
 QA-J01 PASS — ...
 ...
 Only genuinely inapplicable items may be N/A, with reason.
@@ -1423,6 +1722,9 @@ Do not write "mostly passes".
 Do not convert missing evidence into optimism.
 Do not attribute a protocol/format failure to the model before producer/consumer
 contract parity has been proven.
+Do not call a clean-DB second run replay.
+Do not call task release crash recovery until Workplace authority and reservation
+state have also been proven coherent.
 
 ---
 
@@ -1456,8 +1758,18 @@ contract parity has been proven.
 [ ] CandidateSet remains the exact immutable QC handoff.
 [ ] GateDecision remains current append-only authority.
 [ ] Recovery targets the same Workplace using exact rejected material.
+[ ] Every crash/reaper path clears stale Workplace reservation and reaches repair/requeue coherently.
+[ ] A replacement execution owns a fresh authoritative Workplace reservation.
+[ ] Controlled-close and startup-reaper recovery converge on the same semantic effects.
 [ ] Reviewer repair can target reviewer; author defects can target author.
+[ ] Same-run resume reuses durably completed StageRun/ProcessRun results directly.
+[ ] Same-run host crash resumes at the unfinished authority boundary, not from Discovery.
 [ ] Replay substitutes production only and reruns current authority.
+[ ] Canonical replay proof uses SAME DB + SAME Project across Run A and Run B.
+[ ] Run B does not delete/reset/copy capsules or authority tables.
+[ ] ReplayKey expected hits were compared component-by-component.
+[ ] Operator provenance and CLI control values do not contaminate semantic replay identity.
+[ ] Physical inference count is zero for compatible replay hits.
 [ ] Checks remain checks; Effects remain authorized mutations.
 [ ] Scripted/test workers use the same physical boundary as production workers.
 [ ] If the model was blamed, I inspected the actual prompt/tools/submission/parser path first.
