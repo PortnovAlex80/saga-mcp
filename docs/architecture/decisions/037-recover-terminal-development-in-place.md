@@ -1,9 +1,9 @@
 # 037. Recover terminal Development integration conflicts in place
 
-- **Status:** Proposed
+- **Status:** Superseded by 038
 - **Date:** 2026-08-09
 - **Supersedes:** —
-- **Superseded by:** —
+- **Superseded by:** [038. Continue from an accepted stage prefix](038-continue-from-accepted-stage-prefix.md)
 - **Decision-maker:** autonomous-decision skill
 
 ## Context
