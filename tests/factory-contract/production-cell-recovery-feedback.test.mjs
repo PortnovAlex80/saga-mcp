@@ -205,3 +205,29 @@ test('later accepted GateDecision clears stale recovery feedback', () => {
   const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);
   assert.equal(stored.recovery_feedback, null);
 });
+
+test('submission-preflight rejection survives projection before any CandidateSet/GateDecision', () => {
+  const db = createDb();
+  const feedback = {
+    schemaVersion: 'factory.submission-validation-recovery-feedback.v1',
+    rejectionRef: 'submission-validation-rejection:abc',
+    rejectionDigest: 'abc',
+    rejectionCode: 'FORMALIZATION_SRS_INCOMPLETE',
+    issue: {
+      schemaVersion: 'factory.recovery-issue.v1',
+      findings: [{ code: 'd2-representation', message: 'Use canonical YAML.' }],
+    },
+  };
+  const meta = { ...baseTaskMetadata('author'), recovery_feedback: feedback };
+  db.prepare('INSERT INTO tasks(id,metadata,project_repository_id) VALUES (10,?,3)')
+    .run(JSON.stringify(meta));
+  db.prepare('INSERT INTO factory_work_intents(id,retry_budget) VALUES (41,3)').run();
+
+  bind(createSqliteProductionCellProjectionPersistence(db));
+
+  const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);
+  assert.deepEqual(stored.recovery_feedback, feedback,
+    'projection must not erase a durable pre-CandidateSet validator rejection');
+  assert.equal(stored.process_node_input.business, 'same',
+    'submission feedback remains outside semantic node input');
+});

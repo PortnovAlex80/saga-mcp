@@ -61,8 +61,10 @@ do not add permissive table acceptance.
   artifact hashes and a recovery envelope. The rejection commits in the same
   transaction before the MCP error is returned.
 - A later execution receives the exact rejection snapshot through
-  `recovery-feedback.json`. Successful validation clears only the transport
-  pointer; immutable rejection history remains.
+  `recovery-feedback.json`. Production Cell process-context re-projection must
+  preserve this pre-CandidateSet feedback schema when no later GateDecision
+  exists. Successful validation clears only the transport pointer; immutable
+  rejection history remains.
 - Exhausted preflight incidents may be resumed only through an explicit
   operator authorization. The command verifies one current blocked/paused
   Workplace, no active fence/reservation, no accepted completion,
@@ -107,5 +109,9 @@ new validator; it must not be introduced as an unpinned compatibility guess.
 - Three independent options were evaluated with the matrix above.
 - Pre-mortem and adversarial review rejected table auto-aggregation and required
   atomic rejection persistence plus a single-use operator authorization.
+- Live recovery exposed a missing projection seam: the durable feedback was
+  initially replaced with `null` because Production Cell projection recognized
+  only GateDecision feedback. The projection now preserves the typed
+  submission-preflight envelope, with a regression test at that exact boundary.
 - Revisit the Gate-native option when CandidateSets freeze immutable content
   blobs and CheckReceipts can carry validator-owned structured evidence.

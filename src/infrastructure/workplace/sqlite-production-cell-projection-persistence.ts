@@ -372,6 +372,15 @@ function readCurrentProductionCellRecoveryFeedback(
   taskId: number,
   metadata: Record<string, unknown>,
 ): Record<string, unknown> | null {
+  const directFeedback = metadata.recovery_feedback;
+  const submissionValidationFeedback =
+    directFeedback
+    && typeof directFeedback === 'object'
+    && !Array.isArray(directFeedback)
+    && (directFeedback as Record<string, unknown>).schemaVersion
+      === 'factory.submission-validation-recovery-feedback.v1'
+      ? directFeedback as Record<string, unknown>
+      : null;
   const workplaceRef = typeof metadata.workplace_ref === 'string'
     ? metadata.workplace_ref
     : null;
@@ -379,7 +388,7 @@ function readCurrentProductionCellRecoveryFeedback(
     metadata.role === 'author' || metadata.role === 'reviewer'
       ? metadata.role
       : null;
-  if (!workplaceRef || !role) return null;
+  if (!workplaceRef || !role) return submissionValidationFeedback;
 
   // Only the latest authoritative GateDecision can put a semantic defect sheet
   // on the desk. If a later decision accepted the work, stale feedback is
@@ -394,9 +403,13 @@ function readCurrentProductionCellRecoveryFeedback(
       ORDER BY decided_at DESC,rowid DESC
       LIMIT 1`,
   ).get(workplaceRef) as GateDecisionRow | undefined;
+  // Submission-preflight rejection occurs before CandidateSet/GateDecision.
+  // Its append-only rejection ledger is a separate authoritative repair input
+  // and must survive task re-projection. Once any later gate exists, gate truth
+  // owns staleness/repair and the normal decision logic below may clear it.
+  if (!decision) return submissionValidationFeedback;
   if (
-    !decision
-    || decision.verdict !== 'repair_required'
+    decision.verdict !== 'repair_required'
     || decision.repair_target_role !== role
   ) return null;
   if (!decision.recovery_issue_ref) {
