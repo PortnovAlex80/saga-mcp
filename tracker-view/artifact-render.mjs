@@ -42,6 +42,7 @@ import {
 import {
   artifactFallbackDocument,
   orderedArtifactTypes,
+  structurallyUnreachableArtifacts,
 } from './artifact-presentation.mjs';
 
 export function createArtifactRenderApi({
@@ -209,12 +210,18 @@ export function createArtifactRenderApi({
     const tracesByTarget = new Set(traces.filter(t => t.target_type === 'artifact').map(t => t.target_id));
     const isStageSummary = (a) => a.type === 'decision' && typeof a.code === 'string'
       && /^STAGE-[A-Z]+-(SUMMARY|COMPLETED)$/i.test(a.code);
+    const unreachableIds = new Set(
+      structurallyUnreachableArtifacts(artifacts).map(artifact => artifact.id),
+    );
     const orphans = artifacts.filter(a =>
+      unreachableIds.has(a.id)
+      || (
       a.parent_artifact_id == null
       && !isParent.has(a.id)
       && !tracesBySource[a.id]
       && !tracesByTarget.has(a.id)
-      && !isStageSummary(a));
+      && !isStageSummary(a)
+      ));
     const treeArts = artifacts.filter(a => !orphans.includes(a));
 
     // Группировка дерева по эпикам (REQ-NNN episode). Корни — без parent_artifact_id.

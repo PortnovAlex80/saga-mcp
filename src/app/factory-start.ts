@@ -6,6 +6,7 @@ import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { sha256Hex } from '../shared/canonical-json.js';
 import { SUBMISSION_VALIDATION_FEEDBACK_SCHEMA } from '../lifecycle/submission-validation-rejections.js';
+import type { CheckPlan } from '../process-modules/domain/workplace/gate.js';
 
 export const FACTORY_START_SCHEMA = 'saga.factory-start.v1' as const;
 
@@ -28,7 +29,10 @@ export class FactoryStartError extends Error {
       | 'FACTORY_PAUSED_WORKPLACE_NOT_UNIQUE'
       | 'FACTORY_PAUSED_WORKPLACE_UNSAFE'
       | 'FACTORY_RECOVERY_FEEDBACK_REQUIRED'
-      | 'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+      | 'FACTORY_RECOVERY_SNAPSHOT_DRIFT'
+      | 'FACTORY_FAILED_GATE_NOT_UNIQUE'
+      | 'FACTORY_FAILED_GATE_UNSAFE'
+      | 'FACTORY_FAILED_GATE_PLAN_INVALID',
     message: string,
   ) {
     super(message);
@@ -188,6 +192,287 @@ export interface PausedWorkplaceRecoveryResult {
   readonly taskId: number;
   readonly resultingRevision: number;
   readonly replayed: boolean;
+}
+
+export interface FailedGateRecoveryResult {
+  readonly authorizationRef: string;
+  readonly lifecycleRunId: number;
+  readonly stageRunId: number;
+  readonly processRunId: number;
+  readonly workplaceRef: string;
+  readonly candidateSetRef: string;
+  readonly abandonedGateRunRef: string;
+  readonly replacementCheckPlanDigest: string;
+  readonly resultingLifecycleVersion: number;
+  readonly replayed: boolean;
+}
+
+/**
+ * Reopen one terminal lifecycle whose only failure is a CheckProvider version
+ * mismatch after an author CandidateSet was sealed. The old GateRun and its
+ * partial receipts remain evidence. Resume re-enters the same verifying
+ * Workplace and derives a new GateRun identity from the replacement plan.
+ */
+export function recoverFailedGateRun(
+  db: Database.Database,
+  input: {
+    readonly projectId: number;
+    readonly replacementCheckPlan: CheckPlan;
+    readonly actorId: string;
+    readonly reason: string;
+  },
+): FailedGateRecoveryResult {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const prior = db.prepare(
+      `SELECT a.*,c.resulting_lifecycle_version,lr.status AS lifecycle_status,
+              lr.execution_lease_owner
+         FROM factory_failed_gate_recovery_authorizations a
+         JOIN factory_failed_gate_recovery_consumptions c
+           ON c.authorization_ref=a.authorization_ref
+         JOIN factory_lifecycle_runs lr ON lr.id=a.lifecycle_run_id
+        WHERE lr.project_id=? AND a.actor_id=? AND a.reason=?
+        ORDER BY a.authorized_at DESC LIMIT 1`,
+    ).get(input.projectId, input.actorId, input.reason) as Record<string, unknown> | undefined;
+    if (
+      prior
+      && prior.lifecycle_status === 'paused'
+      && prior.execution_lease_owner === null
+      && prior.replacement_check_plan_digest === input.replacementCheckPlan.checkPlanDigest
+    ) {
+      db.exec('COMMIT');
+      return failedGateRecoveryResult(prior, true);
+    }
+
+    const rows = db.prepare(
+      `SELECT lr.id AS lifecycle_run_id,lr.version AS lifecycle_version,
+              lr.error AS lifecycle_error,lr.execution_lease_owner AS lifecycle_lease,
+              sr.id AS stage_run_id,sr.error AS stage_error,
+              pr.id AS process_run_id,pr.error AS process_error,
+              pr.execution_lease_owner AS process_lease,
+              w.workplace_ref,w.revision AS workplace_revision,w.next_role,
+              w.active_reservation_ref,w.active_gate_ref,w.active_recovery_case_ref,
+              t.id AS task_id,t.status AS task_status,t.assigned_to,t.current_execution_id,
+              we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
+              cs.candidate_set_ref,cs.candidate_set_digest,cs.producer_execution_ref,
+              cs.role AS candidate_role,
+              gr.gate_run_ref,gr.gate_phase,gr.subject_candidate_set_ref,
+              gr.assessment_candidate_set_refs,gr.check_plan_ref,
+              gr.check_plan_digest,gr.expected_workplace_revision,gr.state AS gate_state,
+              nr.id AS failed_node_run_id,nr.error_message AS node_error
+         FROM factory_lifecycle_runs lr
+         JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
+         JOIN factory_process_runs pr ON pr.id=sr.process_run_id
+         JOIN factory_workplaces w ON w.process_run_id=pr.id
+         JOIN tasks t ON t.workplace_ref=w.workplace_ref
+         JOIN worker_executions we ON we.execution_id=w.active_reservation_ref
+         JOIN factory_candidate_sets cs
+           ON cs.workplace_ref=w.workplace_ref
+          AND cs.producer_execution_ref=we.execution_id
+          AND cs.role='author'
+         JOIN factory_gate_runs gr
+           ON gr.workplace_ref=w.workplace_ref
+          AND gr.subject_candidate_set_ref=cs.candidate_set_ref
+          AND gr.state='checking'
+         JOIN factory_node_runs nr ON nr.id=(
+           SELECT MAX(n2.id) FROM factory_node_runs n2
+            WHERE n2.process_run_id=pr.id AND n2.status='failed'
+         )
+        WHERE lr.project_id=? AND lr.status='failed' AND lr.terminal_status='failed'
+          AND sr.status='failed' AND pr.status='failed'
+          AND w.kanban_phase='in_progress' AND w.loop_state='verifying'`,
+    ).all(input.projectId) as Array<Record<string, unknown>>;
+    if (rows.length !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_NOT_UNIQUE',
+        `project ${input.projectId} resolves to ${rows.length} recoverable failed gates; expected exactly one`,
+      );
+    }
+    const row = rows[0]!;
+    const failure = String(row.lifecycle_error ?? '');
+    const mismatch = /^CHECK_PROVIDER_VERSION_MISMATCH: expected ([^,]+), got (.+)$/.exec(failure);
+    if (
+      !mismatch
+      || row.stage_error !== failure
+      || row.process_error !== failure
+      || row.node_error !== failure
+      || row.lifecycle_lease !== null
+      || row.process_lease !== null
+      || row.next_role !== 'author'
+      || row.active_gate_ref !== null
+      || row.active_recovery_case_ref !== null
+      || row.task_status !== 'in_progress'
+      || row.assigned_to !== null
+      || row.current_execution_id !== null
+      || row.execution_state !== 'exited'
+      || row.exit_code !== 0
+      || row.execution_error !== null
+      || row.candidate_role !== 'author'
+      || row.gate_phase !== 'author'
+      || row.gate_state !== 'checking'
+      || row.subject_candidate_set_ref !== row.candidate_set_ref
+      || row.expected_workplace_revision !== row.workplace_revision
+      || row.active_reservation_ref !== row.producer_execution_ref
+      || row.assessment_candidate_set_refs !== '[]'
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_UNSAFE',
+        `failed gate ${String(row.gate_run_ref)} does not satisfy exact replay preconditions`,
+      );
+    }
+
+    const plan = input.replacementCheckPlan;
+    const entries = [...plan.entries];
+    if (
+      !plan.checkPlanId
+      || !plan.checkPlanDigest
+      || plan.checkPlanId !== row.check_plan_ref
+      || plan.checkPlanDigest === row.check_plan_digest
+      || mismatch[1] === mismatch[2]
+      || !entries.some(entry => entry.check.version === mismatch[2])
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_PLAN_INVALID',
+        `replacement plan '${plan.checkPlanId}' is not the canonical successor of failed plan ${String(row.check_plan_ref)}`,
+      );
+    }
+
+    const activeExecutions = (db.prepare(
+      `SELECT COUNT(*) AS n
+         FROM worker_executions we
+         JOIN tasks t ON t.id=we.task_id
+         JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
+        WHERE w.process_run_id=?
+          AND we.state IN ('reserved','running','cancel_requested')`,
+    ).get(row.process_run_id) as { n: number }).n;
+    const acceptedDone = (db.prepare(
+      `SELECT COUNT(*) AS n FROM command_receipts
+        WHERE task_id=? AND execution_id=?
+          AND command_kind='worker_done' AND accepted=1`,
+    ).get(row.task_id, row.producer_execution_ref) as { n: number }).n;
+    const gateDecisionCount = (db.prepare(
+      'SELECT COUNT(*) AS n FROM factory_gate_decisions WHERE gate_run_ref=?',
+    ).get(row.gate_run_ref) as { n: number }).n;
+    if (activeExecutions !== 0 || acceptedDone !== 1 || gateDecisionCount !== 0) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_UNSAFE',
+        'failed gate recovery requires one accepted completion, no live execution and no GateDecision',
+      );
+    }
+
+    const partialReceipts = db.prepare(
+      `SELECT provider_id,provider_version,provider_digest,outcome
+         FROM factory_check_receipts WHERE check_run_ref=? ORDER BY created_at,check_receipt_ref`,
+    ).all(row.gate_run_ref) as Array<{
+      provider_id: string;
+      provider_version: string;
+      provider_digest: string;
+      outcome: string;
+    }>;
+    if (
+      partialReceipts.length >= entries.length
+      || partialReceipts.some(receipt => {
+        const declared = entries.find(entry => entry.check.providerId === receipt.provider_id);
+        return !declared
+          || declared.check.version !== receipt.provider_version
+          || declared.check.providerDigest !== receipt.provider_digest
+          || receipt.outcome !== 'passed';
+      })
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_PLAN_INVALID',
+        'replacement plan does not preserve the already-passed CheckReceipt prefix',
+      );
+    }
+
+    verifyCandidateSetDigest(db, row);
+    verifyAcceptedSubmissionSnapshot(db, row, plan, mismatch[2]!);
+
+    const authorizationRef = `failed-gate-recovery:${sha256Hex({
+      lifecycleRunId: row.lifecycle_run_id,
+      stageRunId: row.stage_run_id,
+      processRunId: row.process_run_id,
+      failedNodeRunId: row.failed_node_run_id,
+      workplaceRef: row.workplace_ref,
+      workplaceRevision: row.workplace_revision,
+      candidateSetRef: row.candidate_set_ref,
+      candidateSetDigest: row.candidate_set_digest,
+      abandonedGateRunRef: row.gate_run_ref,
+      abandonedCheckPlanDigest: row.check_plan_digest,
+      replacementCheckPlanDigest: plan.checkPlanDigest,
+      actorId: input.actorId,
+      reason: input.reason,
+    })}`;
+    db.prepare(
+      `INSERT INTO factory_failed_gate_recovery_authorizations
+         (authorization_ref,lifecycle_run_id,stage_run_id,process_run_id,
+          failed_node_run_id,workplace_ref,expected_workplace_revision,task_id,
+          producer_execution_ref,candidate_set_ref,candidate_set_digest,
+          abandoned_gate_run_ref,abandoned_check_plan_ref,abandoned_check_plan_digest,
+          replacement_check_plan_ref,replacement_check_plan_digest,
+          replacement_check_plan_snapshot,failure_code,actor_id,reason)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      authorizationRef,row.lifecycle_run_id,row.stage_run_id,row.process_run_id,
+      row.failed_node_run_id,row.workplace_ref,row.workplace_revision,row.task_id,
+      row.producer_execution_ref,row.candidate_set_ref,row.candidate_set_digest,
+      row.gate_run_ref,row.check_plan_ref,row.check_plan_digest,
+      plan.checkPlanId,plan.checkPlanDigest,JSON.stringify(plan),failure,
+      input.actorId,input.reason,
+    );
+
+    const processUpdate = db.prepare(
+      `UPDATE factory_process_runs
+          SET status='paused',error=NULL,completed_at=NULL,
+              execution_lease_owner=NULL,execution_lease_expires_at=NULL,
+              updated_at=datetime('now')
+        WHERE id=? AND status='failed' AND error=?`,
+    ).run(row.process_run_id, failure);
+    const stageUpdate = db.prepare(
+      `UPDATE factory_stage_runs
+          SET status='paused',error=NULL,completed_at=NULL,updated_at=datetime('now')
+        WHERE id=? AND status='failed' AND error=?`,
+    ).run(row.stage_run_id, failure);
+    const lifecycleUpdate = db.prepare(
+      `UPDATE factory_lifecycle_runs
+          SET status='paused',terminal_status=NULL,error=NULL,completed_at=NULL,
+              execution_lease_owner=NULL,execution_lease_expires_at=NULL,
+              version=version+1,updated_at=datetime('now')
+        WHERE id=? AND status='failed' AND terminal_status='failed'
+          AND version=? AND error=?`,
+    ).run(row.lifecycle_run_id, row.lifecycle_version, failure);
+    if (
+      processUpdate.changes !== 1
+      || stageUpdate.changes !== 1
+      || lifecycleUpdate.changes !== 1
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_FAILED_GATE_UNSAFE',
+        'failed gate state changed during guarded recovery',
+      );
+    }
+    const resultingLifecycleVersion = Number(row.lifecycle_version) + 1;
+    db.prepare(
+      `INSERT INTO factory_failed_gate_recovery_consumptions
+         (authorization_ref,resulting_lifecycle_version) VALUES (?,?)`,
+    ).run(authorizationRef, resultingLifecycleVersion);
+    db.exec('COMMIT');
+    return {
+      authorizationRef,
+      lifecycleRunId: Number(row.lifecycle_run_id),
+      stageRunId: Number(row.stage_run_id),
+      processRunId: Number(row.process_run_id),
+      workplaceRef: String(row.workplace_ref),
+      candidateSetRef: String(row.candidate_set_ref),
+      abandonedGateRunRef: String(row.gate_run_ref),
+      replacementCheckPlanDigest: plan.checkPlanDigest,
+      resultingLifecycleVersion,
+      replayed: false,
+    };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+    throw error;
+  }
 }
 
 /**
@@ -398,6 +683,176 @@ export function resumePausedSubmissionWorkplace(
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
     throw error;
+  }
+}
+
+function failedGateRecoveryResult(
+  row: Record<string, unknown>,
+  replayed: boolean,
+): FailedGateRecoveryResult {
+  return {
+    authorizationRef: String(row.authorization_ref),
+    lifecycleRunId: Number(row.lifecycle_run_id),
+    stageRunId: Number(row.stage_run_id),
+    processRunId: Number(row.process_run_id),
+    workplaceRef: String(row.workplace_ref),
+    candidateSetRef: String(row.candidate_set_ref),
+    abandonedGateRunRef: String(row.abandoned_gate_run_ref),
+    replacementCheckPlanDigest: String(row.replacement_check_plan_digest),
+    resultingLifecycleVersion: Number(row.resulting_lifecycle_version),
+    replayed,
+  };
+}
+
+function verifyCandidateSetDigest(
+  db: Database.Database,
+  row: Record<string, unknown>,
+): void {
+  const members = db.prepare(
+    `SELECT product_schema,product_ref,product_digest,origin,source_candidate_set_ref
+       FROM factory_candidate_set_members
+      WHERE candidate_set_ref=? ORDER BY ordinal`,
+  ).all(row.candidate_set_ref) as Array<{
+    product_schema: string;
+    product_ref: string;
+    product_digest: string;
+    origin: string;
+    source_candidate_set_ref: string | null;
+  }>;
+  if (members.length === 0) {
+    throw new FactoryStartError(
+      'FACTORY_FAILED_GATE_UNSAFE',
+      `CandidateSet ${String(row.candidate_set_ref)} has no members`,
+    );
+  }
+  const products = members.map(member => ({
+    schemaId: member.product_schema,
+    ref: member.product_ref,
+    digest: member.product_digest,
+  }));
+  for (const product of products) {
+    const stored = db.prepare(
+      `SELECT 1 AS present FROM factory_process_products
+        WHERE process_run_id=? AND schema_id=? AND artifact_ref=? AND product_hash=?`,
+    ).get(row.process_run_id, product.schemaId, product.ref, product.digest);
+    if (!stored) {
+      throw new FactoryStartError(
+        'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+        `CandidateSet product ${product.ref} no longer matches the durable product store`,
+      );
+    }
+  }
+  const actualDigest = sha256Hex({
+    workplaceRef: deserializeWorkplaceRef(String(row.workplace_ref)),
+    executionRef: String(row.producer_execution_ref),
+    role: String(row.candidate_role),
+    products,
+  });
+  if (actualDigest !== row.candidate_set_digest) {
+    throw new FactoryStartError(
+      'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+      `CandidateSet ${String(row.candidate_set_ref)} digest no longer verifies`,
+    );
+  }
+}
+
+function verifyAcceptedSubmissionSnapshot(
+  db: Database.Database,
+  row: Record<string, unknown>,
+  plan: CheckPlan,
+  expectedValidatorVersion: string,
+): void {
+  const receipts = db.prepare(
+    `SELECT validator_id,validator_version,input_snapshot_hash,artifact_ids,
+            artifact_hashes,validated_set_digest
+       FROM factory_submission_validation_receipts
+      WHERE process_run_id=? AND execution_id=? AND task_id=?`,
+  ).all(row.process_run_id, row.producer_execution_ref, row.task_id) as Array<{
+    validator_id: string;
+    validator_version: string;
+    input_snapshot_hash: string;
+    artifact_ids: string;
+    artifact_hashes: string;
+    validated_set_digest: string;
+  }>;
+  if (receipts.length !== 1) {
+    throw new FactoryStartError(
+      'FACTORY_FAILED_GATE_UNSAFE',
+      `producer execution has ${receipts.length} validation receipts; expected exactly one`,
+    );
+  }
+  const receipt = receipts[0]!;
+  const providerId = `factory.submission-validator.${receipt.validator_id}`;
+  const declaredProvider = plan.entries.find(entry => entry.check.providerId === providerId);
+  if (
+    !declaredProvider
+    || receipt.validator_version !== expectedValidatorVersion
+    || declaredProvider.check.version !== expectedValidatorVersion
+    || receipt.input_snapshot_hash !== receipt.validated_set_digest
+  ) {
+    throw new FactoryStartError(
+      'FACTORY_FAILED_GATE_PLAN_INVALID',
+      'accepted submission receipt is not pinned to the replacement validator',
+    );
+  }
+  const artifactIds = JSON.parse(receipt.artifact_ids) as unknown;
+  const artifactHashes = JSON.parse(receipt.artifact_hashes) as unknown;
+  if (
+    !Array.isArray(artifactIds)
+    || !artifactHashes
+    || typeof artifactHashes !== 'object'
+    || Array.isArray(artifactHashes)
+    || artifactIds.length === 0
+  ) {
+    throw new FactoryStartError(
+      'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+      'accepted submission artifact snapshot is malformed',
+    );
+  }
+  for (const rawId of artifactIds) {
+    const artifactId = Number(rawId);
+    const expectedHash = (artifactHashes as Record<string, unknown>)[String(artifactId)];
+    if (typeof expectedHash !== 'string' || !expectedHash) {
+      throw new FactoryStartError(
+        'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+        `accepted submission has no hash for artifact ${artifactId}`,
+      );
+    }
+    const artifact = db.prepare(
+      `SELECT a.path,a.content_hash,a.storage_kind,pr.local_path
+         FROM artifacts a
+         LEFT JOIN project_repositories pr ON pr.id=a.project_repository_id
+        WHERE a.id=?`,
+    ).get(artifactId) as {
+      path: string;
+      content_hash: string | null;
+      storage_kind: string;
+      local_path: string | null;
+    } | undefined;
+    if (!artifact || artifact.content_hash !== expectedHash) {
+      throw new FactoryStartError(
+        'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+        `artifact ${artifactId} changed after accepted submission`,
+      );
+    }
+    if (artifact.storage_kind === 'file_backed') {
+      if (!artifact.local_path) {
+        throw new FactoryStartError(
+          'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+          `file-backed artifact ${artifactId} has no repository binding`,
+        );
+      }
+      const filePath = path.join(artifact.local_path, artifact.path.split('#')[0]!);
+      if (
+        !existsSync(filePath)
+        || createHash('sha256').update(readFileSync(filePath)).digest('hex') !== expectedHash
+      ) {
+        throw new FactoryStartError(
+          'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+          `artifact ${artifactId} file bytes changed after accepted submission`,
+        );
+      }
+    }
   }
 }
 

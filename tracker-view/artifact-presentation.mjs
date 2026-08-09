@@ -13,6 +13,33 @@ export function orderedArtifactTypes(artifacts) {
   return [...primary, ...[...present].sort((left, right) => left.localeCompare(right))];
 }
 
+/**
+ * Return rows that cannot be reached from a root through parent links.
+ * Includes self/two-node cycles and references to missing parents. The UI uses
+ * this as a defensive projection boundary so corrupt catalogue rows remain
+ * visible for repair instead of silently disappearing from the document tree.
+ */
+export function structurallyUnreachableArtifacts(artifacts) {
+  const rows = Array.isArray(artifacts) ? artifacts : [];
+  const byParent = new Map();
+  for (const row of rows) {
+    const parent = row?.parent_artifact_id;
+    if (parent === null || parent === undefined) continue;
+    const children = byParent.get(parent) ?? [];
+    children.push(row);
+    byParent.set(parent, children);
+  }
+  const reachable = new Set();
+  const queue = rows.filter(row => row?.parent_artifact_id == null);
+  while (queue.length > 0) {
+    const row = queue.shift();
+    if (!row || reachable.has(row.id)) continue;
+    reachable.add(row.id);
+    queue.push(...(byParent.get(row.id) ?? []));
+  }
+  return rows.filter(row => !reachable.has(row?.id));
+}
+
 function parseObject(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;
   if (typeof value !== 'string' || value.trim() === '') return {};

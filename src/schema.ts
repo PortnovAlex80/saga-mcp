@@ -473,6 +473,47 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type);
 CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
+
+-- The artifact catalogue is a forest, not a general graph. Traceability edges
+-- belong in artifact_traces; parent_artifact_id must stay acyclic and inside
+-- one project/episode. SQLite permits a freshly inserted row to reference its
+-- own generated id, so the foreign key alone does not enforce this invariant.
+CREATE TRIGGER IF NOT EXISTS trg_artifacts_parent_insert_guard
+  BEFORE INSERT ON artifacts
+  WHEN NEW.parent_artifact_id IS NOT NULL
+  BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+      SELECT 1 FROM artifacts p
+       WHERE p.id=NEW.parent_artifact_id
+         AND p.project_id=NEW.project_id
+         AND p.epic_id=NEW.epic_id
+    ) THEN RAISE(ABORT, 'artifact parent must be an existing artifact in the same project and epic') END;
+  END;
+
+CREATE TRIGGER IF NOT EXISTS trg_artifacts_parent_update_guard
+  BEFORE UPDATE OF parent_artifact_id, project_id, epic_id ON artifacts
+  WHEN NEW.parent_artifact_id IS NOT NULL
+  BEGIN
+    SELECT CASE WHEN NEW.parent_artifact_id=NEW.id THEN
+      RAISE(ABORT, 'artifact cannot be its own parent') END;
+    SELECT CASE WHEN NOT EXISTS (
+      SELECT 1 FROM artifacts p
+       WHERE p.id=NEW.parent_artifact_id
+         AND p.project_id=NEW.project_id
+         AND p.epic_id=NEW.epic_id
+    ) THEN RAISE(ABORT, 'artifact parent must be in the same project and epic') END;
+    SELECT CASE WHEN EXISTS (
+      WITH RECURSIVE ancestors(id) AS (
+        SELECT NEW.parent_artifact_id
+        UNION
+        SELECT a.parent_artifact_id
+          FROM artifacts a JOIN ancestors x ON a.id=x.id
+         WHERE a.parent_artifact_id IS NOT NULL
+      )
+      SELECT 1 FROM ancestors WHERE id=NEW.id
+    ) THEN RAISE(ABORT, 'artifact parent would create a cycle') END;
+  END;
+
 CREATE INDEX IF NOT EXISTS idx_verification_evidence_artifact ON verification_evidence(artifact_id, outcome);
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_epic ON runtime_observations(epic_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_task ON runtime_observations(task_id);
@@ -1546,6 +1587,51 @@ CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_update
 CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_delete
   BEFORE DELETE ON factory_operator_recovery_consumptions
   BEGIN SELECT RAISE(ABORT, 'operator recovery consumptions are immutable'); END;
+
+-- Explicit recovery for an infrastructure-only GateRun failure after the
+-- CandidateSet was sealed. The failed GateRun remains immutable evidence; the
+-- authorization pins the replacement CheckPlan that may inspect the same set.
+CREATE TABLE IF NOT EXISTS factory_failed_gate_recovery_authorizations (
+  authorization_ref        TEXT PRIMARY KEY,
+  lifecycle_run_id         INTEGER NOT NULL,
+  stage_run_id             INTEGER NOT NULL,
+  process_run_id           INTEGER NOT NULL,
+  failed_node_run_id       INTEGER NOT NULL,
+  workplace_ref            TEXT NOT NULL,
+  expected_workplace_revision INTEGER NOT NULL,
+  task_id                  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  producer_execution_ref   TEXT NOT NULL,
+  candidate_set_ref        TEXT NOT NULL,
+  candidate_set_digest     TEXT NOT NULL,
+  abandoned_gate_run_ref   TEXT NOT NULL,
+  abandoned_check_plan_ref TEXT NOT NULL,
+  abandoned_check_plan_digest TEXT NOT NULL,
+  replacement_check_plan_ref TEXT NOT NULL,
+  replacement_check_plan_digest TEXT NOT NULL,
+  replacement_check_plan_snapshot TEXT NOT NULL,
+  failure_code             TEXT NOT NULL,
+  actor_id                 TEXT NOT NULL,
+  reason                   TEXT NOT NULL,
+  authorized_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS factory_failed_gate_recovery_consumptions (
+  authorization_ref        TEXT PRIMARY KEY
+                             REFERENCES factory_failed_gate_recovery_authorizations(authorization_ref),
+  resulting_lifecycle_version INTEGER NOT NULL,
+  consumed_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TRIGGER IF NOT EXISTS trg_failed_gate_recovery_auth_no_update
+  BEFORE UPDATE ON factory_failed_gate_recovery_authorizations
+  BEGIN SELECT RAISE(ABORT, 'failed gate recovery authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_failed_gate_recovery_auth_no_delete
+  BEFORE DELETE ON factory_failed_gate_recovery_authorizations
+  BEGIN SELECT RAISE(ABORT, 'failed gate recovery authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_failed_gate_recovery_consumption_no_update
+  BEFORE UPDATE ON factory_failed_gate_recovery_consumptions
+  BEGIN SELECT RAISE(ABORT, 'failed gate recovery consumptions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_failed_gate_recovery_consumption_no_delete
+  BEFORE DELETE ON factory_failed_gate_recovery_consumptions
+  BEGIN SELECT RAISE(ABORT, 'failed gate recovery consumptions are immutable'); END;
 `;
 
 // ----------------------------------------------------------------------------

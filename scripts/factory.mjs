@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node scripts/factory.mjs start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]
- *   node scripts/factory.mjs resume <db-path> [--requeue-paused]
+ *   node scripts/factory.mjs resume <db-path> [--requeue-paused|--recover-failed-gate]
  *
  * `start` provisions a sandbox (project + epic + repo + order), creates a
  * `mode:'new'` launch, and spawns orchestrate-cli.
@@ -80,7 +80,7 @@ function parseStartArguments(rawArgs) {
 if (command !== 'start' && command !== 'resume') {
   die(`usage: node scripts/factory.mjs <start|resume> <db-path> [options]\n`
     + `  start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
-    + `  resume <db-path> [--requeue-paused]`);
+    + `  resume <db-path> [--requeue-paused|--recover-failed-gate]`);
 }
 
 // ─── Shared: spawn the runtime host with a launch capability ──────────────
@@ -189,10 +189,16 @@ if (command === 'resume') {
   if (!dbPath) die('resume: db-path argument is required');
   const resumeOptions = new Set(args.slice(2));
   for (const option of resumeOptions) {
-    if (option !== '--requeue-paused') die(`resume: unsupported option '${option}'`);
+    if (option !== '--requeue-paused' && option !== '--recover-failed-gate') {
+      die(`resume: unsupported option '${option}'`);
+    }
+  }
+  if (resumeOptions.has('--requeue-paused') && resumeOptions.has('--recover-failed-gate')) {
+    die('resume: recovery options are mutually exclusive');
   }
 
   const {
+    recoverFailedGateRun,
     resolveFactoryResumeTarget,
     resumePausedSubmissionWorkplace,
   } = await import('../dist/app/factory-start.js');
@@ -204,6 +210,31 @@ if (command === 'resume') {
   try {
     // Apply additive runtime tables before any recovery/launch operation.
     db.exec(SCHEMA_SQL);
+    if (resumeOptions.has('--recover-failed-gate')) {
+      const { formalizationProcessModule } = await import(
+        '../dist/process-modules/modules/formalization/formalization-process-module.js'
+      );
+      const architectureNode = formalizationProcessModule.flow.nodes.find(
+        node => node.id === 'define-architecture-contract',
+      );
+      const replacementCheckPlan = architectureNode?.cellDefinition?.authorGate?.checkPlan;
+      if (!replacementCheckPlan) {
+        die('resume: canonical architecture author CheckPlan is unavailable');
+      }
+      const recovery = recoverFailedGateRun(db, {
+        projectId: 1,
+        replacementCheckPlan,
+        actorId: 'factory-resume-operator',
+        reason: 'replace legacy provider plan and replay sealed CandidateSet gate',
+      });
+      process.stdout.write(
+        `[factory] failed-gate recovery=${recovery.authorizationRef} `
+        + `candidate=${recovery.candidateSetRef} `
+        + `abandoned-gate=${recovery.abandonedGateRunRef} `
+        + `replacement-plan=${recovery.replacementCheckPlanDigest} `
+        + `replayed=${recovery.replayed}\n`,
+      );
+    }
     const target = resolveFactoryResumeTarget(db, 1); // sandbox projects use id=1
     if (resumeOptions.has('--requeue-paused')) {
       await ensurePausedRecoveryFeedback(db, target.lifecycleRunId);

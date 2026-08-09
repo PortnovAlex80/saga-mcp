@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   artifactFallbackDocument,
   orderedArtifactTypes,
+  structurallyUnreachableArtifacts,
 } from '../../tracker-view/artifact-presentation.mjs';
 
 test('artifact menu orders known types first and retains every new module-defined type', () => {
@@ -23,6 +24,22 @@ test('artifact menu orders known types first and retains every new module-define
     'business_metric',
     'hypothesis',
   ]);
+});
+
+test('document projection exposes cyclic and missing-parent rows instead of hiding them', () => {
+  const artifacts = [
+    { id: 1, parent_artifact_id: 1, title: 'self cycle' },
+    { id: 2, parent_artifact_id: null, title: 'root' },
+    { id: 3, parent_artifact_id: 2, title: 'reachable child' },
+    { id: 4, parent_artifact_id: 5, title: 'cycle a' },
+    { id: 5, parent_artifact_id: 4, title: 'cycle b' },
+    { id: 6, parent_artifact_id: 999, title: 'missing parent' },
+  ];
+
+  assert.deepEqual(
+    structurallyUnreachableArtifacts(artifacts).map(artifact => artifact.id),
+    [1, 4, 5, 6],
+  );
 });
 
 test('artifact fallback renders a module-provided database document verbatim', () => {
