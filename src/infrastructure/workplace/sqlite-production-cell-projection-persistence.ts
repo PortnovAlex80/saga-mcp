@@ -375,9 +375,10 @@ function readCurrentProductionCellRecoveryFeedback(
   const workplaceRef = typeof metadata.workplace_ref === 'string'
     ? metadata.workplace_ref
     : null;
-  const role = metadata.role === 'author' || metadata.role === 'reviewer'
-    ? metadata.role
-    : null;
+  const role: 'author' | 'reviewer' | null =
+    metadata.role === 'author' || metadata.role === 'reviewer'
+      ? metadata.role
+      : null;
   if (!workplaceRef || !role) return null;
 
   // Only the latest authoritative GateDecision can put a semantic defect sheet

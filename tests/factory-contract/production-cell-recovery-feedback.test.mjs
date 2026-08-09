@@ -9,7 +9,8 @@ function createDb() {
     CREATE TABLE tasks (
       id INTEGER PRIMARY KEY,
       metadata TEXT NOT NULL,
-      project_repository_id INTEGER
+      project_repository_id INTEGER,
+      updated_at TEXT
     );
     CREATE TABLE factory_work_intents (
       id INTEGER PRIMARY KEY,

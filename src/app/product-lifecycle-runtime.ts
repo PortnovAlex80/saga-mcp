@@ -87,7 +87,7 @@ import { buildWorkplaceProductionSnapshot, isWorkplaceProductionSnapshot, workpl
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
-import { createDiscoveryWorkplacePersistence } from '../modules/discovery/application/discovery-installation.js';
+import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import { createDevelopmentOutputPayloadResolver } from '../modules/development/application/development-installation.js';
@@ -264,7 +264,8 @@ export function createProductLifecycleRuntime(
 
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteFactoryDiscoveryRuntime();
-  const workplacePersistence = createDiscoveryWorkplacePersistence(runtimePersistence);
+  const productionCellProjectionPersistence =
+    createSqliteProductionCellProjectionPersistence(db);
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
@@ -356,7 +357,7 @@ export function createProductLifecycleRuntime(
       checkProviders: createStandardCheckProviderRegistry(),
       postAcceptanceEffects: createPostAcceptanceEffectRegistry(),
       persistence: {
-        ...workplacePersistence,
+        ...productionCellProjectionPersistence,
         readAuthorSemanticDigestForWorkplace: (serializedWorkplaceRef: string): string | null => {
           const row = db.prepare(
             `SELECT metadata FROM tasks
