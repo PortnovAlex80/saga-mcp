@@ -15,6 +15,8 @@ import { getDb } from '../../db.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
 import { reconcileWorkerExecutions, type ProcessProbe } from '../../worker-executions.js';
+import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
+import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/index.js';
 
 export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository {
   // Repointed to factory_lifecycle_runs (saga4 cutover, EXECUTION-PLAN §B.2).
@@ -250,14 +252,76 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
   }
 
   reconcile(projectId: number, epicId: number): ExecutionReconcileProjection[] {
-    return reconcileWorkerExecutions(
-      getDb(), projectId, epicId,
-      this.now ? this.now() : Date.now(),
-      {
-        ...(this.processProbe ? { processProbe: this.processProbe } : {}),
-        ...(this.hostname ? { hostname: this.hostname } : {}),
-      },
-    );
+    const db = getDb();
+    const run = db.transaction(() => {
+      // Capture the Workplace binding before reconcile clears the task fence.
+      // The supervisor is the crash-recovery authority for a hard host failure:
+      // a lost physical execution must not leave factory_workplaces pointing at
+      // its stale reservation while tasks.current_execution_id has already been
+      // released. Keep the WorkerExecution + Workplace + task projection changes
+      // inside one outer transaction; nested release transactions become
+      // savepoints under better-sqlite3.
+      const activeBindings = db.prepare(
+        `SELECT we.execution_id, t.id AS task_id, t.workplace_ref
+           FROM worker_executions we
+           JOIN tasks t ON t.id=we.task_id
+          WHERE we.project_id=? AND we.epic_id=?
+            AND we.state IN ('reserved','running','cancel_requested')`,
+      ).all(projectId, epicId) as Array<{
+        execution_id: string;
+        task_id: number;
+        workplace_ref: string | null;
+      }>;
+      const bindingByExecution = new Map(
+        activeBindings.map(row => [row.execution_id, row] as const),
+      );
+
+      const projections = reconcileWorkerExecutions(
+        db, projectId, epicId,
+        this.now ? this.now() : Date.now(),
+        {
+          ...(this.processProbe ? { processProbe: this.processProbe } : {}),
+          ...(this.hostname ? { hostname: this.hostname } : {}),
+        },
+      );
+
+      const conveyor = new ConveyorRuntime(db);
+      for (const projection of projections) {
+        if (
+          !projection.released
+          || (projection.action !== 'lost' && projection.action !== 'terminated')
+        ) continue;
+        const binding = bindingByExecution.get(projection.executionId);
+        if (!binding?.workplace_ref) continue;
+
+        const workplaceRef = deserializeWorkplaceRef(binding.workplace_ref);
+        const postReleaseTask = db.prepare(
+          'SELECT status FROM tasks WHERE id=?',
+        ).get(binding.task_id) as { status: string } | undefined;
+
+        conveyor.releaseExecution({
+          workplaceRef,
+          reservationRef: projection.executionId,
+          taskId: binding.task_id,
+          outcome: 'crashed',
+        });
+
+        // releaseExecutionAtomically may exhaust the physical retry budget and
+        // project the task as blocked. Preserve that terminal operational signal
+        // instead of letting the Workplace reverse projection overwrite it back
+        // to in_progress. A blocked exhausted execution is paused for operator
+        // intervention; ordinary crashes stay repair_wait and are requeued by
+        // the Production Cell on the next lifecycle cycle.
+        if (postReleaseTask?.status === 'blocked') {
+          conveyor.pauseForHuman({
+            workplaceRef,
+            taskId: binding.task_id,
+          });
+        }
+      }
+      return projections;
+    });
+    return run.immediate();
   }
 
   renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number {
