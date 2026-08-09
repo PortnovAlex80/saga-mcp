@@ -28,6 +28,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+
           p = Path('src/app/product-lifecycle-runtime.ts')
           s = p.read_text()
           old_import = "import { createDiscoveryWorkplacePersistence } from '../modules/discovery/application/discovery-installation.js';\n"
@@ -45,6 +46,14 @@ jobs:
               raise SystemExit('Production Cell discovery persistence spread not found')
           s = s.replace(old_spread, "        ...productionCellProjectionPersistence,\n", 1)
           p.write_text(s)
+
+          p = Path('src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts')
+          s = p.read_text()
+          old_role = "  const role = metadata.role === 'author' || metadata.role === 'reviewer'\n    ? metadata.role\n    : null;"
+          new_role = "  const role: 'author' | 'reviewer' | null =\n    metadata.role === 'author' || metadata.role === 'reviewer'\n      ? metadata.role\n      : null;"
+          if old_role not in s:
+              raise SystemExit('Production Cell recovery role narrowing point not found')
+          p.write_text(s.replace(old_role, new_role, 1))
           PY
       - name: Architecture ratchet
         run: |
@@ -57,13 +66,16 @@ jobs:
         run: npm run build
       - name: Focused repair-feedback contract
         run: node --test tests/factory-contract/production-cell-recovery-feedback.test.mjs
+      - name: Permanent architecture ratchet
+        run: node --test tests/architecture/production-cell-universal-runtime.test.mjs
       - name: Commit validated cutover
         run: |
           git config user.name "Saga Factory Agent"
           git config user.email "actions@users.noreply.github.com"
           git add src/app/product-lifecycle-runtime.ts \
                   src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts \
-                  tests/factory-contract/production-cell-recovery-feedback.test.mjs
+                  tests/factory-contract/production-cell-recovery-feedback.test.mjs \
+                  tests/architecture/production-cell-universal-runtime.test.mjs
           git rm .github/workflows/fix-universal-production-cell-recovery.yml
           git commit -m "fix(factory): restore universal production-cell repair feedback"
           git push origin HEAD:saga4
