@@ -32,6 +32,14 @@ test('factory start parsing cannot leak control option values into initiative su
   assert.doesNotMatch(source, /initiatedBy:\s*sandboxName\s*\?\?/);
 });
 
+test('replay semantic input canonicalization excludes operator initiation provenance', () => {
+  const source = read('src/process-modules/application/node-executors/production-cell-node-executor.ts');
+
+  assert.match(source, /\^initiated_\?by\$\/i/);
+  assert.match(source, /operator initiation identity/);
+  assert.match(source, /canonicalizeLifecycleInput\(ctx\.input\)/);
+});
+
 test('QA gate explicitly distinguishes same-run resume from cross-run replay', () => {
   const skill = read('skills/saga-factory-qa/SKILL.md');
 
