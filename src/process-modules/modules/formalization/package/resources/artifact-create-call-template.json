@@ -21,5 +21,15 @@
       "input_snapshot_hash": "FILL_MACHINE_BOUND_INPUT_HASH"
     }
   },
+  "_TYPE_SPECIFIC_NOTES": {
+    "brief": "When type='brief', metadata.brief_payload MUST be an object with: { decision: 'go'|'fast-track'|'clarify'|'reject', reasoning: 'non-empty string', affected_projects: [...], topology_hint: 'sequence'|'parallel-independent'|..., completeness: 'high'|'medium'|'low', ... }. Without brief_payload, artifact_create is REJECTED.",
+    "PRD": "PRD artifacts require a derived_from → brief trace after creation.",
+    "FR": "FR artifacts require a derived_from → PRD trace after creation.",
+    "NFR": "NFR artifacts require a derived_from → PRD trace after creation.",
+    "RULE": "RULE artifacts require a derived_from → PRD trace after creation.",
+    "UC": "UC artifacts require a covers → FR trace after creation.",
+    "AC": "AC artifacts require a derived_from → FR and/or derived_from → UC trace after creation.",
+    "SRS": "SRS artifacts require a derived_from → PRD trace. The SRS must contain §12 Decision Log and §D2 stanzas."
+  },
   "_POST_CALL_VERIFY": "After artifact_create, call artifact_list and verify content_hash is NOT null. If null, the file was not found — Write it and call artifact_create again."
 }
