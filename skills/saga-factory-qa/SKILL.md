@@ -1,6 +1,6 @@
 ---
 name: saga-factory-qa
-description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, products, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics or bypass the Conveyor Mental Model."
+description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run before every commit that changes Factory runtime, workshops, Production Cells, Workplace/RepositoryDesk, WorkerExecution, package/workspace resources, product contracts, CandidateSets, Gates, review/recovery, replay, lifecycle, effects, persistence, or Factory Contract harnesses. Blocks local fixes that create workshop-specific physics, make workers guess contracts, or bypass the Conveyor Mental Model."
 ---
 
 # Saga Factory QA — pre-commit architecture regression gate
@@ -9,42 +9,52 @@ description: "Mandatory fail-closed pre-commit architecture QA for Saga4. Run be
 
 You are the architectural regression firewall for Saga4.
 
-Your job is NOT merely to decide whether the changed feature works locally.
-Your job is to prove that the change still obeys the common Factory physics.
+Your task is NOT merely to decide whether the changed feature works locally.
+You must prove that the candidate commit still obeys the common Factory physics
+and that a worker receives the exact contract it is expected to satisfy.
 
-The recurring failure this skill exists to prevent is:
+The recurring failures this skill exists to prevent are:
 
 ```text
 agent changes one workshop/cell
   -> local tests become green
-  -> agent introduces a private runtime/adapter/state transition/recovery path
-  -> another workshop still uses the common or older path
-  -> the new feature works locally
-  -> the Factory concept is broken globally
+  -> agent introduces private runtime/desk/recovery/replay behavior
+  -> sibling workshop still uses another path
+  -> Factory concept silently splits
+```
+
+and:
+
+```text
+Workshop declares output schema X
+  -> worker receives only a schema id / prose hint
+  -> model guesses the JSON shape
+  -> partial product is persisted
+  -> happy-path test does not notice missing fields
 ```
 
 The governing rule is:
 
 > ONE PRODUCTION INTERFACE, ONE MATERIAL, ONE DESK, ONE FACTORY RUNTIME.
 
-The canonical source is:
+A second governing rule follows from it:
+
+> THE WORKER MUST NOT GUESS ITS PRODUCT CONTRACT.
+
+The canonical architecture source is:
 
 `docs/architecture/CONVEYOR-MENTAL-MODEL.md`
 
-Read that document fresh and completely on EVERY invocation.
+Read it fresh and completely on EVERY invocation.
 Do not rely on memory, summaries, task descriptions, commit messages, comments,
-previous QA output, or the author’s explanation of the change.
-
-If current code and the Conveyor Mental Model disagree, that disagreement is a
-blocking finding unless the human explicitly approved changing the architecture
-itself.
+previous QA output, or the author's explanation.
 
 This skill is fail-closed:
 
 ```text
-PASS_TO_COMMIT  = architecture proven
-BLOCKED         = architecture violated
-NOT_PROVEN      = evidence incomplete -> also block commit
+PASS_TO_COMMIT = architecture and contract delivery proven
+BLOCKED        = an invariant is violated
+NOT_PROVEN     = required evidence is missing; this also blocks commit
 ```
 
 Green tests alone are never sufficient evidence.
@@ -53,17 +63,29 @@ Green tests alone are never sufficient evidence.
 
 # Mandatory architecture contracts to read
 
-Before reviewing a Factory-related commit, read these files in addition to the
-Conveyor Mental Model:
+For every Factory-related review read, in addition to the Conveyor Mental Model:
 
 ```text
 src/process-modules/domain/process-module.ts
 src/process-modules/domain/workplace/production-cell-definition.ts
 src/process-modules/application/node-executors/production-cell-node-executor.ts
+src/process-modules/application/workspace-projection.ts
+src/process-modules/application/pinned-workspace-materializer.ts
 src/app/product-lifecycle-runtime.ts
 ```
 
-Then read any changed implementation and its sibling consumers.
+For every affected structured worker product also read:
+
+```text
+- the concrete ProcessModuleDefinition / ExecutionProfileDefinition;
+- the concrete ProductContract / output schema declaration;
+- every declared workspaceTemplate / callTemplate / checklist used to describe it;
+- the module package resource index/manifest that pins those bytes;
+- the deterministic validator / CheckProvider that decides whether the product
+  satisfies the contract.
+```
+
+Then read changed implementations and sibling consumers.
 
 The current foundational contracts are:
 
@@ -74,6 +96,12 @@ ProcessModuleDefinition
 ProductionCellDefinition
   = base declarative contract of the universal worker-quality cell
 
+ExecutionProfileDefinition
+  = declarative worker contract: skills, tools, templates, checklists, output schema
+
+WorkspaceProjection + materializePinnedWorkspace
+  = generic package -> exact WorkplaceDesk contract/resource delivery path
+
 ProductionCellNodeExecutor
   = shared runtime implementation of Production Cell physics
 
@@ -81,33 +109,31 @@ Product lifecycle composition root
   = constructs shared Factory runtime once and plugs workshops into it
 ```
 
-This is deliberately COMPOSITION over private inheritance hierarchies.
-A workshop "inherits" Factory behavior by declaring itself through these base
-contracts and using common runtime extension points. It must not copy the
-runtime implementation.
+This is COMPOSITION, not a family of private runtimes.
+A Workshop "inherits" Factory behavior by declaring itself through the shared
+contracts and extension points. It must not copy the runtime implementation.
 
-If a new workshop needs a new common Factory capability, extend the shared
-contract/runtime first, then let all workshops consume it declaratively.
-Do NOT solve it by giving the new workshop a private mechanism.
+If a Workshop needs a new common Factory capability, extend the shared contract
+and shared runtime first, then let all Workshops consume it declaratively.
 
 ---
 
-# The allowed Workshop surface
+# Ownership model
 
-A normal Workshop / Process Module may declare WHAT:
+A normal Workshop may declare WHAT:
 
 ```text
-identity + version
+identity/version
 input/output contracts
 outcomes
 Flow
 Production Cells
-execution profiles / skills
+execution profiles / semantic skills
+worker-visible templates/checklists/instructions
 product schemas/contracts
-CheckPlans
-policies
-invariants
-recovery policy
+CheckPlans and deterministic domain validators
+policies and invariants
+bounded recovery policy
 optional post-acceptance Effect hook
 domain-specific settlement/output mapping
 ```
@@ -117,10 +143,10 @@ A Production Cell may declare WHAT through `ProductionCellDefinition`:
 ```text
 input selectors
 materialization/workKey selectors
-author skill/profile
+author profile
 product contracts
 author CheckPlan
-optional reviewer skill/profile + final CheckPlan
+optional reviewer profile + final CheckPlan
 bounded recovery policy
 optional post-acceptance Effect id
 transitions
@@ -131,7 +157,9 @@ Factory runtime owns HOW:
 ```text
 Factory Start / resume
 ProcessRun/LifecycleRun progression
-materialization of Workplaces
+module package installation and pinning
+resource resolution from pinned package bytes
+Workplace/WorkplaceDesk materialization
 dispatch/concurrency
 RepositoryDesk allocation
 WorkerExecution assignment/fencing/launch
@@ -147,147 +175,101 @@ external Effect execution
 lifecycle progression
 ```
 
-A workshop must not receive those authorities merely because its domain is
+A Workshop must not receive Factory authority merely because its domain is
 special.
 
 ---
 
-# Base-interface protection gate
+# Gate 0 — base-interface protection
 
-This gate is evaluated BEFORE all other checklist items.
+Evaluate this BEFORE feature-specific checks.
 
 ## BI-01 — exactly one Workshop contract
 
-Find the canonical base contract used by the changed workshop.
-Normally this is `ProcessModuleDefinition` plus `FlowDefinition`.
-
-FAIL if the diff introduces another parallel Workshop interface/registry/runtime
-that can run normal modules without going through the canonical contract.
+Normal Workshops enter through `ProcessModuleDefinition` / `FlowDefinition`.
+FAIL if the diff introduces another normal Workshop interface/registry/runtime.
 
 ## BI-02 — exactly one Production Cell contract
 
-Normal worker-quality loops must be declared through `ProductionCellDefinition`
-and executed by the shared Production Cell runtime.
+Normal worker-quality loops are declared through `ProductionCellDefinition` and
+executed by the shared Production Cell runtime.
+FAIL if a Workshop creates a private author/reviewer/recovery cell engine.
 
-FAIL if a workshop creates its own author/reviewer/recovery cell abstraction.
+## BI-03 — extension points remain declarative
 
-## BI-03 — extension points are declarative
-
-A workshop may supply skills, schemas, selectors, CheckPlans, policies and effect
-ids/providers through declared extension points.
-
-FAIL if the extension point gives the workshop direct access to mutate
-Workplace/Gate/lifecycle authority.
+Skills, schemas, selectors, templates, CheckPlans, policies and effect ids are
+allowed declarations. They must not grant a Workshop direct authority to mutate
+Workplace, CandidateSet, Gate, lifecycle, replay eligibility or Effect state.
 
 ## BI-04 — no copied common mechanism
 
-Search for code in the changed workshop that resembles shared Production Cell,
-RepositoryDesk, recovery, replay, Gate or lifecycle mechanics.
+Actively search changed Workshop code for logic resembling shared:
 
-Ask:
+```text
+workspace/desk materialization
+dispatch/fencing
+CandidateSet sealing
+Gate/reviewer loop
+recovery
+replay
+RepositoryDesk
+lifecycle progression
+```
 
-> Could a second workshop need this exact mechanism?
+Ask: "Would a second Workshop need this exact mechanism?"
+If yes and it lives under one Workshop, FAIL unless it is a domain adapter
+behind a shared interface.
 
-If yes, and the implementation lives under one workshop, FAIL unless it is
-strictly a domain adapter behind a common interface.
+## BI-05 — new Workshop thought experiment
 
-## BI-05 — adding a new Workshop must be mostly declaration
+A hypothetical normal Workshop X must obtain worker production, desk resources,
+review, repair, replay and effects by supplying declarations and registered
+providers only.
 
-Run the thought experiment:
+If Workshop X must copy Discovery/Formalization/Development runtime code, FAIL.
 
-> If I add Workshop X tomorrow, can I get normal worker production, review,
-> repair, replay and desk behavior by supplying declarations and registered
-> providers only?
+## BI-06 — dependency direction
 
-If normal Workshop X requires copying runtime code from Discovery/Formalization/
-Development, FAIL.
+PASS only if:
 
-## BI-06 — shared interfaces protect both directions
+```text
+Workshop declaration -> shared domain/application contracts
+Factory runtime       -> shared contracts, not concrete Workshop classes
+```
 
-Check compile-time/domain boundaries where practical:
-
-- Workshop declarations depend on shared domain interfaces.
-- Factory runtime consumes shared interfaces, not concrete workshop classes.
-- Concrete workshop infrastructure does not leak into generic Factory runtime.
-- Generic runtime does not branch on workshop identity.
-
-A class/function named `Generic` is not proof. Trace imports and call paths.
-
----
-
-# When this skill is mandatory
-
-Run before every commit that touches any of these concepts directly or indirectly:
-
-- Factory Start / resume / LifecycleRun / ProcessRun;
-- workshop/module registration or composition;
-- Flow or Production Cell declarations;
-- dispatch, assignment, concurrency, launch, fencing, supervision or termination;
-- Workplace identity/state;
-- RepositoryDesk / worktree / branch/base selection;
-- worker-facing read/submit/complete protocol;
-- product persistence, ProductRef, product materialization;
-- CandidateSet seal/read/provenance;
-- CheckPlan, CheckRun, GateRun, GateDecision, CellFinalAcceptance;
-- author/reviewer loops;
-- repair/recovery feedback, retry routing, retry budget;
-- replay lookup, semantic identity, capture, execution, rebinding, eligibility;
-- Git integration, publish, deploy or other effects;
-- persistence adapters used by any of the above;
-- test harnesses that substitute physical workers;
-- Factory Contract / architecture tests.
-
-If any affected concept is not proven by this QA, do not commit.
+FAIL on generic Factory code importing concrete Workshop infrastructure to
+implement generic physics, or branching on Workshop identity where a declaration
+or provider should decide behavior.
 
 ---
 
-# What this skill is NOT
+# Canonical worker-producing path
 
-This is not a generic style review.
-
-Do not spend the review primarily on formatting, naming taste, prompt prose,
-or raw test count.
-
-The primary question is:
-
-> DID THE DIFF PRESERVE ONE FACTORY PHYSICS FOR ALL WORKSHOPS?
-
-Default mode is inspection only. Do not modify source code unless the caller
-explicitly asks you to fix findings.
-
----
-
-# Source-of-truth order
-
-Use this precedence:
-
-1. `docs/architecture/CONVEYOR-MENTAL-MODEL.md`
-2. shared domain interfaces and current production code
-3. architecture / Factory Contract tests
-4. task / PR / commit description
-5. code comments and historical assumptions
-
-A test harness that duplicates or bypasses Factory authority is a broken harness,
-not permission to change the architecture.
-
----
-
-# Canonical Factory path
-
-For every affected worker-producing path, reconstruct the concrete implementation
-of this conceptual chain:
+For every affected worker path reconstruct this concrete chain and name the
+file/function/class at every hop:
 
 ```text
 Factory Start / current ProcessRun
+  -> pinned ProcessModule installation/package
   -> Workshop declaration (ProcessModuleDefinition)
   -> Production Cell declaration (ProductionCellDefinition)
-  -> universal ProductionCellNodeExecutor
-  -> WorkplaceRef
-  -> factory-owned RepositoryDesk when required
+  -> ExecutionProfileDefinition
+       -> semantic/protocol skill
+       -> allowed tools
+       -> outputSchema
+       -> trackerTemplate
+       -> workspaceTemplates
+       -> callTemplates
+       -> checklists
+  -> generic WorkspaceProjection
+  -> generic pinned WorkplaceDesk materialization
+       -> worker-visible contract files
+       -> recovery/review feedback when applicable
+       -> RepositoryDesk when git-changing
   -> fenced WorkerExecution
-  -> common Product Desk / worker protocol
+  -> common product_read / product_submit / execution_complete protocol
   -> immutable CandidateSet
-  -> current CheckPlan
+  -> deterministic CheckPlan / validator over exact CandidateSet
   -> current GateRun
   -> append-only GateDecision
   -> current Workplace transition
@@ -298,21 +280,55 @@ Factory Start / current ProcessRun
   -> current lifecycle progression
 ```
 
-For each hop name the concrete file/function/class.
-If one hop is unknown, mark the invariant `NOT_PROVEN`.
+If one hop is unknown, verdict for that invariant is `NOT_PROVEN`.
+
+---
+
+# Contract-on-Desk invariant
+
+A schema id is not a usable worker contract by itself.
+For every structured worker product prove BOTH channels:
+
+```text
+GUIDANCE CHANNEL
+canonical contract declaration
+  -> pinned package resource
+  -> profile declaration
+  -> generic WorkspaceProjection
+  -> exact WorkplaceDesk
+  -> worker is explicitly told where/how to read it
+
+AUTHORITY CHANNEL
+submitted CandidateSet
+  -> deterministic validator / CheckProvider
+  -> current GateDecision
+```
+
+The guidance channel helps the model produce the right shape.
+The authority channel prevents an incomplete/wrong shape from being accepted.
+Neither substitutes for the other.
+
+A raw invalid `product_submit` row MAY exist as worker production/audit material.
+That is not itself an architecture defect. The hard invariant is:
+
+> malformed or incomplete production must be unable to obtain final acceptance.
+
+A template is guidance, not authority. A validator/CheckProvider is authority,
+not worker guidance.
 
 ---
 
 # QA procedure
 
-## Phase 0 — establish exact commit candidate
+## Phase 0 — exact commit candidate
 
 1. Inspect staged diff.
-2. Inspect unstaged changes that could be accidentally omitted.
-3. Record all changed files.
+2. Inspect unstaged files that could be accidentally omitted.
+3. Record every changed file.
 4. Read enough surrounding code to reconstruct control/data flow.
-5. Follow changed delegation into shared infrastructure.
+5. Follow delegation into shared infrastructure.
 6. Search outside the diff for sibling implementations of the same concept.
+7. For changed product/schema/template code, trace both Contract-on-Desk channels.
 
 Classify changed files:
 
@@ -321,6 +337,8 @@ Workshop declaration
 Factory runtime
 Lifecycle
 Production Cell
+Execution profile / contract resource
+Workspace projection/materialization
 Workplace
 RepositoryDesk
 WorkerExecution
@@ -339,19 +357,29 @@ Other
 
 Do not review only changed lines.
 
-## Phase 1 — build Architecture Impact Matrix
+## Phase 1 — Architecture Impact Matrix
 
-Before tests, produce:
+Before running tests produce:
 
-| invariant/concept | changed implementation | base interface/common entry point | second consumer/workshop | evidence |
-|---|---|---|---|---|
+| invariant/concept | changed implementation | shared entry point | second consumer/workshop | falsifying evidence/test | verdict |
+|---|---|---|---|---|---|
 
-Every affected shared mechanism must have a second consumer/workshop inspected.
+Every affected shared mechanism must have a second consumer inspected.
 A blank second-consumer column for shared physics is `NOT_PROVEN`.
+
+For structured worker output add a Contract-on-Desk row containing:
+
+```text
+output schema
+worker-visible resource(s)
+materializer path
+validator/CheckProvider
+negative malformed-product test
+```
 
 ## Phase 2 — explicit checklist
 
-Answer every applicable item with exactly one of:
+Every applicable item is exactly one of:
 
 ```text
 PASS
@@ -365,14 +393,14 @@ NOT_PROVEN — missing evidence
 ## Phase 3 — mandatory cross-path probes
 
 Use the Risk Trigger Matrix below.
-Do not certify universality from the workshop being changed.
+Never certify a generic mechanism from only the Workshop being changed.
 
-## Phase 4 — commit verdict
+## Phase 4 — verdict
 
 Only `PASS_TO_COMMIT` permits commit.
 
-If blocked, identify the smallest architectural correction at the correct common
-ownership layer. Do not propose a workshop-local workaround for Factory physics.
+If blocked, identify the smallest correction at the proper common ownership
+layer. Never propose a Workshop-local workaround for Factory physics.
 
 ---
 
@@ -381,281 +409,398 @@ ownership layer. Do not propose a workshop-local workaround for Factory physics.
 ## A. Workshop / Factory ownership
 
 ### QA-A01 — Workshop declares WHAT, Factory owns HOW
-PASS only if changed Workshop code remains declarative/domain-specific.
+Changed Workshop code remains declarative/domain-specific.
 
 ### QA-A02 — canonical base interfaces are used
-PASS only if the changed workshop/cell enters through `ProcessModuleDefinition`,
-`ProductionCellDefinition`, or another explicitly canonical shared interface.
+Changed Workshop/Cell enters through shared ProcessModule/ProductionCell
+contracts.
 
 ### QA-A03 — no competing base interface/runtime
-FAIL if a second normal Workshop/Production Cell runtime is introduced.
+No second normal Workshop/ProductionCell runtime exists.
 
-### QA-A04 — no workshop-specific Factory runtime leak
-Search composition/shared runtime for concrete Discovery/Formalization/Development/
-Delivery infrastructure implementing generic physics.
+### QA-A04 — no Workshop-specific Factory runtime leak
+Shared runtime does not depend on Discovery/Formalization/Development/Delivery
+infrastructure to implement generic physics.
 
-### QA-A05 — no branching on workshop identity in core physics
-FAIL on module-name/schema-name branching where declaration/policy/provider should
-decide behavior.
+### QA-A05 — no Workshop-name branching in core physics
+Module/schema/cell names do not select private runtime behavior where shared
+contracts/providers should.
 
 ### QA-A06 — one owner per authority responsibility
-Identify exactly one owner for assignment, CandidateSet, GateDecision, repair,
-RepositoryDesk, effects and lifecycle progression.
+Identify one authoritative owner for assignment, Workplace, CandidateSet,
+GateDecision, repair, RepositoryDesk, effects and lifecycle progression.
 
 ### QA-A07 — new Workshop thought experiment passes
-A hypothetical new normal Workshop obtains standard production/review/recovery/
-replay behavior by declaration, not copied runtime code.
+A new normal Workshop obtains standard behavior by declaration, not copied code.
 
 ---
 
-## B. Worker boundary and material
+## B. Contract-on-Desk / schema handoff
 
-### QA-B01 — same worker protocol for model/replay/scripted workers
+### QA-B01 — output schema chain is coherent
+
+For every affected worker product compare and record the exact schema id at all
+applicable declarations:
+
+```text
+Flow node outputSchema
+ProductionCellDefinition.productContracts[].schemaRef
+ExecutionProfileDefinition.outputSchema
+WorkIntent/output_schema projection
+product_submit schema
+CheckPlan/validator expected schema
+```
+
+Any unexplained mismatch is FAIL.
+
+### QA-B02 — worker-visible contract exists
+
+For a nontrivial structured product, the worker must receive a concrete pinned
+contract aid: call template, schema resource, checklist/instruction, or another
+explicit machine-delivered representation containing the required shape.
+
+FAIL if the worker is expected to infer required fields/enums/nesting merely
+from a schema id such as `factory.foo.v1` or from undocumented memory.
+
+### QA-B03 — resource is declared by the owning profile
+
+The exact template/schema/checklist must be referenced through the module/profile
+contract (`workspaceTemplates`, `callTemplates`, `checklists`, instructions, or
+an explicitly canonical equivalent).
+
+Do not count a random file existing somewhere in the repository.
+
+### QA-B04 — resource is pinned and content-addressed
+
+Prove the declared contract resource appears in the module package resource
+index and is resolved from the ProcessRun-pinned package installation/digest.
+
+FAIL if a running worker can silently see machine-global/current-tree bytes that
+are not pinned to its module package.
+
+### QA-B05 — generic materializer puts it on the exact WorkplaceDesk
+
+Trace through shared `WorkspaceProjection` and `materializePinnedWorkspace` (or
+an explicitly canonical successor).
+
+FAIL if Discovery/Formalization/Development need separate resource-copy logic.
+
+### QA-B06 — worker is explicitly pointed to the contract
+
+A file existing on disk is insufficient. Prove the launch/desk projection makes
+the relevant `callFiles`, `workspaceFiles`, checklist path, assistance projection
+or equivalent visible to the worker so the worker knows what to read/use.
+
+If this cannot be reconstructed, `NOT_PROVEN`.
+
+### QA-B07 — template and authority contract do not drift
+
+Compare worker-visible template/schema content with the deterministic validator.
+At minimum check:
+
+```text
+schema id/version
+required top-level fields
+required nested fields
+allowed enums
+identity/binding fields
+evidence/source-reference requirements where applicable
+```
+
+A template that omits validator-required fields is FAIL even if happy-path tests
+currently pass.
+
+### QA-B08 — validator is deterministic and Gate-owned
+
+There must be a deterministic CheckProvider/validator or equivalent Factory gate
+that validates the exact CandidateSet product against the contract.
+
+The model must not self-certify its own JSON shape.
+
+### QA-B09 — malformed product cannot become accepted
+
+Require a negative proof: remove/corrupt at least one required field or binding
+and demonstrate that current Gate authority does NOT produce final acceptance.
+Expected outcomes may be `repair_required`, `human_required`, or terminal failure
+according to policy, but never accepted.
+
+Do not require `product_submit` itself to reject malformed production unless that
+is its declared responsibility. Persistence of a rejected candidate is allowed.
+
+### QA-B10 — source-bound contracts verify exact identity
+
+When a product refers to an upstream ProductRef/CandidateSet/repository snapshot,
+prove the validator checks the exact current id/digest/binding, not only the
+shape.
+
+### QA-B11 — retry sees contract + feedback together
+
+A repair WorkerExecution on the same Workplace receives the same pinned contract
+resources plus current authoritative recovery/review feedback. A retry must not
+lose the template or switch to unpinned current-tree instructions.
+
+### QA-B12 — replay remains contract-compatible
+
+Replay eligibility/certification must include the package/contract semantic
+identity required by the architecture. A capsule produced under stale contract
+bytes must not masquerade as production under a changed pinned package.
+
+### QA-B13 — cross-Workshop contract-delivery proof
+
+If shared workspace/package/materialization code changes, inspect/test at least
+two distinct Workshops/profiles. Default:
+
+```text
+Discovery readiness structured typed product
+AND
+one Formalization or Development structured typed product
+```
+
+Both must use the SAME projection/materializer path.
+
+### QA-B14 — template existence is not enough
+
+The following is forbidden reasoning:
+
+```text
+"template exists on the desk" -> PASS
+```
+
+Required reasoning is:
+
+```text
+profile declares exact resource
+  -> pinned package contains exact bytes
+  -> generic materializer exposes it to this worker
+  -> template matches validator contract
+  -> malformed candidate is rejected by current Gate
+```
+
+---
+
+## C. Worker boundary and material
+
+### QA-C01 — same worker protocol for model/replay/scripted workers
 No special acceptance path by provider or test mode.
 
-### QA-B02 — workers do not mutate Factory authority
-Worker/scenario code must not directly mutate Workplace, CandidateSet, Gate,
-lifecycle, settlement or effect completion.
+### QA-C02 — workers do not mutate Factory authority
+Worker/scenario code cannot directly mutate Workplace, CandidateSet, Gate,
+lifecycle, settlement or Effect completion.
 
-### QA-B03 — schema means product meaning, not another runtime
-No schema-selected persistence/submit/lifecycle engine.
+### QA-C03 — schema means product meaning, not another runtime
+Schema id must not select a second persistence/submit/lifecycle engine.
 
-### QA-B04 — exact reads
+### QA-C04 — exact reads
 Consumers use exact ProductRefs / accepted bindings / CandidateSets, never
-“latest worker output”.
+"latest worker output" heuristics.
 
 ---
 
-## C. Workplace / WorkerExecution
+## D. Workplace / WorkerExecution / RepositoryDesk
 
-### QA-C01 — Workplace is durable work identity
-Durable production and repair belong to Workplace.
+### QA-D01 — Workplace is durable work identity
+Durable production, desk state and repair belong to Workplace.
 
-### QA-C02 — WorkerExecution is one disposable attempt
-Retry/replay/reviewer attempt does not become new semantic work.
+### QA-D02 — WorkerExecution is one disposable attempt
+Retry/replay/reviewer execution does not become new semantic work.
 
-### QA-C03 — workKey is semantic
+### QA-D03 — workKey is semantic
 No execution/task/timestamp identity in semantic workKey.
 
-### QA-C04 — sibling Workplace isolation
-One Workplace cannot overwrite another’s production, gate, feedback or desk.
+### QA-D04 — sibling Workplace isolation
+One Workplace cannot overwrite another's production, gate, feedback or desk.
 
----
-
-## D. RepositoryDesk
-
-### QA-D01 — Factory owns RepositoryDesk
+### QA-D05 — Factory owns RepositoryDesk
 Factory provisions path/worktree/branch/base before code worker launch.
 
-### QA-D02 — physical worker consumes assigned desk
-Model/replay/scripted worker must use the assigned execution desk rather than
-inventing a global path.
+### QA-D06 — physical worker consumes assigned RepositoryDesk
+Model/replay/scripted worker uses the assigned execution desk, not a global path.
 
-### QA-D03 — no shared mutable checkout for parallel workers
+### QA-D07 — no shared mutable checkout for parallel workers
 FAIL if sibling git-changing executions use global `git checkout` in one worktree.
 
-### QA-D04 — submitted source matches assigned desk
+### QA-D08 — submitted source matches assigned desk
 Branch/commit/tree/base in worker product correspond to that RepositoryDesk.
 
-### QA-D05 — integration is an Effect
-Git merge/push occurs after current final acceptance under runtime authority.
+### QA-D09 — Git integration is an Effect
+Merge/push occurs only after current final acceptance under runtime authority.
 
-### QA-D06 — parallel desk proof
+### QA-D10 — parallel desk proof
 For Git changes require >=2 concurrent git-changing work items with isolated
-execution desks and stable source branches.
+desks and stable source branches.
 
 ---
 
-## E. CandidateSet
+## E. CandidateSet / Gate / review / recovery
 
 ### QA-E01 — CandidateSet is the QC handoff
 Worker completion != acceptance.
 
-### QA-E02 — exact immutable members
-Members are exact ProductRefs/digests.
+### QA-E02 — CandidateSet members are exact immutable ProductRefs
+Later repair cannot mutate historical QC material.
 
-### QA-E03 — reviewer pinned to exact current author CandidateSet
-Current QC uses current authority ref.
+### QA-E03 — reviewer is pinned to exact current author CandidateSet
+Current QC uses current authority refs.
 
-### QA-E04 — sealed candidates immutable across repair
-Historical QC state cannot drift.
+### QA-E04 — current Gate evaluates current candidates
+Replay/repair/reviewer retry creates current authority objects.
 
-### QA-E05 — no effect from raw worker completion
-Effect requires current final acceptance.
+### QA-E05 — GateRun identity covers all authority inputs
+Assessment CandidateSets distinguish reviewer attempts.
 
----
-
-## F. Gates / decision authority
-
-### QA-F01 — current Gate evaluates current candidates
-Replay/repair/review retry creates current authority objects.
-
-### QA-F02 — GateRun identity covers all authority inputs
-Reviewer assessment CandidateSets must distinguish attempts.
-
-### QA-F03 — GateDecision append-only
+### QA-E06 — GateDecision is append-only current authority
 No old decision is restored/mutated into current authority.
 
-### QA-F04 — repair target explicit
-`repairTargetRole` comes from policy/CheckPlan reduction and coordinator consumes it.
-Coordinator does not guess by workshop/schema/prose.
+### QA-E07 — repair target is explicit
+`repairTargetRole` comes from CheckPlan/policy reduction. Coordinator executes it
+and does not guess by Workshop/schema/prose.
 
-### QA-F05 — decision digest covers authoritative meaning
-Fields such as repair target affect immutable decision identity where relevant.
+### QA-E08 — decision identity covers authoritative meaning
+Fields such as repair target participate in immutable decision identity where
+required.
 
-### QA-F06 — CellFinalAcceptance stronger than check pass
-Certification/effects/lifecycle require accepted decision applied to expected
+### QA-E09 — CellFinalAcceptance is stronger than check pass
+Certification/effects/lifecycle require accepted GateDecision applied to expected
 Workplace revision and terminal accepted state.
 
----
-
-## G. Review / recovery
-
-### QA-G01 — one universal author/reviewer loop
+### QA-E10 — one universal author/reviewer loop
 Normal reviewed cells use Production Cell mechanics.
 
-### QA-G02 — valid negative review repairs author
+### QA-E11 — valid negative review repairs author
 A valid `changes_requested`-style verdict routes author repair.
 
-### QA-G03 — invalid reviewer output repairs reviewer
-Malformed/unbound/indeterminate reviewer result can route reviewer repair without
-rewriting author production.
+### QA-E12 — invalid reviewer output can repair reviewer
+Malformed/unbound/indeterminate reviewer result does not rewrite author production.
 
-### QA-G04 — same Workplace repair
-Recovery = new WorkerExecution on same Workplace with exact rejected material.
+### QA-E13 — recovery is same Workplace, new WorkerExecution
+Feedback cites exact rejected material.
 
-### QA-G05 — feedback comes from authority
+### QA-E14 — feedback comes from authority
 Use current GateDecision + failing CheckReceipts + exact rejected CandidateSet /
 ProductRefs, not log prose.
 
-### QA-G06 — stale feedback superseded
-Newer accepted authority clears old repair projection.
+### QA-E15 — stale feedback is superseded
+New accepted authority clears old repair projection.
 
-### QA-G07 — durable bounded retry budget
+### QA-E16 — retry budget is durable and bounded
 Respawn/resume cannot mint unlimited semantic repairs.
 
-### QA-G08 — no private workshop recovery runtime
-Search outside diff explicitly.
+### QA-E17 — no private Workshop recovery runtime
+Search outside the diff explicitly.
 
-### QA-G09 — cross-workshop recovery proof
-If review/recovery changes, inspect/test at minimum:
-
-```text
-Formalization
-Development
-```
-
+### QA-E18 — cross-Workshop recovery proof
+If review/recovery changes, inspect/test at minimum Formalization + Development.
 Discovery-only proof is insufficient.
 
 ---
 
-## H. Replay
+## F. Replay
 
-### QA-H01 — replay substitutes worker production only
-Never replay old CandidateSet/Gate/Workplace/lifecycle/effect authority.
+### QA-F01 — replay substitutes worker production only
+Never replay old CandidateSet/Gate/Workplace/lifecycle/Effect authority.
 
-### QA-H02 — current authority refs rebound
+### QA-F02 — current authority refs are rebound
 Run-local authority fields inside replayed products bind to current objects.
 
-### QA-H03 — semantic replay key cross-run stable
+### QA-F03 — semantic replay key is cross-run stable
 Exclude ProcessRun/LifecycleRun/Workplace/Execution/task/CandidateSet/timestamp/path
 provenance unless genuinely semantic.
 
-### QA-H04 — provenance != semantic identity
+### QA-F04 — provenance != semantic identity
 Audit hash with current-run refs is not automatically replay semantic digest.
 
-### QA-H05 — reviewer replay split identity
+### QA-F05 — reviewer replay has split identity
 QC uses current CandidateSetRef; replay equivalence uses semantic author production.
 
-### QA-H06 — rejected/corrupt replay fails closed
-No same-capsule infinite repair loop; no silent paid inference inside failed replay
-execution.
+### QA-F06 — rejected/corrupt replay fails closed
+No same-capsule infinite repair loop and no silent inference fallback inside the
+same failed replay execution.
 
-### QA-H07 — canonical two-pass proof
+### QA-F07 — canonical two-pass proof
 
 ```text
 Run A: same Project, zero capsules -> normal workers -> current gates -> capture
-Run B: NEW Factory Start -> replay hits -> NEW Workplaces/CandidateSets/Gates ->
-       zero scripted inference calls
+Run B: NEW Factory Start -> replay hits -> NEW Workplaces/CandidateSets/Gates
+       -> zero scripted inference calls
 ```
 
 No DB/capsule copying, authority-table reset, Project-id trick or private simulator.
 
 ---
 
-## I. Lifecycle
+## G. Lifecycle / checks / effects
 
-### QA-I01 — Project != new Factory Start != Resume
-New start makes new run authority; resume continues same run.
+### QA-G01 — Project != new Factory Start != Resume
+New start creates new run authority; resume continues the same run.
 
-### QA-I02 — idempotency deduplicates command, not Project lifetime
-Later intentional new start remains possible.
+### QA-G02 — idempotency deduplicates command, not Project lifetime
+A later intentional new start remains possible.
 
-### QA-I03 — Workshop cannot move lifecycle cursor directly
+### QA-G03 — Workshop cannot move lifecycle cursor directly
 Workshop produces domain output; orchestrator owns progression.
 
-### QA-I04 — replay/resume do not resurrect old lifecycle authority
+### QA-G04 — replay/resume do not resurrect old lifecycle authority
 Current code performs current transitions.
 
----
-
-## J. Checks / effects
-
-### QA-J01 — Checks are authority/external-state pure
+### QA-G05 — Checks are authority/external-state pure
 Checks inspect immutable candidates and return outcome/evidence.
 
-### QA-J02 — Effects own authorized external mutations
+### QA-G06 — Effects own authorized external mutations
 Merge/publish/deploy use desired-state identity, attempt and receipt.
 
-### QA-J03 — effect completion not replayed as current authority
+### QA-G07 — Effect completion is not replayed as current authority
 Current run reconciles/observes external state.
 
-### QA-J04 — compensation explicit
+### QA-G08 — compensation is explicit
 No magical rollback; retry/compensate/roll-forward/human-required is policy.
 
 ---
 
-## K. Persistence
+## H. Persistence
 
-### QA-K01 — persistence is concept-owned, not workshop-owned
-Generic Production Cell persistence belongs to Factory infrastructure.
+### QA-H01 — persistence is concept-owned, not Workshop-owned
+Generic Production Cell/workspace/replay persistence belongs to Factory
+infrastructure.
 
-### QA-K02 — no second source of truth
+### QA-H02 — no second source of truth
 Projection metadata/UI helpers cannot compete with authoritative state.
 
-### QA-K03 — durable identity survives retries/resume
-Recovery/gate/effect/replay eligibility state cannot live only in process memory.
+### QA-H03 — durable identity survives retry/resume
+Recovery/gate/effect/replay eligibility cannot live only in process memory.
 
-### QA-K04 — legacy schema constraint is not architecture
+### QA-H04 — legacy schema constraint is not architecture
 Do not bend the conceptual model around an old DB limitation.
 
 ---
 
-## L. Test harness integrity
+## I. Test harness integrity
 
-### QA-L01 — tests substitute physical workers, not Factory authority
+### QA-I01 — tests substitute physical workers, not Factory authority
 Use production Factory runtime, CandidateSets, Gates, recovery and lifecycle.
 
-### QA-L02 — no private test lifecycle/runtime
+### QA-I02 — no private test lifecycle/runtime
 Golden-path tests cannot manually advance stages or write Factory authority.
 
-### QA-L03 — scripted worker respects production desk contract
-Deterministic worker uses assigned RepositoryDesk just like LLM worker.
+### QA-I03 — scripted worker respects production desk contract
+Deterministic worker uses assigned WorkplaceDesk/RepositoryDesk just like LLM.
 
-### QA-L04 — test topology matches claimed invariant
+### QA-I04 — test topology matches the claim
 Concurrency=1 does not prove parallel desk isolation.
-One workshop does not prove universal mechanism.
+One Workshop does not prove a universal mechanism.
+A happy-path valid JSON does not prove contract enforcement.
 
-### QA-L05 — harness failure is not “just test bug” until boundary difference proven
-Show exact divergence from production worker boundary before dismissing it.
+### QA-I05 — harness failure is not "just a test bug" until boundary difference is proven
+Show the exact divergence from the production worker boundary before dismissing it.
+
+### QA-I06 — contract tests include a malformed-product negative case
+For changed output contracts/materialization/validators, intentionally omit or
+corrupt required data and prove current Gate authority refuses final acceptance.
 
 ---
 
 # Local-exception detector
 
-For every architectural diff actively search for “make this one path special”.
-
-Search affected concepts together with:
+For every architectural diff search affected concepts together with:
 
 ```text
 Discovery
@@ -667,11 +812,19 @@ Executor
 Coordinator
 Adapter
 Persistence
+WorkspaceProjection
+PinnedWorkspace
+Template
+Checklist
+Schema
+OutputSchema
+ProductContract
 Recovery
 Replay
 Gate
 Candidate
 Workplace
+RepositoryDesk
 worktree
 checkout
 schema id
@@ -686,11 +839,13 @@ Then ask:
 
 1. Why is this code located here?
 2. Is the responsibility domain-specific or Factory physics?
-3. Does another workshop need the same behavior?
-4. If yes, why is it not behind the common base interface?
+3. Does another Workshop need the same behavior?
+4. If yes, why is it not behind the common interface?
 5. Can a new Workshop obtain it by declaration only?
+6. Does the worker receive the exact product contract, or is it expected to guess?
+7. Is the worker-visible template actually consistent with the Gate validator?
 
-If adding a normal Workshop would require copying this code, FAIL.
+If adding a normal Workshop requires copying this code, FAIL.
 
 ---
 
@@ -698,75 +853,88 @@ If adding a normal Workshop would require copying this code, FAIL.
 
 | Changed concept | Mandatory proof |
 |---|---|
-| Workshop/base contract | changed workshop and one sibling enter through the same `ProcessModuleDefinition`/Flow contract; no parallel runtime |
+| Workshop/base contract | changed Workshop + one sibling enter through same `ProcessModuleDefinition`/Flow contract; no parallel runtime |
 | Production Cell definition/runtime | Formalization + Development trace into same `ProductionCellNodeExecutor` and Factory persistence |
+| output schema / call template / checklist | declaration -> pinned package -> profile -> generic desk materializer -> worker-visible path -> deterministic validator; malformed product must not be accepted |
+| workspace/package materialization | Discovery readiness + one Formalization/Development structured worker use same projection/materializer path and see only declared pinned contract resources |
 | review/Gate repair routing | accepted review + author repair + reviewer repair + retry on same Workplace |
 | recovery feedback | exact GateDecision/CheckReceipt/CandidateSet projection + stale clearing + Formalization/Development parity |
 | RepositoryDesk/Git | >=2 concurrent git-changing work items, isolated desks, stable source branches, both integrations governed by Effect |
 | replay key/semantic identity | cold Run A + new-start Run B; Run B zero scripted inference; new current authority objects |
-| replay product rebinding | prove old authority refs are rejected/not-current and current refs are rebound |
+| replay product rebinding | old authority refs are not current; current refs are rebound |
 | lifecycle start/resume | new start creates new run; resume preserves same run |
 | CandidateSet/product persistence | exact immutable historical read after later repair/new execution |
 | effects | idempotency + durable attempts/receipts + current desired-state observation |
-| test worker behavior | parity with production WorkerExecution + RepositoryDesk boundary |
+| test worker behavior | parity with production WorkerExecution + WorkplaceDesk/RepositoryDesk boundary |
 
-If required proof cannot run in the current environment, mark `NOT_PROVEN`.
-Never silently downgrade to PASS.
+If a mandatory proof cannot run in the current environment, mark `NOT_PROVEN`.
+Never silently downgrade it to PASS.
 
 ---
 
-# Minimum cross-workshop rule
+# Minimum cross-Workshop rule
 
-Whenever a diff claims to change a GENERIC Factory mechanism:
+Whenever a diff changes GENERIC Factory mechanics:
 
 1. inspect the common implementation;
-2. trace the changed workshop into it;
-3. trace at least one DIFFERENT workshop into the same mechanism;
+2. trace the changed Workshop into it;
+3. trace at least one DIFFERENT Workshop into the same mechanism;
 4. compare inputs/outputs/authority ownership;
-5. run or inspect a test that would fail if one workshop silently diverged.
+5. run or inspect a falsifying test that would fail if one Workshop diverged.
 
 Default comparisons:
 
 ```text
-Workshop/base contract   -> Formalization + Development
-review/recovery          -> Formalization + Development
-Production Cell core     -> Formalization + Development (+ Discovery where applicable)
-RepositoryDesk/Git       -> two sibling Development work items
-replay                   -> author + reviewer + verification paths where applicable
-lifecycle                -> at least two consecutive workshops
+Workshop/base contract     -> Formalization + Development
+contract/desk material     -> Discovery readiness + Formalization or Development
+review/recovery            -> Formalization + Development
+Production Cell core       -> Formalization + Development (+ Discovery where applicable)
+RepositoryDesk/Git         -> two sibling Development work items
+replay                     -> author + reviewer + verification where applicable
+lifecycle                  -> at least two consecutive Workshops
 ```
 
-A mechanism is not universal because its class name says `Generic`.
+A class named `Generic` is not proof of universality.
 Universality is proven from composition and call paths.
 
 ---
 
-# Architecture path proof format
+# Contract-on-Desk proof format
 
-For every affected shared mechanism output concrete paths, for example:
+For each affected structured worker product report:
 
 ```text
-Formalization
-  -> ProcessModuleDefinition
-  -> ProductionCellDefinition
-  -> ProductionCellNodeExecutor
-  -> Factory ProductionCell persistence
-  -> WorkplaceRef
-  -> WorkerExecution
-  -> CandidateSet
-  -> GateRun/GateDecision
-  -> recovery or CellFinalAcceptance
+Product: <schema id>
+Workshop/Profile: <module + execution profile>
 
-Development
-  -> ProcessModuleDefinition
-  -> ProductionCellDefinition
-  -> SAME ProductionCellNodeExecutor
-  -> SAME Factory ProductionCell persistence
-  -> ...
+Declaration chain:
+Flow outputSchema: <...>
+ProductionCell product contract: <...>
+ExecutionProfile outputSchema: <...>
+WorkIntent output schema: <...>
+
+Worker guidance:
+resource: <template/schema/checklist path>
+resource index entry + digest: <...>
+pinned installation/package digest: <...>
+WorkspaceProjection: <function/path>
+WorkplaceDesk materialized path: <...>
+worker-visible pointer: <callFiles/workspaceFiles/checklists/assistance/etc>
+
+Authority:
+validator/CheckProvider: <file/function/provider id>
+required fields/enums/bindings checked: <...>
+negative malformed candidate probe: PASS/FAIL/NOT_PROVEN
+
+Verdict: PASS/FAIL/NOT_PROVEN
 ```
 
-If paths diverge at a Factory responsibility, explain why.
-If no domain-specific reason is permitted by Conveyor Mental Model, FAIL.
+For example, a readiness assessment is NOT proven merely because
+`readiness-call-template.json` exists. QA must also prove that the profile
+references it, the pinned package contains it, the generic materializer exposes
+it on the current desk, and the readiness validator rejects missing
+`proposal_id`, proposal hash, required dimensions, next action, confidence,
+rationale, or malformed evidence references according to its contract.
 
 ---
 
@@ -790,9 +958,13 @@ architecture invariant
 
 Prefer permanent architecture ratchets that fail if someone later:
 
-- imports workshop-specific persistence into universal Production Cell runtime;
-- adds module-name branching to core coordinator;
-- creates a second Workshop/Cell interface for normal production;
+- imports Workshop-specific persistence into universal Factory runtime;
+- adds module-name branching to core coordinator/materializer;
+- creates a second Workshop/ProductionCell interface;
+- forgets to declare/pin/materialize an output contract resource;
+- leaves a worker with only a schema id and no usable contract shape;
+- lets a call template drift from its deterministic validator;
+- accepts a malformed structured candidate because only the happy path was tested;
 - always routes reviewer repair to author;
 - bypasses reviewer verdict in Development Gate;
 - shares one mutable checkout across parallel worker desks;
@@ -808,13 +980,19 @@ Prefer permanent architecture ratchets that fail if someone later:
 
 Examples:
 
-- second Factory/Workshop/Production Cell runtime;
-- workshop-specific recovery physics;
-- direct authority mutation from worker/test code;
-- shared mutable RepositoryDesk for parallel workers;
-- replay restores old authority;
-- Gate/reviewer bypass;
-- effects triggered without current final acceptance.
+```text
+second Factory/Workshop/ProductionCell runtime
+Workshop-specific recovery or workspace materialization physics
+worker must guess required product fields
+contract template exists but is not delivered through pinned WorkplaceDesk
+worker-visible template and Gate validator disagree
+malformed product can receive final acceptance
+direct authority mutation from worker/test code
+shared mutable RepositoryDesk for parallel workers
+replay restores old authority
+Gate/reviewer bypass
+Effect triggered without current final acceptance
+```
 
 Verdict: `BLOCKED`.
 
@@ -822,26 +1000,26 @@ Verdict: `BLOCKED`.
 
 Examples:
 
-- generic recovery changed but only Discovery tested;
-- Git desk changed but only concurrency=1 tested;
-- replay changed without Run A/Run B proof;
-- common base-interface path cannot be reconstructed;
-- changed workshop passes but no sibling consumer inspected.
+```text
+generic recovery changed but only Discovery tested
+workspace materializer changed but only one Workshop inspected
+output contract changed without malformed-product negative test
+Git desk changed but only concurrency=1 tested
+replay changed without Run A/Run B proof
+common base-interface path cannot be reconstructed
+worker-visible contract path cannot be reconstructed
+```
 
 Verdict: `NOT_PROVEN`.
 
-## NON-BLOCKING
-
-Readability, diagnostics or documentation improvements that do not weaken an
-architecture invariant.
-
-Non-blocking findings never compensate for a blocker.
+Readability/diagnostic/documentation improvements may be non-blocking only when
+no invariant is weakened. Non-blocking findings never compensate for a blocker.
 
 ---
 
 # Required final QA report
 
-Return this structure:
+Return exactly this structure:
 
 ```text
 SAGA FACTORY QA
@@ -855,21 +1033,25 @@ Changed concepts:
 Base-interface proof:
 Workshop contract: <file/interface>
 Production Cell contract: <file/interface>
+Workspace contract/materializer: <file/interface>
 Shared runtime: <file/class>
 Factory composition point: <file/function>
 Workshop-specific Factory physics found: YES/NO
 
 Architecture Impact Matrix:
-| invariant | changed implementation | base/common entry point | second consumer | evidence | verdict |
+| invariant | changed implementation | shared entry point | second consumer | falsifying evidence | verdict |
 | ... |
 
 Canonical path proof:
 <concrete paths with files/functions/classes>
 
+Contract-on-Desk proof:
+<one block per affected structured product>
+
 Checklist:
 BI-01 PASS — ...
-BI-02 PASS — ...
 QA-A01 PASS — ...
+QA-B01 PASS — ...
 ...
 Only genuinely inapplicable items may be N/A, with reason.
 
@@ -893,13 +1075,13 @@ Commit permission:
 YES only when Final verdict = PASS_TO_COMMIT.
 ```
 
-Do not soften the final verdict.
-Do not write “mostly passes”.
+Do not soften the verdict.
+Do not write "mostly passes".
 Do not convert missing evidence into optimism.
 
 ---
 
-# Short mental checklist — run this before saying PASS
+# Short mental checklist — before saying PASS
 
 ```text
 [ ] I read CONVEYOR-MENTAL-MODEL.md fresh.
@@ -908,8 +1090,16 @@ Do not convert missing evidence into optimism.
 [ ] I proved the changed Workshop uses those contracts.
 [ ] I proved a sibling Workshop uses the same common mechanism.
 [ ] I found no duplicate/private Factory runtime.
-[ ] I found no workshop-name branch in core physics.
-[ ] Workplace remains the durable desk; WorkerExecution remains an attempt.
+[ ] I found no Workshop-name branch in core physics.
+[ ] For every affected structured product I traced output schema end-to-end.
+[ ] The worker receives a concrete pinned contract resource; it does not guess.
+[ ] The exact resource is declared by the execution profile.
+[ ] The pinned package/resource digest is proven.
+[ ] The generic materializer puts the resource on the current WorkplaceDesk.
+[ ] The worker is explicitly pointed to that file/resource.
+[ ] The worker-visible template/schema matches the deterministic validator.
+[ ] A malformed/incomplete candidate is proven unable to obtain final acceptance.
+[ ] Workplace remains durable; WorkerExecution remains an attempt.
 [ ] RepositoryDesk remains Factory-owned and isolated.
 [ ] CandidateSet remains the exact immutable QC handoff.
 [ ] GateDecision remains current append-only authority.
