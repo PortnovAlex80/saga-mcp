@@ -41,8 +41,20 @@
         "source_refs": ["$.evidence_refs"]
       }
     },
-    "blocking_gaps": [],
-    "non_blocking_gaps": [],
+    "blocking_gaps": [
+      {
+        "code": "GAP-001",
+        "description": "FILL_DESCRIPTION_OF_A_BLOCKING_GAP_OR_REMOVE_THIS_OBJECT_IF_NONE",
+        "source_refs": ["$.problem_statement"]
+      }
+    ],
+    "non_blocking_gaps": [
+      {
+        "code": "NBGAP-001",
+        "description": "FILL_DESCRIPTION_OF_A_NON_BLOCKING_GAP_OR_REMOVE_THIS_OBJECT_IF_NONE",
+        "source_refs": ["$.unknowns"]
+      }
+    ],
     "recommended_next_action": "proceed_to_settlement",
     "confidence": 0.5,
     "rationale": "FILL_NON_EMPTY_RATIONALE_FOR_THE_OVERALL_READINESS_VERDICT"
