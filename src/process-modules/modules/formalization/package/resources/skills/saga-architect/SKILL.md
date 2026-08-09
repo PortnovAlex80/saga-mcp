@@ -56,20 +56,47 @@ including:
 ## §D2 is decomposition, NOT task cardinality
 
 Every accepted AC appears exactly once in §D2 because every AC needs an explicit
-HOW/verification binding. A row is **not** a promise that Development creates
-one task for that AC. The Development planner may group several AC rows into one
+HOW/verification binding. A stanza is **not** a promise that Development creates
+one task for that AC. The Development planner may group several AC stanzas into one
 coherent implementation work item when they belong to the same product slice,
 repository and change surface.
 
-Each §D2 row must include the fields required by the pinned SRS contract,
-including:
+The representation is strict: create exactly one heading named `§D2 AC Map` or
+`§D2 Decomposition`, followed by exactly one fenced `yaml` block. Use one YAML
+list stanza per exact frozen AC code. Do not use a Markdown table, raw `ac:`
+lines, `D.2 AC-2` criterion-group headings, or invented sub-codes such as
+`AC-1.1` when the frozen code is `AC-1`.
+
+Every stanza must contain all pinned fields:
 - `ac`: exact accepted AC code;
-- module/files/functions/types/public_protocol as applicable;
-- conflict keys / invariants / test layers;
+- `title`: exact AC title or a faithful short title;
+- `module`: owning implementation module;
+- `files`: inline YAML list of owned files/surfaces;
+- `invariants`: inline YAML list (use `[]` only when genuinely none);
+- `test_layers`: inline YAML list of reachable test layers;
 - `pattern`: `A` or `B`;
 - `depends_on`: real architectural prerequisites only;
 - `ac_kind`: **only** `implementation` or `verification`;
 - `criticality`: `blocker`, `degradable`, or `nice_to_have`.
+
+Canonical shape (repeat once per exact frozen AC):
+
+```yaml
+- ac: AC-1
+  title: Exact frozen AC title
+  module: counter-core
+  files: [js/app.js]
+  invariants: [INV-1]
+  test_layers: [L0, L2]
+  pattern: A
+  depends_on: []
+  ac_kind: implementation
+  criticality: blocker
+```
+
+Extra scalar fields such as `functions` or `public_protocol` may follow the
+required fields, but never replace them. Keep list values inline; the validator
+uses a deliberately strict, replayable line grammar.
 
 Do not use old pseudo-kinds such as `spike` or `merge_with`. Research uncertainty
 belongs in an explicit architectural decision/open question before the SRS is
@@ -127,8 +154,11 @@ fresh local reasoning.
 3. Re-read the SRS and the Formalization checklist. Verify §D2 covers every
    accepted AC exactly once, the SRS is internally consistent, no placeholder
    remains, and no frozen AC was mutated.
-4. Call `worker_done({task_id, worker_id, execution_id, result})` exactly once
-   and exit.
+4. Call `worker_done({task_id, worker_id, execution_id, result})`. Exit only
+   when it is accepted and returns `stop:true`. A submission-validation
+   rejection is non-terminal: record the exact gaps, repair the same output,
+   re-read its persisted hash, and call `worker_done` again. There must be
+   exactly one **accepted** completion receipt.
 
 `worker_done` only concludes this WorkerExecution. The architecture Cell author
 gate runs the deterministic SRS validator; an independent reviewer publishes a

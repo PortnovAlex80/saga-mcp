@@ -16,6 +16,7 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
+import { readLatestSubmissionRejectionForExecution } from '../../lifecycle/submission-validation-rejections.js';
 import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
 import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
 import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
@@ -359,7 +360,11 @@ export function createPinnedClaudeWorkerExecutorFactory(
               });
             }
           }
-          const reason = command.reason ?? 'worker execution ended without terminal worker_done';
+          const validationRejection = readLatestSubmissionRejectionForExecution(db, executionId);
+          const reason = validationRejection
+            ? `submission validation rejected (${validationRejection.rejectionCode}); `
+              + `durable feedback ${validationRejection.rejectionRef}`
+            : command.reason ?? 'worker execution ended without terminal worker_done';
           const isSpawnFailure = command.spawnFailure === true;
           if (isSpawnFailure) {
             // Genuine spawn failure: the Claude process could not be created

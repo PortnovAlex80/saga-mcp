@@ -1,236 +1,256 @@
 /**
- * Pure §D2 YAML parser — shared between the SRS submission validator and the
- * SRS structural CheckProvider.
- *
- * This module has NO I/O and NO dependencies on the database or filesystem.
- * It operates on the SRS markdown document as a string and extracts structured
- * §D2 stanza data (the AC → implementation map).
- *
- * Extracted from srs-contract-validator.ts so that both the worker_done
- * preflight validator AND the Production Cell CheckProvider use the SAME
- * parser — no divergence between "what the validator checks" and "what the
- * gate checks".
+ * Strict §D2 YAML-stanza parser shared by submission validation and the
+ * Production Cell structural check. The representation is intentionally
+ * narrow: one explicit §D2 AC Map/Decomposition section containing exactly
+ * one fenced YAML block. Markdown tables and headings such as `D.2 AC-2` are
+ * not the canonical contract and must not be guessed into acceptance.
  */
 
 import { SRS_CONTRACT } from '../domain/srs-contract.js';
 
-/**
- * One parsed §D2 stanza: the AC code + a map of field name → scalar value.
- * Nested list/block values (e.g. conflict_keys entries) are not captured —
- * only top-level scalar fields, which is sufficient for structural validation
- * (field presence + enum membership).
- */
 export interface D2Stanza {
   readonly ac: string;
   readonly fields: ReadonlyMap<string, string>;
 }
 
-/**
- * Extract §D2 stanzas from the SRS markdown content. Returns one D2Stanza per
- * `- ac:` list item found inside the §D2 fenced code block.
- *
- * Parsing strategy:
- *   1. Locate the §D2 section header (## or ### containing "D2").
- *   2. Find the fenced code block (```yaml ... ```) within that section.
- *   3. Split the YAML on top-level `- ac:` markers.
- *   4. Parse `key: value` lines within each stanza (scalar values only).
- */
-export function extractD2Stanzas(content: string): D2Stanza[] {
-  // Accept both "D2" and "D.2" heading variants — LLMs frequently write §D.2
-  // (matching the natural decimal notation) which is semantically identical.
-  const headingMatch = content.match(/(#{2,4})\s*§?\s*D\.?2\b/);
-  if (!headingMatch || headingMatch.index === undefined) return [];
-  const headingLevel = headingMatch[1]!.length;
-  const afterStart = content.slice(headingMatch.index);
-  // Section extends until next heading at the same or shallower level.
-  // Previous code matched any \n#{2,4}\s which included ### subsections
-  // inside the D2 section, truncating it to just the heading line.
-  const afterFirstLine = afterStart.slice(afterStart.indexOf('\n'));
-  const nextHeaderRegex = new RegExp(`\\n#{1,${headingLevel}}\\s`);
-  const nextHeaderMatch = afterFirstLine.match(nextHeaderRegex);
-  const sectionText = nextHeaderMatch
-    ? afterFirstLine.slice(0, nextHeaderMatch.index)
-    : afterFirstLine;
-
-  // Extract stanzas from ALL sources: fenced code blocks AND raw section body.
-  // The previous either/or approach had a bug: if the model wrote D2 in
-  // subsection format but included an incidental fenced snippet (e.g. a
-  // pattern legend), the parser grabbed only the snippet and missed the real
-  // stanzas. Fix: scan the full section text (including code block contents)
-  // for stanza patterns, so both formats are handled simultaneously.
-  // Remove code block fences so their content merges with the raw section.
-  const flatText = sectionText.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '');
-
-  const lines = flatText.split('\n');
-  const stanzas: D2Stanza[] = [];
-  let currentAc: string | null = null;
-  let currentFields: Map<string, string> = new Map();
-  for (const line of lines) {
-    // Accept both YAML list format "- ac: AC-1" and bare "ac: AC-1"
-    // (subsection format where fields follow a ### heading).
-    const stanzaStart = line.match(/^[-\s]*ac:\s*(\S+)/);
-    if (stanzaStart) {
-      if (currentAc) {
-        stanzas.push({ ac: currentAc, fields: currentFields });
-      }
-      currentAc = stanzaStart[1]!.replace(/["']/g, '');
-      currentFields = new Map();
-      currentFields.set('ac', currentAc);
-      continue;
-    }
-    if (currentAc) {
-      // Match indented key: value pairs (YAML style) or bare key: value
-      // (subsection style). Also skip markdown headings (### AC-2: ...).
-      if (/^#{1,6}\s/.test(line)) continue;
-      const fieldMatch = line.match(/^\s*(\w[\w/]*)\s*:\s*(.*)$/);
-      if (fieldMatch) {
-        const [, key, rawValue] = fieldMatch;
-        const value = (rawValue ?? '').trim().replace(/["']/g, '').replace(/#.*$/, '').trim();
-        if (!currentFields.has(key!)) {
-          currentFields.set(key!, value);
-        }
-      }
-    }
-  }
-  if (currentAc) {
-    stanzas.push({ ac: currentAc, fields: currentFields });
-  }
-  return stanzas;
+export interface D2StructuralGap {
+  readonly ac: string;
+  readonly field: string;
+  readonly kind:
+    | 'missing-required-field'
+    | 'empty-required-field'
+    | 'invalid-enum-value'
+    | 'invalid-representation'
+    | 'duplicate-field'
+    | 'duplicate-ac'
+    | 'malformed-yaml-line';
+  readonly allowedValues?: readonly string[];
+  readonly message?: string;
 }
 
-/**
- * Build a Map of AC code → criticality value from the §D2 stanzas in an SRS
- * document. Values not in the canonical criticality enum default to 'blocker'
- * (conservative: treat unclassifiable as mandatory).
- *
- * This is the authoritative source of criticality for the Production Cell
- * decision policy — NOT mutable AC tags (T2.1A forbids tag mutation after
- * baseline freeze). The architect records criticality in §D2 (its own product);
- * the gate reads it here.
- *
- * @param content - the full SRS markdown document text
- * @returns Map<string, 'blocker' | 'degradable' | 'nice_to_have'>
- */
+interface D2ParseResult {
+  readonly stanzas: D2Stanza[];
+  readonly gaps: D2StructuralGap[];
+}
+
+const CANONICAL_HEADING = /^(#{2,4})\s*§D\.?2\b[^\n]*(?:AC\s*(?:Map|Mapping)|Decomposition)[^\n]*$/gim;
+const YAML_BLOCK = /```(?:yaml|yml)\s*\r?\n([\s\S]*?)```/gi;
+
+function cleanScalar(raw: string): string {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed.replace(/\s+#.*$/, '').trim();
+}
+
+function parseD2(content: string): D2ParseResult {
+  const headings = [...content.matchAll(CANONICAL_HEADING)];
+  if (headings.length !== 1) {
+    return {
+      stanzas: [],
+      gaps: [{
+        ac: '<section>',
+        field: '§D2',
+        kind: 'invalid-representation',
+        message: headings.length === 0
+          ? 'Exactly one explicit `§D2 AC Map/Decomposition` heading is required; `D.2 AC-2` is not that section.'
+          : `Exactly one §D2 section is required; found ${headings.length}.`,
+      }],
+    };
+  }
+
+  const heading = headings[0]!;
+  const headingLevel = heading[1]!.length;
+  const bodyStart = heading.index! + heading[0].length;
+  const afterHeading = content.slice(bodyStart);
+  const nextHeading = afterHeading.match(new RegExp(`\\n#{1,${headingLevel}}\\s`));
+  const section = nextHeading
+    ? afterHeading.slice(0, nextHeading.index ?? afterHeading.length)
+    : afterHeading;
+  const yamlBlocks = [...section.matchAll(YAML_BLOCK)];
+  if (yamlBlocks.length !== 1) {
+    return {
+      stanzas: [],
+      gaps: [{
+        ac: '<section>',
+        field: '§D2',
+        kind: 'invalid-representation',
+        message: `§D2 requires exactly one fenced YAML block; found ${yamlBlocks.length}. Markdown tables are not accepted.`,
+      }],
+    };
+  }
+
+  const outsideYaml = section.replace(YAML_BLOCK, '');
+  if (/^\s*-?\s*ac\s*:/mi.test(outsideYaml) || /^\s*\|\s*ac\s*\|/mi.test(outsideYaml)) {
+    return {
+      stanzas: [],
+      gaps: [{
+        ac: '<section>',
+        field: '§D2',
+        kind: 'invalid-representation',
+        message: '§D2 mixes YAML with another decomposition representation; keep only the canonical fenced YAML stanzas.',
+      }],
+    };
+  }
+
+  const gaps: D2StructuralGap[] = [];
+  const stanzas: D2Stanza[] = [];
+  const seenAcs = new Set<string>();
+  let currentAc: string | null = null;
+  let currentFields = new Map<string, string>();
+
+  const finish = (): void => {
+    if (currentAc === null) return;
+    if (seenAcs.has(currentAc)) {
+      gaps.push({
+        ac: currentAc,
+        field: 'ac',
+        kind: 'duplicate-ac',
+        message: `Duplicate §D2 stanza for ${currentAc}. Every frozen AC must appear exactly once.`,
+      });
+    } else {
+      seenAcs.add(currentAc);
+    }
+    stanzas.push({ ac: currentAc, fields: currentFields });
+  };
+
+  const yaml = yamlBlocks[0]![1] ?? '';
+  for (const rawLine of yaml.split(/\r?\n/)) {
+    if (rawLine.trim() === '' || /^\s*#/.test(rawLine)) continue;
+    const stanzaStart = rawLine.match(/^\s*-\s+ac\s*:\s*(.*?)\s*$/i);
+    if (stanzaStart) {
+      finish();
+      currentAc = cleanScalar(stanzaStart[1] ?? '');
+      currentFields = new Map([['ac', currentAc]]);
+      if (currentAc === '') {
+        gaps.push({
+          ac: '<empty>',
+          field: 'ac',
+          kind: 'empty-required-field',
+          message: 'A §D2 stanza has an empty `ac` value.',
+        });
+      }
+      continue;
+    }
+    const field = rawLine.match(/^\s{2,}([a-z][a-z0-9_]*)\s*:\s*(.*?)\s*$/i);
+    if (!currentAc || !field) {
+      gaps.push({
+        ac: currentAc ?? '<section>',
+        field: '<syntax>',
+        kind: 'malformed-yaml-line',
+        message: `Malformed §D2 YAML line: ${rawLine.trim()}`,
+      });
+      continue;
+    }
+    const key = field[1]!.toLowerCase();
+    if (currentFields.has(key)) {
+      gaps.push({
+        ac: currentAc,
+        field: key,
+        kind: 'duplicate-field',
+        message: `Duplicate §D2 field \`${key}\` in ${currentAc}.`,
+      });
+      continue;
+    }
+    currentFields.set(key, cleanScalar(field[2] ?? ''));
+  }
+  finish();
+
+  return { stanzas, gaps };
+}
+
+export function extractD2Stanzas(content: string): D2Stanza[] {
+  const parsed = parseD2(content);
+  return parsed.gaps.some(gap => gap.kind === 'invalid-representation')
+    ? []
+    : parsed.stanzas;
+}
+
 export function parseD2CriticalityByAc(
   content: string,
 ): Map<string, 'blocker' | 'degradable' | 'nice_to_have'> {
-  const validCriticality = new Set<string>(SRS_CONTRACT.d2EnumFields.criticality);
+  const valid = new Set<string>(SRS_CONTRACT.d2EnumFields.criticality);
   const result = new Map<string, 'blocker' | 'degradable' | 'nice_to_have'>();
-  const stanzas = extractD2Stanzas(content);
-  for (const stanza of stanzas) {
+  for (const stanza of extractD2Stanzas(content)) {
     const raw = stanza.fields.get('criticality');
-    if (raw && validCriticality.has(raw)) {
-      result.set(stanza.ac, raw as 'blocker' | 'degradable' | 'nice_to_have');
-    } else {
-      result.set(stanza.ac, 'blocker');
-    }
+    result.set(
+      stanza.ac,
+      raw && valid.has(raw)
+        ? raw as 'blocker' | 'degradable' | 'nice_to_have'
+        : 'blocker',
+    );
   }
   return result;
 }
 
-/**
- * Validate the structural completeness of §D2 stanzas against the canonical
- * contract. Returns a list of structural gaps (empty = valid).
- *
- * Each gap describes one missing required field or one invalid enum value.
- * This is the same logic the SRS submission validator uses — extracted here
- * so the CheckProvider can reuse it without duplicating the rules.
- */
-export interface D2StructuralGap {
-  readonly ac: string;
-  readonly field: string;
-  readonly kind: 'missing-required-field' | 'invalid-enum-value';
-  readonly allowedValues?: readonly string[];
-}
-
 export function validateD2Structure(content: string): D2StructuralGap[] {
-  const gaps: D2StructuralGap[] = [];
-  const stanzas = extractD2Stanzas(content);
+  const parsed = parseD2(content);
+  const gaps = [...parsed.gaps];
   const validAcKind = new Set<string>(SRS_CONTRACT.d2EnumFields.ac_kind);
   const validPattern = new Set<string>(SRS_CONTRACT.d2EnumFields.pattern);
   const validCriticality = new Set<string>(SRS_CONTRACT.d2EnumFields.criticality);
 
-  for (const stanza of stanzas) {
+  for (const stanza of parsed.stanzas) {
     for (const field of SRS_CONTRACT.d2RequiredFields) {
       if (!stanza.fields.has(field)) {
         gaps.push({ ac: stanza.ac, field, kind: 'missing-required-field' });
+      } else if ((stanza.fields.get(field) ?? '').trim() === '') {
+        gaps.push({ ac: stanza.ac, field, kind: 'empty-required-field' });
       }
     }
-    const acKind = stanza.fields.get('ac_kind');
-    if (acKind && !validAcKind.has(acKind)) {
-      gaps.push({
-        ac: stanza.ac,
-        field: 'ac_kind',
-        kind: 'invalid-enum-value',
-        allowedValues: SRS_CONTRACT.d2EnumFields.ac_kind,
-      });
+    const enums = [
+      ['ac_kind', validAcKind, SRS_CONTRACT.d2EnumFields.ac_kind],
+      ['pattern', validPattern, SRS_CONTRACT.d2EnumFields.pattern],
+      ['criticality', validCriticality, SRS_CONTRACT.d2EnumFields.criticality],
+    ] as const;
+    for (const [field, values, allowedValues] of enums) {
+      const value = stanza.fields.get(field);
+      if (value && !values.has(value)) {
+        gaps.push({
+          ac: stanza.ac,
+          field,
+          kind: 'invalid-enum-value',
+          allowedValues,
+        });
+      }
     }
-    const pattern = stanza.fields.get('pattern');
-    if (pattern && !validPattern.has(pattern)) {
-      gaps.push({
-        ac: stanza.ac,
-        field: 'pattern',
-        kind: 'invalid-enum-value',
-        allowedValues: SRS_CONTRACT.d2EnumFields.pattern,
-      });
-    }
-    const criticality = stanza.fields.get('criticality');
-    if (criticality && !validCriticality.has(criticality)) {
-      gaps.push({
-        ac: stanza.ac,
-        field: 'criticality',
-        kind: 'invalid-enum-value',
-        allowedValues: SRS_CONTRACT.d2EnumFields.criticality,
-      });
-    }
+  }
+  if (parsed.stanzas.length === 0 && gaps.length === 0) {
+    gaps.push({
+      ac: '<section>',
+      field: 'ac',
+      kind: 'invalid-representation',
+      message: '§D2 contains no YAML stanzas.',
+    });
   }
   return gaps;
 }
 
-/**
- * Check whether the §12 Decision Log section exists in the SRS document and
- * has a table with at least the canonical number of columns.
- *
- * Returns null if valid, or a string describing the gap.
- */
 export function checkDecisionLogSection(content: string): string | null {
-  // The §12 heading may appear at different markdown levels (##, ###). Capture
-  // the section body up to the next heading at the SAME or HIGHER level.
-  // The previous regex's look-ahead `(?=\n##\s)` matched `### Decision 1:`
-  // subsections (which start with `##`), producing an empty body even when the
-  // section had valid content. Fix: only look ahead to same-or-higher level.
   const headingMatch = content.match(/(#{1,4})\s*§?\s*12[^\n]*Decision Log/i)
     ?? content.match(/(#{1,4})\s*.*Decision Log[^\n]*/i);
-  if (!headingMatch) {
-    return '§12 Decision Log section is missing';
-  }
+  if (!headingMatch) return '§12 Decision Log section is missing';
   const headingLevel = headingMatch[1]!.length;
-  const headingStart = headingMatch.index!;
-  const afterHeading = content.slice(headingStart + headingMatch[0].length);
-  // Section body extends until the next heading at the same or shallower level.
-  const nextHeadingRegex = new RegExp(`\\n#{1,${headingLevel}}\\s`);
-  const nextHeadingMatch = afterHeading.match(nextHeadingRegex);
+  const afterHeading = content.slice(headingMatch.index! + headingMatch[0].length);
+  const nextHeadingMatch = afterHeading.match(new RegExp(`\\n#{1,${headingLevel}}\\s`));
   const sectionBody = nextHeadingMatch
     ? afterHeading.slice(0, nextHeadingMatch.index ?? afterHeading.length)
     : afterHeading;
-  // Accept either a markdown table (preferred) or subsection-style content
-  // (### Decision N: ...). LLMs frequently write subsection format which is
-  // semantically valid but has no pipe-delimited table header.
   const tableHeaderMatch = sectionBody.match(/\|([^\n]*\|)+/);
   if (!tableHeaderMatch) {
-    // Fallback: check for decision subsections (### Decision N:)
-    const subsectionMatch = sectionBody.match(/#{3,4}\s*Decision\s*\d/i);
-    if (!subsectionMatch) {
-      return '§12 Decision Log has no markdown table or decision entries';
-    }
-    return null; // subsection format accepted
+    return /#{3,4}\s*Decision\s*\d/i.test(sectionBody)
+      ? null
+      : '§12 Decision Log has no markdown table or decision entries';
   }
   const headerCells = (tableHeaderMatch[0] ?? '')
     .split('|')
     .map(cell => cell.trim())
     .filter(cell => cell.length > 0 && !/^[-:]+$/.test(cell));
-  if (headerCells.length < SRS_CONTRACT.decisionLogColumns.length) {
-    return `§12 Decision Log table has ${headerCells.length} columns, need ≥${SRS_CONTRACT.decisionLogColumns.length}`;
-  }
-  return null;
+  return headerCells.length < SRS_CONTRACT.decisionLogColumns.length
+    ? `§12 Decision Log table has ${headerCells.length} columns, need ≥${SRS_CONTRACT.decisionLogColumns.length}`
+    : null;
 }

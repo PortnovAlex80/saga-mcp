@@ -57,6 +57,8 @@ export interface SubmissionGap {
     readonly requiredTargetTypes: ReadonlyArray<string>;
     readonly minimum: number;
   };
+  /** Human-actionable detail. Generic relation fields remain machine-readable. */
+  readonly message?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +127,13 @@ export interface SubmissionValidationReceipt {
 
 export type NodeSubmissionValidationResult =
   | { readonly accepted: true; readonly receipt: SubmissionValidationReceipt }
-  | { readonly accepted: false; readonly code: string; readonly gaps: readonly SubmissionGap[] };
+  | {
+      readonly accepted: false;
+      readonly code: string;
+      readonly gaps: readonly SubmissionGap[];
+      /** Validator-owned immutable context forwarded to durable recovery. */
+      readonly details?: Readonly<Record<string, unknown>>;
+    };
 
 // ---------------------------------------------------------------------------
 // Validator port.
@@ -224,9 +232,12 @@ export class SubmissionValidationError extends Error {
   constructor(
     public readonly code: string,
     public readonly gaps: readonly SubmissionGap[],
+    public readonly details: Readonly<Record<string, unknown>> = {},
+    public readonly validationContext: Readonly<Record<string, unknown>> = {},
   ) {
     const gapSummary = gaps.map(g =>
-      `${g.artifactCode ?? g.artifactId}: missing ${g.missing.minimum}× ${g.missing.relation} → ${g.missing.requiredTargetTypes.join('|')}`,
+      g.message
+        ?? `${g.artifactCode ?? g.artifactId}: missing ${g.missing.minimum}× ${g.missing.relation} → ${g.missing.requiredTargetTypes.join('|')}`,
     ).join('; ');
     super(`${code}: ${gapSummary}`);
     this.name = 'SubmissionValidationError';

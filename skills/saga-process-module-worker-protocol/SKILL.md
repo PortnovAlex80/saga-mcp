@@ -16,7 +16,9 @@ It must be combined with exactly one semantic Process Module skill.
 - Never select or start the next Process Module.
 - Never call a lifecycle transition unless this node is an explicitly authorized Kernel/Human node; LM workers are not.
 - The current **Stage Binding** belongs to the Lifecycle: it maps inputs and routes the module's local outcome. The LM worker must not edit, bypass or reinterpret it.
-- After one truthful `worker_done`, exit permanently.
+- After one accepted truthful `worker_done`, exit permanently. A rejected
+  submission preflight is not a completion and must be repaired in-session
+  when the execution remains fenced.
 
 ## Startup hook
 
@@ -127,8 +129,11 @@ Before `worker_done`:
 3. verify all materialized calls are settled;
 4. verify no unresolved errors/placeholders remain;
 5. materialize and checklist the completion call;
-6. call `worker_done` exactly once with a truthful summary;
-7. mark tracker completed and exit.
+6. call `worker_done` with a truthful summary;
+7. if submission validation rejects it, record the durable rejection, repair
+   every gap and retry while the fence is live;
+8. after the single accepted receipt returns `stop:true`, mark the tracker
+   completed and exit.
 
 The semantic skill defines what constitutes correct domain output. This protocol defines how that output is produced reliably.
 

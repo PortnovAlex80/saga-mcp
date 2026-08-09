@@ -9,6 +9,10 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
+import {
+  clearSubmissionValidationFeedback,
+  persistSubmissionValidationRejection,
+} from '../lifecycle/submission-validation-rejections.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
 // consumers (tasks.ts, factory-* tools) keep their './dispatcher.js' imports.
@@ -453,7 +457,7 @@ function nonNegativeInteger(value: unknown): number {
     : 0;
 }
 
-function handleWorkerDone(args: Record<string, unknown>): {
+type WorkerDoneReply = {
   completed: number;
   completed_new_status: 'review' | 'done' | 'todo' | 'blocked';
   active_tasks?: Array<{
@@ -471,7 +475,13 @@ function handleWorkerDone(args: Record<string, unknown>): {
   stop_reason: string;
   workflow_generation?: unknown;
   workflow_generation_error?: string;
-} {
+};
+
+type WorkerDoneTransactionResult =
+  | { readonly kind: 'completed'; readonly reply: WorkerDoneReply }
+  | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError };
+
+function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
@@ -497,7 +507,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     throw new Error(`verdict must be 'approved' or 'changes_requested', got '${verdict}'`);
   }
 
-  const completeTask = (): ReturnType<typeof handleWorkerDone> => {
+  const completeTask = (): WorkerDoneTransactionResult => {
     // Slice 4 (blueprint §10, §16:894-898): idempotency FIRST. A retry of a
     // previously-accepted worker_done (same command_id + payload) must return
     // the stored reply WITHOUT touching the task row. We check this BEFORE
@@ -513,7 +523,10 @@ function handleWorkerDone(args: Record<string, unknown>): {
     const payloadHash = hashPayload(payload);
     const prior = checkReceipt(db, commandId, payloadHash);
     if (prior.kind === 'replay') {
-      return JSON.parse(prior.receipt.reply_json) as ReturnType<typeof handleWorkerDone>;
+      return {
+        kind: 'completed',
+        reply: JSON.parse(prior.receipt.reply_json) as WorkerDoneReply,
+      };
     }
     if (prior.kind === 'idempotency_key_reused') {
       throw new Error(
@@ -552,7 +565,18 @@ function handleWorkerDone(args: Record<string, unknown>): {
     // throws SubmissionValidationError with structured gaps so the LM sees
     // exactly what to fix without burning a recovery epoch.
     if (task.status === 'in_progress') {
-      validateSubmissionIfRequired(db, task, args.execution_id as string | undefined);
+      const validationError = validateSubmissionIfRequired(
+        db,
+        task,
+        workerId,
+        args.execution_id as string | undefined,
+      );
+      if (validationError) {
+        // The rejection row + feedback pointer have been written in this SAME
+        // transaction. Return a sentinel so BEGIN IMMEDIATE commits; only then
+        // does the outer handler throw the actionable MCP error.
+        return { kind: 'submission-rejected', error: validationError };
+      }
     }
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
@@ -829,7 +853,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     const projectId = projectIdRow?.project_id;
     const active_tasks = projectId != null ? getActiveTasks(db, projectId) : [];
 
-    const reply: ReturnType<typeof handleWorkerDone> = {
+    const reply: WorkerDoneReply = {
       completed: taskId,
       completed_new_status: newStatus,
       active_tasks,
@@ -856,17 +880,20 @@ function handleWorkerDone(args: Record<string, unknown>): {
       reply,
     });
 
-    return reply;
+    return { kind: 'completed', reply };
   }; // end completeTask
 
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
+  if (completed.kind === 'submission-rejected') {
+    throw completed.error;
+  }
   // saga4 cutover (Phase 4): worker_done no longer auto-generates downstream
   // escape hatch where generic task status produced new work. After the
   // cutover only a module-owned node/settlement may generate work; a completed
   // task is evidence consumed by its owning Process Module node.
-  return completed;
+  return completed.reply;
 }
 
 // ============================================================================
@@ -1710,8 +1737,9 @@ export const definitions: Tool[] = [
 function validateSubmissionIfRequired(
   db: Database.Database,
   task: Task,
+  workerId: string,
   executionId: string | undefined,
-): void {
+): SubmissionValidationError | null {
   const policyRegistry = getSubmissionPolicyRegistry();
   const validatorRegistry = getSubmissionValidatorRegistry();
 
@@ -1732,12 +1760,12 @@ function validateSubmissionIfRequired(
         + `process_module_ref but JSON is unparseable`,
       );
     }
-    return; // genuinely non-factory task with malformed metadata
+    return null; // genuinely non-factory task with malformed metadata
   }
 
   const hasProcessModuleRef = Object.prototype.hasOwnProperty.call(metadata, 'process_module_ref');
 
-  if (!hasProcessModuleRef) return;
+  if (!hasProcessModuleRef) return null;
 
   // Factory-managed task: registries MUST be wired (fail-closed, T1.5).
   if (!policyRegistry || !validatorRegistry) {
@@ -1774,7 +1802,7 @@ function validateSubmissionIfRequired(
     );
   }
 
-  if (policy.mode === 'none') return; // explicitly no validation — allowed
+  if (policy.mode === 'none') return null; // explicitly no validation — allowed
   // mode === 'required'
   const validator = validatorRegistry.resolve(policy.validatorId);
   if (!validator) {
@@ -1797,8 +1825,50 @@ function validateSubmissionIfRequired(
   });
 
   if (!result.accepted) {
-    throw new SubmissionValidationError(result.code, result.gaps);
+    const error = new SubmissionValidationError(
+      result.code,
+      result.gaps,
+      result.details ?? {},
+      {
+        validatorId: validator.validatorId,
+        validatorVersion: validator.validatorVersion,
+        processRunId,
+        moduleRef,
+        nodeId,
+        executionId: executionId ?? task.current_execution_id ?? '',
+        taskId: task.id,
+        contractRef: policy.contractRef ?? null,
+        inputSnapshotHash: typeof metadata.process_node_input_hash === 'string'
+          ? metadata.process_node_input_hash
+          : typeof metadata.process_input_hash === 'string'
+            ? metadata.process_input_hash
+            : '',
+      },
+    );
+    persistSubmissionValidationRejection(db, {
+      validatorId: validator.validatorId,
+      validatorVersion: validator.validatorVersion,
+      processRunId,
+      moduleRef,
+      nodeId,
+      executionId: executionId ?? task.current_execution_id ?? '',
+      taskId: task.id,
+      actorKind: 'managed_execution',
+      workerId,
+      rejectionCode: result.code,
+      gaps: result.gaps,
+      details: result.details,
+      contractRef: policy.contractRef,
+      inputSnapshotHash: typeof metadata.process_node_input_hash === 'string'
+        ? metadata.process_node_input_hash
+        : typeof metadata.process_input_hash === 'string'
+          ? metadata.process_input_hash
+          : '',
+    });
+    return error;
   }
+
+  clearSubmissionValidationFeedback(db, task.id);
 
   // Persist the receipt — durable proof validation passed. The receipt and
   // the task transition run in the same transaction (the caller wraps
@@ -1826,6 +1896,7 @@ function validateSubmissionIfRequired(
     receipt.contractRef ? JSON.stringify(receipt.contractRef) : null,
     receipt.validatedSetDigest,
   );
+  return null;
 }
 
 export const handlers: Record<string, ToolHandler> = {

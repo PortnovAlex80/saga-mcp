@@ -85,4 +85,6 @@ Recovery rules:
 3. Resume from the last verified checkpoint, not from the start by default.
 4. Machine-filled ids, hashes and schema versions are immutable.
 5. If attempts are exhausted, follow the profile policy: pause or escalate; never fake completion.
-6. If `recovery-feedback.json` exists in this execution directory, READ IT FIRST — it carries the gate's findings about what to fix. If `review-feedback.json` exists, READ IT FIRST — it carries the reviewer's findings (changes_requested) about what to fix. Never rework blind.
+6. If `recovery-feedback.json` exists in this execution directory, READ IT FIRST — it carries gate or submission-preflight findings about what to fix. If `review-feedback.json` exists, READ IT FIRST — it carries the reviewer's findings (changes_requested) about what to fix. Never rework blind.
+7. `worker_done` is terminal only after an accepted receipt with `stop:true`.
+   A validation rejection leaves the fence live: repair, verify and retry.

@@ -25,6 +25,7 @@ import os from 'node:os';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
 import { ensureManagedProductionLedgerSchema } from '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js';
+import { ensureFormalizationPersistenceSchema } from '../../dist/modules/formalization/infrastructure/formalization-persistence.js';
 import { initSubmissionRegistries, getSubmissionPolicyRegistry } from '../../dist/process-modules/application/submission-registries.js';
 import { createSrsContractValidator } from '../../dist/modules/formalization/application/srs-contract-validator.js';
 import { SRS_CONTRACT, SRS_CONTRACT_REF } from '../../dist/modules/formalization/domain/srs-contract.js';
@@ -36,6 +37,7 @@ function freshDb() {
   db.exec(SCHEMA_SQL);
   ensureFactoryProcessRunSchema(db);
   ensureManagedProductionLedgerSchema(db);
+  ensureFormalizationPersistenceSchema(db);
   db.prepare('INSERT INTO projects (id, name) VALUES (1, ?)').run('p');
   db.prepare('INSERT INTO epics (id, project_id, name) VALUES (1, 1, ?)').run('e');
   db.prepare(
@@ -45,6 +47,34 @@ function freshDb() {
         input_hash, status)
      VALUES (2, 1, 'sf', '1.0.0', 'sf@1', 'k', 'generic-flow', 's', '{}', 'h', 'running')`,
   ).run();
+  const acHash = hash('AC-1');
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status,
+       content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
+     VALUES (3, 1, 1, 'AC', 'AC-1', 'AC-1', 'ac-1.md', 'accepted', ?, ?,
+             'clean', 'db_native', '[]', '{}')`,
+  ).run(acHash, acHash);
+  const baselinePayload = {
+    schemaVersion: 'factory.acceptance-baseline-snapshot.v1',
+    processRunId: 2,
+    formalizationEpicId: 1,
+    sourceReconciliationRef: 'test:reconciliation',
+    sourceReconciliationHash: hash('reconciliation'),
+    acArtifactIds: [3],
+    acArtifactHashes: { 3: acHash },
+    baselineHash: hash('baseline'),
+  };
+  db.prepare(
+    `INSERT INTO factory_formalization_acceptance_baselines
+       (process_run_id, formalization_epic_id, schema_version, payload,
+        baseline_hash, snapshot_hash)
+     VALUES (2, 1, ?, ?, ?, ?)`,
+  ).run(
+    baselinePayload.schemaVersion,
+    JSON.stringify(baselinePayload),
+    baselinePayload.baselineHash,
+    hash(JSON.stringify(baselinePayload)),
+  );
   return db;
 }
 
@@ -267,7 +297,7 @@ test('rejects when §D2 has no stanzas', () => {
   const v = createSrsContractValidator(db);
   const result = v.validate(validateInput);
   assert.equal(result.accepted, false);
-  assert.ok(result.gaps.some(g => g.missing.relation === 'd2-stanzas'));
+  assert.ok(result.gaps.some(g => g.missing.relation === 'd2-representation'));
   db.close();
 });
 
@@ -345,6 +375,67 @@ test('rejects when §D2 criticality value is invalid enum', () => {
   const result = v.validate(validateInput);
   assert.equal(result.accepted, false);
   assert.ok(result.gaps.some(g => g.missing.relation === 'valid-enum-value'));
+  db.close();
+});
+
+test('rejects Markdown D2 tables and exposes the exact YAML contract', () => {
+  const db = freshDb();
+  const tmpDir = seedRepo(db);
+  seedPrd(db);
+  const cols = SRS_CONTRACT.decisionLogColumns.join(' | ');
+  seedSrs(db, tmpDir, [
+    '# SRS',
+    '',
+    '## §12 Decision Log',
+    `| ${cols} |`,
+    `| ${SRS_CONTRACT.decisionLogColumns.map(() => '---').join(' | ')} |`,
+    '| 1 | KISS | inherited | none | simplicity | 2026-01-01 |',
+    '',
+    '### D.2 AC-2: criterion group, not the canonical section',
+    '| ac | module | files | pattern | ac_kind | criticality |',
+    '|---|---|---|---|---|---|',
+    '| AC-1.1 | core | app.js | A | implementation | blocker |',
+  ].join('\n'));
+  const result = createSrsContractValidator(db).validate(validateInput);
+  assert.equal(result.accepted, false);
+  assert.ok(result.gaps.some(g => g.missing.relation === 'd2-representation'));
+  assert.ok(result.gaps.some(g => g.artifactCode === 'AC-1' && g.missing.relation === 'represented_by'));
+  assert.match(result.details.canonicalExample, /```yaml[\s\S]*- ac: AC-1/);
+  db.close();
+});
+
+test('rejects duplicate and non-baseline AC codes', () => {
+  const db = freshDb();
+  const tmpDir = seedRepo(db);
+  seedPrd(db);
+  const base = canonicalValidSrs();
+  const extra = [
+    '- ac: AC-1.1',
+    '  title: invented subcriterion',
+    '  module: core',
+    '  files: [src/core.ts]',
+    '  invariants: []',
+    '  test_layers: [L0]',
+    '  pattern: A',
+    '  depends_on: []',
+    '  ac_kind: implementation',
+    '  criticality: blocker',
+    '- ac: AC-1',
+    '  title: duplicate',
+    '  module: core',
+    '  files: [src/core.ts]',
+    '  invariants: []',
+    '  test_layers: [L0]',
+    '  pattern: A',
+    '  depends_on: []',
+    '  ac_kind: implementation',
+    '  criticality: blocker',
+  ].join('\n');
+  seedSrs(db, tmpDir, base.replace('\n```\n', `\n${extra}\n\`\`\`\n`));
+  const result = createSrsContractValidator(db).validate(validateInput);
+  assert.equal(result.accepted, false);
+  assert.ok(result.gaps.some(g => g.missing.relation === 'd2-uniqueness'));
+  assert.ok(result.gaps.some(g => g.artifactCode === 'AC-1.1' && g.missing.relation === 'exact-frozen-ac-code'));
   db.close();
 });
 

@@ -1466,6 +1466,86 @@ CREATE INDEX IF NOT EXISTS idx_submission_receipts_task
   ON factory_submission_validation_receipts(task_id);
 CREATE INDEX IF NOT EXISTS idx_submission_receipts_run_node
   ON factory_submission_validation_receipts(process_run_id, node_id);
+
+-- Durable preflight rejections. Unlike terminal command_receipts, these are
+-- append-only observations: the same execution may repair the artifact and
+-- call worker_done again. The observed-set digest prevents an exact replay
+-- from duplicating a row while changed bytes create a new rejection snapshot.
+CREATE TABLE IF NOT EXISTS factory_submission_validation_rejections (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  rejection_ref         TEXT NOT NULL UNIQUE,
+  rejection_digest      TEXT NOT NULL,
+  validator_id          TEXT NOT NULL,
+  validator_version     TEXT NOT NULL,
+  process_run_id        INTEGER NOT NULL,
+  module_ref            TEXT NOT NULL,
+  node_id               TEXT NOT NULL,
+  execution_id          TEXT NOT NULL,
+  task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  workplace_ref         TEXT,
+  actor_kind            TEXT NOT NULL CHECK (actor_kind IN ('managed_execution','admin')),
+  rejection_code        TEXT NOT NULL,
+  gaps_json             TEXT NOT NULL,
+  details_json          TEXT NOT NULL DEFAULT '{}',
+  contract_ref          TEXT,
+  input_snapshot_hash   TEXT NOT NULL,
+  observed_artifacts    TEXT NOT NULL,
+  observed_set_digest   TEXT NOT NULL,
+  feedback_json         TEXT NOT NULL,
+  rejected_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (execution_id, rejection_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_submission_rejections_task
+  ON factory_submission_validation_rejections(task_id, id);
+CREATE INDEX IF NOT EXISTS idx_submission_rejections_execution
+  ON factory_submission_validation_rejections(execution_id, id);
+CREATE TRIGGER IF NOT EXISTS trg_submission_rejections_no_update
+  BEFORE UPDATE ON factory_submission_validation_rejections
+  BEGIN
+    SELECT RAISE(ABORT, 'submission validation rejections are immutable');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_submission_rejections_no_delete
+  BEFORE DELETE ON factory_submission_validation_rejections
+  BEGIN
+    SELECT RAISE(ABORT, 'submission validation rejections are immutable');
+  END;
+
+-- Explicit, audited bypass of an exhausted Production Cell attempt budget.
+-- Authorization and consumption are separate immutable facts so one operator
+-- directive can produce at most one additional execution opportunity.
+CREATE TABLE IF NOT EXISTS factory_operator_recovery_authorizations (
+  authorization_ref      TEXT PRIMARY KEY,
+  lifecycle_run_id       INTEGER NOT NULL,
+  stage_run_id           INTEGER NOT NULL,
+  process_run_id         INTEGER NOT NULL,
+  workplace_ref          TEXT NOT NULL,
+  expected_revision      INTEGER NOT NULL,
+  task_id                INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  repair_role            TEXT NOT NULL CHECK (repair_role IN ('author','reviewer')),
+  rejection_ref          TEXT NOT NULL REFERENCES factory_submission_validation_rejections(rejection_ref),
+  rejection_digest       TEXT NOT NULL,
+  actor_id                TEXT NOT NULL,
+  reason                  TEXT NOT NULL,
+  authorized_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS factory_operator_recovery_consumptions (
+  authorization_ref      TEXT PRIMARY KEY
+                           REFERENCES factory_operator_recovery_authorizations(authorization_ref),
+  resulting_revision     INTEGER NOT NULL,
+  consumed_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_auth_no_update
+  BEFORE UPDATE ON factory_operator_recovery_authorizations
+  BEGIN SELECT RAISE(ABORT, 'operator recovery authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_auth_no_delete
+  BEFORE DELETE ON factory_operator_recovery_authorizations
+  BEGIN SELECT RAISE(ABORT, 'operator recovery authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_update
+  BEFORE UPDATE ON factory_operator_recovery_consumptions
+  BEGIN SELECT RAISE(ABORT, 'operator recovery consumptions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_delete
+  BEFORE DELETE ON factory_operator_recovery_consumptions
+  BEGIN SELECT RAISE(ABORT, 'operator recovery consumptions are immutable'); END;
 `;
 
 // ----------------------------------------------------------------------------

@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node scripts/factory.mjs start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]
- *   node scripts/factory.mjs resume <db-path>
+ *   node scripts/factory.mjs resume <db-path> [--requeue-paused]
  *
  * `start` provisions a sandbox (project + epic + repo + order), creates a
  * `mode:'new'` launch, and spawns orchestrate-cli.
@@ -80,7 +80,7 @@ function parseStartArguments(rawArgs) {
 if (command !== 'start' && command !== 'resume') {
   die(`usage: node scripts/factory.mjs <start|resume> <db-path> [options]\n`
     + `  start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
-    + `  resume <db-path>`);
+    + `  resume <db-path> [--requeue-paused]`);
 }
 
 // ─── Shared: spawn the runtime host with a launch capability ──────────────
@@ -106,18 +106,118 @@ function spawnOrchestrateCli(dbPath, launchRef) {
   });
 }
 
+/**
+ * Runs the declared node validator once for an old paused incident that
+ * predates durable rejection receipts. The resulting admin observation uses
+ * the same append-only ledger/feedback path as managed worker rejections.
+ */
+async function ensurePausedRecoveryFeedback(db, lifecycleRunId) {
+  const task = db.prepare(
+    `SELECT t.*, e.project_id
+       FROM factory_lifecycle_runs lr
+       JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
+       JOIN factory_workplaces w ON w.process_run_id=sr.process_run_id
+       JOIN tasks t ON t.workplace_ref=w.workplace_ref
+       JOIN epics e ON e.id=t.epic_id
+      WHERE lr.id=? AND lr.status='paused' AND sr.status='paused'
+        AND w.kanban_phase='blocked' AND w.loop_state='paused'`,
+  ).get(lifecycleRunId);
+  if (!task) die(`resume: no unique blocked/paused task for lifecycle ${lifecycleRunId}`);
+  const metadata = JSON.parse(task.metadata || '{}');
+  if (metadata.recovery_feedback?.schemaVersion === 'factory.submission-validation-recovery-feedback.v1') {
+    return;
+  }
+  const execution = db.prepare(
+    `SELECT execution_id FROM worker_executions
+      WHERE task_id=? AND state NOT IN ('reserved','running','cancel_requested')
+      ORDER BY reserved_at DESC LIMIT 1`,
+  ).get(task.id);
+  if (!execution?.execution_id) {
+    die(`resume: task ${task.id} has no terminal execution to bind operator preflight`);
+  }
+  const {
+    initSubmissionRegistries,
+    getSubmissionPolicyRegistry,
+    getSubmissionValidatorRegistry,
+  } = await import('../dist/process-modules/application/submission-registries.js');
+  const { persistSubmissionValidationRejection } = await import(
+    '../dist/lifecycle/submission-validation-rejections.js'
+  );
+  initSubmissionRegistries(db);
+  const policy = getSubmissionPolicyRegistry()?.resolve(
+    metadata.process_module_ref,
+    metadata.process_node_id,
+  );
+  if (!policy || policy.mode !== 'required') {
+    die(`resume: paused node ${metadata.process_node_id} has no required submission validator`);
+  }
+  const validator = getSubmissionValidatorRegistry()?.resolve(policy.validatorId);
+  if (!validator) die(`resume: validator ${policy.validatorId} is unavailable`);
+  const validation = validator.validate({
+    processRunId: metadata.process_run_id,
+    moduleRef: metadata.process_module_ref,
+    nodeId: metadata.process_node_id,
+    executionId: execution.execution_id,
+    taskId: task.id,
+    epicId: task.epic_id,
+    projectId: task.project_id,
+    contractRef: policy.contractRef,
+  });
+  if (validation.accepted) {
+    die(`resume: current output for task ${task.id} now validates; refusing to manufacture repair feedback`);
+  }
+  db.transaction(() => persistSubmissionValidationRejection(db, {
+    validatorId: validator.validatorId,
+    validatorVersion: validator.validatorVersion,
+    processRunId: metadata.process_run_id,
+    moduleRef: metadata.process_module_ref,
+    nodeId: metadata.process_node_id,
+    executionId: execution.execution_id,
+    taskId: task.id,
+    actorKind: 'admin',
+    rejectionCode: validation.code,
+    gaps: validation.gaps,
+    details: validation.details,
+    contractRef: policy.contractRef,
+    inputSnapshotHash: metadata.process_node_input_hash ?? metadata.process_input_hash ?? '',
+  }))();
+}
+
 // ─── resume: continue an existing durable lifecycle run ───────────────────
 if (command === 'resume') {
   const dbPath = args[1];
   if (!dbPath) die('resume: db-path argument is required');
+  const resumeOptions = new Set(args.slice(2));
+  for (const option of resumeOptions) {
+    if (option !== '--requeue-paused') die(`resume: unsupported option '${option}'`);
+  }
 
-  const { resolveFactoryResumeTarget } = await import('../dist/app/factory-start.js');
+  const {
+    resolveFactoryResumeTarget,
+    resumePausedSubmissionWorkplace,
+  } = await import('../dist/app/factory-start.js');
+  const { SCHEMA_SQL } = await import('../dist/schema.js');
   const { requestFactoryLaunch } = await import('../dist/infrastructure/factory/sqlite-factory-launch-repository.js');
 
   const db = new Database(dbPath);
   let launchRef;
   try {
+    // Apply additive runtime tables before any recovery/launch operation.
+    db.exec(SCHEMA_SQL);
     const target = resolveFactoryResumeTarget(db, 1); // sandbox projects use id=1
+    if (resumeOptions.has('--requeue-paused')) {
+      await ensurePausedRecoveryFeedback(db, target.lifecycleRunId);
+      const recovery = resumePausedSubmissionWorkplace(db, {
+        lifecycleRunId: target.lifecycleRunId,
+        actorId: 'factory-resume-operator',
+        reason: 'resume paused submission-preflight incident',
+      });
+      process.stdout.write(
+        `[factory] workplace recovery=${recovery.authorizationRef} `
+        + `rejection=${recovery.rejectionRef} revision=${recovery.resultingRevision} `
+        + `replayed=${recovery.replayed}\n`,
+      );
+    }
     launchRef = requestFactoryLaunch({
       orderRef: target.orderRef ?? `order-resume-${crypto.randomUUID()}`,
       mode: 'resume',

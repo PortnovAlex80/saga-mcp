@@ -55,6 +55,7 @@ import type {
   SubmissionValidationReceipt,
 } from '../../../process-modules/application/node-submission-policy.js';
 import {
+  SRS_CONTRACT,
   SRS_CONTRACT_REF,
 } from '../domain/srs-contract.js';
 import {
@@ -78,7 +79,7 @@ export function createSrsContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: SRS_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    validatorVersion: '1.1.0',
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const gaps: SubmissionGap[] = [];
 
@@ -244,39 +245,104 @@ export function createSrsContractValidator(
         });
       }
 
-      // --- 7. §D2 stanzas: required fields + enum validity (T1.3, T1.4) ---
+      // --- 7. §D2 representation + exact frozen-AC binding (T1.3, T1.4) ---
       const stanzas = extractD2Stanzas(fileContent);
-      if (stanzas.length === 0) {
+      const d2Gaps = validateD2Structure(fileContent);
+      for (const gap of d2Gaps) {
+        gaps.push({
+          artifactId: srs.id,
+          artifactCode: gap.ac,
+          artifactType: 'SRS',
+          existingTargets: [{ type: gap.field, id: -1 }],
+          missing: {
+            relation: d2GapRelation(gap.kind),
+            requiredTargetTypes: gap.allowedValues ?? [gap.field],
+            minimum: 1,
+          },
+          message: gap.message,
+        });
+      }
+
+      const baseline = readFrozenBaseline(db, input.processRunId);
+      if (!baseline) {
         gaps.push({
           artifactId: srs.id,
           artifactCode: null,
           artifactType: 'SRS',
           existingTargets: [],
           missing: {
-            relation: 'd2-stanzas',
-            requiredTargetTypes: ['≥1 §D2 stanza with `ac:` field'],
+            relation: 'frozen-acceptance-baseline',
+            requiredTargetTypes: ['factory.acceptance-baseline-snapshot.v1'],
             minimum: 1,
           },
+          message: `ProcessRun ${input.processRunId} has no readable frozen acceptance baseline.`,
         });
       } else {
-        // Reuse the shared structural validator from srs-d2-parser.
-        const d2Gaps = validateD2Structure(fileContent);
-        for (const gap of d2Gaps) {
-          gaps.push({
-            artifactId: srs.id,
-            artifactCode: gap.ac,
-            artifactType: 'SRS',
-            existingTargets: [{ type: gap.field, id: -1 }],
-            missing: {
-              relation: gap.kind === 'invalid-enum-value' ? 'valid-enum-value' : 'd2-field',
-              requiredTargetTypes: gap.allowedValues ?? [gap.field],
-              minimum: 1,
-            },
-          });
+        const actualCodes = stanzas.map(stanza => stanza.ac);
+        const actualSet = new Set(actualCodes);
+        const expectedSet = new Set(baseline.acceptanceCriteria.map(item => item.code));
+        for (const expected of baseline.acceptanceCriteria) {
+          if (!actualSet.has(expected.code)) {
+            gaps.push({
+              artifactId: expected.artifactId,
+              artifactCode: expected.code,
+              artifactType: 'AC',
+              existingTargets: [],
+              missing: {
+                relation: 'represented_by',
+                requiredTargetTypes: [`§D2 stanza ac: ${expected.code}`],
+                minimum: 1,
+              },
+              message: `Frozen ${expected.code} is missing from §D2. Use the exact frozen AC code once.`,
+            });
+          }
+        }
+        for (const actual of actualSet) {
+          if (!expectedSet.has(actual)) {
+            gaps.push({
+              artifactId: srs.id,
+              artifactCode: actual,
+              artifactType: 'SRS',
+              existingTargets: [],
+              missing: {
+                relation: 'exact-frozen-ac-code',
+                requiredTargetTypes: baseline.acceptanceCriteria.map(item => item.code),
+                minimum: 1,
+              },
+              message: `§D2 code ${actual} is not in the frozen baseline and cannot be substituted or expanded into sub-criteria.`,
+            });
+          }
         }
       }
 
-      return rejectOrAccept(input, srs, fileHash, gaps);
+      const details = {
+        representation: 'one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block',
+        requiredD2Fields: [...SRS_CONTRACT.d2RequiredFields],
+        d2Enums: SRS_CONTRACT.d2EnumFields,
+        expectedAcCodes: baseline?.acceptanceCriteria.map(item => item.code) ?? [],
+        actualAcCodes: stanzas.map(stanza => stanza.ac),
+        baselineHash: baseline?.baselineHash ?? null,
+        baselineSnapshotHash: baseline?.snapshotHash ?? null,
+        srsArtifactId: srs.id,
+        observedSrsFileHash: fileHash,
+        canonicalExample: [
+          '## §D2 AC Map',
+          '```yaml',
+          '- ac: AC-1',
+          '  title: Exact frozen AC title',
+          '  module: core',
+          '  files: [src/core.ts]',
+          '  invariants: [INV-1]',
+          '  test_layers: [L0]',
+          '  pattern: A',
+          '  depends_on: []',
+          '  ac_kind: implementation',
+          '  criticality: blocker',
+          '```',
+        ].join('\n'),
+      };
+
+      return rejectOrAccept(input, srs, fileHash, gaps, details);
     },
   };
 }
@@ -300,12 +366,14 @@ function rejectOrAccept(
   srs: { id: number; content_hash: string },
   fileHash: string | null,
   gaps: SubmissionGap[],
+  details: Readonly<Record<string, unknown>> = {},
 ): NodeSubmissionValidationResult {
   if (gaps.length > 0) {
     return {
       accepted: false,
       code: 'FORMALIZATION_SRS_INCOMPLETE',
       gaps,
+      details,
     };
   }
   const artifactIds = [srs.id];
@@ -319,7 +387,7 @@ function rejectOrAccept(
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: SRS_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    validatorVersion: '1.1.0',
     processRunId: input.processRunId,
     moduleRef: input.moduleRef,
     nodeId: input.nodeId,
@@ -335,4 +403,82 @@ function rejectOrAccept(
     validatedAt: new Date().toISOString(),
   };
   return { accepted: true, receipt };
+}
+
+function d2GapRelation(kind: string): string {
+  if (kind === 'invalid-enum-value') return 'valid-enum-value';
+  if (kind === 'invalid-representation') return 'd2-representation';
+  if (kind === 'duplicate-field' || kind === 'duplicate-ac') return 'd2-uniqueness';
+  if (kind === 'malformed-yaml-line') return 'd2-yaml-syntax';
+  return 'd2-field';
+}
+
+interface FrozenBaselineView {
+  readonly baselineHash: string;
+  readonly snapshotHash: string;
+  readonly acceptanceCriteria: readonly {
+    artifactId: number;
+    code: string;
+    contentHash: string;
+  }[];
+}
+
+function readFrozenBaseline(db: DbHandle, processRunId: number): FrozenBaselineView | null {
+  let row: { payload: string; baseline_hash: string; snapshot_hash: string } | undefined;
+  try {
+    row = db.prepare(
+      `SELECT payload, baseline_hash, snapshot_hash
+         FROM factory_formalization_acceptance_baselines
+        WHERE process_run_id=?`,
+    ).get(processRunId) as typeof row;
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+  let payload: { acArtifactIds?: unknown; acArtifactHashes?: unknown };
+  try {
+    payload = JSON.parse(row.payload) as typeof payload;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(payload.acArtifactIds) || payload.acArtifactIds.length === 0) return null;
+  const ids = payload.acArtifactIds.filter(
+    (value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0,
+  );
+  if (ids.length !== payload.acArtifactIds.length) return null;
+  const placeholders = ids.map(() => '?').join(',');
+  const artifacts = db.prepare(
+    `SELECT id, code, content_hash, accepted_hash, status
+       FROM artifacts WHERE id IN (${placeholders})`,
+  ).all(...ids) as Array<{
+    id: number;
+    code: string | null;
+    content_hash: string | null;
+    accepted_hash: string | null;
+    status: string;
+  }>;
+  const byId = new Map(artifacts.map(artifact => [artifact.id, artifact]));
+  const expectedHashes = payload.acArtifactHashes && typeof payload.acArtifactHashes === 'object'
+    ? payload.acArtifactHashes as Record<string, unknown>
+    : {};
+  const acceptanceCriteria = ids.map(id => {
+    const artifact = byId.get(id);
+    const expectedHash = expectedHashes[String(id)];
+    if (
+      !artifact
+      || typeof artifact.code !== 'string'
+      || artifact.code.trim() === ''
+      || artifact.status !== 'accepted'
+      || typeof expectedHash !== 'string'
+      || artifact.content_hash !== expectedHash
+      || artifact.accepted_hash !== expectedHash
+    ) return null;
+    return { artifactId: id, code: artifact.code, contentHash: expectedHash };
+  });
+  if (acceptanceCriteria.some(item => item === null)) return null;
+  return {
+    baselineHash: row.baseline_hash,
+    snapshotHash: row.snapshot_hash,
+    acceptanceCriteria: acceptanceCriteria as FrozenBaselineView['acceptanceCriteria'],
+  };
 }

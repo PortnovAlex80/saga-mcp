@@ -1,5 +1,15 @@
 # CLAUDE.md — Claude Code / LM Studio notes for saga-mcp
 
+## Saga4 Factory launch
+
+For the canonical real-worker Factory procedure, read
+[`docs/FACTORY-START-QUICKSTART.md`](docs/FACTORY-START-QUICKSTART.md) first.
+The detailed Russian operational runbook is
+[`ЗАВОД-ЗАПУСК.md`](ЗАВОД-ЗАПУСК.md). `scripts/factory.mjs` creates the durable
+Factory launch; `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` supplies lifecycle
+infrastructure providers and does not replace the real LLM worker. Always
+observe the tracker against the exact Factory DB used by the launch.
+
 ## LM Studio: Qwen 3.6 chat template patch
 
 ### Problem

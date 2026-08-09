@@ -103,3 +103,10 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Fix:** Every `verification.ac` task stores one accepted `verification_target_artifact_id` from planning provenance. Reject cross-AC records and treat `verified_by` as derived output. Evidence uniqueness includes the fenced execution attempt so a new holder can retry.
 **Date:** 2026-07-18
 **Related:** ADR-009, `src/tools/lifecycle.ts`, `src/tools/tasks.ts`
+
+### 012 - A rejected completion attempt must remain durable and non-terminal
+**Symptom:** A real model calls `worker_done`, the submission validator rejects it, the session exits, and supervision records only a generic lost worker. The next execution receives no validator findings, repeats the same mistake, and exhausts the Workplace attempt budget.
+**Cause:** The human-facing artifact representation drifted from the parser, rejected `worker_done` errors existed only in transient MCP output, and “call exactly once” instructions contradicted in-session repair semantics.
+**Fix:** Commit an immutable, snapshot-bound rejection before returning the MCP error; retain the owner/fence; materialize the exact rejection for the next execution; define completion as exactly one accepted receipt. Never resume an exhausted preflight incident without a single-use operator authorization, Workplace CAS, and artifact/file hash verification.
+**Date:** 2026-08-09
+**Related:** ADR-033, `src/lifecycle/submission-validation-rejections.ts`, `src/modules/formalization/application/srs-d2-parser.ts`
