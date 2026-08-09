@@ -21,6 +21,19 @@ test('hard-crash reconciliation repairs Workplace authority as well as execution
     'startup reaper must reconcile the physical execution then repair the stale Workplace reservation in the same repository transaction');
 });
 
+test('supervision classifies stale executions before renewing surviving leases', () => {
+  const source = read('src/infrastructure/work/worker-supervision-service.ts');
+  const runBody = source.slice(source.indexOf('const run ='));
+  const reconcilePos = runBody.indexOf('options.executionRuntime.reconcile(');
+  const renewPos = runBody.indexOf('options.executionRuntime.renewLeases(');
+
+  assert.ok(reconcilePos >= 0, 'supervision must invoke reconcile');
+  assert.ok(renewPos >= 0, 'supervision must invoke renewLeases');
+  assert.ok(reconcilePos < renewPos,
+    'reconcile must run before renewLeases so a restarted host cannot adopt an orphaned same-host execution by extending its expired lease');
+  assert.match(runBody, /PRE-SWEEP lease|Reconcile FIRST, renew SECOND/);
+});
+
 test('factory start parsing cannot leak control option values into initiative subject', () => {
   const source = read('scripts/factory.mjs');
 
