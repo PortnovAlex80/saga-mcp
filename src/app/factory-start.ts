@@ -743,7 +743,7 @@ function verifyCandidateSetDigest(
     }
   }
   const actualDigest = sha256Hex({
-    workplaceRef: deserializeWorkplaceRef(String(row.workplace_ref)),
+    workplaceRef: String(row.workplace_ref),
     executionRef: String(row.producer_execution_ref),
     role: String(row.candidate_role),
     products,

@@ -128,7 +128,7 @@ function fixture() {
      VALUES (2,'bundle','architecture',?,?,?,'{}','payload','define-architecture-contract')`,
   ).run(product.schemaId, product.ref, product.digest);
   const candidateDigest = sha256Hex({
-    workplaceRef: workplace,
+    workplaceRef,
     executionRef,
     role: 'author',
     products: [product],
