@@ -259,8 +259,12 @@ export function readProcessBirthToken(pid: number | null): string | null {
   if (!pid || pid <= 0) return null;
   try {
     if (process.platform === 'win32') {
+      // Resolve the full PowerShell path: Git Bash / restricted environments
+      // may not have 'powershell' on the PATH visible to Node spawnSync.
+      const powershellPath = process.env.POWERSHELL_PATH
+        ?? 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
       const result = spawnSync(
-        'powershell',
+        powershellPath,
         [
           '-NoProfile', '-NonInteractive', '-Command',
           `$p=Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; ` +
