@@ -139,36 +139,11 @@ function supervisionScopeKey(projectId: number, epicId: number): string {
 // this is a compare-and-swap over the `supervision_locks` table.
 // ---------------------------------------------------------------------------
 
-/**
- * Build a unique-per-process holder id for the cross-process lease. Combines
- * hostname + pid + crypto-random so two processes on the same host (same pid
- * space race) AND two handles within one process (reconcileOnce overlapping a
- * timer) are both disambiguated. The id is stable for the lifetime of one
- * SupervisionHandle so the holder can re-enter and release its own lease.
- */
+/** Build a unique-per-process holder id for the cross-process lease. */
 function newHolderId(): string {
   return `${os.hostname()}:${process.pid}:${randomBytes(8).toString('hex')}`;
 }
 
-/**
- * Attempt to acquire (or refresh) the cross-process advisory lease for a scope.
- *
- * Compare-and-swap: write a row keyed by `scope_key` with `holder_id`=me and
- * `expires_at`=now+ttl ONLY IF no unexpired row exists for that scope, OR the
- * unexpired row is already mine. On a miss (another holder has an unexpired
- * row) the UPDATE touches zero rows and this returns false → the caller skips
- * its sweep (another process owns the scope).
- *
- * The CAS is two stepped statements inside one IMMEDIATE transaction so it is
- * atomic w.r.t. other connections:
- *   1. INSERT the row if absent (claim a fresh scope).
- *   2. UPDATE the row to my holder_id + new expires_at when EITHER the current
- *      row is expired OR it already belongs to me (re-entry / refresh).
- * If both no-op (another live holder owns it), return false.
- *
- * @returns true if this caller now holds the lease; false if another live
- *          holder owns the scope and this sweep must be skipped.
- */
 function acquireSupervisionLease(
   db: Database.Database,
   scopeKey: string,
@@ -179,15 +154,10 @@ function acquireSupervisionLease(
   const expiresAt = new Date(now + ttlMs).toISOString();
   const nowIso = new Date(now).toISOString();
   const acquire = db.transaction(() => {
-    // 1. Ensure the row exists (fresh scope). INSERT OR IGNORE so a re-acquire
-    //    of an existing scope is a no-op here; the UPDATE below does the work.
     db.prepare(
       `INSERT OR IGNORE INTO supervision_locks (scope_key, holder_id, expires_at)
        VALUES (?, ?, ?)`,
     ).run(scopeKey, holderId, expiresAt);
-    // 2. CAS: claim the row when it is expired OR already mine. A row held by a
-    //    DIFFERENT live holder (expires_at > now AND holder_id != me) is left
-    //    untouched and the UPDATE returns changes=0.
     const info = db.prepare(
       `UPDATE supervision_locks
           SET holder_id=?, expires_at=?, updated_at=?
@@ -199,12 +169,6 @@ function acquireSupervisionLease(
   return acquire.immediate();
 }
 
-/**
- * Release the cross-process advisory lease for a scope. Deletes the row ONLY
- * when it belongs to this caller (`holder_id = me`). A row held by a different
- * holder (a CAS race where someone else already took over an expired lease) is
- * left in place — never delete another holder's lease.
- */
 function releaseSupervisionLease(
   db: Database.Database,
   scopeKey: string,
@@ -215,17 +179,14 @@ function releaseSupervisionLease(
       `DELETE FROM supervision_locks WHERE scope_key=? AND holder_id=?`,
     ).run(scopeKey, holderId);
   } catch {
-    // Release is best-effort: a failed DELETE (DB closed, schema missing) must
-    // never crash the supervisor. The row's expires_at is the reclaim safety
-    // net — an unreleased expired row is claimable by the next holder.
+    // Best-effort; expires_at is the reclaim safety net.
   }
 }
 
 /**
  * Start the watchman. Runs one reconciliation immediately (startup sweep —
- * catches executions orphaned by a earlier process crash), then repeats every
- * intervalMs until stop() is called. Each reconcile is independent: a reaped
- * execution is terminal and a subsequent sweep is a no-op for it.
+ * catches executions orphaned by an earlier process crash), then repeats every
+ * intervalMs until stop() is called.
  */
 export function startWorkerSupervision(
   options: WorkerSupervisionOptions,
@@ -234,8 +195,6 @@ export function startWorkerSupervision(
   const log = options.log ?? ((m: string) => process.stdout.write(`${m}\n`));
   const now = options.now ?? (() => Date.now());
   const sweepLeaseMs = options.sweepLeaseMs ?? DEFAULT_SWEEP_LEASE_MS;
-  // Per-handle identity for the cross-process lease. Stable for the handle's
-  // lifetime so reconcileOnce() can re-enter / refresh its own lease.
   const holderId = options.holderId ?? newHolderId();
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -243,31 +202,16 @@ export function startWorkerSupervision(
   const run = (): SupervisionReconcileResult => {
     const scopeKey = supervisionScopeKey(options.projectId, options.epicId);
 
-    // LAYER 1 — IN-PROCESS single-flight (fast path, no DB round-trip): if
-    // another sweep is already in flight for this exact scope within this
-    // process, skip this one. The existing in-flight sweep will observe
-    // whatever state it needs to observe; a redundant concurrent sweep would
-    // double-renew leases / double-log and cannot produce a different outcome
-    // (release is fenced-CAS idempotent).
     if (inflightSupervisionScopes.has(scopeKey)) {
-      log(
-        `[supervision] sweep skipped: supervision already running for scope=${scopeKey}`,
-      );
+      log(`[supervision] sweep skipped: supervision already running for scope=${scopeKey}`);
       return EMPTY_RESULT;
     }
     inflightSupervisionScopes.add(scopeKey);
 
-    // LAYER 2 — CROSS-PROCESS advisory lease. Acquired BEFORE any reconcile
-    // work so two separate processes cannot both sweep the same scope. The
-    // lease is released in the outer finally so a sweep that throws still frees
-    // its row. The in-process Set above is released there too.
     let dbHandle: Database.Database | null = null;
     try {
       dbHandle = options.db ?? getDb();
     } catch {
-      // No DB available (e.g. test harness without DB_PATH). Degrade to the
-      // in-process guard only — fenced-CAS idempotency of release remains the
-      // convergence guarantee.
       dbHandle = null;
     }
     let leaseHeld = false;
@@ -277,9 +221,6 @@ export function startWorkerSupervision(
           dbHandle, scopeKey, holderId, sweepLeaseMs, now(),
         );
       } catch (err) {
-        // A failed CAS (table missing in an old DB, locked DB) must not crash
-        // supervision. Fall through to reconcile under the in-process guard +
-        // fenced-CAS convergence. Log so the operator can see the degradation.
         log(
           `[supervision] cross-process lease unavailable for scope=${scopeKey}: `
           + `${err instanceof Error ? err.message : String(err)} (degraded to in-process guard)`,
@@ -288,38 +229,35 @@ export function startWorkerSupervision(
       }
     }
     if (dbHandle !== null && !leaseHeld) {
-      // Another live process holds the lease for this scope. Skip — that
-      // process is (or just was) sweeping. The in-process Set is cleared below.
-      log(
-        `[supervision] sweep skipped: another process holds the lease for scope=${scopeKey}`,
-      );
+      log(`[supervision] sweep skipped: another process holds the lease for scope=${scopeKey}`);
+      inflightSupervisionScopes.delete(scopeKey);
       return EMPTY_RESULT;
     }
 
     try {
-      // CONVEYOR Wave 5 (BUG 2, §363-370): renew leases FIRST. The supervisor owns
-      // the LIVENESS heartbeat — it advances lease_expires_at + heartbeat_at for
-      // every active local execution on every sweep. This is the LIVENESS signal
-      // ("supervisor still owns this execution"), independent of model behaviour:
-      // a worker that never calls a tool still keeps its lease as long as its
-      // process (and this supervisor) is alive.
+      // ORDER IS AUTHORITY-SENSITIVE.
       //
-      // CRITICAL: renewLeases touches ONLY lease_expires_at + heartbeat_at. It
-      // MUST NOT touch progress_at, suspected_stuck_at or cancel_requested_at —
-      // those are the PROGRESS signal ("worker produced observable activity") and
-      // drive stuck detection. If liveness renewal reset the progress clock, a
-      // silent-but-alive worker could never reach cancellation grace. The stuck
-      // policy inside reconcileWorkerExecutions measures silence against
-      // progress_at / suspected_stuck_at / cancel_requested_at, never heartbeat_at.
+      // Reconcile FIRST, renew SECOND. A newly started orchestrate-cli must not
+      // renew a same-host execution left behind by a previous host process before
+      // the reaper has evaluated its existing durable lease + PID birth identity.
+      // Renewing first "adopts" an orphan by extending lease_expires_at and can
+      // make decideStuckAction KEEP it indefinitely. Reconcile therefore sees
+      // the PRE-SWEEP lease. Dead rows and alive rows whose foreman lease expired
+      // are released/terminated before any heartbeat is extended.
+      const projections = options.executionRuntime.reconcile(
+        options.projectId,
+        options.epicId,
+      );
+
+      // Only executions that survived reconciliation remain active and eligible
+      // for liveness renewal. renewLeases touches lease_expires_at + heartbeat_at
+      // only; it must never touch progress/stuck clocks.
       const renewed = options.executionRuntime.renewLeases(
         options.projectId,
         options.epicId,
         options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
       );
-      const projections = options.executionRuntime.reconcile(
-        options.projectId,
-        options.epicId,
-      );
+
       let reapedCount = 0;
       let releasedCount = 0;
       let keptCount = 0;
@@ -346,9 +284,6 @@ export function startWorkerSupervision(
       }
       return { reapedCount, releasedCount, keptCount, remoteCount, leasesRenewed: renewed };
     } finally {
-      // Release the cross-process lease FIRST (while the in-process Set still
-      // guards this scope from a racing reconcileOnce in the same process), then
-      // drop the in-process guard. Release is best-effort and idempotent.
       if (dbHandle !== null && leaseHeld) {
         releaseSupervisionLease(dbHandle, scopeKey, holderId);
       }
@@ -366,14 +301,10 @@ export function startWorkerSupervision(
       try {
         run();
       } catch (err) {
-        log(
-          `[supervision] sweep failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        log(`[supervision] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       schedule();
     }, intervalMs);
-    // Don't keep the event loop alive solely for supervision — the runtime owns
-    // the lifecycle. unref lets the process exit cleanly when work is done.
     if (typeof timer?.unref === 'function') timer.unref();
   };
   schedule();
@@ -381,13 +312,22 @@ export function startWorkerSupervision(
   return {
     stop() {
       stopped = true;
-      if (timer) {
+      if (timer !== null) {
         clearTimeout(timer);
         timer = null;
+      }
+      if (dbHandleForStop(options.db)) {
+        // The per-sweep lease is normally released in run(). This branch is
+        // intentionally empty: stop() cannot safely delete a lease that might
+        // belong to an in-flight sweep without holding the in-process guard.
       }
     },
     reconcileOnce() {
       return run();
     },
   };
+}
+
+function dbHandleForStop(db: Database.Database | undefined): boolean {
+  return db !== undefined;
 }
