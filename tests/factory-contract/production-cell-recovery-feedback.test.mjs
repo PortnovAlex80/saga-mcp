@@ -33,13 +33,18 @@ function createDb() {
       decided_at TEXT NOT NULL
     );
     CREATE TABLE factory_check_receipts (
-      check_run_ref TEXT PRIMARY KEY,
-      gate_run_ref TEXT NOT NULL,
+      check_receipt_ref TEXT PRIMARY KEY,
+      check_run_ref TEXT NOT NULL,
+      subject_candidate_set_ref TEXT NOT NULL DEFAULT '',
+      assessment_candidate_set_refs TEXT NOT NULL DEFAULT '[]',
       provider_id TEXT NOT NULL,
       provider_version TEXT NOT NULL,
       provider_digest TEXT NOT NULL,
+      environment_ref TEXT,
       outcome TEXT NOT NULL,
-      evidence_refs TEXT NOT NULL
+      evidence_refs TEXT NOT NULL DEFAULT '[]',
+      receipt_digest TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE factory_candidate_sets (
       candidate_set_ref TEXT PRIMARY KEY,
@@ -108,9 +113,9 @@ function insertRepairDecision(db, {
       decidedAt,
     );
   db.prepare(`INSERT INTO factory_check_receipts
-    (check_run_ref,gate_run_ref,provider_id,provider_version,provider_digest,outcome,evidence_refs)
-    VALUES (?,?,?,?,?,'failed',?)`).run(
-      `${run}:check:0`, run, 'factory.test-check.v1', '1.0.0', 'provider-digest', JSON.stringify(['evidence:1']),
+    (check_receipt_ref,check_run_ref,subject_candidate_set_ref,provider_id,provider_version,provider_digest,outcome,evidence_refs)
+    VALUES (?,?,?,?,?,?,'failed',?)`).run(
+      `${run}:check:0`, run, 'cs1', 'factory.test-check.v1', '1.0.0', 'provider-digest', JSON.stringify(['evidence:1']),
     );
 }
 

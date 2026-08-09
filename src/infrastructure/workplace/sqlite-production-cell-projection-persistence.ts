@@ -466,7 +466,7 @@ function readCurrentProductionCellRecoveryFeedback(
   const issueBody = {
     rejectedGateDecisionRef: decision.decision_key,
     subjectCandidateSetRef: rejectedCandidateSetRef,
-    failingCheckReceiptRefs: failing.map(item => item.check_run_ref),
+    failingCheckReceiptRefs: failing.map(item => item.check_receipt_ref),
     repairTargetRole: role,
     reasonCode: `gate-${decision.gate_phase}-repair-required`,
     summary: `Gate '${decision.gate_ref}' rejected CandidateSet '${rejectedCandidateSetRef}'.`,
@@ -476,7 +476,7 @@ function readCurrentProductionCellRecoveryFeedback(
       message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
       subjectRef: rejectedCandidateSetRef,
       evidenceRefs: [
-        item.check_run_ref,
+        item.check_receipt_ref,
         ...parseStringArray(item.evidence_refs),
       ],
     })),

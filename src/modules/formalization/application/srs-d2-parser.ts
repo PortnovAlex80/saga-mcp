@@ -36,7 +36,9 @@ export interface D2Stanza {
  *   4. Parse `key: value` lines within each stanza (scalar values only).
  */
 export function extractD2Stanzas(content: string): D2Stanza[] {
-  const sectionStart = content.search(/#{2,4}\s*§?\s*D2\b/);
+  // Accept both "D2" and "D.2" heading variants — LLMs frequently write §D.2
+  // (matching the natural decimal notation) which is semantically identical.
+  const sectionStart = content.search(/#{2,4}\s*§?\s*D\.?2\b/);
   if (sectionStart === -1) return [];
   const afterStart = content.slice(sectionStart);
   const nextHeaderMatch = afterStart.slice(afterStart.indexOf('\n')).match(/\n#{2,4}\s/);
@@ -174,15 +176,36 @@ export function validateD2Structure(content: string): D2StructuralGap[] {
  * Returns null if valid, or a string describing the gap.
  */
 export function checkDecisionLogSection(content: string): string | null {
-  const sectionMatch = content.match(/§\s*12[^\n]*\n([\s\S]*?)(?=\n##\s|\n###\s[^#]|$)/i)
-    ?? content.match(/##\s*.*Decision Log[^\n]*\n([\s\S]*?)(?=\n##\s|$)/i);
-  if (!sectionMatch) {
+  // The §12 heading may appear at different markdown levels (##, ###). Capture
+  // the section body up to the next heading at the SAME or HIGHER level.
+  // The previous regex's look-ahead `(?=\n##\s)` matched `### Decision 1:`
+  // subsections (which start with `##`), producing an empty body even when the
+  // section had valid content. Fix: only look ahead to same-or-higher level.
+  const headingMatch = content.match(/(#{1,4})\s*§?\s*12[^\n]*Decision Log/i)
+    ?? content.match(/(#{1,4})\s*.*Decision Log[^\n]*/i);
+  if (!headingMatch) {
     return '§12 Decision Log section is missing';
   }
-  const sectionBody = sectionMatch[1] ?? '';
+  const headingLevel = headingMatch[1]!.length;
+  const headingStart = headingMatch.index!;
+  const afterHeading = content.slice(headingStart + headingMatch[0].length);
+  // Section body extends until the next heading at the same or shallower level.
+  const nextHeadingRegex = new RegExp(`\\n#{1,${headingLevel}}\\s`);
+  const nextHeadingMatch = afterHeading.match(nextHeadingRegex);
+  const sectionBody = nextHeadingMatch
+    ? afterHeading.slice(0, nextHeadingMatch.index ?? afterHeading.length)
+    : afterHeading;
+  // Accept either a markdown table (preferred) or subsection-style content
+  // (### Decision N: ...). LLMs frequently write subsection format which is
+  // semantically valid but has no pipe-delimited table header.
   const tableHeaderMatch = sectionBody.match(/\|([^\n]*\|)+/);
   if (!tableHeaderMatch) {
-    return '§12 Decision Log has no markdown table';
+    // Fallback: check for decision subsections (### Decision N:)
+    const subsectionMatch = sectionBody.match(/#{3,4}\s*Decision\s*\d/i);
+    if (!subsectionMatch) {
+      return '§12 Decision Log has no markdown table or decision entries';
+    }
+    return null; // subsection format accepted
   }
   const headerCells = (tableHeaderMatch[0] ?? '')
     .split('|')
