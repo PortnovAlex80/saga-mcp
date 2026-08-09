@@ -118,5 +118,13 @@ new validator; it must not be introduced as an unpinned compatibility guess.
   required fields, exact codes and the bounded canonical example are therefore
   mirrored into the error message while the complete structure remains in the
   immutable rejection ledger.
+- The recovered author submission then passed preflight and sealed its
+  CandidateSet, but gate dispatch exposed a version seam: the SRS validator
+  advertised `1.1.0` while a duplicated legacy Formalization constant still
+  emitted `1.0.0` into the check plan. `1.1.0` is the canonical provider
+  protocol. The architecture check ref now imports that identity directly from
+  the provider; no `1.0.0` compatibility registration or alias remains. A
+  regression asserts provider/check-plan equality at their composition
+  boundary.
 - Revisit the Gate-native option when CandidateSets freeze immutable content
   blobs and CheckReceipts can carry validator-owned structured evidence.

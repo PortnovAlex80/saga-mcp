@@ -27,7 +27,11 @@ import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persis
 import { ensureManagedProductionLedgerSchema } from '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js';
 import { ensureFormalizationPersistenceSchema } from '../../dist/modules/formalization/infrastructure/formalization-persistence.js';
 import { initSubmissionRegistries, getSubmissionPolicyRegistry } from '../../dist/process-modules/application/submission-registries.js';
-import { createSrsContractValidator } from '../../dist/modules/formalization/application/srs-contract-validator.js';
+import {
+  createSrsContractValidator,
+  SRS_CONTRACT_VALIDATOR_VERSION,
+} from '../../dist/modules/formalization/application/srs-contract-validator.js';
+import { FORMALIZATION_CHECK_REFS } from '../../dist/modules/formalization/application/formalization-check-providers.js';
 import { SRS_CONTRACT, SRS_CONTRACT_REF } from '../../dist/modules/formalization/domain/srs-contract.js';
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
@@ -182,6 +186,13 @@ test('SRS validator policy: define-architecture-contract is required + version-p
   assert.ok(policy.contractRef, 'SRS policy must carry a contractRef for version pinning');
   assert.equal(policy.contractRef.version, SRS_CONTRACT_REF.version);
   assert.equal(policy.contractRef.digest, SRS_CONTRACT_REF.digest);
+  const validator = createSrsContractValidator(db);
+  assert.equal(validator.validatorVersion, SRS_CONTRACT_VALIDATOR_VERSION);
+  assert.equal(
+    validator.validatorVersion,
+    FORMALIZATION_CHECK_REFS.architecture.version,
+    'worker_done validator and author Gate CheckProvider must share one provider version',
+  );
   db.close();
 });
 
@@ -203,6 +214,7 @@ test('canonical valid SRS passes the validator', () => {
     console.error('GAPS:', JSON.stringify(result.gaps, null, 2));
   }
   assert.equal(result.accepted, true, 'canonical valid SRS must pass');
+  assert.equal(result.receipt.validatorVersion, FORMALIZATION_CHECK_REFS.architecture.version);
   db.close();
 });
 

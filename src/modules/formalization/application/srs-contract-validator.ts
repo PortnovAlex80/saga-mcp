@@ -65,6 +65,12 @@ import {
 } from './srs-d2-parser.js';
 
 export const SRS_CONTRACT_VALIDATOR_ID = 'formalization.srs-contract.v1';
+/**
+ * Canonical provider protocol identity imported by the Formalization check
+ * plan. Contract semantics are versioned independently by SRS_CONTRACT_REF
+ * (currently v2.2); the plan must never duplicate this protocol version.
+ */
+export const SRS_CONTRACT_VALIDATOR_VERSION = '1.1.0';
 
 /**
  * Create the SRS contract validator. Reads the SRS document from disk (via
@@ -79,7 +85,7 @@ export function createSrsContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: SRS_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.1.0',
+    validatorVersion: SRS_CONTRACT_VALIDATOR_VERSION,
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const gaps: SubmissionGap[] = [];
 
@@ -387,7 +393,7 @@ function rejectOrAccept(
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: SRS_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.1.0',
+    validatorVersion: SRS_CONTRACT_VALIDATOR_VERSION,
     processRunId: input.processRunId,
     moduleRef: input.moduleRef,
     nodeId: input.nodeId,
