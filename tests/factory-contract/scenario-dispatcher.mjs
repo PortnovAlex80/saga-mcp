@@ -71,7 +71,23 @@ async function main() {
   emit('system', { subtype: 'init' });
 
   const invocationLog = [];
-  const repoPath = process.env.SAGA_BUTTON_REPO_PATH || '.';
+  // Git Desk parity: prefer the per-task worktree (SAGA_DESK_EXECUTION_PATH)
+  // over the shared repository root. The scripted executor provisions a
+  // worktree per git_change task (same as production RepositoryDeskProvisioner),
+  // so each worker commits in isolation. Non-git tasks fall back to the shared
+  // root (SAGA_BUTTON_REPO_PATH).
+  const repoPath = process.env.SAGA_DESK_EXECUTION_PATH
+    || process.env.SAGA_BUTTON_REPO_PATH
+    || '.';
+  const desk = process.env.SAGA_DESK_EXECUTION_PATH ? {
+    executionPath: process.env.SAGA_DESK_EXECUTION_PATH,
+    branch: process.env.SAGA_DESK_BRANCH,
+    baseCommit: process.env.SAGA_DESK_BASE_COMMIT,
+    headCommit: process.env.SAGA_DESK_HEAD_COMMIT || null,
+    integrationBranch: process.env.SAGA_DESK_INTEGRATION_BRANCH,
+    repositoryRoot: process.env.SAGA_DESK_REPOSITORY_ROOT,
+    detached: process.env.SAGA_DESK_DETACHED === '1',
+  } : null;
 
   try {
     await runScenarioWorker({
@@ -80,6 +96,7 @@ async function main() {
       scenarios,
       invocationLog,
       repoPath,
+      desk,
     });
     emit('result', { subtype: 'success', is_error: false });
   } catch (err) {

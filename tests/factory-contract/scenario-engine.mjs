@@ -143,7 +143,7 @@ export function scenarioKeyString(key) {
  * @param {object} opts.invocationLog - array to append invocation records to
  */
 export async function runScenarioWorker(opts) {
-  const { mcpConfigPath, prompt, scenarios, invocationLog, repoPath } = opts;
+  const { mcpConfigPath, prompt, scenarios, invocationLog, repoPath, desk } = opts;
   const taskId = Number(prompt.task_id);
   const executionId = prompt.execution_id;
   const workerId = prompt.worker_id;
@@ -181,6 +181,7 @@ export async function runScenarioWorker(opts) {
       prompt,
       attempt,
       repoPath,
+      desk,
       taskId,
       executionId,
       workerId,

@@ -434,13 +434,21 @@ function readCurrentProductionCellRecoveryFeedback(
     product_digest: string;
   }>;
 
+  const receiptRefs = parseStringArray(decision.check_receipt_refs);
+  if (receiptRefs.length === 0) {
+    throw new Error(
+      `PRODUCTION_CELL_RECOVERY_EVIDENCE_MISSING: repair decision ${decision.decision_key} has no check receipts`,
+    );
+  }
+  const placeholders = receiptRefs.map(() => '?').join(',');
   const receipts = db.prepare(
-    `SELECT check_run_ref,provider_id,provider_version,provider_digest,
+    `SELECT check_receipt_ref,check_run_ref,provider_id,provider_version,provider_digest,
             outcome,evidence_refs
        FROM factory_check_receipts
-      WHERE gate_run_ref=?
+      WHERE check_receipt_ref IN (${placeholders})
       ORDER BY check_run_ref`,
-  ).all(decision.gate_run_ref) as Array<{
+  ).all(...receiptRefs) as Array<{
+    check_receipt_ref: string;
     check_run_ref: string;
     provider_id: string;
     provider_version: string;

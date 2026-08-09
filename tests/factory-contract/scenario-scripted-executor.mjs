@@ -14,6 +14,16 @@ import { randomUUID } from 'node:crypto';
 const execMod = await import(pathToFileURL(path.resolve('dist/worker-executions.js')).href);
 const markExecutionRunning = execMod.markExecutionRunning;
 
+// Git Desk parity: the scripted executor provisions the SAME per-task git
+// worktree production uses (RepositoryDeskProvisioner). Without this, all
+// scripted workers share SAGA_BUTTON_REPO_PATH and `git checkout -B` races
+// when Development dispatches ≥2 implementation items concurrently. The race
+// orphans source commits → PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH.
+const deskProvisionerMod = await import(
+  pathToFileURL(path.resolve('dist/infrastructure/workers/repository-desk-provisioner.js')).href
+);
+const RepositoryDeskProvisioner = deskProvisionerMod.RepositoryDeskProvisioner;
+
 const terminationMod = await import(
   pathToFileURL(path.resolve('dist/infrastructure/workers/worker-process-termination.js')).href
 );
@@ -80,6 +90,109 @@ function runCapsuleReplay(dbPath, assignment, workspaceRoot) {
     delete process.env.SAGA_TASK_ID;
     delete process.env.SAGA_WORKER_ID;
   }
+}
+
+/**
+ * Provision a per-task git worktree desk, mirroring production
+ * (claude-worker-executor-factory.ts provisionRepositoryDesk). Returns
+ * { executionPath, branch, baseCommit, integrationBranch, repositoryRoot }
+ * or null when the task is not git_change / has no repository binding.
+ *
+ * This is the ONLY place in the scripted harness that runs `git worktree`.
+ * Each scripted worker commits inside its own isolated worktree on branch
+ * task/<id>, eliminating the shared-checkout race that caused
+ * PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH under concurrency ≥ 2.
+ */
+function provisionScriptedDesk(dbPath, assignment) {
+  const repo = assignment.repository;
+  if (!repo || !repo.local_path) return null;
+
+  // Read the full task row to get execution_mode, metadata, status.
+  const { getDb } = dbMod;
+  const savedDbPath = process.env.DB_PATH;
+  process.env.DB_PATH = dbPath;
+  let db;
+  try {
+    db = getDb();
+  } finally {
+    process.env.DB_PATH = savedDbPath;
+  }
+  const task = db.prepare(
+    'SELECT execution_mode, project_repository_id, status, metadata FROM tasks WHERE id=?',
+  ).get(Number(assignment.taskId));
+  if (!task || task.execution_mode !== 'git_change') return null;
+
+  const projectRepositoryId = task.project_repository_id ?? repo.id;
+  const integrationBranch = repo.integration_branch || 'dev';
+  const provisioner = new RepositoryDeskProvisioner();
+  const isReview = assignment.status === 'review_in_progress';
+
+  if (isReview) {
+    // Reviewer: read-only detached worktree at the accepted source commit.
+    const row = db.prepare(
+      `SELECT payload_snapshot FROM factory_managed_node_submissions
+        WHERE task_id=? ORDER BY id DESC LIMIT 1`,
+    ).get(Number(assignment.taskId));
+    if (!row?.payload_snapshot) return null;
+    let sourceCommit = null;
+    try {
+      const payload = JSON.parse(row.payload_snapshot);
+      sourceCommit = payload?.source?.commitSha ?? null;
+    } catch { /* fall through */ }
+    if (typeof sourceCommit !== 'string' || !sourceCommit) return null;
+    const desk = provisioner.provisionReviewerDesk({
+      repositoryRoot: repo.local_path,
+      taskId: Number(assignment.taskId),
+      sourceCommit,
+      projectRepositoryId,
+      integrationBranch,
+    });
+    return {
+      executionPath: desk.executionPath,
+      branch: desk.git.branch,
+      baseCommit: desk.git.baseCommit,
+      headCommit: desk.git.headCommit,
+      integrationBranch: desk.git.integrationBranch,
+      repositoryRoot: desk.repositoryRoot,
+      detached: desk.git.detached,
+    };
+  }
+
+  // Author: resolve expectedBaseCommit from DevelopmentCase (same as production).
+  let baseCommit = null;
+  try {
+    const md = JSON.parse(task.metadata);
+    const processRunId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
+    if (processRunId !== null) {
+      const runRow = db.prepare(
+        'SELECT input_snapshot FROM factory_process_runs WHERE id=?',
+      ).get(processRunId);
+      if (runRow?.input_snapshot) {
+        const input = JSON.parse(runRow.input_snapshot);
+        const target = (input.repositories || []).find(
+          r => r.projectRepositoryId === projectRepositoryId,
+        );
+        baseCommit = typeof target?.expectedBaseCommit === 'string' ? target.expectedBaseCommit : null;
+      }
+    }
+  } catch { /* fall back to integration branch HEAD */ }
+
+  const desk = provisioner.provisionAuthorDesk({
+    repositoryRoot: repo.local_path,
+    taskId: Number(assignment.taskId),
+    integrationBranch,
+    baseCommit,
+    projectRepositoryId,
+  });
+  return {
+    executionPath: desk.executionPath,
+    branch: desk.git.branch,
+    baseCommit: desk.git.baseCommit,
+    headCommit: desk.git.headCommit,
+    integrationBranch: desk.git.integrationBranch,
+    repositoryRoot: desk.repositoryRoot,
+    detached: desk.git.detached,
+  };
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -168,13 +281,35 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
           'You are a single-use Saga CLI worker.',
         ].join('\n');
 
+        // Git Desk parity: provision a per-task git worktree (same as
+        // production). The scenario worker commits inside this isolated desk
+        // instead of the shared root. Null for non-git tasks.
+        let desk = null;
+        try {
+          desk = provisionScriptedDesk(context.dbPath, assignment);
+        } catch (error) {
+          process.stderr.write(`[scenario-executor] desk provision failed: ${
+            error instanceof Error ? error.message : String(error)
+          }\n`);
+        }
+        const deskEnv = desk ? {
+          SAGA_DESK_EXECUTION_PATH: desk.executionPath,
+          SAGA_DESK_BRANCH: desk.branch,
+          SAGA_DESK_BASE_COMMIT: desk.baseCommit,
+          SAGA_DESK_HEAD_COMMIT: desk.headCommit || '',
+          SAGA_DESK_INTEGRATION_BRANCH: desk.integrationBranch,
+          SAGA_DESK_REPOSITORY_ROOT: desk.repositoryRoot,
+          SAGA_DESK_DETACHED: desk.detached ? '1' : '0',
+        } : {};
+        const deskCwd = desk ? desk.executionPath : (context.workspaceRoot || process.cwd());
+
         activeChild = spawn('node', [
           dispatcherPath,
           '-p', '--bare',
           '--mcp-config', mcpConfigPath,
           '--strict-mcp-config',
         ], {
-          cwd: context.workspaceRoot || process.cwd(),
+          cwd: deskCwd,
           env: {
             ...process.env,
             SAGA_EXECUTION_ID: assignment.workerExecutionId,
@@ -184,6 +319,7 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
             SAGA_PROJECT_ID: String(assignment.projectId),
             ...(opts.scenariosPath ? { SAGA_SCENARIOS: opts.scenariosPath } : {}),
             ...(opts.invocationLogPath ? { SAGA_INVOCATION_LOG: opts.invocationLogPath } : {}),
+            ...deskEnv,
           },
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],

@@ -280,17 +280,27 @@ const developmentPlan = async ({ client, task, prompt }) => {
     `planned ${implementationItems.length} implementation + ${verificationItems.length} verification items`);
 };
 
-const developmentImplement = async ({ client, task, prompt, repoPath }) => {
+const developmentImplement = async ({ client, task, prompt, repoPath, desk }) => {
   const meta = metaOf(task);
   const item = meta.cell_input_item || findObject(meta.process_node_input, x => x.kind === 'implementation');
   if (!item?.key) throw new Error('implementation work item not found');
   const workItemKey = String(item.key);
   const safe = workItemKey.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const integrationBranch = 'dev';
-  const baseCommit = git(repoPath, ['rev-parse', `refs/heads/${integrationBranch}`]);
-  const branch = `factory-contract-${safe}-${String(prompt.task_id)}`;
-  git(repoPath, ['checkout', '-B', branch, integrationBranch]);
+
+  // Git Desk parity: commit inside the per-task worktree the factory
+  // provisioned (same as a production worker). The worktree is already on
+  // branch task/<id> at the frozen base commit — NO checkout -B, NO checkout
+  // back. This eliminates the shared-checkout race that caused
+  // PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH under concurrency ≥ 2.
   const filePath = `src/factory-contract/${safe}.ts`;
+  const branch = desk?.branch || `factory-contract-${safe}-${String(prompt.task_id)}`;
+  const integrationBranch = desk?.integrationBranch || 'dev';
+  const baseCommit = desk?.baseCommit || git(repoPath, ['rev-parse', `refs/heads/${integrationBranch}`]);
+  // When a desk is provisioned, the worktree is the repoPath. Without a desk
+  // (legacy path), we must checkout -B our own branch in the shared root.
+  if (!desk) {
+    git(repoPath, ['checkout', '-B', branch, integrationBranch]);
+  }
   actions.writeFile(repoPath, filePath,
     `// deterministic implementation for ${workItemKey}\nexport const ${safe.replace(/[^a-zA-Z0-9_]/g, '_')} = true;\n`);
   git(repoPath, ['add', filePath]);
@@ -312,7 +322,12 @@ const developmentImplement = async ({ client, task, prompt, repoPath }) => {
     buildProducts: [],
     reasonCodes: [],
   });
-  git(repoPath, ['checkout', integrationBranch]);
+  // NO checkout back to integration branch when using a desk — the worktree is
+  // disposable. Legacy path (no desk) restores the integration branch so the
+  // next worker in the shared root starts clean.
+  if (!desk) {
+    git(repoPath, ['checkout', integrationBranch]);
+  }
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
     `implemented ${workItemKey}`);
 };

@@ -243,6 +243,25 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
     // Restore the exact repository desk base required by the captured Git
     // recipe. Preserve the Delivery marker so observe-before-mutate can prove
     // the desired external state already exists.
+    // CRITICAL: remove Run A's per-task worktrees first. Run A provisioned
+    // git worktrees on branches task/<id>; those branches remain "checked out"
+    // in linked worktrees. The capsule replay in Run B does
+    // `git checkout -B task/<id>` in the shared root, which fails with
+    // "already used by worktree" unless the worktrees are properly removed.
+    // We use `git worktree list --porcelain` + `git worktree remove --force`
+    // to cleanly deregister each linked worktree before pruning metadata.
+    const wtList = execSync('git worktree list --porcelain', {
+      cwd: repoPath, encoding: 'utf8', windowsHide: true,
+    });
+    for (const block of wtList.split(/\n\n/)) {
+      const m = /^worktree (.+)$/m.exec(block);
+      if (m && m[1] !== repoPath) {
+        try { execSync(`git worktree remove --force "${m[1]}"`, { cwd: repoPath, windowsHide: true, stdio: 'pipe' }); } catch {}
+      }
+    }
+    execSync('git worktree prune', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
+    const worktreesDir = path.join(repoPath, '.worktrees');
+    try { rmSync(worktreesDir, { recursive: true, force: true }); } catch {}
     execSync(`git checkout dev && git reset --hard ${baseCommit} && git clean -fd -e '.factory-contract-release-*'`, {
       cwd: repoPath, windowsHide: true, stdio: 'pipe',
     });
