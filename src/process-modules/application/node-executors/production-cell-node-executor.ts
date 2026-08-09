@@ -917,15 +917,16 @@ function computeSemanticInputDigest(
     // which carries run-specific provenance.
     return inputProduction.semanticDigest ?? inputProduction.contentHash;
   }
-  // Entry cell: canonical business input. Strip certificate/contract refs
-  // (run-specific DB ids) so the cross-run semantic digest is stable.
+  // Entry cell: canonical business input. Strip run/operator provenance so the
+  // cross-run semantic digest stays stable for the same product meaning.
   return sha256Hex(canonicalizeLifecycleInput(ctx.input));
 }
 
 /**
  * Canonicalize a lifecycle stage input for cross-run semantic identity.
  * Strips fields that carry run-specific provenance (certificate refs/hashes,
- * contract refs/hashes) while preserving all business-semantic fields.
+ * contract refs/hashes, operator initiation identity) while preserving all
+ * business-semantic fields.
  */
 function canonicalizeLifecycleInput(input: unknown): unknown {
   if (input === null || input === undefined) return input;
@@ -934,7 +935,11 @@ function canonicalizeLifecycleInput(input: unknown): unknown {
   const obj = input as Record<string, unknown>;
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (/certificate/i.test(key) || /contract/i.test(key)) continue;
+    if (
+      /certificate/i.test(key)
+      || /contract/i.test(key)
+      || /^initiated_?by$/i.test(key)
+    ) continue;
     result[key] = canonicalizeLifecycleInput(value);
   }
   return result;
