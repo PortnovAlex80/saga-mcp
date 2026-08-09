@@ -60,7 +60,7 @@ export const SRS_CONTRACT = {
     'criticality',
   ],
   d2EnumFields: {
-    ac_kind: ['implementation', 'verification', 'spike', 'merge_with'],
+    ac_kind: ['implementation', 'verification'],
     pattern: ['A', 'B'],
     criticality: ['blocker', 'degradable', 'nice_to_have'],
   },

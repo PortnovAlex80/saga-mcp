@@ -52,14 +52,16 @@ export function extractD2Stanzas(content: string): D2Stanza[] {
     ? afterFirstLine.slice(0, nextHeaderMatch.index)
     : afterFirstLine;
 
-  // Extract stanza text from EITHER a fenced code block (YAML) OR the raw
-  // section body (subsection format). LLMs produce both formats:
-  //   1. ```yaml\n- ac: AC-1\n  pattern: A\n...```
-  //   2. ### AC-1: Title\nac: AC-1\npattern: A\n...
-  const codeBlockMatch = sectionText.match(/```[a-z]*\n([\s\S]*?)```/i);
-  const stanzaText = codeBlockMatch ? (codeBlockMatch[1] ?? '') : sectionText;
+  // Extract stanzas from ALL sources: fenced code blocks AND raw section body.
+  // The previous either/or approach had a bug: if the model wrote D2 in
+  // subsection format but included an incidental fenced snippet (e.g. a
+  // pattern legend), the parser grabbed only the snippet and missed the real
+  // stanzas. Fix: scan the full section text (including code block contents)
+  // for stanza patterns, so both formats are handled simultaneously.
+  // Remove code block fences so their content merges with the raw section.
+  const flatText = sectionText.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '');
 
-  const lines = stanzaText.split('\n');
+  const lines = flatText.split('\n');
   const stanzas: D2Stanza[] = [];
   let currentAc: string | null = null;
   let currentFields: Map<string, string> = new Map();
