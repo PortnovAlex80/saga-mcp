@@ -40,10 +40,41 @@ function die(msg) {
   process.exit(2);
 }
 
-function flag(name, fallback) {
-  const idx = args.indexOf(`--${name}`);
-  if (idx === -1 || idx + 1 >= args.length) return fallback;
-  return args[idx + 1];
+/**
+ * Parse start arguments structurally. Control-plane option values must never
+ * leak into the product idea: replay semantic identity is derived from business
+ * input, not from model/sandbox/operator coordinates.
+ */
+function parseStartArguments(rawArgs) {
+  const dbPath = rawArgs[1];
+  const ideaParts = [];
+  let modelName = 'glm-4.7';
+  let sandboxName = null;
+
+  for (let i = 2; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    if (arg === '--model' || arg === '--sandbox') {
+      const value = rawArgs[i + 1];
+      if (!value || value.startsWith('--')) {
+        die(`start: ${arg} requires a value`);
+      }
+      if (arg === '--model') modelName = value;
+      else sandboxName = value;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--')) {
+      die(`start: unsupported option '${arg}'`);
+    }
+    ideaParts.push(arg);
+  }
+
+  return {
+    dbPath,
+    idea: ideaParts.join(' ').trim(),
+    modelName,
+    sandboxName,
+  };
 }
 
 if (command !== 'start' && command !== 'resume') {
@@ -115,13 +146,14 @@ if (command === 'resume') {
 
 // ─── start: provision a new sandbox + create a new factory run ────────────
 if (command === 'start') {
-  const dbPath = args[1];
-  const idea = args.slice(2).filter(a => !a.startsWith('--')).join(' ');
+  const {
+    dbPath,
+    idea,
+    modelName,
+    sandboxName,
+  } = parseStartArguments(args);
   if (!dbPath) die('start: db-path argument is required');
   if (!idea) die('start: idea-text argument is required');
-
-  const modelName = flag('model', 'glm-4.7');
-  const sandboxName = flag('sandbox', null);
 
   // If a sandbox dir is specified, provision the full project structure.
   // Otherwise, assume the DB already has project/epic/repo rows and only
@@ -149,7 +181,7 @@ if (command === 'start') {
     git(['add', '-A']);
     git(['commit', '-m', 'chore: initialize product']);
     git(['checkout', '-b', 'dev']);
-    const baseCommit = git(['rev-parse', 'HEAD']);
+    git(['rev-parse', 'HEAD']);
 
     const db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
@@ -222,7 +254,10 @@ if (command === 'start') {
       epicId: 1,
       lifecycleInput,
       lifecycleInputSchema: lifecycleInput.schemaVersion,
-      initiatedBy: sandboxName ?? 'factory-start',
+      // initiatedBy is audit provenance, not product semantics. Keep the
+      // canonical operator identity stable across sandbox provisioning and
+      // later new-start invocations so it cannot manufacture replay misses.
+      initiatedBy: 'factory-start',
       idempotencyKey: `${sandboxName ?? 'factory'}-${crypto.randomUUID()}`,
       concurrency: Number(process.env.SAGA_FACTORY_CONCURRENCY ?? 5),
     }, db);
