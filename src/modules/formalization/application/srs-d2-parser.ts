@@ -38,22 +38,35 @@ export interface D2Stanza {
 export function extractD2Stanzas(content: string): D2Stanza[] {
   // Accept both "D2" and "D.2" heading variants — LLMs frequently write §D.2
   // (matching the natural decimal notation) which is semantically identical.
-  const sectionStart = content.search(/#{2,4}\s*§?\s*D\.?2\b/);
-  if (sectionStart === -1) return [];
-  const afterStart = content.slice(sectionStart);
-  const nextHeaderMatch = afterStart.slice(afterStart.indexOf('\n')).match(/\n#{2,4}\s/);
+  const headingMatch = content.match(/(#{2,4})\s*§?\s*D\.?2\b/);
+  if (!headingMatch || headingMatch.index === undefined) return [];
+  const headingLevel = headingMatch[1]!.length;
+  const afterStart = content.slice(headingMatch.index);
+  // Section extends until next heading at the same or shallower level.
+  // Previous code matched any \n#{2,4}\s which included ### subsections
+  // inside the D2 section, truncating it to just the heading line.
+  const afterFirstLine = afterStart.slice(afterStart.indexOf('\n'));
+  const nextHeaderRegex = new RegExp(`\\n#{1,${headingLevel}}\\s`);
+  const nextHeaderMatch = afterFirstLine.match(nextHeaderRegex);
   const sectionText = nextHeaderMatch
-    ? afterStart.slice(0, afterStart.indexOf('\n') + (nextHeaderMatch.index ?? 0))
-    : afterStart;
+    ? afterFirstLine.slice(0, nextHeaderMatch.index)
+    : afterFirstLine;
+
+  // Extract stanza text from EITHER a fenced code block (YAML) OR the raw
+  // section body (subsection format). LLMs produce both formats:
+  //   1. ```yaml\n- ac: AC-1\n  pattern: A\n...```
+  //   2. ### AC-1: Title\nac: AC-1\npattern: A\n...
   const codeBlockMatch = sectionText.match(/```[a-z]*\n([\s\S]*?)```/i);
-  if (!codeBlockMatch) return [];
-  const yaml = codeBlockMatch[1] ?? '';
-  const lines = yaml.split('\n');
+  const stanzaText = codeBlockMatch ? (codeBlockMatch[1] ?? '') : sectionText;
+
+  const lines = stanzaText.split('\n');
   const stanzas: D2Stanza[] = [];
   let currentAc: string | null = null;
   let currentFields: Map<string, string> = new Map();
   for (const line of lines) {
-    const stanzaStart = line.match(/^-\s+ac:\s*(\S+)/);
+    // Accept both YAML list format "- ac: AC-1" and bare "ac: AC-1"
+    // (subsection format where fields follow a ### heading).
+    const stanzaStart = line.match(/^[-\s]*ac:\s*(\S+)/);
     if (stanzaStart) {
       if (currentAc) {
         stanzas.push({ ac: currentAc, fields: currentFields });
@@ -64,7 +77,10 @@ export function extractD2Stanzas(content: string): D2Stanza[] {
       continue;
     }
     if (currentAc) {
-      const fieldMatch = line.match(/^\s+(\w[\w_]*)\s*:\s*(.*)$/);
+      // Match indented key: value pairs (YAML style) or bare key: value
+      // (subsection style). Also skip markdown headings (### AC-2: ...).
+      if (/^#{1,6}\s/.test(line)) continue;
+      const fieldMatch = line.match(/^\s*(\w[\w/]*)\s*:\s*(.*)$/);
       if (fieldMatch) {
         const [, key, rawValue] = fieldMatch;
         const value = (rawValue ?? '').trim().replace(/["']/g, '').replace(/#.*$/, '').trim();
