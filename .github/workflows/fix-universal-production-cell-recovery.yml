@@ -3,6 +3,8 @@ name: Fix Universal Production Cell Recovery
 on:
   push:
     branches: [saga4]
+  pull_request:
+    branches: [saga4]
   workflow_dispatch:
 
 permissions:
