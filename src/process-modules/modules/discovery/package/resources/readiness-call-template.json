@@ -1,7 +1,7 @@
 {
   "schema": "factory.discovery-readiness-assessment.v1",
   "content": {
-    "proposal_id": "FILL_INTEGER_FROM_PRODUCT_READ_SUBMISSION_ID",
+    "proposal_id": 0,
     "proposal_content_hash": "FILL_64_CHAR_HEX_FROM_ACCEPTED_PROPOSAL_PRODUCT_REF_DIGEST",
     "overall_readiness": "ready",
     "dimension_assessments": {
