@@ -101,6 +101,45 @@ export interface ProductionInstallation {
   readonly packages: ReadonlyMap<string, StoredModulePackage>;
 }
 
+interface PinnedProcessPackageRow {
+  readonly id: number;
+  readonly package_digest: string;
+}
+
+/**
+ * Process runs retain their exact installation/package pin after a compatible
+ * toolset replacement retires the old active installation.  The worker host
+ * therefore needs both the freshly installed package snapshots and every
+ * historical snapshot referenced by a non-terminal durable ProcessRun.
+ *
+ * Some package-installation consumers intentionally use a small database that
+ * has no lifecycle schema.  Treat that as an installation-only host; once the
+ * process-run table exists, however, every non-null pin is mandatory.
+ */
+function readPinnedProcessPackages(
+  db: Database.Database,
+): readonly PinnedProcessPackageRow[] {
+  const processRunTable = db.prepare(
+    `SELECT 1 FROM sqlite_master
+      WHERE type='table' AND name='factory_process_runs'`,
+  ).get();
+  if (!processRunTable) return [];
+  const columns = db.prepare('PRAGMA table_info(factory_process_runs)')
+    .all() as Array<{ name: string }>;
+  if (!columns.some(column => column.name === 'package_digest')) return [];
+  const hasStatus = columns.some(column => column.name === 'status');
+  return db.prepare(
+    `SELECT MIN(id) AS id, package_digest
+       FROM factory_process_runs
+      WHERE package_digest IS NOT NULL
+        ${hasStatus
+          ? "AND status IN ('created','preparing','running','paused','settling')"
+          : ''}
+      GROUP BY package_digest
+      ORDER BY MIN(id)`,
+  ).all() as PinnedProcessPackageRow[];
+}
+
 /**
  * Install (or reuse) a set of production module packages against the given DB +
  * store root.
@@ -168,6 +207,31 @@ export async function installModulePackages(
     );
     records.set(name, record);
     packages.set(record.packageDigest, await store.read(record.packageDigest));
+  }
+
+  // A compatible reinstall may have retired an installation that an existing
+  // non-terminal ProcessRun still pins. Retired means "not selectable for a
+  // new run", not "unreadable for replay/resume". Materialize and verify those immutable
+  // bytes before the engine can reserve a task, so corruption/missing state is
+  // a host-start failure rather than a misleading worker spawn failure.
+  for (const pin of readPinnedProcessPackages(db)) {
+    if (packages.has(pin.package_digest)) continue;
+    const record = repository.getByPackageDigest(pin.package_digest);
+    if (!record) {
+      throw new Error(
+        `PINNED_PACKAGE_INSTALLATION_MISSING: ProcessRun ${pin.id} pins `
+        + `${pin.package_digest}, but no installation record exists`,
+      );
+    }
+    try {
+      packages.set(pin.package_digest, await store.read(pin.package_digest));
+    } catch (error) {
+      throw new Error(
+        `PINNED_PACKAGE_SNAPSHOT_MISSING: ProcessRun ${pin.id} pins `
+        + `${pin.package_digest}, but its immutable package snapshot could not be verified`,
+        { cause: error },
+      );
+    }
   }
 
   // WorkspacePackageRegistry = PackageRegistry & InstallationRecordById.

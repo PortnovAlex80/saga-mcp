@@ -303,6 +303,34 @@ test('external-seo package: installs through the real production install path (i
     const record2 = installation2.records.get('external-seo');
     assert.equal(record2.packageDigest, record.packageDigest,
       're-install of unchanged bytes is idempotent (same digest)');
+
+    // A compatible package update retires the old active installation, but a
+    // durable ProcessRun keeps its exact original pin.  Restart must load and
+    // verify that retired snapshot as well as the new active package.
+    db.exec(`CREATE TABLE factory_process_runs (
+      id INTEGER PRIMARY KEY,
+      package_digest TEXT
+    )`);
+    db.prepare(
+      `INSERT INTO factory_process_runs (id, package_digest) VALUES (41, ?)`,
+    ).run(record.packageDigest);
+    const updatedManifest = structuredClone(externalSeoManifest);
+    updatedManifest.definition.identity.description += ' Compatible documentation update.';
+    const installation3 = await installModulePackages(
+      db,
+      PACKAGE_ROOT,
+      [updatedManifest],
+      path.join(storeRoot, 'package-store'),
+    );
+    const record3 = installation3.records.get('external-seo');
+    assert.notEqual(record3.packageDigest, record.packageDigest,
+      'compatible toolset update receives a new digest');
+    assert.equal(installation3.repository.getById(record.id).status, 'retired',
+      'old installation is retained as a historical pin');
+    assert.ok(installation3.packages.has(record3.packageDigest),
+      'new active package snapshot is materialized');
+    assert.ok(installation3.packages.has(record.packageDigest),
+      'retired ProcessRun-pinned package snapshot is materialized for resume');
   } finally {
     try { db?.close(); } catch { /* already closed */ }
     try { rmSync(storeRoot, { recursive: true, force: true }); } catch { /* temp cleanup best-effort */ }
