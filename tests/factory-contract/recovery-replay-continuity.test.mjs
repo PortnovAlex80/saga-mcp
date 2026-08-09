@@ -63,3 +63,13 @@ test('QA gate explicitly distinguishes same-run resume from cross-run replay', (
   assert.match(skill, /QA-F09 — control argv cannot contaminate semantic input/);
   assert.match(skill, /QA-G09 — same-run resume reuses durable completed stage\/process results directly/);
 });
+
+test('QA supervision addendum forbids renew-before-reconcile orphan adoption', () => {
+  const addendum = read('skills/saga-factory-qa/RECOVERY-SUPERVISION.md');
+
+  assert.match(addendum, /RS-01 — classify before renewing/);
+  assert.match(addendum, /reconcile active WorkerExecutions[\s\S]*renew leases only for executions that survived reconciliation/);
+  assert.match(addendum, /renewLeases\(all same-host active executions\)[\s\S]*reconcile/);
+  assert.match(addendum, /same host is not same foreman/i);
+  assert.match(addendum, /source-order regex[\s\S]*NOT sufficient runtime proof/i);
+});
