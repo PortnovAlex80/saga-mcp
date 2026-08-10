@@ -103,6 +103,7 @@ export interface ProductionCellProjectionPersistence {
     workplaceRef: WorkplaceRef;
     role: 'author' | 'reviewer';
     executionProfileId: string;
+    productSource?: 'typed-submission' | 'managed-production';
   }): void;
   concludeExecutionIntent(executionRef: string): void;
   /**
@@ -818,6 +819,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       workplaceRef: workplace.ref,
       role,
       executionProfileId: profile.id,
+      productSource: cell.productContracts.find(c => c.schemaRef === node.outputSchema?.id)?.productSource,
     });
     return plan.taskId;
   }

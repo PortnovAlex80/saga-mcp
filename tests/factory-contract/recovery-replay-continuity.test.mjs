@@ -51,7 +51,7 @@ test('canonical factory command preflights and supplies production composition',
   assert.match(source, /function resolveFactoryComposition\(\)/);
   assert.match(source, /tracker-view[\s\S]*product-delivery-composition\.mjs/);
   assert.match(source, /const factoryCompositionPath = resolveFactoryComposition\(\)/);
-  assert.match(source, /SAGA_PRODUCT_LIFECYCLE_COMPOSITION:\s*factoryCompositionPath/);
+  assert.match(source, /SAGA_PRODUCT_LIFECYCLE_COMPOSITION:\s*compositionPath/);
 });
 
 test('dispatcher cannot claim projection cards owned by a terminal ProcessRun', () => {

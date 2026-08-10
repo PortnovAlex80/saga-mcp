@@ -1934,6 +1934,24 @@ function requireProductionCellSubmission(
     output_schema: string;
   } | undefined;
   if (!productionCell) return;
+
+  // Managed-production cells (e.g. Formalization author nodes) do not require
+  // a typed product_submit — the factory assembles the product from the
+  // Workplace desk (artifacts + traces) at CandidateSet seal time. Only
+  // typed-submission cells require an explicit product_submit before
+  // worker_done. The production-cell-node-executor makes the same distinction
+  // via requireTypedSubmission (line 495-496); this guard must agree.
+  const taskMeta = db.prepare(
+    `SELECT t.metadata, w.process_run_id
+       FROM tasks t
+       JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
+      WHERE t.id=?`,
+  ).get(taskId) as { metadata: string; process_run_id: number } | undefined;
+  if (taskMeta) {
+    const meta = JSON.parse(taskMeta.metadata ?? '{}') as Record<string, unknown>;
+    const productSource = meta.product_source ?? meta.cell_product_source ?? null;
+    if (productSource === 'managed-production') return;
+  }
   const exactExecutionId = executionId ?? currentExecutionId;
   const submission = exactExecutionId
     ? db.prepare(

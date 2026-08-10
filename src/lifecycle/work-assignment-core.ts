@@ -695,6 +695,7 @@ export function activateProductionCellRoleTask(
     workplaceRef: string;
     role: 'author' | 'reviewer';
     executionProfileId: string;
+    productSource?: 'typed-submission' | 'managed-production';
   },
 ): void {
   withImmediateTransaction(db, () => {
@@ -709,6 +710,7 @@ export function activateProductionCellRoleTask(
     metadata.process_execution_profile_id = input.executionProfileId;
     metadata.workplace_ref = input.workplaceRef;
     metadata.role = input.role;
+    if (input.productSource) metadata.product_source = input.productSource;
     db.prepare(
       `UPDATE tasks SET status='done',assigned_to=NULL,current_execution_id=NULL,
               updated_at=datetime('now') WHERE workplace_ref=? AND id<>?`,

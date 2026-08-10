@@ -99,6 +99,9 @@ async function setupFreshDb(repoPath, baseCommit) {
               VALUES (1,'Parallel Desk Test','Worktree isolation under concurrency=2','active','[]','{}')`).run();
   db.prepare(`INSERT INTO epics (id,project_id,name,status,priority)
               VALUES (1,1,'Pipeline','planned','high')`).run();
+  db.prepare(`INSERT INTO lifecycle_execution_controls
+              (epic_id,concurrency,model_concurrency_limit)
+              VALUES (1,2,2)`).run();
   db.prepare(`INSERT INTO repositories (id,name,default_branch,metadata)
               VALUES (1,'parallel-repo','dev','{}')`).run();
   db.prepare(`INSERT INTO project_repositories

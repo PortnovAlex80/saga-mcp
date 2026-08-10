@@ -38,6 +38,8 @@ async function setupFreshDb(repoPath, baseCommit) {
     .run(srcProject.id, srcProject.name, 'Crash test', 'active', '[]', '{}');
   db.prepare('INSERT INTO epics (id, project_id, name, status, priority) VALUES (?, ?, ?, ?, ?)')
     .run(1, 1, 'Pipeline', 'planned', 'high');
+  db.prepare('INSERT INTO lifecycle_execution_controls (epic_id, concurrency, model_concurrency_limit) VALUES (?, ?, ?)')
+    .run(1, 1, 1);
   db.prepare('INSERT INTO repositories (id, name, default_branch, metadata) VALUES (?, ?, ?, ?)').run(1, 'crash-repo', 'main', '{}');
   db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(1, 1, 1, 'component', repoPath, 'dev', 'active');
