@@ -4,16 +4,13 @@ on:
   push:
     branches:
       - agent/factory-transition-test-audit
-  pull_request:
-    branches:
-      - saga4
 
 permissions:
   contents: write
 
 jobs:
   transition-audit:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, 'test(factory): cover full Workplace repair loop') }}
+    if: ${{ !contains(github.event.head_commit.message, 'test(factory): cover full Workplace repair loop') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -26,10 +23,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply audit patch
-        run: |
-          sed -i "s/assert.equal(s.revision, 17/assert.equal(s.revision, 18/" tools/apply-factory-transition-test-audit.mjs
-          node tools/apply-factory-transition-test-audit.mjs
+      - name: Apply bounded-attempt production fix
+        run: node tools/apply-attempt-count-fix.mjs
       - name: Build
         run: npm run build
       - name: Focused transition tests
@@ -45,6 +40,7 @@ jobs:
         run: npm run test:factory-contract
       - name: Commit validated patch and remove bootstrap
         run: |
+          rm tools/apply-attempt-count-fix.mjs
           rm tools/apply-factory-transition-test-audit.mjs
           rm .github/workflows/factory-transition-test-audit.yml
           git config user.name "factory-transition-audit"
