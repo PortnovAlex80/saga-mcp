@@ -138,6 +138,11 @@ test('review provider distinguishes valid changes_requested from malformed revie
   assert.equal(reviewOutcome({
     subject_candidate_set_ref: 'author-set', verdict: 'changes_requested', findings: ['bug'],
   }), 'failed');
+  assert.equal(reviewOutcome({
+    subject_candidate_set_ref: 'author-set',
+    verdict: 'changes_requested',
+    findings: [{ message: 'missing trace', severity: 'error', subjectRef: 'artifact:16' }],
+  }), 'failed');
   assert.equal(reviewOutcome({ verdict: 'changes_requested', findings: ['bug'] }), 'unknown');
   assert.equal(reviewOutcome({
     subject_candidate_set_ref: 'author-set', verdict: 'approved', findings: [],

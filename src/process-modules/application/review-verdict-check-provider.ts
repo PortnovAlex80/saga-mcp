@@ -16,7 +16,20 @@ export const FACTORY_REVIEW_VERDICT_SCHEMA = 'factory.review-verdict.v1';
 export interface FactoryReviewVerdictProduct {
   readonly subject_candidate_set_ref: string;
   readonly verdict: 'approved' | 'changes_requested';
-  readonly findings: readonly string[];
+  readonly findings: readonly (string | {
+    readonly message: string;
+    readonly severity?: string;
+    readonly subjectRef?: string;
+  })[];
+}
+
+function isReviewFinding(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const finding = value as Record<string, unknown>;
+  return typeof finding.message === 'string' && finding.message.trim().length > 0
+    && (finding.severity === undefined || typeof finding.severity === 'string')
+    && (finding.subjectRef === undefined || typeof finding.subjectRef === 'string');
 }
 
 export function createReviewVerdictCheckProvider(input: {
@@ -66,7 +79,7 @@ export function createReviewVerdictCheckProvider(input: {
         if (
           payload.subject_candidate_set_ref !== subjectCandidateSetRef
           || !Array.isArray(payload.findings)
-          || !payload.findings.every(item => typeof item === 'string')
+          || !payload.findings.every(isReviewFinding)
           || (payload.verdict !== 'approved' && payload.verdict !== 'changes_requested')
         ) return 'unknown';
         return payload.verdict === 'approved' ? 'passed' : 'failed';
