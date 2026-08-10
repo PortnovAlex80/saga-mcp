@@ -36,6 +36,7 @@ import {
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
+import { productBuildLifecycle } from '../process-modules/lifecycles/product-build-lifecycle.js';
 import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
 import {
   canonicalizeProductDeliveryLifecycleInput,
@@ -681,7 +682,7 @@ export function createProductLifecycleRuntime(
   });
 
   const engine = new LifecycleOrchestrationEngineAdapter({
-    definition: productDeliveryLifecycle,
+    definition: productBuildLifecycle,
     orchestrator,
     resolveDefinition(command, input) {
       const row = readPinnedLifecycleByInvocation(
@@ -689,7 +690,7 @@ export function createProductLifecycleRuntime(
         command.projectId,
         input.idempotencyKey,
       );
-      if (!row) return productDeliveryLifecycle;
+      if (!row) return productBuildLifecycle;
       return JSON.parse(row.definition_snapshot) as typeof productDeliveryLifecycle;
     },
     resolveInput(command) {
