@@ -20,7 +20,7 @@ test('formalization completion requires an actual worker_done tool receipt', () 
 
   for (const text of [skill, tracker, template._MANDATORY_EXECUTION_INSTRUCTION]) {
     assert.match(text, /actual[\s`]*mcp__saga__worker_done[\s`]*tool/i);
-    assert.match(text, /not (?:a tool invocation|completion)|does not complete/i);
+    assert.match(text, /not\W+(?:a tool invocation|completion)|does not complete/i);
     assert.match(text, /stop:? ?true/i);
   }
 });
