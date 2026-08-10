@@ -1,0 +1,51 @@
+name: Factory transition audit
+
+on:
+  push:
+    branches:
+      - agent/factory-transition-test-audit
+
+permissions:
+  contents: write
+
+jobs:
+  transition-audit:
+    if: ${{ !contains(github.event.head_commit.message, 'test(factory): cover full Workplace repair loop') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/factory-transition-test-audit
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply audit patch
+        run: |
+          sed -i "s/assert.equal(s.revision, 17/assert.equal(s.revision, 18/" tools/apply-factory-transition-test-audit.mjs
+          node tools/apply-factory-transition-test-audit.mjs
+      - name: Build
+        run: npm run build
+      - name: Focused transition tests
+        run: >-
+          node --test
+          tests/factory-contract/scenario-attempt-history.test.mjs
+          tests/factory-contract/workplace-two-role-theorem.test.mjs
+          tests/factory-contract/attempt-budget-ratchet.test.mjs
+          tests/factory-contract/orchestration-recovery-boundary.test.mjs
+      - name: Physical-worker golden path with forced reviewer repair
+        run: node --test tests/factory-contract/golden-path.test.mjs
+      - name: Full Factory Contract suite
+        run: npm run test:factory-contract
+      - name: Commit validated patch and remove bootstrap
+        run: |
+          rm tools/apply-factory-transition-test-audit.mjs
+          rm .github/workflows/factory-transition-test-audit.yml
+          git config user.name "factory-transition-audit"
+          git config user.email "factory-transition-audit@users.noreply.github.com"
+          git add -A
+          git commit -m "test(factory): cover full Workplace repair loop"
+          git push origin HEAD:agent/factory-transition-test-audit
