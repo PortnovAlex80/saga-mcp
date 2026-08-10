@@ -89,7 +89,7 @@ if (command !== 'start' && command !== 'resume' && command !== 'continue') {
   die(`usage: node scripts/factory.mjs <start|resume|continue> <db-path> [options]\n`
     + `  start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
     + `  resume <db-path> [--requeue-paused|--recover-failed-gate]\n`
-    + `  continue <db-path> --from-lifecycle <id> (--verification-only | --adopt-task <id> --scope <path>...) [--check]`);
+    + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]`);
 }
 
 function resolveFactoryComposition() {
@@ -115,7 +115,7 @@ function resolveFactoryComposition() {
 const factoryCompositionPath = resolveFactoryComposition();
 
 // ─── Shared: spawn the runtime host with a launch capability ──────────────
-function spawnOrchestrateCli(dbPath, launchRef) {
+function spawnOrchestrateCli(dbPath, launchRef, compositionPath = factoryCompositionPath) {
   const here = fileURLToPath(import.meta.url);
   const repoRoot = resolve(join(here, '..', '..'));
   const cliPath = join(repoRoot, 'dist', 'orchestrate-cli.js');
@@ -125,7 +125,7 @@ function spawnOrchestrateCli(dbPath, launchRef) {
   const childEnv = {
     ...process.env,
     DB_PATH: dbPath,
-    SAGA_PRODUCT_LIFECYCLE_COMPOSITION: factoryCompositionPath,
+    SAGA_PRODUCT_LIFECYCLE_COMPOSITION: compositionPath,
   };
   // Spawn detached so the factory outlives this script. stdio inherited so
   // the operator sees cycle/dispatch output in real time.
@@ -186,6 +186,7 @@ function parseContinueArguments(rawArgs) {
     check: false,
     verificationOnly: false,
     observerConfirmed: false,
+    localRelease: false,
   };
   for (let index = 2; index < rawArgs.length; index += 1) {
     const option = rawArgs[index];
@@ -199,6 +200,10 @@ function parseContinueArguments(rawArgs) {
     }
     if (option === '--observer-confirmed') {
       result.observerConfirmed = true;
+      continue;
+    }
+    if (option === '--local-release') {
+      result.localRelease = true;
       continue;
     }
     if (['--from-lifecycle', '--adopt-task', '--scope'].includes(option)) {
@@ -216,10 +221,13 @@ function parseContinueArguments(rawArgs) {
   if (!Number.isSafeInteger(result.parentLifecycleRunId) || result.parentLifecycleRunId < 1) {
     die('continue: --from-lifecycle must be a positive integer');
   }
-  if (!result.verificationOnly && (!Number.isSafeInteger(result.adoptedTaskId) || result.adoptedTaskId < 1)) {
+  if (!result.verificationOnly && !result.localRelease && (!Number.isSafeInteger(result.adoptedTaskId) || result.adoptedTaskId < 1)) {
     die('continue: --adopt-task must be a positive integer');
   }
-  if (!result.verificationOnly && result.scopes.length === 0) die('continue: at least one --scope is required');
+  if (!result.verificationOnly && !result.localRelease && result.scopes.length === 0) die('continue: at least one --scope is required');
+  if (result.localRelease && (result.verificationOnly || result.adoptedTaskId || result.scopes.length > 0)) {
+    die('continue: --local-release is mutually exclusive with Development continuation options');
+  }
   if (result.observerConfirmed && !result.verificationOnly) {
     die('continue: --observer-confirmed requires --verification-only');
   }
@@ -269,22 +277,28 @@ if (command === 'continue') {
       db.close();
       die(`continue: lifecycle ${input.parentLifecycleRunId} has no root FactoryOrder`);
     }
-    const { prepareDevelopmentContinuation } = await import(
-      '../dist/app/factory-continuation.js'
-    );
-    const prepared = prepareDevelopmentContinuation(db, {
-      orderRef: parent.order_ref,
-      parentLifecycleRunId: input.parentLifecycleRunId,
-      adoptedTaskId: input.adoptedTaskId,
-      remainingChangeScopes: input.scopes,
-      verificationOnly: input.verificationOnly,
-      observerConfirmation: input.observerConfirmed ? {
-        observerId: 'product-owner:user',
-        statement: 'Product owner explicitly confirmed all described manual, visual, keyboard and screen-reader checks as verified in the operator conversation.',
-      } : undefined,
-      actorId: 'factory-continuation-operator',
-      reason: 'append-only authority-complete Development incident recovery',
-    });
+    const prepared = input.localRelease
+      ? (await import('../dist/app/factory-release-continuation.js'))
+        .prepareLocalReleaseContinuation(db, {
+          orderRef: parent.order_ref,
+          parentLifecycleRunId: input.parentLifecycleRunId,
+          actorId: 'product-owner:user',
+          reason: 'operator approved exact local source-tag release',
+        })
+      : (await import('../dist/app/factory-continuation.js'))
+        .prepareDevelopmentContinuation(db, {
+          orderRef: parent.order_ref,
+          parentLifecycleRunId: input.parentLifecycleRunId,
+          adoptedTaskId: input.adoptedTaskId,
+          remainingChangeScopes: input.scopes,
+          verificationOnly: input.verificationOnly,
+          observerConfirmation: input.observerConfirmed ? {
+            observerId: 'product-owner:user',
+            statement: 'Product owner explicitly confirmed all described manual, visual, keyboard and screen-reader checks as verified in the operator conversation.',
+          } : undefined,
+          actorId: 'factory-continuation-operator',
+          reason: 'append-only authority-complete Development incident recovery',
+        });
     if (input.check) {
       process.stdout.write(`[factory] continuation check: ${JSON.stringify(prepared)}\n`);
       db.close();
@@ -310,7 +324,15 @@ if (command === 'continue') {
       process.stdout.write(
         `[factory] continuation launch=${launchRef} child=${prepared.childLifecycleRunId} db=${absoluteDbPath}\n`,
       );
-      spawnOrchestrateCli(absoluteDbPath, launchRef);
+      const localComposition = resolve(join(
+        fileURLToPath(import.meta.url), '..', '..',
+        'tracker-view', 'product-delivery-local-release-composition.mjs',
+      ));
+      spawnOrchestrateCli(
+        absoluteDbPath,
+        launchRef,
+        input.localRelease ? localComposition : factoryCompositionPath,
+      );
     }
   } finally {
     if (continuationDb) {

@@ -380,6 +380,24 @@ implements LifecycleContinuationRepository {
       && boundary.process_outcome === 'blocked'
     ) return true;
     if (
+      boundary.stage_outcome === 'approval-required'
+      && boundary.process_outcome === 'approval-required'
+    ) {
+      const certificate = this.db.prepare(
+        `SELECT reason_codes FROM factory_process_outcome_certificates
+          WHERE process_run_id=? ORDER BY id DESC LIMIT 1`,
+      ).get(boundary.process_run_id) as { reason_codes: string } | undefined;
+      if (!certificate) return false;
+      try {
+        const reasonCodes = JSON.parse(certificate.reason_codes) as unknown;
+        return Array.isArray(reasonCodes)
+          && reasonCodes.length === 1
+          && reasonCodes[0] === 'operator-authorization-missing';
+      } catch {
+        return false;
+      }
+    }
+    if (
       boundary.stage_outcome !== 'failed'
       || boundary.process_outcome !== 'failed'
     ) return false;
