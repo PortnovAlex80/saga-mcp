@@ -341,6 +341,7 @@ function buildPrompt({
     isReview
       ? `6. Review the assigned implementation and call worker_done exactly once with verdict approved or changes_requested${assignment.execution_id ? ` and execution_id="${assignment.execution_id}"` : ''}.`
       : `6. Complete the assigned task according to its selected skill, verify its output, and call worker_done exactly once with a truthful result${assignment.execution_id ? ` and execution_id="${assignment.execution_id}"` : ''}.`,
+    '6a. Completion requires invoking the actual mcp__saga__worker_done tool and receiving an accepted stop:true receipt. Writing, printing, or reading worker-done-call.json is NOT a tool call and MUST NOT be followed by process exit.',
     task.execution_mode === 'git_change' && isReview
       ? '7. If APPROVED reaches done, stop:true means do not claim another task: first acquire the repository merge lock, merge into the assigned integration branch, call worker_merge_release, then summarize and exit.'
       : '7. After worker_done returns stop:true, do not claim another task; finish any required terminal protocol, then return a concise summary and exit.',

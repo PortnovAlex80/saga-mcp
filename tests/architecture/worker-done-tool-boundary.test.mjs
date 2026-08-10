@@ -24,3 +24,10 @@ test('formalization completion requires an actual worker_done tool receipt', () 
     assert.match(text, /stop:? ?true/i);
   }
 });
+
+test('the production runner enforces the worker_done tool boundary for every workshop', () => {
+  const runner = readFileSync(new URL('tracker-view/claude-runner.mjs', root), 'utf8');
+  assert.match(runner, /actual mcp__saga__worker_done tool/i);
+  assert.match(runner, /worker-done-call\.json is NOT a tool call/i);
+  assert.match(runner, /accepted stop:true receipt/i);
+});
