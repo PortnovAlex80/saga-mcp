@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createScriptedWorkerExecutorFactory } from './scenario-scripted-executor.mjs';
+import { createTestVerificationCheckProviderFactory } from './test-verification-check-provider.mjs';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
@@ -120,6 +121,12 @@ export async function createProductLifecycleComposition(context) {
     development: {
       taskGraphPolicy: new ReferenceDevelopmentTaskGraphPolicy(),
       settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
+      // Test-only: trust well-formed LM-authored verification assessments.
+      // The production provider always returns 'unknown' (by design — an LM
+      // "passed" cannot become Factory acceptance without an independent
+      // candidate-check receipt). Scripted tests have no LLM bias, so we
+      // trust the assessment when the contract + lineage are valid.
+      verificationCheckProviderFactory: createTestVerificationCheckProviderFactory(),
     },
 
     delivery: {

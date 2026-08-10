@@ -53,6 +53,18 @@ export interface DevelopmentCompositionDependencies {
   taskGraphPolicy?: DevelopmentModuleInstallationDependencies['taskGraphPolicy'];
   settlementPolicy?: DevelopmentModuleInstallationDependencies['settlementPolicy'];
   outputRepository?: DevelopmentModuleInstallationDependencies['outputRepository'];
+  /**
+   * Override the verification check provider. The default provider always
+   * returns 'unknown' for LM-authored assessments (by design — an LM
+   * "passed" cannot become Factory acceptance without an independent
+   * candidate-check receipt). Tests that use scripted workers may inject
+   * a factory that builds a provider trusting the assessment contract when
+   * the product is well-formed, bypassing the independent-receipt requirement.
+   */
+  verificationCheckProviderFactory?: (deps: {
+    db: ModuleSharedDeps['db'];
+    candidateSets: ModuleSharedDeps['candidateSetRepo'];
+  }) => ReturnType<typeof createDevelopmentVerificationCheckProvider>;
 }
 export type RegisterDevelopmentOptions = DevelopmentCompositionDependencies;
 
@@ -101,10 +113,15 @@ export function registerDevelopment(
     taskGraphPolicy,
   }));
   registerProductPayloadContract(developmentVerificationPayloadContract);
-  registerFactoryCheckProvider(createDevelopmentVerificationCheckProvider({
-    db,
-    candidateSets: sharedDeps.candidateSetRepo,
-  }));
+  registerFactoryCheckProvider(options.verificationCheckProviderFactory
+    ? options.verificationCheckProviderFactory({
+      db,
+      candidateSets: sharedDeps.candidateSetRepo,
+    })
+    : createDevelopmentVerificationCheckProvider({
+      db,
+      candidateSets: sharedDeps.candidateSetRepo,
+    }));
   registerFactoryCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,

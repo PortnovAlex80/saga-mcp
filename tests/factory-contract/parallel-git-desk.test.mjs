@@ -115,6 +115,10 @@ async function setupFreshDb(repoPath, baseCommit) {
     (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
     VALUES (9102,1,'authoritative_state','factory-contract-deployment-state',
             'factory contract authoritative fixture','partial','factory-contract','L4','1.0.0','active')`).run();
+  db.prepare(`INSERT INTO trusted_providers
+    (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
+    VALUES (9103,1,'deterministic_evidence','development.verification-product-contract.v2',
+            'factory contract test verification provider','full','factory-contract','L0','2.0.0','active')`).run();
   ensureReplayCapsuleSchema(db);
   closeDb();
   const lifecycleInput = await buildLifecycleInput(baseCommit);
@@ -195,13 +199,14 @@ test('Parallel git_change Production Cells: concurrency=2 worktree isolation', {
 
     const db = new Database(dbPath, { readonly: true });
 
-    // Lifecycle must reach 'released' — proving Development integrated BOTH
+    // Lifecycle must reach 'verified-local' — proving Development integrated BOTH
     // implementation items without PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH.
+    // Under ADR-045, product-build@1.0.0 terminates at verified-local (no Delivery).
     const lifecycle = db.prepare('SELECT status,terminal_status,error FROM factory_lifecycle_runs LIMIT 1').get();
     assert.equal(
       `${lifecycle.status}/${lifecycle.terminal_status}`,
-      'completed/released',
-      `Lifecycle did not reach released. error=${lifecycle.error}\n${result.stderr.slice(-8000)}`,
+      'completed/verified-local',
+      `Lifecycle did not reach verified-local. error=${lifecycle.error}\n${result.stderr.slice(-8000)}`,
     );
     assert.ok(
       !lifecycle.error || !lifecycle.error.includes('PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH'),
