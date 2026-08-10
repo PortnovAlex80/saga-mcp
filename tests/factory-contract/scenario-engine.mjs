@@ -22,13 +22,16 @@
 //   - directly mutate DB tables
 //   - call lifecycle/dispatcher internals
 //
-// Invocation counting: the engine tracks every invocation by scenario key,
-// enabling tests to assert scripted worker invocation count == 0 for replay hits.
+// Invocation counting: every physical scenario process reserves its invocation
+// in a cross-process ledger before running the handler. Tests can therefore
+// distinguish repair/retry attempts and assert zero scripted calls on replay.
 
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
+
+const PROCESS_INSTANCE_ID = randomUUID();
 
 // --- MCP client (same stdio protocol as real workers) ---
 
@@ -140,10 +143,21 @@ export function scenarioKeyString(key) {
  * @param {string} opts.mcpConfigPath - MCP config file path
  * @param {object} opts.prompt - parsed prompt key-values
  * @param {object} opts.scenarios - map of scenarioKeyString → handler function
- * @param {object} opts.invocationLog - array to append invocation records to
+ * @param {object} opts.invocationLog - process-local invocation records
+ * @param {(record: object) => Promise<object>} [opts.reserveInvocation]
+ *   Cross-process atomic invocation reservation. The returned record must
+ *   contain a positive integer `attempt`.
  */
 export async function runScenarioWorker(opts) {
-  const { mcpConfigPath, prompt, scenarios, invocationLog, repoPath, desk } = opts;
+  const {
+    mcpConfigPath,
+    prompt,
+    scenarios,
+    invocationLog,
+    reserveInvocation,
+    repoPath,
+    desk,
+  } = opts;
   const taskId = Number(prompt.task_id);
   const executionId = prompt.execution_id;
   const workerId = prompt.worker_id;
@@ -156,13 +170,31 @@ export async function runScenarioWorker(opts) {
     const task = await client.callJson('task_get', { id: taskId });
     const key = scenarioKey(task);
     const keyStr = scenarioKeyString(key);
+    const invocationBase = {
+      keyStr,
+      key,
+      taskId,
+      executionId,
+      workerId,
+      processId: process.pid,
+      processInstanceId: PROCESS_INSTANCE_ID,
+      at: new Date().toISOString(),
+    };
 
-    // Count prior invocations for this scenario key to determine attempt number.
-    // This allows scenarios to behave differently on repair/retry attempts.
-    const attempt = invocationLog.filter(i => i.keyStr === keyStr).length + 1;
-
-    // Log invocation for assertion in tests
-    invocationLog.push({ keyStr, key, taskId, executionId, attempt, at: new Date().toISOString() });
+    // A new scripted worker is a new OS process. The dispatcher therefore
+    // reserves the attempt in a shared ledger before the handler runs. The
+    // in-memory fallback is retained for direct unit use of runScenarioWorker.
+    const invocation = typeof reserveInvocation === 'function'
+      ? await reserveInvocation(invocationBase)
+      : {
+          ...invocationBase,
+          attempt: invocationLog.filter(i => i.keyStr === keyStr).length + 1,
+        };
+    if (!Number.isSafeInteger(invocation.attempt) || invocation.attempt < 1) {
+      throw new Error(`SCENARIO_ATTEMPT_INVALID: ${JSON.stringify(invocation)}`);
+    }
+    invocationLog.push(invocation);
+    const attempt = invocation.attempt;
 
     // Find the handler — support exact match, wildcard role, and global fallback
     const handler = scenarios[keyStr]

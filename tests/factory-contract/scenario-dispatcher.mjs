@@ -9,7 +9,14 @@
 // .mjs module exporting a scenarios object). This allows different tests to
 // inject different scenario sets without changing the dispatcher.
 
-import { readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -36,6 +43,52 @@ function emit(type, extra = {}) {
   process.stdout.write(JSON.stringify({ type, ...extra }) + '\n');
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function readInvocationLedger(filePath) {
+  try {
+    const raw = readFileSync(filePath, 'utf8').trim();
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('SCENARIO_INVOCATION_LEDGER_INVALID: root must be an array');
+    }
+    return parsed;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function acquireLedgerLock(lockPath, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      mkdirSync(lockPath);
+      return;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+
+    // The critical section is one read + atomic rename. A lock older than the
+    // whole MCP timeout can only be orphaned by a dead scenario process.
+    try {
+      if (Date.now() - statSync(lockPath).mtimeMs > timeoutMs) {
+        rmSync(lockPath, { recursive: true, force: true });
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`SCENARIO_INVOCATION_LEDGER_LOCK_TIMEOUT: ${lockPath}`);
+    }
+    await sleep(10);
+  }
+}
+
 // Load scenario set from the env-specified module path
 const scenariosPath = process.env.SAGA_SCENARIOS;
 if (!scenariosPath) {
@@ -52,10 +105,40 @@ try {
   process.exit(2);
 }
 
-// Load the invocation log path — if set, every invocation is appended to this file
+// Every physical worker reserves one invocation before its handler runs. The
+// file is shared by all scenario processes in this test run.
 const invocationLogPath = process.env.SAGA_INVOCATION_LOG;
+const invocationLog = [];
 
-const { runScenarioWorker, scenarioKey, scenarioKeyString } = await import('./scenario-engine.mjs');
+async function reserveInvocation(baseRecord) {
+  if (!invocationLogPath) {
+    return {
+      ...baseRecord,
+      attempt: invocationLog.filter(item => item.keyStr === baseRecord.keyStr).length + 1,
+    };
+  }
+
+  const lockPath = `${invocationLogPath}.lock`;
+  let temporaryPath = null;
+  await acquireLedgerLock(lockPath);
+  try {
+    const existing = readInvocationLedger(invocationLogPath);
+    const record = {
+      ...baseRecord,
+      attempt: existing.filter(item => item.keyStr === baseRecord.keyStr).length + 1,
+    };
+    temporaryPath = `${invocationLogPath}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(temporaryPath, JSON.stringify([...existing, record], null, 2));
+    renameSync(temporaryPath, invocationLogPath);
+    temporaryPath = null;
+    return record;
+  } finally {
+    if (temporaryPath) rmSync(temporaryPath, { force: true });
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+const { runScenarioWorker } = await import('./scenario-engine.mjs');
 
 async function main() {
   // Parse argv for --mcp-config
@@ -70,7 +153,6 @@ async function main() {
 
   emit('system', { subtype: 'init' });
 
-  const invocationLog = [];
   // Git Desk parity: prefer the per-task worktree (SAGA_DESK_EXECUTION_PATH)
   // over the shared repository root. The scripted executor provisions a
   // worktree per git_change task (same as production RepositoryDeskProvisioner),
@@ -95,6 +177,7 @@ async function main() {
       prompt,
       scenarios,
       invocationLog,
+      reserveInvocation,
       repoPath,
       desk,
     });
@@ -102,26 +185,8 @@ async function main() {
   } catch (err) {
     process.stderr.write(`[scenario-dispatcher] FATAL: ${err.message}\n`);
     emit('result', { subtype: 'error', is_error: true });
-    // Write invocation log even on failure so tests can inspect
-    if (invocationLogPath && invocationLog.length > 0) {
-      try {
-        const existing = JSON.parse(readFileSync(invocationLogPath, 'utf8').trim() || '[]');
-        existing.push(...invocationLog);
-        writeFileSync(invocationLogPath, JSON.stringify(existing, null, 2));
-      } catch {}
-    }
+    // The invocation was already reserved durably before the handler ran.
     process.exit(1);
-  }
-
-  // Persist invocation log
-  if (invocationLogPath && invocationLog.length > 0) {
-    try {
-      const { readFileSync: rd, writeFileSync: wr } = await import('node:fs');
-      let existing = [];
-      try { existing = JSON.parse(rd(invocationLogPath, 'utf8').trim() || '[]'); } catch {}
-      existing.push(...invocationLog);
-      wr(invocationLogPath, JSON.stringify(existing, null, 2));
-    } catch {}
   }
 
   process.exit(0);

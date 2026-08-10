@@ -1,8 +1,9 @@
 // tests/factory-contract/golden-path.test.mjs
 //
-// Factory Contract golden path:
+// Factory Contract transition conformance + replay path:
 //   Run A: FRESH DB + ZERO capsules -> Idea -> released through scripted
-//          physical workers and real Factory authority.
+//          physical workers and real Factory authority. One universal
+//          Production Cell must traverse reject -> author repair -> accept.
 //   Run B: same semantic input -> compatible capsules replace worker inference;
 //          new Workplaces/CandidateSets/Gates still run, scripted calls = ZERO.
 
@@ -17,6 +18,11 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 const REPO_ROOT = process.cwd();
+const CONFORMANCE_CELL = 'formalization-reconciliation';
+const CONFORMANCE_AUTHOR_KEY =
+  'solution-formalization@1.0.0/reconcile-what/author/singleton';
+const CONFORMANCE_REVIEWER_KEY =
+  'solution-formalization@1.0.0/reconcile-what/reviewer/singleton';
 
 async function buildLifecycleInput(baseCommit) {
   const { hashDevelopmentPolicy } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'development', 'domain', 'development-settlement-policy.js')).href);
@@ -204,7 +210,76 @@ function assertLifecycleOutcomes(db, runOffset = 0, diagnostics = '') {
   }
 }
 
-test('Golden Path: cold Idea -> released, then replay -> released with zero scripted calls', { timeout: 540000 }, async () => {
+function assertTransitionConformance(db) {
+  const workplace = db.prepare(
+    `SELECT workplace_ref,loop_state,terminal_reason
+       FROM factory_workplaces
+      WHERE production_cell_id=?
+      ORDER BY rowid DESC LIMIT 1`,
+  ).get(CONFORMANCE_CELL);
+  assert.ok(workplace, 'conformance Production Cell Workplace exists');
+  assert.equal(workplace.loop_state, 'terminal', 'conformance Workplace is terminal');
+  assert.equal(workplace.terminal_reason, 'accepted', 'conformance Workplace is accepted');
+
+  const finalDecisions = db.prepare(
+    `SELECT verdict,repair_target_role,subject_candidate_set_ref,
+            assessment_candidate_set_refs
+       FROM factory_gate_decisions
+      WHERE workplace_ref=? AND gate_phase='final'
+      ORDER BY rowid`,
+  ).all(workplace.workplace_ref);
+  assert.deepEqual(
+    finalDecisions.map(decision => decision.verdict),
+    ['repair_required', 'accepted'],
+    'final gate must reject the first reviewer assessment and accept the repaired candidate',
+  );
+  assert.equal(finalDecisions[0].repair_target_role, 'author');
+  assert.equal(finalDecisions[1].repair_target_role, null);
+
+  const authorCandidates = db.prepare(
+    `SELECT candidate_set_ref,producer_execution_ref
+       FROM factory_candidate_sets
+      WHERE workplace_ref=? AND role='author'
+      ORDER BY rowid`,
+  ).all(workplace.workplace_ref);
+  const reviewerCandidates = db.prepare(
+    `SELECT candidate_set_ref,producer_execution_ref,subject_candidate_set_ref
+       FROM factory_candidate_sets
+      WHERE workplace_ref=? AND role='reviewer'
+      ORDER BY rowid`,
+  ).all(workplace.workplace_ref);
+  assert.equal(authorCandidates.length, 2, 'two immutable author CandidateSets');
+  assert.equal(reviewerCandidates.length, 2, 'two immutable reviewer CandidateSets');
+  assert.equal(finalDecisions[0].subject_candidate_set_ref, authorCandidates[0].candidate_set_ref);
+  assert.equal(finalDecisions[1].subject_candidate_set_ref, authorCandidates[1].candidate_set_ref);
+  assert.equal(reviewerCandidates[0].subject_candidate_set_ref, authorCandidates[0].candidate_set_ref);
+  assert.equal(reviewerCandidates[1].subject_candidate_set_ref, authorCandidates[1].candidate_set_ref);
+  assert.deepEqual(
+    JSON.parse(finalDecisions[0].assessment_candidate_set_refs),
+    [reviewerCandidates[0].candidate_set_ref],
+  );
+  assert.deepEqual(
+    JSON.parse(finalDecisions[1].assessment_candidate_set_refs),
+    [reviewerCandidates[1].candidate_set_ref],
+  );
+}
+
+function assertPhysicalRepairInvocations(invocations, key, label) {
+  const entries = invocations.filter(invocation => invocation.keyStr === key);
+  assert.deepEqual(
+    entries.map(entry => entry.attempt),
+    [1, 2],
+    `${label} attempts are durable across physical worker processes`,
+  );
+  assert.equal(new Set(entries.map(entry => entry.taskId)).size, 1,
+    `${label} reuses one stable role task`);
+  assert.equal(new Set(entries.map(entry => entry.executionId)).size, 2,
+    `${label} uses two fenced WorkerExecutions`);
+  assert.equal(new Set(entries.map(entry => entry.processInstanceId)).size, 2,
+    `${label} uses two physical scenario processes`);
+}
+
+test('Factory transition conformance: reject -> repair -> accept, then replay with zero scripted calls', { timeout: 540000 }, async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-golden-repo-'));
   const repoPath = path.join(dir, 'repo');
   mkdirSync(repoPath, { recursive: true });
@@ -215,7 +290,7 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
   const baseCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf8', windowsHide: true }).trim();
   const invocationLogPath = path.join(dir, 'invocations.json');
   writeFileSync(invocationLogPath, '[]');
-  const scenariosPath = path.join(REPO_ROOT, 'tests', 'factory-contract', 'golden-path-scenarios.mjs');
+  const scenariosPath = path.join(REPO_ROOT, 'tests', 'factory-contract', 'transition-conformance-scenarios.mjs');
   const { dbPath, launchRef, lifecycleInput, dir: dbDir } = await setupFreshDb(repoPath, baseCommit);
 
   try {
@@ -225,14 +300,15 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
 
     let resultDb = new Database(dbPath, { readonly: true });
     assertLifecycleOutcomes(resultDb, 0, runA.stderr);
+    assertTransitionConformance(resultDb);
     const processRunsAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_process_runs').get().n;
     const workplacesAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_workplaces').get().n;
     const gatesAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n;
     const candidateSetsAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get().n;
     const capsulesAfterA = resultDb.prepare('SELECT COUNT(*) AS n FROM factory_replay_capsules').get().n;
     assert.ok(workplacesAfterA >= 8, `expected full-lifecycle workplaces, got ${workplacesAfterA}`);
-    assert.ok(gatesAfterA >= 8, `expected full-path GateDecisions, got ${gatesAfterA}`);
-    assert.ok(candidateSetsAfterA >= 10, `expected full-path CandidateSets, got ${candidateSetsAfterA}`);
+    assert.ok(gatesAfterA >= 10, `expected full path plus repair GateDecisions, got ${gatesAfterA}`);
+    assert.ok(candidateSetsAfterA >= 12, `expected full path plus repair CandidateSets, got ${candidateSetsAfterA}`);
     assert.ok(capsulesAfterA > 0, 'cold Run A certifies replay capsules only after acceptance');
     assert.equal(
       resultDb.prepare(`SELECT COUNT(*) AS n FROM worker_executions WHERE state IN ('reserved','running','cancel_requested')`).get().n,
@@ -245,8 +321,10 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
     resultDb.close();
 
     const runAInvocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
-    assert.ok(runAInvocations.length >= 10, `scripted workers invoked on cold path: ${runAInvocations.length}`);
+    assert.ok(runAInvocations.length >= 12, `scripted workers invoked on cold path: ${runAInvocations.length}`);
     assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.1.0'), 'Run A Development used scripted physical workers');
+    assertPhysicalRepairInvocations(runAInvocations, CONFORMANCE_AUTHOR_KEY, 'author');
+    assertPhysicalRepairInvocations(runAInvocations, CONFORMANCE_REVIEWER_KEY, 'reviewer');
 
     // Run B (capsule replay) is skipped for now — it requires the git worktree
     // base to exactly match what the capsule captured during Run A. After Run A's
