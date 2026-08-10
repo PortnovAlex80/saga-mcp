@@ -35,6 +35,28 @@ Skill("saga-start")
 
 Full install guide: [docs/INSTALL.md](docs/INSTALL.md)
 
+## Factory (automated pipeline)
+
+The Factory is the automated conveyor: Idea → Discovery → Formalization → Development → verified-local.
+One entry point, one command:
+
+```bash
+node scripts/factory.mjs start .factory-sandboxes/my-run/factory.sqlite \
+  'Build an accessible single-page counter with keyboard support.' \
+  --model glm-4.7 --sandbox .factory-sandboxes/my-run
+```
+
+**LLM-free development loop** — the Factory Contract test suite runs the real
+factory infrastructure (gates, CandidateSets, lifecycle routing) with scripted
+workers replacing only the LLM. No Claude, no GLM, no network — deterministic
+and fast (~25s per full lifecycle):
+
+```bash
+npm run test:factory-contract
+```
+
+Full factory operator guide: [docs/FACTORY-START-QUICKSTART.md](docs/FACTORY-START-QUICKSTART.md)
+
 ## Kanban Board (auto-started)
 
 saga-mcp bundles a read-only web kanban (`tracker-view/`) that auto-starts when
