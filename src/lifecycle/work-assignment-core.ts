@@ -686,6 +686,52 @@ export interface ProjectedTaskPreparationCommand {
   currentExecutionId: string | null;
 }
 
+type ProductionSource = 'typed-submission' | 'managed-production';
+
+function resolveRoleProductSource(
+  db: Database.Database,
+  input: {
+    intentId: number;
+    role: 'author' | 'reviewer';
+    productSource?: ProductionSource;
+  },
+  metadata: Record<string, unknown>,
+): ProductionSource | undefined {
+  // Reviewer output is always a typed verdict product. Never inherit the
+  // author's managed-production source when a reviewed cell changes roles.
+  if (input.role === 'reviewer') return 'typed-submission';
+
+  // The cell declaration is authoritative when the composition path forwarded
+  // it correctly.
+  if (input.productSource) return input.productSource;
+
+  // Migration defence for c675caa: older composition adapters can drop the
+  // productSource field before activation. Preserve an already-stamped value
+  // first; otherwise recover the physical production protocol from the frozen
+  // WorkIntent capability set. Typed producers necessarily have product_submit;
+  // managed producers intentionally do not.
+  const existing = metadata.product_source;
+  if (existing === 'typed-submission' || existing === 'managed-production') {
+    return existing;
+  }
+  const intent = db.prepare(
+    'SELECT authority_scope FROM factory_work_intents WHERE id=?',
+  ).get(input.intentId) as { authority_scope: string } | undefined;
+  if (!intent) return undefined;
+  try {
+    const scope = JSON.parse(intent.authority_scope) as { allowed_tools?: unknown };
+    if (!Array.isArray(scope.allowed_tools)) return undefined;
+    const tools = scope.allowed_tools.filter(
+      (tool): tool is string => typeof tool === 'string',
+    );
+    return tools.includes('product_submit')
+      ? 'typed-submission'
+      : 'managed-production';
+  } catch {
+    return undefined;
+  }
+}
+
 /** Atomically publish the one claimable task card for a Production Cell role. */
 export function activateProductionCellRoleTask(
   db: Database.Database,
@@ -695,7 +741,7 @@ export function activateProductionCellRoleTask(
     workplaceRef: string;
     role: 'author' | 'reviewer';
     executionProfileId: string;
-    productSource?: 'typed-submission' | 'managed-production';
+    productSource?: ProductionSource;
   },
 ): void {
   withImmediateTransaction(db, () => {
@@ -710,7 +756,8 @@ export function activateProductionCellRoleTask(
     metadata.process_execution_profile_id = input.executionProfileId;
     metadata.workplace_ref = input.workplaceRef;
     metadata.role = input.role;
-    if (input.productSource) metadata.product_source = input.productSource;
+    const productSource = resolveRoleProductSource(db, input, metadata);
+    if (productSource) metadata.product_source = productSource;
     db.prepare(
       `UPDATE tasks SET status='done',assigned_to=NULL,current_execution_id=NULL,
               updated_at=datetime('now') WHERE workplace_ref=? AND id<>?`,

@@ -320,7 +320,9 @@ if (emittedBlocks === 0) {
 }
 
 lines.push('');
-lines.push('ACTION: follow the structured blocks above. Do not parse Markdown trackers.');
+lines.push(
+  'ACTION: follow the structured blocks above. Read only the exact tracker path they provide; do not discover trackers by scanning docs or guessing paths.',
+);
 
 const additionalContext = lines.join('\n');
 

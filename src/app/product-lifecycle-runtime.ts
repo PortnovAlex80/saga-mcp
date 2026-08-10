@@ -390,10 +390,22 @@ export function createProductLifecycleRuntime(
             return null;
           }
         },
-        activateRoleTask: ({ taskId, intentId, workplaceRef, role, executionProfileId }) => {
+        activateRoleTask: ({
+          taskId,
+          intentId,
+          workplaceRef,
+          role,
+          executionProfileId,
+          productSource,
+        }) => {
           const workplace = serializeWorkplaceRef(workplaceRef);
           activateProductionCellRoleTask(db, {
-            taskId, intentId, workplaceRef: workplace, role, executionProfileId,
+            taskId,
+            intentId,
+            workplaceRef: workplace,
+            role,
+            executionProfileId,
+            productSource,
           });
         },
         concludeExecutionIntent: (executionRef) => {
