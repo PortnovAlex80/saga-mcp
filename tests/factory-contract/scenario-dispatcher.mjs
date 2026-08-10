@@ -9,7 +9,7 @@
 // .mjs module exporting a scenarios object). This allows different tests to
 // inject different scenario sets without changing the dispatcher.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -70,6 +70,16 @@ async function main() {
 
   emit('system', { subtype: 'init' });
 
+  // Each physical worker is a fresh OS process. Attempt identity therefore
+  // cannot live only in this process's array: preload the durable history that
+  // prior workers appended, then record only this worker in invocationLog.
+  let priorInvocations = [];
+  if (invocationLogPath) {
+    try {
+      const parsed = JSON.parse(readFileSync(invocationLogPath, 'utf8').trim() || '[]');
+      if (Array.isArray(parsed)) priorInvocations = parsed;
+    } catch {}
+  }
   const invocationLog = [];
   // Git Desk parity: prefer the per-task worktree (SAGA_DESK_EXECUTION_PATH)
   // over the shared repository root. The scripted executor provisions a
@@ -95,6 +105,7 @@ async function main() {
       prompt,
       scenarios,
       invocationLog,
+      priorInvocations,
       repoPath,
       desk,
     });
