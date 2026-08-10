@@ -8,7 +8,15 @@ The detailed Russian operational runbook is
 [`ЗАВОД-ЗАПУСК.md`](ЗАВОД-ЗАПУСК.md). `scripts/factory.mjs` creates the durable
 Factory launch; `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` supplies lifecycle
 infrastructure providers and does not replace the real LLM worker. Always
-observe the tracker against the exact Factory DB used by the launch.
+observe the tracker against the exact Factory DB used by the launch. Set
+`SAGA_FACTORY_CONCURRENCY` before both `start` and `resume`; GLM-4.7 is capped
+at two concurrent workers by the canonical model profile. Use
+`--requeue-paused` only for an exhausted submission-preflight Workplace and
+`--recover-failed-gate` only for a verified post-seal provider-version
+mismatch; the full invariants are in the quickstart.
+For a terminal downstream failure with a certified upstream prefix, use the
+quickstart's `factory.mjs continue ... --check` procedure. Never reopen terminal
+rows or restore an older whole-factory checkpoint merely to retry one workshop.
 
 ## LM Studio: Qwen 3.6 chat template patch
 

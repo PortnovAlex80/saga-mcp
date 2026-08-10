@@ -35,16 +35,19 @@ import {
   type DevelopmentTaskGraphSnapshot,
   type IntegratedReleaseCandidate,
   type DevelopmentVerificationEvidenceProduct,
+  type VerificationProviderBinding,
 } from '../domain/development-schemas.js';
 import {
   hashAcceptanceVerification,
   hashImplementationWorkset,
   hashIntegratedCandidate,
 } from '../domain/development-settlement-policy.js';
+import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../infrastructure/source-change/managed-source-change-candidate.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 const PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE = 'development.integrated-candidate';
-
+const PROCESS_PRODUCT_KIND_ADOPTED_IMPLEMENTATION_WORKSET =
+  'development.adopted-implementation-workset';
 
 /**
  * SQLite-backed Development module store. Implements the declarative ports over
@@ -121,6 +124,58 @@ export class SqliteDevelopmentModuleStore implements
 
   // ----- DevelopmentSettlementStatePort --------------------------------
 
+  adoptVerificationBaseline(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+    taskGraph: DevelopmentTaskGraphSnapshot;
+    implementationWorkset: DevelopmentImplementationWorkset;
+    integratedCandidate: IntegratedReleaseCandidate;
+  }): {
+    taskGraph: ContentAddressedReference;
+    implementationWorkset: ContentAddressedReference;
+    integratedCandidate: ContentAddressedReference;
+  } {
+    this.assertDevelopmentScope(input.developmentCase);
+    if (
+      hashImplementationWorkset(input.implementationWorkset)
+        !== input.implementationWorkset.worksetHash
+      || hashIntegratedCandidate(input.integratedCandidate)
+        !== input.integratedCandidate.candidateHash
+      || input.implementationWorkset.taskGraphHash !== input.taskGraph.graphHash
+      || input.integratedCandidate.taskGraphHash !== input.taskGraph.graphHash
+      || input.integratedCandidate.implementationWorksetHash
+        !== input.implementationWorkset.worksetHash
+    ) {
+      throw new Error('DEVELOPMENT_VERIFICATION_ADOPTION_LINEAGE_INVALID');
+    }
+    const graph = this.materializeValidatedTaskGraph({
+      processRunId: input.processRunId,
+      developmentCase: input.developmentCase,
+      graph: input.taskGraph,
+    });
+    const workset = this.products.persist({
+      processRunId: input.processRunId,
+      productKind: PROCESS_PRODUCT_KIND_ADOPTED_IMPLEMENTATION_WORKSET,
+      schema: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
+      productHash: input.implementationWorkset.worksetHash,
+      payload: input.implementationWorkset,
+      artifactRefPrefix: 'development-adopted-implementation-workset',
+    }).record;
+    const candidate = this.products.persist({
+      processRunId: input.processRunId,
+      productKind: PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+      schema: INTEGRATED_CANDIDATE_SCHEMA,
+      productHash: input.integratedCandidate.candidateHash,
+      payload: input.integratedCandidate,
+      artifactRefPrefix: 'development-integrated-candidate',
+    }).record;
+    return {
+      taskGraph: graph.reference,
+      implementationWorkset: workset.reference,
+      integratedCandidate: candidate.reference,
+    };
+  }
+
   freezeIntegratedCandidate(input: {
     processRunId: number;
     developmentCase: DevelopmentCase;
@@ -154,19 +209,29 @@ export class SqliteDevelopmentModuleStore implements
     const accepted = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
       input.processRunId,
       'development-implementation',
-      DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+      [DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA, SOURCE_CHANGE_CANDIDATE_SCHEMA],
     );
-    const taskRows = accepted.map(product => this.db.prepare(
-      `SELECT integration_state,integrated_commit
-         FROM tasks WHERE id=?`,
-    ).get(product.taskId) as {
-      integration_state: string;
-      integrated_commit: string | null;
-    } | undefined);
-    if (taskRows.some(row => row?.integration_state === 'pending')) {
-      return { status: 'waiting', reasonCodes: ['implementation-integration-pending'] };
-    }
-    if (taskRows.some(row => row?.integration_state !== 'merged' || !row.integrated_commit)) {
+    const integrations = accepted.map(product => {
+      const receipts = this.db.prepare(
+        `SELECT effect_receipt_ref,evidence_snapshot
+           FROM factory_cell_effect_receipts
+          WHERE workplace_ref=? AND candidate_set_ref=?
+            AND effect_id='git-integration'`,
+      ).all(product.workplaceRef, product.candidateSetRef) as Array<{
+        effect_receipt_ref: string;
+        evidence_snapshot: string;
+      }>;
+      if (receipts.length !== 1) return null;
+      const evidence = JSON.parse(receipts[0]!.evidence_snapshot) as unknown;
+      if (!isRecord(evidence)) return null;
+      const integratedCommit = stringValue(evidence.providerEffectId);
+      if (!/^[a-f0-9]{40}$/u.test(integratedCommit)) return null;
+      return {
+        effectReceiptRef: receipts[0]!.effect_receipt_ref,
+        integratedCommit,
+      };
+    });
+    if (integrations.some(receipt => receipt === null)) {
       return { status: 'failed', reasonCodes: ['implementation-integration-not-merged'] };
     }
     try {
@@ -199,7 +264,7 @@ export class SqliteDevelopmentModuleStore implements
         digest: repository.treeHash,
       }));
       const integrationIntentRefs = accepted.map((product, index) =>
-        `task-integration:${product.taskId}:${taskRows[index]!.integrated_commit}`)
+        `${integrations[index]!.effectReceiptRef}:task:${product.taskId}:commit:${integrations[index]!.integratedCommit}`)
         .sort();
       const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
@@ -242,12 +307,13 @@ export class SqliteDevelopmentModuleStore implements
     // Reconstruct module semantics exclusively from accepted, sealed cell
     // products. `tasks` is a disposable queue/card projection and is never a
     // settlement authority (ADR-030).
-    const implementation = taskGraph
-      ? this.buildImplementationWorkset(
-        input.processRunId,
-        taskGraph,
-      )
-      : null;
+    const adoptedImplementation = this.products.read<DevelopmentImplementationWorkset>(
+      input.processRunId,
+      PROCESS_PRODUCT_KIND_ADOPTED_IMPLEMENTATION_WORKSET,
+    );
+    const implementation = adoptedImplementation?.payload ?? (taskGraph
+      ? this.buildImplementationWorkset(input.processRunId, taskGraph)
+      : null);
     const candidateProduct = this.products.read<IntegratedReleaseCandidate>(
       input.processRunId,
       PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
@@ -277,9 +343,8 @@ export class SqliteDevelopmentModuleStore implements
       acceptanceVerification: verification,
       productReferences: {
         taskGraph: taskGraphRef,
-        implementationWorkset: implementation
-          ? refOfWorkset(input.processRunId, implementation)
-          : null,
+        implementationWorkset: adoptedImplementation?.reference
+          ?? (implementation ? refOfWorkset(input.processRunId, implementation) : null),
         integratedCandidate: candidateProduct?.reference ?? null,
         acceptanceVerification: verification
           ? refOfVerification(input.processRunId, verification)
@@ -299,7 +364,7 @@ export class SqliteDevelopmentModuleStore implements
     const products = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
       processRunId,
       'development-implementation',
-      DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+      [DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA, SOURCE_CHANGE_CANDIDATE_SCHEMA],
     );
     const byKey = new Map(products.map(product => [product.payload.workItemKey, product]));
     const results = taskGraph.implementationItems.map(item => {
@@ -384,6 +449,11 @@ export class SqliteDevelopmentModuleStore implements
         || product.payload.acceptedCriterionHash !== criterion.acceptedHash
         || product.payload.candidateHash !== candidate.candidateHash
       ) continue;
+      const authority = this.readTrustedVerificationReceipt(
+        developmentCase.projectId,
+        product.candidateSetRef,
+      );
+      if (!authority) continue;
       evidence.push({
         verificationItemKey: item.key,
         taskId: product.taskId,
@@ -391,9 +461,11 @@ export class SqliteDevelopmentModuleStore implements
         acceptanceCriterionId: criterionId,
         acceptedCriterionHash: product.payload.acceptedCriterionHash,
         candidateHash: product.payload.candidateHash,
-        outcome: product.payload.outcome,
-        evidence: product.payload.evidence,
-        provider: product.payload.provider,
+        // Outcome and authority come from the immutable executable provider
+        // receipt, never from the LM assessment payload or task metadata.
+        outcome: authority.outcome,
+        evidence: authority.evidence,
+        provider: authority.provider,
       });
     }
 
@@ -417,10 +489,81 @@ export class SqliteDevelopmentModuleStore implements
     };
   }
 
+  private readTrustedVerificationReceipt(
+    projectId: number,
+    candidateSetRef: string,
+  ): {
+    outcome: 'passed';
+    evidence: ContentAddressedReference;
+    provider: VerificationProviderBinding;
+  } | null {
+    const rows = this.db.prepare(
+      `SELECT cr.check_receipt_ref,cr.receipt_digest,cr.provider_id,
+              cr.provider_version,cr.outcome,cr.evidence_refs,
+              tp.id AS trusted_provider_id,tp.name,tp.version
+         FROM factory_check_receipts cr
+         JOIN factory_gate_decisions gd
+           ON gd.gate_run_ref=cr.check_run_ref
+          AND gd.subject_candidate_set_ref=cr.subject_candidate_set_ref
+         JOIN trusted_providers tp
+           ON tp.name=cr.provider_id
+          AND (tp.project_id=? OR tp.project_id IS NULL)
+          AND tp.category='deterministic_evidence'
+          AND tp.determinism='full'
+          AND tp.status='active'
+        WHERE cr.subject_candidate_set_ref=?
+          AND cr.outcome='passed'
+          AND gd.gate_phase='final'
+          AND gd.verdict='accepted'
+        ORDER BY tp.project_id DESC,cr.check_receipt_ref`,
+    ).all(projectId, candidateSetRef) as Array<{
+      check_receipt_ref: string;
+      receipt_digest: string;
+      provider_id: string;
+      provider_version: string;
+      outcome: 'passed';
+      evidence_refs: string;
+      trusted_provider_id: number;
+      name: string;
+      version: string | null;
+    }>;
+    const admissible = rows.filter(row => {
+      if (row.version !== null && row.version !== row.provider_version) return false;
+      try {
+        const refs = JSON.parse(row.evidence_refs) as unknown;
+        return Array.isArray(refs)
+          && refs.length > 0
+          && refs.every(ref => typeof ref === 'string' && ref.length > 0);
+      } catch {
+        return false;
+      }
+    });
+    // v2 workset has one provider binding per AC. Multiple executable
+    // authorities need an explicit aggregation receipt rather than an
+    // arbitrary winner.
+    if (admissible.length !== 1) return null;
+    const row = admissible[0]!;
+    return {
+      outcome: 'passed',
+      evidence: {
+        schema: 'factory.check-receipt.v1',
+        ref: row.check_receipt_ref,
+        hash: row.receipt_digest,
+      },
+      provider: {
+        providerId: row.trusted_provider_id,
+        name: row.name,
+        version: row.version,
+        category: 'deterministic_evidence',
+        trusted: true,
+      },
+    };
+  }
+
   private readAcceptedCellProducts<T>(
     processRunId: number,
     cellId: string,
-    schemaId: string,
+    schemaId: string | readonly string[],
   ): Array<{
     workplaceRef: string;
     candidateSetRef: string;
@@ -428,16 +571,21 @@ export class SqliteDevelopmentModuleStore implements
     executionId: string;
     reviewExecutionId: string | null;
     reference: ContentAddressedReference;
+    taskMetadata: unknown;
     payload: T;
   }> {
+    const schemaIds = typeof schemaId === 'string' ? [schemaId] : [...schemaId];
+    if (schemaIds.length === 0) return [];
     const rows = this.db.prepare(
       `SELECT w.workplace_ref AS workplaceRef,
               cs.candidate_set_ref AS candidateSetRef,
               cs.producer_execution_ref AS executionId,
               submission.id AS submissionId,
-              submission.task_id AS taskId,
+              current_task.id AS taskId,
+              current_task.metadata AS taskMetadata,
               submission.payload_snapshot AS payloadSnapshot,
               submission.content_hash AS contentHash,
+              member.product_schema AS productSchema,
               (SELECT reviewer.producer_execution_ref
                  FROM factory_candidate_sets reviewer
                 WHERE reviewer.workplace_ref=w.workplace_ref
@@ -449,22 +597,27 @@ export class SqliteDevelopmentModuleStore implements
            ON cs.workplace_ref=w.workplace_ref AND cs.role='author'
          JOIN factory_candidate_set_members member
            ON member.candidate_set_ref=cs.candidate_set_ref
-          AND member.product_schema=?
+          AND member.product_schema IN (${schemaIds.map(() => '?').join(',')})
          JOIN factory_managed_node_submissions submission
            ON member.product_ref='managed-node-submission:' || submission.id
+         JOIN tasks current_task
+           ON current_task.workplace_ref=w.workplace_ref
+          AND json_extract(current_task.metadata,'$.role')='author'
         WHERE w.process_run_id=?
           AND w.production_cell_id=?
           AND w.loop_state='terminal'
           AND w.terminal_reason='accepted'
         ORDER BY w.workplace_ref,cs.sealed_at DESC,cs.candidate_set_ref DESC`,
-    ).all(schemaId, processRunId, cellId) as Array<{
+    ).all(...schemaIds, processRunId, cellId) as Array<{
       workplaceRef: string;
       candidateSetRef: string;
       executionId: string;
       submissionId: number;
       taskId: number;
+      taskMetadata: string;
       payloadSnapshot: string;
       contentHash: string;
+      productSchema: string;
       reviewExecutionId: string | null;
     }>;
     const seen = new Set<string>();
@@ -482,10 +635,11 @@ export class SqliteDevelopmentModuleStore implements
         executionId: row.executionId,
         reviewExecutionId: row.reviewExecutionId,
         reference: {
-          schema: schemaId,
+          schema: row.productSchema,
           ref: `managed-node-submission:${row.submissionId}`,
           hash: row.contentHash,
         },
+        taskMetadata: JSON.parse(row.taskMetadata) as unknown,
         payload,
       }];
     });
@@ -777,6 +931,14 @@ function parseMetadata(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 export function ensureDevelopmentStoreSchema(db: Database.Database): void {

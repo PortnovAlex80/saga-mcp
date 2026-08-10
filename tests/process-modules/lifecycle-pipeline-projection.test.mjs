@@ -447,6 +447,48 @@ test('buildPipelineView returns null when no run exists for the epic', () => {
   assert.equal(view, null);
 });
 
+test('continuation renders accepted-prefix stages as inherited, not re-executed', () => {
+  const continuationDefinition = structuredClone(productDeliveryDefinition);
+  continuationDefinition.identity = {
+    ...continuationDefinition.identity,
+    name: 'product-delivery-continuation',
+    displayName: 'Product Delivery Continuation',
+  };
+  continuationDefinition.entryStageId = 'solution-development';
+  continuationDefinition.inheritedStages = continuationDefinition.stages
+    .slice(0, 2)
+    .map(({ id, displayName, moduleRef }) => ({ id, displayName, moduleRef }));
+  continuationDefinition.stages = continuationDefinition.stages.slice(2);
+  const run = baseRun({
+    id: 27,
+    definitionSnapshot: canonicalJson(continuationDefinition),
+    inputSnapshot: canonicalJson({
+      continuation: { parentLifecycleRunId: 26 },
+    }),
+    currentStageId: 'solution-development',
+    status: 'paused',
+  });
+  const view = projectPipeline(run, [
+    baseStageRun({
+      lifecycleRunId: 27,
+      stageId: 'solution-development',
+      status: 'paused',
+      localOutcome: null,
+    }),
+  ]);
+
+  assert.equal(view.run.continuationOf, 26);
+  assert.deepEqual(
+    view.stages.map(stage => [stage.stageId, stage.status, stage.isInherited ?? false]),
+    [
+      ['initial-discovery', 'completed', true],
+      ['solution-formalization', 'completed', true],
+      ['solution-development', 'paused', false],
+      ['delivery-release', 'pending', false],
+    ],
+  );
+});
+
 test('buildPipelineView delegates to projectPipeline for the most recent run', () => {
   const run = baseRun();
   const stageRuns = [

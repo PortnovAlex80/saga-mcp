@@ -350,6 +350,9 @@ export function createBoardRenderApi({
         ${e.needs_human === 1 ? `
           <span class="task-badge" style="color:#f85149;background:rgba(231,76,60,.15)" title="${esc(e.pause_reason || 'engine paused')}">⚠ engine paused</span>
         ` : ''}
+        ${Number(e.active_workers || 0) > 0 ? `
+          <span class="task-badge" style="color:#3fb950;background:rgba(46,160,67,.15)" title="Lifecycle ждёт результаты активных исполнителей">● рабочие работают: ${Number(e.active_workers)}</span>
+        ` : ''}
       </div>`).join('');
     const repoBindings = withDb(db => db.prepare(`
       SELECT pr.id,r.name,pr.status FROM project_repositories pr
@@ -545,6 +548,9 @@ export function createBoardRenderApi({
           });
         }
         window.__activeWorkers = next;
+        window.dispatchEvent(new CustomEvent('saga:active-workers-changed', {
+          detail: { count: active.length },
+        }));
         applyStreamingDots();
         // Recovery banner: show only when at least one recovery.heal worker is
         // active. Hidden otherwise. Single line at the bottom of sidebar — no

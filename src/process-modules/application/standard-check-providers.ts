@@ -72,6 +72,7 @@ export function buildCheckPlan(
     parameters?: Readonly<Record<string, unknown>>;
     repairTargetRoleOnFailure?: 'author' | 'reviewer';
     repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';
+    indeterminateDisposition?: 'repair' | 'human-required';
   }[] = [],
   options: { includeProductContract?: boolean } = {},
 ): CheckPlan {
@@ -99,6 +100,9 @@ export function buildCheckPlan(
         : {}),
       ...(check.repairTargetRoleOnIndeterminate
         ? { repairTargetRoleOnIndeterminate: check.repairTargetRoleOnIndeterminate }
+        : {}),
+      ...(check.indeterminateDisposition
+        ? { indeterminateDisposition: check.indeterminateDisposition }
         : {}),
       environmentRef: null,
     })),

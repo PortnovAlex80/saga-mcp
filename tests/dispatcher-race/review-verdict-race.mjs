@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import Database from 'better-sqlite3';
+import { ensureRunningProcessRun } from './process-run-fixture.mjs';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(dirname(thisDir));
@@ -28,6 +29,7 @@ setup.prepare("INSERT INTO projects (name) VALUES ('verdict-race')").run();
 const pid = setup.prepare("SELECT id FROM projects WHERE name='verdict-race'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(pid);
 const eid = setup.prepare("SELECT id FROM epics WHERE name='e'").get().id;
+ensureRunningProcessRun(setup, 3001, pid, eid);
 // saga4 authority gate (findNextClaimable): a card is claimable ONLY if
 // metadata.process_run_id IS NOT NULL. Stamp it so worker_next can claim the
 // review card into review_in_progress and create the worker_executions fence.

@@ -10,15 +10,17 @@ mock or hybrid run.
 npm run build
 ```
 
-## 2. Set the required composition
+## 2. Composition and runtime controls
 
-`factory.mjs` is the launch command, but the lifecycle runtime must also be
-given an explicit composition module. The composition wires infrastructure
-providers; it does not replace the LLM worker.
+`factory.mjs` uses the canonical production composition at
+`tracker-view/product-delivery-composition.mjs`. The composition wires
+infrastructure providers; it does not replace the LLM worker. Set
+`SAGA_PRODUCT_LIFECYCLE_COMPOSITION` only to intentionally override it.
 
 ```powershell
-$env:SAGA_PRODUCT_LIFECYCLE_COMPOSITION =
-  (Resolve-Path 'tracker-view/product-delivery-composition.mjs').Path
+# Optional override. scripts/factory.mjs defaults to the canonical production
+# composition at tracker-view/product-delivery-composition.mjs and validates it
+# before creating or recovering a launch.
 $env:SAGA_FACTORY_CONCURRENCY = '2'
 $env:SAGA_FACTORY_CHECKPOINT_LOGS = '1'
 ```
@@ -101,13 +103,17 @@ and gates; it never restores old Workplace state or external-effect receipts.
 For an interrupted run, use the canonical resume command against the same DB:
 
 ```powershell
-$env:SAGA_PRODUCT_LIFECYCLE_COMPOSITION =
-  (Resolve-Path 'tracker-view/product-delivery-composition.mjs').Path
 node scripts/factory.mjs resume $db
 ```
 
 Resume continues the same LifecycleRun. An intentional new start creates new
 run identities and may reuse semantically compatible replay capsules.
+
+Set `SAGA_FACTORY_CONCURRENCY` before both `start` and `resume`. The runtime
+uses the durable operator value capped by the canonical model profile and
+counts all durable active executions before each new assignment. Lowering the
+value never kills active workers; it suppresses replacements until the active
+cohort is below the new ceiling.
 
 If incident triage proves that the current Workplace is `blocked/paused`
 because submission-preflight rejections exhausted the worker-attempt budget,
@@ -123,6 +129,94 @@ feedback predates the durable rejection ledger, records exact recovery
 feedback, verifies the artifact/file snapshot and absence of active actors,
 persists a single-use operator authorization, then requeues by Workplace CAS.
 It refuses already completed/gated work and does not accept any artifact.
+
+If a run failed after CandidateSet sealing only because the pinned check plan
+and runtime provider versions differ, use the separate failed-gate recovery:
+
+```powershell
+node scripts/factory.mjs resume $db --recover-failed-gate
+```
+
+This is not a general retry. It requires the exact provider-version mismatch,
+an unchanged sealed CandidateSet and product hashes, a compatible passed-check
+prefix, no GateDecision and no live actors. It preserves the abandoned GateRun
+as immutable evidence and never reruns the accepted author or aliases an
+obsolete provider version. The two recovery flags are mutually exclusive.
+
+### Continue after a terminal downstream workshop failure
+
+Do not use `resume`, `start`, checkpoint restore, or the legacy stage-reset
+script when a terminal run has an exact accepted upstream prefix. Create an
+append-only continuation only after its incident-specific adoption evidence
+has passed the dry check:
+
+```powershell
+node scripts/factory.mjs continue $db `
+  --from-lifecycle 1 `
+  --adopt-task 15 `
+  --scope index.html `
+  --scope js/app.js `
+  --scope css/styles.css `
+  --check
+```
+
+`--check` uses a SQLite backup and consumes no live authorization. The real
+command is identical without `--check`. It first writes a SQLite backup, then
+creates a child LifecycleRun in the same FactoryOrder chain and launches that
+child. The failed parent remains terminal and visible. Accepted inherited
+stages appear in the pipeline as `inherited`; they have no child StageRuns and
+must not start workers again.
+
+The command is intentionally narrow: the parent must have the exact terminal
+Development incident, the adopted task must have verifiable acceptance and Git
+integration evidence, the repository head must still match, and there must be
+no competing active leaf. Any mismatch fails closed.
+
+For a continuation of a failed continuation, `--from-lifecycle` names the
+latest failed leaf, not the immutable root. The command verifies and carries
+the complete inherited prefix recursively; `factory_orders.lifecycle_run_id`
+continues to point at the root. It never forks an older ancestor.
+
+If that leaf failed after an exact author CandidateSet passed its author gate
+but before any reviewer CandidateSet/final gate/effect existed, the command may
+also create a narrow immutable carry-forward authorization. The child then
+creates a NEW current author CandidateSet, runs the CURRENT author gate and
+hires a fresh reviewer. The old CandidateSet/decision remain evidence; no old
+review verdict or final acceptance is copied. A mismatch in product schema,
+item contract, source/base Git identity, failure class or canonical head makes
+the carry-forward ineligible and fails closed.
+
+If the latest leaf failed only after final gate + Git EffectReceipt +
+CellFinalAcceptance, use that leaf and its current integrated author task as
+the adoption source. The dry check must prove the canonical head equals the
+recorded effect, the source commit is already an ancestor, and the failure is
+the exact post-acceptance projection class. The child does not rerun the author
+and the Git provider returns `already-applied`; it still creates current gates
+and continues through candidate freeze and verification. Never point the
+command back at an older leaf merely because its original baseline still
+matches an earlier commit.
+
+Do **not** use the current implementation continuation after the integrated
+candidate has already been frozen and only verification/settlement is blocked.
+That is a later authority boundary: author carry-forward is inapplicable, and
+the current package would materialize a new implementation item. A dry check
+returning `authorCarryForwardAuthorizationRef: null` is therefore not launch
+permission for the implementation continuation. Use the verification-only
+suffix:
+
+```powershell
+node scripts/factory.mjs continue <db> `
+  --from-lifecycle <latest-terminal-leaf> --verification-only --check
+```
+
+Preflight must adopt the exact task graph, implementation workset, frozen
+candidate and effect receipts, report no author carry-forward, and recover the
+complete hash-pinned verification-method plan. The same command without
+`--check` is launchable only when every required executable provider and
+authorized-observer receipt is present. Missing manual/visual/screen-reader
+authority is `human_required`, not permission to repeat implementation or
+manufacture a pass. This rule prevents repeating accepted warehouse
+production.
 
 ## 9. Evidence files
 

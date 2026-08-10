@@ -103,6 +103,7 @@ function makeFakeApplication({ episodes }) {
  *  drains quickly, but the whole dispatch phase window is captured. */
 function makeInstrumentedDispatch({ pollMs = 3 }) {
   let dispatchRunning = false;
+  let activeWorkers = 0;
   const windows = /** @type {Window[]} */ ([]);
 
   function makeIdGenerator() {
@@ -127,13 +128,19 @@ function makeInstrumentedDispatch({ pollMs = 3 }) {
     };
   }
   function autoFactory() {
+    let completed = false;
     return {
       start(input) {
+        activeWorkers += 1;
         return { status: 'running' };
       },
       stop() {},
       status() {
         // Auto-complete on the first poll so dispatch drains fast.
+        if (!completed) {
+          completed = true;
+          activeWorkers -= 1;
+        }
         return { status: 'completed', completed: 1, failed: 0 };
       },
       setConcurrency() {},
@@ -151,7 +158,12 @@ function makeInstrumentedDispatch({ pollMs = 3 }) {
       const terminal = await distributeQueuedTasks({
         projectId: 42,
         epicId: 7,
-        concurrency,
+        readConcurrencyAdmission: () => ({
+          operatorConcurrency: concurrency,
+          modelConcurrencyLimit: concurrency,
+          effectiveConcurrency: concurrency,
+          activeExecutions: activeWorkers,
+        }),
         workerExecutorFactory: autoFactory,
         workAssignment: makeWorkAssignment(cardCount),
         idGenerator: makeIdGenerator(),

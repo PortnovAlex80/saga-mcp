@@ -1102,7 +1102,7 @@ CREATE TABLE IF NOT EXISTS factory_workplaces (
   kanban_phase        TEXT NOT NULL
                         CHECK (kanban_phase IN ('todo','in_progress','review','review_in_progress','blocked','done','failed','cancelled')),
   loop_state          TEXT NOT NULL
-                        CHECK (loop_state IN ('idle','queued','leased','running','verifying','repair_wait','paused','terminal')),
+                        CHECK (loop_state IN ('idle','queued','leased','running','verifying','effect_pending','repair_wait','paused','terminal')),
   next_role           TEXT NOT NULL CHECK (next_role IN ('author','reviewer')),
   terminal_reason     TEXT CHECK (terminal_reason IN ('accepted','failed','cancelled') OR terminal_reason IS NULL),
   -- Monotonic CAS token (REG-05-AC-06).
@@ -1120,6 +1120,166 @@ CREATE TABLE IF NOT EXISTS factory_workplaces (
 CREATE INDEX IF NOT EXISTS idx_factory_workplaces_process_run ON factory_workplaces(process_run_id);
 CREATE INDEX IF NOT EXISTS idx_factory_workplaces_loop_state ON factory_workplaces(loop_state);
 CREATE INDEX IF NOT EXISTS idx_factory_workplaces_kanban_phase ON factory_workplaces(kanban_phase);
+
+-- A fan-out Production Cell is one immutable dependency graph, not a set of
+-- task-status observations. task_dependencies is a rebuildable projection.
+CREATE TABLE IF NOT EXISTS factory_workplace_graphs (
+  graph_ref            TEXT PRIMARY KEY,
+  process_run_id       INTEGER NOT NULL,
+  module_ref           TEXT NOT NULL,
+  production_cell_id   TEXT NOT NULL,
+  graph_digest         TEXT NOT NULL,
+  item_count           INTEGER NOT NULL CHECK (item_count > 0),
+  edge_count           INTEGER NOT NULL CHECK (edge_count >= 0),
+  sealed_at            TEXT NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (process_run_id, module_ref, production_cell_id)
+);
+
+CREATE TABLE IF NOT EXISTS factory_workplace_graph_items (
+  graph_ref            TEXT NOT NULL,
+  ordinal              INTEGER NOT NULL,
+  item_id              TEXT NOT NULL,
+  workplace_ref        TEXT NOT NULL,
+  task_id              INTEGER NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (graph_ref, item_id),
+  UNIQUE (graph_ref, ordinal),
+  UNIQUE (graph_ref, workplace_ref),
+  UNIQUE (graph_ref, task_id),
+  FOREIGN KEY (graph_ref) REFERENCES factory_workplace_graphs(graph_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS factory_workplace_dependencies (
+  graph_ref                 TEXT NOT NULL,
+  workplace_ref             TEXT NOT NULL,
+  depends_on_workplace_ref  TEXT NOT NULL,
+  created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (graph_ref, workplace_ref, depends_on_workplace_ref),
+  CHECK (workplace_ref <> depends_on_workplace_ref),
+  FOREIGN KEY (graph_ref) REFERENCES factory_workplace_graphs(graph_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (depends_on_workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_workplace_dependencies_dependent
+  ON factory_workplace_dependencies(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_workplace_dependencies_prerequisite
+  ON factory_workplace_dependencies(depends_on_workplace_ref);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_graphs_no_update
+BEFORE UPDATE ON factory_workplace_graphs BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_graphs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_graphs_no_delete
+BEFORE DELETE ON factory_workplace_graphs BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_graphs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_graph_items_no_update
+BEFORE UPDATE ON factory_workplace_graph_items BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_graph_items are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_graph_items_no_delete
+BEFORE DELETE ON factory_workplace_graph_items BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_graph_items are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_dependencies_no_update
+BEFORE UPDATE ON factory_workplace_dependencies BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_dependencies are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_dependencies_no_delete
+BEFORE DELETE ON factory_workplace_dependencies BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_dependencies are immutable');
+END;
+
+-- The stage input's expectedBaseCommit is a lineage anchor, not the base for
+-- every fan-out author. Before an author is spawned the Factory freezes the
+-- effective repository base for that exact execution. A root item may use
+-- the lineage anchor; a dependent item uses the observed integration head
+-- after all of its repository prerequisites have settled.
+CREATE TABLE IF NOT EXISTS factory_effective_desk_base_receipts (
+  receipt_ref                    TEXT PRIMARY KEY,
+  execution_ref                  TEXT NOT NULL UNIQUE,
+  task_id                        INTEGER NOT NULL,
+  workplace_ref                  TEXT NOT NULL,
+  process_run_id                 INTEGER NOT NULL,
+  project_repository_id          INTEGER NOT NULL,
+  integration_branch             TEXT NOT NULL,
+  lineage_anchor_commit          TEXT NOT NULL,
+  effective_base_commit          TEXT NOT NULL,
+  observed_integration_head      TEXT NOT NULL,
+  dependency_task_ids            TEXT NOT NULL DEFAULT '[]',
+  dependency_integrated_commits  TEXT NOT NULL DEFAULT '[]',
+  receipt_digest                 TEXT NOT NULL UNIQUE,
+  created_at                     TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE RESTRICT,
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (project_repository_id) REFERENCES project_repositories(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_effective_desk_base_task
+  ON factory_effective_desk_base_receipts(task_id);
+CREATE INDEX IF NOT EXISTS idx_factory_effective_desk_base_workplace
+  ON factory_effective_desk_base_receipts(workplace_ref);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_effective_desk_base_no_update
+BEFORE UPDATE ON factory_effective_desk_base_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_effective_desk_base_receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_effective_desk_base_no_delete
+BEFORE DELETE ON factory_effective_desk_base_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_effective_desk_base_receipts are immutable');
+END;
+
+CREATE TABLE IF NOT EXISTS factory_cell_effect_receipts (
+  effect_receipt_ref       TEXT PRIMARY KEY,
+  workplace_ref            TEXT NOT NULL,
+  effect_id                TEXT NOT NULL,
+  candidate_set_ref        TEXT NOT NULL,
+  gate_decision_key        TEXT NOT NULL,
+  provider_receipt_ref     TEXT NOT NULL,
+  provider_receipt_digest  TEXT NOT NULL,
+  evidence_snapshot        TEXT NOT NULL DEFAULT '{}',
+  receipt_digest           TEXT NOT NULL UNIQUE,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (workplace_ref,effect_id,candidate_set_ref),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (candidate_set_ref) REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
+  final_acceptance_ref     TEXT PRIMARY KEY,
+  workplace_ref            TEXT NOT NULL UNIQUE,
+  candidate_set_ref        TEXT NOT NULL,
+  gate_decision_key        TEXT NOT NULL,
+  effect_receipt_refs      TEXT NOT NULL DEFAULT '[]',
+  acceptance_digest        TEXT NOT NULL UNIQUE,
+  accepted_at              TEXT NOT NULL,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (candidate_set_ref) REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_receipts_no_update
+BEFORE UPDATE ON factory_cell_effect_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_effect_receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_receipts_no_delete
+BEFORE DELETE ON factory_cell_effect_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_effect_receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_final_acceptances_no_update
+BEFORE UPDATE ON factory_cell_final_acceptances BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_final_acceptances are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_final_acceptances_no_delete
+BEFORE DELETE ON factory_cell_final_acceptances BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_final_acceptances are immutable');
+END;
 
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
@@ -1342,6 +1502,254 @@ CREATE TABLE IF NOT EXISTS factory_orders (
 -- Multiple intentional starts may share the same source bytes.
 CREATE INDEX IF NOT EXISTS idx_factory_orders_source_digest
   ON factory_orders(source_digest) WHERE source_digest IS NOT NULL;
+
+-- Append-only lifecycle lineage. factory_orders.lifecycle_run_id remains the
+-- immutable root pointer; the active/completed leaf is projected from this
+-- chain instead of rewriting the failed parent into a fictitious success.
+CREATE TABLE IF NOT EXISTS factory_order_runs (
+  order_ref            TEXT NOT NULL REFERENCES factory_orders(order_ref) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER NOT NULL UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  ordinal              INTEGER NOT NULL,
+  parent_lifecycle_run_id INTEGER REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  kind                 TEXT NOT NULL CHECK (kind IN ('root','continuation')),
+  continuation_ref     TEXT,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (order_ref, ordinal),
+  UNIQUE (order_ref, parent_lifecycle_run_id),
+  CHECK (
+    (kind='root' AND ordinal=0 AND parent_lifecycle_run_id IS NULL AND continuation_ref IS NULL)
+    OR
+    (kind='continuation' AND ordinal>0 AND parent_lifecycle_run_id IS NOT NULL AND continuation_ref IS NOT NULL)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS factory_continuation_authorizations (
+  authorization_ref    TEXT PRIMARY KEY,
+  schema_id             TEXT NOT NULL,
+  order_ref             TEXT NOT NULL REFERENCES factory_orders(order_ref) ON DELETE RESTRICT,
+  parent_lifecycle_run_id INTEGER NOT NULL UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  child_lifecycle_run_id INTEGER UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  resume_stage_id       TEXT NOT NULL,
+  expected_parent_version INTEGER NOT NULL,
+  expected_parent_error TEXT NOT NULL,
+  parent_definition_hash TEXT NOT NULL,
+  parent_input_hash     TEXT NOT NULL,
+  prefix_snapshot       TEXT NOT NULL,
+  prefix_hash           TEXT NOT NULL,
+  child_definition_snapshot TEXT NOT NULL,
+  child_definition_hash TEXT NOT NULL,
+  child_idempotency_key TEXT NOT NULL UNIQUE,
+  external_baseline_snapshot TEXT NOT NULL,
+  external_baseline_hash TEXT NOT NULL,
+  actor_id              TEXT NOT NULL,
+  reason                TEXT NOT NULL,
+  state                 TEXT NOT NULL CHECK (state IN ('authorized','consumed')),
+  authorized_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  consumed_at           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS factory_continuation_prefix_stages (
+  authorization_ref    TEXT NOT NULL REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+  ordinal              INTEGER NOT NULL,
+  stage_id             TEXT NOT NULL,
+  stage_snapshot       TEXT NOT NULL,
+  stage_snapshot_hash  TEXT NOT NULL,
+  PRIMARY KEY (authorization_ref, ordinal),
+  UNIQUE (authorization_ref, stage_id)
+);
+
+-- A prior cell can cross into a child run only through a new adoption
+-- decision. Historical CandidateSets/GateDecisions remain evidence; they are
+-- never copied or relabelled as child production.
+CREATE TABLE IF NOT EXISTS factory_production_adoption_decisions (
+  adoption_ref          TEXT PRIMARY KEY,
+  continuation_ref      TEXT NOT NULL REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+  source_task_id        INTEGER NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+  source_workplace_ref  TEXT NOT NULL REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  source_process_run_id INTEGER NOT NULL,
+  project_repository_id INTEGER NOT NULL REFERENCES project_repositories(id) ON DELETE RESTRICT,
+  integration_branch    TEXT NOT NULL,
+  source_commit         TEXT NOT NULL,
+  source_tree           TEXT NOT NULL,
+  integrated_commit     TEXT NOT NULL,
+  integrated_tree       TEXT NOT NULL,
+  author_candidate_set_ref TEXT NOT NULL REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  author_candidate_set_digest TEXT NOT NULL,
+  reviewer_candidate_set_ref TEXT NOT NULL REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  reviewer_candidate_set_digest TEXT NOT NULL,
+  final_gate_run_ref    TEXT NOT NULL REFERENCES factory_gate_runs(gate_run_ref) ON DELETE RESTRICT,
+  final_decision_digest TEXT NOT NULL,
+  covered_acceptance_criteria TEXT NOT NULL,
+  evidence_snapshot     TEXT NOT NULL,
+  evidence_digest       TEXT NOT NULL,
+  adopted_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (continuation_ref, source_task_id)
+);
+
+-- An integrated Development candidate may cross a terminal boundary only as
+-- an immutable verification subject.  This adoption conveys no verification
+-- verdict and deliberately excludes historical verifier products/gates.
+CREATE TABLE IF NOT EXISTS factory_development_verification_adoptions (
+  adoption_ref             TEXT PRIMARY KEY,
+  continuation_ref         TEXT NOT NULL UNIQUE REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+  source_lifecycle_run_id  INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  source_stage_run_id      INTEGER NOT NULL REFERENCES factory_stage_runs(id) ON DELETE RESTRICT,
+  source_process_run_id    INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+  task_graph_ref           TEXT NOT NULL,
+  task_graph_hash          TEXT NOT NULL,
+  implementation_workset_hash TEXT NOT NULL,
+  integrated_candidate_ref TEXT NOT NULL,
+  integrated_candidate_hash TEXT NOT NULL,
+  repository_snapshot      TEXT NOT NULL,
+  acceptance_snapshot      TEXT NOT NULL,
+  verification_method_plan_hash TEXT NOT NULL,
+  evidence_snapshot        TEXT NOT NULL,
+  evidence_digest          TEXT NOT NULL,
+  adopted_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS factory_authorized_verification_observations (
+  observation_ref       TEXT PRIMARY KEY,
+  candidate_hash        TEXT NOT NULL,
+  method_plan_hash      TEXT NOT NULL,
+  criterion_code        TEXT NOT NULL,
+  observer_id           TEXT NOT NULL,
+  verdict               TEXT NOT NULL CHECK (verdict IN ('passed','failed','unknown')),
+  evidence_snapshot     TEXT NOT NULL,
+  evidence_digest       TEXT NOT NULL,
+  observed_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (candidate_hash,method_plan_hash,criterion_code,observer_id)
+);
+
+-- A terminal child may have completed an author production before a later
+-- reviewer/transport failure.  Reusing those bytes in another append-only
+-- continuation is never implicit replay: one immutable authorization pins the
+-- exact source set, current contract identity, failure boundary and Git facts.
+-- The target run still creates a NEW CandidateSet and runs its CURRENT gates.
+CREATE TABLE IF NOT EXISTS factory_author_candidate_carry_forward_authorizations (
+  authorization_ref       TEXT PRIMARY KEY,
+  continuation_ref        TEXT NOT NULL UNIQUE REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+  source_lifecycle_run_id INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  source_process_run_id   INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+  source_workplace_ref    TEXT NOT NULL REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  source_candidate_set_ref TEXT NOT NULL REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  source_candidate_set_digest TEXT NOT NULL,
+  source_gate_decision_key TEXT NOT NULL REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT,
+  source_gate_decision_digest TEXT NOT NULL,
+  source_product_schema   TEXT NOT NULL,
+  source_product_ref      TEXT NOT NULL,
+  source_product_digest   TEXT NOT NULL,
+  semantic_input_digest   TEXT NOT NULL,
+  item_snapshot_hash      TEXT NOT NULL,
+  project_repository_id  INTEGER NOT NULL REFERENCES project_repositories(id) ON DELETE RESTRICT,
+  integration_branch     TEXT NOT NULL,
+  base_commit             TEXT NOT NULL,
+  source_commit           TEXT NOT NULL,
+  source_tree             TEXT NOT NULL,
+  eligible_failure_code  TEXT NOT NULL,
+  evidence_snapshot      TEXT NOT NULL,
+  evidence_digest        TEXT NOT NULL,
+  authorized_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS factory_author_candidate_carry_forward_consumptions (
+  authorization_ref       TEXT PRIMARY KEY REFERENCES factory_author_candidate_carry_forward_authorizations(authorization_ref) ON DELETE RESTRICT,
+  target_process_run_id   INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+  target_workplace_ref    TEXT NOT NULL UNIQUE REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  target_candidate_set_ref TEXT NOT NULL UNIQUE REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  presenter_ref           TEXT NOT NULL UNIQUE,
+  consumed_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_order_runs_immutable_update
+BEFORE UPDATE ON factory_order_runs BEGIN
+  SELECT RAISE(ABORT, 'factory_order_runs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_order_runs_immutable_delete
+BEFORE DELETE ON factory_order_runs BEGIN
+  SELECT RAISE(ABORT, 'factory_order_runs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_continuation_prefix_immutable_update
+BEFORE UPDATE ON factory_continuation_prefix_stages BEGIN
+  SELECT RAISE(ABORT, 'continuation prefix evidence is immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_continuation_prefix_immutable_delete
+BEFORE DELETE ON factory_continuation_prefix_stages BEGIN
+  SELECT RAISE(ABORT, 'continuation prefix evidence is immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_production_adoption_immutable_update
+BEFORE UPDATE ON factory_production_adoption_decisions BEGIN
+  SELECT RAISE(ABORT, 'production adoption decisions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_production_adoption_immutable_delete
+BEFORE DELETE ON factory_production_adoption_decisions BEGIN
+  SELECT RAISE(ABORT, 'production adoption decisions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_development_verification_adoption_immutable_update
+BEFORE UPDATE ON factory_development_verification_adoptions BEGIN
+  SELECT RAISE(ABORT, 'development verification adoptions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_development_verification_adoption_immutable_delete
+BEFORE DELETE ON factory_development_verification_adoptions BEGIN
+  SELECT RAISE(ABORT, 'development verification adoptions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_authorized_verification_observation_immutable_update
+BEFORE UPDATE ON factory_authorized_verification_observations BEGIN
+  SELECT RAISE(ABORT, 'authorized verification observations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_authorized_verification_observation_immutable_delete
+BEFORE DELETE ON factory_authorized_verification_observations BEGIN
+  SELECT RAISE(ABORT, 'authorized verification observations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_forward_immutable_update
+BEFORE UPDATE ON factory_author_candidate_carry_forward_authorizations BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward authorizations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_forward_immutable_delete
+BEFORE DELETE ON factory_author_candidate_carry_forward_authorizations BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward authorizations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_consumption_immutable_update
+BEFORE UPDATE ON factory_author_candidate_carry_forward_consumptions BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward consumptions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_consumption_immutable_delete
+BEFORE DELETE ON factory_author_candidate_carry_forward_consumptions BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward consumptions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_continuation_authorization_no_delete
+BEFORE DELETE ON factory_continuation_authorizations BEGIN
+  SELECT RAISE(ABORT, 'continuation authorizations are append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_continuation_authorization_guard_update
+BEFORE UPDATE ON factory_continuation_authorizations
+WHEN NOT (
+  OLD.state='authorized' AND NEW.state='consumed'
+  AND OLD.consumed_at IS NULL AND NEW.consumed_at IS NOT NULL
+  AND OLD.child_lifecycle_run_id IS NULL AND NEW.child_lifecycle_run_id IS NOT NULL
+  AND OLD.authorization_ref=NEW.authorization_ref
+  AND OLD.schema_id=NEW.schema_id
+  AND OLD.order_ref=NEW.order_ref
+  AND OLD.parent_lifecycle_run_id=NEW.parent_lifecycle_run_id
+  AND OLD.resume_stage_id=NEW.resume_stage_id
+  AND OLD.expected_parent_version=NEW.expected_parent_version
+  AND OLD.expected_parent_error=NEW.expected_parent_error
+  AND OLD.parent_definition_hash=NEW.parent_definition_hash
+  AND OLD.parent_input_hash=NEW.parent_input_hash
+  AND OLD.prefix_snapshot=NEW.prefix_snapshot
+  AND OLD.prefix_hash=NEW.prefix_hash
+  AND OLD.child_definition_snapshot=NEW.child_definition_snapshot
+  AND OLD.child_definition_hash=NEW.child_definition_hash
+  AND OLD.child_idempotency_key=NEW.child_idempotency_key
+  AND OLD.external_baseline_snapshot=NEW.external_baseline_snapshot
+  AND OLD.external_baseline_hash=NEW.external_baseline_hash
+  AND OLD.actor_id=NEW.actor_id
+  AND OLD.reason=NEW.reason
+  AND OLD.authorized_at=NEW.authorized_at
+)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid continuation authorization mutation');
+END;
 
 CREATE TABLE IF NOT EXISTS factory_launch_requests (
   launch_ref           TEXT PRIMARY KEY,
@@ -1587,6 +1995,32 @@ CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_update
 CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_delete
   BEFORE DELETE ON factory_operator_recovery_consumptions
   BEGIN SELECT RAISE(ABORT, 'operator recovery consumptions are immutable'); END;
+
+-- A crashed/stopped runtime host may leave its launch row active after the
+-- worker watchman has already proved the exact child process dead and released
+-- its card. Closing that controller fence is a separate, immutable operator
+-- observation; it never rewrites the WorkerExecution or Workplace evidence.
+CREATE TABLE IF NOT EXISTS factory_orphaned_launch_recovery_receipts (
+  recovery_ref           TEXT PRIMARY KEY,
+  launch_ref             TEXT NOT NULL UNIQUE
+                           REFERENCES factory_launch_requests(launch_ref),
+  lifecycle_run_id       INTEGER NOT NULL,
+  process_run_id         INTEGER NOT NULL,
+  workplace_ref          TEXT NOT NULL,
+  workplace_revision     INTEGER NOT NULL,
+  task_id                 INTEGER NOT NULL REFERENCES tasks(id),
+  execution_id            TEXT NOT NULL REFERENCES worker_executions(execution_id),
+  observed_execution_state TEXT NOT NULL CHECK (observed_execution_state='lost'),
+  actor_id                TEXT NOT NULL,
+  reason                  TEXT NOT NULL,
+  recovered_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TRIGGER IF NOT EXISTS trg_orphaned_launch_recovery_no_update
+  BEFORE UPDATE ON factory_orphaned_launch_recovery_receipts
+  BEGIN SELECT RAISE(ABORT, 'orphaned launch recovery receipts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_orphaned_launch_recovery_no_delete
+  BEFORE DELETE ON factory_orphaned_launch_recovery_receipts
+  BEGIN SELECT RAISE(ABORT, 'orphaned launch recovery receipts are immutable'); END;
 
 -- Explicit recovery for an infrastructure-only GateRun failure after the
 -- CandidateSet was sealed. The failed GateRun remains immutable evidence; the
@@ -1958,4 +2392,79 @@ export function rebuildLaunchIdempotencyIndex(db: {
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency'
     + ' ON factory_launch_requests(idempotency_key)',
   );
+}
+
+/** v3 -> v4: extend the Workplace state grammar without altering any row. */
+export function migrateFactorySchemaV3ToV4(db: {
+  exec(sql: string): void;
+  pragma(sql: string, options?: { simple?: boolean }): unknown;
+  prepare(sql: string): {
+    get(...params: unknown[]): Record<string, unknown> | undefined;
+  };
+}): void {
+  const version = db.pragma('user_version', { simple: true }) as number;
+  if (version === 0 || version === 4) return;
+  if (version !== 3) {
+    throw new Error(`FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${version}->4`);
+  }
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_workplaces'",
+  ).get() as { sql?: string } | undefined;
+  if (!row?.sql) throw new Error('FACTORY_SCHEMA_MIGRATION_WORKPLACES_MISSING');
+  if (!row.sql.includes("'effect_pending'")) {
+    db.exec('PRAGMA foreign_keys=OFF');
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      db.exec(`
+        CREATE TABLE factory_workplaces__v4 (
+          workplace_ref TEXT PRIMARY KEY,
+          process_run_id INTEGER NOT NULL,
+          module_ref TEXT NOT NULL,
+          production_cell_id TEXT NOT NULL,
+          work_key TEXT NOT NULL,
+          kanban_phase TEXT NOT NULL
+            CHECK (kanban_phase IN ('todo','in_progress','review','review_in_progress','blocked','done','failed','cancelled')),
+          loop_state TEXT NOT NULL
+            CHECK (loop_state IN ('idle','queued','leased','running','verifying','effect_pending','repair_wait','paused','terminal')),
+          next_role TEXT NOT NULL CHECK (next_role IN ('author','reviewer')),
+          terminal_reason TEXT CHECK (terminal_reason IN ('accepted','failed','cancelled') OR terminal_reason IS NULL),
+          revision INTEGER NOT NULL DEFAULT 0,
+          active_reservation_ref TEXT,
+          active_gate_ref TEXT,
+          active_recovery_case_ref TEXT,
+          desk_ref TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO factory_workplaces__v4
+          (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
+           kanban_phase,loop_state,next_role,terminal_reason,revision,
+           active_reservation_ref,active_gate_ref,active_recovery_case_ref,
+           desk_ref,created_at,updated_at)
+        SELECT workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
+               kanban_phase,loop_state,next_role,terminal_reason,revision,
+               active_reservation_ref,active_gate_ref,active_recovery_case_ref,
+               desk_ref,created_at,updated_at
+          FROM factory_workplaces;
+        DROP TABLE factory_workplaces;
+        ALTER TABLE factory_workplaces__v4 RENAME TO factory_workplaces;
+        CREATE INDEX idx_factory_workplaces_process_run ON factory_workplaces(process_run_id);
+        CREATE INDEX idx_factory_workplaces_loop_state ON factory_workplaces(loop_state);
+        CREATE INDEX idx_factory_workplaces_kanban_phase ON factory_workplaces(kanban_phase);
+      `);
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* best effort */ }
+      throw error;
+    } finally {
+      db.exec('PRAGMA foreign_keys=ON');
+    }
+  }
+  const violations = db.pragma('foreign_key_check') as unknown[];
+  if (Array.isArray(violations) && violations.length > 0) {
+    throw new Error(
+      `FACTORY_SCHEMA_MIGRATION_FOREIGN_KEY_FAILURE: ${JSON.stringify(violations)}`,
+    );
+  }
+  db.exec('PRAGMA user_version=4');
 }

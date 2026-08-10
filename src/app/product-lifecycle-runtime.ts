@@ -47,7 +47,7 @@ import { ProcessModuleInstallationRegistry } from '../process-modules/applicatio
 import type { ProductionInstallation } from '../process-modules/installation/production-install.js';
 import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';
-import { lifecycleRefKey } from '../process-modules/persistence/lifecycle-run.js';
+import { SqliteLifecycleContinuationRepository } from '../process-modules/persistence/sqlite-lifecycle-continuation-repository.js';
 import { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
 import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
@@ -58,6 +58,9 @@ import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/s
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
+import { SqliteCellFinalAcceptance } from '../infrastructure/workplace/sqlite-cell-final-acceptance.js';
+import { SqliteAuthorCandidateCarryForward } from '../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
+import { SqliteExternalEffectLedger } from '../process-modules/persistence/sqlite-external-effect-ledger.js';
 import {
   createGitIntegrationEffect,
 } from '../infrastructure/workplace/git-integration-effect.js';
@@ -92,6 +95,9 @@ import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/fo
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import { createDevelopmentOutputPayloadResolver } from '../modules/development/application/development-installation.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../modules/development/domain/development-schemas.js';
+import { DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF } from '../process-modules/modules/development/development-continuation-process-module.js';
+import { DEVELOPMENT_VERIFICATION_CONTINUATION_PROCESS_MODULE_REF } from '../process-modules/modules/development/development-verification-continuation-process-module.js';
+import { DEVELOPMENT_PROCESS_MODULE_REF } from '../process-modules/modules/development/development-process-module.js';
 import { createDeliveryOutputPayloadResolver } from '../modules/delivery/application/delivery-installation.js';
 import { RELEASE_RECORD_SCHEMA } from '../modules/delivery/domain/delivery-schemas.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
@@ -110,7 +116,7 @@ import type {
   DeliveryProviderConfiguration,
 } from '../modules/delivery/index.js';
 import { SqliteResumeDirectiveRepository } from '../checkpoints/sqlite-resume-directive-repository.js';
-import { reevaluateDownstream, replaceTaskDependencies } from '../tools/tasks.js';
+import { reevaluateDownstream } from '../tools/tasks.js';
 
 export type { DevelopmentCompositionDependencies };
 export type {
@@ -147,6 +153,10 @@ export function createProductLifecycleRuntime(
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
   const recoveryCaseRepo = new SqliteRecoveryCaseRepository(db);
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
+  const lifecycleContinuationRepo = new SqliteLifecycleContinuationRepository(
+    db,
+    lifecycleRunRepo,
+  );
   const processProductRepo = new SqliteProcessProductRepository(db);
   const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
   const workplaceProductPort = new SqliteWorkplaceProductAdapter(
@@ -272,6 +282,7 @@ export function createProductLifecycleRuntime(
   const centralLedger = new SqliteManagedProductionLedger(db);
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
+  const finalAcceptance = new SqliteCellFinalAcceptance(db);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const productionCellCoordinator = new ProductionCellCoordinator({
     db,
@@ -280,7 +291,10 @@ export function createProductLifecycleRuntime(
   });
 
   registerFactoryPostAcceptanceEffect(
-    createGitIntegrationEffect(new SqliteProductionCellIntegration(db)),
+    createGitIntegrationEffect(
+      new SqliteProductionCellIntegration(db),
+      new SqliteExternalEffectLedger(db),
+    ),
   );
   registerFactoryPostAcceptanceEffect(createReplayCaptureEffect(db));
 
@@ -356,6 +370,8 @@ export function createProductLifecycleRuntime(
       gateRepo,
       checkProviders: createStandardCheckProviderRegistry(),
       postAcceptanceEffects: createPostAcceptanceEffectRegistry(),
+      finalAcceptance,
+      authorCandidateCarryForward: new SqliteAuthorCandidateCarryForward(db),
       persistence: {
         ...productionCellProjectionPersistence,
         readAuthorSemanticDigestForWorkplace: (serializedWorkplaceRef: string): string | null => {
@@ -395,8 +411,7 @@ export function createProductLifecycleRuntime(
                JOIN factory_work_intents wi ON wi.projected_task_id=we.task_id
               WHERE we.execution_id=?`,
           ).get(executionRef) as { taskId: number; intentId: number } | undefined;
-          if (!row) throw new Error(`EXECUTION_RECEIPT_NOT_FOUND: ${executionRef}`);
-          return row;
+          return row ?? null;
         },
         readProcessInputHash: (processRunId) => {
           const row = db.prepare(
@@ -430,9 +445,6 @@ export function createProductLifecycleRuntime(
             completeProductionCellTaskProjections(db, workplace);
             for (const taskId of taskIds) reevaluateDownstream(db, taskId);
           }
-        },
-        bindTaskDependencies: (taskId, dependencyTaskIds) => {
-          replaceTaskDependencies(db, taskId, dependencyTaskIds);
         },
         // Keep the crash-attempt accounting added on saga4. A process that
         // dies before CandidateSet seal still consumes the cell recovery budget.
@@ -602,7 +614,11 @@ export function createProductLifecycleRuntime(
     ],
     [
       VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-      createDevelopmentOutputPayloadResolver(development.outputRepository),
+      createDevelopmentOutputPayloadResolver(development.outputRepository, [
+        DEVELOPMENT_PROCESS_MODULE_REF,
+        DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF,
+        DEVELOPMENT_VERIFICATION_CONTINUATION_PROCESS_MODULE_REF,
+      ]),
     ],
     [
       RELEASE_RECORD_SCHEMA,
@@ -632,6 +648,8 @@ export function createProductLifecycleRuntime(
         stage,
         input,
       }),
+    resolveInheritedStageFrame: lifecycleRun =>
+      lifecycleContinuationRepo.readInheritedStageFrame(lifecycleRun.id),
     ...(packageInstallation
       ? {
         resolveModuleInstallation: (moduleRef: {
@@ -665,8 +683,18 @@ export function createProductLifecycleRuntime(
   const engine = new LifecycleOrchestrationEngineAdapter({
     definition: productDeliveryLifecycle,
     orchestrator,
+    resolveDefinition(command, input) {
+      const row = readPinnedLifecycleByInvocation(
+        db,
+        command.projectId,
+        input.idempotencyKey,
+      );
+      if (!row) return productDeliveryLifecycle;
+      return JSON.parse(row.definition_snapshot) as typeof productDeliveryLifecycle;
+    },
     resolveInput(command) {
       let lifecycleInput = command.lifecycleInput;
+      let pinnedReplay = false;
       if (lifecycleInput === undefined) {
         if (!command.resumePaused) {
           throw new Error(
@@ -675,9 +703,9 @@ export function createProductLifecycleRuntime(
         }
         const idempotencyKey = command.idempotencyKey
           ?? `product-delivery:epic:${command.epicId}`;
-        const existing = lifecycleRunRepo.readByIdempotencyKey(
+        const existing = readPinnedLifecycleByInvocation(
+          db,
           command.projectId,
-          lifecycleRefKey(productDeliveryLifecycle.identity),
           idempotencyKey,
         );
         if (!existing || existing.inputSnapshot === null) {
@@ -687,6 +715,7 @@ export function createProductLifecycleRuntime(
           );
         }
         lifecycleInput = JSON.parse(existing.inputSnapshot) as unknown;
+        pinnedReplay = true;
       }
 
       const schema = command.lifecycleInputSchema
@@ -701,11 +730,13 @@ export function createProductLifecycleRuntime(
         lifecycleInput,
         lifecycleInputPolicyValidation,
       );
-      const portableInput = canonicalizeProductDeliveryLifecycleInput(
-        db,
-        command.projectId,
-        lifecycleInput,
-      );
+      const portableInput = pinnedReplay
+        ? lifecycleInput as Parameters<typeof canonicalizeProductDeliveryLifecycleInput>[2]
+        : canonicalizeProductDeliveryLifecycleInput(
+            db,
+            command.projectId,
+            lifecycleInput,
+          );
       resolveProductDeliveryRepositories(
         db,
         command.projectId,
@@ -715,7 +746,16 @@ export function createProductLifecycleRuntime(
         schema,
         payload: portableInput,
         initiatedBy:
-          command.initiatedBy ?? 'product-lifecycle-orchestrator',
+          command.initiatedBy
+          ?? (pinnedReplay
+            ? readPinnedLifecycleByInvocation(
+                db,
+                command.projectId,
+                command.idempotencyKey
+                  ?? `product-delivery:epic:${command.epicId}`,
+              )?.initiatedBy
+            : undefined)
+          ?? 'product-lifecycle-orchestrator',
         idempotencyKey:
           command.idempotencyKey
           ?? `product-delivery:project:${command.projectId}:start:${randomUUID()}`,
@@ -751,6 +791,7 @@ export function createProductLifecycleRuntime(
       nodeRunRepo,
       certificateRepo,
       lifecycleRunRepo,
+      lifecycleContinuationRepo,
       managedNodeSubmissions,
       formalizationBaselineRepository: formalization.baselineRepository,
       formalizationSolutionContractRepository:
@@ -759,6 +800,33 @@ export function createProductLifecycleRuntime(
       deliveryOutputRepository: delivery.outputRepository,
     },
   };
+}
+
+function readPinnedLifecycleByInvocation(
+  db: Database.Database,
+  projectId: number,
+  idempotencyKey: string,
+): {
+  inputSnapshot: string;
+  definition_snapshot: string;
+  initiatedBy: string;
+} | null {
+  const rows = db.prepare(
+    `SELECT input_snapshot AS inputSnapshot,definition_snapshot,
+            initiated_by AS initiatedBy
+       FROM factory_lifecycle_runs
+      WHERE project_id=? AND idempotency_key=?`,
+  ).all(projectId, idempotencyKey) as Array<{
+    inputSnapshot: string;
+    definition_snapshot: string;
+    initiatedBy: string;
+  }>;
+  if (rows.length > 1) {
+    throw new Error(
+      `LIFECYCLE_INVOCATION_AMBIGUOUS: project ${projectId} idempotency '${idempotencyKey}'`,
+    );
+  }
+  return rows[0] ?? null;
 }
 
 function assertCompositionDependencies(

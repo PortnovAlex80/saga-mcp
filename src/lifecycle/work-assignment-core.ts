@@ -420,6 +420,12 @@ export function findNextClaimable(
        ${excludeClause}
        ${roleClause}
        AND json_extract(t.metadata, '$.process_run_id') IS NOT NULL
+       AND EXISTS (
+         SELECT 1
+           FROM factory_process_runs pr
+          WHERE pr.id=json_extract(t.metadata, '$.process_run_id')
+            AND pr.status IN ('running','paused')
+       )
        AND (
          (t.workplace_ref IS NOT NULL
            AND t.status IN ('todo','review')
@@ -428,7 +434,7 @@ export function findNextClaimable(
                FROM factory_workplaces w
               WHERE w.workplace_ref=t.workplace_ref
                 AND (
-                  w.loop_state IN ('idle','queued')
+                  w.loop_state='queued'
                   OR (
                     w.loop_state IN ('leased','running','verifying')
                     AND NOT EXISTS (

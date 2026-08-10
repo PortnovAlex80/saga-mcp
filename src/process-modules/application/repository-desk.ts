@@ -44,6 +44,11 @@ export interface RepositoryDeskGit {
   readonly integrationBranch: string;
   /** True for reviewer/verifier desks (detached HEAD). */
   readonly detached: boolean;
+  /** Immutable Factory receipt that authorized this effective base. */
+  readonly effectiveBaseReceiptRef?: string;
+  readonly effectiveBaseReceiptDigest?: string;
+  /** Integration head observed while the author base was frozen. */
+  readonly observedIntegrationHead?: string;
 }
 
 export interface RepositoryDesk {

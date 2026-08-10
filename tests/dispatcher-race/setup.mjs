@@ -7,6 +7,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { rmSync, writeFileSync } from 'node:fs';
+import { ensureRunningProcessRun } from './process-run-fixture.mjs';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const dbPath = process.argv[2] ?? join(thisDir, 'race.db');
@@ -32,6 +33,7 @@ db.prepare("INSERT INTO projects (name, description) VALUES ('race-test', 'dispa
 const projId = db.prepare("SELECT id FROM projects WHERE name='race-test'").get().id;
 db.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'race-epic')").run(projId);
 const epicId = db.prepare("SELECT id FROM epics WHERE name='race-epic'").get().id;
+ensureRunningProcessRun(db, 999, projId, epicId);
 
 const insert = db.prepare(
   "INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, ?, 'todo', ?, NULL, ?)"

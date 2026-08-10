@@ -25,6 +25,7 @@ export interface BoardEpicProjection {
   gate_error: string | null;
   needs_human: number | null;
   pause_reason: string | null;
+  active_workers: number;
   drift_count: number;
   evidence_count: number;
   [key: string]: unknown;

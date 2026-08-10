@@ -11,6 +11,7 @@ import { handlers } from '../../dist/tools/dispatcher.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { rmSync } from 'node:fs';
+import { ensureRunningProcessRun } from './process-run-fixture.mjs';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(thisDir, 'iso.db');
@@ -35,6 +36,8 @@ setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'epic-A')").run(a
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'epic-B')").run(bId);
 const epicA = setup.prepare("SELECT id FROM epics WHERE name='epic-A'").get().id;
 const epicB = setup.prepare("SELECT id FROM epics WHERE name='epic-B'").get().id;
+ensureRunningProcessRun(setup, 1001, aId, epicA);
+ensureRunningProcessRun(setup, 1002, bId, epicB);
 // saga4 authority gate (findNextClaimable): a card is claimable ONLY if
 // metadata.process_run_id IS NOT NULL. Stamp it on every fixture task so the
 // isolation assertions exercise real claimability, not the gate filtering them
@@ -92,6 +95,7 @@ setup2.prepare("INSERT INTO projects (name) VALUES ('all-low')").run();
 const p2 = setup2.prepare("SELECT id FROM projects WHERE name='all-low'").get().id;
 setup2.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(p2);
 const e2 = setup2.prepare("SELECT id FROM epics WHERE name='e'").get().id;
+ensureRunningProcessRun(setup2, 2001, p2, e2);
 // Stamp process_run_id so the saga4 authority gate admits the card (a card
 // WITHOUT it must remain unclaimable — that half is covered below).
 setup2.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'only-low', 'todo', 'low', NULL, ?)").run(e2, JSON.stringify({ process_run_id: 2001 }));

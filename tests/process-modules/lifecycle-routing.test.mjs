@@ -291,6 +291,38 @@ test('F2: validator accepts an inputMapping referencing an existing stage', () =
   assert.equal(validation.valid, true);
 });
 
+test('F2: continuation accepts a mapping source from its authoritative inherited prefix', () => {
+  const continuation = structuredClone(discoveryToFormalizationLifecycle);
+  continuation.identity.name = 'product-delivery-continuation-fixture';
+  continuation.entryStageId = 'solution-formalization';
+  continuation.inheritedStages = [{
+    id: 'initial-discovery',
+    displayName: 'Initial Discovery',
+    moduleRef: { name: 'product-discovery', version: '3.0.2' },
+  }];
+  continuation.stages = continuation.stages.filter(
+    stage => stage.id !== 'initial-discovery',
+  );
+
+  const validation = validateLifecycleDefinition(continuation, registry);
+  assert.equal(validation.valid, true, validation.errors.join('\n'));
+});
+
+test('F2: inherited stages cannot also be executable stages', () => {
+  const broken = structuredClone(discoveryToFormalizationLifecycle);
+  broken.inheritedStages = [{
+    id: 'initial-discovery',
+    displayName: 'Initial Discovery',
+    moduleRef: { name: 'product-discovery', version: '3.0.2' },
+  }];
+  const validation = validateLifecycleDefinition(broken, registry);
+  assert.equal(validation.valid, false);
+  assert.match(
+    validation.errors.join('\n'),
+    /stage 'initial-discovery' is both executable and inherited/,
+  );
+});
+
 test('F2: validator ignores literal and runtime mappings (no stage references)', () => {
   // A stage whose inputMapping uses only literal/runtime expressions must not
   // produce any unknown-stage error, even though it has no $.stages.* path.

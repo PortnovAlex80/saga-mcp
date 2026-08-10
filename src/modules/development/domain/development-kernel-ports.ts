@@ -74,8 +74,13 @@ import type {
 
 export const DEVELOPMENT_KERNEL_HANDLER_IDS = {
   resolveTaskGraph: 'development-resolve-task-graph',
+  resolveContinuationTaskGraph: 'development-resolve-continuation-task-graph',
   freezeIntegratedCandidate: 'development-freeze-integrated-candidate',
+  freezeContinuationCandidate: 'development-freeze-continuation-candidate',
   settle: 'development-settlement-policy',
+  settleContinuation: 'development-continuation-settlement-policy',
+  adoptVerificationBaseline: 'development-adopt-verification-baseline',
+  settleVerificationContinuation: 'development-verification-continuation-settlement-policy',
 } as const;
 
 /**
@@ -143,6 +148,17 @@ export interface DevelopmentTaskGraphPort {
 }
 
 export interface DevelopmentSettlementStatePort {
+  adoptVerificationBaseline(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+    taskGraph: DevelopmentTaskGraphSnapshot;
+    implementationWorkset: import('./development-schemas.js').DevelopmentImplementationWorkset;
+    integratedCandidate: IntegratedReleaseCandidate;
+  }): {
+    taskGraph: ContentAddressedReference;
+    implementationWorkset: ContentAddressedReference;
+    integratedCandidate: ContentAddressedReference;
+  };
   freezeIntegratedCandidate(input: {
     processRunId: number;
     developmentCase: DevelopmentCase;

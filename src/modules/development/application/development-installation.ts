@@ -1,4 +1,5 @@
 import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
+import type { ProcessModuleReference } from '../../../process-modules/domain/process-module.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
@@ -71,6 +72,7 @@ export const DEVELOPMENT_NODE_IDS = {
  */
 export function createDevelopmentKernelHandlers(
   deps: DevelopmentModuleInstallationDependencies,
+  moduleRef: ProcessModuleReference = DEVELOPMENT_PROCESS_MODULE_REF,
 ): Record<string, KernelHandler> {
   return {
     [DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph]:
@@ -107,7 +109,7 @@ export function createDevelopmentKernelHandlers(
     [DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate]:
       createIntegratedCandidateFreezeHandler(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.settle]:
-      createDevelopmentSettlementHandler(deps),
+      createDevelopmentSettlementHandler(deps, moduleRef),
   };
 }
 
@@ -172,6 +174,7 @@ function createIntegratedCandidateFreezeHandler(
  */
 export function createDevelopmentOutputResolver(
   repository: DevelopmentOutputRepository,
+  expectedModuleRef: ProcessModuleReference = DEVELOPMENT_PROCESS_MODULE_REF,
 ): (
   module: ProcessModuleDefinition,
   terminalOutcome: string,
@@ -180,7 +183,7 @@ export function createDevelopmentOutputResolver(
 ) => ProcessModuleOutput | null {
   return (module, terminalOutcome, terminalResult, context) => {
     if (terminalOutcome !== 'verified') return null;
-    assertDevelopmentModule(module);
+    assertDevelopmentModule(module, expectedModuleRef);
     const bindings = terminalResult.production?.bindings ?? {};
     const artifactRef = stringBinding(bindings, 'verifiedBundleRef');
     const contentHash = stringBinding(bindings, 'verifiedBundleContentHash');
@@ -206,12 +209,12 @@ export function createDevelopmentOutputResolver(
  */
 export function createDevelopmentOutputPayloadResolver(
   repository: DevelopmentOutputRepository,
+  allowedModuleRefs: readonly ProcessModuleReference[] = [DEVELOPMENT_PROCESS_MODULE_REF],
 ): ProcessOutputPayloadResolver {
   return context => {
-    if (
-      context.moduleRef.name !== DEVELOPMENT_PROCESS_MODULE_REF.name
-      || context.moduleRef.version !== DEVELOPMENT_PROCESS_MODULE_REF.version
-    ) {
+    if (!allowedModuleRefs.some(reference =>
+      context.moduleRef.name === reference.name
+      && context.moduleRef.version === reference.version)) {
       throw new Error('development output payload: module reference mismatch');
     }
     return requireExactDevelopmentOutput(
@@ -405,6 +408,7 @@ function createTaskGraphResolver(
 
 function createDevelopmentSettlementHandler(
   deps: DevelopmentModuleInstallationDependencies,
+  moduleRef: ProcessModuleReference,
 ): KernelHandler {
   return ctx => {
     try {
@@ -437,6 +441,7 @@ function createDevelopmentSettlementHandler(
           ctx,
           settlementInput,
           settled,
+          moduleRef,
         );
       }
       const fallbackInput = emptySettlementInput(developmentCase);
@@ -445,9 +450,10 @@ function createDevelopmentSettlementHandler(
         ctx,
         fallbackInput,
         settled,
+        moduleRef,
       );
     } catch (error) {
-      return developmentSettlementFailure(deps, ctx, errorMessage(error));
+      return developmentSettlementFailure(deps, ctx, errorMessage(error), moduleRef);
     }
   };
 }
@@ -499,6 +505,7 @@ function developmentSettlementProduction(
   ctx: KernelHandlerContext,
   input: DevelopmentSettlementInput,
   settled: DevelopmentSettlementResult,
+  moduleRef: ProcessModuleReference,
 ): KernelHandlerResult {
   let outputBindings: Record<string, unknown> = {};
   if (settled.decision === 'verified') {
@@ -567,7 +574,7 @@ function developmentSettlementProduction(
   // branch re-issuing the same payload during the additive cutover is safe.
   const certResult = deps.certificateRepository.issue({
     processRunId: ctx.processRunId,
-    moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,
+    moduleRef,
     projectId: ctx.projectId,
     epicId: ctx.epicId,
     payload: certificatePayload,
@@ -610,6 +617,7 @@ function developmentSettlementFailure(
   deps: DevelopmentModuleInstallationDependencies,
   ctx: KernelHandlerContext,
   reason: string,
+  moduleRef: ProcessModuleReference,
 ): KernelHandlerResult {
   const runInput = isRecord(ctx.frame.runInput) ? ctx.frame.runInput : {};
   const formalization = isRecord(runInput.formalizationCertificate)
@@ -659,7 +667,7 @@ function developmentSettlementFailure(
   // silent-null data-loss path).
   const certResult = deps.certificateRepository.issue({
     processRunId: ctx.processRunId,
-    moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,
+    moduleRef,
     projectId: ctx.projectId,
     epicId: ctx.epicId,
     payload: certificatePayload,
@@ -879,10 +887,13 @@ function assertReference(
   }
 }
 
-function assertDevelopmentModule(module: ProcessModuleDefinition): void {
+function assertDevelopmentModule(
+  module: ProcessModuleDefinition,
+  expected: ProcessModuleReference,
+): void {
   if (
-    module.identity.name !== DEVELOPMENT_PROCESS_MODULE_REF.name
-    || module.identity.version !== DEVELOPMENT_PROCESS_MODULE_REF.version
+    module.identity.name !== expected.name
+    || module.identity.version !== expected.version
   ) {
     throw new Error('development output resolver received another module');
   }

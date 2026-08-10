@@ -72,7 +72,7 @@ test('Development output is canonical, write-once and bound to its exact Process
   try {
     const run = startProcess(
       fx.processRepo,
-      { name: 'solution-development', version: '1.0.0' },
+      { name: 'solution-development', version: '1.1.0' },
       'development-output',
     );
     const payload = {
@@ -113,6 +113,33 @@ test('Development output is canonical, write-once and bound to its exact Process
       ).run(run.id),
       /DEVELOPMENT_OUTPUT_IMMUTABLE/,
     );
+  } finally {
+    cleanup(fx.temp);
+  }
+});
+
+test('Development output accepts an explicitly installed continuation module', () => {
+  const fx = fixture();
+  try {
+    const moduleRef = {
+      name: 'solution-development-verification-continuation',
+      version: '1.0.0',
+    };
+    const run = startProcess(fx.processRepo, moduleRef, 'verification-continuation-output');
+    const repository = new SqliteDevelopmentOutputRepository(fx.db, [moduleRef]);
+    const payload = {
+      schemaVersion: VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
+      bundleHash: 'bundle-continuation',
+      integratedCandidate: { hash: 'candidate-continuation' },
+    };
+    const persisted = repository.persist({
+      processRunId: run.id,
+      projectId: 1,
+      epicId: 10,
+      payload,
+    });
+    assert.equal(persisted.replayed, false);
+    assert.deepEqual(persisted.record.payload, payload);
   } finally {
     cleanup(fx.temp);
   }

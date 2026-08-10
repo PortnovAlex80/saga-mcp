@@ -1,12 +1,18 @@
-import type Database from 'better-sqlite3';
 import type { CheckProvider } from '../../../process-modules/domain/workplace/gate.js';
-import type { SqliteCandidateSetRepository } from '../../../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import type { CandidateSetReaderPort } from '../../../application/ports/candidate-set-reader.js';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+  DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
+import { decodeDevelopmentVerificationProduct } from '../domain/development-verification-product.js';
+import {
+  productPayloadContractDigest,
+  type ProductPayloadContract,
+} from '../../../process-modules/application/product-payload-contract.js';
 import {
   buildCanonicalDevelopmentTaskGraph,
   decodeDevelopmentTaskGraphProposal,
@@ -25,6 +31,49 @@ export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
   invariant: 'development-task-graph-validates-before-cell-acceptance',
 });
 
+export const DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID =
+  'development.verification-product-contract.v2';
+export const DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION = '2.0.0';
+export const DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+  invariant: 'verification-product-shape-and-frozen-lineage-before-acceptance',
+});
+
+export const DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID =
+  'development.verification-evidence-payload.v2';
+export const DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION = '2.0.0';
+export const DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'schemaVersion', 'verificationItemKey', 'acceptanceCriterionId',
+    'acceptedCriterionHash', 'candidateHash', 'outcome', 'evidence',
+  ],
+  outcome: ['passed', 'failed', 'unknown', 'error'],
+  evidenceRequired: ['summary', 'observations', 'limitations'],
+  hashFormat: 'lowercase-sha256',
+} as const;
+export const DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+    contractId: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
+    version: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,
+    definition: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DEFINITION,
+  });
+
+export const developmentVerificationPayloadContract: ProductPayloadContract = {
+  schemaId: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+  contractId: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
+  version: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,
+  definition: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DIGEST,
+  validate(payload) {
+    const decoded = decodeDevelopmentVerificationProduct(payload);
+    return decoded.ok ? [] : decoded.errors;
+  },
+};
+
 interface SubmissionRow {
   schema_version: string;
   payload_snapshot: string;
@@ -33,8 +82,8 @@ interface SubmissionRow {
 }
 
 export function createDevelopmentTaskGraphCheckProvider(input: {
-  db: Database.Database;
-  candidateSets: SqliteCandidateSetRepository;
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
   taskGraphPolicy?: DevelopmentTaskGraphPolicyPort;
 }): CheckProvider {
   const policy = input.taskGraphPolicy ?? new ReferenceDevelopmentTaskGraphPolicy();
@@ -75,6 +124,84 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
           },
         );
         return policy.validate(developmentCase, graph).valid ? 'passed' : 'failed';
+      } catch {
+        return 'error';
+      }
+    },
+  };
+}
+
+export function createDevelopmentVerificationCheckProvider(input: {
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
+}): CheckProvider {
+  return {
+    providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+    run({ subjectCandidateSetRef, parameters }) {
+      try {
+        const processRunId = Number(parameters.processRunId);
+        if (!Number.isSafeInteger(processRunId) || processRunId < 1) return 'error';
+        const candidate = input.candidateSets.read(subjectCandidateSetRef);
+        if (!candidate || candidate.role !== 'author'
+            || candidate.workplaceRef.processRunId !== processRunId
+            || candidate.members.length !== 1) return 'failed';
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId
+            !== DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return 'failed';
+        }
+        const submissionId = Number(
+          member.productRef.ref.slice('managed-node-submission:'.length),
+        );
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'failed';
+        const row = input.db.prepare(
+          `SELECT s.payload_snapshot,s.content_hash,t.verification_target_artifact_id,
+                  t.metadata,a.accepted_hash
+             FROM factory_managed_node_submissions s
+             JOIN tasks t ON t.id=s.task_id
+             LEFT JOIN artifacts a ON a.id=t.verification_target_artifact_id
+            WHERE s.id=? AND s.process_run_id=? AND s.execution_id=?`,
+        ).get(submissionId, processRunId, candidate.producerExecutionRef) as {
+          payload_snapshot: string;
+          content_hash: string;
+          verification_target_artifact_id: number | null;
+          metadata: string;
+          accepted_hash: string | null;
+        } | undefined;
+        if (!row || row.content_hash !== member.productRef.digest) return 'failed';
+        const decoded = decodeDevelopmentVerificationProduct(
+          JSON.parse(row.payload_snapshot),
+        );
+        if (!decoded.ok) return 'failed';
+        const metadata = JSON.parse(row.metadata) as {
+          cell_input_item?: { key?: unknown; acceptanceCriterionIds?: unknown };
+          process_node_input?: {
+            upstream?: { bindings?: { candidate?: { candidateHash?: unknown } } };
+          };
+          trusted_provider_bindings?: unknown;
+        };
+        const item = metadata.cell_input_item;
+        const criterionIds = item?.acceptanceCriterionIds;
+        const frozenHash = metadata.process_node_input?.upstream?.bindings
+          ?.candidate?.candidateHash;
+        if (
+          decoded.value.verificationItemKey !== item?.key
+          || !Array.isArray(criterionIds)
+          || criterionIds.length !== 1
+          || decoded.value.acceptanceCriterionId !== criterionIds[0]
+          || decoded.value.acceptanceCriterionId
+            !== row.verification_target_artifact_id
+          || decoded.value.acceptedCriterionHash !== row.accepted_hash
+          || decoded.value.candidateHash !== frozenHash
+        ) return 'failed';
+        // This provider validates the LM assessment contract and lineage. It
+        // is deliberately not an executable criterion oracle: an LM-authored
+        // `passed` cannot become Factory acceptance. Until an independent
+        // candidate-check receipt is present, every well-formed assessment is
+        // indeterminate and the plan stops the line without blaming the LM.
+        return 'unknown';
       } catch {
         return 'error';
       }

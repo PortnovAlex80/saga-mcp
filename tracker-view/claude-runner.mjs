@@ -17,6 +17,25 @@ const require = createRequire(import.meta.url);
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'stopped', 'failed']);
 
+// Claude Code's --allowedTools is an auto-allow list, not a capability
+// boundary when permission checks are bypassed. Keep one explicit inventory so
+// a pinned AgentLaunchSpec can deny every undeclared native tool as well as
+// auto-allowing the declared subset.
+const CLAUDE_BUILTIN_TOOLS = Object.freeze([
+  'Bash',
+  'Read',
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'Glob',
+  'Grep',
+  'NotebookEdit',
+  'Task',
+  'Agent',
+  'WebFetch',
+  'WebSearch',
+]);
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -203,6 +222,14 @@ function buildPrompt({
     ].join('\n');
   }
 
+  const profileAllowedTools = Array.isArray(launchSpec.allowedToolIds)
+    ? new Set(launchSpec.allowedToolIds.filter(tool => typeof tool === 'string'))
+    : null;
+  const modelOwnsHeartbeat = profileAllowedTools === null || profileAllowedTools.has('Bash');
+  const modelMayUpdateTracker = profileAllowedTools === null
+    || profileAllowedTools.has('Write')
+    || profileAllowedTools.has('Edit');
+
   return [
     'You are a single-use Saga CLI worker. Saga already atomically assigned exactly one task to this process.',
     '',
@@ -227,8 +254,12 @@ function buildPrompt({
     `workspace_root=${workspaceRoot}`,
     '',
     'Hard rules:',
-    '0. IMMEDIATELY on startup, before any other action, run this heartbeat command exactly once (it marks you as alive for the operator):',
-    `   bash -c 'echo "$(date -u +%FT%TZ) pid=$$ worker=${workerId} project=${project.id} task=${task.id} CLAIMED started" >> ~/.zcode/cli/worker-heartbeat.log'`,
+    modelOwnsHeartbeat
+      ? '0. IMMEDIATELY on startup, before any other action, run this heartbeat command exactly once (it marks you as alive for the operator):'
+      : '0. Runtime owns the operator heartbeat. Do not invoke Bash or another undeclared native tool for heartbeat.',
+    modelOwnsHeartbeat
+      ? `   bash -c 'echo "$(date -u +%FT%TZ) pid=$$ worker=${workerId} project=${project.id} task=${task.id} CLAIMED started" >> ~/.zcode/cli/worker-heartbeat.log'`
+      : null,
     `1. Work only on task_id=${task.id}.`,
     '2. Never call worker_next; it is explicitly disabled for this process.',
     '3. Read the assigned task and its context through Saga MCP as needed.',
@@ -254,7 +285,9 @@ function buildPrompt({
           'b. Read the assigned task with task_get and verify its machine bindings.',
           'c. Use the listed materialized files; do not invent a call shape from memory.',
           'd. Before every consequential MCP write, read the listed checklist and the call file back.',
-          'e. Update the exact tracker after every completed step and before worker_done.',
+          modelMayUpdateTracker
+            ? 'e. Update the exact tracker after every completed step and before worker_done.'
+            : 'e. The tracker is runtime-owned for this read-only profile. Do not try to modify it; record findings in the typed product and worker_done receipt.',
           'Paths in this section are authoritative for this execution.',
           '--- END MACHINE-PROVISIONED PROCESS WORKSPACE ---',
           '',
@@ -903,7 +936,7 @@ export class ClaudeBoardRunner {
       // factory-discovery-engine DISCOVERY_ALLOWED_TOOLS was the historical source
       // of this list; the engine is gone but the canonical surface lives on in
       // capability-enforcement.ts).
-      const DEFAULT_BUILTIN = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
+      const DEFAULT_BUILTIN = CLAUDE_BUILTIN_TOOLS;
       // §13.17 fix (W5-A6): when a launch spec resolved an effective capability
       // set with allowedToolIds, the PROFILE owns the Claude builtin surface.
       // We grant only the builtins the profile declares (intersected with the
@@ -931,6 +964,15 @@ export class ClaudeBoardRunner {
         .filter(t => typeof t === 'string' && t.trim() !== '' && !knownBuiltinSet.has(t))
         .map(t => `mcp__saga__${t}`);
       args.push('--allowedTools', [...sagaAllowed, ...builtin].join(','));
+      if (profileAllowed) {
+        const deniedBuiltin = DEFAULT_BUILTIN.filter(tool => !profileAllowed.includes(tool));
+        args.push(
+          '--disallowedTools',
+          ['mcp__saga__worker_next', ...deniedBuiltin].join(','),
+        );
+      } else {
+        args.push('--disallowedTools', 'mcp__saga__worker_next');
+      }
     } else {
       args.push('--disallowedTools', 'mcp__saga__worker_next');
     }
@@ -944,8 +986,9 @@ export class ClaudeBoardRunner {
     // vector entirely, staying well within the OS limit regardless of prompt
     // size.
     args.push(
-      '--permission-mode', 'bypassPermissions',
-      '--dangerously-skip-permissions',
+      // Unattended but fail-closed: declared tools are auto-allowed and every
+      // other request is denied instead of prompting or bypassing policy.
+      '--permission-mode', 'dontAsk',
       '--output-format', 'stream-json',
       '--verbose',
       '--forward-subagent-text',

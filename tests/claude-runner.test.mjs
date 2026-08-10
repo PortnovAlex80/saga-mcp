@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -111,7 +111,26 @@ test('runner launches one frozen card with pinned skills, tools, repository and 
     assert.match(prompt, /launch_spec_installation=77/);
     const allowed = call.args[call.args.indexOf('--allowedTools') + 1];
     assert.match(allowed, /Read/);
+    assert.match(allowed, /Edit/);
     assert.match(allowed, /mcp__saga__task_get/);
+    const disallowed = call.args[call.args.indexOf('--disallowedTools') + 1];
+    assert.match(disallowed, /mcp__saga__worker_next/);
+    assert.match(disallowed, /Bash/);
+    assert.match(disallowed, /Write/);
+    assert.match(disallowed, /MultiEdit/);
+    assert.match(disallowed, /Task/);
+    assert.doesNotMatch(disallowed, /(?:^|,)Read(?:,|$)/);
+    assert.doesNotMatch(disallowed, /(?:^|,)Edit(?:,|$)/);
+    assert.equal(call.args[call.args.indexOf('--permission-mode') + 1], 'dontAsk');
+    assert.equal(call.args.includes('--dangerously-skip-permissions'), false);
+    assert.doesNotMatch(prompt, /bash -c/);
+    assert.match(prompt, /Runtime owns the operator heartbeat/);
+    const runnerSource = readFileSync(
+      new URL('../tracker-view/claude-runner.mjs', import.meta.url),
+      'utf8',
+    );
+    assert.match(runnerSource, /tracker is runtime-owned for this read-only profile/);
+    assert.match(runnerSource, /modelMayUpdateTracker/);
     assert.ok(h.executionEvents.some(([event]) => event === 'running'));
     assert.ok(h.executionEvents.some(([event]) => event === 'exited'));
   } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }

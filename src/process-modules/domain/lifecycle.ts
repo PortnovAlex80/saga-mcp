@@ -51,6 +51,20 @@ export interface LifecycleDefinition {
   entryStageId: string;
   stages: readonly StageBinding[];
   /**
+   * Stage ids supplied by a hash-verified accepted-prefix projection rather
+   * than executed by this LifecycleRun. They are legal mapping sources, but
+   * never legal transition targets and never count as suffix stages.
+   *
+   * This is intentionally definition metadata, not lifecycle input: the
+   * orchestrator obtains the corresponding frames from its authoritative
+   * continuation repository, so callers cannot forge `$.stages.*` values.
+   */
+  inheritedStages?: readonly {
+    readonly id: string;
+    readonly displayName: string;
+    readonly moduleRef: ProcessModuleReference;
+  }[];
+  /**
    * F3: maximum number of stage transitions a single lifecycle run may make
    * before the orchestrator declares the run failed. Guards against a cycle in
    * the declarative routing table (or a self-looping recovery policy) spinning

@@ -106,6 +106,12 @@ export interface CheckPlanEntry {
   /** Repair the assessment producer when this check is unknown/invalid/error. */
   readonly repairTargetRoleOnIndeterminate?: CandidateSetRole;
   /**
+   * Some indeterminate checks describe missing external authority rather than
+   * defective worker production. Such checks stop the line instead of
+   * spending the worker retry budget on an impossible repair.
+   */
+  readonly indeterminateDisposition?: 'repair' | 'human-required';
+  /**
    * Optional reference to the disposable sandbox environment the check runs in.
    * Null for checks that need no external state (pure schema validation).
    */
@@ -175,8 +181,14 @@ export interface CheckProvider {
     readonly environmentRef: string | null;
     /** The immutable product snapshot (read-only view). */
     readonly candidateSnapshot: Readonly<Record<string, unknown>>;
-  }): Promise<CheckOutcome> | CheckOutcome;
+  }): Promise<CheckProviderResult> | CheckProviderResult;
 }
+
+export type CheckProviderResult = CheckOutcome | {
+  readonly outcome: CheckOutcome;
+  /** Immutable/content-addressed evidence produced by the provider adapter. */
+  readonly evidenceRefs: readonly string[];
+};
 
 // ---------------------------------------------------------------------------
 // CheckReceipt (REG-17) — immutable evidence of one check run.

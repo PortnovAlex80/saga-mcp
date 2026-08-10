@@ -52,6 +52,7 @@ function executableProjection(definition: LifecycleDefinition): unknown {
   return {
     identity: { name: definition.identity.name, version: definition.identity.version },
     entryStageId: definition.entryStageId,
+    inheritedStages: definition.inheritedStages ?? [],
     maxTransitions: definition.maxTransitions ?? 100,
     stages: definition.stages.map(stage => ({
       id: stage.id,

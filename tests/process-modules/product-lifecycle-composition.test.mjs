@@ -93,6 +93,8 @@ test('composition installs all module capabilities and refuses implicit input/pr
         'product-discovery',
         'solution-formalization',
         'solution-development',
+        'solution-development-verification-continuation',
+        'solution-development-managed',
         'delivery-release',
       ],
     );

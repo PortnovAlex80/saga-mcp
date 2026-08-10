@@ -557,6 +557,18 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
       args.execution_id,
     );
 
+    // A Production Cell completion is never authoritative prose. The exact
+    // fenced execution must first persist at least one typed managed product;
+    // otherwise running -> verifying creates a state that cannot seal a
+    // CandidateSet and the conveyor has no lawful next transition. Keep the
+    // worker and its fence alive so it can repair the product_submit call.
+    requireProductionCellSubmission(
+      db,
+      taskId,
+      task.current_execution_id,
+      args.execution_id as string | undefined,
+    );
+
     // Submission validation gate (shift-left). For author completion only
     // (in_progress → review/done), NOT for reviewer verdicts. Resolves the
     // authoritative execution binding, looks up the node's declared submission
@@ -1897,6 +1909,61 @@ function validateSubmissionIfRequired(
     receipt.validatedSetDigest,
   );
   return null;
+}
+
+function requireProductionCellSubmission(
+  db: Database.Database,
+  taskId: number,
+  currentExecutionId: string | null,
+  executionId: string | undefined,
+): void {
+  // The Workplace aggregate is the authority. Task metadata is only a
+  // projection and may be stale or incomplete after recovery; it must never
+  // weaken the product boundary.
+  const productionCell = db.prepare(
+    `SELECT w.production_cell_id,wi.id AS intent_id,wi.output_schema
+       FROM tasks t
+       JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
+       JOIN factory_work_intents wi
+         ON wi.id=json_extract(t.metadata,'$.work_intent_id')
+        AND (wi.projected_task_id=t.id OR wi.projected_task_id IS NULL)
+      WHERE t.id=? AND w.production_cell_id IS NOT NULL`,
+  ).get(taskId) as {
+    production_cell_id: string;
+    intent_id: number;
+    output_schema: string;
+  } | undefined;
+  if (!productionCell) return;
+  const exactExecutionId = executionId ?? currentExecutionId;
+  const submission = exactExecutionId
+    ? db.prepare(
+        `SELECT s.id,s.schema_version,wi.output_schema
+           FROM factory_managed_node_submissions s
+           JOIN factory_work_intents wi ON wi.id=s.intent_id
+          WHERE s.task_id=? AND s.execution_id=?
+          ORDER BY s.id DESC LIMIT 1`,
+      ).get(taskId, exactExecutionId) as {
+        id: number;
+        schema_version: string;
+        output_schema: string;
+      } | undefined
+    : undefined;
+  if (submission && submission.schema_version === submission.output_schema) return;
+  if (submission) {
+    throw new Error(
+      `PRODUCTION_CELL_PRODUCT_SCHEMA_MISMATCH: task ${taskId} execution `
+      + `'${exactExecutionId}' must submit '${submission.output_schema}', `
+      + `received '${submission.schema_version}'. The incompatible product `
+      + 'remains immutable evidence but cannot complete this WorkIntent.',
+    );
+  }
+  throw new Error(
+    `PRODUCTION_CELL_PRODUCT_REQUIRED: task ${taskId} cannot call worker_done `
+    + `before its exact execution '${exactExecutionId ?? '(missing)'}' has a `
+    + `typed product_submit. Submit the declared product as `
+    + `product_submit({ schema: '<declared schema>', content: { ... } }) and `
+    + `retry worker_done without leaving the execution.`,
+  );
 }
 
 export const handlers: Record<string, ToolHandler> = {

@@ -6,6 +6,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
@@ -31,7 +32,7 @@ function checkPlan(id, phase = 'final') {
   return { ...base, checkPlanDigest: sha(base) };
 }
 
-function cell({ fanout = false, review = false } = {}) {
+function cell({ fanout = false, review = false, effect = false } = {}) {
   return {
     id: fanout ? 'fanout-cell' : 'singleton-cell',
     inputSelectors: ['source'],
@@ -52,10 +53,11 @@ function cell({ fanout = false, review = false } = {}) {
     } : undefined,
     recovery: { maxAttempts: 2, onExhausted: 'fail' },
     transitions: { accepted: 'next', humanRequired: 'blocked', failed: 'failed' },
+    ...(effect ? { postAcceptanceEffect: 'test-effect' } : {}),
   };
 }
 
-function harness() {
+function harness(effectResult = null, authorCandidateCarryForward = undefined) {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
@@ -66,6 +68,7 @@ function harness() {
   const activations = [];
   const products = new Map();
   const dependencyBindings = [];
+  const effectCalls = [];
   let id = 100;
   const persistence = {
     ensureExecutionPlan(input) {
@@ -80,10 +83,17 @@ function harness() {
     readProcessInputHash() { return sha('factory-order'); },
     activateRoleTask(input) { activations.push(input); },
     concludeExecutionIntent() {},
-    readExecutionReceipt(executionRef) { return { intentId: 1, taskId: 1, executionRef }; },
+    readExecutionReceipt(executionRef) {
+      return executionRef.startsWith('factory-carry-forward-presenter:')
+        ? null
+        : { intentId: 1, taskId: 1, executionRef };
+    },
     projectWorkplace() {},
-    bindTaskDependencies(taskId, dependencyTaskIds) {
-      dependencyBindings.push({ taskId, dependencyTaskIds: [...dependencyTaskIds] });
+    sealWorkplaceGraph(input) {
+      dependencyBindings.push(...input.items.map(item => ({
+        taskId: item.taskId,
+        dependencyTaskIds: [...item.dependencyTaskIds],
+      })));
     },
   };
   const executor = new ProductionCellNodeExecutor({
@@ -91,7 +101,18 @@ function harness() {
     candidateSetRepo,
     gateRepo,
     persistence,
-    postAcceptanceEffects: { run() { /* no-op test registry */ } },
+    postAcceptanceEffects: {
+      run(effectId, input) {
+        effectCalls.push({ effectId, input });
+        if (effectId === 'test-effect' && effectResult) return effectResult;
+        return {
+          outcome: 'succeeded',
+          receiptRef: `provider:${effectId}:${input.candidateSetRef}`,
+          receiptDigest: sha({ effectId, candidateSetRef: input.candidateSetRef }),
+        };
+      },
+    },
+    finalAcceptance: new SqliteCellFinalAcceptance(db),
     productReader: { readExecutionProducts: ({ executionRef }) => products.get(executionRef) ?? [] },
     checkProviders: {
       resolve(providerId) {
@@ -101,9 +122,10 @@ function harness() {
       },
     },
     resolveInstallationDigest: () => sha('installation'),
+    authorCandidateCarryForward,
     now: () => new Date(),
   });
-  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products, dependencyBindings };
+  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products, dependencyBindings, effectCalls };
 }
 
 function context(definition, frame = { productions: {}, receipts: {}, runInput: {} }) {
@@ -181,6 +203,42 @@ test('author product is sealed, gated, and completed with exact provenance', asy
   assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
   assert.equal(h.candidateSetRepo.listForWorkplace(ref)[0].producerExecutionRef, 'execution:author');
   assert.equal(h.gateRepo.listDecisionsForWorkplace(ref).length, 1);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 1);
+  h.db.close();
+});
+
+test('required effect settles before final acceptance and replay certification', async () => {
+  const h = harness();
+  const ctx = context(cell({ effect: true }));
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:effect-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:effect', digest: sha('effect-product'),
+  });
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'completed');
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  assert.deepEqual(h.effectCalls.map(call => call.effectId), ['test-effect', 'replay-capture']);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_effect_receipts').get().n, 1);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 1);
+  h.db.close();
+});
+
+test('effect conflict returns the same Workplace to author repair without certification', async () => {
+  const h = harness({ outcome: 'repair_required', reason: 'merge conflict' });
+  const ctx = context(cell({ effect: true }));
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:conflicted-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:conflict', digest: sha('conflict-product'),
+  });
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'paused');
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+  assert.equal(h.coordinator.readState(ref).nextRole, 'author');
+  assert.deepEqual(h.effectCalls.map(call => call.effectId), ['test-effect']);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_effect_receipts').get().n, 0);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 0);
   h.db.close();
 });
 
@@ -267,5 +325,92 @@ test('fan-out dependencies are projected to the Kanban before dispatch', async (
     { taskId: taskByItem.get('foundation'), dependencyTaskIds: [] },
     { taskId: taskByItem.get('feature'), dependencyTaskIds: [taskByItem.get('foundation')] },
   ]);
+  const states = h.db.prepare(
+    `SELECT loop_state,COUNT(*) AS n FROM factory_workplaces
+      WHERE production_cell_id='fanout-cell' GROUP BY loop_state ORDER BY loop_state`,
+  ).all();
+  assert.deepEqual(states, [
+    { loop_state: 'idle', n: 1 },
+    { loop_state: 'queued', n: 1 },
+  ]);
+  h.db.close();
+});
+
+test('authorized author production is carried into a new current CandidateSet and current gate', async () => {
+  const consumed = [];
+  const directive = {
+    authorizationRef: 'author-carry-forward:test',
+    presenterRef: 'factory-carry-forward-presenter:author-carry-forward:test',
+    sourceCandidateSetRef: 'candidate-set:prior-author',
+    sourceCandidateSetDigest: sha('prior-author'),
+    products: [{
+      schemaId: 'factory.test-product.v1',
+      ref: 'managed-node-submission:prior',
+      digest: sha('prior-product'),
+    }],
+  };
+  const carry = {
+    resolve() { return directive; },
+    consume(input) { consumed.push(input); },
+  };
+  const h = harness(null, carry);
+  const ctx = context(cell({ review: true }));
+  const result = await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  assert.equal(result.runtimeEvent, 'paused');
+  assert.equal(h.coordinator.readState(ref).loopState, 'queued');
+  assert.equal(h.coordinator.readState(ref).nextRole, 'reviewer');
+  const author = h.candidateSetRepo.listForWorkplace(ref)
+    .find(set => set.role === 'author');
+  assert.ok(author);
+  assert.equal(author.producerExecutionRef, directive.presenterRef);
+  assert.equal(author.members[0].origin, 'carried-forward');
+  assert.equal(author.members[0].sourceCandidateSetRef, directive.sourceCandidateSetRef);
+  assert.equal(h.gateRepo.listDecisionsForWorkplace(ref).length, 1);
+  assert.equal(consumed.length, 1);
+  assert.equal(consumed[0].candidateSetRef, author.candidateSetRef);
+  assert.equal(h.activations.filter(item => item.role === 'reviewer').length, 1);
+  assert.equal(h.products.size, 0, 'no author worker product reader was used');
+  finishRole(h, ref, 'execution:current-reviewer', {
+    schemaId: 'factory.test-review-verdict.v1', ref: 'product:current-review', digest: sha('current-review'),
+  });
+  const completed = await h.executor.execute(ctx);
+  assert.equal(completed.runtimeEvent, 'completed');
+  assert.equal(completed.production.bindings.items[0].producerExecutionRef, directive.presenterRef);
+  assert.equal(completed.production.bindings.items[0].execution, null,
+    'a kernel presenter is provenance, not a fabricated WorkerExecution receipt');
+  h.db.close();
+});
+
+test('invalid fan-out cycle leaves every Workplace idle and unclaimable', async () => {
+  const h = harness();
+  const definition = cell({ fanout: true });
+  definition.materialization.dependencySelector = 'dependsOnKeys';
+  const frame = {
+    runInput: {}, receipts: {},
+    productions: {
+      source: {
+        schema: 'factory.source.v1', artifactRef: 'source:cycle', contentHash: sha('source:cycle'),
+        semanticDigest: sha('source:cycle'),
+        bindings: {
+          items: [
+            { key: 'a', dependsOnKeys: ['b'] },
+            { key: 'b', dependsOnKeys: ['a'] },
+          ],
+        },
+      },
+    },
+  };
+  await assert.rejects(
+    h.executor.execute(context(definition, frame)),
+    /dependency graph contains a cycle/,
+  );
+  assert.deepEqual(
+    h.db.prepare(
+      `SELECT DISTINCT loop_state FROM factory_workplaces
+        WHERE production_cell_id='fanout-cell'`,
+    ).all(),
+    [{ loop_state: 'idle' }],
+  );
   h.db.close();
 });

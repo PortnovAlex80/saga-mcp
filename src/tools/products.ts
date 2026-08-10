@@ -9,6 +9,7 @@ import { writeProduct } from './universal-desk-helper.js';
 import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../modules/discovery/infrastructure/discovery-proposal-projection.js';
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
+import { materializeManagedSourceChange } from '../infrastructure/source-change/managed-source-change-candidate.js';
 
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
@@ -33,10 +34,15 @@ export function _resetProductToolRepositoriesForTests(): void {
 const productSubmit: ToolHandler = args => {
   const schema = requiredString(args, 'schema');
   if (!Object.hasOwn(args, 'content')) throw new Error('content is required');
+  // Validate the exact WorkIntent schema before a schema-specific materializer
+  // can create a candidate commit/tree or touch any other capability target.
+  // submitForCurrentExecution repeats the assertion atomically with storage.
+  submissionRepo().assertSchemaForCurrentExecution(schema);
   let content = args.content;
   if (typeof content === 'string') {
     try { content = JSON.parse(content); } catch { /* strings are legal products */ }
   }
+  content = materializeManagedSourceChange(getDb(), schema, content);
   const result = submissionRepo().submitForCurrentExecution({ schema, payload: content });
   const universalRef = writeProduct(getDb(), {
     schemaRef: schema,

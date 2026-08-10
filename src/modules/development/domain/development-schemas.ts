@@ -23,6 +23,8 @@ import { DEVELOPMENT_CASE_SCHEMA } from '../../../process-modules/lifecycles/pro
 export const DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA =
   'factory.development-task-graph-proposal.v1';
 export const DEVELOPMENT_TASK_GRAPH_SCHEMA = 'factory.development-task-graph.v1';
+export const DEVELOPMENT_BASELINE_ADOPTION_SCHEMA =
+  'factory.development-baseline-adoption.v1';
 export const DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA =
   'factory.development-implementation-workset.v1';
 export const INTEGRATED_CANDIDATE_SCHEMA =
@@ -46,7 +48,7 @@ export const DEVELOPMENT_CERTIFICATE_SCHEMA =
 export const DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA =
   'factory.development-implementation-result.v1';
 export const DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA =
-  'factory.candidate-verification-evidence-product.v1';
+  'factory.candidate-verification-evidence-product.v2';
 export const DEVELOPMENT_REVIEW_VERDICT_SCHEMA =
   'factory.development-review-verdict.v1';
 
@@ -80,8 +82,12 @@ export interface DevelopmentVerificationEvidenceProduct {
   acceptedCriterionHash: string;
   candidateHash: string;
   outcome: VerificationOutcome;
-  evidence: ContentAddressedReference;
-  provider: VerificationProviderBinding;
+  /** The enclosing immutable ProductRef is the evidence reference. */
+  evidence: {
+    summary: string;
+    observations: readonly string[];
+    limitations: readonly string[];
+  };
 }
 
 export interface ContentAddressedReference {

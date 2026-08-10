@@ -54,6 +54,13 @@
   font-size: 11px;
   color: #f85149;
 }
+.lp-run-lineage {
+  font-size: 10px;
+  color: #a5d6ff;
+  border: 1px dashed rgba(165, 214, 255, .4);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
 
 /* A single stage tile in the horizontal row. */
 .lp-stage {
@@ -90,6 +97,24 @@
   font-size: 9px;
   opacity: .7;
   font-variant-numeric: tabular-nums;
+}
+.lp-stage .lp-worker-activity {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #58a6ff;
+  white-space: nowrap;
+}
+.lp-stage.lp-inherited {
+  background: rgba(63, 185, 80, .06);
+  border: 1px dashed rgba(63, 185, 80, .28);
+}
+.lp-stage .lp-inherited-label {
+  margin-top: 1px;
+  font-size: 8px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: .3px;
 }
 
 /* Status-driven colors (mirror the monolith's .pipeline-stage.* palette). */

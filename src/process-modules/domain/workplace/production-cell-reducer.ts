@@ -86,16 +86,20 @@ export type ProductionCellEvent =
   | { readonly kind: 'worker-leased'; readonly reservationRef: string }
   | { readonly kind: 'worker-started' }
   | { readonly kind: 'candidate-sealed' }
+  | { readonly kind: 'candidate-carried-forward' }
   | { readonly kind: 'worker-crashed' }
   | { readonly kind: 'worker-lost' }
   // Gate outcomes.
   | { readonly kind: 'gate-repair-required'; readonly repairTargetRole: NextRole }
   | { readonly kind: 'gate-author-accepted-with-review' }
-  | { readonly kind: 'gate-author-accepted-final' }
+  | { readonly kind: 'gate-author-accepted-final'; readonly effectRequired?: boolean }
   | {
       readonly kind: 'reviewer-verdict';
       readonly verdict: 'accepted' | 'defect-proven' | 'invalid-output';
+      readonly effectRequired?: boolean;
     }
+  | { readonly kind: 'acceptance-effect-succeeded' }
+  | { readonly kind: 'acceptance-effect-repair-required' }
   // Terminal / human.
   | { readonly kind: 'human-required' }
   | { readonly kind: 'gate-failed' }
@@ -176,6 +180,16 @@ function computeNextState(
       assertLoop(state, 'running');
       return { ...state, loopState: 'verifying', revision: rev };
     }
+    case 'candidate-carried-forward': {
+      // A single-use Factory authorization may present an exact prior author
+      // product into this run.  It bypasses worker execution, not quality:
+      // the new CandidateSet enters the same current verifying/gate path.
+      assertFrom(state, 'in_progress', 'queued');
+      if (state.nextRole !== 'author') {
+        throw new Error('candidate-carried-forward requires nextRole=author');
+      }
+      return { ...state, loopState: 'verifying', revision: rev };
+    }
     case 'worker-crashed':
     case 'worker-lost': {
       // running → repair_wait (Kanban UNCHANGED — REG-28-AC-02).
@@ -213,7 +227,9 @@ function computeNextState(
     case 'gate-author-accepted-final': {
       // in_progress/verifying → done/terminal(accepted). Cell complete.
       assertFrom(state, 'in_progress', 'verifying');
-      return terminal(state, 'accepted', rev);
+      return event.effectRequired
+        ? { ...state, loopState: 'effect_pending', revision: rev }
+        : terminal(state, 'accepted', rev);
     }
 
     // --- Reviewer ---------------------------------------------------------
@@ -221,6 +237,9 @@ function computeNextState(
       // review_in_progress/verifying.
       assertFrom(state, 'review_in_progress', 'verifying');
       if (event.verdict === 'accepted') {
+        if (event.effectRequired) {
+          return { ...state, loopState: 'effect_pending', revision: rev };
+        }
         // Final gate accepts → done/terminal(accepted).
         return terminal(state, 'accepted', rev);
       }
@@ -238,6 +257,21 @@ function computeNextState(
       }
       // invalid-output: retry the reviewer role. Kanban stays review_in_progress.
       return { ...state, loopState: 'repair_wait', nextRole: 'reviewer', revision: rev };
+    }
+
+    case 'acceptance-effect-succeeded': {
+      assertLoop(state, 'effect_pending');
+      return terminal(state, 'accepted', rev);
+    }
+    case 'acceptance-effect-repair-required': {
+      assertLoop(state, 'effect_pending');
+      return {
+        ...state,
+        kanbanPhase: 'in_progress',
+        loopState: 'repair_wait',
+        nextRole: 'author',
+        revision: rev,
+      };
     }
 
     // --- Terminal / human -------------------------------------------------

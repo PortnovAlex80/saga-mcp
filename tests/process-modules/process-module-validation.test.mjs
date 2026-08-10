@@ -83,7 +83,7 @@ test('built-in registry registers all lifecycle modules by versioned identity', 
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
     'product-discovery@3.0.2',
-    'solution-development@1.0.0',
+    'solution-development@1.1.0',
     'solution-formalization@1.0.0',
   ]);
 });

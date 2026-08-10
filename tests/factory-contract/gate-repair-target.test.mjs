@@ -34,6 +34,7 @@ function drive(outcomes, checks) {
     providerDigest: `${check.providerId}:digest`,
     repairTargetRoleOnFailure: check.failure,
     repairTargetRoleOnIndeterminate: check.indeterminate,
+    indeterminateDisposition: check.disposition,
   })), { includeProductContract: false });
   return driveGateRun(repo, providers, {
     workplaceRef,
@@ -74,6 +75,20 @@ test('conflicting repair ownership stops the line instead of guessing', () => {
       { providerId: 'semantic', failure: 'author', indeterminate: 'author' },
       { providerId: 'review', failure: 'author', indeterminate: 'reviewer' },
     ],
+  );
+  assert.equal(decision.verdict, 'human_required');
+  assert.equal(decision.repairTargetRole, null);
+});
+
+test('missing external check authority stops the line without spending worker retries', () => {
+  const decision = drive(
+    { external: 'unknown' },
+    [{
+      providerId: 'external',
+      failure: 'author',
+      indeterminate: 'author',
+      disposition: 'human-required',
+    }],
   );
   assert.equal(decision.verdict, 'human_required');
   assert.equal(decision.repairTargetRole, null);

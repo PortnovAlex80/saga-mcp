@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { FACTORY_CLOUD_MODELS } from '../dist/runtime/factory-model-profiles.js';
 
 export function createModelManagementApi({
   runtimeConfig,
@@ -29,11 +30,7 @@ export function createModelManagementApi({
   // z.ai's documented rate multipliers: GLM-5.2 counts x3 in peak hours,
   // x2 off-peak; the others are x1. The limit is the per-epic concurrency
   // ceiling saga uses; NOT the prompt quota (tracked by z.ai, 80/400/1600 per 5h).
-  const ZAI_MODELS = [
-    { id: 'glm-5.2',         limit: 3,  tier: 'flagship', provider: 'zai', effort: 'high', note: 'Opus-level, x3 peak rate' },
-    { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', provider: 'zai', effort: 'high', note: 'Opus-level, x1 rate' },
-    { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   provider: 'zai', effort: 'high', note: 'Sonnet-level, x1 rate — recommended default' },
-  ];
+  const ZAI_MODELS = FACTORY_CLOUD_MODELS;
 
   // LM Studio local models (no subscription, runs on this machine). Populated
   // lazily from GET <LMSTUDIO_URL>/models (Anthropic+OpenAI-compatible server

@@ -14,6 +14,21 @@ test('conveyor model links the universal diagnostic appendices', () => {
   assert.match(model, /thousandth workshop/);
 });
 
+test('conveyor model preserves dependency admission and Git lineage invariants', () => {
+  const model = read('docs/architecture/CONVEYOR-MENTAL-MODEL.md');
+  assert.match(model, /materialize the complete sealed Workplace set in idle/);
+  assert.match(model, /persist the complete dependency DAG atomically/);
+  assert.match(model, /effective desk-base receipt/);
+  assert.match(model, /Worktree creation CAS-checks that head/);
+  assert.match(model, /never marks a changed\s+tree accepted under the old review/);
+  assert.match(model, /required acceptance EffectReceipt is persisted/);
+  assert.match(model, /effect_pending/);
+  assert.match(model, /successful exact EffectReceipt -> CellFinalAcceptance/);
+  assert.match(model, /Fan-out is optional topology/);
+  assert.match(model, /ability to invoke a Git command is not Git authority/);
+  assert.match(model, /linked worktree\s+shares refs and is not a security boundary/);
+});
+
 test('diagnostics preserve evidence authority and define deterministic explanation', () => {
   const diagnostics = read('docs/architecture/CONVEYOR-TRANSITION-DIAGNOSTICS.md');
   assert.match(diagnostics, /Domain state and evidence/);

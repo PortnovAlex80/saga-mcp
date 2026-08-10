@@ -41,7 +41,16 @@ test.after(() => {
 /** Stamp process_run_id onto a task — the saga4 authority gate. */
 function stampProcessRun(taskId, processRunId = 1) {
   const db = getDb();
-  const row = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(taskId);
+  const row = db.prepare(
+    `SELECT t.metadata,t.epic_id,e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?`,
+  ).get(taskId);
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_process_runs
+      (id,project_id,epic_id,module_name,module_version,module_ref_key,idempotency_key,
+       executor_kind,input_schema,input_snapshot,input_hash,status)
+     VALUES (?,?,?,'test-module','1.0.0','test-module@1.0.0',?,
+             'generic-flow','test.input.v1','{}',?,'running')`,
+  ).run(processRunId, row.project_id, row.epic_id, `test-process:${processRunId}`, 'a'.repeat(64));
   let meta = {};
   try { meta = JSON.parse(row.metadata || '{}'); } catch { meta = {}; }
   meta.process_run_id = processRunId;
@@ -82,7 +91,7 @@ function createZombie(projectId, epicId) {
   return { taskId: task.id, executionId: `exec-zombie-${task.id}` };
 }
 
-test('startup sweep reaps an orphaned execution and releases the card', () => {
+test('startup sweep reaps an orphaned execution into durable repair_wait', () => {
   const { projectId, epicId } = setupProject();
   const zombie = createZombie(projectId, epicId);
 
@@ -105,13 +114,22 @@ test('startup sweep reaps an orphaned execution and releases the card', () => {
     log: (m) => messages.push(m),
   });
 
-  // After startup sweep: card returned to todo, fence cleared, execution terminal.
+  // After startup sweep the physical fence is cleared and the universal
+  // Workplace records repair_wait. Kanban intentionally remains in_progress;
+  // the next lifecycle reconciliation authorizes a fresh repair reservation.
   const after = getDb().prepare(
     'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
   ).get(zombie.taskId);
-  assert.equal(after.status, 'todo', 'zombie card returned to the queue');
+  assert.equal(after.status, 'in_progress', 'Kanban phase is not rolled back');
   assert.equal(after.assigned_to, null, 'assignment cleared');
   assert.equal(after.current_execution_id, null, 'fence cleared');
+  assert.equal(
+    getDb().prepare(
+      `SELECT w.loop_state FROM factory_workplaces w
+        JOIN tasks t ON t.workplace_ref=w.workplace_ref WHERE t.id=?`,
+    ).get(zombie.taskId).loop_state,
+    'repair_wait',
+  );
 
   const execRow = getDb().prepare(
     'SELECT state FROM worker_executions WHERE execution_id=?',
@@ -192,8 +210,15 @@ test('expired lease + dead process is reaped (parent runner death recovery)', ()
   const after = getDb().prepare(
     'SELECT status, current_execution_id FROM tasks WHERE id=?',
   ).get(zombie.taskId);
-  assert.equal(after.status, 'todo', 'card returned after lease-expiry recovery');
+  assert.equal(after.status, 'in_progress', 'Kanban phase is preserved for repair');
   assert.equal(after.current_execution_id, null, 'fence cleared');
+  assert.equal(
+    getDb().prepare(
+      `SELECT w.loop_state FROM factory_workplaces w
+        JOIN tasks t ON t.workplace_ref=w.workplace_ref WHERE t.id=?`,
+    ).get(zombie.taskId).loop_state,
+    'repair_wait',
+  );
   handle.stop();
 });
 

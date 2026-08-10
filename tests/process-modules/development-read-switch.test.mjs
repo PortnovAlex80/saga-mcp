@@ -28,3 +28,14 @@ test('Development settlement reads accepted Production Cell products, not task l
   );
   assert.doesNotMatch(settlementBody, /FROM tasks[\s\S]{0,160}(status|integration_state)/i);
 });
+
+test('Development freeze derives integration authority from exact Cell EffectReceipts', () => {
+  const freezeBody = source.slice(
+    source.indexOf('  freezeIntegratedCandidate(input:'),
+    source.indexOf('  buildSettlementInput(input:'),
+  );
+  assert.match(freezeBody, /factory_cell_effect_receipts/);
+  assert.match(freezeBody, /workplace_ref=\? AND candidate_set_ref=\?/);
+  assert.match(freezeBody, /effect_id='git-integration'/);
+  assert.doesNotMatch(freezeBody, /SELECT integration_state,integrated_commit\s+FROM tasks/);
+});

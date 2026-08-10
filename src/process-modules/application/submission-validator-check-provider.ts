@@ -1,5 +1,5 @@
 import { sha256Hex } from '../../shared/canonical-json.js';
-import type { SqliteCandidateSetRepository } from '../../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
 import type { CheckProvider } from '../domain/workplace/gate.js';
 import type {
   ContractRef,
@@ -35,7 +35,7 @@ export function submissionValidatorCheckProviderRef(input: {
 
 export function submissionValidatorCheckProvider(input: {
   db: DbHandle;
-  candidateSets: SqliteCandidateSetRepository;
+  candidateSets: CandidateSetReaderPort;
   validator: NodeSubmissionValidator;
   nodeId: string;
   contractRef?: ContractRef;

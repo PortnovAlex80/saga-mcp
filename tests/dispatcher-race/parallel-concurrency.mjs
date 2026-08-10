@@ -34,6 +34,7 @@ import { dirname, join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import os from 'node:os';
+import { ensureRunningProcessRun } from './process-run-fixture.mjs';
 
 const { ClaudeBoardRunner } = await import('../../tracker-view/claude-runner.mjs');
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,7 @@ function seedTwoCards(db) {
   const projId = db.prepare("SELECT id FROM projects WHERE name='parallel-test'").get().id;
   db.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'parallel-epic')").run(projId);
   const epicId = db.prepare("SELECT id FROM epics WHERE name='parallel-epic'").get().id;
+  ensureRunningProcessRun(db, 5001, projId, epicId);
   const metadata = JSON.stringify({ process_run_id: 5001 });
   const ins = db.prepare(
     "INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, ?, 'todo', 'high', NULL, ?)",

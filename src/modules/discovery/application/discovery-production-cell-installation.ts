@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
@@ -50,7 +50,7 @@ interface SubmissionRow {
 }
 
 export function createDiscoveryProductionCellKernelHandlers(input: {
-  db: Database.Database;
+  db: SqlDatabasePort;
   certificates: ProcessOutcomeCertificateRepository;
 }): Record<string, KernelHandler> {
   return {
@@ -59,7 +59,7 @@ export function createDiscoveryProductionCellKernelHandlers(input: {
 }
 
 function createSettlementHandler(input: {
-  db: Database.Database;
+  db: SqlDatabasePort;
   certificates: ProcessOutcomeCertificateRepository;
 }): KernelHandler {
   const policy = new DiscoverySettlementPolicyV1();
@@ -203,7 +203,7 @@ function moduleCompletion(outcome: string, certificateRef: ProductRef): ModuleCo
 }
 
 function readSubmission(
-  db: Database.Database,
+  db: SqlDatabasePort,
   processRunId: number,
   executionId: string,
   expectedSchema: string,

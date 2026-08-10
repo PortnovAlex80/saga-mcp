@@ -45,6 +45,24 @@ test('factory start parsing cannot leak control option values into initiative su
   assert.doesNotMatch(source, /initiatedBy:\s*sandboxName\s*\?\?/);
 });
 
+test('canonical factory command preflights and supplies production composition', () => {
+  const source = read('scripts/factory.mjs');
+
+  assert.match(source, /function resolveFactoryComposition\(\)/);
+  assert.match(source, /tracker-view[\s\S]*product-delivery-composition\.mjs/);
+  assert.match(source, /const factoryCompositionPath = resolveFactoryComposition\(\)/);
+  assert.match(source, /SAGA_PRODUCT_LIFECYCLE_COMPOSITION:\s*factoryCompositionPath/);
+});
+
+test('dispatcher cannot claim projection cards owned by a terminal ProcessRun', () => {
+  const source = read('src/lifecycle/work-assignment-core.ts');
+
+  assert.match(
+    source,
+    /factory_process_runs pr[\s\S]*pr\.id=json_extract\(t\.metadata, '\$\.process_run_id'\)[\s\S]*pr\.status IN \('running','paused'\)/,
+  );
+});
+
 test('replay semantic input canonicalization excludes operator initiation provenance', () => {
   const source = read('src/process-modules/application/node-executors/production-cell-node-executor.ts');
 

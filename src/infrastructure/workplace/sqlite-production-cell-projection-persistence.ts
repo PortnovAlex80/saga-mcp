@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type { ProductionCellProjectionPersistence } from '../../process-modules/application/node-executors/production-cell-node-executor.js';
 import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/workplace/index.js';
+import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 
 /**
  * Factory-wide SQLite projection adapter for Production Cells.
@@ -14,7 +15,11 @@ export function createSqliteProductionCellProjectionPersistence(
   db: Database.Database,
 ): Pick<
   ProductionCellProjectionPersistence,
-  'ensureExecutionPlan' | 'bindProjectedTaskProcessContext' | 'readTaskProjectRepositoryId'
+  'ensureExecutionPlan'
+  | 'bindProjectedTaskProcessContext'
+  | 'readTaskProjectRepositoryId'
+  | 'sealWorkplaceGraph'
+  | 'readProjectedRoleTask'
 > {
   return {
     ensureExecutionPlan(input) {
@@ -155,7 +160,181 @@ export function createSqliteProductionCellProjectionPersistence(
       if (!row) throw new Error(`PRODUCTION_CELL_PROJECTED_TASK_NOT_FOUND: ${taskId}`);
       return row.project_repository_id;
     },
+
+    readProjectedRoleTask(workplaceRef, role) {
+      const serialized = serializeWorkplaceRef(workplaceRef);
+      const row = db.prepare(
+        `SELECT id AS taskId FROM tasks
+          WHERE workplace_ref=? AND json_extract(metadata,'$.role')=?
+          ORDER BY id DESC LIMIT 1`,
+      ).get(serialized, role) as { taskId: number } | undefined;
+      return row ?? null;
+    },
+
+    sealWorkplaceGraph(input) {
+      const expectedDigest = sha256Hex({
+        productionCellId: input.productionCellId,
+        items: input.items.map(item => ({
+          ordinal: item.ordinal,
+          itemId: item.itemId,
+          workplaceRef: item.workplaceRef,
+          taskId: item.taskId,
+          dependencyItemIds: item.dependencyItemIds,
+          dependencyWorkplaceRefs: item.dependencyWorkplaceRefs,
+          dependencyTaskIds: item.dependencyTaskIds,
+        })),
+      });
+      if (
+        input.graphDigest !== expectedDigest
+        || input.graphRef !== `workplace-graph:${expectedDigest}`
+      ) {
+        throw new Error(
+          `PRODUCTION_CELL_GRAPH_DIGEST_INVALID: ${input.productionCellId}`,
+        );
+      }
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const existing = db.prepare(
+          `SELECT graph_ref,graph_digest,item_count,edge_count
+             FROM factory_workplace_graphs
+            WHERE process_run_id=? AND module_ref=? AND production_cell_id=?`,
+        ).get(
+          input.processRunId,
+          input.moduleRef,
+          input.productionCellId,
+        ) as {
+          graph_ref: string;
+          graph_digest: string;
+          item_count: number;
+          edge_count: number;
+        } | undefined;
+        const edgeCount = input.items.reduce(
+          (total, item) => total + item.dependencyWorkplaceRefs.length,
+          0,
+        );
+        if (existing) {
+          if (
+            existing.graph_ref !== input.graphRef
+            || existing.graph_digest !== input.graphDigest
+            || existing.item_count !== input.items.length
+            || existing.edge_count !== edgeCount
+          ) {
+            throw new Error(
+              `PRODUCTION_CELL_GRAPH_REPLAY_MISMATCH: ${input.productionCellId}`,
+            );
+          }
+          assertStoredGraphEquals(db, input);
+        } else {
+          db.prepare(
+            `INSERT INTO factory_workplace_graphs
+               (graph_ref,process_run_id,module_ref,production_cell_id,
+                graph_digest,item_count,edge_count,sealed_at)
+             VALUES (?,?,?,?,?,?,?,?)`,
+          ).run(
+            input.graphRef,
+            input.processRunId,
+            input.moduleRef,
+            input.productionCellId,
+            input.graphDigest,
+            input.items.length,
+            edgeCount,
+            input.sealedAt,
+          );
+          const insertItem = db.prepare(
+            `INSERT INTO factory_workplace_graph_items
+               (graph_ref,ordinal,item_id,workplace_ref,task_id)
+             VALUES (?,?,?,?,?)`,
+          );
+          const insertEdge = db.prepare(
+            `INSERT INTO factory_workplace_dependencies
+               (graph_ref,workplace_ref,depends_on_workplace_ref)
+             VALUES (?,?,?)`,
+          );
+          for (const item of input.items) {
+            insertItem.run(
+              input.graphRef,
+              item.ordinal,
+              item.itemId,
+              item.workplaceRef,
+              item.taskId,
+            );
+            for (const dependencyRef of item.dependencyWorkplaceRefs) {
+              insertEdge.run(input.graphRef, item.workplaceRef, dependencyRef);
+            }
+          }
+        }
+
+        // Kanban dependencies are a projection of the sealed graph. Rebuild
+        // every row from the complete immutable set in this one transaction;
+        // never evaluate or rewrite task status while publishing topology.
+        const deleteDependencies = db.prepare(
+          'DELETE FROM task_dependencies WHERE task_id=?',
+        );
+        const insertTaskDependency = db.prepare(
+          `INSERT INTO task_dependencies (task_id,depends_on_task_id)
+           VALUES (?,?)`,
+        );
+        for (const item of input.items) {
+          deleteDependencies.run(item.taskId);
+          for (const dependencyTaskId of item.dependencyTaskIds) {
+            insertTaskDependency.run(item.taskId, dependencyTaskId);
+          }
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+        throw error;
+      }
+    },
   };
+}
+
+function assertStoredGraphEquals(
+  db: Database.Database,
+  input: Parameters<
+    NonNullable<ProductionCellProjectionPersistence['sealWorkplaceGraph']>
+  >[0],
+): void {
+  const storedItems = db.prepare(
+    `SELECT ordinal,item_id,workplace_ref,task_id
+       FROM factory_workplace_graph_items
+      WHERE graph_ref=? ORDER BY ordinal`,
+  ).all(input.graphRef) as Array<{
+    ordinal: number;
+    item_id: string;
+    workplace_ref: string;
+    task_id: number;
+  }>;
+  const expectedItems = input.items.map(item => ({
+    ordinal: item.ordinal,
+    item_id: item.itemId,
+    workplace_ref: item.workplaceRef,
+    task_id: item.taskId,
+  }));
+  const storedEdges = db.prepare(
+    `SELECT workplace_ref,depends_on_workplace_ref
+       FROM factory_workplace_dependencies
+      WHERE graph_ref=?
+      ORDER BY workplace_ref,depends_on_workplace_ref`,
+  ).all(input.graphRef) as Array<{
+    workplace_ref: string;
+    depends_on_workplace_ref: string;
+  }>;
+  const expectedEdges = input.items.flatMap(item =>
+    item.dependencyWorkplaceRefs.map(dependencyRef => ({
+      workplace_ref: item.workplaceRef,
+      depends_on_workplace_ref: dependencyRef,
+    }))).sort((left, right) =>
+      left.workplace_ref.localeCompare(right.workplace_ref)
+      || left.depends_on_workplace_ref.localeCompare(right.depends_on_workplace_ref));
+  if (
+    canonicalJson(storedItems) !== canonicalJson(expectedItems)
+    || canonicalJson(storedEdges) !== canonicalJson(expectedEdges)
+  ) {
+    throw new Error(
+      `PRODUCTION_CELL_GRAPH_REPLAY_MISMATCH: ${input.productionCellId}`,
+    );
+  }
 }
 
 interface IntentRow {

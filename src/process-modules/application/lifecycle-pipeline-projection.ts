@@ -42,6 +42,7 @@ export interface LifecyclePipelineRunInput {
   readonly error: string | null;
   readonly startedAt: string | null;
   readonly updatedAt: string | null;
+  readonly inputSnapshot?: string;
 }
 
 export interface LifecyclePipelineStageRunInput {
@@ -79,6 +80,7 @@ export interface RunSummary {
   readonly startedAt: string | null;
   readonly updatedAt: string | null;
   readonly error: string | null;
+  readonly continuationOf?: number;
 }
 
 /**
@@ -104,6 +106,8 @@ export interface PipelineStageView {
   readonly completedAt: string | null;
   readonly durationS: number | null;
   readonly isLive: boolean;
+  /** Completed by the immutable accepted prefix, not executed by this run. */
+  readonly isInherited?: boolean;
 }
 
 /**
@@ -217,6 +221,7 @@ interface ParsedDefinition {
   readonly identity: LifecycleRef;
   readonly entryStageId: string;
   readonly stages: readonly DefinitionStage[];
+  readonly inheritedStages: readonly Omit<DefinitionStage, 'outcomeRoutes'>[];
 }
 
 function asString(value: unknown, field: string): string {
@@ -284,10 +289,15 @@ function parseDefinitionSnapshot(snapshot: string): ParsedDefinition {
     throw new Error('LIFECYCLE_DEFINITION_INVALID: identity missing');
   }
   const idObj = identity as unknown as Record<string, unknown>;
+  const rawName = asString(idObj.name, 'identity.name');
+  const rawDisplayName = asString(idObj.displayName, 'identity.displayName');
   const lifecycle: LifecycleRef = {
-    name: asString(idObj.name, 'identity.name'),
+    name: rawName.replace(/(?:-continuation){2,}$/u, '-continuation'),
     version: asString(idObj.version, 'identity.version'),
-    displayName: asString(idObj.displayName, 'identity.displayName'),
+    displayName: rawDisplayName.replace(
+      /(?:\s+Continuation){2,}$/u,
+      ' Continuation',
+    ),
     description: asString(idObj.description, 'identity.description'),
   };
   const entryStageId = asString(def.entryStageId, 'entryStageId');
@@ -306,7 +316,18 @@ function parseDefinitionSnapshot(snapshot: string): ParsedDefinition {
       outcomeRoutes: asOutcomeRoutes(s.outcomeRoutes, `stages[${index}].outcomeRoutes`),
     };
   });
-  return { identity: lifecycle, entryStageId, stages };
+  const inheritedStages = (def.inheritedStages ?? []).map((stage, index) => ({
+    id: asString(stage.id, `inheritedStages[${index}].id`),
+    displayName: asString(
+      stage.displayName,
+      `inheritedStages[${index}].displayName`,
+    ),
+    moduleRef: asModuleRef(
+      stage.moduleRef,
+      `inheritedStages[${index}].moduleRef`,
+    ),
+  }));
+  return { identity: lifecycle, entryStageId, stages, inheritedStages };
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +414,24 @@ function buildStages(
     ? definition.stages.findIndex(s => s.id === terminal.atStageId)
     : -1;
 
-  return definition.stages.map((stage, index) => {
+  const inherited: PipelineStageView[] = definition.inheritedStages.map(
+    (stage, index) => ({
+      stageId: stage.id,
+      ordinal: index + 1,
+      displayName: stage.displayName,
+      module: stage.moduleRef,
+      status: 'completed',
+      localOutcome: null,
+      attempt: 0,
+      startedAt: null,
+      completedAt: null,
+      durationS: null,
+      isLive: false,
+      isInherited: true,
+    }),
+  );
+  const offset = inherited.length;
+  const current = definition.stages.map<PipelineStageView>((stage, index) => {
     const stageRuns = orderedRuns.filter(r => r.stageId === stage.id);
     if (stageRuns.length === 0) {
       // No run for this definition stage.
@@ -401,7 +439,7 @@ function buildStages(
         terminal !== null && index > terminalIndex && terminalIndex >= 0;
       return {
         stageId: stage.id,
-        ordinal: index + 1,
+        ordinal: offset + index + 1,
         displayName: stage.displayName,
         module: stage.moduleRef,
         status: isAfterTerminal ? 'skipped' : 'pending',
@@ -423,7 +461,7 @@ function buildStages(
 
     return {
       stageId: stage.id,
-      ordinal: index + 1,
+      ordinal: offset + index + 1,
       displayName: stage.displayName,
       module: stage.moduleRef,
       status,
@@ -436,6 +474,7 @@ function buildStages(
       isLive,
     };
   });
+  return [...inherited, ...current];
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +493,7 @@ export function projectPipeline(
   const definition = parseDefinitionSnapshot(run.definitionSnapshot);
   const terminal = detectTerminal(definition, run, stageRuns);
   const stages = buildStages(definition, stageRuns, terminal);
+  const continuationOf = readContinuationParent(run.inputSnapshot);
 
   return {
     lifecycle: definition.identity,
@@ -464,8 +504,24 @@ export function projectPipeline(
       startedAt: normalizeTimestamp(run.startedAt),
       updatedAt: normalizeTimestamp(run.updatedAt),
       error: run.error,
+      ...(continuationOf === null ? {} : { continuationOf }),
     },
     stages,
     terminal,
   };
+}
+
+function readContinuationParent(inputSnapshot: string | undefined): number | null {
+  if (!inputSnapshot) return null;
+  try {
+    const input = JSON.parse(inputSnapshot) as {
+      continuation?: { parentLifecycleRunId?: unknown };
+    };
+    const value = input.continuation?.parentLifecycleRunId;
+    return Number.isSafeInteger(value) && Number(value) > 0
+      ? Number(value)
+      : null;
+  } catch {
+    return null;
+  }
 }

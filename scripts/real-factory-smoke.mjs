@@ -8,10 +8,13 @@ import crypto from 'node:crypto';
 
 import { SCHEMA_SQL } from '../dist/schema.js';
 import { sha256Hex } from '../dist/shared/canonical-json.js';
+import { factoryModelProfile } from '../dist/runtime/factory-model-profiles.js';
 
 const root = resolve(process.env.SAGA_REAL_SMOKE_ROOT ?? '.real-factory-smoke');
 const repositoryPath = join(root, 'product');
 const dbPath = join(root, 'factory.sqlite');
+const modelProfile = factoryModelProfile('glm-5.2');
+if (!modelProfile) throw new Error('canonical glm-5.2 profile is missing');
 // SAFETY: never destroy an existing sandbox unconditionally. A prior run's DB
 // holds durable execution state, formalization certificates and checkpoints
 // that cannot be recreated. Only reset when the operator EXPLICITLY sets
@@ -61,7 +64,13 @@ db.prepare(`INSERT INTO trusted_providers
           'real factory smoke execution','partial','factory-smoke','active')`).run();
 db.prepare(`INSERT INTO lifecycle_execution_controls
   (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-  VALUES (1,5,'zai','glm-5.2','medium',5)`).run();
+  VALUES (1,?,?,?,?,?)`).run(
+    modelProfile.limit,
+    modelProfile.provider,
+    modelProfile.id,
+    modelProfile.effort,
+    modelProfile.limit,
+  );
 
 const policyBase = { id: 'reference-development-policy', version: '1.0.0' };
 const deferredBase = {
@@ -99,12 +108,13 @@ db.prepare(`INSERT INTO factory_launch_requests
   (launch_ref,order_ref,mode,project_id,epic_id,lifecycle_run_id,
    lifecycle_input_json,lifecycle_input_schema,initiated_by,idempotency_key,
    concurrency,state)
-  VALUES (?,?,'new',1,1,NULL,?,?,'real-factory-smoke',?,5,'requested')`).run(
+   VALUES (?,?,'new',1,1,NULL,?,?,'real-factory-smoke',?,?,'requested')`).run(
   launchRef,
   orderRef,
   JSON.stringify(lifecycleInput),
   lifecycleInput.schemaVersion,
   `real-${crypto.randomUUID()}`,
+  modelProfile.limit,
 );
 db.close();
 process.stdout.write(`${JSON.stringify({ root, repositoryPath, dbPath, launchRef }, null, 2)}\n`);

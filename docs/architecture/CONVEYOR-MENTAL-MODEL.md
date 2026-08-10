@@ -1,4 +1,4 @@
-# Conveyor Mental Model — Saga4 (Version 4.3)
+# Conveyor Mental Model — Saga4 (Version 5.1)
 
 This document is the architectural compass for the Saga conveyor. It is the
 plain-language interpretation of the formal CGAD invariants and must be used to
@@ -90,6 +90,10 @@ Factory runtime owns HOW:
 Adding a normal workshop must not add another dispatcher, worker runner,
 lifecycle engine, submit/read protocol or acceptance state machine.
 
+The first and the thousandth workshop use the same transition grammar,
+diagnostic evidence and runtime authorities; only declarative package content
+changes.
+
 Core runtime must not branch on workshop name or worker profession.
 
 ---
@@ -178,10 +182,16 @@ GateDecision is persisted
 !=
 GateDecision is applied to expected Workplace revision
 !=
+required acceptance EffectReceipt is persisted
+!=
 Workplace reaches terminal(accepted)
 ```
 
-Only the last condition is cell-final acceptance.
+The effect line applies only when the Cell declares an authoritative effect as
+part of producing its accepted output. A GateDecision may therefore leave the
+Workplace in `effect_pending`; it must not make effectful work terminal merely
+so that the adapter can run afterward. Only the last condition is cell-final
+acceptance.
 
 Code should expose one typed proof/value, conceptually:
 
@@ -191,6 +201,7 @@ CellFinalAcceptance {
   finalGateDecisionRef
   subjectCandidateSetRef
   assessmentCandidateSetRefs[]
+  requiredEffectReceiptRefs[]
 }
 ```
 
@@ -199,16 +210,18 @@ It is constructible only after proving:
 ```text
 final GateDecision.verdict = accepted
 AND decision applied to expected Workplace revision
+AND every declared required acceptance effect has a successful exact receipt
 AND Workplace.loopState = terminal
 AND Workplace.terminalReason = accepted
 ```
 
 Replay certification consumes `CellFinalAcceptance`, not a raw `accepted`
-verdict.
+verdict. Required effects run before final acceptance; replay archive capture
+runs after final acceptance and never substitutes for an effect receipt.
 
 ---
 
-## 7. Project, Factory Start and Resume are different identities
+## 7. Project, Factory Start, Resume and Continuation are different identities
 
 ### Project
 
@@ -234,9 +247,50 @@ but may reuse semantically compatible capsules belonging to Project P.
 Resume continues the same interrupted run and its existing Workplaces. It does
 not intentionally re-run completed cells from the beginning.
 
+Resume rehydrates the exact persisted package/check-plan snapshots required by
+every nonterminal Workplace. It must not silently replace them with whichever
+package version happens to be installed now. Missing or incompatible pinned
+packages fail closed and surface an explicit recovery action.
+
+### Continuation from an accepted prefix
+
+A terminal failed LifecycleRun, StageRun or ProcessRun is never changed back to
+running. When recovery must restart a whole downstream workshop, Factory creates
+an append-only continuation in the same business-order lineage. It starts from
+an exact accepted stage-prefix certificate and creates new lifecycle/stage/
+process identities only for the remaining route.
+
+```text
+parent run: Discovery ✓ -> Formalization ✓ -> Development ✗
+                                      |
+                                      +-> continuation: Development -> Delivery
+```
+
+Inherited stages are not executed and are not represented as newly completed
+StageRuns. Their product refs, certificate refs, handoff hashes and definition/
+input hashes form an immutable prefix authorization. The order projection shows
+the failed parent and active continuation together and derives state from one
+active leaf; it never hides the parent failure or silently repoints authority.
+
+The child definition carries immutable inherited-stage descriptors. They are
+legal `$.stages.<id>` mapping sources and pipeline labels, but never executable
+stages or route targets. Runtime values for those descriptors come only from a
+hash-verified continuation repository, never from caller-supplied lifecycle
+input. A pinned resume also preserves the original invocation actor and other
+idempotency context; it must not invent a new `initiatedBy` value.
+
+`FactoryOrder.lifecycle_run_id` remains the immutable root pointer. Operational
+state follows the one active leaf in the append-only OrderRunChain; launching a
+child must not repoint the root FK and hide its failed parent.
+
+Partially valid downstream production crosses this boundary only through a new
+adoption decision. Old CandidateSets and GateDecisions remain evidence, not
+current authority. Changed Git bases require fresh candidates, review and gates.
+
 ```text
 new start = new run identity, same project
 resume    = same run identity
+continuation = new linked run identity, same business order, accepted prefix
 ```
 
 Persistence must not collapse Project identity into “one lifetime Factory Run”.
@@ -590,13 +644,190 @@ Checkpoint = restore same run machine state
 Replay     = reuse semantic worker production across compatible invocations
 ```
 
+An infrastructure/control-plane failure after CandidateSet sealing does not
+invalidate or re-run worker production. Recovery may replay inspection against
+the exact sealed CandidateSet only when immutable authorization proves its
+lineage, content hashes, producer fence, unfinished GateDecision state and a
+compatible passed-receipt prefix. The failed GateRun remains append-only audit
+evidence; the replacement CheckPlan creates a new GateRun identity. Provider
+versions are exact contract identities—legacy aliases must not be invented to
+make an incompatible plan appear valid.
+
+### Cross-terminal partial production is explicit carry-forward
+
+A terminal child can fail after the author produced and passed its author gate
+but before reviewer/final/effect authority exists. That product is not a
+ReplayCapsule and its old CandidateSet is never current in another run. If the
+failure is an exactly classified downstream infrastructure/contract failure,
+an immutable single-use authorization may present the exact member into a new
+child:
+
+```text
+old author CandidateSet + accepted author gate + exact failure boundary
+  -> immutable carry-forward authorization
+  -> NEW child author CandidateSet(origin=carried-forward, sourceSetRef=old)
+  -> CURRENT author gate
+  -> NEW reviewer CandidateSet
+  -> CURRENT final gate/effects/CellFinalAcceptance
+```
+
+The same grammar has a second, stricter failure boundary: a cell may already
+have a final accepted GateDecision, successful EffectReceipt and
+CellFinalAcceptance while its enclosing node fails to project the output
+manifest. Recovery may carry that exact material only if all three authorities
+bind the same CandidateSet, the external desired state is still observed, and
+the new effect settles as `already-applied`. It still creates current gates;
+it never copies the old decision as the child's decision.
+
+Eligibility binds the source ProductRef/digest, source-set/gate digests,
+WorkIntent output schema, stable semantic item, repository/base/source
+commit/tree/ref and unchanged external baseline. Any later reviewer set, final
+decision or final acceptance makes the *pre-review* rule inapplicable; only the
+separately classified post-effect projection rule above may consume fully
+accepted material. A semantic author/reviewer rejection is never carryable. If
+compatibility is not exact, hire a new author.
+
+The child `semantic_input_digest` may legitimately differ because its
+continuation/adoption provenance is new. Carry compatibility therefore uses an
+explicit stable material contract (item + output schema + verified prefix/base),
+not equality of run-envelope identity and not an informal module-name rule.
+
+Submission validation is fail-fast at `product_submit` and again at
+`worker_done`: the exact frozen WorkIntent output schema/cardinality must be
+satisfied. A wrong immutable schema must remain rejection evidence; it must
+not become a CandidateSet merely because the worker declared completion.
+
+A schema identifier is not a runtime type proof. Every authoritative typed
+product contract must have an executable, versioned payload validator. Its
+canonical contract definition digest is frozen in the WorkIntent together
+with the package installation identity; an ambient process registry is only a
+lookup mechanism and must fail closed when that durable pin is absent or
+different. The same validator governs inference, replay and repair before
+immutable storage; the current Gate independently revalidates the sealed
+ProductRef against its WorkIntent and exact upstream lineage. A check provider
+that returns `passed` without reading the CandidateSet is a placeholder, not
+QC authority.
+
+One WorkIntent that permits exactly one output cannot require that output to
+contain a ProductRef to a second product the worker has no authority to create.
+The outer immutable ProductRef is itself a lawful evidence reference. Nested
+evidence references are allowed only when a declared tool/provider creates and
+returns them before submission.
+
+Worker JSON and mutable task metadata never establish provider trust. The
+authoritative outcome comes from an immutable CheckReceipt issued by the exact
+installed provider and bound to the GateRun, subject CandidateSet, method plan,
+environment and evidence refs. LM production may explain or assess those
+receipts but cannot create their trust or verdict. Verification must preserve
+the four-valued outcome (`passed|failed|unknown|error`): missing execution
+capability or a required environment produces `unknown`, not a model-authored
+deterministic pass. `unknown/error` caused by missing provider authority stops
+the line without consuming worker repair budget. Verification methods required
+by accepted criteria must survive Formalization -> Development mapping and be
+backed by declared executable check capabilities before the plan is admitted.
+Compound methods are `allOf` obligations unless the accepted contract carries
+an explicit substitution policy. A sandbox/browser receipt cannot silently
+replace visual, keyboard or screen-reader observation. Those methods require a
+separate `authorized_decision` receipt bound to the same candidate, method-plan
+digest and criterion. Absence is an honest `human_required` boundary.
+
+When production and integration are already finally accepted but verification
+authority fails, an append-only verification continuation may adopt the exact
+task graph, implementation workset and integrated candidate as a read-only
+subject. Adoption proves identity and lineage only; it grants no verification
+verdict. The suffix contains no planner, implementation, review, candidate
+freeze or integration effect. It creates current verification Workplaces,
+CheckReceipts, settlement and certificate, then routes through ordinary
+Delivery. Historical verifier products and GateDecisions remain ineligible.
+
+`CandidateSet.producerExecutionRef` is historically named but semantically a
+`ProducerRef`. A normal worker producer has a resolvable WorkerExecution
+receipt; a kernel carry-forward presenter does not and must not be represented
+by a fabricated worker. Output manifests preserve the ProducerRef and expose
+worker-only execution coordinates as nullable. Replay certification likewise
+skips non-worker presenters unless a distinct certified material recipe exists.
+
 ---
 
 ## 18. RepositoryDesk is factory-owned
 
 Factory provisions worktree/branch/base before code worker launch.
 
+For a planned dependency graph, materialization resolves every semantic entry
+in `dependsOnKeys` to an exact task/Workplace edge. Unknown, missing or duplicate
+edges fail the projection; an empty dependency table must never be accepted as
+the projection of a non-empty graph.
+
+Fan-out uses four ordered phases:
+
+```text
+1. materialize the complete sealed Workplace set in idle
+2. project every stable workKey -> task/Workplace identity
+3. validate and persist the complete dependency DAG atomically
+4. admit roots only; admit dependents after their durable prerequisites settle
+```
+
+Fan-out is optional topology, not a utilization target. The planning Cell must
+explain why each split is independently reviewable/recoverable and safe to
+author from its declared base. Prompt guidance supplies semantic judgement but
+is not topology authority: a deterministic graph-fitness provider validates
+width, closure, scope overlap and integration-boundary cost, while an
+adversarial reviewer challenges fictional independence and impossible scopes.
+A small same-repository width-one graph with heavy overlap should normally be
+one coherent production item. Independent disjoint antichain items may author
+in parallel; their canonical effects are still serialized per repository and
+target.
+
+Admission must not happen inside per-item materialization. Dependency binding
+must not be computed from “currently queued” cards, because running/terminal
+predecessors disappear from that transient view. Reconciliation compares the
+stored sealed graph with the expected graph; it never delete-replaces durable
+edges with a reduced set inferred from current Kanban states.
+
+A dependent Git Workplace is not claimable until every dependency has final QC
+acceptance and successful integration. Its desk base is the resulting
+post-dependency integration commit, and submission verifies that lineage. A
+worker assertion that dependencies are “satisfied” is never authority.
+
+Reviewer desks and required effects resolve the exact current author
+CandidateSet member. They never search for a task-local “latest submission”:
+carried-forward material can lawfully originate in another process, while its
+current QC/effect authority belongs to the new set. A managed candidate ref may
+be a full provider ref such as `refs/saga/candidates/...`; adapters must not
+silently reinterpret it as `refs/heads/...`.
+
+`DevelopmentCase.expectedBaseCommit` is the stage lineage anchor, not the
+execution base of every fan-out item. Root work may use it directly. For a
+dependent item, Factory persists an **effective desk-base receipt** only after
+all dependency integrations complete. The receipt pins dependency integration
+commits, observed target-branch head, repository binding and Workplace/task
+identity. Worktree creation CAS-checks that head; drift fails before worker
+launch. The effective base is frozen into execution context and Git ReplayKey.
+
 Model/replay worker does not invent or switch arbitrary worktrees.
+
+The ability to invoke a Git command is not Git authority. A linked worktree
+shares refs and is not a security boundary. Worker production must be confined
+to a provider-managed textual candidate or a genuinely isolated staging
+environment. Only a fenced Factory effect may create/update canonical refs,
+merge, push or issue an integration receipt. A normal dependency wait remains
+non-admitted readiness; an accepted candidate waiting for its effect is
+`effect_pending`/`awaiting_integration`. Neither is a human `blocked` state.
+
+Tool policy must be physically enforced by the runner. A prompt, skill,
+`allowedTools` declaration or MCP authority check is not sufficient when the
+host also enables a permission-bypass mode. For a pinned execution profile the
+runner auto-allows exactly the declared tools, explicitly denies every known
+undeclared native tool, and uses unattended fail-closed permissions. A managed
+text worker has no Bash/Edit/Write/Git mutation surface. Runtime, not the model,
+owns heartbeat and supervision.
+
+`worker_done` is not proof that production exists. Before accepting completion
+of an exact Production Cell execution, the dispatcher requires the declared
+typed product submission for that execution. Likewise, cryptographic identity
+is Factory authority: the model supplies material bytes; Factory computes the
+canonical digest. A model-provided digest may only be checked as a redundant
+consistency assertion.
 
 Git replay requires exact base compatibility, applies recorded patch/content to
 factory-provisioned desk and verifies resulting tree before submitting current
@@ -624,6 +855,18 @@ Projection never guesses from prose/module name.
 
 Worker crash/replay miss/replacement does not reset domain work to `todo`.
 
+Controller state and factory activity are separate projection inputs. A
+controller may be durably `paused` because it yielded to Production Cells while
+workers remain active. Operator views must present this as active factory work
+(for example, “workers working”), while `paused` with zero workers remains an
+actual pause. Presentation must not rewrite the durable controller state.
+
+Artifact navigation is a projection over an authoritative artifact forest.
+Parent edges must stay within one project/episode, must reference an existing
+artifact, and must be acyclic and non-self-referential. A defensive reader
+surfaces unreachable/corrupt rows explicitly; it never hides ledger rows merely
+because root traversal cannot reach them.
+
 ---
 
 ## 20. Checks, effects and compensation
@@ -641,6 +884,31 @@ publish/deploy             = effect
 ```
 
 Replay never substitutes old external-effect completion.
+
+When a Cell declares an effect as required for acceptance, its universal
+ordering is:
+
+```text
+accepted GateDecision
+  -> effect_pending
+  -> durable EffectAttempt
+       | successful exact EffectReceipt -> CellFinalAcceptance
+       | recoverable outcome             -> RecoveryIssue / retry / repair
+       | human-required outcome          -> pause
+       | policy-terminal outcome         -> failed
+  -> replay certification
+```
+
+This grammar is capability-neutral. Core runtime knows the declared effect
+identity, policy and typed receipt; only the provider adapter knows Git,
+publishing, deployment or another external system.
+
+A Git integration conflict is a typed Effect outcome with source commit/tree,
+target head, conflict paths and attempted strategy. It does not erase accepted
+worker evidence and must not be flattened into an unattributed factory failure.
+Recovery either repairs the nonterminal effect under its policy or creates an
+accepted-prefix continuation after terminalization; it never marks a changed
+tree accepted under the old review.
 
 ### No implicit rollback
 
@@ -686,6 +954,24 @@ queue or second Production Cell runtime.
 Infrastructure selects eligible queued Workplaces, records reservation/fence,
 builds immutable execution context, resolves replay eligibility and launches the
 physical worker.
+
+Worker admission uses one durable live policy. Effective concurrency is
+`min(operator concurrency, exact model quota)`, read immediately before each
+assignment together with all durable `reserved`, `running` and
+`cancel_requested` executions. Missing or malformed policy fails closed. A
+downshift suppresses replacement workers and lets existing workers drain; it
+does not kill them. Launch-ticket concurrency is immutable audit input, not the
+live authority.
+
+The current bounded single-host implementation reads then assigns. Before
+multi-host or provider-account-global operation, quota validation and capacity
+reservation must move into the same atomic assignment transaction and return
+typed `assigned | at_capacity | queue_empty | policy_invalid` outcomes.
+
+A review-complete cohort barrier for releasing additional `todo` author work is
+a deferred policy proposal, not a current invariant. It must be evaluated after
+one complete end-to-end Product Delivery run and must not replace explicit
+dependency-graph enforcement.
 
 Worker never chooses work. Workshop never launches workers.
 
@@ -781,6 +1067,66 @@ CI should mechanically reject at least:
 - replayable workers with unpinned live-read authority;
 - canonical E2E using DB reset/cross-DB capsule copy to fake a new Factory Run;
 - one-run-per-project persistence constraints treated as target architecture.
+- changing a terminal LifecycleRun, StageRun or ProcessRun back to running;
+- a continuation that invokes an inherited completed stage;
+- inherited stage mappings sourced from raw lifecycle input rather than the
+  verified continuation prefix;
+- pinned replay that changes the persisted invocation actor/context;
+- copied upstream GateDecisions presented as current continuation authority;
+- silent FactoryOrder lifecycle-FK repointing that hides a failed parent;
+- resume replacing persisted package/check-plan pins with current defaults;
+- re-running a worker solely because inspection infrastructure failed after an
+  unchanged CandidateSet was sealed;
+- cross-terminal author reuse without an immutable single-use authorization,
+  a new current CandidateSet and current gates;
+- treating an old author gate, reviewer verdict or CandidateSet as a child
+  run's current acceptance authority;
+- accepting `worker_done` when the exact frozen WorkIntent output contract is
+  missing or has the wrong schema/cardinality;
+- treating a schema-id string or TypeScript interface as runtime payload
+  validation;
+- a Product Contract check provider that passes without resolving and checking
+  the exact CandidateSet members;
+- accepting worker-authored `trusted=true` or `deterministic_evidence` as
+  provider authority;
+- treating mutable task/provider metadata as an immutable verification receipt;
+- accepting an LM-authored `outcome=passed` without an independent exact
+  CheckReceipt and content-addressed evidence;
+- allowing an ambient payload-validator registry to reinterpret a WorkIntent
+  whose exact contract id/version/definition digest was not frozen;
+- requiring a nested evidence ProductRef that no allowed worker/provider tool
+  can create;
+- dropping accepted verification-method requirements before Development task
+  materialization;
+- reviewer desks or effects selecting “latest task submission” instead of the
+  exact current author CandidateSet member;
+- non-empty planned dependency graphs materialized without exact task edges;
+- fan-out admission occurring before the complete dependency DAG is persisted;
+- dependency reconciliation derived from transient queued/running task sets;
+- delete-replacement of sealed dependency edges with a reduced status-derived
+  graph;
+- dependent Git desks based before their dependencies were integrated;
+- use of the stage lineage `expectedBaseCommit` as every dependent task's
+  effective execution base;
+- LM profiles that can mutate canonical Git refs, merge or issue integration
+  authority;
+- linked Git worktrees described as hard isolation without an OS-enforced
+  boundary;
+- fan-out accepted merely to consume concurrency, without split rationale and
+  deterministic topology fitness;
+- dependency/effect waiting overloaded onto a human-required `blocked` state;
+- changed Git trees integrated under CandidateSet/review authority for an older
+  source commit;
+- terminal acceptance or replay certification before every declared required
+  acceptance effect has a successful exact EffectReceipt;
+- effect-provider failures flattened into unattributed lifecycle exceptions
+  instead of typed outcomes and RecoveryIssues;
+- artifact parent self-links, cross-scope links or cycles;
+- UI treating a yielded controller as a stopped factory while durable workers
+  are active;
+- model quotas duplicated outside the canonical model-cap policy;
+- dispatch using immutable launch concurrency as its live admission ceiling;
+- missing concurrency/model policy falling back to a permissive default.
 
 Markdown is an architectural source of truth; executable fitness functions are
 its enforcement.
@@ -795,6 +1141,7 @@ its enforcement.
 | Factory Start | intentional creation of a new Factory Run |
 | Factory Run | one ProcessRun/LifecycleRun execution |
 | Resume | continuation of the same Factory Run |
+| Continuation | append-only downstream run linked to an accepted stage prefix |
 | Workshop | Process Module package |
 | Production Cell | worker/check/review/gate loop |
 | Workplace | materialized cell instance in one run |
@@ -837,6 +1184,11 @@ factory physics.
 - [Universal transition diagnostics and logging](CONVEYOR-TRANSITION-DIAGNOSTICS.md)
 - [Transition acceptance and incident checklist](CONVEYOR-TRANSITION-CHECKLIST.md)
 - [Factory Domain Acceptance Registry](FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md)
+- [ADR-033: durable submission preflight recovery](decisions/033-durable-submission-preflight-recovery.md)
+- [ADR-034: rehydrate nonterminal package pins](decisions/034-rehydrate-nonterminal-package-pins.md)
+- [ADR-035: replay sealed candidate after provider-plan failure](decisions/035-replay-sealed-candidate-after-provider-plan-failure.md)
+- [ADR-036: durable live concurrency admission](decisions/036-durable-live-concurrency-admission.md)
+- [ADR-038: continue from an accepted stage prefix](decisions/038-continue-from-accepted-stage-prefix.md)
 
 Workshops are configuration instances of this protocol, not separate lifecycle
 engines. Replay is a standard optimization of worker production inside the same

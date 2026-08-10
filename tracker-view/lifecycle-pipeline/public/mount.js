@@ -9,10 +9,18 @@ let owned = false;
 let pollTimer = null;
 let currentEpicId = null;
 let generation = 0;
+let lastView = null;
+let activeWorkerCount = 0;
+
+window.addEventListener('saga:active-workers-changed', event => {
+  activeWorkerCount = Number(event?.detail?.count) || 0;
+  renderCurrentView();
+});
 
 export function mountLifecyclePipeline(epicId, intervalMs = 5000) {
   stop();
   currentEpicId = epicId;
+  activeWorkerCount = window.__activeWorkers?.size || 0;
   if (!epicId) return;
   const token = generation;
   void poll(token, epicId, intervalMs);
@@ -29,6 +37,7 @@ export function stop() {
     pollTimer = null;
   }
   currentEpicId = null;
+  lastView = null;
   if (owned) {
     const container = document.getElementById('pipeline-stages');
     if (container) renderPipeline(container, null);
@@ -50,7 +59,14 @@ async function poll(token, epicId, intervalMs) {
     // (including a null/empty view for epics with no LifecycleRun). There is no
     owned = true;
     const container = document.getElementById('pipeline-stages');
-    if (container) renderPipeline(container, response?.view ?? null);
+    lastView = response?.view ?? null;
+    // The board's worker poller predates the activity event. Re-read its
+    // shared map as a compatibility path so a browser refresh picks up this
+    // fix even when tracker-view itself has not been restarted.
+    if (window.__activeWorkers instanceof Map) {
+      activeWorkerCount = window.__activeWorkers.size;
+    }
+    if (container) renderPipeline(container, lastView, { activeWorkerCount });
   } catch {
     // Keep the last authoritative lifecycle render on transient failures.
   }
@@ -61,4 +77,10 @@ async function poll(token, epicId, intervalMs) {
       intervalMs,
     );
   }
+}
+
+function renderCurrentView() {
+  if (!owned) return;
+  const container = document.getElementById('pipeline-stages');
+  if (container) renderPipeline(container, lastView, { activeWorkerCount });
 }

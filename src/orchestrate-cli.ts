@@ -24,6 +24,7 @@ import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   createFactoryApplication,
+  getLastFactoryEpisodeRuntimeRepository,
   type ProductLifecycleCompositionOverrides,
   type FactoryCompositionOverrides,
 } from './app/composition-root.js';
@@ -36,6 +37,8 @@ import {
 import { discoveryPackageManifest } from './process-modules/modules/discovery/package/manifest.js';
 import { formalizationPackageManifest } from './process-modules/modules/formalization/package/manifest.js';
 import { developmentPackageManifest } from './process-modules/modules/development/package/manifest.js';
+import { developmentContinuationPackageManifest } from './process-modules/modules/development/package/continuation-manifest.js';
+import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
 import {
   claimFactoryLaunch,
@@ -172,6 +175,13 @@ async function main() {
     // --lifecycle-input path is passed. The runtime's resolveInput re-validates
     // it (assertProductDeliveryLifecycleInput) before Discovery runs.
     application = createFactoryApplication(process.env, overrides);
+    const episodeRuntime = getLastFactoryEpisodeRuntimeRepository();
+    if (!episodeRuntime) {
+      throw new Error(
+        'FACTORY_CONCURRENCY_POLICY_UNAVAILABLE: composition-root did not publish '
+        + 'the durable episode runtime repository',
+      );
+    }
 
     // CONVEYOR Wave 5 — start the watchman. The supervision service reconciles
     // durable worker executions on startup (catching orphans from a prior
@@ -205,10 +215,11 @@ async function main() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       process.stderr.write(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode\n`);
+      const admission = episodeRuntime.readConcurrencyAdmission(epicId);
       const result = await application.runEpisode({
         projectId,
         epicId,
-        concurrency,
+        concurrency: admission.effectiveConcurrency,
         lifecycleInput: isFirstCycle ? lifecycleInput : undefined,
         lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
           ? lifecycleInputSchema ?? undefined
@@ -316,7 +327,7 @@ async function main() {
       const dispatched = await distributeQueuedTasks({
         projectId,
         epicId,
-        concurrency,
+        readConcurrencyAdmission: () => episodeRuntime.readConcurrencyAdmission(epicId),
         // Conveyor model: this application service owns dispatch and the
         // global concurrency budget. It atomically assigns each exact card
         // before constructing the worker process; the runner only hosts the
@@ -514,7 +525,7 @@ async function loadCompositionOverrides(
     );
   }
 
-  // W13-AUDIT §18.5/§18.9: install the 4 production modules into the durable
+  // W13-AUDIT §18.5/§18.9: install the production modules into the durable
   // content-addressed package store ONCE before the runtime is constructed
   // (install is async I/O; createProductLifecycleRuntime stays synchronous).
   // The resulting ProductionInstallation is threaded through overrides so every
@@ -532,6 +543,8 @@ async function loadCompositionOverrides(
       discoveryPackageManifest,
       formalizationPackageManifest,
       developmentPackageManifest,
+      developmentContinuationPackageManifest,
+      developmentVerificationContinuationPackageManifest,
       deliveryPackageManifest,
     ],
     process.env.SAGA_PACKAGE_STORE_DIR,

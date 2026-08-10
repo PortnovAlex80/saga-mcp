@@ -147,8 +147,17 @@ export class SqliteGateRepository {
     readonly evidenceRefs: readonly string[];
     readonly receiptDigest: string;
   }): CheckReceipt {
+    const existing = this.readCheckReceipt(input.checkReceiptRef);
+    if (existing) {
+      if (existing.receiptDigest !== input.receiptDigest) {
+        throw new Error(
+          `CHECK_RECEIPT_REPLAY_MISMATCH: ${input.checkReceiptRef}`,
+        );
+      }
+      return existing;
+    }
     this.db.prepare(
-      `INSERT OR IGNORE INTO factory_check_receipts
+      `INSERT INTO factory_check_receipts
          (check_receipt_ref, check_run_ref, subject_candidate_set_ref,
           assessment_candidate_set_refs, provider_id, provider_version,
           provider_digest, environment_ref, outcome, evidence_refs, receipt_digest)

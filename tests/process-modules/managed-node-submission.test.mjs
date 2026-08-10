@@ -18,8 +18,14 @@ const { SqliteProcessRunRepository } = await import(
 const { sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
+const { registerProductPayloadContract } = await import(
+  '../../dist/process-modules/application/product-payload-contract.js'
+);
+const { developmentVerificationPayloadContract } = await import(
+  '../../dist/modules/development/application/development-check-providers.js'
+);
 
-function fixture() {
+function fixture(outputSchema = 'test.node-product.v1') {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-node-submit-'));
   process.env.DB_PATH = path.join(temp, 'submissions.db');
   const db = getDb();
@@ -49,6 +55,11 @@ function fixture() {
   const moduleRef = 'solution-development@1.0.0';
   const nodeId = 'plan-task-graph';
   const intentId = 501;
+  db.prepare(
+    `INSERT INTO factory_work_intents
+       (id,epic_id,kind,objective,authority_scope,output_schema,status)
+     VALUES (501,10,'synthetic','produce','{}',?,'executing')`,
+  ).run(outputSchema);
   const taskId = db.prepare(
     `INSERT INTO tasks
        (epic_id,title,status,priority,task_kind,workflow_stage,
@@ -102,7 +113,7 @@ function cleanup(temp) {
 }
 
 test('managed node submission is machine-bound, immutable and exactly replayable', () => {
-  const f = fixture();
+  const f = fixture('factory.development-task-graph-proposal.v1');
   try {
     const payload = {
       schemaVersion: 'factory.development-task-graph-proposal.v1',
@@ -148,6 +159,128 @@ test('managed node submission is machine-bound, immutable and exactly replayable
             SET content_hash='tampered' WHERE id=?`,
       ).run(record.submissionId),
       /MANAGED_NODE_SUBMISSION_IMMUTABLE/,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+test('managed node submission rejects a schema adjacent to the exact WorkIntent contract', () => {
+  const f = fixture('factory.development-review-verdict.v1');
+  try {
+    assert.throws(
+      () => new SqliteManagedNodeSubmissionRepository(f.db).submitForCurrentExecution({
+        schema: 'factory.review-verdict.v1',
+        payload: {
+          subject_candidate_set_ref: 'candidate-set/author',
+          verdict: 'approved',
+          findings: [],
+        },
+      }),
+      /MANAGED_NODE_SUBMISSION_SCHEMA_MISMATCH.*factory\.development-review-verdict\.v1.*factory\.review-verdict\.v1/,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      0,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('registered executable product contract rejects malformed verification JSON before storage', () => {
+  registerProductPayloadContract(developmentVerificationPayloadContract);
+  const schema = 'factory.candidate-verification-evidence-product.v2';
+  const f = fixture(schema);
+  try {
+    f.db.prepare(
+      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
+    ).run(JSON.stringify({
+      payload_contract: {
+        contractId: developmentVerificationPayloadContract.contractId,
+        version: developmentVerificationPayloadContract.version,
+        contractDigest: developmentVerificationPayloadContract.contractDigest,
+      },
+    }), f.intentId);
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          schemaVersion: schema,
+          verificationItemKey: 'verify-ac-1',
+          acceptanceCriterionId: 14,
+          acceptedCriterionHash: 'a'.repeat(64),
+          candidateHash: 'b'.repeat(64),
+          outcome: 'pass',
+          evidence: { observations: [] },
+          provider: { trusted: true },
+        },
+      }),
+      /PRODUCT_PAYLOAD_CONTRACT_REJECTED.*unknown fields: provider.*outcome must be passed.*evidence\.summary.*non-empty/,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      0,
+    );
+    const accepted = repository.submitForCurrentExecution({
+      schema,
+      payload: {
+        schemaVersion: schema,
+        verificationItemKey: 'verify-ac-1',
+        acceptanceCriterionId: 14,
+        acceptedCriterionHash: 'a'.repeat(64),
+        candidateHash: 'b'.repeat(64),
+        outcome: 'passed',
+        evidence: {
+          summary: 'verified exact frozen candidate',
+          observations: ['deterministic check passed'],
+          limitations: [],
+        },
+      },
+    });
+    assert.equal(accepted.replayed, false);
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('durable WorkIntent payload-contract pin rejects ambient registry drift', () => {
+  registerProductPayloadContract(developmentVerificationPayloadContract);
+  const schema = 'factory.candidate-verification-evidence-product.v2';
+  const f = fixture(schema);
+  try {
+    f.db.prepare(
+      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
+    ).run(JSON.stringify({
+      payload_contract: {
+        contractId: developmentVerificationPayloadContract.contractId,
+        version: developmentVerificationPayloadContract.version,
+        contractDigest: '0'.repeat(64),
+      },
+    }), f.intentId);
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          schemaVersion: schema,
+          verificationItemKey: 'verify-ac-1',
+          acceptanceCriterionId: 14,
+          acceptedCriterionHash: 'a'.repeat(64),
+          candidateHash: 'b'.repeat(64),
+          outcome: 'passed',
+          evidence: {
+            summary: 'assessment only',
+            observations: ['shape is valid'],
+            limitations: [],
+          },
+        },
+      }),
+      /PRODUCT_PAYLOAD_CONTRACT_DRIFT/,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      0,
     );
   } finally {
     cleanup(f.temp);

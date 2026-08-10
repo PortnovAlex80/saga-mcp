@@ -1,5 +1,5 @@
-import type Database from 'better-sqlite3';
-import type { SqliteCandidateSetRepository } from '../../../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import type { CandidateSetReaderPort } from '../../../application/ports/candidate-set-reader.js';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import {
   registerFactoryCheckProvider,
 } from '../../../process-modules/application/standard-check-providers.js';
@@ -52,8 +52,8 @@ export const FORMALIZATION_CHECK_REFS = {
 } as const;
 
 export function registerFormalizationCheckProviders(input: {
-  db: Database.Database;
-  candidateSets: SqliteCandidateSetRepository;
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
 }): void {
   const productValidator = createFormalizationContractValidator(
     input.db,

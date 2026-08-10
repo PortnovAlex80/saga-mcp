@@ -64,8 +64,18 @@ interface DevelopmentOutputRow {
  */
 export class SqliteDevelopmentOutputRepository
 implements DevelopmentOutputRepository {
-  constructor(private readonly db: Database.Database) {
+  private readonly allowedProcessModules: ReadonlySet<string>;
+
+  constructor(
+    private readonly db: Database.Database,
+    allowedProcessModules: readonly { readonly name: string; readonly version: string }[] = [
+      DEVELOPMENT_PROCESS_MODULE_REF,
+    ],
+  ) {
     ensureDevelopmentPersistenceSchema(db);
+    this.allowedProcessModules = new Set(
+      allowedProcessModules.map(module => `${module.name}@${module.version}`),
+    );
   }
 
   persist(input: {
@@ -144,8 +154,9 @@ implements DevelopmentOutputRepository {
     if (
       process.project_id !== projectId
       || process.epic_id !== epicId
-      || process.module_name !== DEVELOPMENT_PROCESS_MODULE_REF.name
-      || process.module_version !== DEVELOPMENT_PROCESS_MODULE_REF.version
+      || !this.allowedProcessModules.has(
+        `${process.module_name}@${process.module_version}`,
+      )
     ) {
       throw new Error('DEVELOPMENT_OUTPUT_PROCESS_RUN_BINDING_MISMATCH');
     }

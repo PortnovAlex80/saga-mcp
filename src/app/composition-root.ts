@@ -1,7 +1,10 @@
 import type { BoardProjectionReader } from '../application/ports/board-projection.js';
 import type { EngineAdministration } from '../application/ports/engine-administration.js';
 import type { WorkerHostRuntime } from '../application/ports/worker-host-runtime.js';
-import type { FactoryRuntimePersistence } from '../application/ports/factory-runtime-persistence.js';
+import type {
+  EpisodeRuntimeRepository,
+  FactoryRuntimePersistence,
+} from '../application/ports/factory-runtime-persistence.js';
 import type { WorkerExecutorFactory, WorkAssignmentPort } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -129,6 +132,7 @@ export function createFactoryApplication(
     executions: new SqliteExecutionRuntimeRepository(),
     workspaces: new SqliteWorkspaceResolver(),
   };
+  lastFactoryEpisodeRuntimeRepository = persistence.episodes;
   const packageInstallation = overrides.modulePackages
     ?? overrides.productLifecycle?.packageInstallation;
 
@@ -223,6 +227,7 @@ export function createFactoryApplication(
  */
 let lastFactoryWorkAssignment: WorkAssignmentPort | null = null;
 let lastFactoryWorkerExecutorFactory: WorkerExecutorFactory | null = null;
+let lastFactoryEpisodeRuntimeRepository: EpisodeRuntimeRepository | null = null;
 
 /**
  * Retrieve the WorkAssignmentPort from the most recent createFactoryApplication
@@ -239,6 +244,11 @@ export function getLastFactoryWorkAssignment(): WorkAssignmentPort | null {
  */
 export function getLastFactoryWorkerExecutorFactory(): WorkerExecutorFactory | null {
   return lastFactoryWorkerExecutorFactory;
+}
+
+/** Durable concurrency/model policy from the same composition as assignment. */
+export function getLastFactoryEpisodeRuntimeRepository(): EpisodeRuntimeRepository | null {
+  return lastFactoryEpisodeRuntimeRepository;
 }
 
 /**
@@ -389,7 +399,9 @@ function createPinnedWorkerFactory(
       return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
     },
     workspaceTemplatePreparers: new Map([
-      ['solution-development@1.0.0', prepareDevelopmentWorkspaceTemplate],
+      ['solution-development@1.1.0', prepareDevelopmentWorkspaceTemplate],
+      ['solution-development-managed@1.1.0', prepareDevelopmentWorkspaceTemplate],
+      ['solution-development-verification-continuation@1.0.0', prepareDevelopmentWorkspaceTemplate],
     ]),
     // CONVEYOR: route card assignment through the atomic WorkAssignmentPort —
     // the card is assigned + fenced in one IMMEDIATE transaction before the

@@ -162,7 +162,12 @@ function makeInput({ concurrency, cardCount, pollMs = 5 }) {
   const dispatchInput = {
     projectId: 42,
     epicId: 7,
-    concurrency,
+    readConcurrencyAdmission: () => ({
+      operatorConcurrency: concurrency,
+      modelConcurrencyLimit: concurrency,
+      effectiveConcurrency: concurrency,
+      activeExecutions: fake.aliveNow,
+    }),
     workerExecutorFactory: fake.factory,
     workAssignment,
     idGenerator: idGen,
@@ -316,6 +321,40 @@ test('dispatch-loop: maxAlive never exceeds concurrency for N in 1..4', async ()
   }
 });
 
+test('dispatch-loop: lowering 3 to 2 is reread before the third assignment', async () => {
+  const { dispatchInput, fake } = makeInput({ concurrency: 3, cardCount: 3, pollMs: 3 });
+  let reads = 0;
+  dispatchInput.readConcurrencyAdmission = () => {
+    reads += 1;
+    const limit = reads <= 2 ? 3 : 2;
+    return {
+      operatorConcurrency: limit,
+      modelConcurrencyLimit: limit,
+      effectiveConcurrency: limit,
+      activeExecutions: fake.aliveNow,
+    };
+  };
+
+  const drainPromise = distributeQueuedTasks(dispatchInput);
+  const deadline = Date.now() + 1000;
+  while (fake.started.length < 2 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.equal(fake.started.length, 2, 'the new cap must prevent a third immediate claim');
+  assert.equal(fake.aliveNow, 2);
+
+  fake.started[0].executor.finish();
+  const replacementDeadline = Date.now() + 1000;
+  while (fake.started.length < 3 && Date.now() < replacementDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.equal(fake.started.length, 3, 'one replacement may start after active falls below 2');
+  assert.ok(fake.maxAlive <= 2, `downshifted maxAlive was ${fake.maxAlive}`);
+  fake.started[1].executor.finish();
+  fake.started[2].executor.finish();
+  assert.equal(await drainPromise, 3);
+});
+
 // ---------------------------------------------------------------------------
 // TEST 4 — start failure releases the assignment (no fence leak).
 //
@@ -345,7 +384,12 @@ test('dispatch-loop: executor.start() failure releases the assignment and rethro
   const dispatchInput = {
     projectId: 42,
     epicId: 7,
-    concurrency: 1,
+    readConcurrencyAdmission: () => ({
+      operatorConcurrency: 1,
+      modelConcurrencyLimit: 1,
+      effectiveConcurrency: 1,
+      activeExecutions: 0,
+    }),
     workerExecutorFactory: failingFactory,
     workAssignment,
     idGenerator: idGen,
@@ -400,7 +444,12 @@ test('dispatch-loop: start-failure release carries an audit reason', async () =>
   const dispatchInput = {
     projectId: 42,
     epicId: 7,
-    concurrency: 2,
+    readConcurrencyAdmission: () => ({
+      operatorConcurrency: 2,
+      modelConcurrencyLimit: 2,
+      effectiveConcurrency: 2,
+      activeExecutions: 0,
+    }),
     workerExecutorFactory: failingFactory,
     workAssignment,
     idGenerator: idGen,

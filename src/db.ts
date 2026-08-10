@@ -1,9 +1,11 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4 } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
+import { ensureFactoryProcessRunSchema } from './process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureManagedNodeSubmissionSchema } from './process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { initSubmissionRegistries } from './process-modules/application/submission-registries.js';
 
 let db: Database.Database | null = null;
@@ -33,14 +35,16 @@ let db: Database.Database | null = null;
  *       factory_orders.project_id/epic_id so one Project may own many
  *       historical Factory Runs. source_digest becomes provenance (non-unique).
  *       Applied via table rebuild for existing DBs.
+ *   4 = append-only continuation, sealed Workplace DAG, managed source/effect
+ *       receipts, and the effect_pending Workplace state.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).
  */
 
-/** Increment when the schema changes incompatibly. 3 = Replay-first cardinality. */
-const SCHEMA_VERSION = 3;
+/** Increment when the schema changes incompatibly. */
+const SCHEMA_VERSION = 4;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -76,6 +80,7 @@ export function getDb(): Database.Database {
 
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
+  migrateFactorySchemaV3ToV4(db);
   // Replay-first cardinality (v3): rebuild factory_orders without the legacy
   // lifetime-UNIQUE on project_id/epic_id so one Project may own many
   // historical Factory Runs. No-op on fresh DBs (SCHEMA_SQL already correct).
@@ -110,6 +115,13 @@ export function getDb(): Database.Database {
   // (lazily). Both paths are idempotent (CREATE TABLE IF NOT EXISTS).
   ensureFactoryModuleInstallationSchema(db);
   ensureFactoryScenarioInstallationSchema(db);
+  // Assignment admission joins the owning ProcessRun to prevent terminal
+  // ancestor cards from being claimed. The table is therefore core runtime
+  // schema, not merely a lazy orchestrator detail.
+  ensureFactoryProcessRunSchema(db);
+  // worker_done enforces the exact frozen WorkIntent against this immutable
+  // ledger even before the composition root is constructed.
+  ensureManagedNodeSubmissionSchema(db);
   // ProtocolRun + CallInstance tables reference factory_process_runs, which is
   // created lazily by SqliteProcessRunRepository. On a fresh DB the table may
   // not exist yet — ensureFactory* guard internally on table existence.

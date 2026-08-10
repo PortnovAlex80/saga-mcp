@@ -17,12 +17,14 @@ import type {
   WorkAssignmentPort,
 } from '../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../application/ports/conveyor-ports.js';
+import type { ConcurrencyAdmissionSnapshot } from '../application/ports/factory-runtime-persistence.js';
 import { asExecutionId } from '../lifecycle/domain/ids.js';
 
 export interface DispatchLoopInput {
   projectId: number;
   epicId: number;
-  concurrency: number;
+  /** Fresh durable capacity view. Called immediately before every assignment. */
+  readConcurrencyAdmission: () => ConcurrencyAdmissionSnapshot;
   workerExecutorFactory: WorkerExecutorFactory;
   /** Single authority for selecting and fencing cards. */
   workAssignment: WorkAssignmentPort;
@@ -62,7 +64,6 @@ const TERMINAL_RUN_STATES = new Set(['completed', 'stopped', 'failed']);
 export async function distributeQueuedTasks(
   input: DispatchLoopInput,
 ): Promise<number> {
-  assertConcurrency(input.concurrency);
   const pollMs = input.pollMs ?? 1000;
   const dispatchRunId = input.idGenerator.newTypedId('dispatch-run');
   const active = new Set<Promise<number>>();
@@ -115,8 +116,15 @@ export async function distributeQueuedTasks(
 
   while (true) {
     let queueExhaustedForNow = false;
+    let capacityBlockedForNow = false;
 
-    while (active.size < input.concurrency) {
+    while (true) {
+      const admission = input.readConcurrencyAdmission();
+      assertAdmission(admission);
+      if (admission.activeExecutions >= admission.effectiveConcurrency) {
+        capacityBlockedForNow = true;
+        break;
+      }
       const launched = startOne();
       if (!launched) {
         queueExhaustedForNow = true;
@@ -137,6 +145,10 @@ export async function distributeQueuedTasks(
     }
 
     if (active.size === 0) {
+      if (capacityBlockedForNow) {
+        process.stdout.write('[dispatch] durable concurrency capacity reached\n');
+        break;
+      }
       if (queueExhaustedForNow) break;
       continue;
     }
@@ -182,9 +194,24 @@ function logTerminal(assignment: AssignedWork, snapshot: WorkerRunSnapshot): voi
   );
 }
 
-function assertConcurrency(value: number): void {
-  if (!Number.isInteger(value) || value < 1 || value > 10) {
-    throw new Error(`concurrency must be an integer 1..10, got '${value}'`);
+function assertAdmission(value: ConcurrencyAdmissionSnapshot): void {
+  for (const [name, candidate] of [
+    ['operatorConcurrency', value.operatorConcurrency],
+    ['modelConcurrencyLimit', value.modelConcurrencyLimit],
+    ['effectiveConcurrency', value.effectiveConcurrency],
+  ] as const) {
+    if (!Number.isInteger(candidate) || candidate < 1 || candidate > 10) {
+      throw new Error(`${name} must be an integer 1..10, got '${candidate}'`);
+    }
+  }
+  if (value.effectiveConcurrency !== Math.min(
+    value.operatorConcurrency,
+    value.modelConcurrencyLimit,
+  )) {
+    throw new Error('effectiveConcurrency must equal min(operatorConcurrency, modelConcurrencyLimit)');
+  }
+  if (!Number.isInteger(value.activeExecutions) || value.activeExecutions < 0) {
+    throw new Error(`activeExecutions must be a non-negative integer, got '${value.activeExecutions}'`);
   }
 }
 

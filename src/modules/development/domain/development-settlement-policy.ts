@@ -10,6 +10,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,
+  DEVELOPMENT_BASELINE_ADOPTION_SCHEMA,
   DEVELOPMENT_CERTIFICATE_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
   DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA,
@@ -205,14 +206,16 @@ implements DevelopmentTaskGraphPolicyPort {
     }
     if (
       !validRef(graph.plannerSubmission)
-      || graph.plannerSubmission.schema
-        !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+      || ![
+        DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+        DEVELOPMENT_BASELINE_ADOPTION_SCHEMA,
+      ].includes(graph.plannerSubmission.schema)
     ) {
       pushIssue(
         reasonCodes,
         errors,
         'task-graph-lineage-mismatch',
-        'task graph does not identify an exact planner proposal',
+        'task graph does not identify an exact planner proposal or authorized baseline adoption',
       );
     }
 
@@ -263,7 +266,7 @@ implements DevelopmentTaskGraphPolicyPort {
     }
     if (
       graph.implementationItems.some(item =>
-        item.executionMode !== 'git_change'
+        !['git_change', 'artifact_change'].includes(item.executionMode)
         || item.projectRepositoryId === null
         || item.changeScopes.length === 0)
     ) {

@@ -28,6 +28,10 @@ export interface AuthorDeskInput {
   /** The commit to base the task branch on. If null, uses integration branch HEAD. */
   readonly baseCommit?: string | null;
   readonly projectRepositoryId: number;
+  /** When present, branch HEAD must still equal this value around provisioning. */
+  readonly expectedIntegrationHead?: string | null;
+  readonly effectiveBaseReceiptRef?: string;
+  readonly effectiveBaseReceiptDigest?: string;
 }
 
 export interface ReviewerDeskInput {
@@ -88,6 +92,15 @@ function isWorktreeOnBranch(worktreeDir: string, expectedBranch: string): boolea
   }
 }
 
+function isAncestor(repositoryRoot: string, ancestor: string, descendant: string): boolean {
+  const result = spawnSync(
+    'git',
+    ['-C', repositoryRoot, 'merge-base', '--is-ancestor', ancestor, descendant],
+    { encoding: 'utf8', timeout: 30_000 },
+  );
+  return result.status === 0;
+}
+
 function isWorktreeDetachedAt(worktreeDir: string, expectedCommit: string): boolean {
   if (!existsSync(worktreeDir)) return false;
   try {
@@ -114,12 +127,34 @@ export class RepositoryDeskProvisioner {
       ? input.baseCommit
       : git(repositoryRoot, ['rev-parse', `refs/heads/${integrationBranch}`]);
 
+    const assertIntegrationHead = (): void => {
+      if (!input.expectedIntegrationHead) return;
+      const actual = git(repositoryRoot, ['rev-parse', `refs/heads/${integrationBranch}`]);
+      if (actual !== input.expectedIntegrationHead) {
+        throw new Error(
+          `REPOSITORY_DESK_INTEGRATION_HEAD_DRIFT: expected `
+          + `${input.expectedIntegrationHead}, got ${actual}`,
+        );
+      }
+    };
+    assertIntegrationHead();
+
     // Idempotent: if worktree exists and is on the right branch, reuse it.
     if (isWorktreeOnBranch(worktreeDir, branch)) {
       const headCommit = this.readHeadCommit(worktreeDir);
+      if (!headCommit || !isAncestor(repositoryRoot, baseCommit, headCommit)) {
+        throw new Error(
+          `REPOSITORY_DESK_BASE_MISMATCH: existing ${branch} at `
+          + `${headCommit ?? '<missing>'} does not descend from ${baseCommit}`,
+        );
+      }
+      assertIntegrationHead();
       return this.buildDesk(
         projectRepositoryId, repositoryRoot, worktreeDir, 'author',
         branch, baseCommit, headCommit, integrationBranch, false,
+        input.effectiveBaseReceiptRef,
+        input.effectiveBaseReceiptDigest,
+        input.expectedIntegrationHead ?? undefined,
       );
     }
 
@@ -139,6 +174,13 @@ export class RepositoryDeskProvisioner {
       // Branch may already exist from a prior run; try force checkout of existing branch.
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes('already exists') || msg.includes('already used')) {
+        const existingHead = git(repositoryRoot, ['rev-parse', `refs/heads/${branch}`]);
+        if (!isAncestor(repositoryRoot, baseCommit, existingHead)) {
+          throw new Error(
+            `REPOSITORY_DESK_BASE_MISMATCH: existing ${branch} at ${existingHead} `
+            + `does not descend from ${baseCommit}`,
+          );
+        }
         git(repositoryRoot, [
           'worktree', 'add', '--force', worktreeDir, branch,
         ]);
@@ -148,9 +190,19 @@ export class RepositoryDeskProvisioner {
     }
 
     const headCommit = this.readHeadCommit(worktreeDir);
+    if (!headCommit || !isAncestor(repositoryRoot, baseCommit, headCommit)) {
+      throw new Error(
+        `REPOSITORY_DESK_BASE_MISMATCH: provisioned ${branch} at `
+        + `${headCommit ?? '<missing>'} does not descend from ${baseCommit}`,
+      );
+    }
+    assertIntegrationHead();
     return this.buildDesk(
       projectRepositoryId, repositoryRoot, worktreeDir, 'author',
       branch, baseCommit, headCommit, integrationBranch, false,
+      input.effectiveBaseReceiptRef,
+      input.effectiveBaseReceiptDigest,
+      input.expectedIntegrationHead ?? undefined,
     );
   }
 
@@ -234,6 +286,9 @@ export class RepositoryDeskProvisioner {
     headCommit: string | null,
     integrationBranch: string,
     detached: boolean,
+    effectiveBaseReceiptRef?: string,
+    effectiveBaseReceiptDigest?: string,
+    observedIntegrationHead?: string,
   ): RepositoryDesk {
     return {
       projectRepositoryId,
@@ -246,6 +301,9 @@ export class RepositoryDeskProvisioner {
         headCommit,
         integrationBranch,
         detached,
+        ...(effectiveBaseReceiptRef ? { effectiveBaseReceiptRef } : {}),
+        ...(effectiveBaseReceiptDigest ? { effectiveBaseReceiptDigest } : {}),
+        ...(observedIntegrationHead ? { observedIntegrationHead } : {}),
       },
     };
   }

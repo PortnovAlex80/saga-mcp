@@ -23,7 +23,10 @@ import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contrac
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
-const DEVELOPMENT_MODULE_REF = 'solution-development@1.0.0';
+const DEVELOPMENT_MODULE_REF = 'solution-development@1.1.0';
+const DEVELOPMENT_CONTINUATION_MODULE_REF = 'solution-development-managed@1.1.0';
+const DEVELOPMENT_VERIFICATION_CONTINUATION_MODULE_REF =
+  'solution-development-verification-continuation@1.0.0';
 
 export function wireSubmissionValidation(
   policyRegistry: NodeSubmissionPolicyRegistry,
@@ -101,4 +104,14 @@ export function wireSubmissionValidation(
       rationale: 'typed Production Cell product; validated by cell gate and Development settlement',
     });
   }
+  for (const nodeId of ['implement-work-items', 'verify-acceptance']) {
+    policyRegistry.register(DEVELOPMENT_CONTINUATION_MODULE_REF, nodeId, {
+      mode: 'none',
+      rationale: 'managed textual Product Cell product; validated by Factory materialization, cell gates and Development settlement',
+    });
+  }
+  policyRegistry.register(DEVELOPMENT_VERIFICATION_CONTINUATION_MODULE_REF, 'verify-acceptance', {
+    mode: 'none',
+    rationale: 'provider-led evidence over an immutable adopted candidate; validated by current cell gates and deterministic settlement',
+  });
 }

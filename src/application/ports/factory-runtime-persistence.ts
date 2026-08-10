@@ -39,19 +39,26 @@ export interface ExecutionReconcileProjection {
   reason: string;
 }
 
+export interface ConcurrencyAdmissionSnapshot {
+  operatorConcurrency: number;
+  modelConcurrencyLimit: number;
+  effectiveConcurrency: number;
+  activeExecutions: number;
+}
+
 /**
  * Persistence boundary for episode workflow state and metadata.
  *
  * (`ensureWorkflow`, `pause`, `clearNeedsHuman`, `isNeedsHuman`, `patchMetadata`,
  * `readLatestBriefDecision`, `readHealMetadata`) were removed. Lifecycle pause
  * owns needs-human (LifecycleRun.status='paused'), brief decisions live on the
- * brief artifact, heal metadata lives on the recovery task. The only surviving
- * reader is `currentStage`, repointed at `factory_lifecycle_runs`.
+ * brief artifact, and heal metadata lives on the recovery task.
  */
 export interface EpisodeRuntimeRepository {
   currentStage(epicId: number): string | null;
   projectIdForEpic(epicId: number): number | null;
-  readTargetConcurrency(epicId: number, fallbackConcurrency: number): number;
+  /** Fail-closed durable capacity view used immediately before worker claim. */
+  readConcurrencyAdmission(epicId: number): ConcurrencyAdmissionSnapshot;
   readWorkerModelRoute(epicId: number | null): WorkerModelRoute;
 }
 

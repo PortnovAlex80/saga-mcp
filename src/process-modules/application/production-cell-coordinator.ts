@@ -139,13 +139,14 @@ export class ProductionCellCoordinator {
       verdict: 'accepted' | 'repair_required' | 'human_required' | 'failed';
       isFinal: boolean;
       repairTargetRole?: NextRole;
+      effectRequired?: boolean;
     },
   ): StepResult {
     let event: ProductionCellEvent;
     switch (decision.verdict) {
       case 'accepted':
         event = decision.isFinal
-          ? { kind: 'gate-author-accepted-final' }
+          ? { kind: 'gate-author-accepted-final', effectRequired: decision.effectRequired }
           : { kind: 'gate-author-accepted-with-review' };
         break;
       case 'repair_required':
@@ -194,12 +195,17 @@ export class ProductionCellCoordinator {
     decision: {
       verdict: 'accepted' | 'repair_required' | 'human_required' | 'failed';
       repairTargetRole?: NextRole;
+      effectRequired?: boolean;
     },
   ): StepResult {
     let event: ProductionCellEvent;
     switch (decision.verdict) {
       case 'accepted':
-        event = { kind: 'reviewer-verdict', verdict: 'accepted' };
+        event = {
+          kind: 'reviewer-verdict',
+          verdict: 'accepted',
+          effectRequired: decision.effectRequired,
+        };
         break;
       case 'repair_required':
         if (decision.repairTargetRole === 'author') {
@@ -222,6 +228,20 @@ export class ProductionCellCoordinator {
     }
     const result = this.applyEvent(ref, event!);
     return result;
+  }
+
+  presentCarriedForwardCandidate(ref: WorkplaceRef, presenterRef: string): StepResult {
+    return this.applyEvent(ref, { kind: 'candidate-carried-forward' }, {
+      activeReservationRef: presenterRef,
+    });
+  }
+
+  completeAcceptanceEffect(ref: WorkplaceRef): StepResult {
+    return this.applyEvent(ref, { kind: 'acceptance-effect-succeeded' });
+  }
+
+  requireAcceptanceEffectRepair(ref: WorkplaceRef): StepResult {
+    return this.applyEvent(ref, { kind: 'acceptance-effect-repair-required' });
   }
 
   // -----------------------------------------------------------------------

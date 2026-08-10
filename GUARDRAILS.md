@@ -110,3 +110,17 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Fix:** Commit an immutable, snapshot-bound rejection before returning the MCP error; retain the owner/fence; materialize the exact rejection for the next execution; define completion as exactly one accepted receipt. Never resume an exhausted preflight incident without a single-use operator authorization, Workplace CAS, and artifact/file hash verification.
 **Date:** 2026-08-09
 **Related:** ADR-033, `src/lifecycle/submission-validation-rejections.ts`, `src/modules/formalization/application/srs-d2-parser.ts`
+
+### 013 - UI concurrency is not worker admission
+**Symptom:** The tracker acknowledges a concurrency change from 5 to 2, but a canonical CLI launch starts a third real model worker.
+**Cause:** The launch ticket, tracker control row, model catalogs, and dispatch loop were independent authorities. The runtime used a frozen launch number and the intended durable minimum reader had no caller.
+**Fix:** Keep one model-cap catalog; fail closed on missing policy; reread the durable operator/model minimum and count all durable active executions immediately before each assignment. Never kill active workers on a downshift. Move admission into the WorkAssignment transaction before multi-host operation.
+**Date:** 2026-08-09
+**Related:** ADR-036, REG-10-AC-05, `src/app/dispatch-loop.ts`
+
+### 014 - Dependency edges and effective desk bases are one admission invariant
+**Symptom:** A validated Development graph declares `foundation -> persistence -> accessibility`, yet all author workers start from the same original Git base and later integration terminates the factory with deterministic add/add conflicts.
+**Cause:** Fan-out materialization admitted every Workplace before the dependency gate; reconciliation rebuilt semantic-key mappings from only currently queued tasks and delete-replaced durable edges after predecessors disappeared; desk provisioning independently forced every author to the DevelopmentCase initial `expectedBaseCommit` instead of the post-dependency integration head.
+**Fix:** Materialize the complete fan-out set before admission, validate and persist the exact DAG once, admit only roots, and never recompute edges from transient Kanban states. After dependencies reach final acceptance and integration, persist a CAS-fenced effective desk-base receipt and include it in execution context and Git ReplayKey. A terminal downstream recovery creates an append-only accepted-prefix continuation; it never reopens terminal runs or reruns inherited workshops.
+**Date:** 2026-08-09
+**Related:** ADR-038, BUG-018, `production-cell-node-executor.ts`, `claude-worker-executor-factory.ts`

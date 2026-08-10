@@ -11,13 +11,126 @@ import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/wo
 export interface SqliteProductionCellIntegrationInput {
   readonly workplaceRef: import('../../process-modules/domain/workplace/workplace-ref.js').WorkplaceRef;
   readonly processRunId: number;
+  readonly candidateSetRef: string;
   readonly expectedProductSchema: string;
 }
+
+export type ProductionCellIntegrationResult =
+  | {
+      readonly outcome: 'succeeded';
+      readonly taskId: number;
+      readonly sourceCommit: string;
+      readonly sourceTree: string;
+      readonly beforeHead: string;
+      readonly afterHead: string;
+      readonly alreadyApplied: boolean;
+    }
+  | {
+      readonly outcome: 'repair_required';
+      readonly taskId: number;
+      readonly sourceCommit: string;
+      readonly sourceTree: string;
+      readonly beforeHead: string;
+      readonly reason: string;
+    };
+
+export type ProductionCellIntegrationObservation =
+  | { readonly outcome: 'matched'; readonly evidence: Readonly<Record<string, unknown>> }
+  | { readonly outcome: 'absent-retry-safe'; readonly evidence: Readonly<Record<string, unknown>> }
+  | { readonly outcome: 'blocked'; readonly reason: string; readonly evidence: Readonly<Record<string, unknown>> };
 
 export class SqliteProductionCellIntegration {
   constructor(private readonly db: Database.Database) {}
 
-  integrateAcceptedWorkplace(input: SqliteProductionCellIntegrationInput): void {
+  observeAcceptedWorkplace(
+    input: SqliteProductionCellIntegrationInput,
+  ): ProductionCellIntegrationObservation {
+    const workplace = serializeWorkplaceRef(input.workplaceRef);
+    const task = this.db.prepare(
+      `SELECT t.id,t.integration_state,t.project_repository_id,
+              COALESCE(rc.local_path, pr.local_path) AS local_path,
+              pr.integration_branch,s.payload_snapshot
+         FROM tasks t
+         JOIN project_repositories pr ON pr.id=t.project_repository_id
+         LEFT JOIN repository_checkouts rc
+           ON rc.project_repository_id=pr.id AND rc.status='active'
+         JOIN factory_candidate_sets cs ON cs.candidate_set_ref=?
+         JOIN factory_candidate_set_members m
+           ON m.candidate_set_ref=cs.candidate_set_ref
+          AND m.product_schema=?
+          AND m.product_ref LIKE 'managed-node-submission:%'
+         JOIN factory_managed_node_submissions s
+           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
+          AND s.schema_version=m.product_schema
+          AND s.content_hash=m.product_digest
+        WHERE t.workplace_ref=?
+          AND json_extract(t.metadata,'$.role')='author'
+          AND t.execution_mode IN ('git_change','artifact_change')
+          AND cs.workplace_ref=?
+        ORDER BY t.id DESC LIMIT 1`,
+    ).get(
+      input.candidateSetRef,
+      input.expectedProductSchema,
+      workplace,
+      workplace,
+    ) as {
+      id: number;
+      integration_state: string;
+      project_repository_id: number;
+      local_path: string;
+      integration_branch: string;
+      payload_snapshot: string;
+    } | undefined;
+    if (!task) {
+      return { outcome: 'blocked', reason: 'integration task missing', evidence: { workplace } };
+    }
+    const payload = JSON.parse(task.payload_snapshot) as {
+      source?: { commitSha?: unknown };
+      snapshot?: { treeSha?: unknown };
+    };
+    const sourceCommit = payload.source?.commitSha;
+    if (typeof sourceCommit !== 'string' || !sourceCommit) {
+      return {
+        outcome: 'blocked',
+        reason: 'integration source commit missing',
+        evidence: { taskId: task.id },
+      };
+    }
+    const targetHead = git(task.local_path, [
+      'rev-parse', `refs/heads/${task.integration_branch}`,
+    ]);
+    if (!targetHead) {
+      return {
+        outcome: 'blocked',
+        reason: 'integration target missing',
+        evidence: { taskId: task.id, integrationBranch: task.integration_branch },
+      };
+    }
+    if (isAncestor(task.local_path, sourceCommit, targetHead)) {
+      this.db.prepare(
+        `UPDATE tasks
+            SET integration_state='merged',integrated_at=COALESCE(integrated_at,datetime('now')),
+                integrated_commit=?,updated_at=datetime('now') WHERE id=?`,
+      ).run(targetHead, task.id);
+      return {
+        outcome: 'matched',
+        evidence: { taskId: task.id, sourceCommit, targetHead },
+      };
+    }
+    if (task.integration_state === 'conflict') {
+      return {
+        outcome: 'blocked',
+        reason: `PRODUCTION_CELL_INTEGRATION_CONFLICT: task ${task.id}`,
+        evidence: { taskId: task.id, sourceCommit, targetHead },
+      };
+    }
+    return {
+      outcome: 'absent-retry-safe',
+      evidence: { taskId: task.id, sourceCommit, targetHead },
+    };
+  }
+
+  integrateAcceptedWorkplace(input: SqliteProductionCellIntegrationInput): ProductionCellIntegrationResult {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
     // Repository Desk consistency fix: use COALESCE(rc.local_path, pr.local_path)
     // so the integration operates on the SAME machine-specific checkout that the
@@ -33,11 +146,26 @@ export class SqliteProductionCellIntegration {
          JOIN project_repositories pr ON pr.id=t.project_repository_id
          LEFT JOIN repository_checkouts rc
            ON rc.project_repository_id=pr.id AND rc.status='active'
+         JOIN factory_candidate_sets cs ON cs.candidate_set_ref=?
+         JOIN factory_candidate_set_members m
+           ON m.candidate_set_ref=cs.candidate_set_ref
+          AND m.product_schema=?
+          AND m.product_ref LIKE 'managed-node-submission:%'
          JOIN factory_managed_node_submissions s
-           ON s.task_id=t.id AND s.process_run_id=? AND s.schema_version=?
-        WHERE t.workplace_ref=? AND t.execution_mode='git_change'
-        ORDER BY s.id DESC LIMIT 1`,
-    ).get(input.processRunId, input.expectedProductSchema, workplace) as {
+           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
+          AND s.schema_version=m.product_schema
+          AND s.content_hash=m.product_digest
+        WHERE t.workplace_ref=?
+          AND json_extract(t.metadata,'$.role')='author'
+          AND t.execution_mode IN ('git_change','artifact_change')
+          AND cs.workplace_ref=?
+        ORDER BY t.id DESC LIMIT 1`,
+    ).get(
+      input.candidateSetRef,
+      input.expectedProductSchema,
+      workplace,
+      workplace,
+    ) as {
       id: number;
       integration_state: string;
       project_repository_id: number;
@@ -46,8 +174,9 @@ export class SqliteProductionCellIntegration {
       payload_snapshot: string;
       metadata: string;
     } | undefined;
-    if (!task) return;
-    if (task.integration_state === 'merged') return;
+    if (!task) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_TASK_MISSING: ${workplace}`);
+    }
     const payload = JSON.parse(task.payload_snapshot) as {
       workItemKey?: unknown;
       terminalStatus?: unknown;
@@ -80,7 +209,10 @@ export class SqliteProductionCellIntegration {
     const source = git(task.local_path, [
       'rev-parse', `${sourceCommit}^{commit}`,
     ]);
-    const branchHead = git(task.local_path, ['rev-parse', `refs/heads/${sourceBranch}`]);
+    const sourceRef = sourceBranch.startsWith('refs/')
+      ? sourceBranch
+      : `refs/heads/${sourceBranch}`;
+    const branchHead = git(task.local_path, ['rev-parse', sourceRef]);
     const sourceTree = git(task.local_path, ['rev-parse', `${sourceCommit}^{tree}`]);
     if (
       source !== sourceCommit
@@ -92,27 +224,65 @@ export class SqliteProductionCellIntegration {
         + `${sourceCommit} but branch is ${branchHead ?? 'missing'}`,
       );
     }
+    const targetHead = git(task.local_path, [
+      'rev-parse', `refs/heads/${task.integration_branch}`,
+    ]);
+    if (!targetHead) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_TARGET_MISSING: ${task.integration_branch}`);
+    }
+    if (task.integration_state === 'merged' || isAncestor(task.local_path, sourceCommit, targetHead)) {
+      this.db.prepare(
+        `UPDATE tasks
+            SET integration_state='merged',integrated_at=COALESCE(integrated_at,datetime('now')),
+                integrated_commit=?,updated_at=datetime('now')
+          WHERE id=?`,
+      ).run(targetHead, task.id);
+      return {
+        outcome: 'succeeded',
+        taskId: task.id,
+        sourceCommit,
+        sourceTree: sourceTree!,
+        beforeHead: targetHead,
+        afterHead: targetHead,
+        alreadyApplied: true,
+      };
+    }
     const review = this.db.prepare(
-      `SELECT s.payload_snapshot
-         FROM tasks t
-         JOIN factory_managed_node_submissions s ON s.task_id=t.id
-        WHERE t.workplace_ref=?
-          AND s.process_run_id=?
-          AND s.schema_version='factory.development-review-verdict.v1'
-        ORDER BY s.id DESC LIMIT 1`,
-    ).get(workplace, input.processRunId) as { payload_snapshot: string } | undefined;
+      `SELECT s.payload_snapshot,rcs.subject_candidate_set_ref
+         FROM factory_gate_decisions gd
+         JOIN json_each(gd.assessment_candidate_set_refs) assessment
+         JOIN factory_candidate_sets rcs
+           ON rcs.candidate_set_ref=assessment.value
+          AND rcs.role='reviewer'
+         JOIN factory_candidate_set_members m
+           ON m.candidate_set_ref=rcs.candidate_set_ref
+          AND m.product_schema='factory.development-review-verdict.v1'
+          AND m.product_ref LIKE 'managed-node-submission:%'
+         JOIN factory_managed_node_submissions s
+           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
+          AND s.schema_version=m.product_schema
+          AND s.content_hash=m.product_digest
+        WHERE gd.workplace_ref=?
+          AND gd.gate_phase='final'
+          AND gd.verdict='accepted'
+          AND gd.subject_candidate_set_ref=?
+        ORDER BY gd.decided_at DESC LIMIT 1`,
+    ).get(workplace, input.candidateSetRef) as {
+      payload_snapshot: string;
+      subject_candidate_set_ref: string;
+    } | undefined;
     const reviewPayload = review
       ? JSON.parse(review.payload_snapshot) as {
           verdict?: unknown;
-          workItemKey?: unknown;
-          reviewedCandidate?: { sourceCommit?: unknown; sourceTree?: unknown };
+          subject_candidate_set_ref?: unknown;
+          findings?: unknown;
         }
       : null;
     if (
       reviewPayload?.verdict !== 'approved'
-      || reviewPayload.workItemKey !== payload.workItemKey
-      || reviewPayload.reviewedCandidate?.sourceCommit !== sourceCommit
-      || reviewPayload.reviewedCandidate?.sourceTree !== sourceTree
+      || review?.subject_candidate_set_ref !== input.candidateSetRef
+      || reviewPayload.subject_candidate_set_ref !== input.candidateSetRef
+      || !Array.isArray(reviewPayload.findings)
     ) {
       throw new Error(`PRODUCTION_CELL_REVIEW_BINDING_INVALID: task ${task.id}`);
     }
@@ -137,7 +307,14 @@ export class SqliteProductionCellIntegration {
       this.db.prepare(
         `UPDATE tasks SET integration_state='conflict',updated_at=datetime('now') WHERE id=?`,
       ).run(task.id);
-      throw new Error(`PRODUCTION_CELL_INTEGRATION_CONFLICT: task ${task.id}`);
+      return {
+        outcome: 'repair_required',
+        taskId: task.id,
+        sourceCommit,
+        sourceTree: sourceTree!,
+        beforeHead: beforeHead!,
+        reason: `PRODUCTION_CELL_INTEGRATION_CONFLICT: task ${task.id}`,
+      };
     }
     const afterHead = git(task.local_path, ['rev-parse', 'HEAD']);
     if (!afterHead || afterHead === beforeHead) {
@@ -149,6 +326,15 @@ export class SqliteProductionCellIntegration {
               integrated_commit=?,updated_at=datetime('now')
         WHERE id=?`,
     ).run(afterHead, task.id);
+    return {
+      outcome: 'succeeded',
+      taskId: task.id,
+      sourceCommit,
+      sourceTree: sourceTree!,
+      beforeHead: beforeHead!,
+      afterHead: afterHead!,
+      alreadyApplied: false,
+    };
   }
 }
 
@@ -157,4 +343,11 @@ function git(repositoryPath: string, args: readonly string[]): string | null {
     encoding: 'utf8', windowsHide: true,
   });
   return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function isAncestor(repositoryPath: string, ancestor: string, descendant: string): boolean {
+  const result = spawnSync('git', [
+    '-C', repositoryPath, 'merge-base', '--is-ancestor', ancestor, descendant,
+  ], { encoding: 'utf8', windowsHide: true });
+  return result.status === 0;
 }

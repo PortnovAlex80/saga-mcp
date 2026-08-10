@@ -51,20 +51,43 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
     return row?.project_id ?? null;
   }
 
-  readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
+  readConcurrencyAdmission(epicId: number) {
     const row = getDb().prepare(
-      `SELECT concurrency AS c, model_concurrency_limit AS lim
-       FROM lifecycle_execution_controls WHERE epic_id=?`,
-    ).get(epicId) as { c: number | null; lim: number | null } | undefined;
-    const engineConcurrency = typeof row?.c === 'number' && row.c >= 1 && row.c <= 10
-      ? row.c
-      : fallbackConcurrency;
-    const modelLimit = typeof row?.lim === 'number' && row.lim >= 1
-      ? row.lim
-      : null;
-    return modelLimit === null
-      ? engineConcurrency
-      : Math.min(engineConcurrency, modelLimit);
+      `SELECT c.concurrency AS c,
+              c.model_concurrency_limit AS lim,
+              (SELECT COUNT(*)
+                 FROM worker_executions live
+                WHERE live.epic_id=c.epic_id
+                  AND live.state IN ('reserved','running','cancel_requested')) AS active
+         FROM lifecycle_execution_controls c
+        WHERE c.epic_id=?`,
+    ).get(epicId) as { c: number | null; lim: number | null; active: number } | undefined;
+    if (!row) {
+      throw new Error(
+        `CONCURRENCY_POLICY_MISSING: epic ${epicId} has no lifecycle_execution_controls row`,
+      );
+    }
+    if (!Number.isInteger(row.c) || row.c! < 1 || row.c! > 10) {
+      throw new Error(
+        `CONCURRENCY_POLICY_INVALID: epic ${epicId} operator concurrency is '${row.c}'`,
+      );
+    }
+    if (!Number.isInteger(row.lim) || row.lim! < 1 || row.lim! > 10) {
+      throw new Error(
+        `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} model limit is '${row.lim}'`,
+      );
+    }
+    if (!Number.isInteger(row.active) || row.active < 0) {
+      throw new Error(
+        `CONCURRENCY_ACTIVE_COUNT_INVALID: epic ${epicId} active count is '${row.active}'`,
+      );
+    }
+    return {
+      operatorConcurrency: row.c!,
+      modelConcurrencyLimit: row.lim!,
+      effectiveConcurrency: Math.min(row.c!, row.lim!),
+      activeExecutions: row.active,
+    };
   }
 
   readWorkerModelRoute(epicId: number | null): WorkerModelRoute {

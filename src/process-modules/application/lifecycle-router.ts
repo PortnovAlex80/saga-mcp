@@ -116,8 +116,19 @@ export function validateLifecycleDefinition(
   const errors: string[] = [];
   const stageIds = lifecycle.stages.map(stage => stage.id);
   const uniqueStageIds = new Set(stageIds);
+  const inheritedStageIds = (lifecycle.inheritedStages ?? []).map(stage => stage.id);
+  const uniqueInheritedStageIds = new Set(inheritedStageIds);
+  const mappingSourceIds = new Set([...uniqueStageIds, ...uniqueInheritedStageIds]);
 
   if (uniqueStageIds.size !== stageIds.length) errors.push('lifecycle contains duplicate stage ids');
+  if (uniqueInheritedStageIds.size !== inheritedStageIds.length) {
+    errors.push('lifecycle contains duplicate inherited stage ids');
+  }
+  for (const inheritedStageId of uniqueInheritedStageIds) {
+    if (uniqueStageIds.has(inheritedStageId)) {
+      errors.push(`stage '${inheritedStageId}' is both executable and inherited`);
+    }
+  }
   if (!uniqueStageIds.has(lifecycle.entryStageId)) {
     errors.push(`entry stage '${lifecycle.entryStageId}' does not exist`);
   }
@@ -142,7 +153,7 @@ export function validateLifecycleDefinition(
       validateTarget(stage, outcome, target, uniqueStageIds, errors);
     }
     // F2: a cross-stage inputMapping path must reference a stage that exists.
-    validateInputMappingReferences(stage, uniqueStageIds, errors);
+    validateInputMappingReferences(stage, mappingSourceIds, errors);
   }
 
   // F1: every stage (except the entry) must be reachable from entry via the

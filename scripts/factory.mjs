@@ -22,15 +22,23 @@
  *
  * Environment:
  *   DB_PATH              — path to the saga SQLite database (also arg 1)
- *   SAGA_PRODUCT_LIFECYCLE_COMPOSITION — composition root (set by caller)
+ *   SAGA_PRODUCT_LIFECYCLE_COMPOSITION — optional override; the canonical
+ *                                      tracker composition is the default
  *   SAGA_CLAUDE_PATH     — Claude CLI binary path (optional, for workers)
  */
 import Database from 'better-sqlite3';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import {
+  DEFAULT_FACTORY_CONCURRENCY,
+  DEFAULT_FACTORY_MODEL,
+  effectiveFactoryConcurrency,
+  factoryModelProfile,
+} from '../dist/runtime/factory-model-profiles.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -48,7 +56,7 @@ function die(msg) {
 function parseStartArguments(rawArgs) {
   const dbPath = rawArgs[1];
   const ideaParts = [];
-  let modelName = 'glm-4.7';
+  let modelName = DEFAULT_FACTORY_MODEL;
   let sandboxName = null;
 
   for (let i = 2; i < rawArgs.length; i += 1) {
@@ -77,11 +85,34 @@ function parseStartArguments(rawArgs) {
   };
 }
 
-if (command !== 'start' && command !== 'resume') {
-  die(`usage: node scripts/factory.mjs <start|resume> <db-path> [options]\n`
+if (command !== 'start' && command !== 'resume' && command !== 'continue') {
+  die(`usage: node scripts/factory.mjs <start|resume|continue> <db-path> [options]\n`
     + `  start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
-    + `  resume <db-path> [--requeue-paused|--recover-failed-gate]`);
+    + `  resume <db-path> [--requeue-paused|--recover-failed-gate]\n`
+    + `  continue <db-path> --from-lifecycle <id> (--verification-only | --adopt-task <id> --scope <path>...) [--check]`);
 }
+
+function resolveFactoryComposition() {
+  const here = fileURLToPath(import.meta.url);
+  const repoRoot = resolve(join(here, '..', '..'));
+  const configured = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION;
+  const compositionPath = resolve(
+    configured && configured.trim() !== ''
+      ? configured
+      : join(repoRoot, 'tracker-view', 'product-delivery-composition.mjs'),
+  );
+  if (!existsSync(compositionPath)) {
+    die(
+      `production lifecycle composition not found at ${compositionPath}; `
+      + 'set SAGA_PRODUCT_LIFECYCLE_COMPOSITION to an existing ESM composition module',
+    );
+  }
+  return compositionPath;
+}
+
+// Preflight before any FactoryOrder/Launch/recovery mutation. The operator
+// script owns a production-safe default and still permits an explicit override.
+const factoryCompositionPath = resolveFactoryComposition();
 
 // ─── Shared: spawn the runtime host with a launch capability ──────────────
 function spawnOrchestrateCli(dbPath, launchRef) {
@@ -94,6 +125,7 @@ function spawnOrchestrateCli(dbPath, launchRef) {
   const childEnv = {
     ...process.env,
     DB_PATH: dbPath,
+    SAGA_PRODUCT_LIFECYCLE_COMPOSITION: factoryCompositionPath,
   };
   // Spawn detached so the factory outlives this script. stdio inherited so
   // the operator sees cycle/dispatch output in real time.
@@ -104,6 +136,197 @@ function spawnOrchestrateCli(dbPath, launchRef) {
   child.on('exit', (code, signal) => {
     process.exit(code ?? (signal ? 128 + 1 : 1));
   });
+}
+
+function parseConcurrency(value, fallback = DEFAULT_FACTORY_CONCURRENCY) {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) {
+    die(`SAGA_FACTORY_CONCURRENCY must be an integer 1..10, got '${value}'`);
+  }
+  return parsed;
+}
+
+function resumeConcurrency(db, epicId) {
+  const row = db.prepare(
+    `SELECT concurrency, model_provider, model_name, model_concurrency_limit
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
+  ).get(epicId);
+  if (!row) {
+    die(`resume: missing lifecycle_execution_controls for epic ${epicId}`);
+  }
+  const requested = parseConcurrency(
+    process.env.SAGA_FACTORY_CONCURRENCY,
+    row.concurrency,
+  );
+  const canonicalProfile = factoryModelProfile(row.model_name);
+  const modelLimit = canonicalProfile?.limit ?? row.model_concurrency_limit;
+  if (canonicalProfile) {
+    db.prepare(
+      `UPDATE lifecycle_execution_controls
+          SET model_provider=?, model_concurrency_limit=?, updated_at=datetime('now')
+        WHERE epic_id=?
+          AND (model_provider<>? OR model_concurrency_limit<>?)`,
+    ).run(
+      canonicalProfile.provider,
+      canonicalProfile.limit,
+      epicId,
+      canonicalProfile.provider,
+      canonicalProfile.limit,
+    );
+  }
+  return effectiveFactoryConcurrency(requested, modelLimit);
+}
+
+function parseContinueArguments(rawArgs) {
+  const result = {
+    dbPath: rawArgs[1],
+    parentLifecycleRunId: null,
+    adoptedTaskId: null,
+    scopes: [],
+    check: false,
+    verificationOnly: false,
+    observerConfirmed: false,
+  };
+  for (let index = 2; index < rawArgs.length; index += 1) {
+    const option = rawArgs[index];
+    if (option === '--check') {
+      result.check = true;
+      continue;
+    }
+    if (option === '--verification-only') {
+      result.verificationOnly = true;
+      continue;
+    }
+    if (option === '--observer-confirmed') {
+      result.observerConfirmed = true;
+      continue;
+    }
+    if (['--from-lifecycle', '--adopt-task', '--scope'].includes(option)) {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) die(`continue: ${option} requires a value`);
+      if (option === '--from-lifecycle') result.parentLifecycleRunId = Number(value);
+      else if (option === '--adopt-task') result.adoptedTaskId = Number(value);
+      else result.scopes.push(value);
+      index += 1;
+      continue;
+    }
+    die(`continue: unsupported option '${option}'`);
+  }
+  if (!result.dbPath) die('continue: db-path argument is required');
+  if (!Number.isSafeInteger(result.parentLifecycleRunId) || result.parentLifecycleRunId < 1) {
+    die('continue: --from-lifecycle must be a positive integer');
+  }
+  if (!result.verificationOnly && (!Number.isSafeInteger(result.adoptedTaskId) || result.adoptedTaskId < 1)) {
+    die('continue: --adopt-task must be a positive integer');
+  }
+  if (!result.verificationOnly && result.scopes.length === 0) die('continue: at least one --scope is required');
+  if (result.observerConfirmed && !result.verificationOnly) {
+    die('continue: --observer-confirmed requires --verification-only');
+  }
+  return result;
+}
+
+// ─── continue: append-only suffix after a terminal downstream failure ─────
+if (command === 'continue') {
+  const input = parseContinueArguments(args);
+  const absoluteDbPath = resolve(input.dbPath);
+  if (!existsSync(absoluteDbPath)) die(`continue: DB not found: ${absoluteDbPath}`);
+  let workingDbPath = absoluteDbPath;
+  let temporaryRoot = null;
+  if (input.check) {
+    temporaryRoot = mkdtempSync(join(tmpdir(), 'saga-continuation-check-'));
+    workingDbPath = join(temporaryRoot, 'factory.sqlite');
+    const source = new Database(absoluteDbPath, { readonly: true });
+    await source.backup(workingDbPath);
+    source.close();
+  } else {
+    const backupRoot = join(resolve(absoluteDbPath, '..'), '.factory-backups');
+    mkdirSync(backupRoot, { recursive: true });
+    const backupPath = join(
+      backupRoot,
+      `pre-continuation-${new Date().toISOString().replaceAll(':', '-')}.sqlite`,
+    );
+    const source = new Database(absoluteDbPath, { readonly: true });
+    await source.backup(backupPath);
+    source.close();
+    process.stdout.write(`[factory] continuation backup=${backupPath}\n`);
+  }
+  let continuationDb = null;
+  try {
+    const db = new Database(workingDbPath);
+    continuationDb = db;
+    db.pragma('foreign_keys=ON');
+    const { SCHEMA_SQL, migrateFactorySchemaV3ToV4 } = await import('../dist/schema.js');
+    db.exec(SCHEMA_SQL);
+    migrateFactorySchemaV3ToV4(db);
+    const parent = db.prepare(
+      `SELECT fo.order_ref
+         FROM factory_orders fo
+         JOIN factory_order_runs chain ON chain.order_ref=fo.order_ref
+        WHERE chain.lifecycle_run_id=?`,
+    ).get(input.parentLifecycleRunId);
+    if (!parent?.order_ref) {
+      db.close();
+      die(`continue: lifecycle ${input.parentLifecycleRunId} has no root FactoryOrder`);
+    }
+    const { prepareDevelopmentContinuation } = await import(
+      '../dist/app/factory-continuation.js'
+    );
+    const prepared = prepareDevelopmentContinuation(db, {
+      orderRef: parent.order_ref,
+      parentLifecycleRunId: input.parentLifecycleRunId,
+      adoptedTaskId: input.adoptedTaskId,
+      remainingChangeScopes: input.scopes,
+      verificationOnly: input.verificationOnly,
+      observerConfirmation: input.observerConfirmed ? {
+        observerId: 'product-owner:user',
+        statement: 'Product owner explicitly confirmed all described manual, visual, keyboard and screen-reader checks as verified in the operator conversation.',
+      } : undefined,
+      actorId: 'factory-continuation-operator',
+      reason: 'append-only authority-complete Development incident recovery',
+    });
+    if (input.check) {
+      process.stdout.write(`[factory] continuation check: ${JSON.stringify(prepared)}\n`);
+      db.close();
+      continuationDb = null;
+      process.exitCode = 0;
+    } else {
+      const { requestFactoryLaunch } = await import(
+        '../dist/infrastructure/factory/sqlite-factory-launch-repository.js'
+      );
+      const concurrency = resumeConcurrency(db, prepared.epicId);
+      const launchRef = requestFactoryLaunch({
+        orderRef: prepared.orderRef,
+        mode: 'resume',
+        projectId: prepared.projectId,
+        epicId: prepared.epicId,
+        lifecycleRunId: prepared.childLifecycleRunId,
+        initiatedBy: 'factory-continuation-operator',
+        idempotencyKey: `${prepared.childIdempotencyKey}:launch`,
+        concurrency,
+      }, db);
+      db.close();
+      continuationDb = null;
+      process.stdout.write(
+        `[factory] continuation launch=${launchRef} child=${prepared.childLifecycleRunId} db=${absoluteDbPath}\n`,
+      );
+      spawnOrchestrateCli(absoluteDbPath, launchRef);
+    }
+  } finally {
+    if (continuationDb) {
+      try { continuationDb.close(); } catch { /* preserve the primary failure */ }
+    }
+    if (temporaryRoot) {
+      try {
+        rmSync(temporaryRoot, { recursive: true, force: true });
+      } catch (cleanupError) {
+        process.stderr.write(
+          `[factory] continuation check cleanup deferred for ${temporaryRoot}: `
+          + `${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}\n`,
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -189,16 +412,28 @@ if (command === 'resume') {
   if (!dbPath) die('resume: db-path argument is required');
   const resumeOptions = new Set(args.slice(2));
   for (const option of resumeOptions) {
-    if (option !== '--requeue-paused' && option !== '--recover-failed-gate') {
+    if (
+      option !== '--requeue-paused'
+      && option !== '--recover-failed-gate'
+      && option !== '--recover-missing-product'
+      && option !== '--recover-orphaned-launch'
+    ) {
       die(`resume: unsupported option '${option}'`);
     }
   }
-  if (resumeOptions.has('--requeue-paused') && resumeOptions.has('--recover-failed-gate')) {
+  if ([
+    '--requeue-paused',
+    '--recover-failed-gate',
+    '--recover-missing-product',
+    '--recover-orphaned-launch',
+  ].filter(option => resumeOptions.has(option)).length > 1) {
     die('resume: recovery options are mutually exclusive');
   }
 
   const {
     recoverFailedGateRun,
+    recoverMissingProductionCellProduct,
+    recoverOrphanedFactoryLaunch,
     resolveFactoryResumeTarget,
     resumePausedSubmissionWorkplace,
   } = await import('../dist/app/factory-start.js');
@@ -236,6 +471,33 @@ if (command === 'resume') {
       );
     }
     const target = resolveFactoryResumeTarget(db, 1); // sandbox projects use id=1
+    const concurrency = resumeConcurrency(db, target.epicId);
+    if (resumeOptions.has('--recover-missing-product')) {
+      const recovery = recoverMissingProductionCellProduct(db, {
+        lifecycleRunId: target.lifecycleRunId,
+        expectedSchema: 'factory.source-change-candidate.v1',
+        actorId: 'factory-resume-operator',
+        reason: 'recover false worker_done without a typed Production Cell product',
+      });
+      process.stdout.write(
+        `[factory] missing-product recovery=${recovery.authorizationRef} `
+        + `rejection=${recovery.rejectionRef} task=${recovery.taskId} `
+        + `abandoned-launch=${recovery.abandonedLaunchRef ?? 'none'} `
+        + `revision=${recovery.resultingRevision} replayed=${recovery.replayed}\n`,
+      );
+    }
+    if (resumeOptions.has('--recover-orphaned-launch')) {
+      const recovery = recoverOrphanedFactoryLaunch(db, {
+        lifecycleRunId: target.lifecycleRunId,
+        actorId: 'factory-resume-operator',
+        reason: 'close controller launch after supervised worker loss',
+      });
+      process.stdout.write(
+        `[factory] orphaned-launch recovery=${recovery.recoveryRef} `
+        + `launch=${recovery.launchRef} execution=${recovery.executionId} `
+        + `replayed=${recovery.replayed}\n`,
+      );
+    }
     if (resumeOptions.has('--requeue-paused')) {
       await ensurePausedRecoveryFeedback(db, target.lifecycleRunId);
       const recovery = resumePausedSubmissionWorkplace(db, {
@@ -264,7 +526,7 @@ if (command === 'resume') {
       // get their own launch row (the previous launch may be in 'claimed'/
       // 'running' state from a crashed or failed attempt).
       idempotencyKey: `${target.idempotencyKey}:resume:${crypto.randomUUID()}`,
-      concurrency: Number(process.env.SAGA_FACTORY_CONCURRENCY ?? 5),
+      concurrency,
     }, db);
   } finally {
     db.close();
@@ -285,6 +547,13 @@ if (command === 'start') {
   } = parseStartArguments(args);
   if (!dbPath) die('start: db-path argument is required');
   if (!idea) die('start: idea-text argument is required');
+  const modelProfile = factoryModelProfile(modelName);
+  if (!modelProfile) die(`start: unknown Factory model '${modelName}'`);
+  const requestedConcurrency = parseConcurrency(process.env.SAGA_FACTORY_CONCURRENCY);
+  const launchConcurrency = effectiveFactoryConcurrency(
+    requestedConcurrency,
+    modelProfile.limit,
+  );
 
   // If a sandbox dir is specified, provision the full project structure.
   // Otherwise, assume the DB already has project/epic/repo rows and only
@@ -327,7 +596,17 @@ if (command === 'start') {
     db.prepare("INSERT INTO repositories (id,name) VALUES (1,?)").run(repoName);
     db.prepare(`INSERT INTO project_repositories (id,project_id,repository_id,role,local_path,integration_branch,status) VALUES (1,1,1,'component',?,'dev','active')`).run(repositoryPath);
     db.prepare(`INSERT INTO trusted_providers (id,project_id,name,version,category,trust_basis,determinism,scope,status) VALUES (1,1,'saga-real-model-worker','1.0.0','deterministic_evidence','real factory execution','partial','factory-smoke','active')`).run();
-    db.prepare(`INSERT INTO lifecycle_execution_controls (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit) VALUES (1,5,'zai',?, 'medium',5)`).run(modelName);
+    db.prepare(
+      `INSERT INTO lifecycle_execution_controls
+         (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+       VALUES (1,?,?,?,?,?)`,
+    ).run(
+      launchConcurrency,
+      modelProfile.provider,
+      modelProfile.id,
+      modelProfile.effort,
+      modelProfile.limit,
+    );
     db.close();
 
     process.stdout.write(`[factory] provisioned sandbox=${sandboxName} repo=${repositoryPath}\n`);
@@ -390,7 +669,7 @@ if (command === 'start') {
       // later new-start invocations so it cannot manufacture replay misses.
       initiatedBy: 'factory-start',
       idempotencyKey: `${sandboxName ?? 'factory'}-${crypto.randomUUID()}`,
-      concurrency: Number(process.env.SAGA_FACTORY_CONCURRENCY ?? 5),
+      concurrency: launchConcurrency,
     }, db);
   } finally {
     db.close();

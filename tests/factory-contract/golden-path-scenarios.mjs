@@ -9,7 +9,7 @@ import { actions } from './scenario-engine.mjs';
 
 const FRM = 'solution-formalization@1.0.0';
 const DISC = 'product-discovery@3.0.2';
-const DEV = 'solution-development@1.0.0';
+const DEV = 'solution-development@1.1.0';
 
 function metaOf(task) {
   return typeof task.metadata === 'string'
@@ -381,24 +381,17 @@ const developmentVerify = async ({ client, task, prompt }) => {
     result: 'passed',
   };
   const evidenceHash = actions.contentHash(JSON.stringify(evidenceBody));
-  await actions.submitProduct(client, 'factory.candidate-verification-evidence-product.v1', {
-    schemaVersion: 'factory.candidate-verification-evidence-product.v1',
+  await actions.submitProduct(client, 'factory.candidate-verification-evidence-product.v2', {
+    schemaVersion: 'factory.candidate-verification-evidence-product.v2',
     verificationItemKey: item.key,
     acceptanceCriterionId: acId,
     acceptedCriterionHash,
     candidateHash: candidate.candidateHash,
     outcome: 'passed',
     evidence: {
-      schema: 'factory.verification-evidence.v1',
-      ref: `factory-contract-evidence:${evidenceHash}`,
-      hash: evidenceHash,
-    },
-    provider: {
-      providerId: 9101,
-      name: 'factory-contract-preflight',
-      version: '1.0.0',
-      category: 'deterministic_evidence',
-      trusted: true,
+      summary: `Factory contract verification passed for ${item.key}`,
+      observations: [`evidence digest ${evidenceHash}`],
+      limitations: [],
     },
   });
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import type { PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
@@ -25,7 +25,7 @@ interface ArtifactRow {
  * content hash. A changed artifact is a different product and fails closed.
  */
 export function createFormalizationAcceptProductsEffect(
-  db: Database.Database,
+  db: SqlDatabasePort,
 ): PostAcceptanceEffect {
   return {
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,

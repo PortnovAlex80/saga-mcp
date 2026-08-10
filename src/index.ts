@@ -55,6 +55,13 @@ import {
   visibleSagaToolNames,
 } from './shared/authority/authorize-tool-call.js';
 import { closeDb, getDb } from './db.js';
+import { registerProductPayloadContract } from './process-modules/application/product-payload-contract.js';
+import { developmentVerificationPayloadContract } from './modules/development/application/development-check-providers.js';
+
+// The worker MCP host is a separate process from the lifecycle orchestrator.
+// Install the same executable payload contracts at this composition boundary;
+// durable WorkIntent pins still reject any id/version/digest drift.
+registerProductPayloadContract(developmentVerificationPayloadContract);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

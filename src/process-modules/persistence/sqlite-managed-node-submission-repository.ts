@@ -6,6 +6,11 @@ import type {
 } from '../application/managed-node-submission.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
+  assertPinnedProductPayload,
+  assertProductPayload,
+  type ProductPayloadContractRef,
+} from '../application/product-payload-contract.js';
+import {
   resolveManagedExecutionProvenance,
 } from './sqlite-managed-production-ledger.js';
 import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
@@ -120,6 +125,17 @@ implements ManagedNodeSubmissionReader {
         provenance.taskId,
         provenance.executionId,
       );
+      const pinnedContract = this.assertIntentOutputSchema(
+        provenance.intentId,
+        schema,
+      );
+      // A durable WorkIntent pin is authoritative. Legacy/unpinned intents
+      // retain the convenience validation path for backward compatibility.
+      if (pinnedContract) {
+        assertPinnedProductPayload(schema, pinnedContract, command.payload);
+      } else {
+        assertProductPayload(schema, command.payload);
+      }
 
       const query: ManagedNodeSubmissionQuery = {
         processRunId: provenance.processRunId,
@@ -168,6 +184,25 @@ implements ManagedNodeSubmissionReader {
     });
 
     return write.immediate();
+  }
+
+  /**
+   * Preflight the exact WorkIntent contract before a schema-specific product
+   * materializer is allowed to touch a capability target. The transaction in
+   * submitForCurrentExecution repeats this check at commit time; this method
+   * closes the earlier tool-side effect window.
+   */
+  assertSchemaForCurrentExecution(
+    schema: string,
+    env: NodeJS.ProcessEnv = process.env,
+  ): void {
+    const normalized = schema.trim();
+    if (!normalized) throw new Error('MANAGED_NODE_SUBMISSION_SCHEMA_REQUIRED');
+    const provenance = resolveManagedExecutionProvenance(this.db, env);
+    if (!provenance) {
+      throw new Error('MANAGED_NODE_SUBMISSION_REQUIRES_MANAGED_EXECUTION');
+    }
+    this.assertIntentOutputSchema(provenance.intentId, normalized);
   }
 
   readExact(
@@ -280,6 +315,56 @@ implements ManagedNodeSubmissionReader {
         `MANAGED_NODE_SUBMISSION_PROCESS_NOT_RUNNING: ${row.process_status}`,
       );
     }
+  }
+
+  private assertIntentOutputSchema(
+    intentId: number,
+    submittedSchema: string,
+  ): ProductPayloadContractRef | null {
+    const intent = this.db.prepare(
+      `SELECT output_schema,authority_scope
+         FROM factory_work_intents
+        WHERE id=?`,
+    ).get(intentId) as { output_schema: string; authority_scope: string } | undefined;
+    if (!intent) {
+      throw new Error(
+        `MANAGED_NODE_SUBMISSION_INTENT_NOT_FOUND: ${intentId}`,
+      );
+    }
+    if (intent.output_schema !== submittedSchema) {
+      throw new Error(
+        `MANAGED_NODE_SUBMISSION_SCHEMA_MISMATCH: WorkIntent ${intentId} `
+        + `requires '${intent.output_schema}', received '${submittedSchema}'. `
+        + 'Submit the exact declared output schema; a generic or adjacent '
+        + 'review/product schema is not compatible.',
+      );
+    }
+    let scope: unknown;
+    try {
+      scope = JSON.parse(intent.authority_scope);
+    } catch {
+      throw new Error(`MANAGED_NODE_SUBMISSION_INTENT_AUTHORITY_CORRUPT: ${intentId}`);
+    }
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return null;
+    const value = (scope as Record<string, unknown>).payload_contract;
+    if (value === undefined) return null;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`PRODUCT_PAYLOAD_CONTRACT_PIN_INVALID: WorkIntent ${intentId}`);
+    }
+    const pin = value as Record<string, unknown>;
+    if (
+      typeof pin.contractId !== 'string' || !pin.contractId
+      || typeof pin.version !== 'string' || !pin.version
+      || typeof pin.contractDigest !== 'string'
+      || !/^[a-f0-9]{64}$/.test(pin.contractDigest)
+    ) {
+      throw new Error(`PRODUCT_PAYLOAD_CONTRACT_PIN_INVALID: WorkIntent ${intentId}`);
+    }
+    return {
+      contractId: pin.contractId,
+      version: pin.version,
+      contractDigest: pin.contractDigest,
+    };
   }
 }
 

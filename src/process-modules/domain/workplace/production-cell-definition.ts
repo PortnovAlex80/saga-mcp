@@ -28,6 +28,12 @@ export interface ProductContract {
   readonly mediaType: string;
   readonly cardinality: string;
   readonly productSource?: 'typed-submission' | 'managed-production';
+  /** Exact executable payload decoder frozen into each projected WorkIntent. */
+  readonly payloadContract?: {
+    readonly contractId: string;
+    readonly version: string;
+    readonly contractDigest: string;
+  };
 }
 
 export interface CellRoleProfile {
@@ -82,6 +88,26 @@ export function assertValidProductionCellDefinition(
   }
   if (cell.productContracts.length === 0) {
     throw new Error('ProductionCellDefinition.productContracts must be non-empty');
+  }
+  for (const contract of cell.productContracts) {
+    requireNonEmpty(contract.binding, 'productContracts.binding');
+    requireNonEmpty(contract.schemaRef, 'productContracts.schemaRef');
+    if (contract.payloadContract) {
+      requireNonEmpty(
+        contract.payloadContract.contractId,
+        'productContracts.payloadContract.contractId',
+      );
+      requireNonEmpty(
+        contract.payloadContract.version,
+        'productContracts.payloadContract.version',
+      );
+      if (!/^[a-f0-9]{64}$/.test(contract.payloadContract.contractDigest)) {
+        throw new Error(
+          'ProductionCellDefinition.productContracts.payloadContract.contractDigest '
+          + 'must be a lowercase SHA-256 digest',
+        );
+      }
+    }
   }
   requireNonEmpty(cell.author.skillRef, 'author.skillRef');
   requireNonEmpty(cell.author.capabilityPreset, 'author.capabilityPreset');

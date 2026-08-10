@@ -95,7 +95,7 @@ export function driveGateRun(
         `CHECK_PROVIDER_VERSION_MISMATCH: expected ${entry.check.version}, got ${provider.version}`,
       );
     }
-    const outcome = provider.run({
+    const providerResult = provider.run({
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       parameters: {
         ...input.checkParameters,
@@ -108,12 +108,18 @@ export function driveGateRun(
       environmentRef: entry.environmentRef ?? input.environmentRef,
       candidateSnapshot: {},
     });
-    if (outcome instanceof Promise) {
+    if (providerResult instanceof Promise) {
       throw new Error(
         `ASYNC_CHECK_PROVIDER_UNSUPPORTED: ${entry.check.providerId}; `
           + 'GateRun is currently synchronous',
       );
     }
+    const outcome = typeof providerResult === 'string'
+      ? providerResult
+      : providerResult.outcome;
+    const evidenceRefs = typeof providerResult === 'string'
+      ? []
+      : [...providerResult.evidenceRefs];
     const checkReceiptRef = `receipt:${gateRunRef}:${entry.check.providerId}`;
     const receipt: CheckReceipt = {
       checkReceiptRef,
@@ -123,8 +129,17 @@ export function driveGateRun(
       check: entry.check,
       environmentRef: entry.environmentRef ?? input.environmentRef,
       outcome,
-      evidenceRefs: [],
-      receiptDigest: hashReceipt(checkReceiptRef, entry.check, outcome),
+      evidenceRefs,
+      receiptDigest: hashReceipt(
+        checkReceiptRef,
+        gateRunRef,
+        input.subjectCandidateSetRef,
+        assessmentCandidateSetRefs,
+        entry.check,
+        entry.environmentRef ?? input.environmentRef,
+        outcome,
+        evidenceRefs,
+      ),
     };
     repo.recordCheckReceipt(receipt);
     receipts.push(receipt);
@@ -185,6 +200,9 @@ function reduceReceipts(
       (receipt.outcome === 'unknown' || receipt.outcome === 'error')
       && checkPlan.unknownErrorPolicy === 'fail-closed'
     ) {
+      if (entry.indeterminateDisposition === 'human-required') {
+        return { verdict: 'human_required', repairTargetRole: null };
+      }
       requestedTarget = entry.repairTargetRoleOnIndeterminate
         ?? entry.repairTargetRoleOnFailure
         ?? 'author';
@@ -208,15 +226,29 @@ function reduceReceipts(
 
 function hashReceipt(
   ref: string,
+  checkRunRef: string,
+  subjectCandidateSetRef: string,
+  assessmentCandidateSetRefs: readonly string[],
   check: {
     readonly providerId: string;
     readonly version: string;
     readonly providerDigest: string;
   },
+  environmentRef: string | null,
   outcome: CheckOutcome,
+  evidenceRefs: readonly string[],
 ): string {
   return createHash('sha256')
-    .update(JSON.stringify({ ref, check, outcome }))
+    .update(JSON.stringify({
+      ref,
+      checkRunRef,
+      subjectCandidateSetRef,
+      assessmentCandidateSetRefs,
+      check,
+      environmentRef,
+      outcome,
+      evidenceRefs,
+    }))
     .digest('hex');
 }
 

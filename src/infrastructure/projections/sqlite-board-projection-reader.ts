@@ -67,8 +67,19 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
             CASE WHEN lr.status='created' THEN lr.entry_stage_id ELSE lr.status END
           ) AS episode_stage,
           CASE WHEN lr.status='failed' THEN lr.error ELSE NULL END AS gate_error,
-          CASE WHEN lr.status='paused' THEN 1 ELSE 0 END AS needs_human,
-          CASE WHEN lr.status='paused' THEN lr.error ELSE NULL END AS pause_reason,
+          CASE WHEN lr.status='paused' AND NOT EXISTS (
+            SELECT 1 FROM worker_executions we
+             WHERE we.epic_id=e.id
+               AND we.state IN ('reserved','running','cancel_requested')
+          ) THEN 1 ELSE 0 END AS needs_human,
+          CASE WHEN lr.status='paused' AND NOT EXISTS (
+            SELECT 1 FROM worker_executions we
+             WHERE we.epic_id=e.id
+               AND we.state IN ('reserved','running','cancel_requested')
+          ) THEN lr.error ELSE NULL END AS pause_reason,
+          (SELECT count(*) FROM worker_executions we
+            WHERE we.epic_id=e.id
+              AND we.state IN ('reserved','running','cancel_requested')) AS active_workers,
           (SELECT count(*) FROM artifacts a
             WHERE a.epic_id=e.id AND a.status='accepted' AND a.drift_state='drifted') AS drift_count,
           (SELECT count(*) FROM verification_evidence v

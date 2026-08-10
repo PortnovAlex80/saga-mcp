@@ -23,35 +23,15 @@ import {
   captureProductIdeaUrl,
   ideaPromptView,
 } from './product-idea-source.mjs';
-
-const FACTORY_MODELS = Object.freeze([
-  Object.freeze({
-    id: 'glm-4.7',
-    label: 'GLM 4.7 — рекомендуется для первого запуска',
-    provider: 'zai',
-    effort: 'high',
-    limit: 2,
-  }),
-  Object.freeze({
-    id: 'glm-5-turbo',
-    label: 'GLM 5 Turbo',
-    provider: 'zai',
-    effort: 'high',
-    limit: 5,
-  }),
-  Object.freeze({
-    id: 'glm-5.2',
-    label: 'GLM 5.2',
-    provider: 'zai',
-    effort: 'high',
-    limit: 3,
-  }),
-]);
-const DEFAULT_FACTORY_MODEL = 'glm-4.7';
-const DEFAULT_FACTORY_CONCURRENCY = 2;
+import {
+  DEFAULT_FACTORY_CONCURRENCY,
+  DEFAULT_FACTORY_MODEL,
+  FACTORY_CLOUD_MODELS,
+  factoryModelProfile,
+} from '../dist/runtime/factory-model-profiles.js';
 
 function factoryModel(modelId) {
-  return FACTORY_MODELS.find(model => model.id === modelId) ?? null;
+  return factoryModelProfile(modelId);
 }
 
 function modelEnvironment(modelId) {

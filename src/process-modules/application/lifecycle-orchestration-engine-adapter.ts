@@ -17,6 +17,11 @@ export interface LifecycleEpisodeInput {
 
 export interface LifecycleOrchestrationEngineAdapterOptions {
   definition: LifecycleDefinition;
+  /** Resolve a run-pinned suffix definition for append-only continuations. */
+  resolveDefinition?: (
+    command: RunEpisodeCommand,
+    input: LifecycleEpisodeInput,
+  ) => Promise<LifecycleDefinition> | LifecycleDefinition;
   orchestrator: LifecycleOrchestrator;
   resolveInput: (
     command: RunEpisodeCommand,
@@ -35,8 +40,11 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
 
   async run(command: RunEpisodeCommand): Promise<OrchestrationRunResult> {
     const input = await this.options.resolveInput(command);
+    const definition = this.options.resolveDefinition
+      ? await this.options.resolveDefinition(command, input)
+      : this.options.definition;
     const result = await this.options.orchestrator.run(
-      this.options.definition,
+      definition,
       {
         projectId: command.projectId,
         epicId: command.epicId,
@@ -62,7 +70,7 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
       finalStage:
         result.lifecycleRun.currentStageId
         ?? lastStage?.stageId
-        ?? this.options.definition.entryStageId,
+        ?? definition.entryStageId,
       endedAt:
         result.lifecycleRun.completedAt
         ?? result.lifecycleRun.updatedAt,
@@ -79,7 +87,7 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
               ?? null,
           }
         : undefined,
-      pipelineScope: lifecycleRefKey(this.options.definition.identity),
+      pipelineScope: lifecycleRefKey(definition.identity),
       scopeCompleted: result.status === 'completed',
       outcome: result.terminalStatus ?? lastStage?.localOutcome ?? undefined,
       outcomeAuthority: lastStage?.authority ?? undefined,

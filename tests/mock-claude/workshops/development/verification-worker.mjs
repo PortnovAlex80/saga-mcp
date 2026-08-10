@@ -177,29 +177,22 @@ async function main() {
 
     // Submit the verification evidence product with outcome='passed'
     const evidence = {
-      schemaVersion: 'factory.candidate-verification-evidence-product.v1',
+      schemaVersion: 'factory.candidate-verification-evidence-product.v2',
       verificationItemKey: workItemKey,
       acceptanceCriterionId: acId,
       acceptedCriterionHash,
       candidateHash,
       outcome: 'passed',
       evidence: {
-        schema: 'factory.verification-evidence.v1',
-        ref: `verification-evidence:${taskId}`,
-        hash: acceptedCriterionHash,
-      },
-      provider: {
-        providerId: 1,
-        name: 'test_runner',
-        version: '1.0.0',
-        category: 'deterministic_evidence',
-        trusted: true,
+        summary: `Automated verification passed for ${workItemKey}`,
+        observations: [`accepted AC ${acId} matches frozen candidate ${candidateHash}`],
+        limitations: [],
       },
     };
 
     emit('assistant', { message: { content: [{ type: 'text', text: `[mock] product_submit: verification evidence passed for ${workItemKey}` }] } });
     const ps = await client.call('product_submit', {
-      schema: 'factory.candidate-verification-evidence-product.v1',
+      schema: 'factory.candidate-verification-evidence-product.v2',
       content: evidence,
     });
     process.stderr.write(`[dev-verify] product_submit → ${ps[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);

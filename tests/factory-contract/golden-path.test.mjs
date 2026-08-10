@@ -237,7 +237,7 @@ test('Golden Path: cold Idea -> released, then replay -> released with zero scri
 
     const runAInvocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
     assert.ok(runAInvocations.length >= 10, `scripted workers invoked on cold path: ${runAInvocations.length}`);
-    assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.0.0'), 'Run A Development used scripted physical workers');
+    assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.1.0'), 'Run A Development used scripted physical workers');
 
     // ---------------- Run B: replay production source ----------------
     // Restore the exact repository desk base required by the captured Git

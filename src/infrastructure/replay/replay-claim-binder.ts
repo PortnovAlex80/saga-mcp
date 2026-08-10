@@ -242,6 +242,8 @@ export function certifyAcceptedReplayCapsules(
         const candidate = db.prepare(
           `SELECT cs.candidate_set_ref,cs.producer_execution_ref
              FROM factory_candidate_sets cs
+             JOIN worker_executions we
+               ON we.execution_id=cs.producer_execution_ref
              LEFT JOIN factory_replay_capsules rc
                ON rc.source_execution_ref=cs.producer_execution_ref
               AND rc.source_candidate_set_ref=cs.candidate_set_ref

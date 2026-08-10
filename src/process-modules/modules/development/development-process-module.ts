@@ -28,6 +28,12 @@ import {
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DIGEST,
+  DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
+  DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,
 } from '../../../modules/development/application/development-check-providers.js';
 
 export { DEVELOPMENT_PROCESS_MODULE_REF };
@@ -80,8 +86,15 @@ const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
     repairTargetRoleOnIndeterminate: 'reviewer',
   }],
 );
-const VERIFICATION_FINAL_PLAN =
-  buildProductContractCheckPlan('development.verification.final');
+const VERIFICATION_FINAL_PLAN = buildCheckPlan(
+  'development.verification.final.v2',
+  [{
+    providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+    indeterminateDisposition: 'human-required',
+  }],
+);
 
 export const developmentProcessModule: ProcessModuleDefinition = {
   identity: {
@@ -231,6 +244,11 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             mediaType: 'application/json',
             cardinality: '1',
             productSource: 'typed-submission',
+            payloadContract: {
+              contractId: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
+              version: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,
+              contractDigest: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DIGEST,
+            },
           }],
           authorGate: {
             gateId: 'development-verification-final',

@@ -32,6 +32,7 @@ import {
   type CheckProviderRegistry,
 } from '../gate-run-driver.js';
 import type { FactoryPostAcceptanceEffectRegistry } from '../post-acceptance-effects.js';
+import type { SqliteCellFinalAcceptance } from '../../../infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import {
   NodeExecutionError,
   type NodeExecutionContext,
@@ -41,6 +42,7 @@ import {
 import { ProductionCellCoordinator } from '../production-cell-coordinator.js';
 import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -103,9 +105,39 @@ export interface ProductionCellProjectionPersistence {
     executionProfileId: string;
   }): void;
   concludeExecutionIntent(executionRef: string): void;
-  readExecutionReceipt(executionRef: string): { intentId: number; taskId: number };
+  /**
+   * Resolve worker-only execution coordinates when the CandidateSet producer
+   * is a WorkerExecution. Kernel presenters (for example an authorized
+   * carry-forward) are lawful ProducerRefs but deliberately have no worker
+   * receipt, so they resolve to null.
+   */
+  readExecutionReceipt(executionRef: string): { intentId: number; taskId: number } | null;
   projectWorkplace(workplaceRef: WorkplaceRef): void;
-  bindTaskDependencies?(taskId: number, dependencyTaskIds: readonly number[]): void;
+  /**
+   * Seal the complete fan-out topology before any Workplace is admitted.
+   * Implementations must compare exact graph equality on replay and project
+   * task dependencies from this immutable source; partial/reduced replacement
+   * is forbidden.
+   */
+  sealWorkplaceGraph?(input: {
+    graphRef: string;
+    graphDigest: string;
+    processRunId: number;
+    moduleRef: string;
+    productionCellId: string;
+    sealedAt: string;
+    items: readonly {
+      ordinal: number;
+      itemId: string;
+      workplaceRef: string;
+      taskId: number;
+      dependencyItemIds: readonly string[];
+      dependencyWorkplaceRefs: readonly string[];
+      dependencyTaskIds: readonly number[];
+    }[];
+  }): void;
+  readProjectedRoleTask?(workplaceRef: WorkplaceRef, role: 'author' | 'reviewer'):
+    { taskId: number } | null;
   /**
    * Read the task associated with a workplace (for crash-recovery attempt
    * counting). Optional — when absent, attemptCount falls back to sealed
@@ -138,10 +170,12 @@ export interface ProductionCellNodeExecutorOptions {
   readonly gateRepo: SqliteGateRepository;
   readonly checkProviders: CheckProviderRegistry;
   readonly postAcceptanceEffects: FactoryPostAcceptanceEffectRegistry;
+  readonly finalAcceptance: SqliteCellFinalAcceptance;
   readonly persistence: ProductionCellProjectionPersistence;
   readonly productReader: ProductionCellProductReader;
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly resolveProductSemanticDigest?: (productRef: ProductRef) => string | null;
+  readonly authorCandidateCarryForward?: AuthorCandidateCarryForwardPort;
   readonly now?: () => Date;
 }
 
@@ -177,27 +211,48 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
     const moduleRef = `${ctx.module.identity.name}@${ctx.module.identity.version}`;
     const workplaces = this.materialize(ctx, node, cell, moduleRef);
-    const initialTaskIds = new Map<string, number>();
+    const authorTaskIds = new Map<string, number>();
+    const roleProjectedThisCycle = new Set<string>();
     for (const workplace of workplaces) {
       const state = this.requireState(workplace.ref);
-      if (state.loopState === 'queued' && state.nextRole === 'author') {
-        initialTaskIds.set(
-          workplace.itemId,
-          this.ensureRoleProjection(ctx, node, cell, workplace, state),
+      if (
+        state.nextRole === 'author'
+        && (state.loopState === 'idle' || state.loopState === 'queued')
+      ) {
+        authorTaskIds.set(workplace.itemId,
+          this.ensureRoleProjection(ctx, node, cell, workplace, state));
+        roleProjectedThisCycle.add(`${workplace.itemId}:author`);
+        continue;
+      }
+      const projected = this.opts.persistence.readProjectedRoleTask?.(
+        workplace.ref,
+        'author',
+      );
+      if (!projected && cell.materialization.dependencySelector) {
+        throw new NodeExecutionError(
+          this.kind,
+          node.id,
+          `cell '${cell.id}' has no durable author task for item '${workplace.itemId}'`,
         );
       }
+      if (projected) authorTaskIds.set(workplace.itemId, projected.taskId);
     }
     if (cell.materialization.dependencySelector) {
-      for (const workplace of workplaces) {
-        const taskId = initialTaskIds.get(workplace.itemId);
-        if (!taskId) continue;
-        const dependencyTaskIds = stringSelector(
-          workplace.item,
-          cell.materialization.dependencySelector,
-        ).map(itemId => initialTaskIds.get(itemId))
-          .filter((id): id is number => id !== undefined);
-        this.opts.persistence.bindTaskDependencies?.(taskId, dependencyTaskIds);
+      if (!this.opts.persistence.sealWorkplaceGraph) {
+        throw new NodeExecutionError(
+          this.kind,
+          node.id,
+          `cell '${cell.id}' declares dependencies but no graph persistence capability is installed`,
+        );
       }
+      const graph = buildSealedGraph(node.id, cell, workplaces, authorTaskIds);
+      this.opts.persistence.sealWorkplaceGraph({
+        ...graph,
+        processRunId: ctx.processRunId,
+        moduleRef,
+        productionCellId: cell.id,
+        sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+      });
     }
 
     const outcomes: ReconcileOutcome[] = [];
@@ -210,7 +265,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         moduleRef,
         workplace,
         byItemId,
-        initialTaskIds.has(workplace.itemId),
+        roleProjectedThisCycle.has(`${workplace.itemId}:${this.requireState(workplace.ref).nextRole}`),
       ));
     }
 
@@ -297,8 +352,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       productionCellId: cell.id,
       workKey,
     });
-    const state = this.requireState(ref);
-    if (state.loopState === 'idle') this.opts.coordinator.admitWork(ref);
     return { ref, workKey, itemId, item };
   }
 
@@ -309,11 +362,22 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     moduleRef: string,
     workplace: MaterializedWorkplace,
     workplacesByItemId: ReadonlyMap<string, MaterializedWorkplace>,
-    initiallyProjected: boolean,
+    currentRoleProjectedThisCycle: boolean,
   ): Promise<ReconcileOutcome> {
     let state = this.requireState(workplace.ref);
     if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
     if (state.loopState === 'paused') return pausedOutcome();
+    if (state.loopState === 'effect_pending') {
+      const acceptedCandidate = this.latestCandidate(workplace.ref, 'author');
+      if (!acceptedCandidate || !cell.postAcceptanceEffect) {
+        throw new NodeExecutionError(
+          this.kind,
+          node.id,
+          `effect_pending Workplace lacks accepted candidate/effect declaration`,
+        );
+      }
+      return this.settleAcceptanceEffect(ctx, node, cell, workplace, acceptedCandidate);
+    }
 
     if (state.loopState === 'idle') {
       const dependencies = cell.materialization.dependencySelector
@@ -361,7 +425,35 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
 
     if (state.loopState === 'queued') {
-      if (!initiallyProjected) this.ensureRoleProjection(ctx, node, cell, workplace, state);
+      if (state.nextRole === 'author' && this.opts.authorCandidateCarryForward) {
+        const semanticInputDigest = computeSemanticInputDigest(ctx, cell, workplace);
+        const directive = this.opts.authorCandidateCarryForward.resolve({
+          processRunId: ctx.processRunId,
+          workplaceRef: workplace.ref,
+          semanticInputDigest,
+          itemSnapshotHash: sha256Hex(workplace.item),
+          expectedProductSchemas: cell.productContracts.map(contract => contract.schemaRef),
+        });
+        if (directive) {
+          this.opts.coordinator.presentCarriedForwardCandidate(
+            workplace.ref,
+            directive.presenterRef,
+          );
+          state = this.requireState(workplace.ref);
+        }
+      }
+    }
+
+    if (state.loopState === 'queued') {
+      // A durable role task may already exist but still carry its prior active
+      // projection (`in_progress` / `review_in_progress`) after a supervised
+      // worker loss. If this exact role was not activated earlier in this
+      // reconciliation cycle, re-activating its generation is idempotent and
+      // makes queued Workplace authority claimable again. Author graph
+      // projection is not proof that the current reviewer role is activated.
+      if (!currentRoleProjectedThisCycle) {
+        this.ensureRoleProjection(ctx, node, cell, workplace, state);
+      }
       return pendingOutcome();
     }
     if (state.loopState === 'leased' || state.loopState === 'running') {
@@ -378,17 +470,31 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       throw new NodeExecutionError(this.kind, node.id, 'verifying Workplace has no producer reservation');
     }
     const role = state.nextRole;
-    const products = this.opts.productReader.readExecutionProducts({
-      processRunId: ctx.processRunId,
-      moduleRef,
-      nodeId: node.id,
-      executionRef,
-      expectedSchemaRefs: role === 'reviewer'
-        ? [cell.review?.verdictSchemaRef ?? '']
-        : cell.productContracts.map(contract => contract.schemaRef),
-      requireTypedSubmission: role === 'reviewer'
-        || cell.productContracts.some(contract => contract.productSource === 'typed-submission'),
-    });
+    const carryDirective = role === 'author' && this.opts.authorCandidateCarryForward
+      ? this.opts.authorCandidateCarryForward.resolve({
+          processRunId: ctx.processRunId,
+          workplaceRef: workplace.ref,
+          semanticInputDigest: computeSemanticInputDigest(ctx, cell, workplace),
+          itemSnapshotHash: sha256Hex(workplace.item),
+          expectedProductSchemas: cell.productContracts.map(contract => contract.schemaRef),
+        })
+      : null;
+    if (executionRef.startsWith('factory-carry-forward-presenter:') && !carryDirective) {
+      throw new NodeExecutionError(this.kind, node.id, 'carried-forward presenter has no valid authorization');
+    }
+    const products = carryDirective
+      ? carryDirective.products
+      : this.opts.productReader.readExecutionProducts({
+          processRunId: ctx.processRunId,
+          moduleRef,
+          nodeId: node.id,
+          executionRef,
+          expectedSchemaRefs: role === 'reviewer'
+            ? [cell.review?.verdictSchemaRef ?? '']
+            : cell.productContracts.map(contract => contract.schemaRef),
+          requireTypedSubmission: role === 'reviewer'
+            || cell.productContracts.some(contract => contract.productSource === 'typed-submission'),
+        });
     if (role === 'reviewer') {
       this.assertReviewerProductContract(cell, products, node.id);
     } else {
@@ -397,13 +503,24 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const subjectAuthorSet = role === 'reviewer'
       ? this.latestCandidate(workplace.ref, 'author')
       : null;
-    const candidate = this.sealCandidateSet(
-      workplace.ref,
-      executionRef,
-      role,
-      subjectAuthorSet?.candidateSetRef ?? null,
-      products,
-    );
+    const candidate = carryDirective
+      ? this.sealCarriedForwardCandidateSet(workplace.ref, carryDirective)
+      : this.sealCandidateSet(
+          workplace.ref,
+          executionRef,
+          role,
+          subjectAuthorSet?.candidateSetRef ?? null,
+          products,
+        );
+    if (carryDirective) {
+      this.opts.authorCandidateCarryForward!.consume({
+        authorizationRef: carryDirective.authorizationRef,
+        processRunId: ctx.processRunId,
+        workplaceRef: workplace.ref,
+        candidateSetRef: candidate.candidateSetRef,
+        presenterRef: carryDirective.presenterRef,
+      });
+    }
     // Post-acceptance effects must run AFTER the durable transition. Running
     // them before applyGateDecision/applyReviewerVerdict is invalid: replay
     // capture's authority boundary is `terminal(accepted)`, which only exists
@@ -417,6 +534,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         if (!cell.review) postAcceptanceCandidate = candidate;
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'accepted', isFinal: !cell.review,
+          effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
@@ -442,12 +560,25 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
         repairTargetRole: decision.repairTargetRole ?? undefined,
+        effectRequired: decision.verdict === 'accepted' && Boolean(cell.postAcceptanceEffect),
       });
     }
-    this.opts.persistence.concludeExecutionIntent(executionRef);
+    if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
     this.opts.persistence.projectWorkplace(workplace.ref);
 
     state = this.requireState(workplace.ref);
+    if (state.loopState === 'effect_pending') {
+      if (!postAcceptanceCandidate) {
+        throw new NodeExecutionError(this.kind, node.id, 'effect_pending has no accepted candidate');
+      }
+      return this.settleAcceptanceEffect(
+        ctx,
+        node,
+        cell,
+        workplace,
+        postAcceptanceCandidate,
+      );
+    }
     if (state.loopState === 'terminal') {
       // Direct capture path: the transition is durable and the workplace is
       // terminal(accepted). Replay capture (and other post-acceptance effects)
@@ -455,7 +586,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // normal certification mechanism; the lazy claim-bound sweep remains as
       // a crash/reconciliation fallback only.
       if (postAcceptanceCandidate) {
-        this.runPostAcceptanceEffect(ctx, cell, workplace.ref, postAcceptanceCandidate);
+        this.recordFinalAcceptanceAndCapture(
+          ctx,
+          cell,
+          workplace.ref,
+          postAcceptanceCandidate,
+          [],
+        );
       }
       return this.terminalOutcome(workplace.ref, state);
     }
@@ -466,15 +603,84 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     return pendingOutcome(candidate.candidateSetRef);
   }
 
-  private runPostAcceptanceEffect(
+  private settleAcceptanceEffect(
+    ctx: NodeExecutionContext,
+    node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    workplace: MaterializedWorkplace,
+    acceptedCandidate: CandidateSet,
+  ): ReconcileOutcome {
+    const effectId = cell.postAcceptanceEffect;
+    if (!effectId) {
+      throw new NodeExecutionError(this.kind, node.id, 'acceptance effect id is missing');
+    }
+    const existing = this.opts.finalAcceptance.readEffectReceipt(
+      workplace.ref,
+      effectId,
+      acceptedCandidate.candidateSetRef,
+    );
+    let effectReceiptRef = existing?.effectReceiptRef ?? null;
+    if (!existing) {
+      const result = this.opts.postAcceptanceEffects.run(effectId, {
+        workplaceRef: workplace.ref,
+        processRunId: ctx.processRunId,
+        moduleRef: ctx.module.identity,
+        nodeId: node.id,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        producerExecutionRef: acceptedCandidate.producerExecutionRef,
+        expectedProductSchema: cell.productContracts[0]!.schemaRef,
+      });
+      if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
+      if (result.outcome === 'repair_required') {
+        this.opts.coordinator.requireAcceptanceEffectRepair(workplace.ref);
+        this.opts.persistence.projectWorkplace(workplace.ref);
+        return pendingOutcome(acceptedCandidate.candidateSetRef);
+      }
+      if (result.outcome === 'human_required') {
+        this.opts.coordinator.applyGateDecision(workplace.ref, {
+          verdict: 'human_required',
+          isFinal: true,
+        });
+        this.opts.persistence.projectWorkplace(workplace.ref);
+        return pausedOutcome(acceptedCandidate.candidateSetRef);
+      }
+      effectReceiptRef = this.opts.finalAcceptance.recordEffectReceipt({
+        workplaceRef: workplace.ref,
+        effectId,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        result,
+      }).effectReceiptRef;
+    }
+    this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
+    this.opts.persistence.projectWorkplace(workplace.ref);
+    this.recordFinalAcceptanceAndCapture(
+      ctx,
+      cell,
+      workplace.ref,
+      acceptedCandidate,
+      [effectReceiptRef!],
+    );
+    return this.terminalOutcome(workplace.ref, this.requireState(workplace.ref));
+  }
+
+  private recordFinalAcceptanceAndCapture(
     ctx: NodeExecutionContext,
     cell: ProductionCellDefinition,
     workplaceRef: WorkplaceRef,
     acceptedCandidate: CandidateSet,
+    effectReceiptRefs: readonly string[],
   ): void {
+    this.opts.finalAcceptance.recordFinalAcceptance({
+      workplaceRef,
+      candidateSetRef: acceptedCandidate.candidateSetRef,
+      effectReceiptRefs,
+      acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+    });
     const effectInput = {
       workplaceRef,
       processRunId: ctx.processRunId,
+      moduleRef: ctx.module.identity,
+      nodeId: cell.id,
       candidateSetRef: acceptedCandidate.candidateSetRef,
       producerExecutionRef: acceptedCandidate.producerExecutionRef,
       expectedProductSchema: cell.productContracts[0]!.schemaRef,
@@ -488,9 +694,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     } catch {
       // Best-effort: replay capture failure is logged inside the effect.
     }
-    // Cell-specific effect (git-integration, formalization-accept-products, ...).
-    if (!cell.postAcceptanceEffect) return;
-    this.opts.postAcceptanceEffects.run(cell.postAcceptanceEffect, effectInput);
   }
 
   private ensureRoleProjection(
@@ -543,6 +746,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           scope: profile.id,
           allowed_tools: [...profile.allowedTools],
           enforcement: 'runtime',
+          ...(role === 'author' && cell.productContracts[0]!.payloadContract
+            ? { payload_contract: cell.productContracts[0]!.payloadContract }
+            : {}),
         },
         outputSchema: role === 'reviewer'
           ? cell.review!.verdictSchemaRef
@@ -636,6 +842,33 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       subjectCandidateSetRef,
       members,
       sealReceiptRef: `seal:${executionRef}:${role}`,
+      candidateSetDigest: digest,
+      sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+    }).set;
+  }
+
+  private sealCarriedForwardCandidateSet(
+    workplaceRef: WorkplaceRef,
+    directive: import('../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js').AuthorCandidateCarryForwardDirective,
+  ): CandidateSet {
+    const members: CandidateMember[] = directive.products.map(productRef => ({
+      productRef,
+      origin: 'carried-forward',
+      sourceCandidateSetRef: directive.sourceCandidateSetRef,
+    }));
+    const digest = hash({
+      workplaceRef: serializeWorkplaceRef(workplaceRef),
+      executionRef: directive.presenterRef,
+      role: 'author',
+      products: directive.products,
+    });
+    return this.opts.candidateSetRepo.seal({
+      workplaceRef,
+      producerExecutionRef: directive.presenterRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members,
+      sealReceiptRef: `carry-forward-seal:${directive.authorizationRef}`,
       candidateSetDigest: digest,
       sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     }).set;
@@ -986,6 +1219,140 @@ function stringSelector(value: unknown, selector: string): string[] {
     return [];
   }
   return [...new Set(selected)];
+}
+
+function buildSealedGraph(
+  nodeId: string,
+  cell: ProductionCellDefinition,
+  workplaces: readonly MaterializedWorkplace[],
+  authorTaskIds: ReadonlyMap<string, number>,
+): {
+  graphRef: string;
+  graphDigest: string;
+  items: readonly {
+    ordinal: number;
+    itemId: string;
+    workplaceRef: string;
+    taskId: number;
+    dependencyItemIds: readonly string[];
+    dependencyWorkplaceRefs: readonly string[];
+    dependencyTaskIds: readonly number[];
+  }[];
+} {
+  const selector = cell.materialization.dependencySelector;
+  if (!selector) {
+    throw new NodeExecutionError('production-cell', nodeId,
+      `cell '${cell.id}' has no dependency selector to seal`);
+  }
+  const byItemId = new Map<string, MaterializedWorkplace>();
+  for (const workplace of workplaces) {
+    if (byItemId.has(workplace.itemId)) {
+      throw new NodeExecutionError('production-cell', nodeId,
+        `cell '${cell.id}' has duplicate item id '${workplace.itemId}'`);
+    }
+    byItemId.set(workplace.itemId, workplace);
+  }
+
+  const dependencies = new Map<string, readonly string[]>();
+  for (const workplace of workplaces) {
+    const selected = rawStringArraySelector(workplace.item, selector, cell.id, workplace.itemId);
+    if (new Set(selected).size !== selected.length) {
+      throw new NodeExecutionError('production-cell', nodeId,
+        `cell '${cell.id}' item '${workplace.itemId}' has duplicate dependencies`);
+    }
+    for (const dependencyId of selected) {
+      if (dependencyId === workplace.itemId) {
+        throw new NodeExecutionError('production-cell', nodeId,
+          `cell '${cell.id}' item '${workplace.itemId}' depends on itself`);
+      }
+      if (!byItemId.has(dependencyId)) {
+        throw new NodeExecutionError('production-cell', nodeId,
+          `cell '${cell.id}' item '${workplace.itemId}' names unknown dependency '${dependencyId}'`);
+      }
+    }
+    dependencies.set(workplace.itemId, selected);
+  }
+  assertAcyclicDependencies(nodeId, cell.id, dependencies);
+
+  const items = workplaces.map((workplace, ordinal) => {
+    const dependencyItemIds = dependencies.get(workplace.itemId) ?? [];
+    const taskId = authorTaskIds.get(workplace.itemId);
+    if (!taskId) {
+      throw new NodeExecutionError('production-cell', nodeId,
+        `cell '${cell.id}' item '${workplace.itemId}' has no author task projection`);
+    }
+    return {
+      ordinal,
+      itemId: workplace.itemId,
+      workplaceRef: serializeWorkplaceRef(workplace.ref),
+      taskId,
+      dependencyItemIds,
+      dependencyWorkplaceRefs: dependencyItemIds.map(id =>
+        serializeWorkplaceRef(byItemId.get(id)!.ref)),
+      dependencyTaskIds: dependencyItemIds.map(id => authorTaskIds.get(id)!),
+    };
+  });
+  const graphDigest = sha256Hex({
+    productionCellId: cell.id,
+    items: items.map(item => ({
+      ordinal: item.ordinal,
+      itemId: item.itemId,
+      workplaceRef: item.workplaceRef,
+      taskId: item.taskId,
+      dependencyItemIds: item.dependencyItemIds,
+      dependencyWorkplaceRefs: item.dependencyWorkplaceRefs,
+      dependencyTaskIds: item.dependencyTaskIds,
+    })),
+  });
+  return {
+    graphRef: `workplace-graph:${graphDigest}`,
+    graphDigest,
+    items,
+  };
+}
+
+function rawStringArraySelector(
+  value: unknown,
+  selector: string,
+  cellId: string,
+  itemId: string,
+): string[] {
+  let selected = value;
+  for (const segment of selector.split('.').filter(Boolean)) {
+    if (!isRecord(selected)) {
+      throw new Error(
+        `PRODUCTION_CELL_DEPENDENCY_SELECTOR_INVALID: cell '${cellId}' item '${itemId}'`,
+      );
+    }
+    selected = selected[segment];
+  }
+  if (!Array.isArray(selected) || !selected.every(item => typeof item === 'string')) {
+    throw new Error(
+      `PRODUCTION_CELL_DEPENDENCY_SELECTOR_INVALID: cell '${cellId}' item '${itemId}'`,
+    );
+  }
+  return [...selected];
+}
+
+function assertAcyclicDependencies(
+  nodeId: string,
+  cellId: string,
+  dependencies: ReadonlyMap<string, readonly string[]>,
+): void {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (itemId: string): void => {
+    if (visited.has(itemId)) return;
+    if (visiting.has(itemId)) {
+      throw new NodeExecutionError('production-cell', nodeId,
+        `cell '${cellId}' dependency graph contains a cycle at '${itemId}'`);
+    }
+    visiting.add(itemId);
+    for (const dependencyId of dependencies.get(itemId) ?? []) visit(dependencyId);
+    visiting.delete(itemId);
+    visited.add(itemId);
+  };
+  for (const itemId of dependencies.keys()) visit(itemId);
 }
 
 function resolveCellDefinition(

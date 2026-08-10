@@ -72,9 +72,29 @@ schema. A prose completion message is not a product.
 - Record only observed evidence. Use `unknown` when the required environment or
   measurement is unavailable and `error` when the verification mechanism
   fails; neither is a pass.
-- Submit `factory.candidate-verification-evidence-product.v1` with the
-  verification-item key, AC id/hash, candidate hash, four-valued outcome,
-  content-addressed evidence and trusted deterministic provider binding.
+- Submit exactly one `factory.candidate-verification-evidence-product.v2`.
+  The executable Factory contract rejects aliases, missing fields and extra
+  top-level fields before `worker_done`:
+
+  ```json
+  {
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "<exact cell_input_item.key>",
+    "acceptanceCriterionId": 123,
+    "acceptedCriterionHash": "<exact accepted AC SHA-256>",
+    "candidateHash": "<exact frozen candidate SHA-256>",
+    "outcome": "passed|failed|unknown|error",
+    "evidence": {
+      "summary": "<what was actually established>",
+      "observations": ["<specific observation/check and result>"],
+      "limitations": []
+    }
+  }
+  ```
+
+  The enclosing immutable product is the content-addressed evidence reference;
+  do not invent a nested reference. Provider trust is injected from the
+  Factory-frozen WorkIntent and must not be claimed in worker JSON.
 - Call `worker_done` and stop. Verification never mutates or merges code.
 
 ## Hard invariants

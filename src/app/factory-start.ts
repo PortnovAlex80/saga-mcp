@@ -5,7 +5,10 @@ import path from 'node:path';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { sha256Hex } from '../shared/canonical-json.js';
-import { SUBMISSION_VALIDATION_FEEDBACK_SCHEMA } from '../lifecycle/submission-validation-rejections.js';
+import {
+  SUBMISSION_VALIDATION_FEEDBACK_SCHEMA,
+  persistSubmissionValidationRejection,
+} from '../lifecycle/submission-validation-rejections.js';
 import type { CheckPlan } from '../process-modules/domain/workplace/gate.js';
 
 export const FACTORY_START_SCHEMA = 'saga.factory-start.v1' as const;
@@ -32,7 +35,11 @@ export class FactoryStartError extends Error {
       | 'FACTORY_RECOVERY_SNAPSHOT_DRIFT'
       | 'FACTORY_FAILED_GATE_NOT_UNIQUE'
       | 'FACTORY_FAILED_GATE_UNSAFE'
-      | 'FACTORY_FAILED_GATE_PLAN_INVALID',
+      | 'FACTORY_FAILED_GATE_PLAN_INVALID'
+      | 'FACTORY_MISSING_PRODUCT_NOT_UNIQUE'
+      | 'FACTORY_MISSING_PRODUCT_UNSAFE'
+      | 'FACTORY_ORPHANED_LAUNCH_NOT_UNIQUE'
+      | 'FACTORY_ORPHANED_LAUNCH_UNSAFE',
     message: string,
   ) {
     super(message);
@@ -149,9 +156,14 @@ export function resolveFactoryResumeTarget(
   }
   const rows = db.prepare(
     `SELECT lr.id AS lifecycle_run_id, lr.epic_id, lr.idempotency_key,
-            lr.status, fo.order_ref
+            lr.status,
+            COALESCE(
+              (SELECT chain.order_ref FROM factory_order_runs chain
+                WHERE chain.lifecycle_run_id=lr.id),
+              (SELECT root.order_ref FROM factory_orders root
+                WHERE root.lifecycle_run_id=lr.id)
+            ) AS order_ref
        FROM factory_lifecycle_runs lr
-       LEFT JOIN factory_orders fo ON fo.lifecycle_run_id=lr.id
       WHERE lr.project_id=?
         AND lr.status IN ('created','running','paused')
       ORDER BY lr.id DESC`,
@@ -205,6 +217,482 @@ export interface FailedGateRecoveryResult {
   readonly replacementCheckPlanDigest: string;
   readonly resultingLifecycleVersion: number;
   readonly replayed: boolean;
+}
+
+export interface MissingProductRecoveryResult {
+  readonly authorizationRef: string;
+  readonly rejectionRef: string;
+  readonly workplaceRef: string;
+  readonly taskId: number;
+  readonly abandonedLaunchRef: string | null;
+  readonly resultingRevision: number;
+  readonly replayed: boolean;
+}
+
+export interface OrphanedLaunchRecoveryResult {
+  readonly recoveryRef: string;
+  readonly launchRef: string;
+  readonly lifecycleRunId: number;
+  readonly executionId: string;
+  readonly workplaceRef: string;
+  readonly replayed: boolean;
+}
+
+/**
+ * Close one controller launch whose exact worker was already proved dead and
+ * atomically released by WorkerSupervisionService. This does not infer death
+ * from time or mutate production state: it consumes the durable `lost` fact,
+ * requires a paused/unleased lifecycle and zero active workers, and appends an
+ * immutable recovery receipt before failing the stale launch fence.
+ */
+export function recoverOrphanedFactoryLaunch(
+  db: Database.Database,
+  input: {
+    readonly lifecycleRunId: number;
+    readonly actorId: string;
+    readonly reason: string;
+  },
+): OrphanedLaunchRecoveryResult {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const prior = db.prepare(
+      `SELECT r.recovery_ref,r.launch_ref,r.lifecycle_run_id,r.execution_id,
+              r.workplace_ref,l.state
+         FROM factory_orphaned_launch_recovery_receipts r
+         JOIN factory_launch_requests l ON l.launch_ref=r.launch_ref
+        WHERE r.lifecycle_run_id=? AND r.actor_id=? AND r.reason=?
+          AND NOT EXISTS (
+            SELECT 1 FROM factory_launch_requests current_launch
+             WHERE current_launch.lifecycle_run_id=r.lifecycle_run_id
+               AND current_launch.launch_ref<>r.launch_ref
+               AND current_launch.state IN ('requested','claimed','running')
+          )
+        ORDER BY r.recovered_at DESC LIMIT 1`,
+    ).get(input.lifecycleRunId, input.actorId, input.reason) as {
+      recovery_ref: string;
+      launch_ref: string;
+      lifecycle_run_id: number;
+      execution_id: string;
+      workplace_ref: string;
+      state: string;
+    } | undefined;
+    if (prior && prior.state === 'failed') {
+      db.exec('COMMIT');
+      return {
+        recoveryRef: prior.recovery_ref,
+        launchRef: prior.launch_ref,
+        lifecycleRunId: prior.lifecycle_run_id,
+        executionId: prior.execution_id,
+        workplaceRef: prior.workplace_ref,
+        replayed: true,
+      };
+    }
+
+    const rows = db.prepare(
+      `SELECT l.launch_ref,l.claim_token,l.order_ref,
+              lr.status AS lifecycle_status,lr.execution_lease_owner AS lifecycle_lease,
+              sr.status AS stage_status,pr.id AS process_run_id,
+              pr.status AS process_status,pr.execution_lease_owner AS process_lease,
+              w.workplace_ref,w.revision,w.kanban_phase,w.loop_state,w.next_role,
+              w.active_reservation_ref,w.active_gate_ref,w.active_recovery_case_ref,
+              t.id AS task_id,t.assigned_to,t.current_execution_id,
+              we.execution_id,we.state AS execution_state,we.finished_at
+         FROM factory_launch_requests l
+         JOIN factory_lifecycle_runs lr ON lr.id=l.lifecycle_run_id
+         JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
+         JOIN factory_process_runs pr ON pr.id=sr.process_run_id
+         JOIN factory_workplaces w ON w.process_run_id=pr.id
+         JOIN tasks t ON t.workplace_ref=w.workplace_ref
+         JOIN worker_executions we ON we.task_id=t.id
+        WHERE l.lifecycle_run_id=?
+          AND l.state IN ('requested','claimed','running')
+          AND we.state='lost'
+          AND we.finished_at=(
+            SELECT MAX(we2.finished_at)
+              FROM worker_executions we2
+              JOIN tasks t2 ON t2.id=we2.task_id
+              JOIN factory_workplaces w2 ON w2.workplace_ref=t2.workplace_ref
+             WHERE w2.process_run_id=pr.id AND we2.state='lost'
+          )
+        ORDER BY we.finished_at DESC`,
+    ).all(input.lifecycleRunId) as Array<Record<string, unknown>>;
+    if (rows.length !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_ORPHANED_LAUNCH_NOT_UNIQUE',
+        `lifecycle ${input.lifecycleRunId} resolves to ${rows.length} lost-worker launch candidates; expected exactly one`,
+      );
+    }
+    const row = rows[0]!;
+    const activeExecutions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM worker_executions
+        WHERE epic_id=(SELECT epic_id FROM factory_lifecycle_runs WHERE id=?)
+          AND state IN ('reserved','running','cancel_requested')`,
+    ).get(input.lifecycleRunId) as { n: number }).n;
+    const submissions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_managed_node_submissions
+        WHERE execution_id=?`,
+    ).get(row.execution_id) as { n: number }).n;
+    const acceptedDone = (db.prepare(
+      `SELECT COUNT(*) AS n FROM command_receipts
+        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
+    ).get(row.execution_id) as { n: number }).n;
+    if (
+      row.lifecycle_status !== 'paused'
+      || row.lifecycle_lease !== null
+      || row.stage_status !== 'paused'
+      || row.process_status !== 'paused'
+      || row.process_lease !== null
+      || row.execution_state !== 'lost'
+      || (
+        (row.next_role === 'author' && row.kanban_phase !== 'in_progress')
+        || (row.next_role === 'reviewer' && row.kanban_phase !== 'review_in_progress')
+      )
+      || row.loop_state !== 'repair_wait'
+      || !['author', 'reviewer'].includes(String(row.next_role))
+      || row.active_reservation_ref !== null
+      || row.active_gate_ref !== null
+      || row.active_recovery_case_ref !== null
+      || row.assigned_to !== null
+      || row.current_execution_id !== null
+      || activeExecutions !== 0
+      || submissions !== 0
+      || acceptedDone !== 0
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_ORPHANED_LAUNCH_UNSAFE',
+        'orphaned-launch recovery requires one latest supervised lost worker, zero active workers/products/completions, and an unleased paused lifecycle',
+      );
+    }
+    const recoveryRef = `orphaned-launch-recovery:${sha256Hex({
+      launchRef: row.launch_ref,
+      lifecycleRunId: input.lifecycleRunId,
+      processRunId: row.process_run_id,
+      workplaceRef: row.workplace_ref,
+      workplaceRevision: row.revision,
+      executionId: row.execution_id,
+      actorId: input.actorId,
+      reason: input.reason,
+    })}`;
+    db.prepare(
+      `INSERT INTO factory_orphaned_launch_recovery_receipts
+         (recovery_ref,launch_ref,lifecycle_run_id,process_run_id,workplace_ref,
+          workplace_revision,task_id,execution_id,observed_execution_state,
+          actor_id,reason)
+       VALUES (?,?,?,?,?,?,?,?,'lost',?,?)`,
+    ).run(
+      recoveryRef,
+      row.launch_ref,
+      input.lifecycleRunId,
+      row.process_run_id,
+      row.workplace_ref,
+      row.revision,
+      row.task_id,
+      row.execution_id,
+      input.actorId,
+      input.reason,
+    );
+    const incident = JSON.stringify({
+      code: 'ORPHANED_FACTORY_LAUNCH_RECOVERED',
+      lifecycleRunId: input.lifecycleRunId,
+      executionId: row.execution_id,
+      workplaceRef: row.workplace_ref,
+      recoveryRef,
+    });
+    const launchUpdate = db.prepare(
+      `UPDATE factory_launch_requests
+          SET state='failed',error=?,completed_at=datetime('now')
+        WHERE launch_ref=? AND claim_token=?
+          AND state IN ('requested','claimed','running')`,
+    ).run(incident, row.launch_ref, row.claim_token);
+    if (launchUpdate.changes !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_ORPHANED_LAUNCH_UNSAFE',
+        `launch ${String(row.launch_ref)} fence changed during recovery`,
+      );
+    }
+    db.prepare(
+      `UPDATE factory_orders SET state='paused',last_error=?,updated_at=datetime('now')
+        WHERE order_ref=?`,
+    ).run(incident, row.order_ref);
+    db.exec('COMMIT');
+    return {
+      recoveryRef,
+      launchRef: String(row.launch_ref),
+      lifecycleRunId: input.lifecycleRunId,
+      executionId: String(row.execution_id),
+      workplaceRef: String(row.workplace_ref),
+      replayed: false,
+    };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+    throw error;
+  }
+}
+
+/**
+ * Recover the exact incident where an accepted worker_done moved a Production
+ * Cell to verifying even though its execution persisted no typed product.
+ * The false completion receipt and stale launch remain immutable evidence;
+ * only the same Workplace receives one new author opportunity.
+ */
+export function recoverMissingProductionCellProduct(
+  db: Database.Database,
+  input: {
+    readonly lifecycleRunId: number;
+    readonly expectedSchema: string;
+    readonly actorId: string;
+    readonly reason: string;
+  },
+): MissingProductRecoveryResult {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const prior = db.prepare(
+      `SELECT a.authorization_ref,a.rejection_ref,a.workplace_ref,a.task_id,
+              c.resulting_revision,w.loop_state
+         FROM factory_operator_recovery_authorizations a
+         JOIN factory_operator_recovery_consumptions c
+           ON c.authorization_ref=a.authorization_ref
+         JOIN factory_workplaces w ON w.workplace_ref=a.workplace_ref
+        WHERE a.lifecycle_run_id=? AND a.actor_id=? AND a.reason=?
+        ORDER BY a.authorized_at DESC LIMIT 1`,
+    ).get(input.lifecycleRunId, input.actorId, input.reason) as {
+      authorization_ref: string;
+      rejection_ref: string;
+      workplace_ref: string;
+      task_id: number;
+      resulting_revision: number;
+      loop_state: string;
+    } | undefined;
+    if (prior && prior.loop_state === 'queued') {
+      db.exec('COMMIT');
+      return {
+        authorizationRef: prior.authorization_ref,
+        rejectionRef: prior.rejection_ref,
+        workplaceRef: prior.workplace_ref,
+        taskId: prior.task_id,
+        abandonedLaunchRef: null,
+        resultingRevision: prior.resulting_revision,
+        replayed: true,
+      };
+    }
+
+    const candidates = db.prepare(
+      `SELECT lr.id AS lifecycle_run_id,lr.execution_lease_owner AS lifecycle_lease,
+              sr.id AS stage_run_id,sr.process_run_id,
+              pr.execution_lease_owner AS process_lease,
+              w.workplace_ref,w.revision,w.next_role,w.active_reservation_ref,
+              w.active_gate_ref,w.active_recovery_case_ref,
+              t.id AS task_id,t.status AS task_status,t.assigned_to,
+              t.current_execution_id,t.metadata,t.execution_mode,
+              we.execution_id,we.state AS execution_state,we.exit_code,we.last_error
+         FROM factory_lifecycle_runs lr
+         JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
+         JOIN factory_process_runs pr ON pr.id=sr.process_run_id
+         JOIN factory_workplaces w ON w.process_run_id=pr.id
+         JOIN tasks t ON t.workplace_ref=w.workplace_ref
+         JOIN worker_executions we ON we.execution_id=w.active_reservation_ref
+        WHERE lr.id=? AND lr.status='paused' AND sr.status='paused' AND pr.status='paused'
+          AND w.kanban_phase='in_progress' AND w.loop_state='verifying'`,
+    ).all(input.lifecycleRunId) as Array<Record<string, unknown>>;
+    if (candidates.length !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_NOT_UNIQUE',
+        `lifecycle ${input.lifecycleRunId} resolves to ${candidates.length} incomplete verifying workplaces; expected exactly one`,
+      );
+    }
+    const row = candidates[0]!;
+    if (
+      row.lifecycle_lease !== null
+      || row.process_lease !== null
+      || row.next_role !== 'author'
+      || row.active_gate_ref !== null
+      || row.active_recovery_case_ref !== null
+      || row.task_status !== 'in_progress'
+      || row.assigned_to !== null
+      || row.current_execution_id !== null
+      || row.execution_state !== 'exited'
+      || row.exit_code !== 0
+      || row.last_error !== null
+      || row.execution_mode !== 'artifact_change'
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_UNSAFE',
+        `workplace ${String(row.workplace_ref)} does not match the exact missing-product incident`,
+      );
+    }
+    const activeExecutions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM worker_executions
+        WHERE epic_id=(SELECT epic_id FROM factory_lifecycle_runs WHERE id=?)
+          AND state IN ('reserved','running','cancel_requested')`,
+    ).get(input.lifecycleRunId) as { n: number }).n;
+    const acceptedDone = (db.prepare(
+      `SELECT COUNT(*) AS n FROM command_receipts
+        WHERE task_id=? AND execution_id=? AND command_kind='worker_done' AND accepted=1`,
+    ).get(row.task_id, row.execution_id) as { n: number }).n;
+    const submissions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_managed_node_submissions
+        WHERE task_id=? AND execution_id=?`,
+    ).get(row.task_id, row.execution_id) as { n: number }).n;
+    const candidateSets = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_candidate_sets WHERE workplace_ref=?`,
+    ).get(row.workplace_ref) as { n: number }).n;
+    const gateRuns = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_gate_runs WHERE workplace_ref=?`,
+    ).get(row.workplace_ref) as { n: number }).n;
+    if (
+      activeExecutions !== 0
+      || acceptedDone !== 1
+      || submissions !== 0
+      || candidateSets !== 0
+      || gateRuns !== 0
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_UNSAFE',
+        'missing-product recovery requires zero live workers/products/candidates/gates and exactly one false completion receipt',
+      );
+    }
+    const metadata = parseMetadata(String(row.metadata ?? '{}'));
+    const processRunId = Number(row.process_run_id);
+    const moduleRef = String(metadata.process_module_ref ?? '');
+    const nodeId = String(metadata.process_node_id ?? '');
+    const executionId = String(row.execution_id);
+    if (!moduleRef || !nodeId || !Number.isSafeInteger(processRunId)) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_UNSAFE',
+        'missing-product recovery requires the exact managed process binding',
+      );
+    }
+    const rejection = persistSubmissionValidationRejection(db, {
+      validatorId: 'factory.production-cell-product-contract',
+      validatorVersion: '1.0.0',
+      processRunId,
+      moduleRef,
+      nodeId,
+      executionId,
+      taskId: Number(row.task_id),
+      actorKind: 'admin',
+      rejectionCode: 'PRODUCTION_CELL_PRODUCT_REQUIRED',
+      gaps: [{
+        artifactId: 0,
+        artifactCode: null,
+        artifactType: 'typed-product',
+        existingTargets: [],
+        missing: {
+          relation: 'product_submit',
+          requiredTargetTypes: [input.expectedSchema],
+          minimum: 1,
+        },
+        message:
+          `Submit one ${input.expectedSchema} as an object before worker_done. `
+          + `For managed source use content fields {schemaVersion,workItemKey,baseCommit,entries}; `
+          + `each create/modify entry uses {path,operation,content}. Factory computes digest.`,
+      }],
+      details: {
+        expectedSchema: input.expectedSchema,
+        exactCall:
+          `product_submit({schema:"${input.expectedSchema}",content:{schemaVersion:"${input.expectedSchema}",workItemKey:"<key>",baseCommit:"<commit>",entries:[{path:"<scope>",operation:"modify",content:"<full UTF-8>"}]}})`,
+        forbiddenAliases: ['body', 'contentHash', 'metadata'],
+      },
+      inputSnapshotHash: String(
+        metadata.process_node_input_hash ?? metadata.process_input_hash ?? '',
+      ),
+    });
+    const authorizationRef = `operator-recovery:${sha256Hex({
+      lifecycleRunId: input.lifecycleRunId,
+      workplaceRef: row.workplace_ref,
+      expectedRevision: row.revision,
+      rejectionRef: rejection.rejectionRef,
+      actorId: input.actorId,
+      reason: input.reason,
+    })}`;
+    db.prepare(
+      `INSERT INTO factory_operator_recovery_authorizations
+         (authorization_ref,lifecycle_run_id,stage_run_id,process_run_id,
+          workplace_ref,expected_revision,task_id,repair_role,rejection_ref,
+          rejection_digest,actor_id,reason)
+       VALUES (?,?,?,?,?,?,?,'author',?,?,?,?)`,
+    ).run(
+      authorizationRef,
+      input.lifecycleRunId,
+      row.stage_run_id,
+      processRunId,
+      row.workplace_ref,
+      row.revision,
+      row.task_id,
+      rejection.rejectionRef,
+      rejection.rejectionDigest,
+      input.actorId,
+      input.reason,
+    );
+    const runtime = new ConveyorRuntime(db);
+    const rejected = runtime.rejectIncompleteCompletion({
+      workplaceRef: deserializeWorkplaceRef(String(row.workplace_ref)),
+      taskId: Number(row.task_id),
+      role: 'author',
+    });
+    const resumed = runtime.requeueForRepair({
+      workplaceRef: deserializeWorkplaceRef(String(row.workplace_ref)),
+      taskId: Number(row.task_id),
+      role: 'author',
+    });
+    if (
+      !rejected.applied
+      || !resumed.applied
+      || resumed.workplace.loopState !== 'queued'
+      || resumed.workplace.revision !== Number(row.revision) + 2
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_UNSAFE',
+        `workplace ${String(row.workplace_ref)} changed during recovery`,
+      );
+    }
+    const activeLaunches = db.prepare(
+      `SELECT launch_ref FROM factory_launch_requests
+        WHERE lifecycle_run_id=? AND state IN ('requested','claimed','running')`,
+    ).all(input.lifecycleRunId) as Array<{ launch_ref: string }>;
+    if (activeLaunches.length > 1) {
+      throw new FactoryStartError(
+        'FACTORY_MISSING_PRODUCT_UNSAFE',
+        'missing-product recovery found more than one active launch',
+      );
+    }
+    const abandonedLaunchRef = activeLaunches[0]?.launch_ref ?? null;
+    if (abandonedLaunchRef) {
+      const incident = JSON.stringify({
+        code: 'PRODUCTION_CELL_PRODUCT_REQUIRED',
+        lifecycleRunId: input.lifecycleRunId,
+        workplaceRef: row.workplace_ref,
+        executionId,
+        recoveryAuthorizationRef: authorizationRef,
+      });
+      db.prepare(
+        `UPDATE factory_launch_requests
+            SET state='failed',error=?,completed_at=datetime('now')
+          WHERE launch_ref=? AND state IN ('requested','claimed','running')`,
+      ).run(incident, abandonedLaunchRef);
+      db.prepare(
+        `UPDATE factory_orders SET state='paused',last_error=?,updated_at=datetime('now')
+          WHERE order_ref=(SELECT order_ref FROM factory_launch_requests WHERE launch_ref=?)`,
+      ).run(incident, abandonedLaunchRef);
+    }
+    db.prepare(
+      `INSERT INTO factory_operator_recovery_consumptions
+         (authorization_ref,resulting_revision) VALUES (?,?)`,
+    ).run(authorizationRef, resumed.workplace.revision);
+    db.exec('COMMIT');
+    return {
+      authorizationRef,
+      rejectionRef: rejection.rejectionRef,
+      workplaceRef: String(row.workplace_ref),
+      taskId: Number(row.task_id),
+      abandonedLaunchRef,
+      resultingRevision: resumed.workplace.revision,
+      replayed: false,
+    };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+    throw error;
+  }
 }
 
 /**

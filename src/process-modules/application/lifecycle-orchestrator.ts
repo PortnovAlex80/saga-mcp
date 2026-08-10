@@ -116,6 +116,15 @@ export interface LifecycleOrchestratorOptions {
    * without mistaking a successful OS spawn for a durable Saga run.
    */
   onLifecycleStarted?: (run: LifecycleRunRecord) => Promise<void> | void;
+  /**
+   * Hash-verified stage frames inherited by an append-only continuation.
+   * The resolver is authoritative; raw lifecycle input can never inject the
+   * reserved `stages` frame. Child StageRuns overlay inherited frames only
+   * after they themselves complete.
+   */
+  resolveInheritedStageFrame?: (
+    run: LifecycleRunRecord,
+  ) => Readonly<Record<string, unknown>>;
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
@@ -150,6 +159,9 @@ export class LifecycleOrchestrator {
   private readonly onLifecycleStarted:
     | NonNullable<LifecycleOrchestratorOptions['onLifecycleStarted']>
     | null;
+  private readonly resolveInheritedStageFrame:
+    | NonNullable<LifecycleOrchestratorOptions['resolveInheritedStageFrame']>
+    | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
 
@@ -162,6 +174,7 @@ export class LifecycleOrchestrator {
     this.resolveModuleInstallation = options.resolveModuleInstallation ?? null;
     this.resolveStageInput = options.resolveStageInput ?? null;
     this.onLifecycleStarted = options.onLifecycleStarted ?? null;
+    this.resolveInheritedStageFrame = options.resolveInheritedStageFrame ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
@@ -250,7 +263,7 @@ export class LifecycleOrchestrator {
         if (isLifecycleTerminal(lifecycleRun.status)) return this.result(lifecycleRun);
         const stage = this.requireStage(definition, lifecycleRun.currentStageId);
         const rootInput = JSON.parse(lifecycleRun.inputSnapshot) as unknown;
-        const durableFrame = this.buildFrame(rootInput, lifecycleRun.id);
+        const durableFrame = this.buildFrame(rootInput, lifecycleRun);
         const runtime = this.mappingRuntime(lifecycleRun, stage.id);
         const frozenStageRun = this.lifecycleRunRepo.readCurrentStageRun(lifecycleRun.id);
         const mappedStageInput = frozenStageRun
@@ -579,13 +592,14 @@ export class LifecycleOrchestrator {
 
   private buildFrame(
     rootInput: unknown,
-    lifecycleRunId: number,
+    lifecycleRun: LifecycleRunRecord,
   ): Record<string, unknown> {
     const root = isRecord(rootInput)
       ? { ...rootInput }
       : { value: rootInput };
-    const stages: Record<string, unknown> = {};
-    for (const stage of this.lifecycleRunRepo.listStageRuns(lifecycleRunId)) {
+    const inherited = this.resolveInheritedStageFrame?.(lifecycleRun) ?? {};
+    const stages: Record<string, unknown> = { ...inherited };
+    for (const stage of this.lifecycleRunRepo.listStageRuns(lifecycleRun.id)) {
       if (stage.status !== 'completed') continue;
       const result = stage.resultSnapshot ?? {};
       stages[stage.stageId] = {

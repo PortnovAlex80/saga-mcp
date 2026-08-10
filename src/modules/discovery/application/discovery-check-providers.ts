@@ -1,6 +1,6 @@
-import type Database from 'better-sqlite3';
 import type { CheckProvider } from '../../../process-modules/domain/workplace/gate.js';
-import type { SqliteCandidateSetRepository } from '../../../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import type { CandidateSetReaderPort } from '../../../application/ports/candidate-set-reader.js';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DISCOVERY_PROPOSAL_SCHEMA,
@@ -40,8 +40,8 @@ interface SubmissionRow {
 }
 
 export function createDiscoveryProposalCheckProvider(input: {
-  db: Database.Database;
-  candidateSets: SqliteCandidateSetRepository;
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
 }): CheckProvider {
   return {
     providerId: DISCOVERY_PROPOSAL_CHECK_PROVIDER_ID,
@@ -61,8 +61,8 @@ export function createDiscoveryProposalCheckProvider(input: {
 }
 
 export function createDiscoveryReadinessCheckProvider(input: {
-  db: Database.Database;
-  candidateSets: SqliteCandidateSetRepository;
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
 }): CheckProvider {
   return {
     providerId: DISCOVERY_READINESS_CHECK_PROVIDER_ID,
@@ -122,8 +122,8 @@ export function allowedProposalSourceRefs(
 }
 
 function producerSubmission(
-  db: Database.Database,
-  candidateSets: SqliteCandidateSetRepository,
+  db: SqlDatabasePort,
+  candidateSets: CandidateSetReaderPort,
   candidateSetRef: string,
 ): SubmissionRow | null {
   const candidate = candidateSets.read(candidateSetRef);

@@ -38,7 +38,7 @@ let liveStages = new Map();
  * @param {object|null} view       A PipelineView object, or null. When null the
  *                                 container is cleared and nothing is drawn
  */
-export function renderPipeline(container, view) {
+export function renderPipeline(container, view, options = {}) {
   // Always tear down any prior live timer / handle table before drawing, even
   // in the null case, so re-rendering from a live view to null is leak-free.
   stopLiveTimer();
@@ -55,7 +55,8 @@ export function renderPipeline(container, view) {
 
   // Optional header: lifecycle display name + run status. Fully driven by the
   // contract; if lifecycle.displayName is absent we just omit the header.
-  const header = buildHeader(view);
+  const activeWorkerCount = normalizeActiveWorkerCount(options.activeWorkerCount);
+  const header = buildHeader(view, activeWorkerCount);
   if (header) container.appendChild(header);
 
   const stages = Array.isArray(view.stages) ? view.stages : [];
@@ -68,7 +69,7 @@ export function renderPipeline(container, view) {
     if (i > 0) {
       bar.appendChild(buildArrow());
     }
-    bar.appendChild(buildStage(stage, hasTerminal));
+    bar.appendChild(buildStage(stage, activeWorkerCount));
   });
 
   // If the lifecycle terminated, append a terminal badge after the last stage.
@@ -93,7 +94,7 @@ export function renderPipeline(container, view) {
  * Build the header row (lifecycle display name + run status chip).
  * Returns null if there is nothing to show.
  */
-function buildHeader(view) {
+function buildHeader(view, activeWorkerCount) {
   const lc = view.lifecycle || {};
   const run = view.run || {};
   const name = lc.displayName || lc.name;
@@ -110,10 +111,19 @@ function buildHeader(view) {
     head.appendChild(titleEl);
   }
   if (status) {
+    const display = describeRuntimeStatus(status, activeWorkerCount);
     const chip = document.createElement('span');
-    chip.className = 'lp-run-status ' + cssSafe(status);
-    chip.textContent = status;
+    chip.className = 'lp-run-status ' + cssSafe(display.cssStatus);
+    chip.textContent = display.label;
+    chip.title = display.title;
     head.appendChild(chip);
+  }
+  if (Number.isSafeInteger(run.continuationOf) && run.continuationOf > 0) {
+    const lineage = document.createElement('span');
+    lineage.className = 'lp-run-lineage';
+    lineage.textContent = 'continuation of #' + run.continuationOf;
+    lineage.title = 'Completed inherited stages were not executed again';
+    head.appendChild(lineage);
   }
   // If the run failed with an error, surface a tiny note (lifecycle-agnostic).
   if (run.error) {
@@ -129,15 +139,22 @@ function buildHeader(view) {
  * Build a single `.lp-stage` element from a stage object. Pure DOM (no
  * innerHTML for label text). Records live stages for the ticking timer.
  */
-function buildStage(stage) {
+function buildStage(stage, activeWorkerCount) {
+  const display = describeRuntimeStatus(stage.status, activeWorkerCount);
   const el = document.createElement('div');
-  el.className = 'lp-stage ' + cssSafe(stage.status || 'pending');
+  el.className = 'lp-stage ' + cssSafe(display.cssStatus || 'pending');
   el.setAttribute('data-stage-id', String(stage.stageId ?? ''));
+  el.setAttribute('data-runtime-status', String(stage.status ?? 'pending'));
+  el.title = display.title;
+  if (stage.isInherited) {
+    el.classList.add('lp-inherited');
+    el.title = 'Inherited from the exact accepted prefix; not executed again';
+  }
 
   // Icon — Unicode glyph by status field.
   const icon = document.createElement('span');
   icon.className = 'lp-icon';
-  icon.textContent = ICONS[stage.status] || '?';
+  icon.textContent = ICONS[display.cssStatus] || '?';
   el.appendChild(icon);
 
   // Name (the label) — the prominent line.
@@ -145,6 +162,12 @@ function buildStage(stage) {
   name.className = 'lp-name';
   name.textContent = stage.displayName || stage.stageId || '';
   el.appendChild(name);
+  if (stage.isInherited) {
+    const inherited = document.createElement('span');
+    inherited.className = 'lp-inherited-label';
+    inherited.textContent = 'inherited';
+    el.appendChild(inherited);
+  }
 
   // Module subtext — module.name + version. Small, muted. Omit if absent.
   const mod = stage.module;
@@ -195,7 +218,48 @@ function buildStage(stage) {
     el.appendChild(badge);
   }
 
+  if (stage.status === 'paused' && activeWorkerCount > 0) {
+    const activity = document.createElement('span');
+    activity.className = 'lp-worker-activity';
+    activity.textContent = activeWorkerCount + ' ' + workerWord(activeWorkerCount) + ' работают';
+    el.appendChild(activity);
+  }
+
   return el;
+}
+
+/**
+ * Translate a durable runtime status into an operator-facing display state.
+ * A paused controller with live workers means that orchestration yielded to
+ * production cells; the factory itself is still working.
+ */
+export function describeRuntimeStatus(status, activeWorkerCount = 0) {
+  const count = normalizeActiveWorkerCount(activeWorkerCount);
+  if (status === 'paused' && count > 0) {
+    return {
+      cssStatus: 'in_progress',
+      label: 'рабочие работают',
+      title: `Контроллер ожидает; ${count} ${workerWord(count)} продолжают работу`,
+    };
+  }
+  return {
+    cssStatus: status || 'pending',
+    label: status || 'pending',
+    title: status === 'paused' ? 'Завод на паузе; активных рабочих нет' : String(status || 'pending'),
+  };
+}
+
+function normalizeActiveWorkerCount(value) {
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count > 0 ? count : 0;
+}
+
+function workerWord(count) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'рабочий';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'рабочих';
+  return 'рабочих';
 }
 
 /** Build an arrow `→` between stages. */

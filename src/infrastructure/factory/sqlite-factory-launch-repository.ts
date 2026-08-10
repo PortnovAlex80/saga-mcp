@@ -28,14 +28,17 @@ export function requestFactoryLaunch(
       epic_id: number;
       lifecycle_run_id: number | null;
     } | undefined;
+    const resumeBelongsToOrder = input.mode !== 'resume'
+      || order?.lifecycle_run_id === (input.lifecycleRunId ?? null)
+      || !!db.prepare(
+        `SELECT 1 AS present FROM factory_order_runs
+          WHERE order_ref=? AND lifecycle_run_id=?`,
+      ).get(input.orderRef, input.lifecycleRunId ?? null);
     if (
       !order
       || order.project_id !== input.projectId
       || order.epic_id !== input.epicId
-      || (
-        input.mode === 'resume'
-        && order.lifecycle_run_id !== (input.lifecycleRunId ?? null)
-      )
+      || !resumeBelongsToOrder
     ) {
       throw new Error('FACTORY_LAUNCH_ORDER_SCOPE_MISMATCH');
     }
@@ -198,7 +201,8 @@ export function markFactoryLaunchRunning(
   if (result.changes !== 1) throw new Error('FACTORY_LAUNCH_FENCE_LOST');
   db.prepare(
     `UPDATE factory_orders
-        SET lifecycle_run_id=?, state='running', updated_at=datetime('now')
+        SET lifecycle_run_id=COALESCE(lifecycle_run_id, ?),
+            state='running', updated_at=datetime('now')
       WHERE order_ref=(
         SELECT order_ref FROM factory_launch_requests WHERE launch_ref=?
       )`,

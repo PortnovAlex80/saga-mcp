@@ -178,6 +178,24 @@ export class ConveyorRuntime {
     });
   }
 
+  /**
+   * Reject a completion boundary that reached `verifying` without the
+   * mandatory production needed to seal a CandidateSet. This is an operator
+   * recovery transition, not a GateDecision: the invalid completion receipt
+   * remains evidence while the same Workplace returns to author repair.
+   */
+  rejectIncompleteCompletion(input: {
+    workplaceRef: WorkplaceRef;
+    taskId: number;
+    role: 'author' | 'reviewer';
+  }): UseCaseResult {
+    return this.atomically(input.workplaceRef, input.taskId, () => ({
+      event: { kind: 'gate-repair-required', repairTargetRole: input.role },
+      directState: null,
+      activeReservationRef: null,
+    }));
+  }
+
 
   /**
    * PROC-08 — Re-queue for repair after a gate rejection or crash. A new

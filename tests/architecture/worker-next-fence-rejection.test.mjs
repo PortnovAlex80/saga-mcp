@@ -53,7 +53,16 @@ test.after(() => {
 /** Stamp process_run_id onto a task's metadata — the saga4 authority gate. */
 function stampProcessRun(taskId, processRunId = 1) {
   const db = getDb();
-  const row = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(taskId);
+  const row = db.prepare(
+    `SELECT t.metadata,t.epic_id,e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?`,
+  ).get(taskId);
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_process_runs
+      (id,project_id,epic_id,module_name,module_version,module_ref_key,idempotency_key,
+       executor_kind,input_schema,input_snapshot,input_hash,status)
+     VALUES (?,?,?,'test-module','1.0.0','test-module@1.0.0',?,
+             'generic-flow','test.input.v1','{}',?,'running')`,
+  ).run(processRunId, row.project_id, row.epic_id, `test-process:${processRunId}`, 'a'.repeat(64));
   let meta = {};
   try { meta = JSON.parse(row.metadata || '{}'); } catch { meta = {}; }
   meta.process_run_id = processRunId;

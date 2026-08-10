@@ -102,6 +102,7 @@ export type LoopState =
   | 'leased'
   | 'running'
   | 'verifying'
+  | 'effect_pending'
   | 'repair_wait'
   | 'paused'
   | 'terminal';
@@ -113,6 +114,7 @@ export const LOOP_STATES: readonly LoopState[] = [
   'leased',
   'running',
   'verifying',
+  'effect_pending',
   'repair_wait',
   'paused',
   'terminal',
@@ -180,6 +182,7 @@ const ALLOWED_PAIRS: ReadonlySet<string> = new Set<string>([
   'in_progress|leased',
   'in_progress|running',
   'in_progress|verifying',
+  'in_progress|effect_pending',
   'in_progress|repair_wait',
   // review — reviewer role about to be staffed.
   'review|queued',
@@ -188,6 +191,7 @@ const ALLOWED_PAIRS: ReadonlySet<string> = new Set<string>([
   'review_in_progress|leased',
   'review_in_progress|running',
   'review_in_progress|verifying',
+  'review_in_progress|effect_pending',
   'review_in_progress|repair_wait',
   // blocked — human interaction; durable resume target.
   'blocked|paused',
