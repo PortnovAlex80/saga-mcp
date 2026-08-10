@@ -27,7 +27,10 @@ import {
 } from '../infrastructure/persistence/sqlite-factory-runtime-repositories.js';
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
 import { NodeWorkerHostRuntime } from '../infrastructure/runtime/node-worker-host-runtime.js';
-import { createPinnedClaudeWorkerExecutorFactory } from '../infrastructure/workers/claude-worker-executor-factory.js';
+import {
+  createPinnedClaudeWorkerExecutorFactory,
+  type PinnedClaudeWorkerExecutorFactoryOptions,
+} from '../infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import {
   createExecutionRouteResolver,
@@ -87,6 +90,13 @@ export interface FactoryCompositionOverrides {
    * path is used (every execution runs on the real claude CLI).
    */
   executionRouteResolverOptions?: ExecutionRouteResolverOptions;
+  /**
+   * Test-only inference-process seam. It preserves the production assignment,
+   * pinned workspace/desk, MCP authority and process finalization path while
+   * replacing only the physical model subprocess. It is intentionally absent
+   * from dynamic ProductLifecycle composition overrides and environment config.
+   */
+  workerSpawn?: PinnedClaudeWorkerExecutorFactoryOptions['spawn'];
   close?: () => void;
 }
 
@@ -174,6 +184,7 @@ export function createFactoryApplication(
     ?? (packageInstallation
       ? createPinnedWorkerFactory(persistence, packageInstallation, workAssignment, {
         realClaudePath: env.SAGA_REAL_CLAUDE_PATH,
+        spawn: overrides.workerSpawn,
       })
       : (() => {
         throw new Error(
@@ -371,7 +382,10 @@ function createPinnedWorkerFactory(
   persistence: FactoryRuntimePersistence,
   installation: ProductionInstallation,
   workAssignment: WorkAssignmentPort,
-  executorPaths: { realClaudePath?: string } = {},
+  executorPaths: {
+    realClaudePath?: string;
+    spawn?: PinnedClaudeWorkerExecutorFactoryOptions['spawn'];
+  } = {},
 ): WorkerExecutorFactory {
   return createPinnedClaudeWorkerExecutorFactory({
     modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
@@ -409,6 +423,7 @@ function createPinnedWorkerFactory(
     // The port is supplied by the caller (createFactoryApplication) so the
     // dispatch-loop path shares the SAME assignment authority + route resolver.
     workAssignment,
+    spawn: executorPaths.spawn,
     // Routing cutover: explicit executor backend path. The runner selects the
     // binary from the FROZEN executor_kind; replay is resolved internally.
     realClaudePath: executorPaths.realClaudePath,

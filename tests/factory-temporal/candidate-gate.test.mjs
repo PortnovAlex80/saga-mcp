@@ -86,8 +86,12 @@ function provisionRepo(registry, label) {
 
 /**
  * Spawn orchestrate-cli as the host process and resolve on exit.
- * Returns { exitCode, stdout, stderr }.
+ * Returns { child, exit (promise of exit code), exited (flag), getStdout, getStderr }.
  * The registry tracks the child so it is SIGTERM'd on cleanup.
+ *
+ * `exited` is a synchronous flag that flips to true when the child closes,
+ * so a probe's cycle() can detect that no more host progress is possible
+ * without awaiting the exit promise.
  */
 function launchFactory(registry, opts) {
   const { dbPath, launchRef, repoPath, invocationLogPath } = opts;
@@ -113,6 +117,7 @@ function launchFactory(registry, opts) {
 
   let stdout = '';
   let stderr = '';
+  let exited = false;
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', c => { stdout += c; });
   child.stderr.setEncoding('utf8');
@@ -123,9 +128,13 @@ function launchFactory(registry, opts) {
       try { child.kill('SIGTERM'); } catch { /* already dead */ }
       reject(new Error(`orchestrate-cli TIMEOUT\n${stderr.slice(-3000)}`));
     }, 540000);
-    child.once('close', code => { clearTimeout(timer); resolve(code); });
+    child.once('close', code => {
+      clearTimeout(timer);
+      exited = true;
+      resolve(code);
+    });
   });
-  return { child, exit, getStdout: () => stdout, getStderr: () => stderr };
+  return { child, exit, get exited() { return exited; }, getStdout: () => stdout, getStderr: () => stderr };
 }
 
 /**
@@ -150,10 +159,23 @@ function readWorkplaceChain(db, workplaceRef) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 1: verifying-eventually-seals-and-gates
+// Test 1: verifying-eventually-seals-and-gates (DURING execution)
 // ---------------------------------------------------------------------------
+//
+// This test exercises the REAL temporal property: while the factory is still
+// running (orchestrate-cli has NOT exited), a workplace must EVENTUALLY reach
+// `verifying` AND discharge its OTK obligation (sealed author CandidateSet +
+// final GateDecision) within a bounded cycle budget. Polling only the final
+// DB after the child exits would miss transient stalls that later recover —
+// the whole point of ADR-048 is to observe transitions DURING execution.
+//
+// Approach A (child-process polling): the probe's `cycle()` does not drive
+// the host (it cannot inject cycles into a child process); instead it just
+// sleeps briefly to give the child process wall-clock time to advance through
+// one host cycle on its own. The transitionBudget bounds how many samples we
+// take before declaring the property failed.
 
-test('Candidate/Gate: a workplace entering verifying eventually has a sealed CandidateSet + GateDecision', { timeout: 540000 }, async () => {
+test('Candidate/Gate: a workplace entering verifying eventually has a sealed CandidateSet + GateDecision — observed DURING execution', { timeout: 540000 }, async () => {
   const registry = createRegistry();
   const { repoPath, baseCommit, invocationLogPath } = provisionRepo(registry, 'seals-gates');
   const { dbPath, launchRef, dir: dbDir } = await bootstrapFreshDb({
@@ -161,21 +183,106 @@ test('Candidate/Gate: a workplace entering verifying eventually has a sealed Can
   });
   registry.trackDir(dbDir);
 
-  try {
-    const { exit, getStderr } = launchFactory(registry, {
-      dbPath, launchRef, repoPath, invocationLogPath,
-    });
-    const exitCode = await exit;
-    assert.equal(exitCode, 0,
-      `orchestrate-cli exited ${exitCode}\n${getStderr().slice(-5000)}`);
+  // Start orchestrate-cli WITHOUT awaiting exit — the probe must run while
+  // the child is still alive.
+  const factory = launchFactory(registry, {
+    dbPath, launchRef, repoPath, invocationLogPath,
+  });
 
+  try {
+    // The probe's cycle() cannot inject host cycles into a child process;
+    // instead it yields wall-clock time so the child advances through its
+    // own host cycles (runEpisode + dispatch) in the background. pollIntervalMs
+    // is 0 because cycle() already sleeps.
+    const probe = createTemporalProbe({
+      dbPath,
+      cycle: async () => {
+        if (factory.exited) return;
+        // Give the factory wall-clock time to advance through one host cycle.
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      },
+      transitionBudget: 240, // ~4 minutes max (240 cycles × 1s host-cycle budget)
+      pollIntervalMs: 0,
+    });
+
+    // PROPERTY 1 (DURING execution): the factory must eventually materialize
+    // at least one workplace. This proves the lifecycle actually started and
+    // produced durable state while running — not just that the final DB has
+    // rows.
+    let observedWorkplaceRef = null;
+    await probe.eventually(
+      probeDb => {
+        const row = probeDb.prepare(
+          `SELECT w.workplace_ref FROM factory_workplaces w
+             JOIN factory_process_runs pr ON pr.id=w.process_run_id
+            WHERE pr.project_id=1 AND pr.epic_id=1
+            ORDER BY w.workplace_ref LIMIT 1`,
+        ).get();
+        if (row) {
+          observedWorkplaceRef = row.workplace_ref;
+          return true;
+        }
+        return false;
+      },
+      {
+        description: 'factory materialized at least one workplace during run',
+        budget: 240,
+      },
+    );
+
+    // PROPERTY 2 (DURING execution): at least one workplace must reach
+    // loop_state='verifying' while the factory runs. This is the entry
+    // condition for the OTK (quality gate) leg.
+    let verifyingRef = null;
+    await probe.eventually(
+      probeDb => {
+        const row = probeDb.prepare(
+          `SELECT w.workplace_ref FROM factory_workplaces w
+             JOIN factory_process_runs pr ON pr.id=w.process_run_id
+            WHERE pr.project_id=1 AND pr.epic_id=1
+              AND w.loop_state='verifying'
+            ORDER BY w.workplace_ref LIMIT 1`,
+        ).get();
+        if (row) {
+          verifyingRef = row.workplace_ref;
+          return true;
+        }
+        return false;
+      },
+      {
+        description: 'at least one workplace reached verifying during run',
+        budget: 240,
+        readContext: probeDb => predicates.readProgressSnapshot(probeDb, 1, 1),
+      },
+    );
+
+    // PROPERTY 3 (DURING execution): the verifying workplace must EVENTUALLY
+    // discharge its OTK obligation — a sealed author CandidateSet AND a final
+    // GateDecision — observed while the factory is still running. This is the
+    // core temporal property: verifying → (sealed set + gate decision) within
+    // a bounded cycle budget, NOT just in the final snapshot.
+    await probe.eventually(
+      probeDb => predicates.countCandidateSetsForWorkplace(probeDb, verifyingRef, 'author') >= 1
+        && predicates.countGateDecisionsForWorkplace(probeDb, verifyingRef, 'final') >= 1,
+      {
+        description: 'verifying workplace discharged OTK (sealed author CandidateSet + final GateDecision) during run',
+        budget: 240,
+        readContext: probeDb => readWorkplaceChain(probeDb, verifyingRef),
+      },
+    );
+
+    // Now wait for the child to exit cleanly.
+    const exitCode = await factory.exit;
+    assert.equal(exitCode, 0,
+      `orchestrate-cli exited ${exitCode}\n${factory.getStderr().slice(-5000)}`);
+
+    // Post-run population invariants (these are snapshot assertions and are
+    // fine AFTER the run completes). EVERY workplace that reached verifying
+    // must have discharged the candidate+gate obligation — asserting this
+    // across the whole population is what makes the property temporal rather
+    // than anecdotal.
     const db = new Database(dbPath, { readonly: true });
     try {
-      // Collect every workplace that ever entered `verifying`. Because the
-      // transition-conformance scenarios exercise the reconciliation cell's
-      // repair loop, at least one workplace will visit verifying more than
-      // once. For every such workplace, the OTK obligation must have
-      // discharged: a sealed author CandidateSet AND a final GateDecision.
       const verifyingWorkplaces = db.prepare(
         `SELECT DISTINCT workplace_ref FROM factory_workplaces
           WHERE loop_state IN ('verifying','effect_pending','terminal')`,
@@ -183,37 +290,6 @@ test('Candidate/Gate: a workplace entering verifying eventually has a sealed Can
       assert.ok(verifyingWorkplaces.length > 0,
         'lifecycle produced no verifying workplaces — scenario mismatch');
 
-      // Build the probe predicate: for one workplace_ref, BOTH a sealed
-      // author CandidateSet AND a final GateDecision exist. The predicate
-      // uses the shared relational helpers so the probe records durable
-      // change-only snapshots.
-      const sampleRef = verifyingWorkplaces[0].workplace_ref;
-
-      // The cycle() callback drives host progress; here the host is the
-      // already-exited orchestrate-cli, so the cycle is a no-op poll. The
-      // budget is still meaningful — it bounds how many read-only samples
-      // we take before declaring the property failed.
-      const probe = createTemporalProbe({
-        dbPath,
-        cycle: async () => { /* host already converged; poll only */ },
-        transitionBudget: 8,
-        pollIntervalMs: 0,
-      });
-
-      await probe.eventually(
-        probeDb => predicates.countCandidateSetsForWorkplace(probeDb, sampleRef, 'author') >= 1
-          && predicates.countGateDecisionsForWorkplace(probeDb, sampleRef, 'final') >= 1,
-        {
-          description: 'verifying workplace has sealed author CandidateSet AND final GateDecision',
-          budget: 8,
-          readContext: probeDb => readWorkplaceChain(probeDb, sampleRef),
-        },
-      );
-
-      // Universal property: EVERY workplace that reached verifying must have
-      // discharged the candidate+gate obligation. Asserting this across the
-      // whole population (not just the sampled ref) is what makes the
-      // property temporal rather than anecdotal.
       for (const { workplace_ref: ref } of verifyingWorkplaces) {
         const authorSets = predicates.countCandidateSetsForWorkplace(db, ref, 'author');
         const finalDecisions = predicates.countGateDecisionsForWorkplace(db, ref, 'final');

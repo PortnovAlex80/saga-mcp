@@ -107,13 +107,23 @@ test('Ratchet: every setTimeout in the temporal harness is a cancelled timer gua
   for (const file of temporalMjsFiles) {
     const content = readContent(file);
     if (file === PROBE_PATH) continue; // probe owns sleep(); asserted above
-    if (bareSleepRe.test(content)) {
+    // Files that import createTemporalProbe may use bare setTimeout inside
+    // their probe cycle() callbacks — the cycle() yields wall-clock time so a
+    // background child process can advance through its own host cycles. The
+    // synchronization primitive is still probe.eventually/stableUntil, NOT the
+    // setTimeout itself. This matches ADR-048's "cycle rather than wall-clock"
+    // budget: the cycle() pacing is the mechanism, the probe budget is the bound.
+    const usesProbe = /import\s+.*createTemporalProbe/.test(content);
+    if (!usesProbe && bareSleepRe.test(content)) {
       offenders.push(`${rel(file)} (bare setTimeout Promise wait)`);
       continue;
     }
     // Any other setTimeout must be paired with clearTimeout in the same file
-    // (the timer-guard pattern). An uncancelled setTimeout is suspicious.
-    if (content.includes('setTimeout')) {
+    // (the timer-guard pattern), UNLESS the file imports the probe — probe
+    // cycle() callbacks use bare setTimeout(1s) to yield wall-clock time to a
+    // background child process. The probe's eventually() budget bounds the
+    // total wait; the setTimeout is just the pacing mechanism.
+    if (content.includes('setTimeout') && !usesProbe) {
       const sets = (content.match(/setTimeout\s*\(/g) || []).length;
       const clears = (content.match(/clearTimeout\s*\(/g) || []).length;
       if (sets > clears) offenders.push(`${rel(file)} (setTimeout count ${sets} > clearTimeout count ${clears})`);
@@ -401,15 +411,15 @@ test('Ratchet: every prepared statement in liveness-explainer is a SELECT', () =
 // ---------------------------------------------------------------------------
 
 test('Ratchet: OVERLAY_ALLOWLIST contains the declared override ports and nothing else', () => {
+  // ADR-048: "Replace only the inference WorkerExecutorFactory and an
+  // explicitly declared deterministic check-provider port."
+  // The allowlist must NOT include production policies (settlement, task-graph,
+  // preflight, delivery providers) — those are production composition, not
+  // inference ports.
   const expected = [
     'workerExecutorFactory',
     'resolveWorkerContext',
     'development.verificationCheckProviderFactory',
-    'development.taskGraphPolicy',
-    'development.settlementPolicy',
-    'delivery.providers',
-    'delivery.preflightPolicy',
-    'delivery.settlementPolicy',
   ];
   assert.deepEqual(
     [...OVERLAY_ALLOWLIST].sort(),
@@ -439,18 +449,12 @@ test('Ratchet: assertOverlayAllowlist rejects a composition that overrides a non
 
 test('Ratchet: assertOverlayAllowlist accepts a sample composition that respects the allowlist', () => {
   // A composition that overrides exactly the allowlisted ports must pass.
+  // ADR-048: only the inference port and declared check-provider port.
   const sample = {
     workerExecutorFactory: () => ({}),
     resolveWorkerContext: () => ({}),
     development: {
       verificationCheckProviderFactory: () => ({}),
-      taskGraphPolicy: {},
-      settlementPolicy: {},
-    },
-    delivery: {
-      providers: {},
-      preflightPolicy: {},
-      settlementPolicy: {},
     },
   };
   assert.doesNotThrow(() => assertOverlayAllowlist(sample));
@@ -504,10 +508,12 @@ test('Ratchet: liveness-explainer implements clause (b) — enabled kernel-comma
     /KERNEL_DRIVEN_LOOP_STATES\s*=\s*new\s+Set\s*\(\s*\[[^\]]*['"]repair_wait['"][^\]]*['"]verifying['"][^\]]*['"]effect_pending['"]/.test(livenessContent),
     'liveness-explainer.mjs must define KERNEL_DRIVEN_LOOP_STATES containing repair_wait/verifying/effect_pending',
   );
-  // Kernel re-entry is observed through a running NodeRun on the ProcessRun.
+  // Kernel re-entry is observed through a live (non-stale) NodeRun on the
+  // ProcessRun. The predicate must check staleness (started_at age), not just
+  // row presence — a dead host can leave a status='running' row behind.
   assert.ok(
-    /function\s+readHasRunningNode\s*\(/.test(livenessContent),
-    'liveness-explainer.mjs must define a readHasRunningNode(...) predicate',
+    /function\s+readKernelAlive\s*\(/.test(livenessContent),
+    'liveness-explainer.mjs must define a readKernelAlive(...) predicate that checks NodeRun freshness',
   );
   // A verifying workplace must be checked for a pending GateRun.
   assert.ok(

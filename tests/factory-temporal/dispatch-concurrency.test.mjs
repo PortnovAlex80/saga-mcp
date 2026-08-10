@@ -13,12 +13,30 @@
 // The properties under test (one per test):
 //   1. effective-concurrency-respected     — durable admission never exceeds
 //                                            the configured effective cap.
-//   2. downshift-drains-naturally          — admission reduction does NOT
-//                                            murder active workers; they
-//                                            drain to a terminal state.
+//   2. cap-respected-and-executions-drain  — the concurrency cap is respected
+//                                            throughout the run AND every
+//                                            execution drains to a terminal
+//                                            state (none stranded in
+//                                            cancel_requested).
+//                                            NOTE: a TRUE mid-run downshift
+//                                            (lowering the cap while workers
+//                                            are active) cannot be tested
+//                                            through orchestrate-cli, since
+//                                            the child process owns the
+//                                            concurrency for its lifetime.
+//                                            Testing a live downshift would
+//                                            require the in-process
+//                                            createTemporalDriver from
+//                                            temporal-driver.mjs, which can
+//                                            call readConcurrencyAdmission
+//                                            between dispatch cycles.
 //   3. dependencies-block-admission        — dependents are not admitted
 //                                            before their prerequisite's
-//                                            final acceptance.
+//                                            final acceptance. REQUIRES the
+//                                            lifecycle to produce at least
+//                                            one dependency edge; the test
+//                                            fails (rather than passes
+//                                            vacuously) if zero edges exist.
 //   4. exact-execution-identity-governs-...— each completed task maps to
 //                                            exactly one terminal execution,
 //                                            and semantic completion is
@@ -226,23 +244,34 @@ test('dispatch-concurrency: effective concurrency cap is never exceeded', { time
 });
 
 // ===========================================================================
-// 2. downshift-drains-naturally
+// 2. cap-respected-and-executions-drain
 // ===========================================================================
 //
-// Admission reduction must NOT murder in-flight workers. When the effective
-// concurrency cap drops below the active count, the dispatcher merely stops
-// admitting NEW work; the already-running workers continue until they reach a
-// terminal state on their own (drain).
+// This test verifies two related invariants that ARE observable through the
+// orchestrate-cli child-process boundary:
+//   (a) the configured effective concurrency cap is never exceeded for the
+//       lifetime of the run (no more than `effective` simultaneous active
+//       executions);
+//   (b) every execution drains to a terminal state — none are stranded in
+//       the non-terminal `cancel_requested` state, and none that ever
+//       entered `cancel_requested` are left without a finished_at.
 //
-// Because the child process owns the loop, we cannot flip the cap mid-run
-// inside one orchestrate-cli invocation. We instead prove the drain property
-// by asserting its durable consequence: after a converged run, NO execution
-// is stranded in the non-terminal `cancel_requested` state, and EVERY
-// execution that ever entered `cancel_requested` eventually settled into a
-// terminal state. A dispatcher that killed active workers would leave
-// `cancel_requested` rows that never drained.
+// WHY THIS IS NOT A TRUE DOWNSHIFT TEST
+//   A genuine admission downshift requires lowering the effective concurrency
+//   cap WHILE workers are active, then asserting that (i) active workers are
+//   NOT killed and (ii) no NEW workers are admitted beyond the new cap.
+//   orchestrate-cli runs as a child process that owns the dispatch loop and
+//   reads `lifecycle_execution_controls` for its own lifetime; we cannot
+//   inject a mid-run mutation of that row from this test harness.
+//
+//   To exercise a real downshift, this test would need to drive the
+//   in-process `createTemporalDriver` exported from temporal-driver.mjs,
+//   which lets the test interleave `readConcurrencyAdmission` (and a cap
+//   mutation) between dispatch cycles. That harness does not exist here, so
+//   we test the durable consequence (cap respected + everything drained)
+//   and document the gap honestly.
 
-test('dispatch-concurrency: admission downshift drains active workers naturally', { timeout: 540000 }, async () => {
+test('dispatch-concurrency: concurrency cap respected and all executions drain to terminal', { timeout: 540000 }, async () => {
   const registry = createRegistry();
   try {
     const { repoPath, baseCommit, dir: repoDir } = createTempGitRepo('downshift');
@@ -276,7 +305,20 @@ test('dispatch-concurrency: admission downshift drains active workers naturally'
 
     const db = openReadonly(dbPath);
     try {
-      // (a) Post-run, zero executions may be stranded in cancel_requested.
+      // (a) Cap respected throughout the run: peak observed concurrency must
+      // not exceed the effective cap seeded into lifecycle_execution_controls.
+      const controls = db.prepare(
+        'SELECT concurrency, model_concurrency_limit FROM lifecycle_execution_controls WHERE epic_id=?',
+      ).get(EPIC_ID);
+      assert.ok(controls, 'lifecycle_execution_controls row exists');
+      const effective = Math.min(controls.concurrency, controls.model_concurrency_limit);
+      const peak = peakObservedConcurrency(db, PROJECT_ID, EPIC_ID);
+      assert.ok(
+        peak <= effective,
+        `peak observed concurrency ${peak} exceeded effective cap ${effective}`,
+      );
+
+      // (b) Post-run, zero executions may be stranded in cancel_requested.
       // The active set must be empty.
       const stranded = db.prepare(
         `SELECT COUNT(*) AS n FROM worker_executions
@@ -288,7 +330,7 @@ test('dispatch-concurrency: admission downshift drains active workers naturally'
         `${stranded} execution(s) stranded in cancel_requested — drain did not complete`,
       );
 
-      // (b) Every execution that EVER entered cancel_requested must have a
+      // (c) Every execution that EVER entered cancel_requested must have a
       // populated finished_at and a terminal state. cancel_requested_at is
       // the durable signal that cancellation was requested; if finished_at
       // is NULL for such a row, the worker was abandoned mid-flight.
@@ -304,7 +346,7 @@ test('dispatch-concurrency: admission downshift drains active workers naturally'
         `executions with cancel_requested but no finished_at: ${abandoned.map(r => r.execution_id).join(', ')}`,
       );
 
-      // (c) Every cancel_requested execution reached a terminal state.
+      // (d) Every cancel_requested execution reached a terminal state.
       // (cancel_requested is NOT terminal; exited/lost/terminated are.)
       const nonTerminalCancelled = db.prepare(
         `SELECT execution_id, state FROM worker_executions
@@ -317,7 +359,7 @@ test('dispatch-concurrency: admission downshift drains active workers naturally'
         `cancel_requested execution did not drain to terminal: ${JSON.stringify(nonTerminalCancelled)}`,
       );
 
-      // (d) Sanity: the whole active set drained (no reserved/running/cancel).
+      // (e) Sanity: the whole active set drained (no reserved/running/cancel).
       const active = predicates.countActiveWorkerExecutions(db, PROJECT_ID, EPIC_ID);
       assert.equal(active, 0, 'active executions remain after convergence');
     } finally {
@@ -345,9 +387,12 @@ test('dispatch-concurrency: admission downshift drains active workers naturally'
 // prerequisite in a non-done state while the dependent is done — which is
 // the contradiction we assert against.
 //
-// When the scenario carries no dependency edges (dependsOnKeys=[]), the
-// invariant is vacuously true; we still assert the structural query runs
-// without error.
+// NON-VACUOUS GUARD: the invariant is only meaningful when the lifecycle
+// produced at least one dependency edge. If the scenario carries no edges
+// (dependsOnKeys=[]), the property is vacuously true and proves nothing —
+// the test therefore FAILS with an explicit message rather than silently
+// passing. A future lifecycle scenario that wants to exercise this property
+// must seed task_dependencies rows.
 
 test('dispatch-concurrency: dependencies block admission of dependents', { timeout: 540000 }, async () => {
   const registry = createRegistry();
@@ -374,6 +419,11 @@ test('dispatch-concurrency: dependencies block admission of dependents', { timeo
       env: {
         SAGA_INVOCATION_LOG: invocationLogPath,
         SAGA_CONCURRENCY: '1',
+        // Use golden-path scenarios which produce Development task dependencies
+        // (foundation → persistence → accessibility). The transition-conformance
+        // scenarios only exercise the Formalization reconciliation cell and do
+        // not create task_dependencies edges.
+        SAGA_SCENARIOS: path.join(REPO_ROOT, 'tests', 'factory-contract', 'golden-path-scenarios.mjs'),
       },
       registry,
       label: 'orchestrate-cli:deps-block',
@@ -395,6 +445,15 @@ test('dispatch-concurrency: dependencies block admission of dependents', { timeo
            JOIN tasks dep           ON dep.id     = td.depends_on_task_id
           WHERE t.epic_id=?`,
       ).all(EPIC_ID);
+
+      // Non-vacuity is a release invariant. The scripted Development planner
+      // emits a deterministic chain specifically so this production-wired run
+      // exercises dependency admission and post-dependency desk bases.
+      assert.ok(
+        edges.length > 0,
+        'dependency conformance fixture produced zero task_dependencies edges',
+      );
+      process.stderr.write(`[deps-block] ${edges.length} dependency edge(s) verified\n`);
 
       // Property (3a): no dependent reached 'done' while its prerequisite is
       // NOT done. This is the post-run projection of "dependents are not
@@ -421,10 +480,30 @@ test('dispatch-concurrency: dependencies block admission of dependents', { timeo
         'a dependent was admitted while its prerequisite had not reached done',
       );
 
-      // Structural sanity: the join executed. (When dependsOnKeys=[] in the
-      // scenario, edges is legitimately empty — the property is vacuous.)
-      // We log the count for diagnostic visibility.
-      process.stderr.write(`[deps-block] ${edges.length} dependency edge(s) verified\n`);
+      // Strong temporal projection: every dependent author reservation must be
+      // at or after the prerequisite's successful integration. This checks the
+      // actual durable execution/integration clocks, not only final statuses.
+      const orderingViolations = db.prepare(
+        `SELECT td.task_id AS dependent_task_id,
+                td.depends_on_task_id AS prerequisite_task_id,
+                MIN(we.reserved_at) AS dependent_reserved_at,
+                prerequisite.integrated_at AS prerequisite_integrated_at
+           FROM task_dependencies td
+           JOIN tasks prerequisite ON prerequisite.id=td.depends_on_task_id
+           JOIN worker_executions we
+             ON we.task_id=td.task_id AND we.phase='executing'
+          GROUP BY td.task_id, td.depends_on_task_id
+         HAVING prerequisite.integrated_at IS NULL
+             OR MIN(we.reserved_at) < prerequisite.integrated_at`,
+      ).all();
+      assert.deepEqual(
+        orderingViolations,
+        [],
+        'a dependent author was reserved before prerequisite integration',
+      );
+
+      // Structural sanity: the join executed and (per the guard above) at
+      // least one edge was verified against the ordering invariant.
     } finally {
       db.close();
     }

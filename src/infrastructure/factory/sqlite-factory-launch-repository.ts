@@ -212,12 +212,18 @@ export function markFactoryLaunchRunning(
 export function finishFactoryLaunch(
   launchRef: string,
   claimToken: string,
-  state: 'completed' | 'failed',
+  state: 'completed' | 'failed' | 'paused',
   error: string | null,
   orderState: 'paused' | 'completed' | 'start_failed' =
-    state === 'completed' ? 'completed' : 'start_failed',
+    state === 'completed' ? 'completed'
+      : state === 'failed' ? 'start_failed'
+      : 'paused',
   db: Database.Database = getDb(),
 ): void {
+  // CAS fence: only a launch we currently own (claimed/running) with the
+  // matching capability token may settle. `paused` is terminal for THIS
+  // LaunchRequest — completed_at is set and the one-active-launch slot is
+  // freed, so a later resume can create a fresh launch under the same order.
   const result = db.prepare(
     `UPDATE factory_launch_requests
         SET state=?, error=?, completed_at=datetime('now')

@@ -237,9 +237,8 @@ const developmentPlan = async ({ client, task, prompt }) => {
   const repo = repos[0];
   if (!repo) throw new Error('DevelopmentCase has no repository');
   const criteria = developmentCase.acceptanceCriteria || [];
-  const implementationItems = criteria
-    .filter(ac => ac.implementationRequired)
-    .map(ac => ({
+  const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
+  const implementationItems = implementationCriteria.map((ac, index) => ({
       key: `impl-${ac.artifactId}`,
       kind: 'implementation',
       taskKind: 'development.code',
@@ -247,7 +246,13 @@ const developmentPlan = async ({ client, task, prompt }) => {
       executionMode: 'git_change',
       projectRepositoryId: repo.projectRepositoryId,
       acceptanceCriterionIds: [ac.artifactId],
-      dependsOnKeys: [],
+      // Exercise the real dependency/admission/base-propagation path. A
+      // deterministic chain is deliberately used here: scripted production
+      // must test the same non-empty DAG physics that real planners can emit,
+      // rather than making dependency tests pass vacuously with [] everywhere.
+      dependsOnKeys: index === 0
+        ? []
+        : [`impl-${implementationCriteria[index - 1].artifactId}`],
       changeScopes: [`ac-${ac.artifactId}`],
       required: true,
       criticality: ac.criticality || 'blocker',

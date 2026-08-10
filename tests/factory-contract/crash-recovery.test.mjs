@@ -24,18 +24,14 @@ import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 const REPO_ROOT = process.cwd();
-const SRC_DB = path.join(REPO_ROOT, '.button-color-replay-e2e', 'factory.sqlite');
-
 async function setupFreshDb(repoPath, baseCommit) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-crash-'));
   const dbPath = path.join(dir, 'crash.db');
   process.env.DB_PATH = dbPath;
   const { getDb, closeDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'db.js')).href);
   const db = getDb();
-  const srcDb = new Database(SRC_DB, { readonly: true });
-  const srcProject = srcDb.prepare('SELECT * FROM projects WHERE id=1').get();
   db.prepare('INSERT INTO projects (id, name, description, status, tags, metadata) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(srcProject.id, srcProject.name, 'Crash test', 'active', '[]', '{}');
+    .run(1, 'Crash recovery fixture', 'Crash test', 'active', '[]', '{}');
   db.prepare('INSERT INTO epics (id, project_id, name, status, priority) VALUES (?, ?, ?, ?, ?)')
     .run(1, 1, 'Pipeline', 'planned', 'high');
   db.prepare('INSERT INTO lifecycle_execution_controls (epic_id, concurrency, model_concurrency_limit) VALUES (?, ?, ?)')
@@ -45,8 +41,6 @@ async function setupFreshDb(repoPath, baseCommit) {
     .run(1, 1, 1, 'component', repoPath, 'dev', 'active');
   const { ensureReplayCapsuleSchema } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'replay', 'sqlite-replay-capsule-repository.js')).href);
   ensureReplayCapsuleSchema(db);
-  srcDb.close();
-
   const { hashDevelopmentPolicy } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'development', 'domain', 'development-settlement-policy.js')).href);
   const { hashDeliveryDeferredProfile } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'modules', 'delivery', 'domain', 'delivery-settlement-policy.js')).href);
   const { requestFactoryLaunch } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'factory', 'sqlite-factory-launch-repository.js')).href);

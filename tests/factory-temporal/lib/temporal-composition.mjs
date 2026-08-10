@@ -160,12 +160,25 @@ export async function createProductLifecycleComposition(context) {
     }),
 
     development: {
+      // These are PRODUCTION Reference policies (the same classes the canonical
+      // composition uses), NOT test-specific replacements. They are bound
+      // explicitly to guarantee the test uses the reference settlement/task-graph
+      // policy, not a stale or accidental default. ADR-048 allows replacing only
+      // the inference port (workerExecutorFactory) and the declared check-provider
+      // port (verificationCheckProviderFactory). The policy bindings below are
+      // the SAME production policies — they are not "replacements" in the ADR-048
+      // sense. The overlay allowlist ratchet (OVERLAY_ALLOWLIST) documents that
+      // a composition claiming to be canonical must NOT bind different policy
+      // classes; this test composition binds the EXACT same classes.
       taskGraphPolicy: new ReferenceDevelopmentTaskGraphPolicy(),
       settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
+      // The ONLY true test port replacement: the verification check provider
+      // trusts well-formed LM assessments instead of always returning 'unknown'.
       verificationCheckProviderFactory: createTestVerificationCheckProviderFactory(),
     },
 
     delivery: {
+      // Same Reference policies as production (see comment above).
       preflightPolicy: new ReferenceDeliveryPreflightPolicy(),
       settlementPolicy: new ReferenceDeliverySettlementPolicy(),
       providers: {

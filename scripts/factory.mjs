@@ -657,7 +657,16 @@ if (command === 'start') {
         subject: idea,
         context: { type: 'web-app', complexity: 'XS' },
         evidence: {},
-        constraints: { staticFilesOnly: true, noDependencies: true },
+        // The public Factory gateway must not silently narrow arbitrary product
+        // intent to a static/no-dependency toy. Product architecture is
+        // discovered and formalized from the request. These are lifecycle
+        // boundaries only: produce a locally runnable revision, do not deploy,
+        // and involve the human after startup for acceptance feedback.
+        constraints: {
+          localRunRequired: true,
+          deploymentExcluded: true,
+          humanAcceptanceAfterLocalStart: true,
+        },
       },
       development: {
         repositories: [{

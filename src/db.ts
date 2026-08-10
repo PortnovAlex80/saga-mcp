@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4 } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -37,6 +37,9 @@ let db: Database.Database | null = null;
  *       Applied via table rebuild for existing DBs.
  *   4 = append-only continuation, sealed Workplace DAG, managed source/effect
  *       receipts, and the effect_pending Workplace state.
+ *   5 = factory_launch_requests.state accepts 'paused' as a terminal-for-this-
+ *       launch state (lifecycle suspended without converging). Applied via
+ *       table rebuild for existing DBs; relaxed CHECK + freed one-active slot.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -44,7 +47,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -89,6 +92,10 @@ export function getDb(): Database.Database {
   // launch_requests idempotency index from partial-UNIQUE (active states only)
   // to full-UNIQUE (all states). No-op on fresh DBs.
   rebuildLaunchIdempotencyIndex(db);
+  // Relax factory_launch_requests.state to accept 'paused' as a terminal-for-
+  // this-launch state (the lifecycle suspended without converging — a typed
+  // wait or genuine stall). Table-rebuild idiom; no-op on fresh DBs.
+  relaxFactoryLaunchStateForPaused(db);
   // Additive migration: artifacts.storage_kind (file_backed | db_native |
   // external_ref). Fresh DBs get the column from CREATE TABLE; pre-existing
   // DBs created before this column get it added here with the safe default
@@ -128,9 +135,16 @@ export function getDb(): Database.Database {
   ensureFactoryProtocolRunSchema(db);
   ensureFactoryCallInstanceSchema(db);
 
-  // Stamp the schema version on fresh DBs (existingVersion === 0).
-  if (existingVersion === 0) {
+  // Stamp only a fresh database or the exact predecessor produced/accepted by
+  // the migrations above. Never stamp an unknown/future version as current:
+  // doing so would launder an unexecuted migration into apparent success.
+  const migratedVersion = db.pragma('user_version', { simple: true }) as number;
+  if (migratedVersion === 0 || migratedVersion === 4) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  } else if (migratedVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${migratedVersion}->${SCHEMA_VERSION}`,
+    );
   }
 
   return db;

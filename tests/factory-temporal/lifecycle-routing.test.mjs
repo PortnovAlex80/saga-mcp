@@ -29,7 +29,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { spawn, execSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
@@ -83,6 +83,9 @@ async function runFullLifecycle(label, registry) {
   registry.trackProcess(child, `orchestrate-cli[${label}]`);
 
   let stderr = '';
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', c => { stdout += c; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', c => { stderr += c; });
 
@@ -94,9 +97,9 @@ async function runFullLifecycle(label, registry) {
     child.once('close', code => { clearTimeout(timer); resolve(code); });
   });
 
-  assert.equal(exitCode, 0, `orchestrate-cli[${label}] exited ${exitCode}\n${stderr.slice(-5000)}`);
+  assert.equal(exitCode, 0, `orchestrate-cli[${label}] exited ${exitCode}\nSTDOUT:\n${stdout.slice(-5000)}\nSTDERR:\n${stderr.slice(-5000)}`);
 
-  return { dbPath, launchRef, repoPath, invocationLogPath };
+  return { dbPath, launchRef, repoPath, invocationLogPath, stdout, stderr };
 }
 
 // ===========================================================================
@@ -283,7 +286,15 @@ test('lifecycle-routing: unrouted terminal ProcessRun diagnosed as waiting_expec
     const mirrorDir = mkdtempSync(path.join(os.tmpdir(), 'saga-temporal-unrouted-mirror-'));
     registry.trackDir(mirrorDir);
     const mirrorDbPath = path.join(mirrorDir, 'unrouted.db');
-    writeFileSync(mirrorDbPath, readFileSync(dbPath));
+    // Never copy a live/recent SQLite database as a lone main-file byte copy:
+    // committed pages may still reside in the WAL. The backup API gives this
+    // synthetic-fault test one transactionally consistent source snapshot.
+    const source = new Database(dbPath, { readonly: true });
+    try {
+      await source.backup(mirrorDbPath);
+    } finally {
+      source.close();
+    }
 
     const mirror = new Database(mirrorDbPath);
     try {
@@ -299,21 +310,14 @@ test('lifecycle-routing: unrouted terminal ProcessRun diagnosed as waiting_expec
         `SELECT transition_key FROM factory_process_transitions
           WHERE lifecycle_run_id = ? AND target_type = 'terminal'`,
       ).get(lifecycleBefore.id);
-      // If there is no terminal transition to delete, the lifecycle is ALREADY
-      // in the unrouted state — the explainer should classify it directly.
-      if (!terminalBefore) {
-        const verdictDirect = explainFactoryLiveness(mirrorDbPath, { projectId: 1 });
-        assert.ok(
-          verdictDirect.classification === 'waiting_expected'
-            || verdictDirect.classification === 'terminal'
-            || verdictDirect.classification === 'progressing',
-          `unrouted lifecycle classified as '${verdictDirect.classification}' `
-            + `(reason: ${verdictDirect.reasonCode}) — expected waiting_expected/terminal/progressing, NOT stalled`,
-        );
-        assert.notEqual(verdictDirect.classification, 'stalled',
-          `unrouted lifecycle must NOT be 'stalled'`);
-        return;
-      }
+      // The source fixture must be a proven completed lifecycle before we
+      // remove one routing fact. Otherwise the test would conflate a real
+      // inconsistent Worker/Workplace state with the synthetic routing window
+      // and incorrectly whitelist that incident as expected progress.
+      assert.ok(
+        terminalBefore,
+        'completed source fixture has no terminal transition; refusing to synthesize from an inconsistent run',
+      );
 
       // Synthesize the unrouted state: remove the router's terminal transition
       // row so the lifecycle is terminal from the status column's perspective

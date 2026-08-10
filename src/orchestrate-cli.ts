@@ -488,18 +488,36 @@ async function main() {
         );
       }
     }
+    // paused is NOT terminal — the lifecycle suspended without converging.
+    // This happens when: (a) a workplace requires human input (paused), (b) the
+    // empty-dispatch streak exhausted (kernel not advancing), or (c) the queue
+    // is empty but the lifecycle did not complete. In all three cases the
+    // factory did NOT reach a terminal state.
+    //
+    // The launch request itself IS settled (terminal-for-this-launch): the host
+    // process is exiting, completed_at is stamped, and the one-active-launch
+    // slot is freed so a later resume can create a fresh launch. But neither
+    // the launch nor the order is marked 'completed' — both record 'paused' so
+    // status readers cannot mistake this for convergence. The exit code is 2
+    // (distinct from 0=success and 1=failure).
+    const isTerminal = result.reason !== 'paused';
+    if (!isTerminal) {
+      process.stderr.write(
+        `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}\n`,
+      );
+    }
     finishFactoryLaunch(
       launchRef,
       claimToken,
-      result.reason === 'failed' ? 'failed' : 'completed',
+      isTerminal
+        ? (result.reason === 'failed' ? 'failed' : 'completed')
+        : 'paused',
       result.reason === 'failed' ? JSON.stringify(result) : null,
-      result.reason === 'paused'
-        ? 'paused'
-        : result.reason === 'failed'
-          ? 'start_failed'
-          : 'completed',
+      isTerminal
+        ? (result.reason === 'failed' ? 'start_failed' : 'completed')
+        : 'paused',
     );
-    process.exit(result.reason === 'failed' ? 1 : 0);
+    process.exit(isTerminal ? (result.reason === 'failed' ? 1 : 0) : 2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[orchestrate-cli] fatal: ${msg}\n`);

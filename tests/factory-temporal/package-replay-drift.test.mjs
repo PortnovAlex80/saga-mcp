@@ -27,6 +27,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 const REPO_ROOT = process.cwd();
@@ -230,7 +231,7 @@ test('overlay-allowlist-rejects-malicious-composition: replacing settlement/gate
 
     // Sanity: the canonical composition's allowlist is non-empty and contains
     // the declared overlay ports.
-    assert.ok(OVERLAY_ALLOWLIST.length >= 6, 'OVERLAY_ALLOWLIST is populated');
+    assert.ok(OVERLAY_ALLOWLIST.length >= 3, 'OVERLAY_ALLOWLIST is populated');
     assert.ok(OVERLAY_ALLOWLIST.includes('workerExecutorFactory'));
     assert.ok(OVERLAY_ALLOWLIST.includes('development.verificationCheckProviderFactory'));
 
@@ -298,18 +299,12 @@ test('overlay-allowlist-rejects-malicious-composition: replacing settlement/gate
     );
 
     // --- Control: the canonical allowlist composition passes ---
+    // ADR-048: only the inference port and declared check-provider port.
     const safe = {
       workerExecutorFactory: () => ({}),
       resolveWorkerContext: () => ({}),
       development: {
         verificationCheckProviderFactory: () => ({}),
-        taskGraphPolicy: {},
-        settlementPolicy: {},
-      },
-      delivery: {
-        providers: {},
-        preflightPolicy: {},
-        settlementPolicy: {},
       },
     };
     assert.doesNotThrow(() => assertOverlayAllowlist(safe),
@@ -548,7 +543,7 @@ test('package-digest-drift-visible: corrupting a package_digest changes the modu
 // 5. replay-creates-current-gates
 // ===========================================================================
 
-test('replay-creates-current-gates: a cold run certifies replay capsules without an additional inference pass', { timeout: 540000 }, async () => {
+test('replay-creates-current-gates: a cold run certifies replay capsules and a replay run invokes zero scripted inference workers', { timeout: 540000 }, async () => {
   const registry = createRegistry();
   try {
     const { repoPath, baseCommit, invocationLogPath } = provisionRepo(registry, 'replay-capsules');
@@ -568,15 +563,25 @@ test('replay-creates-current-gates: a cold run certifies replay capsules without
       beforeDb.close();
     }
 
-    // Run the factory to terminal. Replay capsules are captured by
-    // captureAcceptedExecution at final acceptance — no replay pass is needed;
-    // they are a byproduct of the cold run's accepted workplaces.
-    const { exitCode, stderr } = await runFactory(registry, {
+    // =========================================================================
+    // Run A — cold run. Capsules are captured by captureAcceptedExecution at
+    // final acceptance; they are a byproduct of the cold run's accepted
+    // workplaces, not a separate replay pass.
+    // =========================================================================
+    const { exitCode: exitA, stderr: stderrA } = await runFactory(registry, {
       launchRef, dbPath, repoPath, invocationLogPath,
     });
-    assert.equal(exitCode, 0, `orchestrate-cli exited ${exitCode}\n${stderr.slice(-5000)}`);
+    assert.equal(exitA, 0, `Run A orchestrate-cli exited ${exitA}\n${stderrA.slice(-5000)}`);
 
-    const afterDb = new Database(dbPath, { readonly: true });
+    // Snapshot Run A's durable outcomes for the Run B comparison. The replay
+    // contract requires Run B to produce the SAME lifecycle outcomes without
+    // invoking scripted inference workers again.
+    let runACapsuleCount = 0;
+    let runAInvocationCount = 0;
+    let runALifecycleRunId = null;
+    let runAOrderRef = null;
+    let runAOutcomes = [];
+    const afterRunA = new Database(dbPath, { readonly: true });
     try {
       // NOTE: the factory_replay_capsules table has no certification_state
       // column in this schema (verified in sqlite-replay-capsule-repository.ts
@@ -584,18 +589,18 @@ test('replay-creates-current-gates: a cold run certifies replay capsules without
       // captureAcceptedExecution, which runs at terminal Workplace acceptance
       // — so the existence of a row IS the certification. We therefore count
       // all rows rather than filtering on a non-existent certification_state.
-      const capsuleCount = afterDb.prepare(
+      runACapsuleCount = afterRunA.prepare(
         'SELECT COUNT(*) AS n FROM factory_replay_capsules',
       ).get().n;
       assert.ok(
-        capsuleCount > 0,
-        `cold run must certify at least one replay capsule (got ${capsuleCount}); `
+        runACapsuleCount > 0,
+        `cold run must certify at least one replay capsule (got ${runACapsuleCount}); `
           + 'replay capture is a byproduct of accepted workplaces, not a separate pass',
       );
 
       // Each certified capsule must have a verifiable payload_hash and the
       // content-addressed ref shape captureAcceptedExecution writes.
-      const sample = afterDb.prepare(
+      const sample = afterRunA.prepare(
         `SELECT capsule_ref, payload_hash
            FROM factory_replay_capsules
           ORDER BY id LIMIT 1`,
@@ -606,16 +611,135 @@ test('replay-creates-current-gates: a cold run certifies replay capsules without
       assert.match(sample.payload_hash, /^[0-9a-f]{64}$/,
         `payload_hash is a 64-hex sha256: ${sample.payload_hash}`);
 
-      // No additional inference pass: the scripted-worker invocation ledger
-      // records every physical worker spawn. The capsules were captured during
-      // the cold run's accepted workplaces, so we do NOT require a second run.
-      // (We assert the ledger is non-empty only to prove the cold run actually
-      // drove workers — the capsules' existence is what proves capture worked.)
-      const invocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
-      assert.ok(invocations.length > 0,
-        `cold run drove scripted workers (invocations=${invocations.length})`);
+      // The scripted-worker invocation ledger records every physical worker
+      // spawn. Run A must have driven scripted workers (capsules come from
+      // accepted workplaces, which require a worker to have produced).
+      runAInvocationCount = JSON.parse(readFileSync(invocationLogPath, 'utf8')).length;
+      assert.ok(runAInvocationCount > 0,
+        `Run A drove scripted workers (invocations=${runAInvocationCount})`);
+
+      // Capture the lifecycle run id and the per-module terminal outcomes.
+      // Run B must converge to the SAME module outcomes (replay is
+      // outcome-preserving, not outcome-changing).
+      const lr = afterRunA.prepare(
+        `SELECT id, status FROM factory_lifecycle_runs
+          WHERE project_id=1 ORDER BY id DESC LIMIT 1`,
+      ).get();
+      assert.ok(lr, 'Run A produced a lifecycle run');
+      runALifecycleRunId = lr.id;
+
+      // Capture the order_ref that owns this lifecycle run. Run B is a RESUME
+      // launch on the SAME order (requestFactoryLaunch scope-checks that the
+      // order owns the lifecycle_run_id), so we must reuse Run A's order_ref
+      // rather than inventing a new one.
+      runAOrderRef = afterRunA.prepare(
+        `SELECT order_ref FROM factory_orders WHERE lifecycle_run_id=?`,
+      ).get(runALifecycleRunId)?.order_ref;
+      assert.ok(runAOrderRef,
+        `Run A order_ref resolves for lifecycle run ${runALifecycleRunId}`);
+
+      runAOutcomes = afterRunA.prepare(
+        `SELECT module_name, module_version, status, local_outcome
+           FROM factory_process_runs
+          WHERE project_id=1
+          ORDER BY module_name, module_version`,
+      ).all();
+      assert.ok(runAOutcomes.length > 0,
+        `Run A produced module outcomes (count=${runAOutcomes.length})`);
     } finally {
-      afterDb.close();
+      afterRunA.close();
+    }
+
+    // =========================================================================
+    // Run B — REPLAY run on the SAME DB. A second launch drives the factory
+    // again. Because every accepted Workplace from Run A has a certified
+    // capsule, the replay-first assignment path
+    // (bindReplayToClaim → hasFrozenCapsule → runCapsuleReplay) must replay
+    // the capsule IN-PROCESS instead of spawning a scripted worker. The
+    // invocation ledger therefore must NOT grow: Run B invokes ZERO scripted
+    // inference workers.
+    //
+    // Run B is a RESUME launch pointing at Run A's lifecycle run, so the
+    // lifecycle runtime resolves the existing terminal LifecycleRun by its
+    // idempotency_key (sqlite-lifecycle-run-repository.start returns the
+    // existing row) rather than creating a new one. This is the real replay
+    // path: same lifecycle identity, same DB, second host cycle.
+    // =========================================================================
+    const launchMod = await import(pathToFileURL(path.resolve(
+      REPO_ROOT, 'dist', 'infrastructure', 'factory', 'sqlite-factory-launch-repository.js',
+    )).href);
+
+    // requestFactoryLaunch reads DB_PATH via getDb(); set it for this thread.
+    process.env.DB_PATH = dbPath;
+    const dbMod = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'db.js')).href);
+    let launchRefB;
+    try {
+      dbMod.getDb(); // ensure the DB connection is initialized on this path
+      launchRefB = launchMod.requestFactoryLaunch({
+        // Reuse Run A's order_ref: the launch scope check requires the order
+        // to own the lifecycle run, and the same order is what owns run A.
+        orderRef: runAOrderRef,
+        mode: 'resume',
+        projectId: 1,
+        epicId: 1,
+        lifecycleRunId: runALifecycleRunId,
+        initiatedBy: 'temporal-replay-capsules',
+        // New launch idempotency key: this is a NEW launch of an EXISTING
+        // lifecycle run, not a retry of launch A.
+        idempotencyKey: `replay-capsules-runB-${randomUUID()}`,
+        concurrency: 1,
+      });
+    } finally {
+      dbMod.closeDb();
+    }
+    assert.ok(launchRefB, 'Run B launch request created a launch_ref');
+
+    const { exitCode: exitB, stderr: stderrB } = await runFactory(registry, {
+      launchRef: launchRefB, dbPath, repoPath, invocationLogPath,
+    });
+    assert.equal(exitB, 0, `Run B orchestrate-cli exited ${exitB}\n${stderrB.slice(-5000)}`);
+
+    const afterRunB = new Database(dbPath, { readonly: true });
+    try {
+      // THE REPLAY CONTRACT: Run B invoked ZERO scripted inference workers.
+      // The invocation ledger is append-only across both runs; Run B must not
+      // have appended any entries. Capsule replay replaces scripted inference,
+      // so the ledger count is unchanged from Run A.
+      const runBInvocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
+      const runBInvocationCount = runBInvocations.length;
+      assert.equal(
+        runBInvocationCount, runAInvocationCount,
+        `Run B invoked ZERO new scripted inference workers (replay replaced inference); `
+          + `Run A invocations=${runAInvocationCount}, after Run B=${runBInvocationCount}`,
+      );
+
+      // Run B must produce the SAME lifecycle outcomes. Replay is
+      // outcome-preserving: the per-module terminal status and local_outcome
+      // must match Run A exactly. New rows would mean Run B re-ran modules
+      // instead of replaying them.
+      const runBOutcomes = afterRunB.prepare(
+        `SELECT module_name, module_version, status, local_outcome
+           FROM factory_process_runs
+          WHERE project_id=1
+          ORDER BY module_name, module_version`,
+      ).all();
+      assert.deepEqual(
+        runBOutcomes, runAOutcomes,
+        `Run B lifecycle outcomes match Run A (replay is outcome-preserving)`,
+      );
+
+      // Capsule count must not shrink (replay does not delete capsules) and
+      // should not need to grow (no new accepted workplaces in a pure replay).
+      // We assert the weaker lower-bound contract: capsules from Run A survive.
+      const runBCapsuleCount = afterRunB.prepare(
+        'SELECT COUNT(*) AS n FROM factory_replay_capsules',
+      ).get().n;
+      assert.ok(
+        runBCapsuleCount >= runACapsuleCount,
+        `Run B did not lose Run A capsules (Run A=${runACapsuleCount}, Run B=${runBCapsuleCount})`,
+      );
+    } finally {
+      afterRunB.close();
     }
   } finally {
     await cleanupRegistry(registry);

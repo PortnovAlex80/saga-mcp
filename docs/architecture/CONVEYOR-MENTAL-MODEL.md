@@ -987,7 +987,7 @@ global status enum, and no projection is allowed to impersonate one.
 
 | Machine / value object | Authoritative state or transition owner |
 |---|---|
-| LaunchRequest | launch repository: `requested -> claimed -> running -> completed | failed` |
+| LaunchRequest | launch repository: `requested -> claimed -> running -> paused | completed | failed` (`paused` settles only this host launch, never claims lifecycle convergence) |
 | LifecycleRun / StageRun | lifecycle repository and exact stage-transition journal |
 | ProcessRun | ProcessRun repository: `created -> preparing -> running -> paused | settling -> terminal` |
 | NodeRun | generic flow cursor and NodeRun repository: `running -> completed | failed` |
@@ -1096,16 +1096,38 @@ At minimum L3/L4 prove:
 6. package/provider/lifecycle composition fingerprints match the canonical
    installed production definition;
 7. every installed lifecycle outcome edge has a real-runtime trace or an
-   explicit unreachable proof.
+   explicit mechanically checked unreachable proof;
+8. dependency scenarios are non-vacuous: at least one durable Workplace/task
+   edge exists, the dependent is not reserved before predecessor final
+   acceptance/effect settlement, and its effective input/base binds the
+   post-dependency product;
+9. scripted production enters through the production runner's inference spawn
+   seam. It may replace model cognition, but not assignment, workspace/desk,
+   MCP/tool authority, product submission, process finalization, gates,
+   effects, routing or persistence;
+10. the Product Build terminal is `verified-local` with no Delivery/DevOps
+    ProcessRun and no human approval dependency. Human acceptance starts only
+    after the exact frozen product is started locally.
 
 Temporal assertions use durable transitions or host-cycle budgets, not quiet
 logs or arbitrary wall-clock sleeps. On failure the harness emits the last
 durable landmarks, exact authority refs and the unmet progress obligation.
 
-An executable bounded statechart explorer may later be added as an L1/L2
-amplifier. It is never a second runtime authority and never substitutes for L3:
-an abstract model can assume scheduler fairness and thereby assume away the
-production wiring failure it is supposed to detect.
+A bounded statechart explorer is an L1/L2 amplifier, never a second runtime
+authority and never a substitute for L3. It models three orthogonal machines:
+
+```text
+Workshop: Kanban phase + Workplace loop/role/revision + Candidate/Gate/Effect
+Engine:   admission policy + Reservation/WorkerExecution/fence/lease
+Pipeline: Process/Stage/Lifecycle cursor + exact product/certificate lineage
+```
+
+Generated traces may contain an arbitrary fault prefix, but liveness is judged
+only after a declared fair-drain suffix. Minimized traces are replayed against
+production reducers/SQLite and selected counterexamples against the canonical
+temporal composition. This prevents an abstract model from assuming scheduler
+fairness and thereby assuming away the production wiring failure it is meant
+to detect.
 
 ---
 

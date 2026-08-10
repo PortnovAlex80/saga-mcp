@@ -80,18 +80,12 @@ test('Foundation: overlay allowlist rejects composition that replaces settlement
   );
 
   // A composition that overrides ONLY allowed keys must pass.
+  // ADR-048: only the inference port and declared check-provider port.
   const safe = {
     workerExecutorFactory: () => ({}),
     resolveWorkerContext: () => ({}),
     development: {
       verificationCheckProviderFactory: () => ({}),
-      taskGraphPolicy: {},
-      settlementPolicy: {},
-    },
-    delivery: {
-      providers: {},
-      preflightPolicy: {},
-      settlementPolicy: {},
     },
   };
   assert.doesNotThrow(() => assertOverlayAllowlist(safe));

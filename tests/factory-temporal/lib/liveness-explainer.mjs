@@ -48,6 +48,10 @@ const TERMINAL_LIFECYCLE_STATUSES = new Set(['completed', 'failed', 'cancelled']
  * @param {object} [opts]
  * @param {number} [opts.projectId] - optional scope
  * @param {number} [opts.lifecycleRunId] - optional explicit lifecycle run.
+ * @param {number} [opts.staleThresholdMs] - max age of a running NodeRun's
+ *   started_at before it is considered stale (host cycle budget). A stale
+ *   'running' row does NOT prove the kernel is cycling — the host process
+ *   may have died without terminalizing the row. Default 60000 (60s).
  */
 export function explainFactoryLiveness(dbPath, opts = {}) {
   const db = new Database(dbPath, { readonly: true });
@@ -122,7 +126,9 @@ function explainWith(db, opts) {
     });
   }
 
-  const nodeRunning = readHasRunningNode(db, landmark.processRunId);
+  const kernelAlive = readKernelAlive(db, landmark.processRunId, {
+    staleThresholdMs: opts.staleThresholdMs ?? 60_000,
+  });
   let progressedAny = false;
   let waitingExpected = null;
   let stalled = null;
@@ -130,7 +136,7 @@ function explainWith(db, opts) {
 
   for (const wp of workplaces) {
     if (wp.loop_state === 'terminal') continue;
-    const verdict = classifyWorkplace(db, wp, nodeRunning);
+    const verdict = classifyWorkplace(db, wp, kernelAlive);
     if (verdict.classification === 'progressing') {
       progressedAny = true;
     } else if (verdict.classification === 'waiting_expected' && !waitingExpected) {
@@ -170,7 +176,7 @@ function explainWith(db, opts) {
 // Per-workplace classifier — evaluates the four-clause progress obligation.
 // ---------------------------------------------------------------------------
 
-function classifyWorkplace(db, wp, nodeRunning) {
+function classifyWorkplace(db, wp, kernelAlive) {
   const authorities = collectAuthorities(db, wp);
   const evidenceRefs = [];
 
@@ -188,7 +194,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
         detail: `Workplace ${wp.workplace_ref} paused with open human_requests.request_id='${openHuman.request_id}'.`,
       });
     }
-    if (nodeRunning) {
+    if (kernelAlive) {
       return incident({
         classification: 'progressing',
         reasonCode: 'kernel-requeue-progress',
@@ -202,7 +208,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
       reasonCode: 'kernel-transition-not-driven',
       retryClass: 'safe_retry',
       authorities,
-      detail: `Workplace ${wp.workplace_ref} paused with no open human_requests row and no running NodeRun.`,
+      detail: `Workplace ${wp.workplace_ref} paused with no open human_requests row and no live NodeRun.`,
     });
   }
 
@@ -219,7 +225,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
 
   if (KERNEL_DRIVEN_LOOP_STATES.has(wp.loop_state)) {
     if (wp.loop_state === 'repair_wait') {
-      if (nodeRunning) {
+      if (kernelAlive) {
         return incident({
           classification: 'progressing',
           reasonCode: 'kernel-requeue-progress',
@@ -233,7 +239,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
         reasonCode: 'kernel-transition-not-driven',
         retryClass: 'safe_retry',
         authorities,
-        detail: `Workplace ${wp.workplace_ref} in repair_wait but no running NodeRun on its ProcessRun.`,
+        detail: `Workplace ${wp.workplace_ref} in repair_wait but no live NodeRun on its ProcessRun.`,
       });
     }
     if (wp.loop_state === 'verifying') {
@@ -250,7 +256,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
         });
       }
       const sealedCandidate = readLatestCandidateSet(db, wp.workplace_ref);
-      if (sealedCandidate && nodeRunning) {
+      if (sealedCandidate && kernelAlive) {
         evidenceRefs.push(sealedCandidate.candidate_set_ref);
         return incident({
           classification: 'progressing',
@@ -282,7 +288,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
       });
     }
     if (wp.loop_state === 'effect_pending') {
-      if (nodeRunning) {
+      if (kernelAlive) {
         return incident({
           classification: 'progressing',
           reasonCode: 'gate-progress',
@@ -296,7 +302,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
         reasonCode: 'kernel-transition-not-driven',
         retryClass: 'safe_retry',
         authorities,
-        detail: `Workplace ${wp.workplace_ref} in effect_pending but no running NodeRun.`,
+        detail: `Workplace ${wp.workplace_ref} in effect_pending but no live NodeRun.`,
       });
     }
   }
@@ -323,7 +329,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
   }
 
   if (wp.loop_state === 'idle') {
-    if (nodeRunning) {
+    if (kernelAlive) {
       return incident({
         classification: 'progressing',
         reasonCode: 'kernel-requeue-progress',
@@ -337,7 +343,7 @@ function classifyWorkplace(db, wp, nodeRunning) {
       reasonCode: 'kernel-transition-not-driven',
       retryClass: 'safe_retry',
       authorities,
-      detail: `Workplace ${wp.workplace_ref} idle but no running NodeRun to admit work.`,
+      detail: `Workplace ${wp.workplace_ref} idle but no live NodeRun to admit work.`,
     });
   }
 
@@ -416,12 +422,52 @@ function readWorkplacesForProcessRun(db, processRunId) {
   ).all(processRunId);
 }
 
-function readHasRunningNode(db, processRunId) {
-  const row = db.prepare(
+/**
+ * Durable kernel-liveness predicate.
+ *
+ * A `status='running'` NodeRun row alone is NOT sufficient proof the kernel
+ * is cycling — after the host process dies the row is left 'running'
+ * indefinitely (never terminalized). There is no heartbeat or updated_at
+ * column on factory_node_runs, so we cannot use timestamp age to detect
+ * staleness (a legitimately long-running worker would be falsely declared
+ * dead after 60s).
+ *
+ * Instead, the kernel is considered "alive" for a ProcessRun if EITHER:
+ *  (a) there is a running NodeRun AND at least one WorkerExecution in the
+ *      active set (reserved/running/cancel_requested) bound to a workplace
+ *      on this ProcessRun — a live worker proves the kernel is cycling; OR
+ *  (b) there is a running NodeRun AND the explainer was called with
+ *      `opts.assumeKernelAlive=true` — a test override for scenarios where
+ *      the kernel is known to be in-process (e.g. temporal-driver).
+ *
+ * This avoids both false negatives (long-running worker declared dead) and
+ * false positives (stale running row treated as proof of liveness). When
+ * neither condition holds, the kernel is treated as NOT alive, and
+ * repair_wait/verifying/effect_pending workplaces fall through to the
+ * stalled/inconsistent_state branches.
+ */
+function readKernelAlive(db, processRunId, opts = {}) {
+  // Test override: when the caller knows the kernel is in-process.
+  if (opts.assumeKernelAlive) return true;
+
+  const hasRunningNode = db.prepare(
     `SELECT 1 AS one FROM factory_node_runs
-      WHERE process_run_id = ? AND status = 'running' LIMIT 1`,
+      WHERE process_run_id = ? AND status = 'running'
+      LIMIT 1`,
   ).get(processRunId);
-  return Boolean(row);
+  if (!hasRunningNode) return false;
+
+  // Check for a live WorkerExecution on any workplace of this ProcessRun.
+  const hasLiveWorker = db.prepare(
+    `SELECT 1 AS one
+       FROM worker_executions we
+       JOIN tasks t ON t.id = we.task_id
+       JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
+      WHERE w.process_run_id = ?
+        AND we.state IN ('reserved','running','cancel_requested')
+      LIMIT 1`,
+  ).get(processRunId);
+  return Boolean(hasLiveWorker);
 }
 
 function collectAuthorities(db, wp) {

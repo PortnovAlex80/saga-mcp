@@ -322,3 +322,168 @@ test('запуск: finish(failed) ставит заказ в start_failed с la
   assert.equal(readOrder(db, 'order-7').last_error, 'lifecycle crashed');
   db.close();
 });
+
+// ---------------------------------------------------------------------------
+// 7. paused: lifecycle suspended WITHOUT converging (typed wait / stall).
+//    The launch settles as 'paused' (NOT 'completed'), the order settles as
+//    'paused' (NOT 'completed'/'start_failed'), completed_at is stamped
+//    (terminal-for-this-launch), and the default orderState derives correctly
+//    from the launch state. This is the false-green defence: a host that reads
+//    launch.state cannot mistake a paused launch for a converged one.
+// ---------------------------------------------------------------------------
+
+test('запуск: finish(paused) ставит launch и order в paused (не completed)', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-paused', 1, 1);
+  const ref = requestFactoryLaunch({
+    orderRef: 'order-paused', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: 'key-paused', concurrency: 1,
+  }, db);
+  const tok = 'tok-paused';
+  claimFactoryLaunch(ref, tok, db);
+  seedLifecycleRun(db, 7);
+  markFactoryLaunchRunning(ref, tok, 7, db);
+
+  // Default orderState must derive to 'paused' from launch state 'paused'.
+  // Pass undefined for orderState to exercise the default-parameter derivation.
+  finishFactoryLaunch(ref, tok, 'paused', null, undefined, db);
+
+  assert.equal(readLaunch(db, ref).state, 'paused',
+    'paused launch must NOT be marked completed');
+  assert.equal(readOrder(db, 'order-paused').state, 'paused',
+    'paused order must NOT be marked completed or start_failed');
+  assert.equal(readOrder(db, 'order-paused').last_error, null);
+
+  // completed_at is stamped — paused is terminal for THIS LaunchRequest.
+  const settled = db.prepare(
+    'SELECT completed_at FROM factory_launch_requests WHERE launch_ref=?',
+  ).get(ref);
+  assert.ok(settled.completed_at, 'paused launch must stamp completed_at');
+
+  db.close();
+});
+
+// ---------------------------------------------------------------------------
+// 8. paused frees the one-active-launch slot: a later resume can create a
+//    fresh launch under the same order (with a NEW idempotency key — the
+//    prior paused launch remains immutable evidence).
+// ---------------------------------------------------------------------------
+
+test('запуск: после paused можно создать новый launch на тот же order', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-resume', 1, 1);
+
+  const ref1 = requestFactoryLaunch({
+    orderRef: 'order-resume', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: 'key-resume-1', concurrency: 1,
+  }, db);
+  const tok1 = 'tok-resume-1';
+  claimFactoryLaunch(ref1, tok1, db);
+  seedLifecycleRun(db, 9);
+  markFactoryLaunchRunning(ref1, tok1, 9, db);
+  finishFactoryLaunch(ref1, tok1, 'paused', null, 'paused', db);
+  assert.equal(readLaunch(db, ref1).state, 'paused');
+
+  // Resume with a NEW idempotency key — must succeed (slot freed by paused).
+  const ref2 = requestFactoryLaunch({
+    orderRef: 'order-resume', mode: 'resume', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: 'key-resume-2', concurrency: 1,
+    lifecycleRunId: 9,
+  }, db);
+  assert.notEqual(ref2, ref1, 'resume creates a NEW launch_ref');
+  assert.ok(ref2.startsWith('launch-'), `resume launch_ref prefix: ${ref2}`);
+
+  // Two launch rows for one order — the prior paused one is immutable evidence.
+  const rows = db.prepare(
+    `SELECT launch_ref, state FROM factory_launch_requests
+      WHERE order_ref=? ORDER BY created_at`,
+  ).all('order-resume');
+  assert.equal(rows.length, 2, 'one paused launch + one fresh resume launch');
+  assert.equal(rows[0].state, 'paused');
+  assert.equal(rows[1].state, 'requested');
+
+  db.close();
+});
+
+// ---------------------------------------------------------------------------
+// 9. paused is NOT idempotency-replayable as completed: the same idempotency
+//    key after a paused launch returns the SAME (paused) launch_ref — it does
+//    NOT silently promote to completed, and it does NOT create a new launch.
+//    A new intentional Start after pause MUST use a new key.
+// ---------------------------------------------------------------------------
+
+test('запуск: тот же idempotency-key после paused возвращает тот же launch_ref в состоянии paused', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-idem-paused', 1, 1);
+  const key = 'durable-key-paused';
+
+  const ref1 = requestFactoryLaunch({
+    orderRef: 'order-idem-paused', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: key, concurrency: 1,
+  }, db);
+  const tok = 'tok-idem';
+  claimFactoryLaunch(ref1, tok, db);
+  seedLifecycleRun(db, 11);
+  markFactoryLaunchRunning(ref1, tok, 11, db);
+  finishFactoryLaunch(ref1, tok, 'paused', null, 'paused', db);
+
+  // Retry той же команды после paused — должен вернуть ТОТ же launch_ref,
+  // остаться в paused. Никакого молчаливого повышения до completed.
+  const ref1b = requestFactoryLaunch({
+    orderRef: 'order-idem-paused', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: key, concurrency: 1,
+  }, db);
+  assert.equal(ref1b, ref1, 'durable idempotency preserves launch_ref after paused');
+  assert.equal(readLaunch(db, ref1b).state, 'paused',
+    'replay must not promote paused to completed');
+
+  const rows = db.prepare(
+    'SELECT launch_ref FROM factory_launch_requests WHERE idempotency_key=?',
+  ).all(key);
+  assert.equal(rows.length, 1, 'only one launch row per idempotency key');
+
+  db.close();
+});
+
+// ---------------------------------------------------------------------------
+// 10. paused preserves the capability-token fence: a second finish with the
+//     WRONG token is rejected (FACTORY_LAUNCH_FENCE_LOST), and a second
+//     finish with the RIGHT token on an already-settled launch is also
+//     rejected — paused is terminal-for-this-launch, the CAS fence holds.
+// ---------------------------------------------------------------------------
+
+test('запуск: finish(paused) сохраняет capability-fence (второй finish отклонён)', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-fence', 1, 1);
+  const ref = requestFactoryLaunch({
+    orderRef: 'order-fence', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'op', idempotencyKey: 'key-fence', concurrency: 1,
+  }, db);
+  const tok = 'tok-fence-right';
+  claimFactoryLaunch(ref, tok, db);
+  seedLifecycleRun(db, 13);
+  markFactoryLaunchRunning(ref, tok, 13, db);
+  finishFactoryLaunch(ref, tok, 'paused', null, 'paused', db);
+  assert.equal(readLaunch(db, ref).state, 'paused');
+
+  // Чужой токен отклонён.
+  assert.throws(
+    () => finishFactoryLaunch(ref, 'WRONG-tok', 'paused', null, 'paused', db),
+    /FACTORY_LAUNCH_FENCE_LOST/,
+  );
+  // Повторный finish с правильным токеном тоже отклонён — paused уже терминален
+  // для этой launch-записи (CAS-condition state IN ('claimed','running') больше
+  // не матчит).
+  assert.throws(
+    () => finishFactoryLaunch(ref, tok, 'completed', null, 'completed', db),
+    /FACTORY_LAUNCH_FENCE_LOST/,
+  );
+  // Состояние не изменилось — чужак/повтор не испортили запись.
+  assert.equal(readLaunch(db, ref).state, 'paused');
+
+  db.close();
+});

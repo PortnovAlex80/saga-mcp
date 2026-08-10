@@ -475,15 +475,17 @@ test('worker-boundary 3: exit-after-worker-done — durable receipt is authorita
 // Boundary 4 — terminal execution identity wins over stale host snapshot.
 //
 // A WorkerExecution is durable 'exited' but a project-scoped host snapshot
-// still claims the execution is 'running'. The durable exact execution
-// identity must win for assignment completion: the Factory must not consider
-// the stale host snapshot authoritative and must not block on the phantom
-// running execution.
+// (lifecycle_execution_controls.engine_state) still claims the engine is
+// 'running'. The durable exact execution identity must win for assignment
+// completion: the Factory must not consider the stale host snapshot
+// authoritative and must not block on the phantom running execution.
 //
 // This test uses the golden-path scenario (boundary-4 map = golden path) and
-// injects the host-snapshot staleness by writing a stale host_lease row after
-// the first worker completes. The Factory must still converge because the
-// durable worker_executions.state is the authority.
+// injects the host-snapshot staleness by writing a stale
+// lifecycle_execution_controls row (engine_state='running', phantom engine_pid)
+// AFTER the first worker completes. explainFactoryLiveness must then classify
+// the state from worker_executions.state (the durable authority), NOT from
+// the stale host projection.
 // ===========================================================================
 
 test('worker-boundary 4: terminal-execution-stale-host — durable execution identity wins over stale host snapshot', { timeout: 180000 }, async () => {
@@ -519,49 +521,109 @@ test('worker-boundary 4: terminal-execution-stale-host — durable execution ide
     assert.equal(exitCode, 0,
       `orchestrate-cli exited ${exitCode} (golden-path base must converge)\n${stderr.slice(-5000)}`);
 
-    // Now inject the stale-host condition: flip one exited WorkerExecution's
-    // durable state to look like a phantom 'running' lease WITHOUT touching
-    // the accepted receipt. The liveness explainer must still classify the
-    // state correctly because durable identity + receipt authority wins.
-    const injectDb = new Database(dbPath);
+    // INJECT THE STALE-HOST CONDITION.
+    //
+    // The host projection of engine state lives in
+    // lifecycle_execution_controls.engine_state (CHECK IN
+    // ('running','stopped','unknown'), keyed by epic_id — see src/schema.ts).
+    // bootstrapFreshDb inserts a row for epic_id=1 with the default 'stopped'.
+    //
+    // We simulate a crashed/orphaned host: the engine_state snapshot still
+    // claims 'running' with a live-looking engine_pid, EVEN THOUGH every
+    // WorkerExecution for this epic is durably terminal. This is exactly the
+    // ADR-048 stale-host scenario: the host projection diverges from the
+    // durable execution identity.
+    //
+    // First capture a baseline: one cleanly-exited execution to anchor the
+    // contradiction, and the pre-injection host snapshot.
+    let preInjectionHostState = null;
+    let exitedExecId = null;
+    const baselineDb = new Database(dbPath, { readonly: true });
     try {
-      // Pick the first exited discovery-proposal execution and create a
-      // stale host snapshot claiming it is still running. We model the
-      // "host snapshot" as a worker_executions row whose durable state we
-      // would expect to be authoritative — but we simulate divergence by
-      // checking that the durable state is what the liveness explainer uses.
-      //
-      // The real divergence: durable state='exited' + a stale host-side
-      // lease claim. Since worker_executions.state IS the durable authority,
-      // we verify the explainer reads it directly and does not get confused
-      // by stale process-host telemetry. We assert by reading the durable
-      // rows the explainer consults.
-      const exitedExec = injectDb.prepare(
+      const exitedExec = baselineDb.prepare(
         `SELECT execution_id, state, exit_code, task_id
            FROM worker_executions
           WHERE state='exited' AND exit_code=0
           ORDER BY rowid LIMIT 1`,
       ).get();
-      assert.ok(exitedExec, 'at least one cleanly-exited execution to test staleness against');
+      assert.ok(exitedExec, 'at least one cleanly-exited execution to anchor the stale-host contradiction');
+      exitedExecId = exitedExec.execution_id;
 
-      // The explainer resolves execution state via worker_executions.state
-      // (collectAuthorities in liveness-explainer.mjs). To prove durable
-      // identity wins, we assert the explainer reports the execution as
-      // non-live (exited is NOT in the LIVE_EXECUTION_STATES set) even if a
-      // phantom host claim existed. We do NOT need to write a fake row —
-      // the durable row IS the authority the explainer reads.
+      const host = baselineDb.prepare(
+        `SELECT epic_id, engine_state, engine_pid
+           FROM lifecycle_execution_controls WHERE epic_id=1`,
+      ).get();
+      assert.ok(host, 'lifecycle_execution_controls row exists for epic_id=1 (bootstrap creates it)');
+      preInjectionHostState = host;
+    } finally {
+      baselineDb.close();
+    }
+
+    // Sanity: before injection the host snapshot is NOT already 'running'.
+    // This proves the stale condition is created BY THIS TEST, not leftover
+    // from the run. (The lifecycle converged, so a well-behaved host would
+    // have flipped to 'stopped'.)
+    assert.notEqual(preInjectionHostState.engine_state, 'running',
+      `pre-injection host engine_state is not already 'running' `
+      + `(got '${preInjectionHostState.engine_state}') — the stale condition is created by this test`);
+
+    // Now write the stale host snapshot: claim the engine is still running
+    // with a phantom pid, while the durable WorkerExecution is exited.
+    const injectDb = new Database(dbPath);
+    try {
+      const phantomPid = 99999;
+      const changes = injectDb.prepare(
+        `UPDATE lifecycle_execution_controls
+            SET engine_state='running', engine_pid=?, updated_at=datetime('now')
+          WHERE epic_id=1`,
+      ).run(phantomPid);
+      assert.equal(changes.changes, 1,
+        'exactly one lifecycle_execution_controls row updated to the stale running snapshot');
     } finally {
       injectDb.close();
     }
 
-    // The liveness explainer must classify the converged state as terminal
-    // or waiting_expected — NOT stalled/inconsistent due to any phantom
-    // running claim. The durable exited state wins.
+    // Verify the stale host snapshot is durably visible to a readonly reader.
+    const verifyDb = new Database(dbPath, { readonly: true });
+    try {
+      const staleHost = verifyDb.prepare(
+        `SELECT engine_state, engine_pid FROM lifecycle_execution_controls WHERE epic_id=1`,
+      ).get();
+      assert.equal(staleHost.engine_state, 'running',
+        'stale host snapshot claims engine_state=running (injection persisted)');
+      assert.equal(staleHost.engine_pid, 99999,
+        'stale host snapshot carries the phantom engine_pid');
+
+      // And the anchor execution is STILL durably exited — we did not touch
+      // the durable authority, only the host projection.
+      const anchor = verifyDb.prepare(
+        `SELECT state, exit_code FROM worker_executions WHERE execution_id=?`,
+      ).get(exitedExecId);
+      assert.equal(anchor.state, 'exited',
+        `anchor execution ${exitedExecId} remains durably 'exited' under the stale host snapshot`);
+      assert.equal(anchor.exit_code, 0,
+        'anchor execution remains cleanly exited (exit_code=0)');
+    } finally {
+      verifyDb.close();
+    }
+
+    // THE INVARIANT: explainFactoryLiveness must classify the state from the
+    // DURABLE execution identity (worker_executions.state), NOT from the stale
+    // host snapshot (lifecycle_execution_controls.engine_state). The verdict
+    // must be terminal or waiting_expected — NOT 'progressing', because no
+    // WorkerExecution is in a live state. The explainer never reads
+    // lifecycle_execution_controls.engine_state (verified in
+    // liveness-explainer.mjs: collectAuthorities reads worker_executions.state
+    // only).
     const verdict = explainFactoryLiveness(dbPath, { projectId: 1 });
+    assert.notEqual(verdict.classification, 'progressing',
+      `durable identity wins over stale host snapshot: classification must NOT be 'progressing' `
+      + `(stale host claims engine_state='running' but every WorkerExecution is terminal); `
+      + `got classification='${verdict.classification}' reasonCode='${verdict.reasonCode}'`);
     assert.ok(
-      ['terminal', 'waiting_expected', 'progressing'].includes(verdict.classification),
-      `post-convergence liveness must not be stalled/inconsistent after durable `
-      + `exit; got classification='${verdict.classification}' reasonCode='${verdict.reasonCode}'`,
+      ['terminal', 'waiting_expected'].includes(verdict.classification),
+      `post-convergence liveness must be terminal or waiting_expected under a stale host snapshot; `
+      + `got classification='${verdict.classification}' reasonCode='${verdict.reasonCode}'`,
     );
 
     const resultDb = new Database(dbPath, { readonly: true });

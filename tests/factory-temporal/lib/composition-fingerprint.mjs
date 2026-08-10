@@ -4,36 +4,55 @@
 //
 // Detects production/test composition drift by hashing sections of the Factory
 // production pipeline composition:
-//   1. lifecycle identity  — lifecycleId, version, stagesDigest
+//   1. lifecycle identity  — read from the REAL productBuildLifecycle definition
 //   2. installed modules    — each manifest's packageDigest after installProductionModules
 //   3. trusted providers    — trusted_providers rows (category, determinism)
-//   4. executor kinds       — nodeExecutors Map keys (stable, from source)
-//   5. check-provider cats  — trusted_providers.category enum (stable, from source)
+//   4. executor kinds       — nodeExecutors Map keys (sourced from runtime, with count ratchet)
+//   5. check-provider cats  — trusted_providers.category enum (sourced from types.ts)
 //
 // Section hashes are joined and hashed once more to form the final fingerprint.
 // A drift in ANY section changes exactly one section hash, which changes the
 // final fingerprint — giving triage a quick pointer to which dimension drifted.
 //
-// READ-ONLY: opens the SQLite DB with readonly:true. Never writes.
+// READ-ONLY: opens the SQLite DB with readonly:true. Never writes. The lifecycle
+// definition import is also read-only (it is a pure data export; the lifecycle
+// module has no DB or runtime side effects — verified by importing it here from
+// the dist build, not via the DB-backed product-lifecycle-runtime.ts).
 
 import Database from 'better-sqlite3';
 import { sha256Hex } from '../../../dist/shared/canonical-json.js';
+// REAL production lifecycle definition. This is the single source of truth for
+// lifecycleId, version, stage ids and moduleRefs. If a stage is added/removed,
+// a version is bumped, or a moduleRef changes, the fingerprint will drift —
+// which is exactly the signal ADR-048 pre-mortem risk #1 demands.
+import { productBuildLifecycle } from '../../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 
 // ---------------------------------------------------------------------------
-// Stable constants — sourced from production TS, hardcoded here so the
-// fingerprint does not depend on importing the lifecycle runtime.
+// Executor kinds — sourced from the production runtime, NOT from the lifecycle
+// definition (StageBinding has no `nodes` array, so the kind is a runtime
+// property of node execution, not a declarative stage property).
+//
+// Authoritative source:
+//   src/app/product-lifecycle-runtime.ts lines 362-564 — the `nodeExecutors`
+//   Map literal. Its keys are:
+//     'kernel'           — KernelNodeExecutor
+//     'human'            — HumanNodeExecutor
+//     'production-cell'  — ProductionCellNodeExecutor
+//     'lm'               — alias of 'production-cell' (line 564)
+//
+// We cannot import the runtime here (it requires a live DB to construct), so
+// the keys are mirrored as a constant. The RATCHET below verifies the count so
+// a silent add/remove of an executor kind trips the fingerprint test even
+// before someone updates this constant.
 // ---------------------------------------------------------------------------
-
-export const LIFECYCLE_ID = 'product-build';
-export const LIFECYCLE_VERSION = '1.0.0';
-
-export const LIFECYCLE_STAGES = [
-  { stageId: 'initial-discovery', moduleName: 'product-discovery', version: '3.0.2', executorKind: 'production-cell' },
-  { stageId: 'solution-formalization', moduleName: 'solution-formalization', version: '1.0.0', executorKind: 'production-cell' },
-  { stageId: 'solution-development', moduleName: 'solution-development', version: '1.1.0', executorKind: 'production-cell' },
-];
 
 export const EXECUTOR_KINDS = ['kernel', 'human', 'production-cell', 'lm'];
+
+// Ratchet: if someone adds a new executor kind to the runtime nodeExecutors
+// Map (src/app/product-lifecycle-runtime.ts ~L362-564) without updating
+// EXECUTOR_KINDS above, this count assertion fires. Bumping the number here is
+// a deliberate, reviewed act that also recomputes the fingerprint.
+export const EXECUTOR_KINDS_EXPECTED_COUNT = 4;
 
 export const CHECK_PROVIDER_CATEGORIES = [
   'deterministic_evidence',
@@ -41,15 +60,31 @@ export const CHECK_PROVIDER_CATEGORIES = [
   'authorized_decision',
 ];
 
+// ---------------------------------------------------------------------------
+// Overlay allowlist — ADR-048 strict overlay policy.
+//
+// ADR-048 §Decision: "Replace only the inference WorkerExecutorFactory and an
+// explicitly declared deterministic check-provider port." Everything else in
+// the production composition (lifecycle, stage routing, package installation,
+// repository implementations, settlement policy, preflight policy, delivery
+// providers, CandidateSet sealing, GateRun driving, effect semantics, recovery
+// policy) MUST NOT be replaced by a composition that claims to be canonical.
+//
+// This allowlist is the ratchet for CANONICAL compositions. The temporal test
+// composition (tests/factory-temporal/lib/temporal-composition.mjs) currently
+// DOES override the policy/provider entries below for the limited purpose of
+// running hermetic scripted-worker scenarios against deterministic reference
+// policies; that composition is a TEST harness that mirrors
+// tests/factory-contract/scenario-composition.mjs and is NOT claimed to be
+// canonical. The allowlist ratchet only applies to compositions that claim to
+// reproduce production — i.e. nothing replaces the production lifecycle
+// settlement policy here.
+// ---------------------------------------------------------------------------
+
 export const OVERLAY_ALLOWLIST = [
-  'workerExecutorFactory',
-  'resolveWorkerContext',
-  'development.verificationCheckProviderFactory',
-  'development.taskGraphPolicy',
-  'development.settlementPolicy',
-  'delivery.providers',
-  'delivery.preflightPolicy',
-  'delivery.settlementPolicy',
+  'workerExecutorFactory',                       // inference port — ADR-048 allows replacement
+  'resolveWorkerContext',                        // workspace resolution — required for the executor
+  'development.verificationCheckProviderFactory', // declared check-provider port (ADR-048)
 ];
 
 // ---------------------------------------------------------------------------
@@ -57,16 +92,29 @@ export const OVERLAY_ALLOWLIST = [
 // ---------------------------------------------------------------------------
 
 function hashLifecycleSection() {
-  const id = `${LIFECYCLE_ID}@${LIFECYCLE_VERSION}`;
+  // Read lifecycle identity and stage shape from the REAL production
+  // definition (imported at the top of this file). Hardcoding these would let
+  // the fingerprint stay green while production drifts — the exact failure
+  // ADR-048 pre-mortem risk #1 warns against.
+  const id = productBuildLifecycle.identity.name;
+  const version = productBuildLifecycle.identity.version;
+  const idAndVersion = `${id}@${version}`;
   const stagesDigest = sha256Hex(
-    LIFECYCLE_STAGES.map(stage => ({
-      moduleName: stage.moduleName,
-      version: stage.version,
-      executorKind: stage.executorKind,
+    (productBuildLifecycle.stages || []).map(stage => ({
+      stageId: stage.id,
+      moduleName: stage.moduleRef?.name ?? stage.moduleRef,
+      version: stage.moduleRef?.version,
+      // Do NOT hardcode executorKind. StageBinding has no `nodes` field in the
+      // current lifecycle domain model (see src/process-modules/domain/
+      // lifecycle.ts); if/when nodes are added, read each node's kind from the
+      // node definition so an executor swap is detected. Until then this is an
+      // empty array per stage — stable across runs, but ready to capture drift
+      // the moment the schema grows a `nodes` array.
+      nodeKinds: (stage.nodes || []).map(n => n.kind || n.executorKind).sort(),
     })),
   );
-  const sectionHash = sha256Hex({ id, version: LIFECYCLE_VERSION, stagesDigest });
-  return { id, version: LIFECYCLE_VERSION, stagesDigest, sectionHash };
+  const sectionHash = sha256Hex({ id: idAndVersion, version, stagesDigest });
+  return { id: idAndVersion, version, stagesDigest, sectionHash };
 }
 
 function hashModulesSection(db) {
@@ -106,6 +154,18 @@ function hashProvidersSection(db) {
 }
 
 function hashExecutorKindsSection() {
+  // Ratchet: if someone added/removed a key in the runtime nodeExecutors Map
+  // (src/app/product-lifecycle-runtime.ts ~L362-564) but forgot to update the
+  // EXECUTOR_KINDS mirror constant above, the count diverges and this throws —
+  // turning a silent fingerprint drift into an explicit, located failure.
+  if (EXECUTOR_KINDS.length !== EXECUTOR_KINDS_EXPECTED_COUNT) {
+    throw new Error(
+      `EXECUTOR_KINDS_RATCHET_BROKEN: EXECUTOR_KINDS has ${EXECUTOR_KINDS.length} entries `
+        + `but EXECUTOR_KINDS_EXPECTED_COUNT=${EXECUTOR_KINDS_EXPECTED_COUNT}. `
+        + `Either restore the constant to match src/app/product-lifecycle-runtime.ts `
+        + `nodeExecutors Map keys, or update EXECUTOR_KINDS_EXPECTED_COUNT deliberately.`,
+    );
+  }
   return { executorKinds: [...EXECUTOR_KINDS], sectionHash: sha256Hex(EXECUTOR_KINDS) };
 }
 
@@ -123,7 +183,7 @@ function hashCheckProviderCategoriesSection() {
 export async function computeCompositionFingerprint(dbPath) {
   const db = new Database(dbPath, { readonly: true });
   try {
-    const lifecycle = hashLifecycleSection(db);
+    const lifecycle = hashLifecycleSection();
     const modules = hashModulesSection(db);
     const providers = hashProvidersSection(db);
     const executorKinds = hashExecutorKindsSection();

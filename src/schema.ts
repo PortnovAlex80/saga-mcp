@@ -1763,7 +1763,7 @@ CREATE TABLE IF NOT EXISTS factory_launch_requests (
   initiated_by         TEXT NOT NULL,
   idempotency_key      TEXT NOT NULL,
   concurrency          INTEGER NOT NULL CHECK (concurrency BETWEEN 1 AND 10),
-  state                TEXT NOT NULL CHECK (state IN ('requested','claimed','running','completed','failed')),
+  state                TEXT NOT NULL CHECK (state IN ('requested','claimed','running','paused','completed','failed')),
   claim_token          TEXT,
   claimed_at           TEXT,
   error                TEXT,
@@ -1777,10 +1777,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
   WHERE state IN ('requested','claimed','running');
 -- Start-command idempotency (CONVEYOR v4.3 §3, PART 8): the SAME idempotency
 -- key always identifies the SAME Start command, DURABLY — including after the
--- launch reaches a terminal state (completed/failed). A retry with the same
--- key resolves to the same FactoryOrder/launch; it never creates a new one.
--- A new intentional Start MUST use a different idempotency key (source_digest
--- on factory_orders is non-unique provenance, not a lifetime identity).
+-- launch settles in a terminal-for-this-launch state (completed/failed/paused).
+-- A retry with the same key resolves to the same FactoryOrder/launch; it never
+-- creates a new one. A new intentional Start MUST use a different idempotency
+-- key (source_digest on factory_orders is non-unique provenance, not a lifetime
+-- identity). 'paused' is treated as terminal for THIS LaunchRequest: it sets
+-- completed_at and frees the one-active-launch slot so a resume can create a
+-- fresh launch under the same order. A later resume MUST use a NEW
+-- idempotency key (the prior paused launch remains immutable evidence).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency
   ON factory_launch_requests(idempotency_key);
 
@@ -2394,6 +2398,112 @@ export function rebuildLaunchIdempotencyIndex(db: {
   );
 }
 
+/**
+ * Rebuild factory_launch_requests to accept `'paused'` as a terminal-for-this-
+ * launch state (CONVEYOR §paused-launch). SQLite cannot relax an inline CHECK
+ * via ALTER; this performs the safe table-rebuild idiom: create a copy with the
+ * widened CHECK, copy all rows preserving PK/FK, drop the old table, rename.
+ *
+ * `paused` means the lifecycle suspended WITHOUT converging — a typed wait
+ * (human-required, needs-human) or a genuine stall (empty-dispatch streak
+ * exhausted). The factory did NOT reach a terminal state. The launch itself,
+ * however, is treated as terminal for THIS LaunchRequest: `completed_at` is set
+ * and the one-active-launch slot is freed, so a later resume can create a fresh
+ * launch under the same order (with a NEW idempotency key — the prior paused
+ * launch remains immutable evidence).
+ *
+ * Detection: the migration inspects sqlite_master for the OLD CHECK signature
+ * (which omits `'paused'`). On a fresh DB (created from the updated SCHEMA_SQL)
+ * the table is already correct and this helper is a no-op.
+ *
+ * Preserves: launch_ref PK, all columns, all existing rows, all FK references,
+ * both partial UNIQUE indexes (one-pending-requested, one-active-launch — both
+ * of which already exclude `paused`), and the durable full-UNIQUE idempotency
+ * index.
+ *
+ * Idempotent.
+ */
+export function relaxFactoryLaunchStateForPaused(db: {
+  exec(sql: string): void;
+  pragma(sql: string, options?: { simple?: boolean }): unknown;
+  prepare(sql: string): { get(...params: unknown[]): { sql?: string } | undefined };
+}): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_launch_requests'",
+  ).get();
+  const sql = row?.sql ?? '';
+  // The OLD CHECK omitted 'paused' from the state list. If the table already
+  // accepts 'paused', this is a fresh or already-migrated DB — no-op.
+  if (!/state\s+IN\s*\(\s*'requested'[^)]*'failed'\s*\)/i.test(sql)) return;
+  if (/'paused'/.test(sql)) return;
+
+  // foreign_keys must be OFF for the swap (SQLite rebuild idiom); restored
+  // after. The whole operation is one transaction so a failure rolls back
+  // leaving the original table intact.
+  const fkEnabled = db.pragma('foreign_keys', { simple: true });
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE factory_launch_requests__new (
+        launch_ref           TEXT PRIMARY KEY,
+        order_ref            TEXT NOT NULL REFERENCES factory_orders(order_ref) ON DELETE RESTRICT,
+        mode                 TEXT NOT NULL CHECK (mode IN ('new','resume')),
+        project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+        epic_id              INTEGER NOT NULL REFERENCES epics(id) ON DELETE RESTRICT,
+        lifecycle_run_id     INTEGER REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+        lifecycle_input_json TEXT,
+        lifecycle_input_schema TEXT,
+        initiated_by         TEXT NOT NULL,
+        idempotency_key      TEXT NOT NULL,
+        concurrency          INTEGER NOT NULL CHECK (concurrency BETWEEN 1 AND 10),
+        state                TEXT NOT NULL CHECK (state IN ('requested','claimed','running','paused','completed','failed')),
+        claim_token          TEXT,
+        claimed_at           TEXT,
+        error                TEXT,
+        created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at         TEXT
+      );
+      INSERT INTO factory_launch_requests__new
+        (launch_ref, order_ref, mode, project_id, epic_id, lifecycle_run_id,
+         lifecycle_input_json, lifecycle_input_schema, initiated_by,
+         idempotency_key, concurrency, state, claim_token, claimed_at, error,
+         created_at, completed_at)
+      SELECT launch_ref, order_ref, mode, project_id, epic_id, lifecycle_run_id,
+             lifecycle_input_json, lifecycle_input_schema, initiated_by,
+             idempotency_key, concurrency, state, claim_token, claimed_at, error,
+             created_at, completed_at
+        FROM factory_launch_requests;
+      DROP TABLE factory_launch_requests;
+      ALTER TABLE factory_launch_requests__new RENAME TO factory_launch_requests;
+      -- Rebuild ALL three indexes (the DROP TABLE above removed them):
+      -- 1. One pending launch per order (state='requested')
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_pending_launch
+        ON factory_launch_requests(order_ref) WHERE state='requested';
+      -- 2. One active launch per order (requested/claimed/running)
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
+        ON factory_launch_requests(order_ref)
+        WHERE state IN ('requested','claimed','running');
+      -- 3. Durable start-command idempotency (FULL UNIQUE on idempotency_key).
+      --    This was MISSING from the original migration — without it, duplicate
+      --    idempotency keys could be inserted after migration.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency
+        ON factory_launch_requests(idempotency_key);
+    `);
+    // Verify referential integrity after the rebuild.
+    const fkErrors = db.pragma('foreign_key_check') as unknown[];
+    if (fkErrors.length > 0) {
+      throw new Error(`FACTORY_MIGRATION_FK_VIOLATION: ${JSON.stringify(fkErrors)}`);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* best-effort */ }
+    throw error;
+  } finally {
+    db.exec(`PRAGMA foreign_keys=${fkEnabled ? 'ON' : 'OFF'}`);
+  }
+}
+
 /** v3 -> v4: extend the Workplace state grammar without altering any row. */
 export function migrateFactorySchemaV3ToV4(db: {
   exec(sql: string): void;
@@ -2403,7 +2513,7 @@ export function migrateFactorySchemaV3ToV4(db: {
   };
 }): void {
   const version = db.pragma('user_version', { simple: true }) as number;
-  if (version === 0 || version === 4) return;
+  if (version === 0 || version >= 4) return;
   if (version !== 3) {
     throw new Error(`FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${version}->4`);
   }
