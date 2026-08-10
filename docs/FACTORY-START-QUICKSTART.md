@@ -37,6 +37,37 @@ Design documents for every workshop, gate, and mechanism are in
 `tests/factory-contract/design/` (10 files, 10,626 lines of code-quoted
 architecture analysis).
 
+### 0a. Temporal conformance (ADR-048, L5)
+
+Above the Factory Contract tests sits the **temporal conformance** layer.
+It uses the same real production composition but adds fault schedules at
+every durable boundary (product submission, CandidateSet seal, GateDecision,
+EffectReceipt, ProcessRun settlement, lifecycle routing) and a read-only
+liveness explainer that classifies every snapshot as `progressing`,
+`waiting_expected`, `stalled`, `inconsistent_state`, or `terminal`.
+
+```bash
+# Run all temporal conformance tests (scripted workers, 0 LLM tokens)
+npm run test:factory-temporal
+
+# Run just the foundation full-lifecycle test (~25 seconds)
+node --test --test-name-pattern="full product-build lifecycle" \
+  tests/factory-temporal/foundation.test.mjs
+
+# Run just the fast fingerprint/liveness/allowlist tests (<1 second)
+node --test --test-name-pattern="fingerprint|liveness|allowlist" \
+  tests/factory-temporal/foundation.test.mjs
+```
+
+The temporal layer catches the class of bugs the contract tests cannot:
+**legal local states that stop making composed Factory progress** (Sign 015).
+Every nonterminal scope must have a live owner, runnable command, typed wait,
+or pending transition obligation — otherwise it is a typed stall.
+
+A canonical composition fingerprint detects production/test drift, and a
+strict overlay allowlist rejects test compositions that replace lifecycle
+routing, settlement, gates, effects, or repositories.
+
 ---
 
 ## 1. Build

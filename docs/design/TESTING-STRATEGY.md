@@ -159,6 +159,36 @@ SAGA_CLAUDE_PATH="node tests/mock-claude.mjs" npm run mock:run ...
 | L2 | Node isolation | `node --test formalization-ac-settlement.test.mjs` | секунды | 0 | один узел + seeded БД |
 | L3 | Stage / ProcessRun | `npm run test:process-modules` | минуты | 0 | склейка узлов, recovery |
 | L4 | Lifecycle e2e | `orchestrate-cli --lifecycle-input=...` | 30–60 мин | реальные | весь pipeline |
+| L5 | Temporal conformance | `npm run test:factory-temporal` | 1–5 мин на тест | 0 (scripted workers) | composed Factory progress (ADR-048) |
+
+### L5 — Temporal conformance (ADR-048, 0 токенов)
+
+`npm run test:factory-temporal` — канонический temporal-conformance слой поверх L0–L2.
+Импортирует РЕАЛЬНУЮ production-композицию Factory (lifecycle registry, SQLite repositories,
+orchestrator, dispatcher, Production Cell executor, gates, effects). Заменяет ТОЛЬКО
+inference `WorkerExecutorFactory` и явно объявленный deterministic check-provider port.
+
+Тестирует операционную теорему, которую пропускают L0–L4: после каждого durable landmark
+runtime должен показать live owner, runnable command, typed wait, pending transition
+obligation, или truthful terminal state. Если ничего нет — typed stall.
+
+Артефакты:
+- `tests/factory-temporal/lib/temporal-probe.mjs` — `eventually`, `never`, `stableUntil`
+- `tests/factory-temporal/lib/liveness-explainer.mjs` — read-only `explainFactoryLiveness`
+- `tests/factory-temporal/lib/composition-fingerprint.mjs` — стабильный fingerprint + overlay allowlist
+- `tests/factory-temporal/lib/predicates.mjs` — small relational predicates
+- `tests/factory-temporal/foundation.test.mjs` — minimal full-lifecycle gate
+- `tests/factory-temporal/worker-boundary.test.mjs` — crash at every durable boundary
+- `tests/factory-temporal/candidate-gate.test.mjs` — CandidateSet → GateRun → GateDecision
+- `tests/factory-temporal/lifecycle-routing.test.mjs` — ProcessRun → StageRun → LifecycleRun routing
+- `tests/factory-temporal/dispatch-concurrency.test.mjs` — concurrency and dependency admission
+- `tests/factory-temporal/package-replay-drift.test.mjs` — package/provider/replay drift detection
+
+Для повтора минимизированного failing seed: каждый failing trace сохраняется как
+deterministic regression fixture с seed и composition fingerprint (см. `serializeRegressionFixture`).
+
+**Цена:** 1–5 минут на тест (in-process spawn). **Токенов:** 0. **Покрытие:**
+composed Factory liveness — legal-local-state-no-progress классы багов.
 
 ---
 
