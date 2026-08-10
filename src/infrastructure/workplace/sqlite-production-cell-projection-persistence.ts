@@ -427,7 +427,7 @@ function ensureProjectedTask(db: Database.Database, input: PlannedTask): number 
      VALUES (?, ?, ?, 'todo', 'high', ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
   ).run(
     input.epicId,
-    `${input.titlePrefix ?? 'Production Cell: '}${input.objective.slice(0, 80)}`,
+    taskTitle(input.titlePrefix, input.objective),
     JSON.stringify({ objective: input.objective, work_intent_id: input.intentId }),
     input.taskKind,
     input.workflowStage ?? null,
@@ -442,6 +442,14 @@ function ensureProjectedTask(db: Database.Database, input: PlannedTask): number 
   const taskId = Number(info.lastInsertRowid);
   bindArtifactProvenance(db, taskId, input);
   return taskId;
+}
+
+function taskTitle(titlePrefix: string | undefined, objective: string): string {
+  const prefix = titlePrefix ?? 'Production Cell: ';
+  const unprefixed = objective.startsWith(prefix)
+    ? objective.slice(prefix.length)
+    : objective;
+  return `${prefix}${unprefixed.slice(0, 80)}`;
 }
 
 function validateArtifactProvenance(db: Database.Database, input: PlannedTask): void {

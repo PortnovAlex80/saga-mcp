@@ -101,7 +101,7 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
 
       const epicIds = epics.map(epic => epic.id);
       const placeholders = epicIds.map(() => '?').join(',');
-      const tasks = db.prepare(`
+      const taskRows = db.prepare(`
         SELECT t.*,
           (SELECT r.name
              FROM project_repositories pr
@@ -120,6 +120,10 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
         WHERE epic_id IN (${placeholders})
         ORDER BY sort_order, id
       `).all(...epicIds) as BoardTaskProjection[];
+      const tasks = taskRows.map(task => ({
+        ...task,
+        title: collapseRepeatedTitlePrefix(task.title),
+      }));
 
       const epicById = Object.fromEntries(
         epics.map(epic => [epic.id, epic]),
@@ -137,4 +141,14 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
       db.close();
     }
   }
+}
+
+function collapseRepeatedTitlePrefix(title: string): string {
+  const separator = title.indexOf(': ');
+  if (separator < 0) return title;
+  const prefix = title.slice(0, separator + 2);
+  const remainder = title.slice(prefix.length);
+  return remainder.startsWith(prefix)
+    ? `${prefix}${remainder.slice(prefix.length)}`
+    : title;
 }

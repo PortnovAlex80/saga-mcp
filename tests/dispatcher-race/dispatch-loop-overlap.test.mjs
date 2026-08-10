@@ -321,6 +321,28 @@ test('dispatch-loop: maxAlive never exceeds concurrency for N in 1..4', async ()
   }
 });
 
+test('dispatch-loop yields free slots to rightward kernel verification', async () => {
+  const { dispatchInput, fake } = makeInput({ concurrency: 2, cardCount: 3, pollMs: 3 });
+  let kernelPending = false;
+  dispatchInput.shouldYieldToKernel = () => kernelPending;
+  const drainPromise = distributeQueuedTasks(dispatchInput);
+  const deadline = Date.now() + 1000;
+  while (fake.started.length < 2 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.equal(fake.started.length, 2);
+
+  // One completed worker creates a GateRun. The free slot must remain empty
+  // until the other active worker finishes and control returns to runEpisode.
+  kernelPending = true;
+  fake.started[0].executor.finish();
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(fake.started.length, 2, 'a third author must not pass pending gates');
+  fake.started[1].executor.finish();
+  assert.equal(await drainPromise, 2);
+  assert.equal(fake.started.length, 2);
+});
+
 test('dispatch-loop: lowering 3 to 2 is reread before the third assignment', async () => {
   const { dispatchInput, fake } = makeInput({ concurrency: 3, cardCount: 3, pollMs: 3 });
   let reads = 0;

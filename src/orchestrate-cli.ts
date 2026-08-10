@@ -328,6 +328,15 @@ async function main() {
         projectId,
         epicId,
         readConcurrencyAdmission: () => episodeRuntime.readConcurrencyAdmission(epicId),
+        shouldYieldToKernel: () => Boolean(getDb().prepare(
+          `SELECT 1
+             FROM factory_workplaces w
+             JOIN factory_process_runs pr ON pr.id=w.process_run_id
+            WHERE pr.epic_id=?
+              AND pr.status IN ('running','paused')
+              AND w.loop_state IN ('verifying','effect_pending')
+            LIMIT 1`,
+        ).get(epicId)),
         // Conveyor model: this application service owns dispatch and the
         // global concurrency budget. It atomically assigns each exact card
         // before constructing the worker process; the runner only hosts the

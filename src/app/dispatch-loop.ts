@@ -25,6 +25,11 @@ export interface DispatchLoopInput {
   epicId: number;
   /** Fresh durable capacity view. Called immediately before every assignment. */
   readConcurrencyAdmission: () => ConcurrencyAdmissionSnapshot;
+  /**
+   * True when the kernel has rightward Kanban work (for example GateRuns) to
+   * reconcile. Dispatch yields instead of filling a newly free worker slot.
+   */
+  shouldYieldToKernel?: () => boolean;
   workerExecutorFactory: WorkerExecutorFactory;
   /** Single authority for selecting and fencing cards. */
   workAssignment: WorkAssignmentPort;
@@ -117,8 +122,13 @@ export async function distributeQueuedTasks(
   while (true) {
     let queueExhaustedForNow = false;
     let capacityBlockedForNow = false;
+    let kernelWorkPending = false;
 
     while (true) {
+      if (input.shouldYieldToKernel?.()) {
+        kernelWorkPending = true;
+        break;
+      }
       const admission = input.readConcurrencyAdmission();
       assertAdmission(admission);
       if (admission.activeExecutions >= admission.effectiveConcurrency) {
@@ -145,6 +155,10 @@ export async function distributeQueuedTasks(
     }
 
     if (active.size === 0) {
+      if (kernelWorkPending) {
+        process.stdout.write('[dispatch] yielding to pending kernel verification\n');
+        break;
+      }
       if (capacityBlockedForNow) {
         process.stdout.write('[dispatch] durable concurrency capacity reached\n');
         break;
