@@ -976,17 +976,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // CGAD P18 / crash recovery: a crashed execution that never sealed a
     // CandidateSet still counts as an attempt. The Workplace's revision
     // reflects the number of transitions, which includes crash → repair_wait
-    // cycles. When there are NO sealed CandidateSets but the workplace has
-    // been through repair_wait, use the durable execution history to count
-    // failed attempts. This prevents infinite crash loops where the worker
-    // crashes before sealing, attemptCount stays 0, and maxAttempts is never
-    // reached.
-    // We use the higher of sealed attempts and the execution count from the
-    // workplace's lifecycle events (stored in worker_executions).
+    // cycles. This prevents infinite crash loops where the worker crashes
+    // before sealing, attemptCount stays at the sealed count, and maxAttempts
+    // is never reached.
+    //
+    // The crash-recovery fallback counts terminal (failed/lost) executions
+    // for this workplace's task. It MUST apply even when sealedAttempts > 0,
+    // because a crash can happen AFTER a sealed CandidateSet (e.g. during a
+    // repair cycle: candidate₁ sealed → repair requested → repair-worker
+    // crashes before candidate₂). In that case sealedAttempts=1 but the crash
+    // must still expend retry budget.
     const state = this.opts.coordinator.readState(ref);
-    if (state && sealedAttempts === 0 && state.loopState === 'repair_wait') {
-      // Count terminal (failed/lost) executions for this workplace's task.
-      // The task's workplace_ref identifies all executions that attempted work.
+    if (state && state.loopState === 'repair_wait') {
       const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
       if (taskRow) {
         const failedExecs = this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0;
