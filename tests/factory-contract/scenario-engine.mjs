@@ -134,16 +134,32 @@ export function scenarioKeyString(key) {
 // --- Scenario engine ---
 
 /**
+ * Return the next semantic attempt number across physical worker processes.
+ * priorInvocations contains durable history loaded by scenario-dispatcher;
+ * invocationLog contains attempts already started in this process.
+ */
+export function scenarioAttemptNumber(priorInvocations, invocationLog, keyStr) {
+  const prior = Array.isArray(priorInvocations) ? priorInvocations : [];
+  const current = Array.isArray(invocationLog) ? invocationLog : [];
+  return prior.filter(i => i?.keyStr === keyStr).length
+    + current.filter(i => i?.keyStr === keyStr).length
+    + 1;
+}
+
+/**
  * Create a scenario worker process.
  *
  * @param {object} opts
  * @param {string} opts.mcpConfigPath - MCP config file path
  * @param {object} opts.prompt - parsed prompt key-values
  * @param {object} opts.scenarios - map of scenarioKeyString → handler function
- * @param {object} opts.invocationLog - array to append invocation records to
+ * @param {object} opts.invocationLog - current-process invocation records
+ * @param {object} opts.priorInvocations - records persisted by earlier workers
  */
 export async function runScenarioWorker(opts) {
-  const { mcpConfigPath, prompt, scenarios, invocationLog, repoPath, desk } = opts;
+  const {
+    mcpConfigPath, prompt, scenarios, invocationLog, priorInvocations = [], repoPath, desk,
+  } = opts;
   const taskId = Number(prompt.task_id);
   const executionId = prompt.execution_id;
   const workerId = prompt.worker_id;
@@ -157,9 +173,9 @@ export async function runScenarioWorker(opts) {
     const key = scenarioKey(task);
     const keyStr = scenarioKeyString(key);
 
-    // Count prior invocations for this scenario key to determine attempt number.
-    // This allows scenarios to behave differently on repair/retry attempts.
-    const attempt = invocationLog.filter(i => i.keyStr === keyStr).length + 1;
+    // The scenario key is semantic and stable while each worker execution is
+    // deliberately disposable. Count the history from earlier processes too.
+    const attempt = scenarioAttemptNumber(priorInvocations, invocationLog, keyStr);
 
     // Log invocation for assertion in tests
     invocationLog.push({ keyStr, key, taskId, executionId, attempt, at: new Date().toISOString() });
