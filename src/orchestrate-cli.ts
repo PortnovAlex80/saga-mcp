@@ -224,11 +224,11 @@ async function main() {
         lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
           ? lifecycleInputSchema ?? undefined
           : undefined,
-    idempotencyKey,
-    resumePaused: !isFirstCycle || mode === 'resume',
-    // On resume, initiated_by comes from the durable lifecycle run (resolved
-    // above as runInitiatedBy) to avoid LIFECYCLE_REPLAY_CONTEXT_MISMATCH.
-    initiatedBy: runInitiatedBy,
+        idempotencyKey,
+        resumePaused: !isFirstCycle || mode === 'resume',
+        // On resume, initiated_by comes from the durable lifecycle run (resolved
+        // above as runInitiatedBy) to avoid LIFECYCLE_REPLAY_CONTEXT_MISMATCH.
+        initiatedBy: runInitiatedBy,
       });
       if (isFirstCycle && result.lifecycleRun?.id) {
         markFactoryLaunchRunning(
@@ -366,76 +366,100 @@ async function main() {
           lmStudioUrl: dispatchConfig.lmStudioUrl,
         },
       });
-            if (dispatched === 0) {
-              const activeExecutions = getDb().prepare(
-                `SELECT COUNT(*) AS n
-                   FROM worker_executions
-                  WHERE project_id=? AND epic_id=?
-                    AND state IN ('reserved','running','cancel_requested')`,
-              ).get(projectId, epicId) as { n: number };
-              if (activeExecutions.n > 0) {
-                // A resumed host may adopt executions launched by the previous
-                // host. They are not in this process's Promise set, so an empty
-                // local dispatch queue does not mean the factory is idle.
-                emptyDispatchStreak = 0;
-                process.stdout.write(
-                  `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting\n`,
-                );
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                continue;
-              }
-              // The queue drained to empty while the lifecycle is still paused.
-              // This is NOT necessarily a stuck state: a worker may have just
-              // completed a task (e.g. formalization's PRD node) whose
-              // completion is what unblocks the NEXT lifecycle node (e.g. UC),
-              // but that next task has not been projected into the kanban yet.
-              // Calling runEpisode({resumePaused:true}) again advances the
-              // lifecycle — either it projects the next task (loop continues)
-              // or it returns non-paused (terminal) and we stop.
-              //
-              // Before counting as a stuck streak, check whether there are
-              // non-terminal workplaces that may need recovery (repair_wait,
-              // paused, verifying). A worker that just exited without
-              // worker_done leaves the workplace in a transitional state that
-              // supervision will requeue. Counting this as "stuck" causes a
-              // premature exit before recovery has time to fire.
-              const pendingWorkplaces = getDb().prepare(
-                `SELECT COUNT(*) AS n
-                   FROM factory_workplaces w
-                   JOIN factory_lifecycle_runs lr ON lr.current_stage_run_id = w.process_run_id
-                  WHERE lr.id = ?
-                    AND w.loop_state IN ('queued','leased','running','verifying','repair_wait','paused')`,
-              ).get(lastResult?.lifecycleRun?.id ?? 0) as { n: number } | undefined;
-              if ((pendingWorkplaces?.n ?? 0) > 0) {
-                // There is durable work in flight or pending recovery. Do not
-                // count this as a stuck streak — supervision needs time to
-                // requeue the workplace after a worker exit.
-                process.stdout.write(
-                  `[orchestrate-cli] paused with ${pendingWorkplaces!.n} workplace(s) pending recovery — waiting\n`,
-                );
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                continue;
-              }
-              emptyDispatchStreak += 1;
-              process.stdout.write(
-                `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})\n`,
-              );
-              if (emptyDispatchStreak >= MAX_EMPTY_DISPATCH_STREAK) {
-                process.stdout.write(
-                  '[orchestrate-cli] empty-queue streak exhausted — stopping to avoid infinite loop\n',
-                );
-                break;
-              }
-              // Short backoff before re-checking, so we don't tight-loop the DB
-              // when the lifecycle is genuinely idle.
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              continue;
-            }
-            // Tasks were dispatched and drained — the lifecycle may have
-            // advanced, so reset the streak and resume runEpisode.
-            emptyDispatchStreak = 0;
-            process.stderr.write(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode\n`);
+      if (dispatched === 0) {
+        // Do one supervision pass NOW. The periodic 30s watchman is a safety
+        // net; an empty queue is itself a high-value reconciliation boundary
+        // and must not race a 6s empty-streak timeout.
+        try {
+          const sweep = supervisionHandle.reconcileOnce();
+          if (sweep.reapedCount > 0) {
+            process.stdout.write(
+              `[orchestrate-cli] on-demand supervision reaped ${sweep.reapedCount} execution(s)\n`,
+            );
           }
+        } catch (supervisionError) {
+          process.stderr.write(
+            `[orchestrate-cli] on-demand supervision failed: `
+              + `${supervisionError instanceof Error ? supervisionError.message : String(supervisionError)}\n`,
+          );
+        }
+
+        const activeExecutions = getDb().prepare(
+          `SELECT COUNT(*) AS n
+             FROM worker_executions
+            WHERE project_id=? AND epic_id=?
+              AND state IN ('reserved','running','cancel_requested')`,
+        ).get(projectId, epicId) as { n: number };
+        if (activeExecutions.n > 0) {
+          // A resumed host may adopt executions launched by the previous
+          // host. They are not in this process's Promise set, so an empty
+          // local dispatch queue does not mean the factory is idle.
+          emptyDispatchStreak = 0;
+          process.stdout.write(
+            `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting\n`,
+          );
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        // The lifecycle pause reason and the Workplace loop state are different
+        // channels. Read ONLY the exact current StageRun -> ProcessRun scope;
+        // LifecycleRun.current_stage_run_id is not a ProcessRun id.
+        const { readCurrentStageWorkplaceState } = await import(
+          './app/orchestration-idle-state.js'
+        );
+        const workplaceState = readCurrentStageWorkplaceState(
+          getDb(),
+          lastResult?.lifecycleRun?.id ?? 0,
+        );
+
+        if (workplaceState.humanPausedCount > 0) {
+          // `paused` is the explicit onExhausted/human-required boundary. It is
+          // intentionally invisible to normal dispatch and supervision. Do not
+          // wait forever pretending this is automatic recovery.
+          process.stdout.write(
+            `[orchestrate-cli] ${workplaceState.humanPausedCount} workplace(s) require explicit resume; `
+              + `automatic factory run is stopping in paused state\n`,
+          );
+          break;
+        }
+
+        if (workplaceState.kernelProgressCount > 0) {
+          // repair_wait/verifying/effect_pending are driven synchronously by
+          // the ProductionCellNodeExecutor on the NEXT runEpisode call. They do
+          // not wait for the 30s worker-supervision timer. Resume the kernel
+          // promptly and do not consume the empty-queue streak.
+          emptyDispatchStreak = 0;
+          process.stdout.write(
+            `[orchestrate-cli] kernel-owned workplace progress pending `
+              + `${JSON.stringify(workplaceState.states)} — resuming lifecycle\n`,
+          );
+          await new Promise(resolve => setTimeout(resolve, 250));
+          continue;
+        }
+
+        // No active execution and no kernel-owned transition is pending. The
+        // queue may simply be between node projections, so re-run the lifecycle
+        // a bounded number of times. Persistent queued/dependency state then
+        // stops instead of spinning forever.
+        emptyDispatchStreak += 1;
+        process.stdout.write(
+          `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})\n`,
+        );
+        if (emptyDispatchStreak >= MAX_EMPTY_DISPATCH_STREAK) {
+          process.stdout.write(
+            '[orchestrate-cli] empty-queue streak exhausted — stopping to avoid infinite loop\n',
+          );
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      // Tasks were dispatched and drained — the lifecycle may have
+      // advanced, so reset the streak and resume runEpisode.
+      emptyDispatchStreak = 0;
+      process.stderr.write(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode\n`);
+    }
     const result = lastResult!;
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
     // Structured log — write pipeline result to engine log for debugging

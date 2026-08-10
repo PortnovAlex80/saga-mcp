@@ -41,6 +41,11 @@ const CHECKLIST = `${ROOT}/formalization-node-checklist.md`;
 const REVIEWER_CHECKLIST = `${ROOT}/formalization-reviewer-checklist.md`;
 const RECONCILIATION_CALL = `${ROOT}/reconciliation-product-call-template.json`;
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
+// A reviewed Formalization desk can legitimately need an author-gate repair
+// and then another author revision after independent reviewer feedback. Two
+// total CandidateSets allowed only the initial version plus one repair. Keep
+// the loop bounded, but allow four repair rounds before human escalation.
+const FORMALIZATION_RECOVERY_MAX_ATTEMPTS = 5;
 
 const COMMON_READ_TOOLS = [
   'task_get', 'artifact_list', 'artifact_get', 'trace_list', 'note_list',
@@ -89,7 +94,7 @@ function reviewedCell(input: {
     outputSchemaRef: input.outputSchema,
     productSource: input.productSource ?? 'managed-production',
     cardinality: '1',
-    maxAttempts: 2,
+    maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS,
     onExhausted: 'pause',
     checkPlan: authorPlan(input.id, input.check),
     postAcceptanceEffect: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
@@ -333,7 +338,7 @@ function authorProfile(
     callTemplates: [ARTIFACT_CALL, TRACE_CALL, DONE_CALL],
     checklists: [CHECKLIST],
     outputSchema: { id: outputSchema },
-    retryPolicy: { maxAttempts: 2, retryOn: ['gate-repair'], backoff: 'none' as const },
+    retryPolicy: { maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS, retryOn: ['gate-repair'], backoff: 'none' as const },
     recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' as const },
   };
 }
@@ -360,7 +365,7 @@ function reviewerProfile(
     callTemplates: [REVIEW_VERDICT_CALL, DONE_CALL],
     checklists: [REVIEWER_CHECKLIST],
     outputSchema: { id: FACTORY_REVIEW_VERDICT_SCHEMA },
-    retryPolicy: { maxAttempts: 2, retryOn: ['gate-repair'], backoff: 'none' as const },
+    retryPolicy: { maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS, retryOn: ['gate-repair'], backoff: 'none' as const },
     recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' as const },
   };
 }
