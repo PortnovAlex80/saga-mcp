@@ -410,6 +410,10 @@ export function createBoardRenderApi({
     }).join('');
 
     return page(proj.name, `${header}
+      <div class="board-pipeline">
+        <div class="bp-title">Pipeline</div>
+        <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
+      </div>
       <div class="episode-progress-bar">${episodeProgress}</div>
       <details class="board-ops">
         <summary>Repository and episode operations</summary>
@@ -1662,8 +1666,18 @@ export function createBoardRenderApi({
       @media (max-width:1200px){.monitor-panel{display:none}body.with-monitor{padding-right:0}}
       .monitor-panel .mp-section{padding:10px 14px;border-bottom:1px solid #30363d}
       .monitor-panel .mp-section-title{color:#8b949e;text-transform:uppercase;font-size:10px;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
-      .monitor-panel .mp-pipeline{flex-shrink:0}
       .monitor-panel .mp-workers{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+
+      /* === Pipeline: full-width strip under the board header ===
+         Moved out of the cramped 360px right sidebar so the lifecycle
+         stages are readable at a glance. Sits between .board-head and
+         .episode-progress-bar. Horizontally scrollable when many stages. */
+      .board-pipeline{display:flex;align-items:flex-start;gap:14px;padding:12px 20px;background:#0d1117;border-bottom:1px solid #30363d}
+      .board-pipeline .bp-title{color:#8b949e;text-transform:uppercase;font-size:10px;letter-spacing:.5px;font-weight:600;padding-top:7px;flex-shrink:0}
+      .board-pipeline .pipeline-bar{flex:1;min-width:0;padding:4px 0;align-items:flex-start}
+      .board-pipeline .pipeline-stage{min-width:78px;padding:6px 8px}
+      .board-pipeline .pipeline-stage .ps-name{font-size:11px}
+      .board-pipeline .pipeline-arrow{margin-top:0}
 
       /* pipeline bar */
       .pipeline-bar{display:flex;align-items:center;gap:0;overflow-x:auto;padding:2px 0}
@@ -1757,10 +1771,6 @@ export function createBoardRenderApi({
     <link rel="stylesheet" href="/lifecycle-pipeline/pipeline.css"></head>
     <body class="with-monitor">${body}
     <aside class="monitor-panel" id="monitor-panel">
-      <div class="mp-section mp-pipeline">
-        <div class="mp-section-title">Pipeline</div>
-        <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
-      </div>
       <div class="mp-section mp-workers">
         <div class="mp-section-title">Workers (<span id="worker-count">0</span>)</div>
         <div id="workers-list"><div class="worker-empty">нет активных воркеров</div></div>
