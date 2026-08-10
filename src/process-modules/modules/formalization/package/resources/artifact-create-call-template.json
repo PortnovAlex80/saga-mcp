@@ -1,5 +1,5 @@
 {
-  "_PRE_CALL_INSTRUCTION": "BEFORE calling artifact_create, you MUST Write the file to disk at <workspace_root>/<path>. artifact_create auto-computes content_hash from the file. Without the file, content_hash is NULL and the Formalization pipeline WILL fail.",
+  "_PRE_CALL_INSTRUCTION": "BEFORE calling artifact_create, you MUST: (1) call artifact_list({project_id, epic_id}) to check if an artifact of this type already exists; (2) if it does, call artifact_update on the EXISTING id instead — do NOT create duplicates; (3) Write the file to disk at <workspace_root>/<path> before create/update. Code MUST be stable: use 'PRD', 'FR-1', 'NFR-1', 'RULE-1', 'brief' — NOT execution-specific like 'PRD-exec-abc123'. artifact_create is an upsert by (epic, type, code): the same code updates the existing draft, a different code creates an unwanted duplicate.",
   "tool": "artifact_create",
   "arguments": {
     "project_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_ID",
@@ -8,7 +8,7 @@
     "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
     "title": "FILL_ARTIFACT_TITLE",
     "path": "FILL_RELATIVE_ARTIFACT_PATH_docs_requirements_REQ_NNN_slug",
-    "code": "FILL_STABLE_CODE_OR_NULL",
+    "code": "FILL_STABLE_CODE",
     "status": "draft",
     "parent_artifact_id": "FILL_INTEGER_PARENT_ID_OR_NULL",
     "metadata": {
