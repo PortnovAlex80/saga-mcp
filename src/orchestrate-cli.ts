@@ -393,10 +393,29 @@ async function main() {
               // lifecycle — either it projects the next task (loop continues)
               // or it returns non-paused (terminal) and we stop.
               //
-              // Guard against a genuine stuck state (needs-human, unresolved
-              // dependency, routing cycle): if the lifecycle has not progressed
-              // for several consecutive empty-dispatch cycles, stop so the
-              // operator can intervene instead of burning tokens forever.
+              // Before counting as a stuck streak, check whether there are
+              // non-terminal workplaces that may need recovery (repair_wait,
+              // paused, verifying). A worker that just exited without
+              // worker_done leaves the workplace in a transitional state that
+              // supervision will requeue. Counting this as "stuck" causes a
+              // premature exit before recovery has time to fire.
+              const pendingWorkplaces = getDb().prepare(
+                `SELECT COUNT(*) AS n
+                   FROM factory_workplaces w
+                   JOIN factory_lifecycle_runs lr ON lr.current_stage_run_id = w.process_run_id
+                  WHERE lr.id = ?
+                    AND w.loop_state IN ('queued','leased','running','verifying','repair_wait','paused')`,
+              ).get(lastResult?.lifecycleRun?.id ?? 0) as { n: number } | undefined;
+              if ((pendingWorkplaces?.n ?? 0) > 0) {
+                // There is durable work in flight or pending recovery. Do not
+                // count this as a stuck streak — supervision needs time to
+                // requeue the workplace after a worker exit.
+                process.stdout.write(
+                  `[orchestrate-cli] paused with ${pendingWorkplaces!.n} workplace(s) pending recovery — waiting\n`,
+                );
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                continue;
+              }
               emptyDispatchStreak += 1;
               process.stdout.write(
                 `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})\n`,
