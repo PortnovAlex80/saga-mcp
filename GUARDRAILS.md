@@ -124,3 +124,10 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Fix:** Materialize the complete fan-out set before admission, validate and persist the exact DAG once, admit only roots, and never recompute edges from transient Kanban states. After dependencies reach final acceptance and integration, persist a CAS-fenced effective desk-base receipt and include it in execution context and Git ReplayKey. A terminal downstream recovery creates an append-only accepted-prefix continuation; it never reopens terminal runs or reruns inherited workshops.
 **Date:** 2026-08-09
 **Related:** ADR-038, BUG-018, `production-cell-node-executor.ts`, `claude-worker-executor-factory.ts`
+
+### 015 - Legal local states do not prove composed Factory progress
+**Symptom:** A worker exits successfully and its durable `WorkerExecution` is terminal, while the Workplace remains legally `verifying`; no CandidateSet, GateRun or next NodeRun appears, and the live orchestrator consumes CPU without advancing.
+**Cause:** Reducer, repository and fake-executor tests prove local transition safety but collapse host status, durable execution completion and kernel re-entry into one synchronous event. They do not prove that the canonical production composition schedules every required cross-machine hand-off. Project-scoped/process-local host status can also diverge from the exact durable execution identity.
+**Fix:** Keep closed local state machines, but add mandatory temporal conformance over the canonical production composition. Replace only declared worker/check ports, record durable transition traces, and prove that every nonterminal scope has a live owner, runnable command, typed wait or pending transition obligation. Bound internal progress by host cycles; otherwise emit a typed stall. Never infer exact assignment completion solely from project-scoped host status.
+**Date:** 2026-08-10
+**Related:** ADR-048, `docs/architecture/CONVEYOR-MENTAL-MODEL.md` §23, `src/app/dispatch-loop.ts`

@@ -1,4 +1,4 @@
-# Conveyor Mental Model — Saga4 (Version 5.1)
+# Conveyor Mental Model — Saga4 (Version 5.2)
 
 This document is the architectural compass for the Saga conveyor. It is the
 plain-language interpretation of the formal CGAD invariants and must be used to
@@ -980,7 +980,136 @@ no broader capability set than corresponding inference workers.
 
 ---
 
-## 23. DDD and dependency direction
+## 23. Composed state machines and temporal progress
+
+The Conveyor is a composition of authoritative state machines. It is not one
+global status enum, and no projection is allowed to impersonate one.
+
+| Machine / value object | Authoritative state or transition owner |
+|---|---|
+| LaunchRequest | launch repository: `requested -> claimed -> running -> completed | failed` |
+| LifecycleRun / StageRun | lifecycle repository and exact stage-transition journal |
+| ProcessRun | ProcessRun repository: `created -> preparing -> running -> paused | settling -> terminal` |
+| NodeRun | generic flow cursor and NodeRun repository: `running -> completed | failed` |
+| Workplace | Production Cell reducer over Kanban phase, loop state, role and revision |
+| ExecutionReservation / WorkerExecution | atomic assignment, fence, lease and execution repository |
+| CandidateSet | immutable `absent -> sealed` QC handoff |
+| GateRun / GateDecision | gate driver and immutable decision ledger |
+| ExternalEffect | effect ledger and provider observation protocol |
+
+`tasks.status`, board columns, controller labels, process-host snapshots and log
+activity are projections or telemetry. They may explain authority, but they
+never authorize a transition.
+
+### Local transition graphs are necessary but insufficient
+
+Every mutable aggregate has a closed local transition graph. Its reducer or
+repository must reject an unknown edge, preserve terminal monotonicity and use
+revision/fence CAS. Unit tests enumerate every legal edge and representative
+illegal edges.
+
+The production failure class that local transition tests cannot prove is a
+missing **synchronization edge**: machine A reaches a legal state but the real
+host never invokes the command that advances machine B. Therefore the
+following cross-machine hand-offs are normative parts of the Conveyor graph:
+
+| Durable source landmark | Required next obligation |
+|---|---|
+| Launch claimed | create or resume the exact LifecycleRun, then mark launch running |
+| Lifecycle stage selected | create/bind one exact StageRun and ProcessRun |
+| Flow reaches a Production Cell | materialize/seal its Workplace graph before admission |
+| Workplace queued and eligible | atomically create Reservation + WorkerExecution and move Workplace to leased |
+| Worker produces and calls completion | validate exact products and move Workplace to verifying |
+| OS worker exits | terminalize the exact WorkerExecution; host status is observation only |
+| Workplace verifying | seal the current CandidateSet and drive its declared GateRun |
+| Gate accepts with required effect | create/drive exact EffectAttempt; remain effect_pending |
+| Gate/effect finalizes the cell | create CellFinalAcceptance and terminalize Workplace |
+| all cell obligations complete | complete NodeRun and advance the exact flow cursor |
+| terminal ProcessRun result exists | settle StageRun and route the exact lifecycle outcome |
+| terminal LifecycleRun exists | settle LaunchRequest and FactoryOrder leaf projection |
+
+No hand-off may be justified by a project-scoped host status when an exact
+execution, candidate, gate, effect, node or run identity exists. In particular,
+assignment completion is read from the exact durable `WorkerExecution`; a
+process-host snapshot can trigger reconciliation but cannot keep an already
+terminal execution logically active.
+
+### The progress-obligation invariant
+
+For one consistent durable snapshot, every nonterminal Factory scope must have
+at least one and only truthfully classified progress explanation:
+
+```text
+live owner       = a valid unexpired lease/fence owns the next mutation
+runnable command = a durable precondition enables an idempotent kernel command
+typed wait       = dependency/provider/backoff/human wait with a wake source
+transition due   = a committed child result/outbox obligation awaits routing
+```
+
+If none applies, the scope is `stalled`. If several contradict one another,
+the scope is `inconsistent_state`. A nonterminal scope may not remain merely
+`running` or `paused` without one of these proofs.
+
+Liveness is conditional, not magical. Every temporal property declares its
+fairness boundary: scheduler cycles continue, SQLite is writable, a required
+provider eventually responds, or a human action is explicitly required. Under
+those assumptions the invariant is:
+
+> Every enabled internal transition eventually commits, loses a fenced race
+> to an equivalent transition, or produces a typed durable wait/terminal
+> incident within its declared cycle budget.
+
+External providers and humans are not assumed fair. Their absence must become
+a truthful typed wait or bounded escalation, never an infinite anonymous
+pause.
+
+### Mandatory testing ladder
+
+The layers test different theorems and none substitutes for the next:
+
+| Layer | Theorem | Typical mechanism |
+|---|---|---|
+| L0 Contract | states/events/schemas are closed and versioned | TypeScript/schema/architecture ratchets |
+| L1 Local machine | each legal edge works; illegal edges fail | pure reducers and transition-table tests |
+| L2 Durable aggregate | CAS, atomic writes, idempotency and terminal immutability hold | real SQLite repository/concurrency tests |
+| L3 Temporal composition | the **canonical production composition** schedules every required synchronization edge | scripted workers, real orchestrator/dispatcher/gates, durable temporal trace |
+| L4 Fault schedule | every crash/interleaving converges to progress, typed wait or terminal incident | process kill and fault injection before/after durable boundaries |
+| L5 Product E2E | a new Project traverses the installed lifecycle and produces the intended product | zero-token scripted run, then optional monitored real-model canary |
+
+The historically missing layer was L3/L4. Existing fake executors often changed
+host status and durable execution state simultaneously, eliminating the real
+interleaving. A conforming temporal harness replaces only the inference port
+and explicitly declared deterministic check provider. It imports the canonical
+lifecycle, packages, repositories, routing, dispatcher, gates and effects; it
+must not restate them in a private test composition.
+
+At minimum L3/L4 prove:
+
+1. after exact `WorkerExecution` termination, `verifying` reaches CandidateSet
+   and GateRun or a typed incident within a bounded host-cycle budget;
+2. a terminal ProcessRun is routed to Stage/Lifecycle settlement;
+3. `repair_wait` below budget is requeued; `paused` remains explicit human wait;
+4. crash before/after product, CandidateSet, GateDecision, effect and stage
+   routing creates no duplicate authority and no silent idle state;
+5. an eligible queue with no engine, an ownerless pending gate, an expired
+   reservation and an unrouted terminal child are all diagnosed distinctly;
+6. package/provider/lifecycle composition fingerprints match the canonical
+   installed production definition;
+7. every installed lifecycle outcome edge has a real-runtime trace or an
+   explicit unreachable proof.
+
+Temporal assertions use durable transitions or host-cycle budgets, not quiet
+logs or arbitrary wall-clock sleeps. On failure the harness emits the last
+durable landmarks, exact authority refs and the unmet progress obligation.
+
+An executable bounded statechart explorer may later be added as an L1/L2
+amplifier. It is never a second runtime authority and never substitutes for L3:
+an abstract model can assume scheduler fairness and thereby assume away the
+production wiring failure it is supposed to detect.
+
+---
+
+## 24. DDD and dependency direction
 
 Key conceptual ownership:
 
@@ -1008,7 +1137,7 @@ replay adapters.
 
 ---
 
-## 24. Mandatory replay fitness tests
+## 25. Mandatory replay fitness tests
 
 At minimum prove:
 
@@ -1038,7 +1167,7 @@ At minimum prove:
 
 ---
 
-## 25. Mandatory effect fitness tests
+## 26. Mandatory effect fitness tests
 
 Prove:
 
@@ -1052,7 +1181,7 @@ Prove:
 
 ---
 
-## 26. Architecture fitness functions
+## 27. Architecture fitness functions
 
 CI should mechanically reject at least:
 
@@ -1127,13 +1256,22 @@ CI should mechanically reject at least:
 - model quotas duplicated outside the canonical model-cap policy;
 - dispatch using immutable launch concurrency as its live admission ceiling;
 - missing concurrency/model policy falling back to a permissive default.
+- waiting for an exact assigned execution solely through project-scoped or
+  process-local host status;
+- a nonterminal scope with no live owner, runnable command, typed wait or
+  pending transition obligation;
+- canonical temporal E2E tests that replace lifecycle routing, settlement,
+  package/provider registration, gates or effects instead of only replacing
+  declared external production/check ports;
+- claims of liveness based only on local reducer reachability or assumed
+  scheduler fairness;
 
 Markdown is an architectural source of truth; executable fitness functions are
 its enforcement.
 
 ---
 
-## 27. Canonical glossary
+## 28. Canonical glossary
 
 | Human term | Machine meaning |
 |---|---|
@@ -1160,7 +1298,7 @@ Replay is not another factory. Observation is not another worker engine.
 
 ---
 
-## 28. Architectural rule of thumb
+## 29. Architectural rule of thumb
 
 Two questions catch most design drift.
 
