@@ -2,12 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const dbPath = path.join(
   os.tmpdir(),
   `saga-production-cell-product-boundary-${process.pid}-${Date.now()}.sqlite`,
 );
 process.env.DB_PATH = dbPath;
+
+test('worker MCP composition installs every pinned built-in review payload decoder', () => {
+  const source = readFileSync(
+    path.resolve('src/index.ts'),
+    'utf8',
+  );
+  for (const contract of [
+    'factoryReviewVerdictPayloadContract',
+    'developmentReviewVerdictPayloadContract',
+    'developmentVerificationPayloadContract',
+  ]) {
+    assert.match(source, new RegExp(`registerProductPayloadContract\\(${contract}\\)`));
+  }
+});
 
 const { getDb, closeDb } = await import('../../dist/db.js');
 const { handlers } = await import('../../dist/tools/dispatcher.js');
