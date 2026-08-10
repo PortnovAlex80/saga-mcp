@@ -32,7 +32,7 @@ Prove and harden the Factory as one autonomous production system:
 |---|---|---|---|
 | W1 | Audit current temporal suite and paused-launch fix | completed | Build + focused tests + full temporal result recorded |
 | W2 | Decide production-faithful test architecture | completed | ADR-049 with MCDA, pre-mortem, Red Team |
-| W3 | Scripted-LM contract-equivalence coverage | in progress | Same WorkIntent/tools/submissions/gates; only inference port replaced |
+| W3 | Scripted-LM contract-equivalence coverage | completed | Same WorkIntent/tools/submissions/gates; only inference port replaced |
 | W4 | Cross-workshop movement coverage | completed | Real composition traverses all product-build stages and terminalizes |
 | W5 | Dual Kanban/engine state conformance | completed | Transition matrix + cross-product invariants + generated traces |
 | W6 | Liveness/fault temporal coverage | completed | No silent nonterminal state; crash/retry/effect/routing scenarios pass |
@@ -68,6 +68,8 @@ Prove and harden the Factory as one autonomous production system:
 | 2026-08-10 | full Factory Contract suite after DAG/fixture changes | 75 passed, 0 failed |
 | 2026-08-10 | focused terminal-routing/WAL-safe snapshot regression | passed; canonical lifecycle completed and synthetic routing fault starts from a consistent backup |
 | 2026-08-11 | `npm run test:factory-temporal` after all fixture/storage fixes | 31 passed, 0 failed; 593.7s |
+| 2026-08-11 | clean real E2E run 002 through first Development review wave | Discovery and Formalization completed; sealed five-item/4-edge DAG admitted two independent roots; two authors then two reviewers; concurrency remained 2 |
+| 2026-08-11 | Development review payload-contract regression | build passed; 12 focused submission/gate tests passed |
 
 ## Incident and defect log
 
@@ -78,6 +80,7 @@ Prove and harden the Factory as one autonomous production system:
 | TEST-FIXTURE-001 | crash recovery test depended on absent `.button-color-replay-e2e/factory.sqlite` only to copy project metadata | test isolation | self-contained project fixture | fixed |
 | TEST-SNAPSHOT-001 | temporal routing test copied only the SQLite main file, losing committed WAL pages and fabricating an inconsistent running lifecycle | test storage boundary / SQLite snapshot semantics | backup-API source snapshot + terminal-transition precondition | fixed |
 | LIVE-SRS-001 | Real SRS worker exhausted five retries because rejection named a generic missing section and supplied only §D2 repair instructions when the actual defect was an invalid §12 Decision Log representation | validator/worker recovery contract | rejection message asserts exact Decision Log representation, columns and canonical example | fixed; clean E2E rerun required |
+| LIVE-REVIEW-001 | Two real reviewers submitted `approved` Development verdicts without `subject_candidate_set_ref`/`findings`; storage accepted them, the final gate returned `unknown` twice, and the autonomous launch truthfully paused | executable product-contract registration / production-composition test non-vacuity | registered pinned review payload contract rejects malformed verdict before storage; focused submit/gate tests | fixed; new clean E2E required |
 
 ## Final E2E acceptance contract
 

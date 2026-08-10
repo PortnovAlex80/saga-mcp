@@ -4,6 +4,7 @@ import type { SqlDatabasePort } from '../../../application/ports/sql-database.js
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
+  DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   type DevelopmentCase,
@@ -71,6 +72,51 @@ export const developmentVerificationPayloadContract: ProductPayloadContract = {
   validate(payload) {
     const decoded = decodeDevelopmentVerificationProduct(payload);
     return decoded.ok ? [] : decoded.errors;
+  },
+};
+
+export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID =
+  'development.review-verdict-payload.v1';
+export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  required: ['subject_candidate_set_ref', 'verdict', 'findings'],
+  verdict: ['approved', 'changes_requested'],
+  subjectCandidateSetRef: 'non-empty-string',
+  findings: 'array-of-strings',
+} as const;
+export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
+    contractId: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+    version: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+    definition: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION,
+  });
+
+export const developmentReviewVerdictPayloadContract: ProductPayloadContract = {
+  schemaId: DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
+  contractId: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+  version: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+  definition: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+  validate(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return ['payload must be an object'];
+    }
+    const value = payload as Record<string, unknown>;
+    const errors: string[] = [];
+    if (typeof value.subject_candidate_set_ref !== 'string'
+        || value.subject_candidate_set_ref.trim().length === 0) {
+      errors.push('subject_candidate_set_ref must be a non-empty string');
+    }
+    if (value.verdict !== 'approved' && value.verdict !== 'changes_requested') {
+      errors.push('verdict must be approved or changes_requested');
+    }
+    if (!Array.isArray(value.findings)
+        || !value.findings.every(item => typeof item === 'string')) {
+      errors.push('findings must be an array of strings');
+    }
+    return errors;
   },
 };
 

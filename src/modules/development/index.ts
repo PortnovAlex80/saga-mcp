@@ -18,6 +18,7 @@ import {
 import {
   createDevelopmentTaskGraphCheckProvider,
   createDevelopmentVerificationCheckProvider,
+  developmentReviewVerdictPayloadContract,
   developmentVerificationPayloadContract,
 } from './application/development-check-providers.js';
 import { registerProductPayloadContract } from '../../process-modules/application/product-payload-contract.js';
@@ -113,6 +114,7 @@ export function registerDevelopment(
     taskGraphPolicy,
   }));
   registerProductPayloadContract(developmentVerificationPayloadContract);
+  registerProductPayloadContract(developmentReviewVerdictPayloadContract);
   registerFactoryCheckProvider(options.verificationCheckProviderFactory
     ? options.verificationCheckProviderFactory({
       db,

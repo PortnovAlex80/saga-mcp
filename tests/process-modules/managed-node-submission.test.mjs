@@ -21,7 +21,10 @@ const { sha256Hex } = await import(
 const { registerProductPayloadContract } = await import(
   '../../dist/process-modules/application/product-payload-contract.js'
 );
-const { developmentVerificationPayloadContract } = await import(
+const {
+  developmentReviewVerdictPayloadContract,
+  developmentVerificationPayloadContract,
+} = await import(
   '../../dist/modules/development/application/development-check-providers.js'
 );
 
@@ -182,6 +185,48 @@ test('managed node submission rejects a schema adjacent to the exact WorkIntent 
       f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
       0,
     );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('registered Development review contract rejects an unbound verdict before storage', () => {
+  registerProductPayloadContract(developmentReviewVerdictPayloadContract);
+  const schema = 'factory.development-review-verdict.v1';
+  const f = fixture(schema);
+  try {
+    f.db.prepare(
+      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
+    ).run(JSON.stringify({
+      payload_contract: {
+        contractId: developmentReviewVerdictPayloadContract.contractId,
+        version: developmentReviewVerdictPayloadContract.version,
+        contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
+      },
+    }), f.intentId);
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          verdict: 'approved',
+          reviewSummary: 'Looks good, but is not bound to the author CandidateSet.',
+        },
+      }),
+      /PRODUCT_PAYLOAD_CONTRACT_REJECTED.*subject_candidate_set_ref.*findings/,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      0,
+    );
+    assert.doesNotThrow(() => repository.submitForCurrentExecution({
+      schema,
+      payload: {
+        subject_candidate_set_ref: 'candidate-set/author',
+        verdict: 'approved',
+        findings: [],
+      },
+    }));
   } finally {
     cleanup(f.temp);
   }
