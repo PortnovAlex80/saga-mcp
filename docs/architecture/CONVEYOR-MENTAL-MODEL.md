@@ -1214,3 +1214,33 @@ before retry, and accepted as replay only when commit and tree match exactly.
 The continuation creates no inherited StageRuns and invokes no inherited
 workers; the UI must show the terminal parent and active/successful child as one
 visible order lineage.
+
+## Product construction, change, and deployment are different requests
+
+The default MVP conveyor constructs a product revision; it does not deploy it:
+
+```text
+FactoryRequest(new-product)
+  -> Discovery -> Formalization -> Development
+  -> verified local commit/tree + RunReceipt
+  -> ProductRevision -> ready-to-run
+```
+
+`ready-to-run` means that the exact content-addressed revision is committed,
+verified against its accepted contract, and machine-observed through its typed
+RunContract. It never means published, remotely deployed, or operationally
+approved. Ordinary product construction therefore creates no Delivery
+StageRun, approval request, ReleaseRecord, or deployment effect.
+
+Human evaluation happens after this terminal. Feedback is a new
+`FactoryRequest(change)` and a new FactoryOrder in the same Project. It binds an
+exact baseline ProductRevision, preserves all prior artifacts and decisions as
+immutable evidence, and creates current gates for changed/regression scope. A
+Change Request is not a continuation: continuation repairs the same order;
+change expresses a new business intent.
+
+Deployment is a future `FactoryRequest(release)` consumed by the DevOps
+workshop. It references one exact ProductRevision and owns environment policy,
+approval, external effects and observation. Splitting these requests prevents
+release authority from blocking product manufacture while preserving the
+universal conveyor grammar.
