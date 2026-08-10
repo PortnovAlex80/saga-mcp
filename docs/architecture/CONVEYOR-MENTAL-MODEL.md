@@ -1193,3 +1193,24 @@ factory physics.
 Workshops are configuration instances of this protocol, not separate lifecycle
 engines. Replay is a standard optimization of worker production inside the same
 protocol, never another mode of the factory.
+
+## Appendix: terminal approval and local release continuation
+
+`approval-required` is a truthful terminal business outcome, not a paused
+worker state. Later operator authority never rewrites that outcome. The factory
+appends a child LifecycleRun at the Delivery boundary, verifies the inherited
+prefix, and executes only the suffix.
+
+Approval, effect, observation, and settlement are four different facts:
+
+1. an exact operator grant authorizes a policy and candidate;
+2. an effect provider attempts one content-addressed desired state;
+3. an authoritative observer proves the external state matches;
+4. settlement may then issue a ReleaseRecord and certificate.
+
+A ReleaseRecord alone is not a release. For local source releases the observable
+effect may be an immutable Git tag. It must be created without force, observed
+before retry, and accepted as replay only when commit and tree match exactly.
+The continuation creates no inherited StageRuns and invokes no inherited
+workers; the UI must show the terminal parent and active/successful child as one
+visible order lineage.
