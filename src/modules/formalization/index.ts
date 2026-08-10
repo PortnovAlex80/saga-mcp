@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
 import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';
 import { registerFactoryPostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
-import { createReviewVerdictCheckProvider } from '../../process-modules/application/review-verdict-check-provider.js';
+import {
+  createReviewVerdictCheckProvider,
+  factoryReviewVerdictPayloadContract,
+} from '../../process-modules/application/review-verdict-check-provider.js';
+import { registerProductPayloadContract } from '../../process-modules/application/product-payload-contract.js';
 import {
   createFormalizationProductionCellKernelHandlers,
   createFormalizationOutputResolver,
@@ -52,6 +56,7 @@ export function registerFormalization(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   });
+  registerProductPayloadContract(factoryReviewVerdictPayloadContract);
   registerFactoryCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,

@@ -2,6 +2,9 @@ import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import { singletonProductionCell } from '../../application/standard-production-cell.js';
 import { buildCheckPlan } from '../../application/standard-check-providers.js';
 import {
+  FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+  FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+  FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
   FACTORY_REVIEW_VERDICT_SCHEMA,
   REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
   REVIEW_VERDICT_CHECK_PROVIDER_ID,
@@ -101,6 +104,11 @@ function reviewedCell(input: {
     review: {
       executionProfileId: input.reviewerProfile,
       verdictSchemaRef: FACTORY_REVIEW_VERDICT_SCHEMA,
+      payloadContract: {
+        contractId: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+        version: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+        contractDigest: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+      },
       finalCheckPlan: reviewPlan(input.id),
     },
     acceptedTransition: input.acceptedTransition,

@@ -2,6 +2,10 @@ import type Database from 'better-sqlite3';
 import type { SqliteCandidateSetRepository } from '../../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import type { CheckProvider } from '../domain/workplace/gate.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import {
+  productPayloadContractDigest,
+  type ProductPayloadContract,
+} from './product-payload-contract.js';
 
 export const REVIEW_VERDICT_CHECK_PROVIDER_ID = 'factory.review-verdict.v1';
 export const REVIEW_VERDICT_CHECK_PROVIDER_VERSION = '1.0.0';
@@ -12,6 +16,22 @@ export const REVIEW_VERDICT_CHECK_PROVIDER_DIGEST = sha256Hex({
 });
 
 export const FACTORY_REVIEW_VERDICT_SCHEMA = 'factory.review-verdict.v1';
+export const FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID =
+  'factory.review-verdict-payload.v1';
+export const FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  required: ['subject_candidate_set_ref', 'verdict', 'findings'],
+  verdict: ['approved', 'changes_requested'],
+  findings: 'non-empty-string-or-bounded-finding-object-array',
+} as const;
+export const FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: FACTORY_REVIEW_VERDICT_SCHEMA,
+    contractId: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+    version: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+    definition: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION,
+  });
 
 export interface FactoryReviewVerdictProduct {
   readonly subject_candidate_set_ref: string;
@@ -31,6 +51,32 @@ function isReviewFinding(value: unknown): boolean {
     && (finding.severity === undefined || typeof finding.severity === 'string')
     && (finding.subjectRef === undefined || typeof finding.subjectRef === 'string');
 }
+
+export const factoryReviewVerdictPayloadContract: ProductPayloadContract = {
+  schemaId: FACTORY_REVIEW_VERDICT_SCHEMA,
+  contractId: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+  version: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+  definition: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: FACTORY_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+  validate(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return ['payload must be an object'];
+    }
+    const value = payload as Record<string, unknown>;
+    const errors: string[] = [];
+    if (typeof value.subject_candidate_set_ref !== 'string'
+        || value.subject_candidate_set_ref.trim().length === 0) {
+      errors.push('subject_candidate_set_ref must be a non-empty string');
+    }
+    if (value.verdict !== 'approved' && value.verdict !== 'changes_requested') {
+      errors.push('verdict must be approved or changes_requested');
+    }
+    if (!Array.isArray(value.findings) || !value.findings.every(isReviewFinding)) {
+      errors.push('findings must be strings or structured finding objects');
+    }
+    return errors;
+  },
+};
 
 export function createReviewVerdictCheckProvider(input: {
   db: Database.Database;

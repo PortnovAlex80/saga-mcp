@@ -49,6 +49,11 @@ function cell({ fanout = false, review = false, effect = false } = {}) {
     review: review ? {
       reviewer: { skillRef: 'reviewer-profile', capabilityPreset: 'sandbox-code-reviewer' },
       verdictSchemaRef: 'factory.test-review-verdict.v1',
+      payloadContract: {
+        contractId: 'test.review-verdict-payload.v1',
+        version: '1.0.0',
+        contractDigest: sha('test-review-verdict-payload'),
+      },
       finalGate: { gateId: 'final-gate', gatePhase: 'final', checkPlan: checkPlan('final-plan') },
     } : undefined,
     recovery: { maxAttempts: 2, onExhausted: 'fail' },
@@ -253,6 +258,11 @@ test('review hand-off creates a distinct reviewer desk before returning', async 
   const awaitingReview = await h.executor.execute(ctx);
   assert.equal(awaitingReview.runtimeEvent, 'paused');
   assert.equal(h.activations.at(-1).role, 'reviewer');
+  assert.deepEqual(h.plans.at(-1).input.intent.authorityScope.payload_contract, {
+    contractId: 'test.review-verdict-payload.v1',
+    version: '1.0.0',
+    contractDigest: sha('test-review-verdict-payload'),
+  });
   assert.equal(h.coordinator.readState(ref).nextRole, 'reviewer');
   finishRole(h, ref, 'execution:reviewer', {
     schemaId: 'factory.test-review-verdict.v1', ref: 'product:review', digest: sha('review'),

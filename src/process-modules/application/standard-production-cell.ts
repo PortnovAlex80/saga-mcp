@@ -19,6 +19,11 @@ export interface SingletonProductionCellOptions {
   readonly review?: {
     readonly executionProfileId: string;
     readonly verdictSchemaRef: string;
+    readonly payloadContract?: {
+      readonly contractId: string;
+      readonly version: string;
+      readonly contractDigest: string;
+    };
     readonly finalCheckPlan: CheckPlan;
     readonly capabilityPreset?: string;
   };
@@ -59,6 +64,9 @@ export function singletonProductionCell(
             options.review.capabilityPreset ?? 'module-reviewer',
         },
         verdictSchemaRef: options.review.verdictSchemaRef,
+        ...(options.review.payloadContract
+          ? { payloadContract: options.review.payloadContract }
+          : {}),
         finalGate: {
           gateId: `${options.id}.final`,
           gatePhase: 'final' as const,

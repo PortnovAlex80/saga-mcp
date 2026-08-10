@@ -749,7 +749,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           enforcement: 'runtime',
           ...(role === 'author' && cell.productContracts[0]!.payloadContract
             ? { payload_contract: cell.productContracts[0]!.payloadContract }
-            : {}),
+            : role === 'reviewer' && cell.review?.payloadContract
+              ? { payload_contract: cell.review.payloadContract }
+              : {}),
         },
         outputSchema: role === 'reviewer'
           ? cell.review!.verdictSchemaRef

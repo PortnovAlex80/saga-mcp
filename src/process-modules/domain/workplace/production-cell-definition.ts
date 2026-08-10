@@ -50,6 +50,12 @@ export interface CellGate {
 export interface CellReview {
   readonly reviewer: CellRoleProfile;
   readonly verdictSchemaRef: string;
+  /** Exact executable verdict decoder frozen into reviewer WorkIntents. */
+  readonly payloadContract?: {
+    readonly contractId: string;
+    readonly version: string;
+    readonly contractDigest: string;
+  };
   readonly finalGate: CellGate;
 }
 
@@ -129,6 +135,16 @@ export function assertValidProductionCellDefinition(
       'review.reviewer.capabilityPreset',
     );
     requireNonEmpty(cell.review.verdictSchemaRef, 'review.verdictSchemaRef');
+    if (cell.review.payloadContract) {
+      requireNonEmpty(cell.review.payloadContract.contractId, 'review.payloadContract.contractId');
+      requireNonEmpty(cell.review.payloadContract.version, 'review.payloadContract.version');
+      if (!/^[a-f0-9]{64}$/.test(cell.review.payloadContract.contractDigest)) {
+        throw new Error(
+          'ProductionCellDefinition.review.payloadContract.contractDigest '
+          + 'must be a lowercase SHA-256 digest',
+        );
+      }
+    }
   } else if (cell.authorGate.gatePhase !== 'final') {
     throw new Error(
       `ProductionCellDefinition '${cell.id}': authorGate.gatePhase must be 'final' when review is absent`,

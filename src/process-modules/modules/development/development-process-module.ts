@@ -34,6 +34,9 @@ import {
   DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DIGEST,
   DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
   DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,
+  DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+  DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+  DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
 } from '../../../modules/development/application/development-check-providers.js';
 
 export { DEVELOPMENT_PROCESS_MODULE_REF };
@@ -188,6 +191,11 @@ export const developmentProcessModule: ProcessModuleDefinition = {
               capabilityPreset: 'sandbox-code-reviewer',
             },
             verdictSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
+            payloadContract: {
+              contractId: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
+              version: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+              contractDigest: DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
+            },
             finalGate: {
               gateId: 'development-implementation-final',
               gatePhase: 'final',
