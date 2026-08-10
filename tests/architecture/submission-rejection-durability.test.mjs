@@ -134,6 +134,9 @@ test('rejected worker_done commits exact feedback while preserving owner and fen
     },
   );
   assert.match(rejectionError.message, /Required representation:.*fenced YAML block/);
+  assert.match(rejectionError.message, /Decision Log representation:.*markdown table.*`### Decision N`/);
+  assert.match(rejectionError.message, /Decision Log columns: #, Decision, Source\/profile, Alternatives considered, Rationale, Date/);
+  assert.match(rejectionError.message, /Decision Log example:\n## §12 Decision Log\n/);
   assert.match(rejectionError.message, /Required fields: ac, title, module, files/);
   assert.match(rejectionError.message, /Exact accepted codes: AC-1/);
   assert.match(rejectionError.message, /Canonical example:\n## §D2 AC Map\n```yaml/);

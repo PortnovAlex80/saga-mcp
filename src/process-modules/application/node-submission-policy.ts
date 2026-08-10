@@ -254,6 +254,16 @@ export class SubmissionValidationError extends Error {
  */
 function renderRepairContext(details: Readonly<Record<string, unknown>>): string {
   const lines: string[] = [];
+  if (typeof details.decisionLogRepresentation === 'string' && details.decisionLogRepresentation.length > 0) {
+    lines.push(`Decision Log representation: ${details.decisionLogRepresentation}`);
+  }
+  const decisionColumns = stringArray(details.requiredDecisionLogColumns);
+  if (decisionColumns.length > 0) {
+    lines.push(`Decision Log columns: ${decisionColumns.join(', ')}`);
+  }
+  if (typeof details.canonicalDecisionLogExample === 'string' && details.canonicalDecisionLogExample.length > 0) {
+    lines.push(`Decision Log example:\n${details.canonicalDecisionLogExample.slice(0, 2_000)}`);
+  }
   if (typeof details.representation === 'string' && details.representation.length > 0) {
     lines.push(`Required representation: ${details.representation}`);
   }

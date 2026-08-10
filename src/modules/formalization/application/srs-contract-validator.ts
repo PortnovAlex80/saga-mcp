@@ -248,6 +248,7 @@ export function createSrsContractValidator(
             requiredTargetTypes: ['§12 Decision Log'],
             minimum: 1,
           },
+          message: decisionLogGap,
         });
       }
 
@@ -322,6 +323,15 @@ export function createSrsContractValidator(
       }
 
       const details = {
+        decisionLogRepresentation: 'one §12 Decision Log heading followed by either a markdown table with the six canonical columns or one or more `### Decision N` subsections',
+        requiredDecisionLogColumns: [...SRS_CONTRACT.decisionLogColumns],
+        canonicalDecisionLogExample: [
+          '## §12 Decision Log',
+          '',
+          '| # | Decision | Source/profile | Alternatives considered | Rationale | Date |',
+          '|---|----------|----------------|-------------------------|-----------|------|',
+          '| 1 | Modular monolith | local | layered monolith, services | Fits bounded local scope | 2026-08-11 |',
+        ].join('\n'),
         representation: 'one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block',
         requiredD2Fields: [...SRS_CONTRACT.d2RequiredFields],
         d2Enums: SRS_CONTRACT.d2EnumFields,

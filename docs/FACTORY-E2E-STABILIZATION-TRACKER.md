@@ -77,6 +77,7 @@ Prove and harden the Factory as one autonomous production system:
 | MIGRATION-001 | DB open stamped any unknown mismatched user_version as v5 | schema migration | future-version fail-closed child-process test | fixed |
 | TEST-FIXTURE-001 | crash recovery test depended on absent `.button-color-replay-e2e/factory.sqlite` only to copy project metadata | test isolation | self-contained project fixture | fixed |
 | TEST-SNAPSHOT-001 | temporal routing test copied only the SQLite main file, losing committed WAL pages and fabricating an inconsistent running lifecycle | test storage boundary / SQLite snapshot semantics | backup-API source snapshot + terminal-transition precondition | fixed |
+| LIVE-SRS-001 | Real SRS worker exhausted five retries because rejection named a generic missing section and supplied only §D2 repair instructions when the actual defect was an invalid §12 Decision Log representation | validator/worker recovery contract | rejection message asserts exact Decision Log representation, columns and canonical example | fixed; clean E2E rerun required |
 
 ## Final E2E acceptance contract
 
