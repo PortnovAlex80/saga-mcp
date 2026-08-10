@@ -1,4 +1,5 @@
 {
+  "_MANDATORY_EXECUTION_INSTRUCTION": "This file is only a validated argument template. After filling it, invoke the actual mcp__saga__worker_done tool and wait for an accepted stop:true receipt. Reading or saving this file does not complete the task.",
   "tool": "worker_done",
   "arguments": {
     "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",

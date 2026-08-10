@@ -73,6 +73,12 @@ Before `worker_done`:
 Call `worker_done({task_id, worker_id, execution_id, result})` exactly once and
 exit.
 
+Writing, printing, or re-reading `worker-done-call.json` is only preparation;
+it is **not** completion. You MUST invoke the actual `mcp__saga__worker_done`
+tool with those arguments and wait for its accepted receipt (`stop: true`)
+before exiting. If the call is rejected, repair the stated contract gap and
+invoke the tool again; never exit merely because the JSON looks correct.
+
 `worker_done` only concludes this WorkerExecution. The Product Cell author gate
 runs deterministic contract checks, an independent reviewer publishes a review
 product, and only the final GateDecision accepts the CandidateSet. The

@@ -51,7 +51,9 @@ On `AUTHORITY_DENIED`, record the error and do not call that tool again.
 - [ ] 8. Execute the verified MCP calls.
 - [ ] 9. Re-read created artifacts and trace links from Saga MCP.
 - [ ] 10. Materialize and verify `worker_done`.
-- [ ] 11. Call `worker_done`, update checkpoint to `completed`, then exit.
+- [ ] 11. Invoke the actual `mcp__saga__worker_done` tool, wait for its accepted
+      `stop:true` receipt, update checkpoint to `completed`, then exit. A call
+      JSON file is not a tool invocation and is never completion evidence.
 
 ## Artifact register
 
