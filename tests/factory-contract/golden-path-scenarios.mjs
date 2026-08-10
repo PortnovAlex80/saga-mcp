@@ -191,13 +191,15 @@ const formalizationReconcile = async ({ client, prompt }) => {
     'formalization reconciliation: reconciled');
 };
 
-const formalizationArchitecture = async ({ client, task, prompt, repoPath }) => {
+const formalizationArchitecture = async ({ client, task, prompt, repoPath, attempt }) => {
   const projectId = task.project_id || 1;
   const epicId = task.epic_id || 1;
   const prds = await actions.findAcceptedArtifacts(client, epicId, 'PRD');
   if (!prds.length) throw new Error('No accepted PRD for architecture');
 
-  const srsContent = `# SRS\n\n## §D2 Acceptance Criteria Decomposition\n\n\`\`\`yaml\n- ac: AC-1\n  title: Pipeline Completes\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Factory reaches terminal']\n  test_layers: ['e2e']\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n- ac: AC-2\n  title: NFR Compliance\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Deterministic']\n  test_layers: ['contract']\n  pattern: B\n  depends_on: []\n  ac_kind: implementation\n  criticality: degradable\n\`\`\`\n\n## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|---------------|------------------------|-----------|------|\n| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-08 |\n`;
+  // Make the repair attempt a genuinely different managed product. Stable SRS
+  // code exercises artifact upsert while the content hash changes.
+  const srsContent = `# SRS\n\nFixture production attempt: ${attempt}\n\n## §D2 Acceptance Criteria Decomposition\n\n\`\`\`yaml\n- ac: AC-1\n  title: Pipeline Completes\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Factory reaches terminal']\n  test_layers: ['e2e']\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n- ac: AC-2\n  title: NFR Compliance\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Deterministic']\n  test_layers: ['contract']\n  pattern: B\n  depends_on: []\n  ac_kind: implementation\n  criticality: degradable\n\`\`\`\n\n## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|---------------|------------------------|-----------|------|\n| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-08 |\n`;
   const srsPath = 'docs/formalization/SRS.md';
   actions.writeFile(repoPath, srsPath, srsContent);
   const fileHash = actions.contentHash(srsContent);
@@ -208,7 +210,7 @@ const formalizationArchitecture = async ({ client, task, prompt, repoPath }) => 
   });
   await actions.addTrace(client, srs.id, prds[0].id, 'derived_from');
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
-    'formalization architecture: SRS→PRD');
+    `formalization architecture attempt ${attempt}: SRS→PRD`);
 };
 
 const approvedReview = async ({ client, task, prompt }) => {
@@ -220,6 +222,27 @@ const approvedReview = async ({ client, task, prompt }) => {
   });
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
     'review: approved');
+};
+
+// Force the canonical cold path through the semantic backward transition. A
+// successful golden path now proves reviewer -> author repair -> reviewer on
+// the SAME durable Workplace, not merely the happy-path approvals.
+const repairThenApproveArchitectureReview = async ({ client, task, prompt, attempt }) => {
+  const wpRef = metaOf(task).workplace_ref;
+  const cand = await actions.readAuthorCandidate(client, wpRef);
+  const reject = attempt === 1;
+  await actions.submitProduct(client, 'factory.review-verdict.v1', {
+    verdict: reject ? 'changes_requested' : 'approved',
+    findings: reject ? ['fixture: force one architecture repair round'] : [],
+    subject_candidate_set_ref: cand.candidate_set_ref,
+  });
+  await actions.done(
+    client,
+    Number(prompt.task_id),
+    prompt.worker_id,
+    prompt.execution_id,
+    reject ? 'review: changes requested' : 'review: approved after repair',
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -411,7 +434,7 @@ export const goldenPathScenarios = {
   [`${FRM}/model-use-cases/reviewer/singleton`]: approvedReview,
   [`${FRM}/define-acceptance-contract/reviewer/singleton`]: approvedReview,
   [`${FRM}/reconcile-what/reviewer/singleton`]: approvedReview,
-  [`${FRM}/define-architecture-contract/reviewer/singleton`]: approvedReview,
+  [`${FRM}/define-architecture-contract/reviewer/singleton`]: repairThenApproveArchitectureReview,
 
   [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
   [`${DEV}/implement-work-items/author/*`]: developmentImplement,
