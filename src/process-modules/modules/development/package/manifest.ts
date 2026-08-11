@@ -102,6 +102,7 @@ const RESOURCE_PATHS = {
   // Execution-profile skills (development-owned, migrated into the package).
   plannerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planner/SKILL.md`,
   workerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-worker/SKILL.md`,
+  implementationReviewerSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-development-code-reviewer/SKILL.md`,
   // Planning reviewer skill — reviews the planner's task graph proposal.
   // Owned by the development package (mirrors formalization's reviewer skills).
   planningReviewerSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planning-reviewer/SKILL.md`,
@@ -138,6 +139,12 @@ export const DEVELOPMENT_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     logicalId: 'development.skill.worker-execution',
     path: RESOURCE_PATHS.workerExecutionSkill,
     kind: 'skill',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'development.skill.implementation-reviewer',
+    path: RESOURCE_PATHS.implementationReviewerSkill,
+    kind: 'reviewer-skill',
     digest: PENDING_DIGEST,
   },
   // --- Shared protocol skill ---------------------------------------------

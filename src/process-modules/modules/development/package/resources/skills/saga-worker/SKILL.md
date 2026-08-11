@@ -34,11 +34,12 @@ schema. A prose completion message is not a product.
 - Respect the item AC coverage, dependency results and `changeScopes`.
 - Change only what is needed for one coherent, reviewable product increment.
 - Run the strongest deterministic checks available and preserve their output.
-- Product Build requires both `npm test` and `npm start`. Ensure `package.json`
-  defines both scripts, tests exit non-zero on failure, and the local server
-  honors `PORT` and `HOST` environment variables so the Factory can allocate an
-  isolated loopback probe. Do not launch a browser when `CI=1` or
-  `BROWSER=none`.
+- Product Build as a whole requires both `npm test` and `npm start`, but one
+  scoped implementation item does not own the whole product. Create or change
+  `package.json`, product-wide tests, and launch wiring only when those paths
+  are inside this item's frozen `changeScopes`. Otherwise leave that work to
+  its declared downstream owner. Never widen scope merely to make an
+  intermediate candidate globally runnable.
 - Commit your work on the task branch that is already checked out. Do NOT
   create a new branch, do NOT switch branches.
 - Submit `factory.development-implementation-result.v1`. Its required fields
@@ -63,6 +64,13 @@ schema. A prose completion message is not a product.
 - Review the exact author CandidateSet and source commit, not the moving branch.
 - Check declared scope, AC coverage, deterministic checks and unintended
   regressions independently.
+- A blocking finding must be repairable inside this work item's frozen
+  `changeScopes` and owned ACs. Missing product-wide files or commands that are
+  explicitly owned by a future task-graph item are deferred work, not a defect
+  in the current candidate. They may be recorded as a non-blocking limitation,
+  but MUST NOT produce `changes_requested`. A regression to a command or file
+  already present at the effective base remains blocking when this candidate
+  caused it.
 - Submit one `factory.development-review-verdict.v1` with required `verdict`,
   `workItemKey`, and `reviewedCandidate.sourceCommit/sourceTree`, all bound to
   the author product. Then call `worker_done` with the same verdict.

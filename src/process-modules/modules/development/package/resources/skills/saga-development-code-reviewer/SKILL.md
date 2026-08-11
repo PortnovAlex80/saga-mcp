@@ -28,8 +28,9 @@ Verify against the work item's frozen AC coverage and SRS decomposition:
 - no unrelated scope expansion;
 - change scopes/ownership are respected;
 - error handling/security/accessibility requirements are preserved;
-- build/test commands required by the SRS stack pass for the exact source
-  commit, or the finding records the concrete failure;
+- build/test commands owned by this work item pass for the exact source commit;
+  product-wide commands owned by a future task-graph item are deferred and do
+  not block this intermediate candidate;
 - source commit/tree in the implementation product match the branch you reviewed.
 
 Do not merge. Git integration is a post-acceptance effect after the final
@@ -59,6 +60,12 @@ immutable author CandidateSet, and alone decides accepted/repair.
 Changes requested create a fresh author execution in the same Workplace. Review
 the new author CandidateSet from scratch; an old review product never approves a
 new commit.
+
+Every blocking finding must be remediable within the subject work item's
+frozen `changeScopes` and owned ACs. Do not request global files, tests, or
+launch wiring assigned to another future item. If this candidate breaks a
+command or file that already existed at its effective base, that introduced
+regression is within review jurisdiction and may block.
 
 ## Never
 

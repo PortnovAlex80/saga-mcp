@@ -126,6 +126,14 @@ export const DEVELOPMENT_VERIFIER_SKILL: DevelopmentSkillResource = skillResourc
   slot: 'execution',
 });
 
+export const DEVELOPMENT_IMPLEMENTATION_REVIEWER_SKILL: DevelopmentSkillResource = skillResource({
+  logicalId: 'development.skill.implementation-reviewer',
+  path: 'src/process-modules/modules/development/package/resources/skills/saga-development-code-reviewer/SKILL.md',
+  kind: 'reviewer-skill',
+  pinnedByProfile: 'development-implementation-reviewer',
+  slot: 'execution',
+});
+
 /**
  * Process-module worker protocol skill. Pinned as the `protocolSkill` on EVERY
  * development profile — it teaches the worker the managed-execution,
@@ -154,6 +162,7 @@ export const DEVELOPMENT_SKILL_RESOURCES: readonly DevelopmentSkillResource[] = 
   DEVELOPMENT_PLANNING_REVIEWER_SKILL,
   DEVELOPMENT_PLANNER_SKILL,
   DEVELOPMENT_VERIFIER_SKILL,
+  DEVELOPMENT_IMPLEMENTATION_REVIEWER_SKILL,
   DEVELOPMENT_PROTOCOL_SKILL,
 ]);
 
