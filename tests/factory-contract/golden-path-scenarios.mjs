@@ -238,7 +238,7 @@ const developmentPlan = async ({ client, task, prompt }) => {
   if (!repo) throw new Error('DevelopmentCase has no repository');
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
-  const criterionId = ac => ac.criterionId ?? ac.artifactId;
+  const criterionId = ac => ac.artifactId;
   const implementationItems = implementationCriteria.map((ac, index) => ({
       key: `impl-${criterionId(ac)}`,
       kind: 'implementation',
