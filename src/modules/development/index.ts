@@ -20,6 +20,7 @@ import {
   createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
   developmentReviewVerdictPayloadContract,
+  developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
 } from './application/development-check-providers.js';
 import { registerProductPayloadContract } from '../../process-modules/application/product-payload-contract.js';
@@ -125,6 +126,7 @@ export function registerDevelopment(
   }));
   registerProductPayloadContract(developmentVerificationPayloadContract);
   registerProductPayloadContract(developmentReviewVerdictPayloadContract);
+  registerProductPayloadContract(developmentTaskGraphPayloadContract);
   registerFactoryCheckProvider(options.verificationCheckProviderFactory
     ? options.verificationCheckProviderFactory({
       db,

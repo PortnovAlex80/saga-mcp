@@ -18,6 +18,7 @@ import type {
   ProcessProductRepositoryPort,
 } from '../domain/development-kernel-ports.js';
 import {
+  acceptanceCriterionIdentity,
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
@@ -432,7 +433,7 @@ export class SqliteDevelopmentModuleStore implements
     const byKey = new Map(products.map(product => [product.payload.verificationItemKey, product]));
     const criterionById = new Map(
       developmentCase.acceptanceCriteria.map(criterion => [
-        criterion.artifactId,
+        acceptanceCriterionIdentity(criterion),
         criterion,
       ]),
     );

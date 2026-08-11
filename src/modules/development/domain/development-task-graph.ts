@@ -144,11 +144,15 @@ function decodeItems(
       && typeof value.required === 'boolean'
     ) {
       const criticalityRaw = value.criticality;
-      const criticality = criticalityRaw === 'blocker'
-        || criticalityRaw === 'degradable'
-        || criticalityRaw === 'nice_to_have'
-        ? criticalityRaw
-        : 'blocker' as const;
+      if (
+        criticalityRaw !== 'blocker'
+        && criticalityRaw !== 'degradable'
+        && criticalityRaw !== 'nice_to_have'
+      ) {
+        errors.push(`${path}.criticality must be blocker|degradable|nice_to_have`);
+        return;
+      }
+      const criticality = criticalityRaw;
       result.push({
         key: value.key,
         kind,

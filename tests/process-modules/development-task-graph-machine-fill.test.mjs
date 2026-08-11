@@ -26,12 +26,14 @@ const developmentCase = {
   srs: { schema: 'srs', ref: 'artifact:9', hash: 'srs-hash' },
   acceptanceCriteria: [
     {
+      criterionId: 15,
       artifactId: 15,
       code: 'AC-15',
       acceptedHash: 'ac-15-hash',
       implementationRequired: true,
     },
     {
+      criterionId: 16,
       artifactId: 16,
       code: 'AC-16',
       acceptedHash: 'ac-16-hash',
@@ -54,7 +56,7 @@ function preparationContext(currentContent) {
     module: {
       identity: {
         name: 'solution-development',
-        version: '1.1.0',
+        version: '1.2.0',
         kind: 'development',
       },
     },
@@ -91,6 +93,19 @@ test('seed machine-fills lineage but leaves semantic implementation decompositio
   assert.equal(payload.integrationTargets[0].expectedBaseCommit, 'abc123');
   assert.deepEqual(payload.integrationTargets[0].sourceWorkItemKeys, []);
   assert.ok(!JSON.stringify(call).includes('FILL_'));
+});
+
+test('atomic criterion identity preserves multiple criteria from one document container', () => {
+  const sharedDocumentCase = structuredClone(developmentCase);
+  sharedDocumentCase.acceptanceCriteria = [
+    { ...sharedDocumentCase.acceptanceCriteria[0], criterionId: 1501, artifactId: 15 },
+    { ...sharedDocumentCase.acceptanceCriteria[1], criterionId: 1502, artifactId: 15 },
+  ];
+  const payload = buildDevelopmentTaskGraphSubmitCallFromCase(sharedDocumentCase).content;
+  assert.deepEqual(
+    payload.verificationItems.flatMap(item => item.acceptanceCriterionIds),
+    [1501, 1502],
+  );
 });
 
 test('preparer replaces an empty, placeholder, or wrong-lineage draft', () => {

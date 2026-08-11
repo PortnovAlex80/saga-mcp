@@ -11,7 +11,7 @@
         "executionMode": "git_change",
         "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID",
         "acceptanceCriterionIds": [
-          "FILL_INTEGER_ACCEPTANCE_ARTIFACT_ID"
+          "FILL_INTEGER_ATOMIC_CRITERION_ID"
         ],
         "dependsOnKeys": [],
         "changeScopes": [
@@ -30,7 +30,7 @@
         "executionMode": "read_only_evidence",
         "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID",
         "acceptanceCriterionIds": [
-          "FILL_EXACTLY_ONE_INTEGER_ACCEPTANCE_ARTIFACT_ID"
+          "FILL_EXACTLY_ONE_INTEGER_ATOMIC_CRITERION_ID"
         ],
         "dependsOnKeys": [
           "FILL_REQUIRED_IMPLEMENTATION_KEY"

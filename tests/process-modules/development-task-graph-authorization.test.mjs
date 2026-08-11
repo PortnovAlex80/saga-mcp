@@ -62,6 +62,7 @@ function developmentCase() {
       code: 'AC-1',
       acceptedHash: 'accepted-ac-hash',
       implementationRequired: true,
+      criticality: 'blocker',
     }],
     repositories: [{
       projectRepositoryId: 5,
@@ -90,6 +91,7 @@ function validProposal() {
       dependsOnKeys: [],
       changeScopes: ['product-foundation'],
       required: true,
+      criticality: 'blocker',
     }],
     verificationItems: [{
       key: 'verify-ac-1',
@@ -102,6 +104,7 @@ function validProposal() {
       dependsOnKeys: ['implement-circle'],
       changeScopes: [],
       required: true,
+      criticality: 'blocker',
     }],
     integrationTargets: [{
       projectRepositoryId: 5,

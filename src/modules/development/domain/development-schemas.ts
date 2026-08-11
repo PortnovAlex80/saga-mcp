@@ -126,6 +126,9 @@ export interface DevelopmentPolicySnapshot {
 export type AcceptanceCriticality = 'blocker' | 'degradable' | 'nice_to_have';
 
 export interface AcceptanceCriterionBinding {
+  /** Stable identity of the atomic criterion, independent of document container. */
+  criterionId?: number;
+  /** Provenance artifact/document container; several criteria may share it. */
   artifactId: number;
   code: string | null;
   /** Accepted hash of the authoritative artifact/document container. */
@@ -143,6 +146,13 @@ export interface AcceptanceCriterionBinding {
    * SRS did not carry a criticality value (conservative: treat as mandatory).
    */
   criticality: AcceptanceCriticality;
+}
+
+/** New handoffs use the atomic id; legacy handoffs used the document container id. */
+export function acceptanceCriterionIdentity(
+  criterion: AcceptanceCriterionBinding,
+): number {
+  return criterion.criterionId ?? criterion.artifactId;
 }
 
 export interface DevelopmentRepositoryBinding {

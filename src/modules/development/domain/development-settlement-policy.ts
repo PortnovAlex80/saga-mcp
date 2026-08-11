@@ -8,6 +8,7 @@
 
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
+  acceptanceCriterionIdentity,
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_BASELINE_ADOPTION_SCHEMA,
@@ -354,12 +355,12 @@ implements DevelopmentTaskGraphPolicyPort {
     }
 
     const acceptedCriterionIds = new Set(
-      developmentCase.acceptanceCriteria.map(criterion => criterion.artifactId),
+      developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity),
     );
     const implementationRequired = new Set(
       developmentCase.acceptanceCriteria
         .filter(criterion => criterion.implementationRequired)
-        .map(criterion => criterion.artifactId),
+        .map(acceptanceCriterionIdentity),
     );
     const implementationCovered = new Set(
       graph.implementationItems
@@ -501,10 +502,10 @@ function invalidCase(developmentCase: DevelopmentCase): boolean {
     || !developmentCase.acceptanceBaselineHash
     || !validRef(developmentCase.srs)
     || developmentCase.acceptanceCriteria.length === 0
-    || !unique(developmentCase.acceptanceCriteria.map(criterion =>
-      criterion.artifactId))
+    || !unique(developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity))
     || developmentCase.acceptanceCriteria.some(criterion =>
-      criterion.artifactId <= 0
+      acceptanceCriterionIdentity(criterion) <= 0
+      || criterion.artifactId <= 0
       || !criterion.acceptedHash.trim()
       || typeof criterion.implementationRequired !== 'boolean')
     || developmentCase.repositories.length === 0
@@ -707,6 +708,46 @@ implements DevelopmentSettlementPolicyPort {
     }
     const incompleteImplementation = [...requiredImplementationKeys].filter(key =>
       implementationByKey.get(key)?.status !== 'succeeded');
+    // ADR-053 — TEMPORARY POINT FIX (do not expand without reading the ADR).
+    //
+    // Symptom observed in -024 / -025: a development.code.review task
+    // records an approved verdict with a sealed source commit
+    // (e.g. task 20: "Review completed and approved", commit d2630683...),
+    // but this settlement still returns `blocked` because
+    // `implementationByKey.get(key)?.status !== 'succeeded'`. The reviewer's
+    // approved CandidateSet is not projected into
+    // `implementation.results[key]` with execution IDs + reviewed commit +
+    // ProductRef. So the factory keeps spawning new authors on the same AC
+    // (observed: 10–11 attempts on implement-work-items in -022/-024, then
+    // retry budget exhausted).
+    //
+    // REFACTOR REQUIRED per ADR-053
+    // (docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md):
+    //   1. Introduce an immutable `WorkplaceProductionRevision` entity that
+    //      records each implementation/review increment as an exact sealed
+    //      material state of the Workplace (Step 2 of the ADR).
+    //   2. A `GateDecision = accepted` on an implementation/review
+    //      CandidateSet MUST atomically create a durable transition
+    //      obligation that projects the accepted CandidateSet into the
+    //      implementation workset as a `succeeded` result carrying
+    //      implementationExecutionId + reviewExecutionId + reviewedSourceCommit
+    //      + result ProductRef (Step 7 of the ADR — "GateAccepted -> RunPostAcceptanceEffects").
+    //   3. Remove producerExecutionRef / latest-execution / latest-task as
+    //      material authority — settlement must read only exact sealed
+    //      revision refs and accepted CandidateSet refs (Step 3 of the ADR:
+    //      AcceptedCandidateAuthority instead of execution-scoped input).
+    //   4. Add a generative partition-invariance test covering:
+    //      (a) single author + reviewer, (b) author crash + reviewer
+    //      replacement, (c) carry-forward + repair — all must yield the
+    //      same semantic workset state (ADR-053 §"Contribution partition
+    //      invariance").
+    //
+    // Until the cutover is complete, this branch will keep returning
+    // `implementation-incomplete` whenever the post-review effect fails to
+    // materialise a succeeded workset entry. Do NOT paper over it by
+    // deriving success from the latest review execution alone — that
+    // re-introduces the execution-scoped material authority the ADR
+    // forbids.
     if (
       !implementation.complete
       || implementation.blockingItemKeys.length > 0
@@ -857,7 +898,7 @@ implements DevelopmentSettlementPolicyPort {
 
     const criterionById = new Map(
       input.developmentCase.acceptanceCriteria.map(criterion => [
-        criterion.artifactId,
+        acceptanceCriterionIdentity(criterion),
         criterion,
       ]),
     );

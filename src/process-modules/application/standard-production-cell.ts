@@ -12,6 +12,11 @@ export interface SingletonProductionCellOptions {
   readonly mediaType?: string;
   readonly cardinality?: '1' | '0..1' | '1..n';
   readonly productSource?: 'typed-submission' | 'managed-production';
+  readonly payloadContract?: {
+    readonly contractId: string;
+    readonly version: string;
+    readonly contractDigest: string;
+  };
   readonly maxAttempts: number;
   readonly onExhausted: 'fail' | 'pause';
   readonly checkPlan?: CheckPlan;
@@ -48,6 +53,7 @@ export function singletonProductionCell(
       mediaType: options.mediaType ?? 'application/json',
       cardinality: options.cardinality ?? '1..n',
       ...(options.productSource ? { productSource: options.productSource } : {}),
+      ...(options.payloadContract ? { payloadContract: options.payloadContract } : {}),
     }],
     authorGate: {
       gateId: `${options.id}.${authorGatePhase}`,

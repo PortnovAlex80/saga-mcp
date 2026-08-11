@@ -23,7 +23,10 @@ import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contrac
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
-const DEVELOPMENT_MODULE_REF = 'solution-development@1.1.0';
+const DEVELOPMENT_MODULE_REFS = [
+  'solution-development@1.1.0',
+  'solution-development@1.2.0',
+] as const;
 const DEVELOPMENT_CONTINUATION_MODULE_REF = 'solution-development-managed@1.1.0';
 const DEVELOPMENT_VERIFICATION_CONTINUATION_MODULE_REF =
   'solution-development-verification-continuation@1.0.0';
@@ -101,10 +104,12 @@ export function wireSubmissionValidation(
     'implement-work-items',
     'verify-acceptance',
   ]) {
-    policyRegistry.register(DEVELOPMENT_MODULE_REF, nodeId, {
-      mode: 'none',
-      rationale: 'typed Production Cell product; validated by cell gate and Development settlement',
-    });
+    for (const moduleRef of DEVELOPMENT_MODULE_REFS) {
+      policyRegistry.register(moduleRef, nodeId, {
+        mode: 'none',
+        rationale: 'typed Production Cell product; validated by cell gate and Development settlement',
+      });
+    }
   }
   for (const nodeId of ['implement-work-items', 'verify-acceptance']) {
     policyRegistry.register(DEVELOPMENT_CONTINUATION_MODULE_REF, nodeId, {

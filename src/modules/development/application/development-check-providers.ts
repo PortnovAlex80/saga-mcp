@@ -31,10 +31,41 @@ import { encodeCheckDiagnostic } from '../../../process-modules/domain/workplace
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
-export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.1.0';
+
+export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID =
+  'development.task-graph-proposal-payload.v1';
+export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  decoder: 'decodeDevelopmentTaskGraphProposal',
+  schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+  invariant: 'intrinsic-task-graph-shape-is-rejected-before-durable-submission',
+} as const;
+export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    contractId: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID,
+    version: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_VERSION,
+    definition: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DEFINITION,
+  });
+
+export const developmentTaskGraphPayloadContract: ProductPayloadContract = {
+  schemaId: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+  contractId: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID,
+  version: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_VERSION,
+  definition: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DIGEST,
+  validate(payload) {
+    const decoded = decodeDevelopmentTaskGraphProposal(payload);
+    return decoded.ok ? [] : decoded.errors;
+  },
+};
+
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
   version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+  payloadContractDigest: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_DIGEST,
   invariant: 'development-task-graph-validates-before-cell-acceptance',
 });
 

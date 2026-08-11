@@ -59,6 +59,7 @@ import { registerProductPayloadContract } from './process-modules/application/pr
 import { factoryReviewVerdictPayloadContract } from './process-modules/application/review-verdict-check-provider.js';
 import {
   developmentReviewVerdictPayloadContract,
+  developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
 } from './modules/development/application/development-check-providers.js';
 
@@ -68,6 +69,7 @@ import {
 registerProductPayloadContract(developmentVerificationPayloadContract);
 registerProductPayloadContract(factoryReviewVerdictPayloadContract);
 registerProductPayloadContract(developmentReviewVerdictPayloadContract);
+registerProductPayloadContract(developmentTaskGraphPayloadContract);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

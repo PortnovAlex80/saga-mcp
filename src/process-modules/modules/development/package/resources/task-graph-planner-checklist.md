@@ -3,6 +3,8 @@
 Before `product_submit`:
 
 - Frozen AC and repository ids, branches and base commits are unchanged.
+- `acceptanceCriterionIds` contains the exact integer atomic criterion ids from the
+  machine-filled call; never substitute criterion hashes or document artifact ids.
 - Implementation work expresses coherent product increments, not AC cardinality.
 - Shared foundations precede dependent work through `dependsOnKeys`.
 - Every implementation item has one repository and non-empty AC coverage.
@@ -22,3 +24,5 @@ Before `product_submit`:
 - No placeholder remains; JSON parses; content schemaVersion is exact.
 - No task, Git, CI or repository mutation was attempted.
 - `product_submit` precedes the single `worker_done` call.
+- If `product_submit` rejects the payload, correct the reported field paths and retry
+  `product_submit` in the same execution. Call `worker_done` only after acceptance.

@@ -9,7 +9,7 @@ import { actions } from './scenario-engine.mjs';
 
 const FRM = 'solution-formalization@1.0.0';
 const DISC = 'product-discovery@3.0.2';
-const DEV = 'solution-development@1.1.0';
+const DEV = 'solution-development@1.2.0';
 
 function metaOf(task) {
   return typeof task.metadata === 'string'
@@ -238,33 +238,34 @@ const developmentPlan = async ({ client, task, prompt }) => {
   if (!repo) throw new Error('DevelopmentCase has no repository');
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
+  const criterionId = ac => ac.criterionId ?? ac.artifactId;
   const implementationItems = implementationCriteria.map((ac, index) => ({
-      key: `impl-${ac.artifactId}`,
+      key: `impl-${criterionId(ac)}`,
       kind: 'implementation',
       taskKind: 'development.code',
       executionSkill: 'saga-worker',
       executionMode: 'git_change',
       projectRepositoryId: repo.projectRepositoryId,
-      acceptanceCriterionIds: [ac.artifactId],
+      acceptanceCriterionIds: [criterionId(ac)],
       // Exercise the real dependency/admission/base-propagation path. A
       // deterministic chain is deliberately used here: scripted production
       // must test the same non-empty DAG physics that real planners can emit,
       // rather than making dependency tests pass vacuously with [] everywhere.
       dependsOnKeys: index === 0
         ? []
-        : [`impl-${implementationCriteria[index - 1].artifactId}`],
-      changeScopes: [`src/factory-contract/impl-${ac.artifactId}.ts`],
+        : [`impl-${criterionId(implementationCriteria[index - 1])}`],
+      changeScopes: [`src/factory-contract/impl-${criterionId(ac)}.ts`],
       required: true,
       criticality: ac.criticality || 'blocker',
     }));
   const verificationItems = criteria.map(ac => ({
-    key: `verify-${ac.artifactId}`,
+    key: `verify-${criterionId(ac)}`,
     kind: 'verification',
     taskKind: 'verification.ac',
     executionSkill: 'saga-worker',
     executionMode: 'read_only_evidence',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [ac.artifactId],
+    acceptanceCriterionIds: [criterionId(ac)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,

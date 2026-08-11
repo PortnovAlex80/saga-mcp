@@ -7,7 +7,6 @@ import type {
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
   assertPinnedProductPayload,
-  assertProductPayload,
   type ProductPayloadContractRef,
 } from '../application/product-payload-contract.js';
 import {
@@ -136,8 +135,6 @@ implements ManagedNodeSubmissionReader {
       // retain the convenience validation path for backward compatibility.
       if (pinnedContract) {
         assertPinnedProductPayload(schema, pinnedContract, command.payload);
-      } else {
-        assertProductPayload(schema, command.payload);
       }
       const query: ManagedNodeSubmissionQuery = {
         processRunId: provenance.processRunId,

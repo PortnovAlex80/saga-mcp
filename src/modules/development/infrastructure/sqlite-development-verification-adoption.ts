@@ -13,6 +13,7 @@ import type {
   DevelopmentTaskGraphSnapshot,
   IntegratedReleaseCandidate,
 } from '../domain/development-schemas.js';
+import { acceptanceCriterionIdentity } from '../domain/development-schemas.js';
 import { SqliteDevelopmentModuleStore } from './sqlite-development-settlement-state.js';
 
 export interface DevelopmentVerificationAdoption {
@@ -432,7 +433,7 @@ function readVerificationMethodPlan(
   developmentCase: DevelopmentCase,
   repositoryPath: string,
 ): VerificationMethodPlan {
-  const ids = developmentCase.acceptanceCriteria.map(criterion => criterion.artifactId);
+  const ids = developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity);
   const placeholders = ids.map(() => '?').join(',');
   const rows = db.prepare(
     `SELECT id,code,path,accepted_hash FROM artifacts WHERE id IN (${placeholders}) ORDER BY id`,

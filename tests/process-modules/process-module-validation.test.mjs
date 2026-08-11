@@ -103,7 +103,7 @@ test('built-in registry registers all lifecycle modules by versioned identity', 
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
     'product-discovery@3.0.2',
-    'solution-development@1.1.0',
+    'solution-development@1.2.0',
     'solution-formalization@1.0.0',
   ]);
 });
@@ -117,6 +117,16 @@ test('validator rejects a Production Cell without its author execution profile',
   const validation = validateProcessModuleDefinition(broken);
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join('\n'), /missing author execution profile/);
+});
+
+test('development planner pins its exact executable payload contract', () => {
+  const node = developmentProcessModule.flow.nodes.find(candidate =>
+    candidate.id === 'plan-task-graph');
+  assert.ok(node?.cellDefinition);
+  const contract = node.cellDefinition.productContracts[0].payloadContract;
+  assert.equal(contract?.contractId, 'development.task-graph-proposal-payload.v1');
+  assert.equal(contract?.version, '1.0.0');
+  assert.match(contract?.contractDigest ?? '', /^[0-9a-f]{64}$/);
 });
 
 test('formalization artifact writers delegate acceptance to the common kernel gate', () => {

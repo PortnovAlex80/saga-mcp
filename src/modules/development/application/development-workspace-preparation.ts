@@ -1,4 +1,5 @@
 import {
+  acceptanceCriterionIdentity,
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   type DevelopmentCase,
@@ -85,7 +86,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
 
   const implementationItems: Record<string, unknown>[] = [];
   const verificationItems = criteria.map(criterion => ({
-    key: `verify-${keySuffix(criterion.code, criterion.artifactId)}`,
+    key: `verify-${keySuffix(criterion.code, acceptanceCriterionIdentity(criterion))}`,
     kind: 'verification',
     taskKind: 'verification.ac',
     executionSkill: 'saga-verifier',
@@ -93,7 +94,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
     projectRepositoryId: repositories.length === 1
       ? repositories[0]!.projectRepositoryId
       : 0,
-    acceptanceCriterionIds: [criterion.artifactId],
+    acceptanceCriterionIds: [acceptanceCriterionIdentity(criterion)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,
@@ -148,12 +149,12 @@ export function isReusableDevelopmentTaskGraphCall(
   ) return false;
 
   const acceptedIds = new Set(
-    developmentCase.acceptanceCriteria.map(item => item.artifactId),
+    developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity),
   );
   const implementationRequiredIds = new Set(
     developmentCase.acceptanceCriteria
       .filter(item => item.implementationRequired)
-      .map(item => item.artifactId),
+      .map(acceptanceCriterionIdentity),
   );
   const implementationIds = numberSet(
     product.implementationItems.flatMap(item =>

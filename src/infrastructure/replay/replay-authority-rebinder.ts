@@ -5,7 +5,10 @@ const DISCOVERY_READINESS_NODE = 'assess-readiness';
 const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 const DISCOVERY_READINESS_SCHEMA = 'factory.discovery-readiness-assessment.v1';
 
-const DEVELOPMENT_MODULE_REF = 'solution-development@1.1.0';
+const DEVELOPMENT_MODULE_REFS = new Set([
+  'solution-development@1.1.0',
+  'solution-development@1.2.0',
+]);
 const DEVELOPMENT_VERIFICATION_NODE = 'verify-acceptance';
 const DEVELOPMENT_INTEGRATED_CANDIDATE_SCHEMA = 'factory.integrated-release-candidate.v1';
 const DEVELOPMENT_VERIFICATION_EVIDENCE_SCHEMA = 'factory.candidate-verification-evidence-product.v2';
@@ -41,7 +44,7 @@ export function rebindReplayAuthorityReferences(
   }
 
   if (
-    taskMetadata.process_module_ref === DEVELOPMENT_MODULE_REF
+    DEVELOPMENT_MODULE_REFS.has(String(taskMetadata.process_module_ref))
     && taskMetadata.process_node_id === DEVELOPMENT_VERIFICATION_NODE
     && taskMetadata.role === 'author'
     && schemaId === DEVELOPMENT_VERIFICATION_EVIDENCE_SCHEMA

@@ -3,6 +3,7 @@ import type { KernelHandler } from '../../../process-modules/application/kernel-
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { DevelopmentModuleInstallationDependencies } from '../domain/development-kernel-ports.js';
 import {
+  acceptanceCriterionIdentity,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   DEVELOPMENT_BASELINE_ADOPTION_SCHEMA,
   type AcceptanceCriticality,
@@ -71,7 +72,7 @@ export function createDevelopmentContinuationTaskGraphHandler(
       throw new Error('DEVELOPMENT_CONTINUATION_REPOSITORY_MISMATCH');
     }
     const acceptanceCriterionIds = developmentCase.acceptanceCriteria
-      .map(criterion => criterion.artifactId)
+      .map(acceptanceCriterionIdentity)
       .sort((left, right) => left - right);
     if (acceptanceCriterionIds.length === 0) {
       throw new Error('DEVELOPMENT_CONTINUATION_ACCEPTANCE_EMPTY');
@@ -101,7 +102,7 @@ export function createDevelopmentContinuationTaskGraphHandler(
         executionSkill: 'saga-verifier',
         executionMode: 'read_only_evidence',
         projectRepositoryId: adoption.project_repository_id,
-        acceptanceCriterionIds: [criterion.artifactId],
+        acceptanceCriterionIds: [acceptanceCriterionIdentity(criterion)],
         dependsOnKeys: [],
         changeScopes: [],
         required: true,

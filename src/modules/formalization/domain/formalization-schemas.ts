@@ -85,6 +85,8 @@ export interface FormalizationSolutionContractPayload {
   };
   /** Exact immutable hand-off to Development. */
   acceptanceCriteria: readonly {
+    /** Stable atomic criterion identity; distinct from its document container. */
+    criterionId: number;
     artifactId: number;
     code: string | null;
     /** Accepted hash of the provenance artifact/document container. */

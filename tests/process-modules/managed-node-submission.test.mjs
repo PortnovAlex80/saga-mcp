@@ -18,11 +18,15 @@ const { SqliteProcessRunRepository } = await import(
 const { sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
-const { registerProductPayloadContract } = await import(
+const {
+  productPayloadContractDigest,
+  registerProductPayloadContract,
+} = await import(
   '../../dist/process-modules/application/product-payload-contract.js'
 );
 const {
   developmentReviewVerdictPayloadContract,
+  developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
 } = await import(
   '../../dist/modules/development/application/development-check-providers.js'
@@ -166,6 +170,127 @@ test('managed node submission is machine-bound, immutable and exactly replayable
   } finally {
     cleanup(f.temp);
   }
+});
+
+test('pinned task-graph contract rejects Run028 shape errors before storage and accepts a correction', () => {
+  registerProductPayloadContract(developmentTaskGraphPayloadContract);
+  const schema = 'factory.development-task-graph-proposal.v1';
+  const f = fixture(schema);
+  try {
+    f.db.prepare(
+      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
+    ).run(JSON.stringify({
+      payload_contract: {
+        contractId: developmentTaskGraphPayloadContract.contractId,
+        version: developmentTaskGraphPayloadContract.version,
+        contractDigest: developmentTaskGraphPayloadContract.contractDigest,
+      },
+    }), f.intentId);
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    const baseItem = {
+      key: 'impl-core',
+      kind: 'implementation',
+      taskKind: 'development.implementation',
+      executionSkill: 'saga-worker',
+      executionMode: 'git_change',
+      projectRepositoryId: 1,
+      acceptanceCriterionIds: [14],
+      dependsOnKeys: [],
+      changeScopes: ['src/'],
+      required: true,
+      criticality: 'blocker',
+    };
+    const proposal = {
+      schemaVersion: schema,
+      implementationItems: [baseItem],
+      verificationItems: [{
+        ...baseItem,
+        key: 'verify-core',
+        kind: 'verification',
+        taskKind: 'development.verification',
+        executionMode: 'tracker_only',
+        dependsOnKeys: ['impl-core'],
+        changeScopes: [],
+      }],
+      integrationTargets: [{
+        projectRepositoryId: 1,
+        sourceWorkItemKeys: ['impl-core'],
+        targetBranch: 'dev',
+        expectedBaseCommit: 'a'.repeat(40),
+      }],
+    };
+
+    for (const malformed of [
+      { ...proposal, implementationItems: [{ ...baseItem, required: 'true' }] },
+      { ...proposal, verificationItems: [{ ...proposal.verificationItems[0], acceptanceCriterionIds: ['accepted-hash'] }] },
+      { ...proposal, implementationItems: [{ ...baseItem, criticality: 'critical' }] },
+    ]) {
+      assert.throws(
+        () => repository.submitForCurrentExecution({ schema, payload: malformed }),
+        /PRODUCT_PAYLOAD_CONTRACT_REJECTED/,
+      );
+      assert.equal(
+        f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+        0,
+      );
+    }
+
+    const accepted = repository.submitForCurrentExecution({ schema, payload: proposal });
+    assert.equal(accepted.replayed, false);
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      1,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('an unpinned historical WorkIntent is not reinterpreted by a newly installed contract', () => {
+  registerProductPayloadContract(developmentTaskGraphPayloadContract);
+  const schema = 'factory.development-task-graph-proposal.v1';
+  const f = fixture(schema);
+  try {
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    assert.doesNotThrow(() => repository.submitForCurrentExecution({
+      schema,
+      payload: {
+        schemaVersion: schema,
+        implementationItems: [{ required: 'legacy-malformed' }],
+        verificationItems: [],
+        integrationTargets: [],
+      },
+    }));
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('two exact payload-contract versions for one schema coexist without registration-order authority', () => {
+  const schemaId = 'test.multi-version-payload.v1';
+  const makeContract = (version, requiredField) => {
+    const definition = { type: 'object', required: [requiredField] };
+    return {
+      schemaId,
+      contractId: 'test.multi-version-payload',
+      version,
+      definition,
+      contractDigest: productPayloadContractDigest({
+        schemaId,
+        contractId: 'test.multi-version-payload',
+        version,
+        definition,
+      }),
+      validate(payload) {
+        return payload && typeof payload === 'object' && requiredField in payload
+          ? [] : [`${requiredField} is required`];
+      },
+    };
+  };
+  const v1 = makeContract('1.0.0', 'oldField');
+  const v2 = makeContract('2.0.0', 'newField');
+  assert.doesNotThrow(() => registerProductPayloadContract(v2));
+  assert.doesNotThrow(() => registerProductPayloadContract(v1));
 });
 test('managed node submission rejects a schema adjacent to the exact WorkIntent contract', () => {
   const f = fixture('factory.development-review-verdict.v1');

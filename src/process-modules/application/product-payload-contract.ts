@@ -27,6 +27,15 @@ export interface ProductPayloadValidation {
 class ProductPayloadContractRegistry {
   private readonly contracts = new Map<string, ProductPayloadContract>();
 
+  private key(input: {
+    schemaId: string;
+    contractId: string;
+    version: string;
+    contractDigest: string;
+  }): string {
+    return [input.schemaId, input.contractId, input.version, input.contractDigest].join('\u0000');
+  }
+
   register(contract: ProductPayloadContract): void {
     if (!contract.schemaId.trim() || !contract.contractId.trim()
         || !contract.version.trim() || !contract.contractDigest.trim()) {
@@ -41,23 +50,28 @@ class ProductPayloadContractRegistry {
     if (contract.contractDigest !== expectedDigest) {
       throw new Error(`PRODUCT_PAYLOAD_CONTRACT_DIGEST_INVALID: ${contract.schemaId}`);
     }
-    const existing = this.contracts.get(contract.schemaId);
+    const key = this.key(contract);
+    const existing = this.contracts.get(key);
     if (existing) {
       if (
-        existing.contractId === contract.contractId
-        && existing.version === contract.version
-        && existing.contractDigest === contract.contractDigest
+        existing === contract
+        || existing.validate === contract.validate
       ) return;
-      throw new Error(`PRODUCT_PAYLOAD_CONTRACT_DUPLICATE: ${contract.schemaId}`);
+      throw new Error(
+        `PRODUCT_PAYLOAD_CONTRACT_IMPLEMENTATION_DRIFT: ${contract.schemaId} `
+        + `${contract.contractId}@${contract.version}#${contract.contractDigest}`,
+      );
     }
-    this.contracts.set(contract.schemaId, contract);
+    this.contracts.set(key, contract);
   }
 
   validate(schemaId: string, payload: unknown): ProductPayloadValidation {
-    const contract = this.contracts.get(schemaId);
-    if (!contract) {
+    const matches = [...this.contracts.values()]
+      .filter(contract => contract.schemaId === schemaId);
+    if (matches.length !== 1) {
       return { registered: false, accepted: true, errors: [], contractDigest: null };
     }
+    const contract = matches[0]!;
     const errors = [...contract.validate(payload)];
     return {
       registered: true,
@@ -67,8 +81,17 @@ class ProductPayloadContractRegistry {
     };
   }
 
-  resolve(schemaId: string): ProductPayloadContract | null {
-    return this.contracts.get(schemaId) ?? null;
+  resolveExact(
+    schemaId: string,
+    expected: ProductPayloadContractRef,
+  ): ProductPayloadContract | null {
+    return this.contracts.get(this.key({ schemaId, ...expected })) ?? null;
+  }
+
+  resolveUnique(schemaId: string): ProductPayloadContract | null {
+    const matches = [...this.contracts.values()]
+      .filter(contract => contract.schemaId === schemaId);
+    return matches.length === 1 ? matches[0]! : null;
   }
 }
 
@@ -97,7 +120,7 @@ export function validateProductPayload(
 export function resolveProductPayloadContract(
   schemaId: string,
 ): ProductPayloadContract | null {
-  return registry.resolve(schemaId);
+  return registry.resolveUnique(schemaId);
 }
 
 export function assertProductPayload(schemaId: string, payload: unknown): void {
@@ -119,19 +142,11 @@ export function assertPinnedProductPayload(
   expected: ProductPayloadContractRef,
   payload: unknown,
 ): void {
-  const contract = registry.resolve(schemaId);
+  const contract = registry.resolveExact(schemaId, expected);
   if (!contract) {
-    throw new Error(`PRODUCT_PAYLOAD_CONTRACT_REQUIRED: ${schemaId}`);
-  }
-  if (
-    contract.contractId !== expected.contractId
-    || contract.version !== expected.version
-    || contract.contractDigest !== expected.contractDigest
-  ) {
     throw new Error(
-      `PRODUCT_PAYLOAD_CONTRACT_DRIFT: ${schemaId}; expected `
-      + `${expected.contractId}@${expected.version}#${expected.contractDigest}, got `
-      + `${contract.contractId}@${contract.version}#${contract.contractDigest}`,
+      `PRODUCT_PAYLOAD_CONTRACT_DRIFT: ${schemaId}; exact registration required; expected `
+      + `${expected.contractId}@${expected.version}#${expected.contractDigest}`,
     );
   }
   const errors = [...contract.validate(payload)];

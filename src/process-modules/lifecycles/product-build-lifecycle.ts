@@ -16,7 +16,7 @@ export const productBuildLifecycle: LifecycleDefinition = {
   ...productDeliveryLifecycle,
   identity: {
     name: 'product-build',
-    version: '1.1.0',
+    version: '1.2.0',
     displayName: 'Product Build',
     description:
       'Builds and proves one locally runnable product revision; deployment and human acceptance are separate requests.',
