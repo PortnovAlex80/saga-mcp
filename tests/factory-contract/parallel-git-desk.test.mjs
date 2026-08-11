@@ -242,11 +242,17 @@ test('Parallel git_change Production Cells: concurrency=2 worktree isolation', {
     }).trim();
     assert.notEqual(devHead, baseCommit, 'dev branch did not advance — integration did not happen');
 
-    // Per-task worktree directories must exist (the factory provisioned them).
-    // The worktrees live at <repoRoot>/.worktrees/task-<id>.
-    const worktreesDir = path.join(repoPath, '.worktrees');
+    // Per-task worktree directories must exist outside the canonical checkout.
+    // In-tree worktrees are visible to `git add .` as embedded repositories
+    // and violate the desk-isolation contract.
+    const worktreesDir = path.join(path.dirname(repoPath), '.factory-worktrees', path.basename(repoPath));
     const { existsSync } = await import('node:fs');
     assert.ok(existsSync(worktreesDir), `worktrees dir not created: ${worktreesDir}`);
+    assert.equal(
+      existsSync(path.join(repoPath, '.worktrees')),
+      false,
+      'Factory must not provision linked desks inside the canonical checkout',
+    );
 
     // The dev branch history must contain BOTH implementation commit messages.
     const log = execSync('git log --oneline dev', {
