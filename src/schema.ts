@@ -1318,6 +1318,63 @@ CREATE TABLE IF NOT EXISTS factory_transition_obligations (
 CREATE INDEX IF NOT EXISTS idx_transition_obligations_ready
   ON factory_transition_obligations (state, lease_expires_at);
 
+-- ADR-053 Phase 3 — immutable Workplace production material model.
+--
+-- factory_workplace_contributions: one execution's material delta (ordered
+-- member operations). Append-only.
+-- factory_workplace_production_revisions: sealed immutable material state of
+-- a Workplace. Content-addressed revision_ref; partition-invariant
+-- semantic_digest (same material through different execution partitions yields
+-- the same semantic digest). Append-only.
+CREATE TABLE IF NOT EXISTS factory_workplace_contributions (
+  contribution_ref           TEXT PRIMARY KEY,
+  workplace_ref              TEXT NOT NULL,
+  contributor_execution_ref  TEXT NOT NULL,
+  source_adapter             TEXT NOT NULL,
+  operations                 TEXT NOT NULL,
+  content_digest             TEXT NOT NULL,
+  parent_contribution_ref    TEXT,
+  created_at                 TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_workplace_contributions_workplace
+  ON factory_workplace_contributions (workplace_ref, created_at);
+
+CREATE TABLE IF NOT EXISTS factory_workplace_production_revisions (
+  revision_ref               TEXT PRIMARY KEY,
+  workplace_ref              TEXT NOT NULL,
+  parent_revision_ref        TEXT,
+  members                    TEXT NOT NULL,
+  contributing_execution_refs TEXT NOT NULL,
+  presenter_ref              TEXT NOT NULL,
+  material_digest            TEXT NOT NULL,
+  semantic_digest            TEXT NOT NULL,
+  sealed_at                  TEXT NOT NULL,
+  created_at                 TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_workplace_revisions_workplace
+  ON factory_workplace_production_revisions (workplace_ref, sealed_at);
+CREATE INDEX IF NOT EXISTS idx_workplace_revisions_semantic
+  ON factory_workplace_production_revisions (workplace_ref, semantic_digest);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_contributions_no_update
+BEFORE UPDATE ON factory_workplace_contributions BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_contributions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_contributions_no_delete
+BEFORE DELETE ON factory_workplace_contributions BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_contributions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_production_revisions_no_update
+BEFORE UPDATE ON factory_workplace_production_revisions BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_production_revisions are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_production_revisions_no_delete
+BEFORE DELETE ON factory_workplace_production_revisions BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_production_revisions are immutable');
+END;
+
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
 -- of the same execution's completion returns the same row (REG-12-AC-01); a
