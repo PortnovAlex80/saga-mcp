@@ -148,11 +148,19 @@ export interface AcceptanceCriterionBinding {
   criticality: AcceptanceCriticality;
 }
 
-/** New handoffs use the atomic id; legacy handoffs used the document container id. */
+/**
+ * The canonical identity of an acceptance criterion for cross-stage handoff.
+ *
+ * ADR-053: this MUST be the DB artifact ID — the same ID the acceptance
+ * verification query uses to check `SELECT ... FROM artifacts WHERE id = ?`.
+ * The previous criterionId experiment (48-bit truncated hash) produced IDs
+ * that did not match the artifacts table, causing
+ * PRODUCTION_CELL_SOURCE_ARTIFACT_INVALID under scripted E2E.
+ */
 export function acceptanceCriterionIdentity(
   criterion: AcceptanceCriterionBinding,
 ): number {
-  return criterion.criterionId ?? criterion.artifactId;
+  return criterion.artifactId;
 }
 
 export interface DevelopmentRepositoryBinding {

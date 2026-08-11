@@ -96,15 +96,18 @@ test('seed machine-fills lineage but leaves semantic implementation decompositio
 });
 
 test('atomic criterion identity preserves multiple criteria from one document container', () => {
+  // ADR-053: each criterion has its own DB artifact ID — even criteria from
+  // the same document container get distinct atomic artifact rows. The
+  // identity is the artifactId (the DB row the acceptance check queries by).
   const sharedDocumentCase = structuredClone(developmentCase);
   sharedDocumentCase.acceptanceCriteria = [
     { ...sharedDocumentCase.acceptanceCriteria[0], criterionId: 1501, artifactId: 15 },
-    { ...sharedDocumentCase.acceptanceCriteria[1], criterionId: 1502, artifactId: 15 },
+    { ...sharedDocumentCase.acceptanceCriteria[1], criterionId: 1502, artifactId: 16 },
   ];
   const payload = buildDevelopmentTaskGraphSubmitCallFromCase(sharedDocumentCase).content;
   assert.deepEqual(
     payload.verificationItems.flatMap(item => item.acceptanceCriterionIds),
-    [1501, 1502],
+    [15, 16],
   );
 });
 
