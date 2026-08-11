@@ -166,7 +166,16 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
         const decoded = decodeDevelopmentTaskGraphProposal(
           JSON.parse(row.payload_snapshot),
         );
-        if (!decoded.ok) return 'failed';
+        if (!decoded.ok) {
+          return {
+            outcome: 'failed',
+            evidenceRefs: decoded.errors.map(message => encodeCheckDiagnostic({
+              code: 'task-graph-decode-invalid',
+              message,
+              subjectRef: subjectCandidateSetRef,
+            })),
+          };
+        }
         const processRun = input.db.prepare(
           `SELECT input_schema,input_snapshot FROM factory_process_runs WHERE id=?`,
         ).get(processRunId) as { input_schema: string; input_snapshot: string } | undefined;

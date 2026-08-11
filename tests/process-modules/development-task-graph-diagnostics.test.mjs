@@ -80,5 +80,19 @@ test('task-graph provider preserves exact policy failures as content-addressed d
   assert.equal(diagnostics.some(item => item.code === 'implementation-scope-overlap'), true);
   assert.equal(diagnostics.some(item => item.message.includes("'left' and 'right'")), true);
   assert.equal(diagnostics.every(item => item.subjectRef === 'candidate-set/1'), true);
+
+  const malformed = structuredClone(proposal);
+  delete malformed.implementationItems[0].required;
+  db.prepare('UPDATE factory_managed_node_submissions SET payload_snapshot=? WHERE id=1')
+    .run(JSON.stringify(malformed));
+  const malformedResult = provider.run({
+    subjectCandidateSetRef: 'candidate-set/1', parameters: { processRunId: 1 },
+    environmentRef: null, candidateSnapshot: {},
+  });
+  assert.equal(malformedResult.outcome, 'failed');
+  const malformedDiagnostics = malformedResult.evidenceRefs.map(decodeCheckDiagnostic);
+  assert.equal(malformedDiagnostics.some(item =>
+    item.code === 'task-graph-decode-invalid'
+    && item.message === 'implementationItems[0].required must be a boolean'), true);
   db.close();
 });
