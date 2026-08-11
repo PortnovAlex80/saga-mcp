@@ -34,6 +34,11 @@ schema. A prose completion message is not a product.
 - Respect the item AC coverage, dependency results and `changeScopes`.
 - Change only what is needed for one coherent, reviewable product increment.
 - Run the strongest deterministic checks available and preserve their output.
+- Product Build requires both `npm test` and `npm start`. Ensure `package.json`
+  defines both scripts, tests exit non-zero on failure, and the local server
+  honors `PORT` and `HOST` environment variables so the Factory can allocate an
+  isolated loopback probe. Do not launch a browser when `CI=1` or
+  `BROWSER=none`.
 - Commit your work on the task branch that is already checked out. Do NOT
   create a new branch, do NOT switch branches.
 - Submit `factory.development-implementation-result.v1`. Its required fields

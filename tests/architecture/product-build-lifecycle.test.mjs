@@ -12,7 +12,7 @@ test('default product build terminates after verified Development without Delive
   );
   const development = productBuildLifecycle.stages.at(-1);
   assert.deepEqual(development.outcomeRoutes.verified, {
-    type: 'terminal', status: 'verified-local',
+    type: 'terminal', status: 'runnable-local',
   });
   assert.equal(
     productBuildLifecycle.stages.some(stage => stage.id === 'delivery-release'),

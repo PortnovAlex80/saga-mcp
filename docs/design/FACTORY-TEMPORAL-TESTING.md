@@ -30,7 +30,7 @@ workspace, spawn and process-host physics in addition to inference.
 Cross-workshop conformance observes and hash-checks every handoff:
 
 ```text
-Discovery -> Formalization -> Development -> verified-local
+Discovery -> Formalization -> Development -> runnable-local
 ```
 
 Product Build creates no Delivery/DevOps ProcessRun and waits for no human

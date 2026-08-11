@@ -419,7 +419,6 @@ test('Ratchet: OVERLAY_ALLOWLIST contains the declared override ports and nothin
   const expected = [
     'workerExecutorFactory',
     'resolveWorkerContext',
-    'development.verificationCheckProviderFactory',
   ];
   assert.deepEqual(
     [...OVERLAY_ALLOWLIST].sort(),
@@ -453,9 +452,6 @@ test('Ratchet: assertOverlayAllowlist accepts a sample composition that respects
   const sample = {
     workerExecutorFactory: () => ({}),
     resolveWorkerContext: () => ({}),
-    development: {
-      verificationCheckProviderFactory: () => ({}),
-    },
   };
   assert.doesNotThrow(() => assertOverlayAllowlist(sample));
   // Sanity: the allowlist is non-empty and includes the worker port.

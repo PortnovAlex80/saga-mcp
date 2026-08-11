@@ -186,6 +186,16 @@ test('Parallel git_change Production Cells: concurrency=2 worktree isolation', {
   const repoPath = path.join(dir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), '# Parallel Desk\n');
+  writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: 'parallel-desk-fixture', version: '1.0.0',
+    scripts: { test: 'node test.js', start: 'node server.js' },
+  }));
+  writeFileSync(path.join(repoPath, 'test.js'), 'process.exit(0);\n');
+  writeFileSync(path.join(repoPath, 'server.js'), [
+    "const http=require('http');",
+    "const port=Number(process.env.PORT);",
+    "http.createServer((_q,r)=>r.end('ready')).listen(port,'127.0.0.1');",
+  ].join('\n'));
   execSync('git init && git config user.email t@t && git config user.name t && git add -A && git commit -m init && git branch -M dev', {
     cwd: repoPath, windowsHide: true, stdio: 'pipe',
   });
@@ -199,14 +209,14 @@ test('Parallel git_change Production Cells: concurrency=2 worktree isolation', {
 
     const db = new Database(dbPath, { readonly: true });
 
-    // Lifecycle must reach 'verified-local' — proving Development integrated BOTH
+    // Lifecycle must reach 'runnable-local' — proving Development integrated BOTH
     // implementation items without PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH.
-    // Under ADR-045, product-build@1.0.0 terminates at verified-local (no Delivery).
+    // Under ADR-058, product-build terminates at runnable-local (no Delivery).
     const lifecycle = db.prepare('SELECT status,terminal_status,error FROM factory_lifecycle_runs LIMIT 1').get();
     assert.equal(
       `${lifecycle.status}/${lifecycle.terminal_status}`,
-      'completed/verified-local',
-      `Lifecycle did not reach verified-local. error=${lifecycle.error}\n${result.stderr.slice(-8000)}`,
+      'completed/runnable-local',
+      `Lifecycle did not reach runnable-local. error=${lifecycle.error}\n${result.stderr.slice(-8000)}`,
     );
     assert.ok(
       !lifecycle.error || !lifecycle.error.includes('PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH'),

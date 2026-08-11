@@ -82,6 +82,11 @@ export class TemporalResourceRegistry {
 
   async finalize() {
     if (this._finalized) return;
+    if (process.env.SAGA_KEEP_TEMP === '1') {
+      process.stderr.write(`[cleanup] preserving temporal resources: ${this._dirs.join(', ')}\n`);
+      this._finalized = true;
+      return;
+    }
     // Run registered finalizers first (DB closes, worktree removal).
     for (const { fn, label } of this._finalizers) {
       try { await fn(); } catch (error) {

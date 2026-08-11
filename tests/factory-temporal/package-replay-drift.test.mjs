@@ -231,19 +231,16 @@ test('overlay-allowlist-rejects-malicious-composition: replacing settlement/gate
 
     // Sanity: the canonical composition's allowlist is non-empty and contains
     // the declared overlay ports.
-    assert.ok(OVERLAY_ALLOWLIST.length >= 3, 'OVERLAY_ALLOWLIST is populated');
+    assert.ok(OVERLAY_ALLOWLIST.length >= 2, 'OVERLAY_ALLOWLIST is populated');
     assert.ok(OVERLAY_ALLOWLIST.includes('workerExecutorFactory'));
-    assert.ok(OVERLAY_ALLOWLIST.includes('development.verificationCheckProviderFactory'));
+    assert.equal(OVERLAY_ALLOWLIST.includes('development.verificationCheckProviderFactory'), false);
 
     // --- Malicious shape A: replacing development.settlementState ---
     // settlementState is the production settlement policy holder; it is NOT in
     // the allowlist (only settlementPolicy is, which is the test override port).
     const maliciousA = {
       workerExecutorFactory: () => ({}), // allowed
-      development: {
-        verificationCheckProviderFactory: () => ({}), // allowed
-        settlementState: { illegal: 'replaces-production-settlement' }, // NOT allowed
-      },
+      development: { settlementState: { illegal: 'replaces-production-settlement' } },
     };
     assert.throws(
       () => assertOverlayAllowlist(maliciousA),
@@ -303,9 +300,6 @@ test('overlay-allowlist-rejects-malicious-composition: replacing settlement/gate
     const safe = {
       workerExecutorFactory: () => ({}),
       resolveWorkerContext: () => ({}),
-      development: {
-        verificationCheckProviderFactory: () => ({}),
-      },
     };
     assert.doesNotThrow(() => assertOverlayAllowlist(safe),
       'a composition that overrides ONLY allowlisted ports must pass');
@@ -327,7 +321,7 @@ test('overlay-allowlist-rejects-malicious-composition: replacing settlement/gate
 // 3. provider-mismatch-fails-closed
 // ===========================================================================
 
-test('provider-mismatch-fails-closed: verification provider with wrong determinism prevents lifecycle completion', { timeout: 540000 }, async () => {
+test('advisory-assessment trust drift cannot replace local-runnability authority', { timeout: 540000 }, async () => {
   const registry = createRegistry();
   try {
     const { repoPath, baseCommit, invocationLogPath } = provisionRepo(registry, 'provider-mismatch');
@@ -406,8 +400,8 @@ test('provider-mismatch-fails-closed: verification provider with wrong determini
 
       assert.ok(devRun, 'Development ProcessRun exists');
       assert.equal(devRun.status, 'completed', 'Development ProcessRun is terminal');
-      assert.notEqual(devRun.local_outcome, 'verified',
-        `Development local_outcome must NOT be 'verified' with wrong-determinism provider; `
+      assert.equal(devRun.local_outcome, 'verified',
+        `Advisory assessment provider metadata must not displace local-runnability authority; `
           + `got '${devRun.local_outcome}' (exitCode=${exitCode}, `
           + `launchError=${launchError ? String(launchError.message || launchError).slice(0, 200) : 'none'})`,
       );

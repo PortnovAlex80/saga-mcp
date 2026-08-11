@@ -1134,9 +1134,18 @@ At minimum L3/L4 prove:
    seam. It may replace model cognition, but not assignment, workspace/desk,
    MCP/tool authority, product submission, process finalization, gates,
    effects, routing or persistence;
-10. the Product Build terminal is `verified-local` with no Delivery/DevOps
-    ProcessRun and no human approval dependency. Human acceptance starts only
-    after the exact frozen product is started locally.
+10. the Product Build terminal is `runnable-local` with no Delivery/DevOps
+    ProcessRun and no human approval dependency. Factory-owned tests plus an
+    isolated start/probe/shutdown receipt bind the exact frozen commit/tree.
+    This proves local runnability, not semantic acceptance. Human acceptance
+    starts only after that product is run; findings become a new Change
+    Request against the immutable product revision.
+
+The test substitution boundary is equally strict: a scripted worker may replace
+model inference, but a production-conformance suite must use the installed
+lifecycle, package, Gate plans, CheckProviders, effects, persistence, and
+settlement unchanged. Replacing an acceptance provider turns the scenario into
+a component test and must not be reported as production E2E.
 
 Temporal assertions use durable transitions or host-cycle budgets, not quiet
 logs or arbitrary wall-clock sleeps. On failure the harness emits the last

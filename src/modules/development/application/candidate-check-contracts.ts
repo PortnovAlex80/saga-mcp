@@ -17,3 +17,14 @@ export const AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST = sha256Hex({
   version: AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
   invariant: 'exact-candidate-method-plan-and-criterion-observer-authorization',
 });
+
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
+  'factory.local-runnability.v1';
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.0.0';
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+  invariant:
+    'exact-frozen-tree-required-tests-start-loopback-probe-and-clean-shutdown',
+  commandPolicy: 'npm-test-and-npm-start-no-shell-network-loopback-only',
+});

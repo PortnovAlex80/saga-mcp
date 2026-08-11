@@ -38,6 +38,11 @@ import {
   DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
   DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
 } from '../../../modules/development/application/development-check-providers.js';
+import {
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+} from '../../../modules/development/application/candidate-check-contracts.js';
 
 export { DEVELOPMENT_PROCESS_MODULE_REF };
 
@@ -98,12 +103,18 @@ const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
   }],
 );
 const VERIFICATION_FINAL_PLAN = buildCheckPlan(
-  'development.verification.final.v2',
+  'development.verification.final.v3',
   [{
     providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
     providerDigest: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
-    indeterminateDisposition: 'human-required',
+    repairTargetRoleOnIndeterminate: 'author',
+  }, {
+    providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+    version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+    providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+    repairTargetRoleOnFailure: 'author',
+    repairTargetRoleOnIndeterminate: 'author',
   }],
 );
 
@@ -126,7 +137,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
   ],
   flow: {
     id: 'factory.development.standard',
-    version: '2.0.0',
+    version: '2.1.0',
     entryNodeId: 'plan-task-graph',
     nodes: [
       {

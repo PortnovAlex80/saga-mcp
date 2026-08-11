@@ -36,6 +36,10 @@ import {
 import { createDevelopmentVerificationAdoptionHandler } from './infrastructure/sqlite-development-verification-adoption.js';
 import { installAccessibleCounterCheckProviders } from '../../infrastructure/verification/accessible-counter-check-providers.js';
 import {
+  createLocalRunnabilityCheckProvider,
+  ensureLocalRunnabilityProviderTrust,
+} from '../../infrastructure/verification/local-runnability-check-provider.js';
+import {
   createDevelopmentKernelHandlers as createVersionedDevelopmentKernelHandlers,
   createDevelopmentOutputResolver as createVersionedDevelopmentOutputResolver,
 } from './application/development-installation.js';
@@ -131,6 +135,11 @@ export function registerDevelopment(
       candidateSets: sharedDeps.candidateSetRepo,
     }));
   registerFactoryCheckProvider(createReviewVerdictCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
+  }));
+  ensureLocalRunnabilityProviderTrust(db);
+  registerFactoryCheckProvider(createLocalRunnabilityCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));

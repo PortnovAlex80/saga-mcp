@@ -140,17 +140,17 @@ title/DB identity and the database path.
 
 ## 6. Terminal states (ADR-045)
 
-Under the current `product-build@1.0.0` lifecycle, the factory terminates at:
+Under the current `product-build@1.1.0` lifecycle, the factory terminates at:
 
 | Stage | Success outcome | Lifecycle terminal status |
 |-------|----------------|--------------------------|
 | Discovery | `go` | (transitions to Formalization) |
 | Formalization | `formalized` | (transitions to Development) |
-| Development | `verified` | **`verified-local`** |
+| Development | `verified` | **`runnable-local`** |
 
-The factory reaches `lifecycle_run.status=completed`, `terminal_status=verified-local`.
+The factory reaches `lifecycle_run.status=completed`, `terminal_status=runnable-local`.
 
-**Delivery is a separate DevOps request**, not part of `product-build@1.0.0`.
+**Delivery is a separate DevOps request**, not part of `product-build@1.1.0`.
 To run Delivery after Development succeeds, use the `continue` command with
 `--local-release` or a release-specific composition.
 

@@ -37,7 +37,7 @@ test('Foundation: canonical composition fingerprint is stable and overlay allowl
   try {
     const fingerprint = await computeCompositionFingerprint(dbPath);
     assert.ok(fingerprint.lifecycle.id.includes('product-build'), `lifecycle id: ${fingerprint.lifecycle.id}`);
-    assert.equal(fingerprint.lifecycle.version, '1.0.0');
+    assert.equal(fingerprint.lifecycle.version, '1.1.0');
     assert.equal(fingerprint.lifecycle.stagesDigest.length, 64);
     assert.equal(typeof fingerprint.fingerprint, 'string');
     assert.equal(fingerprint.fingerprint.length, 64);
@@ -45,7 +45,11 @@ test('Foundation: canonical composition fingerprint is stable and overlay allowl
 
     // The overlay allowlist must include exactly the declared override ports.
     assert.ok(fingerprint.overlayAllowlist.includes('workerExecutorFactory'));
-    assert.ok(fingerprint.overlayAllowlist.includes('development.verificationCheckProviderFactory'));
+    assert.equal(
+      fingerprint.overlayAllowlist.includes('development.verificationCheckProviderFactory'),
+      false,
+      'production acceptance policy cannot be overlaid',
+    );
   } finally {
     await cleanupRegistry(registry);
   }
@@ -84,9 +88,6 @@ test('Foundation: overlay allowlist rejects composition that replaces settlement
   const safe = {
     workerExecutorFactory: () => ({}),
     resolveWorkerContext: () => ({}),
-    development: {
-      verificationCheckProviderFactory: () => ({}),
-    },
   };
   assert.doesNotThrow(() => assertOverlayAllowlist(safe));
 });
@@ -98,6 +99,16 @@ test('Foundation: full product-build lifecycle traverses from idea to terminal v
   const repoPath = path.join(repoDir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), '# Foundation\n');
+  writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: 'foundation-fixture', version: '1.0.0',
+    scripts: { test: 'node test.js', start: 'node server.js' },
+  }));
+  writeFileSync(path.join(repoPath, 'test.js'), 'process.exit(0);\n');
+  writeFileSync(path.join(repoPath, 'server.js'), [
+    "const http=require('http');",
+    "const port=Number(process.env.PORT);",
+    "http.createServer((_q,r)=>r.end('ready')).listen(port,'127.0.0.1');",
+  ].join('\n'));
   execSync(
     'git init && git config user.email t@t && git config user.name t '
     + '&& git add -A && git commit -m init && git branch -M dev',

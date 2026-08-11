@@ -22,6 +22,16 @@ export function createTempGitRepo(label = 'temporal') {
   const repoPath = path.join(dir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), `# ${label}\n`);
+  writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: `saga-${label}-fixture`, version: '1.0.0',
+    scripts: { test: 'node test.js', start: 'node server.js' },
+  }));
+  writeFileSync(path.join(repoPath, 'test.js'), 'process.exit(0);\n');
+  writeFileSync(path.join(repoPath, 'server.js'), [
+    "const http=require('http');",
+    "const port=Number(process.env.PORT);",
+    "http.createServer((_q,r)=>r.end('ready')).listen(port,'127.0.0.1');",
+  ].join('\n'));
   execSync(
     'git init && git config user.email t@t && git config user.name t '
     + '&& git add -A && git commit -m init && git branch -M dev',

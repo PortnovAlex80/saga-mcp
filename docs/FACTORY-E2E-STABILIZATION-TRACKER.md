@@ -34,6 +34,7 @@ Prove and harden the Factory as one autonomous production system:
 | W2 | Decide production-faithful test architecture | completed | ADR-049 with MCDA, pre-mortem, Red Team |
 | W3 | Scripted-LM contract-equivalence coverage | completed | Same WorkIntent/tools/submissions/gates; only inference port replaced |
 | W4 | Cross-workshop movement coverage | completed | Real composition traverses all product-build stages and terminalizes |
+| W5 | Production local-readiness authority | in progress | Exact frozen candidate builds/tests/starts/probes and terminates `runnable-local` without human or Delivery |
 | W5 | Dual Kanban/engine state conformance | completed | Transition matrix + cross-product invariants + generated traces |
 | W6 | Liveness/fault temporal coverage | completed | No silent nonterminal state; crash/retry/effect/routing scenarios pass |
 | W7 | Fix production defects exposed by W3-W6 | completed | Regression tests and full relevant suites green |

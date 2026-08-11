@@ -16,10 +16,10 @@ export const productBuildLifecycle: LifecycleDefinition = {
   ...productDeliveryLifecycle,
   identity: {
     name: 'product-build',
-    version: '1.0.0',
+    version: '1.1.0',
     displayName: 'Product Build',
     description:
-      'Builds and verifies one locally runnable product revision; deployment is a separate request.',
+      'Builds and proves one locally runnable product revision; deployment and human acceptance are separate requests.',
   },
   stages: productDeliveryLifecycle.stages
     .filter(stage => stage.id !== 'delivery-release')
@@ -29,11 +29,11 @@ export const productBuildLifecycle: LifecycleDefinition = {
           ...stage,
           outcomeRoutes: {
             ...stage.outcomeRoutes,
-            verified: { type: 'terminal' as const, status: 'verified-local' },
+            verified: { type: 'terminal' as const, status: 'runnable-local' },
           },
           exitConditions: [
-            'Development has verified an immutable integrated candidate',
-            'The verified commit/tree is the local runnable product baseline',
+            'Development has frozen an immutable integrated candidate',
+            'Factory-owned tests and a loopback start probe passed for the exact commit/tree',
           ],
         }),
 };

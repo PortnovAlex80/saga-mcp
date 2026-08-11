@@ -84,7 +84,6 @@ export const CHECK_PROVIDER_CATEGORIES = [
 export const OVERLAY_ALLOWLIST = [
   'workerExecutorFactory',                       // inference port — ADR-048 allows replacement
   'resolveWorkerContext',                        // workspace resolution — required for the executor
-  'development.verificationCheckProviderFactory', // declared check-provider port (ADR-048)
 ];
 
 // ---------------------------------------------------------------------------

@@ -8,8 +8,7 @@
 //
 // STRICT OVERLAY ALLOWLIST — what this composition replaces:
 //   1. workerExecutorFactory  → scripted or fault-injecting executor
-//   2. verificationCheckProviderFactory → test provider (trusts well-formed LM assessments)
-//   3. delivery preflight/action/observe providers → deterministic file-marker providers
+//   2. delivery preflight/action/observe providers → deterministic file-marker providers
 //
 // What this composition NEVER replaces:
 //   - lifecycle selection (productBuildLifecycle)
@@ -29,7 +28,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createScriptedWorkerExecutorFactory } from '../../factory-contract/scenario-scripted-executor.mjs';
-import { createTestVerificationCheckProviderFactory } from '../../factory-contract/test-verification-check-provider.mjs';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
@@ -172,9 +170,6 @@ export async function createProductLifecycleComposition(context) {
       // classes; this test composition binds the EXACT same classes.
       taskGraphPolicy: new ReferenceDevelopmentTaskGraphPolicy(),
       settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
-      // The ONLY true test port replacement: the verification check provider
-      // trusts well-formed LM assessments instead of always returning 'unknown'.
-      verificationCheckProviderFactory: createTestVerificationCheckProviderFactory(),
     },
 
     delivery: {

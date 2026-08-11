@@ -367,12 +367,10 @@ export function createDevelopmentVerificationCheckProvider(input: {
           || decoded.value.acceptedCriterionHash !== row.accepted_hash
           || decoded.value.candidateHash !== frozenHash
         ) return 'failed';
-        // This provider validates the LM assessment contract and lineage. It
-        // is deliberately not an executable criterion oracle: an LM-authored
-        // `passed` cannot become Factory acceptance. Until an independent
-        // candidate-check receipt is present, every well-formed assessment is
-        // indeterminate and the plan stops the line without blaming the LM.
-        return 'unknown';
+        // This provider proves only assessment shape and exact lineage. It does
+        // not trust the LM-authored outcome. The independent local-runnability
+        // provider in the same plan owns executable Product Build evidence.
+        return 'passed';
       } catch {
         return 'error';
       }
