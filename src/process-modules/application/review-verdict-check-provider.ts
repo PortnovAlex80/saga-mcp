@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { SqliteCandidateSetRepository } from '../../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import type { CheckProvider } from '../domain/workplace/gate.js';
+import { encodeCheckDiagnostic } from '../domain/workplace/check-diagnostic.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
   productPayloadContractDigest,
@@ -8,7 +9,7 @@ import {
 } from './product-payload-contract.js';
 
 export const REVIEW_VERDICT_CHECK_PROVIDER_ID = 'factory.review-verdict.v1';
-export const REVIEW_VERDICT_CHECK_PROVIDER_VERSION = '1.0.0';
+export const REVIEW_VERDICT_CHECK_PROVIDER_VERSION = '1.1.0';
 export const REVIEW_VERDICT_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: REVIEW_VERDICT_CHECK_PROVIDER_ID,
   version: REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
@@ -129,7 +130,20 @@ export function createReviewVerdictCheckProvider(input: {
           || !payload.findings.every(isReviewFinding)
           || (payload.verdict !== 'approved' && payload.verdict !== 'changes_requested')
         ) return 'unknown';
-        return payload.verdict === 'approved' ? 'passed' : 'failed';
+        if (payload.verdict === 'approved') return 'passed';
+        return {
+          outcome: 'failed',
+          evidenceRefs: payload.findings.map((finding, index) => {
+            const structured = typeof finding === 'string'
+              ? { message: finding }
+              : finding;
+            return encodeCheckDiagnostic({
+              code: `review-finding-${index + 1}`,
+              message: structured.message,
+              ...(structured.subjectRef ? { subjectRef: structured.subjectRef } : {}),
+            });
+          }),
+        };
       } catch {
         return 'error';
       }

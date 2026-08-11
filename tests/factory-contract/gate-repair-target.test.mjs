@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
 import { buildCheckPlan } from '../../dist/process-modules/application/standard-check-providers.js';
 import { createReviewVerdictCheckProvider } from '../../dist/process-modules/application/review-verdict-check-provider.js';
+import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 
 const workplaceRef = {
   processRunId: 1,
@@ -135,14 +136,22 @@ function reviewOutcome(payload) {
 }
 
 test('review provider distinguishes valid changes_requested from malformed review output', () => {
-  assert.equal(reviewOutcome({
+  const stringFinding = reviewOutcome({
     subject_candidate_set_ref: 'author-set', verdict: 'changes_requested', findings: ['bug'],
-  }), 'failed');
-  assert.equal(reviewOutcome({
+  });
+  assert.equal(stringFinding.outcome, 'failed');
+  assert.deepEqual(stringFinding.evidenceRefs.map(decodeCheckDiagnostic), [{
+    code: 'review-finding-1', message: 'bug',
+  }]);
+  const structuredFinding = reviewOutcome({
     subject_candidate_set_ref: 'author-set',
     verdict: 'changes_requested',
     findings: [{ message: 'missing trace', severity: 'error', subjectRef: 'artifact:16' }],
-  }), 'failed');
+  });
+  assert.equal(structuredFinding.outcome, 'failed');
+  assert.deepEqual(structuredFinding.evidenceRefs.map(decodeCheckDiagnostic), [{
+    code: 'review-finding-1', message: 'missing trace', subjectRef: 'artifact:16',
+  }]);
   assert.equal(reviewOutcome({ verdict: 'changes_requested', findings: ['bug'] }), 'unknown');
   assert.equal(reviewOutcome({
     subject_candidate_set_ref: 'author-set', verdict: 'approved', findings: [],
