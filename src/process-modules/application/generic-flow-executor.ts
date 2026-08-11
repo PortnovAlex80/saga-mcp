@@ -386,6 +386,10 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         output,
         certificate,
         activeIssue: null,
+        // A resumable pause is diagnostic state, not terminal history.  Once
+        // the same ProcessRun settles successfully, retaining that message
+        // makes projections report a red incident beside a completed run.
+        error: null,
       });
 
       return runResult;

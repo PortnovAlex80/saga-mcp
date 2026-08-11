@@ -147,6 +147,18 @@ test('lifecycle-routing: terminal ProcessRun settles its StageRun (status + loca
         assert.equal(row.status, 'completed');
         assert.ok(row.local_outcome, `${row.module_name} local_outcome set`);
       }
+
+      // A pause message describes a resumable intermediate state.  It must not
+      // survive successful settlement, otherwise the board renders a healthy
+      // completed workshop with a stale red incident marker.
+      const completedWithStaleErrors = db.prepare(
+        `SELECT id,module_name,error
+           FROM factory_process_runs
+          WHERE status='completed' AND error IS NOT NULL`,
+      ).all();
+      assert.deepEqual(completedWithStaleErrors, [],
+        `completed ProcessRuns retained stale diagnostics: ${
+          JSON.stringify(completedWithStaleErrors, null, 2)}`);
     } finally {
       db.close();
     }
