@@ -100,6 +100,11 @@ semantics. A canonical composition fingerprint makes such drift visible.
 - Human findings naturally enter a new Change Request against the exact product
   revision.
 - Products without an executable local-run contract are returned for rework.
+- Product Build policy contributes required repository write scopes for its
+  bootstrap contract. The task-graph gate must assign the package manifest and
+  test tree to implementation work before any author is admitted; downstream
+  scope enforcement must never be weakened to compensate for an incomplete
+  plan.
 - Semantic verification remains available as a stricter optional policy once
   its method/provider coverage is complete.
 
@@ -139,3 +144,9 @@ continues to emit `verified-local` from readiness alone, this ADR is violated.
   readiness contract.
 - Check trigger: the next clean real-model E2E and every production-composition
   temporal run.
+- 2026-08-11 / Run016: the planner omitted `package.json` and `tests/` from all
+  write scopes. The source-authority gate correctly rejected the out-of-scope
+  files; after repair, the reviewer correctly rejected their absence. This
+  exposed a planning-contract gap, not a Git or reviewer defect. Product Build
+  policy v1.1 now carries `requiredChangeScopes`, and deterministic graph
+  validation rejects the omission before implementation.
