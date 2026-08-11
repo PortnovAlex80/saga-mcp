@@ -401,7 +401,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       callTemplates: [],
       checklists: [IMPLEMENTATION_CHECKLIST],
       outputSchema: { id: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA },
-      retryPolicy: { maxAttempts: 2, retryOn: ['review-rejected', 'merge-conflict'], backoff: 'none' },
+      retryPolicy: { maxAttempts: 3, retryOn: ['review-rejected', 'merge-conflict'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },
     },
     {

@@ -32,6 +32,9 @@ schema. A prose completion message is not a product.
 - Work inside the machine-provisioned worktree (`execution_path` from the
   REPOSITORY DESK block). The task branch is already checked out for you.
 - Respect the item AC coverage, dependency results and `changeScopes`.
+- `snapshot.changedFiles` is an exact file manifest, never a directory summary:
+  enumerate every added, modified, deleted, or renamed Git path exactly as the
+  authoritative base-to-source diff reports it.
 - Change only what is needed for one coherent, reviewable product increment.
 - Run the strongest deterministic checks available and preserve their output.
 - Product Build as a whole requires both `npm test` and `npm start`, but one
@@ -55,6 +58,12 @@ schema. A prose completion message is not a product.
 - Call `worker_done` and stop. The runtime-owned post-acceptance provider merges
   the exact reviewed source commit; an LM must not mutate the integration branch
   or manufacture an integration receipt.
+
+When scope recovery feedback names paths outside authority, remove those paths
+from the task commit even if they seem useful as lint, documentation, lockfile,
+or bootstrap configuration. Do not defend or retain unauthorized convenience
+files. If the product needs them, a graph item whose frozen scopes own them must
+create them later.
 
 ## Reviewer desk
 

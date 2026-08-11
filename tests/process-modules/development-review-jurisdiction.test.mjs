@@ -34,4 +34,14 @@ test('review instructions forbid blockers owned by future scoped work items', ()
   assert.match(reviewer, /Do not request global files, tests, or\s+launch wiring assigned to another future item/);
   assert.match(fallback, /MUST NOT produce `changes_requested`/);
   assert.match(fallback, /Never widen scope merely to make an\s+intermediate candidate globally runnable/);
+  assert.match(fallback, /`snapshot\.changedFiles` is an exact file manifest/);
+  assert.match(fallback, /remove those paths\s+from the task commit/);
+});
+
+test('implementation author has a bounded third repair attempt for progressive scope correction', () => {
+  const profile = developmentProcessModule.executionProfiles.find(
+    candidate => candidate.id === 'development-implementation-worker',
+  );
+  assert.ok(profile);
+  assert.equal(profile.retryPolicy.maxAttempts, 3);
 });

@@ -77,3 +77,10 @@ Expectation: in the next clean real-model Product Build, an intermediate item
 whose graph assigns `package.json` downstream is not rejected solely because
 that file is absent; the downstream integration item supplies it and final
 local runnability passes. Check trigger: completion or failure of Run025.
+
+Run025 follow-up: the author scope Gate correctly rejected a directory-summary
+`changedFiles` claim and then exact out-of-scope convenience files. Because the
+second attempt made measurable progress but exhausted the two-attempt budget,
+the implementation author budget is now three and the repair instruction
+requires exact file enumeration plus removal of every unauthorized convenience
+file. The budget remains bounded; acceptance authority is unchanged.
