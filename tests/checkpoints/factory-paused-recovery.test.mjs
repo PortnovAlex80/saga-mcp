@@ -10,6 +10,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { ensureFactoryLifecycleRunSchema } from '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import { persistSubmissionValidationRejection } from '../../dist/lifecycle/submission-validation-rejections.js';
 import { resumePausedSubmissionWorkplace } from '../../dist/app/factory-start.js';
+import { reconcileAutomaticPreSpawnRecovery } from '../../dist/app/automatic-pre-spawn-recovery.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 
@@ -145,5 +146,65 @@ test('guarded recovery refuses artifact bytes changed after rejection', () => {
   );
   assert.equal(db.prepare('SELECT revision FROM factory_workplaces').get().revision, 7);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_operator_recovery_authorizations').get().n, 0);
+  db.close();
+});
+
+test('ordinary bootstrap recovery requeues a superseded pre-spawn desk failure once', () => {
+  const { db, workplaceRef } = fixture();
+  db.prepare("UPDATE tasks SET status='blocked' WHERE id=11").run();
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+        launcher,state,phase,reserved_at,last_error)
+     VALUES ('worker-execution:desk-failure','run-1',1,1,11,'worker','machine',
+             'factory','spawn_failed','executing',datetime('now'),?)`,
+  ).run(
+    'Claude spawn failed (pre-assigned): REPOSITORY_DESK_BASE_MISMATCH: '
+    + 'old attempt does not descend from the new effective base',
+  );
+
+  let result;
+  try {
+    result = reconcileAutomaticPreSpawnRecovery(db, 1);
+  } catch (error) {
+    assert.fail(error?.stack ?? String(error));
+  }
+  assert.equal(result.executionId, 'worker-execution:desk-failure');
+  assert.equal(result.resultingRevision, 8);
+  assert.deepEqual(
+    db.prepare(
+      'SELECT kanban_phase,loop_state,revision FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(workplaceRef),
+    { kanban_phase: 'in_progress', loop_state: 'queued', revision: 8 },
+  );
+  assert.equal(db.prepare(
+    'SELECT state FROM worker_executions WHERE execution_id=?',
+  ).get('worker-execution:desk-failure').state, 'spawn_failed');
+  assert.equal(db.prepare(
+    'SELECT COUNT(*) n FROM factory_automatic_spawn_recovery_receipts',
+  ).get().n, 1);
+  assert.equal(reconcileAutomaticPreSpawnRecovery(db, 1), null);
+  assert.equal(db.prepare(
+    'SELECT COUNT(*) n FROM factory_automatic_spawn_recovery_receipts',
+  ).get().n, 1);
+  db.close();
+});
+
+test('bootstrap recovery leaves an actual process spawn failure human-paused', () => {
+  const { db } = fixture();
+  db.prepare("UPDATE tasks SET status='blocked' WHERE id=11").run();
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+        launcher,state,phase,reserved_at,last_error)
+     VALUES ('worker-execution:enoent','run-1',1,1,11,'worker','machine',
+             'factory','spawn_failed','executing',datetime('now'),
+             'Claude spawn failed: ENOENT claude')`,
+  ).run();
+  assert.equal(reconcileAutomaticPreSpawnRecovery(db, 1), null);
+  assert.equal(db.prepare('SELECT loop_state FROM factory_workplaces').get().loop_state, 'paused');
+  assert.equal(db.prepare(
+    'SELECT COUNT(*) n FROM factory_automatic_spawn_recovery_receipts',
+  ).get().n, 0);
   db.close();
 });

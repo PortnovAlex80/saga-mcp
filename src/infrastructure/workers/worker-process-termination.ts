@@ -3,6 +3,7 @@ import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
+import { isRetryableFactoryProvisioningFailure } from './pre-spawn-failure-policy.js';
 
 export interface ManagedWorkerProcessTerminationInput {
   readonly taskId: number;
@@ -126,18 +127,25 @@ export function finalizeManagedWorkerProcess(
   }
 
   if (input.spawnFailure) {
+    const retryableProvisioningFailure = isRetryableFactoryProvisioningFailure(input.reason);
+    const workplaceRepairRequested = retryableProvisioningFailure
+      ? requestWorkplaceCrashRepair(db, input.taskId, input.executionId)
+      : false;
     const release = releaseExecutionAtomically(db, {
       executionId: input.executionId,
       terminalState: 'spawn_failed',
       exitCode: input.exitCode ?? null,
       reason: input.reason,
       lastError: input.reason,
+      preserveTaskStatus: retryableProvisioningFailure,
     });
-    if (release.taskReleased) pauseSpawnFailure(db, input.taskId);
+    if (release.taskReleased && !retryableProvisioningFailure) {
+      pauseSpawnFailure(db, input.taskId);
+    }
     return {
       semanticCompletion: false,
       executionState: 'spawn_failed',
-      workplaceRepairRequested: false,
+      workplaceRepairRequested,
       taskReleased: release.taskReleased,
       blockedReason: release.blockedReason,
     };

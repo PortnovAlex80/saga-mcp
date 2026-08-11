@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { SCHEMA_SQL, rebuildLaunchIdempotencyIndex } from '../../dist/schema.js';
 import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';
+import { isRetryableFactoryProvisioningFailure } from '../../dist/infrastructure/workers/pre-spawn-failure-policy.js';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -108,6 +109,21 @@ test('Bug #1: spawn_failed is reserved for genuine spawn failures only', () => {
   ).get(executionId);
   assert.equal(exec.state, 'spawn_failed',
     'genuine spawn failure correctly labeled spawn_failed');
+});
+
+test('pre-spawn taxonomy separates repaired Factory provisioning from missing executable', () => {
+  assert.equal(isRetryableFactoryProvisioningFailure(
+    'Claude spawn failed: REPOSITORY_DESK_BASE_MISMATCH: stale attempt branch',
+  ), true);
+  assert.equal(isRetryableFactoryProvisioningFailure(
+    'Claude spawn failed: REPOSITORY_DESK_INTEGRATION_HEAD_DRIFT: expected a got b',
+  ), true);
+  assert.equal(isRetryableFactoryProvisioningFailure(
+    'Claude spawn failed: ENOENT claude',
+  ), false);
+  assert.equal(isRetryableFactoryProvisioningFailure(
+    'worker claimed REPOSITORY_DESK_BASE_MISMATCH without a typed delimiter',
+  ), false);
 });
 
 // ─── Bug #2: cross-run semantic digest stability ──────────────────────────

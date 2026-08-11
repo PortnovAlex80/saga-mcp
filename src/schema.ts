@@ -2058,6 +2058,32 @@ CREATE TRIGGER IF NOT EXISTS trg_orphaned_launch_recovery_no_delete
   BEFORE DELETE ON factory_orphaned_launch_recovery_receipts
   BEGIN SELECT RAISE(ABORT, 'orphaned launch recovery receipts are immutable'); END;
 
+-- Controller-bootstrap recovery for a pre-spawn Factory provisioning failure
+-- whose implementation has since been superseded by an explicit policy.
+-- The failed WorkerExecution remains terminal evidence; this receipt only
+-- authorizes one fresh Workplace attempt through the normal reducer.
+CREATE TABLE IF NOT EXISTS factory_automatic_spawn_recovery_receipts (
+  recovery_ref            TEXT PRIMARY KEY,
+  execution_id            TEXT NOT NULL UNIQUE REFERENCES worker_executions(execution_id),
+  lifecycle_run_id        INTEGER NOT NULL,
+  process_run_id          INTEGER NOT NULL,
+  workplace_ref           TEXT NOT NULL,
+  expected_revision       INTEGER NOT NULL,
+  resulting_revision      INTEGER NOT NULL,
+  task_id                 INTEGER NOT NULL REFERENCES tasks(id),
+  failure_code            TEXT NOT NULL,
+  failure_digest          TEXT NOT NULL,
+  recovery_policy_ref     TEXT NOT NULL,
+  recovery_policy_digest  TEXT NOT NULL,
+  recovered_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TRIGGER IF NOT EXISTS trg_automatic_spawn_recovery_no_update
+  BEFORE UPDATE ON factory_automatic_spawn_recovery_receipts
+  BEGIN SELECT RAISE(ABORT, 'automatic spawn recovery receipts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_automatic_spawn_recovery_no_delete
+  BEFORE DELETE ON factory_automatic_spawn_recovery_receipts
+  BEGIN SELECT RAISE(ABORT, 'automatic spawn recovery receipts are immutable'); END;
+
 -- Explicit recovery for an infrastructure-only GateRun failure after the
 -- CandidateSet was sealed. The failed GateRun remains immutable evidence; the
 -- authorization pins the replacement CheckPlan that may inspect the same set.

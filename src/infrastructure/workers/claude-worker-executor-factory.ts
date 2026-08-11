@@ -41,6 +41,7 @@ import { materializePinnedWorkspace, type WorkplaceDesk } from '../../process-mo
 import type { RepositoryDesk } from '../../process-modules/application/repository-desk.js';
 import { RepositoryDeskProvisioner } from './repository-desk-provisioner.js';
 import { resolveEffectiveDeskBase } from './effective-desk-base.js';
+import { isRetryableFactoryProvisioningFailure } from './pre-spawn-failure-policy.js';
 import {
   applyTestWarmStart,
   captureTestWarmStart,
@@ -368,6 +369,8 @@ export function createPinnedClaudeWorkerExecutorFactory(
             : command.reason ?? 'worker execution ended without terminal worker_done';
           const isSpawnFailure = command.spawnFailure === true;
           if (isSpawnFailure) {
+            const retryableProvisioningFailure =
+              isRetryableFactoryProvisioningFailure(reason);
             // Genuine spawn failure: the Claude process could not be created
             // (binary missing, CreateProcess failed, bad config). This IS an
             // infrastructure fault — label it 'spawn_failed' and pause for a
@@ -377,8 +380,9 @@ export function createPinnedClaudeWorkerExecutorFactory(
               terminalState: 'spawn_failed',
               reason,
               lastError: reason,
+              preserveTaskStatus: retryableProvisioningFailure,
             }).taskReleased;
-            if (released && task?.workplace_ref) {
+            if (released && task?.workplace_ref && !retryableProvisioningFailure) {
               new ConveyorRuntime(db).pauseForHuman({
                 workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
                 taskId: command.taskId,

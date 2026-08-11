@@ -30,6 +30,7 @@ import {
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
+import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
   installProductionModules,
@@ -209,6 +210,17 @@ async function main() {
       epicId,
     });
     supervision = supervisionHandle;
+
+    if (mode === 'resume' && ticket.lifecycleRunId) {
+      assertFactoryControllerFence(launchRef, claimToken, controllerEpoch);
+      const recovery = reconcileAutomaticPreSpawnRecovery(getDb(), ticket.lifecycleRunId);
+      if (recovery) {
+        process.stderr.write(
+          `[orchestrate-cli] automatic pre-spawn recovery=${recovery.recoveryRef} `
+          + `execution=${recovery.executionId} replayed=${recovery.replayed}\n`,
+        );
+      }
+    }
 
     // CGAD P18 — Conveyor dispatch loop. The CLI is the factory operator: it
     // runs the lifecycle (which pauses when a module waits for kanban tasks to
