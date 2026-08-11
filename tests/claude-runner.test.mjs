@@ -31,7 +31,7 @@ function fakeChild(pid) {
   return child;
 }
 
-function makeHarness() {
+function makeHarness(overrides = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'factory-runner-'));
   const skills = path.join(root, 'package', 'skills');
   const protocolPath = path.join(skills, 'protocol', 'SKILL.md');
@@ -55,7 +55,8 @@ function makeHarness() {
     sagaSkillRoot: path.join(root, 'unused'), logRoot: path.join(root, 'logs'),
     getProject: id => ({ id, name: 'target-project', tags: '[]' }),
     resolveWorkspace: () => root, getTask: () => task,
-    getTaskState: () => ({ id: task.id, status: 'review', assigned_to: null }),
+    getTaskState: overrides.getTaskState
+      ?? (() => ({ id: task.id, status: 'review', assigned_to: null })),
     recoverAssignment: event => executionEvents.push(['recover', event]),
     resolveProfile: () => ({ profile }),
     resolveLaunchSpec: () => ({
@@ -72,7 +73,7 @@ function makeHarness() {
     spawn: (command, args, options) => {
       const child = fakeChild(1001);
       spawns.push({ command, args, options, child });
-      setTimeout(() => child.emit('close', 0), 20);
+      setTimeout(() => child.emit('close', overrides.closeCode ?? 0), 20);
       return child;
     },
   });
@@ -88,6 +89,32 @@ function makeHarness() {
   };
   return { root, runner, assignment, spawns, executionEvents };
 }
+
+test('accepted worker_done for the exact execution dominates later task projection and nonzero close', async () => {
+  const observed = [];
+  const h = makeHarness({
+    closeCode: 1,
+    getTaskState: (taskId, executionId) => {
+      observed.push({ taskId, executionId });
+      return {
+        id: taskId,
+        status: 'in_progress',
+        assigned_to: null,
+        integration_state: 'pending',
+        worker_done_accepted: executionId === 'exec-101',
+      };
+    },
+  });
+  try {
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    const status = h.runner.status(7);
+    assert.equal(status.completed, 1);
+    assert.equal(status.failed, 0);
+    assert.deepEqual(observed.at(-1), { taskId: 101, executionId: 'exec-101' });
+    assert.equal(h.executionEvents.some(([event]) => event === 'recover'), false);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
+});
 
 test('runner rejects any launch that is not preassigned and fenced', () => {
   const h = makeHarness();

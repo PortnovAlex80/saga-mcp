@@ -1135,16 +1135,17 @@ export class ClaudeBoardRunner {
       }
       const finalize = () => {
       run.active.delete(workerId);
-      const taskState = this.getTaskState(task.id);
+      const taskState = this.getTaskState(task.id, execution.executionId);
+      const semanticCompletionAccepted = taskState?.worker_done_accepted === true;
       const integrationComplete = !(
         task.status === 'review'
         && task.task_kind
         && task.execution_mode === 'git_change'
       ) || taskState?.integration_state === 'merged';
-      const completed = taskState &&
+      const completed = semanticCompletionAccepted || (taskState &&
         (taskState.status === 'review' || taskState.status === 'done') &&
         !taskState.assigned_to &&
-        integrationComplete;
+        integrationComplete);
       const changesRequested = task.status === 'review' &&
         taskState?.status === 'todo' &&
         !taskState.assigned_to;

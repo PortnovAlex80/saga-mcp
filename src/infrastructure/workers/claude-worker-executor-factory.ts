@@ -152,7 +152,7 @@ function readAcceptedWorkerDone(
   }
 }
 
-function readRunnerTaskState(taskId: number): unknown {
+function readRunnerTaskState(taskId: number, executionId?: string | null): unknown {
   const task = getDb().prepare(
     `SELECT id, status, assigned_to, tags, integration_state,
             current_execution_id
@@ -169,13 +169,14 @@ function readRunnerTaskState(taskId: number): unknown {
     | undefined;
   if (!task) return task;
 
-  const completion = readAcceptedWorkerDone(task.current_execution_id);
+  const completion = readAcceptedWorkerDone(executionId);
   if (!completion) return task;
 
   return {
     ...task,
     status: completion.completedNewStatus,
     assigned_to: null,
+    worker_done_accepted: true,
     worker_done_command_id: completion.commandId,
   };
 }
@@ -316,7 +317,8 @@ export function createPinnedClaudeWorkerExecutorFactory(
     const runnerOptions: RunnerOptions = {
       getProject: (id: number) =>
         getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
-      getTaskState: (taskId: number) => readRunnerTaskState(taskId),
+      getTaskState: (taskId: number, executionId?: string | null) =>
+        readRunnerTaskState(taskId, executionId),
       getTask: (taskId: number) =>
         getDb().prepare('SELECT * FROM tasks WHERE id=?').get(taskId),
       recoverAssignment: (command: {

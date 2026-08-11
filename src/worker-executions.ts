@@ -83,6 +83,7 @@ export interface WorkerExecutionRow {
   task_assigned_to: string | null;
   current_execution_id: string | null;
   integration_state: string | null;
+  accepted_worker_done: number;
 }
 
 function openRuntimeDb(dbPath: string): Database.Database {
@@ -375,7 +376,13 @@ export function reconcileWorkerExecutions(
   const params = epicId === undefined ? [projectId] : [projectId, epicId];
   const rows = db.prepare(
     `SELECT we.*, t.status AS task_status, t.assigned_to AS task_assigned_to,
-            t.current_execution_id, t.integration_state
+            t.current_execution_id, t.integration_state,
+            EXISTS(
+              SELECT 1 FROM command_receipts cr
+               WHERE cr.execution_id=we.execution_id
+                 AND cr.command_kind='worker_done'
+                 AND cr.accepted=1
+            ) AS accepted_worker_done
      FROM worker_executions we
      LEFT JOIN tasks t ON t.id=we.task_id
      WHERE we.project_id=? AND we.state IN (${ACTIVE_STATE_SQL}) ${epicClause}
@@ -433,6 +440,7 @@ export function reconcileWorkerExecutions(
       ownsActiveTask,
       legitimateIntegration,
       legitimateFinishing,
+      semanticCompletionAccepted: row.accepted_worker_done === 1,
     });
 
     // --- Dispatch on the Action. -------------------------------------------

@@ -191,6 +191,8 @@ export interface StuckPolicyInput {
    * the OS process is still closing.
    */
   readonly legitimateFinishing: boolean;
+  /** Exact accepted worker_done receipt exists for this execution. */
+  readonly semanticCompletionAccepted?: boolean;
 }
 
 /**
@@ -296,7 +298,8 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
     input.phaseUpdatedAtMs,
     input.progressAtMs,
   );
-  const freshDurableFinishing = input.phase === 'finishing'
+  const freshDurableFinishing = input.semanticCompletionAccepted
+    && (input.phase === 'finishing' || input.phase === 'integrating')
     && finishingActivityAtMs !== 0
     && input.nowMs - finishingActivityAtMs < FINISH_GRACE_MS;
   if (
