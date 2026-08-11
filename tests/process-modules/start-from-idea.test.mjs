@@ -265,6 +265,12 @@ function buildDeferredOrchestrator(fixture) {
 
   const executionLog = [];
 
+  const discoveryProposalPayload = {
+    schemaVersion: 'factory.discovery-proposal.v1',
+    subject: 'Discovery must start; delivery must fail closed, never release.',
+    problem: 'Prove the complete legacy lifecycle route without publication.',
+  };
+
   const solutionContractPayload = {
     schemaVersion: 'factory.solution-contract-certificate.v1',
     bundle: {
@@ -308,13 +314,18 @@ function buildDeferredOrchestrator(fixture) {
   const products = {
     'product-discovery': {
       outcome: 'go',
-      output: null,
+      output: {
+        schema: 'factory.discovery-proposal.v1',
+        artifactRef: 'discovery-proposal:idea:1',
+        contentHash: sha256Hex(discoveryProposalPayload),
+      },
       certificate: {
         schema: DISCOVERY_CERTIFICATE_SCHEMA,
         certificateRef: 'discovery-certificate:idea:1',
         certificateHash: sha256Hex({ decision: 'go', subject: 'idea' }),
       },
       authority: 'discovery-settlement@1.0.0',
+      outputPayload: discoveryProposalPayload,
     },
     'solution-formalization': {
       outcome: 'formalized',

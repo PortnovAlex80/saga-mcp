@@ -384,6 +384,11 @@ function fixture() {
 }
 
 function flowFrame() {
+  const discoveryProposalPayload = {
+    schemaVersion: 'factory.discovery-proposal.v1',
+    subject: 'A bounded test product',
+    problem: 'Students need a deterministic learning aid.',
+  };
   return {
     runInput: {
       schemaVersion: 'factory.formalization-case.v1',
@@ -392,6 +397,10 @@ function flowFrame() {
       discoveryCertificateRef: 'certificate:7',
       discoveryCertificateHash: 'd'.repeat(64),
       discoveryOutcome: 'go',
+      discoveryProposalRef: 'discovery-proposal:test:1',
+      discoveryProposalHash: sha256Hex(discoveryProposalPayload),
+      discoveryProposalPayload,
+      initiativeSubject: 'Build a bounded test product',
       initiatedBy: 'test',
     },
     productions: {},
