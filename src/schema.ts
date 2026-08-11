@@ -1281,6 +1281,43 @@ BEFORE DELETE ON factory_cell_final_acceptances BEGIN
   SELECT RAISE(ABORT, 'factory_cell_final_acceptances are immutable');
 END;
 
+-- ADR-053 Phase 2 — Durable transition obligations.
+--
+-- Every cross-aggregate transition (CandidateSetSealed -> RunGate,
+-- GateAccepted -> RunEffects, EffectsSettled -> RecordFinalAcceptance,
+-- FinalAcceptanceRecorded -> SettleProcess, ProcessSettled -> RouteLifecycle)
+-- is recorded as a durable obligation AT THE SAME TRANSACTION as its source
+-- fact. The obligation has one owner capability, one monotonic fence, one
+-- deterministic key (so the same source fact never creates two obligations),
+-- and converges to exactly one completion receipt after crash / recovery.
+--
+-- This table is the SUBSTRATE; Phase 8 wires production handoffs onto it.
+-- Phase 2 only creates the table, the repository and the fenced reconciler.
+CREATE TABLE IF NOT EXISTS factory_transition_obligations (
+  obligation_key      TEXT PRIMARY KEY,
+  source_kind         TEXT NOT NULL,
+  source_ref          TEXT NOT NULL,
+  source_digest       TEXT NOT NULL,
+  subject_ref         TEXT NOT NULL,
+  handoff_kind        TEXT NOT NULL,
+  owner_capability    TEXT NOT NULL,
+  fence               INTEGER NOT NULL,
+  state               TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (state IN ('pending','in_progress','completed','failed')),
+  attempt             INTEGER NOT NULL DEFAULT 0,
+  lease_owner         TEXT,
+  lease_expires_at    TEXT,
+  completion_receipt  TEXT,
+  result_digest       TEXT,
+  last_error          TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at        TEXT,
+  UNIQUE (source_kind, source_ref, handoff_kind)
+);
+CREATE INDEX IF NOT EXISTS idx_transition_obligations_ready
+  ON factory_transition_obligations (state, lease_expires_at);
+
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
 -- of the same execution's completion returns the same row (REG-12-AC-01); a

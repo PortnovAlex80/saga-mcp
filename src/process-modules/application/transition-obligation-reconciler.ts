@@ -1,0 +1,149 @@
+// src/process-modules/application/transition-obligation-reconciler.ts
+//
+// ADR-053 Phase 2 — fenced transition-obligation reconciler.
+//
+// The reconciler is the crash-recovery driver. It finds obligations that are
+// ready (pending, or in_progress with an expired lease), leases each under a
+// monotonic fence, dispatches to the registered handler for the handoff kind,
+// and records the completion receipt or returns the obligation to pending on
+// failure.
+//
+// Properties:
+// - IDEMPOTENT: safe to call repeatedly. A completed obligation is never
+//   re-dispatched. A leased obligation is only re-dispatched after its lease
+//   expires.
+// - FENCED: each lease carries a monotonic fence token. A stale lease holder
+//   cannot complete an obligation that a newer fence has already taken.
+// - CONVERGENT: after crash + recovery, every non-terminal obligation is
+//   eventually dispatched exactly once and converges to one completion receipt.
+//
+// Phase 2 creates the reconciler skeleton with a handler registry. Phase 8
+// registers the five production handoff handlers and drives the reconciler
+// from the lifecycle loop.
+
+import type { SqliteTransitionObligationLedger } from '../persistence/sqlite-transition-obligation-ledger.js';
+import type {
+  TransitionHandoffKind,
+  TransitionObligation,
+} from '../persistence/sqlite-transition-obligation-ledger.js';
+
+// ---------------------------------------------------------------------------
+// Handler interface.
+//
+// A handler owns one handoff kind. It receives the obligation and performs the
+// transition. If the transition succeeds, it returns a completion receipt +
+// result digest. If it fails, it throws; the reconciler returns the obligation
+// to pending for a retry.
+//
+// Handlers MUST be idempotent: the reconciler may call them more than once
+// (after a crash mid-execution) for the same obligation. A correct handler
+// either completes the transition or discovers it was already completed.
+// ---------------------------------------------------------------------------
+export interface TransitionObligationHandler {
+  readonly handoffKind: TransitionHandoffKind;
+  execute(
+    obligation: TransitionObligation,
+  ): Promise<TransitionObligationCompletion> | TransitionObligationCompletion;
+}
+
+export interface TransitionObligationCompletion {
+  readonly completionReceipt: string;
+  readonly resultDigest: string;
+}
+
+// ---------------------------------------------------------------------------
+// Reconciler.
+// ---------------------------------------------------------------------------
+export interface ReconcilerOptions {
+  readonly leaseOwner: string;
+  /** Monotonic fence token. Each reconciler call should use a fence >= the last. */
+  readonly fence: number;
+  /** Max obligations to dispatch in one sweep. */
+  readonly batchSize?: number;
+}
+
+export interface ReconcileResult {
+  readonly dispatched: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly skipped: number;
+}
+
+export class TransitionObligationReconciler {
+  private readonly handlers = new Map<TransitionHandoffKind, TransitionObligationHandler>();
+
+  constructor(private readonly ledger: SqliteTransitionObligationLedger) {}
+
+  registerHandler(handler: TransitionObligationHandler): void {
+    if (this.handlers.has(handler.handoffKind)) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_HANDLER_DUPLICATE: ${handler.handoffKind}`,
+      );
+    }
+    this.handlers.set(handler.handoffKind, handler);
+  }
+
+  /**
+   * Drive one sweep of ready obligations. For each ready obligation:
+   * 1. Acquire a lease (CAS on state + lease_expires_at).
+   * 2. Dispatch to the registered handler.
+   * 3. On success: record completion (idempotent).
+   * 4. On failure: return to pending with the error.
+   *
+   * Returns a summary of the sweep. Safe to call repeatedly; each call
+   * processes at most `batchSize` obligations.
+   */
+  async reconcile(options: ReconcilerOptions): Promise<ReconcileResult> {
+    const batchSize = options.batchSize ?? 32;
+    const ready = this.ledger.findReady(batchSize);
+    let dispatched = 0;
+    let completed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const obligation of ready) {
+      const handler = this.handlers.get(obligation.handoffKind);
+      if (!handler) {
+        // No handler registered for this handoff kind yet (Phase 2 substrate;
+        // Phase 8 registers production handlers). Skip without failing.
+        skipped += 1;
+        continue;
+      }
+
+      const leased = this.ledger.lease(
+        obligation.obligationKey,
+        options.leaseOwner,
+        options.fence,
+      );
+      if (!leased) {
+        // Another owner acquired the lease between findReady and lease.
+        skipped += 1;
+        continue;
+      }
+      dispatched += 1;
+
+      // Re-read after leasing to get the updated attempt/fence.
+      const leasedObligation = this.ledger.get(obligation.obligationKey);
+      if (!leasedObligation) {
+        skipped += 1;
+        continue;
+      }
+
+      try {
+        const result = await handler.execute(leasedObligation);
+        this.ledger.complete({
+          obligationKey: obligation.obligationKey,
+          completionReceipt: result.completionReceipt,
+          resultDigest: result.resultDigest,
+        });
+        completed += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.ledger.fail(obligation.obligationKey, message);
+        failed += 1;
+      }
+    }
+
+    return { dispatched, completed, failed, skipped };
+  }
+}
