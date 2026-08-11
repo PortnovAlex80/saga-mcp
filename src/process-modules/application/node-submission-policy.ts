@@ -35,7 +35,17 @@
  * than relying on the absence of a validator as an implicit "anything goes".
  */
 export type NodeSubmissionPolicy =
-  | { readonly mode: 'required'; readonly validatorId: string; readonly contractRef?: ContractRef }
+  | {
+      readonly mode: 'required';
+      readonly validatorId: string;
+      readonly contractRef?: ContractRef;
+      /**
+       * Require this exact WorkerExecution to publish at least one managed
+       * artifact/trace contribution before worker_done. Prior executions on
+       * the same Workplace are context, never current author testimony.
+       */
+      readonly requireManagedProduction?: boolean;
+    }
   | { readonly mode: 'none'; readonly rationale: string };
 
 // ---------------------------------------------------------------------------

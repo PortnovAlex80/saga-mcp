@@ -5,6 +5,7 @@ import type {
   ContractRef,
   NodeSubmissionValidator,
 } from './node-submission-policy.js';
+import { encodeCheckDiagnostic } from '../domain/workplace/check-diagnostic.js';
 
 interface DbHandle {
   prepare(sql: string): {
@@ -79,7 +80,16 @@ export function submissionValidatorCheckProvider(input: {
           ).get(processRunId, candidate.producerExecutionRef) as
             | { present: number }
             | undefined;
-          if (!produced && !traced) return 'failed';
+          if (!produced && !traced) {
+            return {
+              outcome: 'failed',
+              evidenceRefs: [encodeCheckDiagnostic({
+                code: 'MANAGED_PRODUCTION_REQUIRED',
+                message: `Execution ${candidate.producerExecutionRef} published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
+                subjectRef: subjectCandidateSetRef,
+              })],
+            };
+          }
         }
         const row = input.db.prepare(
           `SELECT t.id AS task_id,t.epic_id,e.project_id
@@ -103,7 +113,20 @@ export function submissionValidatorCheckProvider(input: {
           projectId: row.project_id,
           ...(input.contractRef ? { contractRef: input.contractRef } : {}),
         });
-        return result.accepted ? 'passed' : 'failed';
+        if (result.accepted) return 'passed';
+        const diagnostics = result.gaps.length > 0
+          ? result.gaps.map((gap, index) => encodeCheckDiagnostic({
+              code: `${result.code}:${index + 1}`,
+              message: gap.message
+                ?? `${gap.artifactType} ${gap.artifactCode ?? gap.artifactId} requires ${gap.missing.relation} to at least ${gap.missing.minimum} of [${gap.missing.requiredTargetTypes.join(', ')}].`,
+              subjectRef: gap.artifactId > 0 ? `artifact:${gap.artifactId}` : subjectCandidateSetRef,
+            }))
+          : [encodeCheckDiagnostic({
+              code: result.code,
+              message: `Submission validator ${input.validator.validatorId}@${input.validator.validatorVersion} rejected the current production.`,
+              subjectRef: subjectCandidateSetRef,
+            })];
+        return { outcome: 'failed', evidenceRefs: diagnostics };
       } catch {
         return 'error';
       }

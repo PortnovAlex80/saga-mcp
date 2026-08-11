@@ -186,6 +186,12 @@ test('policy registry: define-acceptance-contract is required, others unsupporte
   const productPolicy = registry.resolve('solution-formalization@1.0.0', 'define-product-contract');
   assert.ok(productPolicy);
   assert.equal(productPolicy.mode, 'required');
+  assert.equal(productPolicy.requireManagedProduction, true);
+
+  const reconciliationPolicy = registry.resolve('solution-formalization@1.0.0', 'reconcile-what');
+  assert.ok(reconciliationPolicy);
+  assert.equal(reconciliationPolicy.mode, 'required');
+  assert.equal(reconciliationPolicy.requireManagedProduction, false);
 
   const discoveryPolicy = registry.resolve('product-discovery@3.0.2', 'produce-proposal');
   assert.ok(discoveryPolicy);

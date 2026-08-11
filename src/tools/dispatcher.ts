@@ -1823,18 +1823,52 @@ function validateSubmissionIfRequired(
 
   const projectId = (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0;
 
-  const result = validator.validate({
+  const currentExecutionId = executionId ?? task.current_execution_id ?? '';
+  const hasManagedProduction = policy.requireManagedProduction !== true || Boolean(
+    db.prepare(
+      `SELECT 1 AS present
+         FROM (
+           SELECT execution_id FROM factory_managed_artifact_productions
+           UNION ALL
+           SELECT execution_id FROM factory_managed_trace_productions
+         )
+        WHERE execution_id=?
+        LIMIT 1`,
+    ).get(currentExecutionId),
+  );
+  const result = hasManagedProduction
+    ? validator.validate({
     processRunId,
     moduleRef,
     nodeId,
-    executionId: executionId ?? task.current_execution_id ?? '',
+    executionId: currentExecutionId,
     taskId: task.id,
     epicId: task.epic_id,
     projectId,
     // T1.6: pass the pinned contract ref from the policy declaration so the
     // validator can detect version mismatch between author and validator.
     contractRef: policy.contractRef,
-  });
+      })
+    : {
+        accepted: false as const,
+        code: 'MANAGED_PRODUCTION_REQUIRED',
+        gaps: [{
+          artifactId: -1,
+          artifactCode: null,
+          artifactType: 'MANAGED_PRODUCTION',
+          existingTargets: [],
+          missing: {
+            relation: 'published_by_current_execution',
+            requiredTargetTypes: ['artifact_create', 'artifact_update', 'trace_add'],
+            minimum: 1,
+          },
+          message: `Execution ${currentExecutionId} changed or verified Workplace material but published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
+        }],
+        details: {
+          executionId: currentExecutionId,
+          requiredTools: ['artifact_create', 'artifact_update', 'trace_add'],
+        },
+      };
 
   if (!result.accepted) {
     const error = new SubmissionValidationError(
@@ -1847,7 +1881,7 @@ function validateSubmissionIfRequired(
         processRunId,
         moduleRef,
         nodeId,
-        executionId: executionId ?? task.current_execution_id ?? '',
+        executionId: currentExecutionId,
         taskId: task.id,
         contractRef: policy.contractRef ?? null,
         inputSnapshotHash: typeof metadata.process_node_input_hash === 'string'
@@ -1863,7 +1897,7 @@ function validateSubmissionIfRequired(
       processRunId,
       moduleRef,
       nodeId,
-      executionId: executionId ?? task.current_execution_id ?? '',
+      executionId: currentExecutionId,
       taskId: task.id,
       actorKind: 'managed_execution',
       workerId,

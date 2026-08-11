@@ -69,6 +69,7 @@ export function wireSubmissionValidation(
     policyRegistry.register(FORMALIZATION_MODULE_REF, nodeId, {
       mode: 'required',
       validatorId,
+      requireManagedProduction: nodeId !== 'reconcile-what',
     });
   }
   // SRS policy: version-pinned.
@@ -76,6 +77,7 @@ export function wireSubmissionValidation(
     mode: 'required',
     validatorId: 'formalization.srs-contract.v1',
     contractRef: SRS_CONTRACT_REF,
+    requireManagedProduction: true,
   });
 
   // --- Discovery policies ---

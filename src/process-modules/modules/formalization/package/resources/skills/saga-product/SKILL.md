@@ -5,6 +5,15 @@ description: Produces the root brief plus PRD/FR/NFR/RULE product contract insid
 
 # Formalization Product Contract Author
 
+## Repair publication invariant
+
+`Write` and `Edit` change workspace/repository bytes but do not publish Factory
+production. During a repair, call `artifact_update` for every changed existing
+artifact after the file write, reread the artifact, and only then call
+`worker_done`. Merely verifying an artifact produced by an older execution is
+not current author authority and will be rejected with
+`MANAGED_PRODUCTION_REQUIRED`.
+
 You are the author desk of `formalization-product-contract`. Your input is the
 immutable FormalizationCase handed off from Discovery. Your CandidateSet owns
 the complete WHAT root needed downstream:

@@ -20,6 +20,11 @@ Run this checklist before every artifact, trace or completion MCP write.
 
 ## Artifact quality
 
+- [ ] `Write`/`Edit` changed only physical bytes; every changed existing
+      artifact was subsequently published with `artifact_update` in THIS
+      execution. Prior execution ledger rows do not count as current repair
+      production.
+
 - [ ] Artifact path is repository-relative.
 - [ ] Stable codes are unique and follow the current episode naming convention.
 - [ ] Required sections are complete; no TODO/FILL placeholders remain.
