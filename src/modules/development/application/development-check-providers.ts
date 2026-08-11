@@ -24,6 +24,7 @@ import {
   type DevelopmentTaskGraphPolicyPort,
 } from '../domain/development-settlement-policy.js';
 import type { GitPort } from '../domain/development-kernel-ports.js';
+import { encodeCheckDiagnostic } from '../../../process-modules/domain/workplace/check-diagnostic.js';
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
@@ -180,7 +181,16 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
             hash: row.content_hash,
           },
         );
-        return policy.validate(developmentCase, graph).valid ? 'passed' : 'failed';
+        const validation = policy.validate(developmentCase, graph);
+        if (validation.valid) return 'passed';
+        return {
+          outcome: 'failed',
+          evidenceRefs: validation.errors.map((message, index) => encodeCheckDiagnostic({
+            code: validation.reasonCodes[index] ?? validation.reasonCodes[0] ?? 'task-graph-invalid',
+            message,
+            subjectRef: subjectCandidateSetRef,
+          })),
+        };
       } catch {
         return 'error';
       }

@@ -3,6 +3,7 @@ import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type { ProductionCellProjectionPersistence } from '../../process-modules/application/node-executors/production-cell-node-executor.js';
 import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/workplace/index.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
 
 /**
  * Factory-wide SQLite projection adapter for Production Cells.
@@ -670,16 +671,28 @@ function readCurrentProductionCellRecoveryFeedback(
     repairTargetRole: role,
     reasonCode: `gate-${decision.gate_phase}-repair-required`,
     summary: `Gate '${decision.gate_ref}' rejected CandidateSet '${rejectedCandidateSetRef}'.`,
-    findings: failing.map(item => ({
-      code: `${item.provider_id}:${item.outcome}`,
-      severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-      message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
-      subjectRef: rejectedCandidateSetRef,
-      evidenceRefs: [
-        item.check_receipt_ref,
-        ...parseStringArray(item.evidence_refs),
-      ],
-    })),
+    findings: failing.flatMap(item => {
+      const evidenceRefs = parseStringArray(item.evidence_refs);
+      const diagnostics = evidenceRefs
+        .map(decodeCheckDiagnostic)
+        .filter((value): value is NonNullable<typeof value> => value !== null);
+      if (diagnostics.length > 0) {
+        return diagnostics.map(diagnostic => ({
+          code: `${item.provider_id}:${diagnostic.code}`,
+          severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+          message: diagnostic.message,
+          subjectRef: diagnostic.subjectRef ?? rejectedCandidateSetRef,
+          evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+        }));
+      }
+      return [{
+        code: `${item.provider_id}:${item.outcome}`,
+        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+        message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
+        subjectRef: rejectedCandidateSetRef,
+        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+      }];
+    }),
     requiredAcceptance: failing.map(item =>
       `Check ${item.provider_id}@${item.provider_version} must return passed.`),
     allowedChanges: productRefs.map(product =>

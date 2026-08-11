@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { createSqliteProductionCellProjectionPersistence } from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import { encodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 
 function createDb() {
   const db = new Database(':memory:');
@@ -90,6 +91,7 @@ function insertCandidate(db, ref, role, subject = null, productRef = `${ref}:pro
 function insertRepairDecision(db, {
   key = 'decision-1', run = 'gate-run-1', role = 'author',
   subject = 'candidate-author-1', assessment = [], decidedAt = '2026-08-09T07:00:00.000Z',
+  evidenceRefs = ['evidence:1'],
 } = {}) {
   db.prepare(`INSERT INTO factory_gate_decisions
     (decision_key,gate_run_ref,gate_ref,workplace_ref,gate_phase,
@@ -115,7 +117,7 @@ function insertRepairDecision(db, {
   db.prepare(`INSERT INTO factory_check_receipts
     (check_receipt_ref,check_run_ref,subject_candidate_set_ref,provider_id,provider_version,provider_digest,outcome,evidence_refs)
     VALUES (?,?,?,?,?,?,'failed',?)`).run(
-      `${run}:check:0`, run, 'cs1', 'factory.test-check.v1', '1.0.0', 'provider-digest', JSON.stringify(['evidence:1']),
+      `${run}:check:0`, run, 'cs1', 'factory.test-check.v1', '1.0.0', 'provider-digest', JSON.stringify(evidenceRefs),
     );
 }
 
@@ -140,7 +142,11 @@ test('Production Cell repair projects exact GateDecision/CandidateSet as recover
     .run(JSON.stringify(meta));
   db.prepare('INSERT INTO factory_work_intents(id,retry_budget) VALUES (41,3)').run();
   insertCandidate(db, 'candidate-author-1', 'author');
-  insertRepairDecision(db);
+  insertRepairDecision(db, { evidenceRefs: [encodeCheckDiagnostic({
+    code: 'implementation-scope-overlap',
+    message: "implementation items 'left' and 'right' overlap without a dependency order",
+    subjectRef: 'candidate-author-1',
+  })] });
 
   bind(createSqliteProductionCellProjectionPersistence(db));
   const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);
@@ -155,6 +161,10 @@ test('Production Cell repair projects exact GateDecision/CandidateSet as recover
   assert.equal(feedback.issue.rejectedGateDecisionRef, 'decision-1');
   assert.equal(feedback.issue.subjectCandidateSetRef, 'candidate-author-1');
   assert.deepEqual(feedback.issue.failingCheckReceiptRefs, ['gate-run-1:check:0']);
+  assert.equal(feedback.issue.findings[0].code,
+    'factory.test-check.v1:implementation-scope-overlap');
+  assert.equal(feedback.issue.findings[0].message,
+    "implementation items 'left' and 'right' overlap without a dependency order");
   assert.equal(feedback.issue.findings[0].evidenceRefs[0], 'gate-run-1:check:0');
   assert.equal(feedback.rejectedCandidateSet.candidateSetRef, 'candidate-author-1');
   assert.equal(feedback.rejectedCandidateSet.productRefs[0].ref, 'candidate-author-1:product');
