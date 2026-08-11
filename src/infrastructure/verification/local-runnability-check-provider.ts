@@ -43,7 +43,12 @@ export function createLocalRunnabilityCheckProvider(input: {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     run({ subjectCandidateSetRef }) {
-      const subject = resolveSubject(input, subjectCandidateSetRef);
+      let subject;
+      try {
+        subject = resolveSubject(input, subjectCandidateSetRef);
+      } catch (subjErr) {
+        return 'error';
+      }
       const key = sha256Hex({
         provider: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
         candidateHash: subject.candidateHash,
@@ -55,7 +60,7 @@ export function createLocalRunnabilityCheckProvider(input: {
       let check: CheckProviderResult;
       try {
         check = runLocalReadiness(subject);
-      } catch {
+      } catch (diagErr) {
         check = 'error';
       }
       completed.set(key, check);
@@ -154,7 +159,7 @@ function runLocalReadiness(
       '-C', subject.repositoryPath, 'archive', '--format=tar', subject.commitSha,
     ], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     writeFileSync(archive, tar);
-    execFileSync('tar', ['-xf', archive, '-C', directory], {
+    execFileSync('tar', ['-xf', archive, '-C', directory, '--force-local'], {
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
     });
     // git archive extracts at directory root. Keep a stable logical checkout
