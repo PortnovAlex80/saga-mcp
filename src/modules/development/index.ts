@@ -17,6 +17,7 @@ import {
 } from './application/development-production-cell-installation.js';
 import {
   createDevelopmentTaskGraphCheckProvider,
+  createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
   developmentReviewVerdictPayloadContract,
   developmentVerificationPayloadContract,
@@ -112,6 +113,11 @@ export function registerDevelopment(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     taskGraphPolicy,
+  }));
+  registerFactoryCheckProvider(createDevelopmentImplementationScopeCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
+    git,
   }));
   registerProductPayloadContract(developmentVerificationPayloadContract);
   registerProductPayloadContract(developmentReviewVerdictPayloadContract);

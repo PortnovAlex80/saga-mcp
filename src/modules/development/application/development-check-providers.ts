@@ -4,6 +4,7 @@ import type { SqlDatabasePort } from '../../../application/ports/sql-database.js
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
+  DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
   DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
@@ -22,6 +23,7 @@ import {
   ReferenceDevelopmentTaskGraphPolicy,
   type DevelopmentTaskGraphPolicyPort,
 } from '../domain/development-settlement-policy.js';
+import type { GitPort } from '../domain/development-kernel-ports.js';
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
@@ -30,6 +32,15 @@ export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
   version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
   invariant: 'development-task-graph-validates-before-cell-acceptance',
+});
+
+export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID =
+  'development.implementation-scope.v1';
+export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
+  version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+  invariant: 'actual-git-diff-equals-submitted-files-and-stays-within-frozen-change-scopes',
 });
 
 export const DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID =
@@ -175,6 +186,102 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
       }
     },
   };
+}
+
+export function createDevelopmentImplementationScopeCheckProvider(input: {
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
+  git: GitPort;
+}): CheckProvider {
+  return {
+    providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+    run({ subjectCandidateSetRef, parameters }) {
+      try {
+        const processRunId = Number(parameters.processRunId);
+        if (!Number.isSafeInteger(processRunId) || processRunId < 1) return 'error';
+        const candidate = input.candidateSets.read(subjectCandidateSetRef);
+        if (!candidate || candidate.role !== 'author'
+            || candidate.workplaceRef.processRunId !== processRunId
+            || candidate.members.length !== 1) return 'failed';
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId !== DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return 'failed';
+        }
+        const submissionId = Number(member.productRef.ref.slice('managed-node-submission:'.length));
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'failed';
+        const row = input.db.prepare(
+          `SELECT s.payload_snapshot,s.content_hash,t.metadata,pr.local_path,
+                  r.effective_base_commit
+             FROM factory_managed_node_submissions s
+             JOIN tasks t ON t.id=s.task_id
+             JOIN project_repositories pr ON pr.id=t.project_repository_id
+             JOIN factory_effective_desk_base_receipts r
+               ON r.execution_ref=s.execution_id AND r.task_id=s.task_id
+            WHERE s.id=? AND s.process_run_id=? AND s.execution_id=?`,
+        ).get(submissionId, processRunId, candidate.producerExecutionRef) as {
+          payload_snapshot: string;
+          content_hash: string;
+          metadata: string;
+          local_path: string;
+          effective_base_commit: string;
+        } | undefined;
+        if (!row || row.content_hash !== member.productRef.digest) return 'failed';
+        const payload = JSON.parse(row.payload_snapshot) as {
+          repository?: { baseCommit?: unknown };
+          snapshot?: { commitSha?: unknown; changedFiles?: unknown };
+        };
+        const metadata = JSON.parse(row.metadata) as {
+          cell_input_item?: { changeScopes?: unknown };
+        };
+        const scopes = metadata.cell_input_item?.changeScopes;
+        const submitted = payload.snapshot?.changedFiles;
+        const base = payload.repository?.baseCommit;
+        const commit = payload.snapshot?.commitSha;
+        if (!Array.isArray(scopes) || scopes.length === 0
+            || !scopes.every(value => typeof value === 'string')
+            || !Array.isArray(submitted)
+            || !submitted.every(value => typeof value === 'string')
+            || typeof base !== 'string' || base !== row.effective_base_commit
+            || typeof commit !== 'string' || !commit) return 'failed';
+        const diff = input.git.read(row.local_path, [
+          'diff', '--name-only', '--diff-filter=ACDMRTUXB',
+          `${row.effective_base_commit}..${commit}`,
+        ]);
+        if (diff === null) return 'error';
+        const actual = diff.split(/\r?\n/).filter(Boolean).map(normalizeRepoPath).sort();
+        const claimed = submitted.map(normalizeRepoPath).sort();
+        if (new Set(actual).size !== actual.length
+            || new Set(claimed).size !== claimed.length
+            || JSON.stringify(actual) !== JSON.stringify(claimed)) return 'failed';
+        const normalizedScopes = scopes.map(normalizeRepoPath);
+        return actual.every(path => normalizedScopes.some(scope => pathMatchesScope(path, scope)))
+          ? 'passed'
+          : 'failed';
+      } catch {
+        return 'error';
+      }
+    },
+  };
+}
+
+function normalizeRepoPath(value: string): string {
+  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '');
+  const segments = normalized.split('/');
+  if (!normalized
+      || normalized.startsWith('/')
+      || /^[A-Za-z]:\//.test(normalized)
+      || segments.includes('..')
+      || segments.includes('.git')) {
+    throw new Error('DEVELOPMENT_CHANGE_SCOPE_PATH_INVALID');
+  }
+  return normalized;
+}
+
+function pathMatchesScope(path: string, scope: string): boolean {
+  if (scope.endsWith('/')) return path.startsWith(scope);
+  return path === scope;
 }
 
 export function createDevelopmentVerificationCheckProvider(input: {

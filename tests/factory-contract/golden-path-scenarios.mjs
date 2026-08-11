@@ -253,7 +253,7 @@ const developmentPlan = async ({ client, task, prompt }) => {
       dependsOnKeys: index === 0
         ? []
         : [`impl-${implementationCriteria[index - 1].artifactId}`],
-      changeScopes: [`ac-${ac.artifactId}`],
+      changeScopes: [`src/factory-contract/impl-${ac.artifactId}.ts`],
       required: true,
       criticality: ac.criticality || 'blocker',
     }));
@@ -317,7 +317,7 @@ const developmentImplement = async ({ client, task, prompt, repoPath, desk }) =>
     workItemKey,
     terminalStatus: 'complete',
     source: { branch, commitSha, workItemKey },
-    snapshot: { commitSha, treeSha, files: [filePath] },
+    snapshot: { commitSha, treeSha, files: [filePath], changedFiles: [filePath] },
     repository: {
       projectRepositoryId: Number(item.projectRepositoryId || task.project_repository_id || 1),
       integrationBranch,

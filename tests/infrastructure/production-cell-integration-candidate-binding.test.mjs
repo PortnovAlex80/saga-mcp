@@ -126,6 +126,11 @@ test('integration consumes the exact current CandidateSet even when its managed 
                '[]','${'e'.repeat(64)}','[]','${'f'.repeat(64)}')`,
     ).run(workplace, authorSet, JSON.stringify([reviewerSet]));
 
+    // The canonical checkout is deliberately contaminated. Integration must
+    // operate on Git objects and update the target ref by CAS, not checkout or
+    // merge through these working-directory bytes.
+    writeFileSync(join(root, 'untracked-worker-leak.txt'), 'must remain unrelated\n');
+
     let result;
     try {
       result = new SqliteProductionCellIntegration(db).integrateAcceptedWorkplace({
@@ -141,6 +146,7 @@ test('integration consumes the exact current CandidateSet even when its managed 
     assert.equal(result.sourceCommit, sourceCommit);
     assert.equal(result.sourceTree, sourceTree);
     assert.equal(git(root, 'merge-base', '--is-ancestor', sourceCommit, 'dev'), '');
+    assert.equal(git(root, 'status', '--short'), '?? untracked-worker-leak.txt');
     assert.equal(db.prepare('SELECT integration_state FROM tasks WHERE id=44').get().integration_state, 'merged');
   } finally {
     db.close();

@@ -1,9 +1,6 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import { singletonProductionCell } from '../../application/standard-production-cell.js';
-import {
-  buildCheckPlan,
-  buildProductContractCheckPlan,
-} from '../../application/standard-check-providers.js';
+import { buildCheckPlan } from '../../application/standard-check-providers.js';
 import {
   REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
   REVIEW_VERDICT_CHECK_PROVIDER_ID,
@@ -28,6 +25,9 @@ import {
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
@@ -76,8 +76,16 @@ const PLANNER_CHECK_PLAN = buildCheckPlan(
     providerDigest: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
   }],
 );
-const IMPLEMENTATION_AUTHOR_PLAN =
-  buildProductContractCheckPlan('development.implementation.author');
+const IMPLEMENTATION_AUTHOR_PLAN = buildCheckPlan(
+  'development.implementation.author.v2',
+  [{
+    providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
+    repairTargetRoleOnFailure: 'author',
+    repairTargetRoleOnIndeterminate: 'author',
+  }],
+);
 const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
   'development.implementation.final',
   [{

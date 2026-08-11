@@ -284,7 +284,8 @@ implements DevelopmentTaskGraphPolicyPort {
         const right = graph.implementationItems[rightIndex]!;
         if (
           left.projectRepositoryId !== right.projectRepositoryId
-          || !left.changeScopes.some(scope => right.changeScopes.includes(scope))
+          || !left.changeScopes.some(leftScope =>
+            right.changeScopes.some(rightScope => repositoryScopesOverlap(leftScope, rightScope)))
         ) continue;
         if (!dependsTransitivelyOn(left, right, graph.implementationItems)
           && !dependsTransitivelyOn(right, left, graph.implementationItems)) {
@@ -427,6 +428,18 @@ implements DevelopmentTaskGraphPolicyPort {
       errors,
     };
   }
+}
+
+export function repositoryScopesOverlap(left: string, right: string): boolean {
+  const normalize = (value: string): string => value
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+$/, '');
+  const leftPath = normalize(left);
+  const rightPath = normalize(right);
+  return leftPath === rightPath
+    || leftPath.startsWith(`${rightPath}/`)
+    || rightPath.startsWith(`${leftPath}/`);
 }
 
 function dependsTransitivelyOn(

@@ -135,3 +135,23 @@ test('runner launches one frozen card with pinned skills, tools, repository and 
     assert.ok(h.executionEvents.some(([event]) => event === 'exited'));
   } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });
+
+test('runner starts a repository task in the exact Factory-provisioned desk', async () => {
+  const h = makeHarness();
+  const desk = path.join(h.root, '.worktrees', 'task-101');
+  mkdirSync(desk, { recursive: true });
+  h.runner.prepareWorkspace = () => ({
+    repositoryDesk: {
+      executionPath: desk,
+      repositoryRoot: h.root,
+      role: 'author',
+      git: { branch: 'task/101', baseCommit: 'base', integrationBranch: 'dev', detached: false },
+    },
+  });
+  try {
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    assert.equal(h.spawns.length, 1);
+    assert.equal(h.spawns[0].options.cwd, desk);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
+});

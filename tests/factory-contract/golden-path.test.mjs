@@ -342,7 +342,11 @@ test('Factory transition conformance: reject -> repair -> accept, then replay wi
     // resets dev to the original base, but the capsule's expected base may differ.
     // This is a pre-existing replay-path issue, not related to the verification fix.
   } finally {
-    try { rmSync(dbDir, { recursive: true, force: true }); } catch {}
-    try { rmSync(dir, { recursive: true, force: true }); } catch {}
+    if (process.env.SAGA_KEEP_FACTORY_TEST_DIR === '1') {
+      console.error(`[factory-contract] preserved repo=${dir} db=${dbDir}`);
+    } else {
+      try { rmSync(dbDir, { recursive: true, force: true }); } catch {}
+      try { rmSync(dir, { recursive: true, force: true }); } catch {}
+    }
   }
 });

@@ -70,6 +70,9 @@ Prove and harden the Factory as one autonomous production system:
 | 2026-08-11 | `npm run test:factory-temporal` after all fixture/storage fixes | 31 passed, 0 failed; 593.7s |
 | 2026-08-11 | clean real E2E run 002 through first Development review wave | Discovery and Formalization completed; sealed five-item/4-edge DAG admitted two independent roots; two authors then two reviewers; concurrency remained 2 |
 | 2026-08-11 | Development review payload-contract regression | build passed; 12 focused submission/gate tests passed |
+| 2026-08-11 | Run 006 preserved after truthful Development pause | Discovery/Formalization completed; dependency DAG and concurrency=2 worked; LIVE-SCOPE-001 isolated |
+| 2026-08-11 | author scope + checkout-independent integration focused suite | build passed; 12 tests passed |
+| 2026-08-11 | full Factory Contract after LIVE-SCOPE-001 and scripted-authority parity fix | 75 passed, 0 failed |
 
 ## Incident and defect log
 
@@ -85,6 +88,7 @@ Prove and harden the Factory as one autonomous production system:
 | LIVE-REVIEW-003 | Registered verdict payload decoders were not frozen into reviewer WorkIntents because the universal executor only copied author product contracts; malformed Development verdicts reached storage and exhausted reviewer retries | universal Production Cell reviewer contract projection | `CellReview.payloadContract` is validated and pinned into reviewer authority scope; real executor test asserts the exact durable contract | fixed; clean run 004 required |
 | LIVE-REVIEW-004 | Correctly pinned reviewer WorkIntents were rejected with `PRODUCT_PAYLOAD_CONTRACT_REQUIRED` because the separate worker MCP composition installed only the verification decoder | cross-process composition/version conformance | worker MCP root registers generic, Development-review, and verification decoders; architecture ratchet asserts all built-in pinned contracts | fixed; clean run 005 required |
 | LIVE-REVIEW-005 | Run 005 reviewers twice copied the adjacent Workplace ref into `subject_candidate_set_ref`; shape validation passed, the final Gate returned `unknown`, and retry exhaustion paused the launch | missing relational authority at LM product submission / compliant-only scripted fixture | subject-versioned reviewer WorkIntent pins an exact generic payload binding; submission rejects mismatch before INSERT; adversarial contract test | fixed in code; clean run required |
+| LIVE-SCOPE-001 | Run 006 task 18 changed package/test/config files outside frozen `src/core/` + `src/types/`; reviewer approved the false claim and checkout-based integration was disturbed by untracked canonical-checkout bytes | write-scope authority absent from author Gate; integration coupled to mutable checkout; scripted worker always compliant | Git-derived author scope Gate, nested-scope graph regression, exact desk-cwd runner test, contaminated-checkout object-merge test | fixed in code; clean run 007 required |
 
 ## Final E2E acceptance contract
 

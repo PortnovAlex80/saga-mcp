@@ -23,6 +23,10 @@ const deskProvisionerMod = await import(
   pathToFileURL(path.resolve('dist/infrastructure/workers/repository-desk-provisioner.js')).href
 );
 const RepositoryDeskProvisioner = deskProvisionerMod.RepositoryDeskProvisioner;
+const effectiveDeskBaseMod = await import(
+  pathToFileURL(path.resolve('dist/infrastructure/workers/effective-desk-base.js')).href
+);
+const resolveEffectiveDeskBase = effectiveDeskBaseMod.resolveEffectiveDeskBase;
 
 const terminationMod = await import(
   pathToFileURL(path.resolve('dist/infrastructure/workers/worker-process-termination.js')).href
@@ -118,7 +122,7 @@ function provisionScriptedDesk(dbPath, assignment) {
     process.env.DB_PATH = savedDbPath;
   }
   const task = db.prepare(
-    'SELECT execution_mode, project_repository_id, status, metadata FROM tasks WHERE id=?',
+    'SELECT id,workplace_ref,execution_mode,project_repository_id,status,metadata FROM tasks WHERE id=?',
   ).get(Number(assignment.taskId));
   if (!task || task.execution_mode !== 'git_change') return null;
 
@@ -158,31 +162,28 @@ function provisionScriptedDesk(dbPath, assignment) {
     };
   }
 
-  // Author: resolve expectedBaseCommit from DevelopmentCase (same as production).
-  let baseCommit = null;
-  try {
-    const md = JSON.parse(task.metadata);
-    const processRunId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
-    if (processRunId !== null) {
-      const runRow = db.prepare(
-        'SELECT input_snapshot FROM factory_process_runs WHERE id=?',
-      ).get(processRunId);
-      if (runRow?.input_snapshot) {
-        const input = JSON.parse(runRow.input_snapshot);
-        const target = (input.repositories || []).find(
-          r => r.projectRepositoryId === projectRepositoryId,
-        );
-        baseCommit = typeof target?.expectedBaseCommit === 'string' ? target.expectedBaseCommit : null;
-      }
-    }
-  } catch { /* fall back to integration branch HEAD */ }
+  // Author: use the SAME durable dependency-aware base resolver as production.
+  // This keeps the scripted worker substitution below the authority boundary;
+  // it may replace inference, but it may not invent a weaker desk lineage.
+  const baseReceipt = resolveEffectiveDeskBase(db, {
+    executionRef: assignment.workerExecutionId,
+    task,
+    repository: {
+      id: projectRepositoryId,
+      integrationBranch,
+      repositoryRoot: repo.local_path,
+    },
+  });
 
   const desk = provisioner.provisionAuthorDesk({
     repositoryRoot: repo.local_path,
     taskId: Number(assignment.taskId),
     integrationBranch,
-    baseCommit,
+    baseCommit: baseReceipt.effectiveBaseCommit,
     projectRepositoryId,
+    expectedIntegrationHead: baseReceipt.observedIntegrationHead,
+    effectiveBaseReceiptRef: baseReceipt.receiptRef,
+    effectiveBaseReceiptDigest: baseReceipt.receiptDigest,
   });
   return {
     executionPath: desk.executionPath,

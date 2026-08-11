@@ -789,6 +789,15 @@ acceptance and successful integration. Its desk base is the resulting
 post-dependency integration commit, and submission verifies that lineage. A
 worker assertion that dependencies are “satisfied” is never authority.
 
+Declared repository change scopes are strict write authority, not scheduling
+hints. Before reviewer admission, a deterministic Gate derives the actual Git
+diff from the Factory-issued effective base to the submitted source commit,
+requires the submitted file manifest to match it exactly, and proves every
+changed path is within the frozen scopes. Directory scopes contain descendant
+files; this same containment relation defines scope overlap for graph ordering.
+Planner prompts may help choose conservative scopes, but reviewer prose cannot
+authorize an undeclared file and runtime never widens a scope implicitly.
+
 Reviewer desks and required effects resolve the exact current author
 CandidateSet member. They never search for a task-local “latest submission”:
 carried-forward material can lawfully originate in another process, while its
@@ -805,6 +814,12 @@ identity. Worktree creation CAS-checks that head; drift fails before worker
 launch. The effective base is frozen into execution context and Git ReplayKey.
 
 Model/replay worker does not invent or switch arbitrary worktrees.
+
+Repository integration computes its candidate merge from immutable Git objects,
+not from bytes in a shared checkout. It advances the target ref with an exact
+before-head compare-and-swap. Untracked checkout files cannot enter or block the
+merge; dirty tracked state fails closed, and a coherent checkout is synchronized
+only after the ref transition succeeds.
 
 The ability to invoke a Git command is not Git authority. A linked worktree
 shares refs and is not a security boundary. Worker production must be confined

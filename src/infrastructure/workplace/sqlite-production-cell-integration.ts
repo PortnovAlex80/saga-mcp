@@ -286,24 +286,29 @@ export class SqliteProductionCellIntegration {
     ) {
       throw new Error(`PRODUCTION_CELL_REVIEW_BINDING_INVALID: task ${task.id}`);
     }
-    const checkout = spawnSync('git', [
-      '-C', task.local_path, 'checkout', task.integration_branch,
-    ], { encoding: 'utf8', windowsHide: true });
-    if (checkout.status !== 0) {
-      throw new Error(`PRODUCTION_CELL_INTEGRATION_CHECKOUT_FAILED: ${checkout.stderr.trim()}`);
-    }
     const beforeHead = git(task.local_path, [
       'rev-parse', `refs/heads/${task.integration_branch}`,
     ]);
     if (!beforeHead) throw new Error(`PRODUCTION_CELL_INTEGRATION_TARGET_MISSING: ${task.integration_branch}`);
-    const merge = spawnSync('git', [
-      '-C', task.local_path, 'merge', '--no-ff',
-      '-m', `factory: integrate task #${task.id}`, sourceCommit,
+    const trackedWorktreeClean = spawnSync('git', [
+      '-C', task.local_path, 'diff', '--quiet', '--ignore-submodules', '--',
+    ], { encoding: 'utf8', windowsHide: true }).status === 0;
+    const trackedIndexClean = spawnSync('git', [
+      '-C', task.local_path, 'diff', '--cached', '--quiet', '--ignore-submodules', '--',
+    ], { encoding: 'utf8', windowsHide: true }).status === 0;
+    if (!trackedWorktreeClean || !trackedIndexClean) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_DESK_DIRTY: task ${task.id}`);
+    }
+    // Integrate through Git's object database, never through the shared
+    // checkout. A worker may leave unrelated/untracked bytes in that checkout;
+    // they must not affect the authoritative merge result or be swept into it.
+    const mergeTree = spawnSync('git', [
+      '-C', task.local_path, 'merge-tree', '--write-tree', beforeHead, sourceCommit,
     ], { encoding: 'utf8', windowsHide: true });
-    if (merge.status !== 0) {
-      spawnSync('git', ['-C', task.local_path, 'merge', '--abort'], {
-        encoding: 'utf8', windowsHide: true,
-      });
+    const integratedTree = mergeTree.status === 0
+      ? mergeTree.stdout.trim().split(/\r?\n/, 1)[0]
+      : null;
+    if (!integratedTree) {
       this.db.prepare(
         `UPDATE tasks SET integration_state='conflict',updated_at=datetime('now') WHERE id=?`,
       ).run(task.id);
@@ -316,9 +321,30 @@ export class SqliteProductionCellIntegration {
         reason: `PRODUCTION_CELL_INTEGRATION_CONFLICT: task ${task.id}`,
       };
     }
-    const afterHead = git(task.local_path, ['rev-parse', 'HEAD']);
+    const commit = spawnSync('git', [
+      '-C', task.local_path, 'commit-tree', integratedTree,
+      '-p', beforeHead, '-p', sourceCommit,
+      '-m', `factory: integrate task #${task.id}`,
+    ], { encoding: 'utf8', windowsHide: true });
+    const afterHead = commit.status === 0 ? commit.stdout.trim() : null;
     if (!afterHead || afterHead === beforeHead) {
       throw new Error(`PRODUCTION_CELL_INTEGRATION_RESULT_INVALID: task ${task.id}`);
+    }
+    const update = spawnSync('git', [
+      '-C', task.local_path, 'update-ref',
+      `refs/heads/${task.integration_branch}`, afterHead, beforeHead,
+    ], { encoding: 'utf8', windowsHide: true });
+    if (update.status !== 0) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_TARGET_ADVANCED: task ${task.id}`);
+    }
+    // Keep a checkout of the integration branch coherent with the ref we just
+    // advanced. The tracked tree was proven clean above; untracked files are
+    // intentionally left untouched and cannot enter the object-level merge.
+    const synchronizeCheckout = spawnSync('git', [
+      '-C', task.local_path, 'reset', '--hard', afterHead,
+    ], { encoding: 'utf8', windowsHide: true });
+    if (synchronizeCheckout.status !== 0) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_CHECKOUT_SYNC_FAILED: task ${task.id}`);
     }
     this.db.prepare(
       `UPDATE tasks

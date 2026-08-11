@@ -123,6 +123,24 @@ function validate(coveredIds) {
   return new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
 }
 
+function validateScopes(leftScopes, rightScopes, rightDependsOn = []) {
+  const input = developmentCase();
+  const proposalValue = proposal([11, 12]);
+  proposalValue.implementationItems = [
+    { ...proposalValue.implementationItems[0], key: 'left', acceptanceCriterionIds: [11], changeScopes: leftScopes },
+    { ...proposalValue.implementationItems[0], key: 'right', acceptanceCriterionIds: [12], changeScopes: rightScopes, dependsOnKeys: rightDependsOn },
+  ];
+  proposalValue.verificationItems[0].dependsOnKeys = ['left'];
+  proposalValue.verificationItems[1].dependsOnKeys = ['right'];
+  proposalValue.integrationTargets[0].sourceWorkItemKeys = ['left', 'right'];
+  const graph = buildCanonicalDevelopmentTaskGraph(input, proposalValue, {
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    ref: 'planner-submission:scope',
+    hash: '8'.repeat(64),
+  });
+  return new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
+}
+
 test('one coherent implementation item may cover multiple implementation-required ACs', () => {
   const result = validate([11, 12]);
   assert.equal(result.valid, true, result.errors.join('; '));
@@ -133,4 +151,13 @@ test('coverage policy rejects missing AC coverage, not task cardinality', () => 
   const result = validate([11]);
   assert.equal(result.valid, false);
   assert.equal(result.reasonCodes.includes('implementation-coverage-gap'), true);
+});
+
+test('directory and descendant file scopes overlap and require dependency order', () => {
+  const unordered = validateScopes(['src/ui/pages/'], ['src/ui/pages/mission-planner.ts']);
+  assert.equal(unordered.valid, false);
+  assert.equal(unordered.reasonCodes.includes('implementation-scope-overlap'), true);
+
+  const ordered = validateScopes(['src/ui/pages/'], ['src/ui/pages/mission-planner.ts'], ['left']);
+  assert.equal(ordered.valid, true, ordered.errors.join('; '));
 });

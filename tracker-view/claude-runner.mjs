@@ -1046,7 +1046,7 @@ export class ClaudeBoardRunner {
     const _diagLogPath = path.join(this.logRoot, safeName(run.id), `task-${task.id}-${safeName(workerId)}.jsonl`);
     try {
       const _diag = createWriteStream(_diagLogPath, { flags: 'a' });
-      _diag.write(`[runner] spawn: claudePath=${JSON.stringify(executorSelection.claudePath)} pid=${child.pid} cwd=${JSON.stringify(workspaceRoot)} task=${task.id} exec=${assignment.execution_id || 'none'}\n`);
+      _diag.write(`[runner] spawn: claudePath=${JSON.stringify(executorSelection.claudePath)} pid=${child.pid} cwd=${JSON.stringify(executionCwd)} task=${task.id} exec=${assignment.execution_id || 'none'}\n`);
       _diag.write(`[runner] spawnClaude split: cmd=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/)[0])} prefixArgs=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/).slice(1))}\n`);
       _diag.end();
     } catch { /* diagnostic is best-effort */ }

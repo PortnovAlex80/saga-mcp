@@ -32,6 +32,11 @@ dependencies, change scopes and repository partitioning.
   independently reviewable/testable state.
 - Parallel items must be safe from the same frozen base. Declare conservative
   repository-local `changeScopes`; overlapping scopes require a dependency path.
+- `changeScopes` are an enforceable write boundary, not an estimate. Include
+  every source, test, fixture, manifest, lockfile, build and configuration path
+  the worker may need to change. A directory scope overlaps every descendant
+  file scope. Shared build/configuration scopes require a dependency path or a
+  single coherent item; never omit them merely to manufacture parallelism.
 - Bind each implementation item to one frozen repository.
 - Required implementation keys must be partitioned exactly once across matching
   integration targets.
@@ -95,7 +100,7 @@ from the same execution or mutate an earlier CandidateSet.
 
 ## Never
 
-- call `product_submit`;
+- submit more than one planner product;
 - create/move tasks or dependencies directly;
 - mutate Git/repository state;
 - equate §D2 row count with implementation task count;
