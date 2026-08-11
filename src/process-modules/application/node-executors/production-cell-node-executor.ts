@@ -43,6 +43,7 @@ import { ProductionCellCoordinator } from '../production-cell-coordinator.js';
 import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
+import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -177,6 +178,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly resolveProductSemanticDigest?: (productRef: ProductRef) => string | null;
   readonly authorCandidateCarryForward?: AuthorCandidateCarryForwardPort;
+  /** ADR-053 Phase 8 — when present, CandidateSet seals append a durable obligation. */
+  readonly obligationIntegrator?: TransitionObligationIntegrator;
   readonly now?: () => Date;
 }
 
@@ -873,7 +876,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       sourceCandidateSetRef: null,
     }));
     const digest = hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), executionRef, role, products });
-    return this.opts.candidateSetRepo.seal({
+    const sealed = this.opts.candidateSetRepo.seal({
       workplaceRef,
       producerExecutionRef: executionRef,
       role,
@@ -883,6 +886,19 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       candidateSetDigest: digest,
       sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     }).set;
+    // ADR-053 Phase 8 — append a durable obligation for the Gate to run on
+    // every author CandidateSet seal. If the process crashes between seal and
+    // gate, the reconciler redrives it. Idempotent: a replay finds the existing
+    // obligation (deterministic key).
+    if (role === 'author' && this.opts.obligationIntegrator && !sealed.productionRevisionRef) {
+      this.opts.obligationIntegrator.onCandidateSetSealed({
+        candidateSetRef: sealed.candidateSetRef,
+        candidateSetDigest: sealed.candidateSetDigest,
+        workplaceRef: serializeWorkplaceRef(workplaceRef),
+        fence: 1,
+      });
+    }
+    return sealed;
   }
 
   private sealCarriedForwardCandidateSet(
