@@ -174,7 +174,7 @@ test('development planner is a universal Production Cell with bounded semantic r
     candidate.id === 'plan-task-graph');
   assert.equal(node.kind, 'production-cell');
   assert.equal(node.cellDefinition.author.skillRef, 'development-task-graph-planner');
-  assert.deepEqual(node.cellDefinition.recovery, { maxAttempts: 2, onExhausted: 'pause' });
+  assert.deepEqual(node.cellDefinition.recovery, { maxAttempts: 3, onExhausted: 'pause' });
   assert.equal(node.cellDefinition.transitions.accepted, 'resolve-task-graph');
 });
 

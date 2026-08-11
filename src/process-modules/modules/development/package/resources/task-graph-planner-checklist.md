@@ -9,6 +9,8 @@ Before `product_submit`:
 - Every implementation item has conservative non-empty `changeScopes`.
 - Every repository assigns all `policy.requiredChangeScopes` to implementation work.
 - Same-repository scope overlaps are ordered by a dependency path.
+- After every repair, recompute every pairwise same-repository scope overlap;
+  do not stop after fixing only the overlaps named in an earlier candidate.
 - Parallel items are independent from the same frozen base.
 - All dependencies are closed, acyclic and implementation-to-implementation.
 - Required implementation work covers every implementation-required AC.

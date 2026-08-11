@@ -37,6 +37,11 @@ dependencies, change scopes and repository partitioning.
   the worker may need to change. A directory scope overlaps every descendant
   file scope. Shared build/configuration scopes require a dependency path or a
   single coherent item; never omit them merely to manufacture parallelism.
+- On a repair attempt, rebuild the pairwise overlap matrix for the complete
+  proposed graph after applying feedback. Every overlapping pair must have a
+  dependency path in one direction; fixing only the pairs reported for the
+  previous candidate is insufficient because changed scopes can expose a new
+  overlap.
 - Copy every `policy.requiredChangeScopes` entry into the write authority of at
   least one implementation item for each repository. These are lifecycle-level
   bootstrap obligations (for Product Build: the package manifest and tests),

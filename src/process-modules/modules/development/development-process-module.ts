@@ -154,7 +154,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           outputSchemaRef: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
           productSource: 'typed-submission',
           cardinality: '1',
-          maxAttempts: 2,
+          maxAttempts: 3,
           onExhausted: 'pause',
           checkPlan: PLANNER_CHECK_PLAN,
           acceptedTransition: 'resolve-task-graph',
@@ -381,7 +381,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       callTemplates: [DEVELOPMENT_SUBMISSION_CALL],
       checklists: [DEVELOPMENT_CHECKLIST],
       outputSchema: { id: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA },
-      retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected', 'lineage-gap'], backoff: 'none' },
+      retryPolicy: { maxAttempts: 3, retryOn: ['schema-rejected', 'lineage-gap'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },
     },
     {
