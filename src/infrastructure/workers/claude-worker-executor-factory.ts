@@ -802,9 +802,22 @@ function provisionRepositoryDesk(
 
   if (isReview) {
     // Reviewer: read-only detached checkout of the frozen CandidateSet source
-    // commit from the latest accepted implementation product.
-    const sourceCommit = readAcceptedSourceCommit(db, task.workplace_ref ?? null);
-    if (!sourceCommit) return null;
+    // commit bound to this review task's exact subject.
+    const metadata = parseTaskMetadata(task.metadata);
+    const subjectCandidateSetRef = typeof metadata.subject_candidate_set_ref === 'string'
+      ? metadata.subject_candidate_set_ref
+      : null;
+    const sourceCommit = readAcceptedSourceCommit(
+      db,
+      task.workplace_ref ?? null,
+      subjectCandidateSetRef,
+    );
+    if (!sourceCommit) {
+      throw new Error(
+        `REVIEWER_REPOSITORY_SUBJECT_MISSING: task ${task.id} has no exact `
+        + `author source for ${subjectCandidateSetRef ?? '<missing>'}`,
+      );
+    }
     return provisioner.provisionReviewerDesk({
       repositoryRoot: repoRow.resolved_local_path,
       taskId: task.id,
@@ -841,14 +854,15 @@ function provisionRepositoryDesk(
 }
 
 /**
- * Read the source commit from the latest accepted implementation product for
- * this task (used to provision the reviewer desk).
+ * Read the source commit from the exact author CandidateSet frozen into the
+ * reviewer WorkIntent. Never query "latest" across repair generations.
  */
 function readAcceptedSourceCommit(
   db: ReturnType<typeof getDb>,
   workplaceRef: string | null,
+  candidateSetRef: string | null,
 ): string | null {
-  if (!workplaceRef) return null;
+  if (!workplaceRef || !candidateSetRef) return null;
   const row = db.prepare(
     `SELECT s.payload_snapshot
        FROM factory_candidate_sets cs
@@ -859,9 +873,9 @@ function readAcceptedSourceCommit(
          ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
         AND s.schema_version=m.product_schema
         AND s.content_hash=m.product_digest
-      WHERE cs.workplace_ref=? AND cs.role='author'
-      ORDER BY cs.sealed_at DESC LIMIT 1`,
-  ).get(workplaceRef) as { payload_snapshot: string } | undefined;
+      WHERE cs.workplace_ref=? AND cs.candidate_set_ref=? AND cs.role='author'
+      LIMIT 1`,
+  ).get(workplaceRef, candidateSetRef) as { payload_snapshot: string } | undefined;
   if (!row?.payload_snapshot) return null;
   try {
     const payload = JSON.parse(row.payload_snapshot) as {

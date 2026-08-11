@@ -129,6 +129,9 @@ implements ManagedNodeSubmissionReader {
         provenance.intentId,
         schema,
       );
+      // Contextual identity is more actionable than a static shape error: it
+      // reports the exact field/value frozen by this WorkIntent.
+      this.assertIntentPayloadBindings(provenance.intentId, command.payload);
       // A durable WorkIntent pin is authoritative. Legacy/unpinned intents
       // retain the convenience validation path for backward compatibility.
       if (pinnedContract) {
@@ -136,8 +139,6 @@ implements ManagedNodeSubmissionReader {
       } else {
         assertProductPayload(schema, command.payload);
       }
-      this.assertIntentPayloadBindings(provenance.intentId, command.payload);
-
       const query: ManagedNodeSubmissionQuery = {
         processRunId: provenance.processRunId,
         moduleRef: provenance.moduleRef,

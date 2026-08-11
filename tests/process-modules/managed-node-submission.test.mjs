@@ -276,7 +276,18 @@ test('review submission must match the exact CandidateSet frozen by its WorkInte
           findings: [],
         },
       }),
-      /PRODUCT_PAYLOAD_CONTRACT_REJECTED.*candidate-set/,
+      /PRODUCT_PAYLOAD_BINDING_REJECTED.*subject_candidate_set_ref.*exact WorkIntent authority value/,
+    );
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          subjectCandidateSetRef: expected,
+          verdict: 'approved',
+          findings: [],
+        },
+      }),
+      /PRODUCT_PAYLOAD_BINDING_REJECTED.*subject_candidate_set_ref.*exact WorkIntent authority value/,
     );
     assert.doesNotThrow(() => repository.submitForCurrentExecution({
       schema,
