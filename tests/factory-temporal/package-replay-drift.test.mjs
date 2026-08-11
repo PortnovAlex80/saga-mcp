@@ -62,6 +62,20 @@ function provisionRepo(registry, label) {
   const repoPath = path.join(repoDir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), `# ${label}\n`);
+  // Product Build now proves local runnability on the exact frozen candidate.
+  // A README-only repository can exercise routing but cannot lawfully reach
+  // runnable-local, so keep this package/replay fixture production-faithful.
+  writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: `saga-${label}`,
+    private: true,
+    scripts: { test: 'node test.js', start: 'node server.js' },
+  }, null, 2));
+  writeFileSync(path.join(repoPath, 'test.js'), "process.stdout.write('ok\\n');\n");
+  writeFileSync(path.join(repoPath, 'server.js'), [
+    "const http = require('node:http');",
+    "const port = Number(process.env.PORT || 3000);",
+    "http.createServer((_req, res) => { res.writeHead(200, {'content-type':'text/plain'}); res.end('ok'); }).listen(port, '127.0.0.1');",
+  ].join('\n'));
   execSync(
     'git init && git config user.email t@t && git config user.name t '
     + '&& git add -A && git commit -m init && git branch -M dev',
