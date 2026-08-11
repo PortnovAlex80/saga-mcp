@@ -73,6 +73,7 @@ Prove and harden the Factory as one autonomous production system:
 | 2026-08-11 | Run 006 preserved after truthful Development pause | Discovery/Formalization completed; dependency DAG and concurrency=2 worked; LIVE-SCOPE-001 isolated |
 | 2026-08-11 | author scope + checkout-independent integration focused suite | build passed; 12 tests passed |
 | 2026-08-11 | full Factory Contract after LIVE-SCOPE-001 and scripted-authority parity fix | 75 passed, 0 failed |
+| 2026-08-11 | Run 008 real typed changed-file boundary regression | two in-scope Git diffs were falsely rejected; build + focused scope suite passed 7/7 after decoder fix |
 
 ## Incident and defect log
 
@@ -90,6 +91,7 @@ Prove and harden the Factory as one autonomous production system:
 | LIVE-REVIEW-005 | Run 005 reviewers twice copied the adjacent Workplace ref into `subject_candidate_set_ref`; shape validation passed, the final Gate returned `unknown`, and retry exhaustion paused the launch | missing relational authority at LM product submission / compliant-only scripted fixture | subject-versioned reviewer WorkIntent pins an exact generic payload binding; submission rejects mismatch before INSERT; adversarial contract test | fixed in code; clean run required |
 | LIVE-SCOPE-001 | Run 006 task 18 changed package/test/config files outside frozen `src/core/` + `src/types/`; reviewer approved the false claim and checkout-based integration was disturbed by untracked canonical-checkout bytes | write-scope authority absent from author Gate; integration coupled to mutable checkout; scripted worker always compliant | Git-derived author scope Gate, nested-scope graph regression, exact desk-cwd runner test, contaminated-checkout object-merge test | fixed in code; clean run 007 required |
 | LIVE-SRS-002 | Run 007 paused after five architecture repair cycles: deterministic SRS validation required one D2 row for the AC artifact container while reviewers required its atomic AC headings; Run 008 additionally proved valid AC documents may use standalone `## AC-1` members or dotted `### AC-1.1` children | lossy artifact-to-contract boundary; fixtures assumed one artifact equals one criterion and initially covered only dotted children | leaf-aware level-two/level-three atomic AC parser + frozen baseline members + SRS validator omission regression | fixed in code; clean run after host reload required |
+| LIVE-SCOPE-002 | Run 008 produced two source commits whose actual Git paths exactly matched their frozen scopes, but the author Gate rejected both because real workers submitted typed `changedFiles` objects while the provider accepted only `string[]` | boundary decoder / scripted fixture representativeness; authoritative Git validation was incorrectly preceded by one presentation-shape assumption | provider extracts canonical paths from strings or typed `{path,...}` entries; regressions cover both real object variants and malformed objects | fixed in code; clean run after host reload required |
 
 ## Final E2E acceptance contract
 

@@ -242,7 +242,6 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         if (!Array.isArray(scopes) || scopes.length === 0
             || !scopes.every(value => typeof value === 'string')
             || !Array.isArray(submitted)
-            || !submitted.every(value => typeof value === 'string')
             || typeof base !== 'string' || base !== row.effective_base_commit
             || typeof commit !== 'string' || !commit) return 'failed';
         const diff = input.git.read(row.local_path, [
@@ -251,7 +250,7 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         ]);
         if (diff === null) return 'error';
         const actual = diff.split(/\r?\n/).filter(Boolean).map(normalizeRepoPath).sort();
-        const claimed = submitted.map(normalizeRepoPath).sort();
+        const claimed = submitted.map(readSubmittedChangedPath).map(normalizeRepoPath).sort();
         if (new Set(actual).size !== actual.length
             || new Set(claimed).size !== claimed.length
             || JSON.stringify(actual) !== JSON.stringify(claimed)) return 'failed';
@@ -264,6 +263,15 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
       }
     },
   };
+}
+
+function readSubmittedChangedPath(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const path = (value as { path?: unknown }).path;
+    if (typeof path === 'string') return path;
+  }
+  throw new Error('DEVELOPMENT_CHANGED_FILE_PATH_INVALID');
 }
 
 function normalizeRepoPath(value: string): string {

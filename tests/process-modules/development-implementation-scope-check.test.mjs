@@ -63,6 +63,23 @@ test('implementation scope provider accepts an exact diff inside frozen scopes',
   assert.equal(fixture(), 'passed');
 });
 
+test('implementation scope provider accepts typed changed-file objects from real workers', () => {
+  assert.equal(fixture({
+    changedFiles: [
+      { path: 'src/core/calculator.ts', status: 'modified' },
+      { path: 'src/types/index.ts', changeType: 'added', size: 120 },
+    ],
+    actualFiles: ['src/core/calculator.ts', 'src/types/index.ts'],
+  }), 'passed');
+});
+
+test('implementation scope provider rejects a changed-file object without a path', () => {
+  assert.equal(fixture({
+    changedFiles: [{ status: 'modified' }],
+    actualFiles: ['src/core/calculator.ts'],
+  }), 'error');
+});
+
 test('implementation scope provider rejects an undeclared build file before review', () => {
   assert.equal(fixture({
     changedFiles: ['package.json', 'src/core/calculator.ts'],
