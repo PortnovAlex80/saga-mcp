@@ -31,6 +31,8 @@ export const CANDIDATE_SET_REPLAY_MISMATCH = 'CANDIDATE_SET_REPLAY_MISMATCH';
 export interface SealInput {
   readonly workplaceRef: WorkplaceRef;
   readonly producerExecutionRef: string;
+  /** ADR-053 Phase 5: when provided, becomes the material identity in the seal key. */
+  readonly productionRevisionRef?: string | null;
   readonly role: CandidateSetRole;
   readonly subjectCandidateSetRef: string | null;
   readonly members: readonly CandidateMember[];
@@ -53,6 +55,7 @@ export class SqliteCandidateSetRepository {
     const sealKey = candidateSetSealKey({
       workplaceRef: input.workplaceRef,
       producerExecutionRef: input.producerExecutionRef,
+      productionRevisionRef: input.productionRevisionRef,
       role: input.role,
     });
     const candidateSetRef = computeCandidateSetRef(sealKey);
@@ -60,6 +63,7 @@ export class SqliteCandidateSetRepository {
       candidateSetRef,
       workplaceRef: input.workplaceRef,
       producerExecutionRef: input.producerExecutionRef,
+      productionRevisionRef: input.productionRevisionRef ?? null,
       role: input.role,
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       members: input.members,
@@ -86,13 +90,14 @@ export class SqliteCandidateSetRepository {
 
     this.db.prepare(
       `INSERT INTO factory_candidate_sets
-         (candidate_set_ref, workplace_ref, producer_execution_ref, role,
-          subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (candidate_set_ref, workplace_ref, producer_execution_ref, production_revision_ref,
+          role, subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       candidateSetRef,
       workplaceSerialized,
       input.producerExecutionRef,
+      input.productionRevisionRef ?? null,
       input.role,
       input.subjectCandidateSetRef,
       input.candidateSetDigest,
@@ -132,6 +137,7 @@ export class SqliteCandidateSetRepository {
           candidate_set_ref: string;
           workplace_ref: string;
           producer_execution_ref: string;
+          production_revision_ref: string | null;
           role: CandidateSetRole;
           subject_candidate_set_ref: string | null;
           candidate_set_digest: string;
@@ -165,6 +171,7 @@ export class SqliteCandidateSetRepository {
       candidateSetRef: row.candidate_set_ref,
       workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
       producerExecutionRef: row.producer_execution_ref,
+      productionRevisionRef: row.production_revision_ref,
       role: row.role,
       subjectCandidateSetRef: row.subject_candidate_set_ref,
       members,

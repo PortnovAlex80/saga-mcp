@@ -112,6 +112,15 @@ export interface CandidateSet {
   readonly workplaceRef: WorkplaceRef;
   /** The fenced execution that produced (or carried forward) these members. */
   readonly producerExecutionRef: string;
+  /**
+   * ADR-053 Phase 5 — the immutable Workplace production revision this
+   * CandidateSet's material was sealed from. When non-null, this is the
+   * MATERIAL AUTHORITY: the seal key is derived from the revision, not from
+   * the execution. When null (legacy v1 sets sealed before the cutover), the
+   * old execution-scoped key is used. Phase 7 makes this required and removes
+   * the null fallback.
+   */
+  readonly productionRevisionRef: string | null;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
   readonly role: CandidateSetRole;
   /**
@@ -132,10 +141,12 @@ export interface CandidateSet {
 /**
  * Compute the deterministic seal key for a CandidateSet.
  *
- * Per v4 §«CandidateSet»: the seal key is `(workplaceRef, producerExecutionRef,
- * role)`. Two replays of the same execution's completion produce the same key;
- * the repository uses this to make sealing idempotent (REG-12-AC-01) and to
- * reject a different payload under the same key.
+ * ADR-053 Phase 5: when `productionRevisionRef` is provided, it becomes the
+ * MATERIAL IDENTITY in the seal key (replacing execution-scoped identity).
+ * Two executions producing the same revision (recovery / carry-forward) derive
+ * the same key → the second finds the first's already-sealed CandidateSet
+ * (partition invariance). When `productionRevisionRef` is null (legacy v1
+ * sets sealed before the cutover), the old execution-scoped key is used.
  *
  * Note: this is the KEY (the identity under which the set is sealed), NOT the
  * digest of the set's contents. The digest is computed over the members at
@@ -146,15 +157,20 @@ export interface CandidateSet {
 export function candidateSetSealKey(input: {
   workplaceRef: WorkplaceRef;
   producerExecutionRef: string;
+  productionRevisionRef?: string | null;
   role: CandidateSetRole;
 }): string {
+  // ADR-053 Phase 5: prefer the revision as the material identity. Fall back
+  // to the execution for legacy v1 sets (null revision ref). Phase 7 removes
+  // the fallback.
+  const materialIdentity = input.productionRevisionRef ?? input.producerExecutionRef;
   return [
     'candidate-set',
     input.workplaceRef.processRunId,
     input.workplaceRef.moduleRef,
     input.workplaceRef.productionCellId,
     input.workplaceRef.workKey,
-    input.producerExecutionRef,
+    materialIdentity,
     input.role,
   ].join('/');
 }

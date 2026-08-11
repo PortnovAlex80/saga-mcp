@@ -1379,10 +1379,16 @@ END;
 -- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
 -- of the same execution's completion returns the same row (REG-12-AC-01); a
 -- different payload under the same key is rejected by the repository.
+-- ADR-053 Phase 5: production_revision_ref is the immutable Workplace
+-- production revision the set's material was sealed from. When non-null it is
+-- the MATERIAL AUTHORITY (seal key derived from the revision, not execution).
+-- Nullable for legacy v1 sets sealed before the cutover; Phase 7 makes it
+-- required.
 CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
   producer_execution_ref  TEXT NOT NULL,
+  production_revision_ref TEXT,
   role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
   -- REQUIRED non-null when role=reviewer; enforced by the domain validator
   -- (assertValidCandidateSet) and by the repository write path.
