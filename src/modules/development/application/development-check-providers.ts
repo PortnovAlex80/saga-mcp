@@ -1,4 +1,7 @@
-import type { CheckProvider } from '../../../process-modules/domain/workplace/gate.js';
+import type {
+  CheckProvider,
+  CheckProviderResult,
+} from '../../../process-modules/domain/workplace/gate.js';
 import type { CandidateSetReaderPort } from '../../../application/ports/candidate-set-reader.js';
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
@@ -222,14 +225,21 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
         if (!candidate || candidate.role !== 'author'
             || candidate.workplaceRef.processRunId !== processRunId
-            || candidate.members.length !== 1) return 'failed';
+            || candidate.members.length !== 1) {
+          return scopeFailure(subjectCandidateSetRef, 'candidate-binding-invalid',
+            'The implementation CandidateSet is not the exact single author product for this ProcessRun.');
+        }
         const member = candidate.members[0]!;
         if (member.productRef.schemaId !== DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA
             || !member.productRef.ref.startsWith('managed-node-submission:')) {
-          return 'failed';
+          return scopeFailure(subjectCandidateSetRef, 'product-binding-invalid',
+            'The implementation CandidateSet member is not an exact managed implementation result.');
         }
         const submissionId = Number(member.productRef.ref.slice('managed-node-submission:'.length));
-        if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'failed';
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The implementation submission reference is malformed.');
+        }
         const row = input.db.prepare(
           `SELECT s.payload_snapshot,s.content_hash,t.metadata,pr.local_path,
                   r.effective_base_commit
@@ -246,7 +256,10 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
           local_path: string;
           effective_base_commit: string;
         } | undefined;
-        if (!row || row.content_hash !== member.productRef.digest) return 'failed';
+        if (!row || row.content_hash !== member.productRef.digest) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The implementation submission does not match the exact CandidateSet member and desk receipt.');
+        }
         const payload = JSON.parse(row.payload_snapshot) as {
           repository?: { baseCommit?: unknown };
           snapshot?: { commitSha?: unknown; changedFiles?: unknown };
@@ -262,7 +275,10 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
             || !scopes.every(value => typeof value === 'string')
             || !Array.isArray(submitted)
             || typeof base !== 'string' || base !== row.effective_base_commit
-            || typeof commit !== 'string' || !commit) return 'failed';
+            || typeof commit !== 'string' || !commit) {
+          return scopeFailure(subjectCandidateSetRef, 'scope-input-invalid',
+            'Implementation scope evidence is incomplete or its submitted base differs from the frozen effective desk base.');
+        }
         const diff = input.git.read(row.local_path, [
           'diff', '--name-only', '--diff-filter=ACDMRTUXB',
           `${row.effective_base_commit}..${commit}`,
@@ -272,15 +288,32 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         const claimed = submitted.map(readSubmittedChangedPath).map(normalizeRepoPath).sort();
         if (new Set(actual).size !== actual.length
             || new Set(claimed).size !== claimed.length
-            || JSON.stringify(actual) !== JSON.stringify(claimed)) return 'failed';
+            || JSON.stringify(actual) !== JSON.stringify(claimed)) {
+          return scopeFailure(subjectCandidateSetRef, 'changed-files-mismatch',
+            `Submitted changedFiles [${claimed.join(', ')}] do not match the authoritative Git diff [${actual.join(', ')}].`);
+        }
         const normalizedScopes = scopes.map(normalizeRepoPath);
-        return actual.every(path => normalizedScopes.some(scope => pathMatchesScope(path, scope)))
+        const offending = actual.filter(path =>
+          !normalizedScopes.some(scope => pathMatchesScope(path, scope)));
+        return offending.length === 0
           ? 'passed'
-          : 'failed';
+          : scopeFailure(subjectCandidateSetRef, 'path-outside-authority',
+              `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${normalizedScopes.join(', ')}].`);
       } catch {
         return 'error';
       }
     },
+  };
+}
+
+function scopeFailure(
+  subjectRef: string,
+  code: string,
+  message: string,
+): CheckProviderResult {
+  return {
+    outcome: 'failed',
+    evidenceRefs: [encodeCheckDiagnostic({ code, message, subjectRef })],
   };
 }
 

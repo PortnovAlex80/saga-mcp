@@ -7,6 +7,13 @@ const {
 const {
   DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
 } = await import('../../dist/modules/development/domain/development-schemas.js');
+const { decodeCheckDiagnostic } = await import(
+  '../../dist/process-modules/domain/workplace/check-diagnostic.js'
+);
+
+function outcome(result) {
+  return typeof result === 'string' ? result : result.outcome;
+}
 
 function fixture({
   scopes = ['src/core/', 'src/types/'],
@@ -88,20 +95,42 @@ test('implementation scope provider rejects a changed-file object without a path
 });
 
 test('implementation scope provider rejects an undeclared build file before review', () => {
-  assert.equal(fixture({
+  assert.equal(outcome(fixture({
     changedFiles: ['package.json', 'src/core/calculator.ts'],
-  }), 'failed');
+  })), 'failed');
 });
 
 test('implementation scope provider rejects claimed files that differ from Git', () => {
-  assert.equal(fixture({
+  assert.equal(outcome(fixture({
     changedFiles: ['src/core/calculator.ts'],
     actualFiles: ['src/core/calculator.ts', 'src/core/hidden.ts'],
-  }), 'failed');
+  })), 'failed');
 });
 
 test('implementation scope provider rejects a model-selected base that differs from the desk receipt', () => {
-  assert.equal(fixture({ payloadBase: 'stale-base' }), 'failed');
+  assert.equal(outcome(fixture({ payloadBase: 'stale-base' })), 'failed');
+});
+
+test('implementation scope provider returns actionable offending paths and frozen scopes', () => {
+  const result = fixture({
+    scopes: ['src/core/'],
+    changedFiles: ['package.json', 'src/core/calculator.ts'],
+  });
+  assert.equal(result.outcome, 'failed');
+  const diagnostic = decodeCheckDiagnostic(result.evidenceRefs[0]);
+  assert.equal(diagnostic.code, 'path-outside-authority');
+  assert.match(diagnostic.message, /package\.json/);
+  assert.match(diagnostic.message, /src\/core/);
+});
+
+test('implementation scope provider explains authoritative Git versus submitted-file drift', () => {
+  const result = fixture({
+    changedFiles: ['src/core/calculator.ts'],
+    actualFiles: ['src/core/calculator.ts', 'src/core/hidden.ts'],
+  });
+  const diagnostic = decodeCheckDiagnostic(result.evidenceRefs[0]);
+  assert.equal(diagnostic.code, 'changed-files-mismatch');
+  assert.match(diagnostic.message, /src\/core\/hidden\.ts/);
 });
 
 test('implementation scope provider rejects repository-control paths', () => {
