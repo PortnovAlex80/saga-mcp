@@ -81,7 +81,10 @@ export interface FormalizationSolutionContractPayload {
   acceptanceCriteria: readonly {
     artifactId: number;
     code: string | null;
+    /** Accepted hash of the provenance artifact/document container. */
     acceptedHash: string;
+    /** Content hash of this atomic criterion section within the container. */
+    criterionHash?: string;
     implementationRequired: boolean;
     criticality: AcceptanceCriticality;
   }[];

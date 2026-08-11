@@ -121,7 +121,10 @@ export type AcceptanceCriticality = 'blocker' | 'degradable' | 'nice_to_have';
 export interface AcceptanceCriterionBinding {
   artifactId: number;
   code: string | null;
+  /** Accepted hash of the authoritative artifact/document container. */
   acceptedHash: string;
+  /** Optional content hash of the atomic criterion section. */
+  criterionHash?: string;
   /**
    * False is reserved for criteria that constrain an already-existing product
    * without requiring an implementation work item. Verification is mandatory

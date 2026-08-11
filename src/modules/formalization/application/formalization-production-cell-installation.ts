@@ -283,7 +283,7 @@ function buildBundle(
   return { ...body, bundleHash: sha256Hex(body) };
 }
 
-function buildSolutionContractPayload(
+export function buildSolutionContractPayload(
   deps: FormalizationProductionCellInstallationDeps,
   ctx: KernelHandlerContext,
   formalizationCase: FormalizationCase,
@@ -364,7 +364,8 @@ function buildSolutionContractPayload(
       return {
         artifactId: artifact.artifactId,
         code: artifact.code,
-        acceptedHash: artifact.contentHash,
+        acceptedHash: artifactHashes[String(artifact.artifactId)]!,
+        criterionHash: artifact.contentHash,
         implementationRequired: acKind === 'implementation',
         criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
       };
