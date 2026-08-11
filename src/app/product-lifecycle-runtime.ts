@@ -26,6 +26,7 @@ import { KernelHandlerRegistry } from '../process-modules/application/kernel-han
 import { LifecycleOrchestrationEngineAdapter } from '../process-modules/application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
 import { installWorkshopPayloadContracts } from '../process-modules/application/workshop-capability-manifest.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type {
   NodeExecutor,
   NodeProducts,
@@ -562,6 +563,9 @@ export function createProductLifecycleRuntime(
         if (!isWorkplaceProductionSnapshot(content.payload)) return null;
         return workplaceProductionSemanticDigest(content.payload);
       },
+      // ADR-053 Phase 5 — revision repository so CandidateSet seals carry a
+      // productionRevisionRef (the immutable material authority).
+      revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
     })],
   ]);
   nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);

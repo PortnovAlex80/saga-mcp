@@ -160,6 +160,15 @@ export class SqliteCellFinalAcceptance {
     return row?.candidate_set_ref ?? null;
   }
 
+  /**
+   * ADR-053 Phase 6 — read the accepted GateDecision key for a specific
+   * CandidateSet. Used to build AcceptedCandidateAuthority without execution-
+   * scoped lookups.
+   */
+  getAcceptedGateDecisionKey(workplaceRef: string, candidateSetRef: string): string | null {
+    return this.readAcceptedDecision(workplaceRef, candidateSetRef)?.decision_key ?? null;
+  }
+
   private readAcceptedDecision(workplaceRef: string, candidateSetRef: string): {
     decision_key: string;
   } {

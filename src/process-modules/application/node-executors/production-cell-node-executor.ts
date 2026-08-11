@@ -44,6 +44,9 @@ import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
+import { assembleRevision, buildContribution } from '../../domain/workplace/workplace-production-revision.js';
+import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
+import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -180,6 +183,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly authorCandidateCarryForward?: AuthorCandidateCarryForwardPort;
   /** ADR-053 Phase 8 — when present, CandidateSet seals append a durable obligation. */
   readonly obligationIntegrator?: TransitionObligationIntegrator;
+  /** ADR-053 Phase 5 — when present, CandidateSet seals assemble and carry a revision ref. */
+  readonly revisionRepo?: SqliteWorkplaceProductionRevisionRepository;
   readonly now?: () => Date;
 }
 
@@ -633,6 +638,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     );
     let effectReceiptRef = existing?.effectReceiptRef ?? null;
     if (!existing) {
+      // ADR-053 Phase 6 — build AcceptedCandidateAuthority so effects consume
+      // exact material coordinates (revision, productRefs, gateDecision)
+      // instead of re-deriving from producerExecutionRef.
+      const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
+      const gateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+        serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
+      );
+      const productContract = cell.productContracts[0]?.payloadContract ?? null;
+      const acceptanceDigest = computeAcceptanceDigest({
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        productionRevisionRef: acceptedCandidate.productionRevisionRef,
+        acceptedProductRefs,
+        gateDecisionKey: gateDecisionKey ?? '',
+      });
       const result = this.opts.postAcceptanceEffects.run(effectId, {
         workplaceRef: workplace.ref,
         processRunId: ctx.processRunId,
@@ -641,6 +660,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: acceptedCandidate.candidateSetRef,
         producerExecutionRef: acceptedCandidate.producerExecutionRef,
         expectedProductSchema: cell.productContracts[0]!.schemaRef,
+        authority: {
+          workplaceRef: workplace.ref,
+          candidateSetRef: acceptedCandidate.candidateSetRef,
+          productionRevisionRef: acceptedCandidate.productionRevisionRef,
+          acceptedProductRefs,
+          gateDecisionKey: gateDecisionKey ?? '',
+          productContractRef: productContract,
+          acceptanceDigest,
+        },
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {
@@ -876,9 +904,19 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       sourceCandidateSetRef: null,
     }));
     const digest = hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), executionRef, role, products });
+
+    // ADR-053 Phase 5 — assemble an immutable Workplace production revision
+    // from the sealed products and carry its ref as the CandidateSet material
+    // authority. Two executions producing the same products derive the same
+    // revisionRef → same seal key → partition invariance (Run 011 fix).
+    const productionRevisionRef = this.assembleRevisionFromProducts(
+      workplaceRef, executionRef, products,
+    );
+
     const sealed = this.opts.candidateSetRepo.seal({
       workplaceRef,
       producerExecutionRef: executionRef,
+      productionRevisionRef,
       role,
       subjectCandidateSetRef,
       members,
@@ -887,10 +925,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     }).set;
     // ADR-053 Phase 8 — append a durable obligation for the Gate to run on
-    // every author CandidateSet seal. If the process crashes between seal and
-    // gate, the reconciler redrives it. Idempotent: a replay finds the existing
-    // obligation (deterministic key).
-    if (role === 'author' && this.opts.obligationIntegrator && !sealed.productionRevisionRef) {
+    // every author CandidateSet seal.
+    if (role === 'author' && this.opts.obligationIntegrator) {
       this.opts.obligationIntegrator.onCandidateSetSealed({
         candidateSetRef: sealed.candidateSetRef,
         candidateSetDigest: sealed.candidateSetDigest,
@@ -899,6 +935,43 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       });
     }
     return sealed;
+  }
+
+  /**
+   * ADR-053 Phase 5 — assemble a sealed Workplace production revision from a
+   * set of ProductRefs. Each product becomes a revision member keyed by its
+   * semantic identity (schemaId + ref). Returns the content-addressed
+   * revisionRef, or null when no revision repository is configured.
+   */
+  private assembleRevisionFromProducts(
+    workplaceRef: WorkplaceRef,
+    executionRef: string,
+    products: readonly ProductRef[],
+  ): string | null {
+    if (!this.opts.revisionRepo || products.length === 0) return null;
+    const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
+    const operations = products.map(p => ({
+      op: 'put' as const,
+      memberKey: `product/${p.schemaId}/${p.ref}`,
+      productRef: p.ref,
+      contentDigest: p.digest,
+      sourceAdapter: 'typed-submission' as const,
+    }));
+    const contribution = buildContribution({
+      workplaceRef: workplaceSerialized,
+      contributorExecutionRef: executionRef,
+      sourceAdapter: 'typed-submission',
+      operations,
+      parentContributionRef: null,
+    });
+    const revision = assembleRevision({
+      workplaceRef: workplaceSerialized,
+      parent: null,
+      contributions: [contribution],
+      presenterRef: executionRef,
+    });
+    this.opts.revisionRepo.appendRevision(revision);
+    return revision.revisionRef;
   }
 
   private sealCarriedForwardCandidateSet(
@@ -916,9 +989,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       role: 'author',
       products: directive.products,
     });
+    // ADR-053 Phase 5 — carry-forward seals also get a revision ref.
+    const productionRevisionRef = this.assembleRevisionFromProducts(
+      workplaceRef, directive.presenterRef, directive.products,
+    );
     return this.opts.candidateSetRepo.seal({
       workplaceRef,
       producerExecutionRef: directive.presenterRef,
+      productionRevisionRef,
       role: 'author',
       subjectCandidateSetRef: null,
       members,
