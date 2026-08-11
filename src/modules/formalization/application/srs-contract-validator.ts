@@ -451,7 +451,7 @@ function readFrozenBaseline(db: DbHandle, processRunId: number): FrozenBaselineV
     return null;
   }
   if (!row) return null;
-  let payload: { acArtifactIds?: unknown; acArtifactHashes?: unknown };
+  let payload: { acArtifactIds?: unknown; acArtifactHashes?: unknown; acceptanceCriteria?: unknown };
   try {
     payload = JSON.parse(row.payload) as typeof payload;
   } catch {
@@ -477,6 +477,32 @@ function readFrozenBaseline(db: DbHandle, processRunId: number): FrozenBaselineV
   const expectedHashes = payload.acArtifactHashes && typeof payload.acArtifactHashes === 'object'
     ? payload.acArtifactHashes as Record<string, unknown>
     : {};
+  if (Array.isArray(payload.acceptanceCriteria) && payload.acceptanceCriteria.length > 0) {
+    const criteria = payload.acceptanceCriteria.map(value => {
+      if (!value || typeof value !== 'object') return null;
+      const item = value as Record<string, unknown>;
+      if (
+        typeof item.artifactId !== 'number'
+        || !ids.includes(item.artifactId)
+        || typeof item.code !== 'string'
+        || item.code.trim() === ''
+        || typeof item.contentHash !== 'string'
+        || item.contentHash.length !== 64
+      ) return null;
+      return {
+        artifactId: item.artifactId,
+        code: item.code,
+        contentHash: item.contentHash,
+      };
+    });
+    if (criteria.some(item => item === null)) return null;
+    if (new Set(criteria.map(item => item!.code)).size !== criteria.length) return null;
+    return {
+      baselineHash: row.baseline_hash,
+      snapshotHash: row.snapshot_hash,
+      acceptanceCriteria: criteria as FrozenBaselineView['acceptanceCriteria'],
+    };
+  }
   const acceptanceCriteria = ids.map(id => {
     const artifact = byId.get(id);
     const expectedHash = expectedHashes[String(id)];

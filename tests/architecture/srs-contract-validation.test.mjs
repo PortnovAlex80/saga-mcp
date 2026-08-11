@@ -218,6 +218,29 @@ test('canonical valid SRS passes the validator', () => {
   db.close();
 });
 
+test('SRS validator binds D2 to atomic criteria frozen inside one AC artifact', () => {
+  const db = freshDb();
+  const row = db.prepare(
+    'SELECT payload FROM factory_formalization_acceptance_baselines WHERE process_run_id=2',
+  ).get();
+  const payload = JSON.parse(row.payload);
+  payload.acceptanceCriteria = [
+    { artifactId: 3, code: 'AC-1.1', title: 'One', contentHash: hash('one') },
+    { artifactId: 3, code: 'AC-1.2', title: 'Two', contentHash: hash('two') },
+  ];
+  db.prepare(
+    'UPDATE factory_formalization_acceptance_baselines SET payload=? WHERE process_run_id=2',
+  ).run(JSON.stringify(payload));
+  const tmpDir = seedRepo(db);
+  seedPrd(db);
+  seedSrs(db, tmpDir, canonicalValidSrs().replaceAll('AC-1', 'AC-1.1'));
+
+  const result = createSrsContractValidator(db).validate(validateInput);
+  assert.equal(result.accepted, false);
+  assert.ok(result.gaps.some(gap => gap.message.includes('AC-1.2')));
+  db.close();
+});
+
 // ===========================================================================
 // Group 2: Fail-closed behavioural tests (T1.2 / T1.3).
 // ===========================================================================

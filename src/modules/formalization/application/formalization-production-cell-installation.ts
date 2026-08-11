@@ -44,6 +44,7 @@ import {
   type FormalizationSettlementInput,
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
+import { parseAtomicAcceptanceCriteria } from '../domain/acceptance-criterion-document.js';
 import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
@@ -98,6 +99,22 @@ function createBaselineFreezer(
         String(artifact.id),
         acceptedHash(artifact),
       ]));
+      const acceptanceCriteria = acs.flatMap(artifact => {
+        const parsed = parseAtomicAcceptanceCriteria(deps.readArtifactContent(artifact.id));
+        if (parsed.length > 0) {
+          return parsed.map(criterion => ({ artifactId: artifact.id, ...criterion }));
+        }
+        if (!artifact.code) throw new Error(`accepted AC ${artifact.id} has no stable code`);
+        return [{
+          artifactId: artifact.id,
+          code: artifact.code,
+          title: artifact.code,
+          contentHash: acceptedHash(artifact),
+        }];
+      });
+      if (new Set(acceptanceCriteria.map(item => item.code)).size !== acceptanceCriteria.length) {
+        throw new Error('atomic acceptance criterion codes must be unique across accepted artifacts');
+      }
       // Cross-run semantic digest (CONVEYOR v4.3 §5-6): stable AC codes +
       // accepted hashes, no DB IDs/processRunId/refs. See the sibling
       // acceptanceBaselineSemanticDigest in formalization-installation.ts.
@@ -111,6 +128,7 @@ function createBaselineFreezer(
         sourceReconciliationHash: source.contentHash,
         acArtifactIds: [...accepted.acs].sort((a, b) => a - b),
         acArtifactHashes: hashes,
+        acceptanceCriteria,
         baselineHash: baseline.hash,
       } as const;
       const frozen = deps.baselineRepository.freeze(payload);
@@ -125,6 +143,7 @@ function createBaselineFreezer(
             baselineHash: frozen.record.baselineHash,
             snapshotHash: frozen.record.snapshotHash,
             acArtifactIds: frozen.record.payload.acArtifactIds,
+            acceptanceCriterionCodes: frozen.record.payload.acceptanceCriteria?.map(item => item.code) ?? [],
             replayed: frozen.replayed,
           },
         },
@@ -296,9 +315,17 @@ function buildSolutionContractPayload(
     extractD2Stanzas(srsContent).map(stanza => [stanza.ac, stanza]),
   );
   const criticalityByCode = parseD2CriticalityByAc(srsContent);
-  const acs = artifacts
+  const frozen = deps.baselineRepository.readByProcessRun(ctx.processRunId);
+  if (!frozen) throw new Error('formalized contract has no frozen acceptance baseline');
+  const criteria = frozen.payload.acceptanceCriteria ?? artifacts
     .filter(artifact => bundle.acArtifactIds.includes(artifact.id))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => a.id - b.id)
+    .map(artifact => ({
+      artifactId: artifact.id,
+      code: artifact.code ?? '',
+      title: artifact.code ?? '',
+      contentHash: acceptedHash(artifact),
+    }));
 
   return {
     schemaVersion: SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
@@ -317,9 +344,9 @@ function buildSolutionContractPayload(
       ref: `artifact:${srs.id}`,
       hash: acceptedHash(srs),
     },
-    acceptanceCriteria: acs.map(artifact => {
+    acceptanceCriteria: criteria.map(artifact => {
       if (!artifact.code) {
-        throw new Error(`accepted AC ${artifact.id} has no stable code`);
+        throw new Error(`accepted AC member ${artifact.artifactId} has no stable code`);
       }
       const stanza = d2ByCode.get(artifact.code);
       if (!stanza) {
@@ -332,9 +359,9 @@ function buildSolutionContractPayload(
         throw new Error(`SRS §D2 ${artifact.code} has invalid ac_kind '${acKind ?? ''}'`);
       }
       return {
-        artifactId: artifact.id,
+        artifactId: artifact.artifactId,
         code: artifact.code,
-        acceptedHash: acceptedHash(artifact),
+        acceptedHash: artifact.contentHash,
         implementationRequired: acKind === 'implementation',
         criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
       };

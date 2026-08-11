@@ -1419,3 +1419,14 @@ workshop. It references one exact ProductRevision and owns environment policy,
 approval, external effects and observation. Splitting these requests prevents
 release authority from blocking product manufacture while preserving the
 universal conveyor grammar.
+# Atomic members at managed-document boundaries
+
+A managed artifact may be a provenance container for several domain contract
+members. Cardinality of downstream typed inputs MUST come from a deterministic,
+versioned projection frozen with the accepted container; it MUST NOT be inferred
+independently by workers, reviewers, or later stages. For acceptance documents,
+the baseline binds every atomic criterion code and section hash to its immutable
+artifact container. Gates, reviewers, and downstream planning consume that same
+member set. This prevents a locally valid state machine from entering an
+unsatisfiable repair cycle because machine and semantic authorities disagree on
+the subject's cardinality.

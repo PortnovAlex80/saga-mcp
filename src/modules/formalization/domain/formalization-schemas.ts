@@ -48,6 +48,13 @@ export interface AcceptanceBaselineSnapshotPayload {
   sourceReconciliationHash: string;
   acArtifactIds: readonly number[];
   acArtifactHashes: Readonly<Record<string, string>>;
+  /** Atomic criteria parsed from the accepted AC artifact containers. */
+  acceptanceCriteria?: readonly {
+    artifactId: number;
+    code: string;
+    title: string;
+    contentHash: string;
+  }[];
   baselineHash: string;
 }
 
