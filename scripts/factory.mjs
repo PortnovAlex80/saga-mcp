@@ -39,6 +39,7 @@ import {
   effectiveFactoryConcurrency,
   factoryModelProfile,
 } from '../dist/runtime/factory-model-profiles.js';
+import { buildReferenceDevelopmentPolicy } from '../dist/app/start-product-lifecycle-from-idea.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -659,7 +660,7 @@ if (command === 'start') {
     });
     if (baseCommit.status !== 0) die(`git rev-parse failed in ${repoRow.local_path}`);
 
-    const policyBase = { id: 'reference-development-policy', version: '1.0.0' };
+    const developmentPolicy = buildReferenceDevelopmentPolicy();
     const deferredBase = { schemaVersion: 'factory.delivery-deferred-profile.v1', reason: 'authorization-required', source: 'start-from-idea' };
     const lifecycleInput = {
       schemaVersion: 'factory.product-delivery-lifecycle-input.v2',
@@ -684,7 +685,7 @@ if (command === 'start') {
           integrationBranch: repoRow.integration_branch ?? 'dev',
           expectedBaseCommit: baseCommit.stdout.trim(),
         }],
-        policy: { ...policyBase, contentHash: sha256Hex(policyBase) },
+        policy: developmentPolicy,
       },
       delivery: {
         mode: 'deferred', policy: null, operatorAuthorization: null,

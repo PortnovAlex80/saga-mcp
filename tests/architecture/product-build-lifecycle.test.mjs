@@ -35,4 +35,6 @@ test('generic Factory Start does not silently force static/no-dependency product
   assert.match(gateway, /localRunRequired\s*:\s*true/);
   assert.match(gateway, /deploymentExcluded\s*:\s*true/);
   assert.match(gateway, /humanAcceptanceAfterLocalStart\s*:\s*true/);
+  assert.match(gateway, /buildReferenceDevelopmentPolicy\(\)/);
+  assert.doesNotMatch(gateway, /reference-development-policy['"],\s*version/);
 });
