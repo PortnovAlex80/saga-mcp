@@ -172,7 +172,7 @@ export async function createTemporalDriver(opts) {
            JOIN factory_process_runs pr ON pr.id=w.process_run_id
           WHERE pr.epic_id=?
             AND pr.status IN ('running','paused')
-            AND w.loop_state IN ('verifying','effect_pending')
+            AND w.loop_state IN ('repair_wait','verifying','effect_pending')
           LIMIT 1`,
       ).get(epicId));
 
@@ -199,7 +199,7 @@ export async function createTemporalDriver(opts) {
              JOIN factory_process_runs pr ON pr.id=w.process_run_id
             WHERE pr.epic_id=?
               AND pr.status IN ('running','paused')
-              AND w.loop_state IN ('verifying','effect_pending')
+              AND w.loop_state IN ('repair_wait','verifying','effect_pending')
             LIMIT 1`,
         ).get(epicId)),
         workAssignment: factoryWorkAssignment,

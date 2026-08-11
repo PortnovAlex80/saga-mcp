@@ -569,6 +569,14 @@ test('Ratchet: liveness-explainer progress obligation is non-empty — at least 
   );
 });
 
+test('Ratchet: production and temporal dispatch yield for every kernel-driven Workplace state', () => {
+  const production = readContent(path.join(REPO_ROOT, 'src', 'orchestrate-cli.ts'));
+  const temporalDriver = readContent(path.join(TEMPORAL_LIB_DIR, 'temporal-driver.mjs'));
+  const completeKernelSet = /loop_state IN \('repair_wait','verifying','effect_pending'\)/;
+  assert.match(production, completeKernelSet);
+  assert.match(temporalDriver, completeKernelSet);
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

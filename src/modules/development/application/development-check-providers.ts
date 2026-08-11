@@ -298,8 +298,8 @@ function normalizeRepoPath(value: string): string {
 }
 
 function pathMatchesScope(path: string, scope: string): boolean {
-  if (scope.endsWith('/')) return path.startsWith(scope);
-  return path === scope;
+  const normalizedScope = scope.replace(/\/+$/, '');
+  return path === normalizedScope || path.startsWith(`${normalizedScope}/`);
 }
 
 export function createDevelopmentVerificationCheckProvider(input: {

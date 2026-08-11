@@ -334,7 +334,7 @@ async function main() {
              JOIN factory_process_runs pr ON pr.id=w.process_run_id
             WHERE pr.epic_id=?
               AND pr.status IN ('running','paused')
-              AND w.loop_state IN ('verifying','effect_pending')
+              AND w.loop_state IN ('repair_wait','verifying','effect_pending')
             LIMIT 1`,
         ).get(epicId)),
         // Conveyor model: this application service owns dispatch and the
