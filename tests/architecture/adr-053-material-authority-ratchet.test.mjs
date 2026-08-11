@@ -28,8 +28,10 @@
 //      replay-claim-binder and replay-authority-rebinder repositories. The
 //      cutover replaces each with an exact-ref lookup.
 //
-// BASELINE (captured 2026-08-11 on saga4, Phase 0):
-//   latestCandidate           : 5  (4 call sites + 1 definition)
+// BASELINE (captured 2026-08-11 on saga4, Phase 0; lowered Phase 7):
+//   latestCandidate           : 3  (2 reviewer-subject calls + 1 definition;
+//                                   Phase 7 removed the 2 post-acceptance calls
+//                                   by reading from CellFinalAcceptance)
 //   ORDER BY sealed_at DESC   : 4
 //
 // These numbers MUST only go DOWN as the cutover proceeds. To lower a
@@ -58,7 +60,7 @@ const SRC_ROOT = path.join(REPO_ROOT, 'src');
 // Baselines — LOWER ONLY, never raise. See file header.
 // ---------------------------------------------------------------------------
 const BASELINE = Object.freeze({
-  latestCandidate: 5,
+  latestCandidate: 3,
   orderBySealedAtDesc: 4,
 });
 

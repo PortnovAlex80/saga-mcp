@@ -146,6 +146,20 @@ export class SqliteCellFinalAcceptance {
     return finalAcceptanceRef;
   }
 
+  /**
+   * ADR-053 Phase 7 — read the accepted CandidateSet ref for a workplace by
+   * EXACT workplace match (factory_cell_final_acceptances.workplace_ref is
+   * UNIQUE). This replaces the recency-based `latestCandidate` lookup in
+   * post-acceptance code paths. Returns null when no final acceptance exists
+   * (the workplace has not been accepted yet).
+   */
+  getAcceptedCandidateSetRef(workplaceRef: string): string | null {
+    const row = this.db.prepare(
+      `SELECT candidate_set_ref FROM factory_cell_final_acceptances WHERE workplace_ref = ?`,
+    ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
+    return row?.candidate_set_ref ?? null;
+  }
+
   private readAcceptedDecision(workplaceRef: string, candidateSetRef: string): {
     decision_key: string;
   } {

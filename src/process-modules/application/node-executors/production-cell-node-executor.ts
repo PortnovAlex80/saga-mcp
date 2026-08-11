@@ -369,7 +369,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
     if (state.loopState === 'paused') return pausedOutcome();
     if (state.loopState === 'effect_pending') {
-      const acceptedCandidate = this.latestCandidate(workplace.ref, 'author');
+      // ADR-053 Phase 7: read the accepted CandidateSet by EXACT ref from
+      // CellFinalAcceptance, not by recency (latestCandidate). The final
+      // acceptance table has UNIQUE workplace_ref — this is an exact match.
+      const acceptedCsRef = this.opts.finalAcceptance.getAcceptedCandidateSetRef(
+        serializeWorkplaceRef(workplace.ref),
+      );
+      const acceptedCandidate = acceptedCsRef
+        ? this.opts.candidateSetRepo.read(acceptedCsRef)
+        : null;
       if (!acceptedCandidate || !cell.postAcceptanceEffect) {
         throw new NodeExecutionError(
           this.kind,
@@ -978,7 +986,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
     }
     if (state.terminalReason !== 'accepted') return failedOutcome();
-    const author = this.latestCandidate(ref, 'author');
+    // ADR-053 Phase 7: read the accepted CandidateSet by EXACT ref from
+    // CellFinalAcceptance, not by recency (latestCandidate).
+    const acceptedCsRef = this.opts.finalAcceptance.getAcceptedCandidateSetRef(
+      serializeWorkplaceRef(ref),
+    );
+    const author = acceptedCsRef
+      ? this.opts.candidateSetRepo.read(acceptedCsRef)
+      : null;
     return {
       pending: false,
       paused: false,
