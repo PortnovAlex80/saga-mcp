@@ -1,4 +1,39 @@
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
+import type { ProductRef } from '../domain/spi/production-envelope.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
+
+/**
+ * ADR-053 Phase 6 — the exact accepted-candidate authority an effect consumes.
+ *
+ * This replaces the execution-scoped fields (producerExecutionRef, process/node/
+ * task selectors, expected-schema rediscovery) in PostAcceptanceEffectInput.
+ * Every material coordinate an effect needs is already resolved BEFORE the
+ * Gate: the revision, the exact accepted ProductRefs, the GateDecision, and the
+ * product contract. The effect must NOT re-derive any of these from execution
+ * IDs, task IDs, or "latest" lookups.
+ *
+ * Phase 6 ADDS this to PostAcceptanceEffectInput alongside the legacy fields
+ * (migration). Phase 7 REMOVES producerExecutionRef and the legacy fields,
+ * leaving AcceptedCandidateAuthority as the sole input.
+ */
+export interface AcceptedCandidateAuthority {
+  readonly workplaceRef: WorkplaceRef;
+  readonly candidateSetRef: string;
+  /** The immutable Workplace production revision the accepted material was sealed from. */
+  readonly productionRevisionRef: string | null;
+  /** The exact accepted ProductRefs from the accepted CandidateSet members. */
+  readonly acceptedProductRefs: readonly ProductRef[];
+  /** The GateDecision that accepted this CandidateSet. */
+  readonly gateDecisionKey: string;
+  /** The pinned product payload contract (provenance — which decoder validated the payload). */
+  readonly productContractRef: {
+    readonly contractId: string;
+    readonly version: string;
+    readonly contractDigest: string;
+  } | null;
+  /** Digest binding the acceptance (revision + productRefs + gateDecision). */
+  readonly acceptanceDigest: string;
+}
 
 export interface PostAcceptanceEffectInput {
   readonly workplaceRef: WorkplaceRef;
@@ -6,8 +41,39 @@ export interface PostAcceptanceEffectInput {
   readonly moduleRef: { readonly name: string; readonly version: string };
   readonly nodeId: string;
   readonly candidateSetRef: string;
+  /** @deprecated ADR-053 Phase 6 — use authority.productionRevisionRef instead. */
   readonly producerExecutionRef: string;
   readonly expectedProductSchema: string;
+  /**
+   * ADR-053 Phase 6 — the exact accepted-candidate authority. When present,
+   * effects MUST consume this instead of producerExecutionRef. Phase 7 makes
+   * this required and removes producerExecutionRef.
+   */
+  readonly authority?: AcceptedCandidateAuthority;
+}
+
+/**
+ * ADR-053 Phase 6 — compute the acceptance digest binding the accepted
+ * CandidateSet to its revision, productRefs and GateDecision. This digest is
+ * shared by the effect receipt and CellFinalAcceptance, so they provably
+ * consume the same exact acceptance (not a newer execution's re-derivation).
+ */
+export function computeAcceptanceDigest(input: {
+  readonly candidateSetRef: string;
+  readonly productionRevisionRef: string | null;
+  readonly acceptedProductRefs: readonly ProductRef[];
+  readonly gateDecisionKey: string;
+}): string {
+  // Lazy import to avoid a circular dependency at module load (sha256Hex is
+  // in shared/canonical-json). Imported once, cached.
+  return sha256Hex({
+    candidateSetRef: input.candidateSetRef,
+    productionRevisionRef: input.productionRevisionRef,
+    productRefs: input.acceptedProductRefs
+      .map(p => ({ schemaId: p.schemaId, ref: p.ref, digest: p.digest }))
+      .sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0)),
+    gateDecisionKey: input.gateDecisionKey,
+  });
 }
 
 export type PostAcceptanceEffectResult =
