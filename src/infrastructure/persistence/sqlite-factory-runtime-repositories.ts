@@ -317,6 +317,18 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
         const binding = bindingByExecution.get(projection.executionId);
         if (!binding?.workplace_ref) continue;
 
+        // Physical close can race semantic completion. worker_done seals the
+        // CandidateSet and moves the Workplace to verifying before the child
+        // close callback terminalizes WorkerExecution. A supervisor observing
+        // the dead PID in that window may clear the stale task fence, but must
+        // not send worker-lost to a Workplace now owned by its GateRun.
+        const semanticCompletionAccepted = Boolean(db.prepare(
+          `SELECT 1 FROM command_receipts
+            WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+            LIMIT 1`,
+        ).get(projection.executionId));
+        if (semanticCompletionAccepted) continue;
+
         const workplaceRef = deserializeWorkplaceRef(binding.workplace_ref);
         const postReleaseTask = db.prepare(
           'SELECT status FROM tasks WHERE id=?',

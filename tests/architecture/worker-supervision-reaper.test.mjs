@@ -57,6 +57,52 @@ function stampProcessRun(taskId, processRunId = 1) {
   db.prepare('UPDATE tasks SET metadata=? WHERE id=?').run(JSON.stringify(meta), taskId);
 }
 
+test('supervision preserves verifying when accepted worker_done races physical close', () => {
+  const { projectId, epicId } = setupProject();
+  const zombie = createZombie(projectId, epicId);
+  const db = getDb();
+  const workplace = db.prepare(
+    'SELECT workplace_ref FROM tasks WHERE id=?',
+  ).get(zombie.taskId);
+  assert.ok(workplace?.workplace_ref);
+
+  db.prepare(
+    `UPDATE factory_workplaces SET loop_state='verifying',revision=revision+1
+      WHERE workplace_ref=?`,
+  ).run(workplace.workplace_ref);
+  db.prepare(
+    `INSERT INTO command_receipts
+       (command_id,command_kind,actor_kind,actor_id,task_id,execution_id,
+        payload_hash,accepted,result_json,reply_json)
+     VALUES (?, 'worker_done', 'managed_execution', NULL, ?, ?,
+             'semantic-done', 1, '{}', '{}')`,
+  ).run(`cmd-semantic-done-${zombie.taskId}`, zombie.taskId, zombie.executionId);
+
+  const handle = startWorkerSupervision({
+    executionRuntime: new SqliteExecutionRuntimeRepository(),
+    projectId,
+    epicId,
+    intervalMs: 60_000,
+  });
+
+  assert.equal(
+    db.prepare('SELECT state FROM worker_executions WHERE execution_id=?')
+      .get(zombie.executionId).state,
+    'lost',
+  );
+  assert.equal(
+    db.prepare('SELECT loop_state FROM factory_workplaces WHERE workplace_ref=?')
+      .get(workplace.workplace_ref).loop_state,
+    'verifying',
+  );
+  assert.equal(
+    db.prepare('SELECT current_execution_id FROM tasks WHERE id=?')
+      .get(zombie.taskId).current_execution_id,
+    null,
+  );
+  handle.stop();
+});
+
 function setupProject() {
   const p = projects.project_create({ name: `sv-test-${Date.now()}` });
   const e = epics.epic_create({ project_id: p.id, name: 'SV epic' });
