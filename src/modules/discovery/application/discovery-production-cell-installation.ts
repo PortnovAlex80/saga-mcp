@@ -12,6 +12,11 @@ import type {
   ProcessModuleOutputEnvelope,
   ProductRef,
 } from '../../../process-modules/domain/spi/index.js';
+import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
+import type { NodeExecutionResult } from '../../../process-modules/application/node-executor.js';
+import type { ProcessModuleExecutionContext } from '../../../process-modules/application/process-module-executor.js';
+import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
+import type { ProcessOutputPayloadResolver } from '../../../process-modules/application/lifecycle-orchestrator.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DISCOVERY_PROCESS_MODULE_REF,
@@ -158,6 +163,9 @@ function createSettlementHandler(input: {
           authority: 'discovery-settlement-policy',
           reasonCodes: decision.reason_codes,
           settlementInputHash: snapshotHash,
+          proposalSchema: proposalCell.products[0]!.schemaId,
+          proposalRef: proposalCell.products[0]!.ref,
+          proposalHash: proposalCell.products[0]!.digest,
         },
       );
     } catch (error) {
@@ -193,13 +201,95 @@ function settlementResult(
   };
 }
 
-function moduleCompletion(outcome: string, certificateRef: ProductRef): ModuleCompletion {
+function moduleCompletion(
+  outcome: string,
+  certificateRef: ProductRef,
+): ModuleCompletion {
   const outputEnvelope: ProcessModuleOutputEnvelope = {
     outcome,
     productions: [],
     certificateRef,
   };
   return { outcome, outputEnvelope, terminal: true };
+}
+
+interface DiscoveryProductRow {
+  schema_id: string;
+  artifact_ref: string;
+  product_hash: string;
+  payload_snapshot: string;
+  payload_hash: string;
+}
+
+/** Resolve the exact accepted Discovery Proposal as the ProcessRun output. */
+export function createDiscoveryOutputResolver(db: SqlDatabasePort): (
+  module: ProcessModuleDefinition,
+  terminalOutcome: string,
+  terminalResult: NodeExecutionResult,
+  context: ProcessModuleExecutionContext,
+) => ProcessModuleOutput | null {
+  return (module, _terminalOutcome, terminalResult, context) => {
+    if (module.identity.name !== DISCOVERY_PROCESS_MODULE_REF.name
+      || module.identity.version !== DISCOVERY_PROCESS_MODULE_REF.version) {
+      throw new Error('discovery output: module reference mismatch');
+    }
+    const bindings = terminalResult.production?.bindings ?? {};
+    const expected = {
+      schema: requireStringBinding(bindings, 'proposalSchema'),
+      artifactRef: requireStringBinding(bindings, 'proposalRef'),
+      contentHash: requireStringBinding(bindings, 'proposalHash'),
+    };
+    requireExactDiscoveryProposal(db, context.processRunId, expected);
+    return expected;
+  };
+}
+
+/** Dereference the exact ProcessRun output for the lifecycle handoff. */
+export function createDiscoveryLifecycleOutputPayloadResolver(
+  db: SqlDatabasePort,
+): ProcessOutputPayloadResolver {
+  return context => requireExactDiscoveryProposal(
+    db,
+    context.processRunId,
+    context.output,
+  );
+}
+
+function requireExactDiscoveryProposal(
+  db: SqlDatabasePort,
+  processRunId: number,
+  expected: ProcessModuleOutput,
+): DiscoveryProposalPayload {
+  const rows = db.prepare(
+    `SELECT schema_id,artifact_ref,product_hash,payload_snapshot,payload_hash
+       FROM factory_process_products
+      WHERE process_run_id=? AND schema_id=?`,
+  ).all(processRunId, DISCOVERY_PROPOSAL_SCHEMA) as DiscoveryProductRow[];
+  if (rows.length !== 1) {
+    throw new Error(`discovery output: expected one proposal for process_run ${processRunId}`);
+  }
+  const row = rows[0]!;
+  const payload = JSON.parse(row.payload_snapshot) as DiscoveryProposalPayload;
+  const payloadHash = sha256Hex(payload);
+  if (row.schema_id !== expected.schema
+    || row.artifact_ref !== expected.artifactRef
+    || row.product_hash !== expected.contentHash
+    || row.payload_hash !== payloadHash
+    || row.product_hash !== payloadHash) {
+    throw new Error(
+      `discovery output: '${expected.artifactRef}' does not resolve to the exact proposal `
+      + `for process_run ${processRunId}`,
+    );
+  }
+  return payload;
+}
+
+function requireStringBinding(bindings: Readonly<Record<string, unknown>>, key: string): string {
+  const value = bindings[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`discovery output: missing terminal binding '${key}'`);
+  }
+  return value;
 }
 
 function readSubmission(

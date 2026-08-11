@@ -306,6 +306,10 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         'certificate.schema': '$.processOutcome.certificateSchema',
         'certificate.ref': '$.processOutcome.certificateRef',
         'certificate.hash': '$.processOutcome.certificateHash',
+        'proposal.schema': '$.processOutcome.outputSchema',
+        'proposal.ref': '$.processOutcome.outputRef',
+        'proposal.hash': '$.processOutcome.outputHash',
+        proposalPayload: '$.processOutcome.outputPayload',
       },
       outcomeRoutes: {
         // Discovery is an idea-STRENGTH gate, not a build gate: an operator who
@@ -340,6 +344,10 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         discoveryCertificateRef: '$.stages.initial-discovery.certificate.ref',
         discoveryCertificateHash: '$.stages.initial-discovery.certificate.hash',
         discoveryOutcome: '$.stages.initial-discovery.decision',
+        discoveryProposalRef: '$.stages.initial-discovery.proposal.ref',
+        discoveryProposalHash: '$.stages.initial-discovery.proposal.hash',
+        discoveryProposalPayload: '$.stages.initial-discovery.proposalPayload',
+        initiativeSubject: '$.initiative.subject',
         initiatedBy: { runtime: 'initiatedBy' },
       },
       outputMapping: {

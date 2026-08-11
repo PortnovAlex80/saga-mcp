@@ -23,6 +23,12 @@ export interface FormalizationCase {
   discoveryCertificateRef: string;
   discoveryCertificateHash: string;
   discoveryOutcome: string;
+  /** Accepted semantic WHAT from Discovery; certificate alone is insufficient. */
+  discoveryProposalRef: string;
+  discoveryProposalHash: string;
+  discoveryProposalPayload: Readonly<Record<string, unknown>>;
+  /** Original request retained as an independent information-conservation anchor. */
+  initiativeSubject: string;
   initiatedBy: string;
 }
 

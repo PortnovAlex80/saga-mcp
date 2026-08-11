@@ -103,6 +103,8 @@ import { createDeliveryOutputPayloadResolver } from '../modules/delivery/applica
 import { RELEASE_RECORD_SCHEMA } from '../modules/delivery/domain/delivery-schemas.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import { registerDiscovery } from '../modules/discovery/index.js';
+import { createDiscoveryLifecycleOutputPayloadResolver } from '../modules/discovery/application/discovery-production-cell-installation.js';
+import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery-proposal.js';
 import { registerFormalization } from '../modules/formalization/index.js';
 import { registerDevelopment } from '../modules/development/index.js';
 import { promoteTaskToDone } from '../lifecycle/work-assignment-core.js';
@@ -619,6 +621,10 @@ export function createProductLifecycleRuntime(
   );
 
   const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
+    [
+      DISCOVERY_PROPOSAL_SCHEMA,
+      createDiscoveryLifecycleOutputPayloadResolver(db),
+    ],
     [
       SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
       createFormalizationLifecycleOutputPayloadResolver(

@@ -85,6 +85,7 @@ const { canonicalJson, sha256Hex } = await import(
 );
 
 const DISCOVERY_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-certificate.v1';
+const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 
 function createFixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-product-lifecycle-e2e-'));
@@ -197,16 +198,28 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       }],
     };
 
+    const discoveryProposalPayload = {
+      schemaVersion: DISCOVERY_PROPOSAL_SCHEMA,
+      title: 'Interactive Parametric Circle',
+      problem: 'Create a school program that draws a circle through sine and cosine.',
+      targetUsers: ['secondary-school students'],
+      proposedOutcome: 'A local interactive circle learning tool.',
+    };
     const products = {
       'product-discovery': {
         outcome: 'go',
-        output: null,
+        output: reference(
+          DISCOVERY_PROPOSAL_SCHEMA,
+          'discovery-proposal:circle:1',
+          discoveryProposalPayload,
+        ),
         certificate: certificate(
           DISCOVERY_CERTIFICATE_SCHEMA,
           'discovery-certificate:circle:1',
           { decision: 'go', proposalHash: sha256Hex({ subject: 'circle' }) },
         ),
         authority: 'discovery-settlement@1.0.0',
+        outputPayload: discoveryProposalPayload,
       },
       'solution-formalization': {
         outcome: 'formalized',
@@ -306,6 +319,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     // re-checks the returned payload hash itself.
     const resolversBySchema = new Map();
     for (const schema of [
+      DISCOVERY_PROPOSAL_SCHEMA,
       SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
       VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
     ]) {
@@ -480,6 +494,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     assert.deepEqual(
       resolverCalls.map(call => call.artifactRef),
       [
+        products['product-discovery'].output.artifactRef,
         products['solution-formalization'].output.artifactRef,
         products['solution-development'].output.artifactRef,
       ],
@@ -504,6 +519,10 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       discoveryCertificateHash:
         products['product-discovery'].certificate.certificateHash,
       discoveryOutcome: 'go',
+      discoveryProposalRef: products['product-discovery'].output.artifactRef,
+      discoveryProposalHash: products['product-discovery'].output.contentHash,
+      discoveryProposalPayload,
+      initiativeSubject: rootInput.initiative.subject,
       initiatedBy: 'product-owner',
     };
     const developmentInput = {

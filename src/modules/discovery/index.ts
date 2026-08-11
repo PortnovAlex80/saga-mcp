@@ -7,6 +7,7 @@ import {
   createDiscoveryReadinessCheckProvider,
 } from './application/discovery-check-providers.js';
 import {
+  createDiscoveryOutputResolver,
   createDiscoveryProductionCellKernelHandlers,
 } from './application/discovery-production-cell-installation.js';
 import { discoveryProcessModule } from '../../process-modules/modules/discovery/discovery-process-module.js';
@@ -46,6 +47,7 @@ export function registerDiscovery(
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     adoptedNodeResults: sharedDeps.adoptedNodeResults,
+    resolveOutput: createDiscoveryOutputResolver(sharedDeps.db),
     v2: sharedDeps.executorV2Options,
   });
 

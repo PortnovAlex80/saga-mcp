@@ -2210,6 +2210,14 @@ function requireFormalizationCase(input: unknown): FormalizationCase {
     || !isSha256(value.discoveryCertificateHash)
     || typeof value.discoveryOutcome !== 'string'
     || value.discoveryOutcome.length === 0
+    || typeof value.discoveryProposalRef !== 'string'
+    || value.discoveryProposalRef.length === 0
+    || !isSha256(value.discoveryProposalHash)
+    || !value.discoveryProposalPayload
+    || typeof value.discoveryProposalPayload !== 'object'
+    || sha256Hex(value.discoveryProposalPayload) !== value.discoveryProposalHash
+    || typeof value.initiativeSubject !== 'string'
+    || value.initiativeSubject.trim().length === 0
     || typeof value.initiatedBy !== 'string'
   ) {
     throw new Error('formalization settlement received an invalid or unauthorized FormalizationCase');
