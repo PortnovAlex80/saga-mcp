@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { createRepeatedToolLoopDetector } from './repeated-tool-loop.mjs';
 import {
   markExecutionExited,
   markExecutionProgress,
@@ -1086,6 +1087,16 @@ export class ClaudeBoardRunner {
       child.stdout?.on('data', onProgressData);
       child.stderr?.on('data', onProgressData);
     }
+
+    // Tool traffic alone is not semantic progress. Terminate an exact repeated
+    // action loop and let the normal fenced recovery path replace the worker.
+    const repeatedToolLoop = createRepeatedToolLoopDetector({ limit: 12 });
+    child.stdout?.on('data', chunk => {
+      const violation = repeatedToolLoop.push(chunk);
+      if (!violation) return;
+      run.lastError = `REPEATED_TOOL_LOOP: ${violation.tool} repeated ${violation.repetitions} times with identical input`;
+      try { child.kill(); } catch { /* close/reaper remains authoritative */ }
+    });
 
     const execution = {
       taskId: task.id,
