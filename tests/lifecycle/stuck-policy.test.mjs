@@ -321,7 +321,7 @@ test('stuck-policy: finishing phase past FINISH_GRACE → TERMINATE (no longer l
   assert.equal(action.kind, 'TERMINATE');
 });
 
-test('incident: fence-free finishing worker with 34s-old phase and 3s-old progress → KEEP', () => {
+test('incident: post-completion output cannot extend the bounded finishing deadline', () => {
   const action = decideStuckAction(input({
     phase: 'finishing',
     semanticCompletionAccepted: true,
@@ -330,11 +330,10 @@ test('incident: fence-free finishing worker with 34s-old phase and 3s-old progre
     legitimateFinishing: false,
     ownsActiveTask: false,
   }));
-  assert.equal(action.kind, 'KEEP');
-  assert.match(action.reason, /worker_done finishing activity grace/);
+  assert.equal(action.kind, 'TERMINATE');
 });
 
-test('incident: completed finishing grace survives an expired task lease while progress is fresh', () => {
+test('incident: expired completion deadline cannot be renewed by progress or lease state', () => {
   const action = decideStuckAction(input({
     phase: 'finishing',
     semanticCompletionAccepted: true,
@@ -344,8 +343,7 @@ test('incident: completed finishing grace survives an expired task lease while p
     ownsActiveTask: false,
     leaseExpiresAtMs: NOW - 1_000,
   }));
-  assert.equal(action.kind, 'KEEP');
-  assert.match(action.reason, /worker_done finishing activity grace/);
+  assert.equal(action.kind, 'TERMINATE');
 });
 
 test('incident: accepted worker_done keeps legacy integrating process during bounded drain', () => {

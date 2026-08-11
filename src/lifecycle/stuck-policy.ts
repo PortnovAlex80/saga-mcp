@@ -294,14 +294,10 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   // Fresh stream/log progress extends the grace; once both phase and progress
   // are older than FINISH_GRACE_MS, the ordinary termination path applies.
   // -------------------------------------------------------------------------
-  const finishingActivityAtMs = Math.max(
-    input.phaseUpdatedAtMs,
-    input.progressAtMs,
-  );
   const freshDurableFinishing = input.semanticCompletionAccepted
     && (input.phase === 'finishing' || input.phase === 'integrating')
-    && finishingActivityAtMs !== 0
-    && input.nowMs - finishingActivityAtMs < FINISH_GRACE_MS;
+    && input.phaseUpdatedAtMs !== 0
+    && input.nowMs - input.phaseUpdatedAtMs < FINISH_GRACE_MS;
   if (
     input.isAlive
     && (input.legitimateFinishing || freshDurableFinishing)

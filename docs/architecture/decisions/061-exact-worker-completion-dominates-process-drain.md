@@ -58,8 +58,9 @@ migration into the live E2E stabilization would enlarge the failure surface.
   supervisor's physical process decision and is time-bounded.
 - A non-zero close could still invoke recovery. Control: runner regression test
   orders receipt, projection advance, non-zero close, and asserts zero recovery.
-- Legacy `integrating` could be kept forever. Control: the grace requires the
-  exact receipt and fresh phase/progress time; ordinary cleanup applies after
+- Legacy `integrating` could be kept forever by post-completion output. Control:
+  the grace requires the exact receipt and is measured only from the immutable
+  phase transition time; ordinary cleanup applies after
   `FINISH_GRACE_MS`.
 - The hotfix could be mistaken for accepted-product authority. Control: retain
   CandidateSet, GateDecision, effect, and WorkplaceProductionRevision as
