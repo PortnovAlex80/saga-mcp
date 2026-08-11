@@ -19,11 +19,7 @@ import {
   createDevelopmentTaskGraphCheckProvider,
   createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
-  developmentReviewVerdictPayloadContract,
-  developmentTaskGraphPayloadContract,
-  developmentVerificationPayloadContract,
 } from './application/development-check-providers.js';
-import { registerProductPayloadContract } from '../../process-modules/application/product-payload-contract.js';
 import { developmentProcessModule } from '../../process-modules/modules/development/development-process-module.js';
 import {
   DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF,
@@ -124,9 +120,8 @@ export function registerDevelopment(
     candidateSets: sharedDeps.candidateSetRepo,
     git,
   }));
-  registerProductPayloadContract(developmentVerificationPayloadContract);
-  registerProductPayloadContract(developmentReviewVerdictPayloadContract);
-  registerProductPayloadContract(developmentTaskGraphPayloadContract);
+  // ADR-053 Phase 1: payload contracts are installed from the single workshop
+  // capability manifest by the orchestrator composition root, not per-module.
   registerFactoryCheckProvider(options.verificationCheckProviderFactory
     ? options.verificationCheckProviderFactory({
       db,

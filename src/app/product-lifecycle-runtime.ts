@@ -25,6 +25,7 @@ import { HumanInteractionRegistry } from '../process-modules/application/human-i
 import { KernelHandlerRegistry } from '../process-modules/application/kernel-handler-registry.js';
 import { LifecycleOrchestrationEngineAdapter } from '../process-modules/application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
+import { installWorkshopPayloadContracts } from '../process-modules/application/workshop-capability-manifest.js';
 import type {
   NodeExecutor,
   NodeProducts,
@@ -606,6 +607,12 @@ export function createProductLifecycleRuntime(
     moduleRegistry,
     installationRegistry,
   };
+
+  // ADR-053 Phase 1: install payload contracts from the single workshop
+  // capability manifest BEFORE module registration. Both the orchestrator and
+  // the worker MCP derive payload contracts from the same
+  // `WORKSHOP_PAYLOAD_CONTRACTS` source — there is no hand-list to drift.
+  installWorkshopPayloadContracts();
 
   const discoveryExecutor = registerDiscovery(registries, sharedDeps);
   const formalization = registerFormalization(registries, sharedDeps);

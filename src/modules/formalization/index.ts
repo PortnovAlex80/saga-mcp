@@ -8,9 +8,7 @@ import { registerFactoryCheckProvider } from '../../process-modules/application/
 import { registerFactoryPostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
 import {
   createReviewVerdictCheckProvider,
-  factoryReviewVerdictPayloadContract,
 } from '../../process-modules/application/review-verdict-check-provider.js';
-import { registerProductPayloadContract } from '../../process-modules/application/product-payload-contract.js';
 import {
   createFormalizationProductionCellKernelHandlers,
   createFormalizationOutputResolver,
@@ -56,7 +54,8 @@ export function registerFormalization(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   });
-  registerProductPayloadContract(factoryReviewVerdictPayloadContract);
+  // ADR-053 Phase 1: payload contracts are installed from the single workshop
+  // capability manifest by the orchestrator composition root, not per-module.
   registerFactoryCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,

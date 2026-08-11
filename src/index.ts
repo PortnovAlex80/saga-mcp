@@ -55,21 +55,15 @@ import {
   visibleSagaToolNames,
 } from './shared/authority/authorize-tool-call.js';
 import { closeDb, getDb } from './db.js';
-import { registerProductPayloadContract } from './process-modules/application/product-payload-contract.js';
-import { factoryReviewVerdictPayloadContract } from './process-modules/application/review-verdict-check-provider.js';
-import {
-  developmentReviewVerdictPayloadContract,
-  developmentTaskGraphPayloadContract,
-  developmentVerificationPayloadContract,
-} from './modules/development/application/development-check-providers.js';
+import { installWorkshopPayloadContracts } from './process-modules/application/workshop-capability-manifest.js';
 
-// The worker MCP host is a separate process from the lifecycle orchestrator.
-// Install the same executable payload contracts at this composition boundary;
-// durable WorkIntent pins still reject any id/version/digest drift.
-registerProductPayloadContract(developmentVerificationPayloadContract);
-registerProductPayloadContract(factoryReviewVerdictPayloadContract);
-registerProductPayloadContract(developmentReviewVerdictPayloadContract);
-registerProductPayloadContract(developmentTaskGraphPayloadContract);
+// ADR-053 Phase 1: the worker MCP host is a separate process from the
+// lifecycle orchestrator, but BOTH install payload contracts from the SAME
+// single source of truth — `WORKSHOP_PAYLOAD_CONTRACTS` in the workshop
+// capability manifest. There is no hand-list to drift: adding a contract to
+// the manifest registers it in both processes. Durable WorkIntent pins still
+// reject any id/version/digest drift at runtime.
+installWorkshopPayloadContracts();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

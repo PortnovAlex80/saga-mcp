@@ -10,17 +10,34 @@ const dbPath = path.join(
 );
 process.env.DB_PATH = dbPath;
 
-test('worker MCP composition installs every pinned built-in review payload decoder', () => {
+test('worker MCP composition installs payload contracts from the single workshop manifest (ADR-053 Phase 1)', async () => {
   const source = readFileSync(
     path.resolve('src/index.ts'),
     'utf8',
   );
-  for (const contract of [
-    'factoryReviewVerdictPayloadContract',
-    'developmentReviewVerdictPayloadContract',
-    'developmentVerificationPayloadContract',
+  // ADR-053 Phase 1: the worker MCP installs payload contracts via the single
+  // manifest entry point, not a hand-list of individual register calls.
+  assert.match(
+    source,
+    /installWorkshopPayloadContracts\(\)/,
+    'src/index.ts must call installWorkshopPayloadContracts() — the single manifest install path',
+  );
+  // The manifest itself must declare every pinned built-in review decoder.
+  const { buildWorkshopCapabilityManifest } = await import(
+    '../../dist/process-modules/application/workshop-capability-manifest.js'
+  );
+  const manifest = buildWorkshopCapabilityManifest();
+  const schemaIds = new Set(manifest.payloadContracts.map(e => e.schemaId));
+  for (const expected of [
+    'factory.review-verdict.v1',
+    'factory.development-review-verdict.v1',
+    'factory.candidate-verification-evidence-product.v2',
+    'factory.development-task-graph-proposal.v1',
   ]) {
-    assert.match(source, new RegExp(`registerProductPayloadContract\\(${contract}\\)`));
+    assert.ok(
+      schemaIds.has(expected),
+      `workshop manifest must declare payload contract ${expected}; got: ${[...schemaIds].join(', ')}`,
+    );
   }
 });
 
