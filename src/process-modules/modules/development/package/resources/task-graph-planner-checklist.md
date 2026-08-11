@@ -7,6 +7,7 @@ Before `product_submit`:
 - Shared foundations precede dependent work through `dependsOnKeys`.
 - Every implementation item has one repository and non-empty AC coverage.
 - Every implementation item has conservative non-empty `changeScopes`.
+- Every repository assigns all `policy.requiredChangeScopes` to implementation work.
 - Same-repository scope overlaps are ordered by a dependency path.
 - Parallel items are independent from the same frozen base.
 - All dependencies are closed, acyclic and implementation-to-implementation.

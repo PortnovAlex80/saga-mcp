@@ -278,6 +278,22 @@ implements DevelopmentTaskGraphPolicyPort {
       );
     }
 
+    const requiredChangeScopes = developmentCase.policy.requiredChangeScopes ?? [];
+    for (const repository of developmentCase.repositories) {
+      const repositoryItems = graph.implementationItems.filter(item =>
+        item.projectRepositoryId === repository.projectRepositoryId);
+      for (const requiredScope of requiredChangeScopes) {
+        if (repositoryItems.some(item => item.changeScopes.some(scope =>
+          repositoryScopeContains(scope, requiredScope)))) continue;
+        pushIssue(
+          reasonCodes,
+          errors,
+          'task-graph-required-scope-missing',
+          `repository ${repository.projectRepositoryId} does not assign required change scope '${requiredScope}' to any implementation item`,
+        );
+      }
+    }
+
     for (let leftIndex = 0; leftIndex < graph.implementationItems.length; leftIndex += 1) {
       const left = graph.implementationItems[leftIndex]!;
       for (let rightIndex = leftIndex + 1; rightIndex < graph.implementationItems.length; rightIndex += 1) {
@@ -440,6 +456,16 @@ export function repositoryScopesOverlap(left: string, right: string): boolean {
   return leftPath === rightPath
     || leftPath.startsWith(`${rightPath}/`)
     || rightPath.startsWith(`${leftPath}/`);
+}
+
+function repositoryScopeContains(scope: string, requiredPath: string): boolean {
+  const normalize = (value: string): string => value
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+$/, '');
+  const scopePath = normalize(scope);
+  const required = normalize(requiredPath);
+  return scopePath === required || required.startsWith(`${scopePath}/`);
 }
 
 function dependsTransitivelyOn(

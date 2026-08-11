@@ -55,8 +55,9 @@ export function buildReferenceDevelopmentPolicy(): DevelopmentPolicySnapshot {
   // placeholder value does not affect the result; it only satisfies the type.
   const snapshot: DevelopmentPolicySnapshot = {
     id: 'reference-development-policy',
-    version: '1',
+    version: '1.1.0',
     contentHash: '',
+    requiredChangeScopes: ['package.json', 'tests/'],
   };
   return { ...snapshot, contentHash: hashDevelopmentPolicy(snapshot) };
 }

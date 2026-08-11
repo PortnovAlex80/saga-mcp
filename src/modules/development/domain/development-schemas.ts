@@ -100,6 +100,13 @@ export interface DevelopmentPolicySnapshot {
   id: string;
   version: string;
   contentHash: string;
+  /**
+   * Repository-local write authorities that every repository graph must assign
+   * to at least one implementation item. Product Build uses this for bootstrap
+   * material (manifest and tests) that is required independently of AC
+   * decomposition.
+   */
+  requiredChangeScopes?: readonly string[];
 }
 
 /**
@@ -355,6 +362,7 @@ export type DevelopmentReasonCode =
   | 'task-graph-lineage-mismatch'
   | 'task-graph-dependency-invalid'
   | 'implementation-coverage-gap'
+  | 'task-graph-required-scope-missing'
   | 'implementation-scope-overlap'
   | 'integration-source-partition-invalid'
   | 'verification-plan-coverage-gap'

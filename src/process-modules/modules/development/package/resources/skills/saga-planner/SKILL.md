@@ -37,6 +37,10 @@ dependencies, change scopes and repository partitioning.
   the worker may need to change. A directory scope overlaps every descendant
   file scope. Shared build/configuration scopes require a dependency path or a
   single coherent item; never omit them merely to manufacture parallelism.
+- Copy every `policy.requiredChangeScopes` entry into the write authority of at
+  least one implementation item for each repository. These are lifecycle-level
+  bootstrap obligations (for Product Build: the package manifest and tests),
+  even when the accepted SRS decomposition names only feature directories.
 - Bind each implementation item to one frozen repository.
 - Required implementation keys must be partitioned exactly once across matching
   integration targets.

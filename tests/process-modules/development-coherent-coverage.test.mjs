@@ -141,6 +141,36 @@ function validateScopes(leftScopes, rightScopes, rightDependsOn = []) {
   return new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
 }
 
+test('policy-required bootstrap scopes must be assigned to implementation work', () => {
+  const input = developmentCase();
+  input.policy = {
+    id: 'product-build-development-policy',
+    version: '1.1.0',
+    requiredChangeScopes: ['package.json', 'tests/'],
+    contentHash: '',
+  };
+  input.policy.contentHash = hashDevelopmentPolicy(input.policy);
+
+  const missingGraph = buildCanonicalDevelopmentTaskGraph(input, proposal([11, 12]), {
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    ref: 'planner-submission:bootstrap-missing',
+    hash: '9'.repeat(64),
+  });
+  const missing = new ReferenceDevelopmentTaskGraphPolicy().validate(input, missingGraph);
+  assert.equal(missing.valid, false);
+  assert.equal(missing.reasonCodes.includes('task-graph-required-scope-missing'), true);
+
+  const completeProposal = proposal([11, 12]);
+  completeProposal.implementationItems[0].changeScopes = ['product', 'package.json', 'tests/'];
+  const completeGraph = buildCanonicalDevelopmentTaskGraph(input, completeProposal, {
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    ref: 'planner-submission:bootstrap-complete',
+    hash: 'a'.repeat(64),
+  });
+  const complete = new ReferenceDevelopmentTaskGraphPolicy().validate(input, completeGraph);
+  assert.equal(complete.valid, true, complete.errors.join('; '));
+});
+
 test('one coherent implementation item may cover multiple implementation-required ACs', () => {
   const result = validate([11, 12]);
   assert.equal(result.valid, true, result.errors.join('; '));
