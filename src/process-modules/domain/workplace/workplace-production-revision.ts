@@ -97,6 +97,13 @@ export type MemberOperation =
       readonly sourceAdapter: SourceAdapter;
     }
   | {
+      readonly op: 'put';
+      readonly memberKey: string;
+      readonly productRef: string;
+      readonly contentDigest: string;
+      readonly sourceAdapter: SourceAdapter;
+    }
+  | {
       readonly op: 'delete';
       readonly memberKey: string;
     }
@@ -365,6 +372,22 @@ function applyOperation(
       if (!members.has(op.memberKey)) {
         throw new Error(`REVISION_MEMBER_UPDATE_ABSENT: ${op.memberKey}`);
       }
+      members.set(op.memberKey, {
+        memberKey: op.memberKey,
+        productRef: op.productRef,
+        contentDigest: op.contentDigest,
+        sourceAdapter: op.sourceAdapter,
+        contributorExecutionRef: contribution.contributorExecutionRef,
+      });
+      break;
+    }
+    case 'put': {
+      // Idempotent create-or-update. Used by Phase 4 adapters that project
+      // the FINAL material state without knowing the parent's member set.
+      // This makes adapters partition-invariant: two executions producing the
+      // same final state converge to the same revision regardless of who
+      // "created" vs "updated" each member.
+      validateMemberKey(op.memberKey);
       members.set(op.memberKey, {
         memberKey: op.memberKey,
         productRef: op.productRef,
