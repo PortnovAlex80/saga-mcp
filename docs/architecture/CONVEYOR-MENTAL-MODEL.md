@@ -167,6 +167,20 @@ CandidateSet authority identity may include current run/execution provenance.
 That is correct for QC and audit, but it is **not automatically a cross-run
 replay identity**.
 
+> **⚠️ Architectural diagnosis (ADR-053):** Run 011 stabilization chain
+> proved that treating `producerExecutionRef` as material authority (rather
+> than provenance) is a systemic defect. When material is produced across
+> multiple executions (recovery, carry-forward, repair), a post-acceptance
+> effect that reads only the latest execution loses parts of the accepted
+> desk. The fix is an explicit immutable
+> **`WorkplaceProductionRevision`** between the mutable desk and the
+> CandidateSet; execution becomes provenance only. Until that cutover lands,
+> every new real run is expected to find another re-encoding boundary.
+> See
+> [ADR-053: Accepted material is a sealed Workplace production revision](decisions/053-workplace-production-revision-as-accepted-material-authority.md)
+> — **обязательно прочитать перед следующим Factory-стабилизационным
+> коммитом или real-model прогоном.**
+
 ---
 
 ## 6. GateDecision and CellFinalAcceptance
