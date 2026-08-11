@@ -150,6 +150,25 @@ test('formalization artifact writers delegate acceptance to the common kernel ga
   );
 });
 
+test('formalization document authors use structured file tools, never a shell', () => {
+  const profiles = new Map(formalizationProcessModule.executionProfiles.map(profile =>
+    [profile.id, profile]));
+  const cells = formalizationProcessModule.flow.nodes.filter(node =>
+    node.kind === 'production-cell' && node.cellDefinition);
+
+  for (const node of cells) {
+    const profile = profiles.get(node.cellDefinition.author.skillRef);
+    assert.ok(profile, node.id);
+    assert.ok(profile.allowedTools.includes('Write'), `${profile.id} must provide Write`);
+    assert.ok(profile.allowedTools.includes('Edit'), `${profile.id} must provide Edit`);
+    assert.equal(
+      profile.allowedTools.includes('Bash'),
+      false,
+      `${profile.id} must not turn managed document production into shell quoting`,
+    );
+  }
+});
+
 test('development planner is a universal Production Cell with bounded semantic recovery', () => {
   const node = developmentProcessModule.flow.nodes.find(candidate =>
     candidate.id === 'plan-task-graph');

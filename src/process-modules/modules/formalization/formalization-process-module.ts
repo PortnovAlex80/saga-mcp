@@ -57,7 +57,11 @@ const COMMON_READ_TOOLS = [
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
   'artifact_create', 'artifact_update', 'trace_add', 'trace_delete',
-  'worker_done', 'Write', 'Edit', 'Bash',
+  // Formalization produces managed documents, not executable repository
+  // changes. Keep file mutation on the structured Write/Edit surface: a
+  // general shell lets a model bypass the registered workspace-relative path
+  // and turns large Markdown bodies into fragile quoting programs.
+  'worker_done', 'Write', 'Edit',
 ] as const;
 const REVIEW_TOOLS = [
   ...COMMON_READ_TOOLS,

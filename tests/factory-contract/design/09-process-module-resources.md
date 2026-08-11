@@ -96,7 +96,7 @@ Execution profiles (7):
 | `formalization-requirements-reviewer` | reviewer | `saga-requirements-reviewer` | `formalization-reviewer-tracker.md` | review-verdict, worker-done |
 | `formalization-architecture-reviewer` | reviewer | `saga-architecture-reviewer` | `formalization-reviewer-tracker.md` | review-verdict, worker-done |
 
-Common author tools (`COMMON_WRITE_TOOLS`): `task_get`, `artifact_list`, `artifact_get`, `trace_list`, `note_list`, `repository_checkout_list`, `Read`, `Glob`, `Grep`, `artifact_create`, `artifact_update`, `trace_add`, `trace_delete`, `worker_done`, `Write`, `Edit`, `Bash`. Reviewer tools (`REVIEW_TOOLS`): read-only common tools plus `candidate_read`, `product_read`, `product_submit`, `worker_done`. Reviewers never create artifacts/traces/files.
+Common author tools (`COMMON_WRITE_TOOLS`): `task_get`, `artifact_list`, `artifact_get`, `trace_list`, `note_list`, `repository_checkout_list`, `Read`, `Glob`, `Grep`, `artifact_create`, `artifact_update`, `trace_add`, `trace_delete`, `worker_done`, `Write`, `Edit`. Formalization authors intentionally have no general shell: managed documents are written through the structured workspace-relative file surface. Reviewer tools (`REVIEW_TOOLS`): read-only common tools plus `candidate_read`, `product_read`, `product_submit`, `worker_done`. Reviewers never create artifacts/traces/files.
 
 Author retry budget: `FORMALIZATION_RECOVERY_MAX_ATTEMPTS = 5` (initial CandidateSet plus four repair rounds before human escalation). Reviewer verdict gate may route `repairTargetRoleOnFailure: 'author'` or `repairTargetRoleOnIndeterminate: 'reviewer'`.
 
@@ -547,7 +547,7 @@ implementation/review; Discovery has no reviewer desk; Delivery has neither).
 
 | Field | authorProfile | reviewerProfile |
 |---|---|---|
-| `allowedTools` | `COMMON_WRITE_TOOLS` (artifact_create/update, trace_add/delete, Write/Edit/Bash, worker_done) | `REVIEW_TOOLS` (read-only common + `candidate_read`, `product_read`, `product_submit`, `worker_done`) |
+| `allowedTools` | `COMMON_WRITE_TOOLS` (artifact_create/update, trace_add/delete, Write/Edit, worker_done; no shell) | `REVIEW_TOOLS` (read-only common + `candidate_read`, `product_read`, `product_submit`, `worker_done`) |
 | `callTemplates` | artifact-create, trace-add, worker-done | review-verdict, worker-done |
 | `trackerTemplate` | author stage tracker (11 steps) | reviewer tracker (6 steps, forbids author-side work) |
 | `checklists` | formalization-node-checklist (file-first discipline) | formalization-reviewer-checklist (CandidateSet exact binding) |

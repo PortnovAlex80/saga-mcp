@@ -149,7 +149,11 @@ fresh local reasoning.
 
 ## Finish
 
-1. Write the SRS file at the registered relative path.
+1. Write the SRS file at the registered relative path using the structured
+   `Write`/`Edit` tools. The path is relative to the assigned workspace root:
+   do not `cd` into its parent and repeat the relative path. Never use Bash,
+   Python, Node, heredocs, base64, redirection or another shell program to
+   create/update a managed SRS document.
 2. `artifact_create` the SRS as `draft` and add exact `derived_from -> PRD` trace.
 3. Re-read the SRS and the Formalization checklist. Verify §D2 covers every
    accepted AC exactly once, the SRS is internally consistent, no placeholder
@@ -180,3 +184,4 @@ CandidateSet. Never modify an earlier accepted/rejected CandidateSet in place.
 - approve your own SRS;
 - invent evidence, requirements, external systems or security controls;
 - spawn nested agents.
+- use a shell or generated script to write managed artifact files.
