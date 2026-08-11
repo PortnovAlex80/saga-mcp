@@ -54,7 +54,7 @@ function preparationContext(currentContent) {
     module: {
       identity: {
         name: 'solution-development',
-        version: '1.0.0',
+        version: '1.1.0',
         kind: 'development',
       },
     },
@@ -78,7 +78,7 @@ function preparationContext(currentContent) {
 
 test('seed machine-fills lineage but leaves semantic implementation decomposition to the planner', () => {
   const call = buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase);
-  const payload = call.arguments.payload;
+  const payload = call.content;
 
   assert.deepEqual(payload.implementationItems, []);
   assert.deepEqual(
@@ -97,20 +97,17 @@ test('preparer replaces an empty, placeholder, or wrong-lineage draft', () => {
   for (const content of [
     '',
     '{}',
-    '{"tool":"process_node_submit","arguments":{"payload":{"implementationItems":[]}}}',
+    '{"schema":"factory.development-task-graph-proposal.v1","content":{"implementationItems":[]}}',
     JSON.stringify({
       ...buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase),
-      arguments: {
-        ...buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase).arguments,
-        payload: {
-          ...buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase).arguments.payload,
-          integrationTargets: [{
-            projectRepositoryId: 77,
-            sourceWorkItemKeys: [],
-            targetBranch: 'wrong',
-            expectedBaseCommit: 'wrong',
-          }],
-        },
+      content: {
+        ...buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase).content,
+        integrationTargets: [{
+          projectRepositoryId: 77,
+          sourceWorkItemKeys: [],
+          targetBranch: 'wrong',
+          expectedBaseCommit: 'wrong',
+        }],
       },
     }),
   ]) {
@@ -119,7 +116,7 @@ test('preparer replaces an empty, placeholder, or wrong-lineage draft', () => {
     );
     assert.ok(prepared, `expected replacement for ${content}`);
     assert.equal(
-      JSON.parse(prepared).arguments.payload.integrationTargets[0]
+      JSON.parse(prepared).content.integrationTargets[0]
         .projectRepositoryId,
       65,
     );
@@ -129,7 +126,7 @@ test('preparer replaces an empty, placeholder, or wrong-lineage draft', () => {
 test('preparer preserves a reusable semantic draft scoped to the frozen case', () => {
   const original = buildDevelopmentTaskGraphSubmitCallFromCase(developmentCase);
   const customized = structuredClone(original);
-  customized.arguments.payload.implementationItems.push({
+  customized.content.implementationItems.push({
     key: 'model-owned-key',
     kind: 'implementation',
     taskKind: 'development.code',
@@ -142,10 +139,10 @@ test('preparer preserves a reusable semantic draft scoped to the frozen case', (
     required: true,
     criticality: 'blocker',
   });
-  customized.arguments.payload.verificationItems[0].dependsOnKeys = [
+  customized.content.verificationItems[0].dependsOnKeys = [
     'model-owned-key',
   ];
-  customized.arguments.payload.integrationTargets[0].sourceWorkItemKeys = [
+  customized.content.integrationTargets[0].sourceWorkItemKeys = [
     'model-owned-key',
   ];
   const content = `${JSON.stringify(customized, null, 2)}\n`;

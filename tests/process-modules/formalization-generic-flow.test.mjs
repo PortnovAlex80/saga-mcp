@@ -479,28 +479,37 @@ function runThroughSettlement(fx, productRuntimeStatus = 'completed') {
   return { frame, product, reconciliation, baseline, architecture, settlement };
 }
 
-test('descriptor uses LM receipt resolvers and prefixed transition events', () => {
+test('descriptor routes universal Production Cells directly through domain events', () => {
   const flow = formalizationProcessModule.flow;
-  const resolverByLm = new Map([
-    ['define-product-contract', 'resolve-product-contract'],
-    ['model-use-cases', 'resolve-use-cases'],
-    ['define-acceptance-contract', 'resolve-acceptance-contract'],
-    ['reconcile-what', 'resolve-reconciliation'],
-    ['define-architecture-contract', 'resolve-architecture-contract'],
+  const acceptedTargetByCell = new Map([
+    ['define-product-contract', 'model-use-cases'],
+    ['model-use-cases', 'define-acceptance-contract'],
+    ['define-acceptance-contract', 'reconcile-what'],
+    ['reconcile-what', 'freeze-acceptance-baseline'],
+    ['define-architecture-contract', 'settle-formalization'],
   ]);
-  for (const [lm, resolver] of resolverByLm) {
-    for (const event of ['runtime.completed', 'runtime.failed']) {
-      assert.ok(
-        flow.transitions.some(edge => edge.from === lm && edge.to === resolver && edge.on === event),
-        `${lm} must route ${event} to ${resolver}`,
-      );
-    }
+  for (const [cell, acceptedTarget] of acceptedTargetByCell) {
+    assert.equal(flow.nodes.find(node => node.id === cell)?.kind, 'production-cell');
+    assert.ok(
+      flow.transitions.some(edge => edge.from === cell
+        && edge.to === acceptedTarget && edge.on === 'domain.accepted'),
+      `${cell} must route domain.accepted to ${acceptedTarget}`,
+    );
+    assert.ok(
+      flow.transitions.some(edge => edge.from === cell
+        && edge.to === 'complete-failed' && edge.on === 'domain.failed'),
+      `${cell} must route domain.failed to complete-failed`,
+    );
   }
   assert.ok(flow.transitions.every(edge =>
     edge.on === '*' || edge.on.startsWith('runtime.') || edge.on.startsWith('domain.')));
   assert.deepEqual(
     new Set(flow.nodes.filter(node => node.kind === 'kernel').map(node => node.handler)),
-    new Set([...Object.values(FORMALIZATION_HANDLER_IDS), 'process-outcome-emitter']),
+    new Set([
+      FORMALIZATION_HANDLER_IDS.freezeBaseline,
+      FORMALIZATION_HANDLER_IDS.settle,
+      'process-outcome-emitter',
+    ]),
   );
 });
 
@@ -632,7 +641,7 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
   );
 });
 
-test('common kernel gate accepts draft PRD, UC, AC and SRS candidate sets', async () => {
+test('formalization compatibility resolvers accept exact draft PRD, UC, AC and SRS candidate sets', () => {
   const fx = fixture();
   for (const id of [10, 11, 20, 30, 40]) {
     const row = fx.artifactById.get(id);
@@ -641,54 +650,46 @@ test('common kernel gate accepts draft PRD, UC, AC and SRS candidate sets', asyn
     row.driftState = 'unknown';
   }
   const handlers = createFormalizationKernelHandlers(fx.deps);
-  const registry = new KernelHandlerRegistry();
-  registry.registerAll(handlers);
-  const executor = new KernelNodeExecutor(registry, fx.deps.candidateAcceptance);
   const frame = flowFrame();
-
-  const executeAndStore = async (nodeId, input) => {
-    const result = await executor.execute(executorContext(nodeId, input, frame));
-    if (result.production) frame.productions[nodeId] = result.production;
-    return result;
+  const resolveAndAccept = (nodeId, handlerId, sourceNodeId) => {
+    const result = handlers[handlerId](
+      context(nodeId, receipt(sourceNodeId), frame),
+    );
+    assert.equal(result.event, 'completed', JSON.stringify(result));
+    assert.ok(result.exactCandidateAcceptance, JSON.stringify(result));
+    fx.deps.candidateAcceptance.accept(
+      result.exactCandidateAcceptance.command,
+    );
+    return store(frame, nodeId, result);
   };
-
-  const product = await executeAndStore(
+  resolveAndAccept(
     'resolve-product-contract',
-    receipt('define-product-contract'),
+    FORMALIZATION_HANDLER_IDS.resolveProduct,
+    'define-product-contract',
   );
-  assert.equal(product.domainEvent, 'completed');
-  assert.match(product.acceptanceReceipt.decisionRef, /^exact-acceptance:/);
-
-  const useCases = await executeAndStore(
+  resolveAndAccept(
     'resolve-use-cases',
-    receipt('model-use-cases'),
+    FORMALIZATION_HANDLER_IDS.resolveUseCases,
+    'model-use-cases',
   );
-  assert.equal(useCases.domainEvent, 'completed');
-
-  const acceptance = await executeAndStore(
+  resolveAndAccept(
     'resolve-acceptance-contract',
-    receipt('define-acceptance-contract'),
+    FORMALIZATION_HANDLER_IDS.resolveAcceptance,
+    'define-acceptance-contract',
   );
-  assert.equal(acceptance.domainEvent, 'completed');
-
-  const reconciliation = await executeAndStore(
-    'resolve-reconciliation',
-    receipt('reconcile-what'),
-  );
-  assert.equal(reconciliation.domainEvent, 'reconciled');
-  const baseline = await executeAndStore(
-    'freeze-acceptance-baseline',
-    reconciliation.production,
-  );
-  assert.equal(baseline.domainEvent, 'frozen');
-
-  const architecture = await executeAndStore(
+  const reconciliation = store(frame, 'resolve-reconciliation', handlers[
+    FORMALIZATION_HANDLER_IDS.resolveReconciliation
+  ](context('resolve-reconciliation', receipt('reconcile-what'), frame)));
+  assert.equal(reconciliation.event, 'reconciled');
+  const baseline = store(frame, 'freeze-acceptance-baseline', handlers[
+    FORMALIZATION_HANDLER_IDS.freezeBaseline
+  ](context('freeze-acceptance-baseline', reconciliation.production, frame)));
+  assert.equal(baseline.event, 'frozen', JSON.stringify(baseline));
+  resolveAndAccept(
     'resolve-architecture-contract',
-    receipt('define-architecture-contract'),
+    FORMALIZATION_HANDLER_IDS.resolveArchitecture,
+    'define-architecture-contract',
   );
-  assert.equal(architecture.domainEvent, 'completed');
-  assert.match(architecture.acceptanceReceipt.decisionRef, /^exact-acceptance:/);
-
   assert.equal(fx.acceptanceCalls.length, 4);
   assert.deepEqual(
     fx.acceptanceCalls.map(call => call.candidates.map(item => item.artifactType)),

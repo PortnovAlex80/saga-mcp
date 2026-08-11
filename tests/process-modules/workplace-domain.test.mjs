@@ -194,11 +194,12 @@ test('REG-28-AC-01: disallowed pairs are rejected', () => {
 
 test('REG-28: all Kanban phases and loop states are exported as closed unions', () => {
   assert.equal(KANBAN_PHASES.length, 8);
-  assert.equal(LOOP_STATES.length, 8);
+  assert.equal(LOOP_STATES.length, 9);
   assert.equal(TERMINAL_REASONS.length, 3);
   // Sanity: the unions contain the expected literals.
   assert.ok(KANBAN_PHASES.includes('in_progress'));
   assert.ok(LOOP_STATES.includes('repair_wait'));
+  assert.ok(LOOP_STATES.includes('effect_pending'));
   assert.ok(TERMINAL_REASONS.includes('accepted'));
 });
 

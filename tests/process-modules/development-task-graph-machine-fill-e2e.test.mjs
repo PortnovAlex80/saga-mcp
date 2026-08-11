@@ -32,7 +32,7 @@ const resources = [
     logicalId: 'call',
     relativePath: callPath,
     kind: 'template',
-    content: '{"tool":"process_node_submit","arguments":{"schema":"factory.development-task-graph-proposal.v1","payload":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[]}}}\n',
+    content: '{"schema":"factory.development-task-graph-proposal.v1","content":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[]}}\n',
   },
 ].map(resource => ({
   ...resource,
@@ -77,7 +77,7 @@ function request(root, executionId, additionalBindings = {}) {
   return {
     projection: {
       installationId: 1,
-      moduleRef: 'solution-development@1.0.0',
+      moduleRef: 'solution-development@1.1.0',
       packageDigest: 'development-digest',
       storeLocation: 'unused',
       nodeId: 'plan-task-graph',
@@ -99,7 +99,7 @@ function request(root, executionId, additionalBindings = {}) {
     module: {
       identity: {
         name: 'solution-development',
-        version: '1.0.0',
+        version: '1.1.0',
         kind: 'development',
       },
       flow: { nodes: [] },
@@ -146,11 +146,11 @@ test('pinned workspace machine-fills the exact call file read by the reviewer', 
       readFileSync(path.join(root, workspace.callFiles[0]), 'utf8'),
     );
     assert.equal(
-      call.arguments.payload.integrationTargets[0].projectRepositoryId,
+      call.content.integrationTargets[0].projectRepositoryId,
       65,
     );
     assert.deepEqual(
-      call.arguments.payload.verificationItems[0].acceptanceCriterionIds,
+      call.content.verificationItems[0].acceptanceCriterionIds,
       [101],
     );
     assert.ok(!JSON.stringify(call).includes('FILL_'));
@@ -165,7 +165,7 @@ test('a retry replaces inherited wrong-lineage content and projects submission s
     const first = materializePinnedWorkspace(request(root, 'exec-1'));
     writeFileSync(
       path.join(root, first.callFiles[0]),
-      '{"tool":"process_node_submit","arguments":{"schema":"factory.development-task-graph-proposal.v1","payload":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[{"projectRepositoryId":77}]}}}\n',
+      '{"schema":"factory.development-task-graph-proposal.v1","content":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[{"projectRepositoryId":77}]}}\n',
     );
 
     const second = materializePinnedWorkspace(
@@ -179,7 +179,7 @@ test('a retry replaces inherited wrong-lineage content and projects submission s
       readFileSync(path.join(root, second.callFiles[0]), 'utf8'),
     );
     assert.equal(
-      call.arguments.payload.integrationTargets[0].projectRepositoryId,
+      call.content.integrationTargets[0].projectRepositoryId,
       65,
       'frozen DevelopmentCase wins over mutable/current repository state',
     );

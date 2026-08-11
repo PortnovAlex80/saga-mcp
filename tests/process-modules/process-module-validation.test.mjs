@@ -41,7 +41,7 @@ for (const module of [
     assert.deepEqual(validation.errors, []);
   });
 
-  test(`${module.identity.name}: every LM node has a bound execution profile and recovery`, () => {
+  test(`${module.identity.name}: every worker-producing node has bound execution profiles and recovery`, () => {
     const profiles = new Map(module.executionProfiles.map(profile => [profile.id, profile]));
     for (const node of module.flow.nodes.filter(candidate => candidate.kind === 'lm')) {
       const profile = profiles.get(node.executionProfile);
@@ -49,6 +49,16 @@ for (const module of [
       assert.ok(profile.outputSchema.id, `${profile.id} must declare its typed output`);
       assert.equal(profile.recoveryPolicy.resumeFromCheckpoint, true);
       assert.equal(profile.recoveryPolicy.reuseWorkIntent, true);
+    }
+    for (const node of module.flow.nodes.filter(candidate =>
+      candidate.kind === 'production-cell' && candidate.cellDefinition)) {
+      const authorId = node.cellDefinition.author.skillRef;
+      assert.ok(profiles.has(authorId), `${node.id} missing author profile ${authorId}`);
+      assert.ok(node.cellDefinition.recovery.maxAttempts > 0);
+      const reviewerId = node.cellDefinition.review?.reviewer.skillRef;
+      if (reviewerId) {
+        assert.ok(profiles.has(reviewerId), `${node.id} missing reviewer profile ${reviewerId}`);
+      }
     }
   });
 
@@ -68,8 +78,18 @@ for (const module of [
 for (const module of [discoveryProcessModule, formalizationProcessModule]) {
   test(`${module.identity.name}: authoring LM profiles include operational templates`, () => {
     const profiles = new Map(module.executionProfiles.map(profile => [profile.id, profile]));
-    for (const node of module.flow.nodes.filter(candidate => candidate.kind === 'lm')) {
-      const profile = profiles.get(node.executionProfile);
+    const referencedProfileIds = new Set();
+    for (const node of module.flow.nodes) {
+      if (node.kind === 'lm') referencedProfileIds.add(node.executionProfile);
+      if (node.kind === 'production-cell' && node.cellDefinition) {
+        referencedProfileIds.add(node.cellDefinition.author.skillRef);
+        const reviewerId = node.cellDefinition.review?.reviewer.skillRef;
+        if (reviewerId) referencedProfileIds.add(reviewerId);
+      }
+    }
+    for (const profileId of referencedProfileIds) {
+      const profile = profiles.get(profileId);
+      assert.ok(profile, `missing profile ${profileId}`);
       assert.equal(typeof profile.trackerTemplate, 'string');
       assert.ok(profile.callTemplates.length > 0, `${profile.id} must materialize tool calls`);
       assert.ok(profile.checklists.length > 0, `${profile.id} must have a checklist`);
@@ -88,71 +108,78 @@ test('built-in registry registers all lifecycle modules by versioned identity', 
   ]);
 });
 
-test('validator rejects an LM node without an execution profile', () => {
+test('validator rejects a Production Cell without its author execution profile', () => {
   const broken = structuredClone(discoveryProcessModule);
-  const node = broken.flow.nodes.find(candidate => candidate.kind === 'lm');
+  const node = broken.flow.nodes.find(candidate =>
+    candidate.kind === 'production-cell' && candidate.cellDefinition);
   assert.ok(node);
-  node.executionProfile = 'missing-profile';
+  node.cellDefinition.author.skillRef = 'missing-profile';
   const validation = validateProcessModuleDefinition(broken);
   assert.equal(validation.valid, false);
-  assert.match(validation.errors.join('\n'), /missing execution profile/);
+  assert.match(validation.errors.join('\n'), /missing author execution profile/);
 });
 
 test('formalization artifact writers delegate acceptance to the common kernel gate', () => {
-  for (const profile of formalizationProcessModule.executionProfiles) {
+  const profiles = new Map(formalizationProcessModule.executionProfiles.map(profile =>
+    [profile.id, profile]));
+  const cells = formalizationProcessModule.flow.nodes.filter(node =>
+    node.kind === 'production-cell' && node.cellDefinition);
+  assert.ok(cells.length > 0);
+  for (const node of cells) {
+    const profile = profiles.get(node.cellDefinition.author.skillRef);
+    assert.ok(profile, node.id);
     assert.equal(
       profile.artifactAcceptanceAuthority,
       'kernel-gate',
       profile.id,
     );
-    assert.ok(profile.reviewSkill, `${profile.id} must declare an independent reviewer`);
+    assert.ok(node.cellDefinition.review, `${node.id} must declare an independent reviewer`);
+    assert.ok(
+      profiles.has(node.cellDefinition.review.reviewer.skillRef),
+      `${node.id} reviewer profile must exist`,
+    );
   }
   assert.equal(
-    formalizationProcessModule.executionProfiles.find(profile =>
-      profile.id === 'formalization-architect').reviewSkill,
+    cells.find(node => node.id === 'define-architecture-contract')
+      .cellDefinition.review.reviewer.skillRef,
+    'formalization-architecture-reviewer',
+  );
+  assert.equal(
+    profiles.get('formalization-architecture-reviewer').semanticSkill,
     'saga-architecture-reviewer',
   );
 });
 
-test('development planner declares reviewer and semantic recovery route', () => {
-  const profile = developmentProcessModule.executionProfiles.find(candidate =>
-    candidate.id === 'development-task-graph-planner');
-  assert.equal(profile.reviewSkill, 'saga-planning-reviewer');
-  assert.deepEqual(
-    developmentProcessModule.flow.recovery.map(policy => policy.id),
-    ['repair-development-task-graph'],
-  );
+test('development planner is a universal Production Cell with bounded semantic recovery', () => {
+  const node = developmentProcessModule.flow.nodes.find(candidate =>
+    candidate.id === 'plan-task-graph');
+  assert.equal(node.kind, 'production-cell');
+  assert.equal(node.cellDefinition.author.skillRef, 'development-task-graph-planner');
+  assert.deepEqual(node.cellDefinition.recovery, { maxAttempts: 2, onExhausted: 'pause' });
+  assert.equal(node.cellDefinition.transitions.accepted, 'resolve-task-graph');
 });
 
 test('validator rejects ambiguous transitions from one node on one event', () => {
   const broken = structuredClone(formalizationProcessModule);
   broken.flow.transitions.push({
-    from: 'resolve-product-contract',
+    from: 'define-product-contract',
     to: 'complete-failed',
-    on: 'domain.completed',
+    on: 'domain.accepted',
   });
   const validation = validateProcessModuleDefinition(broken);
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join('\n'), /ambiguous transitions/);
 });
 
-test('validator rejects ambiguous and non-resolvable recovery declarations', () => {
+test('validator rejects an invalid inline Production Cell recovery declaration', () => {
   const broken = structuredClone(formalizationProcessModule);
-  broken.flow.recovery.push({
-    id: 'second-product-repair',
-    verifyNodeId: 'resolve-product-contract',
-    repairNodeId: 'define-product-contract',
-    triggerEvents: ['domain.repair-required'],
-    resolvedEvents: ['domain.repair-required', 'domain.orphan-success'],
-    maxAttempts: 1,
-    onExhausted: 'pause',
-  });
+  const cell = broken.flow.nodes.find(node =>
+    node.kind === 'production-cell' && node.cellDefinition);
+  assert.ok(cell);
+  cell.cellDefinition.recovery.maxAttempts = 0;
   const validation = validateProcessModuleDefinition(broken);
   assert.equal(validation.valid, false);
-  const errors = validation.errors.join('\n');
-  assert.match(errors, /owned by both/);
-  assert.match(errors, /both trigger and resolved event/);
-  assert.match(errors, /orphan-success.*has no transition/);
+  assert.match(validation.errors.join('\n'), /maxAttempts must be a positive integer/);
 });
 
 // --- Phase 3 / C1: composite node must declare a moduleRef ---
@@ -201,11 +228,16 @@ test('C1: validator accepts a composite node with a valid moduleRef', () => {
 
 test('C2: validator rejects LM nodes when executionProfiles is empty', () => {
   const broken = structuredClone(discoveryProcessModule);
-  // discoveryProcessModule has at least one LM node.
-  assert.ok(
-    broken.flow.nodes.some(node => node.kind === 'lm'),
-    'discovery module must have an LM node for this test',
-  );
+  // LM remains a supported generic node kind even though built-in cognitive
+  // work now uses universal Production Cells. Synthesize one to isolate C2.
+  const target = broken.flow.nodes.find(node => node.id === broken.flow.entryNodeId);
+  assert.ok(target);
+  Object.assign(target, {
+    kind: 'lm',
+    executionProfile: broken.executionProfiles[0].id,
+    cellDefinition: undefined,
+    cellDefinitionRef: undefined,
+  });
   broken.executionProfiles = [];
 
   const validation = validateProcessModuleDefinition(broken);

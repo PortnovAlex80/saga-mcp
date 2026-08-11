@@ -3,6 +3,7 @@ import type {
   FlowNodeDefinition,
   ProcessModuleDefinition,
 } from '../domain/process-module.js';
+import { assertValidProductionCellDefinition } from '../domain/workplace/production-cell-definition.js';
 
 export interface ProcessModuleValidationResult {
   valid: boolean;
@@ -94,6 +95,37 @@ function validateNode(
   }
   if (node.kind === 'human' && !node.interactionContract.id.trim()) {
     errors.push(`human node '${node.id}' has no interaction contract`);
+  }
+  if (node.kind === 'production-cell') {
+    const hasInline = node.cellDefinition !== undefined;
+    const hasRef = typeof node.cellDefinitionRef === 'string'
+      && node.cellDefinitionRef.trim().length > 0;
+    if (hasInline === hasRef) {
+      errors.push(
+        `production-cell node '${node.id}' must declare exactly one of cellDefinition or cellDefinitionRef`,
+      );
+    }
+    if (node.cellDefinition) {
+      try {
+        assertValidProductionCellDefinition(node.cellDefinition);
+      } catch (error) {
+        errors.push(
+          `production-cell node '${node.id}' is invalid: ${(error as Error).message}`,
+        );
+      }
+      const authorProfileId = node.cellDefinition.author.skillRef;
+      if (!executionProfileIds.has(authorProfileId)) {
+        errors.push(
+          `production-cell node '${node.id}' references missing author execution profile '${authorProfileId}'`,
+        );
+      }
+      const reviewerProfileId = node.cellDefinition.review?.reviewer.skillRef;
+      if (reviewerProfileId && !executionProfileIds.has(reviewerProfileId)) {
+        errors.push(
+          `production-cell node '${node.id}' references missing reviewer execution profile '${reviewerProfileId}'`,
+        );
+      }
+    }
   }
   // C1: a composite node delegates to another ProcessModule, so it must
   // declare that module's versioned identity. A composite node without a
