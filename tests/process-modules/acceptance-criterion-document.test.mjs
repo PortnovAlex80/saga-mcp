@@ -35,3 +35,24 @@ test('duplicate atomic codes fail closed before baseline freeze', () => {
     /duplicate atomic acceptance criterion/,
   );
 });
+
+test('level-two AC is atomic when it contains Scenario headings only', () => {
+  const result = parseAtomicAcceptanceCriteria([
+    '## AC-1: Mission input',
+    '### Scenario: valid values',
+    'Given valid values',
+    '## AC-2: Comparison',
+    '### Scenario: compare planets',
+  ].join('\n'));
+  assert.deepEqual(result.map(item => item.code), ['AC-1', 'AC-2']);
+});
+
+test('parent AC group is excluded when dotted child criteria exist', () => {
+  const result = parseAtomicAcceptanceCriteria([
+    '## AC-1: Input group',
+    '### AC-1.1: Valid values',
+    '### AC-1.2: Invalid values',
+    '## AC-2: Standalone comparison',
+  ].join('\n'));
+  assert.deepEqual(result.map(item => item.code), ['AC-1.1', 'AC-1.2', 'AC-2']);
+});

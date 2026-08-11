@@ -18,7 +18,9 @@ boundary as a valid fixture.
 
 The Formalization baseline remains bound to immutable accepted artifact
 containers, and additionally freezes their atomic criterion members. Atomic
-members are derived deterministically from canonical level-three AC headings and
+members are derived deterministically from canonical level-two/level-three AC
+headings. Only leaf codes are retained: `AC-1` is a member when it contains
+Scenario headings, but is a group when `AC-1.1` members exist. Members
 bind container artifact id, exact code, title, and section hash. Codes must be
 unique across the accepted set. A legacy single-criterion artifact without such
 headings falls back to its artifact code.
@@ -45,7 +47,8 @@ readable through the one-artifact fallback.
 
 ## Verification
 
-- Parser tests cover multiple members and duplicate rejection.
+- Parser tests cover standalone level-two criteria, dotted child criteria,
+  parent exclusion, multiple members, and duplicate rejection.
 - SRS validator tests prove that omitting one member from a multi-member
   container fails closed.
 - A clean real E2E is required; Run 007 remains immutable evidence and is not
