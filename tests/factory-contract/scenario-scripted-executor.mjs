@@ -178,6 +178,7 @@ function provisionScriptedDesk(dbPath, assignment) {
   const desk = provisioner.provisionAuthorDesk({
     repositoryRoot: repo.local_path,
     taskId: Number(assignment.taskId),
+    executionRef: assignment.workerExecutionId,
     integrationBranch,
     baseCommit: baseReceipt.effectiveBaseCommit,
     projectRepositoryId,

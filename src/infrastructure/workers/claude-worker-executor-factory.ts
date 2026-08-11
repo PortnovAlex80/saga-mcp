@@ -826,6 +826,7 @@ function provisionRepositoryDesk(
   return provisioner.provisionAuthorDesk({
     repositoryRoot: repoRow.resolved_local_path,
     taskId: task.id,
+    executionRef,
     integrationBranch,
     baseCommit: baseReceipt.effectiveBaseCommit,
     projectRepositoryId: taskRepoId,

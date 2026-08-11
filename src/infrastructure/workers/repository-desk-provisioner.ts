@@ -17,6 +17,7 @@
  * died before completing.
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { RepositoryDesk, RepositoryDeskRole } from '../../process-modules/application/repository-desk.js';
@@ -24,6 +25,8 @@ import type { RepositoryDesk, RepositoryDeskRole } from '../../process-modules/a
 export interface AuthorDeskInput {
   readonly repositoryRoot: string;
   readonly taskId: number;
+  /** Immutable WorkerExecution identity. A new author attempt gets a new desk. */
+  readonly executionRef: string;
   readonly integrationBranch: string;
   /** The commit to base the task branch on. If null, uses integration branch HEAD. */
   readonly baseCommit?: string | null;
@@ -70,12 +73,31 @@ function shortSha(sha: string): string {
   return sha.slice(0, 12);
 }
 
-function worktreeBranchName(taskId: number): string {
-  return `task/${taskId}`;
+function authorDeskKey(input: Pick<AuthorDeskInput,
+  'taskId' | 'executionRef' | 'effectiveBaseReceiptDigest'>): string {
+  if (!input.executionRef.trim()) {
+    throw new Error('REPOSITORY_DESK_EXECUTION_REF_REQUIRED');
+  }
+  return createHash('sha256')
+    .update(`${input.taskId}\0${input.executionRef}\0${input.effectiveBaseReceiptDigest ?? ''}`)
+    .digest('hex')
+    .slice(0, 20);
+}
+
+function worktreeBranchName(taskId: number, deskKey: string): string {
+  return `saga/task/${taskId}/execution/${deskKey}`;
 }
 
 function worktreePath(repoRoot: string, taskId: number, suffix: string): string {
-  return path.join(repoRoot, '.worktrees', `${suffix}-${taskId}`);
+  // Never place linked worktrees below the canonical checkout. Apart from
+  // exposing sibling production to a worker, an in-tree desk is visible to
+  // `git add .` as an embedded repository and can poison integration.
+  return path.join(
+    path.dirname(repoRoot),
+    '.factory-worktrees',
+    path.basename(repoRoot),
+    `${suffix}-${taskId}`,
+  );
 }
 
 /**
@@ -119,8 +141,9 @@ export class RepositoryDeskProvisioner {
    */
   provisionAuthorDesk(input: AuthorDeskInput): RepositoryDesk {
     const { repositoryRoot, taskId, integrationBranch, projectRepositoryId } = input;
-    const branch = worktreeBranchName(taskId);
-    const worktreeDir = worktreePath(repositoryRoot, taskId, 'task');
+    const deskKey = authorDeskKey(input);
+    const branch = worktreeBranchName(taskId, deskKey);
+    const worktreeDir = worktreePath(repositoryRoot, taskId, `author-${deskKey}`);
 
     // Resolve the base commit: explicit override or integration branch HEAD.
     const baseCommit = input.baseCommit

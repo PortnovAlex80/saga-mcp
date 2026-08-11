@@ -160,7 +160,7 @@ test('dependent author freezes the actual post-dependency integration head', () 
   }
 });
 
-test('missing integration blocks a dependent and a stale task branch is never reused', () => {
+test('missing integration blocks a dependent and a new execution never reuses a stale author desk', () => {
   const fixture = setup();
   try {
     fixture.db.prepare("UPDATE tasks SET status='done' WHERE id=?").run(fixture.items[0].taskId);
@@ -178,23 +178,45 @@ test('missing integration blocks a dependent and a stale task branch is never re
       /DEPENDENCY_NOT_INTEGRATED/,
     );
 
-    git(fixture.root, 'branch', `task/${fixture.items[1].taskId}`, fixture.base);
+    const provisioner = new RepositoryDeskProvisioner();
+    const firstDesk = provisioner.provisionAuthorDesk({
+      repositoryRoot: fixture.root,
+      taskId: fixture.items[1].taskId,
+      executionRef: 'exec-old',
+      integrationBranch: 'dev',
+      baseCommit: fixture.base,
+      expectedIntegrationHead: fixture.base,
+      projectRepositoryId: 1,
+    });
     writeFileSync(path.join(fixture.root, 'product.txt'), 'new head\n');
     git(fixture.root, 'add', '.');
     git(fixture.root, 'commit', '-m', 'advance dev');
     const advanced = git(fixture.root, 'rev-parse', 'HEAD');
-    const provisioner = new RepositoryDeskProvisioner();
-    assert.throws(
-      () => provisioner.provisionAuthorDesk({
-        repositoryRoot: fixture.root,
-        taskId: fixture.items[1].taskId,
-        integrationBranch: 'dev',
-        baseCommit: advanced,
-        expectedIntegrationHead: advanced,
-        projectRepositoryId: 1,
-      }),
-      /REPOSITORY_DESK_BASE_MISMATCH/,
-    );
+    const nextDesk = provisioner.provisionAuthorDesk({
+      repositoryRoot: fixture.root,
+      taskId: fixture.items[1].taskId,
+      executionRef: 'exec-repair',
+      integrationBranch: 'dev',
+      baseCommit: advanced,
+      expectedIntegrationHead: advanced,
+      projectRepositoryId: 1,
+    });
+    assert.notEqual(nextDesk.git.branch, firstDesk.git.branch);
+    assert.notEqual(nextDesk.executionPath, firstDesk.executionPath);
+    assert.equal(nextDesk.git.baseCommit, advanced);
+    assert.equal(git(fixture.root, 'rev-parse', firstDesk.git.branch), fixture.base);
+
+    const replayDesk = provisioner.provisionAuthorDesk({
+      repositoryRoot: fixture.root,
+      taskId: fixture.items[1].taskId,
+      executionRef: 'exec-repair',
+      integrationBranch: 'dev',
+      baseCommit: advanced,
+      expectedIntegrationHead: advanced,
+      projectRepositoryId: 1,
+    });
+    assert.equal(replayDesk.git.branch, nextDesk.git.branch);
+    assert.equal(replayDesk.executionPath, nextDesk.executionPath);
   } finally {
     fixture.db.close();
     rmSync(fixture.root, { recursive: true, force: true });

@@ -34,7 +34,7 @@
 export type RepositoryDeskRole = 'author' | 'reviewer' | 'verifier';
 
 export interface RepositoryDeskGit {
-  /** `task/<id>` for author; empty string for detached reviewer/verifier desks. */
+  /** Execution-scoped Factory branch for author; empty for detached desks. */
   readonly branch: string;
   /** The commit the desk was based on (integration branch HEAD for author). */
   readonly baseCommit: string;
