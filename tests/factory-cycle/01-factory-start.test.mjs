@@ -26,10 +26,13 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import {
+  acquireFactoryLaunchController,
+  assertFactoryControllerFence,
   requestFactoryLaunch,
   claimFactoryLaunch,
   markFactoryLaunchRunning,
   finishFactoryLaunch,
+  renewFactoryControllerLease,
 } from '../../dist/infrastructure/factory/sqlite-factory-launch-repository.js';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,73 @@ function readOrder(db, orderRef) {
     `SELECT state, lifecycle_run_id, last_error FROM factory_orders WHERE order_ref=?`,
   ).get(orderRef);
 }
+
+test('controller term: expired active launch is adopted with a higher epoch and stale token is fenced', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-controller', 1, 1);
+  const launchRef = requestFactoryLaunch({
+    orderRef: 'order-controller', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'operator', idempotencyKey: 'controller-key', concurrency: 2,
+  }, db);
+  const first = acquireFactoryLaunchController(launchRef, 'token-1', {
+    now: new Date('2026-08-11T00:00:00.000Z'), leaseTtlMs: 1_000,
+    holderId: 'host-1', machineId: 'm1', processId: 11,
+  }, db);
+  assert.equal(first.controllerEpoch, 1);
+  assert.throws(
+    () => acquireFactoryLaunchController(launchRef, 'token-too-early', {
+      now: new Date('2026-08-11T00:00:00.500Z'), leaseTtlMs: 1_000,
+    }, db),
+    /FACTORY_LAUNCH_ALREADY_CONTROLLED/,
+  );
+
+  const second = acquireFactoryLaunchController(launchRef, 'token-2', {
+    now: new Date('2026-08-11T00:00:01.001Z'), leaseTtlMs: 1_000,
+    holderId: 'host-2', machineId: 'm1', processId: 22,
+  }, db);
+  assert.equal(second.controllerEpoch, 2);
+  assert.throws(
+    () => assertFactoryControllerFence(launchRef, 'token-1', 1, db),
+    /FACTORY_CONTROLLER_FENCE_LOST/,
+  );
+  assert.doesNotThrow(
+    () => assertFactoryControllerFence(launchRef, 'token-2', 2, db),
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS n FROM factory_launch_controller_terms WHERE launch_ref=?')
+      .get(launchRef).n,
+    2,
+  );
+  db.close();
+});
+
+test('controller term: heartbeat renews only the current epoch', () => {
+  const db = freshDb();
+  seedProjectEpic(db);
+  seedOrder(db, 'order-heartbeat', 1, 1);
+  const launchRef = requestFactoryLaunch({
+    orderRef: 'order-heartbeat', mode: 'new', projectId: 1, epicId: 1,
+    initiatedBy: 'operator', idempotencyKey: 'heartbeat-key', concurrency: 2,
+  }, db);
+  acquireFactoryLaunchController(launchRef, 'token-live', {
+    now: new Date('2026-08-11T00:00:00.000Z'), leaseTtlMs: 1_000,
+  }, db);
+  renewFactoryControllerLease(
+    launchRef, 'token-live', 1, 5_000, db,
+    new Date('2026-08-11T00:00:00.500Z'),
+  );
+  const lease = db.prepare(
+    'SELECT heartbeat_at,expires_at FROM factory_launch_controller_leases WHERE launch_ref=?',
+  ).get(launchRef);
+  assert.equal(lease.heartbeat_at, '2026-08-11T00:00:00.500Z');
+  assert.equal(lease.expires_at, '2026-08-11T00:00:05.500Z');
+  assert.throws(
+    () => renewFactoryControllerLease(launchRef, 'wrong', 1, 5_000, db),
+    /FACTORY_CONTROLLER_FENCE_LOST/,
+  );
+  db.close();
+});
 
 // ---------------------------------------------------------------------------
 // 1. Happy path: request → claim → markRunning → finish(completed)

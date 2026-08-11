@@ -41,9 +41,11 @@ import { developmentContinuationPackageManifest } from './process-modules/module
 import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
 import {
-  claimFactoryLaunch,
+  acquireFactoryLaunchController,
+  assertFactoryControllerFence,
   finishFactoryLaunch,
   markFactoryLaunchRunning,
+  renewFactoryControllerLease,
 } from './infrastructure/factory/sqlite-factory-launch-repository.js';
 
 function parseArgs(argv: string[]): { launchRef: string } {
@@ -100,7 +102,17 @@ async function main() {
     process.exit(2);
   }
   const claimToken = randomUUID();
-  const ticket = claimFactoryLaunch(launchRef, claimToken);
+  const ticket = acquireFactoryLaunchController(launchRef, claimToken);
+  const controllerEpoch = ticket.controllerEpoch!;
+  let controllerFenceLost: Error | null = null;
+  const controllerHeartbeat = setInterval(() => {
+    try {
+      renewFactoryControllerLease(launchRef, claimToken, controllerEpoch);
+    } catch (error) {
+      controllerFenceLost = error instanceof Error ? error : new Error(String(error));
+    }
+  }, 10_000);
+  controllerHeartbeat.unref();
   const {
     projectId,
     epicId,
@@ -214,6 +226,8 @@ async function main() {
     let emptyDispatchStreak = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      if (controllerFenceLost) throw controllerFenceLost;
+      assertFactoryControllerFence(launchRef, claimToken, controllerEpoch);
       process.stderr.write(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode\n`);
       const admission = episodeRuntime.readConcurrencyAdmission(epicId);
       const result = await application.runEpisode({
@@ -529,6 +543,7 @@ async function main() {
     } catch { /* preserve the original failure */ }
     process.exit(1);
   } finally {
+    clearInterval(controllerHeartbeat);
     try { supervision?.stop(); } catch { /* best effort */ }
     try { application?.close(); } catch { /* best effort */ }
   }

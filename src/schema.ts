@@ -1788,6 +1788,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_launch_idempotency
   ON factory_launch_requests(idempotency_key);
 
+-- A LaunchRequest is the durable controller command; OS hosts are renewable,
+-- epoch-fenced attempts to execute that command.  The current lease is a CAS
+-- projection, while every acquired term remains immutable audit evidence.
+CREATE TABLE IF NOT EXISTS factory_launch_controller_terms (
+  term_ref             TEXT PRIMARY KEY,
+  launch_ref           TEXT NOT NULL REFERENCES factory_launch_requests(launch_ref),
+  epoch                INTEGER NOT NULL CHECK (epoch >= 1),
+  predecessor_term_ref TEXT REFERENCES factory_launch_controller_terms(term_ref),
+  holder_id            TEXT NOT NULL,
+  machine_id           TEXT NOT NULL,
+  process_id           INTEGER NOT NULL,
+  token_digest         TEXT NOT NULL,
+  takeover_reason      TEXT NOT NULL,
+  acquired_at          TEXT NOT NULL,
+  UNIQUE (launch_ref, epoch)
+);
+CREATE TRIGGER IF NOT EXISTS trg_factory_controller_term_no_update
+  BEFORE UPDATE ON factory_launch_controller_terms
+  BEGIN SELECT RAISE(ABORT, 'factory controller terms are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_controller_term_no_delete
+  BEFORE DELETE ON factory_launch_controller_terms
+  BEGIN SELECT RAISE(ABORT, 'factory controller terms are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS factory_launch_controller_leases (
+  launch_ref           TEXT PRIMARY KEY REFERENCES factory_launch_requests(launch_ref),
+  current_term_ref     TEXT NOT NULL REFERENCES factory_launch_controller_terms(term_ref),
+  epoch                INTEGER NOT NULL CHECK (epoch >= 1),
+  token_digest         TEXT NOT NULL,
+  heartbeat_at         TEXT NOT NULL,
+  expires_at           TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS factory_checkpoints (
   checkpoint_ref       TEXT PRIMARY KEY,
   manifest_digest      TEXT NOT NULL UNIQUE,

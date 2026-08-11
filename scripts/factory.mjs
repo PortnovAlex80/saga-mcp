@@ -533,6 +533,15 @@ if (command === 'resume') {
         + `replayed=${recovery.replayed}\n`,
       );
     }
+    const activeLaunch = db.prepare(
+      `SELECT launch_ref FROM factory_launch_requests
+        WHERE order_ref=? AND lifecycle_run_id=?
+          AND state IN ('requested','claimed','running')`,
+    ).get(target.orderRef, target.lifecycleRunId);
+    if (activeLaunch) {
+      launchRef = activeLaunch.launch_ref;
+      process.stdout.write(`[factory] adopting active launch=${launchRef}\n`);
+    } else {
     launchRef = requestFactoryLaunch({
       orderRef: target.orderRef ?? `order-resume-${crypto.randomUUID()}`,
       mode: 'resume',
@@ -550,6 +559,7 @@ if (command === 'resume') {
       idempotencyKey: `${target.idempotencyKey}:resume:${crypto.randomUUID()}`,
       concurrency,
     }, db);
+    }
   } finally {
     db.close();
   }

@@ -447,6 +447,12 @@ export class EngineProcessAdministration implements EngineAdministration {
                    NULL, NULL, NULL, NULL, NULL)`,
         ).run(orderRef, projectId, epicId, run.id);
       }
+      const active = db.prepare(
+        `SELECT launch_ref FROM factory_launch_requests
+          WHERE order_ref=? AND lifecycle_run_id=?
+            AND state IN ('requested','claimed','running')`,
+      ).get(orderRef, run.id) as { launch_ref: string } | undefined;
+      if (active) return active.launch_ref;
       return requestFactoryLaunch({
         orderRef,
         mode: 'resume',
@@ -454,7 +460,7 @@ export class EngineProcessAdministration implements EngineAdministration {
         epicId,
         lifecycleRunId: run.id,
         initiatedBy: run.initiatedBy,
-        idempotencyKey: run.idempotencyKey,
+        idempotencyKey: `${run.idempotencyKey}:resume:${randomUUID()}`,
         concurrency,
       }, db);
     })(), false);
