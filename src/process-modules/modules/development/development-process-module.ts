@@ -221,7 +221,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
               checkPlan: IMPLEMENTATION_FINAL_PLAN,
             },
           },
-          recovery: { maxAttempts: 2, onExhausted: 'pause' },
+          recovery: { maxAttempts: 3, onExhausted: 'pause' },
           postAcceptanceEffect: 'git-integration',
           transitions: {
             accepted: 'freeze-integrated-candidate',

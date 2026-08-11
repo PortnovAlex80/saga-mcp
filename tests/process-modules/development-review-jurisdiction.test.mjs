@@ -44,4 +44,13 @@ test('implementation author has a bounded third repair attempt for progressive s
   );
   assert.ok(profile);
   assert.equal(profile.retryPolicy.maxAttempts, 3);
+
+  const node = developmentProcessModule.flow.nodes.find(
+    candidate => candidate.id === 'implement-work-items',
+  );
+  assert.ok(node);
+  assert.deepEqual(node.cellDefinition.recovery, {
+    maxAttempts: 3,
+    onExhausted: 'pause',
+  });
 });
