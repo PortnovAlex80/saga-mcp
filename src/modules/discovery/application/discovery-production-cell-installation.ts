@@ -234,13 +234,22 @@ export function createDiscoveryOutputResolver(db: SqlDatabasePort): (
       throw new Error('discovery output: module reference mismatch');
     }
     const bindings = terminalResult.production?.bindings ?? {};
-    const expected = {
-      schema: requireStringBinding(bindings, 'proposalSchema'),
-      artifactRef: requireStringBinding(bindings, 'proposalRef'),
-      contentHash: requireStringBinding(bindings, 'proposalHash'),
+    const schema = requireStringBinding(bindings, 'proposalSchema');
+    // The CandidateSet member ref identifies the managed submission. The
+    // ProcessRun output must identify the immutable process-product projection,
+    // so resolve it by the exact schema+digest rather than reusing that ref.
+    requireStringBinding(bindings, 'proposalRef');
+    const contentHash = requireStringBinding(bindings, 'proposalHash');
+    const resolved = requireExactDiscoveryProposal(
+      db,
+      context.processRunId,
+      { schema, contentHash },
+    );
+    return {
+      schema: resolved.row.schema_id,
+      artifactRef: resolved.row.artifact_ref,
+      contentHash: resolved.row.product_hash,
     };
-    requireExactDiscoveryProposal(db, context.processRunId, expected);
-    return expected;
   };
 }
 
@@ -252,14 +261,15 @@ export function createDiscoveryLifecycleOutputPayloadResolver(
     db,
     context.processRunId,
     context.output,
-  );
+  ).payload;
 }
 
 function requireExactDiscoveryProposal(
   db: SqlDatabasePort,
   processRunId: number,
-  expected: ProcessModuleOutput,
-): DiscoveryProposalPayload {
+  expected: Pick<ProcessModuleOutput, 'schema' | 'contentHash'>
+    & Partial<Pick<ProcessModuleOutput, 'artifactRef'>>,
+): { row: DiscoveryProductRow; payload: DiscoveryProposalPayload } {
   const rows = db.prepare(
     `SELECT schema_id,artifact_ref,product_hash,payload_snapshot,payload_hash
        FROM factory_process_products
@@ -272,7 +282,7 @@ function requireExactDiscoveryProposal(
   const payload = JSON.parse(row.payload_snapshot) as DiscoveryProposalPayload;
   const payloadHash = sha256Hex(payload);
   if (row.schema_id !== expected.schema
-    || row.artifact_ref !== expected.artifactRef
+    || (expected.artifactRef !== undefined && row.artifact_ref !== expected.artifactRef)
     || row.product_hash !== expected.contentHash
     || row.payload_hash !== payloadHash
     || row.product_hash !== payloadHash) {
@@ -281,7 +291,7 @@ function requireExactDiscoveryProposal(
       + `for process_run ${processRunId}`,
     );
   }
-  return payload;
+  return { row, payload };
 }
 
 function requireStringBinding(bindings: Readonly<Record<string, unknown>>, key: string): string {
