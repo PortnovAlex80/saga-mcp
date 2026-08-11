@@ -263,6 +263,21 @@ test('review hand-off creates a distinct reviewer desk before returning', async 
     version: '1.0.0',
     contractDigest: sha('test-review-verdict-payload'),
   });
+  const authorSet = h.candidateSetRepo.listForWorkplace(ref)
+    .find(set => set.role === 'author');
+  assert.ok(authorSet);
+  assert.deepEqual(h.plans.at(-1).input.intent.authorityScope.payload_bindings, [{
+    field: 'subject_candidate_set_ref',
+    equals: authorSet.candidateSetRef,
+  }]);
+  assert.equal(
+    h.plans.at(-1).input.task.metadata.subject_candidate_set_ref,
+    authorSet.candidateSetRef,
+  );
+  assert.match(
+    h.plans.at(-1).input.task.generationKey,
+    /:reviewer:[a-f0-9]{64}$/,
+  );
   assert.equal(h.coordinator.readState(ref).nextRole, 'reviewer');
   finishRole(h, ref, 'execution:reviewer', {
     schemaId: 'factory.test-review-verdict.v1', ref: 'product:review', digest: sha('review'),

@@ -232,6 +232,65 @@ test('registered Development review contract rejects an unbound verdict before s
   }
 });
 
+test('review submission must match the exact CandidateSet frozen by its WorkIntent', () => {
+  registerProductPayloadContract(developmentReviewVerdictPayloadContract);
+  const schema = 'factory.development-review-verdict.v1';
+  const expected = 'candidate-set/3/solution-development/cell/item/execution/author';
+  const f = fixture(schema);
+  try {
+    f.db.prepare(
+      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
+    ).run(JSON.stringify({
+      payload_contract: {
+        contractId: developmentReviewVerdictPayloadContract.contractId,
+        version: developmentReviewVerdictPayloadContract.version,
+        contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
+      },
+      payload_bindings: [{
+        field: 'subject_candidate_set_ref',
+        equals: expected,
+      }],
+    }), f.intentId);
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          subject_candidate_set_ref: 'candidate-set/other-author',
+          verdict: 'approved',
+          findings: [],
+        },
+      }),
+      /PRODUCT_PAYLOAD_BINDING_REJECTED.*subject_candidate_set_ref.*exact WorkIntent authority value/,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
+      0,
+    );
+    assert.throws(
+      () => repository.submitForCurrentExecution({
+        schema,
+        payload: {
+          subject_candidate_set_ref: 'workplace/3/cell/item',
+          verdict: 'approved',
+          findings: [],
+        },
+      }),
+      /PRODUCT_PAYLOAD_CONTRACT_REJECTED.*candidate-set/,
+    );
+    assert.doesNotThrow(() => repository.submitForCurrentExecution({
+      schema,
+      payload: {
+        subject_candidate_set_ref: expected,
+        verdict: 'approved',
+        findings: [],
+      },
+    }));
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
 test('registered executable product contract rejects malformed verification JSON before storage', () => {
   registerProductPayloadContract(developmentVerificationPayloadContract);
   const schema = 'factory.candidate-verification-evidence-product.v2';

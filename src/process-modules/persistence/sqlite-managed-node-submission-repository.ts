@@ -136,6 +136,7 @@ implements ManagedNodeSubmissionReader {
       } else {
         assertProductPayload(schema, command.payload);
       }
+      this.assertIntentPayloadBindings(provenance.intentId, command.payload);
 
       const query: ManagedNodeSubmissionQuery = {
         processRunId: provenance.processRunId,
@@ -365,6 +366,49 @@ implements ManagedNodeSubmissionReader {
       version: pin.version,
       contractDigest: pin.contractDigest,
     };
+  }
+
+  private assertIntentPayloadBindings(intentId: number, payload: unknown): void {
+    const row = this.db.prepare(
+      'SELECT authority_scope FROM factory_work_intents WHERE id=?',
+    ).get(intentId) as { authority_scope: string } | undefined;
+    if (!row) throw new Error(`MANAGED_NODE_SUBMISSION_INTENT_NOT_FOUND: ${intentId}`);
+    let scope: unknown;
+    try {
+      scope = JSON.parse(row.authority_scope);
+    } catch {
+      throw new Error(`MANAGED_NODE_SUBMISSION_INTENT_AUTHORITY_CORRUPT: ${intentId}`);
+    }
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return;
+    const bindings = (scope as Record<string, unknown>).payload_bindings;
+    if (bindings === undefined) return;
+    if (!Array.isArray(bindings)) {
+      throw new Error(`PRODUCT_PAYLOAD_BINDINGS_INVALID: WorkIntent ${intentId}`);
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(`PRODUCT_PAYLOAD_BINDING_REJECTED: WorkIntent ${intentId} requires an object payload`);
+    }
+    const product = payload as Record<string, unknown>;
+    for (const raw of bindings) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error(`PRODUCT_PAYLOAD_BINDINGS_INVALID: WorkIntent ${intentId}`);
+      }
+      const binding = raw as Record<string, unknown>;
+      if (
+        typeof binding.field !== 'string'
+        || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.field)
+        || typeof binding.equals !== 'string'
+        || binding.equals.length === 0
+      ) {
+        throw new Error(`PRODUCT_PAYLOAD_BINDINGS_INVALID: WorkIntent ${intentId}`);
+      }
+      if (product[binding.field] !== binding.equals) {
+        throw new Error(
+          `PRODUCT_PAYLOAD_BINDING_REJECTED: field '${binding.field}' must equal `
+          + `the exact WorkIntent authority value '${binding.equals}'`,
+        );
+      }
+    }
   }
 }
 

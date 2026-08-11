@@ -264,15 +264,20 @@ function assertTransitionConformance(db) {
   );
 }
 
-function assertPhysicalRepairInvocations(invocations, key, label) {
+function assertPhysicalRepairInvocations(invocations, key, label, { subjectChanges = false } = {}) {
   const entries = invocations.filter(invocation => invocation.keyStr === key);
   assert.deepEqual(
     entries.map(entry => entry.attempt),
     [1, 2],
     `${label} attempts are durable across physical worker processes`,
   );
-  assert.equal(new Set(entries.map(entry => entry.taskId)).size, 1,
-    `${label} reuses one stable role task`);
+  assert.equal(
+    new Set(entries.map(entry => entry.taskId)).size,
+    subjectChanges ? 2 : 1,
+    subjectChanges
+      ? `${label} receives new immutable role authority for the repaired author CandidateSet`
+      : `${label} reuses one stable role task`,
+  );
   assert.equal(new Set(entries.map(entry => entry.executionId)).size, 2,
     `${label} uses two fenced WorkerExecutions`);
   assert.equal(new Set(entries.map(entry => entry.processInstanceId)).size, 2,
@@ -324,7 +329,12 @@ test('Factory transition conformance: reject -> repair -> accept, then replay wi
     assert.ok(runAInvocations.length >= 12, `scripted workers invoked on cold path: ${runAInvocations.length}`);
     assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.1.0'), 'Run A Development used scripted physical workers');
     assertPhysicalRepairInvocations(runAInvocations, CONFORMANCE_AUTHOR_KEY, 'author');
-    assertPhysicalRepairInvocations(runAInvocations, CONFORMANCE_REVIEWER_KEY, 'reviewer');
+    assertPhysicalRepairInvocations(
+      runAInvocations,
+      CONFORMANCE_REVIEWER_KEY,
+      'reviewer',
+      { subjectChanges: true },
+    );
 
     // Run B (capsule replay) is skipped for now — it requires the git worktree
     // base to exactly match what the capsule captured during Run A. After Run A's

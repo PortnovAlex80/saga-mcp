@@ -710,7 +710,22 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       throw new NodeExecutionError(this.kind, node.id, `cell '${cell.id}' has no ${role} declaration`);
     }
     const profile = resolveExecutionProfile(ctx, roleDeclaration.skillRef);
-    const generationKey = `${serializeWorkplaceRef(workplace.ref)}:${role}`;
+    const reviewerSubject = role === 'reviewer'
+      ? this.latestCandidate(workplace.ref, 'author')
+      : null;
+    if (role === 'reviewer' && !reviewerSubject) {
+      throw new NodeExecutionError(
+        this.kind,
+        node.id,
+        `cell '${cell.id}' cannot project reviewer work without an author CandidateSet`,
+      );
+    }
+    // A reviewer WorkIntent is authority over one exact immutable author set.
+    // A repaired author set therefore receives a new intent/task generation;
+    // the old reviewer authority is never silently retargeted.
+    const generationKey = role === 'reviewer'
+      ? `${serializeWorkplaceRef(workplace.ref)}:${role}:${sha256Hex(reviewerSubject!.candidateSetRef)}`
+      : `${serializeWorkplaceRef(workplace.ref)}:${role}`;
     const objective = `${cell.id}/${role}: ${node.description || node.label}`;
     const preparationBindings = isRecord(ctx.input)
       && isRecord((ctx.input as Record<string, unknown>).bindings)
@@ -752,6 +767,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
             : role === 'reviewer' && cell.review?.payloadContract
               ? { payload_contract: cell.review.payloadContract }
               : {}),
+          ...(role === 'reviewer'
+            ? {
+                payload_bindings: [{
+                  field: 'subject_candidate_set_ref',
+                  equals: reviewerSubject!.candidateSetRef,
+                }],
+              }
+            : {}),
         },
         outputSchema: role === 'reviewer'
           ? cell.review!.verdictSchemaRef
@@ -779,6 +802,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           production_cell_id: cell.id,
           work_key: workplace.workKey,
           role,
+          ...(role === 'reviewer'
+            ? { subject_candidate_set_ref: reviewerSubject!.candidateSetRef }
+            : {}),
           trusted_provider_bindings:
             this.opts.persistence.readTrustedProviders?.(ctx.projectId) ?? [],
           cell_input_item: workplace.item,

@@ -77,12 +77,12 @@ export const developmentVerificationPayloadContract: ProductPayloadContract = {
 
 export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID =
   'development.review-verdict-payload.v1';
-export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION = '1.1.0';
 export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   required: ['subject_candidate_set_ref', 'verdict', 'findings'],
   verdict: ['approved', 'changes_requested'],
-  subjectCandidateSetRef: 'non-empty-string',
+  subjectCandidateSetRef: 'candidate-set-ref',
   findings: 'array-of-strings',
 } as const;
 export const DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST =
@@ -106,8 +106,8 @@ export const developmentReviewVerdictPayloadContract: ProductPayloadContract = {
     const value = payload as Record<string, unknown>;
     const errors: string[] = [];
     if (typeof value.subject_candidate_set_ref !== 'string'
-        || value.subject_candidate_set_ref.trim().length === 0) {
-      errors.push('subject_candidate_set_ref must be a non-empty string');
+        || !value.subject_candidate_set_ref.startsWith('candidate-set/')) {
+      errors.push('subject_candidate_set_ref must be an exact candidate-set/ reference');
     }
     if (value.verdict !== 'approved' && value.verdict !== 'changes_requested') {
       errors.push('verdict must be approved or changes_requested');
