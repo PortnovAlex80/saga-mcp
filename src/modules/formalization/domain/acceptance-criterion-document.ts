@@ -38,3 +38,23 @@ export function parseAtomicAcceptanceCriteria(content: string): readonly AtomicA
     };
   });
 }
+
+/**
+ * Resolves the members represented by one accepted artifact. A container
+ * artifact such as `AC` owns every leaf in its document. An atomic artifact
+ * such as `AC-3` may point at an anchor in a shared document and owns only the
+ * matching leaf; parsing the whole shared file once per artifact would
+ * multiply the same contract members.
+ */
+export function acceptanceCriteriaForArtifact(
+  content: string,
+  artifactCode: string | null,
+): readonly AtomicAcceptanceCriterion[] {
+  const parsed = parseAtomicAcceptanceCriteria(content);
+  if (parsed.length === 0 || !artifactCode || !/^AC-/i.test(artifactCode)) return parsed;
+  const exact = parsed.filter(item => item.code === artifactCode);
+  if (exact.length !== 1) {
+    throw new Error(`atomic acceptance artifact '${artifactCode}' has no matching document heading`);
+  }
+  return exact;
+}

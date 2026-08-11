@@ -1,9 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseAtomicAcceptanceCriteria } = await import(
+const { parseAtomicAcceptanceCriteria, acceptanceCriteriaForArtifact } = await import(
   '../../dist/modules/formalization/domain/acceptance-criterion-document.js'
 );
+
+test('atomic artifact selects only its anchor from a shared AC document', () => {
+  const content = [
+    '## AC-1: First',
+    'First body.',
+    '## AC-2: Second',
+    'Second body.',
+  ].join('\n');
+  assert.deepEqual(
+    acceptanceCriteriaForArtifact(content, 'AC-2').map(item => item.code),
+    ['AC-2'],
+  );
+  assert.deepEqual(
+    acceptanceCriteriaForArtifact(content, 'AC').map(item => item.code),
+    ['AC-1', 'AC-2'],
+  );
+});
+
+test('atomic artifact fails closed when its shared document anchor is missing', () => {
+  assert.throws(
+    () => acceptanceCriteriaForArtifact('## AC-1: First\nBody', 'AC-2'),
+    /no matching document heading/,
+  );
+});
 
 test('accepted AC document is projected into stable atomic criterion members', () => {
   const content = [

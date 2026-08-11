@@ -44,7 +44,7 @@ import {
   type FormalizationSettlementInput,
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
-import { parseAtomicAcceptanceCriteria } from '../domain/acceptance-criterion-document.js';
+import { acceptanceCriteriaForArtifact } from '../domain/acceptance-criterion-document.js';
 import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
@@ -100,7 +100,10 @@ function createBaselineFreezer(
         acceptedHash(artifact),
       ]));
       const acceptanceCriteria = acs.flatMap(artifact => {
-        const parsed = parseAtomicAcceptanceCriteria(deps.readArtifactContent(artifact.id));
+        const parsed = acceptanceCriteriaForArtifact(
+          deps.readArtifactContent(artifact.id),
+          artifact.code,
+        );
         if (parsed.length > 0) {
           return parsed.map(criterion => ({ artifactId: artifact.id, ...criterion }));
         }
