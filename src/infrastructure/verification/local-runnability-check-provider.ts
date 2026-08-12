@@ -15,6 +15,7 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../modules/development/application/candidate-check-contracts.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../modules/development/domain/development-schemas.js';
+import type { RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -27,6 +28,13 @@ interface CandidateSubject {
   commitSha: string;
   treeHash: string;
   candidateHash: string;
+  /**
+   * The runnability command contract stated by the accepted product (parsed but
+   * NOT yet validated). Validation + the fail-closed policy live in
+   * runLocalReadiness so an unstated contract yields a 'failed' readiness
+   * outcome, not the 'error' sentinel reserved for subject-resolution failures.
+   */
+  runnability: unknown;
 }
 
 /**
@@ -152,6 +160,10 @@ function resolveSubject(
       commitSha?: unknown;
       treeHash?: unknown;
     }>;
+    // LR-03 — the deterministic install/test command contract stated by the
+    // accepted product. Parsed here (part of the frozen payload); validated and
+    // consumed by runLocalReadiness.
+    runnability?: unknown;
   };
   if (typeof candidate.candidateHash !== 'string'
       || !Array.isArray(candidate.repositories)
@@ -182,6 +194,7 @@ function resolveSubject(
     commitSha: repository.commitSha,
     treeHash: repository.treeHash,
     candidateHash: candidate.candidateHash,
+    runnability: candidate.runnability,
   };
 }
 
@@ -203,36 +216,56 @@ function runLocalReadiness(
     execFileSync('tar', ['-xf', archive, '-C', directory, '--force-local'], {
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
     });
-    // UNIVERSAL ENGINE: the architect chooses the language/stack; the engine
-    // detects the build system from the files the worker produced and runs that
-    // system's native test command. The gate must NOT hardcode npm.
-    const system = detectBuildSystem(directory);
-    if (!system) {
+    // LR-03 — the install + test commands come from the accepted product
+    // contract (the frozen candidate's explicit `runnability` statement), NOT
+    // from guessing based on package.json / build.gradle presence. If the
+    // contract cannot state its commands, fail closed rather than guessing.
+    const commands = validateRunnability(subject.runnability);
+    if (commands === null) {
       return evidence('failed', subject, {
-        reason: 'no supported build system found in candidate (expected build.gradle[.kts], pom.xml, or package.json)',
+        reason:
+          'product contract does not state deterministic runnability commands '
+          + '(runnability.testCommand missing or invalid); refusing to guess '
+          + 'from incidental files',
       });
     }
-    runSystemTest(system, directory);
-    // Start + loopback HTTP probe is opt-in and only generically detectable for
-    // npm (explicit scripts.start). For other systems the runnability proof is
-    // the passing native test command; framework-specific serve tasks are not
-    // reliably detectable, so we do not guess.
-    if (system === 'npm') {
+    // Build-system detection is a VALIDATOR/fallback (background cb3e944): it
+    // cross-checks the candidate's files and selects the execution environment
+    // (JAVA_HOME/bin for JVM tooling). It is NEVER the authority for WHICH
+    // commands prove runnability — that is the product contract above.
+    const detected = detectBuildSystem(directory);
+    const env = detected === 'gradle' || detected === 'maven'
+      ? jvmEnv()
+      : { ...process.env };
+    // Install (deterministic, from the contract) — only when the contract
+    // states an install command.
+    const phases: string[] = [];
+    if (commands.installCommand !== null) {
+      runContractCommand(commands.installCommand, directory, env, 240_000);
+      phases.push('contract-install');
+    }
+    // Test (deterministic, from the contract) — the runnability authority.
+    runContractCommand(commands.testCommand, directory, env, 600_000);
+    phases.push('contract-test');
+    // Optional secondary phase: npm start + loopback probe. ADDITIVE evidence
+    // only, never the command authority. Runs solely when the detected build
+    // system is npm and the candidate carries an explicit `start` script; we do
+    // not guess a serve task for other stacks.
+    if (detected === 'npm') {
       const probeResult = tryNpmStartProbe(directory, subject);
       if (probeResult.started) {
+        phases.push('npm-start', 'loopback-http-probe', 'clean-shutdown');
         return evidence('passed', subject, {
-          phases: ['npm-test', 'npm-start', 'loopback-http-probe', 'clean-shutdown'],
+          phases,
+          detectedBuildSystem: detected,
           ...probeResult.evidence,
         });
       }
-      return evidence('passed', subject, {
-        phases: ['npm-test'],
-        note: 'no "start" script; runnability proven by npm test only',
-      });
     }
     return evidence('passed', subject, {
-      phases: [`${system}-test`],
-      note: `${system} runnability proven by native test task`,
+      phases,
+      detectedBuildSystem: detected,
+      note: 'runnability proven by the contract-stated install/test commands',
     });
   } catch (error) {
     return evidence('failed', subject, { reason: errorMessage(error) });
@@ -243,8 +276,34 @@ function runLocalReadiness(
 }
 
 /**
- * Detect the candidate's build system from the files the worker produced. The
- * architect owns the stack choice; the gate honors it by file presence.
+ * Validate the runnability command contract stated by the accepted product.
+ * Returns the typed commands when the contract states a non-empty
+ * `testCommand` (and an `installCommand` that is either null or a non-empty
+ * string); returns null when the contract cannot state its commands, so the
+ * caller fails closed instead of guessing.
+ */
+function validateRunnability(raw: unknown): RunnabilityCommands | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const value = raw as { installCommand?: unknown; testCommand?: unknown };
+  if (typeof value.testCommand !== 'string' || value.testCommand.trim() === '') {
+    return null;
+  }
+  const { installCommand } = value;
+  if (installCommand !== null
+      && (typeof installCommand !== 'string' || installCommand.trim() === '')) {
+    return null;
+  }
+  return {
+    installCommand: installCommand === null ? null : installCommand,
+    testCommand: value.testCommand,
+  };
+}
+
+/**
+ * Detect the candidate's build system from the files the worker produced. This
+ * is a VALIDATOR/fallback only (LR-03): it cross-checks the candidate's files
+ * and informs execution-environment selection. The COMMANDS that prove
+ * runnability come from the product contract, not from this detection.
  */
 function detectBuildSystem(directory: string): 'gradle' | 'maven' | 'npm' | null {
   if (existsSync(join(directory, 'build.gradle.kts'))
@@ -255,66 +314,48 @@ function detectBuildSystem(directory: string): 'gradle' | 'maven' | 'npm' | null
 }
 
 /**
- * Run the detected build system's native test command. JVM systems get
- * JAVA_HOME/bin on PATH so the gradle/maven wrappers find java even when it is
- * not on the global PATH. Cold JVM builds (distribution + dependency download)
- * get a generous timeout.
+ * Run one command stated verbatim by the product contract. The COMMAND
+ * AUTHORITY is the contract string; this function only decides HOW to spawn the
+ * stated program on this platform. `npm` on Windows is not a real executable
+ * and the node runtime may not be on PATH in a sandbox, so `npm`/`node`-prefixed
+ * contract commands route through the bundled tooling (npm-cli.js /
+ * process.execPath — the same resolution `runNpm` uses); every other command
+ * runs verbatim through the platform shell so the stated wrapper/script
+ * (./gradlew, mvnw, …) is honored as-is.
  */
-function runSystemTest(system: 'gradle' | 'maven' | 'npm', directory: string): void {
-  if (system === 'npm') {
-    runNpmTest(directory);
-    return;
-  }
-  const env = jvmEnv();
-  if (system === 'gradle') {
-    runBuild(wrapCommand(directory, 'gradlew', 'gradle'), ['test', '--no-daemon'], directory, env, 600_000);
-    return;
-  }
-  // maven
-  runBuild(wrapCommand(directory, 'mvnw', 'mvn'), ['test', '-B', '-q'], directory, env, 600_000);
-}
-
-function runNpmTest(directory: string): void {
-  const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
-    scripts?: Record<string, unknown>;
-  } & DependencyGroups;
-  if (typeof packageJson.scripts?.test !== 'string') {
-    throw new Error('required npm script "test" is missing');
-  }
-  if (hasDependencySpecifiers(packageJson)) {
-    runNpm(['install', '--no-audit', '--no-fund'], directory, 240_000);
-  }
-  runNpm(['test'], directory, 120_000);
-}
-
-/**
- * Resolve a build-tool wrapper: prefer the committed wrapper
- * (gradlew/mvnw[.bat]), fall back to the global tool. Returns the executable
- * name; on Windows the wrapper is a .bat and must run through cmd (shell:true
- * in runBuild).
- */
-function wrapCommand(directory: string, wrapperBase: string, globalTool: string): string {
-  const isWin = process.platform === 'win32';
-  const wrapperName = isWin ? `${wrapperBase}.bat` : wrapperBase;
-  return existsSync(join(directory, wrapperName)) ? wrapperName : globalTool;
-}
-
-function runBuild(
-  executable: string,
-  args: readonly string[],
-  cwd: string,
+function runContractCommand(
+  command: string,
+  directory: string,
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
 ): void {
-  execFileSync(executable, [...args], {
-    cwd,
+  const trimmed = command.trim();
+  const tokens = trimmed.split(/\s+/u);
+  const [program] = tokens;
+  if (program === 'npm' || program === 'npm.cmd') {
+    runNpm(tokens.slice(1), directory, timeoutMs);
+    return;
+  }
+  if (program === 'node' || program === 'node.exe') {
+    execFileSync(process.execPath, tokens.slice(1), {
+      cwd: directory,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+      windowsHide: true,
+    });
+    return;
+  }
+  execFileSync(trimmed, {
+    cwd: directory,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: timeoutMs,
     maxBuffer: 16 * 1024 * 1024,
     windowsHide: true,
-    // Windows wrapper scripts are .bat files — they need a shell to execute.
-    shell: process.platform === 'win32',
+    // Run the contract's command verbatim through the platform shell.
+    shell: true,
   });
 }
 
@@ -324,13 +365,6 @@ function jvmEnv(): NodeJS.ProcessEnv {
   const javaBin = join(javaHome, 'bin');
   const path = process.env.PATH ? `${javaBin}${delimiter}${process.env.PATH}` : javaBin;
   return { ...process.env, JAVA_HOME: javaHome, PATH: path };
-}
-
-interface DependencyGroups {
-  dependencies?: Record<string, unknown>;
-  devDependencies?: Record<string, unknown>;
-  peerDependencies?: Record<string, unknown>;
-  optionalDependencies?: Record<string, unknown>;
 }
 
 function tryNpmStartProbe(
@@ -400,21 +434,6 @@ function runNpm(args: readonly string[], cwd: string, timeout: number): void {
     maxBuffer: 8 * 1024 * 1024,
     windowsHide: true,
   });
-}
-
-function hasDependencySpecifiers(packageJson: {
-  dependencies?: unknown;
-  devDependencies?: unknown;
-  peerDependencies?: unknown;
-  optionalDependencies?: unknown;
-}): boolean {
-  for (const key of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
-    const group = packageJson[key];
-    if (group && typeof group === 'object' && Object.keys(group as Record<string, unknown>).length > 0) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function npmCommand(args: readonly string[]): { executable: string; args: string[] } {

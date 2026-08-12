@@ -61,11 +61,26 @@ function integratedProductRef(candidateHash) {
  * persists it. `commitSha`/`treeHash` override the repo's current HEAD so a
  * test can seal an authority that is NOT the tip (a moving ref, a stale
  * commit, or a mismatched object).
+ *
+ * `runnability` (LR-03) is the deterministic install/test command contract
+ * stated by the accepted product. It defaults to the npm commands that match
+ * the standard fixture. Pass `includeRunnability: false` to seal a contract
+ * that does NOT state its commands (fail-closed case), or a malformed
+ * `runnability` value to exercise validation.
  */
-function insertProduct(db, { repositoryId, root, candidateHash, commitSha, treeHash }) {
+function insertProduct(db, {
+  repositoryId, root, candidateHash, commitSha, treeHash,
+  runnability = { installCommand: null, testCommand: 'npm test' },
+  includeRunnability = true,
+}) {
   const sealedCommit = commitSha ?? git(root, 'rev-parse', 'HEAD');
   const sealedTree = treeHash ?? git(root, 'rev-parse', 'HEAD^{tree}');
   db.prepare('INSERT INTO project_repositories VALUES (?,?)').run(repositoryId, root);
+  const payload = {
+    candidateHash,
+    repositories: [{ projectRepositoryId: repositoryId, commitSha: sealedCommit, treeHash: sealedTree }],
+  };
+  if (includeRunnability) payload.runnability = runnability;
   db.prepare(
     `INSERT INTO factory_process_products
        (process_run_id, product_kind, schema_id, artifact_ref, product_hash, payload_snapshot)
@@ -76,10 +91,7 @@ function insertProduct(db, { repositoryId, root, candidateHash, commitSha, treeH
     INTEGRATED_CANDIDATE_SCHEMA,
     integratedProductRef(candidateHash).ref,
     candidateHash,
-    JSON.stringify({
-      candidateHash,
-      repositories: [{ projectRepositoryId: repositoryId, commitSha: sealedCommit, treeHash: sealedTree }],
-    }),
+    JSON.stringify(payload),
   );
 }
 
@@ -147,9 +159,9 @@ function candidateSetsReader(mode = 'author', candidateHash = 'a'.repeat(64)) {
   };
 }
 
-function buildProvider({ root, mode, candidateHash = 'a'.repeat(64), repositoryId = 1 }) {
+function buildProvider({ root, mode, candidateHash = 'a'.repeat(64), repositoryId = 1, ...runnabilityOpts }) {
   const db = newDb();
-  insertProduct(db, { repositoryId, root, candidateHash });
+  insertProduct(db, { repositoryId, root, candidateHash, ...runnabilityOpts });
   const candidateSets = candidateSetsReader(mode, candidateHash);
   return { db, provider: createLocalRunnabilityCheckProvider({ db, candidateSets }) };
 }
@@ -411,4 +423,121 @@ test('never checks out or mutates the canonical branch while proving runnability
   assert.equal(after.status, before.status, 'working tree must not be mutated');
   assert.equal(after.refCount, before.refCount, 'no new commits may be introduced');
   rmSync(root, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-053 / LR-03 — install + test commands are DETERMINISTIC, sourced from
+// the accepted product contract's explicit command statement, NOT inferred from
+// incidental files (package.json / build.gradle). Build-system detection stays
+// as a validator/fallback; the AUTHORITY for which commands prove runnability
+// is the product contract. If the contract cannot state its commands, the
+// provider fails closed rather than guessing.
+// ---------------------------------------------------------------------------
+
+/** Seed a throwaway git repo with the given {path: contents} files and commit. */
+function seedRepo(files) {
+  const root = mkdtempSync(join(tmpdir(), 'saga-readiness-contract-'));
+  git(root, 'init');
+  git(root, 'config', 'user.email', 'factory@example.test');
+  git(root, 'config', 'user.name', 'Factory Test');
+  for (const [path, contents] of Object.entries(files)) {
+    writeFileSync(join(root, path), contents);
+  }
+  git(root, 'add', '.');
+  git(root, 'commit', '-m', 'seed');
+  return root;
+}
+
+test('runs the contract-stated test command verbatim, not a package.json script it would have to guess', { timeout: 30000 }, async () => {
+  // The candidate has a package.json with NO `test` script. The pre-LR-03
+  // file-guessing engine (cb3e944) would fail with "required npm script test is
+  // missing". The accepted product contract states the exact test command; the
+  // provider runs THAT and passes — the command is deterministic, from the
+  // contract, never guessed from files.
+  const root = seedRepo({
+    'check.js': 'process.exit(0);\n',
+    'package.json': JSON.stringify({ name: 'no-scripts', version: '1.0.0' }),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    runnability: { installCommand: null, testCommand: 'node check.js' },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the contract test command is the authority, not the package.json test script', { timeout: 30000 }, async () => {
+  // package.json scripts.test points at a FAILING script. The contract states a
+  // DIFFERENT test command that passes. The provider MUST run the contract
+  // command (pass), never the file-inferred npm test (fail) — proving the file
+  // detection is not the command authority.
+  const root = seedRepo({
+    'passing.js': 'process.exit(0);\n',
+    'failing.js': 'process.exit(1);\n',
+    'package.json': JSON.stringify({
+      name: 'misleading', version: '1.0.0',
+      scripts: { test: 'node failing.js' },
+    }),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    runnability: { installCommand: null, testCommand: 'node passing.js' },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fails closed when the product contract does not state runnability commands', { timeout: 30000 }, async () => {
+  // A perfectly runnable npm fixture exists, but the sealed contract does NOT
+  // state its commands. The provider must NOT guess from package.json — it
+  // fails closed (ADR-053 / LR-03).
+  const root = fixture({ passing: true });
+  const { db, provider } = buildProvider({ root, includeRunnability: false });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'failed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fails closed when the contract states an invalid runnability command', { timeout: 30000 }, async () => {
+  // Each variant is a contract that "cannot state its commands". A distinct
+  // candidateHash per case avoids the provider's result cache so every variant
+  // is actually executed, not shadowed by a prior cached outcome.
+  const root = fixture({ passing: true });
+  const cases = [
+    { label: 'null', runnability: null },
+    { label: 'empty testCommand', runnability: { installCommand: null, testCommand: '' } },
+    { label: 'missing testCommand', runnability: { installCommand: 'npm install' } },
+    { label: 'non-string testCommand', runnability: { testCommand: 42 } },
+    { label: 'non-string installCommand', runnability: { installCommand: 7, testCommand: 'npm test' } },
+  ];
+  try {
+    for (let i = 0; i < cases.length; i++) {
+      const c = cases[i];
+      const hash = (i + 1).toString(16).padStart(64, '0');
+      const { db, provider } = buildProvider({ root, candidateHash: hash, runnability: c.runnability });
+      try {
+        const result = await provider.run(RUN_ARGS);
+        assert.equal(result.outcome, 'failed', `${c.label} must fail closed`);
+      } finally {
+        db.close();
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

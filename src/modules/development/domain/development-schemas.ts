@@ -280,6 +280,28 @@ export interface CandidateBuildProduct {
 }
 
 /**
+ * The deterministic install + test commands that prove a candidate runnable.
+ *
+ * ADR-053 / LR-03 — the authority for "which commands prove runnability" is the
+ * accepted product contract (this frozen candidate), NOT inference from
+ * incidental files (package.json / build.gradle presence). The local-
+ * runnability provider runs these verbatim and fails closed when the contract
+ * cannot state them, rather than guessing. Optional: a candidate frozen before
+ * this field existed is treated as "contract cannot state commands" → fail
+ * closed. When present, it is part of the frozen content covered by
+ * `candidateHash`.
+ */
+export interface RunnabilityCommands {
+  /**
+   * Shell command that installs the candidate's dependencies, or null when the
+   * candidate needs no install step (e.g. a dependency-free static product).
+   */
+  installCommand: string | null;
+  /** Shell command that proves runnability (the test command). Non-empty. */
+  testCommand: string;
+}
+
+/**
  * The immutable code/build target that verification executes against.
  * `candidateHash` is over all fields except candidateHash itself.
  */
@@ -292,6 +314,8 @@ export interface IntegratedReleaseCandidate {
   integrationIntentRefs: readonly string[];
   frozen: true;
   candidateHash: string;
+  /** @see RunnabilityCommands — deterministic runnability command contract. */
+  runnability?: RunnabilityCommands;
 }
 
 export type VerificationOutcome =
