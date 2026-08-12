@@ -42,7 +42,7 @@
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
 | LR-01 | Resolve exact runnable product from sealed CandidateSet | Readiness C | C5-03 | done | fix(factory): resolve local readiness from exact candidate set | local-runnability-check-provider.ts resolveSubject (exact sealed member, fail-closed); tests/infrastructure/local-runnability-check-provider.test.mjs (7). OPEN FINDING: integrated candidate is NOT sealed into local-runnability's subject CandidateSet (old code bypassed via newest-product query = the recoding boundary ADR-053 closes); fail-closed is correct; wiring to resolve in LR-04 (explicit readiness profile/gate subject) |
-| LR-02 | Verify exact Git object and archive authority | Readiness C | LR-01 | pending | fix(factory): verify exact git object for local readiness | — |
+| LR-02 | Verify exact Git object and archive authority | Readiness C | LR-01 | done | fix(factory): verify exact git object for local readiness | local-runnability-check-provider.ts verifyExactObjectAuthority (cat-file by identity, refuse moving ref, no ref mutation); tests/infrastructure/local-runnability-check-provider.test.mjs (11) |
 | LR-03 | Make dependency install and tests deterministic | Readiness C | LR-02 | pending | fix(factory): make local readiness commands deterministic | — |
 | LR-04 | Require explicit served or static readiness profiles | Readiness C | LR-03 | pending | feat(factory): make local readiness profile explicit | — |
 | LR-05 | Isolate, observe, and terminate the local process reliably | Readiness C | LR-04 | pending | fix(factory): isolate and terminate local readiness processes | — |

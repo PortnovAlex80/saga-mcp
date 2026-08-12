@@ -29,6 +29,13 @@ interface CandidateSubject {
   candidateHash: string;
 }
 
+/**
+ * A full git object id (SHA-1, 40 hex). The runnability authority must be a
+ * content-addressed object id — NEVER a moving ref, branch name, tip, HEAD, or
+ * a working-tree path. ADR-053 / LR-02.
+ */
+const OBJECT_ID_RE = /^[a-f0-9]{40}$/u;
+
 const completed = new Map<string, CheckProviderResult>();
 
 /**
@@ -154,17 +161,22 @@ function resolveSubject(
   const repository = candidate.repositories[0]!;
   if (!Number.isSafeInteger(repository.projectRepositoryId)
       || typeof repository.commitSha !== 'string'
-      || !/^[a-f0-9]{40}$/u.test(repository.commitSha)
+      || !OBJECT_ID_RE.test(repository.commitSha)
       || typeof repository.treeHash !== 'string'
-      || !/^[a-f0-9]{40}$/u.test(repository.treeHash)) {
+      || !OBJECT_ID_RE.test(repository.treeHash)) {
     throw new Error('LOCAL_READINESS_REPOSITORY_INVALID');
   }
   const binding = input.db.prepare(
     'SELECT local_path FROM project_repositories WHERE id=?',
   ).get(repository.projectRepositoryId) as { local_path: string | null } | undefined;
   if (!binding?.local_path) throw new Error('LOCAL_READINESS_REPOSITORY_MISSING');
-  const observedTree = git(binding.local_path, ['rev-parse', `${repository.commitSha}^{tree}`]);
-  if (observedTree !== repository.treeHash) throw new Error('LOCAL_READINESS_TREE_DRIFT');
+  // ADR-053 / LR-02 — bind the runnability proof to the EXACT content-addressed
+  // git object sealed in the product. The authority is the immutable commit SHA
+  // + tree SHA, NEVER a moving ref, branch tip, HEAD, or a working-tree
+  // checkout. We read each object by identity from the object DB (git cat-file)
+  // and refuse anything that is not the exact sealed object — no checkout, no
+  // ref resolution, no mutation of the canonical branch.
+  verifyExactObjectAuthority(binding.local_path, repository.commitSha, repository.treeHash);
   return {
     repositoryPath: binding.local_path,
     commitSha: repository.commitSha,
@@ -180,6 +192,10 @@ function runLocalReadiness(
   const archive = join(directory, 'candidate.tar');
   const checkout = join(directory, 'checkout');
   try {
+    // ADR-053 / LR-02 — read the exact sealed object by identity. The archive
+    // is generated from the content-addressed commitSha verified above (whose
+    // tree === subject.treeHash); it is NOT a checkout of a ref, tip, or the
+    // working tree, and it never mutates the canonical branch.
     const tar = execFileSync('git', [
       '-C', subject.repositoryPath, 'archive', '--format=tar', subject.commitSha,
     ], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
@@ -455,6 +471,56 @@ function git(repositoryPath: string, args: readonly string[]): string {
   return execFileSync('git', ['-C', repositoryPath, ...args], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
+}
+
+/**
+ * Read a git object's type by its EXACT content-addressed id. `git cat-file -t`
+ * resolves ONLY by object id from the object DB — it never moves a ref, reads
+ * the working tree, or checks out a branch. Returns null when the object is
+ * absent or unreadable so the caller can fail closed with a precise code.
+ */
+function readObjectType(repositoryPath: string, objectSha: string): string | null {
+  try {
+    return git(repositoryPath, ['cat-file', '-t', objectSha]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ADR-053 / LR-02 — prove the runnability subject IS the exact content-
+ * addressed git object sealed in the accepted product. The authority is the
+ * immutable commit SHA + tree SHA pair; a moving ref, branch tip, HEAD, or a
+ * working-tree path is refused. Each object is read by identity from the
+ * object DB (git cat-file), and the commit is bound to the sealed tree by
+ * reading the tree id off the commit object itself. Purely read-only: never
+ * checks out, advances, or mutates any ref or the canonical branch.
+ */
+function verifyExactObjectAuthority(
+  repositoryPath: string,
+  commitSha: string,
+  treeHash: string,
+): void {
+  // The authority must be full object ids. Defense-in-depth: resolveSubject
+  // already guards the sealed shape, but the authority layer refuses a moving
+  // ref / tip / HEAD / branch on its own — the proof binds to an immutable
+  // object, not a movable pointer.
+  if (!OBJECT_ID_RE.test(commitSha) || !OBJECT_ID_RE.test(treeHash)) {
+    throw new Error('LOCAL_READINESS_AUTHORITY_NOT_CONTENT_ADDRESSED');
+  }
+  // Read the exact objects by identity. The sealed commit and its tree must
+  // both exist in the object DB with the sealed types.
+  const commitType = readObjectType(repositoryPath, commitSha);
+  if (commitType === null) throw new Error('LOCAL_READINESS_COMMIT_OBJECT_MISSING');
+  if (commitType !== 'commit') throw new Error('LOCAL_READINESS_COMMIT_OBJECT_NOT_COMMIT');
+  const treeType = readObjectType(repositoryPath, treeHash);
+  if (treeType === null) throw new Error('LOCAL_READINESS_TREE_OBJECT_MISSING');
+  if (treeType !== 'tree') throw new Error('LOCAL_READINESS_TREE_OBJECT_NOT_TREE');
+  // Bind the commit to the sealed tree. rev-parse <sha>^{tree} reads the tree
+  // id recorded inside the commit object — no checkout, no ref movement. A
+  // mismatched object (the commit points elsewhere) is refused here.
+  const observedTree = git(repositoryPath, ['rev-parse', `${commitSha}^{tree}`]);
+  if (observedTree !== treeHash) throw new Error('LOCAL_READINESS_TREE_DRIFT');
 }
 
 function errorMessage(error: unknown): string {

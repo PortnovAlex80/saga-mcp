@@ -58,11 +58,13 @@ function integratedProductRef(candidateHash) {
  * Insert one sealed integrated-candidate product row plus its repository
  * binding. The row is addressable by its EXACT (schema_id, artifact_ref,
  * product_hash) identity — the way the real SqliteProcessProductRepository
- * persists it.
+ * persists it. `commitSha`/`treeHash` override the repo's current HEAD so a
+ * test can seal an authority that is NOT the tip (a moving ref, a stale
+ * commit, or a mismatched object).
  */
-function insertProduct(db, { repositoryId, root, candidateHash }) {
-  const commitSha = git(root, 'rev-parse', 'HEAD');
-  const treeHash = git(root, 'rev-parse', 'HEAD^{tree}');
+function insertProduct(db, { repositoryId, root, candidateHash, commitSha, treeHash }) {
+  const sealedCommit = commitSha ?? git(root, 'rev-parse', 'HEAD');
+  const sealedTree = treeHash ?? git(root, 'rev-parse', 'HEAD^{tree}');
   db.prepare('INSERT INTO project_repositories VALUES (?,?)').run(repositoryId, root);
   db.prepare(
     `INSERT INTO factory_process_products
@@ -76,7 +78,7 @@ function insertProduct(db, { repositoryId, root, candidateHash }) {
     candidateHash,
     JSON.stringify({
       candidateHash,
-      repositories: [{ projectRepositoryId: repositoryId, commitSha, treeHash }],
+      repositories: [{ projectRepositoryId: repositoryId, commitSha: sealedCommit, treeHash: sealedTree }],
     }),
   );
 }
@@ -284,4 +286,129 @@ test('trusted provider installation fails closed on authority drift', () => {
     /LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT/u,
   );
   db.close();
+});
+
+// ---------------------------------------------------------------------------
+// ADR-053 / LR-02 — verify the EXACT content-addressed git object authority.
+// The runnability proof binds to an immutable object identity (commit SHA +
+// tree SHA read by `git cat-file`), NEVER to a moving ref / tip / working-tree
+// checkout, and it never mutates the canonical branch.
+// ---------------------------------------------------------------------------
+
+test('proves runnable the EXACT sealed object, not the moved branch tip / working tree', { timeout: 30000 }, async () => {
+  // Seal commit A (green test) as the authority, then advance the repo's tip to
+  // commit B which BREAKS the test. The provider MUST test the exact sealed
+  // object A (→ passed), never the tip / working tree (B → failed).
+  const root = fixture({ passing: true });
+  const sealedCommit = git(root, 'rev-parse', 'HEAD');
+  const sealedTree = git(root, 'rev-parse', 'HEAD^{tree}');
+  const sealedHash = 'a'.repeat(64);
+  // Advance the tip to a RED commit and leave the working tree on it.
+  writeFileSync(join(root, 'test.js'), 'process.exit(1);\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-m', 'break the test');
+  assert.notEqual(git(root, 'rev-parse', 'HEAD'), sealedCommit, 'tip must have moved past sealed commit');
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash: sealedHash, commitSha: sealedCommit, treeHash: sealedTree });
+  try {
+    const result = await createLocalRunnabilityCheckProvider({
+      db, candidateSets: candidateSetsReader('author', sealedHash),
+    }).run(RUN_ARGS);
+    // passed ⇒ the exact object A was tested, not the red tip / working tree.
+    assert.equal(result.outcome, 'passed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a moving ref / branch tip / HEAD as the runnability authority', { timeout: 30000 }, async () => {
+  // The sealed authority must be a content-addressed object id. A branch name,
+  // 'HEAD', or any other movable pointer is refused — the proof binds to an
+  // immutable object, not a pointer that can move under it.
+  const root = fixture({ passing: true });
+  const realTree = git(root, 'rev-parse', 'HEAD^{tree}');
+  const branchName = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
+  for (const badAuthority of [branchName, 'HEAD', 'origin/main']) {
+    const db = newDb();
+    insertProduct(db, {
+      repositoryId: 1, root, candidateHash: 'e'.repeat(64),
+      commitSha: badAuthority, treeHash: realTree,
+    });
+    try {
+      const result = await createLocalRunnabilityCheckProvider({
+        db, candidateSets: candidateSetsReader('author', 'e'.repeat(64)),
+      }).run(RUN_ARGS);
+      assert.equal(result, 'error', `moving ref "${badAuthority}" must be refused as authority`);
+    } finally {
+      db.close();
+    }
+  }
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('rejects a missing or mismatched git object as the authority', { timeout: 30000 }, async () => {
+  const root = fixture({ passing: true });
+  const realCommit = git(root, 'rev-parse', 'HEAD');
+  const realTree = git(root, 'rev-parse', 'HEAD^{tree}');
+  // A valid-looking 40-hex object id that does not exist in this repo's DB.
+  const ghostCommit = '0'.repeat(40);
+  // A real commit whose sealed tree does NOT match (points elsewhere / drift).
+  const wrongTree = '1'.repeat(40);
+
+  const cases = [
+    { label: 'commit object absent', commitSha: ghostCommit, treeHash: realTree },
+    { label: 'tree object absent', commitSha: realCommit, treeHash: wrongTree },
+  ];
+  for (const c of cases) {
+    const db = newDb();
+    insertProduct(db, {
+      repositoryId: 1, root, candidateHash: 'f'.repeat(64),
+      commitSha: c.commitSha, treeHash: c.treeHash,
+    });
+    try {
+      const result = await createLocalRunnabilityCheckProvider({
+        db, candidateSets: candidateSetsReader('author', 'f'.repeat(64)),
+      }).run(RUN_ARGS);
+      assert.equal(result, 'error', `${c.label} must be refused (fail closed)`);
+    } finally {
+      db.close();
+    }
+  }
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('never checks out or mutates the canonical branch while proving runnability', { timeout: 30000 }, async () => {
+  // The provider reads the object by identity (cat-file / rev-parse / archive)
+  // and must NOT advance, create, or delete any ref, must NOT move HEAD, and
+  // must NOT touch the working tree of the canonical checkout.
+  const root = fixture({ passing: true });
+  const sealedHash = 'a'.repeat(64);
+  const before = {
+    head: git(root, 'rev-parse', 'HEAD'),
+    refs: git(root, 'show-ref'),
+    status: git(root, 'status', '--porcelain'),
+    refCount: git(root, 'rev-list', '--all', '--count'),
+  };
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash: sealedHash });
+  try {
+    const result = await createLocalRunnabilityCheckProvider({
+      db, candidateSets: candidateSetsReader('author', sealedHash),
+    }).run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+  } finally {
+    db.close();
+  }
+  const after = {
+    head: git(root, 'rev-parse', 'HEAD'),
+    refs: git(root, 'show-ref'),
+    status: git(root, 'status', '--porcelain'),
+    refCount: git(root, 'rev-list', '--all', '--count'),
+  };
+  assert.equal(after.head, before.head, 'HEAD (canonical branch tip) must not move');
+  assert.equal(after.refs, before.refs, 'no ref may be created, advanced, or deleted');
+  assert.equal(after.status, before.status, 'working tree must not be mutated');
+  assert.equal(after.refCount, before.refCount, 'no new commits may be introduced');
+  rmSync(root, { recursive: true, force: true });
 });
