@@ -898,15 +898,15 @@ export function recoverFailedGateRun(
       `INSERT INTO factory_failed_gate_recovery_authorizations
          (authorization_ref,lifecycle_run_id,stage_run_id,process_run_id,
           failed_node_run_id,workplace_ref,expected_workplace_revision,task_id,
-          producer_execution_ref,candidate_set_ref,candidate_set_digest,
+          candidate_set_ref,candidate_set_digest,
           abandoned_gate_run_ref,abandoned_check_plan_ref,abandoned_check_plan_digest,
           replacement_check_plan_ref,replacement_check_plan_digest,
           replacement_check_plan_snapshot,failure_code,actor_id,reason)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
       authorizationRef,row.lifecycle_run_id,row.stage_run_id,row.process_run_id,
       row.failed_node_run_id,row.workplace_ref,row.workplace_revision,row.task_id,
-      row.producer_execution_ref,row.candidate_set_ref,row.candidate_set_digest,
+      row.candidate_set_ref,row.candidate_set_digest,
       row.gate_run_ref,row.check_plan_ref,row.check_plan_digest,
       plan.checkPlanId,plan.checkPlanDigest,JSON.stringify(plan),failure,
       input.actorId,input.reason,

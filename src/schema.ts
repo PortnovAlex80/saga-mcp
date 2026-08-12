@@ -2192,7 +2192,6 @@ CREATE TABLE IF NOT EXISTS factory_failed_gate_recovery_authorizations (
   workplace_ref            TEXT NOT NULL,
   expected_workplace_revision INTEGER NOT NULL,
   task_id                  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  producer_execution_ref   TEXT NOT NULL,
   candidate_set_ref        TEXT NOT NULL,
   candidate_set_digest     TEXT NOT NULL,
   abandoned_gate_run_ref   TEXT NOT NULL,
