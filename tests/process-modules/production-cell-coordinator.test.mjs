@@ -164,3 +164,106 @@ test('REG-13: worker crash keeps Kanban progress and can be retried', () => {
   assert.equal(final.state.terminalReason, 'accepted');
   h.db.close();
 });
+
+// ---------------------------------------------------------------------------
+// ADR-053 C5-02 — bind the CURRENT workplace task at final author acceptance.
+// The accepted-authority head's accepted_author_task_id is the carry-forward-
+// safe task authority: sourced from the worker-execution→task binding at the
+// acceptance site (see production-cell-node-executor.test.mjs for the source
+// selection), and threaded verbatim through applyGateDecision → record().
+// These tests prove the coordinator plumbing: the task id passed to
+// applyGateDecision is the task id written on the head, and a repair-cycle
+// re-acceptance re-binds it (never a stale value).
+// ---------------------------------------------------------------------------
+
+function headRow(db) {
+  return db.prepare(
+    `SELECT accepted_author_candidate_set_ref AS cs,
+            accepted_author_gate_decision_key AS gd,
+            revision, accepted_author_task_id AS task
+       FROM factory_accepted_authority_head
+      ORDER BY workplace_ref LIMIT 1`,
+  ).get();
+}
+
+/** Force the workplace back to in_progress/verifying (author) via direct CAS,
+ * simulating a repair cycle returning the author to a fresh acceptance visit. */
+function forceAuthorVerifying(workplaceRepo, ref, reservationRef) {
+  const cur = workplaceRepo.read(ref);
+  const forced = workplaceRepo.applyTransition({
+    workplaceRef: ref,
+    expectedRevision: cur.revision,
+    kanbanPhase: 'in_progress',
+    loopState: 'verifying',
+    nextRole: 'author',
+    terminalReason: null,
+    activeReservationRef: reservationRef,
+  });
+  assert.equal(forced.applied, true);
+}
+
+test('ADR-053 C5-02: author acceptance writes the current workplace task id onto the authority head', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  h.coordinator.applyGateDecision(REF, {
+    verdict: 'accepted', isFinal: false,
+    acceptedCandidateSetRef: 'candidate-set/attempt-1',
+    gateDecisionKey: 'gate-decision/author/accepted/rev-1',
+    acceptedAuthorTaskId: 'task-42',
+  });
+  const head = headRow(h.db);
+  assert.ok(head, 'C5-02: authority head must be recorded on author acceptance');
+  assert.equal(head.cs, 'candidate-set/attempt-1');
+  assert.equal(head.gd, 'gate-decision/author/accepted/rev-1');
+  // The head carries the CURRENT workplace task bound at acceptance.
+  assert.equal(head.task, 'task-42');
+  h.db.close();
+});
+
+test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identity to the now-current task', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  // First author acceptance (with-review): head records the first task.
+  h.coordinator.applyGateDecision(REF, {
+    verdict: 'accepted', isFinal: false,
+    acceptedCandidateSetRef: 'candidate-set/attempt-1',
+    gateDecisionKey: 'gate-decision/author/accepted/rev-1',
+    acceptedAuthorTaskId: 'task-A',
+  });
+  let head = headRow(h.db);
+  assert.equal(head.cs, 'candidate-set/attempt-1');
+  assert.equal(head.task, 'task-A');
+  const firstRevision = head.revision;
+
+  // A repair cycle returns the author to verifying and a NEW author CandidateSet
+  // is accepted. The head must re-bind to the now-current task — not stay stale.
+  forceAuthorVerifying(h.workplaceRepo, REF, 'execution:repair-2');
+  h.coordinator.applyGateDecision(REF, {
+    verdict: 'accepted', isFinal: false,
+    acceptedCandidateSetRef: 'candidate-set/attempt-2',
+    gateDecisionKey: 'gate-decision/author/accepted/rev-3',
+    acceptedAuthorTaskId: 'task-B',
+  });
+  head = headRow(h.db);
+  assert.equal(head.cs, 'candidate-set/attempt-2', 'C1 pointer re-binds to the new accepted set');
+  assert.ok(head.revision > firstRevision, 'head was re-recorded at the new acceptance revision');
+  // Task identity re-binds to the now-current task, NOT the stale first task.
+  assert.equal(head.task, 'task-B');
+  h.db.close();
+});
+
+test('ADR-053 C5-02: acceptance without a resolvable task leaves the head task identity null (C1 pointer still recorded)', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  h.coordinator.applyGateDecision(REF, {
+    verdict: 'accepted', isFinal: false,
+    acceptedCandidateSetRef: 'candidate-set/1',
+    gateDecisionKey: 'gate-decision/1',
+    // acceptedAuthorTaskId omitted: the acceptance site could not resolve a task.
+  });
+  const head = headRow(h.db);
+  assert.ok(head);
+  assert.equal(head.cs, 'candidate-set/1');
+  assert.equal(head.task, null);
+  h.db.close();
+});

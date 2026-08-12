@@ -584,6 +584,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           // accepted set, never sets[0] by hash order.
           acceptedCandidateSetRef: candidate.candidateSetRef,
           gateDecisionKey: decision.decisionKey,
+          // ADR-053 C5-02 — bind the CURRENT workplace task at acceptance. The
+          // authoritative source is the worker-execution→task binding
+          // (readExecutionReceipt): the exact task the accepted execution was
+          // launched for. This is carry-forward-safe — NOT submission.task_id
+          // (the ORIGIN process's task, wrong after carry-forward) and NOT
+          // ORDER BY t.id DESC (recency, wrong in repair cycles). A carry-forward
+          // presenter has no worker receipt; it falls back to the durable
+          // author-task projection for this workplace.
+          acceptedAuthorTaskId: this.resolveAcceptedAuthorTaskId(executionRef, workplace.ref),
         });
         // ADR-053 B-8/C6 — gate accepted → effects must run (mandatory
         // obligation). The obligation carries the EXACT accepted GateDecision
@@ -1004,6 +1013,34 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       productSource: cell.productContracts.find(c => c.schemaRef === node.outputSchema?.id)?.productSource,
     });
     return plan.taskId;
+  }
+
+  /**
+   * ADR-053 C5-02 — resolve the CURRENT workplace task at author acceptance:
+   * the task whose material is being accepted. This is the carry-forward-safe
+   * task authority written to the accepted-authority head.
+   *
+   * Source (authoritative, in priority order):
+   *   1. The worker-execution→task binding — `readExecutionReceipt(executionRef)`.
+   *      This is the EXACT task the accepted execution was launched for, read by
+   *      execution_id PK. It is neither `submission.task_id` (the ORIGIN
+   *      process's task — wrong after carry-forward) nor `ORDER BY t.id DESC`
+   *      (recency — wrong in repair cycles).
+   *   2. The durable author-task projection — `readProjectedRoleTask(workplace,
+   *      'author')`. Used when the producer is a kernel presenter (an authorized
+   *      carry-forward) that deliberately has no worker receipt; the workplace's
+   *      single stable author task (generationKey `${workplaceRef}:author`) is
+   *      the current task whose material is being accepted.
+   *
+   * Returns the task id as a string (the head column is TEXT), or null when no
+   * task can be resolved — the head still records the C1 pointer but leaves task
+   * identity unbound, which downstream integration treats as "not yet bound".
+   */
+  private resolveAcceptedAuthorTaskId(executionRef: string, workplaceRef: WorkplaceRef): string | null {
+    const receipt = this.opts.persistence.readExecutionReceipt(executionRef);
+    if (receipt) return String(receipt.taskId);
+    const projected = this.opts.persistence.readProjectedRoleTask?.(workplaceRef, 'author');
+    return projected ? String(projected.taskId) : null;
   }
 
   private sealCandidateSet(
