@@ -1,5 +1,6 @@
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import type { PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
+import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-modules/shared/workplace-production-snapshot.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
   'formalization.accept-exact-products.v1';
@@ -12,15 +13,26 @@ interface ArtifactRow {
   drift_state: string;
 }
 
+interface ProductSnapshotRow {
+  payload_snapshot: string;
+}
+
+interface SnapshotArtifact {
+  artifactId: number;
+  contentHash: string;
+}
+
 /**
  * Projection effect after an authoritative Cell GateDecision=accepted.
  *
- * ADR-053 B-4/B-5 — the effect consumes ONLY `authority.acceptedProductRefs`.
- * Each accepted product carries `ref='artifact:<id>'` and `digest=<contentHash>`,
- * so the artifact rows are resolved directly from the authority — no
- * `factory_process_products` join, no `payload_snapshot` re-derivation, no
- * `processRunId`/`nodeId`/`expectedProductSchema` selectors. A changed artifact
- * (content_hash mismatch) is a different product and fails closed.
+ * ADR-053 / conveyor-v4.3 — accepted products are immutable Workplace
+ * production snapshots persisted in `factory_process_products`. Each accepted
+ * product ref is `workplace:<module>:<node>:<snapshotHash>` (the universal
+ * exact-product store key), NOT `artifact:<id>`. The artifact rows produced by
+ * the worker live INSIDE the snapshot, so the effect resolves them by reading
+ * the pinned snapshot payload and extracting the (artifactId, contentHash)
+ * pairs it carries. A product whose pinned row is missing, whose payload_hash
+ * drifted, or whose body is not a Workplace production snapshot fails closed.
  */
 export function createFormalizationAcceptProductsEffect(
   db: SqlDatabasePort,
@@ -28,19 +40,46 @@ export function createFormalizationAcceptProductsEffect(
   return {
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     run(input) {
-      const produced = input.authority.acceptedProductRefs.map(p => {
-        const match = /^artifact:(\d+)$/u.exec(p.ref);
-        if (!match) {
-          throw new Error(
-            `FORMALIZATION_ACCEPTANCE_PRODUCT_REF_INVALID: ${p.ref}`,
-          );
-        }
+      const produced = input.authority.acceptedProductRefs.flatMap(p => {
         if (!p.digest) {
           throw new Error(
-            `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${p.ref}`,
+            `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${p.schemaId}/${p.ref}`,
           );
         }
-        return { artifact_id: Number(match[1]), content_hash: p.digest };
+        // The (schemaId, ref, product_hash) triple is exactly the
+        // idx_factory_process_products_schema_ref_hash index key, so this is a
+        // direct equality probe on the immutable pinned product row.
+        // The (schemaId, ref, product_hash) triple is exactly the
+        // idx_factory_process_products_schema_ref_hash index key, so this is a
+        // direct equality probe pinning the immutable product row by its full
+        // ProductRef identity.
+        const row = db.prepare(
+          `SELECT payload_snapshot
+             FROM factory_process_products
+            WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
+        ).get(p.schemaId, p.ref, p.digest) as ProductSnapshotRow | undefined;
+        if (!row) {
+          throw new Error(
+            `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${p.schemaId}/${p.ref}`,
+          );
+        }
+        const snapshot = JSON.parse(row.payload_snapshot) as {
+          schemaVersion?: string;
+          artifacts?: unknown;
+        };
+        if (
+          snapshot.schemaVersion !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
+          || !Array.isArray(snapshot.artifacts)
+        ) {
+          throw new Error(
+            `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_SNAPSHOT: ${p.schemaId}/${p.ref}`,
+          );
+        }
+        const artifacts = snapshot.artifacts as SnapshotArtifact[];
+        return artifacts.map(a => ({
+          artifact_id: a.artifactId,
+          content_hash: a.contentHash,
+        }));
       });
 
       const apply = db.transaction(() => {
