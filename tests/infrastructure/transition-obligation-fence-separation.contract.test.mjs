@@ -156,6 +156,8 @@ test('C7-01 contract: legitimate branded append + lease + complete succeeds', ()
     obligationKey: ob.obligationKey,
     completionReceipt: 'gate-run/w1/receipt-1',
     resultDigest: 'sha256:r',
+    owner: 'rec-1',
+    fence: leaseFence(1),
   });
   assert.equal(completed.state, 'completed');
   assert.equal(completed.completionReceipt, 'gate-run/w1/receipt-1');

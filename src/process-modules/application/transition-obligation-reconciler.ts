@@ -152,10 +152,19 @@ export class TransitionObligationReconciler {
 
       try {
         const result = await handler.execute(leasedObligation);
+        // ADR-053 C7-04 — completion is fenced by the lease token this sweep
+        // just acquired: the owner that holds the lease and the SAME fence the
+        // lease was taken under (allocated from the store when none was
+        // supplied, or the caller-supplied token). The ledger rejects a
+        // completion whose fence is lower than the obligation's stored monotonic
+        // lease_fence, so a lease holder that has since been superseded by a
+        // newer fence cannot complete.
         this.ledger.complete({
           obligationKey: obligation.obligationKey,
           completionReceipt: result.completionReceipt,
           resultDigest: result.resultDigest,
+          owner: options.leaseOwner,
+          fence,
         });
         completed += 1;
       } catch (error) {

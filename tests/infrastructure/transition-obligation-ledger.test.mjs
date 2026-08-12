@@ -102,6 +102,8 @@ test('Phase 2: lease an obligation and complete it', () => {
       handoffKind: 'run-gate',
       result: { verdict: 'accepted' },
     }),
+    owner: 'reconciler-1',
+    fence: leaseFence(1),
   });
   assert.equal(completed.state, 'completed');
   assert.equal(completed.completionReceipt, 'gate-run/workplace-1/receipt-1');
@@ -145,6 +147,8 @@ test('Phase 2: crash after lease → lease expiry → recovery converges to one 
     obligationKey: ob.obligationKey,
     completionReceipt: 'gate-run/workplace-1/receipt-1',
     resultDigest: 'sha256:result',
+    owner: 'reconciler-2',
+    fence: leaseFence(2),
   });
   assert.equal(completed.state, 'completed');
   assert.equal(completed.completionReceipt, 'gate-run/workplace-1/receipt-1');
@@ -163,11 +167,15 @@ test('Phase 2: idempotent completion — same receipt is a no-op', () => {
     obligationKey: ob.obligationKey,
     completionReceipt: 'receipt-A',
     resultDigest: 'sha256:A',
+    owner: 'r1',
+    fence: leaseFence(1),
   });
   const second = ledger.complete({
     obligationKey: ob.obligationKey,
     completionReceipt: 'receipt-A',
     resultDigest: 'sha256:A',
+    owner: 'r1',
+    fence: leaseFence(1),
   });
   assert.equal(first.state, 'completed');
   assert.equal(second.state, 'completed');
@@ -186,12 +194,16 @@ test('Phase 2: divergent completion receipt is rejected', () => {
     obligationKey: ob.obligationKey,
     completionReceipt: 'receipt-A',
     resultDigest: 'sha256:A',
+    owner: 'r1',
+    fence: leaseFence(1),
   });
   assert.throws(
     () => ledger.complete({
       obligationKey: ob.obligationKey,
       completionReceipt: 'receipt-B',
       resultDigest: 'sha256:B',
+      owner: 'r1',
+      fence: leaseFence(1),
     }),
     /TRANSITION_OBLIGATION_ALREADY_COMPLETED/,
   );

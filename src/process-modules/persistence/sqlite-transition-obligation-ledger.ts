@@ -111,6 +111,21 @@ export interface CompleteObligationInput {
   readonly obligationKey: string;
   readonly completionReceipt: string;
   readonly resultDigest: string;
+  /**
+   * ADR-053 C7-04 — the owner completing this obligation (the lease holder that
+   * acquired the lease for this sweep). REQUIRED: a completion without an owner
+   * fails closed (anonymous/unattributed completion is rejected).
+   */
+  readonly owner: string;
+  /**
+   * ADR-053 C7-04 — the monotonic LEASE-FENCE token authorizing this completion.
+   * REQUIRED: a completion without a fence fails closed. A fence LOWER than the
+   * obligation's stored monotonic `lease_fence` is rejected — a stale lease
+   * holder (older fence) cannot complete work that a newer fence now owns. The
+   * stored fence is never lowered by a completion attempt: {@link complete}
+   * performs the staleness read but its UPDATE never writes `lease_fence`.
+   */
+  readonly fence: LeaseFence;
 }
 
 /**
@@ -354,8 +369,30 @@ export class SqliteTransitionObligationLedger {
    * Record a successful completion. Idempotent: if already completed with the
    * same receipt, this is a no-op. A different receipt for the same key is
    * rejected — the obligation converged already.
+   *
+   * ADR-053 C7-04 — completion is FENCED BY THE LEASE TOKEN. Both `owner` and
+   * `fence` are REQUIRED: a completion that lacks either fails closed. The
+   * `fence` must be >= the obligation's stored monotonic `lease_fence`; a LOWER
+   * fence is REJECTED, so a stale lease holder (an older fence) cannot complete
+   * work that a newer fence has since taken over (via {@link lease} /
+   * {@link allocateLeaseFence} / {@link persistLeaseFence}). The stored fence is
+   * NEVER lowered by a completion attempt: the UPDATE below does not write
+   * `lease_fence`, so whatever monotonic value is there stays.
    */
   complete(input: CompleteObligationInput): TransitionObligation {
+    // Fail closed first: a completion MUST carry the lease owner and the lease
+    // fence. assertLeaseFence rejects a missing or wrongly-branded fence (a
+    // causal source revision is not a lease token); the owner check rejects an
+    // empty/whitespace owner.
+    assertLeaseFence(input.fence);
+    if (typeof input.owner !== 'string' || input.owner.trim() === '') {
+      throw new Error(
+        `TRANSITION_OBLIGATION_COMPLETION_REQUIRES_OWNER: ${input.obligationKey} `
+          + '(completion must carry the lease owner; an anonymous completion is '
+          + 'rejected)',
+      );
+    }
+
     const existing = this.get(input.obligationKey);
     if (!existing) {
       throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${input.obligationKey}`);
@@ -370,6 +407,24 @@ export class SqliteTransitionObligationLedger {
       }
       return existing;
     }
+
+    // Stale-lease guard. A fence LOWER than the stored monotonic lease_fence
+    // means the completer holds an OUTDATED lease: a newer fence has since
+    // taken the obligation over. Such a completion is REJECTED — the stale
+    // holder cannot complete work a newer fence now owns. When no lease fence
+    // has ever been stored (NULL), the floor is 0 and any allocated/supplied
+    // fence (>= 1) is accepted. This is a READ only; the UPDATE below does not
+    // write `lease_fence`, so the stored value can never decrease here.
+    const storedFenceFloor = existing.leaseFence ?? 0;
+    if (input.fence.value < storedFenceFloor) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_STALE_FENCE: ${input.obligationKey} completion `
+          + `fence ${input.fence.value} is lower than the stored monotonic `
+          + `lease_fence ${existing.leaseFence}; a stale lease holder cannot `
+          + 'complete after a newer fence has taken over',
+      );
+    }
+
     this.db.prepare(
       `UPDATE factory_transition_obligations
        SET state = 'completed',
