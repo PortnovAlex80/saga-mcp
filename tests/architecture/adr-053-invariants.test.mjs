@@ -187,10 +187,9 @@ test('ADR-053 mutation: ratchet baseline matches actual latestCandidate count ex
   // must lower the baseline in adr-053-material-authority-ratchet.test.mjs.
   assert.equal(
     count,
-    3,
-    `latestCandidate count is exactly 3 (baseline). Got ${count}. ` +
-      `If you added one, you reintroduced execution-scoped material authority. ` +
-      `If you removed one, lower the ratchet baseline.`,
+    0,
+    `latestCandidate count is exactly 0 (clean-break). Got ${count}. ` +
+      `Any latestCandidate is execution-scoped material authority — FORBIDDEN.`,
   );
 });
 
@@ -225,7 +224,7 @@ test('ADR-053 mutation: ORDER BY sealed_at DESC count matches baseline exactly',
   }
   assert.equal(
     count,
-    4,
-    `ORDER BY sealed_at DESC count is exactly 4 (baseline). Got ${count}.`,
+    3,
+    `ORDER BY sealed_at DESC count is exactly 3 (replay paths remain). Got ${count}.`,
   );
 });

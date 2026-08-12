@@ -86,6 +86,7 @@ import {
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../domain/formalization-schemas.js';
+import { assembleRevision, buildContribution } from '../../../process-modules/domain/workplace/workplace-production-revision.js';
 
 export const FORMALIZATION_MODULE_KEY =
   `${FORMALIZATION_PROCESS_MODULE_REF.name}@${FORMALIZATION_PROCESS_MODULE_REF.version}`;
@@ -187,6 +188,7 @@ export interface CandidateSetSealPort {
   seal(input: {
     readonly workplaceRef: WorkplaceRef;
     readonly producerExecutionRef: string;
+    readonly productionRevisionRef: string;
     readonly role: 'author' | 'reviewer';
     readonly subjectCandidateSetRef: string | null;
     readonly members: ReadonlyArray<{
@@ -1048,9 +1050,31 @@ function sealArchitectureCandidateSet(
     workKey: 'default',
   };
   const sealReceiptRef = `execution-complete:${writes.receipt.executionId}`;
+  // ADR-053: assemble a revision from the artifacts to carry productionRevisionRef.
+  const workplaceSerialized = `${workplaceRef.processRunId}/${workplaceRef.moduleRef}/${workplaceRef.productionCellId}/${workplaceRef.workKey}`;
+  const revisionContribution = buildContribution({
+    workplaceRef: `workplace/${workplaceSerialized}`,
+    contributorExecutionRef: writes.receipt.executionId,
+    sourceAdapter: 'managed-artifact',
+    operations: members.map(m => ({
+      op: 'put' as const,
+      memberKey: `product/${m.productRef.schemaId}/${m.productRef.ref}`,
+      productRef: m.productRef.ref,
+      contentDigest: m.productRef.digest,
+      sourceAdapter: 'managed-artifact' as const,
+    })),
+    parentContributionRef: null,
+  });
+  const revision = assembleRevision({
+    workplaceRef: `workplace/${workplaceSerialized}`,
+    parent: null,
+    contributions: [revisionContribution],
+    presenterRef: writes.receipt.executionId,
+  });
   const result = deps.candidateSetRepo.seal({
     workplaceRef,
     producerExecutionRef: writes.receipt.executionId,
+    productionRevisionRef: revision.revisionRef,
     role: 'author',
     subjectCandidateSetRef: null,
     members,

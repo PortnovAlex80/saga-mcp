@@ -58,6 +58,7 @@ test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true
   const sealInput = {
     workplaceRef: wpRef,
     producerExecutionRef: 'exec-1',
+    productionRevisionRef: 'rev-test-1',
     role: 'author',
     subjectCandidateSetRef: null,
     members: makeMembers(2),
@@ -110,7 +111,7 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
   const wpRef = makeWorkplaceRef();
 
   repo.seal({
-    workplaceRef: wpRef, producerExecutionRef: 'exec-1', role: 'author',
+    workplaceRef: wpRef, producerExecutionRef: 'exec-1', productionRevisionRef: 'rev-test-1', role: 'author',
     subjectCandidateSetRef: null, members: makeMembers(1),
     sealReceiptRef: 'receipt-1', candidateSetDigest: sha256('digest-A'), sealedAt: '2026-01-01',
   });
@@ -118,7 +119,7 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
   // Different digest under the same seal key → must throw
   assert.throws(
     () => repo.seal({
-      workplaceRef: wpRef, producerExecutionRef: 'exec-1', role: 'author',
+      workplaceRef: wpRef, producerExecutionRef: 'exec-1', productionRevisionRef: 'rev-test-1', role: 'author',
       subjectCandidateSetRef: null, members: makeMembers(2),
       sealReceiptRef: 'receipt-1', candidateSetDigest: sha256('digest-B'), sealedAt: '2026-01-01',
     }),

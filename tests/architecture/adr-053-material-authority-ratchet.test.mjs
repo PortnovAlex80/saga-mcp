@@ -60,8 +60,8 @@ const SRC_ROOT = path.join(REPO_ROOT, 'src');
 // Baselines — LOWER ONLY, never raise. See file header.
 // ---------------------------------------------------------------------------
 const BASELINE = Object.freeze({
-  latestCandidate: 3,
-  orderBySealedAtDesc: 4,
+  latestCandidate: 0,
+  orderBySealedAtDesc: 3,
 });
 
 // ---------------------------------------------------------------------------

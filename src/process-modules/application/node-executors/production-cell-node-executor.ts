@@ -518,7 +518,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       this.assertProductContract(cell, products, node.id);
     }
     const subjectAuthorSet = role === 'reviewer'
-      ? this.latestCandidate(workplace.ref, 'author')
+      ? this.acceptedAuthorCandidate(workplace.ref)
       : null;
     const candidate = carryDirective
       ? this.sealCarriedForwardCandidateSet(workplace.ref, carryDirective)
@@ -658,7 +658,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         moduleRef: ctx.module.identity,
         nodeId: node.id,
         candidateSetRef: acceptedCandidate.candidateSetRef,
-        producerExecutionRef: acceptedCandidate.producerExecutionRef,
         expectedProductSchema: cell.productContracts[0]!.schemaRef,
         authority: {
           workplaceRef: workplace.ref,
@@ -722,8 +721,21 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       moduleRef: ctx.module.identity,
       nodeId: cell.id,
       candidateSetRef: acceptedCandidate.candidateSetRef,
-      producerExecutionRef: acceptedCandidate.producerExecutionRef,
       expectedProductSchema: cell.productContracts[0]!.schemaRef,
+      authority: {
+        workplaceRef,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        productionRevisionRef: acceptedCandidate.productionRevisionRef,
+        acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
+        gateDecisionKey: '',
+        productContractRef: cell.productContracts[0]?.payloadContract ?? null,
+        acceptanceDigest: computeAcceptanceDigest({
+          candidateSetRef: acceptedCandidate.candidateSetRef,
+          productionRevisionRef: acceptedCandidate.productionRevisionRef,
+          acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
+          gateDecisionKey: '',
+        }),
+      },
     };
     // UNIVERSAL: replay capture runs for EVERY accepted candidate, regardless
     // of module. This is not a cell-specific effect — it is the factory-wide
@@ -750,7 +762,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     const profile = resolveExecutionProfile(ctx, roleDeclaration.skillRef);
     const reviewerSubject = role === 'reviewer'
-      ? this.latestCandidate(workplace.ref, 'author')
+      ? this.acceptedAuthorCandidate(workplace.ref)
       : null;
     if (role === 'reviewer' && !reviewerSubject) {
       throw new NodeExecutionError(
@@ -947,8 +959,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     workplaceRef: WorkplaceRef,
     executionRef: string,
     products: readonly ProductRef[],
-  ): string | null {
-    if (!this.opts.revisionRepo || products.length === 0) return null;
+  ): string {
+    if (products.length === 0) {
+      throw new Error('CANNOT_SEAL_EMPTY_PRODUCT_SET: ADR-053 requires productionRevisionRef for every CandidateSet');
+    }
     const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
     const operations = products.map(p => ({
       op: 'put' as const,
@@ -970,7 +984,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       contributions: [contribution],
       presenterRef: executionRef,
     });
-    this.opts.revisionRepo.appendRevision(revision);
+    this.opts.revisionRepo?.appendRevision(revision);
     return revision.revisionRef;
   }
 
@@ -1099,9 +1113,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     };
   }
 
-  private latestCandidate(ref: WorkplaceRef, role: 'author' | 'reviewer'): CandidateSet | null {
+  /**
+   * ADR-053 clean-break: find the author CandidateSet for a workplace.
+   * Uses deterministic candidate_set_ref ordering (NOT sealed_at recency).
+   * The reviewer binds to this exact set as its subject.
+   */
+  private acceptedAuthorCandidate(ref: WorkplaceRef): CandidateSet | null {
     const sets = this.opts.candidateSetRepo.listForWorkplace(ref)
-      .filter(set => set.role === role);
+      .filter(set => set.role === 'author');
     return sets[0] ?? null;
   }
 

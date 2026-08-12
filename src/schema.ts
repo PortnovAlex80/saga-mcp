@@ -1376,28 +1376,21 @@ BEFORE DELETE ON factory_workplace_production_revisions BEGIN
 END;
 
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
--- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
--- of the same execution's completion returns the same row (REG-12-AC-01); a
--- different payload under the same key is rejected by the repository.
--- ADR-053 Phase 5: production_revision_ref is the immutable Workplace
--- production revision the set's material was sealed from. When non-null it is
--- the MATERIAL AUTHORITY (seal key derived from the revision, not execution).
--- Nullable for legacy v1 sets sealed before the cutover; Phase 7 makes it
--- required.
+-- ADR-053 clean-break: production_revision_ref IS the material authority and
+-- is REQUIRED. The seal key is (workplace_ref, production_revision_ref, role).
+-- producer_execution_ref is provenance-only (nullable).
 CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
-  producer_execution_ref  TEXT NOT NULL,
-  production_revision_ref TEXT,
+  producer_execution_ref  TEXT,
+  production_revision_ref TEXT NOT NULL,
   role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
-  -- REQUIRED non-null when role=reviewer; enforced by the domain validator
-  -- (assertValidCandidateSet) and by the repository write path.
   subject_candidate_set_ref TEXT,
   candidate_set_digest    TEXT NOT NULL,
   seal_receipt_ref        TEXT NOT NULL,
   sealed_at               TEXT NOT NULL,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (workplace_ref, producer_execution_ref, role),
+  UNIQUE (workplace_ref, production_revision_ref, role),
   FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
 );
 

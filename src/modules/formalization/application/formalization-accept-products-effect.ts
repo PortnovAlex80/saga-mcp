@@ -57,32 +57,17 @@ export function createFormalizationAcceptProductsEffect(
       // settled on the accepted version would always fail with content drift on
       // the first intermediate hash.
       // Managed-production CandidateSets freeze the complete Workplace desk,
-      // which may contain contributions from several executions after crash
-      // recovery. The immutable accepted snapshot is the effect authority;
-      // filtering by only the presenter execution silently loses earlier
-      // contributions. Typed-submission cells have no such snapshot and keep
-      // the legacy execution-scoped projection behavior.
+      // ADR-053 clean-break: the accepted snapshot is the SOLE material
+      // authority. When it exists, project its artifacts. When it does NOT
+      // exist (typed-submission cells that have no managed artifacts), there
+      // is nothing to project — return empty. The legacy execution-scoped
+      // fallback query is DELETED.
       const produced: ProducedArtifactRow[] = acceptedSnapshot
         ? acceptedSnapshot.artifacts.map(artifact => ({
             artifact_id: artifact.artifactId,
             content_hash: artifact.contentHash,
           }))
-        : db.prepare(
-            `SELECT artifact_id,content_hash
-               FROM factory_managed_artifact_productions
-              WHERE process_run_id=? AND execution_id=?
-                AND id IN (
-                  SELECT MAX(id) FROM factory_managed_artifact_productions
-                   WHERE process_run_id=? AND execution_id=?
-                   GROUP BY artifact_id
-                )
-              ORDER BY id`,
-          ).all(
-            input.processRunId,
-            input.producerExecutionRef,
-            input.processRunId,
-            input.producerExecutionRef,
-          ) as ProducedArtifactRow[];
+        : [];
 
       const apply = db.transaction(() => {
         for (const item of produced) {
@@ -177,7 +162,6 @@ function readAcceptedWorkplaceSnapshot(
     !isWorkplaceProductionSnapshot(payload)
     || payload.workplaceRef !== serializeWorkplaceRef(input.workplaceRef)
     || payload.expectedSchemaRef !== input.expectedProductSchema
-    || payload.presenterExecutionRef !== input.producerExecutionRef
   ) {
     throw new Error(
       `FORMALIZATION_ACCEPTANCE_SNAPSHOT_MISMATCH: ${input.candidateSetRef}`,

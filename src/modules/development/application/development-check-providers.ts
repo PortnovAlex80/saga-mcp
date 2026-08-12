@@ -185,9 +185,13 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const processRunId = Number(parameters.processRunId);
-        if (!Number.isInteger(processRunId) || processRunId <= 0) return 'error';
+        if (!Number.isInteger(processRunId) || processRunId <= 0) {
+          return 'error';
+        }
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
-        if (!candidate || candidate.role !== 'author') return 'error';
+        if (!candidate || candidate.role !== 'author') {
+          return 'error';
+        }
         const row = input.db.prepare(
           `SELECT id,schema_version,payload_snapshot,content_hash
              FROM factory_managed_node_submissions
@@ -213,7 +217,9 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
         const processRun = input.db.prepare(
           `SELECT input_schema,input_snapshot FROM factory_process_runs WHERE id=?`,
         ).get(processRunId) as { input_schema: string; input_snapshot: string } | undefined;
-        if (!processRun || processRun.input_schema !== DEVELOPMENT_CASE_SCHEMA) return 'error';
+        if (!processRun || processRun.input_schema !== DEVELOPMENT_CASE_SCHEMA) {
+          return 'error';
+        }
         const developmentCase = JSON.parse(processRun.input_snapshot) as DevelopmentCase;
         const graph = buildCanonicalDevelopmentTaskGraph(
           developmentCase,
@@ -225,7 +231,9 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
           },
         );
         const validation = policy.validate(developmentCase, graph);
-        if (validation.valid) return 'passed';
+        if (validation.valid) {
+          return 'passed';
+        }
         return {
           outcome: 'failed',
           evidenceRefs: validation.errors.map((message, index) => encodeCheckDiagnostic({
@@ -234,7 +242,7 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
             subjectRef: subjectCandidateSetRef,
           })),
         };
-      } catch {
+      } catch (err) {
         return 'error';
       }
     },

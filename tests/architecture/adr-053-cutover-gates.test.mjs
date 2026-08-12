@@ -27,14 +27,14 @@ function srcExists(rel) {
 }
 
 // Gate 1: PostAcceptanceEffectInput contains no producerExecutionRef.
-// STATUS: PARTIALLY MET — producerExecutionRef is deprecated but still on the
-// type. Phase 6 added AcceptedCandidateAuthority; Phase 7+ removes the field.
-test('Gate 1 [partial]: PostAcceptanceEffectInput has AcceptedCandidateAuthority; producerExecutionRef deprecated', () => {
+test('Gate 1 [met]: PostAcceptanceEffectInput has NO producerExecutionRef — authority is sole input', () => {
   const src = readSrc('src/process-modules/application/post-acceptance-effects.ts');
   assert.ok(src.includes('AcceptedCandidateAuthority'), 'authority type exists');
-  assert.ok(src.includes('@deprecated'), 'producerExecutionRef is deprecated');
-  // Still present — removal is a follow-up gate.
-  assert.ok(src.includes('producerExecutionRef'), 'producerExecutionRef still on type (removal pending)');
+  assert.ok(src.includes('readonly authority: AcceptedCandidateAuthority'), 'authority is REQUIRED');
+  // producerExecutionRef must NOT be on PostAcceptanceEffectInput
+  const inputMatch = src.match(/export interface PostAcceptanceEffectInput \{[^}]*\}/s);
+  assert.ok(inputMatch, 'PostAcceptanceEffectInput found');
+  assert.doesNotMatch(inputMatch[0], /producerExecutionRef/, 'NO producerExecutionRef on effect input');
 });
 
 // Gate 2: CandidateSet v2 references an immutable production revision.

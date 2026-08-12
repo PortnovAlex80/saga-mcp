@@ -20,7 +20,7 @@ export function createGitIntegrationEffect(
         schema: 'factory.git-integration-request.v1',
         workplaceRef: serializeWorkplaceRef(input.workplaceRef),
         candidateSetRef: input.candidateSetRef,
-        producerExecutionRef: input.producerExecutionRef,
+        productionRevisionRef: input.authority.productionRevisionRef,
         expectedProductSchema: input.expectedProductSchema,
       } as const;
       const actionKey = sha256Hex(request);

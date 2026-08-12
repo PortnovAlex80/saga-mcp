@@ -20,7 +20,7 @@ export interface AcceptedCandidateAuthority {
   readonly workplaceRef: WorkplaceRef;
   readonly candidateSetRef: string;
   /** The immutable Workplace production revision the accepted material was sealed from. */
-  readonly productionRevisionRef: string | null;
+  readonly productionRevisionRef: string;
   /** The exact accepted ProductRefs from the accepted CandidateSet members. */
   readonly acceptedProductRefs: readonly ProductRef[];
   /** The GateDecision that accepted this CandidateSet. */
@@ -41,15 +41,12 @@ export interface PostAcceptanceEffectInput {
   readonly moduleRef: { readonly name: string; readonly version: string };
   readonly nodeId: string;
   readonly candidateSetRef: string;
-  /** @deprecated ADR-053 Phase 6 — use authority.productionRevisionRef instead. */
-  readonly producerExecutionRef: string;
   readonly expectedProductSchema: string;
   /**
-   * ADR-053 Phase 6 — the exact accepted-candidate authority. When present,
-   * effects MUST consume this instead of producerExecutionRef. Phase 7 makes
-   * this required and removes producerExecutionRef.
+   * ADR-053 clean-break: the SOLE material authority for effects. Effects MUST
+   * consume only this. LEGACY FALLBACK TO producerExecutionRef IS FORBIDDEN.
    */
-  readonly authority?: AcceptedCandidateAuthority;
+  readonly authority: AcceptedCandidateAuthority;
 }
 
 /**

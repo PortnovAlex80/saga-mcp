@@ -110,17 +110,20 @@ export interface CandidateSet {
   readonly candidateSetRef: string;
   /** The workplace this set belongs to. */
   readonly workplaceRef: WorkplaceRef;
-  /** The fenced execution that produced (or carried forward) these members. */
+  /**
+   * Provenance-only: the execution that presented this set. NOT material
+   * authority. ADR-053 clean-break: this field MUST NOT be used to select
+   * material after seal.
+   */
   readonly producerExecutionRef: string;
   /**
-   * ADR-053 Phase 5 — the immutable Workplace production revision this
-   * CandidateSet's material was sealed from. When non-null, this is the
-   * MATERIAL AUTHORITY: the seal key is derived from the revision, not from
-   * the execution. When null (legacy v1 sets sealed before the cutover), the
-   * old execution-scoped key is used. Phase 7 makes this required and removes
-   * the null fallback.
+   * ADR-053 — the immutable Workplace production revision this CandidateSet's
+   * material was sealed from. This IS the MATERIAL AUTHORITY: the seal key is
+   * derived from the revision. REQUIRED — no CandidateSet may be sealed
+   * without a revision ref. LEGACY FALLBACK ON producerExecutionRef IS
+   * FORBIDDEN.
    */
-  readonly productionRevisionRef: string | null;
+  readonly productionRevisionRef: string;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
   readonly role: CandidateSetRole;
   /**
@@ -141,36 +144,27 @@ export interface CandidateSet {
 /**
  * Compute the deterministic seal key for a CandidateSet.
  *
- * ADR-053 Phase 5: when `productionRevisionRef` is provided, it becomes the
- * MATERIAL IDENTITY in the seal key (replacing execution-scoped identity).
- * Two executions producing the same revision (recovery / carry-forward) derive
- * the same key → the second finds the first's already-sealed CandidateSet
- * (partition invariance). When `productionRevisionRef` is null (legacy v1
- * sets sealed before the cutover), the old execution-scoped key is used.
+ * ADR-053 clean-break: the seal key ALWAYS uses `productionRevisionRef` as the
+ * material identity. There is NO fallback to `producerExecutionRef`. Two
+ * executions producing the same revision (recovery / carry-forward) derive the
+ * same key → the second finds the first's already-sealed CandidateSet
+ * (partition invariance).
  *
- * Note: this is the KEY (the identity under which the set is sealed), NOT the
- * digest of the set's contents. The digest is computed over the members at
- * seal time by `sealCandidateSet`. The key is stable across content changes
- * (so a mismatch can be detected); the digest changes with content (so two
- * different payloads have different digests).
+ * `productionRevisionRef` is REQUIRED. LEGACY FALLBACK IS FORBIDDEN.
  */
 export function candidateSetSealKey(input: {
   workplaceRef: WorkplaceRef;
   producerExecutionRef: string;
-  productionRevisionRef?: string | null;
+  productionRevisionRef: string;
   role: CandidateSetRole;
 }): string {
-  // ADR-053 Phase 5: prefer the revision as the material identity. Fall back
-  // to the execution for legacy v1 sets (null revision ref). Phase 7 removes
-  // the fallback.
-  const materialIdentity = input.productionRevisionRef ?? input.producerExecutionRef;
   return [
     'candidate-set',
     input.workplaceRef.processRunId,
     input.workplaceRef.moduleRef,
     input.workplaceRef.productionCellId,
     input.workplaceRef.workKey,
-    materialIdentity,
+    input.productionRevisionRef,
     input.role,
   ].join('/');
 }
@@ -193,6 +187,7 @@ export function candidateSetSealKey(input: {
 export function assertValidCandidateSet(set: CandidateSet): void {
   requireNonEmpty(set.candidateSetRef, 'candidateSetRef');
   requireNonEmpty(set.producerExecutionRef, 'producerExecutionRef');
+  requireNonEmpty(set.productionRevisionRef, 'productionRevisionRef');
   requireNonEmpty(set.sealReceiptRef, 'sealReceiptRef');
   requireNonEmpty(set.sealedAt, 'sealedAt');
   if (set.members.length === 0) {

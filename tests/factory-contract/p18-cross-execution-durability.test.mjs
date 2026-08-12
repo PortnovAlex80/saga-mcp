@@ -198,7 +198,7 @@ test('P18-AC-4: CandidateSet freezes readable snapshot and fanout products coexi
   const candidateRepo = new SqliteCandidateSetRepository(db);
   const sealed = candidateRepo.seal({
     workplaceRef: workplaceA,
-    producerExecutionRef: 'exec-B',
+    producerExecutionRef: 'exec-B', productionRevisionRef: 'rev-test-p18',
     role: 'author',
     subjectCandidateSetRef: null,
     members: [{ productRef: refA, origin: 'produced', sourceCandidateSetRef: null }],

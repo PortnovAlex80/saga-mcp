@@ -31,8 +31,8 @@ export const CANDIDATE_SET_REPLAY_MISMATCH = 'CANDIDATE_SET_REPLAY_MISMATCH';
 export interface SealInput {
   readonly workplaceRef: WorkplaceRef;
   readonly producerExecutionRef: string;
-  /** ADR-053 Phase 5: when provided, becomes the material identity in the seal key. */
-  readonly productionRevisionRef?: string | null;
+  /** ADR-053 clean-break: REQUIRED. The immutable revision this set's material was sealed from. */
+  readonly productionRevisionRef: string;
   readonly role: CandidateSetRole;
   readonly subjectCandidateSetRef: string | null;
   readonly members: readonly CandidateMember[];
@@ -63,7 +63,7 @@ export class SqliteCandidateSetRepository {
       candidateSetRef,
       workplaceRef: input.workplaceRef,
       producerExecutionRef: input.producerExecutionRef,
-      productionRevisionRef: input.productionRevisionRef ?? null,
+      productionRevisionRef: input.productionRevisionRef,
       role: input.role,
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       members: input.members,
@@ -97,7 +97,7 @@ export class SqliteCandidateSetRepository {
       candidateSetRef,
       workplaceSerialized,
       input.producerExecutionRef,
-      input.productionRevisionRef ?? null,
+      input.productionRevisionRef,
       input.role,
       input.subjectCandidateSetRef,
       input.candidateSetDigest,
@@ -171,7 +171,7 @@ export class SqliteCandidateSetRepository {
       candidateSetRef: row.candidate_set_ref,
       workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
       producerExecutionRef: row.producer_execution_ref,
-      productionRevisionRef: row.production_revision_ref,
+      productionRevisionRef: row.production_revision_ref!,
       role: row.role,
       subjectCandidateSetRef: row.subject_candidate_set_ref,
       members,
@@ -192,7 +192,7 @@ export class SqliteCandidateSetRepository {
     const rows = this.db.prepare(
       `SELECT candidate_set_ref FROM factory_candidate_sets
         WHERE workplace_ref=?
-        ORDER BY sealed_at DESC, candidate_set_ref DESC`,
+        ORDER BY candidate_set_ref DESC`,
     ).all(serialized) as Array<{ candidate_set_ref: string }>;
     const sets: CandidateSet[] = [];
     for (const row of rows) {
