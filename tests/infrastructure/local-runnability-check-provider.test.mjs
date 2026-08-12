@@ -8,6 +8,8 @@ import Database from 'better-sqlite3';
 import {
   createLocalRunnabilityCheckProvider,
   ensureLocalRunnabilityProviderTrust,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
 } from '../../dist/infrastructure/verification/local-runnability-check-provider.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../dist/modules/development/domain/development-schemas.js';
 
@@ -106,6 +108,20 @@ function newDb() {
     CREATE TABLE factory_process_products(
       process_run_id INTEGER, product_kind TEXT, schema_id TEXT,
       artifact_ref TEXT, product_hash TEXT, payload_snapshot TEXT
+    );
+    CREATE TABLE factory_check_receipts(
+      check_receipt_ref TEXT PRIMARY KEY,
+      check_run_ref TEXT NOT NULL,
+      subject_candidate_set_ref TEXT NOT NULL,
+      assessment_candidate_set_refs TEXT NOT NULL DEFAULT '[]',
+      provider_id TEXT NOT NULL,
+      provider_version TEXT NOT NULL,
+      provider_digest TEXT NOT NULL,
+      environment_ref TEXT,
+      outcome TEXT NOT NULL,
+      evidence_refs TEXT NOT NULL DEFAULT '[]',
+      receipt_digest TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
   return db;
@@ -668,5 +684,207 @@ test('served/static readiness is not inferred from package.json fields alone', {
     }
   } finally {
     rmSync(staticLooking, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LR-06 — DURABLE + REPLAY-SAFE local readiness evidence. The readiness outcome
+// + proof are persisted in factory_check_receipts (the Gate-receipt substrate).
+// On any re-query for the same subject + provider — including after a process
+// restart — the persisted receipt is returned verbatim. The provider is NOT
+// re-invoked and the process is NOT re-spawned. There is no second store: the
+// provider only READS receipts; the GateRun driver writes them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a check receipt for the local-runnability provider, simulating the
+ * GateRun driver having recorded one after a prior run.
+ */
+function insertReadinessReceipt(db, {
+  subjectCandidateSetRef = 'candidate-set/test',
+  outcome = 'passed',
+  evidenceRefs = ['local-readiness:prior-proof-digest'],
+  providerId = LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  providerDigest = LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+  receiptRef = 'receipt:gate-run:prior:0:factory.local-runnability.v1',
+} = {}) {
+  db.prepare(
+    `INSERT INTO factory_check_receipts
+       (check_receipt_ref, check_run_ref, subject_candidate_set_ref,
+        assessment_candidate_set_refs, provider_id, provider_version,
+        provider_digest, environment_ref, outcome, evidence_refs, receipt_digest)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    receiptRef,
+    'gate-run:prior',
+    subjectCandidateSetRef,
+    '[]',
+    providerId,
+    '1.0.0',
+    providerDigest,
+    null,
+    outcome,
+    JSON.stringify(evidenceRefs),
+    'prior-receipt-digest',
+  );
+}
+
+test('LR-06: replay returns the persisted Gate receipt verbatim without re-running the provider', { timeout: 30000 }, async () => {
+  // A prior GateRun recorded a 'passed' receipt for this subject. On re-query
+  // (e.g. after a restart), the provider MUST return that receipt's outcome +
+  // evidence verbatim — it must NOT re-invoke the readiness check or re-spawn
+  // the served process.
+  //
+  // PROOF the provider did not re-run: we seed the receipt, then REMOVE the git
+  // fixture directory entirely. If the provider tried to re-run, subject
+  // resolution would fail (no repo → 'error'). Getting 'passed' back proves the
+  // provider read the persisted receipt and returned it without executing.
+  const root = fixture({ passing: true });
+  const candidateHash = 'a'.repeat(64);
+  const sealedEvidenceRef = 'local-readiness:persisted-proof-aaaa';
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash });
+  insertReadinessReceipt(db, {
+    outcome: 'passed',
+    evidenceRefs: [sealedEvidenceRef],
+  });
+  // Simulate a restart: destroy the git fixture so a re-run would fail.
+  rmSync(root, { recursive: true, force: true });
+  try {
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets: candidateSetsReader('author', candidateHash),
+    });
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed', 'must return the persisted outcome');
+    assert.deepEqual(result.evidenceRefs, [sealedEvidenceRef],
+      'must return the persisted evidence refs verbatim');
+  } finally {
+    db.close();
+  }
+});
+
+test('LR-06: replay works across a simulated restart (new provider instance, same durable DB)', { timeout: 30000 }, async () => {
+  // Run the provider once (real readiness check), record what the GateRun driver
+  // would persist, then simulate a restart: a BRAND-NEW provider instance with
+  // the SAME durable DB. The second run MUST return the persisted outcome
+  // without re-running — proved by removing the git fixture before the second run.
+  const root = fixture({ passing: true });
+  const candidateHash = 'b'.repeat(64);
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash });
+  const candidateSets = candidateSetsReader('author', candidateHash);
+  try {
+    // First run: real readiness check against the live git fixture.
+    const provider1 = createLocalRunnabilityCheckProvider({ db, candidateSets });
+    const firstResult = await provider1.run(RUN_ARGS);
+    assert.equal(firstResult.outcome, 'passed');
+
+    // The GateRun driver records a receipt from the provider's result.
+    insertReadinessReceipt(db, {
+      outcome: firstResult.outcome,
+      evidenceRefs: [...firstResult.evidenceRefs],
+    });
+
+    // Restart: destroy the git fixture so a re-run would fail.
+    rmSync(root, { recursive: true, force: true });
+
+    // New provider instance — same durable DB, empty in-memory state.
+    const provider2 = createLocalRunnabilityCheckProvider({ db, candidateSets });
+    const replayedResult = await provider2.run(RUN_ARGS);
+
+    // The persisted decision is returned verbatim; the provider did NOT re-run
+    // (the fixture is gone — a re-run would have produced 'error').
+    assert.equal(replayedResult.outcome, 'passed');
+    assert.deepEqual(replayedResult.evidenceRefs, [...firstResult.evidenceRefs],
+      'replay must return the exact same evidence refs');
+  } finally {
+    db.close();
+  }
+});
+
+test('LR-06: a failed receipt is also replayed verbatim (durable negative evidence)', { timeout: 30000 }, async () => {
+  // A prior run produced a 'failed' readiness outcome. On replay, the persisted
+  // 'failed' decision is returned — the provider does NOT re-run the failing
+  // check. This is the negative-evidence counterpart: once a sealed subject is
+  // proven not-ready, that proof is durable.
+  const root = fixture({ passing: true });
+  const candidateHash = 'c'.repeat(64);
+  const failedEvidenceRef = 'local-readiness:failed-proof-bbbb';
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash });
+  insertReadinessReceipt(db, {
+    outcome: 'failed',
+    evidenceRefs: [failedEvidenceRef],
+  });
+  rmSync(root, { recursive: true, force: true });
+  try {
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets: candidateSetsReader('author', candidateHash),
+    });
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'failed', 'must replay the persisted failure');
+    assert.deepEqual(result.evidenceRefs, [failedEvidenceRef]);
+  } finally {
+    db.close();
+  }
+});
+
+test('LR-06: an error receipt is NOT replayed — indeterminate outcomes are retried', { timeout: 30000 }, async () => {
+  // An 'error' receipt represents a subject-resolution or execution failure
+  // that may have been transient. It MUST NOT be replayed — the provider
+  // re-resolves and re-runs so a transient failure can recover on the next
+  // invocation.
+  const root = fixture({ passing: true });
+  const candidateHash = 'd'.repeat(64);
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash });
+  insertReadinessReceipt(db, {
+    outcome: 'error',
+    evidenceRefs: [],
+  });
+  try {
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets: candidateSetsReader('author', candidateHash),
+    });
+    const result = await provider.run(RUN_ARGS);
+    // The git fixture is live and passing, so the re-run produces 'passed'
+    // (NOT the stale 'error'). This proves the error receipt was not replayed.
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LR-06: a receipt for a different provider digest is not replayed', { timeout: 30000 }, async () => {
+  // A receipt recorded under a DIFFERENT provider digest (a swapped
+  // implementation) must NOT be replayed — the installed implementation must
+  // re-run, not inherit a stale receipt from a different version.
+  const root = fixture({ passing: true });
+  const candidateHash = 'e'.repeat(64);
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root, candidateHash });
+  insertReadinessReceipt(db, {
+    outcome: 'passed',
+    evidenceRefs: ['local-readiness:stale'],
+    providerDigest: '0'.repeat(64), // different digest
+  });
+  try {
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets: candidateSetsReader('author', candidateHash),
+    });
+    const result = await provider.run(RUN_ARGS);
+    // The stale-digest receipt is not matched; the provider re-runs and produces
+    // a fresh 'passed' with fresh evidence (not the stale ref).
+    assert.equal(result.outcome, 'passed');
+    assert.notDeepEqual(result.evidenceRefs, ['local-readiness:stale']);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

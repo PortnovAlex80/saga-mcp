@@ -48,8 +48,6 @@ interface CandidateSubject {
  */
 const OBJECT_ID_RE = /^[a-f0-9]{40}$/u;
 
-const completed = new Map<string, CheckProviderResult>();
-
 /**
  * Factory-owned local readiness check. It deliberately proves only that the
  * exact frozen candidate passes its required test command and can be started,
@@ -64,29 +62,85 @@ export function createLocalRunnabilityCheckProvider(input: {
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef }) {
+      // LR-06 — DURABLE REPLAY. The readiness outcome + proof are persisted in
+      // factory_check_receipts (the Gate-receipt substrate is the ONE durable
+      // acceptance-authority store, per ADR-053). On any re-query for the same
+      // subject + provider — whether a GateRun replay, a new GateRun for the
+      // same sealed subject, or a direct provider call after a process restart
+      // — the persisted receipt is returned verbatim. The provider is NOT
+      // re-invoked and the process is NOT re-spawned. This replaces the
+      // previous non-durable in-memory Map, which was lost on restart and was a
+      // second (competing) replay authority that overlapped with the durable
+      // Gate receipts. The provider only READS receipts; the GateRun driver
+      // WRITES them — there is no second store.
+      const replayed = readPersistedReadinessReceipt(input.db, subjectCandidateSetRef);
+      if (replayed) return replayed;
       let subject;
       try {
         subject = resolveSubject(input, subjectCandidateSetRef);
       } catch (subjErr) {
         return 'error';
       }
-      const key = sha256Hex({
-        provider: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-        candidateHash: subject.candidateHash,
-        commitSha: subject.commitSha,
-        treeHash: subject.treeHash,
-      });
-      const existing = completed.get(key);
-      if (existing) return existing;
       let check: CheckProviderResult;
       try {
         check = runLocalReadiness(subject);
       } catch (diagErr) {
         check = 'error';
       }
-      completed.set(key, check);
       return check;
     },
+  };
+}
+
+/**
+ * LR-06 — read a persisted local-readiness receipt from the Gate-receipt
+ * substrate (factory_check_receipts). Returns the persisted outcome + evidence
+ * refs when a prior receipt exists for the exact subject_candidate_set_ref +
+ * installed provider with a DEFINITIVE outcome (passed/failed), or null when no
+ * receipt exists (first run), the table is absent (minimal test schema without
+ * the Gate receipt substrate), or the only prior outcome was indeterminate
+ * (error/unknown — those MUST be retried on every invocation, never replayed,
+ * because they represent a subject-resolution or execution failure that may
+ * have been transient).
+ *
+ * The lookup keys on subject_candidate_set_ref + provider_id + provider_digest
+ * (the receipt table already indexes subject_candidate_set_ref). Because a
+ * sealed CandidateSet is immutable, the same ref always resolves to the same
+ * sealed product / git object, so a prior receipt for this ref IS the prior
+ * decision for this exact subject. The provider_digest filter ensures a
+ * swapped implementation (different digest) does not replay a stale receipt.
+ */
+function readPersistedReadinessReceipt(
+  db: SqlDatabasePort,
+  subjectCandidateSetRef: string,
+): { outcome: 'passed' | 'failed'; evidenceRefs: readonly string[] } | null {
+  let row;
+  try {
+    row = db.prepare(
+      `SELECT outcome, evidence_refs
+         FROM factory_check_receipts
+        WHERE subject_candidate_set_ref=?
+          AND provider_id=?
+          AND provider_digest=?
+          AND outcome IN ('passed','failed')
+        ORDER BY rowid DESC
+        LIMIT 1`,
+    ).get(
+      subjectCandidateSetRef,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+    ) as { outcome: string; evidence_refs: string } | undefined;
+  } catch {
+    // The table is absent (e.g. a minimal in-memory test schema that did not
+    // create the Gate receipt substrate). In production the table always exists
+    // (schema.ts). Treat the missing table as "no persisted receipt" and
+    // proceed to run the check.
+    return null;
+  }
+  if (!row) return null;
+  return {
+    outcome: row.outcome as 'passed' | 'failed',
+    evidenceRefs: JSON.parse(row.evidence_refs) as string[],
   };
 }
 
