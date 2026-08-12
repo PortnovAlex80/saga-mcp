@@ -55,6 +55,12 @@ export function submissionValidatorCheckProvider(input: {
       try {
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
         if (!candidate || candidate.role !== 'author') return 'error';
+        // ADR-053 B-3 — execution provenance is on the immutable production
+        // revision (presenterRef), NOT on the CandidateSet. Resolve it here.
+        const presenterRef = (input.db.prepare(
+          'SELECT presenter_ref FROM factory_workplace_production_revisions WHERE revision_ref=?',
+        ).get(candidate.productionRevisionRef) as { presenter_ref: string } | undefined)?.presenter_ref;
+        if (!presenterRef) return 'error';
         const processRunId = Number(parameters.processRunId);
         const moduleRef = String(parameters.moduleRef ?? '');
         if (
@@ -69,7 +75,7 @@ export function submissionValidatorCheckProvider(input: {
                FROM factory_managed_artifact_productions
               WHERE process_run_id=? AND execution_id=?
               LIMIT 1`,
-          ).get(processRunId, candidate.producerExecutionRef) as
+          ).get(processRunId, presenterRef) as
             | { present: number }
             | undefined;
           const traced = input.db.prepare(
@@ -77,7 +83,7 @@ export function submissionValidatorCheckProvider(input: {
                FROM factory_managed_trace_productions
               WHERE process_run_id=? AND execution_id=?
               LIMIT 1`,
-          ).get(processRunId, candidate.producerExecutionRef) as
+          ).get(processRunId, presenterRef) as
             | { present: number }
             | undefined;
           if (!produced && !traced) {
@@ -85,7 +91,7 @@ export function submissionValidatorCheckProvider(input: {
               outcome: 'failed',
               evidenceRefs: [encodeCheckDiagnostic({
                 code: 'MANAGED_PRODUCTION_REQUIRED',
-                message: `Execution ${candidate.producerExecutionRef} published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
+                message: `Execution ${presenterRef} published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
                 subjectRef: subjectCandidateSetRef,
               })],
             };
@@ -97,7 +103,7 @@ export function submissionValidatorCheckProvider(input: {
              JOIN tasks t ON t.id=we.task_id
              JOIN epics e ON e.id=t.epic_id
             WHERE we.execution_id=?`,
-        ).get(candidate.producerExecutionRef) as {
+        ).get(presenterRef) as {
           task_id: number;
           epic_id: number;
           project_id: number;
@@ -107,7 +113,7 @@ export function submissionValidatorCheckProvider(input: {
           processRunId,
           moduleRef,
           nodeId: input.nodeId,
-          executionId: candidate.producerExecutionRef,
+          executionId: presenterRef,
           taskId: row.task_id,
           epicId: row.epic_id,
           projectId: row.project_id,

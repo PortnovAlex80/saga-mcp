@@ -16,11 +16,13 @@
  * fenced execution. The gate reads that set by exact reference — never a
  * mutable latest view (REG-12-AC-04, REG-15-AC-03).
  *
- * The seal key `(workplaceRef, producerExecutionRef, role)` is DETERMINISTIC
- * (REG-12-AC-01): a replay of the same payload returns the same ref; a
- * different payload under the same key is rejected. So a crashed-then-resumed
- * worker, replaying its completion, re-seals the SAME set — no duplicate, no
- * ambiguity.
+ * The seal key `(workplaceRef, productionRevisionRef, role)` is DETERMINISTIC
+ * (REG-12-AC-01 / ADR-053): the key is over the immutable Workplace production
+ * revision, NOT the producer execution. A replay of the same payload returns
+ * the same ref; a different payload under the same key is rejected. So a
+ * crashed-then-resumed worker, replaying its completion, re-seals the SAME
+ * set — no duplicate, no ambiguity — and two partitions producing the same
+ * material converge to one set (B-2).
  *
  * # Membership discipline
  *
@@ -111,17 +113,12 @@ export interface CandidateSet {
   /** The workplace this set belongs to. */
   readonly workplaceRef: WorkplaceRef;
   /**
-   * Provenance-only: the execution that presented this set. NOT material
-   * authority. ADR-053 clean-break: this field MUST NOT be used to select
-   * material after seal.
-   */
-  readonly producerExecutionRef: string;
-  /**
-   * ADR-053 — the immutable Workplace production revision this CandidateSet's
+   * ADR-053 B-3 — the immutable Workplace production revision this CandidateSet's
    * material was sealed from. This IS the MATERIAL AUTHORITY: the seal key is
    * derived from the revision. REQUIRED — no CandidateSet may be sealed
-   * without a revision ref. LEGACY FALLBACK ON producerExecutionRef IS
-   * FORBIDDEN.
+   * without a revision ref. The execution provenance (presenter) lives on the
+   * REVISION (revisionRepo.getRevision(productionRevisionRef).presenterRef),
+   * NOT on the CandidateSet. LEGACY producerExecutionRef FIELD IS DELETED.
    */
   readonly productionRevisionRef: string;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
@@ -154,7 +151,6 @@ export interface CandidateSet {
  */
 export function candidateSetSealKey(input: {
   workplaceRef: WorkplaceRef;
-  producerExecutionRef: string;
   productionRevisionRef: string;
   role: CandidateSetRole;
 }): string {
@@ -186,7 +182,6 @@ export function candidateSetSealKey(input: {
  */
 export function assertValidCandidateSet(set: CandidateSet): void {
   requireNonEmpty(set.candidateSetRef, 'candidateSetRef');
-  requireNonEmpty(set.producerExecutionRef, 'producerExecutionRef');
   requireNonEmpty(set.productionRevisionRef, 'productionRevisionRef');
   requireNonEmpty(set.sealReceiptRef, 'sealReceiptRef');
   requireNonEmpty(set.sealedAt, 'sealedAt');
@@ -243,9 +238,11 @@ export function assertValidCandidateSet(set: CandidateSet): void {
 /**
  * Compute the deterministic reference (identity) of a sealed CandidateSet.
  *
- * The reference is derived from the seal key (workplace+execution+role) — so a
- * replay of the same execution's completion derives the same reference and
- * resolves to the same row (REG-12-AC-01). The CONTENT digest
+ * The reference is derived from the seal key (workplace + productionRevisionRef
+ * + role) — ADR-053: keyed on the immutable production revision, not the
+ * producer execution. A replay of the same completion derives the same
+ * reference and resolves to the same row (REG-12-AC-01); two partitions
+ * producing the same material converge (B-2). The CONTENT digest
  * (`candidateSetDigest`) is separate: it changes when the members change, which
  * is how a replay-with-different-payload is detected and rejected.
  *

@@ -42,6 +42,36 @@ this document and in ADR-053:
 flagged off — recreates the exact defect. This amendment makes the cutover
 non-additive by construction.
 
+## Reconciliation 2026-08-12 (verdict-driven)
+
+Independent verdict (2026-08-12) found that several checkbox items marked `[x]`
+overstate actual cutover completion. The committed work is a partial substrate
+(~40% of the real clean-break cutover), not completion. Six of these seven received an inline `[x]→[~]` flip with a
+`<!-- reverted 2026-08-12 (verdict #N): reason -->` marker. Category #4
+(legacy post-seal selectors removed) was already honestly `[ ]` at HEAD — no
+overstatement existed, so it carries a `<!-- verdict #4: already [ ] ... -->`
+anchor instead of a flip. Tracking of the
+remaining work lives in
+[ADR-053-CUTOVER-EXECUTION-TRACKER.md](./ADR-053-CUTOVER-EXECUTION-TRACKER.md).
+
+| # | Category (verdict) | Why reverted |
+|---|--------------------|--------------|
+| 1 | Execution is provenance only | `producerExecutionRef` still in CandidateSet API, `producer_execution_ref` SQL column, and comments. |
+| 2 | CandidateSet cutover complete | revision persistence is optional; author CandidateSet chosen imprecisely (`candidate_set_ref DESC`, `sets[0]`). |
+| 3 | Effects consume only AcceptedCandidateAuthority | Formalization/Git effects still read `processRunId`/`nodeId`/`expectedProductSchema`; authority reconstructed, not consumed. |
+| 4 | Legacy post-seal selectors removed | `ORDER BY ... DESC LIMIT 1`, `latestCandidate`, task-scoped queries remain. |
+| 5 | Source normalization complete | adapters exist but are not wired as the only runtime path; executor inlines typed-submission. |
+| 6 | Replay creates current authority | only rebinding to existing acceptance; gate still chosen by time `LIMIT 1`. |
+| 7 | Workshop installed as one immutable package | handler/skill/contract digests are placeholders; binding receipts incomplete. |
+
+Items left as done (9): WorkplaceProductionRevision entity, immutable member
+manifests + semantic digest, CandidateSet.productionRevisionRef,
+AcceptedCandidateAuthority type, final-acceptance linkage, source-adapter
+interfaces, obligation repository/integrator/reconciler, replay provenance split,
+ratchet infrastructure.
+
+---
+
 ## Verdict
 
 The central diagnosis is confirmed: the documented Workplace-owned material model and
@@ -214,13 +244,13 @@ Exit: every new CandidateSet input can be read only from one exact revision.
 ## Phase 5 — Cut CandidateSet over to revision authority
 
 - [x] Add `productionRevisionRef` and revision digest to CandidateSet identity.
-- [x] Rename `producerExecutionRef` to provenance-only `presenterRef` or remove it from
-  authority and seal-key derivation.
-- [x] Define CandidateSet members as exact refs projected from the revision, not as
-  products owned by the presenting execution.
+- [~] Rename `producerExecutionRef` to provenance-only `presenterRef` or remove it from
+  authority and seal-key derivation.  <!-- reverted 2026-08-12 (verdict #1): producerExecutionRef still in CandidateSet API + producer_execution_ref SQL column + comments -->
+- [~] Define CandidateSet members as exact refs projected from the revision, not as
+  products owned by the presenting execution.  <!-- reverted 2026-08-12 (verdict #2): members still modeled as execution-owned products -->
 - [x] Bind reviewer CandidateSet to exact subject CandidateSet and subject revision.
-- [x] Update persistence/schema/replay/carry-forward paths; never infer a revision from
-  the newest execution.
+- [~] Update persistence/schema/replay/carry-forward paths; never infer a revision from
+  the newest execution.  <!-- reverted 2026-08-12 (verdict #2): revision persistence optional; author set picked by candidate_set_ref DESC / sets[0] -->
 - [x] Migrate old CandidateSets as historical v1 records only. New cells emit v2.  <!-- N/A: BINDING AMENDMENT -->
 
 Tests:
@@ -237,11 +267,11 @@ Exit: CandidateSet v2 has no execution-owned material semantics.
 - [x] Introduce `AcceptedCandidateAuthority` containing Workplace, CandidateSet,
   production revision, exact accepted ProductRefs, GateDecision, product contract and
   acceptance digest.
-- [x] Remove `producerExecutionRef`, process/node/task selectors and expected-schema
-  rediscovery from `PostAcceptanceEffectInput`.
-- [x] Make each effect consume only `AcceptedCandidateAuthority` plus its declared
-  effect request.
-- [x] Cut Formalization acceptance and Git integration to exact revision members.
+- [~] Remove `producerExecutionRef`, process/node/task selectors and expected-schema
+  rediscovery from `PostAcceptanceEffectInput`.  <!-- reverted 2026-08-12 (verdict #3): processRunId/nodeId/candidateSetRef/expectedProductSchema still present in input -->
+- [~] Make each effect consume only `AcceptedCandidateAuthority` plus its declared
+  effect request.  <!-- reverted 2026-08-12 (verdict #3): formalization effect reconstructs authority from process/node/schema selectors -->
+- [~] Cut Formalization acceptance and Git integration to exact revision members.  <!-- reverted 2026-08-12 (verdict #3): effects still use processRunId/nodeId/expectedProductSchema -->
 - [ ] Remove execution/latest fallback queries after their callers migrate.
 - [x] Bind effect action/receipt and `CellFinalAcceptance` to the same acceptance digest.
 
@@ -262,8 +292,8 @@ Exit: architecture test proves no post-acceptance API exposes material execution
   selection after seal.
 - [ ] Bind Process output/certificate, Stage handoff and Lifecycle routing to exact
   revision/certificate hashes.
-- [x] Make replay create current revision/CandidateSet/Gates; historical decisions never
-  become current authority.
+- [~] Make replay create current revision/CandidateSet/Gates; historical decisions never
+  become current authority.  <!-- reverted 2026-08-12 (verdict #6): only rebinding to existing acceptance; gate still chosen by time ORDER BY ... LIMIT 1 -->
 - [ ] Delete migrated compatibility fallbacks rather than leaving dual truth.
 
 Exit: every post-seal material read is reachable from an exact revision or final
@@ -320,13 +350,13 @@ Exit: all mutations above are proven to make the suite fail.
 ## Final cutover gates
 
 - [x] `PostAcceptanceEffectInput` contains no `producerExecutionRef`.
-- [x] CandidateSet v2 references an immutable Workplace production revision.
-- [ ] No post-seal consumer selects material by execution/task/node/latest.
-- [x] `presenterRef` is provenance only and cannot affect semantic digest.
-- [x] Managed, typed, Git, evidence and carry-forward sources share one revision model.
+- [~] CandidateSet v2 references an immutable Workplace production revision.  <!-- reverted 2026-08-12 (verdict #2): optional persistence ⇒ ref may point to absent revision -->
+- [ ] No post-seal consumer selects material by execution/task/node/latest.  <!-- verdict #4: already [ ] at HEAD; reconciled (no overstatement existed, defect still open as B-6/G-1) -->
+- [~] `presenterRef` is provenance only and cannot affect semantic digest.  <!-- reverted 2026-08-12 (verdict #1): producerExecutionRef still authority, not provenance-only -->
+- [~] Managed, typed, Git, evidence and carry-forward sources share one revision model.  <!-- reverted 2026-08-12 (verdict #5): adapters not wired as the only runtime path -->
 - [ ] Formalization publishes one frozen container/member manifest; downstream does not
   reparse Markdown to rediscover cardinality.
-- [x] Every process uses one installed Workshop manifest digest.
+- [~] Every process uses one installed Workshop manifest digest.  <!-- reverted 2026-08-12 (verdict #7): handler/skill/contract digests are placeholders; binding receipts incomplete -->
 - [ ] Every cross-machine handoff is atomic or backed by a durable obligation.
 - [ ] Authority, partition, cardinality, normalization, composition and mutation suites
   pass.

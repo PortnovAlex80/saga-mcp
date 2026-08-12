@@ -172,7 +172,9 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     }
 
     const candidates = db.prepare(
-      `SELECT cs.candidate_set_ref,cs.candidate_set_digest,cs.producer_execution_ref,
+      `SELECT cs.candidate_set_ref,cs.candidate_set_digest,
+              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
+                WHERE rev.revision_ref = cs.production_revision_ref) AS producer_execution_ref,
               cs.workplace_ref,w.kanban_phase,w.loop_state,w.next_role,
               t.id AS task_id,t.metadata,t.project_repository_id,
               t.integration_state,t.integrated_commit,
@@ -628,7 +630,6 @@ function verifyCandidateDigest(
 ): void {
   const digest = createHash('sha256').update(JSON.stringify({
     workplaceRef: candidate.workplace_ref,
-    executionRef: candidate.producer_execution_ref,
     role: 'author',
     products: [{ schemaId: member.product_schema, ref: member.product_ref, digest: member.product_digest }],
   })).digest('hex');

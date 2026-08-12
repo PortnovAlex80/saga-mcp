@@ -6,9 +6,12 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
+import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
+import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -105,6 +108,10 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     coordinator,
     candidateSetRepo,
     gateRepo,
+    revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
+    obligationIntegrator: new TransitionObligationIntegrator({
+      ledger: new SqliteTransitionObligationLedger(db),
+    }),
     persistence,
     postAcceptanceEffects: {
       run(effectId, input) {
@@ -206,7 +213,6 @@ test('author product is sealed, gated, and completed with exact provenance', asy
   const result = await h.executor.execute(ctx);
   assert.equal(result.runtimeEvent, 'completed');
   assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
-  assert.equal(h.candidateSetRepo.listForWorkplace(ref)[0].producerExecutionRef, 'execution:author');
   assert.equal(h.gateRepo.listDecisionsForWorkplace(ref).length, 1);
   assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 1);
   h.db.close();
@@ -388,7 +394,6 @@ test('authorized author production is carried into a new current CandidateSet an
   const author = h.candidateSetRepo.listForWorkplace(ref)
     .find(set => set.role === 'author');
   assert.ok(author);
-  assert.equal(author.producerExecutionRef, directive.presenterRef);
   assert.equal(author.members[0].origin, 'carried-forward');
   assert.equal(author.members[0].sourceCandidateSetRef, directive.sourceCandidateSetRef);
   assert.equal(h.gateRepo.listDecisionsForWorkplace(ref).length, 1);
@@ -401,7 +406,6 @@ test('authorized author production is carried into a new current CandidateSet an
   });
   const completed = await h.executor.execute(ctx);
   assert.equal(completed.runtimeEvent, 'completed');
-  assert.equal(completed.production.bindings.items[0].producerExecutionRef, directive.presenterRef);
   assert.equal(completed.production.bindings.items[0].execution, null,
     'a kernel presenter is provenance, not a fabricated WorkerExecution receipt');
   h.db.close();

@@ -86,7 +86,7 @@ import {
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../domain/formalization-schemas.js';
-import { assembleRevision, buildContribution } from '../../../process-modules/domain/workplace/workplace-production-revision.js';
+import { assembleRevision, buildContribution, type WorkplaceProductionRevision } from '../../../process-modules/domain/workplace/workplace-production-revision.js';
 
 export const FORMALIZATION_MODULE_KEY =
   `${FORMALIZATION_PROCESS_MODULE_REF.name}@${FORMALIZATION_PROCESS_MODULE_REF.version}`;
@@ -151,6 +151,14 @@ export interface FormalizationInstallationDeps {
    */
   candidateSetRepo: CandidateSetSealPort | null;
   /**
+   * ADR-053 B-1 — production revision repository. When provided alongside
+   * candidateSetRepo, the architecture handler appends the revision and seals
+   * the CandidateSet in ONE transaction, so the set can never reference an
+   * absent revision. When absent, no CandidateSet is sealed (the handler falls
+   * back to ExactCandidateAcceptance only).
+   */
+  revisionRepo?: WorkplaceProductionRevisionRepositoryPort | null;
+  /**
    * Production Cell: Gate repository port. When non-null, the architecture
    * handler drives a GateRun (createGateRun → recordCheckReceipt →
    * recordDecision). When null, the handler falls back to
@@ -187,7 +195,6 @@ export interface CheckProviderResolverPort {
 export interface CandidateSetSealPort {
   seal(input: {
     readonly workplaceRef: WorkplaceRef;
-    readonly producerExecutionRef: string;
     readonly productionRevisionRef: string;
     readonly role: 'author' | 'reviewer';
     readonly subjectCandidateSetRef: string | null;
@@ -200,6 +207,18 @@ export interface CandidateSetSealPort {
     readonly sealReceiptRef: string;
     readonly sealedAt: string;
   }): { readonly set: { readonly candidateSetRef: string }; readonly replayed: boolean };
+}
+
+/**
+ * ADR-053 B-1 — minimal port for appending a Workplace production revision and
+ * running an atomic unit of work. Driver-neutral; the concrete
+ * SqliteWorkplaceProductionRevisionRepository satisfies this.
+ */
+export interface WorkplaceProductionRevisionRepositoryPort {
+  appendRevision(revision: WorkplaceProductionRevision): WorkplaceProductionRevision;
+  transaction<T>(work: () => T): T;
+  /** ADR-053 B-2 — partition-convergence probe: find an equivalent existing revision by semanticDigest. */
+  getRevisionBySemanticDigest(workplaceRef: string, semanticDigest: string): { revisionRef: string } | null;
 }
 
 /**
@@ -1022,6 +1041,9 @@ function sealArchitectureCandidateSet(
   writes: ExecutionWrites,
 ): string | null {
   if (!deps.candidateSetRepo) return null;
+  if (!deps.revisionRepo) return null;
+  const candidateSetRepo = deps.candidateSetRepo;
+  const revisionRepo = deps.revisionRepo;
   if (!writes.receipt.executionId) return null;
   // Build the CandidateSet members from the worker's produced SRS artifacts.
   // Each artifact is a 'produced' member (originated from this execution).
@@ -1071,16 +1093,26 @@ function sealArchitectureCandidateSet(
     contributions: [revisionContribution],
     presenterRef: writes.receipt.executionId,
   });
-  const result = deps.candidateSetRepo.seal({
-    workplaceRef,
-    producerExecutionRef: writes.receipt.executionId,
-    productionRevisionRef: revision.revisionRef,
-    role: 'author',
-    subjectCandidateSetRef: null,
-    members,
-    candidateSetDigest,
-    sealReceiptRef,
-    sealedAt: new Date().toISOString(),
+  // ADR-053 B-1 — append the revision and seal the CandidateSet in ONE
+  // transaction: the set can never reference a revision that was not persisted.
+  const result = revisionRepo.transaction(() => {
+    // ADR-053 B-2 — partition convergence: reuse an equivalent existing
+    // revision's ref so the CandidateSet seal key converges across partitions.
+    const existing = revisionRepo.getRevisionBySemanticDigest(
+      revision.workplaceRef, revision.semanticDigest,
+    );
+    const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
+    if (!existing) revisionRepo.appendRevision(revision);
+    return candidateSetRepo.seal({
+      workplaceRef,
+      productionRevisionRef: finalRevisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members,
+      candidateSetDigest,
+      sealReceiptRef,
+      sealedAt: new Date().toISOString(),
+    });
   });
   return result.set.candidateSetRef;
 }

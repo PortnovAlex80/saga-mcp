@@ -580,15 +580,16 @@ export class SqliteDevelopmentModuleStore implements
     const rows = this.db.prepare(
       `SELECT w.workplace_ref AS workplaceRef,
               cs.candidate_set_ref AS candidateSetRef,
-              cs.producer_execution_ref AS executionId,
+              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS executionId,
               submission.id AS submissionId,
               current_task.id AS taskId,
               current_task.metadata AS taskMetadata,
               submission.payload_snapshot AS payloadSnapshot,
               submission.content_hash AS contentHash,
               member.product_schema AS productSchema,
-              (SELECT reviewer.producer_execution_ref
-                 FROM factory_candidate_sets reviewer
+              (SELECT rev.presenter_ref
+                 FROM factory_workplace_production_revisions rev
+                 JOIN factory_candidate_sets reviewer ON reviewer.production_revision_ref=rev.revision_ref
                 WHERE reviewer.workplace_ref=w.workplace_ref
                   AND reviewer.role='reviewer'
                 ORDER BY reviewer.candidate_set_ref DESC

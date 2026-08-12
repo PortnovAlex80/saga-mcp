@@ -742,7 +742,9 @@ export function recoverFailedGateRun(
               w.active_reservation_ref,w.active_gate_ref,w.active_recovery_case_ref,
               t.id AS task_id,t.status AS task_status,t.assigned_to,t.current_execution_id,
               we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
-              cs.candidate_set_ref,cs.candidate_set_digest,cs.producer_execution_ref,
+              cs.candidate_set_ref,cs.candidate_set_digest,
+              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
+                WHERE rev.revision_ref = cs.production_revision_ref) AS producer_execution_ref,
               cs.role AS candidate_role,
               gr.gate_run_ref,gr.gate_phase,gr.subject_candidate_set_ref,
               gr.assessment_candidate_set_refs,gr.check_plan_ref,
@@ -756,7 +758,8 @@ export function recoverFailedGateRun(
          JOIN worker_executions we ON we.execution_id=w.active_reservation_ref
          JOIN factory_candidate_sets cs
            ON cs.workplace_ref=w.workplace_ref
-          AND cs.producer_execution_ref=we.execution_id
+          AND (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
+                WHERE rev.revision_ref = cs.production_revision_ref)=we.execution_id
           AND cs.role='author'
          JOIN factory_gate_runs gr
            ON gr.workplace_ref=w.workplace_ref
@@ -1235,7 +1238,6 @@ function verifyCandidateSetDigest(
   // verifier must validate the stored identity, not silently mint another one.
   const actualDigest = createHash('sha256').update(JSON.stringify({
     workplaceRef: String(row.workplace_ref),
-    executionRef: String(row.producer_execution_ref),
     role: String(row.candidate_role),
     products,
   })).digest('hex');

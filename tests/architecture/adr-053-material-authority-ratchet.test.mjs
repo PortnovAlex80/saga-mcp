@@ -62,6 +62,12 @@ const SRC_ROOT = path.join(REPO_ROOT, 'src');
 const BASELINE = Object.freeze({
   latestCandidate: 0,
   orderBySealedAtDesc: 0,
+  // ADR-053 B-6 — gate-decision recency: selecting "the latest accepted gate
+  // decision" for a workplace by decided_at. Post-seal, the accepted gate
+  // decision must be resolved by its exact decision_key (authority.
+  // gateDecisionKey), NOT by recency. Baseline captured B-6 (10); B-9 lowered
+  // it to 9 (replay-capture now uses exact gateDecisionKey).
+  orderByDecidedAtDesc: 9,
 });
 
 // ---------------------------------------------------------------------------
@@ -170,6 +176,33 @@ test('ADR-053 Phase 0 ratchet: ORDER BY sealed_at DESC count must not exceed bas
       `forbids. Each must be replaced with an exact-ref lookup (cutover ` +
       `Phases 5–7). If you intentionally REMOVED occurrences, LOWER the ` +
       `BASELINE.orderBySealedAtDesc constant — never raise it. ` +
+      `Current sites:\n  - ${sites.join('\n  - ')}`,
+  );
+});
+
+// ===========================================================================
+// Ratchet 3 — ORDER BY decided_at DESC (gate-decision recency). [ADR-053 B-6]
+// ===========================================================================
+test('ADR-053 B-6 ratchet: ORDER BY decided_at DESC count must not exceed baseline', () => {
+  const files = collectFiles();
+  const sites = [];
+  let total = 0;
+  for (const { rel, abs } of files) {
+    const src = stripComments(readFileSync(abs, 'utf8'));
+    const lower = src.toLowerCase();
+    const n = countOccurrences(lower, 'decided_at desc');
+    if (n > 0) {
+      total += n;
+      sites.push(`${rel} (${n})`);
+    }
+  }
+  assert.ok(
+    total <= BASELINE.orderByDecidedAtDesc,
+    `ADR-053 B-6 ratchet REGRESSION: 'ORDER BY ... decided_at DESC' count increased to ` +
+      `${total} (baseline ${BASELINE.orderByDecidedAtDesc}). This SQL selects the accepted ` +
+      `gate decision by recency — a post-seal 'latest' authority that ADR-053 forbids. ` +
+      `Each must be replaced with an exact gateDecisionKey lookup (B-9). If you intentionally ` +
+      `REMOVED occurrences, LOWER the BASELINE.orderByDecidedAtDesc constant — never raise it. ` +
       `Current sites:\n  - ${sites.join('\n  - ')}`,
   );
 });

@@ -133,16 +133,14 @@ export class TransitionObligationIntegrator {
   }
 
   private append(input: Omit<AppendObligationInput, never>): void {
-    // Best-effort: the obligation substrate is a crash-recovery aid, NOT a
-    // functional requirement. If the ledger table is absent (e.g. minimal test
-    // schemas) or the INSERT fails, the conveyor still works — the reconciler
-    // simply has nothing to redrive. In production the table always exists
-    // (created by schema.ts during factory initialization).
-    try {
-      this.deps.ledger.append(input as AppendObligationInput);
-    } catch {
-      // Intentionally swallowed — see comment above.
-    }
+    // ADR-053 B-8 — obligations are MANDATORY crash-recovery facts, NOT
+    // best-effort. A failure to append MUST propagate. When this is called
+    // inside the source transition's transaction (e.g. the CandidateSet seal
+    // txn), the propagation rolls the source fact back — so the obligation is
+    // recorded iff the source commits (atomic, all-or-nothing). Swallowing
+    // here would leave a sealed CandidateSet with no redrive target after a
+    // crash between seal and gate.
+    this.deps.ledger.append(input as AppendObligationInput);
   }
 }
 

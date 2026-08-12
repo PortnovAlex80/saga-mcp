@@ -34,7 +34,7 @@ test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true
     CREATE TABLE factory_candidate_sets (
       candidate_set_ref TEXT PRIMARY KEY,
       workplace_ref TEXT NOT NULL,
-      producer_execution_ref TEXT NOT NULL,
+      
       production_revision_ref TEXT,
       role TEXT NOT NULL,
       subject_candidate_set_ref TEXT,
@@ -57,7 +57,6 @@ test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true
   const wpRef = makeWorkplaceRef();
   const sealInput = {
     workplaceRef: wpRef,
-    producerExecutionRef: 'exec-1',
     productionRevisionRef: 'rev-test-1',
     role: 'author',
     subjectCandidateSetRef: null,
@@ -88,7 +87,7 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
     CREATE TABLE factory_candidate_sets (
       candidate_set_ref TEXT PRIMARY KEY,
       workplace_ref TEXT NOT NULL,
-      producer_execution_ref TEXT NOT NULL,
+      
       production_revision_ref TEXT,
       role TEXT NOT NULL,
       subject_candidate_set_ref TEXT,
@@ -111,7 +110,7 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
   const wpRef = makeWorkplaceRef();
 
   repo.seal({
-    workplaceRef: wpRef, producerExecutionRef: 'exec-1', productionRevisionRef: 'rev-test-1', role: 'author',
+    workplaceRef: wpRef, productionRevisionRef: 'rev-test-1', role: 'author',
     subjectCandidateSetRef: null, members: makeMembers(1),
     sealReceiptRef: 'receipt-1', candidateSetDigest: sha256('digest-A'), sealedAt: '2026-01-01',
   });
@@ -119,7 +118,7 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
   // Different digest under the same seal key → must throw
   assert.throws(
     () => repo.seal({
-      workplaceRef: wpRef, producerExecutionRef: 'exec-1', productionRevisionRef: 'rev-test-1', role: 'author',
+      workplaceRef: wpRef, productionRevisionRef: 'rev-test-1', role: 'author',
       subjectCandidateSetRef: null, members: makeMembers(2),
       sealReceiptRef: 'receipt-1', candidateSetDigest: sha256('digest-B'), sealedAt: '2026-01-01',
     }),

@@ -122,6 +122,69 @@ node scripts/factory.mjs start .factory-sandboxes/my-run/factory.sqlite \
 For a new run on an existing Project, omit `--sandbox` and point at its DB. Do
 not write launch rows manually and do not reset production tables.
 
+## 4a. Resume from a checkpoint (skip completed stages, save LLM tokens)
+
+When the same project was already partially run (e.g. Discovery + Formalization
+completed, Development crashed), you can restore from a golden snapshot and
+**only re-run the failed stage**. This saves 100% of LLM tokens for the
+completed stages — no re-generation of PRD, SRS, UC, AC, or architecture.
+
+### Create a golden snapshot (one-time, after a successful or partial run)
+
+```bash
+# Checkpoint the DB (merge WAL into a single file)
+node -e "
+  const db = new (require('better-sqlite3'))('.factory-sandboxes/my-run/factory.sqlite');
+  db.pragma('wal_checkpoint(TRUNCATE)'); db.close();
+"
+
+# Copy DB + product repo to golden directory
+mkdir -p tests/golden-runs/my-run-$(date +%Y%m%d)
+cp .factory-sandboxes/my-run/factory.sqlite tests/golden-runs/my-run-$(date +%Y%m%d)/golden.sqlite
+cp -r .factory-sandboxes/my-run/product tests/golden-runs/my-run-$(date +%Y%m%d)/product-repo
+```
+
+### Restore from checkpoint and resume only the failed stage
+
+```bash
+# 1. Restore: copy golden DB, fix stuck state, reset failed ProcessRuns
+node scripts/restore-from-checkpoint.mjs \
+  tests/golden-runs/my-run-20260812/golden.sqlite \
+  .factory-sandboxes/dev-run-002/factory.sqlite \
+  --fix-stuck
+
+# 2. Copy the product repo (code + git history + docs)
+cp -r tests/golden-runs/my-run-20260812/product-repo .factory-sandboxes/dev-run-002/product
+
+# 3. Resume — factory continues at the paused stage, skips completed stages
+node scripts/factory.mjs resume .factory-sandboxes/dev-run-002/factory.sqlite
+```
+
+### What gets restored vs what gets re-run
+
+| Stage | Status after restore | LLM tokens |
+|-------|---------------------|------------|
+| Discovery | `completed` (from snapshot) | **0** — artifacts in DB |
+| Formalization | `completed` (from snapshot) | **0** — artifacts in DB |
+| Development | `paused` → resumed with real GLM-4.7 | only for remaining tasks |
+
+### Options for `restore-from-checkpoint.mjs`
+
+```bash
+# Fix only stuck workplaces (keep all completed work):
+node scripts/restore-from-checkpoint.mjs golden.sqlite target.sqlite --fix-stuck
+
+# Reset an entire stage (re-run ALL tasks in that stage from scratch):
+node scripts/restore-from-checkpoint.mjs golden.sqlite target.sqlite --reset-stage solution-development
+```
+
+### When to use checkpoint restore
+
+- **Factory crashed mid-stage** — restore + fix-stuck + resume (1 command)
+- **Code fix shipped, need to re-test** — restore + reset-stage + resume
+- **Regression test material** — golden snapshot + product code = reproducible fixtures
+- **Same project, different model** — restore formalization, re-run development with new model
+
 ## 5. Observe the correct database
 
 `factory.mjs` starts the engine, not the tracker UI. Start a tracker against the

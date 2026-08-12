@@ -1378,11 +1378,11 @@ END;
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- ADR-053 clean-break: production_revision_ref IS the material authority and
 -- is REQUIRED. The seal key is (workplace_ref, production_revision_ref, role).
--- producer_execution_ref is provenance-only (nullable).
+-- ADR-053 B-3: producer_execution_ref column DELETED. Execution provenance
+-- lives on the immutable revision (presenterRef), NOT on the CandidateSet.
 CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
-  producer_execution_ref  TEXT,
   production_revision_ref TEXT NOT NULL,
   role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
   subject_candidate_set_ref TEXT,
@@ -1391,7 +1391,10 @@ CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   sealed_at               TEXT NOT NULL,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (workplace_ref, production_revision_ref, role),
-  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref),
+  -- ADR-053 B-1: a CandidateSet may never reference a revision that was not
+  -- persisted. foreign_keys=ON is set globally in db.ts, so this is enforced.
+  FOREIGN KEY (production_revision_ref) REFERENCES factory_workplace_production_revisions(revision_ref)
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_workplace ON factory_candidate_sets(workplace_ref);

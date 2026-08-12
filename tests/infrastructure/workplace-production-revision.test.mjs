@@ -162,7 +162,11 @@ test('Phase 3: PARTITION INVARIANCE — same material through different executio
     'materialDigest is partition-aware (includes contributor refs)',
   );
 
-  // The revisionRefs DIFFER (different contributors + presenter).
+  // ADR-053 B-2 — revisionRef remains provenance-aware (deferred to B-9), so
+  // the two partitions still derive distinct revisionRefs here at the revision
+  // layer. Partition invariance is delivered at the CandidateSet-seal-key level
+  // via a semanticDigest convergence probe in the seal path (two partitions
+  // sealing equivalent material reuse one revisionRef → one CandidateSet).
   assert.notEqual(partitionA.revisionRef, partitionB.revisionRef);
 
   // Contributing executions correctly differ.

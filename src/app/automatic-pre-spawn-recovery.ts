@@ -142,7 +142,7 @@ export function reconcileAutomaticPreSpawnRecovery(
       ).get(row.execution_id) as { n: number }).n,
       candidate_sets: tableExists(db, 'factory_candidate_sets')
         ? (db.prepare(
-            'SELECT COUNT(*) n FROM factory_candidate_sets WHERE producer_execution_ref=?',
+            'SELECT COUNT(*) n FROM factory_candidate_sets cs JOIN factory_workplace_production_revisions rev ON rev.revision_ref = cs.production_revision_ref WHERE rev.presenter_ref=?',
           ).get(row.execution_id) as { n: number }).n
         : 0,
     };

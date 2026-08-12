@@ -16,20 +16,23 @@ export function createGitIntegrationEffect(
   return {
     effectId: GIT_INTEGRATION_EFFECT_ID,
     run(input) {
+      // ADR-053 B-4 — material coordinates come ONLY from the authority.
+      const { authority, operational } = input;
+      const expectedProductSchema = authority.productSchema;
       const request = {
         schema: 'factory.git-integration-request.v1',
-        workplaceRef: serializeWorkplaceRef(input.workplaceRef),
-        candidateSetRef: input.candidateSetRef,
-        productionRevisionRef: input.authority.productionRevisionRef,
-        expectedProductSchema: input.expectedProductSchema,
+        workplaceRef: serializeWorkplaceRef(authority.workplaceRef),
+        candidateSetRef: authority.candidateSetRef,
+        productionRevisionRef: authority.productionRevisionRef,
+        expectedProductSchema,
       } as const;
       const actionKey = sha256Hex(request);
       let action = ledger.start({
         providerNamespace: 'factory.git-integration.v1',
         actionKey,
-        processRunId: input.processRunId,
-        moduleRef: input.moduleRef,
-        nodeId: input.nodeId,
+        processRunId: operational.processRunId,
+        moduleRef: operational.moduleRef,
+        nodeId: operational.nodeId,
         request,
         requestHash: sha256Hex(request),
       }).record;
@@ -37,26 +40,22 @@ export function createGitIntegrationEffect(
       if (action.state === 'blocked') {
         return { outcome: 'human_required', reason: action.lastError ?? 'integration blocked' };
       }
-
       if (action.state === 'executing' || action.state === 'failed' || action.state === 'unknown') {
         const observationClaim = ledger.claimObservation({
           actionId: action.id,
-          owner: `cell-effect-observer:${input.processRunId}`,
+          owner: `cell-effect-observer:${operational.processRunId}`,
           leaseSeconds: 60,
         });
         if (!observationClaim) {
           return { outcome: 'pending', reason: 'integration execution/observation is still leased' };
         }
         const observation = integration.observeAcceptedWorkplace({
-          workplaceRef: input.workplaceRef,
-          processRunId: input.processRunId,
-          candidateSetRef: input.candidateSetRef,
-          expectedProductSchema: input.expectedProductSchema,
+          workplaceRef: authority.workplaceRef,
+          processRunId: operational.processRunId,
+          candidateSetRef: authority.candidateSetRef,
+          expectedProductSchema,
         });
-        action = ledger.recordObservation({
-          claim: observationClaim.claim,
-          observation,
-        });
+        action = ledger.recordObservation({ claim: observationClaim.claim, observation });
         if (action.state === 'succeeded') return succeeded(action);
         if (action.state === 'retry-authorized') {
           return { outcome: 'pending', reason: 'absence proven; retry authorized' };
@@ -65,16 +64,13 @@ export function createGitIntegrationEffect(
           outcome: observation.outcome === 'blocked' && observation.reason.includes('CONFLICT')
             ? 'repair_required'
             : 'human_required',
-          reason: observation.outcome === 'blocked'
-            ? observation.reason
-            : 'integration observation blocked',
+          reason: observation.outcome === 'blocked' ? observation.reason : 'integration observation blocked',
           evidence: observation.evidence,
         };
       }
-
       const executionClaim = ledger.claim({
         actionId: action.id,
-        owner: `cell-effect-executor:${input.processRunId}`,
+        owner: `cell-effect-executor:${operational.processRunId}`,
         leaseSeconds: 60,
       });
       if (!executionClaim) {
@@ -82,33 +78,21 @@ export function createGitIntegrationEffect(
       }
       try {
         const result = integration.integrateAcceptedWorkplace({
-          workplaceRef: input.workplaceRef,
-          processRunId: input.processRunId,
-          candidateSetRef: input.candidateSetRef,
-          expectedProductSchema: input.expectedProductSchema,
+          workplaceRef: authority.workplaceRef,
+          processRunId: operational.processRunId,
+          candidateSetRef: authority.candidateSetRef,
+          expectedProductSchema,
         });
         if (result.outcome === 'repair_required') {
           ledger.recordExecutionResult({
             claim: executionClaim.claim,
-            result: {
-              outcome: 'failed',
-              error: result.reason,
-              details: result,
-            },
+            result: { outcome: 'failed', error: result.reason, details: result },
           });
-          return {
-            outcome: 'repair_required',
-            reason: result.reason,
-            evidence: result,
-          };
+          return { outcome: 'repair_required', reason: result.reason, evidence: result };
         }
         action = ledger.recordExecutionResult({
           claim: executionClaim.claim,
-          result: {
-            outcome: 'succeeded',
-            receipt: result,
-            providerEffectId: result.afterHead,
-          },
+          result: { outcome: 'succeeded', receipt: result, providerEffectId: result.afterHead },
         });
         return succeeded(action);
       } catch (error) {
@@ -117,10 +101,7 @@ export function createGitIntegrationEffect(
           claim: executionClaim.claim,
           result: { outcome: 'unknown', error: reason },
         });
-        return {
-          outcome: 'pending',
-          reason: `integration outcome requires observation: ${reason}`,
-        };
+        return { outcome: 'pending', reason: `integration outcome requires observation: ${reason}` };
       }
     },
   };

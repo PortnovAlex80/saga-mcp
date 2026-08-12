@@ -36,7 +36,8 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
   return {
     effectId: REPLAY_CAPTURE_EFFECT_ID,
     run(input) {
-      const workplaceRef = serializeWorkplaceRef(input.workplaceRef);
+      // ADR-053 B-4 — consume material coordinates from the authority only.
+      const workplaceRef = serializeWorkplaceRef(input.authority.workplaceRef);
       const state = db.prepare(
         `SELECT loop_state,terminal_reason
            FROM factory_workplaces
@@ -66,20 +67,18 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
             `REPLAY_CERTIFICATION_CELL_FINAL_ACCEPTANCE_MISSING: ${workplaceRef}`,
           );
         }
-        if (finalAcceptance.candidate_set_ref !== input.candidateSetRef) {
+        if (finalAcceptance.candidate_set_ref !== input.authority.candidateSetRef) {
           throw new Error(
             `REPLAY_CERTIFICATION_FINAL_CANDIDATE_MISMATCH: ${workplaceRef}`,
           );
         }
+        // ADR-053 B-9 — resolve the accepted final gate decision by its EXACT
+        // decision_key (authority.gateDecisionKey), NOT by decided_at recency.
         const decision = db.prepare(
           `SELECT subject_candidate_set_ref,assessment_candidate_set_refs
              FROM factory_gate_decisions
-            WHERE workplace_ref=?
-              AND gate_phase='final'
-              AND verdict='accepted'
-            ORDER BY decided_at DESC,rowid DESC
-            LIMIT 1`,
-        ).get(workplaceRef) as {
+            WHERE decision_key=?`,
+        ).get(input.authority.gateDecisionKey) as {
           subject_candidate_set_ref: string;
           assessment_candidate_set_refs: string;
         } | undefined;
@@ -96,9 +95,11 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
 
         for (const candidateSetRef of [...new Set(candidateRefs)]) {
           const candidate = db.prepare(
-            `SELECT candidate_set_ref,producer_execution_ref
-               FROM factory_candidate_sets
-              WHERE candidate_set_ref=? AND workplace_ref=?`,
+            `SELECT cs.candidate_set_ref,
+                    (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
+                      WHERE rev.revision_ref = cs.production_revision_ref) AS producer_execution_ref
+               FROM factory_candidate_sets cs
+              WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?`,
           ).get(candidateSetRef, workplaceRef) as {
             candidate_set_ref: string;
             producer_execution_ref: string;

@@ -23,6 +23,8 @@ export interface AcceptedCandidateAuthority {
   readonly productionRevisionRef: string;
   /** The exact accepted ProductRefs from the accepted CandidateSet members. */
   readonly acceptedProductRefs: readonly ProductRef[];
+  /** The accepted product's output schema (material coordinate). */
+  readonly productSchema: string;
   /** The GateDecision that accepted this CandidateSet. */
   readonly gateDecisionKey: string;
   /** The pinned product payload contract (provenance — which decoder validated the payload). */
@@ -36,17 +38,14 @@ export interface AcceptedCandidateAuthority {
 }
 
 export interface PostAcceptanceEffectInput {
-  readonly workplaceRef: WorkplaceRef;
-  readonly processRunId: number;
-  readonly moduleRef: { readonly name: string; readonly version: string };
-  readonly nodeId: string;
-  readonly candidateSetRef: string;
-  readonly expectedProductSchema: string;
-  /**
-   * ADR-053 clean-break: the SOLE material authority for effects. Effects MUST
-   * consume only this. LEGACY FALLBACK TO producerExecutionRef IS FORBIDDEN.
-   */
+  /** ADR-053 B-4 — the SOLE material authority for effects. */
   readonly authority: AcceptedCandidateAuthority;
+  /** Operational-only (observability/ownership). NON-material — MUST NOT select material. */
+  readonly operational: {
+    readonly processRunId: number;
+    readonly moduleRef: { readonly name: string; readonly version: string };
+    readonly nodeId: string;
+  };
 }
 
 /**
@@ -122,7 +121,7 @@ export class FactoryPostAcceptanceEffectRegistry {
     // Legacy idempotent adapters are represented as a successful provider
     // receipt until migrated to the external-effect ledger. The receipt is
     // still bound to the exact candidate and effect identity.
-    const receiptRef = `effect-receipt:${effectId}:${input.candidateSetRef}`;
+    const receiptRef = `effect-receipt:${effectId}:${input.authority.candidateSetRef}`;
     return {
       outcome: 'succeeded',
       receiptRef,

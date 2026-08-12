@@ -482,7 +482,7 @@ function collectAuthorities(db, wp) {
     ).get(execRef) || null;
   }
   const candidateSets = db.prepare(
-    `SELECT candidate_set_ref, role, producer_execution_ref, sealed_at
+    `SELECT candidate_set_ref, role,  sealed_at
        FROM factory_candidate_sets WHERE workplace_ref = ?
        ORDER BY sealed_at DESC`,
   ).all(wp.workplace_ref);
@@ -518,7 +518,7 @@ function readPendingGateRun(db, workplaceRef) {
 
 function readLatestCandidateSet(db, workplaceRef) {
   return db.prepare(
-    `SELECT candidate_set_ref, role, producer_execution_ref, sealed_at
+    `SELECT candidate_set_ref, role,  sealed_at
        FROM factory_candidate_sets WHERE workplace_ref = ?
        ORDER BY sealed_at DESC LIMIT 1`,
   ).get(workplaceRef) || null;

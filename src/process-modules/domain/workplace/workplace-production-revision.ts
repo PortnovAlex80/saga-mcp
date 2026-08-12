@@ -247,6 +247,14 @@ export function revisionRef(input: {
   materialDigestValue: string;
   semanticDigestValue: string;
 }): string {
+  // NOTE: revisionRef remains provenance-aware by design. ADR-053 B-2 partition
+  // invariance is delivered at the CandidateSet-seal-key level via a
+  // semanticDigest convergence probe in the seal path (see sealCandidateSet /
+  // sealArchitectureCandidateSet): when a second partition seals equivalent
+  // material, it reuses the first partition's revisionRef, so the seal key
+  // (workplace + revisionRef + role) converges. Making revisionRef itself
+  // material-only is deferred to B-9 where the replay-capsule key-material
+  // interaction (replay capture/certify timing) is fixed holistically.
   return sha256Hex({
     workplaceRef: input.workplaceRef,
     parentRevisionRef: input.parentRevisionRef,

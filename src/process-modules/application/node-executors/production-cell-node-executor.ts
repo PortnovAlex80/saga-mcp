@@ -44,7 +44,8 @@ import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
-import { assembleRevision, buildContribution } from '../../domain/workplace/workplace-production-revision.js';
+import { assembleRevision, type WorkplaceProductionRevision } from '../../domain/workplace/workplace-production-revision.js';
+import { producedProductsToContribution } from '../production-source-adapters.js';
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 
@@ -181,10 +182,10 @@ export interface ProductionCellNodeExecutorOptions {
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly resolveProductSemanticDigest?: (productRef: ProductRef) => string | null;
   readonly authorCandidateCarryForward?: AuthorCandidateCarryForwardPort;
-  /** ADR-053 Phase 8 — when present, CandidateSet seals append a durable obligation. */
-  readonly obligationIntegrator?: TransitionObligationIntegrator;
-  /** ADR-053 Phase 5 — when present, CandidateSet seals assemble and carry a revision ref. */
-  readonly revisionRepo?: SqliteWorkplaceProductionRevisionRepository;
+  /** ADR-053 B-8 — MANDATORY. CandidateSet seals (and downstream transitions) append a durable obligation atomically with the source fact. */
+  readonly obligationIntegrator: TransitionObligationIntegrator;
+  /** ADR-053 B-1 — MANDATORY. CandidateSet seals append the revision and seal the set in one transaction; a set can never reference an absent revision. */
+  readonly revisionRepo: SqliteWorkplaceProductionRevisionRepository;
   readonly now?: () => Date;
 }
 
@@ -559,15 +560,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           verdict: 'accepted', isFinal: !cell.review,
           effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
-        // ADR-053 Phase 8 — gate accepted → effects must run.
-        if (this.opts.obligationIntegrator) {
-          this.opts.obligationIntegrator.onGateAccepted({
-            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-            gateDecisionDigest: candidate.candidateSetDigest,
-            workplaceRef: serializeWorkplaceRef(workplace.ref),
-            fence: 1,
-          });
-        }
+        // ADR-053 B-8 — gate accepted → effects must run (mandatory obligation).
+        this.opts.obligationIntegrator.onGateAccepted({
+          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+          gateDecisionDigest: candidate.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          fence: 1,
+        });
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -588,15 +587,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
-        // ADR-053 Phase 8 — reviewer gate accepted → effects must run.
-        if (this.opts.obligationIntegrator) {
-          this.opts.obligationIntegrator.onGateAccepted({
-            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-            gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
-            workplaceRef: serializeWorkplaceRef(workplace.ref),
-            fence: 1,
-          });
-        }
+        // ADR-053 B-8 — reviewer gate accepted → effects must run (mandatory).
+        this.opts.obligationIntegrator.onGateAccepted({
+          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+          gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          fence: 1,
+        });
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -677,20 +674,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         gateDecisionKey: gateDecisionKey ?? '',
       });
       const result = this.opts.postAcceptanceEffects.run(effectId, {
-        workplaceRef: workplace.ref,
-        processRunId: ctx.processRunId,
-        moduleRef: ctx.module.identity,
-        nodeId: node.id,
-        candidateSetRef: acceptedCandidate.candidateSetRef,
-        expectedProductSchema: cell.productContracts[0]!.schemaRef,
         authority: {
           workplaceRef: workplace.ref,
           candidateSetRef: acceptedCandidate.candidateSetRef,
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs,
+          productSchema: cell.productContracts[0]?.schemaRef ?? '',
           gateDecisionKey: gateDecisionKey ?? '',
           productContractRef: productContract,
           acceptanceDigest,
+        },
+        operational: {
+          processRunId: ctx.processRunId,
+          moduleRef: ctx.module.identity,
+          nodeId: node.id,
         },
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
@@ -713,14 +710,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: acceptedCandidate.candidateSetRef,
         result,
       }).effectReceiptRef;
-      // ADR-053 Phase 8 — effects settled → final acceptance must be recorded.
-      if (this.opts.obligationIntegrator) {
-        this.opts.obligationIntegrator.onEffectsSettled({
-          workplaceRef: serializeWorkplaceRef(workplace.ref),
-          effectReceiptDigest: effectReceiptRef,
-          fence: 1,
-        });
-      }
+      // ADR-053 B-8 — effects settled → final acceptance must be recorded (mandatory).
+      this.opts.obligationIntegrator.onEffectsSettled({
+        workplaceRef: serializeWorkplaceRef(workplace.ref),
+        effectReceiptDigest: effectReceiptRef,
+        fence: 1,
+      });
     }
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
@@ -747,35 +742,39 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       effectReceiptRefs,
       acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     });
-    // ADR-053 Phase 8 — final acceptance recorded → process must settle.
-    if (this.opts.obligationIntegrator) {
-      this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
-        finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
-        acceptanceDigest: acceptedCandidate.candidateSetDigest,
-        workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
-      });
-    }
+    // ADR-053 B-8 — final acceptance recorded → process must settle (mandatory).
+    this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
+      finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
+      acceptanceDigest: acceptedCandidate.candidateSetDigest,
+      workplaceRef: serializeWorkplaceRef(workplaceRef),
+      fence: 1,
+    });
+    // ADR-053 B-9 — populate the EXACT accepted GateDecision key (was '' placeholder).
+    // Carrying the real key lets downstream (replay-capture / replay-claim-binder)
+    // resolve the accepted gate decision by exact key instead of decided_at recency.
+    const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
+    ) ?? '';
     const effectInput = {
-      workplaceRef,
-      processRunId: ctx.processRunId,
-      moduleRef: ctx.module.identity,
-      nodeId: cell.id,
-      candidateSetRef: acceptedCandidate.candidateSetRef,
-      expectedProductSchema: cell.productContracts[0]!.schemaRef,
       authority: {
         workplaceRef,
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
         acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
-        gateDecisionKey: '',
+        productSchema: cell.productContracts[0]?.schemaRef ?? '',
+        gateDecisionKey: finalGateDecisionKey,
         productContractRef: cell.productContracts[0]?.payloadContract ?? null,
         acceptanceDigest: computeAcceptanceDigest({
           candidateSetRef: acceptedCandidate.candidateSetRef,
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
-          gateDecisionKey: '',
+          gateDecisionKey: finalGateDecisionKey,
         }),
+      },
+      operational: {
+        processRunId: ctx.processRunId,
+        moduleRef: ctx.module.identity,
+        nodeId: cell.id,
       },
     };
     // UNIVERSAL: replay capture runs for EVERY accepted candidate, regardless
@@ -956,77 +955,93 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       origin: 'produced',
       sourceCandidateSetRef: null,
     }));
-    const digest = hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), executionRef, role, products });
+    // ADR-053 B-3 — candidateSetDigest is execution-free: it captures only the
+    // material (workplace + role + products). Including executionRef would break
+    // B-2 partition convergence (two partitions with identical material would
+    // derive different digests under the same converged seal key → false
+    // REPLAY_MISMATCH instead of replay).
+    const digest = hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, products });
 
     // ADR-053 Phase 5 — assemble an immutable Workplace production revision
     // from the sealed products and carry its ref as the CandidateSet material
     // authority. Two executions producing the same products derive the same
     // revisionRef → same seal key → partition invariance (Run 011 fix).
-    const productionRevisionRef = this.assembleRevisionFromProducts(
+    const revision = this.assembleRevisionFromProducts(
       workplaceRef, executionRef, products,
     );
 
-    const sealed = this.opts.candidateSetRepo.seal({
-      workplaceRef,
-      producerExecutionRef: executionRef,
-      productionRevisionRef,
-      role,
-      subjectCandidateSetRef,
-      members,
-      sealReceiptRef: `seal:${executionRef}:${role}`,
-      candidateSetDigest: digest,
-      sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
-    }).set;
-    // ADR-053 Phase 8 — append a durable obligation for the Gate to run on
-    // every author CandidateSet seal.
-    if (role === 'author' && this.opts.obligationIntegrator) {
-      this.opts.obligationIntegrator.onCandidateSetSealed({
-        candidateSetRef: sealed.candidateSetRef,
-        candidateSetDigest: sealed.candidateSetDigest,
-        workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
-      });
-    }
+    // ADR-053 B-1 — append the revision AND seal the CandidateSet in ONE
+    // transaction: the set can never reference a revision that was not
+    // persisted. revisionRepo is mandatory; if either write fails, neither
+    // commits (all-or-nothing).
+    const sealed = this.opts.revisionRepo.transaction(() => {
+      // ADR-053 B-2 — partition convergence: if an equivalent revision (same
+      // semanticDigest) already exists for this workplace, reuse its revisionRef
+      // so the CandidateSet seal key (workplace + revisionRef + role) converges
+      // across execution partitions (same material → one authority).
+      const existing = this.opts.revisionRepo.getRevisionBySemanticDigest(
+        revision.workplaceRef, revision.semanticDigest,
+      );
+      const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
+      if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      const set = this.opts.candidateSetRepo.seal({
+        workplaceRef,
+        productionRevisionRef: finalRevisionRef,
+        role,
+        subjectCandidateSetRef,
+        members,
+        sealReceiptRef: `seal:${executionRef}:${role}`,
+        candidateSetDigest: digest,
+        sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+      }).set;
+      // ADR-053 B-8 — append the run-gate obligation INSIDE the same
+      // transaction: the obligation is recorded iff the seal commits (atomic).
+      // A crash between seal and obligation leaves neither; a replay re-creates
+      // both. obligationIntegrator is mandatory; append errors propagate and
+      // roll back the seal.
+      if (role === 'author') {
+        this.opts.obligationIntegrator.onCandidateSetSealed({
+          candidateSetRef: set.candidateSetRef,
+          candidateSetDigest: set.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplaceRef),
+          fence: 1,
+        });
+      }
+      return set;
+    });
     return sealed;
   }
 
   /**
-   * ADR-053 Phase 5 — assemble a sealed Workplace production revision from a
-   * set of ProductRefs. Each product becomes a revision member keyed by its
-   * semantic identity (schemaId + ref). Returns the content-addressed
-   * revisionRef, or null when no revision repository is configured.
+   * ADR-053 B-1 — assemble a sealed Workplace production revision from a set of
+   * ProductRefs. Each product becomes a revision member keyed by its semantic
+   * identity (schemaId + ref). Returns the revision; the CALLER appends it
+   * atomically with the CandidateSet seal (see sealCandidateSet).
    */
   private assembleRevisionFromProducts(
     workplaceRef: WorkplaceRef,
     executionRef: string,
     products: readonly ProductRef[],
-  ): string {
+  ): WorkplaceProductionRevision {
     if (products.length === 0) {
       throw new Error('CANNOT_SEAL_EMPTY_PRODUCT_SET: ADR-053 requires productionRevisionRef for every CandidateSet');
     }
     const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
-    const operations = products.map(p => ({
-      op: 'put' as const,
-      memberKey: `product/${p.schemaId}/${p.ref}`,
-      productRef: p.ref,
-      contentDigest: p.digest,
-      sourceAdapter: 'typed-submission' as const,
-    }));
-    const contribution = buildContribution({
+    // ADR-053 B-7 — route contribution building through the source adapter
+    // boundary (producedProductsToContribution), not inline. memberKey scheme
+    // `product/{schemaId}/{ref}` is preserved, so the revision digest is
+    // unchanged (no partition-convergence break).
+    const contribution = producedProductsToContribution({
       workplaceRef: workplaceSerialized,
-      contributorExecutionRef: executionRef,
-      sourceAdapter: 'typed-submission',
-      operations,
-      parentContributionRef: null,
+      executionRef,
+      products,
     });
-    const revision = assembleRevision({
+    return assembleRevision({
       workplaceRef: workplaceSerialized,
       parent: null,
       contributions: [contribution],
       presenterRef: executionRef,
     });
-    this.opts.revisionRepo?.appendRevision(revision);
-    return revision.revisionRef;
   }
 
   private sealCarriedForwardCandidateSet(
@@ -1040,25 +1055,31 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }));
     const digest = hash({
       workplaceRef: serializeWorkplaceRef(workplaceRef),
-      executionRef: directive.presenterRef,
       role: 'author',
       products: directive.products,
     });
-    // ADR-053 Phase 5 — carry-forward seals also get a revision ref.
-    const productionRevisionRef = this.assembleRevisionFromProducts(
+    // ADR-053 B-1 — carry-forward seals append the revision and seal the set
+    // atomically, same invariant as the produced-member path.
+    const revision = this.assembleRevisionFromProducts(
       workplaceRef, directive.presenterRef, directive.products,
     );
-    return this.opts.candidateSetRepo.seal({
-      workplaceRef,
-      producerExecutionRef: directive.presenterRef,
-      productionRevisionRef,
-      role: 'author',
-      subjectCandidateSetRef: null,
-      members,
-      sealReceiptRef: `carry-forward-seal:${directive.authorizationRef}`,
-      candidateSetDigest: digest,
-      sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
-    }).set;
+    return this.opts.revisionRepo.transaction(() => {
+      const existing = this.opts.revisionRepo.getRevisionBySemanticDigest(
+        revision.workplaceRef, revision.semanticDigest,
+      );
+      const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
+      if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      return this.opts.candidateSetRepo.seal({
+        workplaceRef,
+        productionRevisionRef: finalRevisionRef,
+        role: 'author',
+        subjectCandidateSetRef: null,
+        members,
+        sealReceiptRef: `carry-forward-seal:${directive.authorizationRef}`,
+        candidateSetDigest: digest,
+        sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+      }).set;
+    });
   }
 
   private runGate(
@@ -1150,7 +1171,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       failed: false,
       products: author?.members.map(member => member.productRef) ?? [],
       candidateSetRef: author?.candidateSetRef ?? null,
-      executionRef: author?.producerExecutionRef ?? null,
+      executionRef: author ? (this.opts.revisionRepo.getRevision(author.productionRevisionRef)?.presenterRef ?? null) : null,
     };
   }
 
@@ -1224,7 +1245,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         failed: outcome.failed,
         paused: outcome.paused,
         candidateSetRef: outcome.candidateSetRef,
-        producerExecutionRef: outcome.executionRef,
         execution: execution && outcome.executionRef
           ? {
               intentId: execution.intentId,

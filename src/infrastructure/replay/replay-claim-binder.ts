@@ -71,7 +71,7 @@ function isCapsuleIneligibleInWorkplace(
          ON cs.candidate_set_ref=gd.subject_candidate_set_ref
         AND cs.workplace_ref=gd.workplace_ref
        JOIN worker_executions we
-         ON we.execution_id=cs.producer_execution_ref
+         ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
       WHERE gd.workplace_ref=?
         AND gd.verdict!='accepted'
         AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
@@ -244,12 +244,13 @@ export function certifyAcceptedReplayCapsules(
 
       for (const candidateSetRef of [...new Set(candidateRefs)]) {
         const candidate = db.prepare(
-          `SELECT cs.candidate_set_ref,cs.producer_execution_ref
+          `SELECT cs.candidate_set_ref,
+                  (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS producer_execution_ref
              FROM factory_candidate_sets cs
              JOIN worker_executions we
-               ON we.execution_id=cs.producer_execution_ref
+               ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
              LEFT JOIN factory_replay_capsules rc
-               ON rc.source_execution_ref=cs.producer_execution_ref
+               ON rc.source_execution_ref=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
               AND rc.source_candidate_set_ref=cs.candidate_set_ref
             WHERE cs.candidate_set_ref=?
               AND cs.workplace_ref=?

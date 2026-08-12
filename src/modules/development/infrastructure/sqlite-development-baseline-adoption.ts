@@ -303,7 +303,7 @@ function requireSingleCandidate(
   role: 'author' | 'reviewer',
 ): CandidateRow {
   const rows = db.prepare(
-    `SELECT * FROM factory_candidate_sets WHERE workplace_ref=? AND role=?
+    `SELECT *, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE workplace_ref=? AND role=?
       ORDER BY created_at`,
   ).all(workplaceRef, role) as CandidateRow[];
   if (rows.length !== 1) {
@@ -314,7 +314,7 @@ function requireSingleCandidate(
 
 function requireCandidateByRef(db: Database.Database, ref: string): CandidateRow {
   const row = db.prepare(
-    `SELECT * FROM factory_candidate_sets WHERE candidate_set_ref=?`,
+    `SELECT *, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE candidate_set_ref=?`,
   ).get(ref) as CandidateRow | undefined;
   if (!row) throw new Error('DEVELOPMENT_ADOPTION_CANDIDATE_MISSING');
   return row;

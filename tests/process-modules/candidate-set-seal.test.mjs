@@ -66,11 +66,11 @@ test('CandidateSetRepository.seal creates an immutable sealed set', () => {
 
   // Verify the row exists in the DB.
   const row = db.prepare(
-    'SELECT candidate_set_ref, workplace_ref, role, producer_execution_ref FROM factory_candidate_sets WHERE candidate_set_ref=?',
+    'SELECT candidate_set_ref, workplace_ref, role, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE candidate_set_ref=?',
   ).get(result.set.candidateSetRef);
   assert.ok(row);
   assert.equal(row.role, 'author');
-  assert.equal(row.producer_execution_ref, 'exec-1');
+  assert.equal(row. 'exec-1');
 
   // Verify the member row.
   const memberRow = db.prepare(
