@@ -31,7 +31,7 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 | C5 | git integration `ORDER BY t.id DESC` and `ORDER BY gd.decided_at DESC` | **CONFIRMED** | `sqlite-production-cell-integration.ts:70,162,269` (+ 11 more recency sites in replay/) |
 | C6 | obligation carries fabricated `gate-final:<workplace>` | **CONFIRMED → FIXED in tranche 1a** | now `decision.decisionKey`/`decisionDigest` |
 | C7 | obligations only for author path; `fence:1` hardcoded | **CONFIRMED → PARTIAL in tranche 3** | reviewer + carry-forward seals now append the `run-gate` obligation atomically (was author-only); `fence: 1` still hardcoded (real CAS-derivation is C6/C7 remaining) |
-| C8 | replay-capture suppressed; terminal crash loses FinalAcceptance | **CONFIRMED → partially FIXED in tranche 1a** | suppression removed; terminal idempotent re-record still TODO |
+| C8 | replay-capture suppressed; terminal crash loses FinalAcceptance | **CONFIRMED → FIXED in tranche 1a+3** | suppression removed (1a); terminal(accepted) reconcile now idempotently re-records FinalAcceptance + replay-capture when the row is absent (3) |
 | C9 | GateRun identity lacks `installationDigest` + `expectedWorkplaceRevision` | **CONFIRMED** | `gate.ts` identity; `factory_gate_runs` has no installation_digest |
 | C10 | CheckProvider implementation digest not actually verified | **CONFIRMED** | driver checks version only |
 | C11 | CheckReceipt identity collides for repeated provider entries | **CONFIRMED** | `receipt:${gateRunRef}:${providerId}` |
@@ -101,8 +101,13 @@ CandidateSet + its GateDecision + final acceptance, keyed by workplace). Then:
 - **C15 (fixed):** `idx_workplace_revisions_semantic` is UNIQUE;
   `appendRevision` returns the persisted/semantic-equivalent revision; the
   convergence transaction uses `BEGIN IMMEDIATE`.
-- **Still TODO:** C8 (terminal idempotent FinalAcceptance/ReplayCapture), C9–C13
-  (GateRun identity + provider digest + one-shot replay + full decision digest).
+- **C8 (fixed):** terminal(accepted) reconcile now idempotently re-records
+  FinalAcceptance + replay-capture when the row is absent (crash between
+  gate-accept and recordFinalAcceptanceAndCapture). Net effect of C7+C8: the
+  full-suite failure count dropped 66 → ~47/48 (many lifecycle/crash-recovery
+  tests unblocked).
+- **Still TODO:** C9–C13 (GateRun identity + provider digest + one-shot replay +
+  full decision digest).
 - C9/C10/C11: GateRun identity += `installationDigest` + `expectedWorkplaceRevision`;
   verify provider implementation digest; CheckReceipt key includes ordinal +
   parameters + environment.

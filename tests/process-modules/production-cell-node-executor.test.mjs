@@ -251,6 +251,43 @@ test('ADR-053 C6: gate-accepted obligation carries the EXACT GateDecision key (n
   h.db.close();
 });
 
+test('ADR-053 C8: terminal(accepted) crash before FinalAcceptance is recovered on reconcile', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:c8-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:c8', digest: sha('c8-product'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 1);
+  // Simulate a crash in the window between the gate-accept CAS transition and
+  // recordFinalAcceptanceAndCapture: the FinalAcceptance row is absent. In
+  // production a crash leaves it simply un-written; here the table is
+  // append-only (no-delete trigger enforces immutability), so we drop that
+  // trigger to model the post-crash "never recorded" state.
+  h.db.prepare('DROP TRIGGER trg_factory_cell_final_acceptances_no_delete').run();
+  h.db.prepare('DELETE FROM factory_cell_final_acceptances').run();
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 0);
+  // Re-reconcile the terminal(accepted) workplace → C8 recovery must idempotently
+  // re-record FinalAcceptance (and run replay-capture) before returning.
+  await h.executor.execute(ctx);
+  assert.equal(
+    h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n,
+    1,
+    'C8: terminal(accepted) reconcile must re-record FinalAcceptance after a crash',
+  );
+  // A second reconcile must NOT duplicate it (idempotent recovery).
+  await h.executor.execute(ctx);
+  assert.equal(
+    h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n,
+    1,
+    'C8: recovery must be idempotent — no duplicate FinalAcceptance',
+  );
+  h.db.close();
+});
+
 test('required effect settles before final acceptance and replay certification', async () => {
   const h = harness();
   const ctx = context(cell({ effect: true }));

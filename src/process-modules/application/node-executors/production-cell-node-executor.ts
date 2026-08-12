@@ -375,7 +375,24 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     currentRoleProjectedThisCycle: boolean,
   ): Promise<ReconcileOutcome> {
     let state = this.requireState(workplace.ref);
-    if (state.loopState === 'terminal') return this.terminalOutcome(workplace.ref, state);
+    if (state.loopState === 'terminal') {
+      // ADR-053 C8 — crash recovery: if the workplace reached terminal(accepted)
+      // but FinalAcceptance was never durably recorded (a crash in the window
+      // between the gate-accept CAS transition and recordFinalAcceptanceAndCapture),
+      // idempotently record FinalAcceptance + run replay-capture NOW, before
+      // returning. Without this, a crash in that narrow window leaves the
+      // acceptance non-durable and the replay capsule never captured.
+      // recordFinalAcceptanceAndCapture is idempotent (replay-safe on the exact
+      // acceptance identity), so re-running on the next reconcile is a no-op once
+      // the row exists.
+      if (state.terminalReason === 'accepted'
+        && !this.opts.finalAcceptance.getAcceptedCandidateSetRef(
+          serializeWorkplaceRef(workplace.ref),
+        )) {
+        this.ensureFinalAcceptanceForTerminalAccepted(ctx, node, cell, workplace);
+      }
+      return this.terminalOutcome(workplace.ref, state);
+    }
     if (state.loopState === 'paused') return pausedOutcome();
     if (state.loopState === 'effect_pending') {
       // ADR-053 Phase 7: read the accepted CandidateSet by EXACT ref from
@@ -798,6 +815,32 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // mandatory-obligation model. The effect itself is idempotent on the exact
     // acceptance identity, so a legitimate replay is safe to re-run.
     this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
+  }
+
+  /**
+   * ADR-053 C8 — recover a terminal(accepted) Workplace whose FinalAcceptance
+   * row is missing (crash between the gate-accept transition and
+   * recordFinalAcceptanceAndCapture). Resolves the accepted author CandidateSet
+   * and idempotently records FinalAcceptance + replay-capture. The accepted
+   * candidate for a terminal(accepted) cell is the author set (for a no-review
+   * cell it is the sealed author output; for a review cell it is the reviewer's
+   * subject — both resolved as the workplace's accepted author candidate).
+   */
+  private ensureFinalAcceptanceForTerminalAccepted(
+    ctx: NodeExecutionContext,
+    node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    workplace: MaterializedWorkplace,
+  ): void {
+    const accepted = this.acceptedAuthorCandidate(workplace.ref);
+    if (!accepted) {
+      throw new NodeExecutionError(
+        this.kind,
+        node.id,
+        `terminal(accepted) Workplace has no accepted author CandidateSet to finalize (C8 crash recovery)`,
+      );
+    }
+    this.recordFinalAcceptanceAndCapture(ctx, cell, workplace.ref, accepted, []);
   }
 
   private ensureRoleProjection(
