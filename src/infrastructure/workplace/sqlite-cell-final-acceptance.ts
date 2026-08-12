@@ -175,17 +175,32 @@ export class SqliteCellFinalAcceptance {
   private readAcceptedDecision(workplaceRef: string, candidateSetRef: string): {
     decision_key: string;
   } {
-    const row = this.db.prepare(
+    // ADR-053 C4 — read the accepted FINAL gate decision by EXACT (workplace,
+    // subject, gate_phase='final'), NOT by decided_at recency. For a given
+    // subject CandidateSet there is at most ONE accepted final-phase decision
+    // (the final gate runs once per subject; replays produce the same
+    // decision_key via INSERT OR IGNORE). The previous ORDER BY decided_at was a
+    // fragile tiebreaker that, in a review cell, could otherwise not distinguish
+    // the author-phase acceptance from the final-phase acceptance for the same
+    // subject — filtering gate_phase='final' removes that ambiguity entirely.
+    // Two accepted final decisions for one subject is an invariant violation and
+    // must fail closed, not silently pick the "latest".
+    const rows = this.db.prepare(
       `SELECT decision_key
          FROM factory_gate_decisions
         WHERE workplace_ref=? AND subject_candidate_set_ref=? AND verdict='accepted'
-        ORDER BY decided_at DESC,rowid DESC LIMIT 1`,
-    ).get(workplaceRef, candidateSetRef) as { decision_key: string } | undefined;
-    if (!row) {
+          AND gate_phase='final'`,
+    ).all(workplaceRef, candidateSetRef) as Array<{ decision_key: string }>;
+    if (rows.length === 0) {
       throw new Error(
         `CELL_FINAL_ACCEPTANCE_GATE_DECISION_MISSING: ${workplaceRef}/${candidateSetRef}`,
       );
     }
-    return row;
+    if (rows.length > 1) {
+      throw new Error(
+        `CELL_FINAL_ACCEPTANCE_GATE_DECISION_NOT_UNIQUE: ${workplaceRef}/${candidateSetRef} has ${rows.length} accepted final decisions`,
+      );
+    }
+    return rows[0]!;
   }
 }
