@@ -47,6 +47,7 @@ import type { TransitionObligationIntegrator } from '../transition-obligation-in
 import { assembleRevision, type WorkplaceProductionRevision } from '../../domain/workplace/workplace-production-revision.js';
 import { producedProductsToContribution } from '../production-source-adapters.js';
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
+import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 
 export interface ProductionCellProjectionPersistence {
@@ -186,6 +187,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly obligationIntegrator: TransitionObligationIntegrator;
   /** ADR-053 B-1 — MANDATORY. CandidateSet seals append the revision and seal the set in one transaction; a set can never reference an absent revision. */
   readonly revisionRepo: SqliteWorkplaceProductionRevisionRepository;
+  /** ADR-053 C1 — MANDATORY. The durable current accepted-author authority pointer; read by acceptedAuthorCandidate instead of hash-order selection. */
+  readonly authorityHead: SqliteAcceptedAuthorityHeadRepository;
   readonly now?: () => Date;
 }
 
@@ -576,6 +579,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'accepted', isFinal: !cell.review,
           effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
+          // ADR-053 C1 — record the accepted-author authority pointer atomically
+          // with the CAS transition so acceptedAuthorCandidate reads the EXACT
+          // accepted set, never sets[0] by hash order.
+          acceptedCandidateSetRef: candidate.candidateSetRef,
+          gateDecisionKey: decision.decisionKey,
         });
         // ADR-053 B-8/C6 — gate accepted → effects must run (mandatory
         // obligation). The obligation carries the EXACT accepted GateDecision
@@ -1253,9 +1261,16 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    * The reviewer binds to this exact set as its subject.
    */
   private acceptedAuthorCandidate(ref: WorkplaceRef): CandidateSet | null {
-    const sets = this.opts.candidateSetRepo.listForWorkplace(ref)
-      .filter(set => set.role === 'author');
-    return sets[0] ?? null;
+    // ADR-053 C1 — read the EXACT accepted-author CandidateSet from the durable
+    // authority pointer (written atomically with the author-gate-accept CAS
+    // transition by the coordinator), NOT `sets[0]` by candidate_set_ref hash
+    // order. In a repair cycle (multiple author attempts) the hash-order
+    // selector could bind the reviewer subject / projection / crash recovery to
+    // the WRONG attempt; the pointer is the single source of truth.
+    const csRef = this.opts.authorityHead.readAuthorCandidateSetRef(
+      serializeWorkplaceRef(ref),
+    );
+    return csRef ? this.opts.candidateSetRepo.read(csRef) : null;
   }
 
   private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {

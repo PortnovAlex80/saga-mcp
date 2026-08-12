@@ -8,6 +8,7 @@ import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplac
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/sqlite-cell-final-acceptance.js';
+import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
@@ -71,7 +72,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
-  const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, now: () => new Date() });
+  const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, authorityHeadRepo: new SqliteAcceptedAuthorityHeadRepository(db), now: () => new Date() });
   const plans = [];
   const activations = [];
   const products = new Map();
@@ -125,6 +126,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
       },
     },
     finalAcceptance: new SqliteCellFinalAcceptance(db),
+    authorityHead: new SqliteAcceptedAuthorityHeadRepository(db),
     productReader: { readExecutionProducts: ({ executionRef }) => products.get(executionRef) ?? [] },
     checkProviders: {
       resolve(providerId) {
@@ -285,6 +287,38 @@ test('ADR-053 C8: terminal(accepted) crash before FinalAcceptance is recovered o
     1,
     'C8: recovery must be idempotent — no duplicate FinalAcceptance',
   );
+  h.db.close();
+});
+
+test('ADR-053 C1: author acceptance atomically records the exact accepted-author authority head', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:c1-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:c1', digest: sha('c1-product'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  const wref = 'workplace/7/test-module@1.0.0/singleton-cell/singleton';
+  // C1: the authority head must be recorded atomically with the author-gate
+  // acceptance (same transaction as the CAS transition), pointing at the EXACT
+  // accepted author CandidateSet + its GateDecision key — NOT reconstructible by
+  // candidate_set_ref hash order.
+  const head = h.db.prepare(
+    `SELECT accepted_author_candidate_set_ref, accepted_author_gate_decision_key
+       FROM factory_accepted_authority_head WHERE workplace_ref=?`,
+  ).get(wref);
+  assert.ok(head, 'C1: authority head must be recorded on author-gate acceptance');
+  const cs = h.db.prepare(
+    `SELECT role FROM factory_candidate_sets WHERE candidate_set_ref=?`,
+  ).get(head.accepted_author_candidate_set_ref);
+  assert.equal(cs.role, 'author', 'head points to an author CandidateSet');
+  const dec = h.db.prepare(
+    `SELECT verdict, gate_phase FROM factory_gate_decisions WHERE decision_key=?`,
+  ).get(head.accepted_author_gate_decision_key);
+  assert.equal(dec.verdict, 'accepted');
+  assert.equal(dec.gate_phase, 'final');
   h.db.close();
 });
 

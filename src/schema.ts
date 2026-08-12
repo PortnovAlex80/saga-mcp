@@ -1264,6 +1264,22 @@ CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
   FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
 );
 
+-- ADR-053 C1 — durable CURRENT accepted-author authority pointer. Exactly one
+-- row per workplace (PK). Written atomically with the author-gate-accept CAS
+-- transition, so the accepted author CandidateSet is an explicit durable fact,
+-- never reconstructed by candidate_set_ref hash order or sealed_at/decided_at
+-- recency. The reviewer subject pin, reviewer projection and crash recovery all
+-- read this exact pointer (see SqliteAcceptedAuthorityHeadRepository +
+-- ProductionCellCoordinator.applyAcceptanceEvent).
+CREATE TABLE IF NOT EXISTS factory_accepted_authority_head (
+  workplace_ref                        TEXT PRIMARY KEY,
+  accepted_author_candidate_set_ref    TEXT NOT NULL,
+  accepted_author_gate_decision_key    TEXT NOT NULL,
+  revision                             INTEGER NOT NULL,
+  recorded_at                          TEXT NOT NULL,
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+
 CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_receipts_no_update
 BEFORE UPDATE ON factory_cell_effect_receipts BEGIN
   SELECT RAISE(ABORT, 'factory_cell_effect_receipts are immutable');

@@ -30,6 +30,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
 import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
@@ -59,6 +60,7 @@ function setup() {
   const coordinator = new ProductionCellCoordinator({
     db,
     workplaceRepo,
+    authorityHeadRepo: new SqliteAcceptedAuthorityHeadRepository(db),
     now: () => new Date('2026-01-01T00:00:00Z'),
   });
   const checkProviders = createStandardCheckProviderRegistry();

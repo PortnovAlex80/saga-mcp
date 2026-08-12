@@ -24,7 +24,7 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 
 | ID | Defect | Verdict | Evidence |
 |----|--------|---------|----------|
-| C1 | current author chosen by `ORDER BY candidate_set_ref DESC` (`sets[0]`) | **CONFIRMED** | `sqlite-candidate-set-repository.ts:189`; `acceptedAuthorCandidate()` |
+| C1 | current author chosen by `ORDER BY candidate_set_ref DESC` (`sets[0]`) | **CONFIRMED → FIXED in tranche 1b** | new `factory_accepted_authority_head` table (PK workplace_ref) written ATOMICALLY with the author-gate-accept CAS transition (`ProductionCellCoordinator.applyAcceptanceEvent` wraps `applyTransitionInTx` + head UPSERT in one IMMEDIATE txn); `acceptedAuthorCandidate` reads the exact pointer; `listForWorkplace` is now diagnostics-only (`ASC`) |
 | C2 | reviewer seal key omits `subjectCandidateSetRef` → collision | **CONFIRMED → FIXED in tranche 2** | `candidate-set.ts` `candidateSetSealKey` now appends `subjectCandidateSetRef` for reviewer (author key unchanged); executor reviewer digest binds subject; schema replaced combined `UNIQUE(workplace,revision,role)` with partial uniques `(workplace,revision) WHERE author` + `(workplace,revision,subject) WHERE reviewer` |
 | C3 | replay returns the new in-memory object, not the persisted row | **CONFIRMED → FIXED in tranche 3** | `seal()` replay branch now reads the persisted row, compares immutable material (revision/role/subject/members) and returns it (not the new input); `assertPersistedMaterialMatches` fails closed on drift |
 | C4 | `SqliteCellFinalAcceptance.readAcceptedDecision` uses `ORDER BY decided_at DESC` | **CONFIRMED → FIXED in tranche 3** | reads by EXACT `(workplace, subject, verdict='accepted', gate_phase='final')` with a uniqueness assertion; no recency — `gate_phase='final'` disambiguates the author-phase from the final-phase acceptance for the same subject |
@@ -61,17 +61,18 @@ local SQL *aliases* over `revision.presenter_ref`, not legacy columns.
   `post-acceptance-authority-validation.test.mjs` (7× C17). tsc clean; full
   suite 2941/75 (identical baseline, zero regressions, +8 new passing).
 
-### Tranche 1b — stop false authority selection (TODO)
-Introduce a **durable current-authority pointer** (exact accepted author
-CandidateSet + its GateDecision + final acceptance, keyed by workplace). Then:
-- C1: `acceptedAuthorCandidate()` reads the pointer, not `sets[0]`.
-- C4: `recordEffectReceipt` / `recordFinalAcceptance` take the exact
-  `gateDecisionKey` from the caller (threaded from `runGate`), validate it
-  exists + matches; delete `ORDER BY decided_at DESC`.
-- C5: git integration binds to the accepted submission `task_id` and the exact
-  final gate key; delete `ORDER BY t.id DESC` / `ORDER BY gd.decided_at DESC`.
-- Touch: candidate-set repo, cell-final-acceptance, git-integration-effect,
-  sqlite-production-cell-integration, executor, schema (authority-head table).
+### Tranche 1b — durable current-authority pointer (DONE)
+- **C1 (fixed):** new `factory_accepted_authority_head` table (PK workplace_ref)
+  holding the exact accepted author CandidateSet + its GateDecision key.
+  `ProductionCellCoordinator.applyAcceptanceEvent` writes it ATOMICALLY with the
+  author-gate-accept CAS transition (wraps `applyTransitionInTx` + head UPSERT in
+  one IMMEDIATE transaction — the pointer is durable iff the acceptance
+  committed). `acceptedAuthorCandidate` reads the exact pointer instead of
+  `sets[0]` by `candidate_set_ref DESC`. `listForWorkplace` is demoted to
+  diagnostics-only (`ASC`). Regression test: authority head recorded on author
+  acceptance with the exact accepted set + final gate decision.
+- **C4 (already fixed in tranche 3)** and **C5 review-decision (already fixed)**;
+  C5 task-binding (`ORDER BY t.id DESC`) still TODO.
 
 ### Tranche 2 — bind reviewer subject into identity (DONE)
 - **C2 (fixed):** `candidateSetSealKey` appends `subjectCandidateSetRef` for

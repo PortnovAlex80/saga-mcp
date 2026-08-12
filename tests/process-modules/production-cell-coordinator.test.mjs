@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
+import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 
 const REF = asWorkplaceRef({
@@ -19,7 +20,7 @@ function harness() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
-  const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, now: () => new Date() });
+  const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, authorityHeadRepo: new SqliteAcceptedAuthorityHeadRepository(db), now: () => new Date() });
   return { db, workplaceRepo, coordinator };
 }
 

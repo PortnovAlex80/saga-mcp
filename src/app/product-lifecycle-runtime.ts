@@ -64,6 +64,7 @@ import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
 import { SqliteCellFinalAcceptance } from '../infrastructure/workplace/sqlite-cell-final-acceptance.js';
+import { SqliteAcceptedAuthorityHeadRepository } from '../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { SqliteAuthorCandidateCarryForward } from '../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import { SqliteExternalEffectLedger } from '../process-modules/persistence/sqlite-external-effect-ledger.js';
 import {
@@ -291,9 +292,11 @@ export function createProductLifecycleRuntime(
   const gateRepo = new SqliteGateRepository(db);
   const finalAcceptance = new SqliteCellFinalAcceptance(db);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
+  const authorityHeadRepo = new SqliteAcceptedAuthorityHeadRepository(db);
   const productionCellCoordinator = new ProductionCellCoordinator({
     db,
     workplaceRepo,
+    authorityHeadRepo,
     now: () => new Date(),
   });
 
@@ -385,6 +388,7 @@ export function createProductLifecycleRuntime(
       checkProviders: createStandardCheckProviderRegistry(),
       postAcceptanceEffects: createPostAcceptanceEffectRegistry(),
       finalAcceptance,
+      authorityHead: authorityHeadRepo,
       authorCandidateCarryForward: new SqliteAuthorCandidateCarryForward(db),
       persistence: {
         ...productionCellProjectionPersistence,

@@ -44,6 +44,7 @@ import {
   type WorkplaceState,
 } from '../domain/workplace/index.js';
 import { SqliteWorkplaceRepository } from '../../infrastructure/workplace/sqlite-workplace-repository.js';
+import { SqliteAcceptedAuthorityHeadRepository } from '../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 
 /**
  * Dependencies the coordinator needs.
@@ -55,6 +56,13 @@ import { SqliteWorkplaceRepository } from '../../infrastructure/workplace/sqlite
 export interface ProductionCellCoordinatorDeps {
   readonly db: Database.Database;
   readonly workplaceRepo: SqliteWorkplaceRepository;
+  /**
+   * ADR-053 C1 — the durable current-authority pointer. Written atomically with
+   * the author-gate-accept CAS transition (see applyAcceptanceEvent) so the
+   * accepted author CandidateSet is an explicit fact, never reconstructed by
+   * hash order / recency.
+   */
+  readonly authorityHeadRepo: SqliteAcceptedAuthorityHeadRepository;
   /** Clock for timestamps (injectable for tests). */
   readonly now: () => Date;
 }
@@ -140,6 +148,15 @@ export class ProductionCellCoordinator {
       isFinal: boolean;
       repairTargetRole?: NextRole;
       effectRequired?: boolean;
+      /**
+       * ADR-053 C1 — REQUIRED for an accepted AUTHOR gate: the exact author
+       * CandidateSet that was accepted and the GateDecision key that accepted
+       * it. These are written to the durable authority-head pointer ATOMICALLY
+       * with the CAS transition, so the accepted author authority is an explicit
+       * fact (not reconstructed by hash order / recency).
+       */
+      acceptedCandidateSetRef?: string;
+      gateDecisionKey?: string;
     },
   ): StepResult {
     let event: ProductionCellEvent;
@@ -161,6 +178,20 @@ export class ProductionCellCoordinator {
       case 'failed':
         event = { kind: 'gate-failed' };
         break;
+    }
+    // ADR-053 C1 — an accepted author gate records the authority head atomically
+    // with the transition. The pointer is the single source of truth for "the
+    // current accepted author CandidateSet", read by the reviewer subject pin,
+    // reviewer projection and crash recovery — never `sets[0]` by hash order.
+    if (
+      decision.verdict === 'accepted'
+      && decision.acceptedCandidateSetRef
+      && decision.gateDecisionKey
+    ) {
+      return this.applyAcceptanceEvent(ref, event!, {
+        acceptedAuthorCandidateSetRef: decision.acceptedCandidateSetRef,
+        acceptedAuthorGateDecisionKey: decision.gateDecisionKey,
+      });
     }
     return this.applyEvent(ref, event!);
   }
@@ -302,6 +333,60 @@ export class ProductionCellCoordinator {
       terminalReason: target.terminalReason,
       ...actors,
     });
+    return {
+      applied: result.applied,
+      state: result.state,
+      revision: result.revision,
+    };
+  }
+
+  /**
+   * ADR-053 C1 — apply an AUTHOR-gate-accept event AND durably record the
+   * accepted-author authority head in ONE IMMEDIATE transaction. The CAS
+   * transition (via applyTransitionInTx, which does not open its own BEGIN) and
+   * the head UPSERT commit together: the authority pointer is durable IFF the
+   * acceptance transition committed. On a CAS miss (`applied:false`) the head is
+   * NOT written (a concurrent writer won the race).
+   */
+  private applyAcceptanceEvent(
+    ref: WorkplaceRef,
+    event: ProductionCellEvent,
+    authority: {
+      acceptedAuthorCandidateSetRef: string;
+      acceptedAuthorGateDecisionKey: string;
+    },
+  ): StepResult {
+    const current = this.deps.workplaceRepo.read(ref);
+    if (!current) {
+      throw new Error(
+        `ProductionCellCoordinator: workplace ${serializeWorkplaceRef(ref)} not materialized`,
+      );
+    }
+    const target = reduceWorkplaceEvent(current, event);
+    const serialized = serializeWorkplaceRef(ref);
+    const result = this.deps.db.transaction(() => {
+      const r = this.deps.workplaceRepo.applyTransitionInTx(
+        {
+          workplaceRef: ref,
+          expectedRevision: current.revision,
+          kanbanPhase: target.kanbanPhase,
+          loopState: target.loopState,
+          nextRole: target.nextRole,
+          terminalReason: target.terminalReason,
+        },
+        serialized,
+      );
+      if (r.applied) {
+        this.deps.authorityHeadRepo.record({
+          workplaceRef: serialized,
+          acceptedAuthorCandidateSetRef: authority.acceptedAuthorCandidateSetRef,
+          acceptedAuthorGateDecisionKey: authority.acceptedAuthorGateDecisionKey,
+          revision: r.revision,
+          now: this.deps.now,
+        });
+      }
+      return r;
+    }).immediate();
     return {
       applied: result.applied,
       state: result.state,

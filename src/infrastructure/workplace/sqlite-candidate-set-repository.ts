@@ -189,17 +189,19 @@ export class SqliteCandidateSetRepository {
   }
 
   /**
-   * List the sealed CandidateSets for one workplace, newest first (by sealed_at
-   * descending, ties broken by candidate_set_ref for determinism). The executor
-   * uses this on crash-resume to reconstruct an accepted cell's products from
-   * the durable sealed sets instead of relaunching a worker.
+   * List the sealed CandidateSets for one workplace (enumeration / counting /
+   * diagnostics only). Ordered by candidate_set_ref ASC for deterministic
+   * output. ADR-053 C1: this is NOT a material-authority selector — the current
+   * accepted author CandidateSet is read from the durable authority-head pointer
+   * (SqliteAcceptedAuthorityHeadRepository), never reconstructed from this list
+   * by hash order.
    */
   listForWorkplace(workplaceRef: WorkplaceRef): readonly CandidateSet[] {
     const serialized = serializeWorkplaceRef(workplaceRef);
     const rows = this.db.prepare(
       `SELECT candidate_set_ref FROM factory_candidate_sets
         WHERE workplace_ref=?
-        ORDER BY candidate_set_ref DESC`,
+        ORDER BY candidate_set_ref ASC`,
     ).all(serialized) as Array<{ candidate_set_ref: string }>;
     const sets: CandidateSet[] = [];
     for (const row of rows) {
