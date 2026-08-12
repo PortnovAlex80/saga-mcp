@@ -16,6 +16,8 @@ import { TransitionObligationReconciler } from
   '../../dist/process-modules/application/transition-obligation-reconciler.js';
 import { TransitionObligationIntegrator, SOURCE_TO_HANDOFF } from
   '../../dist/process-modules/application/transition-obligation-integrator.js';
+import { leaseFence } from
+  '../../dist/process-modules/domain/transition-obligation.js';
 
 function makeLedger() {
   const db = new Database(':memory:');
@@ -98,7 +100,7 @@ test('Phase 8: full cycle — CandidateSet seal → reconcile → gate runs', as
     workplaceRef: 'workplace/1/cell/item',
     fence: 1,
   });
-  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
   assert.equal(result.dispatched, 1);
   assert.equal(result.completed, 1);
   assert.ok(gateRan, 'gate handler ran');
@@ -123,9 +125,9 @@ test('Phase 8: crash recovery — obligation is redriven after crash', async () 
   integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1', fence: 1 });
 
   // First sweep: crash.
-  await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
   // Second sweep: recovery.
-  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 2 });
+  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(2) });
   assert.equal(r2.completed, 1);
   assert.equal(calls, 2);
 });

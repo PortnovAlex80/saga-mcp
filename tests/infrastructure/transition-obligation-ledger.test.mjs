@@ -18,6 +18,8 @@ import { SqliteTransitionObligationLedger, transitionObligationKey, obligationRe
   '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { TransitionObligationReconciler } from
   '../../dist/process-modules/application/transition-obligation-reconciler.js';
+import { causalSourceRevision, leaseFence } from
+  '../../dist/process-modules/domain/transition-obligation.js';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -33,7 +35,7 @@ function sampleObligation(overrides = {}) {
     subjectRef: 'workplace/1/cell/item',
     handoffKind: 'run-gate',
     ownerCapability: 'production-cell-node-executor',
-    fence: 1,
+    causalSourceRevision: causalSourceRevision(1),
     ...overrides,
   };
 }
@@ -84,7 +86,7 @@ test('Phase 2: lease an obligation and complete it', () => {
   const ob = ledger.append(sampleObligation());
   assert.equal(ob.state, 'pending');
 
-  const leased = ledger.lease(ob.obligationKey, 'reconciler-1', 1);
+  const leased = ledger.lease(ob.obligationKey, 'reconciler-1', leaseFence(1));
   assert.equal(leased, true);
   const afterLease = ledger.get(ob.obligationKey);
   assert.equal(afterLease.state, 'in_progress');
@@ -117,9 +119,9 @@ test('Phase 2: crash after lease → lease expiry → recovery converges to one 
   const ob = ledger.append(sampleObligation());
 
   // First lease (simulating a crash mid-execution — no completion recorded).
-  assert.ok(ledger.lease(ob.obligationKey, 'reconciler-1', 1));
+  assert.ok(ledger.lease(ob.obligationKey, 'reconciler-1', leaseFence(1)));
   // A second lease attempt while the first is live FAILS (lease held).
-  assert.equal(ledger.lease(ob.obligationKey, 'reconciler-2', 2), false);
+  assert.equal(ledger.lease(ob.obligationKey, 'reconciler-2', leaseFence(2)), false);
 
   // Simulate lease expiry by backdating the lease_expires_at.
   db.prepare(
@@ -127,7 +129,7 @@ test('Phase 2: crash after lease → lease expiry → recovery converges to one 
   ).run();
 
   // Recovery: a new lease succeeds after expiry.
-  assert.ok(ledger.lease(ob.obligationKey, 'reconciler-2', 2));
+  assert.ok(ledger.lease(ob.obligationKey, 'reconciler-2', leaseFence(2)));
   const afterRecovery = ledger.get(ob.obligationKey);
   assert.equal(afterRecovery.state, 'in_progress');
   assert.equal(afterRecovery.attempt, 2);
@@ -152,7 +154,7 @@ test('Phase 2: idempotent completion — same receipt is a no-op', () => {
   const db = makeDb();
   const ledger = new SqliteTransitionObligationLedger(db);
   const ob = ledger.append(sampleObligation());
-  ledger.lease(ob.obligationKey, 'r1', 1);
+  ledger.lease(ob.obligationKey, 'r1', leaseFence(1));
   const first = ledger.complete({
     obligationKey: ob.obligationKey,
     completionReceipt: 'receipt-A',
@@ -175,7 +177,7 @@ test('Phase 2: divergent completion receipt is rejected', () => {
   const db = makeDb();
   const ledger = new SqliteTransitionObligationLedger(db);
   const ob = ledger.append(sampleObligation());
-  ledger.lease(ob.obligationKey, 'r1', 1);
+  ledger.lease(ob.obligationKey, 'r1', leaseFence(1));
   ledger.complete({
     obligationKey: ob.obligationKey,
     completionReceipt: 'receipt-A',
@@ -210,7 +212,7 @@ test('Phase 2: reconciler dispatches a ready obligation to completion', async ()
     },
   });
   const ob = ledger.append(sampleObligation());
-  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
   assert.equal(result.dispatched, 1);
   assert.equal(result.completed, 1);
   assert.equal(result.failed, 0);
@@ -241,12 +243,12 @@ test('Phase 2: reconciler crash mid-execution → retry converges to one receipt
   ledger.append(sampleObligation());
 
   // First sweep: handler crashes. Obligation returns to pending.
-  const r1 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  const r1 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
   assert.equal(r1.dispatched, 1);
   assert.equal(r1.failed, 1);
 
   // Second sweep: the obligation failed back to pending and is ready again.
-  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 2 });
+  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(2) });
   assert.equal(r2.dispatched, 1);
   assert.equal(r2.completed, 1);
 
@@ -269,7 +271,7 @@ test('Phase 2: reconciler skips obligations without a registered handler', async
   const reconciler = new TransitionObligationReconciler(ledger);
   // No handler registered for 'run-gate'.
   ledger.append(sampleObligation({ handoffKind: 'run-gate' }));
-  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
   assert.equal(result.dispatched, 0);
   assert.equal(result.skipped, 1);
   // Obligation stays pending — no handler, no lease acquired.

@@ -17,6 +17,14 @@
 
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import type {
+  CausalSourceRevision,
+  LeaseFence,
+} from '../domain/transition-obligation.js';
+import {
+  assertCausalSourceRevision,
+  assertLeaseFence,
+} from '../domain/transition-obligation.js';
 
 // ---------------------------------------------------------------------------
 // Obligation identity.
@@ -50,6 +58,13 @@ export type TransitionObligationState =
 
 // ---------------------------------------------------------------------------
 // Obligation record — the durable row.
+//
+// `fence` is the RAW stored column value. ADR-053 C7-01 separates the two
+// concepts that flow onto this column at the INPUT boundaries: `append` takes
+// a CausalSourceRevision (provenance), `lease` takes a LeaseFence (ordering
+// token). Until C7-02..C7-06 split the storage, this column is still
+// overloaded — SET at append with the causal revision, OVERWRITTEN at lease
+// with the fence — so the record exposes the raw number rather than a brand.
 // ---------------------------------------------------------------------------
 export interface TransitionObligation {
   readonly obligationKey: string;
@@ -79,7 +94,11 @@ export interface AppendObligationInput {
   readonly subjectRef: string;
   readonly handoffKind: TransitionHandoffKind;
   readonly ownerCapability: string;
-  readonly fence: number;
+  /**
+   * The source-fact revision that CAUSED this obligation (provenance). NOT a
+   * lease fence. Distinct type from LeaseFence so the two cannot be swapped.
+   */
+  readonly causalSourceRevision: CausalSourceRevision;
 }
 
 export interface CompleteObligationInput {
@@ -119,8 +138,13 @@ export class SqliteTransitionObligationLedger {
    * obligation already exists (from a prior append in the same or a recovered
    * transaction), this is a no-op and the existing obligation is returned.
    * This means a source fact re-played after crash does NOT create a duplicate.
+   *
+   * The causal source revision (provenance) is recorded on the `fence` column.
+   * ADR-053 C7-01: `causalSourceRevision` is a DISTINCT type from the lease
+   * fence — a LeaseFence passed here is rejected (brand mismatch).
    */
   append(input: AppendObligationInput): TransitionObligation {
+    assertCausalSourceRevision(input.causalSourceRevision);
     const key = transitionObligationKey(input);
     this.db.prepare(
       `INSERT OR IGNORE INTO factory_transition_obligations
@@ -136,7 +160,7 @@ export class SqliteTransitionObligationLedger {
       subjectRef: input.subjectRef,
       handoffKind: input.handoffKind,
       ownerCapability: input.ownerCapability,
-      fence: input.fence,
+      fence: input.causalSourceRevision.value,
     });
     return this.getOrThrow(key);
   }
@@ -175,12 +199,18 @@ export class SqliteTransitionObligationLedger {
    * Atomically lease an obligation for execution. Returns true if the lease
    * was acquired, false if another owner holds a live lease. Uses CAS on
    * (state, lease_expires_at) to avoid two owners leasing concurrently.
+   *
+   * The monotonic lease fence is recorded on the `fence` column (overwriting
+   * the causal source revision set at append — see ADR-053 C7-01 / C7-02..06).
+   * `fence` is a DISTINCT type from a causal source revision — a
+   * CausalSourceRevision passed here is rejected (brand mismatch).
    */
   lease(
     obligationKey: string,
     leaseOwner: string,
-    fence: number,
+    fence: LeaseFence,
   ): boolean {
+    assertLeaseFence(fence);
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = new Date((now + LEASE_DURATION_SECONDS) * 1000)
       .toISOString()
@@ -202,7 +232,7 @@ export class SqliteTransitionObligationLedger {
       key: obligationKey,
       leaseOwner,
       expiresAt,
-      fence,
+      fence: fence.value,
       now,
     });
     return result.changes > 0;

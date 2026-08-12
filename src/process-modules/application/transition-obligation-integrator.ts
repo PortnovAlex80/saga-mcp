@@ -27,6 +27,7 @@ import type {
   TransitionSourceKind,
   TransitionHandoffKind,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
+import { causalSourceRevision } from '../domain/transition-obligation.js';
 
 // ---------------------------------------------------------------------------
 // Obligation-creation utilities — one per source fact kind.
@@ -34,6 +35,14 @@ import type {
 // Each is called in the SAME transaction (or logical step) as the source fact.
 // The obligation key is deterministic: a replay of the source fact finds the
 // existing obligation (INSERT OR IGNORE).
+//
+// ADR-053 C7-01 — the `fence` argument each utility accepts is the CAUSAL
+// SOURCE REVISION of the source fact (provenance, not a lease-fence ordering
+// token). It is branded into a CausalSourceRevision at this seam before
+// reaching the ledger, so the causal revision and the lease fence (used by the
+// reconciler) can never be confused downstream. The public argument stays a
+// plain number for now (callers still pass the interim revision stub); a later
+// card retypes it once real source-fact revisions are available.
 // ---------------------------------------------------------------------------
 
 export interface ObligationIntegratorDeps {
@@ -57,7 +66,7 @@ export class TransitionObligationIntegrator {
       subjectRef: input.workplaceRef,
       handoffKind: 'run-gate',
       ownerCapability: 'gate-run-driver',
-      fence: input.fence,
+      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -75,7 +84,7 @@ export class TransitionObligationIntegrator {
       subjectRef: input.workplaceRef,
       handoffKind: 'run-effects',
       ownerCapability: 'production-cell-node-executor',
-      fence: input.fence,
+      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -92,7 +101,7 @@ export class TransitionObligationIntegrator {
       subjectRef: input.workplaceRef,
       handoffKind: 'record-final-acceptance',
       ownerCapability: 'production-cell-node-executor',
-      fence: input.fence,
+      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -110,7 +119,7 @@ export class TransitionObligationIntegrator {
       subjectRef: input.workplaceRef,
       handoffKind: 'settle-process',
       ownerCapability: 'process-settlement',
-      fence: input.fence,
+      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -128,11 +137,11 @@ export class TransitionObligationIntegrator {
       subjectRef: input.workplaceRef,
       handoffKind: 'route-lifecycle',
       ownerCapability: 'lifecycle-router',
-      fence: input.fence,
+      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
-  private append(input: Omit<AppendObligationInput, never>): void {
+  private append(input: AppendObligationInput): void {
     // ADR-053 B-8 — obligations are MANDATORY crash-recovery facts, NOT
     // best-effort. A failure to append MUST propagate. When this is called
     // inside the source transition's transaction (e.g. the CandidateSet seal
@@ -140,7 +149,7 @@ export class TransitionObligationIntegrator {
     // recorded iff the source commits (atomic, all-or-nothing). Swallowing
     // here would leave a sealed CandidateSet with no redrive target after a
     // crash between seal and gate.
-    this.deps.ledger.append(input as AppendObligationInput);
+    this.deps.ledger.append(input);
   }
 }
 

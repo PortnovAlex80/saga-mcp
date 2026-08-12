@@ -26,6 +26,7 @@ import type {
   TransitionHandoffKind,
   TransitionObligation,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
+import type { LeaseFence } from '../domain/transition-obligation.js';
 
 // ---------------------------------------------------------------------------
 // Handler interface.
@@ -56,8 +57,13 @@ export interface TransitionObligationCompletion {
 // ---------------------------------------------------------------------------
 export interface ReconcilerOptions {
   readonly leaseOwner: string;
-  /** Monotonic fence token. Each reconciler call should use a fence >= the last. */
-  readonly fence: number;
+  /**
+   * Monotonic lease-fence token carried by every lease this sweep acquires.
+   * Each reconciler call should use a fence >= the last. ADR-053 C7-01: this
+   * is a LeaseFence (ordering token), a DISTINCT type from the causal source
+   * revision that caused each obligation — the two are not interchangeable.
+   */
+  readonly fence: LeaseFence;
   /** Max obligations to dispatch in one sweep. */
   readonly batchSize?: number;
 }
