@@ -262,7 +262,7 @@ Exit: architecture test proves no post-acceptance API exposes material execution
   selection after seal.
 - [ ] Bind Process output/certificate, Stage handoff and Lifecycle routing to exact
   revision/certificate hashes.
-- [ ] Make replay create current revision/CandidateSet/Gates; historical decisions never
+- [x] Make replay create current revision/CandidateSet/Gates; historical decisions never
   become current authority.
 - [ ] Delete migrated compatibility fallbacks rather than leaving dual truth.
 
