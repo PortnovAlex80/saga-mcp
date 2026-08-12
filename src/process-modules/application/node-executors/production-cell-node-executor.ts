@@ -383,9 +383,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const acceptedCsRef = this.opts.finalAcceptance.getAcceptedCandidateSetRef(
         serializeWorkplaceRef(workplace.ref),
       );
-      const acceptedCandidate = acceptedCsRef
+      let acceptedCandidate = acceptedCsRef
         ? this.opts.candidateSetRepo.read(acceptedCsRef)
         : null;
+      // Crash recovery fallback: if FinalAcceptance was never recorded (factory
+      // crashed between gate-accept and effect-settlement), resolve the accepted
+      // author CandidateSet directly from the CandidateSet repository.
+      if (!acceptedCandidate) {
+        acceptedCandidate = this.acceptedAuthorCandidate(workplace.ref);
+      }
       if (!acceptedCandidate || !cell.postAcceptanceEffect) {
         throw new NodeExecutionError(
           this.kind,
