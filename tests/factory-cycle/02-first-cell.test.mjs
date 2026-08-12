@@ -352,6 +352,7 @@ test('цех: gate repair_required → repair_wait → requeue(author) → queue
   const failingProvider = {
     providerId: 'test.failing-check.v1',
     version: '1.0.0',
+    providerDigest: sha({ id: 'failing' }),
     run: () => 'failed',
   };
   checkProviders.register(failingProvider);

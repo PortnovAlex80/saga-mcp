@@ -1105,12 +1105,36 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       executionRef,
       products,
     });
+    // ADR-053 C14 — the revision is CUMULATIVE: apply this execution's
+    // contribution as a delta on top of the workplace's current accepted-author
+    // revision (the durable authority head's revision), not parent:null. This
+    // makes the revision a true cumulative desk state and proves the partition
+    // property X+Y (one execution) ≡ X then Y (two executions): both arrive at
+    // the same member set / semanticDigest. For a fresh first attempt (no head)
+    // parent is null. `put` operations make a complete-set contribution
+    // override the parent, so single-execution-complete seals are unaffected.
+    const parent = this.currentAcceptedAuthorRevision(workplaceRef);
     return assembleRevision({
       workplaceRef: workplaceSerialized,
-      parent: null,
+      parent,
       contributions: [contribution],
       presenterRef: executionRef,
     });
+  }
+
+  /**
+   * ADR-053 C14 — the workplace's current accepted-author revision (the parent
+   * for cumulative assembly), read from the durable authority head. Returns null
+   * when no author acceptance has been recorded yet (fresh first attempt).
+   */
+  private currentAcceptedAuthorRevision(workplaceRef: WorkplaceRef): WorkplaceProductionRevision | null {
+    const headCsRef = this.opts.authorityHead.readAuthorCandidateSetRef(
+      serializeWorkplaceRef(workplaceRef),
+    );
+    if (!headCsRef) return null;
+    const headCs = this.opts.candidateSetRepo.read(headCsRef);
+    if (!headCs) return null;
+    return this.opts.revisionRepo.getRevision(headCs.productionRevisionRef);
   }
 
   private sealCarriedForwardCandidateSet(

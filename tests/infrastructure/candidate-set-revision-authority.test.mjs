@@ -430,3 +430,48 @@ test('B-2: two partitions sealing equivalent material converge to one CandidateS
   const csCount = db.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get().n;
   assert.equal(csCount, 1);
 });
+
+test('ADR-053 C14: cumulative revision — X-then-Y (two executions) ≡ X+Y (one execution)', () => {
+  const op = (key, ref, digest) => ({
+    op: 'put', memberKey: key, productRef: ref, contentDigest: digest, sourceAdapter: 'typed-submission',
+  });
+  const xOp = op('product/S/x', 'product/x', 'sha256:x');
+  const yOp = op('product/S/y', 'product/y', 'sha256:y');
+  const contrib = (exec, ops) => buildContribution({
+    workplaceRef: WORKPLACE_SERIALIZED,
+    contributorExecutionRef: exec,
+    sourceAdapter: 'typed-submission',
+    operations: ops,
+    parentContributionRef: null,
+  });
+
+  // One execution produces X+Y.
+  const both = assembleRevision({
+    workplaceRef: WORKPLACE_SERIALIZED, parent: null,
+    contributions: [contrib('A', [xOp, yOp])], presenterRef: 'A',
+  });
+  // Two executions: A produces X, then B produces Y on top of A's revision.
+  const justX = assembleRevision({
+    workplaceRef: WORKPLACE_SERIALIZED, parent: null,
+    contributions: [contrib('A', [xOp])], presenterRef: 'A',
+  });
+  const thenY = assembleRevision({
+    workplaceRef: WORKPLACE_SERIALIZED, parent: justX,
+    contributions: [contrib('B', [yOp])], presenterRef: 'B',
+  });
+
+  // C14: the cumulative two-execution revision carries the SAME material as the
+  // single-execution X+Y revision (X-then-Y ≡ X+Y). This is the partition
+  // property the QA said was "not proven in production": assembling Y as a delta
+  // over the exact parent revision X yields the same semantic material as one
+  // execution producing X+Y.
+  assert.equal(thenY.semanticDigest, both.semanticDigest,
+    'X-then-Y must converge to the same semanticDigest as X+Y');
+  assert.deepEqual(
+    thenY.members.map(m => m.memberKey).sort(),
+    both.members.map(m => m.memberKey).sort(),
+    'X-then-Y must carry the same members as X+Y',
+  );
+  assert.equal(thenY.parentRevisionRef, justX.revisionRef,
+    'cumulative revision records the exact parent');
+});

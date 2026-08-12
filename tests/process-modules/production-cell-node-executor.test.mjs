@@ -131,7 +131,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     checkProviders: {
       resolve(providerId) {
         return providerId === PROVIDER
-          ? { providerId: PROVIDER, version: '1.0.0', run: () => 'passed' }
+          ? { providerId: PROVIDER, version: '1.0.0', providerDigest: PROVIDER_DIGEST, run: () => 'passed' }
           : null;
       },
     },
