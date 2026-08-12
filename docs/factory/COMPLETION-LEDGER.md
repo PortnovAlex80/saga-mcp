@@ -13,7 +13,7 @@
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
 | P0-01 | Pin completion baseline and finish line | Integrator | — | done | docs(factory): pin completion baseline and finish line | docs/factory/COMPLETION-BASELINE.md, COMPLETION-LEDGER.md |
-| P0-02 | Install the atomic task and evidence contract | Integrator | P0-01 | pending | chore(factory): enforce atomic completion task evidence | — |
+| P0-02 | Install the atomic task and evidence contract | Integrator | P0-01 | done | chore(factory): enforce atomic completion task evidence | docs/factory/COMPLETION-EVIDENCE-CONTRACT.md; tools/validate-completion-evidence.mjs |
 
 ## Phase C5 — exact task authority (carry-forward-safe)
 
