@@ -59,12 +59,20 @@ export function driveGateRun(
   input: DriveGateRunInput,
 ): DriveGateRunResult {
   const assessmentCandidateSetRefs = input.assessmentCandidateSetRefs ?? [];
+  // ADR-053 C9 — the GateRun identity pins the INSTALLED package
+  // (installationDigest) and the exact Workplace revision the gate ran against
+  // (expectedWorkplaceRevision), in addition to the subject/assessment/checkPlan
+  // inputs. Without these, swapping a handler/provider package or re-running
+  // against a newer Workplace revision could reuse a stale GateRun/Decision
+  // under the same key.
   const gateRunIdentity = createHash('sha256')
     .update(JSON.stringify({
       gatePhase: input.gatePhase,
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       assessmentCandidateSetRefs,
       checkPlanDigest: input.checkPlan.checkPlanDigest,
+      installationDigest: input.installationDigest,
+      expectedWorkplaceRevision: input.expectedWorkplaceRevision,
     }))
     .digest('hex');
   const gateRunRef = `gate-run:${gateRunIdentity}`;
@@ -83,7 +91,8 @@ export function driveGateRun(
   repo.setGateRunState(gateRunRef, 'checking');
 
   const receipts: CheckReceipt[] = [];
-  for (const entry of input.checkPlan.entries) {
+  for (let entryIndex = 0; entryIndex < input.checkPlan.entries.length; entryIndex += 1) {
+    const entry = input.checkPlan.entries[entryIndex]!;
     const provider = providers.resolve(entry.check.providerId);
     if (!provider) {
       throw new Error(
@@ -120,7 +129,10 @@ export function driveGateRun(
     const evidenceRefs = typeof providerResult === 'string'
       ? []
       : [...providerResult.evidenceRefs];
-    const checkReceiptRef = `receipt:${gateRunRef}:${entry.check.providerId}`;
+    // ADR-053 C11 — include the entry ORDINAL in the receipt ref so two entries
+    // of the same provider (different parameters/environment) get distinct
+    // receipt keys instead of colliding on `receipt:${gateRunRef}:${providerId}`.
+    const checkReceiptRef = `receipt:${gateRunRef}:${entryIndex}:${entry.check.providerId}`;
     const receipt: CheckReceipt = {
       checkReceiptRef,
       checkRunRef: gateRunRef,
@@ -151,7 +163,13 @@ export function driveGateRun(
   repo.setGateRunState(gateRunRef, 'decided');
   const decisionKey = `decision:${gateRunRef}`;
   const transitionRef = `transition:${decisionKey}`;
-  const decision: GateDecision = {
+  // ADR-053 C13 — the decision digest covers the FULL canonical decision body
+  // (everything except decisionDigest itself), so any drift in workplace / gate
+  // phase / subject / assessment sets / plan+policy digests / installation /
+  // receipts / output bindings / recovery produces a different digest. The
+  // previous partial digest (key+verdict+repairTarget+receiptRefs) could not
+  // distinguish decisions that differed in bound material or pinned package.
+  const decisionBody = {
     gateRef: `gate:${input.workplaceRef.processRunId}:${input.gatePhase}`,
     gateRunRef,
     gatePhase: input.gatePhase,
@@ -168,11 +186,12 @@ export function driveGateRun(
     checkReceiptRefs: receipts.map(r => r.checkReceiptRef),
     installationDigest: input.installationDigest,
     decisionKey,
-    acceptedOutputBindings: [],
+    acceptedOutputBindings: [] as const,
     recoveryIssueRef: verdict === 'repair_required' ? `recovery:${decisionKey}` : null,
-    decisionDigest: hashDecision(
-      decisionKey, verdict, reduction.repairTargetRole, receipts,
-    ),
+  };
+  const decision: GateDecision = {
+    ...decisionBody,
+    decisionDigest: createHash('sha256').update(JSON.stringify(decisionBody)).digest('hex'),
   };
   const recorded = repo.recordDecision(decision);
   repo.setGateRunState(gateRunRef, 'terminal');
@@ -252,18 +271,3 @@ function hashReceipt(
     .digest('hex');
 }
 
-function hashDecision(
-  key: string,
-  verdict: GateVerdict,
-  repairTargetRole: RepairTargetRole | null,
-  receipts: readonly CheckReceipt[],
-): string {
-  return createHash('sha256')
-    .update(JSON.stringify({
-      key,
-      verdict,
-      repairTargetRole,
-      receiptRefs: receipts.map(r => r.checkReceiptRef),
-    }))
-    .digest('hex');
-}

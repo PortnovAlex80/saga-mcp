@@ -32,11 +32,11 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 | C6 | obligation carries fabricated `gate-final:<workplace>` | **CONFIRMED → FIXED in tranche 1a** | now `decision.decisionKey`/`decisionDigest` |
 | C7 | obligations only for author path; `fence:1` hardcoded | **CONFIRMED → PARTIAL in tranche 3** | reviewer + carry-forward seals now append the `run-gate` obligation atomically (was author-only); `fence: 1` still hardcoded (real CAS-derivation is C6/C7 remaining) |
 | C8 | replay-capture suppressed; terminal crash loses FinalAcceptance | **CONFIRMED → FIXED in tranche 1a+3** | suppression removed (1a); terminal(accepted) reconcile now idempotently re-records FinalAcceptance + replay-capture when the row is absent (3) |
-| C9 | GateRun identity lacks `installationDigest` + `expectedWorkplaceRevision` | **CONFIRMED** | `gate.ts` identity; `factory_gate_runs` has no installation_digest |
-| C10 | CheckProvider implementation digest not actually verified | **CONFIRMED** | driver checks version only |
-| C11 | CheckReceipt identity collides for repeated provider entries | **CONFIRMED** | `receipt:${gateRunRef}:${providerId}` |
-| C12 | GateRun replay re-runs providers, regresses terminal→checking | **CONFIRMED** | `gate-run-driver.ts` replay path |
-| C13 | GateDecision digest not over the full canonical body | **CONFIRMED** | `hashDecision(…)` partial |
+| C9 | GateRun identity lacks `installationDigest` + `expectedWorkplaceRevision` | **CONFIRMED → FIXED in tranche 3** | `gateRunIdentity` now includes `installationDigest` + `expectedWorkplaceRevision`, so a handler/package swap or a newer Workplace revision can't reuse a stale GateRun/Decision |
+| C10 | CheckProvider implementation digest not actually verified | **CONFIRMED** | driver checks version only — needs `providerDigest` added to the CheckProvider interface + all providers (wide; deferred to a focused tranche) |
+| C11 | CheckReceipt identity collides for repeated provider entries | **CONFIRMED → FIXED in tranche 3** | receipt ref now includes the entry ORDINAL: `receipt:${gateRunRef}:${index}:${providerId}` |
+| C12 | GateRun replay re-runs providers, regresses terminal→checking | **CONFIRMED** | needs repo read methods + early-return of the persisted terminal decision (deferred) |
+| C13 | GateDecision digest not over the full canonical body | **CONFIRMED → FIXED in tranche 3** | `decisionDigest` now hashes the full canonical decision body (workplace/phase/subject/assessment/plan/policy/installation/receipts/bindings/recovery), not just key+verdict+repair+receiptRefs |
 | C14 | revision assembled from `parent:null` + single execution's products (not cumulative) | **CONFIRMED** | `assembleRevision({parent:null,…})` in executor |
 | C15 | `(workplace_ref,semantic_digest)` not UNIQUE; `INSERT OR IGNORE` can mask | **CONFIRMED → FIXED in tranche 3** | `idx_workplace_revisions_semantic` is now UNIQUE; `appendRevision` returns the persisted/semantic-equivalent row; convergence transaction runs `BEGIN IMMEDIATE` |
 | C16 | NUL validation matches two chars `\\0` not NUL byte | **FALSE POSITIVE** | source already has correct `key.includes('\0')` |

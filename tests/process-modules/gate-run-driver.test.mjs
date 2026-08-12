@@ -163,3 +163,72 @@ test('driveGateRun: provider not registered → CHECK_PROVIDER_MISSING', () => {
 
   db.close();
 });
+
+test('ADR-053 C9: GateRun identity binds installationDigest + expectedWorkplaceRevision', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const checkPlan = buildArchitectureCheckPlan();
+  const providers = { resolve: () => stubProvider('passed') };
+  const base = {
+    workplaceRef: ref, subjectCandidateSetRef: 'cs-c9', checkPlan, gatePhase: 'author',
+    gateLeaseRef: 'lease-c9', checkParameters: {}, environmentRef: null,
+  };
+  const a = driveGateRun(gateRepo, providers, { ...base, expectedWorkplaceRevision: 1, installationDigest: hash('install-A') });
+  // A different installed package (different installationDigest) must NOT reuse
+  // the same GateRun/Decision — package-pinned identity (C9).
+  const b = driveGateRun(gateRepo, providers, { ...base, expectedWorkplaceRevision: 1, installationDigest: hash('install-B') });
+  assert.notEqual(a.decision.gateRunRef, b.decision.gateRunRef,
+    'different installationDigest must yield a different GateRun');
+  // A different Workplace revision must also yield a different GateRun.
+  const c = driveGateRun(gateRepo, providers, { ...base, expectedWorkplaceRevision: 2, installationDigest: hash('install-A') });
+  assert.notEqual(a.decision.gateRunRef, c.decision.gateRunRef,
+    'different expectedWorkplaceRevision must yield a different GateRun');
+  db.close();
+});
+
+test('ADR-053 C13: decisionDigest covers the full canonical body (drift → different digest; replay stable)', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const checkPlan = buildArchitectureCheckPlan();
+  const providers = { resolve: () => stubProvider('passed') };
+  const base = {
+    workplaceRef: ref, checkPlan, gatePhase: 'author', gateLeaseRef: 'lease-c13',
+    checkParameters: {}, environmentRef: null, expectedWorkplaceRevision: 1, installationDigest: hash('i-A'),
+  };
+  const a = driveGateRun(gateRepo, providers, { ...base, subjectCandidateSetRef: 'cs-x' });
+  const b = driveGateRun(gateRepo, providers, { ...base, subjectCandidateSetRef: 'cs-y' });
+  assert.notEqual(a.decision.decisionDigest, b.decision.decisionDigest,
+    'decisions differing in subject must have different decisionDigests (full body, C13)');
+  // Deterministic: same identity → replay returns the persisted decision (same digest).
+  const a2 = driveGateRun(gateRepo, providers, { ...base, subjectCandidateSetRef: 'cs-x' });
+  assert.equal(a.decision.decisionDigest, a2.decision.decisionDigest,
+    'same inputs must yield the same digest on replay');
+  db.close();
+});
+
+test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt refs', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const entry = (params) => ({
+    check: { providerId: 'dup.provider', version: '1.0.0', providerDigest: hash('dup') },
+    parameters: params,
+    environmentRef: null,
+  });
+  const planBase = {
+    checkPlanId: 'dup-plan', version: '1.0.0',
+    entries: [entry({ a: 1 }), entry({ a: 2 })],
+    decisionPolicyRef: 'dup.policy', decisionPolicyDigest: hash('dup.policy'),
+    unknownErrorPolicy: 'fail-closed',
+  };
+  const checkPlan = { ...planBase, checkPlanDigest: hash(JSON.stringify(planBase)) };
+  const providers = { resolve: () => ({ providerId: 'dup.provider', version: '1.0.0', run: () => 'passed' }) };
+  const result = driveGateRun(gateRepo, providers, {
+    workplaceRef: ref, subjectCandidateSetRef: 'cs-c11', checkPlan, gatePhase: 'author',
+    expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-c11', installationDigest: hash('i'),
+    checkParameters: {}, environmentRef: null,
+  });
+  assert.equal(result.receipts.length, 2);
+  assert.notEqual(result.receipts[0].checkReceiptRef, result.receipts[1].checkReceiptRef,
+    'two entries of one provider must get distinct receipt refs (C11 ordinal)');
+  db.close();
+});
