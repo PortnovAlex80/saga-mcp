@@ -14,6 +14,7 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../modules/development/application/candidate-check-contracts.js';
+import { INTEGRATED_CANDIDATE_SCHEMA } from '../../modules/development/domain/development-schemas.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -106,13 +107,36 @@ function resolveSubject(
   input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
   candidateSetRef: string,
 ): CandidateSubject {
+  // ADR-053 — prove runnable the EXACT integrated-candidate product sealed as a
+  // member of the accepted CandidateSet. The subject is resolved by the member's
+  // content-addressed ProductRef, NEVER by a "newest product for this
+  // process/kind" query: that crosses the recoding boundary ADR-053 closes (a
+  // later attempt or a concurrent repair could otherwise change which row the
+  // process/kind lookup resolves to while the sealed authority stays fixed).
+  // When the exact candidate set is absent, non-author, carries no sealed
+  // integrated-candidate member, or the sealed product row is missing, fail
+  // closed — do not guess.
   const set = input.candidateSets.read(candidateSetRef);
   if (!set || set.role !== 'author') throw new Error('LOCAL_READINESS_SUBJECT_MISSING');
+  const member = set.members.find(
+    candidate => candidate.productRef.schemaId === INTEGRATED_CANDIDATE_SCHEMA,
+  );
+  if (!member) throw new Error('LOCAL_READINESS_SUBJECT_NOT_SEALED');
+  const { schemaId, ref, digest } = member.productRef;
+  if (typeof ref !== 'string' || ref.length === 0
+      || typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest)) {
+    throw new Error('LOCAL_READINESS_CANDIDATE_INVALID');
+  }
+  // Read the EXACT sealed product by its content-addressed identity
+  // (schema_id + artifact_ref + product_hash), scoped to the candidate set's
+  // process run only to disambiguate replayed content across runs. No
+  // process/kind recency lookup — the ProductRef is the authority.
   const product = input.db.prepare(
     `SELECT payload_snapshot
        FROM factory_process_products
-      WHERE process_run_id=? AND product_kind='development.integrated-candidate'`,
-  ).get(set.workplaceRef.processRunId) as { payload_snapshot: string } | undefined;
+      WHERE process_run_id=? AND schema_id=? AND artifact_ref=? AND product_hash=?`,
+  ).get(set.workplaceRef.processRunId, schemaId, ref, digest) as
+    { payload_snapshot: string } | undefined;
   if (!product) throw new Error('LOCAL_READINESS_CANDIDATE_MISSING');
   const candidate = JSON.parse(product.payload_snapshot) as {
     candidateHash?: unknown;

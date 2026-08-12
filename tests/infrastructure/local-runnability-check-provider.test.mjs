@@ -9,6 +9,10 @@ import {
   createLocalRunnabilityCheckProvider,
   ensureLocalRunnabilityProviderTrust,
 } from '../../dist/infrastructure/verification/local-runnability-check-provider.js';
+import { INTEGRATED_CANDIDATE_SCHEMA } from '../../dist/modules/development/domain/development-schemas.js';
+
+const PROCESS_RUN_ID = 1;
+const PRODUCT_KIND = 'development.integrated-candidate';
 
 function git(cwd, ...args) {
   return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
@@ -37,47 +41,127 @@ function fixture({ passing = true, scripts = true, testOnly = false } = {}) {
   return root;
 }
 
-function providerFor(root) {
+/**
+ * Build the ProductRef the development module persists for an integrated
+ * candidate: artifact_ref = `<prefix>:<processRunId>:<candidateHash>`, and the
+ * product_hash (== the member's digest) IS the candidateHash.
+ */
+function integratedProductRef(candidateHash) {
+  return {
+    schemaId: INTEGRATED_CANDIDATE_SCHEMA,
+    ref: `development-integrated-candidate:${PROCESS_RUN_ID}:${candidateHash}`,
+    digest: candidateHash,
+  };
+}
+
+/**
+ * Insert one sealed integrated-candidate product row plus its repository
+ * binding. The row is addressable by its EXACT (schema_id, artifact_ref,
+ * product_hash) identity — the way the real SqliteProcessProductRepository
+ * persists it.
+ */
+function insertProduct(db, { repositoryId, root, candidateHash }) {
+  const commitSha = git(root, 'rev-parse', 'HEAD');
+  const treeHash = git(root, 'rev-parse', 'HEAD^{tree}');
+  db.prepare('INSERT INTO project_repositories VALUES (?,?)').run(repositoryId, root);
+  db.prepare(
+    `INSERT INTO factory_process_products
+       (process_run_id, product_kind, schema_id, artifact_ref, product_hash, payload_snapshot)
+     VALUES (?,?,?,?,?,?)`,
+  ).run(
+    PROCESS_RUN_ID,
+    PRODUCT_KIND,
+    INTEGRATED_CANDIDATE_SCHEMA,
+    integratedProductRef(candidateHash).ref,
+    candidateHash,
+    JSON.stringify({
+      candidateHash,
+      repositories: [{ projectRepositoryId: repositoryId, commitSha, treeHash }],
+    }),
+  );
+}
+
+function newDb() {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE project_repositories(id INTEGER PRIMARY KEY, local_path TEXT);
     CREATE TABLE factory_process_products(
-      process_run_id INTEGER, product_kind TEXT, payload_snapshot TEXT
+      process_run_id INTEGER, product_kind TEXT, schema_id TEXT,
+      artifact_ref TEXT, product_hash TEXT, payload_snapshot TEXT
     );
   `);
-  const commitSha = git(root, 'rev-parse', 'HEAD');
-  const treeHash = git(root, 'rev-parse', 'HEAD^{tree}');
-  const candidateHash = 'a'.repeat(64);
-  db.prepare('INSERT INTO project_repositories VALUES (1,?)').run(root);
-  db.prepare('INSERT INTO factory_process_products VALUES (1,?,?)').run(
-    'development.integrated-candidate',
-    JSON.stringify({
-      candidateHash,
-      repositories: [{ projectRepositoryId: 1, commitSha, treeHash }],
-    }),
-  );
-  const candidateSets = {
+  return db;
+}
+
+/**
+ * Build a candidateSets reader mock. `mode` controls the fail-closed branches:
+ *   - 'author' (default): author set whose single member is the integrated
+ *     candidate identified by `candidateHash`.
+ *   - 'absent': read returns null (no sealed set).
+ *   - 'reviewer': set is role=reviewer (wrong role).
+ *   - 'no-member': author set with NO integrated-candidate member (e.g. only
+ *     verification evidence) — the sealed set does not carry the runnable
+ *     product.
+ *   - 'stale-ref': author member points at a productRef that has no matching
+ *     product row (the sealed product is absent / unsealed in this store).
+ */
+function candidateSetsReader(mode = 'author', candidateHash = 'a'.repeat(64)) {
+  return {
     read(ref) {
-      return ref === 'candidate-set/test' ? {
-        candidateSetRef: ref,
-        role: 'author',
-        workplaceRef: { processRunId: 1, moduleName: 'solution-development',
-          moduleVersion: '1.1.0', cellId: 'development-verification', workKey: 'AC-1' },
-        members: [], producerExecutionRef: 'worker-execution:test',
-      } : null;
+      if (ref !== 'candidate-set/test') return null;
+      if (mode === 'absent') return null;
+      const workplaceRef = {
+        processRunId: PROCESS_RUN_ID,
+        moduleRef: 'solution-development',
+        productionCellId: 'development-verification',
+        workKey: 'AC-1',
+      };
+      if (mode === 'reviewer') {
+        return { candidateSetRef: ref, role: 'reviewer', workplaceRef, members: [] };
+      }
+      if (mode === 'no-member') {
+        // Author set carrying only verification evidence — no integrated
+        // candidate is sealed here (the real verification-cell author set).
+        return {
+          candidateSetRef: ref, role: 'author', workplaceRef,
+          members: [{
+            productRef: {
+              schemaId: 'factory.candidate-verification-evidence-product.v2',
+              ref: 'managed-node-submission:42',
+              digest: 'c'.repeat(64),
+            },
+            origin: 'produced', sourceCandidateSetRef: null,
+          }],
+        };
+      }
+      const memberProductRef = mode === 'stale-ref'
+        ? integratedProductRef('d'.repeat(64))
+        : integratedProductRef(candidateHash);
+      return {
+        candidateSetRef: ref, role: 'author', workplaceRef,
+        members: [{ productRef: memberProductRef, origin: 'produced', sourceCandidateSetRef: null }],
+      };
     },
   };
+}
+
+function buildProvider({ root, mode, candidateHash = 'a'.repeat(64), repositoryId = 1 }) {
+  const db = newDb();
+  insertProduct(db, { repositoryId, root, candidateHash });
+  const candidateSets = candidateSetsReader(mode, candidateHash);
   return { db, provider: createLocalRunnabilityCheckProvider({ db, candidateSets }) };
 }
 
+const RUN_ARGS = {
+  subjectCandidateSetRef: 'candidate-set/test', parameters: {},
+  environmentRef: null, candidateSnapshot: {},
+};
+
 test('exact frozen candidate must test, start, answer loopback and stop', { timeout: 30000 }, async () => {
   const root = fixture();
-  const { db, provider } = providerFor(root);
+  const { db, provider } = buildProvider({ root });
   try {
-    const result = await provider.run({
-      subjectCandidateSetRef: 'candidate-set/test', parameters: {},
-      environmentRef: null, candidateSnapshot: {},
-    });
+    const result = await provider.run(RUN_ARGS);
     assert.equal(result.outcome, 'passed');
     assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
   } finally {
@@ -89,12 +173,9 @@ test('exact frozen candidate must test, start, answer loopback and stop', { time
 test('missing scripts and failing tests fail closed', { timeout: 30000 }, async () => {
   for (const options of [{ scripts: false }, { passing: false }]) {
     const root = fixture(options);
-    const { db, provider } = providerFor(root);
+    const { db, provider } = buildProvider({ root });
     try {
-      const result = await provider.run({
-        subjectCandidateSetRef: 'candidate-set/test', parameters: {},
-        environmentRef: null, candidateSnapshot: {},
-      });
+      const result = await provider.run(RUN_ARGS);
       assert.equal(result.outcome, 'failed');
     } finally {
       db.close();
@@ -107,18 +188,85 @@ test('static product (test only, no start script) passes runnability', { timeout
   // A static site / counter app has a `test` script but no `start` (opened from
   // disk, not served). Runnability is proven by `npm test` alone.
   const root = fixture({ testOnly: true });
-  const { db, provider } = providerFor(root);
+  const { db, provider } = buildProvider({ root });
   try {
-    const result = await provider.run({
-      subjectCandidateSetRef: 'candidate-set/test', parameters: {},
-      environmentRef: null, candidateSnapshot: {},
-    });
+    const result = await provider.run(RUN_ARGS);
     assert.equal(result.outcome, 'passed');
     assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// ADR-053 / LR-01 — subject resolution must read the EXACT sealed member.
+// ---------------------------------------------------------------------------
+
+test('proves runnable the EXACT sealed member, not a co-existing product for the same kind', { timeout: 30000 }, async () => {
+  // Two integrated-candidate product rows exist for the SAME process_run_id and
+  // the SAME product_kind. The provider MUST test the one the sealed member
+  // points at (proves 'passed' for the green repo, 'failed' for the red repo),
+  // never an arbitrary/newest row a process+kind query would pick.
+  const greenRoot = fixture({ passing: true });
+  const redRoot = fixture({ passing: false });
+  const greenHash = 'a'.repeat(64);
+  const redHash = 'b'.repeat(64);
+  const db = newDb();
+  insertProduct(db, { repositoryId: 1, root: greenRoot, candidateHash: greenHash });
+  insertProduct(db, { repositoryId: 2, root: redRoot, candidateHash: redHash });
+  try {
+    // Member → green: must pass.
+    const greenProvider = createLocalRunnabilityCheckProvider({
+      db, candidateSets: candidateSetsReader('author', greenHash),
+    });
+    const greenResult = await greenProvider.run(RUN_ARGS);
+    assert.equal(greenResult.outcome, 'passed');
+
+    // Member → red: must fail. A process/kind query could not distinguish them.
+    const redProvider = createLocalRunnabilityCheckProvider({
+      db, candidateSets: candidateSetsReader('author', redHash),
+    });
+    const redResult = await redProvider.run(RUN_ARGS);
+    assert.equal(redResult.outcome, 'failed');
+  } finally {
+    db.close();
+    rmSync(greenRoot, { recursive: true, force: true });
+    rmSync(redRoot, { recursive: true, force: true });
+  }
+});
+
+test('does not fall back to a process+kind product when the sealed set carries no integrated-candidate member', { timeout: 30000 }, async () => {
+  // A perfectly valid integrated-candidate product row exists for this process
+  // run + kind (the OLD process/kind query would find it and PASS). But the
+  // sealed candidate set is an author set that carries only verification
+  // evidence — the runnable product was never sealed as a member. ADR-053: fail
+  // closed, do not guess via process/kind.
+  const root = fixture({ passing: true });
+  const { db, provider } = buildProvider({ root, mode: 'no-member' });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result, 'error');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fails closed when the exact candidate set is absent, non-author, or the sealed product row is missing', { timeout: 30000 }, async () => {
+  const root = fixture({ passing: true });
+  for (const mode of ['absent', 'reviewer', 'stale-ref']) {
+    const { db, provider } = buildProvider({ root, mode });
+    try {
+      const result = await provider.run(RUN_ARGS);
+      // 'error' is the provider's fail-closed outcome for any subject-resolution
+      // failure (absent set, wrong role, or sealed product not present in store).
+      assert.equal(result, 'error', `mode=${mode} should fail closed`);
+    } finally {
+      db.close();
+    }
+  }
+  rmSync(root, { recursive: true, force: true });
 });
 
 test('trusted provider installation fails closed on authority drift', () => {
