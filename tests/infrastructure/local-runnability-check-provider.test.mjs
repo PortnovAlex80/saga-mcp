@@ -14,7 +14,7 @@ function git(cwd, ...args) {
   return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
 }
 
-function fixture({ passing = true, scripts = true } = {}) {
+function fixture({ passing = true, scripts = true, testOnly = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'saga-readiness-test-'));
   git(root, 'init');
   git(root, 'config', 'user.email', 'factory@example.test');
@@ -25,9 +25,12 @@ function fixture({ passing = true, scripts = true } = {}) {
     "const port=Number(process.env.PORT);",
     "http.createServer((_q,r)=>{r.end('ready')}).listen(port,'127.0.0.1');",
   ].join('\n'));
+  const scriptMap = testOnly
+    ? { test: 'node test.js' }
+    : (scripts ? { test: 'node test.js', start: 'node server.js' } : {});
   writeFileSync(join(root, 'package.json'), JSON.stringify({
     name: 'readiness-fixture', version: '1.0.0',
-    scripts: scripts ? { test: 'node test.js', start: 'node server.js' } : {},
+    scripts: scriptMap,
   }));
   git(root, 'add', '.');
   git(root, 'commit', '-m', 'fixture');
@@ -97,6 +100,24 @@ test('missing scripts and failing tests fail closed', { timeout: 30000 }, async 
       db.close();
       rmSync(root, { recursive: true, force: true });
     }
+  }
+});
+
+test('static product (test only, no start script) passes runnability', { timeout: 30000 }, async () => {
+  // A static site / counter app has a `test` script but no `start` (opened from
+  // disk, not served). Runnability is proven by `npm test` alone.
+  const root = fixture({ testOnly: true });
+  const { db, provider } = providerFor(root);
+  try {
+    const result = await provider.run({
+      subjectCandidateSetRef: 'candidate-set/test', parameters: {},
+      environmentRef: null, candidateSnapshot: {},
+    });
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

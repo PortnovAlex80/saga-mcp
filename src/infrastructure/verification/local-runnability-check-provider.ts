@@ -167,13 +167,23 @@ function runLocalReadiness(
     const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
       scripts?: Record<string, unknown>;
     };
-    if (typeof packageJson.scripts?.test !== 'string'
-        || typeof packageJson.scripts?.start !== 'string') {
+    if (typeof packageJson.scripts?.test !== 'string') {
       return evidence('failed', subject, {
-        reason: 'required npm scripts test/start are missing',
+        reason: 'required npm script "test" is missing',
       });
     }
     runNpm(['test'], directory, 120_000);
+    // `npm start` + loopback HTTP probe only applies to served apps. A static
+    // site (counter app, docs site) has a `test` script but no `start` — it is
+    // opened directly from disk, not served. Require `start` to be OPT-IN: when
+    // absent, the runnability proof is the passing `npm test` alone.
+    const hasStart = typeof packageJson.scripts?.start === 'string';
+    if (!hasStart) {
+      return evidence('passed', subject, {
+        phases: ['npm-test'],
+        note: 'static product — no "start" script; runnability proven by npm test only',
+      });
+    }
     const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
     const npm = npmCommand(['start']);
     const child = spawn(npm.executable, npm.args, {
