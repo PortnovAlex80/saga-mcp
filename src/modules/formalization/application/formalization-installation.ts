@@ -1274,7 +1274,7 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
             hash: acceptedArtifactHash(srs),
           },
           acceptanceCriteria: categories.acs.map(artifact => ({
-            criterionId: Number.parseInt(acceptedArtifactHash(artifact).slice(0, 12), 16),
+            criterionId: artifact.id,
             artifactId: artifact.id,
             code: artifact.code,
             acceptedHash: acceptedArtifactHash(artifact),

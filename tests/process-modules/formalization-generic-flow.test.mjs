@@ -598,7 +598,7 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
     hash: HASH.srs,
   });
   assert.deepEqual(fx.getSolution().payload.acceptanceCriteria, [{
-    criterionId: Number.parseInt(HASH.ac.slice(0, 12), 16),
+    criterionId: 30,
     artifactId: 30,
     code: 'AC-30',
     acceptedHash: HASH.ac,

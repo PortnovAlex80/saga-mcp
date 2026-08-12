@@ -362,7 +362,7 @@ export function buildSolutionContractPayload(
         throw new Error(`SRS §D2 ${artifact.code} has invalid ac_kind '${acKind ?? ''}'`);
       }
       return {
-        criterionId: atomicCriterionId(artifact.contentHash),
+        criterionId: artifact.artifactId,
         artifactId: artifact.artifactId,
         code: artifact.code,
         acceptedHash: artifactHashes[String(artifact.artifactId)]!,
@@ -372,14 +372,6 @@ export function buildSolutionContractPayload(
       };
     }),
   };
-}
-
-function atomicCriterionId(criterionHash: string): number {
-  const value = Number.parseInt(criterionHash.slice(0, 12), 16);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`cannot derive atomic criterion id from hash '${criterionHash}'`);
-  }
-  return value;
 }
 
 export function createFormalizationOutputResolver(
