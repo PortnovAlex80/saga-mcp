@@ -1271,12 +1271,22 @@ CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
 -- recency. The reviewer subject pin, reviewer projection and crash recovery all
 -- read this exact pointer (see SqliteAcceptedAuthorityHeadRepository +
 -- ProductionCellCoordinator.applyAcceptanceEvent).
+--
+-- ADR-053 C5 (commit 3c5decc) — the head ALSO persists the identity of the
+-- workplace task whose material it accepted ('accepted_author_task_id'). This
+-- is the carry-forward-safe task binding: neither submission.task_id (the
+-- ORIGIN process's task, wrong after carry-forward) nor ORDER BY t.id DESC
+-- (recency, wrong in repair cycles) is authority. The HEAD is the authority
+-- carrying task identity, so downstream integration (C5-03) selects the task
+-- from this exact pointer. Nullable: pre-C5-02 heads and heads recorded before
+-- the coordinator wires the task id have NULL (additive column, no row reset).
 CREATE TABLE IF NOT EXISTS factory_accepted_authority_head (
   workplace_ref                        TEXT PRIMARY KEY,
   accepted_author_candidate_set_ref    TEXT NOT NULL,
   accepted_author_gate_decision_key    TEXT NOT NULL,
   revision                             INTEGER NOT NULL,
   recorded_at                          TEXT NOT NULL,
+  accepted_author_task_id              TEXT,
   FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
 );
 
@@ -2302,6 +2312,34 @@ export function ensureArtifactStorageKindColumn(db: {
   db.exec(
     `ALTER TABLE artifacts ADD COLUMN storage_kind TEXT NOT NULL DEFAULT 'file_backed'
        CHECK (storage_kind IN ('file_backed','db_native','external_ref'))`,
+  );
+}
+
+/**
+ * Additive migration (ADR-053 C5): add the nullable `accepted_author_task_id`
+ * column to a pre-existing `factory_accepted_authority_head` table that was
+ * created before the column existed.
+ *
+ * Fresh databases get the column from `SCHEMA_SQL`'s CREATE TABLE (and the
+ * SCHEMA_VERSION is bumped to 6). Existing v≤5 databases land here with a head
+ * table missing the column; this adds it as NULL (no row reset). Idempotent via
+ * a PRAGMA table_info probe — matches the {@link ensureArtifactStorageKindColumn}
+ * idiom.
+ *
+ * The column is the carry-forward-safe task binding (commit 3c5decc): the head
+ * persists the identity of the workplace task whose material it accepted, NOT
+ * submission.task_id (origin process's task, wrong after carry-forward). Nullable
+ * because pre-C5-02 heads and heads recorded before the coordinator wires the
+ * task id carry NULL until the next acceptance re-records the row.
+ */
+export function ensureAcceptedAuthorityHeadTaskIdColumn(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(factory_accepted_authority_head)').all();
+  if (columns.some((c) => c.name === 'accepted_author_task_id')) return;
+  db.exec(
+    'ALTER TABLE factory_accepted_authority_head ADD COLUMN accepted_author_task_id TEXT',
   );
 }
 

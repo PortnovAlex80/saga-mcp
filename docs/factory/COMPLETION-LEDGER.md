@@ -19,7 +19,7 @@
 
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
-| C5-01 | Persist task identity on accepted-authority head | Authority A | P0-02 | pending | feat(factory): persist task identity on accepted authority head | — |
+| C5-01 | Persist task identity on accepted-authority head | Authority A | P0-02 | done | feat(factory): persist task identity on accepted authority head | schema factory_accepted_authority_head.accepted_author_task_id; sqlite-accepted-authority-head-repository; tests/infrastructure/accepted-authority-head.test.mjs (6) |
 | C5-02 | Bind current workplace task at final author acceptance | Authority A | C5-01 | pending | fix(factory): bind accepted authority to current workplace task | — |
 | C5-03 | Cut git integration over to material-authority task identity | Authority A | C5-02 | pending | fix(factory): select git integration task from accepted authority | — |
 | C5-04 | Add the adversarial C5 regression matrix | Verification V | C5-03 | pending | test(factory): prove carry-forward-safe integration task binding | — |
