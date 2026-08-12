@@ -302,7 +302,7 @@ export function createProductLifecycleRuntime(
 
   registerFactoryPostAcceptanceEffect(
     createGitIntegrationEffect(
-      new SqliteProductionCellIntegration(db),
+      new SqliteProductionCellIntegration(db, authorityHeadRepo),
       new SqliteExternalEffectLedger(db),
     ),
   );

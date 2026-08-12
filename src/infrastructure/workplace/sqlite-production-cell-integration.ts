@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { SqliteAcceptedAuthorityHeadRepository } from './sqlite-accepted-authority-head-repository.js';
 
 /**
  * Runtime-owned integration effect for an accepted git-changing Workplace.
@@ -40,12 +41,34 @@ export type ProductionCellIntegrationObservation =
   | { readonly outcome: 'blocked'; readonly reason: string; readonly evidence: Readonly<Record<string, unknown>> };
 
 export class SqliteProductionCellIntegration {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    /**
+     * ADR-053 C5-03 — the accepted-authority head is the SOLE source of the
+     * task identity for git integration. The integration reads the carry-
+     * forward-safe `acceptedAuthorTaskId` from it (see readAuthorTaskId) and
+     * fails closed when the head has no task identity, rather than guessing by
+     * submission.task_id (origin process's task) or recency.
+     */
+    private readonly authorityHeadRepo: SqliteAcceptedAuthorityHeadRepository,
+  ) {}
 
   observeAcceptedWorkplace(
     input: SqliteProductionCellIntegrationInput,
   ): ProductionCellIntegrationObservation {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
+    // ADR-053 C5-03 — task identity comes ONLY from the accepted-authority head
+    // (the carry-forward-safe binding), never from the origin submission's
+    // task_id and never by recency. Fail closed (block) when the head has no
+    // task identity; do NOT guess by latest/origin task.
+    const authorTaskId = this.authorityHeadRepo.readAuthorTaskId(workplace);
+    if (authorTaskId === null) {
+      return {
+        outcome: 'blocked',
+        reason: `PRODUCTION_CELL_INTEGRATION_TASK_MISSING: authority head has no accepted author task for ${workplace}`,
+        evidence: { workplace },
+      };
+    }
     const task = this.db.prepare(
       `SELECT t.id,t.integration_state,t.project_repository_id,
               COALESCE(rc.local_path, pr.local_path) AS local_path,
@@ -59,7 +82,7 @@ export class SqliteProductionCellIntegration {
            ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
           AND s.schema_version=m.product_schema
           AND s.content_hash=m.product_digest
-         JOIN tasks t ON t.id = s.task_id
+         JOIN tasks t ON t.id = ?
          JOIN project_repositories pr ON pr.id=t.project_repository_id
          LEFT JOIN repository_checkouts rc
            ON rc.project_repository_id=pr.id AND rc.status='active'
@@ -69,6 +92,7 @@ export class SqliteProductionCellIntegration {
         LIMIT 1`,
     ).get(
       input.expectedProductSchema,
+      authorTaskId,
       input.candidateSetRef,
       workplace,
     ) as {
@@ -130,6 +154,19 @@ export class SqliteProductionCellIntegration {
 
   integrateAcceptedWorkplace(input: SqliteProductionCellIntegrationInput): ProductionCellIntegrationResult {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
+    // ADR-053 C5-03 — task identity comes ONLY from the accepted-authority head
+    // (the carry-forward-safe binding recorded at author acceptance by C5-02),
+    // NEVER from the origin submission's task_id (s.task_id — the origin
+    // process's task, wrong after carry-forward) and NEVER by recency
+    // (ORDER BY ... DESC — wrong in repair cycles). The head is the sole
+    // authority. Fail closed when it has no task identity: do NOT fall back to
+    // the latest task or the origin submission.
+    const authorTaskId = this.authorityHeadRepo.readAuthorTaskId(workplace);
+    if (authorTaskId === null) {
+      throw new Error(
+        `PRODUCTION_CELL_INTEGRATION_TASK_MISSING: accepted-authority head has no accepted author task for ${workplace}`,
+      );
+    }
     // Repository Desk consistency fix: use COALESCE(rc.local_path, pr.local_path)
     // so the integration operates on the SAME machine-specific checkout that the
     // worker used (and that the dispatcher/freeze use). The previous raw
@@ -149,7 +186,7 @@ export class SqliteProductionCellIntegration {
            ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
           AND s.schema_version=m.product_schema
           AND s.content_hash=m.product_digest
-         JOIN tasks t ON t.id = s.task_id
+         JOIN tasks t ON t.id = ?
          JOIN project_repositories pr ON pr.id=t.project_repository_id
          LEFT JOIN repository_checkouts rc
            ON rc.project_repository_id=pr.id AND rc.status='active'
@@ -159,6 +196,7 @@ export class SqliteProductionCellIntegration {
         LIMIT 1`,
     ).get(
       input.expectedProductSchema,
+      authorTaskId,
       input.candidateSetRef,
       workplace,
     ) as {
