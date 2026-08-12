@@ -24,6 +24,7 @@ import type {
 import {
   assertCausalSourceRevision,
   assertLeaseFence,
+  leaseFence,
 } from '../domain/transition-obligation.js';
 
 // ---------------------------------------------------------------------------
@@ -290,6 +291,66 @@ export class SqliteTransitionObligationLedger {
   }
 
   /**
+   * Atomically ALLOCATE the next monotonic lease fence for an obligation and
+   * return it (ADR-053 C7-03). The fence is ALLOCATED BY THE STORE, never
+   * supplied by the caller: a caller cannot choose, predict, or lower a future
+   * fence. Contrast {@link persistLeaseFence} / {@link lease}, which accept a
+   * caller-supplied fence and apply the MAX-CAS — those are the "supply" paths;
+   * this is the "allocate" path the reconciler uses when it has no externally-
+   * minted fence token.
+   *
+   * Implementation: ONE IMMEDIATE transaction — read the stored fence, derive
+   * `candidate = current + 1` INSIDE the transaction, apply the MAX-based CAS
+   * (`lease_fence = MAX(COALESCE(lease_fence, 0), :candidate)`) so the stored
+   * value can never decrease even if the read were somehow stale, and return
+   * the value now in effect. SQLite serializes writers via the write lock taken
+   * by `BEGIN IMMEDIATE` (see {@link transaction}), so two concurrent
+   * allocators on the SAME obligation receive strictly-distinct, monotonically-
+   * increasing fences — monotonicity is enforced by the STORE, not by process
+   * memory or wall-clock ordering. (Two allocators on DIFFERENT obligations
+   * allocate independently: each obligation's fence is monotonic per-
+   * obligation, which is the fencing unit the reconciler leases.)
+   *
+   * Allocation does NOT take the execution lease: it only bumps `lease_fence`
+   * and `updated_at`. The state, lease owner, and attempt count are untouched.
+   * The reconciler follows allocation with {@link lease}, whose MAX-CAS keeps
+   * the just-allocated fence in effect.
+   *
+   * @returns the newly-allocated monotonic LeaseFence (its `.value` is strictly
+   *          greater than every previously-allocated / stored fence for this
+   *          obligation).
+   * @throws  TRANSITION_OBLIGATION_NOT_FOUND if the obligation does not exist
+   *          (a fence can only be allocated for a durable obligation).
+   */
+  allocateLeaseFence(obligationKey: string): LeaseFence {
+    const allocated = this.transaction(() => {
+      const row = this.db.prepare(
+        `SELECT COALESCE(lease_fence, 0) AS current
+           FROM factory_transition_obligations
+          WHERE obligation_key = ?`,
+      ).get(obligationKey) as { current: number } | undefined;
+      if (!row) {
+        throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${obligationKey}`);
+      }
+      const candidate = row.current + 1;
+      this.db.prepare(
+        `UPDATE factory_transition_obligations
+            SET lease_fence = MAX(COALESCE(lease_fence, 0), @candidate),
+                updated_at = datetime('now')
+          WHERE obligation_key = @key`,
+      ).run({ key: obligationKey, candidate });
+      const after = this.readLeaseFence(obligationKey);
+      if (after === null) {
+        // Unreachable: the row exists (checked above) and we just wrote
+        // lease_fence. Defend against a concurrent DELETE nonetheless.
+        throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${obligationKey}`);
+      }
+      return after;
+    });
+    return leaseFence(allocated);
+  }
+
+  /**
    * Record a successful completion. Idempotent: if already completed with the
    * same receipt, this is a no-op. A different receipt for the same key is
    * rejected — the obligation converged already.
@@ -343,6 +404,31 @@ export class SqliteTransitionObligationLedger {
        WHERE obligation_key = @key`,
     ).run({ key: obligationKey, error });
     return this.getOrThrow(obligationKey);
+  }
+
+  /**
+   * Run `work` inside one IMMEDIATE transaction, committing on success and
+   * rolling back on error. If the caller is ALREADY inside a transaction
+   * (`this.db.inTransaction`), the work is nested into it without issuing a new
+   * BEGIN/COMMIT — the outer owner controls the boundary. The IMMEDIATE begin
+   * takes a RESERVED write lock up front, so concurrent writers serialize at
+   * the store; this is what makes {@link allocateLeaseFence} store-enforced
+   * monotonic under contention. Mirrors the idiom in the lifecycle-run /
+   * external-effect repositories.
+   */
+  private transaction<T>(work: () => T): T {
+    const ownsTransaction = !this.db.inTransaction;
+    if (ownsTransaction) this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      if (ownsTransaction) this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      if (ownsTransaction) {
+        try { this.db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      }
+      throw error;
+    }
   }
 }
 

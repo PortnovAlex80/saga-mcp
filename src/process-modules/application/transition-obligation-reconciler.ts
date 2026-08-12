@@ -62,8 +62,16 @@ export interface ReconcilerOptions {
    * Each reconciler call should use a fence >= the last. ADR-053 C7-01: this
    * is a LeaseFence (ordering token), a DISTINCT type from the causal source
    * revision that caused each obligation — the two are not interchangeable.
+   *
+   * ADR-053 C7-03: OPTIONAL. When OMITTED, the reconciler ALLOCATES a fresh
+   * monotonic fence for each obligation directly from the ledger
+   * ({@link SqliteTransitionObligationLedger.allocateLeaseFence}) — the fence
+   * is store-minted and monotonic, so a caller can neither choose nor lower
+   * it (allocate, not supply). When SUPPLIED, it is carried into every lease of
+   * the sweep as before (the legacy path; lets an externally-minted fence
+   * token keep driving a sweep).
    */
-  readonly fence: LeaseFence;
+  readonly fence?: LeaseFence;
   /** Max obligations to dispatch in one sweep. */
   readonly batchSize?: number;
 }
@@ -116,10 +124,17 @@ export class TransitionObligationReconciler {
         continue;
       }
 
+      // Obtain the lease fence: when the caller did not supply one, ALLOCATE
+      // it from the ledger (ADR-053 C7-03 — the fence is store-minted and
+      // monotonic, never chosen or lowered by the caller). When supplied, use
+      // it as-is (the legacy / externally-minted-fence path).
+      const fence = options.fence
+        ?? this.ledger.allocateLeaseFence(obligation.obligationKey);
+
       const leased = this.ledger.lease(
         obligation.obligationKey,
         options.leaseOwner,
-        options.fence,
+        fence,
       );
       if (!leased) {
         // Another owner acquired the lease between findReady and lease.
