@@ -143,14 +143,27 @@ export function createFormalizationAcceptProductsEffect(
               `FORMALIZATION_ACCEPTANCE_ARTIFACT_MISSING: ${item.artifact_id}`,
             );
           }
-          if (artifact.content_hash !== item.content_hash) {
+          // Accept by the artifact's CURRENT (disk-verified) content_hash from
+          // the requirements table. The snapshot identifies WHICH artifacts the
+          // cell produced; the table's content_hash is the live source of truth.
+          //
+          // We deliberately do NOT compare the snapshot's sealed contentHash
+          // against the table: artifactDiskHash hashes the WHOLE file (it
+          // strips the `#anchor`), so all anchors sharing one file converge to
+          // one hash that evolves as the worker edits the file during the task.
+          // A snapshot-vs-table drift check would reject benign same-task edits,
+          // and the managed-production ledger can lag the table because
+          // refreshArtifactHash updates artifacts.content_hash from disk without
+          // recording a ledger row. Fail closed only when the artifact row is
+          // missing or carries no content_hash.
+          if (!artifact.content_hash) {
             throw new Error(
-              `FORMALIZATION_ACCEPTANCE_CONTENT_DRIFT: artifact ${item.artifact_id}`,
+              `FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact ${item.artifact_id}`,
             );
           }
           if (
             artifact.status === 'accepted'
-            && artifact.accepted_hash === item.content_hash
+            && artifact.accepted_hash === artifact.content_hash
             && artifact.drift_state === 'clean'
           ) {
             continue;
@@ -160,7 +173,7 @@ export function createFormalizationAcceptProductsEffect(
                 SET status='accepted', accepted_hash=?, drift_state='clean',
                     updated_at=datetime('now')
               WHERE id=? AND content_hash=?`,
-          ).run(item.content_hash, item.artifact_id, item.content_hash);
+          ).run(artifact.content_hash, item.artifact_id, artifact.content_hash);
           if (updated.changes !== 1) {
             throw new Error(
               `FORMALIZATION_ACCEPTANCE_CAS_FAILED: artifact ${item.artifact_id}`,

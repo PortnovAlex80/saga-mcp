@@ -111,22 +111,47 @@ test('snapshot payload projects artifacts (B-4: ref points at pinned snapshot)',
   }
 });
 
-test('authority projection fails atomically when any artifact drifted', () => {
+test('accepts by table content_hash even when the snapshot hash differs (benign whole-file drift)', () => {
+  // driftSecond: the artifacts row for id=2 carries content_hash '9'*64, while
+  // the pinned snapshot says '2'*64. With artifactDiskHash hashing the whole
+  // file (anchor stripped), shared-file anchors legitimately evolve together,
+  // so the effect accepts the artifact's CURRENT table hash, not the snapshot's.
   const fx = fixture({ driftSecond: true });
   try {
-    assert.throws(
-      () => fx.effect.run(fx.input),
-      /FORMALIZATION_ACCEPTANCE_CONTENT_DRIFT: artifact 2/,
-    );
+    fx.effect.run(fx.input);
     assert.deepEqual(
-      fx.db.prepare('SELECT id,status,accepted_hash FROM artifacts ORDER BY id').all(),
+      fx.db.prepare('SELECT id,status,accepted_hash,content_hash FROM artifacts ORDER BY id').all(),
       [
-        { id: 1, status: 'draft', accepted_hash: null },
-        { id: 2, status: 'draft', accepted_hash: null },
+        { id: 1, status: 'accepted', accepted_hash: '1'.repeat(64), content_hash: '1'.repeat(64) },
+        { id: 2, status: 'accepted', accepted_hash: '9'.repeat(64), content_hash: '9'.repeat(64) },
       ],
     );
   } finally {
     fx.db.close();
+  }
+});
+
+test('fails closed when an artifact row has no content_hash', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE artifacts (id INTEGER PRIMARY KEY, status TEXT NOT NULL, content_hash TEXT, accepted_hash TEXT, drift_state TEXT NOT NULL, updated_at TEXT);
+    CREATE TABLE factory_process_products (id INTEGER PRIMARY KEY, process_run_id INTEGER NOT NULL, product_kind TEXT NOT NULL, product_key TEXT NOT NULL, schema_id TEXT NOT NULL, artifact_ref TEXT NOT NULL, product_hash TEXT NOT NULL, payload_snapshot TEXT NOT NULL, payload_hash TEXT NOT NULL, node_id TEXT);
+  `);
+  db.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,NULL)').run(1, 'draft', null, null, 'clean');
+  const snapshot = buildSnapshot([{ artifactId: 1, artifactType: 'PRD', artifactStatus: 'draft', contentHash: 'c'.repeat(64), operation: 'create', lastProducerExecutionRef: 'e' }]);
+  const contentHash = sha256Hex(snapshot);
+  const payloadSnapshot = canonicalJson(snapshot);
+  const artifactRef = `workplace:${MODULE_REF}:${NODE_ID}:${contentHash}`;
+  db.prepare(`INSERT INTO factory_process_products (process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash, payload_snapshot, payload_hash, node_id) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(BUNDLE_SCHEMA, artifactRef, BUNDLE_SCHEMA, artifactRef, contentHash, payloadSnapshot, contentHash, NODE_ID);
+  const effect = createFormalizationAcceptProductsEffect(db);
+  try {
+    assert.throws(
+      () => effect.run({ authority: { acceptedProductRefs: [{ schemaId: BUNDLE_SCHEMA, ref: artifactRef, digest: contentHash }] } }),
+      /FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact 1/,
+    );
+  } finally {
+    db.close();
   }
 });
 
