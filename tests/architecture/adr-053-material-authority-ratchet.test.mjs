@@ -201,7 +201,7 @@ test('ADR-053 Phase 0 inventory: post-seal-authority defect sites are documented
     'src/infrastructure/replay/replay-authority-rebinder.ts:74 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
     'src/infrastructure/replay/replay-claim-binder.ts:143 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
     'src/infrastructure/replay/sqlite-replay-capsule-repository.ts:384 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
-    'src/modules/development/infrastructure/sqlite-development-settlement-state.ts:580,590 — latest author/reviewer per workplace (table-prefixed sealed_at, not ratcheted)',
+    'src/modules/development/infrastructure/sqlite-development-settlement-state.ts:580,590 — [FIXED] now JOINs factory_cell_final_acceptances for exact accepted author set',
     'src/tools/products.ts:148 — candidate_read MCP tool selects latest by role',
   ];
   // Sanity: the inventory is non-empty and each entry names a real file path
