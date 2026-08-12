@@ -23,7 +23,7 @@
 | C5-02 | Bind current workplace task at final author acceptance | Authority A | C5-01 | done | fix(factory): bind accepted authority to current workplace task | production-cell-coordinator.ts + node-executor.ts (resolveAcceptedAuthorTaskId via readExecutionReceipt, not submission.task_id); tests/process-modules/production-cell-{coordinator,node-executor}.test.mjs |
 | C5-03 | Cut git integration over to material-authority task identity | Authority A | C5-02 | done | fix(factory): select git integration task from accepted authority | sqlite-production-cell-integration.ts readAuthorTaskId (fail-closed, no submission fallback); tests/infrastructure/production-cell-integration-candidate-binding.test.mjs (red→green) |
 | C5-04 | Add the adversarial C5 regression matrix | Verification V | C5-03 | done | test(factory): prove carry-forward-safe integration task binding | tests/factory-contract/c5-carry-forward-adversarial-matrix.test.mjs (5 scenarios: head≠submission, repair re-bind, fail-closed, null-task deny, decoys) |
-| C5-05 | Ratchet and close C5 | Integrator | C5-04 | pending | test(adr-053): ratchet exact integration task authority | — |
+| C5-05 | Ratchet and close C5 | Integrator | C5-04 | done | test(adr-053): ratchet exact integration task authority | tests/architecture/adr-053-cutover-gates.test.mjs Gate C5 (head accepted_author_task_id + readAuthorTaskId + parameterized consumer join); C5-04 adversarial matrix (5/5). C5 LANE CLOSED |
 
 ## Phase C7 — monotonic lease fencing
 

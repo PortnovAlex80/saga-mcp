@@ -104,6 +104,25 @@ test('Gate 9 [met]: invariant test files exist', () => {
   assert.ok(srcExists('tests/architecture/adr-053-material-authority-ratchet.test.mjs'));
 });
 
+// Gate C5: Task authority is the accepted-authority head (carry-forward-safe).
+// STATUS: MET (C5-01..C5-05) — the head persists accepted_author_task_id; the
+// git-integration consumer reads the task from the head via readAuthorTaskId and
+// binds it with a parameterized join. Neither submission.task_id nor recency
+// remains in the canonical integration path. This ratchet trips if any of that
+// is reverted.
+test('Gate C5 [met]: authority head persists accepted_author_task_id', () => {
+  const schema = readSrc('src/schema.ts');
+  assert.ok(schema.includes('accepted_author_task_id'), 'head schema column exists');
+  const repo = readSrc('src/infrastructure/workplace/sqlite-accepted-authority-head-repository.ts');
+  assert.ok(repo.includes('readAuthorTaskId'), 'head repo exposes readAuthorTaskId');
+});
+
+test('Gate C5 [met]: git-integration consumer binds the task from the authority head (parameterized, not submission)', () => {
+  const consumer = readSrc('src/infrastructure/workplace/sqlite-production-cell-integration.ts');
+  assert.ok(consumer.includes('readAuthorTaskId'), 'consumer reads task id from the authority head');
+  assert.ok(consumer.includes('JOIN tasks t ON t.id = ?'), 'consumer binds task via a parameterized join');
+});
+
 // Substrate completeness: all Phase 3 entities exist.
 test('Substrate [met]: WorkplaceProductionRevision model exists', () => {
   assert.ok(srcExists('src/process-modules/domain/workplace/workplace-production-revision.ts'));
