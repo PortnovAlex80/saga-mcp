@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
 import type { SqlDatabasePort } from '../../application/ports/sql-database.js';
 import type {
@@ -163,68 +163,36 @@ function runLocalReadiness(
     execFileSync('tar', ['-xf', archive, '-C', directory, '--force-local'], {
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
     });
-    // git archive extracts at directory root. Keep a stable logical checkout
-    // name only in evidence; commands run from that isolated root.
-    const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
-      scripts?: Record<string, unknown>;
-      dependencies?: Record<string, unknown>;
-      devDependencies?: Record<string, unknown>;
-      peerDependencies?: Record<string, unknown>;
-      optionalDependencies?: Record<string, unknown>;
-    };
-    if (typeof packageJson.scripts?.test !== 'string') {
+    // UNIVERSAL ENGINE: the architect chooses the language/stack; the engine
+    // detects the build system from the files the worker produced and runs that
+    // system's native test command. The gate must NOT hardcode npm.
+    const system = detectBuildSystem(directory);
+    if (!system) {
       return evidence('failed', subject, {
-        reason: 'required npm script "test" is missing',
+        reason: 'no supported build system found in candidate (expected build.gradle[.kts], pom.xml, or package.json)',
       });
     }
-    // The git-archive checkout has source but no node_modules. Install
-    // dependencies (declared OR dev) before running the test command, otherwise
-    // any test requiring a devDependency (jsdom, etc.) fails with MODULE_NOT_FOUND.
-    // `--no-audit --no-fund` keeps it quiet; the timeout bounds a stuck registry.
-    if (hasDependencySpecifiers(packageJson)) {
-      runNpm(['install', '--no-audit', '--no-fund'], directory, 240_000);
-    }
-    runNpm(['test'], directory, 120_000);
-    // `npm start` + loopback HTTP probe only applies to served apps. A static
-    // site (counter app, docs site) has a `test` script but no `start` — it is
-    // opened directly from disk, not served. Require `start` to be OPT-IN: when
-    // absent, the runnability proof is the passing `npm test` alone.
-    const hasStart = typeof packageJson.scripts?.start === 'string';
-    if (!hasStart) {
+    runSystemTest(system, directory);
+    // Start + loopback HTTP probe is opt-in and only generically detectable for
+    // npm (explicit scripts.start). For other systems the runnability proof is
+    // the passing native test command; framework-specific serve tasks are not
+    // reliably detectable, so we do not guess.
+    if (system === 'npm') {
+      const probeResult = tryNpmStartProbe(directory, subject);
+      if (probeResult.started) {
+        return evidence('passed', subject, {
+          phases: ['npm-test', 'npm-start', 'loopback-http-probe', 'clean-shutdown'],
+          ...probeResult.evidence,
+        });
+      }
       return evidence('passed', subject, {
         phases: ['npm-test'],
-        note: 'static product — no "start" script; runnability proven by npm test only',
+        note: 'no "start" script; runnability proven by npm test only',
       });
     }
-    const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
-    const npm = npmCommand(['start']);
-    const child = spawn(npm.executable, npm.args, {
-      cwd: directory,
-      env: {
-        ...process.env,
-        PORT: String(port),
-        HOST: '127.0.0.1',
-        BROWSER: 'none',
-        CI: '1',
-      },
-      shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', chunk => { stdout += String(chunk).slice(0, 16_384); });
-    child.stderr?.on('data', chunk => { stderr += String(chunk).slice(0, 16_384); });
-    try {
-      probe(`http://127.0.0.1:${port}/`, child.pid, 15_000);
-    } finally {
-      terminateProcessTree(child.pid);
-    }
     return evidence('passed', subject, {
-      phases: ['npm-test', 'npm-start', 'loopback-http-probe', 'clean-shutdown'],
-      port,
-      stdoutDigest: sha256Hex(stdout),
-      stderrDigest: sha256Hex(stderr),
+      phases: [`${system}-test`],
+      note: `${system} runnability proven by native test task`,
     });
   } catch (error) {
     return evidence('failed', subject, { reason: errorMessage(error) });
@@ -232,6 +200,139 @@ function runLocalReadiness(
     rmSync(directory, { recursive: true, force: true });
     void checkout;
   }
+}
+
+/**
+ * Detect the candidate's build system from the files the worker produced. The
+ * architect owns the stack choice; the gate honors it by file presence.
+ */
+function detectBuildSystem(directory: string): 'gradle' | 'maven' | 'npm' | null {
+  if (existsSync(join(directory, 'build.gradle.kts'))
+      || existsSync(join(directory, 'build.gradle'))) return 'gradle';
+  if (existsSync(join(directory, 'pom.xml'))) return 'maven';
+  if (existsSync(join(directory, 'package.json'))) return 'npm';
+  return null;
+}
+
+/**
+ * Run the detected build system's native test command. JVM systems get
+ * JAVA_HOME/bin on PATH so the gradle/maven wrappers find java even when it is
+ * not on the global PATH. Cold JVM builds (distribution + dependency download)
+ * get a generous timeout.
+ */
+function runSystemTest(system: 'gradle' | 'maven' | 'npm', directory: string): void {
+  if (system === 'npm') {
+    runNpmTest(directory);
+    return;
+  }
+  const env = jvmEnv();
+  if (system === 'gradle') {
+    runBuild(wrapCommand(directory, 'gradlew', 'gradle'), ['test', '--no-daemon'], directory, env, 600_000);
+    return;
+  }
+  // maven
+  runBuild(wrapCommand(directory, 'mvnw', 'mvn'), ['test', '-B', '-q'], directory, env, 600_000);
+}
+
+function runNpmTest(directory: string): void {
+  const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+    scripts?: Record<string, unknown>;
+  } & DependencyGroups;
+  if (typeof packageJson.scripts?.test !== 'string') {
+    throw new Error('required npm script "test" is missing');
+  }
+  if (hasDependencySpecifiers(packageJson)) {
+    runNpm(['install', '--no-audit', '--no-fund'], directory, 240_000);
+  }
+  runNpm(['test'], directory, 120_000);
+}
+
+/**
+ * Resolve a build-tool wrapper: prefer the committed wrapper
+ * (gradlew/mvnw[.bat]), fall back to the global tool. Returns the executable
+ * name; on Windows the wrapper is a .bat and must run through cmd (shell:true
+ * in runBuild).
+ */
+function wrapCommand(directory: string, wrapperBase: string, globalTool: string): string {
+  const isWin = process.platform === 'win32';
+  const wrapperName = isWin ? `${wrapperBase}.bat` : wrapperBase;
+  return existsSync(join(directory, wrapperName)) ? wrapperName : globalTool;
+}
+
+function runBuild(
+  executable: string,
+  args: readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): void {
+  execFileSync(executable, [...args], {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: timeoutMs,
+    maxBuffer: 16 * 1024 * 1024,
+    windowsHide: true,
+    // Windows wrapper scripts are .bat files — they need a shell to execute.
+    shell: process.platform === 'win32',
+  });
+}
+
+function jvmEnv(): NodeJS.ProcessEnv {
+  const javaHome = process.env.JAVA_HOME;
+  if (!javaHome) return { ...process.env };
+  const javaBin = join(javaHome, 'bin');
+  const path = process.env.PATH ? `${javaBin}${delimiter}${process.env.PATH}` : javaBin;
+  return { ...process.env, JAVA_HOME: javaHome, PATH: path };
+}
+
+interface DependencyGroups {
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+  peerDependencies?: Record<string, unknown>;
+  optionalDependencies?: Record<string, unknown>;
+}
+
+function tryNpmStartProbe(
+  directory: string,
+  subject: CandidateSubject,
+): { started: boolean; evidence?: Record<string, unknown> } {
+  const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+    scripts?: Record<string, unknown>;
+  };
+  if (typeof packageJson.scripts?.start !== 'string') return { started: false };
+  const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
+  const npm = npmCommand(['start']);
+  const child = spawn(npm.executable, npm.args, {
+    cwd: directory,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      BROWSER: 'none',
+      CI: '1',
+    },
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout?.on('data', chunk => { stdout += String(chunk).slice(0, 16_384); });
+  child.stderr?.on('data', chunk => { stderr += String(chunk).slice(0, 16_384); });
+  try {
+    probe(`http://127.0.0.1:${port}/`, child.pid, 15_000);
+  } finally {
+    terminateProcessTree(child.pid);
+  }
+  return {
+    started: true,
+    evidence: {
+      port,
+      stdoutDigest: sha256Hex(stdout),
+      stderrDigest: sha256Hex(stderr),
+    },
+  };
 }
 
 function evidence(
