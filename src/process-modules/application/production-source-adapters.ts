@@ -29,6 +29,7 @@
 import {
   buildContribution,
   type MemberOperation,
+  type SourceAdapter,
   type WorkplaceContribution,
 } from '../domain/workplace/workplace-production-revision.js';
 
@@ -68,6 +69,42 @@ export function managedArtifactsToContribution(input: {
     workplaceRef: input.workplaceRef,
     contributorExecutionRef: input.executionRef,
     sourceAdapter: 'managed-artifact',
+    operations,
+    parentContributionRef: input.parentContributionRef ?? null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Produced ProductRefs → revision contribution. [ADR-053 B-7]
+//
+// The generic production-cell executor path: a set of produced ProductRefs.
+// Each ProductRef becomes a `put` member keyed by `product/{schemaId}/{ref}`
+// (one member per product — preserves the runtime per-product cardinality).
+// The executor routes through THIS adapter rather than building the contribution
+// inline, so all revision material flows through the adapter boundary. The
+// `sourceAdapter` defaults to 'typed-submission' (the executor's cells) and may
+// be overridden when a cell's productSource differs.
+// ---------------------------------------------------------------------------
+
+export function producedProductsToContribution(input: {
+  workplaceRef: string;
+  executionRef: string;
+  products: ReadonlyArray<{ readonly schemaId: string; readonly ref: string; readonly digest: string }>;
+  sourceAdapter?: SourceAdapter;
+  parentContributionRef?: string | null;
+}): WorkplaceContribution {
+  const sourceAdapter: SourceAdapter = input.sourceAdapter ?? 'typed-submission';
+  const operations: MemberOperation[] = input.products.map(p => ({
+    op: 'put',
+    memberKey: `product/${p.schemaId}/${p.ref}`,
+    productRef: p.ref,
+    contentDigest: p.digest,
+    sourceAdapter,
+  }));
+  return buildContribution({
+    workplaceRef: input.workplaceRef,
+    contributorExecutionRef: input.executionRef,
+    sourceAdapter,
     operations,
     parentContributionRef: input.parentContributionRef ?? null,
   });

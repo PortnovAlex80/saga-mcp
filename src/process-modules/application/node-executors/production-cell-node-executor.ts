@@ -44,7 +44,8 @@ import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
-import { assembleRevision, buildContribution, type WorkplaceProductionRevision } from '../../domain/workplace/workplace-production-revision.js';
+import { assembleRevision, type WorkplaceProductionRevision } from '../../domain/workplace/workplace-production-revision.js';
+import { producedProductsToContribution } from '../production-source-adapters.js';
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 
@@ -1021,27 +1022,21 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       throw new Error('CANNOT_SEAL_EMPTY_PRODUCT_SET: ADR-053 requires productionRevisionRef for every CandidateSet');
     }
     const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
-    const operations = products.map(p => ({
-      op: 'put' as const,
-      memberKey: `product/${p.schemaId}/${p.ref}`,
-      productRef: p.ref,
-      contentDigest: p.digest,
-      sourceAdapter: 'typed-submission' as const,
-    }));
-    const contribution = buildContribution({
+    // ADR-053 B-7 — route contribution building through the source adapter
+    // boundary (producedProductsToContribution), not inline. memberKey scheme
+    // `product/{schemaId}/{ref}` is preserved, so the revision digest is
+    // unchanged (no partition-convergence break).
+    const contribution = producedProductsToContribution({
       workplaceRef: workplaceSerialized,
-      contributorExecutionRef: executionRef,
-      sourceAdapter: 'typed-submission',
-      operations,
-      parentContributionRef: null,
+      executionRef,
+      products,
     });
-    const revision = assembleRevision({
+    return assembleRevision({
       workplaceRef: workplaceSerialized,
       parent: null,
       contributions: [contribution],
       presenterRef: executionRef,
     });
-    return revision;
   }
 
   private sealCarriedForwardCandidateSet(
