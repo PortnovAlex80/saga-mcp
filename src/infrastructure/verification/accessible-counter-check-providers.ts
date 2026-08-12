@@ -10,6 +10,7 @@ import {
   ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST,
   ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID,
   ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION,
+  AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST,
   AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID,
   AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
 } from '../../modules/development/application/candidate-check-contracts.js';
@@ -33,6 +34,7 @@ function createAccessibleCounterCheckProvider(
   return {
     providerId: ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID,
     version: ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION,
+    providerDigest: ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef }) {
       try {
         const subject = resolveSubject(db, candidateSets, subjectCandidateSetRef);
@@ -62,6 +64,7 @@ function createAuthorizedObserverCheckProvider(
   return {
     providerId: AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID,
     version: AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
+    providerDigest: AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef }) {
       try {
         const subject = resolveSubject(db, candidateSets, subjectCandidateSetRef);

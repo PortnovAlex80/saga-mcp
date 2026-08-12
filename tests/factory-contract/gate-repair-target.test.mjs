@@ -29,7 +29,9 @@ function drive(outcomes, checks) {
     resolve(providerId) {
       const outcome = outcomes[providerId];
       if (!outcome) return null;
-      return { providerId, version: '1.0.0', run: () => outcome };
+      // C10: digest must equal the value pinned by buildCheckPlan
+      // (providerDigest: `${check.providerId}:digest`).
+      return { providerId, version: '1.0.0', providerDigest: `${providerId}:digest`, run: () => outcome };
     },
   };
   const plan = buildCheckPlan('test.final', checks.map(check => ({

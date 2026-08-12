@@ -56,6 +56,7 @@ export function createSrsStructuralCheckProvider(
   return {
     providerId: SRS_STRUCTURAL_CHECK_PROVIDER_ID,
     version: SRS_STRUCTURAL_CHECK_PROVIDER_VERSION,
+    providerDigest: SRS_STRUCTURAL_CHECK_PROVIDER_DIGEST,
     run(input): CheckOutcome {
       // The SRS artifact ref is passed via parameters by the GateRun driver
       // (it reads the sealed CandidateSet members and passes the SRS ref).

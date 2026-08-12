@@ -39,6 +39,9 @@ function stubProvider(outcome) {
   return {
     providerId: 'formalization.srs-structural.v1',
     version: '1.0.0',
+    // C10: must equal the digest pinned by buildArchitectureCheckPlan
+    // (SRS_STRUCTURAL_CHECK_PROVIDER_DIGEST = 'srs-structural-v1-digest').
+    providerDigest: 'srs-structural-v1-digest',
     run() { return outcome; },
   };
 }
@@ -215,6 +218,7 @@ test('ADR-053 C12: replaying a terminal GateRun does NOT re-run providers (one-s
     resolve: () => ({
       providerId: 'formalization.srs-structural.v1',
       version: '1.0.0',
+      providerDigest: 'srs-structural-v1-digest',
       run() { runCount += 1; return 'passed'; },
     }),
   };
@@ -252,7 +256,7 @@ test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt re
     unknownErrorPolicy: 'fail-closed',
   };
   const checkPlan = { ...planBase, checkPlanDigest: hash(JSON.stringify(planBase)) };
-  const providers = { resolve: () => ({ providerId: 'dup.provider', version: '1.0.0', run: () => 'passed' }) };
+  const providers = { resolve: () => ({ providerId: 'dup.provider', version: '1.0.0', providerDigest: hash('dup'), run: () => 'passed' }) };
   const result = driveGateRun(gateRepo, providers, {
     workplaceRef: ref, subjectCandidateSetRef: 'cs-c11', checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-c11', installationDigest: hash('i'),

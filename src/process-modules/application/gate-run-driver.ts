@@ -122,6 +122,16 @@ export function driveGateRun(
         `CHECK_PROVIDER_VERSION_MISMATCH: expected ${entry.check.version}, got ${provider.version}`,
       );
     }
+    // ADR-053 C10 — verify the INSTALLED provider's implementation digest matches
+    // the CheckPlan's pinned digest, so a swapped or mismatched implementation
+    // cannot run checks under a plan that pinned a different implementation
+    // (version match alone is insufficient — two builds can share a version).
+    if (provider.providerDigest !== entry.check.providerDigest) {
+      throw new Error(
+        `CHECK_PROVIDER_DIGEST_MISMATCH: ${entry.check.providerId} expected digest `
+          + `'${entry.check.providerDigest}', got '${provider.providerDigest}'`,
+      );
+    }
     const providerResult = provider.run({
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       parameters: {

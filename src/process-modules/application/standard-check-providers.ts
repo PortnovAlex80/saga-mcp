@@ -13,6 +13,7 @@ export const PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST = sha256Hex({
 const productContractProvider: CheckProvider = {
   providerId: PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
   version: PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+  providerDigest: PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
   run() {
     return 'passed';
   },

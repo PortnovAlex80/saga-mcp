@@ -167,6 +167,13 @@ export interface CheckProvider {
   readonly providerId: string;
   readonly version: string;
   /**
+   * ADR-053 C10 — the pinned implementation digest of THIS installed provider.
+   * The driver verifies it matches the CheckPlan entry's pinned
+   * `check.providerDigest`, so a swapped or mismatched implementation cannot
+   * run checks under a plan that pinned a different implementation.
+   */
+  readonly providerDigest: string;
+  /**
    * Run one check over an immutable CandidateSet snapshot. Returns a
    * CheckOutcome plus opaque evidence refs. The runtime wraps this into a
    * CheckReceipt with the full provider/version/digest/environment provenance.

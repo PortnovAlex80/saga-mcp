@@ -42,6 +42,7 @@ export function createLocalRunnabilityCheckProvider(input: {
   return {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+    providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef }) {
       let subject;
       try {

@@ -182,6 +182,7 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
   return {
     providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const processRunId = Number(parameters.processRunId);
@@ -269,6 +270,7 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
   return {
     providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const processRunId = Number(parameters.processRunId);
@@ -405,6 +407,7 @@ export function createDevelopmentVerificationCheckProvider(input: {
   return {
     providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const processRunId = Number(parameters.processRunId);

@@ -46,6 +46,7 @@ export function createDiscoveryProposalCheckProvider(input: {
   return {
     providerId: DISCOVERY_PROPOSAL_CHECK_PROVIDER_ID,
     version: DISCOVERY_PROPOSAL_CHECK_PROVIDER_VERSION,
+    providerDigest: DISCOVERY_PROPOSAL_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef }) {
       const row = producerSubmission(input.db, input.candidateSets, subjectCandidateSetRef);
       if (!row || row.schema_version !== DISCOVERY_PROPOSAL_SCHEMA) return 'failed';
@@ -67,6 +68,7 @@ export function createDiscoveryReadinessCheckProvider(input: {
   return {
     providerId: DISCOVERY_READINESS_CHECK_PROVIDER_ID,
     version: DISCOVERY_READINESS_CHECK_PROVIDER_VERSION,
+    providerDigest: DISCOVERY_READINESS_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const readiness = producerSubmission(

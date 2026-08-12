@@ -87,6 +87,7 @@ export function createReviewVerdictCheckProvider(input: {
   return {
     providerId: REVIEW_VERDICT_CHECK_PROVIDER_ID,
     version: REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
+    providerDigest: REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const refs = parameters.assessmentCandidateSetRefs;
