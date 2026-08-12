@@ -229,6 +229,59 @@ a stopped factory. Check all of these together:
 - reviewer work is a separate fenced execution;
 - only final acceptance creates a ReplayCapsule.
 
+## 7a. Monitor every minute (polling cadence + report format)
+
+While the factory runs, **poll once per 60 seconds**. Do not sleep 3–5 minutes
+between checks — a worker can finish, a gate can crash, or a cell can stall in
+the gap, and you want to catch the transition at the minute it happens.
+
+Each poll reads two things:
+
+1. the last ~15 lines of the orchestrate-cli log (cycle/stage/dispatch events);
+2. the task + artifact status from the live DB.
+
+A one-shot poll script (uses the run's DB path):
+
+```bash
+node -e '
+  const D = require("better-sqlite3");
+  const db = new D(process.argv[1], {readonly:true});
+  for (const t of db.prepare("SELECT id,status,workflow_stage,title FROM tasks ORDER BY id").all())
+    console.log(`  #${t.id} [${t.status.padEnd(12)}] ${t.workflow_stage.padEnd(12)} ${t.title.slice(0,48)}`);
+  const ac = db.prepare("SELECT status,count(*) n FROM artifacts GROUP BY status").all();
+  console.log("  artifacts:", ac.map(a=>`${a.status}=x${a.n}`).join(" "));
+  db.close();
+' .factory-sandboxes/<run>/factory.sqlite
+```
+
+### Report format — the pipeline chain
+
+Report status to the operator in this exact pipeline-chain form so the whole
+chain is visible at a glance. Use the four glyphs `✅ done · 🔄 running · ⬚ idle · ✖ failed`,
+and annotate each stage with the active node:
+
+```
+Discovery      ✅
+Formalization  🔄  product-contract ✅ | use-cases 🔄
+Planning       ⬚
+Development    ⬚
+Verification   ⬚
+Delivery       ⬚
+```
+
+Rules:
+
+- A stage is `✅` only when its terminal ProcessModule outcome is sealed (all its
+  tasks `done`, its artifacts `accepted`). A stage with one `done` node and one
+  `in_progress` node is still `🔄`, not `✅`.
+- Name the active formalization/development node next to the spinner so the
+  operator sees which sub-cell is running (e.g. `use-cases 🔄`).
+- On any `failed`/`repair_required`/crash line in the log, flip the stage to `✖`
+  and quote the exact error code (`FORMALIZATION_ACCEPTANCE_PRODUCT_REF_INVALID`,
+  `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH`, …) — do not paraphrase.
+- Keep the report short. The chain is the headline; one or two lines of detail
+  underneath, no prose essays.
+
 ## 8. Inter-stage validation checklist
 
 After Discovery, verify the next ProcessRun input contains the exact certificate
