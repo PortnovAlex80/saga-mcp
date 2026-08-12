@@ -95,9 +95,11 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
 
         for (const candidateSetRef of [...new Set(candidateRefs)]) {
           const candidate = db.prepare(
-            `SELECT candidate_set_ref,producer_execution_ref
-               FROM factory_candidate_sets
-              WHERE candidate_set_ref=? AND workplace_ref=?`,
+            `SELECT cs.candidate_set_ref,
+                    (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
+                      WHERE rev.revision_ref = cs.production_revision_ref) AS producer_execution_ref
+               FROM factory_candidate_sets cs
+              WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?`,
           ).get(candidateSetRef, workplaceRef) as {
             candidate_set_ref: string;
             producer_execution_ref: string;

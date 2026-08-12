@@ -8,7 +8,6 @@ export interface AcceptedProductionCellItem {
   readonly workKey: string;
   readonly workplaceRef: string;
   readonly candidateSetRef: string;
-  readonly producerExecutionRef: string;
   readonly execution: {
     readonly intentId: number;
     readonly taskId: number;
@@ -100,12 +99,10 @@ function decodeAcceptedItem(
     || typeof value.workKey !== 'string'
     || typeof value.workplaceRef !== 'string'
     || typeof value.candidateSetRef !== 'string'
-    || typeof value.producerExecutionRef !== 'string'
     || !isRecord(execution)
     || !Number.isInteger(execution.intentId)
     || !Number.isInteger(execution.taskId)
     || typeof execution.executionRef !== 'string'
-    || execution.executionRef !== value.producerExecutionRef
     || !Array.isArray(products)
   ) {
     throw new Error(`${consumerId}: malformed accepted cell item ${index}`);
@@ -132,7 +129,6 @@ function decodeAcceptedItem(
     workKey: value.workKey,
     workplaceRef: value.workplaceRef,
     candidateSetRef: value.candidateSetRef,
-    producerExecutionRef: value.producerExecutionRef,
     execution: {
       intentId: execution.intentId as number,
       taskId: execution.taskId as number,

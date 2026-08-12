@@ -113,17 +113,12 @@ export interface CandidateSet {
   /** The workplace this set belongs to. */
   readonly workplaceRef: WorkplaceRef;
   /**
-   * Provenance-only: the execution that presented this set. NOT material
-   * authority. ADR-053 clean-break: this field MUST NOT be used to select
-   * material after seal.
-   */
-  readonly producerExecutionRef: string;
-  /**
-   * ADR-053 — the immutable Workplace production revision this CandidateSet's
+   * ADR-053 B-3 — the immutable Workplace production revision this CandidateSet's
    * material was sealed from. This IS the MATERIAL AUTHORITY: the seal key is
    * derived from the revision. REQUIRED — no CandidateSet may be sealed
-   * without a revision ref. LEGACY FALLBACK ON producerExecutionRef IS
-   * FORBIDDEN.
+   * without a revision ref. The execution provenance (presenter) lives on the
+   * REVISION (revisionRepo.getRevision(productionRevisionRef).presenterRef),
+   * NOT on the CandidateSet. LEGACY producerExecutionRef FIELD IS DELETED.
    */
   readonly productionRevisionRef: string;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
@@ -156,7 +151,6 @@ export interface CandidateSet {
  */
 export function candidateSetSealKey(input: {
   workplaceRef: WorkplaceRef;
-  producerExecutionRef: string;
   productionRevisionRef: string;
   role: CandidateSetRole;
 }): string {
@@ -188,7 +182,6 @@ export function candidateSetSealKey(input: {
  */
 export function assertValidCandidateSet(set: CandidateSet): void {
   requireNonEmpty(set.candidateSetRef, 'candidateSetRef');
-  requireNonEmpty(set.producerExecutionRef, 'producerExecutionRef');
   requireNonEmpty(set.productionRevisionRef, 'productionRevisionRef');
   requireNonEmpty(set.sealReceiptRef, 'sealReceiptRef');
   requireNonEmpty(set.sealedAt, 'sealedAt');

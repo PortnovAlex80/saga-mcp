@@ -195,7 +195,6 @@ export interface CheckProviderResolverPort {
 export interface CandidateSetSealPort {
   seal(input: {
     readonly workplaceRef: WorkplaceRef;
-    readonly producerExecutionRef: string;
     readonly productionRevisionRef: string;
     readonly role: 'author' | 'reviewer';
     readonly subjectCandidateSetRef: string | null;
@@ -1046,7 +1045,6 @@ function sealArchitectureCandidateSet(
   const candidateSetRepo = deps.candidateSetRepo;
   const revisionRepo = deps.revisionRepo;
   if (!writes.receipt.executionId) return null;
-  const executionId = writes.receipt.executionId;
   // Build the CandidateSet members from the worker's produced SRS artifacts.
   // Each artifact is a 'produced' member (originated from this execution).
   const members = writes.artifacts
@@ -1107,7 +1105,6 @@ function sealArchitectureCandidateSet(
     if (!existing) revisionRepo.appendRevision(revision);
     return candidateSetRepo.seal({
       workplaceRef,
-      producerExecutionRef: executionId,
       productionRevisionRef: finalRevisionRef,
       role: 'author',
       subjectCandidateSetRef: null,

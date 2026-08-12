@@ -986,7 +986,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
       const set = this.opts.candidateSetRepo.seal({
         workplaceRef,
-        producerExecutionRef: executionRef,
         productionRevisionRef: finalRevisionRef,
         role,
         subjectCandidateSetRef,
@@ -1072,7 +1071,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
       return this.opts.candidateSetRepo.seal({
         workplaceRef,
-        producerExecutionRef: directive.presenterRef,
         productionRevisionRef: finalRevisionRef,
         role: 'author',
         subjectCandidateSetRef: null,
@@ -1173,7 +1171,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       failed: false,
       products: author?.members.map(member => member.productRef) ?? [],
       candidateSetRef: author?.candidateSetRef ?? null,
-      executionRef: author?.producerExecutionRef ?? null,
+      executionRef: author ? (this.opts.revisionRepo.getRevision(author.productionRevisionRef)?.presenterRef ?? null) : null,
     };
   }
 
@@ -1247,7 +1245,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         failed: outcome.failed,
         paused: outcome.paused,
         candidateSetRef: outcome.candidateSetRef,
-        producerExecutionRef: outcome.executionRef,
         execution: execution && outcome.executionRef
           ? {
               intentId: execution.intentId,

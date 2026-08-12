@@ -1378,11 +1378,11 @@ END;
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- ADR-053 clean-break: production_revision_ref IS the material authority and
 -- is REQUIRED. The seal key is (workplace_ref, production_revision_ref, role).
--- producer_execution_ref is provenance-only (nullable).
+-- ADR-053 B-3: producer_execution_ref column DELETED. Execution provenance
+-- lives on the immutable revision (presenterRef), NOT on the CandidateSet.
 CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
-  producer_execution_ref  TEXT,
   production_revision_ref TEXT NOT NULL,
   role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
   subject_candidate_set_ref TEXT,
