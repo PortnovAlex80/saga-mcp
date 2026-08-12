@@ -62,16 +62,20 @@ function integratedProductRef(candidateHash) {
  * test can seal an authority that is NOT the tip (a moving ref, a stale
  * commit, or a mismatched object).
  *
- * `runnability` (LR-03) is the deterministic install/test command contract
- * stated by the accepted product. It defaults to the npm commands that match
- * the standard fixture. Pass `includeRunnability: false` to seal a contract
- * that does NOT state its commands (fail-closed case), or a malformed
- * `runnability` value to exercise validation.
+ * `readiness` (LR-04) is the explicit served|static readiness profile stated by
+ * the accepted product. It defaults to a SERVED profile whose commands match
+ * the standard fixture (npm test + npm start). Pass `includeReadiness: false`
+ * to seal a contract that carries NO profile (fail-closed case), or a malformed
+ * `readiness` value to exercise validation.
  */
 function insertProduct(db, {
   repositoryId, root, candidateHash, commitSha, treeHash,
-  runnability = { installCommand: null, testCommand: 'npm test' },
-  includeRunnability = true,
+  readiness = {
+    kind: 'served',
+    commands: { installCommand: null, testCommand: 'npm test' },
+    serve: { startCommand: 'npm start' },
+  },
+  includeReadiness = true,
 }) {
   const sealedCommit = commitSha ?? git(root, 'rev-parse', 'HEAD');
   const sealedTree = treeHash ?? git(root, 'rev-parse', 'HEAD^{tree}');
@@ -80,7 +84,7 @@ function insertProduct(db, {
     candidateHash,
     repositories: [{ projectRepositoryId: repositoryId, commitSha: sealedCommit, treeHash: sealedTree }],
   };
-  if (includeRunnability) payload.runnability = runnability;
+  if (includeReadiness) payload.readiness = readiness;
   db.prepare(
     `INSERT INTO factory_process_products
        (process_run_id, product_kind, schema_id, artifact_ref, product_hash, payload_snapshot)
@@ -159,9 +163,9 @@ function candidateSetsReader(mode = 'author', candidateHash = 'a'.repeat(64)) {
   };
 }
 
-function buildProvider({ root, mode, candidateHash = 'a'.repeat(64), repositoryId = 1, ...runnabilityOpts }) {
+function buildProvider({ root, mode, candidateHash = 'a'.repeat(64), repositoryId = 1, ...readinessOpts }) {
   const db = newDb();
-  insertProduct(db, { repositoryId, root, candidateHash, ...runnabilityOpts });
+  insertProduct(db, { repositoryId, root, candidateHash, ...readinessOpts });
   const candidateSets = candidateSetsReader(mode, candidateHash);
   return { db, provider: createLocalRunnabilityCheckProvider({ db, candidateSets }) };
 }
@@ -200,9 +204,13 @@ test('missing scripts and failing tests fail closed', { timeout: 30000 }, async 
 
 test('static product (test only, no start script) passes runnability', { timeout: 30000 }, async () => {
   // A static site / counter app has a `test` script but no `start` (opened from
-  // disk, not served). Runnability is proven by `npm test` alone.
+  // disk, not served). The explicit STATIC profile states runnability by the
+  // test command alone; runnability is proven by `npm test` with no serve.
   const root = fixture({ testOnly: true });
-  const { db, provider } = buildProvider({ root });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'npm test' } },
+  });
   try {
     const result = await provider.run(RUN_ARGS);
     assert.equal(result.outcome, 'passed');
@@ -427,11 +435,12 @@ test('never checks out or mutates the canonical branch while proving runnability
 
 // ---------------------------------------------------------------------------
 // ADR-053 / LR-03 — install + test commands are DETERMINISTIC, sourced from
-// the accepted product contract's explicit command statement, NOT inferred from
-// incidental files (package.json / build.gradle). Build-system detection stays
-// as a validator/fallback; the AUTHORITY for which commands prove runnability
-// is the product contract. If the contract cannot state its commands, the
-// provider fails closed rather than guessing.
+// the accepted product contract's explicit readiness profile (LR-04), NOT
+// inferred from incidental files (package.json / build.gradle). Build-system
+// detection stays as a validator for execution-environment selection; the
+// AUTHORITY for which commands prove runnability is the explicit profile. If
+// the profile cannot state its commands, the provider fails closed rather than
+// guessing.
 // ---------------------------------------------------------------------------
 
 /** Seed a throwaway git repo with the given {path: contents} files and commit. */
@@ -451,16 +460,16 @@ function seedRepo(files) {
 test('runs the contract-stated test command verbatim, not a package.json script it would have to guess', { timeout: 30000 }, async () => {
   // The candidate has a package.json with NO `test` script. The pre-LR-03
   // file-guessing engine (cb3e944) would fail with "required npm script test is
-  // missing". The accepted product contract states the exact test command; the
-  // provider runs THAT and passes — the command is deterministic, from the
-  // contract, never guessed from files.
+  // missing". The accepted product's STATIC readiness profile states the exact
+  // test command; the provider runs THAT and passes — the command is
+  // deterministic, from the profile, never guessed from files.
   const root = seedRepo({
     'check.js': 'process.exit(0);\n',
     'package.json': JSON.stringify({ name: 'no-scripts', version: '1.0.0' }),
   });
   const { db, provider } = buildProvider({
     root,
-    runnability: { installCommand: null, testCommand: 'node check.js' },
+    readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'node check.js' } },
   });
   try {
     const result = await provider.run(RUN_ARGS);
@@ -473,10 +482,10 @@ test('runs the contract-stated test command verbatim, not a package.json script 
 });
 
 test('the contract test command is the authority, not the package.json test script', { timeout: 30000 }, async () => {
-  // package.json scripts.test points at a FAILING script. The contract states a
-  // DIFFERENT test command that passes. The provider MUST run the contract
-  // command (pass), never the file-inferred npm test (fail) — proving the file
-  // detection is not the command authority.
+  // package.json scripts.test points at a FAILING script. The readiness profile
+  // states a DIFFERENT test command that passes. The provider MUST run the
+  // profile command (pass), never the file-inferred npm test (fail) — proving
+  // the file detection is not the command authority.
   const root = seedRepo({
     'passing.js': 'process.exit(0);\n',
     'failing.js': 'process.exit(1);\n',
@@ -487,7 +496,7 @@ test('the contract test command is the authority, not the package.json test scri
   });
   const { db, provider } = buildProvider({
     root,
-    runnability: { installCommand: null, testCommand: 'node passing.js' },
+    readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'node passing.js' } },
   });
   try {
     const result = await provider.run(RUN_ARGS);
@@ -498,38 +507,27 @@ test('the contract test command is the authority, not the package.json test scri
   }
 });
 
-test('fails closed when the product contract does not state runnability commands', { timeout: 30000 }, async () => {
-  // A perfectly runnable npm fixture exists, but the sealed contract does NOT
-  // state its commands. The provider must NOT guess from package.json — it
-  // fails closed (ADR-053 / LR-03).
-  const root = fixture({ passing: true });
-  const { db, provider } = buildProvider({ root, includeRunnability: false });
-  try {
-    const result = await provider.run(RUN_ARGS);
-    assert.equal(result.outcome, 'failed');
-  } finally {
-    db.close();
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('fails closed when the contract states an invalid runnability command', { timeout: 30000 }, async () => {
-  // Each variant is a contract that "cannot state its commands". A distinct
+test('fails closed when the readiness profile is invalid', { timeout: 30000 }, async () => {
+  // Each variant is a profile the provider "cannot accept". A distinct
   // candidateHash per case avoids the provider's result cache so every variant
   // is actually executed, not shadowed by a prior cached outcome.
   const root = fixture({ passing: true });
   const cases = [
-    { label: 'null', runnability: null },
-    { label: 'empty testCommand', runnability: { installCommand: null, testCommand: '' } },
-    { label: 'missing testCommand', runnability: { installCommand: 'npm install' } },
-    { label: 'non-string testCommand', runnability: { testCommand: 42 } },
-    { label: 'non-string installCommand', runnability: { installCommand: 7, testCommand: 'npm test' } },
+    { label: 'null', readiness: null },
+    { label: 'missing kind', readiness: { commands: { installCommand: null, testCommand: 'npm test' } } },
+    { label: 'unknown kind', readiness: { kind: 'batch', commands: { installCommand: null, testCommand: 'npm test' } } },
+    { label: 'empty testCommand', readiness: { kind: 'static', commands: { installCommand: null, testCommand: '' } } },
+    { label: 'missing testCommand', readiness: { kind: 'static', commands: { installCommand: 'npm install' } } },
+    { label: 'non-string testCommand', readiness: { kind: 'static', commands: { testCommand: 42 } } },
+    { label: 'non-string installCommand', readiness: { kind: 'static', commands: { installCommand: 7, testCommand: 'npm test' } } },
+    { label: 'served missing serve', readiness: { kind: 'served', commands: { installCommand: null, testCommand: 'npm test' } } },
+    { label: 'served empty startCommand', readiness: { kind: 'served', commands: { installCommand: null, testCommand: 'npm test' }, serve: { startCommand: '' } } },
   ];
   try {
     for (let i = 0; i < cases.length; i++) {
       const c = cases[i];
       const hash = (i + 1).toString(16).padStart(64, '0');
-      const { db, provider } = buildProvider({ root, candidateHash: hash, runnability: c.runnability });
+      const { db, provider } = buildProvider({ root, candidateHash: hash, readiness: c.readiness });
       try {
         const result = await provider.run(RUN_ARGS);
         assert.equal(result.outcome, 'failed', `${c.label} must fail closed`);
@@ -539,5 +537,136 @@ test('fails closed when the contract states an invalid runnability command', { t
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ADR-053 / LR-04 — readiness is an EXPLICIT profile (served | static). The
+// provider does NOT infer served/static (or product kind) from package.json /
+// build files. Absent profile ⇒ fail closed. The profile is the single
+// authority for the subject's runnability shape AND its commands.
+// ---------------------------------------------------------------------------
+
+test('SERVED readiness profile drives start, loopback probe, and clean shutdown', { timeout: 30000 }, async () => {
+  // The candidate carries an explicit SERVED profile. The provider runs the
+  // profile's test command, then starts the STATED serve command (`node
+  // server.js`, not an npm script it guessed), probes loopback, and shuts it
+  // down. The readiness shape is driven entirely by the profile.
+  const root = seedRepo({
+    'test.js': 'process.exit(0);\n',
+    'server.js': [
+      "const http=require('http');",
+      "const port=Number(process.env.PORT);",
+      "http.createServer((_q,r)=>{r.end('ready')}).listen(port,'127.0.0.1');",
+    ].join('\n'),
+    'package.json': JSON.stringify({ name: 'served', version: '1.0.0', scripts: { test: 'node test.js' } }),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: {
+      kind: 'served',
+      commands: { installCommand: null, testCommand: 'node test.js' },
+      serve: { startCommand: 'node server.js' },
+    },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('STATIC readiness profile proves runnability without serving', { timeout: 30000 }, async () => {
+  // package.json carries a `start` script that would crash if started (no such
+  // file), so a wrongly-served run would time out the loopback probe and FAIL.
+  // The STATIC profile says runnability is the test command alone — the
+  // provider MUST NOT serve. Outcome 'passed' proves the serve phase never ran:
+  // the profile kind, not the file's start script, decides readiness shape.
+  const root = seedRepo({
+    'test.js': 'process.exit(0);\n',
+    'package.json': JSON.stringify({
+      name: 'static-looks-served', version: '1.0.0',
+      scripts: { test: 'node test.js', start: 'node no-such-server.js' },
+    }),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'node test.js' } },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('absent readiness profile fails closed', { timeout: 30000 }, async () => {
+  // The candidate is perfectly runnable (test + start scripts present), but the
+  // sealed product carries NO readiness profile. The provider must fail closed
+  // rather than inferring readiness/commands from incidental files.
+  const root = fixture({ passing: true });
+  const { db, provider } = buildProvider({ root, includeReadiness: false });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'failed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('served/static readiness is not inferred from package.json fields alone', { timeout: 30000 }, async () => {
+  // (a) package.json HAS a servable start script, but NO readiness profile is
+  //     sealed. Pre-LR-04 file-inference would have treated this as served and
+  //     PASSED. The provider MUST fail closed — it does not infer served-ness
+  //     from package.json.scripts.start alone.
+  const servedLooking = fixture({ passing: true });
+  try {
+    const a = buildProvider({ root: servedLooking, includeReadiness: false });
+    try {
+      const resultA = await a.provider.run(RUN_ARGS);
+      assert.equal(resultA.outcome, 'failed', 'has-start + no profile must fail closed');
+    } finally {
+      a.db.close();
+    }
+  } finally {
+    rmSync(servedLooking, { recursive: true, force: true });
+  }
+
+  // (b) package.json has NO start script (file-inference would say "not
+  //     served"), but the SERVED profile explicitly states the serve command.
+  //     The provider MUST serve it — proving the profile, not the file, is the
+  //     authority for readiness shape.
+  const staticLooking = seedRepo({
+    'test.js': 'process.exit(0);\n',
+    'server.js': [
+      "const http=require('http');",
+      "const port=Number(process.env.PORT);",
+      "http.createServer((_q,r)=>{r.end('ready')}).listen(port,'127.0.0.1');",
+    ].join('\n'),
+    'package.json': JSON.stringify({ name: 'no-start-but-served', version: '1.0.0', scripts: { test: 'node test.js' } }),
+  });
+  try {
+    const b = buildProvider({
+      root: staticLooking,
+      readiness: {
+        kind: 'served',
+        commands: { installCommand: null, testCommand: 'node test.js' },
+        serve: { startCommand: 'node server.js' },
+      },
+    });
+    try {
+      const resultB = await b.provider.run(RUN_ARGS);
+      assert.equal(resultB.outcome, 'passed', 'no-start + served profile must serve and pass');
+    } finally {
+      b.db.close();
+    }
+  } finally {
+    rmSync(staticLooking, { recursive: true, force: true });
   }
 });

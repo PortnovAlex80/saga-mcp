@@ -286,10 +286,8 @@ export interface CandidateBuildProduct {
  * accepted product contract (this frozen candidate), NOT inference from
  * incidental files (package.json / build.gradle presence). The local-
  * runnability provider runs these verbatim and fails closed when the contract
- * cannot state them, rather than guessing. Optional: a candidate frozen before
- * this field existed is treated as "contract cannot state commands" → fail
- * closed. When present, it is part of the frozen content covered by
- * `candidateHash`.
+ * cannot state them, rather than guessing. Reused by the LR-04 readiness
+ * profile, which embeds these commands as the runnability authority.
  */
 export interface RunnabilityCommands {
   /**
@@ -299,6 +297,50 @@ export interface RunnabilityCommands {
   installCommand: string | null;
   /** Shell command that proves runnability (the test command). Non-empty. */
   testCommand: string;
+}
+
+/**
+ * The EXPLICIT readiness profile (ADR-053 / LR-04) — the single authority that
+ * states how the exact sealed product proves itself runnable. The local-
+ * runnability provider does NOT infer product kind/readiness (served vs static)
+ * from incidental files (package.json / build.gradle); the profile is the
+ * authority, and the provider fails closed when it is absent or invalid.
+ *
+ * The profile rides on the frozen IntegratedReleaseCandidate, so it names the
+ * exact sealed subject (it is part of the frozen content covered by
+ * `candidateHash`) and it carries the runnability commands (LR-03
+ * RunnabilityCommands). Two kinds:
+ *
+ *   - served: the product is a long-running service. It states how it serves
+ *     (the serve command) plus its runnability commands. The provider starts it
+ *     on a deterministic loopback port, probes the endpoint, then shuts it down
+ *     — ADDITIVE evidence the exact sealed object can be started, answer on
+ *     loopback, and stop.
+ *   - static: the product is a fixed artifact (a static site / library). It
+ *     states only its runnability commands; runnability is proven by the test
+ *     command alone, with no serve/probe phase.
+ */
+export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
+
+export interface ServedReadinessProfile {
+  kind: 'served';
+  /** @see RunnabilityCommands — deterministic install + test commands. */
+  commands: RunnabilityCommands;
+  /** How the product serves itself on loopback. */
+  serve: {
+    /**
+     * Shell command that starts the service (long-running). The provider spawns
+     * it on a deterministic loopback port, probes the endpoint, then terminates
+     * the process tree. Non-empty.
+     */
+    startCommand: string;
+  };
+}
+
+export interface StaticReadinessProfile {
+  kind: 'static';
+  /** @see RunnabilityCommands — deterministic install + test commands. */
+  commands: RunnabilityCommands;
 }
 
 /**
@@ -314,8 +356,14 @@ export interface IntegratedReleaseCandidate {
   integrationIntentRefs: readonly string[];
   frozen: true;
   candidateHash: string;
-  /** @see RunnabilityCommands — deterministic runnability command contract. */
-  runnability?: RunnabilityCommands;
+  /**
+   * @see ReadinessProfile — the EXPLICIT served|static readiness authority. The
+   * local-runnability provider requires this and fails closed when it is absent;
+   * it does not infer readiness from incidental files. Optional only because a
+   * candidate frozen upstream before this wiring is populated (LR-07) is treated
+   * as "no explicit profile" → fail closed, never guessed.
+   */
+  readiness?: ReadinessProfile;
 }
 
 export type VerificationOutcome =

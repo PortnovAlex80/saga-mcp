@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
@@ -15,7 +15,7 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../modules/development/application/candidate-check-contracts.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../modules/development/domain/development-schemas.js';
-import type { RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
+import type { ReadinessProfile, RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -29,12 +29,12 @@ interface CandidateSubject {
   treeHash: string;
   candidateHash: string;
   /**
-   * The runnability command contract stated by the accepted product (parsed but
+   * The explicit readiness profile stated by the accepted product (parsed but
    * NOT yet validated). Validation + the fail-closed policy live in
-   * runLocalReadiness so an unstated contract yields a 'failed' readiness
+   * runLocalReadiness so an absent/invalid profile yields a 'failed' readiness
    * outcome, not the 'error' sentinel reserved for subject-resolution failures.
    */
-  runnability: unknown;
+  readiness: unknown;
 }
 
 /**
@@ -160,10 +160,11 @@ function resolveSubject(
       commitSha?: unknown;
       treeHash?: unknown;
     }>;
-    // LR-03 — the deterministic install/test command contract stated by the
+    // LR-04 — the explicit served|static readiness profile stated by the
     // accepted product. Parsed here (part of the frozen payload); validated and
-    // consumed by runLocalReadiness.
-    runnability?: unknown;
+    // consumed by runLocalReadiness. The profile carries the runnability
+    // commands (LR-03 RunnabilityCommands) and names the readiness shape.
+    readiness?: unknown;
   };
   if (typeof candidate.candidateHash !== 'string'
       || !Array.isArray(candidate.repositories)
@@ -194,7 +195,7 @@ function resolveSubject(
     commitSha: repository.commitSha,
     treeHash: repository.treeHash,
     candidateHash: candidate.candidateHash,
-    runnability: candidate.runnability,
+    readiness: candidate.readiness,
   };
 }
 
@@ -203,7 +204,6 @@ function runLocalReadiness(
 ): CheckProviderResult {
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
-  const checkout = join(directory, 'checkout');
   try {
     // ADR-053 / LR-02 — read the exact sealed object by identity. The archive
     // is generated from the content-addressed commitSha verified above (whose
@@ -216,71 +216,98 @@ function runLocalReadiness(
     execFileSync('tar', ['-xf', archive, '-C', directory, '--force-local'], {
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
     });
-    // LR-03 — the install + test commands come from the accepted product
-    // contract (the frozen candidate's explicit `runnability` statement), NOT
-    // from guessing based on package.json / build.gradle presence. If the
-    // contract cannot state its commands, fail closed rather than guessing.
-    const commands = validateRunnability(subject.runnability);
-    if (commands === null) {
+    // LR-04 — the EXPLICIT readiness profile (served | static) is the single
+    // authority for how the exact sealed product proves itself runnable. The
+    // provider does NOT infer served/static (or product kind) from package.json
+    // / build files; it fails closed when the profile is absent or invalid
+    // rather than guessing readiness from incidental files.
+    const profile = validateReadinessProfile(subject.readiness);
+    if (profile === null) {
       return evidence('failed', subject, {
         reason:
-          'product contract does not state deterministic runnability commands '
-          + '(runnability.testCommand missing or invalid); refusing to guess '
-          + 'from incidental files',
+          'product contract does not state an explicit readiness profile '
+          + '(readiness.kind must be "served" or "static" with valid commands; '
+          + 'served also requires serve.startCommand); refusing to infer '
+          + 'readiness from incidental files',
       });
     }
-    // Build-system detection is a VALIDATOR/fallback (background cb3e944): it
-    // cross-checks the candidate's files and selects the execution environment
-    // (JAVA_HOME/bin for JVM tooling). It is NEVER the authority for WHICH
-    // commands prove runnability — that is the product contract above.
+    // Build-system detection is a VALIDATOR only (LR-03 / LR-04): it selects the
+    // execution environment (JAVA_HOME/bin for JVM tooling). It is NEVER the
+    // authority for readiness (served vs static) or for which commands prove
+    // runnability — that is the explicit profile above.
     const detected = detectBuildSystem(directory);
     const env = detected === 'gradle' || detected === 'maven'
       ? jvmEnv()
       : { ...process.env };
-    // Install (deterministic, from the contract) — only when the contract
-    // states an install command.
     const phases: string[] = [];
-    if (commands.installCommand !== null) {
-      runContractCommand(commands.installCommand, directory, env, 240_000);
-      phases.push('contract-install');
+    // Install (deterministic, from the profile) — only when stated.
+    if (profile.commands.installCommand !== null) {
+      runContractCommand(profile.commands.installCommand, directory, env, 240_000);
+      phases.push('profile-install');
     }
-    // Test (deterministic, from the contract) — the runnability authority.
-    runContractCommand(commands.testCommand, directory, env, 600_000);
-    phases.push('contract-test');
-    // Optional secondary phase: npm start + loopback probe. ADDITIVE evidence
-    // only, never the command authority. Runs solely when the detected build
-    // system is npm and the candidate carries an explicit `start` script; we do
-    // not guess a serve task for other stacks.
-    if (detected === 'npm') {
-      const probeResult = tryNpmStartProbe(directory, subject);
-      if (probeResult.started) {
-        phases.push('npm-start', 'loopback-http-probe', 'clean-shutdown');
-        return evidence('passed', subject, {
-          phases,
-          detectedBuildSystem: detected,
-          ...probeResult.evidence,
-        });
-      }
+    // Test (deterministic, from the profile) — the runnability authority.
+    runContractCommand(profile.commands.testCommand, directory, env, 600_000);
+    phases.push('profile-test');
+    if (profile.kind === 'served') {
+      // LR-04 — the SERVED profile states how the product serves. The provider
+      // starts the stated serve command, probes loopback, and shuts it down.
+      // The serve command comes from the explicit profile, NOT from
+      // package.json.scripts.start. ADDITIVE evidence only — runnability was
+      // already proven by the test command above; this proves the exact sealed
+      // object can also be started, answer on loopback, and stop.
+      const serveEvidence = runServedProbe(directory, subject, profile.serve.startCommand);
+      phases.push('profile-serve', 'loopback-http-probe', 'clean-shutdown');
+      return evidence('passed', subject, {
+        phases,
+        readinessKind: 'served',
+        detectedBuildSystem: detected,
+        ...serveEvidence,
+      });
     }
     return evidence('passed', subject, {
       phases,
+      readinessKind: 'static',
       detectedBuildSystem: detected,
-      note: 'runnability proven by the contract-stated install/test commands',
+      note: 'runnability proven by the profile-stated install/test commands',
     });
   } catch (error) {
     return evidence('failed', subject, { reason: errorMessage(error) });
   } finally {
     rmSync(directory, { recursive: true, force: true });
-    void checkout;
   }
 }
 
 /**
- * Validate the runnability command contract stated by the accepted product.
- * Returns the typed commands when the contract states a non-empty
- * `testCommand` (and an `installCommand` that is either null or a non-empty
- * string); returns null when the contract cannot state its commands, so the
- * caller fails closed instead of guessing.
+ * Validate the explicit readiness profile stated by the accepted product.
+ * Returns the typed profile when the contract states a valid `served` or
+ * `static` profile whose commands validate (reusing the LR-03 RunnabilityCommands
+ * validator); returns null when the profile is absent or invalid so the caller
+ * fails closed instead of guessing readiness from incidental files.
+ */
+function validateReadinessProfile(raw: unknown): ReadinessProfile | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const value = raw as { kind?: unknown; commands?: unknown; serve?: unknown };
+  const commands = validateRunnability(value.commands);
+  if (commands === null) return null;
+  if (value.kind === 'static') {
+    return { kind: 'static', commands };
+  }
+  if (value.kind === 'served') {
+    const serve = value.serve;
+    if (serve === null || typeof serve !== 'object') return null;
+    const startCommand = (serve as { startCommand?: unknown }).startCommand;
+    if (typeof startCommand !== 'string' || startCommand.trim() === '') return null;
+    return { kind: 'served', commands, serve: { startCommand } };
+  }
+  return null;
+}
+
+/**
+ * Validate the runnability command contract embedded in a readiness profile.
+ * Returns the typed commands when given a non-empty `testCommand` (and an
+ * `installCommand` that is either null or a non-empty string); returns null
+ * when the contract cannot state its commands, so the caller fails closed
+ * instead of guessing.
  */
 function validateRunnability(raw: unknown): RunnabilityCommands | null {
   if (raw === null || typeof raw !== 'object') return null;
@@ -301,9 +328,11 @@ function validateRunnability(raw: unknown): RunnabilityCommands | null {
 
 /**
  * Detect the candidate's build system from the files the worker produced. This
- * is a VALIDATOR/fallback only (LR-03): it cross-checks the candidate's files
- * and informs execution-environment selection. The COMMANDS that prove
- * runnability come from the product contract, not from this detection.
+ * is a VALIDATOR only (LR-03 / LR-04): it cross-checks the candidate's files
+ * and informs EXECUTION-ENVIRONMENT selection (JAVA_HOME/bin for JVM tooling).
+ * It is NEVER the authority for WHICH commands prove runnability, and it NEVER
+ * determines readiness (served vs static) or product kind — the explicit
+ * readiness profile is the single authority for those.
  */
 function detectBuildSystem(directory: string): 'gradle' | 'maven' | 'npm' | null {
   if (existsSync(join(directory, 'build.gradle.kts'))
@@ -367,17 +396,22 @@ function jvmEnv(): NodeJS.ProcessEnv {
   return { ...process.env, JAVA_HOME: javaHome, PATH: path };
 }
 
-function tryNpmStartProbe(
+/**
+ * LR-04 — run the SERVED profile's start command, probe loopback, and shut it
+ * down. The serve command comes from the explicit readiness profile, NOT from
+ * package.json.scripts.start. The provider spawns the stated command on a
+ * deterministic loopback port, probes the endpoint, then terminates the process
+ * tree. Throws when the probe times out so the caller records a 'failed'
+ * readiness outcome.
+ */
+function runServedProbe(
   directory: string,
   subject: CandidateSubject,
-): { started: boolean; evidence?: Record<string, unknown> } {
-  const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
-    scripts?: Record<string, unknown>;
-  };
-  if (typeof packageJson.scripts?.start !== 'string') return { started: false };
+  startCommand: string,
+): { port: number; stdoutDigest: string; stderrDigest: string } {
   const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
-  const npm = npmCommand(['start']);
-  const child = spawn(npm.executable, npm.args, {
+  const target = resolveCommandTarget(startCommand);
+  const child = spawn(target.executable, target.args, {
     cwd: directory,
     env: {
       ...process.env,
@@ -386,7 +420,7 @@ function tryNpmStartProbe(
       BROWSER: 'none',
       CI: '1',
     },
-    shell: false,
+    shell: target.shell,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -400,13 +434,31 @@ function tryNpmStartProbe(
     terminateProcessTree(child.pid);
   }
   return {
-    started: true,
-    evidence: {
-      port,
-      stdoutDigest: sha256Hex(stdout),
-      stderrDigest: sha256Hex(stderr),
-    },
+    port,
+    stdoutDigest: sha256Hex(stdout),
+    stderrDigest: sha256Hex(stderr),
   };
+}
+
+/**
+ * Resolve a profile-stated command into a spawn target. Mirrors runContractCommand's
+ * routing: `npm`/`node`-prefixed commands route through the bundled tooling
+ * (npm-cli.js / process.execPath) without a shell; every other command runs
+ * verbatim through the platform shell so the stated wrapper (./gradlew, mvnw, …)
+ * is honored as-is.
+ */
+function resolveCommandTarget(command: string): { executable: string; args: string[]; shell: boolean } {
+  const trimmed = command.trim();
+  const tokens = trimmed.split(/\s+/u);
+  const [program] = tokens;
+  if (program === 'npm' || program === 'npm.cmd') {
+    const npm = npmCommand(tokens.slice(1));
+    return { executable: npm.executable, args: npm.args, shell: false };
+  }
+  if (program === 'node' || program === 'node.exe') {
+    return { executable: process.execPath, args: tokens.slice(1), shell: false };
+  }
+  return { executable: trimmed, args: [], shell: true };
 }
 
 function evidence(
