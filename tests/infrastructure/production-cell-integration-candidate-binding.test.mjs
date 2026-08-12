@@ -80,10 +80,10 @@ test('integration consumes the exact current CandidateSet even when its managed 
     const authorSet = 'candidate-set/current-author';
     db.prepare(
       `INSERT INTO factory_candidate_sets
-        (candidate_set_ref,workplace_ref,producer_execution_ref,role,
+        (candidate_set_ref,workplace_ref,producer_execution_ref,production_revision_ref,role,
          subject_candidate_set_ref,candidate_set_digest,seal_receipt_ref,sealed_at)
-       VALUES (?,?,'factory-carry-forward-presenter:x','author',NULL,?,'seal:x',datetime('now'))`,
-    ).run(authorSet, workplace, 'a'.repeat(64));
+       VALUES (?,?,'factory-carry-forward-presenter:x',?,'author',NULL,?,'seal:x',datetime('now'))`,
+    ).run(authorSet, workplace, 'revision/sha256:test-author', 'a'.repeat(64));
     db.prepare(
       `INSERT INTO factory_candidate_set_members
         (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,
@@ -106,10 +106,10 @@ test('integration consumes the exact current CandidateSet even when its managed 
     const reviewerSet = 'candidate-set/current-reviewer';
     db.prepare(
       `INSERT INTO factory_candidate_sets
-        (candidate_set_ref,workplace_ref,producer_execution_ref,role,
+        (candidate_set_ref,workplace_ref,producer_execution_ref,production_revision_ref,role,
          subject_candidate_set_ref,candidate_set_digest,seal_receipt_ref,sealed_at)
-       VALUES (?,?,'reviewer','reviewer',?,?,'seal:r',datetime('now'))`,
-    ).run(reviewerSet, workplace, authorSet, 'b'.repeat(64));
+       VALUES (?,?,'reviewer',?,'reviewer',?,?,'seal:r',datetime('now'))`,
+    ).run(reviewerSet, workplace, 'revision/sha256:test-reviewer', authorSet, 'b'.repeat(64));
     db.prepare(
       `INSERT INTO factory_candidate_set_members
         (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,origin,source_candidate_set_ref)
