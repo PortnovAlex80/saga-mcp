@@ -265,8 +265,10 @@ export class SqliteProductionCellIntegration {
         WHERE gd.workplace_ref=?
           AND gd.gate_phase='final'
           AND gd.verdict='accepted'
-          AND gd.subject_candidate_set_ref=?
-        ORDER BY gd.decided_at DESC LIMIT 1`,
+          AND gd.subject_candidate_set_ref=?`,
+        // ADR-053 C4/C5 — the filter (workplace, subject, gate_phase='final',
+        // verdict='accepted') is unique per subject (one final accepted decision
+        // per subject), so no decided_at recency / LIMIT 1 tiebreaker is needed.
     ).get(workplace, input.candidateSetRef) as {
       payload_snapshot: string;
       subject_candidate_set_ref: string;
