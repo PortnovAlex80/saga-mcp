@@ -1126,6 +1126,24 @@ export class ClaudeBoardRunner {
       run.lastError = error instanceof Error ? error.message : String(error);
       this.heartbeat(run, execution, 'ERROR', `spawn error: ${run.lastError}`);
     });
+    // Windows pipe-inheritance fix: the terminal handler below listens for
+    // 'close', which fires only after ALL stdio streams are torn down. On
+    // Windows, if a grandchild process (e.g. a node subprocess spawned by the
+    // claude CLI) inherits the piped stdio descriptors, 'close' NEVER fires
+    // even after the child exits — the write end of the pipe is still open.
+    // This causes waitForAssignedWorker (dispatch-loop.js) to poll
+    // executor.status() forever, hanging the factory.
+    //
+    // Fix: listen for 'exit' separately. After a 5-second grace period (enough
+    // for normal pipe drain), force-destroy the stdio streams. This unblocks
+    // the 'close' event, which runs the existing finalize logic. If 'close'
+    // already fired, destroy() on an ended stream is a harmless no-op.
+    child.once('exit', () => {
+      setTimeout(() => {
+        try { child.stdout?.destroy(); } catch {}
+        try { child.stderr?.destroy(); } catch {}
+      }, 5000);
+    });
     child.once('close', code => {
       child.stdout?.unpipe(log);
       child.stderr?.unpipe(log);
