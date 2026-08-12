@@ -19,6 +19,8 @@ import { candidateSetSealKey } from '../../dist/process-modules/domain/workplace
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
+import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
+import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 
 const WORKPLACE_SERIALIZED = 'workplace/1/mod@1.0.0/cell/item';
 
@@ -273,6 +275,93 @@ test('B-1: if seal fails, the revision append is rolled back', () => {
     'SELECT revision_ref AS r FROM factory_workplace_production_revisions WHERE revision_ref=?',
   ).get(revision.revisionRef);
   assert.equal(revRow, undefined, 'revision append rolled back when the seal fails');
+});
+
+// ===========================================================================
+// 8. B-8: obligation recorded atomically with the CandidateSet seal.
+// ===========================================================================
+test('B-8: run-gate obligation is appended atomically with the seal', () => {
+  const db = makeDb();
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  const candidateSetRepo = new SqliteCandidateSetRepository(db);
+  const integrator = new TransitionObligationIntegrator({
+    ledger: new SqliteTransitionObligationLedger(db),
+  });
+  const revision = buildRevision('exec-A');
+
+  const sealed = revisionRepo.transaction(() => {
+    revisionRepo.appendRevision(revision);
+    const set = candidateSetRepo.seal({
+      workplaceRef: WORKPLACE,
+      producerExecutionRef: 'exec-A',
+      productionRevisionRef: revision.revisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-b8',
+      candidateSetDigest: '8'.repeat(64),
+      sealedAt: '2026-08-12T00:00:00Z',
+    }).set;
+    integrator.onCandidateSetSealed({
+      candidateSetRef: set.candidateSetRef,
+      candidateSetDigest: '8'.repeat(64),
+      workplaceRef: WORKPLACE_SERIALIZED,
+      fence: 1,
+    });
+    return set;
+  });
+
+  // All three committed together: revision, CandidateSet, run-gate obligation.
+  assert.ok(db.prepare('SELECT revision_ref AS r FROM factory_workplace_production_revisions WHERE revision_ref=?').get(revision.revisionRef));
+  assert.ok(db.prepare('SELECT candidate_set_ref AS r FROM factory_candidate_sets WHERE candidate_set_ref=?').get(sealed.candidateSetRef));
+  const obl = db.prepare('SELECT handoff_kind AS h FROM factory_transition_obligations WHERE source_ref=?').get(sealed.candidateSetRef);
+  assert.ok(obl, 'run-gate obligation recorded atomically with the seal');
+  assert.equal(obl.h, 'run-gate');
+});
+
+test('B-8: if the obligation append fails, the seal rolls back (atomic, non-suppressed)', () => {
+  const db = makeDb();
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  const candidateSetRepo = new SqliteCandidateSetRepository(db);
+  // Integrator whose append throws — simulates a ledger failure. B-8: errors
+  // propagate (non-suppressed) and, inside the seal txn, roll the seal back.
+  const throwingIntegrator = {
+    onCandidateSetSealed() { throw new Error('OBLIGATION_APPEND_FAILED'); },
+  };
+  const revision = buildRevision('exec-A');
+
+  assert.throws(
+    () => revisionRepo.transaction(() => {
+      revisionRepo.appendRevision(revision);
+      const set = candidateSetRepo.seal({
+        workplaceRef: WORKPLACE,
+        producerExecutionRef: 'exec-A',
+        productionRevisionRef: revision.revisionRef,
+        role: 'author',
+        subjectCandidateSetRef: null,
+        members: MEMBERS,
+        sealReceiptRef: 'receipt-b8-rollback',
+        candidateSetDigest: '9'.repeat(64),
+        sealedAt: '2026-08-12T00:00:00Z',
+      }).set;
+      throwingIntegrator.onCandidateSetSealed({
+        candidateSetRef: set.candidateSetRef,
+        candidateSetDigest: '9'.repeat(64),
+        workplaceRef: WORKPLACE_SERIALIZED,
+        fence: 1,
+      });
+      return set;
+    }),
+    /OBLIGATION_APPEND_FAILED/,
+  );
+
+  // Atomic rollback: neither the revision nor the CandidateSet committed.
+  assert.equal(
+    db.prepare('SELECT revision_ref AS r FROM factory_workplace_production_revisions WHERE revision_ref=?').get(revision.revisionRef),
+    undefined,
+    'revision rolled back when the obligation append fails',
+  );
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get().n, 0, 'CandidateSet rolled back');
 });
 
 // ===========================================================================

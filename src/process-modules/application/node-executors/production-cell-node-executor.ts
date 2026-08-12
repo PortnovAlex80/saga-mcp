@@ -181,8 +181,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly resolveInstallationDigest: (moduleName: string) => string;
   readonly resolveProductSemanticDigest?: (productRef: ProductRef) => string | null;
   readonly authorCandidateCarryForward?: AuthorCandidateCarryForwardPort;
-  /** ADR-053 Phase 8 — when present, CandidateSet seals append a durable obligation. */
-  readonly obligationIntegrator?: TransitionObligationIntegrator;
+  /** ADR-053 B-8 — MANDATORY. CandidateSet seals (and downstream transitions) append a durable obligation atomically with the source fact. */
+  readonly obligationIntegrator: TransitionObligationIntegrator;
   /** ADR-053 B-1 — MANDATORY. CandidateSet seals append the revision and seal the set in one transaction; a set can never reference an absent revision. */
   readonly revisionRepo: SqliteWorkplaceProductionRevisionRepository;
   readonly now?: () => Date;
@@ -559,15 +559,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           verdict: 'accepted', isFinal: !cell.review,
           effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
-        // ADR-053 Phase 8 — gate accepted → effects must run.
-        if (this.opts.obligationIntegrator) {
-          this.opts.obligationIntegrator.onGateAccepted({
-            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-            gateDecisionDigest: candidate.candidateSetDigest,
-            workplaceRef: serializeWorkplaceRef(workplace.ref),
-            fence: 1,
-          });
-        }
+        // ADR-053 B-8 — gate accepted → effects must run (mandatory obligation).
+        this.opts.obligationIntegrator.onGateAccepted({
+          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+          gateDecisionDigest: candidate.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          fence: 1,
+        });
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -588,15 +586,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
-        // ADR-053 Phase 8 — reviewer gate accepted → effects must run.
-        if (this.opts.obligationIntegrator) {
-          this.opts.obligationIntegrator.onGateAccepted({
-            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-            gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
-            workplaceRef: serializeWorkplaceRef(workplace.ref),
-            fence: 1,
-          });
-        }
+        // ADR-053 B-8 — reviewer gate accepted → effects must run (mandatory).
+        this.opts.obligationIntegrator.onGateAccepted({
+          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+          gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          fence: 1,
+        });
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -713,14 +709,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: acceptedCandidate.candidateSetRef,
         result,
       }).effectReceiptRef;
-      // ADR-053 Phase 8 — effects settled → final acceptance must be recorded.
-      if (this.opts.obligationIntegrator) {
-        this.opts.obligationIntegrator.onEffectsSettled({
-          workplaceRef: serializeWorkplaceRef(workplace.ref),
-          effectReceiptDigest: effectReceiptRef,
-          fence: 1,
-        });
-      }
+      // ADR-053 B-8 — effects settled → final acceptance must be recorded (mandatory).
+      this.opts.obligationIntegrator.onEffectsSettled({
+        workplaceRef: serializeWorkplaceRef(workplace.ref),
+        effectReceiptDigest: effectReceiptRef,
+        fence: 1,
+      });
     }
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
@@ -747,15 +741,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       effectReceiptRefs,
       acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     });
-    // ADR-053 Phase 8 — final acceptance recorded → process must settle.
-    if (this.opts.obligationIntegrator) {
-      this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
-        finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
-        acceptanceDigest: acceptedCandidate.candidateSetDigest,
-        workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
-      });
-    }
+    // ADR-053 B-8 — final acceptance recorded → process must settle (mandatory).
+    this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
+      finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
+      acceptanceDigest: acceptedCandidate.candidateSetDigest,
+      workplaceRef: serializeWorkplaceRef(workplaceRef),
+      fence: 1,
+    });
     const effectInput = {
       authority: {
         workplaceRef,
@@ -985,7 +977,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
-      return this.opts.candidateSetRepo.seal({
+      const set = this.opts.candidateSetRepo.seal({
         workplaceRef,
         producerExecutionRef: executionRef,
         productionRevisionRef: finalRevisionRef,
@@ -996,17 +988,21 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetDigest: digest,
         sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
       }).set;
+      // ADR-053 B-8 — append the run-gate obligation INSIDE the same
+      // transaction: the obligation is recorded iff the seal commits (atomic).
+      // A crash between seal and obligation leaves neither; a replay re-creates
+      // both. obligationIntegrator is mandatory; append errors propagate and
+      // roll back the seal.
+      if (role === 'author') {
+        this.opts.obligationIntegrator.onCandidateSetSealed({
+          candidateSetRef: set.candidateSetRef,
+          candidateSetDigest: set.candidateSetDigest,
+          workplaceRef: serializeWorkplaceRef(workplaceRef),
+          fence: 1,
+        });
+      }
+      return set;
     });
-    // ADR-053 Phase 8 — append a durable obligation for the Gate to run on
-    // every author CandidateSet seal.
-    if (role === 'author' && this.opts.obligationIntegrator) {
-      this.opts.obligationIntegrator.onCandidateSetSealed({
-        candidateSetRef: sealed.candidateSetRef,
-        candidateSetDigest: sealed.candidateSetDigest,
-        workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
-      });
-    }
     return sealed;
   }
 

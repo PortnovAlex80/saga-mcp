@@ -10,6 +10,8 @@ import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastr
 import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
+import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
+import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -107,6 +109,9 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     candidateSetRepo,
     gateRepo,
     revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
+    obligationIntegrator: new TransitionObligationIntegrator({
+      ledger: new SqliteTransitionObligationLedger(db),
+    }),
     persistence,
     postAcceptanceEffects: {
       run(effectId, input) {
