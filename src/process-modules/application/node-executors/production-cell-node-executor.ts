@@ -677,20 +677,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         gateDecisionKey: gateDecisionKey ?? '',
       });
       const result = this.opts.postAcceptanceEffects.run(effectId, {
-        workplaceRef: workplace.ref,
-        processRunId: ctx.processRunId,
-        moduleRef: ctx.module.identity,
-        nodeId: node.id,
-        candidateSetRef: acceptedCandidate.candidateSetRef,
-        expectedProductSchema: cell.productContracts[0]!.schemaRef,
         authority: {
           workplaceRef: workplace.ref,
           candidateSetRef: acceptedCandidate.candidateSetRef,
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs,
+          productSchema: cell.productContracts[0]?.schemaRef ?? '',
           gateDecisionKey: gateDecisionKey ?? '',
           productContractRef: productContract,
           acceptanceDigest,
+        },
+        operational: {
+          processRunId: ctx.processRunId,
+          moduleRef: ctx.module.identity,
+          nodeId: node.id,
         },
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
@@ -757,17 +757,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       });
     }
     const effectInput = {
-      workplaceRef,
-      processRunId: ctx.processRunId,
-      moduleRef: ctx.module.identity,
-      nodeId: cell.id,
-      candidateSetRef: acceptedCandidate.candidateSetRef,
-      expectedProductSchema: cell.productContracts[0]!.schemaRef,
       authority: {
         workplaceRef,
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
         acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
+        productSchema: cell.productContracts[0]?.schemaRef ?? '',
         gateDecisionKey: '',
         productContractRef: cell.productContracts[0]?.payloadContract ?? null,
         acceptanceDigest: computeAcceptanceDigest({
@@ -776,6 +771,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
           gateDecisionKey: '',
         }),
+      },
+      operational: {
+        processRunId: ctx.processRunId,
+        moduleRef: ctx.module.identity,
+        nodeId: cell.id,
       },
     };
     // UNIVERSAL: replay capture runs for EVERY accepted candidate, regardless
