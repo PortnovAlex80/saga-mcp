@@ -1012,19 +1012,19 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetDigest: digest,
         sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
       }).set;
-      // ADR-053 B-8 — append the run-gate obligation INSIDE the same
-      // transaction: the obligation is recorded iff the seal commits (atomic).
-      // A crash between seal and obligation leaves neither; a replay re-creates
-      // both. obligationIntegrator is mandatory; append errors propagate and
-      // roll back the seal.
-      if (role === 'author') {
-        this.opts.obligationIntegrator.onCandidateSetSealed({
-          candidateSetRef: set.candidateSetRef,
-          candidateSetDigest: set.candidateSetDigest,
-          workplaceRef: serializeWorkplaceRef(workplaceRef),
-          fence: 1,
-        });
-      }
+      // ADR-053 B-8/C7 — append the run-gate obligation INSIDE the same
+      // transaction for EVERY sealed role (author AND reviewer): the obligation
+      // is recorded iff the seal commits (atomic). A crash between seal and gate
+      // leaves neither; a replay re-creates both. The reviewer obligation drives
+      // the FINAL gate redrive; the author obligation drives the author gate.
+      // obligationIntegrator is mandatory; append errors propagate and roll back
+      // the seal.
+      this.opts.obligationIntegrator.onCandidateSetSealed({
+        candidateSetRef: set.candidateSetRef,
+        candidateSetDigest: set.candidateSetDigest,
+        workplaceRef: serializeWorkplaceRef(workplaceRef),
+        fence: 1,
+      });
       return set;
     });
     return sealed;
@@ -1087,7 +1087,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
-      return this.opts.candidateSetRepo.seal({
+      const set = this.opts.candidateSetRepo.seal({
         workplaceRef,
         productionRevisionRef: finalRevisionRef,
         role: 'author',
@@ -1097,6 +1097,17 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetDigest: digest,
         sealedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
       }).set;
+      // ADR-053 C7 — a carried-forward author set feeds the current gate, so its
+      // run-gate obligation is appended atomically with the seal (same invariant
+      // as produced-member seals): a crash between carry-forward seal and gate
+      // leaves neither; a replay re-creates both.
+      this.opts.obligationIntegrator.onCandidateSetSealed({
+        candidateSetRef: set.candidateSetRef,
+        candidateSetDigest: set.candidateSetDigest,
+        workplaceRef: serializeWorkplaceRef(workplaceRef),
+        fence: 1,
+      });
+      return set;
     });
   }
 

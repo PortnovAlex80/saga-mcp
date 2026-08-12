@@ -26,11 +26,11 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 |----|--------|---------|----------|
 | C1 | current author chosen by `ORDER BY candidate_set_ref DESC` (`sets[0]`) | **CONFIRMED** | `sqlite-candidate-set-repository.ts:189`; `acceptedAuthorCandidate()` |
 | C2 | reviewer seal key omits `subjectCandidateSetRef` → collision | **CONFIRMED → FIXED in tranche 2** | `candidate-set.ts` `candidateSetSealKey` now appends `subjectCandidateSetRef` for reviewer (author key unchanged); executor reviewer digest binds subject; schema replaced combined `UNIQUE(workplace,revision,role)` with partial uniques `(workplace,revision) WHERE author` + `(workplace,revision,subject) WHERE reviewer` |
-| C3 | replay returns the new in-memory object, not the persisted row | **CONFIRMED** | `sqlite-candidate-set-repository.ts` `seal()` replay branch returns `set` built from input |
+| C3 | replay returns the new in-memory object, not the persisted row | **CONFIRMED → FIXED in tranche 3** | `seal()` replay branch now reads the persisted row, compares immutable material (revision/role/subject/members) and returns it (not the new input); `assertPersistedMaterialMatches` fails closed on drift |
 | C4 | `SqliteCellFinalAcceptance.readAcceptedDecision` uses `ORDER BY decided_at DESC` | **CONFIRMED** | `sqlite-cell-final-acceptance.ts:175-180` |
 | C5 | git integration `ORDER BY t.id DESC` and `ORDER BY gd.decided_at DESC` | **CONFIRMED** | `sqlite-production-cell-integration.ts:70,162,269` (+ 11 more recency sites in replay/) |
 | C6 | obligation carries fabricated `gate-final:<workplace>` | **CONFIRMED → FIXED in tranche 1a** | now `decision.decisionKey`/`decisionDigest` |
-| C7 | obligations only for author path; `fence:1` hardcoded | **CONFIRMED** | reviewer/carry-forward seal paths; all `fence: 1` |
+| C7 | obligations only for author path; `fence:1` hardcoded | **CONFIRMED → PARTIAL in tranche 3** | reviewer + carry-forward seals now append the `run-gate` obligation atomically (was author-only); `fence: 1` still hardcoded (real CAS-derivation is C6/C7 remaining) |
 | C8 | replay-capture suppressed; terminal crash loses FinalAcceptance | **CONFIRMED → partially FIXED in tranche 1a** | suppression removed; terminal idempotent re-record still TODO |
 | C9 | GateRun identity lacks `installationDigest` + `expectedWorkplaceRevision` | **CONFIRMED** | `gate.ts` identity; `factory_gate_runs` has no installation_digest |
 | C10 | CheckProvider implementation digest not actually verified | **CONFIRMED** | driver checks version only |
@@ -38,7 +38,7 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 | C12 | GateRun replay re-runs providers, regresses terminal→checking | **CONFIRMED** | `gate-run-driver.ts` replay path |
 | C13 | GateDecision digest not over the full canonical body | **CONFIRMED** | `hashDecision(…)` partial |
 | C14 | revision assembled from `parent:null` + single execution's products (not cumulative) | **CONFIRMED** | `assembleRevision({parent:null,…})` in executor |
-| C15 | `(workplace_ref,semantic_digest)` not UNIQUE; `INSERT OR IGNORE` can mask | **CONFIRMED** | schema; revision repo |
+| C15 | `(workplace_ref,semantic_digest)` not UNIQUE; `INSERT OR IGNORE` can mask | **CONFIRMED → FIXED in tranche 3** | `idx_workplace_revisions_semantic` is now UNIQUE; `appendRevision` returns the persisted/semantic-equivalent row; convergence transaction runs `BEGIN IMMEDIATE` |
 | C16 | NUL validation matches two chars `\\0` not NUL byte | **FALSE POSITIVE** | source already has correct `key.includes('\0')` |
 | C17 | empty/fabricated `gateDecisionKey` accepted (`?? ''`) | **CONFIRMED → FIXED in tranche 1a** | `getAcceptedGateDecisionKey` now `string`; `assertAuthorityBound` validates + recomputes digest |
 
@@ -91,11 +91,18 @@ CandidateSet + its GateDecision + final acceptance, keyed by workplace). Then:
   CandidateSet (and persisted GateDecision), comparing immutable fields,
   fail-closed on drift.
 
-### Tranche 3 — Gate identity, replay, obligations, terminal recovery (TODO)
-- C7: reviewer seal + carry-forward seal append `run-gate` obligation
-  atomically; `fence` derived from CAS revision, not `1`.
-- C8 (finish): terminal-accepted reconciliation idempotently ensures effect
-  receipts + FinalAcceptance + obligation + ReplayCapture before returning.
+### Tranche 3 — Gate identity, replay, obligations, terminal recovery (PARTIAL)
+- **C3 (fixed):** CandidateSet replay returns the persisted immutable authority,
+  not a fresh object from the new input; immutable material compared, fail-closed
+  on drift.
+- **C7 (partial):** reviewer seal + carry-forward seal now append the `run-gate`
+  obligation atomically (was author-only). `fence: 1` still hardcoded — deriving
+  it from the CAS revision remains (part of C6/C7).
+- **C15 (fixed):** `idx_workplace_revisions_semantic` is UNIQUE;
+  `appendRevision` returns the persisted/semantic-equivalent revision; the
+  convergence transaction uses `BEGIN IMMEDIATE`.
+- **Still TODO:** C8 (terminal idempotent FinalAcceptance/ReplayCapture), C9–C13
+  (GateRun identity + provider digest + one-shot replay + full decision digest).
 - C9/C10/C11: GateRun identity += `installationDigest` + `expectedWorkplaceRevision`;
   verify provider implementation digest; CheckReceipt key includes ordinal +
   parameters + environment.

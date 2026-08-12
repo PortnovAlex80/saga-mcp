@@ -114,8 +114,15 @@ export class SqliteWorkplaceProductionRevisionRepository {
   // --- Revisions ---
 
   /**
-   * Append a sealed revision. Idempotent on revision_ref (INSERT OR IGNORE).
-   * Content-addressed: a replay of the same seal finds the existing row.
+   * Append a sealed revision. Idempotent: a replay of the same seal, or a second
+   * partition sealing semantically-equivalent material, finds the existing row
+   * (PK on revision_ref, and the UNIQUE(workplace, semantic_digest) index from
+   * ADR-053 C15). Either way the INSERT is ignored and the PERSISTED row wins.
+   *
+   * Returns the PERSISTED revision (C15 persisted-return discipline), NOT the
+   * input object — so callers always hold the actual stored authority, which may
+   * differ from the input by revisionRef when a semantic-equivalent revision was
+   * sealed first by another partition.
    */
   appendRevision(revision: WorkplaceProductionRevision): WorkplaceProductionRevision {
     this.db.prepare(
@@ -137,7 +144,19 @@ export class SqliteWorkplaceProductionRevisionRepository {
       semanticDigest: revision.semanticDigest,
       sealedAt: revision.sealedAt,
     });
-    return revision;
+    // ADR-053 C15 — return the row that actually won the structural dedup. If
+    // this insert was ignored because a semantic-equivalent revision already
+    // existed (different revisionRef, same semantic_digest), surface THAT row so
+    // the caller converges on the canonical revision rather than its own input.
+    const persisted = this.getRevision(revision.revisionRef)
+      ?? this.getRevisionBySemanticDigest(revision.workplaceRef, revision.semanticDigest);
+    if (!persisted) {
+      throw new Error(
+        `REVISION_APPEND_INVARIANT: insert was ignored but no persisted row found for `
+          + `${revision.workplaceRef}/${revision.semanticDigest}`,
+      );
+    }
+    return persisted;
   }
 
   getRevision(revisionRef: string): WorkplaceProductionRevision | null {
@@ -168,14 +187,17 @@ export class SqliteWorkplaceProductionRevisionRepository {
   }
 
   /**
-   * ADR-053 B-1 — run a unit of work in one better-sqlite3 transaction. Used to
-   * make revision-append + CandidateSet-seal atomic, so a CandidateSet can
-   * never reference a revision that was not persisted. Both repositories share
-   * this `db`, and neither appendRevision nor CandidateSetRepo.seal opens its
-   * own BEGIN, so a SAVEPOINT transaction spans both writes safely.
+   * ADR-053 B-1/C15 — run a unit of work in one better-sqlite3 IMMEDIATE
+   * transaction. Used to make revision-append + CandidateSet-seal atomic, so a
+   * CandidateSet can never reference a revision that was not persisted. BEGIN
+   * IMMEDIATE acquires the write lock before the probe read, so the
+   * getRevisionBySemanticDigest → appendRevision convergence sequence is
+   * serialized across concurrent partitions (structural UNIQUE backs it up).
+   * Both repositories share this `db`, and neither appendRevision nor
+   * CandidateSetRepo.seal opens its own BEGIN, so this SAVEPOINT spans both.
    */
   transaction<T>(work: () => T): T {
-    return this.db.transaction(work)();
+    return this.db.transaction(work).immediate();
   }
 }
 

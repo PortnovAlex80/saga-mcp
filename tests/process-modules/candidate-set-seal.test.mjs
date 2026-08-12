@@ -173,3 +173,74 @@ test('ADR-053 C2: replaying the same (workplace, revision, subject) reviewer set
   assert.equal(second.replayed, true);
   db.close();
 });
+
+test('ADR-053 C3: replay returns the PERSISTED authority (not the new input receipt/time)', () => {
+  const db = freshDb();
+  const revisionRef = appendRevision(db, 'exec-1');
+  const repo = new SqliteCandidateSetRepository(db);
+  const base = {
+    workplaceRef: REF,
+    productionRevisionRef: revisionRef,
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [member()],
+    candidateSetDigest: hash('replay-c3'),
+    sealedAt: '2026-08-04T12:00:00Z',
+  };
+  const first = repo.seal({ ...base, sealReceiptRef: 'execution-complete:exec-1' });
+  // A replay with a DIFFERENT receipt + timestamp must return the FIRST seal's
+  // persisted receipt/time, NOT overwrite the sealed row with the new input.
+  const second = repo.seal({
+    ...base,
+    sealReceiptRef: 'execution-complete:exec-2',
+    sealedAt: '2026-09-01T00:00:00Z',
+  });
+  assert.equal(second.replayed, true);
+  assert.equal(second.set.sealReceiptRef, first.set.sealReceiptRef,
+    'replay must return the persisted receipt, not the new input');
+  assert.equal(second.set.sealedAt, first.set.sealedAt,
+    'replay must return the persisted sealedAt, not the new input');
+  db.close();
+});
+
+test('ADR-053 C15: two partitions with the same material converge to ONE persisted revision', () => {
+  const db = freshDb();
+  const repo = new SqliteWorkplaceProductionRevisionRepository(db);
+  // Partition A and B produce the SAME material (same memberKey + contentDigest)
+  // through different executions. semanticDigest strips provenance, so it
+  // matches; materialDigest includes the contributor, so revisionRefs differ.
+  const buildRevision = (presenterRef) => {
+    const contribution = buildContribution({
+      workplaceRef: 'workplace/1/sf@1/cell/default',
+      contributorExecutionRef: presenterRef,
+      sourceAdapter: 'typed-submission',
+      operations: [{
+        op: 'create',
+        memberKey: 'product/SRS/product:1',
+        productRef: 'artifact:1',
+        contentDigest: hash('shared-content'),
+        sourceAdapter: 'typed-submission',
+      }],
+      parentContributionRef: null,
+    });
+    return assembleRevision({
+      workplaceRef: 'workplace/1/sf@1/cell/default',
+      parent: null,
+      contributions: [contribution],
+      presenterRef,
+    });
+  };
+  const revisionA = buildRevision('exec-A');
+  const first = repo.appendRevision(revisionA);
+  // Partition B: same material, different presenter → different revisionRef,
+  // same semanticDigest.
+  const revisionB = buildRevision('exec-B');
+  assert.equal(revisionB.semanticDigest, revisionA.semanticDigest, 'fixture: same semantic digest');
+  assert.notEqual(revisionB.revisionRef, revisionA.revisionRef, 'fixture: different revisionRef');
+  // C15: the second append MUST return the PERSISTED first revision (the
+  // structural UNIQUE(workplace, semantic_digest) deduped it), not its own input.
+  const result = repo.appendRevision(revisionB);
+  assert.equal(result.revisionRef, first.revisionRef,
+    'second partition must converge to the persisted first revision');
+  db.close();
+});

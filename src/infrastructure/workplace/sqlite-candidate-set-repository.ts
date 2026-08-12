@@ -83,7 +83,19 @@ export class SqliteCandidateSetRepository {
             + `'${existing.candidate_set_digest}' (submitted '${input.candidateSetDigest}')`,
         );
       }
-      return { set, replayed: true };
+      // ADR-053 C3 — return the PERSISTED immutable authority, NOT a fresh object
+      // built from the new input. A replay must never let a second presenter's
+      // subject / receipt / time overwrite the sealed row's identity. Compare the
+      // immutable material fields against the submitted input and fail closed on
+      // any drift (a same-key, same-digest seal with different material is a bug).
+      const persisted = this.read(candidateSetRef);
+      if (!persisted) {
+        throw new Error(
+          `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' present in index but row vanished`,
+        );
+      }
+      assertPersistedMaterialMatches(persisted, input, sealKey);
+      return { set: persisted, replayed: true };
     }
 
     this.db.prepare(
@@ -223,4 +235,55 @@ function deserializeWorkplaceRef(serialized: string): WorkplaceRef {
     productionCellId,
     workKey,
   } as WorkplaceRef;
+}
+
+/**
+ * ADR-053 C3 — on a same-key, same-digest replay, verify the persisted immutable
+ * material still matches what the caller is trying to seal. The digest covers
+ * (workplace, role, subject, products), so a digest match already proves the
+ * material content is identical; this is a defense-in-depth check that also
+ * binds the revision ref, member order and member provenance, and fails closed
+ * if a same-key seal ever carries divergent material (a bug, not a replay).
+ */
+function assertPersistedMaterialMatches(
+  persisted: CandidateSet,
+  input: SealInput,
+  sealKey: string,
+): void {
+  if (persisted.productionRevisionRef !== input.productionRevisionRef) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' revision drift `
+        + `'${persisted.productionRevisionRef}' vs '${input.productionRevisionRef}'`,
+    );
+  }
+  if (persisted.role !== input.role) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' role drift`,
+    );
+  }
+  if (persisted.subjectCandidateSetRef !== input.subjectCandidateSetRef) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' subject drift`,
+    );
+  }
+  if (persisted.members.length !== input.members.length) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member count drift`,
+    );
+  }
+  for (let i = 0; i < persisted.members.length; i += 1) {
+    const p = persisted.members[i]!;
+    const s = input.members[i]!;
+    if (
+      p.productRef.schemaId !== s.productRef.schemaId
+      || p.productRef.ref !== s.productRef.ref
+      || p.productRef.digest !== s.productRef.digest
+      || p.origin !== s.origin
+      || p.sourceCandidateSetRef !== s.sourceCandidateSetRef
+    ) {
+      throw new Error(
+        `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member[${i}] drift`,
+      );
+    }
+  }
 }
