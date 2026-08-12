@@ -1390,7 +1390,11 @@ CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   seal_receipt_ref        TEXT NOT NULL,
   sealed_at               TEXT NOT NULL,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (workplace_ref, production_revision_ref, role),
+  -- ADR-053 C2: uniqueness is role-specific (see partial unique indexes after
+  -- the table). The old combined UNIQUE(workplace,revision,role) is removed
+  -- because a reviewer's identity now includes its subject — two reviewer
+  -- verdicts over different author subjects must coexist under the same
+  -- (workplace, revision).
   FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref),
   -- ADR-053 B-1: a CandidateSet may never reference a revision that was not
   -- persisted. foreign_keys=ON is set globally in db.ts, so this is enforced.
@@ -1399,6 +1403,13 @@ CREATE TABLE IF NOT EXISTS factory_candidate_sets (
 
 CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_workplace ON factory_candidate_sets(workplace_ref);
 CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_subject ON factory_candidate_sets(subject_candidate_set_ref);
+-- ADR-053 C2 — role-specific uniqueness. One author set per (workplace,
+-- revision); one reviewer set per (workplace, revision, subject).
+-- subject_candidate_set_ref is NOT NULL for reviewer (assertValidCandidateSet).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_candidate_sets_author
+  ON factory_candidate_sets(workplace_ref, production_revision_ref) WHERE role='author';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_candidate_sets_reviewer
+  ON factory_candidate_sets(workplace_ref, production_revision_ref, subject_candidate_set_ref) WHERE role='reviewer';
 
 -- CandidateSet members (REG-12-AC-02/03). Each member is either produced by
 -- the active execution or explicitly carried-forward from a named prior set.

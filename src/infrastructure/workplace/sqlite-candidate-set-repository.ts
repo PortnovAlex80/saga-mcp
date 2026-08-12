@@ -55,6 +55,7 @@ export class SqliteCandidateSetRepository {
       workplaceRef: input.workplaceRef,
       productionRevisionRef: input.productionRevisionRef,
       role: input.role,
+      subjectCandidateSetRef: input.subjectCandidateSetRef,
     });
     const candidateSetRef = computeCandidateSetRef(sealKey);
     const set: CandidateSet = {

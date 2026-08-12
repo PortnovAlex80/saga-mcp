@@ -25,7 +25,7 @@ Honest status: *authority model introduced; clean cutover not accepted.*
 | ID | Defect | Verdict | Evidence |
 |----|--------|---------|----------|
 | C1 | current author chosen by `ORDER BY candidate_set_ref DESC` (`sets[0]`) | **CONFIRMED** | `sqlite-candidate-set-repository.ts:189`; `acceptedAuthorCandidate()` |
-| C2 | reviewer seal key omits `subjectCandidateSetRef` → collision | **CONFIRMED** | `candidate-set.ts` `candidateSetSealKey` = (workplace, revision, role); schema `UNIQUE(workplace_ref,production_revision_ref,role)` |
+| C2 | reviewer seal key omits `subjectCandidateSetRef` → collision | **CONFIRMED → FIXED in tranche 2** | `candidate-set.ts` `candidateSetSealKey` now appends `subjectCandidateSetRef` for reviewer (author key unchanged); executor reviewer digest binds subject; schema replaced combined `UNIQUE(workplace,revision,role)` with partial uniques `(workplace,revision) WHERE author` + `(workplace,revision,subject) WHERE reviewer` |
 | C3 | replay returns the new in-memory object, not the persisted row | **CONFIRMED** | `sqlite-candidate-set-repository.ts` `seal()` replay branch returns `set` built from input |
 | C4 | `SqliteCellFinalAcceptance.readAcceptedDecision` uses `ORDER BY decided_at DESC` | **CONFIRMED** | `sqlite-cell-final-acceptance.ts:175-180` |
 | C5 | git integration `ORDER BY t.id DESC` and `ORDER BY gd.decided_at DESC` | **CONFIRMED** | `sqlite-production-cell-integration.ts:70,162,269` (+ 11 more recency sites in replay/) |
@@ -73,14 +73,23 @@ CandidateSet + its GateDecision + final acceptance, keyed by workplace). Then:
 - Touch: candidate-set repo, cell-final-acceptance, git-integration-effect,
   sqlite-production-cell-integration, executor, schema (authority-head table).
 
-### Tranche 2 — bind reviewer subject into identity (TODO)
-- C2: `candidateSetSealKey` + digest include `subjectCandidateSetRef` for
-  reviewer; schema partial UNIQUE indexes
-  `(workplace,production_revision) WHERE role='author'` and
-  `(workplace,production_revision,subject) WHERE role='reviewer'`; FKs for
-  subject/source member refs.
-- C3: replay returns the **persisted** CandidateSet (and persisted
-  GateDecision), comparing immutable fields, fail-closed on drift.
+### Tranche 2 — bind reviewer subject into identity (DONE)
+- **C2 (fixed):** `candidateSetSealKey` appends `subjectCandidateSetRef` for
+  reviewer (author key unchanged → no author-fixture cascade); rejects reviewer
+  without subject / author with subject (REG-12-AC-04). Executor reviewer
+  `candidateSetDigest` binds the subject. Schema replaced
+  `UNIQUE(workplace,revision,role)` with partial uniques
+  `(workplace,revision) WHERE role='author'` and
+  `(workplace,revision,subject) WHERE role='reviewer'`.
+- Tests: REG-12 block in `workplace-domain.test.mjs` rewritten to the
+  productionRevisionRef contract + 3 new C2 domain tests; `candidate-set-seal.test.mjs`
+  rewritten (was a broken stale file) into repo-level C2 tests proving two
+  reviewer sets over different subjects coexist. Full suite 75 → ~66/67 failures
+  (8 previously-red REG-12/seal tests fixed; ±1 temporal flake), zero new
+  regressions.
+- **C3 (still TODO in this tranche):** replay returns the persisted
+  CandidateSet (and persisted GateDecision), comparing immutable fields,
+  fail-closed on drift.
 
 ### Tranche 3 — Gate identity, replay, obligations, terminal recovery (TODO)
 - C7: reviewer seal + carry-forward seal append `run-gate` obligation

@@ -301,38 +301,80 @@ const ref = asWorkplaceRef({
   productionCellId: 'srs-author',
 });
 
-test('REG-12: candidateSetSealKey is deterministic over (workplace, exec, role)', () => {
+const REVISION_REF = 'revision/sha256:author-material';
+
+test('REG-12: candidateSetSealKey is deterministic over (workplace, revision, role[, subject])', () => {
   const k1 = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
   });
   const k2 = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
   });
   assert.equal(k1, k2);
-  // Different role → different key.
+  // Different role → different key (reviewer binds a subject).
   const kReviewer = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'reviewer',
+    subjectCandidateSetRef: 'author-set-A',
   });
   assert.notEqual(k1, kReviewer);
-  // Different execution → different key.
-  const kOtherExec = candidateSetSealKey({
+  // Different revision → different key.
+  const kOtherRev = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-2',
+    productionRevisionRef: 'revision/sha256:other',
     role: 'author',
   });
-  assert.notEqual(k1, kOtherExec);
+  assert.notEqual(k1, kOtherRev);
+});
+
+test('REG-12 / ADR-053 C2: reviewer seal key binds the subject — two subjects → two distinct keys', () => {
+  const kA = candidateSetSealKey({
+    workplaceRef: ref,
+    productionRevisionRef: REVISION_REF,
+    role: 'reviewer',
+    subjectCandidateSetRef: 'author-set-A',
+  });
+  const kB = candidateSetSealKey({
+    workplaceRef: ref,
+    productionRevisionRef: REVISION_REF,
+    role: 'reviewer',
+    subjectCandidateSetRef: 'author-set-B',
+  });
+  assert.notEqual(kA, kB, 'reviewer verdicts over different author subjects must not collide');
+});
+
+test('REG-12 / ADR-053 C2: reviewer seal key without subject is rejected (REG-12-AC-04)', () => {
+  assert.throws(
+    () => candidateSetSealKey({
+      workplaceRef: ref,
+      productionRevisionRef: REVISION_REF,
+      role: 'reviewer',
+    }),
+    /REG-12-AC-04/,
+  );
+});
+
+test('REG-12 / ADR-053 C2: author seal key carrying a subject is rejected (REG-12-AC-04)', () => {
+  assert.throws(
+    () => candidateSetSealKey({
+      workplaceRef: ref,
+      productionRevisionRef: REVISION_REF,
+      role: 'author',
+      subjectCandidateSetRef: 'x',
+    }),
+    /REG-12-AC-04/,
+  );
 });
 
 test('REG-12: computeCandidateSetRef echoes the seal key', () => {
   const key = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
   });
   assert.equal(computeCandidateSetRef(key), key);
@@ -343,13 +385,13 @@ const DIGEST = 'a'.repeat(64);
 function makeAuthorSet(overrides = {}) {
   const key = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
   });
   return {
     candidateSetRef: computeCandidateSetRef(key),
     workplaceRef: ref,
-    producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
     subjectCandidateSetRef: null,
     members: [
@@ -391,12 +433,12 @@ test('REG-12-AC-02/03: carried-forward member without sourceCandidateSetRef is r
 test('REG-12-AC-04: reviewer set without subjectCandidateSetRef is rejected', () => {
   const key = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-reviewer',
+    productionRevisionRef: REVISION_REF,
     role: 'reviewer',
+    subjectCandidateSetRef: 'author-set', // valid key, but the SET below drops it
   });
   const set = makeAuthorSet({
     candidateSetRef: computeCandidateSetRef(key),
-    producerExecutionRef: 'exec-reviewer',
     role: 'reviewer',
     subjectCandidateSetRef: null, // illegal for reviewer
   });
@@ -417,12 +459,12 @@ test('REG-12: valid author set passes', () => {
 test('REG-12: valid reviewer set (with subject) passes', () => {
   const key = candidateSetSealKey({
     workplaceRef: ref,
-    producerExecutionRef: 'exec-reviewer',
+    productionRevisionRef: REVISION_REF,
     role: 'reviewer',
+    subjectCandidateSetRef: 'author-set-ref',
   });
   const set = makeAuthorSet({
     candidateSetRef: computeCandidateSetRef(key),
-    producerExecutionRef: 'exec-reviewer',
     role: 'reviewer',
     subjectCandidateSetRef: 'author-set-ref',
   });

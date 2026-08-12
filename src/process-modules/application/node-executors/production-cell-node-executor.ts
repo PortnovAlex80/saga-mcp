@@ -972,7 +972,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // B-2 partition convergence (two partitions with identical material would
     // derive different digests under the same converged seal key → false
     // REPLAY_MISMATCH instead of replay).
-    const digest = hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, products });
+    // ADR-053 C2 — a REVIEWER digest additionally binds its subject author
+    // CandidateSet, so two reviewer verdicts over different subjects (same
+    // workplace/revision/products) get distinct digests under distinct keys.
+    // Author digest is unchanged.
+    const digest = role === 'reviewer'
+      ? hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, subjectCandidateSetRef, products })
+      : hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, products });
 
     // ADR-053 Phase 5 — assemble an immutable Workplace production revision
     // from the sealed products and carry its ref as the CandidateSet material

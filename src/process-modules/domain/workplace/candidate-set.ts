@@ -153,8 +153,16 @@ export function candidateSetSealKey(input: {
   workplaceRef: WorkplaceRef;
   productionRevisionRef: string;
   role: CandidateSetRole;
+  /**
+   * REQUIRED for role=reviewer (REG-12-AC-04 / ADR-053 C2): the exact author
+   * CandidateSet this reviewer verdict is about. Bound into the seal key so two
+   * reviewer sets for DIFFERENT author subjects never collide — a reviewer
+   * verdict is authority over one subject, not over the workplace. MUST be
+   * null/omitted for role=author.
+   */
+  subjectCandidateSetRef?: string | null;
 }): string {
-  return [
+  const parts = [
     'candidate-set',
     input.workplaceRef.processRunId,
     input.workplaceRef.moduleRef,
@@ -162,7 +170,28 @@ export function candidateSetSealKey(input: {
     input.workplaceRef.workKey,
     input.productionRevisionRef,
     input.role,
-  ].join('/');
+  ];
+  // REG-12-AC-04 / ADR-053 C2 — a reviewer's IDENTITY includes its subject.
+  // Without this, two reviewer verdicts over different author attempts (e.g. a
+  // repair cycle) but with the same reviewer material would seal under ONE key
+  // and the second would look like a replay-mismatch of the first. The author
+  // key is UNCHANGED (no trailing subject segment), so existing author fixtures
+  // keep their refs.
+  if (input.role === 'reviewer') {
+    if (!input.subjectCandidateSetRef) {
+      throw new Error(
+        'REG-12-AC-04: candidateSetSealKey for role=reviewer requires a non-null '
+          + 'subjectCandidateSetRef (the author set this verdict is about)',
+      );
+    }
+    parts.push(input.subjectCandidateSetRef);
+  } else if (input.subjectCandidateSetRef) {
+    throw new Error(
+      'REG-12-AC-04: candidateSetSealKey for role=author must not carry a '
+        + 'subjectCandidateSetRef',
+    );
+  }
+  return parts.join('/');
 }
 
 /**
