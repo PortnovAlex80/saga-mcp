@@ -57,3 +57,4 @@ index.html
 .button-color-replay-e2e/
 .factory-sandboxes/
 .real-factory-smoke/
+tests/golden-runs/
