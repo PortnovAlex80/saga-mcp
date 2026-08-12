@@ -237,13 +237,13 @@ function assertTransitionConformance(db) {
   assert.equal(finalDecisions[1].repair_target_role, null);
 
   const authorCandidates = db.prepare(
-    `SELECT candidate_set_ref,producer_execution_ref
+    `SELECT candidate_set_ref
        FROM factory_candidate_sets
       WHERE workplace_ref=? AND role='author'
       ORDER BY rowid`,
   ).all(workplace.workplace_ref);
   const reviewerCandidates = db.prepare(
-    `SELECT candidate_set_ref,producer_execution_ref,subject_candidate_set_ref
+    `SELECT candidate_set_ref,subject_candidate_set_ref
        FROM factory_candidate_sets
       WHERE workplace_ref=? AND role='reviewer'
       ORDER BY rowid`,

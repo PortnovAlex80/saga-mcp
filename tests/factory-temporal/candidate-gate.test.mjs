@@ -147,7 +147,7 @@ function readWorkplaceChain(db, workplaceRef) {
       'SELECT loop_state, kanban_phase, terminal_reason, revision FROM factory_workplaces WHERE workplace_ref=?',
     ).get(workplaceRef) ?? null,
     candidateSets: db.prepare(
-      'SELECT candidate_set_ref, role, producer_execution_ref FROM factory_candidate_sets WHERE workplace_ref=? ORDER BY sealed_at',
+      'SELECT candidate_set_ref, role, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE workplace_ref=? ORDER BY sealed_at',
     ).all(workplaceRef),
     gateRuns: db.prepare(
       'SELECT gate_run_ref, state, gate_phase FROM factory_gate_runs WHERE workplace_ref=? ORDER BY created_at',
@@ -417,7 +417,7 @@ test('Candidate/Gate: a GateRun with no live owner is diagnosed as waiting_expec
       // exiting) but the gate has not yet produced a decision.
       db.prepare(
         `INSERT INTO factory_candidate_sets
-           (candidate_set_ref, workplace_ref, producer_execution_ref, role,
+           (candidate_set_ref, workplace_ref,  role,
             candidate_set_digest, seal_receipt_ref, sealed_at)
          VALUES ('cset-ownerless-1', ?, 'exec-exited-1', 'author',
                  'digest-1', 'receipt-1', datetime('now'))`,
@@ -537,7 +537,7 @@ test('Candidate/Gate: reviewer repair_required creates a NEW CandidateSet (immut
           // Defence in depth: the rejected set and the repaired set must be
           // DIFFERENT immutable rows (distinct refs + distinct digests).
           const sets = db.prepare(
-            `SELECT candidate_set_ref, candidate_set_digest, producer_execution_ref, sealed_at
+            `SELECT candidate_set_ref, candidate_set_digest,  sealed_at
                FROM factory_candidate_sets
               WHERE workplace_ref=? AND role='author'
               ORDER BY sealed_at`,

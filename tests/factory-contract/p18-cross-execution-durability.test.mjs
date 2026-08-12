@@ -65,7 +65,6 @@ function createDb() {
     CREATE TABLE factory_candidate_sets (
       candidate_set_ref TEXT PRIMARY KEY,
       workplace_ref TEXT NOT NULL,
-      producer_execution_ref TEXT NOT NULL,
       production_revision_ref TEXT,
       role TEXT NOT NULL,
       subject_candidate_set_ref TEXT,
