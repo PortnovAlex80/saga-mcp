@@ -1126,32 +1126,24 @@ export class ClaudeBoardRunner {
       run.lastError = error instanceof Error ? error.message : String(error);
       this.heartbeat(run, execution, 'ERROR', `spawn error: ${run.lastError}`);
     });
-    // Windows pipe-inheritance fix: the terminal handler below listens for
-    // 'close', which fires only after ALL stdio streams are torn down. On
-    // Windows, if a grandchild process (e.g. a node subprocess spawned by the
-    // claude CLI) inherits the piped stdio descriptors, 'close' NEVER fires
-    // even after the child exits — the write end of the pipe is still open.
-    // This causes waitForAssignedWorker (dispatch-loop.js) to poll
-    // executor.status() forever, hanging the factory.
+    // Windows pipe-inheritance fix: 'close' fires only after ALL stdio streams
+    // are torn down. On Windows, if a grandchild process inherits the piped
+    // stdio descriptors, 'close' NEVER fires even after the child exits.
+    // This causes waitForAssignedWorker to poll executor.status() forever.
     //
-    // Fix: listen for 'exit' separately. After a 5-second grace period (enough
-    // for normal pipe drain), force-destroy the stdio streams. This unblocks
-    // the 'close' event, which runs the existing finalize logic. If 'close'
-    // already fired, destroy() on an ended stream is a harmless no-op.
-    child.once('exit', () => {
-      setTimeout(() => {
-        try { child.stdout?.destroy(); } catch {}
-        try { child.stderr?.destroy(); } catch {}
-      }, 5000);
-    });
-    child.once('close', code => {
+    // Fix: extract finalize into a shared closure with an idempotency guard.
+    // Listen for 'exit' separately. After a 5s grace period, if 'close' hasn't
+    // fired, call finalize DIRECTLY (not via destroy→close chain which is
+    // unreliable on Windows when file descriptors are inherited).
+    let workerFinalized = false;
+    const workerFinalize = (code) => {
+      if (workerFinalized) return;
+      workerFinalized = true;
       child.stdout?.unpipe(log);
       child.stderr?.unpipe(log);
-      // D1.1: clean up the per-execution MCP config file.
       if (execution.executionMcpConfigPath) {
         try { rmSync(execution.executionMcpConfigPath, { force: true }); } catch {}
       }
-      const finalize = () => {
       run.active.delete(workerId);
       const taskState = this.getTaskState(task.id, execution.executionId);
       const semanticCompletionAccepted = taskState?.worker_done_accepted === true;
@@ -1237,8 +1229,17 @@ export class ClaudeBoardRunner {
       } else {
         queueMicrotask(() => this.pump(run));
       }
-      };
-      try { log.end(finalize); } catch { finalize(); }
+    };
+    child.once('exit', (code) => {
+      setTimeout(() => {
+        if (!workerFinalized) {
+          process.stdout.write(`[runner] exit fired but close did not within 5s — force-finalizing task=${task.id}\n`);
+          try { log.end(() => workerFinalize(code)); } catch { workerFinalize(code); }
+        }
+      }, 5000);
+    });
+    child.once('close', code => {
+      try { log.end(() => workerFinalize(code)); } catch { workerFinalize(code); }
     });
 
     // Listener registration MUST precede synchronous DB/OS inspection: a very
