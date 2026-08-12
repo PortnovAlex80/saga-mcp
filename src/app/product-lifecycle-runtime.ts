@@ -27,6 +27,8 @@ import { LifecycleOrchestrationEngineAdapter } from '../process-modules/applicat
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
 import { installWorkshopPayloadContracts } from '../process-modules/application/workshop-capability-manifest.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
+import { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
+import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import type {
   NodeExecutor,
   NodeProducts,
@@ -363,6 +365,13 @@ export function createProductLifecycleRuntime(
     humanInteractionRegistry: humanInteractions,
   });
 
+  // ADR-053 Phase 8 — durable transition obligation substrate. Records
+  // crash-recoverable handoffs (CandidateSetSealed→RunGate→RunEffects→
+  // RecordFinalAcceptance→SettleProcess→RouteLifecycle) in the obligation
+  // ledger so a fenced reconciler can redrive them after crash.
+  const obligationLedger = new SqliteTransitionObligationLedger(db);
+  const obligationIntegrator = new TransitionObligationIntegrator({ ledger: obligationLedger });
+
   const nodeExecutors = new Map<string, NodeExecutor>([
     ['kernel', new KernelNodeExecutor(
       kernelHandlers,
@@ -566,6 +575,8 @@ export function createProductLifecycleRuntime(
       // ADR-053 Phase 5 — revision repository so CandidateSet seals carry a
       // productionRevisionRef (the immutable material authority).
       revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
+      // ADR-053 Phase 8 — obligation integrator for durable transition handoffs.
+      obligationIntegrator,
     })],
   ]);
   nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);

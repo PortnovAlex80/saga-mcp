@@ -553,6 +553,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           verdict: 'accepted', isFinal: !cell.review,
           effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
+        // ADR-053 Phase 8 — gate accepted → effects must run.
+        if (this.opts.obligationIntegrator) {
+          this.opts.obligationIntegrator.onGateAccepted({
+            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+            gateDecisionDigest: candidate.candidateSetDigest,
+            workplaceRef: serializeWorkplaceRef(workplace.ref),
+            fence: 1,
+          });
+        }
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -573,6 +582,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
+        // ADR-053 Phase 8 — reviewer gate accepted → effects must run.
+        if (this.opts.obligationIntegrator) {
+          this.opts.obligationIntegrator.onGateAccepted({
+            gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
+            gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
+            workplaceRef: serializeWorkplaceRef(workplace.ref),
+            fence: 1,
+          });
+        }
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -689,6 +707,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: acceptedCandidate.candidateSetRef,
         result,
       }).effectReceiptRef;
+      // ADR-053 Phase 8 — effects settled → final acceptance must be recorded.
+      if (this.opts.obligationIntegrator) {
+        this.opts.obligationIntegrator.onEffectsSettled({
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          effectReceiptDigest: effectReceiptRef,
+          fence: 1,
+        });
+      }
     }
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
@@ -715,6 +741,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       effectReceiptRefs,
       acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     });
+    // ADR-053 Phase 8 — final acceptance recorded → process must settle.
+    if (this.opts.obligationIntegrator) {
+      this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
+        finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
+        acceptanceDigest: acceptedCandidate.candidateSetDigest,
+        workplaceRef: serializeWorkplaceRef(workplaceRef),
+        fence: 1,
+      });
+    }
     const effectInput = {
       workplaceRef,
       processRunId: ctx.processRunId,

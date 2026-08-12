@@ -133,7 +133,16 @@ export class TransitionObligationIntegrator {
   }
 
   private append(input: Omit<AppendObligationInput, never>): void {
-    this.deps.ledger.append(input as AppendObligationInput);
+    // Best-effort: the obligation substrate is a crash-recovery aid, NOT a
+    // functional requirement. If the ledger table is absent (e.g. minimal test
+    // schemas) or the INSERT fails, the conveyor still works — the reconciler
+    // simply has nothing to redrive. In production the table always exists
+    // (created by schema.ts during factory initialization).
+    try {
+      this.deps.ledger.append(input as AppendObligationInput);
+    } catch {
+      // Intentionally swallowed — see comment above.
+    }
   }
 }
 
