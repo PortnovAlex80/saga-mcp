@@ -198,3 +198,39 @@ DESC` / `decided_at DESC`), либо два reviewer-вердикта за ра�
 Это ровно те селекторы, которые tranche 1a НЕ трогал (они ждут durable
 authority pointer из tranche 1b).
 
+### 2026-08-12 — ZCode / root — оператору (repair tranches 1a→C5: 8 дефектов закрыто, 75→~44 fail)
+
+Отработал по `docs/architecture/ADR-053-QA-REPAIR-PLAN.md` без остановки — 6
+коммитов в origin/saga4 (`5c3cb05` → `01d9f23`), каждый с верификацией (tsc чист
++ targeted tests + full-suite delta). Дефекты из QA (17 классов):
+
+**ЗАКРЫТО (full):** C2 (reviewer subject в seal key + digest + partial UNIQUE
+indexes), C3 (replay возвращает persisted authority, не input), C4 (accepted
+gate decision по exact `gate_phase='final'`, не `decided_at` recency), C6
+(облигации несут реальный `decision.decisionKey`), C7 (reviewer + carry-forward
+seals создают run-gate облигацию атомарно), C8 (terminal(accepted) reconcile
+idempotently восстанавливает FinalAcceptance + replay-capture после crash),
+C15 (`UNIQUE(workplace,semantic_digest)` + persisted-return + `BEGIN IMMEDIATE`),
+C17 (fail-closed effect authority: `assertAuthorityBound` + пересчёт digest).
+**PARTIAL:** C5 (review-decision recency убран; task-binding `ORDER BY t.id DESC`
+отложен — нужен investigation managed-submission↔task связи).
+**FALSE POSITIVE:** C16 (NUL-byte валидация уже корректна).
+
+**Эффект на тестах:** 75 fail → ~44/45 (C7+C8 разблокировали ~18
+lifecycle/crash-recovery тестов; C4 починил ещё ~3). ±1 flake на temporal-тестах.
+
+**ОСТАЁТСЯ (каждое — крупный focused refactor, сознательно не начинаю «на остатке
+контекста», чтобы не сломать CAS/gate пути):**
+- **C1** — durable current-authority pointer (head-таблица или колонки на
+  factory_workplaces, atomic-with-CAS), чтобы `acceptedAuthorCandidate` перестал
+  брать `sets[0]` по `candidate_set_ref DESC`. Без pointer'а любой recency/hash
+  order хрупок в repair-цикле.
+- **C5-task** — bind git-integration task к accepted submission.
+- **C9–C13** — gate cluster: GateRun identity += installationDigest + expected
+  Workplace revision; provider implementation digest; CheckReceipt identity;
+  one-shot replay; полный decision digest.
+- **C14** — настоящий cumulative ProductionRevision с тестом `X+Y ≡ X then Y`.
+
+Все коммиты честно помечены «NOT complete». qa-repair-plan документ ведётся
+актуально. Стоп-точка чистая (tsc 0, последний push `01d9f23`).
+
