@@ -166,6 +166,17 @@ export class SqliteWorkplaceProductionRevisionRepository {
     ).get(workplaceRef, semanticDigest) as RevisionRow | undefined;
     return row ? revisionRowToObject(row) : null;
   }
+
+  /**
+   * ADR-053 B-1 — run a unit of work in one better-sqlite3 transaction. Used to
+   * make revision-append + CandidateSet-seal atomic, so a CandidateSet can
+   * never reference a revision that was not persisted. Both repositories share
+   * this `db`, and neither appendRevision nor CandidateSetRepo.seal opens its
+   * own BEGIN, so a SAVEPOINT transaction spans both writes safely.
+   */
+  transaction<T>(work: () => T): T {
+    return this.db.transaction(work)();
+  }
 }
 
 // ---------------------------------------------------------------------------

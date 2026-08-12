@@ -1391,7 +1391,10 @@ CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   sealed_at               TEXT NOT NULL,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (workplace_ref, production_revision_ref, role),
-  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref),
+  -- ADR-053 B-1: a CandidateSet may never reference a revision that was not
+  -- persisted. foreign_keys=ON is set globally in db.ts, so this is enforced.
+  FOREIGN KEY (production_revision_ref) REFERENCES factory_workplace_production_revisions(revision_ref)
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_workplace ON factory_candidate_sets(workplace_ref);

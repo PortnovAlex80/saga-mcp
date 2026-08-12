@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
-import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
+import { asWorkplaceRef, serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { candidateSetSealKey, computeCandidateSetRef } from '../../dist/process-modules/domain/workplace/candidate-set.js';
 import { executionReservationRef } from '../../dist/process-modules/domain/workplace/execution-reservation.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
@@ -41,6 +41,8 @@ function freshDb() {
 function freshDbWithWorkplace() {
   const db = freshDb();
   new SqliteWorkplaceRepository(db).materialize(REF);
+  // ADR-053 B-1 — CandidateSet seal requires a persisted revision (FK).
+  insertRevision(db, REVISION_REF);
   return db;
 }
 
@@ -50,6 +52,18 @@ const REF = asWorkplaceRef({
   productionCellId: 'srs-author',
 });
 const DIGEST = 'a'.repeat(64);
+const REVISION_REF = 'revision/sha256:reg12-rev';
+
+/** ADR-053 B-1 — insert a minimal revision row so a CandidateSet may reference it. */
+function insertRevision(db, revisionRef) {
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref, workplace_ref, parent_revision_ref, members,
+        contributing_execution_refs, presenter_ref, material_digest,
+        semantic_digest, sealed_at)
+     VALUES (?, ?, NULL, '[]', '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
+  ).run(revisionRef, serializeWorkplaceRef(REF), revisionRef, revisionRef);
+}
 
 // ---------------------------------------------------------------------------
 // REG-05 — SqliteWorkplaceRepository.
@@ -249,6 +263,7 @@ function makeAuthorSetInput(overrides = {}) {
   return {
     workplaceRef: REF,
     producerExecutionRef: 'exec-1',
+    productionRevisionRef: REVISION_REF,
     role: 'author',
     subjectCandidateSetRef: null,
     members: [

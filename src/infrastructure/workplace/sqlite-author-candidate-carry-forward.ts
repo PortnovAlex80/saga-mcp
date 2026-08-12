@@ -628,7 +628,6 @@ function verifyCandidateDigest(
 ): void {
   const digest = createHash('sha256').update(JSON.stringify({
     workplaceRef: candidate.workplace_ref,
-    executionRef: candidate.producer_execution_ref,
     role: 'author',
     products: [{ schemaId: member.product_schema, ref: member.product_ref, digest: member.product_digest }],
   })).digest('hex');

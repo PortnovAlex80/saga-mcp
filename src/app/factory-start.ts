@@ -1235,7 +1235,6 @@ function verifyCandidateSetDigest(
   // verifier must validate the stored identity, not silently mint another one.
   const actualDigest = createHash('sha256').update(JSON.stringify({
     workplaceRef: String(row.workplace_ref),
-    executionRef: String(row.producer_execution_ref),
     role: String(row.candidate_role),
     products,
   })).digest('hex');

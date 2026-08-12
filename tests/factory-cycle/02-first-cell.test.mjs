@@ -32,6 +32,8 @@ import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplac
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
+import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import {
   createStandardCheckProviderRegistry,
   buildProductContractCheckPlan,
@@ -67,11 +69,15 @@ function setup() {
     productionCellId: 'produce-proposal',
     workKey: 'default',
   });
-  return { db, workplaceRepo, candidateSetRepo, gateRepo, coordinator, checkProviders, ref };
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  activeRevisionRepo = revisionRepo;
+  return { db, workplaceRepo, candidateSetRepo, revisionRepo, gateRepo, coordinator, checkProviders, ref };
 }
 
 const SCHEMA = 'factory.discovery-proposal.v1';
 const EXECUTION_REF = 'worker-execution:test-1';
+// ADR-053 B-1 — registered by setup() so sealAuthor can append + seal atomically.
+let activeRevisionRepo = null;
 
 function sha(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -80,20 +86,48 @@ function sha(value) {
 /** Запечатать products как author CandidateSet. */
 function sealAuthor(candidateSetRepo, ref, products) {
   const digest = sha({ ref: serializeWorkplaceRef(ref), exec: EXECUTION_REF, products });
-  return candidateSetRepo.seal({
-    workplaceRef: ref,
-    producerExecutionRef: EXECUTION_REF,
-    role: 'author',
-    subjectCandidateSetRef: null,
-    members: products.map(p => ({
-      productRef: p,
-      origin: 'produced',
-      sourceCandidateSetRef: null,
+  const members = products.map(p => ({
+    productRef: p,
+    origin: 'produced',
+    sourceCandidateSetRef: null,
+  }));
+  // ADR-053 B-1 — build + persist the production revision and seal the
+  // CandidateSet in ONE transaction; the set can never reference an absent
+  // revision. (activeRevisionRepo is registered by setup().)
+  const workplaceSerialized = serializeWorkplaceRef(ref);
+  const contribution = buildContribution({
+    workplaceRef: workplaceSerialized,
+    contributorExecutionRef: EXECUTION_REF,
+    sourceAdapter: 'typed-submission',
+    operations: products.map(p => ({
+      op: 'put',
+      memberKey: `product/${p.schemaId}/${p.ref}`,
+      productRef: p.ref,
+      contentDigest: p.digest,
+      sourceAdapter: 'typed-submission',
     })),
-    sealReceiptRef: `seal:${EXECUTION_REF}:author`,
-    candidateSetDigest: digest,
-    sealedAt: '2026-01-01T00:00:00.000Z',
-  }).set;
+    parentContributionRef: null,
+  });
+  const revision = assembleRevision({
+    workplaceRef: workplaceSerialized,
+    parent: null,
+    contributions: [contribution],
+    presenterRef: EXECUTION_REF,
+  });
+  return activeRevisionRepo.transaction(() => {
+    activeRevisionRepo.appendRevision(revision);
+    return candidateSetRepo.seal({
+      workplaceRef: ref,
+      producerExecutionRef: EXECUTION_REF,
+      productionRevisionRef: revision.revisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members,
+      sealReceiptRef: `seal:${EXECUTION_REF}:author`,
+      candidateSetDigest: digest,
+      sealedAt: '2026-01-01T00:00:00.000Z',
+    }).set;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -222,14 +256,22 @@ test('цех: seal с ДРУГИМ digest под тем же key → REPLAY_MISM
   const products1 = [{
     schemaId: SCHEMA, ref: 'proposal:3', digest: sha256Hex({ x: 1 }),
   }];
-  sealAuthor(candidateSetRepo, ref, products1);
+  const first = sealAuthor(candidateSetRepo, ref, products1);
 
-  // Тот же seal-key (workplace+execution+role), но products отличаются → digest другой.
-  const products2 = [{
-    schemaId: SCHEMA, ref: 'proposal:3', digest: sha256Hex({ x: 999 }),
-  }];
+  // ADR-053: seal-key теперь (workplace + productionRevisionRef + role). Тот же
+  // key (та же ревизия), но ДРУГОЙ digest → REPLAY_MISMATCH.
   assert.throws(
-    () => sealAuthor(candidateSetRepo, ref, products2),
+    () => candidateSetRepo.seal({
+      workplaceRef: ref,
+      producerExecutionRef: EXECUTION_REF,
+      productionRevisionRef: first.productionRevisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: products1.map(p => ({ productRef: p, origin: 'produced', sourceCandidateSetRef: null })),
+      sealReceiptRef: `seal:${EXECUTION_REF}:author`,
+      candidateSetDigest: sha({ other: 'digest' }),
+      sealedAt: '2026-01-01T00:00:00.000Z',
+    }),
     /CANDIDATE_SET_REPLAY_MISMATCH/,
   );
 });

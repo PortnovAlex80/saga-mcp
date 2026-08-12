@@ -6,6 +6,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
@@ -105,6 +106,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     coordinator,
     candidateSetRepo,
     gateRepo,
+    revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
     persistence,
     postAcceptanceEffects: {
       run(effectId, input) {

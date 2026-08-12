@@ -1,11 +1,15 @@
 // tests/infrastructure/candidate-set-revision-authority.test.mjs
 //
-// ADR-053 Phase 5 — CandidateSet v2 production-revision authority.
+// ADR-053 — CandidateSet v2 production-revision authority + B-1 cutover.
 //
-// Proves that when productionRevisionRef is provided, the CandidateSet seal
-// key is derived from the REVISION (not the execution), so two different
-// executions producing the same revision converge to the same CandidateSet.
-// This is partition invariance at the CandidateSet level — the Run 011 fix.
+// Proves:
+//  1. the CandidateSet seal key is derived from the REVISION (not the
+//     execution) → partition invariance at the CandidateSet level (Run 011 fix);
+//  2. the repository persists productionRevisionRef and reads it back;
+//  3. B-1: a CandidateSet may NEVER reference a revision that was not persisted
+//     (enforced structurally via FK + the atomic append+seal transaction);
+//  4. B-1: appendRevision + CandidateSet seal are atomic — if the seal fails,
+//     the revision append is rolled back (all-or-nothing).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,6 +17,10 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { candidateSetSealKey } from '../../dist/process-modules/domain/workplace/candidate-set.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
+import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
+
+const WORKPLACE_SERIALIZED = 'workplace/1/mod@1.0.0/cell/item';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -23,7 +31,7 @@ function makeDb() {
     `INSERT INTO factory_workplaces
        (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
         kanban_phase,loop_state,next_role,revision,active_reservation_ref)
-     VALUES ('workplace/1/mod@1.0.0/cell/item',1,'mod@1.0.0','cell','item',
+     VALUES ('${WORKPLACE_SERIALIZED}',1,'mod@1.0.0','cell','item',
              'in_progress','running','author',1,'exec-1')`,
   ).run();
   return db;
@@ -44,13 +52,48 @@ const MEMBERS = [
   },
 ];
 
+// Insert a minimal revision row so a CandidateSet may reference it (FK target).
+function insertRevision(db, revisionRef) {
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref, workplace_ref, parent_revision_ref, members,
+        contributing_execution_refs, presenter_ref, material_digest,
+        semantic_digest, sealed_at)
+     VALUES (?, ?, NULL, '[]', '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
+  ).run(revisionRef, WORKPLACE_SERIALIZED, revisionRef, revisionRef);
+}
+
+// Build a real content-addressed revision (used by the atomic tests).
+function buildRevision(executionRef) {
+  const contribution = buildContribution({
+    workplaceRef: WORKPLACE_SERIALIZED,
+    contributorExecutionRef: executionRef,
+    sourceAdapter: 'typed-submission',
+    operations: [{
+      op: 'put',
+      memberKey: 'product/factory.product.v1/product/sha256:test',
+      productRef: 'product/sha256:test',
+      contentDigest: 'sha256:test',
+      sourceAdapter: 'typed-submission',
+    }],
+    parentContributionRef: null,
+  });
+  return assembleRevision({
+    workplaceRef: WORKPLACE_SERIALIZED,
+    parent: null,
+    contributions: [contribution],
+    presenterRef: executionRef,
+  });
+}
+
 // ===========================================================================
 // 1. Revision-based seal key — two executions + same revision → same key.
+//    (ADR-053 clean-break: there is NO execution-scoped fallback. The legacy
+//    v1 fallback test was removed — fallback is forbidden.)
 // ===========================================================================
 test('Phase 5: revision-based seal key gives partition invariance', () => {
   const revisionRef = 'revision/sha256:abc123';
 
-  // Two different executions producing the same revision.
   const keyA = candidateSetSealKey({
     workplaceRef: WORKPLACE,
     producerExecutionRef: 'exec-A',
@@ -64,7 +107,6 @@ test('Phase 5: revision-based seal key gives partition invariance', () => {
     role: 'author',
   });
 
-  // SAME key despite different executions — partition invariance.
   assert.equal(
     keyA,
     keyB,
@@ -73,29 +115,11 @@ test('Phase 5: revision-based seal key gives partition invariance', () => {
 });
 
 // ===========================================================================
-// 2. Legacy fallback — null revision ref uses execution-scoped key (v1).
-// ===========================================================================
-test('Phase 5: null productionRevisionRef falls back to execution-scoped key (v1)', () => {
-  const keyA = candidateSetSealKey({
-    workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-A',
-    productionRevisionRef: null,
-    role: 'author',
-  });
-  const keyB = candidateSetSealKey({
-    workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-B',
-    productionRevisionRef: null,
-    role: 'author',
-  });
-  assert.notEqual(keyA, keyB, 'execution-scoped fallback: different executions get different keys');
-});
-
-// ===========================================================================
-// 3. Repository: sealing with a revision ref persists and reads it back.
+// 2. Repository: sealing with a persisted revision ref round-trips.
 // ===========================================================================
 test('Phase 5: repository persists productionRevisionRef and reads it back', () => {
   const db = makeDb();
+  insertRevision(db, 'revision/sha256:rev-1');
   const repo = new SqliteCandidateSetRepository(db);
   const { set } = repo.seal({
     workplaceRef: WORKPLACE,
@@ -116,20 +140,19 @@ test('Phase 5: repository persists productionRevisionRef and reads it back', () 
 });
 
 // ===========================================================================
-// 4. Repository: partition invariance — exec-B finds exec-A's set when they
+// 3. Repository: partition invariance — exec-B finds exec-A's set when they
 //    share the same revision.
 // ===========================================================================
 test('Phase 5: repository partition invariance — second execution finds the first sealed set', () => {
   const db = makeDb();
+  insertRevision(db, 'revision/sha256:shared-rev');
   const repo = new SqliteCandidateSetRepository(db);
-  const revisionRef = 'revision/sha256:shared-rev';
   const digest = 'b'.repeat(64);
 
-  // exec-A seals.
   const { set: setA, replayed: replayedA } = repo.seal({
     workplaceRef: WORKPLACE,
     producerExecutionRef: 'exec-A',
-    productionRevisionRef: revisionRef,
+    productionRevisionRef: 'revision/sha256:shared-rev',
     role: 'author',
     subjectCandidateSetRef: null,
     members: MEMBERS,
@@ -139,25 +162,20 @@ test('Phase 5: repository partition invariance — second execution finds the fi
   });
   assert.equal(replayedA, false);
 
-  // exec-B seals the SAME revision with the SAME members.
   const { set: setB, replayed: replayedB } = repo.seal({
     workplaceRef: WORKPLACE,
     producerExecutionRef: 'exec-B',
-    productionRevisionRef: revisionRef,
+    productionRevisionRef: 'revision/sha256:shared-rev',
     role: 'author',
     subjectCandidateSetRef: null,
     members: MEMBERS,
     sealReceiptRef: 'receipt-B',
     candidateSetDigest: digest,
-    sealedAt: '2026-08-11T13:00:00Z',
+    sealedAt: '2026-08-11T12:00:00Z',
   });
-
-  // SAME ref — exec-B found exec-A's set. Partition invariance at the
-  // CandidateSet level: recovery does not create a divergent set.
-  assert.equal(setA.candidateSetRef, setB.candidateSetRef);
   assert.equal(replayedB, true);
+  assert.equal(setB.candidateSetRef, setA.candidateSetRef);
 
-  // Only one row in the table.
   const count = db.prepare(
     'SELECT COUNT(*) AS n FROM factory_candidate_sets',
   ).get().n;
@@ -165,23 +183,161 @@ test('Phase 5: repository partition invariance — second execution finds the fi
 });
 
 // ===========================================================================
-// 5. Repository: legacy v1 seal (null revision ref) still works.
+// 4. B-1: a CandidateSet may NEVER reference a revision that was not persisted.
+//    Enforced structurally (FK; foreign_keys=ON in db.ts).
 // ===========================================================================
-test('Phase 5: legacy v1 seal (null revision ref) still works', () => {
+test('B-1: sealing with a non-persisted revision ref is rejected (FK)', () => {
   const db = makeDb();
   const repo = new SqliteCandidateSetRepository(db);
-  const { set } = repo.seal({
-    workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-A',
-    role: 'author',
-    subjectCandidateSetRef: null,
-    members: MEMBERS,
-    sealReceiptRef: 'receipt-1',
-    candidateSetDigest: 'c'.repeat(64),
-    sealedAt: '2026-08-11T12:00:00Z',
+  // Deliberately do NOT insert 'revision/sha256:absent'.
+  assert.throws(
+    () => repo.seal({
+      workplaceRef: WORKPLACE,
+      producerExecutionRef: 'exec-A',
+      productionRevisionRef: 'revision/sha256:absent',
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-fk',
+      candidateSetDigest: 'c'.repeat(64),
+      sealedAt: '2026-08-12T00:00:00Z',
+    }),
+    err => err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY',
+    'sealing against an absent revision must fail with an FK violation',
+  );
+
+  // And no CandidateSet row was left behind.
+  const count = db.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get().n;
+  assert.equal(count, 0);
+});
+
+// ===========================================================================
+// 5. B-1: appendRevision + CandidateSet seal are atomic — both rows appear.
+// ===========================================================================
+test('B-1: appendRevision + seal are atomic — both rows appear together', () => {
+  const db = makeDb();
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  const candidateSetRepo = new SqliteCandidateSetRepository(db);
+  const revision = buildRevision('exec-A');
+
+  const sealed = revisionRepo.transaction(() => {
+    revisionRepo.appendRevision(revision);
+    return candidateSetRepo.seal({
+      workplaceRef: WORKPLACE,
+      producerExecutionRef: 'exec-A',
+      productionRevisionRef: revision.revisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-atomic',
+      candidateSetDigest: 'd'.repeat(64),
+      sealedAt: '2026-08-12T00:00:00Z',
+    }).set;
   });
-  assert.equal(set.productionRevisionRef, null);
-  const read = repo.read(set.candidateSetRef);
-  assert.ok(read);
-  assert.equal(read.productionRevisionRef, null);
+
+  const revRow = db.prepare(
+    'SELECT revision_ref AS r FROM factory_workplace_production_revisions WHERE revision_ref=?',
+  ).get(revision.revisionRef);
+  assert.ok(revRow, 'revision row persisted');
+
+  const csRow = db.prepare(
+    'SELECT production_revision_ref AS r FROM factory_candidate_sets WHERE candidate_set_ref=?',
+  ).get(sealed.candidateSetRef);
+  assert.ok(csRow);
+  assert.equal(csRow.r, revision.revisionRef, 'CandidateSet links the persisted revision');
+});
+
+// ===========================================================================
+// 6. B-1: if the seal fails, the revision append is rolled back (atomic).
+// ===========================================================================
+test('B-1: if seal fails, the revision append is rolled back', () => {
+  const db = makeDb();
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  const revision = buildRevision('exec-A');
+
+  // Stub CandidateSet repo whose seal always throws.
+  const throwingRepo = {
+    seal() { throw new Error('FORCED_SEAL_FAILURE'); },
+  };
+
+  assert.throws(
+    () => revisionRepo.transaction(() => {
+      revisionRepo.appendRevision(revision);
+      return throwingRepo.seal({});
+    }),
+    /FORCED_SEAL_FAILURE/,
+  );
+
+  // Rollback: no revision row committed.
+  const revRow = db.prepare(
+    'SELECT revision_ref AS r FROM factory_workplace_production_revisions WHERE revision_ref=?',
+  ).get(revision.revisionRef);
+  assert.equal(revRow, undefined, 'revision append rolled back when the seal fails');
+});
+
+// ===========================================================================
+// 7. B-2: two partitions sealing equivalent material converge to ONE
+//    CandidateSet authority (semanticDigest probe).
+// ===========================================================================
+test('B-2: two partitions sealing equivalent material converge to one CandidateSet', () => {
+  const db = makeDb();
+  const revisionRepo = new SqliteWorkplaceProductionRevisionRepository(db);
+  const candidateSetRepo = new SqliteCandidateSetRepository(db);
+
+  // Partition A: exec-A produces X (one contribution).
+  const revisionA = buildRevision('exec-A');
+
+  // Partition B: exec-A produced X, then exec-B recovered and produced X again
+  // (different contributor/presenter partition, SAME material).
+  const revisionB = buildRevision('exec-B');
+
+  // Same material → same partition-invariant semanticDigest; the
+  // provenance-laden revisionRef still differs (material-only ref deferred to B-9).
+  assert.equal(revisionB.semanticDigest, revisionA.semanticDigest);
+  assert.notEqual(revisionB.revisionRef, revisionA.revisionRef);
+
+  // Partition A seals first.
+  const setA = revisionRepo.transaction(() => {
+    revisionRepo.appendRevision(revisionA);
+    return candidateSetRepo.seal({
+      workplaceRef: WORKPLACE,
+      producerExecutionRef: 'exec-A',
+      productionRevisionRef: revisionA.revisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-A',
+      candidateSetDigest: 'f'.repeat(64),
+      sealedAt: '2026-08-12T00:00:00Z',
+    }).set;
+  });
+
+  // Partition B seals the SAME material via the convergence probe: it finds
+  // partition A's revision by semanticDigest and reuses its revisionRef, so the
+  // CandidateSet seal key matches → B replays A (one authority).
+  const resultB = revisionRepo.transaction(() => {
+    const existing = revisionRepo.getRevisionBySemanticDigest(
+      revisionB.workplaceRef, revisionB.semanticDigest,
+    );
+    const finalRef = existing?.revisionRef ?? revisionB.revisionRef;
+    if (!existing) revisionRepo.appendRevision(revisionB);
+    return candidateSetRepo.seal({
+      workplaceRef: WORKPLACE,
+      producerExecutionRef: 'exec-B',
+      productionRevisionRef: finalRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-B',
+      candidateSetDigest: 'f'.repeat(64),
+      sealedAt: '2026-08-12T00:00:00Z',
+    });
+  });
+
+  assert.equal(resultB.replayed, true, 'B-2: partition B replays partition A — seal-key convergence');
+  assert.equal(resultB.set.candidateSetRef, setA.candidateSetRef, 'B-2: one CandidateSet authority across partitions');
+
+  // Exactly one CandidateSet row and one revision row referenced.
+  const csCount = db.prepare('SELECT COUNT(*) AS n FROM factory_candidate_sets').get().n;
+  assert.equal(csCount, 1);
 });
