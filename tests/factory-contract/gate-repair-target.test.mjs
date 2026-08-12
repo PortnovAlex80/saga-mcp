@@ -21,6 +21,9 @@ function drive(outcomes, checks) {
     setGateRunState() {},
     recordCheckReceipt(receipt) { receipts.push(receipt); return receipt; },
     recordDecision(decision) { decisions.push(decision); return { decision, replayed: false }; },
+    // ADR-053 C12 — this in-memory mock has no persisted terminal decision, so a
+    // GateRun always runs fresh (returning null lets driveGateRun proceed).
+    readTerminalDecisionForGateRun() { return null; },
   };
   const providers = {
     resolve(providerId) {

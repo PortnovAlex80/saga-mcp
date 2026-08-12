@@ -206,6 +206,37 @@ test('ADR-053 C13: decisionDigest covers the full canonical body (drift → diff
   db.close();
 });
 
+test('ADR-053 C12: replaying a terminal GateRun does NOT re-run providers (one-shot)', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const checkPlan = buildArchitectureCheckPlan();
+  let runCount = 0;
+  const providers = {
+    resolve: () => ({
+      providerId: 'formalization.srs-structural.v1',
+      version: '1.0.0',
+      run() { runCount += 1; return 'passed'; },
+    }),
+  };
+  const drive = () => driveGateRun(gateRepo, providers, {
+    workplaceRef: ref, subjectCandidateSetRef: 'cs-c12', checkPlan, gatePhase: 'author',
+    expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-c12', installationDigest: hash('i-c12'),
+    checkParameters: {}, environmentRef: null,
+  });
+  const first = drive();
+  assert.equal(runCount, 1, 'provider runs once on the initial GateRun');
+  assert.equal(first.decision.verdict, 'accepted');
+  // Replay the SAME GateRun identity. It must return the persisted terminal
+  // decision WITHOUT re-running the provider or regressing the GateRun state.
+  const second = drive();
+  assert.equal(runCount, 1, 'C12: provider must NOT re-run on a terminal GateRun replay');
+  assert.equal(second.decision.decisionKey, first.decision.decisionKey, 'same decision returned');
+  assert.equal(second.decision.decisionDigest, first.decision.decisionDigest);
+  const runRow = db.prepare('SELECT state FROM factory_gate_runs WHERE gate_run_ref=?').get(first.decision.gateRunRef);
+  assert.equal(runRow.state, 'terminal', 'C12: GateRun stays terminal (no regression to checking)');
+  db.close();
+});
+
 test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt refs', () => {
   const { db, ref } = freshDb();
   const gateRepo = new SqliteGateRepository(db);

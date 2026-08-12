@@ -29,6 +29,13 @@ export interface GateRunDriverRepo {
   setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
   recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
   recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
+  /**
+   * ADR-053 C12 — read the persisted terminal decision + its receipts for an
+   * exact GateRun, or null when the run is absent / not yet terminal. Used by
+   * the driver to make a GateRun ONE-SHOT: a replay of the same identity returns
+   * the persisted decision without re-running providers or regressing state.
+   */
+  readTerminalDecisionForGateRun(gateRunRef: string): { readonly decision: GateDecision; readonly receipts: readonly CheckReceipt[] } | null;
 }
 
 export interface CheckProviderRegistry {
@@ -76,6 +83,17 @@ export function driveGateRun(
     }))
     .digest('hex');
   const gateRunRef = `gate-run:${gateRunIdentity}`;
+
+  // ADR-053 C12 — a GateRun is a ONE-SHOT immutable inspection. If a terminal
+  // decision already exists for this exact identity, return the persisted
+  // decision + receipts WITHOUT re-running providers or regressing the GateRun
+  // state (terminal → checking). Re-invoking checks on replay would repeat
+  // potentially nondeterministic / external inspections and could diverge from
+  // the original decision.
+  const replayed = repo.readTerminalDecisionForGateRun(gateRunRef);
+  if (replayed) {
+    return { decision: replayed.decision, receipts: replayed.receipts };
+  }
 
   repo.createGateRun({
     gateRunRef,

@@ -242,6 +242,11 @@ export interface GateRunPort {
   setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
   recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
   recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
+  /**
+   * ADR-053 C12 — persisted terminal decision + receipts for an exact GateRun
+   * (null when absent / not terminal), so the driver can make a GateRun one-shot.
+   */
+  readTerminalDecisionForGateRun(gateRunRef: string): { readonly decision: GateDecision; readonly receipts: readonly CheckReceipt[] } | null;
 }
 
 interface ExecutionWrites {

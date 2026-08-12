@@ -225,6 +225,25 @@ export class SqliteGateRepository {
     return rows.map(readCheckReceiptRow);
   }
 
+  /**
+   * ADR-053 C12 — the persisted terminal decision + receipts for an exact
+   * GateRun, or null when the run is absent or not yet terminal. The driver uses
+   * this to make a GateRun one-shot (replay returns the persisted decision
+   * instead of re-running providers).
+   */
+  readTerminalDecisionForGateRun(gateRunRef: string): {
+    readonly decision: GateDecision;
+    readonly receipts: readonly CheckReceipt[];
+  } | null {
+    const run = this.db.prepare(
+      `SELECT state FROM factory_gate_runs WHERE gate_run_ref=?`,
+    ).get(gateRunRef) as { state: string } | undefined;
+    if (!run || run.state !== 'terminal') return null;
+    const decision = this.readDecision(`decision:${gateRunRef}`);
+    if (!decision) return null;
+    return { decision, receipts: this.listReceiptsForRun(gateRunRef) };
+  }
+
   // -----------------------------------------------------------------------
   // GateDecision (REG-18) — append-only.
   // -----------------------------------------------------------------------
