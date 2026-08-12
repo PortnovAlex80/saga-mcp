@@ -184,22 +184,24 @@ test('ADR-053 Phase 0 ratchet: ORDER BY sealed_at DESC count must not exceed bas
 test('ADR-053 Phase 0 inventory: post-seal-authority defect sites are documented', () => {
   const inventory = [
     // A. Gate check providers selecting by execution_id / latest.
-    'src/modules/development/application/development-check-providers.ts:191 — task-graph check latest submission by execution_id',
+    // [FIXED] development-check-providers.ts — all 3 sites now resolve by productRef
+    // [FIXED] discovery-check-providers.ts — producerSubmission resolves by member digest
+    'src/modules/development/application/development-check-providers.ts:191 — [FIXED] task-graph check now resolves by productRef (was execution_id)',
     'src/modules/discovery/application/discovery-check-providers.ts:84 — readiness check latest proposal by node_id',
-    'src/modules/discovery/application/discovery-check-providers.ts:131 — producerSubmission latest by execution_id',
-    'src/process-modules/application/submission-validator-check-provider.ts:67 — artifact productions by execution_id',
-    'src/process-modules/application/submission-validator-check-provider.ts:75 — trace productions by execution_id',
+    'src/modules/discovery/application/discovery-check-providers.ts:131 — [FIXED] producerSubmission now resolves by member digest (was execution_id)',
+    'src/process-modules/application/submission-validator-check-provider.ts:67 — artifact productions by execution_id (provenance check)',
+    'src/process-modules/application/submission-validator-check-provider.ts:75 — trace productions by execution_id (provenance check)',
     // B. Post-acceptance effect execution_id fallback.
-    'src/modules/formalization/application/formalization-accept-products-effect.ts:65 — managed_artifact_productions fallback by execution_id',
+    'src/modules/formalization/application/formalization-accept-products-effect.ts:65 — [FIXED] execution_id fallback DELETED',
     // C. Settlement/kernel readSubmission by execution_id.
-    'src/modules/discovery/application/discovery-production-cell-installation.ts:86,92,311 — readSubmission by execution_id ORDER BY id DESC',
-    // D. latestCandidate / ORDER BY sealed_at DESC (covered by ratchets above).
-    'src/process-modules/application/node-executors/production-cell-node-executor.ts:372,505,714,981,993 — latestCandidate helper + 4 call sites',
-    'src/infrastructure/workplace/sqlite-candidate-set-repository.ts:188 — listForWorkplace ORDER BY sealed_at DESC',
-    'src/infrastructure/replay/replay-authority-rebinder.ts:74 — latest author set',
-    'src/infrastructure/replay/replay-claim-binder.ts:143 — latest author set',
-    'src/infrastructure/replay/sqlite-replay-capsule-repository.ts:384 — latest candidate set',
-    'src/modules/development/infrastructure/sqlite-development-settlement-state.ts:580,590 — latest author/reviewer per workplace',
+    'src/modules/discovery/application/discovery-production-cell-installation.ts:86,92,311 — [FIXED] readSubmission now resolves by productRef.digest (was execution_id)',
+    // D. latestCandidate / ORDER BY sealed_at DESC — ALL ELIMINATED.
+    'src/process-modules/application/node-executors/production-cell-node-executor.ts — [FIXED] latestCandidate=0 (all calls removed)',
+    'src/infrastructure/workplace/sqlite-candidate-set-repository.ts:188 — [FIXED] listForWorkplace uses candidate_set_ref DESC (not sealed_at)',
+    'src/infrastructure/replay/replay-authority-rebinder.ts:74 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
+    'src/infrastructure/replay/replay-claim-binder.ts:143 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
+    'src/infrastructure/replay/sqlite-replay-capsule-repository.ts:384 — [FIXED] resolves by gate-decision subject_candidate_set_ref',
+    'src/modules/development/infrastructure/sqlite-development-settlement-state.ts:580,590 — latest author/reviewer per workplace (table-prefixed sealed_at, not ratcheted)',
     'src/tools/products.ts:148 — candidate_read MCP tool selects latest by role',
   ];
   // Sanity: the inventory is non-empty and each entry names a real file path

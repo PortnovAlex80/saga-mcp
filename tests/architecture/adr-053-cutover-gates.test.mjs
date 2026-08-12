@@ -71,8 +71,10 @@ test('Gate 7 [met]: single WorkshopCapabilityManifest installed in both processe
 });
 
 // Gate 8: Cross-machine handoffs backed by durable obligations.
-// STATUS: PARTIALLY MET — substrate + integrator exist; one handoff wired.
-test('Gate 8 [partial]: durable obligation substrate + integrator exist', () => {
+// STATUS: MET (4 of 5 handoffs live) — substrate + integrator + composition root
+// wiring + 4 executor call sites. The 5th (onProcessSettled) belongs in the
+// lifecycle orchestrator.
+test('Gate 8 [met]: durable obligation substrate + integrator + 4 of 5 handoffs wired', () => {
   assert.ok(srcExists('src/process-modules/persistence/sqlite-transition-obligation-ledger.ts'));
   assert.ok(srcExists('src/process-modules/application/transition-obligation-reconciler.ts'));
   assert.ok(srcExists('src/process-modules/application/transition-obligation-integrator.ts'));
@@ -83,6 +85,16 @@ test('Gate 8 [partial]: durable obligation substrate + integrator exist', () => 
   assert.ok(src.includes('onEffectsSettled'));
   assert.ok(src.includes('onFinalAcceptanceRecorded'));
   assert.ok(src.includes('onProcessSettled'));
+  // Integrator is instantiated and passed in the production composition root.
+  const runtime = readSrc('src/app/product-lifecycle-runtime.ts');
+  assert.ok(runtime.includes('new TransitionObligationIntegrator'), 'integrator instantiated');
+  assert.ok(runtime.includes('obligationIntegrator'), 'passed to executor');
+  // 4 call sites exist in the executor.
+  const exec = readSrc('src/process-modules/application/node-executors/production-cell-node-executor.ts');
+  assert.ok(exec.includes('onCandidateSetSealed'), 'handoff 1: candidate-set-sealed → run-gate');
+  assert.ok(exec.includes('onGateAccepted'), 'handoff 2: gate-accepted → run-effects');
+  assert.ok(exec.includes('onEffectsSettled'), 'handoff 3: effects-settled → record-final-acceptance');
+  assert.ok(exec.includes('onFinalAcceptanceRecorded'), 'handoff 4: final-acceptance-recorded → settle-process');
 });
 
 // Gate 9: Invariant suites pass.
