@@ -591,11 +591,13 @@ export class SqliteDevelopmentModuleStore implements
                  FROM factory_candidate_sets reviewer
                 WHERE reviewer.workplace_ref=w.workplace_ref
                   AND reviewer.role='reviewer'
-                ORDER BY reviewer.sealed_at DESC,reviewer.candidate_set_ref DESC
+                ORDER BY reviewer.candidate_set_ref DESC
                 LIMIT 1) AS reviewExecutionId
          FROM factory_workplaces w
+         JOIN factory_cell_final_acceptances cfa
+           ON cfa.workplace_ref=w.workplace_ref
          JOIN factory_candidate_sets cs
-           ON cs.workplace_ref=w.workplace_ref AND cs.role='author'
+           ON cs.candidate_set_ref=cfa.candidate_set_ref AND cs.role='author'
          JOIN factory_candidate_set_members member
            ON member.candidate_set_ref=cs.candidate_set_ref
           AND member.product_schema IN (${schemaIds.map(() => '?').join(',')})
@@ -608,7 +610,7 @@ export class SqliteDevelopmentModuleStore implements
           AND w.production_cell_id=?
           AND w.loop_state='terminal'
           AND w.terminal_reason='accepted'
-        ORDER BY w.workplace_ref,cs.sealed_at DESC,cs.candidate_set_ref DESC`,
+        ORDER BY w.workplace_ref`,
     ).all(...schemaIds, processRunId, cellId) as Array<{
       workplaceRef: string;
       candidateSetRef: string;
