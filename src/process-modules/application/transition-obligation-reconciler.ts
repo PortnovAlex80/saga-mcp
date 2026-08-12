@@ -169,8 +169,25 @@ export class TransitionObligationReconciler {
         completed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.ledger.fail(obligation.obligationKey, message);
-        failed += 1;
+        // ADR-053 C7-05 — failure is fenced by the lease token this sweep just
+        // acquired: the owner that holds the lease and the SAME fence the lease
+        // was taken under (symmetric with the complete() call above). If the
+        // fail is rejected because a NEWER fence took the obligation over
+        // between lease and fail, this holder is now stale — it can neither
+        // complete nor fail the obligation. Count the failed attempt as skipped
+        // (the newer owner will re-dispatch) rather than letting the rejection
+        // crash the sweep.
+        try {
+          this.ledger.fail({
+            obligationKey: obligation.obligationKey,
+            owner: options.leaseOwner,
+            fence,
+            error: message,
+          });
+          failed += 1;
+        } catch {
+          skipped += 1;
+        }
       }
     }
 

@@ -129,6 +129,55 @@ export interface CompleteObligationInput {
 }
 
 /**
+ * ADR-053 C7-05 — fence obligation FAILURE (business-handler failure). The
+ * handler threw: the effect ITSELF failed (a genuine business error). This is a
+ * DISTINCT concept from LEASE LOSS (the holder lost the fence), which is
+ * recorded by {@link reclaim}. Both `owner` and `fence` are REQUIRED, symmetric
+ * with {@link CompleteObligationInput}: a failure that lacks either fails
+ * closed. The `fence` must be >= the stored monotonic `lease_fence`; a LOWER
+ * fence is rejected so a stale lease holder cannot fail work a newer fence owns.
+ * The stored fence is NEVER lowered by a failure attempt; a terminal state is
+ * NEVER altered.
+ */
+export interface FailObligationInput {
+  readonly obligationKey: string;
+  /**
+   * The business-failure error message (the reason the handler threw). Stored
+   * on `last_error` DISTINCTLY from the {@link LEASE_LOSS_RECLAIM_MARKER} that
+   * {@link reclaim} writes — a reader can tell a business failure apart from a
+   * lease-loss reclaim by comparing `last_error` to the marker.
+   */
+  readonly error: string;
+  /** REQUIRED: the lease owner that attempted (and failed) the handoff. */
+  readonly owner: string;
+  /** REQUIRED: the monotonic LEASE-FENCE token authorizing this failure. */
+  readonly fence: LeaseFence;
+}
+
+/**
+ * ADR-053 C7-05 — fence obligation RECLAIM (lease-loss / expiry). The previous
+ * lease holder LOST the fence (its lease expired, or a newer fence took the
+ * obligation over). This is LEASE LOSS, NOT a business failure: the effect did
+ * not throw, the holder simply no longer holds authority. Recorded DISTINCTLY
+ * from {@link fail} — {@link reclaim} writes the {@link LEASE_LOSS_RECLAIM_MARKER}
+ * sentinel to `last_error` rather than a business error, so the two transitions
+ * stay distinguishable in the durable record.
+ *
+ * Both `owner` and `fence` are REQUIRED, symmetric with completion/failure. A
+ * stale fence (LOWER than the stored `lease_fence`) is rejected: a stale holder
+ * cannot reclaim an obligation a newer fence owns. The stored fence is NEVER
+ * lowered; a terminal state is NEVER altered. Reclaim returns the obligation to
+ * `pending` so a fresh lease can pick it up.
+ */
+export interface ReclaimObligationInput {
+  readonly obligationKey: string;
+  /** REQUIRED: the lease owner performing the reclaim. */
+  readonly owner: string;
+  /** REQUIRED: the monotonic LEASE-FENCE token authorizing this reclaim. */
+  readonly fence: LeaseFence;
+}
+
+/**
  * Deterministic obligation key. The same source fact + handoff always produces
  * the same key, so a replay of the source fact's creation cannot create a
  * second obligation — it finds the existing one.
@@ -150,6 +199,16 @@ export function transitionObligationKey(input: {
 // after recovery finds its existing obligation rather than creating a second.
 // ---------------------------------------------------------------------------
 const LEASE_DURATION_SECONDS = 120;
+
+/**
+ * ADR-053 C7-05 — sentinel written to `last_error` by {@link reclaim} (lease-
+ * loss) to keep it DISTINCT from a business-handler failure recorded by
+ * {@link fail}. A reader compares `last_error` against this marker: equality
+ * means the obligation was reclaimed due to lease loss (the holder lost the
+ * fence), NOT because the effect failed. {@link fail} always writes the actual
+ * business error message, which never equals this sentinel.
+ */
+export const LEASE_LOSS_RECLAIM_MARKER = 'LEASE_LOSS_RECLAIM';
 
 export class SqliteTransitionObligationLedger {
   constructor(private readonly db: SqliteDatabase) {}
@@ -445,10 +504,66 @@ export class SqliteTransitionObligationLedger {
   }
 
   /**
-   * Record a failure. The obligation returns to pending state so the
-   * reconciler can retry it. The error is stored for diagnostics.
+   * Record a BUSINESS-HANDLER FAILURE (the effect itself failed — the handler
+   * threw). The obligation returns to `pending` so the reconciler can retry it.
+   * The business error is stored on `last_error`, DISTINCT from the
+   * {@link LEASE_LOSS_RECLAIM_MARKER} that {@link reclaim} writes, so a reader
+   * can tell a genuine business failure apart from a lease-loss reclaim.
+   *
+   * ADR-053 C7-05 — failure is FENCED BY THE LEASE TOKEN, symmetric with
+   * {@link complete}. Both `owner` and `fence` are REQUIRED: a failure that
+   * lacks either fails closed. The `fence` must be >= the obligation's stored
+   * monotonic `lease_fence`; a LOWER fence is REJECTED, so a stale lease holder
+   * (an older fence) cannot fail work that a newer fence has since taken over.
+   * The stored fence is NEVER lowered by a failure attempt (the UPDATE does not
+   * write `lease_fence`). A terminal state (`completed` / `failed`) is NEVER
+   * altered — a failure on a converged obligation is rejected outright.
    */
-  fail(obligationKey: string, error: string): TransitionObligation {
+  fail(input: FailObligationInput): TransitionObligation {
+    // Fail closed first: a failure MUST carry the lease owner and the lease
+    // fence (symmetric with complete).
+    assertLeaseFence(input.fence);
+    if (typeof input.owner !== 'string' || input.owner.trim() === '') {
+      throw new Error(
+        `TRANSITION_OBLIGATION_FAILURE_REQUIRES_OWNER: ${input.obligationKey} `
+          + '(failure must carry the lease owner; an anonymous failure is '
+          + 'rejected)',
+      );
+    }
+
+    const existing = this.get(input.obligationKey);
+    if (!existing) {
+      throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${input.obligationKey}`);
+    }
+
+    // Terminal-state guard. A converged obligation (completed) or a permanently
+    // failed one cannot be failed again — and crucially a STALE transition
+    // cannot change a terminal state. This is checked before the staleness read
+    // so a stale failure on a terminal obligation is rejected (state preserved)
+    // regardless of the fence value.
+    if (existing.state === 'completed' || existing.state === 'failed') {
+      throw new Error(
+        `TRANSITION_OBLIGATION_TERMINAL: ${input.obligationKey} is `
+          + `${existing.state}; a terminal obligation cannot be failed`,
+      );
+    }
+
+    // Stale-lease guard. A fence LOWER than the stored monotonic lease_fence
+    // means the failing holder holds an OUTDATED lease: a newer fence has since
+    // taken the obligation over. Such a failure is REJECTED — the stale holder
+    // cannot fail work a newer fence now owns. This is a READ only; the UPDATE
+    // below does not write `lease_fence`, so the stored value can never
+    // decrease here.
+    const storedFenceFloor = existing.leaseFence ?? 0;
+    if (input.fence.value < storedFenceFloor) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_STALE_FENCE: ${input.obligationKey} failure `
+          + `fence ${input.fence.value} is lower than the stored monotonic `
+          + `lease_fence ${existing.leaseFence}; a stale lease holder cannot `
+          + 'fail after a newer fence has taken over',
+      );
+    }
+
     this.db.prepare(
       `UPDATE factory_transition_obligations
        SET state = 'pending',
@@ -457,8 +572,82 @@ export class SqliteTransitionObligationLedger {
            last_error = @error,
            updated_at = datetime('now')
        WHERE obligation_key = @key`,
-    ).run({ key: obligationKey, error });
-    return this.getOrThrow(obligationKey);
+    ).run({ key: input.obligationKey, error: input.error });
+    return this.getOrThrow(input.obligationKey);
+  }
+
+  /**
+   * Record a LEASE-LOSS RECLAIM (the previous holder lost the fence — its lease
+   * expired or a newer fence took the obligation over). This is LEASE LOSS, NOT
+   * a business failure: the effect did not throw, the holder simply no longer
+   * holds authority. The obligation returns to `pending` so a fresh lease can
+   * pick it up, and {@link LEASE_LOSS_RECLAIM_MARKER} is written to `last_error`
+   * so the reclaim stays DISTINCT from a {@link fail} business failure in the
+   * durable record.
+   *
+   * ADR-053 C7-05 — reclaim is FENCED BY THE LEASE TOKEN, symmetric with
+   * {@link complete} / {@link fail}. Both `owner` and `fence` are REQUIRED: a
+   * reclaim that lacks either fails closed. The `fence` must be >= the stored
+   * monotonic `lease_fence`; a LOWER fence is REJECTED, so a stale lease holder
+   * cannot reclaim an obligation a newer fence owns (only a current holder may
+   * reclaim). The stored fence is NEVER lowered (the UPDATE does not write
+   * `lease_fence`). A terminal state is NEVER altered.
+   */
+  reclaim(input: ReclaimObligationInput): TransitionObligation {
+    // Fail closed first: a reclaim MUST carry the lease owner and the lease
+    // fence (symmetric with complete / fail).
+    assertLeaseFence(input.fence);
+    if (typeof input.owner !== 'string' || input.owner.trim() === '') {
+      throw new Error(
+        `TRANSITION_OBLIGATION_RECLAIM_REQUIRES_OWNER: ${input.obligationKey} `
+          + '(reclaim must carry the lease owner; an anonymous reclaim is '
+          + 'rejected)',
+      );
+    }
+
+    const existing = this.get(input.obligationKey);
+    if (!existing) {
+      throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${input.obligationKey}`);
+    }
+
+    // Terminal-state guard. A converged/permanently-failed obligation cannot be
+    // reclaimed, and a STALE transition cannot change a terminal state.
+    if (existing.state === 'completed' || existing.state === 'failed') {
+      throw new Error(
+        `TRANSITION_OBLIGATION_TERMINAL: ${input.obligationKey} is `
+          + `${existing.state}; a terminal obligation cannot be reclaimed`,
+      );
+    }
+
+    // Stale-lease guard. A fence LOWER than the stored monotonic lease_fence
+    // means the reclaiming holder holds an OUTDATED lease. Such a reclaim is
+    // REJECTED — only the CURRENT (>= stored) fence may reclaim; a stale holder
+    // cannot reclaim an obligation a newer fence owns. READ only; the UPDATE
+    // below does not write `lease_fence`, so the stored value can never
+    // decrease.
+    const storedFenceFloor = existing.leaseFence ?? 0;
+    if (input.fence.value < storedFenceFloor) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_STALE_FENCE: ${input.obligationKey} reclaim `
+          + `fence ${input.fence.value} is lower than the stored monotonic `
+          + `lease_fence ${existing.leaseFence}; a stale lease holder cannot `
+          + 'reclaim after a newer fence has taken over',
+      );
+    }
+
+    // Lease-loss reclaim: record the sentinel (NOT a business error) so the
+    // reclaim is distinguishable from a handler failure, and return to pending
+    // for a fresh lease.
+    this.db.prepare(
+      `UPDATE factory_transition_obligations
+       SET state = 'pending',
+           lease_owner = NULL,
+           lease_expires_at = NULL,
+           last_error = @marker,
+           updated_at = datetime('now')
+       WHERE obligation_key = @key`,
+    ).run({ key: input.obligationKey, marker: LEASE_LOSS_RECLAIM_MARKER });
+    return this.getOrThrow(input.obligationKey);
   }
 
   /**
