@@ -166,11 +166,22 @@ function runLocalReadiness(
     // name only in evidence; commands run from that isolated root.
     const packageJson = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
       scripts?: Record<string, unknown>;
+      dependencies?: Record<string, unknown>;
+      devDependencies?: Record<string, unknown>;
+      peerDependencies?: Record<string, unknown>;
+      optionalDependencies?: Record<string, unknown>;
     };
     if (typeof packageJson.scripts?.test !== 'string') {
       return evidence('failed', subject, {
         reason: 'required npm script "test" is missing',
       });
+    }
+    // The git-archive checkout has source but no node_modules. Install
+    // dependencies (declared OR dev) before running the test command, otherwise
+    // any test requiring a devDependency (jsdom, etc.) fails with MODULE_NOT_FOUND.
+    // `--no-audit --no-fund` keeps it quiet; the timeout bounds a stuck registry.
+    if (hasDependencySpecifiers(packageJson)) {
+      runNpm(['install', '--no-audit', '--no-fund'], directory, 240_000);
     }
     runNpm(['test'], directory, 120_000);
     // `npm start` + loopback HTTP probe only applies to served apps. A static
@@ -247,6 +258,21 @@ function runNpm(args: readonly string[], cwd: string, timeout: number): void {
     maxBuffer: 8 * 1024 * 1024,
     windowsHide: true,
   });
+}
+
+function hasDependencySpecifiers(packageJson: {
+  dependencies?: unknown;
+  devDependencies?: unknown;
+  peerDependencies?: unknown;
+  optionalDependencies?: unknown;
+}): boolean {
+  for (const key of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+    const group = packageJson[key];
+    if (group && typeof group === 'object' && Object.keys(group as Record<string, unknown>).length > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function npmCommand(args: readonly string[]): { executable: string; args: string[] } {
