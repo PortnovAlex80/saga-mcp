@@ -22,17 +22,55 @@ interface SnapshotArtifact {
   contentHash: string;
 }
 
+interface SnapshotPayload {
+  schemaVersion?: string;
+  artifacts?: unknown;
+}
+
+/**
+ * Validate a parsed product payload IS a Workplace production snapshot and
+ * extract its (artifactId, contentHash) pairs. A managed-production product
+ * whose body is not a snapshot fails closed — it must carry the artifacts the
+ * worker produced. (Typed-submission reports are skipped before reaching here.)
+ */
+function extractSnapshotArtifacts(
+  snapshot: SnapshotPayload,
+  schemaId: string,
+  ref: string,
+): Array<{ artifact_id: number; content_hash: string }> {
+  if (
+    snapshot.schemaVersion !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
+    || !Array.isArray(snapshot.artifacts)
+  ) {
+    throw new Error(
+      `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_SNAPSHOT: ${schemaId}/${ref}`,
+    );
+  }
+  return (snapshot.artifacts as SnapshotArtifact[]).map(a => ({
+    artifact_id: a.artifactId,
+    content_hash: a.contentHash,
+  }));
+}
+
 /**
  * Projection effect after an authoritative Cell GateDecision=accepted.
  *
- * ADR-053 / conveyor-v4.3 — accepted products are immutable Workplace
- * production snapshots persisted in `factory_process_products`. Each accepted
- * product ref is `workplace:<module>:<node>:<snapshotHash>` (the universal
- * exact-product store key), NOT `artifact:<id>`. The artifact rows produced by
- * the worker live INSIDE the snapshot, so the effect resolves them by reading
- * the pinned snapshot payload and extracting the (artifactId, contentHash)
- * pairs it carries. A product whose pinned row is missing, whose payload_hash
- * drifted, or whose body is not a Workplace production snapshot fails closed.
+ * ADR-053 / conveyor-v4.3 — a formalization Cell's accepted product is one of:
+ *   - a managed-production Workplace snapshot (`factory_process_products`, ref
+ *     `workplace:<module>:<node>:<snapshotHash>`) — the artifact-producing
+ *     cells (product-contract, use-cases, acceptance-contract, architecture).
+ *     The artifact rows the worker created live INSIDE the snapshot, so the
+ *     effect resolves them by reading the pinned snapshot payload and
+ *     extracting the (artifactId, contentHash) pairs it carries.
+ *   - a typed-submission report (`factory_managed_node_submissions`, ref
+ *     `managed-node-submission:<id>`) — the reconciliation cell produces an
+ *     authoritative report, NOT a desk snapshot. It carries no artifacts to
+ *     accept (the WHAT artifacts were already accepted upstream), so such
+ *     products are skipped.
+ *
+ * A managed-production product whose pinned row is missing or whose body is not
+ * a Workplace snapshot fails closed. A typed-submission product whose pinned
+ * row is missing also fails closed; a present report payload is skipped.
  */
 export function createFormalizationAcceptProductsEffect(
   db: SqlDatabasePort,
@@ -46,13 +84,37 @@ export function createFormalizationAcceptProductsEffect(
             `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${p.schemaId}/${p.ref}`,
           );
         }
-        // The (schemaId, ref, product_hash) triple is exactly the
-        // idx_factory_process_products_schema_ref_hash index key, so this is a
-        // direct equality probe on the immutable pinned product row.
-        // The (schemaId, ref, product_hash) triple is exactly the
-        // idx_factory_process_products_schema_ref_hash index key, so this is a
-        // direct equality probe pinning the immutable product row by its full
-        // ProductRef identity.
+        // Typed-submission product (reconciliation report) — authoritative
+        // report document, not a desk snapshot: no artifacts to accept. Only a
+        // snapshot-typed submission would project artifacts; reports are
+        // skipped. A missing pinned row still fails closed.
+        const subMatch = /^managed-node-submission:(\d+)$/u.exec(p.ref);
+        if (subMatch) {
+          const sub = db.prepare(
+            `SELECT payload_snapshot
+               FROM factory_managed_node_submissions
+              WHERE id=?`,
+          ).get(Number(subMatch[1])) as ProductSnapshotRow | undefined;
+          if (!sub) {
+            throw new Error(
+              `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${p.schemaId}/${p.ref}`,
+            );
+          }
+          const parsed = JSON.parse(sub.payload_snapshot) as {
+            schemaVersion?: string;
+            artifacts?: unknown;
+          };
+          if (
+            parsed.schemaVersion
+              !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
+          ) {
+            return []; // report product — no artifacts to accept
+          }
+          return extractSnapshotArtifacts(parsed, p.schemaId, p.ref);
+        }
+        // managed-production Workplace snapshot pinned in
+        // factory_process_products by the full ProductRef triple
+        // (schema_id, artifact_ref, product_hash) — the indexed exact lookup.
         const row = db.prepare(
           `SELECT payload_snapshot
              FROM factory_process_products
@@ -67,19 +129,7 @@ export function createFormalizationAcceptProductsEffect(
           schemaVersion?: string;
           artifacts?: unknown;
         };
-        if (
-          snapshot.schemaVersion !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
-          || !Array.isArray(snapshot.artifacts)
-        ) {
-          throw new Error(
-            `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_SNAPSHOT: ${p.schemaId}/${p.ref}`,
-          );
-        }
-        const artifacts = snapshot.artifacts as SnapshotArtifact[];
-        return artifacts.map(a => ({
-          artifact_id: a.artifactId,
-          content_hash: a.contentHash,
-        }));
+        return extractSnapshotArtifacts(snapshot, p.schemaId, p.ref);
       });
 
       const apply = db.transaction(() => {
