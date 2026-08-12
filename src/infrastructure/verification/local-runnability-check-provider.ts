@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -16,6 +16,10 @@ import {
 } from '../../modules/development/application/candidate-check-contracts.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../modules/development/domain/development-schemas.js';
 import type { ReadinessProfile, RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
+import {
+  runServedProcess,
+  type CommandTarget,
+} from './served-process-runner.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -397,22 +401,27 @@ function jvmEnv(): NodeJS.ProcessEnv {
 }
 
 /**
- * LR-04 — run the SERVED profile's start command, probe loopback, and shut it
- * down. The serve command comes from the explicit readiness profile, NOT from
- * package.json.scripts.start. The provider spawns the stated command on a
- * deterministic loopback port, probes the endpoint, then terminates the process
- * tree. Throws when the probe times out so the caller records a 'failed'
- * readiness outcome.
+ * LR-04 / LR-05 — run the SERVED profile's start command, probe loopback, and
+ * shut it down. The serve command comes from the explicit readiness profile,
+ * NOT from package.json.scripts.start. The provider delegates the served
+ * lifecycle (start → observe → terminate) to the reliable runner so the process
+ * is isolated (detached process group), observed (pid + liveness + loopback),
+ * and reliably terminated (whole tree, kill errors surfaced, fail closed on
+ * unsupported control). Throws {@link ServedProcessError} on any lifecycle
+ * failure so the caller records a 'failed' readiness outcome; the runner's
+ * finally guarantees cleanup on success, failure, and timeout/abort.
  */
 function runServedProbe(
   directory: string,
   subject: CandidateSubject,
   startCommand: string,
-): { port: number; stdoutDigest: string; stderrDigest: string } {
+): { pid: number; port: number; stdoutDigest: string; stderrDigest: string } {
   const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
   const target = resolveCommandTarget(startCommand);
-  const child = spawn(target.executable, target.args, {
+  const observation = runServedProcess({
     cwd: directory,
+    target,
+    port,
     env: {
       ...process.env,
       PORT: String(port),
@@ -420,23 +429,13 @@ function runServedProbe(
       BROWSER: 'none',
       CI: '1',
     },
-    shell: target.shell,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
+    probeTimeoutMs: 15_000,
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout?.on('data', chunk => { stdout += String(chunk).slice(0, 16_384); });
-  child.stderr?.on('data', chunk => { stderr += String(chunk).slice(0, 16_384); });
-  try {
-    probe(`http://127.0.0.1:${port}/`, child.pid, 15_000);
-  } finally {
-    terminateProcessTree(child.pid);
-  }
   return {
+    pid: observation.pid,
     port,
-    stdoutDigest: sha256Hex(stdout),
-    stderrDigest: sha256Hex(stderr),
+    stdoutDigest: sha256Hex(observation.stdout),
+    stderrDigest: sha256Hex(observation.stderr),
   };
 }
 
@@ -445,9 +444,10 @@ function runServedProbe(
  * routing: `npm`/`node`-prefixed commands route through the bundled tooling
  * (npm-cli.js / process.execPath) without a shell; every other command runs
  * verbatim through the platform shell so the stated wrapper (./gradlew, mvnw, …)
- * is honored as-is.
+ * is honored as-is. The returned shape is the reliable runner's
+ * {@link CommandTarget}.
  */
-function resolveCommandTarget(command: string): { executable: string; args: string[]; shell: boolean } {
+function resolveCommandTarget(command: string): CommandTarget {
   const trimmed = command.trim();
   const tokens = trimmed.split(/\s+/u);
   const [program] = tokens;
@@ -493,49 +493,6 @@ function npmCommand(args: readonly string[]): { executable: string; args: string
   const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
   if (!existsSync(npmCli)) throw new Error('npm cli is unavailable');
   return { executable: process.execPath, args: [npmCli, ...args] };
-}
-
-function probe(
-  url: string,
-  pid: number | undefined,
-  timeoutMs: number,
-): void {
-  const script = String.raw`
-const http=require('http');
-const deadline=Date.now()+Number(process.argv[2]);
-function attempt(){
-  const req=http.get(process.argv[1],res=>{
-    res.resume();
-    if((res.statusCode||500)>=200&&(res.statusCode||500)<500) process.exit(0);
-    setTimeout(attempt,100);
-  });
-  req.setTimeout(500,()=>req.destroy());
-  req.on('error',()=>Date.now()<deadline?setTimeout(attempt,100):process.exit(1));
-}
-attempt();`;
-  try {
-    execFileSync(process.execPath, ['-e', script, url, String(timeoutMs)], {
-      stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs + 2_000,
-      windowsHide: true,
-    });
-  } catch {
-    throw new Error(`loopback readiness probe timed out (pid=${pid ?? 'unknown'})`);
-  }
-}
-
-function terminateProcessTree(pid: number | undefined): void {
-  if (!pid) return;
-  try {
-    if (process.platform === 'win32') {
-      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
-        stdio: 'ignore', windowsHide: true,
-      });
-    } else {
-      process.kill(-pid, 'SIGTERM');
-    }
-  } catch {
-    // The process may already have exited after the successful probe.
-  }
 }
 
 function git(repositoryPath: string, args: readonly string[]): string {
