@@ -107,6 +107,19 @@ export interface AppendObligationInput {
   readonly causalSourceRevision: CausalSourceRevision;
 }
 
+/**
+ * ADR-053 C7-06 — the production obligation-creation input. Identical to
+ * {@link AppendObligationInput} MINUS the `causalSourceRevision`: the causal
+ * revision is NOT supplied by the caller — it is ALLOCATED by the store inside
+ * {@link appendFenced}. This removes the fabricated `fence: 1` token from every
+ * canonical production handoff (CandidateSet seal, Gate acceptance, Effects
+ * settlement, FinalAcceptance, Process settlement): the causal source revision
+ * now carries a REAL monotonic fence value allocated atomically with the
+ * obligation's creation, and the obligation's `lease_fence` is pre-reserved to
+ * the same value so the reconciler's first lease runs under a real fence.
+ */
+export type AppendFencedObligationInput = Omit<AppendObligationInput, 'causalSourceRevision'>;
+
 export interface CompleteObligationInput {
   readonly obligationKey: string;
   readonly completionReceipt: string;
@@ -244,6 +257,78 @@ export class SqliteTransitionObligationLedger {
       handoffKind: input.handoffKind,
       ownerCapability: input.ownerCapability,
       fence: input.causalSourceRevision.value,
+    });
+    return this.getOrThrow(key);
+  }
+
+  /**
+   * ADR-053 C7-06 — append an obligation AND allocate its FIRST real monotonic
+   * lease fence in ONE atomic IMMEDIATE transaction. This is the production
+   * obligation-creation path: it replaces the fabricated `fence: 1` causal-
+   * revision stub that every production handoff previously passed. The causal
+   * source revision (the `fence` column) is set to the ALLOCATED fence value —
+   * the creation-generation fence IS the provenance revision of this obligation
+   * (which fence-generation caused it). The obligation's `lease_fence` is
+   * pre-reserved to the same value, so the reconciler's first lease runs under a
+   * real fence rather than allocating one from NULL.
+   *
+   * The fence is ALLOCATED BY THE STORE (same as {@link allocateLeaseFence}),
+   * never supplied by the caller: a caller can neither choose nor lower it. The
+   * causal revision is therefore a REAL monotonic value — not a fabricated
+   * constant.
+   *
+   * For a REPLAY (the obligation already exists from a prior append, e.g. a
+   * crash-recovery re-seal of the same CandidateSet), this is a NO-OP: `INSERT
+   * OR IGNORE` inserts nothing and the existing causal revision + lease fence
+   * are PRESERVED. Provenance is immutable — a replay does NOT allocate a new
+   * fence or change the causal revision.
+   *
+   * @returns the obligation (newly-created with its allocated fence, or the
+   *          existing one for a replay).
+   */
+  appendFenced(input: AppendFencedObligationInput): TransitionObligation {
+    const key = transitionObligationKey(input);
+    this.transaction(() => {
+      const insertResult = this.db.prepare(
+        `INSERT OR IGNORE INTO factory_transition_obligations
+           (obligation_key, source_kind, source_ref, source_digest,
+            subject_ref, handoff_kind, owner_capability, fence, state)
+         VALUES (@key, @sourceKind, @sourceRef, @sourceDigest,
+                 @subjectRef, @handoffKind, @ownerCapability, 0, 'pending')`,
+      ).run({
+        key,
+        sourceKind: input.sourceKind,
+        sourceRef: input.sourceRef,
+        sourceDigest: input.sourceDigest,
+        subjectRef: input.subjectRef,
+        handoffKind: input.handoffKind,
+        ownerCapability: input.ownerCapability,
+      });
+      if (insertResult.changes > 0) {
+        // New obligation: allocate the first real monotonic fence (current + 1)
+        // and set BOTH the causal revision (`fence`) and the pre-reserved lease
+        // fence (`lease_fence`) to the allocated value. The causal revision
+        // records WHICH generation created this obligation; the pre-reserved
+        // lease fence means the reconciler's first lease runs under a real fence.
+        const row = this.db.prepare(
+          `SELECT COALESCE(lease_fence, 0) AS current
+             FROM factory_transition_obligations
+            WHERE obligation_key = ?`,
+        ).get(key) as { current: number } | undefined;
+        if (!row) {
+          throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${key}`);
+        }
+        const candidate = row.current + 1;
+        this.db.prepare(
+          `UPDATE factory_transition_obligations
+              SET fence = @candidate,
+                  lease_fence = MAX(COALESCE(lease_fence, 0), @candidate),
+                  updated_at = datetime('now')
+            WHERE obligation_key = @key`,
+        ).run({ key, candidate });
+      }
+      // Replay (changes === 0): the existing obligation's causal revision and
+      // lease fence are preserved — no allocation, no overwrite.
     });
     return this.getOrThrow(key);
   }

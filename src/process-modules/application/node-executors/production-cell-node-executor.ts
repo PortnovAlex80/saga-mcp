@@ -603,7 +603,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           gateDecisionKey: decision.decisionKey,
           gateDecisionDigest: decision.decisionDigest,
           workplaceRef: serializeWorkplaceRef(workplace.ref),
-          fence: 1,
         });
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
@@ -632,7 +631,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           gateDecisionKey: decision.decisionKey,
           gateDecisionDigest: decision.decisionDigest,
           workplaceRef: serializeWorkplaceRef(workplace.ref),
-          fence: 1,
         });
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
@@ -754,7 +752,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       this.opts.obligationIntegrator.onEffectsSettled({
         workplaceRef: serializeWorkplaceRef(workplace.ref),
         effectReceiptDigest: effectReceiptRef,
-        fence: 1,
       });
     }
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
@@ -805,7 +802,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
       acceptanceDigest,
       workplaceRef: serializeWorkplaceRef(workplaceRef),
-      fence: 1,
     });
     const effectInput = {
       authority: {
@@ -1111,7 +1107,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: set.candidateSetRef,
         candidateSetDigest: set.candidateSetDigest,
         workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
       });
       return set;
     });
@@ -1217,7 +1212,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: set.candidateSetRef,
         candidateSetDigest: set.candidateSetDigest,
         workplaceRef: serializeWorkplaceRef(workplaceRef),
-        fence: 1,
       });
       return set;
     });

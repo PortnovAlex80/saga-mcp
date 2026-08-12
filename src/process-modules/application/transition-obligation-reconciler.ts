@@ -131,6 +131,30 @@ export class TransitionObligationReconciler {
       const fence = options.fence
         ?? this.ledger.allocateLeaseFence(obligation.obligationKey);
 
+      // ADR-053 C7-06 — LEASE-LOSS RECLAIM. findReady returns in_progress
+      // obligations ONLY when their lease has expired (the previous holder
+      // crashed or stalled). Before re-leasing, call the fenced reclaim() to
+      // record the LEASE_LOSS_RECLAIM_MARKER sentinel — DISTINCT from a business
+      // failure (fail) — so the durable record shows the holder LOST the fence,
+      // not that the effect threw. The freshly-allocated fence (current+1) is
+      // strictly higher than the stored monotonic lease_fence, so reclaim's
+      // staleness guard accepts it; the obligation returns to 'pending' for the
+      // lease CAS below. If reclaim is rejected (a concurrent sweep raced the
+      // obligation to terminal or a newer fence already took over), skip this
+      // obligation — the newer owner will redrive it.
+      if (obligation.state === 'in_progress') {
+        try {
+          this.ledger.reclaim({
+            obligationKey: obligation.obligationKey,
+            owner: options.leaseOwner,
+            fence,
+          });
+        } catch {
+          skipped += 1;
+          continue;
+        }
+      }
+
       const leased = this.ledger.lease(
         obligation.obligationKey,
         options.leaseOwner,

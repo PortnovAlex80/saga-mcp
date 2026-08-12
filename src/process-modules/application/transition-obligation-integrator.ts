@@ -23,11 +23,10 @@
 
 import type { SqliteTransitionObligationLedger } from '../persistence/sqlite-transition-obligation-ledger.js';
 import type {
-  AppendObligationInput,
+  AppendFencedObligationInput,
   TransitionSourceKind,
   TransitionHandoffKind,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
-import { causalSourceRevision } from '../domain/transition-obligation.js';
 
 // ---------------------------------------------------------------------------
 // Obligation-creation utilities — one per source fact kind.
@@ -36,13 +35,13 @@ import { causalSourceRevision } from '../domain/transition-obligation.js';
 // The obligation key is deterministic: a replay of the source fact finds the
 // existing obligation (INSERT OR IGNORE).
 //
-// ADR-053 C7-01 — the `fence` argument each utility accepts is the CAUSAL
-// SOURCE REVISION of the source fact (provenance, not a lease-fence ordering
-// token). It is branded into a CausalSourceRevision at this seam before
-// reaching the ledger, so the causal revision and the lease fence (used by the
-// reconciler) can never be confused downstream. The public argument stays a
-// plain number for now (callers still pass the interim revision stub); a later
-// card retypes it once real source-fact revisions are available.
+// ADR-053 C7-06 — the causal source revision (provenance) is NO LONGER supplied
+// by the caller as a fabricated `fence: 1` stub. It is ALLOCATED by the store
+// inside {@link SqliteTransitionObligationLedger.appendFenced}: the creation-
+// generation fence IS the provenance revision. The obligation's `lease_fence` is
+// pre-reserved to the same value, so the reconciler's first lease runs under a
+// REAL monotonic fence. A replay (same source fact after crash recovery) is a
+// no-op: the existing causal revision and lease fence are preserved.
 // ---------------------------------------------------------------------------
 
 export interface ObligationIntegratorDeps {
@@ -57,16 +56,14 @@ export class TransitionObligationIntegrator {
     candidateSetRef: string;
     candidateSetDigest: string;
     workplaceRef: string;
-    fence: number;
   }): void {
-    this.append({
+    this.appendFenced({
       sourceKind: 'candidate-set-sealed',
       sourceRef: input.candidateSetRef,
       sourceDigest: input.candidateSetDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'run-gate',
       ownerCapability: 'gate-run-driver',
-      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -75,16 +72,14 @@ export class TransitionObligationIntegrator {
     gateDecisionKey: string;
     gateDecisionDigest: string;
     workplaceRef: string;
-    fence: number;
   }): void {
-    this.append({
+    this.appendFenced({
       sourceKind: 'gate-accepted',
       sourceRef: input.gateDecisionKey,
       sourceDigest: input.gateDecisionDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'run-effects',
       ownerCapability: 'production-cell-node-executor',
-      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -92,16 +87,14 @@ export class TransitionObligationIntegrator {
   onEffectsSettled(input: {
     workplaceRef: string;
     effectReceiptDigest: string;
-    fence: number;
   }): void {
-    this.append({
+    this.appendFenced({
       sourceKind: 'effects-settled',
       sourceRef: input.workplaceRef,
       sourceDigest: input.effectReceiptDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'record-final-acceptance',
       ownerCapability: 'production-cell-node-executor',
-      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -110,16 +103,14 @@ export class TransitionObligationIntegrator {
     finalAcceptanceRef: string;
     acceptanceDigest: string;
     workplaceRef: string;
-    fence: number;
   }): void {
-    this.append({
+    this.appendFenced({
       sourceKind: 'final-acceptance-recorded',
       sourceRef: input.finalAcceptanceRef,
       sourceDigest: input.acceptanceDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'settle-process',
       ownerCapability: 'process-settlement',
-      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
@@ -128,20 +119,18 @@ export class TransitionObligationIntegrator {
     processRunId: number;
     settlementDigest: string;
     workplaceRef: string;
-    fence: number;
   }): void {
-    this.append({
+    this.appendFenced({
       sourceKind: 'process-settled',
       sourceRef: `process-run:${input.processRunId}`,
       sourceDigest: input.settlementDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'route-lifecycle',
       ownerCapability: 'lifecycle-router',
-      causalSourceRevision: causalSourceRevision(input.fence),
     });
   }
 
-  private append(input: AppendObligationInput): void {
+  private appendFenced(input: AppendFencedObligationInput): void {
     // ADR-053 B-8 — obligations are MANDATORY crash-recovery facts, NOT
     // best-effort. A failure to append MUST propagate. When this is called
     // inside the source transition's transaction (e.g. the CandidateSet seal
@@ -149,7 +138,11 @@ export class TransitionObligationIntegrator {
     // recorded iff the source commits (atomic, all-or-nothing). Swallowing
     // here would leave a sealed CandidateSet with no redrive target after a
     // crash between seal and gate.
-    this.deps.ledger.append(input);
+    //
+    // ADR-053 C7-06 — the causal source revision is ALLOCATED by the store
+    // (appendFenced), not supplied by the caller. No fabricated `fence` token
+    // crosses this seam.
+    this.deps.ledger.appendFenced(input);
   }
 }
 
