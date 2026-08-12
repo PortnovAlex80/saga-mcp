@@ -1319,6 +1319,22 @@ END;
 --
 -- This table is the SUBSTRATE; Phase 8 wires production handoffs onto it.
 -- Phase 2 only creates the table, the repository and the fenced reconciler.
+--
+-- ADR-053 C7-01/C7-02 — storage split of the two concerns previously conflated
+-- on a single fence column:
+--   * fence               — CAUSAL SOURCE REVISION (provenance identifier of
+--                           the source fact that caused the obligation). SET
+--                           once at append; never overwritten by a lease.
+--   * lease_fence         — MONOTONIC LEASE FENCE (ordering token carried by a
+--                           lease). DISTINCT durable storage from the causal
+--                           revision. NULL until the obligation is first leased;
+--                           written only by the lease path and never allowed to
+--                           decrease on overwrite (storage-level guarantee:
+--                           lease_fence = MAX(COALESCE(lease_fence, 0), :new)).
+--                           A stale lease holder thus cannot complete newer work.
+--                           (Atomic allocation / callers can't choose a future
+--                           fence is C7-03; this column only stores and reads
+--                           monotonically.)
 CREATE TABLE IF NOT EXISTS factory_transition_obligations (
   obligation_key      TEXT PRIMARY KEY,
   source_kind         TEXT NOT NULL,
@@ -1328,6 +1344,7 @@ CREATE TABLE IF NOT EXISTS factory_transition_obligations (
   handoff_kind        TEXT NOT NULL,
   owner_capability    TEXT NOT NULL,
   fence               INTEGER NOT NULL,
+  lease_fence         INTEGER,
   state               TEXT NOT NULL DEFAULT 'pending'
                         CHECK (state IN ('pending','in_progress','completed','failed')),
   attempt             INTEGER NOT NULL DEFAULT 0,
@@ -2340,6 +2357,39 @@ export function ensureAcceptedAuthorityHeadTaskIdColumn(db: {
   if (columns.some((c) => c.name === 'accepted_author_task_id')) return;
   db.exec(
     'ALTER TABLE factory_accepted_authority_head ADD COLUMN accepted_author_task_id TEXT',
+  );
+}
+
+/**
+ * Additive migration (ADR-053 C7-02): give the monotonic lease fence its own
+ * DURABLE, DISTINCT storage on a pre-existing `factory_transition_obligations`
+ * table that was created before the column existed.
+ *
+ * Fresh databases get `lease_fence INTEGER` from `SCHEMA_SQL`'s CREATE TABLE
+ * (and the SCHEMA_VERSION is bumped to 7). Existing v≤6 databases land here with
+ * an obligations table missing the column; this adds it as NULL — NO row reset,
+ * NO rewrite of the existing `fence` column. Pre-migration obligations simply
+ * read with `lease_fence = NULL` until they are next leased (at which point the
+ * new `lease` path writes the monotonic fence here, leaving the causal `fence`
+ * column untouched). Idempotent via a PRAGMA table_info probe — matches the
+ * {@link ensureAcceptedAuthorityHeadTaskIdColumn} idiom.
+ *
+ * This is the storage half of the C7-01/C7-02 split: previously the single
+ * `fence` column was SET at append with the causal source revision and
+ * OVERWRITTEN at lease with the fence (conflating provenance with an ordering
+ * token). After this migration the two concepts have separate durable homes.
+ * The column is deliberately NULLable and is NOT backfilled from `fence`, so the
+ * migration cannot accidentally launder an ambiguous legacy `fence` value (which
+ * may be either a causal revision or a prior lease fence) into the new column.
+ */
+export function ensureTransitionObligationLeaseFenceColumn(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(factory_transition_obligations)').all();
+  if (columns.some((c) => c.name === 'lease_fence')) return;
+  db.exec(
+    'ALTER TABLE factory_transition_obligations ADD COLUMN lease_fence INTEGER',
   );
 }
 

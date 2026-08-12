@@ -134,7 +134,11 @@ test('Phase 2: crash after lease → lease expiry → recovery converges to one 
   assert.equal(afterRecovery.state, 'in_progress');
   assert.equal(afterRecovery.attempt, 2);
   assert.equal(afterRecovery.leaseOwner, 'reconciler-2');
-  assert.equal(afterRecovery.fence, 2);
+  // C7-02 storage split: the lease fence lives on the DISTINCT lease_fence
+  // column; the causal `fence` (revision 1 from append) is preserved across
+  // leases and never overwritten.
+  assert.equal(afterRecovery.leaseFence, 2);
+  assert.equal(afterRecovery.fence, 1);
 
   // Complete with the SAME receipt the original would have produced.
   const completed = ledger.complete({

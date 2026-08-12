@@ -124,19 +124,24 @@ test('C7-01 contract: reconciler rejects a CausalSourceRevision as its lease fen
 });
 
 // ===========================================================================
-// 5. Behavior preserved + the overloaded column PINNED (so C7-02..C7-06 have a
-//    precise before/after target). append records the causal revision on the
-//    column; lease OVERWRITES it with the fence. Same value semantics as
-//    before C7-01; the two concepts are now typed apart at the seams.
+// 5. ADR-053 C7-02 storage split — the AFTER target of the overload that C7-01
+//    pinned. append records the CAUSAL SOURCE REVISION on `fence`; lease now
+//    writes the LEASE FENCE to the DISTINCT `lease_fence` column and does NOT
+//    overwrite the causal revision. The two concepts now have separate durable
+//    homes: `fence` is preserved across a lease; `leaseFence` carries the
+//    monotonic ordering token.
 // ===========================================================================
-test('C7-01 contract: append records causal revision; lease overwrites with fence (overload pinned)', () => {
+test('C7-02 storage split: append records causal revision on `fence`; lease writes the DISTINCT `lease_fence` column (causal revision preserved)', () => {
   const { ledger } = makeLedger();
   const ob = ledger.append({ ...BASE_APPEND, causalSourceRevision: causalSourceRevision(7) });
   assert.equal(ledger.get(ob.obligationKey).fence, 7, 'causal revision 7 stored at append');
+  assert.equal(ledger.get(ob.obligationKey).leaseFence, null, 'no lease fence until leased');
 
   assert.ok(ledger.lease(ob.obligationKey, 'rec-1', leaseFence(9)));
-  assert.equal(ledger.get(ob.obligationKey).fence, 9, 'lease fence 9 overwrites column at lease');
-  assert.equal(ledger.get(ob.obligationKey).state, 'in_progress');
+  const afterLease = ledger.get(ob.obligationKey);
+  assert.equal(afterLease.fence, 7, 'causal revision is PRESERVED — lease no longer overwrites fence');
+  assert.equal(afterLease.leaseFence, 9, 'lease fence 9 persisted on the DISTINCT lease_fence column');
+  assert.equal(afterLease.state, 'in_progress');
 });
 
 // ===========================================================================

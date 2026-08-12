@@ -30,7 +30,7 @@
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
 | C7-01 | Separate causal source revision from lease fencing | Fencing B | P0-02 | done | refactor(factory): separate obligation revision from lease fence | domain transition-obligation.ts (CausalSourceRevision/LeaseFence brands); tests/infrastructure/transition-obligation-fence-separation.contract.test.mjs |
-| C7-02 | Add durable monotonic lease-fence storage | Fencing B | C5-01, C7-01 | pending | feat(factory): persist monotonic obligation lease fences | — |
+| C7-02 | Add durable monotonic lease-fence storage | Fencing B | C5-01, C7-01 | done | feat(factory): persist monotonic obligation lease fences | schema factory_transition_obligations.lease_fence (v7, additive); sqlite-transition-obligation-ledger.ts monotonic MAX(COALESCE); tests/infrastructure/transition-obligation-lease-fence-storage.test.mjs (7) |
 | C7-03 | Allocate lease fences atomically in the ledger | Fencing B | C7-02 | pending | fix(factory): allocate obligation fences atomically | — |
 | C7-04 | Require owner and fence for obligation completion | Fencing B | C7-03 | pending | fix(factory): fence obligation completion by lease token | — |
 | C7-05 | Fence failure, expiry, and reclaim transitions | Fencing B | C7-04 | pending | fix(factory): fence obligation failure and reclaim | — |
