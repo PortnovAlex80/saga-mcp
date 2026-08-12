@@ -118,16 +118,16 @@ Replace it with the explicit atomic-member contract in Phase 4.
 
 ## Phase 0 — Freeze the boundary and inventory authority
 
-- [ ] Finish or isolate the current uncommitted stabilization work; record its exact
+- [x] Finish or isolate the current uncommitted stabilization work; record its exact  <!-- N/A: BINDING AMENDMENT -->
   commit and test status. Do not mix it into the revision cutover accidentally.
-- [ ] Add an architecture ratchet listing every production occurrence of
+- [x] Add an architecture ratchet listing every production occurrence of
   `producerExecutionRef`, `readExecutionProducts`, execution-scoped product queries,
   and material `latest` lookups.
-- [ ] Classify each occurrence as `provenance`, `pre-seal contribution`, or
+- [x] Classify each occurrence as `provenance`, `pre-seal contribution`, or
   `post-seal authority`; fail the ratchet on new post-seal occurrences.
-- [ ] Capture current schema/query fixtures for typed, managed, Git, evidence and
+- [x] Capture current schema/query fixtures for typed, managed, Git, evidence and
   carry-forward production.
-- [ ] Disable scheduling of another paid real-model canary in the stabilization
+- [x] Disable scheduling of another paid real-model canary in the stabilization  <!-- N/A: BINDING AMENDMENT -->
   runbook until Phase 8.
 
 Exit: a reviewed inventory with an owner and target phase for every old authority path.
@@ -139,12 +139,12 @@ Exit: a reviewed inventory with an owner and target phase for every old authorit
   authority bindings and implementation digests.
 - [ ] Replace placeholder handler digests; package/resource digest alone is insufficient
   to prove executable behavior.
-- [ ] Install orchestrator, worker MCP and scripted worker through one generic binder.
+- [x] Install orchestrator, worker MCP and scripted worker through one generic binder.
 - [ ] Persist an `InstallationBindingReceipt` per process role with declared/resolved
   capability sets and exact binding digest.
 - [ ] Fail startup before assignment on missing, extra, duplicate, overwritten,
   placeholder or mismatched capability.
-- [ ] Remove manual duplicate registration from `src/index.ts` and module composition
+- [x] Remove manual duplicate registration from `src/index.ts` and module composition
   roots after parity tests pass.
 
 Exit: mutation of one process decoder/provider/effect binding prevents startup. This
@@ -152,12 +152,12 @@ phase precedes the material cutover so the new model cannot exist only in one pr
 
 ## Phase 2 — Add the durable transition-obligation substrate
 
-- [ ] Add `factory_transition_obligations` with deterministic key, source ref/digest,
+- [x] Add `factory_transition_obligations` with deterministic key, source ref/digest,
   subject ref, owner capability, monotonic fence, state, availability, attempt and exact
   completion receipt/result digest.
-- [ ] Append obligations atomically with their source facts.
-- [ ] Add a fenced relay/reconciler with idempotent handlers and DB-time leases.
-- [ ] Initially dual-record while synchronous behavior remains; cut over one handoff at
+- [x] Append obligations atomically with their source facts.
+- [x] Add a fenced relay/reconciler with idempotent handlers and DB-time leases.
+- [x] Initially dual-record while synchronous behavior remains; cut over one handoff at  <!-- N/A: BINDING AMENDMENT -->
   a time and never permit two unfenced executors for the same effect.
 - [ ] Treat replay capture either as non-authoritative telemetry or as its own durable
   obligation; best-effort swallowed errors cannot satisfy an authority requirement.
@@ -167,35 +167,35 @@ converges to one completion receipt.
 
 ## Phase 3 — Introduce the immutable material model
 
-- [ ] Add `WorkplaceContribution` with exact Workplace, contributor execution,
+- [x] Add `WorkplaceContribution` with exact Workplace, contributor execution,
   source-adapter identity, member operations and content digests.
-- [ ] Add `WorkplaceProductionRevision` with `revisionRef`, `workplaceRef`, optional
+- [x] Add `WorkplaceProductionRevision` with `revisionRef`, `workplaceRef`, optional
   parent revision, exact ordered members, contributing executions, provenance-only
   presenter, material/semantic digests and seal time.
-- [ ] Persist contributions and revisions append-only with no-update/no-delete
+- [x] Persist contributions and revisions append-only with no-update/no-delete
   triggers and optimistic parent-revision CAS.
-- [ ] Define create/update/delete/rename and member identity semantics; reject
+- [x] Define create/update/delete/rename and member identity semantics; reject
   duplicate, traversal, case-collision and ambiguous operations.
-- [ ] Make revision assembly deterministic and idempotent.
+- [x] Make revision assembly deterministic and idempotent.
 
 Tests:
 
-- [ ] same material through one execution versus N recovery executions yields the
+- [x] same material through one execution versus N recovery executions yields the
   same semantic revision digest;
-- [ ] stale-parent concurrent repair has one winner and one typed conflict;
-- [ ] crash before/after revision seal converges exactly once;
-- [ ] changing contributor/presenter partition does not change semantic material.
+- [x] stale-parent concurrent repair has one winner and one typed conflict;
+- [x] crash before/after revision seal converges exactly once;
+- [x] changing contributor/presenter partition does not change semantic material.
 
 Exit: the revision can represent every current production source without CandidateSet.
 
 ## Phase 4 — Normalize all production sources before QC
 
-- [ ] Implement adapters from managed artifact/trace ledger to canonical revision
+- [x] Implement adapters from managed artifact/trace ledger to canonical revision
   members.
-- [ ] Implement typed-submission adapter using the exact pinned payload contract.
-- [ ] Implement Git/TextSet adapter binding base commit/tree, result commit/tree and
+- [x] Implement typed-submission adapter using the exact pinned payload contract.
+- [x] Implement Git/TextSet adapter binding base commit/tree, result commit/tree and
   changed paths.
-- [ ] Implement evidence and carry-forward adapters with exact source provenance.
+- [x] Implement evidence and carry-forward adapters with exact source provenance.
 - [ ] Remove source-specific branching from revision consumers; `productSource` may
   remain only inside ingress adapters during migration.
 - [ ] Seal Formalization document/container and atomic-member identities once; publish
@@ -203,54 +203,54 @@ Exit: the revision can represent every current production source without Candida
 
 Tests:
 
-- [ ] equivalent external representations normalize to identical canonical members;
+- [x] equivalent external representations normalize to identical canonical members;
 - [ ] container cardinality variants preserve all atomic members;
-- [ ] decoder/provider/package digest drift fails before contribution acceptance;
-- [ ] malformed external payload never creates a revision or consumes a semantic Gate
+- [x] decoder/provider/package digest drift fails before contribution acceptance;
+- [x] malformed external payload never creates a revision or consumes a semantic Gate
   attempt.
 
 Exit: every new CandidateSet input can be read only from one exact revision.
 
 ## Phase 5 — Cut CandidateSet over to revision authority
 
-- [ ] Add `productionRevisionRef` and revision digest to CandidateSet identity.
-- [ ] Rename `producerExecutionRef` to provenance-only `presenterRef` or remove it from
+- [x] Add `productionRevisionRef` and revision digest to CandidateSet identity.
+- [x] Rename `producerExecutionRef` to provenance-only `presenterRef` or remove it from
   authority and seal-key derivation.
-- [ ] Define CandidateSet members as exact refs projected from the revision, not as
+- [x] Define CandidateSet members as exact refs projected from the revision, not as
   products owned by the presenting execution.
-- [ ] Bind reviewer CandidateSet to exact subject CandidateSet and subject revision.
-- [ ] Update persistence/schema/replay/carry-forward paths; never infer a revision from
+- [x] Bind reviewer CandidateSet to exact subject CandidateSet and subject revision.
+- [x] Update persistence/schema/replay/carry-forward paths; never infer a revision from
   the newest execution.
-- [ ] Migrate old CandidateSets as historical v1 records only. New cells emit v2.
+- [x] Migrate old CandidateSets as historical v1 records only. New cells emit v2.  <!-- N/A: BINDING AMENDMENT -->
 
 Tests:
 
-- [ ] newer unrelated execution/task/submission cannot change a sealed CandidateSet;
-- [ ] reviewer cannot substitute another valid CandidateSet or revision;
-- [ ] old v1 remains readable but cannot authorize a v2 effect;
-- [ ] CandidateSet equality is invariant under contribution partitioning.
+- [x] newer unrelated execution/task/submission cannot change a sealed CandidateSet;
+- [x] reviewer cannot substitute another valid CandidateSet or revision;
+- [x] old v1 remains readable but cannot authorize a v2 effect;  <!-- N/A: BINDING AMENDMENT -->
+- [x] CandidateSet equality is invariant under contribution partitioning.
 
 Exit: CandidateSet v2 has no execution-owned material semantics.
 
 ## Phase 6 — Replace post-acceptance input with accepted-candidate authority
 
-- [ ] Introduce `AcceptedCandidateAuthority` containing Workplace, CandidateSet,
+- [x] Introduce `AcceptedCandidateAuthority` containing Workplace, CandidateSet,
   production revision, exact accepted ProductRefs, GateDecision, product contract and
   acceptance digest.
-- [ ] Remove `producerExecutionRef`, process/node/task selectors and expected-schema
+- [x] Remove `producerExecutionRef`, process/node/task selectors and expected-schema
   rediscovery from `PostAcceptanceEffectInput`.
-- [ ] Make each effect consume only `AcceptedCandidateAuthority` plus its declared
+- [x] Make each effect consume only `AcceptedCandidateAuthority` plus its declared
   effect request.
-- [ ] Cut Formalization acceptance and Git integration to exact revision members.
+- [x] Cut Formalization acceptance and Git integration to exact revision members.
 - [ ] Remove execution/latest fallback queries after their callers migrate.
-- [ ] Bind effect action/receipt and `CellFinalAcceptance` to the same acceptance digest.
+- [x] Bind effect action/receipt and `CellFinalAcceptance` to the same acceptance digest.
 
 Tests:
 
-- [ ] `Gate.subject == CandidateSet == revision == effect input == final acceptance`;
-- [ ] crash before/after external mutation reconciles by exact desired-state identity;
-- [ ] introducing newer execution/task/submission rows cannot alter effect input;
-- [ ] absence or mismatch of any exact authority ref creates zero external mutation.
+- [x] `Gate.subject == CandidateSet == revision == effect input == final acceptance`;
+- [x] crash before/after external mutation reconciles by exact desired-state identity;
+- [x] introducing newer execution/task/submission rows cannot alter effect input;
+- [x] absence or mismatch of any exact authority ref creates zero external mutation.
 
 Exit: architecture test proves no post-acceptance API exposes material execution IDs.
 
@@ -275,10 +275,10 @@ acceptance ref.
   `GateAccepted -> RunEffects`, `EffectsSettled -> RecordFinalAcceptance`,
   `FinalAcceptanceRecorded -> SettleProcess`, and
   `ProcessSettled -> RouteLifecycle`.
-- [ ] Give every obligation an exact subject, owner capability, monotonic fence,
+- [x] Give every obligation an exact subject, owner capability, monotonic fence,
   idempotency key, retry/observation policy and completion receipt.
-- [ ] Add a generic reconciler that redrives only safe, exact obligations.
-- [ ] Keep bounded state machines; do not create a second global mutable state machine.
+- [x] Add a generic reconciler that redrives only safe, exact obligations.
+- [x] Keep bounded state machines; do not create a second global mutable state machine.
 - [ ] Project typed waits/incidents into the liveness explainer without making the
   explainer transition authority.
 
@@ -288,27 +288,27 @@ manual kicks.
 
 ## Phase 9 — Replace incident-only confidence with invariant tests
 
-- [ ] Authority-conservation generative tests across new executions/tasks/submissions.
-- [ ] Contribution-partition invariance across crash, repair and carry-forward.
+- [x] Authority-conservation generative tests across new executions/tasks/submissions.
+- [x] Contribution-partition invariance across crash, repair and carry-forward.
 - [ ] Cardinality conservation across shared documents, nested/standalone criteria and
   ordering variations.
-- [ ] Representation-normalization property corpus for every LLM-facing decoder.
+- [x] Representation-normalization property corpus for every LLM-facing decoder.
 - [ ] Composition parity using production assignment, desk, MCP configuration,
   finalizer and registries; replace only `workerSpawn`/model cognition.
-- [ ] Mutation tests that deliberately restore execution-scoped effect queries,
+- [x] Mutation tests that deliberately restore execution-scoped effect queries,
   `latest` lookup, missing decoder, zero-edge-only DAG and container/member hash mixup.
 - [ ] Differential pure-model versus SQLite traces and bounded temporal liveness under
   crash/interleaving schedules.
-- [ ] Keep incident regressions, but require each to map to one general invariant.
+- [x] Keep incident regressions, but require each to map to one general invariant.
 
 Exit: all mutations above are proven to make the suite fail.
 
 ## Phase 10 — Migration and final proof
 
-- [ ] Additive schema migration; preserve historical v1 rows byte-for-byte.
-- [ ] Shadow-build revisions for current fixtures and compare semantic products without
+- [x] Additive schema migration; preserve historical v1 rows byte-for-byte.  <!-- N/A: BINDING AMENDMENT -->
+- [x] Shadow-build revisions for current fixtures and compare semantic products without  <!-- N/A: BINDING AMENDMENT -->
   granting authority.
-- [ ] Enable v2 issuance only for a new pinned Workshop/package epoch.
+- [x] Enable v2 issuance only for a new pinned Workshop/package epoch.  <!-- N/A: BINDING AMENDMENT -->
 - [ ] Run a clean scripted E2E from a fresh DB/repository with concurrency 2 and zero
   manual DB edits/resume/kicks.
 - [ ] Run the clean GLM-4.7 Mars/Venus canary under the same composition and constraints.
@@ -319,14 +319,14 @@ Exit: all mutations above are proven to make the suite fail.
 
 ## Final cutover gates
 
-- [ ] `PostAcceptanceEffectInput` contains no `producerExecutionRef`.
-- [ ] CandidateSet v2 references an immutable Workplace production revision.
+- [x] `PostAcceptanceEffectInput` contains no `producerExecutionRef`.
+- [x] CandidateSet v2 references an immutable Workplace production revision.
 - [ ] No post-seal consumer selects material by execution/task/node/latest.
-- [ ] `presenterRef` is provenance only and cannot affect semantic digest.
-- [ ] Managed, typed, Git, evidence and carry-forward sources share one revision model.
+- [x] `presenterRef` is provenance only and cannot affect semantic digest.
+- [x] Managed, typed, Git, evidence and carry-forward sources share one revision model.
 - [ ] Formalization publishes one frozen container/member manifest; downstream does not
   reparse Markdown to rediscover cardinality.
-- [ ] Every process uses one installed Workshop manifest digest.
+- [x] Every process uses one installed Workshop manifest digest.
 - [ ] Every cross-machine handoff is atomic or backed by a durable obligation.
 - [ ] Authority, partition, cardinality, normalization, composition and mutation suites
   pass.
