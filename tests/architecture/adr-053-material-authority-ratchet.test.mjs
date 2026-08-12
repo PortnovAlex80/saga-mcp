@@ -28,11 +28,11 @@
 //      replay-claim-binder and replay-authority-rebinder repositories. The
 //      cutover replaces each with an exact-ref lookup.
 //
-// BASELINE (captured 2026-08-11 on saga4, Phase 0; lowered Phase 7):
-//   latestCandidate           : 3  (2 reviewer-subject calls + 1 definition;
-//                                   Phase 7 removed the 2 post-acceptance calls
-//                                   by reading from CellFinalAcceptance)
-//   ORDER BY sealed_at DESC   : 4
+// BASELINE (captured 2026-08-11 on saga4, Phase 0; lowered Phase 7; ZEROED Phase 7 replay cutover):
+//   latestCandidate           : 0  (Phase 7 removed all calls + definition;
+//                                   post-acceptance reads from CellFinalAcceptance)
+//   ORDER BY sealed_at DESC   : 0  (Phase 7 replay cutover: all 3 replay paths now
+//                                   resolve accepted author set by gate-decision ref)
 //
 // These numbers MUST only go DOWN as the cutover proceeds. To lower a
 // baseline, remove real occurrences in the cutover phase that owns that path
@@ -61,7 +61,7 @@ const SRC_ROOT = path.join(REPO_ROOT, 'src');
 // ---------------------------------------------------------------------------
 const BASELINE = Object.freeze({
   latestCandidate: 0,
-  orderBySealedAtDesc: 3,
+  orderBySealedAtDesc: 0,
 });
 
 // ---------------------------------------------------------------------------

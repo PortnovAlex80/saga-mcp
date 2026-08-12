@@ -80,16 +80,21 @@ function createSettlementHandler(input: {
         ctx.input,
         'discovery-settlement/readiness',
       );
+      // ADR-053 cutover: resolve submissions by EXACT sealed productRef,
+      // NOT by producerExecutionRef. The cell item's products[0] carries the
+      // exact (schema, ref, digest) authority triple.
+      if (!proposalCell.products[0]) throw new Error('DISCOVERY_PROPOSAL_PRODUCTREF_MISSING');
+      if (!readinessCell.products[0]) throw new Error('DISCOVERY_READINESS_PRODUCTREF_MISSING');
       const proposal = readSubmission(
         input.db,
         ctx.processRunId,
-        proposalCell.producerExecutionRef,
+        proposalCell.products[0],
         DISCOVERY_PROPOSAL_SCHEMA,
       );
       const readiness = readSubmission(
         input.db,
         ctx.processRunId,
-        readinessCell.producerExecutionRef,
+        readinessCell.products[0],
         DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
       );
       const run = input.db.prepare(
@@ -305,17 +310,19 @@ function requireStringBinding(bindings: Readonly<Record<string, unknown>>, key: 
 function readSubmission(
   db: SqlDatabasePort,
   processRunId: number,
-  executionId: string,
+  productRef: ProductRef,
   expectedSchema: string,
 ): SubmissionRow {
+  // ADR-053 cutover: resolve the submission by EXACT productRef content hash,
+  // NOT by execution_id. The productRef.digest IS the sealed content authority.
   const row = db.prepare(
     `SELECT id,process_run_id,node_id,intent_id,task_id,execution_id,
             schema_version,payload_snapshot,content_hash,submitted_at
        FROM factory_managed_node_submissions
-      WHERE process_run_id=? AND execution_id=?
+      WHERE process_run_id=? AND schema_version=? AND content_hash=?
       ORDER BY id DESC LIMIT 1`,
-  ).get(processRunId, executionId) as SubmissionRow | undefined;
-  if (!row) throw new Error(`DISCOVERY_PRODUCT_MISSING: ${executionId}`);
+  ).get(processRunId, expectedSchema, productRef.digest) as SubmissionRow | undefined;
+  if (!row) throw new Error(`DISCOVERY_PRODUCT_MISSING: ${productRef.ref}`);
   if (row.schema_version !== expectedSchema) {
     throw new Error(
       `DISCOVERY_PRODUCT_SCHEMA_MISMATCH: expected ${expectedSchema}, got ${row.schema_version}`,

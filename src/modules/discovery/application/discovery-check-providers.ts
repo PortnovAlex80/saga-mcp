@@ -127,13 +127,17 @@ function producerSubmission(
   candidateSetRef: string,
 ): SubmissionRow | null {
   const candidate = candidateSets.read(candidateSetRef);
-  if (!candidate || candidate.role !== 'author') return null;
+  if (!candidate || candidate.role !== 'author' || candidate.members.length === 0) return null;
+  // ADR-053 cutover: resolve the submission by EXACT CandidateSet member
+  // productRef digest, NOT by execution_id. The member's digest IS the sealed
+  // content authority.
+  const member = candidate.members[0]!;
   const row = db.prepare(
     `SELECT id,process_run_id,node_id,execution_id,schema_version,payload_snapshot,content_hash
        FROM factory_managed_node_submissions
-      WHERE process_run_id=? AND execution_id=?
+      WHERE process_run_id=? AND content_hash=?
       ORDER BY id DESC LIMIT 1`,
-  ).get(candidate.workplaceRef.processRunId, candidate.producerExecutionRef) as
+  ).get(candidate.workplaceRef.processRunId, member.productRef.digest) as
     SubmissionRow | undefined;
   return row ?? null;
 }

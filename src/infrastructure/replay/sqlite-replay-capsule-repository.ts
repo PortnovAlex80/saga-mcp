@@ -377,11 +377,14 @@ export class SqliteReplayCapsuleRepository {
     }
     let subjectProductionDigest: string | null = null;
     if (role === 'reviewer' && task.workplace_ref) {
+      // ADR-053 cutover: resolve the accepted author set by EXACT gate-decision
+      // ref (subject_candidate_set_ref from the final-accepted verdict), NOT by
+      // sealed_at recency. Eliminates the last post-seal recency authority.
       const authorSet = this.db.prepare(
-        `SELECT candidate_set_ref
-           FROM factory_candidate_sets
-          WHERE workplace_ref=? AND role='author'
-          ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
+        `SELECT subject_candidate_set_ref AS candidate_set_ref
+           FROM factory_gate_decisions
+          WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
+          ORDER BY decided_at DESC,rowid DESC LIMIT 1`,
       ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
       if (authorSet) {
         const members = this.db.prepare(

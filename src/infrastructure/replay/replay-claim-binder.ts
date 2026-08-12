@@ -136,11 +136,15 @@ export function resolveReplayKeyMaterial(
   if (role === 'reviewer') {
     const workplaceRef = readWorkplaceRefForTask(db, task);
     if (!workplaceRef) return null;
+    // ADR-053 cutover: resolve the accepted author set by EXACT gate-decision
+    // ref, NOT by sealed_at recency. Same pattern as certifyAcceptedReplayCapsules
+    // (this file, lines 213-224). The reviewer's subject is the authority-
+    // accepted author CandidateSet.
     const authorSet = db.prepare(
-      `SELECT candidate_set_ref
-         FROM factory_candidate_sets
-        WHERE workplace_ref=? AND role='author'
-        ORDER BY sealed_at DESC,candidate_set_ref DESC LIMIT 1`,
+      `SELECT subject_candidate_set_ref AS candidate_set_ref
+         FROM factory_gate_decisions
+        WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
+        ORDER BY decided_at DESC,rowid DESC LIMIT 1`,
     ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
     if (!authorSet) return null;
     const members = db.prepare(

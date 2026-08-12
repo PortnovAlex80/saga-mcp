@@ -67,11 +67,16 @@ function rebindReviewerCandidateSet(
     throw new Error('CAPSULE_REPLAY_AUTHORITY_CONTEXT_MISSING: reviewer task has no workplace_ref');
   }
 
+  // ADR-053 cutover: resolve the accepted author CandidateSet by EXACT gate-
+  // decision ref (the final-accepted verdict's subject_candidate_set_ref),
+  // NOT by recency (ORDER BY sealed_at DESC). The reviewer replays against the
+  // AUTHORITY-ACCEPTED author set, which is exactly what the gate decision
+  // records. Recency could pick a rejected repair attempt sealed later.
   const currentAuthor = db.prepare(
-    `SELECT candidate_set_ref
-       FROM factory_candidate_sets
-      WHERE workplace_ref=? AND role='author'
-      ORDER BY sealed_at DESC,candidate_set_ref DESC
+    `SELECT subject_candidate_set_ref AS candidate_set_ref
+       FROM factory_gate_decisions
+      WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
+      ORDER BY decided_at DESC,rowid DESC
       LIMIT 1`,
   ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
   if (!currentAuthor) {

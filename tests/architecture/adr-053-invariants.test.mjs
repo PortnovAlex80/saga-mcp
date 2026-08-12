@@ -224,7 +224,7 @@ test('ADR-053 mutation: ORDER BY sealed_at DESC count matches baseline exactly',
   }
   assert.equal(
     count,
-    3,
-    `ORDER BY sealed_at DESC count is exactly 3 (replay paths remain). Got ${count}.`,
+    0,
+    `ORDER BY sealed_at DESC count is exactly 0 (replay cutover complete — all paths use gate-decision ref). Got ${count}.`,
   );
 });

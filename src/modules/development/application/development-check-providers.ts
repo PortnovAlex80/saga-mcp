@@ -189,16 +189,28 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
           return 'error';
         }
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
-        if (!candidate || candidate.role !== 'author') {
+        if (!candidate || candidate.role !== 'author' || candidate.members.length === 0) {
           return 'error';
         }
+        // ADR-053 cutover: resolve the submission by EXACT CandidateSet member
+        // productRef, NOT by execution_id. The member's productRef.ref encodes
+        // the submission id; the digest IS the content authority.
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return 'error';
+        }
+        const submissionId = Number(
+          member.productRef.ref.slice('managed-node-submission:'.length),
+        );
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'error';
         const row = input.db.prepare(
           `SELECT id,schema_version,payload_snapshot,content_hash
              FROM factory_managed_node_submissions
-            WHERE process_run_id=? AND execution_id=?
-            ORDER BY id DESC LIMIT 1`,
-        ).get(processRunId, candidate.producerExecutionRef) as SubmissionRow | undefined;
-        if (!row || row.schema_version !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA) {
+            WHERE id=? AND process_run_id=?`,
+        ).get(submissionId, processRunId) as SubmissionRow | undefined;
+        if (!row || row.schema_version !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+            || row.content_hash !== member.productRef.digest) {
           return 'failed';
         }
         const decoded = decodeDevelopmentTaskGraphProposal(
@@ -279,6 +291,9 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
           return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
             'The implementation submission reference is malformed.');
         }
+        // ADR-053 cutover: s.id + s.process_run_id already pin one row; the
+        // content_hash===digest check (line below) is the authority binding.
+        // execution_id is redundant forbidden authority — removed.
         const row = input.db.prepare(
           `SELECT s.payload_snapshot,s.content_hash,t.metadata,pr.local_path,
                   r.effective_base_commit
@@ -287,8 +302,8 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
              JOIN project_repositories pr ON pr.id=t.project_repository_id
              JOIN factory_effective_desk_base_receipts r
                ON r.execution_ref=s.execution_id AND r.task_id=s.task_id
-            WHERE s.id=? AND s.process_run_id=? AND s.execution_id=?`,
-        ).get(submissionId, processRunId, candidate.producerExecutionRef) as {
+            WHERE s.id=? AND s.process_run_id=?`,
+        ).get(submissionId, processRunId) as {
           payload_snapshot: string;
           content_hash: string;
           metadata: string;
@@ -408,14 +423,16 @@ export function createDevelopmentVerificationCheckProvider(input: {
           member.productRef.ref.slice('managed-node-submission:'.length),
         );
         if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'failed';
+        // ADR-053 cutover: s.id + s.process_run_id pin one row; digest check
+        // below is the authority binding. execution_id removed.
         const row = input.db.prepare(
           `SELECT s.payload_snapshot,s.content_hash,t.verification_target_artifact_id,
                   t.metadata,a.accepted_hash
              FROM factory_managed_node_submissions s
              JOIN tasks t ON t.id=s.task_id
              LEFT JOIN artifacts a ON a.id=t.verification_target_artifact_id
-            WHERE s.id=? AND s.process_run_id=? AND s.execution_id=?`,
-        ).get(submissionId, processRunId, candidate.producerExecutionRef) as {
+            WHERE s.id=? AND s.process_run_id=?`,
+        ).get(submissionId, processRunId) as {
           payload_snapshot: string;
           content_hash: string;
           verification_target_artifact_id: number | null;
