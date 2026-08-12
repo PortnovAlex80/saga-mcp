@@ -72,6 +72,46 @@ export function computeAcceptanceDigest(input: {
   });
 }
 
+/**
+ * ADR-053 C17 — fail-closed authority validation. Every post-acceptance effect
+ * MUST run against a fully-bound, internally-consistent AcceptedCandidateAuthority.
+ * This rejects:
+ *   - empty productionRevisionRef / candidateSetRef / gateDecisionKey (a consumer
+ *     would have to re-derive material from execution/task/latest — the exact
+ *     legacy path ADR-053 removes);
+ *   - an empty acceptedProductRefs list (nothing was accepted);
+ *   - a stale/forged acceptanceDigest (the authority drifted from the sealed
+ *     material). The digest is recomputed from the other authority fields and
+ *     required to match exactly, so a hand-edited or stale authority cannot
+ *     drive an external effect.
+ */
+export function assertAuthorityBound(input: PostAcceptanceEffectInput): void {
+  const a = input.authority;
+  if (!a.productionRevisionRef) {
+    throw new Error('AUTHORITY_PRODUCTION_REVISION_REQUIRED');
+  }
+  if (!a.candidateSetRef) {
+    throw new Error('AUTHORITY_CANDIDATE_SET_REQUIRED');
+  }
+  if (!a.gateDecisionKey) {
+    throw new Error('AUTHORITY_GATE_DECISION_KEY_REQUIRED');
+  }
+  if (a.acceptedProductRefs.length === 0) {
+    throw new Error('AUTHORITY_ACCEPTED_PRODUCTS_REQUIRED');
+  }
+  const recomputed = computeAcceptanceDigest({
+    candidateSetRef: a.candidateSetRef,
+    productionRevisionRef: a.productionRevisionRef,
+    acceptedProductRefs: a.acceptedProductRefs,
+    gateDecisionKey: a.gateDecisionKey,
+  });
+  if (recomputed !== a.acceptanceDigest) {
+    throw new Error(
+      `AUTHORITY_ACCEPTANCE_DIGEST_MISMATCH: expected '${recomputed}' got '${a.acceptanceDigest}'`,
+    );
+  }
+}
+
 export type PostAcceptanceEffectResult =
   | {
       readonly outcome: 'succeeded';
@@ -116,6 +156,9 @@ export class FactoryPostAcceptanceEffectRegistry {
   run(effectId: string, input: PostAcceptanceEffectInput): PostAcceptanceEffectResult {
     const effect = this.effects.get(effectId);
     if (!effect) throw new Error(`POST_ACCEPTANCE_EFFECT_NOT_REGISTERED: ${effectId}`);
+    // ADR-053 C17 — fail closed on incomplete / inconsistent accepted authority
+    // BEFORE any external action. See assertAuthorityBound.
+    assertAuthorityBound(input);
     const result = effect.run(input);
     if (result) return result;
     // Legacy idempotent adapters are represented as a successful provider

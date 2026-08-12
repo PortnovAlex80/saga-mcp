@@ -141,3 +141,60 @@
   в working tree ветки saga4 (по правилу «commit только по запросу»).
 
 Продолжаю строго по плану без остановки до завершения всех 20 пунктов.
+
+### 2026-08-12 — ZCode / root — оператору (ретракция «COMPLETE» по db15b62 + QA-repair tranche 1a)
+
+Получен статический QA-отчёт по `db15b62` (17 классов дефектов C1–C17 + 20
+regression tests). Проверил каждый против актуального кода — вывод оператора
+архитектурно прав, моя декларация **COMPLETE в db15b62 была преждевременной**.
+Официально отзываю её.
+
+**Вердикт по QA-утверждениям (после проверки фактическим кодом, не по отчёту):**
+- ПОДТВЕРЖДЕНО как реальные дефекты: **C1** (`ORDER BY candidate_set_ref DESC`
+  как «current author»), **C2** (reviewer seal key НЕ включает subject →
+  коллизия двух reviewer-сетов разных авторов), **C4** (`readAcceptedDecision`
+  через `ORDER BY decided_at DESC`), **C5** (git-integration `ORDER BY t.id DESC`
+  / `ORDER BY gd.decided_at DESC`), **C6** (облигация несла фабрикованный
+  `gate-final:<workplace>` вместо реального `decision.decisionKey`),
+  **C7** (облигации только для author-path; `fence:1` захардкожен),
+  **C8** (replay-capture в подавляющем `try/catch`; терминальный crash теряет
+  FinalAcceptance), **C9–C15** (GateRun identity без installationDigest;
+  provider digest не проверяется; replay регрессирует state; revision не
+  cumulative), **C17** (`gateDecisionKey ?? ''` — пустой ключ допускался).
+- ЛОЖНО-ПОЛОЖИТЕЛЬНЫЕ (QA читал устаревший/другой снапшот): **C16** — NUL-byte
+  валидация уже корректна (`key.includes('\0')`, а не `'\\0'`); claim о
+  `producer_execution_ref`-колонке в `factory_failed_gate_recovery_authorizations`
+  устарел — колонка удалена, остались только локальные SQL-алиасы, читающие
+  `revision.presenter_ref`.
+
+**Что сделано в этом шаге (repair tranche 1a — exact authority key + fail-closed):**
+- **C6:** обе облигации `onGateAccepted` (author + reviewer) теперь несут
+  реальный `decision.decisionKey` / `decision.decisionDigest` из `runGate()`
+  вместо фабрикованного `gate-final:` (тестируется поведенчески: obligation
+  `source_ref` === `factory_gate_decisions.decision_key`).
+- **C17:** `getAcceptedGateDecisionKey` → `string` (fail-closed, бросает, нет
+  `?? ''`); в реестр эффектов добавлена `assertAuthorityBound` — rejects пустой
+  revision/gate/products и **пересчитывает acceptanceDigest с требованием exact
+  match** (7 модульных тестов).
+- **C8:** replay-capture больше НЕ подавляется — ошибка архивации всплывает как
+  реальный дефект, а не прячется; `onFinalAcceptanceRecorded` теперь несёт
+  реальный `acceptanceDigest` (раньше — `candidateSetDigest`).
+- tsc чист; **full suite 2941 pass / 75 fail = идентично baseline db15b62**
+  (нулевая регрессия; +8 новых тестов all green).
+
+**Что ОСТАЁТСЯ (tranche 1b/2/3/4) — НЕ завершено, не claiming complete:**
+C1/C4/C5 (нужен durable current-authority pointer, чтобы убрать recency-SELECT),
+C2 (reviewer subject в seal key + digest + partial UNIQUE indexes), C7
+(reviewer/carry-forward облигации + реальный fence из CAS), C8-терминальная
+реконсиляция (idempotent дозапись FinalAcceptance), C9–C13 (GateRun identity +
+provider digest + one-shot replay), C14 (настоящий cumulative revision), C15
+(UNIQUE semantic_digest + BEGIN IMMEDIATE). Полный план + 20 regression tests
+фиксирую в `docs/architecture/ADR-053-QA-REPAIR-PLAN.md`.
+
+**Следующая граница Mars/Venus без C1/C2/C4/C5:** repair-цикл или
+carry-forward выберет НЕ тот accepted author attempt (по `candidate_set_ref
+DESC` / `decided_at DESC`), либо два reviewer-вердикта за разных авторов
+склеятся в один CandidateSet — эффект/replay привяжется к чужому материалу.
+Это ровно те селекторы, которые tranche 1a НЕ трогал (они ждут durable
+authority pointer из tranche 1b).
+

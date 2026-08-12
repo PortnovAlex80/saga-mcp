@@ -161,12 +161,15 @@ export class SqliteCellFinalAcceptance {
   }
 
   /**
-   * ADR-053 Phase 6 — read the accepted GateDecision key for a specific
-   * CandidateSet. Used to build AcceptedCandidateAuthority without execution-
-   * scoped lookups.
+   * ADR-053 C6/C17 — the EXACT accepted GateDecision key for a candidate set.
+   * Fail closed: if no accepted decision exists the caller has a real bug
+   * (effects / final-acceptance running before the gate accepted), so this
+   * throws rather than returning a nullable '' placeholder. Downstream
+   * (replay-capture / replay-claim-binder / obligations) resolves the accepted
+   * decision by this exact key instead of decided_at recency.
    */
-  getAcceptedGateDecisionKey(workplaceRef: string, candidateSetRef: string): string | null {
-    return this.readAcceptedDecision(workplaceRef, candidateSetRef)?.decision_key ?? null;
+  getAcceptedGateDecisionKey(workplaceRef: string, candidateSetRef: string): string {
+    return this.readAcceptedDecision(workplaceRef, candidateSetRef).decision_key;
   }
 
   private readAcceptedDecision(workplaceRef: string, candidateSetRef: string): {

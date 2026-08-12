@@ -560,10 +560,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           verdict: 'accepted', isFinal: !cell.review,
           effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
-        // ADR-053 B-8 — gate accepted → effects must run (mandatory obligation).
+        // ADR-053 B-8/C6 — gate accepted → effects must run (mandatory
+        // obligation). The obligation carries the EXACT accepted GateDecision
+        // identity (decisionKey + decisionDigest from runGate), not a fabricated
+        // workplace-scoped string — so crash recovery redrives effects against
+        // the precise accepted decision instead of guessing one by recency.
         this.opts.obligationIntegrator.onGateAccepted({
-          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-          gateDecisionDigest: candidate.candidateSetDigest,
+          gateDecisionKey: decision.decisionKey,
+          gateDecisionDigest: decision.decisionDigest,
           workplaceRef: serializeWorkplaceRef(workplace.ref),
           fence: 1,
         });
@@ -587,10 +591,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
-        // ADR-053 B-8 — reviewer gate accepted → effects must run (mandatory).
+        // ADR-053 B-8/C6 — reviewer gate accepted → effects must run (mandatory).
+        // Obligation carries the EXACT reviewer GateDecision identity (not the
+        // author subject's digest), so recovery redrives the right verdict.
         this.opts.obligationIntegrator.onGateAccepted({
-          gateDecisionKey: `gate-final:${serializeWorkplaceRef(workplace.ref)}`,
-          gateDecisionDigest: subjectAuthorSet.candidateSetDigest,
+          gateDecisionKey: decision.decisionKey,
+          gateDecisionDigest: decision.decisionDigest,
           workplaceRef: serializeWorkplaceRef(workplace.ref),
           fence: 1,
         });
@@ -671,7 +677,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
         acceptedProductRefs,
-        gateDecisionKey: gateDecisionKey ?? '',
+        gateDecisionKey,
       });
       const result = this.opts.postAcceptanceEffects.run(effectId, {
         authority: {
@@ -680,7 +686,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs,
           productSchema: cell.productContracts[0]?.schemaRef ?? '',
-          gateDecisionKey: gateDecisionKey ?? '',
+          gateDecisionKey,
           productContractRef: productContract,
           acceptanceDigest,
         },
@@ -742,34 +748,41 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       effectReceiptRefs,
       acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
     });
+    // ADR-053 B-9/C6/C17 — resolve the EXACT accepted GateDecision key ONCE
+    // (fail closed — no '' placeholder) and compute the real acceptance digest
+    // once. The same (finalGateDecisionKey, acceptanceDigest) pair is shared by
+    // the settle-process obligation, the replay-capture effect authority and the
+    // receipt, so they provably consume the same exact acceptance rather than
+    // re-deriving it from candidate-set digest or decided_at recency.
+    const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
+    );
+    const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
+    const acceptanceDigest = computeAcceptanceDigest({
+      candidateSetRef: acceptedCandidate.candidateSetRef,
+      productionRevisionRef: acceptedCandidate.productionRevisionRef,
+      acceptedProductRefs,
+      gateDecisionKey: finalGateDecisionKey,
+    });
     // ADR-053 B-8 — final acceptance recorded → process must settle (mandatory).
+    // The obligation digest is the REAL acceptance digest (not the candidate-set
+    // digest), binding the handoff to the exact accepted material + decision.
     this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
       finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
-      acceptanceDigest: acceptedCandidate.candidateSetDigest,
+      acceptanceDigest,
       workplaceRef: serializeWorkplaceRef(workplaceRef),
       fence: 1,
     });
-    // ADR-053 B-9 — populate the EXACT accepted GateDecision key (was '' placeholder).
-    // Carrying the real key lets downstream (replay-capture / replay-claim-binder)
-    // resolve the accepted gate decision by exact key instead of decided_at recency.
-    const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
-      serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
-    ) ?? '';
     const effectInput = {
       authority: {
         workplaceRef,
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
-        acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
+        acceptedProductRefs,
         productSchema: cell.productContracts[0]?.schemaRef ?? '',
         gateDecisionKey: finalGateDecisionKey,
         productContractRef: cell.productContracts[0]?.payloadContract ?? null,
-        acceptanceDigest: computeAcceptanceDigest({
-          candidateSetRef: acceptedCandidate.candidateSetRef,
-          productionRevisionRef: acceptedCandidate.productionRevisionRef,
-          acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
-          gateDecisionKey: finalGateDecisionKey,
-        }),
+        acceptanceDigest,
       },
       operational: {
         processRunId: ctx.processRunId,
@@ -777,15 +790,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         nodeId: cell.id,
       },
     };
-    // UNIVERSAL: replay capture runs for EVERY accepted candidate, regardless
-    // of module. This is not a cell-specific effect — it is the factory-wide
-    // mechanism that archives accepted production for future deterministic
-    // replay. Best-effort: failure never revokes the GateDecision.
-    try {
-      this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
-    } catch {
-      // Best-effort: replay capture failure is logged inside the effect.
-    }
+    // ADR-053 C8 — replay capture is a MANDATORY durable obligation, NOT
+    // best-effort. It archives accepted production for future deterministic
+    // replay, so a failure indicates a real defect (or a non-idempotent
+    // capture) and MUST surface — silently swallowing it would leave the
+    // workplace without a recoverable replay capsule and contradicts the
+    // mandatory-obligation model. The effect itself is idempotent on the exact
+    // acceptance identity, so a legitimate replay is safe to re-run.
+    this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
   }
 
   private ensureRoleProjection(

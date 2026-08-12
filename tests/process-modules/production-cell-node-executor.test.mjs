@@ -218,6 +218,39 @@ test('author product is sealed, gated, and completed with exact provenance', asy
   h.db.close();
 });
 
+test('ADR-053 C6: gate-accepted obligation carries the EXACT GateDecision key (not a fabricated gate-final: string)', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:c6-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:c6', digest: sha('c6-product'),
+  });
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'completed');
+  // The gate-accepted obligation source_ref MUST be the real GateDecision
+  // decision_key (C6), not a fabricated workplace-scoped `gate-final:` string.
+  const obl = h.db.prepare(
+    `SELECT source_ref FROM factory_transition_obligations WHERE source_kind='gate-accepted'`,
+  ).get();
+  assert.ok(obl, 'a gate-accepted obligation was appended atomically with the transition');
+  const dec = h.db.prepare(
+    `SELECT decision_key FROM factory_gate_decisions WHERE verdict='accepted'`,
+  ).get();
+  assert.ok(dec, 'an accepted gate decision exists');
+  assert.equal(
+    obl.source_ref,
+    dec.decision_key,
+    'gate-accepted obligation source_ref must equal the real GateDecision.decisionKey',
+  );
+  assert.doesNotMatch(
+    obl.source_ref,
+    /^gate-final:/,
+    'obligation must NOT use the fabricated gate-final: workplace key',
+  );
+  h.db.close();
+});
+
 test('required effect settles before final acceptance and replay certification', async () => {
   const h = harness();
   const ctx = context(cell({ effect: true }));
