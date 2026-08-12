@@ -749,6 +749,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       workplaceRef: serializeWorkplaceRef(workplaceRef),
       fence: 1,
     });
+    // ADR-053 B-9 — populate the EXACT accepted GateDecision key (was '' placeholder).
+    // Carrying the real key lets downstream (replay-capture / replay-claim-binder)
+    // resolve the accepted gate decision by exact key instead of decided_at recency.
+    const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
+    ) ?? '';
     const effectInput = {
       authority: {
         workplaceRef,
@@ -756,13 +762,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
         acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
         productSchema: cell.productContracts[0]?.schemaRef ?? '',
-        gateDecisionKey: '',
+        gateDecisionKey: finalGateDecisionKey,
         productContractRef: cell.productContracts[0]?.payloadContract ?? null,
         acceptanceDigest: computeAcceptanceDigest({
           candidateSetRef: acceptedCandidate.candidateSetRef,
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs: acceptedCandidate.members.map(m => m.productRef),
-          gateDecisionKey: '',
+          gateDecisionKey: finalGateDecisionKey,
         }),
       },
       operational: {

@@ -72,15 +72,13 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
             `REPLAY_CERTIFICATION_FINAL_CANDIDATE_MISMATCH: ${workplaceRef}`,
           );
         }
+        // ADR-053 B-9 — resolve the accepted final gate decision by its EXACT
+        // decision_key (authority.gateDecisionKey), NOT by decided_at recency.
         const decision = db.prepare(
           `SELECT subject_candidate_set_ref,assessment_candidate_set_refs
              FROM factory_gate_decisions
-            WHERE workplace_ref=?
-              AND gate_phase='final'
-              AND verdict='accepted'
-            ORDER BY decided_at DESC,rowid DESC
-            LIMIT 1`,
-        ).get(workplaceRef) as {
+            WHERE decision_key=?`,
+        ).get(input.authority.gateDecisionKey) as {
           subject_candidate_set_ref: string;
           assessment_candidate_set_refs: string;
         } | undefined;
