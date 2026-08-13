@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
+import { deserializeWorkplaceRef } from '../../../process-modules/domain/workplace/workplace-ref.js';
 
 export interface AdoptDevelopmentBaselineCommand {
   readonly continuationRef: string;
@@ -342,25 +343,56 @@ function verifyCandidateSetDigest(db: Database.Database, candidate: CandidateRow
       digest: member.digest,
     }));
   if (products.length === 0) throw new Error('DEVELOPMENT_ADOPTION_CANDIDATE_EMPTY');
-  const actual = jsonHash({
-    workplaceRef: candidate.workplace_ref,
-    executionRef: candidate.producer_execution_ref,
-    role: candidate.role,
-    products,
-  });
+  // ADR-053 B-3/C2 — recompute the digest with the SAME formula the seal used:
+  // execution-free (including executionRef would mismatch every author set),
+  // with the reviewer digest additionally binding its subject author set.
+  const actual = candidate.role === 'reviewer'
+    ? jsonHash({
+      workplaceRef: candidate.workplace_ref,
+      role: candidate.role,
+      subjectCandidateSetRef: candidate.subject_candidate_set_ref,
+      products,
+    })
+    : jsonHash({
+      workplaceRef: candidate.workplace_ref,
+      role: candidate.role,
+      products,
+    });
   if (actual !== candidate.candidate_set_digest) {
     throw new Error('DEVELOPMENT_ADOPTION_CANDIDATE_DIGEST_MISMATCH');
   }
 }
 
 function verifyDecisionDigest(decision: Record<string, unknown>): void {
-  const refs = parseStringArray(String(decision.check_receipt_refs), 'check receipts');
-  const actual = jsonHash({
-    key: decision.decision_key,
+  // ADR-053 C13 — the decision digest covers the FULL canonical decision
+  // body (everything except decisionDigest itself). The previous partial
+  // formula (key+verdict+repairTarget+receiptRefs) could not distinguish
+  // decisions that differed in bound material or pinned package and mismatches
+  // every decision sealed after the C13 cutover.
+  const body = {
+    gateRef: decision.gate_ref,
+    gateRunRef: decision.gate_run_ref,
+    gatePhase: decision.gate_phase,
+    workplaceRef: deserializeWorkplaceRef(String(decision.workplace_ref)),
+    transitionRef: decision.transition_ref,
+    subjectCandidateSetRef: decision.subject_candidate_set_ref,
+    assessmentCandidateSetRefs: parseStringArray(
+      String(decision.assessment_candidate_set_refs),
+      'assessment candidate refs',
+    ),
     verdict: decision.verdict,
     repairTargetRole: decision.repair_target_role ?? null,
-    receiptRefs: refs,
-  });
+    checkPlanRef: decision.check_plan_ref,
+    checkPlanDigest: decision.check_plan_digest,
+    decisionPolicyRef: decision.decision_policy_ref,
+    decisionPolicyDigest: decision.decision_policy_digest,
+    checkReceiptRefs: parseStringArray(String(decision.check_receipt_refs), 'check receipts'),
+    installationDigest: decision.installation_digest,
+    decisionKey: decision.decision_key,
+    acceptedOutputBindings: JSON.parse(String(decision.accepted_output_bindings ?? '[]')) as unknown,
+    recoveryIssueRef: decision.recovery_issue_ref,
+  };
+  const actual = jsonHash(body);
   if (actual !== decision.decision_digest) {
     throw new Error('DEVELOPMENT_ADOPTION_DECISION_DIGEST_MISMATCH');
   }

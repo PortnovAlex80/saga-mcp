@@ -300,7 +300,10 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           transitions: {
             accepted: 'settle-development',
             humanRequired: 'complete-blocked',
-            failed: 'complete-failed',
+            // See the flow transition comment: a failed verification verdict
+            // is routed through settlement for an explicit completion and a
+            // continuation-acceptable terminal outcome (blocked/rework).
+            failed: 'settle-development',
           },
         },
       },
@@ -335,7 +338,14 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       { from: 'freeze-integrated-candidate', to: 'verify-acceptance', on: 'domain.frozen' },
       { from: 'freeze-integrated-candidate', to: 'settle-development', on: 'domain.failed' },
       { from: 'verify-acceptance', to: 'settle-development', on: 'domain.accepted' },
-      { from: 'verify-acceptance', to: 'complete-failed', on: 'domain.failed' },
+      // Upstream-defect escalation: a failed verification verdict refuted the
+      // FROZEN integrated candidate (failureOwnership:'upstream'). Route the
+      // failure through the settlement kernel — exactly like the other
+      // failed-cell transitions above — so it issues an explicit
+      // ModuleCompletion and a terminal conveyor outcome the Development
+      // continuation service accepts (blocked on missing verification
+      // evidence, rework-required on failed evidence).
+      { from: 'verify-acceptance', to: 'settle-development', on: 'domain.failed' },
       ...['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']
         .map(code => ({
           from: 'settle-development',
