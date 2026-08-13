@@ -44,7 +44,13 @@ review lineage fields required by the package and also include:
 
 - `subject_candidate_set_ref`: exact author CandidateSet ref;
 - `verdict`: `approved` or `changes_requested`;
-- `findings`: array of concrete review findings;
+- `findings`: array of concrete review findings. Each structured finding carries
+  `message`, optional `severity` (`error` = blocking; `info`/`pass` = non-blocking)
+  and **`paths`: the repository file paths it is about** (omit when not
+  file-specific). The gate machine-checks ADR-062 from `paths`: a blocking
+  finding whose every path lies outside the item's frozen `changeScopes` is
+  automatically DEFERRED to the owning item and cannot block alone — state the
+  paths precisely so your in-scope blockers keep their force;
 - exact reviewed source commit/tree/repository fields required by the schema.
 
 Use the machine-provisioned review template when present; never reconstruct ids
