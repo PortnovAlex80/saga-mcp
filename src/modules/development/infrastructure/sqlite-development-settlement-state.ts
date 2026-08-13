@@ -963,10 +963,14 @@ export class SqliteDevelopmentModuleStore implements
 
   /**
    * LR-04 continuation fallback — read the readiness profile off the ADOPTED
-   * baseline integrated candidate. A managed repair round's products are
-   * textual change manifests with no run contract; the baseline candidate
-   * (produced by the original runnable-artifact worker) remains the authority.
-   * Returns null for non-continuation runs or a baseline without a profile.
+   * baseline integrated candidate, walking the adoption chain UP to the first
+   * ancestor candidate that carries a profile. A repair round's products are
+   * textual change manifests with no run contract; the ancestor candidate
+   * produced by the original runnable-artifact worker remains the authority.
+   * Chain-walking matters: an intermediate continuation frozen before this
+   * fallback existed carries no profile itself, and stopping at it would
+   * re-sever the contract instead of restoring it.
+   * Returns null for non-continuation runs or a chain without any profile.
    */
   private readBaselineReadinessProfile(
     developmentCase: DevelopmentCase,
@@ -979,22 +983,45 @@ export class SqliteDevelopmentModuleStore implements
       || !Array.isArray(recovery.adoptions)
       || recovery.adoptions.length === 0
     ) return null;
-    const adoptionRef = (recovery.adoptions[0] as { ref?: unknown }).ref;
-    if (typeof adoptionRef !== 'string' || adoptionRef === '') return null;
-    const adoption = this.db.prepare(
-      `SELECT source_process_run_id
-         FROM factory_production_adoption_decisions
-        WHERE adoption_ref=?`,
-    ).get(adoptionRef) as { source_process_run_id: number } | undefined;
-    if (
-      !adoption
-      || !Number.isInteger(adoption.source_process_run_id)
-    ) return null;
-    const baseline = this.products.read<IntegratedReleaseCandidate>(
-      adoption.source_process_run_id,
-      PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
-    );
-    return baseline?.payload?.readiness ?? null;
+    let adoptionRef = (recovery.adoptions[0] as { ref?: unknown }).ref;
+    for (let depth = 0; depth < 10; depth += 1) {
+      if (typeof adoptionRef !== 'string' || adoptionRef === '') return null;
+      const adoption = this.db.prepare(
+        `SELECT source_process_run_id
+           FROM factory_production_adoption_decisions
+          WHERE adoption_ref=?`,
+      ).get(adoptionRef) as { source_process_run_id: number } | undefined;
+      if (!adoption || !Number.isInteger(adoption.source_process_run_id)) {
+        return null;
+      }
+      const baseline = this.products.read<IntegratedReleaseCandidate>(
+        adoption.source_process_run_id,
+        PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+      );
+      if (baseline?.payload?.readiness) return baseline.payload.readiness;
+      // No profile at this hop — climb to THIS run's own parent (its
+      // development case input carries the next continuationRecovery hop).
+      const parentCase = this.db.prepare(
+        `SELECT input_snapshot FROM factory_process_runs WHERE id=?`,
+      ).get(adoption.source_process_run_id) as { input_snapshot: string | null } | undefined;
+      if (!parentCase?.input_snapshot) return null;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(parentCase.input_snapshot);
+      } catch {
+        return null;
+      }
+      const nextRecovery = (parsed as {
+        continuationRecovery?: { adoptions?: readonly unknown[] };
+      }).continuationRecovery;
+      if (
+        !nextRecovery
+        || !Array.isArray(nextRecovery.adoptions)
+        || nextRecovery.adoptions.length === 0
+      ) return null;
+      adoptionRef = (nextRecovery.adoptions[0] as { ref?: unknown }).ref;
+    }
+    return null;
   }
 
   private readRepositoryPath(
