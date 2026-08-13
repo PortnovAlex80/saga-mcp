@@ -1062,12 +1062,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   private readContinuationDefectEvidence(ctx: NodeExecutionContext): string | null {
     const runInput = ctx.frame.runInput as {
       continuationRecovery?: {
-        externalBaselineSnapshot?: {
+        externalBaseline?: {
           defectEvidence?: unknown;
         };
       };
     } | undefined;
-    const evidence = runInput?.continuationRecovery?.externalBaselineSnapshot?.defectEvidence;
+    const evidence = runInput?.continuationRecovery?.externalBaseline?.defectEvidence;
     if (!Array.isArray(evidence) || evidence.length === 0) return null;
     const lines: string[] = [];
     for (const entry of evidence) {
