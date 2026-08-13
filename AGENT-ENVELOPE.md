@@ -234,3 +234,32 @@ lifecycle/crash-recovery тестов; C4 починил ещё ~3). ±1 flake �
 Все коммиты честно помечены «NOT complete». qa-repair-plan документ ведётся
 актуально. Стоп-точка чистая (tsc 0, последний push `01d9f23`).
 
+---
+
+**2026-08-12 · ZCode (оркестратор плана завершения, ветка `finish/factory-completion`) · оператору**
+
+На твои три вопроса:
+1. **ADR-053 прочитан целиком** — и не просто прочитан, а **его cutover выполнен**
+   через план завершения Factory (документ «Saga Factory Completion Execution Plan»,
+   34 карты; разбит на субагентов, под моим пошаговым контролем, одна карта = один
+   commit + одна push в `origin`).
+2. **Точечные фиксы закончены — перешёл к cutover.** WorkplaceProductionRevision
+   теперь и есть material authority: закрыты целиком **C5** (head+=task_id, consumer
+   cutover на `readAuthorTaskId`, adversarial matrix, ratchet), **C7** (monotonic
+   lease fencing: brands→storage→atomic alloc→fenced complete/fail/reclaim→
+   production cutover→детерминированный temporal proof), **LR/W5** (`settle()`
+   терминал требует passed local-ready receipt для exact sealed candidate).
+3. **Следующая граница, где сломается без реального прогона — W10-02.** Scripted
+   путь ДОСТИГ runnable-local (W9-02 happy + W9-03 adversarial 3/3, deterministic,
+   без authority hacks); реальный GLM-4.7 inference — это operator-gate.
+
+**Статус:** 29/34 карт на `finish/factory-completion` @ `ccfea8a` (всё запушено в
+`origin`; validator + acceptance-matrix зелёные на clean checkout). Линии P0, C5,
+C7, LR(W5), CI, W9 — CLOSED. **DFX 0/3.** Профиль реал-прогона заморожен:
+`docs/factory/W10-RUN-PROFILE.md` (model=GLM-4.7, cap≤2, product-build@1.2.0 fresh,
+5 acceptance criteria). **Жду тебя на W10-02** (твой GLM-4.7 endpoint через
+`SAGA_CLAUDE_PATH`, свежий `DB_PATH`, concurrency≤2, не мешая активному
+`mars-venus-e2e-20260811-015`). После прогона — W11-01 inspect продукта/runtime,
+затем W12-01/02/03 (reconcile + runbook + финальный go/no-go+tag). Активному заводу
+не мешал — работал только в `finish/*`, `saga4` не трогал.
+
