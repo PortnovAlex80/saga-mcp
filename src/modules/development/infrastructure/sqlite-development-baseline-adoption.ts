@@ -71,17 +71,25 @@ export function adoptIntegratedDevelopmentBaseline(
     } | undefined;
     if (!repository?.local_path) throw new Error('DEVELOPMENT_ADOPTION_REPOSITORY_MISSING');
 
-    const author = requireSingleCandidate(db, String(task.workplace_ref), 'author');
-    verifyCandidateSetDigest(db, author);
+    // ADR-053 C1 — the accepted final GateDecision is the authority pointer
+    // for the EXACT accepted author CandidateSet. A repair cycle legitimately
+    // seals multiple author sets on one desk (each rejected attempt stays in
+    // the audit trail), so "exactly one author set" is the wrong invariant;
+    // resolve the accepted set through the decision instead.
     const finalDecision = db.prepare(
       `SELECT * FROM factory_gate_decisions
         WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
         ORDER BY decided_at DESC LIMIT 1`,
     ).get(task.workplace_ref) as Record<string, unknown> | undefined;
     if (!finalDecision) throw new Error('DEVELOPMENT_ADOPTION_FINAL_GATE_MISSING');
-    if (finalDecision.subject_candidate_set_ref !== author.candidate_set_ref) {
+    const author = requireCandidateByRef(
+      db,
+      String(finalDecision.subject_candidate_set_ref),
+    );
+    if (author.role !== 'author' || author.workplace_ref !== task.workplace_ref) {
       throw new Error('DEVELOPMENT_ADOPTION_GATE_SUBJECT_MISMATCH');
     }
+    verifyCandidateSetDigest(db, author);
     verifyDecisionDigest(finalDecision);
     const assessmentRefs = parseStringArray(
       String(finalDecision.assessment_candidate_set_refs),
@@ -296,21 +304,6 @@ interface CandidateRow {
   role: 'author' | 'reviewer';
   subject_candidate_set_ref: string | null;
   candidate_set_digest: string;
-}
-
-function requireSingleCandidate(
-  db: Database.Database,
-  workplaceRef: string,
-  role: 'author' | 'reviewer',
-): CandidateRow {
-  const rows = db.prepare(
-    `SELECT *, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE workplace_ref=? AND role=?
-      ORDER BY created_at`,
-  ).all(workplaceRef, role) as CandidateRow[];
-  if (rows.length !== 1) {
-    throw new Error(`DEVELOPMENT_ADOPTION_${role.toUpperCase()}_NOT_EXACT`);
-  }
-  return rows[0]!;
 }
 
 function requireCandidateByRef(db: Database.Database, ref: string): CandidateRow {
