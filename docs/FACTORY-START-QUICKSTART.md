@@ -76,6 +76,33 @@ routing, settlement, gates, effects, or repositories.
 npm run build
 ```
 
+## 1a. Preflight: the saga MCP server must boot (npm install is not optional)
+
+Every worker spawns `node dist/index.js` as its private stdio MCP child
+(`--mcp-config` + `--strict-mcp-config`). If that server cannot boot, the
+worker silently loses ALL saga tools: it sees only Bash/Read/Edit, then burns
+its whole budget reverse-engineering how to call `product_submit` and dies
+without a submission. The client's MCP panel shows the same failure as
+`MCP error -32000: Connection closed` / `0 tools`.
+
+`node_modules` is NOT updated by `git pull` — a newly added dependency kills
+every server boot with `ERR_MODULE_NOT_FOUND: Cannot find package
+'@modelcontextprotocol/sdk'` (exactly this happened on 2026-08-13: three
+workers died to it while the tracker and the engine kept running fine, because
+only `dist/index.js` imports the SDK).
+
+```bash
+npm install && npm run build
+
+# smoke: must print the banner and stay alive (Ctrl+C to stop), no ERR_MODULE_NOT_FOUND
+DB_PATH=<db> TRACKER_AUTOSTART=0 DOCS_GRAPH_AUTOSTART=0 node dist/index.js
+```
+
+Log symptom chain for diagnosing a running incident: worker JSONL contains
+zero `mcp__saga__*` tool_use entries plus thinking like "in my current
+toolset, I only have Bash, Read, Edit". Fix deps, then requeue the workplace —
+do not let the worker exhaust its attempts against a dead MCP child.
+
 ## 2. Single entry point
 
 **One command, one gateway.** `scripts/factory.mjs` is the only public CLI:

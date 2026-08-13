@@ -106,6 +106,18 @@ saga переключает claude CLI воркера на него через �
 поэтому на время эпизода **весь claude на машине** идёт через LM Studio.
 Облачный токен заморожен в `settings.cloud.json` и не теряется.
 
+**Preflight: saga MCP-сервер обязан загружаться.** Каждый воркер спавнит
+`node dist/index.js` как приватный stdio-MCP-child. Если сервер не грузится —
+воркер молча теряет ВСЕ saga-инструменты (видит только Bash/Read/Edit), сжигает
+бюджет на реверс-инжиниринг `product_submit` и умирает без сабмита. В панели
+клиента то же самое выглядит как `MCP error -32000: Connection closed` /
+`0 tools`. `node_modules` НЕ обновляется вместе с `git pull` — новая
+зависимость в package.json убивает загрузку с
+`ERR_MODULE_NOT_FOUND: Cannot find package '@modelcontextprotocol/sdk'`.
+Поэтому после каждого pull: `npm install && npm run build`, затем смоук
+`DB_PATH=<db> TRACKER_AUTOSTART=0 node dist/index.js` — должен напечатать
+баннер и жить, а не упасть.
+
 **Гонка нового заказа.** Оба стартовых пути (`factory.mjs start`,
 `POST /api/factory/start`) записывают облачный профиль в
 `lifecycle_execution_controls` и сразу спавнят движок — первый claim может
