@@ -74,6 +74,7 @@ export function buildCheckPlan(
     repairTargetRoleOnFailure?: 'author' | 'reviewer';
     repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';
     indeterminateDisposition?: 'repair' | 'human-required';
+    failureOwnership?: 'workplace' | 'upstream';
   }[] = [],
   options: { includeProductContract?: boolean } = {},
 ): CheckPlan {
@@ -104,6 +105,9 @@ export function buildCheckPlan(
         : {}),
       ...(check.indeterminateDisposition
         ? { indeterminateDisposition: check.indeterminateDisposition }
+        : {}),
+      ...(check.failureOwnership
+        ? { failureOwnership: check.failureOwnership }
         : {}),
       environmentRef: null,
     })),

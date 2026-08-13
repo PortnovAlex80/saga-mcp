@@ -41,6 +41,7 @@ function drive(outcomes, checks) {
     repairTargetRoleOnFailure: check.failure,
     repairTargetRoleOnIndeterminate: check.indeterminate,
     indeterminateDisposition: check.disposition,
+    failureOwnership: check.ownership,
   })), { includeProductContract: false });
   return driveGateRun(repo, providers, {
     workplaceRef,
@@ -98,6 +99,35 @@ test('missing external check authority stops the line without spending worker re
   );
   assert.equal(decision.verdict, 'human_required');
   assert.equal(decision.repairTargetRole, null);
+});
+
+test('deterministic failure of an upstream-owned subject escalates to failed, not local repair', () => {
+  // The runnability-style check: subject is the frozen integrated candidate
+  // produced upstream. A deterministic 'failed' is a producer defect — no
+  // local repair can fix it, so the verdict must be 'failed' (cell
+  // terminates; continuation re-routes the defect to the producer) instead
+  // of 'repair_required' burning this workplace's probe budget.
+  const decision = drive(
+    { runnability: 'failed', probe: 'passed' },
+    [
+      { providerId: 'runnability', failure: 'author', indeterminate: 'author', ownership: 'upstream' },
+      { providerId: 'probe', failure: 'author', indeterminate: 'author' },
+    ],
+  );
+  assert.equal(decision.verdict, 'failed');
+  assert.equal(decision.repairTargetRole, null);
+  assert.equal(decision.recoveryIssueRef, null);
+});
+
+test('indeterminate upstream-owned check still routes a local retry (substrate may be at fault)', () => {
+  const decision = drive(
+    { runnability: 'error' },
+    [
+      { providerId: 'runnability', failure: 'author', indeterminate: 'author', ownership: 'upstream' },
+    ],
+  );
+  assert.equal(decision.verdict, 'repair_required');
+  assert.equal(decision.repairTargetRole, 'author');
 });
 
 function reviewOutcome(payload) {

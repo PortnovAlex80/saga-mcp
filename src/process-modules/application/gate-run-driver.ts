@@ -242,6 +242,16 @@ function reduceReceipts(
 
     let requestedTarget: RepairTargetRole | null = null;
     if (receipt.outcome === 'failed') {
+      // Escalation (upstream ownership): a deterministic failure whose SUBJECT
+      // is a frozen upstream artifact (e.g. the integrated release candidate)
+      // is a producer defect. No workplace-local repair can fix it, so the
+      // verdict is 'failed' — the cell terminates and the conveyor's
+      // continuation machinery re-routes the defect to the producing
+      // workshop. This must not burn the local repair budget on impossible
+      // probe rewrites.
+      if (entry.failureOwnership === 'upstream') {
+        return { verdict: 'failed', repairTargetRole: null };
+      }
       requestedTarget = entry.repairTargetRoleOnFailure ?? 'author';
     } else if (
       (receipt.outcome === 'unknown' || receipt.outcome === 'error')
@@ -250,6 +260,8 @@ function reduceReceipts(
       if (entry.indeterminateDisposition === 'human-required') {
         return { verdict: 'human_required', repairTargetRole: null };
       }
+      // An indeterminate upstream-owned check still needs a local retry
+      // (the substrate may be at fault), so it keeps the repair routing.
       requestedTarget = entry.repairTargetRoleOnIndeterminate
         ?? entry.repairTargetRoleOnFailure
         ?? 'author';

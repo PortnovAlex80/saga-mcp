@@ -112,6 +112,18 @@ export interface CheckPlanEntry {
    */
   readonly indeterminateDisposition?: 'repair' | 'human-required';
   /**
+   * Who owns the SUBJECT this check refutes. 'workplace' (default): the
+   * subject is this workplace's own production, so a deterministic failure
+   * is a local defect and the repair budget applies. 'upstream': the subject
+   * is a frozen artifact produced earlier on the conveyor (e.g. the
+   * integrated release candidate), so a deterministic failure is a PRODUCER
+   * defect. No local retry can fix it — the verdict escalates to 'failed'
+   * immediately and the conveyor's continuation machinery re-routes the
+   * defect to the producing workshop instead of burning repair attempts
+   * here.
+   */
+  readonly failureOwnership?: 'workplace' | 'upstream';
+  /**
    * Optional reference to the disposable sandbox environment the check runs in.
    * Null for checks that need no external state (pure schema validation).
    */

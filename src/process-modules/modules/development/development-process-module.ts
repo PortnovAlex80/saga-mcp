@@ -116,7 +116,13 @@ const VERIFICATION_FINAL_PLAN = buildCheckPlan(
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-    repairTargetRoleOnFailure: 'author',
+    // The runnability subject resolves (LR-01) to the FROZEN integrated
+    // release candidate produced upstream — not this verifier's own probe.
+    // A deterministic failure is a producer defect: escalate to 'failed'
+    // (continuation re-routes the defect to the producing workshop) instead
+    // of burning this workplace's repair budget on probe rewrites that
+    // cannot fix the product.
+    failureOwnership: 'upstream',
     repairTargetRoleOnIndeterminate: 'author',
   }],
 );
