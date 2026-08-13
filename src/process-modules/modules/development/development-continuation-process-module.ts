@@ -6,6 +6,7 @@ import type {
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../domain/source-change-candidate.js';
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/domain/development-kernel-ports.js';
 import { developmentProcessModule } from './development-process-module.js';
+import { buildCheckPlan } from '../../application/standard-check-providers.js';
 
 export const DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF = {
   name: 'solution-development-managed',
@@ -56,6 +57,19 @@ export const developmentContinuationProcessModule: ProcessModuleDefinition = (()
           skillRef: 'development-managed-source-reviewer',
           capabilityPreset: 'managed-text-reviewer',
         },
+      },
+      // Managed author gate: the base cell's implementation-scope check is a
+      // Git-diff authority check over an implementation-result product. The
+      // managed product is a textual SourceChangeCandidate and its scope
+      // ownership is enforced deterministically at Factory materialization
+      // (managed-source-change-candidate validateEntries vs frozen
+      // changeScopes), NOT by re-reading a worker Git tree the managed author
+      // never had authority to create. Keep only the product-contract check
+      // so the gate still proves the exact typed submission shape.
+      authorGate: {
+        gateId: 'development-managed-implementation-author',
+        gatePhase: 'author',
+        checkPlan: buildCheckPlan('development.managed-implementation.author.v1', []),
       },
     },
   };
