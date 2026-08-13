@@ -62,6 +62,18 @@ schema. A prose completion message is not a product.
   `integrationBranch`, and `baseCommit`. `terminalStatus=complete` is valid
   only when the source commit exists at the declared task branch and its tree
   equals the snapshot.
+- **Readiness declaration (LR-04)** — when THIS work item owns the product's
+  build/test wiring (build files inside your frozen `changeScopes`), the result
+  payload MUST also carry `readiness`:
+  `{ "kind": "static" | "served", "commands": { "installCommand": <string|null>, "testCommand": <string> } }`
+  plus, for `kind:"served"` only, `"serve": { "startCommand": <string> }`.
+  `static` = runnability is proven by the test command alone (library, static
+  site). `served` = a long-running service: state how it starts — the factory
+  will run it on loopback, probe it, then stop it. You are the AUTHORITY for
+  how your artifact runs: the final local-runnability gate executes these
+  commands verbatim and FAILS CLOSED when the profile is missing — it refuses
+  to guess from build files, so without your declaration the product cannot
+  pass acceptance regardless of code quality.
 - Call `worker_done` and stop. The runtime-owned post-acceptance provider merges
   the exact reviewed source commit; an LM must not mutate the integration branch
   or manufacture an integration receipt.
