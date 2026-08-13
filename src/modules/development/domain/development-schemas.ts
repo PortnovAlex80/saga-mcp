@@ -73,6 +73,15 @@ export interface DevelopmentImplementationResultProduct {
   };
   buildProducts: readonly unknown[];
   reasonCodes: readonly string[];
+  /**
+   * @see ReadinessProfile — the EXPLICIT served|static readiness profile for
+   * the integrated product. When present on an accepted implementation result,
+   * the candidate freeze propagates it onto the IntegratedReleaseCandidate so
+   * the local-runnability provider (LR-04) can prove the exact sealed product
+   * runnable. Optional: a result frozen upstream of LR-07 wiring carries none
+   * and the freeze falls back to no profile (fail closed at runnability).
+   */
+  readiness?: ReadinessProfile;
 }
 
 export interface DevelopmentVerificationEvidenceProduct {

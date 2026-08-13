@@ -38,6 +38,11 @@ const terminationMod = await import(
 );
 const finalizeManagedWorkerProcess = terminationMod.finalizeManagedWorkerProcess;
 
+const deskBaseMod = await import(
+  pathToFileURL(path.resolve('dist/infrastructure/workers/effective-desk-base.js')).href
+);
+const resolveEffectiveDeskBase = deskBaseMod.resolveEffectiveDeskBase;
+
 const dbMod = await import(pathToFileURL(path.resolve('dist/db.js')).href);
 
 const productHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/products.js')).href);
@@ -81,6 +86,7 @@ function readTaskMetadata(db, taskId) {
     meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : (row.metadata || {});
   } catch { meta = {}; }
   return {
+    ...meta,
     module: meta.process_module_ref || 'unknown',
     node: meta.process_node_id || 'unknown',
     cell: meta.production_cell_id || 'unknown',
@@ -171,6 +177,8 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
 
       const handlerSet = {
         product_submit: input => productHandlersMod.handlers.product_submit(input),
+        product_read: input => productHandlersMod.handlers.product_read(input),
+        candidate_read: input => productHandlersMod.handlers.candidate_read(input),
         artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
         trace_add: input => artifactHandlersMod.handlers.trace_add(input),
         worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
@@ -202,6 +210,37 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
         new Date().toISOString(),
       );
 
+      // For git_change tasks, resolve the effective desk base (same as the
+      // spawn-based executor). This creates the factory_effective_desk_base_receipts
+      // row the implementation scope check requires. Without it, the check fails
+      // with submission-binding-invalid. The in-process worker commits directly
+      // in the repo (no worktree), but the desk base receipt is still needed.
+      try {
+        const taskRow = db.prepare(
+          'SELECT id,workplace_ref,execution_mode,project_repository_id,status,metadata FROM tasks WHERE id=?',
+        ).get(Number(assignment.taskId));
+        if (taskRow && taskRow.execution_mode === 'git_change' && taskRow.project_repository_id) {
+          const repoRow = db.prepare(
+            `SELECT pr.id, pr.local_path, pr.integration_branch
+               FROM project_repositories pr WHERE pr.id=? AND pr.status='active'`,
+          ).get(taskRow.project_repository_id);
+          if (repoRow && repoRow.local_path) {
+            resolveEffectiveDeskBase(db, {
+              executionRef: assignment.workerExecutionId,
+              task: taskRow,
+              repository: {
+                id: repoRow.id,
+                integrationBranch: repoRow.integration_branch || 'dev',
+                repositoryRoot: repoRow.local_path,
+              },
+            });
+          }
+        }
+      } catch (deskErr) {
+        // Non-fatal: if the desk base can't be resolved (e.g. dependency not yet
+        // integrated), let the handler proceed; the gate will report the issue.
+      }
+
       let outcome;
       try {
         // Deterministic crash point (W9-03). Fire BEFORE the handler runs so the
@@ -222,7 +261,7 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
             || userHandlers[`${meta.module}/${meta.node}/${meta.role}/*`]
             || userHandlers['*']
             || defaultHandler;
-          outcome = handler({ handlers: handlerSet, assignment, meta, db, scenarioKey });
+          outcome = handler({ handlers: handlerSet, assignment, meta, db, scenarioKey, context });
           if (outcome && typeof outcome.then === 'function') {
             throw new Error(
               'FRESH_HARNESS_ASYNC_HANDLER_UNSUPPORTED: in-process scripted handlers must be '

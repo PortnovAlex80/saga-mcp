@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
+import type { CandidateSet } from '../../process-modules/domain/workplace/candidate-set.js';
 import type { SqlDatabasePort } from '../../application/ports/sql-database.js';
 import type {
   CheckProvider,
@@ -189,11 +190,34 @@ function resolveSubject(
   // When the exact candidate set is absent, non-author, carries no sealed
   // integrated-candidate member, or the sealed product row is missing, fail
   // closed — do not guess.
-  const set = input.candidateSets.read(candidateSetRef);
-  if (!set || set.role !== 'author') throw new Error('LOCAL_READINESS_SUBJECT_MISSING');
-  const member = set.members.find(
+  const subjectSet = input.candidateSets.read(candidateSetRef);
+  // Try the named subject set first. When it is an author set that carries the
+  // integrated-candidate member, that IS the authority.
+  let set = (subjectSet && subjectSet.role === 'author') ? subjectSet : null;
+  let member = set?.members.find(
     candidate => candidate.productRef.schemaId === INTEGRATED_CANDIDATE_SCHEMA,
-  );
+  ) ?? null;
+  // LR-01 fallback — the integrated candidate is a kernel-produced (freeze)
+  // process product sealed into a freeze-authority CandidateSet, NOT the
+  // verification-evidence set the gate named as subject. When the subject lacks
+  // the member, resolve the freeze-authority author CandidateSet in the same
+  // process run (the member's content-addressed triple is the exact sealed
+  // candidate). This preserves exact-member resolution — the product is read by
+  // its immutable ProductRef, never by recency.
+  if (!member) {
+    const processRunId = subjectSet?.workplaceRef.processRunId
+      ?? extractProcessRunIdFromRef(candidateSetRef);
+    if (processRunId !== null) {
+      const altSet = readFreezeAuthorityCandidateSet(input, processRunId);
+      if (altSet) {
+        set = altSet;
+        member = altSet.members.find(
+          candidate => candidate.productRef.schemaId === INTEGRATED_CANDIDATE_SCHEMA,
+        ) ?? null;
+      }
+    }
+  }
+  if (!set || set.role !== 'author') throw new Error('LOCAL_READINESS_SUBJECT_MISSING');
   if (!member) throw new Error('LOCAL_READINESS_SUBJECT_NOT_SEALED');
   const { schemaId, ref, digest } = member.productRef;
   if (typeof ref !== 'string' || ref.length === 0
@@ -255,6 +279,52 @@ function resolveSubject(
     candidateHash: candidate.candidateHash,
     readiness: candidate.readiness,
   };
+}
+
+/**
+ * LR-01 fallback — read the freeze-authority author CandidateSet for a process
+ * run: the set whose single member is the integrated-candidate process product
+ * sealed by the kernel freeze. Returns null when no such set exists (the
+ * provider then fails closed with LOCAL_READINESS_SUBJECT_NOT_SEALED). The
+ * lookup is by exact member schema (INTEGRATED_CANDIDATE_SCHEMA), never by
+ * recency; there is at most one frozen candidate per process run.
+ */
+function readFreezeAuthorityCandidateSet(
+  input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
+  processRunId: number,
+): CandidateSet | null {
+  let row: { ref: string } | undefined;
+  try {
+    row = input.db.prepare(
+      `SELECT cs.candidate_set_ref AS ref
+         FROM factory_candidate_sets cs
+         JOIN factory_workplaces w
+           ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
+         JOIN factory_candidate_set_members m
+           ON m.candidate_set_ref=cs.candidate_set_ref
+          AND m.product_schema=?
+        WHERE cs.role='author'
+        ORDER BY cs.candidate_set_ref
+        LIMIT 1`,
+    ).get(processRunId, INTEGRATED_CANDIDATE_SCHEMA) as { ref: string } | undefined;
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+  return input.candidateSets.read(row.ref);
+}
+
+/**
+ * Best-effort extraction of a processRunId from a candidate_set_ref whose
+ * workplace was not readable (absent set). The freeze-authority ref embeds the
+ * processRunId in its artifact_ref segment. Returns null when no integer
+ * processRunId can be parsed.
+ */
+function extractProcessRunIdFromRef(candidateSetRef: string): number | null {
+  const match = candidateSetRef.match(/\/(\d+)\//u) ?? candidateSetRef.match(/:(\d+):/u);
+  if (!match) return null;
+  const id = Number.parseInt(match[1]!, 10);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 function runLocalReadiness(

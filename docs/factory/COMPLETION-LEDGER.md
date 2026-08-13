@@ -62,7 +62,7 @@
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
 | W9-01 | Create the fresh scripted E2E harness and run manifest | E2E E | LR-04 | done | test(factory): add fresh scripted completion harness | src/factory-e2e/{fresh-harness,run-manifest}.ts (fresh state, cap ≤2, AUTHORITY_TABLES no-hack guard, production-API setup only); self-test 4/4×3 deterministic; manifest declares W9-02 happy + W9-03 adversarial scenarios |
-| W9-02 | Run the clean scripted happy path to runnable-local | E2E E | CI-03, W9-01, LR-07 | pending | test(factory): prove clean scripted product build to local ready | — |
+| W9-02 | Run the clean scripted happy path to runnable-local | E2E E | CI-03, W9-01, LR-07 | done | test(factory): prove clean scripted product build to local ready | REACHED runnable-local: Development `verified` + passed factory.local-runnability.v1 receipt for exact sealed candidate, fresh state, concurrency ≤2, no authority hacks, deterministic 2/2. Resolved deferred wiring (freeze seals candidate authority + populates readiness; provider exact-member fallback; cell-timing LEFT-JOIN; receipt-key fallback). tests/factory-e2e/w9-02-happy-path.test.mjs (3). 🎯 MILESTONE |
 | W9-03 | Run the adversarial scripted authority and recovery path | E2E E | W9-02 | pending | test(factory): prove authority and recovery under scripted e2e | — |
 | W9-04 | Close W9 with a single evidence bundle | Integrator | W9-03 | pending | docs(factory): close clean scripted e2e evidence | — |
 

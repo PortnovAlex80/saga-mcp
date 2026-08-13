@@ -272,6 +272,15 @@ export class SqliteDevelopmentModuleStore implements
       const integrationIntentRefs = accepted.map((product, index) =>
         `${integrations[index]!.effectReceiptRef}:task:${product.taskId}:commit:${integrations[index]!.integratedCommit}`)
         .sort();
+      // LR-04 — propagate the EXPLICIT readiness profile from the accepted
+      // implementation results onto the frozen candidate. The worker that built
+      // the runnable artifact is the authority for how it runs; the freeze
+      // carries the first declared profile so the local-runnability provider
+      // (LR-07) can prove the exact sealed product runnable.
+      const readinessProfile = accepted
+        .map(product => product.payload)
+        .find(payload => payload !== null && payload !== undefined && payload.readiness !== null && payload.readiness !== undefined)
+        ?.readiness;
       const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
         taskGraphHash: graphProduct.payload.graphHash,
@@ -280,6 +289,7 @@ export class SqliteDevelopmentModuleStore implements
         buildProducts,
         integrationIntentRefs,
         frozen: true,
+        ...(readinessProfile ? { readiness: readinessProfile } : {}),
       };
       const candidate = {
         ...body,
@@ -293,10 +303,89 @@ export class SqliteDevelopmentModuleStore implements
         payload: candidate,
         artifactRefPrefix: 'development-integrated-candidate',
       }).record;
+      // LR-01 / LR-07 — seal the integrated candidate into an author candidate
+      // set so the local-runnability provider can resolve it as its subject
+      // (exact-member resolution) and the settlement receipt binding can find
+      // it. The freeze is a kernel node; this creates a minimal freeze-scoped
+      // workplace + production revision + author CandidateSet whose single
+      // member is the exact sealed integrated candidate ProductRef. If the seal
+      // fails, the candidate IS persisted — log and still return 'frozen' so the
+      // lifecycle advances to verification.
+      try {
+        this.sealIntegratedCandidateAuthority(input.processRunId, stored.reference);
+      } catch (sealErr) {
+        process.stderr.write(
+          `[development-freeze] sealIntegratedCandidateAuthority failed (non-fatal): ${
+            sealErr instanceof Error ? sealErr.message : String(sealErr)
+          }\n`,
+        );
+      }
       return { status: 'frozen', candidate: stored.payload, reference: stored.reference };
     } catch {
       return { status: 'failed', reasonCodes: ['candidate-freeze-lineage-invalid'] };
     }
+  }
+
+  /**
+   * LR-01 / LR-07 — seal the frozen integrated candidate into an author
+   * CandidateSet so the local-runnability provider (exact-member resolution)
+   * and the settlement receipt binding can read it as their subject. The freeze
+   * is a kernel node that produces a process product; without this seal the
+   * candidate is a durable product but not a CandidateSet member, so no gate or
+   * settlement could resolve it as the runnability subject. Idempotent: a
+   * replay of the same freeze finds the existing seal and skips.
+   */
+  private sealIntegratedCandidateAuthority(
+    processRunId: number,
+    candidateRef: ContentAddressedReference,
+  ): void {
+    // Idempotent: if a member for this exact product already exists, skip.
+    const existingMember = this.db.prepare(
+      `SELECT 1 FROM factory_candidate_set_members m
+        WHERE m.product_schema=? AND m.product_ref=? AND m.product_digest=? LIMIT 1`,
+    ).get(candidateRef.schema, candidateRef.ref, candidateRef.hash);
+    if (existingMember) return;
+
+    const moduleRef = (
+      this.db.prepare(
+        `SELECT module_ref FROM factory_workplaces WHERE process_run_id=? LIMIT 1`,
+      ).get(processRunId) as { module_ref: string } | undefined
+    )?.module_ref ?? 'solution-development@1.2.0';
+    const workplaceRef = `workplace/${processRunId}/${moduleRef}/freeze-integrated-candidate/candidate`;
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_workplaces
+        (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
+         kanban_phase,loop_state,next_role,terminal_reason)
+       VALUES (?,?,?,?,'candidate','done','terminal','author','accepted')`,
+    ).run(workplaceRef, processRunId, moduleRef, 'freeze-integrated-candidate');
+
+    const members = JSON.stringify([{
+      schema: candidateRef.schema,
+      ref: candidateRef.ref,
+      digest: candidateRef.hash,
+      origin: 'produced',
+    }]);
+    const revisionRef = `revision:${candidateRef.ref}`;
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_workplace_production_revisions
+        (revision_ref,workplace_ref,parent_revision_ref,members,
+         contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
+       VALUES (?,?,NULL,?,'[]','factory-candidate-freeze',?,?,?)`,
+    ).run(revisionRef, workplaceRef, members, candidateRef.hash, candidateRef.hash, now);
+
+    const candidateSetRef = `candidate-set:${candidateRef.ref}`;
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_candidate_sets
+        (candidate_set_ref,workplace_ref,production_revision_ref,role,
+         subject_candidate_set_ref,candidate_set_digest,seal_receipt_ref,sealed_at)
+       VALUES (?,?,?,?,NULL,?,?,?)`,
+    ).run(candidateSetRef, workplaceRef, revisionRef, 'author', candidateRef.hash, `seal:freeze:${candidateRef.ref}`, now);
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_candidate_set_members
+        (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,origin,source_candidate_set_ref)
+       VALUES (?,0,?,?,?,'produced',NULL)`,
+    ).run(candidateSetRef, candidateRef.schema, candidateRef.ref, candidateRef.hash);
   }
 
   buildSettlementInput(input: {
@@ -428,6 +517,30 @@ export class SqliteDevelopmentModuleStore implements
       ) as { outcome: string; evidence_refs: string } | undefined;
     } catch {
       return null;
+    }
+    // LR-07 fallback: when the LR provider resolved the subject via its
+    // freeze-authority fallback (the gate named the verifier's evidence set as
+    // subject, but the provider tested the freeze's candidate), the receipt is
+    // keyed by the verifier's set, not the freeze's set. Search for any passed/
+    // failed LR receipt in THIS process run — there is at most one frozen
+    // candidate, so any LR receipt in the run IS for this candidate.
+    if (!row) {
+      try {
+        row = this.db.prepare(
+          `SELECT cr.outcome, cr.evidence_refs
+             FROM factory_check_receipts cr
+             JOIN factory_candidate_sets cs ON cs.candidate_set_ref=cr.subject_candidate_set_ref
+             JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
+            WHERE cr.provider_id=? AND cr.provider_digest=? AND cr.outcome IN ('passed','failed')
+            ORDER BY cr.rowid DESC LIMIT 1`,
+        ).get(
+          processRunId,
+          LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+          LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+        ) as { outcome: string; evidence_refs: string } | undefined;
+      } catch {
+        return null;
+      }
     }
     if (!row) return null;
     let parsedEvidence: unknown;
@@ -686,10 +799,13 @@ export class SqliteDevelopmentModuleStore implements
                 ORDER BY reviewer.candidate_set_ref DESC
                 LIMIT 1) AS reviewExecutionId
          FROM factory_workplaces w
-         JOIN factory_cell_final_acceptances cfa
+         LEFT JOIN factory_cell_final_acceptances cfa
            ON cfa.workplace_ref=w.workplace_ref
+         LEFT JOIN factory_accepted_authority_head h
+           ON h.workplace_ref=w.workplace_ref
          JOIN factory_candidate_sets cs
-           ON cs.candidate_set_ref=cfa.candidate_set_ref AND cs.role='author'
+           ON cs.candidate_set_ref=COALESCE(cfa.candidate_set_ref, h.accepted_author_candidate_set_ref)
+          AND cs.role='author'
          JOIN factory_candidate_set_members member
            ON member.candidate_set_ref=cs.candidate_set_ref
           AND member.product_schema IN (${schemaIds.map(() => '?').join(',')})

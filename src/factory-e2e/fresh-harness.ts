@@ -457,6 +457,12 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
       packageInstallation: bootstrap.packageInstallation,
     },
     executionRouteResolverOptions: {},
+    // The harness — NOT the application — owns the per-run DB lifecycle.
+    // application.close() defaults to closeDb (the global singleton), which
+    // would close the DB mid-test when multiple drives share a process. The
+    // bootstrap.cleanup() handle is the sole closer; a no-op here prevents the
+    // application from closing the global DB out from under a subsequent drive.
+    close: () => { /* DB lifecycle owned by bootstrap.cleanup() */ },
     ...(composition.workerExecutorFactory
       ? { workerExecutorFactory: composition.workerExecutorFactory }
       : {}),
