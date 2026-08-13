@@ -1283,7 +1283,13 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
             // verification-only — it does not need an implementation task.
             // Default to true (implementation required) when no tag is present,
             // preserving backward compatibility with ACs created before the tag.
-            implementationRequired: !artifactTagsInclude(artifact, 'ac_kind:verification'),
+            // Guard: an AC whose own content signals implementation work (tests
+            // to author, a build/wrapper to commit, a runtime to wire) is NOT
+            // genuinely verification-only even if the architect tagged it so —
+            // verification cannot pass artifacts nobody was tasked to build. The
+            // planner must own such an AC in an implementation work item.
+            implementationRequired: !artifactTagsInclude(artifact, 'ac_kind:verification')
+              || acContentRequiresImplementation(artifact),
             // Criticality: read from AC tags (criticality:blocker |
             // criticality:degradable | criticality:nice_to_have). The architect
             // tags ACs from SRS §D2. Default 'blocker' (conservative) when no
@@ -2457,6 +2463,20 @@ function acceptedArtifactHash(artifact: FormalizationArtifactSnapshot): string {
 function artifactTagsInclude(artifact: FormalizationArtifactSnapshot, tag: string): boolean {
   const tags = artifact.tags;
   return Array.isArray(tags) && tags.includes(tag);
+}
+
+/**
+ * Guard against misclassification: an AC whose own content signals implementation
+ * work (tests to author, a build/wrapper to commit, a runtime to wire) is NOT
+ * genuinely verification-only — even if the architect tagged it `ac_kind:
+ * verification`. Verification cannot pass artifacts nobody was tasked to build,
+ * so the planner must own such an AC in an implementation work item. This makes
+ * the contract robust to the architect's tag without blaming the model.
+ */
+const AC_IMPLEMENTATION_SIGNAL =
+  /\b(tests?|testing|build|built|compile|compiled|wrapper|gradle|maven|executable)\b|\b(?:pass|passes|runs?|running|served?)\s+via\b/i;
+export function acContentRequiresImplementation(artifact: { code?: string | null; title?: string | null }): boolean {
+  return AC_IMPLEMENTATION_SIGNAL.test(`${artifact.code ?? ''} ${artifact.title ?? ''}`);
 }
 
 /**

@@ -49,6 +49,7 @@ import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
 } from './srs-d2-parser.js';
+import { acContentRequiresImplementation } from './formalization-installation.js';
 
 export const FORMALIZATION_KERNEL_HANDLER_IDS = {
   freezeBaseline: 'formalization-baseline-freezer',
@@ -367,7 +368,11 @@ export function buildSolutionContractPayload(
         code: artifact.code,
         acceptedHash: artifactHashes[String(artifact.artifactId)]!,
         criterionHash: artifact.contentHash,
-        implementationRequired: acKind === 'implementation',
+        // Guard: an AC whose content signals implementation work (tests/build/
+        // wrapper/gradle/runtime) is implementation-required even if the SRS §D2
+        // classified it verification-only. Keeps both producers consistent.
+        implementationRequired: acKind === 'implementation'
+          || acContentRequiresImplementation(artifact),
         criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
       };
     }),
