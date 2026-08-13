@@ -604,8 +604,12 @@ export function createPinnedClaudeWorkerExecutorFactory(
             task.metadata = metadata;
           } else if (task.execution_mode === 'artifact_change') {
             const base = getDb().prepare(
-              `SELECT receipt_ref,receipt_digest,effective_base_commit,
-                      observed_integration_head,base.project_repository_id,integration_branch
+              `SELECT r.receipt_ref AS receipt_ref, r.receipt_digest AS receipt_digest,
+                      r.effective_base_commit AS effective_base_commit,
+                      r.observed_integration_head AS observed_integration_head,
+                      base.id AS project_repository_id,
+                      base.integration_branch AS integration_branch,
+                      base.local_path AS repository_local_path
                  FROM factory_effective_desk_base_receipts r
                  JOIN tasks t ON t.id=r.task_id
                  JOIN project_repositories base ON base.id=t.project_repository_id
@@ -618,15 +622,9 @@ export function createPinnedClaudeWorkerExecutorFactory(
               // exact tree into the execution workspace — without it the
               // author is blind (observed live: five submissions editing one
               // file from model memory, unable to see the code under repair).
-              const repo = getDb().prepare(
-                `SELECT local_path FROM project_repositories WHERE id=?`,
-              ).get(base.project_repository_id) as { local_path: string | null } | undefined;
               metadata.process_workspace = {
                 ...(metadata.process_workspace as Record<string, unknown>),
-                source_snapshot: {
-                  ...base,
-                  repository_local_path: repo?.local_path ?? null,
-                },
+                source_snapshot: base,
               };
               getDb().prepare(
                 `UPDATE tasks SET metadata=?,updated_at=datetime('now') WHERE id=?`,
