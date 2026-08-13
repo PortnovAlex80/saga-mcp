@@ -32,6 +32,22 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// CI-03: the *.mjs suites import from dist/, so dist/ MUST exist. In CI it is
+// built by the `npm run build` step; for standalone/local invocations the runner
+// builds it on demand (once) so `node tools/run-acceptance-matrix.mjs` is
+// self-contained on a clean checkout.
+let distEnsured = false;
+function ensureDist() {
+  if (distEnsured || existsSync(path.join(root, 'dist'))) { distEnsured = true; return; }
+  console.log('[acceptance-matrix] dist/ absent — running `npm run build` (tsc emit)…');
+  const build = spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: true });
+  if (build.status !== 0) {
+    console.error('[acceptance-matrix] build failed — cannot run matrix without dist/');
+    process.exit(build.status ?? 1);
+  }
+  distEnsured = true;
+}
+
 // --- Factory acceptance matrix groups ---------------------------------------
 // Each group is a deterministic-green Factory acceptance suite, run as ONE
 // isolated `node --test` process (its own blocking CI step). Globs are expanded
@@ -217,9 +233,11 @@ if (requested !== null) {
     console.error(`Unknown group '${requested}'. Known: ${Object.keys(GROUPS).join(', ')}`);
     process.exit(2);
   }
+  ensureDist();
   runGroup(requested);
   process.exit(0);
 }
 
+ensureDist();
 for (const name of Object.keys(GROUPS)) runGroup(name);
 console.log('\n[acceptance-matrix] all groups green');

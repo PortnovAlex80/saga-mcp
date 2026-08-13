@@ -21,8 +21,10 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: TypeScript strict build
-        run: npx tsc --noEmit
+      - name: TypeScript build (type-check + emit dist/ for the acceptance matrix)
+        # CI-03: the acceptance matrix runs `node --test` on *.mjs that import
+        # from dist/, so dist/ MUST be emitted (not just --noEmit type-checked).
+        run: npm run build
 
       - name: ESLint (blocking lint gate)
         # CI-01: lint is a BLOCKING acceptance gate. Factory-completion active
