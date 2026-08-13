@@ -13,6 +13,7 @@ import {
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
+import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../process-modules/domain/source-change-candidate.js';
 import { decodeDevelopmentVerificationProduct } from '../domain/development-verification-product.js';
 import {
   productPayloadContractDigest,
@@ -61,6 +62,135 @@ export const developmentTaskGraphPayloadContract: ProductPayloadContract = {
     return decoded.ok ? [] : decoded.errors;
   },
 };
+
+// --- P1 of the desync map: payload contracts for the two implementation
+// products. Their shapes were previously enforced NOWHERE (the manifest
+// covered only four artifact schemas), so the implementation-scope check and
+// the managed materializer read untyped casts and drifted silently from the
+// producer (the decorative TS interface even named a field the check never
+// read). These contracts pin exactly the fields the CONSUMERS read, as
+// observed on live conveyor submissions.
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID =
+  'development.implementation-result-payload.v1';
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  decoder: 'validateDevelopmentImplementationResultPayload',
+  schemaVersion: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+  invariant: 'implementation-result-carries-exact-git-snapshot-and-declared-files',
+} as const;
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+    contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
+    version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,
+    definition: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION,
+  });
+export const developmentImplementationPayloadContract: ProductPayloadContract = {
+  schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+  contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
+  version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,
+  definition: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DIGEST,
+  validate: validateDevelopmentImplementationResultPayload,
+};
+
+export const SOURCE_CHANGE_PAYLOAD_CONTRACT_ID =
+  'development.source-change-candidate-payload.v1';
+export const SOURCE_CHANGE_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const SOURCE_CHANGE_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  decoder: 'validateSourceChangeCandidatePayload',
+  schemaVersion: SOURCE_CHANGE_CANDIDATE_SCHEMA,
+  invariant: 'managed-change-candidate-carries-base-commit-and-text-entries',
+} as const;
+export const SOURCE_CHANGE_PAYLOAD_CONTRACT_DIGEST = productPayloadContractDigest({
+  schemaId: SOURCE_CHANGE_CANDIDATE_SCHEMA,
+  contractId: SOURCE_CHANGE_PAYLOAD_CONTRACT_ID,
+  version: SOURCE_CHANGE_PAYLOAD_CONTRACT_VERSION,
+  definition: SOURCE_CHANGE_PAYLOAD_CONTRACT_DEFINITION,
+});
+export const sourceChangeCandidatePayloadContract: ProductPayloadContract = {
+  schemaId: SOURCE_CHANGE_CANDIDATE_SCHEMA,
+  contractId: SOURCE_CHANGE_PAYLOAD_CONTRACT_ID,
+  version: SOURCE_CHANGE_PAYLOAD_CONTRACT_VERSION,
+  definition: SOURCE_CHANGE_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: SOURCE_CHANGE_PAYLOAD_CONTRACT_DIGEST,
+  validate: validateSourceChangeCandidatePayload,
+};
+
+const HEX40 = /^[a-f0-9]{40}$/u;
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate the implementation result against the CONSUMER contract (the
+ * implementation-scope check + settlement read exactly these fields). Extra
+ * producer fields are allowed — this pins the read surface, not the whole
+ * payload, so producers may add fields without a contract version bump.
+ */
+function validateDevelopmentImplementationResultPayload(payload: unknown): string[] {
+  if (!isRecordValue(payload)) return ['payload must be an object'];
+  const errors: string[] = [];
+  const snapshot = payload.snapshot;
+  const repository = payload.repository;
+  if (typeof payload.workItemKey !== 'string' || payload.workItemKey.trim() === '') {
+    errors.push('workItemKey must be a non-empty string');
+  }
+  if (!isRecordValue(repository) || typeof repository.baseCommit !== 'string'
+      || !HEX40.test(repository.baseCommit)) {
+    errors.push('repository.baseCommit must be a 40-hex commit');
+  }
+  if (!isRecordValue(snapshot)) {
+    errors.push('snapshot must be an object');
+  } else {
+    if (typeof snapshot.commitSha !== 'string' || !HEX40.test(snapshot.commitSha)) {
+      errors.push('snapshot.commitSha must be a 40-hex commit');
+    }
+    const files = snapshot.changedFiles;
+    if (!Array.isArray(files) || files.length === 0
+        || !files.every(entry => typeof entry === 'string'
+          || (isRecordValue(entry) && typeof entry.path === 'string' && entry.path !== ''))) {
+      errors.push('snapshot.changedFiles must be a non-empty array of paths or {path} entries');
+    }
+  }
+  if (payload.readiness !== undefined && payload.readiness !== null
+      && !isRecordValue(payload.readiness)) {
+    errors.push('readiness, when present, must be an object');
+  }
+  return errors;
+}
+
+/**
+ * Validate the managed SourceChangeCandidate against the MATERIALIZER
+ * contract (validateEntries re-checks scope containment later; this pins the
+ * submission shape so a malformed manifest fails at submission with a
+ * decodable code instead of a downstream crash).
+ */
+function validateSourceChangeCandidatePayload(payload: unknown): string[] {
+  if (!isRecordValue(payload)) return ['payload must be an object'];
+  const errors: string[] = [];
+  const repository = payload.repository;
+  const snapshot = payload.snapshot;
+  const textSet = payload.textSet;
+  if (typeof payload.workItemKey !== 'string' || payload.workItemKey.trim() === '') {
+    errors.push('workItemKey must be a non-empty string');
+  }
+  if (!isRecordValue(repository) || typeof repository.baseCommit !== 'string'
+      || !HEX40.test(repository.baseCommit)) {
+    errors.push('repository.baseCommit must be a 40-hex commit');
+  }
+  if (!isRecordValue(snapshot) || typeof snapshot.commitSha !== 'string'
+      || !HEX40.test(snapshot.commitSha) || !Array.isArray(snapshot.files)) {
+    errors.push('snapshot must carry commitSha (40-hex) and files[]');
+  }
+  if (!isRecordValue(textSet) || !Array.isArray(textSet.entries)) {
+    errors.push('textSet.entries must be an array of change entries');
+  }
+  return errors;
+}
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,

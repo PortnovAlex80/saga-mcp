@@ -14,32 +14,10 @@ import {
   type ReplayGitRecipe,
   type ReplayKeyMaterial,
 } from '../../replay/replay-capsule.js';
-import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../../process-modules/shared/workplace-production-snapshot.js';
-
-/**
- * Resolve the cross-run-stable semantic digest for a CandidateSet member.
- */
-function resolveStableProductDigest(
-  db: Database.Database,
-  schemaId: string,
-  ref: string,
-  digest: string,
-): string {
-  if (ref.startsWith('managed-node-submission:')) return digest;
-  const row = db.prepare(
-    `SELECT payload_snapshot FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
-  ).get(schemaId, ref, digest) as { payload_snapshot: string } | undefined;
-  if (!row) return digest;
-  let payload: unknown;
-  try {
-    payload = JSON.parse(row.payload_snapshot);
-  } catch {
-    return digest;
-  }
-  if (!isWorkplaceProductionSnapshot(payload)) return digest;
-  return workplaceProductionSemanticDigest(payload);
-}
+// P6 consolidation: the strict key-material resolver and the stable-product
+// digest helper are shared with the claim binder — one formula, one file.
+import { resolveReplayKeyMaterial } from './replay-key-material.js';
+import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -350,17 +328,13 @@ export class SqliteReplayCapsuleRepository {
 
   /** Build the exact replay identity at claim time from server-authored bindings. */
   resolveClaim(task: Task, role: 'author' | 'reviewer'): ReplayClaimSelection {
-    const metadata = parseJsonObject(task.metadata);
-    const processRunId = Number(metadata.process_run_id);
-    const nodeId = typeof metadata.process_node_id === 'string' ? metadata.process_node_id : '';
-    const moduleRef = typeof metadata.process_module_ref === 'string' ? metadata.process_module_ref : '';
-    const cellId = typeof metadata.production_cell_id === 'string' ? metadata.production_cell_id : '';
-    const workKey = typeof metadata.work_key === 'string' ? metadata.work_key : '';
-    const semanticInputDigest = (typeof metadata.semantic_input_digest === 'string'
-      ? metadata.semantic_input_digest : '')
-      || (typeof metadata.process_node_input_hash === 'string'
-        ? metadata.process_node_input_hash : '');
-    if (!Number.isSafeInteger(processRunId) || !nodeId || !moduleRef || !cellId || !workKey || !semanticInputDigest) {
+    // P6 consolidation: the STRICT shared resolver (replay-key-material.ts).
+    // The legacy fallback to run-scoped `process_node_input_hash` is removed —
+    // a key built from run provenance can never match cross-run, so capsules
+    // claimed under it were silently unreplayable; live conveyor tasks all
+    // carry the frozen semantic digest.
+    const keyMaterial = resolveReplayKeyMaterial(this.db, task, role);
+    if (!keyMaterial) {
       const epicRow = this.db.prepare(
         'SELECT project_id FROM epics WHERE id=?',
       ).get(task.epic_id) as { project_id: number } | undefined;
@@ -368,63 +342,13 @@ export class SqliteReplayCapsuleRepository {
       const replayKey = sha256Hex({ projectId: fallbackProjectId, taskId: task.id, role, nonReplayable: true });
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
-    const run = this.db.prepare(
-      `SELECT project_id,package_digest FROM factory_process_runs WHERE id=?`,
-    ).get(processRunId) as { project_id: number; package_digest: string | null } | undefined;
-    if (!run?.package_digest) {
-      const replayKey = sha256Hex({ processRunId, nodeId, role, missingPackagePin: true });
-      return { replayKey, capsuleRef: null, capsulePayloadHash: null };
-    }
-    let subjectProductionDigest: string | null = null;
-    if (role === 'reviewer' && task.workplace_ref) {
-      // ADR-053 cutover: resolve the accepted author set by EXACT gate-decision
-      // ref (subject_candidate_set_ref from the final-accepted verdict), NOT by
-      // sealed_at recency. Eliminates the last post-seal recency authority.
-      const authorSet = this.db.prepare(
-        `SELECT subject_candidate_set_ref AS candidate_set_ref
-           FROM factory_gate_decisions
-          WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
-          ORDER BY decided_at DESC,rowid DESC LIMIT 1`,
-      ).get(task.workplace_ref) as { candidate_set_ref: string } | undefined;
-      if (authorSet) {
-        const members = this.db.prepare(
-          `SELECT product_schema, product_ref, product_digest
-             FROM factory_candidate_set_members
-            WHERE candidate_set_ref=?
-            ORDER BY product_schema, product_digest`,
-        ).all(authorSet.candidate_set_ref) as Array<{
-          product_schema: string;
-          product_ref: string;
-          product_digest: string;
-        }>;
-        if (members.length > 0) {
-          subjectProductionDigest = sha256Hex(
-            members.map(m => ({
-              schemaId: m.product_schema,
-              digest: resolveStableProductDigest(this.db, m.product_schema, m.product_ref, m.product_digest),
-            })),
-          );
-        }
-      }
-    }
-    const keyMaterial: ReplayKeyMaterial = {
-      projectId: run.project_id,
-      moduleRef,
-      nodeId,
-      productionCellId: cellId,
-      workKey,
-      role,
-      packageDigest: run.package_digest,
-      semanticInputDigest,
-      subjectProductionDigest,
-    };
     const replayKey = computeReplayKey(keyMaterial);
     const capsule = this.db.prepare(
       `SELECT capsule_ref,payload_hash
          FROM factory_replay_capsules
         WHERE project_id=? AND replay_key=?
         ORDER BY id DESC LIMIT 1`,
-    ).get(run.project_id, replayKey) as { capsule_ref: string; payload_hash: string } | undefined;
+    ).get(keyMaterial.projectId, replayKey) as { capsule_ref: string; payload_hash: string } | undefined;
     return {
       replayKey,
       capsuleRef: capsule?.capsule_ref ?? null,

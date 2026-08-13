@@ -1,56 +1,24 @@
 import type Database from 'better-sqlite3';
 import type { Task } from '../../types.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
 import { executionContextHash } from '../../shared/authority/execution-context.js';
 import {
   computeReplayKey,
   type ReplayClaimSelection,
-  type ReplayKeyMaterial,
 } from '../../replay/replay-capsule.js';
 import {
   ensureReplayCapsuleSchema,
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
+// P6 consolidation: the STRICT key-material resolver is a single exported
+// function shared with the claim-side repository — no second hand-rolled
+// copy of the SQL/subject formula can drift again.
 import {
-  isWorkplaceProductionSnapshot,
-  workplaceProductionSemanticDigest,
-} from '../../process-modules/shared/workplace-production-snapshot.js';
+  readWorkplaceRefForTask,
+  resolveReplayKeyMaterial,
+} from './replay-key-material.js';
 
-/**
- * Resolve the cross-run-stable semantic digest for a CandidateSet member.
- * Typed-submission products have stable digests. Managed-production products
- * carry run-specific provenance; resolve to the stable projection.
- */
-function resolveStableProductDigest(
-  db: Database.Database,
-  schemaId: string,
-  ref: string,
-  digest: string,
-): string {
-  if (ref.startsWith('managed-node-submission:')) return digest;
-  const row = db.prepare(
-    `SELECT payload_snapshot FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
-  ).get(schemaId, ref, digest) as { payload_snapshot: string } | undefined;
-  if (!row) return digest;
-  let payload: unknown;
-  try {
-    payload = JSON.parse(row.payload_snapshot);
-  } catch {
-    return digest;
-  }
-  if (!isWorkplaceProductionSnapshot(payload)) return digest;
-  return workplaceProductionSemanticDigest(payload);
-}
-
-function readWorkplaceRefForTask(db: Database.Database, task: Task): string | null {
-  if (task.workplace_ref) return task.workplace_ref;
-  const row = db.prepare(
-    'SELECT workplace_ref FROM tasks WHERE id=?',
-  ).get(task.id) as { workplace_ref: string | null } | undefined;
-  return row?.workplace_ref ?? null;
-}
+export { resolveReplayKeyMaterial };
 
 /**
  * A capsule becomes ineligible for subsequent recovery attempts in the SAME
@@ -104,80 +72,9 @@ function metadataObject(raw: unknown): Record<string, unknown> {
   }
 }
 
-function requiredString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() !== '' ? value : null;
-}
-
-export function resolveReplayKeyMaterial(
-  db: Database.Database,
-  task: Task,
-  role: 'author' | 'reviewer',
-): ReplayKeyMaterial | null {
-  const metadata = metadataObject(task.metadata);
-  const processRunId = Number(metadata.process_run_id);
-  const nodeId = requiredString(metadata.process_node_id);
-  const moduleRef = requiredString(metadata.process_module_ref);
-  const productionCellId = requiredString(metadata.production_cell_id);
-  const workKey = requiredString(metadata.work_key);
-
-  // Raw nodeInputHash may contain run provenance. Replay is allowed only when
-  // an explicit cross-run semantic digest was frozen by the producer runtime.
-  const semanticInputDigest = requiredString(metadata.semantic_input_digest);
-  if (!Number.isSafeInteger(processRunId) || processRunId <= 0
-      || !nodeId || !moduleRef || !productionCellId || !workKey || !semanticInputDigest) {
-    return null;
-  }
-  const run = db.prepare(
-    'SELECT project_id,package_digest FROM factory_process_runs WHERE id=?',
-  ).get(processRunId) as { project_id: number; package_digest: string | null } | undefined;
-  if (!run?.package_digest) return null;
-
-  let subjectProductionDigest: string | null = null;
-  if (role === 'reviewer') {
-    const workplaceRef = readWorkplaceRefForTask(db, task);
-    if (!workplaceRef) return null;
-    // ADR-053 cutover: resolve the accepted author set by EXACT gate-decision
-    // ref, NOT by sealed_at recency. Same pattern as certifyAcceptedReplayCapsules
-    // (this file, lines 213-224). The reviewer's subject is the authority-
-    // accepted author CandidateSet.
-    const authorSet = db.prepare(
-      `SELECT subject_candidate_set_ref AS candidate_set_ref
-         FROM factory_gate_decisions
-        WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
-        ORDER BY decided_at DESC,rowid DESC LIMIT 1`,
-    ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
-    if (!authorSet) return null;
-    const members = db.prepare(
-      `SELECT product_schema,product_ref,product_digest
-         FROM factory_candidate_set_members
-        WHERE candidate_set_ref=?
-        ORDER BY product_schema,product_digest`,
-    ).all(authorSet.candidate_set_ref) as Array<{
-      product_schema: string;
-      product_ref: string;
-      product_digest: string;
-    }>;
-    if (members.length === 0) return null;
-    subjectProductionDigest = sha256Hex(
-      members.map(member => ({
-        schemaId: member.product_schema,
-        digest: resolveStableProductDigest(db, member.product_schema, member.product_ref, member.product_digest),
-      })),
-    );
-  }
-
-  return {
-    projectId: run.project_id,
-    moduleRef,
-    nodeId,
-    productionCellId,
-    workKey,
-    role,
-    packageDigest: run.package_digest,
-    semanticInputDigest,
-    subjectProductionDigest,
-  };
-}
+// resolveReplayKeyMaterial is re-exported from the shared
+// replay-key-material module (see the import block above) — the local
+// hand-rolled copy was removed (P6 consolidation).
 
 function parseStringArray(raw: string, label: string): string[] {
   let parsed: unknown;

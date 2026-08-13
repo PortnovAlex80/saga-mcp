@@ -31,9 +31,11 @@
 import { sha256Hex } from '../../shared/canonical-json.js';
 import type { ProductPayloadContract } from './product-payload-contract.js';
 import {
+  developmentImplementationPayloadContract,
   developmentReviewVerdictPayloadContract,
   developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
+  sourceChangeCandidatePayloadContract,
 } from '../../modules/development/application/development-check-providers.js';
 import { factoryReviewVerdictPayloadContract } from './review-verdict-check-provider.js';
 import { registerProductPayloadContract } from './product-payload-contract.js';
@@ -63,6 +65,12 @@ export const WORKSHOP_PAYLOAD_CONTRACTS: readonly ProductPayloadContract[] = [
   developmentVerificationPayloadContract,
   developmentReviewVerdictPayloadContract,
   developmentTaskGraphPayloadContract,
+  // P1 of the desync map: the two implementation products previously had NO
+  // payload contract — their shapes lived only in untyped consumer casts and
+  // skill prose. Pinning the consumer read surface here installs the contract
+  // in BOTH the orchestrator and the worker MCP with no hand-list to drift.
+  developmentImplementationPayloadContract,
+  sourceChangeCandidatePayloadContract,
   // --- cross-cutting (review verdict used by development + formalization) ---
   factoryReviewVerdictPayloadContract,
 ];
