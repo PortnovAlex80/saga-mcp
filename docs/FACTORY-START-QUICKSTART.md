@@ -89,10 +89,12 @@ without a submission. The client's MCP panel shows the same failure as
 every server boot with `ERR_MODULE_NOT_FOUND: Cannot find package
 '@modelcontextprotocol/sdk'` (exactly this happened on 2026-08-13: three
 workers died to it while the tracker and the engine kept running fine, because
-only `dist/index.js` imports the SDK).
+only `dist/index.js` imports the SDK). Client-installed skills drift the same
+way — `git pull` does not touch `~/.zcode/skills/`.
 
 ```bash
 npm install && npm run build
+cp -r skills/* ~/.zcode/skills/     # sync operator skills (restart the client session after)
 
 # smoke: must print the banner and stay alive (Ctrl+C to stop), no ERR_MODULE_NOT_FOUND
 DB_PATH=<db> TRACKER_AUTOSTART=0 DOCS_GRAPH_AUTOSTART=0 node dist/index.js
