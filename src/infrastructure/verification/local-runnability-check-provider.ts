@@ -514,9 +514,16 @@ function runContractCommand(
     return;
   }
   // Run the contract's command verbatim through the platform shell so the
-  // stated wrapper/script (./gradlew, mvnw, …) is honored as-is.
+  // stated wrapper/script (./gradlew, mvnw, …) is honored as-is. On Windows,
+  // cmd.exe cannot execute a leading "./" ('"." is not a command') — strip the
+  // Unix path prefix from the program token so cmd+PATHEXT resolves the
+  // sibling wrapper script (gradlew → gradlew.bat) from the candidate root.
+  // Pure path normalization for the platform shell: no build-tool knowledge.
+  const platformCommand = process.platform === 'win32'
+    ? trimmed.replace(/^(\.\/)+/u, '')
+    : trimmed;
   try {
-    execFileSync(trimmed, {
+    execFileSync(platformCommand, {
       cwd: directory,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -526,7 +533,7 @@ function runContractCommand(
       shell: true,
     });
   } catch (error) {
-    throw new Error(commandFailureDetail(trimmed, [], error));
+    throw new Error(commandFailureDetail(platformCommand, [], error));
   }
 }
 
