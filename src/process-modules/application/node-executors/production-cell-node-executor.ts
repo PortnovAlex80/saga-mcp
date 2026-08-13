@@ -885,7 +885,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const generationKey = role === 'reviewer'
       ? `${serializeWorkplaceRef(workplace.ref)}:${role}:${sha256Hex(reviewerSubject!.candidateSetRef)}`
       : `${serializeWorkplaceRef(workplace.ref)}:${role}`;
-    const objective = `${cell.id}/${role}: ${node.description || node.label}`;
+    // FEEDBACK LOOP CLOSURE (continuation): a continuation run is created
+    // BECAUSE the parent failed its acceptance gates. Its repair tasks must
+    // carry the recorded causes (defectEvidence on the continuation recovery
+    // snapshot) — otherwise every repair worker starts blind and guesses at
+    // the defect (observed live: repair rounds fixed the wrong half).
+    // Universal: reads the run input's continuationRecovery; no workshop or
+    // cell names involved. Appended to the objective, which flows into the
+    // task description and the worker's prompt.
+    const defectEvidence = this.readContinuationDefectEvidence(ctx);
+    const objective = defectEvidence
+      ? `${cell.id}/${role}: ${node.description || node.label}\n\n`
+        + `REPAIR CONTEXT (parent-run acceptance failures):\n`
+        + defectEvidence
+      : `${cell.id}/${role}: ${node.description || node.label}`;
     const preparationBindings = isRecord(ctx.input)
       && isRecord((ctx.input as Record<string, unknown>).bindings)
       ? (ctx.input as { bindings: Record<string, unknown> }).bindings
@@ -1037,6 +1050,35 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (receipt) return String(receipt.taskId);
     const projected = this.opts.persistence.readProjectedRoleTask?.(workplaceRef, 'author');
     return projected ? String(projected.taskId) : null;
+  }
+
+  /**
+   * FEEDBACK LOOP CLOSURE — read the parent run's recorded acceptance
+   * failures off the continuation recovery snapshot in the run input.
+   * Returns null for ordinary (non-continuation) runs. The shape is the
+   * externalBaselineSnapshot.defectEvidence array written by
+   * prepareDevelopmentContinuation: {providerId, failedAt, message}.
+   */
+  private readContinuationDefectEvidence(ctx: NodeExecutionContext): string | null {
+    const runInput = ctx.frame.runInput as {
+      continuationRecovery?: {
+        externalBaselineSnapshot?: {
+          defectEvidence?: unknown;
+        };
+      };
+    } | undefined;
+    const evidence = runInput?.continuationRecovery?.externalBaselineSnapshot?.defectEvidence;
+    if (!Array.isArray(evidence) || evidence.length === 0) return null;
+    const lines: string[] = [];
+    for (const entry of evidence) {
+      if (!entry || typeof entry !== 'object') continue;
+      const record = entry as { providerId?: unknown; failedAt?: unknown; message?: unknown };
+      if (typeof record.message !== 'string' || record.message === '') continue;
+      const provider = typeof record.providerId === 'string' ? record.providerId : 'unknown-check';
+      const at = typeof record.failedAt === 'string' ? record.failedAt : '';
+      lines.push(`- [${provider}${at ? ` @ ${at}` : ''}] ${record.message.slice(0, 900)}`);
+    }
+    return lines.length > 0 ? lines.join('\n') : null;
   }
 
   private sealCandidateSet(

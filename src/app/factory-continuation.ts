@@ -168,6 +168,14 @@ export function prepareDevelopmentContinuation(
         expectedBaseCommit: head,
       }],
       remainingChangeScopes: changeScopes,
+      // FEEDBACK LOOP CLOSURE: the repair tasks a continuation creates must
+      // carry WHY the parent failed. The parent's failed check receipts hold
+      // the exact causes (provider + decodable diagnostic, e.g. the JVM's
+      // GradleWrapperMain stderr); without this snapshot every repair task
+      // starts blind and the worker guesses (observed live: two repair rounds
+      // fixed the JVM target but never the broken wrapper because the reason
+      // never reached the new task).
+      defectEvidence: readParentDefectEvidence(db, command.parentLifecycleRunId),
     },
     stageOverrides: [{
       stageId: 'solution-development',
@@ -214,6 +222,61 @@ export function prepareDevelopmentContinuation(
     repositoryHead: head,
     observerReceiptCount: observerReceipts.length,
   };
+}
+
+/**
+ * Read the parent run's FAILED check receipts as repair context: the exact
+ * causes the parent's acceptance gates recorded (provider id, timestamp, and
+ * the decodable diagnostic message — command stderr etc.). Capped to the most
+ * recent distinct causes so a long failure history does not bloat every task.
+ */
+function readParentDefectEvidence(
+  db: Database.Database,
+  parentLifecycleRunId: number,
+): Array<{ providerId: string; failedAt: string; message: string }> {
+  const rows = db.prepare(
+    `SELECT cr.provider_id AS provider_id, cr.created_at AS failed_at,
+            cr.evidence_refs AS evidence_refs
+       FROM factory_stage_runs sr
+       JOIN factory_process_runs pr ON pr.id=sr.process_run_id
+       JOIN factory_check_receipts cr
+         ON cr.check_run_ref IN (
+           SELECT gr.check_plan_ref FROM factory_gate_runs gr
+            WHERE gr.workplace_ref LIKE 'workplace/' || pr.id || '/%'
+         )
+      WHERE sr.lifecycle_run_id=? AND cr.outcome='failed'
+      ORDER BY cr.created_at DESC
+      LIMIT 10`,
+  ).all(parentLifecycleRunId) as Array<{
+    provider_id: string;
+    failed_at: string;
+    evidence_refs: string;
+  }>;
+  const seen = new Set<string>();
+  const evidence: Array<{ providerId: string; failedAt: string; message: string }> = [];
+  for (const row of rows) {
+    let message = '';
+    try {
+      for (const ref of JSON.parse(row.evidence_refs) as string[]) {
+        const match = ref.match(/factory-check-diagnostic\/v1\/[^/]+\/(.+)$/);
+        if (!match) continue;
+        const decoded = JSON.parse(
+          Buffer.from(match[1]!, 'base64').toString('utf-8'),
+        ) as { message?: unknown };
+        if (typeof decoded.message === 'string' && decoded.message !== '') {
+          message = decoded.message;
+          break;
+        }
+      }
+    } catch {
+      message = '';
+    }
+    const key = `${row.provider_id}:${message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    evidence.push({ providerId: row.provider_id, failedAt: row.failed_at, message });
+  }
+  return evidence;
 }
 
 function git(repositoryPath: string, ...args: string[]): string {
