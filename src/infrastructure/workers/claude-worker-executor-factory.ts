@@ -27,7 +27,7 @@ import {
 } from './claude-board-worker-executor.js';
 import * as productHandlers from '../../tools/products.js';
 import * as artifactHandlers from '../../tools/artifacts.js';
-import * as lifecycleHandlers from '../../tools/lifecycle.js';
+
 import * as dispatcherHandlers from '../../tools/dispatcher.js';
 import {
   executeCapsuleReplay,
@@ -663,7 +663,8 @@ function createInProcessReplayRunner(): InProcessReplayFn {
         artifact?: { id?: number };
       })(input),
     trace_add: input =>
-      (lifecycleHandlers.handlers['trace_add'] as (input: unknown) => unknown)(input),
+      // trace_add is exported by the artifacts tool container, not lifecycle.
+      (artifactHandlers.handlers['trace_add'] as (input: unknown) => unknown)(input),
     worker_done: input =>
       (dispatcherHandlers.handlers['worker_done'] as (input: unknown) => unknown)(input),
   };
