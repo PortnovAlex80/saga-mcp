@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { DEVELOPMENT_REVIEW_VERDICT_SCHEMA } from '../../modules/development/domain/development-schemas.js';
 import { SqliteAcceptedAuthorityHeadRepository } from './sqlite-accepted-authority-head-repository.js';
 
 /**
@@ -290,7 +291,7 @@ export class SqliteProductionCellIntegration {
           AND rcs.role='reviewer'
          JOIN factory_candidate_set_members m
            ON m.candidate_set_ref=rcs.candidate_set_ref
-          AND m.product_schema='factory.development-review-verdict.v1'
+          AND m.product_schema='${DEVELOPMENT_REVIEW_VERDICT_SCHEMA}'
           AND m.product_ref LIKE 'managed-node-submission:%'
          JOIN factory_managed_node_submissions s
            ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)

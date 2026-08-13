@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 
 import type { ProductRef } from '../../process-modules/domain/spi/index.js';
 import type { WorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { DEVELOPMENT_REVIEW_VERDICT_SCHEMA } from '../../modules/development/domain/development-schemas.js';
 import {
   deserializeWorkplaceRef,
   serializeWorkplaceRef,
@@ -65,6 +66,9 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     if (!parent || !['failed', 'completed'].includes(parent.status)) {
       throw new Error('AUTHOR_CARRY_FORWARD_PARENT_NOT_TERMINAL_FAILED');
     }
+    // NOTE: the includes() below matches the LITERAL historical error text
+    // recorded on parent lifecycle runs before the constant existed — keep it
+    // byte-stable or old failures stop being recognized as carry-forwardable.
     const eligibleFailureCode = parent.error?.includes(
       "review verdict contract expected exactly one 'factory.development-review-verdict.v1', received 0",
     )
@@ -314,7 +318,7 @@ export function authorizeEligibleAuthorCandidateCarryForward(
            ON wi.id=json_extract(t.metadata,'$.work_intent_id')
         WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='reviewer'`,
     ).all(source.workplace_ref) as Array<{ id: number; output_schema: string }>;
-    if (reviewer.length !== 1 || reviewer[0]!.output_schema !== 'factory.development-review-verdict.v1') {
+    if (reviewer.length !== 1 || reviewer[0]!.output_schema !== DEVELOPMENT_REVIEW_VERDICT_SCHEMA) {
       throw new Error('AUTHOR_CARRY_FORWARD_REVIEW_INTENT_NOT_EXACT');
     }
     const wrongSubmissions = db.prepare(
