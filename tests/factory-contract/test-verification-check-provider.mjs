@@ -39,6 +39,7 @@ export function createTestVerificationCheckProviderFactory() {
   return ({ db, candidateSets }) => ({
     providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
     run({ subjectCandidateSetRef, parameters }) {
       try {
         const processRunId = Number(parameters.processRunId);
@@ -70,8 +71,8 @@ export function createTestVerificationCheckProviderFactory() {
              FROM factory_managed_node_submissions s
              JOIN tasks t ON t.id=s.task_id
              LEFT JOIN artifacts a ON a.id=t.verification_target_artifact_id
-            WHERE s.id=? AND s.process_run_id=? AND s.execution_id=?`,
-        ).get(submissionId, processRunId, candidate.producerExecutionRef);
+            WHERE s.id=? AND s.process_run_id=?`,
+        ).get(submissionId, processRunId);
 
         if (!row || row.content_hash !== member.productRef.digest)
           return 'failed';

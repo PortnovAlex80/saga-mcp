@@ -8,6 +8,11 @@
 
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
+  parseRepositoryScope,
+  repositoryScopeCovers,
+  repositoryScopesOverlap as sharedRepositoryScopesOverlap,
+} from '../../../shared/repository-scope.js';
+import {
   acceptanceCriterionIdentity,
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,
@@ -240,7 +245,14 @@ implements DevelopmentTaskGraphPolicyPort {
         || !unique(item.acceptanceCriterionIds)
         || !unique(item.dependsOnKeys)
         || !unique(item.changeScopes)
-        || item.changeScopes.some(scope => !scope.trim()))
+        || item.changeScopes.some(scope => {
+          try {
+            parseRepositoryScope(scope);
+            return false;
+          } catch {
+            return true;
+          }
+        }))
       || allItems.some(item => item.dependsOnKeys.includes(item.key))
       || allItems.some(item =>
         item.dependsOnKeys.some(dependency => !itemKeySet.has(dependency)))
@@ -448,25 +460,11 @@ implements DevelopmentTaskGraphPolicyPort {
 }
 
 export function repositoryScopesOverlap(left: string, right: string): boolean {
-  const normalize = (value: string): string => value
-    .replace(/\\/g, '/')
-    .replace(/^\.\//, '')
-    .replace(/\/+$/, '');
-  const leftPath = normalize(left);
-  const rightPath = normalize(right);
-  return leftPath === rightPath
-    || leftPath.startsWith(`${rightPath}/`)
-    || rightPath.startsWith(`${leftPath}/`);
+  return sharedRepositoryScopesOverlap(left, right);
 }
 
 function repositoryScopeContains(scope: string, requiredPath: string): boolean {
-  const normalize = (value: string): string => value
-    .replace(/\\/g, '/')
-    .replace(/^\.\//, '')
-    .replace(/\/+$/, '');
-  const scopePath = normalize(scope);
-  const required = normalize(requiredPath);
-  return scopePath === required || required.startsWith(`${scopePath}/`);
+  return repositoryScopeCovers(scope, requiredPath);
 }
 
 function dependsTransitivelyOn(

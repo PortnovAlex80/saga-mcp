@@ -145,10 +145,44 @@ const candidateRead: ToolHandler = args => {
   if (role !== 'author' && role !== 'reviewer') {
     throw new Error('role must be author|reviewer');
   }
+  const requestedRef = typeof args.candidate_set_ref === 'string'
+    ? args.candidate_set_ref.trim()
+    : '';
+  let authorityRef = requestedRef;
+  if (!authorityRef && role === 'author') {
+    const executionRef = process.env.SAGA_EXECUTION_ID;
+    if (executionRef) {
+      const row = getDb().prepare(
+        `SELECT wi.authority_scope
+           FROM worker_executions we
+           JOIN tasks t ON t.id=we.task_id
+           JOIN factory_work_intents wi
+             ON wi.id=json_extract(t.metadata,'$.work_intent_id')
+          WHERE we.execution_id=?`,
+      ).get(executionRef) as { authority_scope: string } | undefined;
+      if (row) {
+        const scope = JSON.parse(row.authority_scope) as {
+          payload_bindings?: Array<{ field?: unknown; equals?: unknown }>;
+        };
+        const binding = scope.payload_bindings?.find(item =>
+          item.field === 'subject_candidate_set_ref');
+        if (typeof binding?.equals === 'string') authorityRef = binding.equals;
+      }
+    }
+  }
   const sets = candidateRepo().listForWorkplace(workplaceRef)
     .filter(set => set.role === role);
   if (sets.length === 0) throw new Error('CANDIDATE_SET_NOT_FOUND');
-  const set = sets[0]!;
+  const set = authorityRef
+    ? sets.find(candidate => candidate.candidateSetRef === authorityRef)
+    : sets.length === 1 ? sets[0] : undefined;
+  if (!set) {
+    throw new Error(
+      authorityRef
+        ? `CANDIDATE_SET_AUTHORITY_MISMATCH: ${authorityRef}`
+        : 'CANDIDATE_SET_AMBIGUOUS: provide candidate_set_ref or use the exact reviewer WorkIntent binding',
+    );
+  }
 
   // CandidateSet is the immutable QC handoff. Do NOT reconstruct its material
   // from presenter execution provenance or from the current live Workplace.
@@ -236,6 +270,7 @@ export const definitions: Tool[] = [
       properties: {
         workplace_ref: { type: 'string' },
         role: { type: 'string', enum: ['author', 'reviewer'] },
+        candidate_set_ref: { type: 'string' },
       },
       required: ['workplace_ref', 'role'],
     },

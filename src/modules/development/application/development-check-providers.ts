@@ -6,6 +6,11 @@ import type { CandidateSetReaderPort } from '../../../application/ports/candidat
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
+  parseRepositoryFilePath,
+  parseRepositoryScope,
+  repositoryScopeContainsPath,
+} from '../../../shared/repository-scope.js';
+import {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
   DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
@@ -478,13 +483,13 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
           return scopeFailure(subjectCandidateSetRef, 'changed-files-mismatch',
             `Submitted changedFiles [${claimed.join(', ')}] do not match the authoritative Git diff [${actual.join(', ')}].`);
         }
-        const normalizedScopes = scopes.map(normalizeRepoPath);
+        const normalizedScopes = scopes.map(parseRepositoryScope);
         const offending = actual.filter(path =>
-          !normalizedScopes.some(scope => pathMatchesScope(path, scope)));
+          !normalizedScopes.some(scope => repositoryScopeContainsPath(scope, path)));
         return offending.length === 0
           ? 'passed'
           : scopeFailure(subjectCandidateSetRef, 'path-outside-authority',
-              `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${normalizedScopes.join(', ')}].`);
+              `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${scopes.join(', ')}].`);
       } catch {
         return 'error';
       }
@@ -513,21 +518,11 @@ function readSubmittedChangedPath(value: unknown): string {
 }
 
 function normalizeRepoPath(value: string): string {
-  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '');
-  const segments = normalized.split('/');
-  if (!normalized
-      || normalized.startsWith('/')
-      || /^[A-Za-z]:\//.test(normalized)
-      || segments.includes('..')
-      || segments.includes('.git')) {
+  try {
+    return parseRepositoryFilePath(value);
+  } catch {
     throw new Error('DEVELOPMENT_CHANGE_SCOPE_PATH_INVALID');
   }
-  return normalized;
-}
-
-function pathMatchesScope(path: string, scope: string): boolean {
-  const normalizedScope = scope.replace(/\/+$/, '');
-  return path === normalizedScope || path.startsWith(`${normalizedScope}/`);
 }
 
 export function createDevelopmentVerificationCheckProvider(input: {

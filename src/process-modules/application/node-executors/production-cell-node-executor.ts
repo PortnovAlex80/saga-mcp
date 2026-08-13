@@ -573,7 +573,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     let postAcceptanceCandidate: CandidateSet | null = null;
 
     if (role === 'author') {
-      const decision = this.runGate(ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef);
+      const decision = this.runGate(
+        ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef, [],
+        this.readGateUpstreamBinding(ctx, cell),
+      );
       if (decision.verdict === 'accepted') {
         if (!cell.review) postAcceptanceCandidate = candidate;
         this.opts.coordinator.applyGateDecision(workplace.ref, {
@@ -621,6 +624,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         cell.review.finalGate,
         subjectAuthorSet.candidateSetRef,
         [candidate.candidateSetRef],
+        this.readGateUpstreamBinding(ctx, cell),
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
@@ -909,7 +913,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         ?? preparationBindings.authorityIntentId
         ?? 0,
     );
-    const prepared = Number.isInteger(preparedTaskId) && preparedTaskId > 0
+    // One pre-projected task/intent can represent only a singleton cell. A
+    // fan-out must derive one stable task+intent per Workplace; reusing the
+    // same prepared card across items lets concurrent executions revoke each
+    // other's fence and was observed as MANAGED_NODE_SUBMISSION_FENCE_LOST.
+    const prepared = !cell.materialization.sourceBinding
+      && Number.isInteger(preparedTaskId) && preparedTaskId > 0
       && Number.isInteger(preparedIntentId) && preparedIntentId > 0;
     const provenance = cell.materialization.taskProvenance;
     const sourceArtifactIds = provenance
@@ -1265,6 +1274,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     gate: ProductionCellDefinition['authorGate'],
     subjectCandidateSetRef: string,
     assessmentCandidateSetRefs: readonly string[] = [],
+    upstreamProductBinding: Readonly<Record<string, unknown>> = {},
   ) {
     return driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
       workplaceRef,
@@ -1282,9 +1292,19 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       checkParameters: {
         processRunId: ctx.processRunId,
         moduleRef: `${ctx.module.identity.name}@${ctx.module.identity.version}`,
+        ...upstreamProductBinding,
       },
       environmentRef: null,
     }).decision;
+  }
+
+  private readGateUpstreamBinding(
+    ctx: NodeExecutionContext,
+    cell: ProductionCellDefinition,
+  ): Readonly<Record<string, unknown>> {
+    const sourceBinding = cell.materialization.sourceBinding;
+    if (!sourceBinding) return {};
+    return readExactProductBinding(resolveSourceProduction(ctx, sourceBinding));
   }
 
   private assertProductContract(
@@ -1468,6 +1488,24 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       bindings: { cellId: cell.id, final, items },
     };
   }
+}
+
+/**
+ * Expose an exact content-addressed upstream product to installed check
+ * providers. This is generic Gate request context, not a schema-specific
+ * lookup: providers decide whether the triple is relevant. It replaces
+ * process/kind/latest fallbacks and synthetic CandidateSets for kernel output.
+ */
+function readExactProductBinding(upstream: unknown): Readonly<Record<string, unknown>> {
+  if (!isRecord(upstream)) return {};
+  if (typeof upstream.schema !== 'string'
+      || typeof upstream.artifactRef !== 'string'
+      || typeof upstream.contentHash !== 'string') return {};
+  return {
+    upstreamProductSchema: upstream.schema,
+    upstreamProductRef: upstream.artifactRef,
+    upstreamProductDigest: upstream.contentHash,
+  };
 }
 
 /**
@@ -1785,22 +1823,34 @@ function resolveExecutionProfile(
 function resolveSourceProduction(
   ctx: NodeExecutionContext,
   sourceBinding: string,
-): { contentHash: string; semanticDigest?: string; bindings: Record<string, unknown> } | null {
+): {
+  schema?: string;
+  artifactRef?: string;
+  contentHash: string;
+  semanticDigest?: string;
+  bindings: Record<string, unknown>;
+} | null {
   const direct = ctx.frame.productions[sourceBinding];
   if (direct) {
     return {
+      schema: direct.schema,
+      artifactRef: direct.artifactRef,
       contentHash: direct.contentHash,
       semanticDigest: direct.semanticDigest,
       bindings: direct.bindings as Record<string, unknown>,
     };
   }
   const input = ctx.input as {
+    schema?: unknown;
+    artifactRef?: unknown;
     contentHash?: unknown;
     semanticDigest?: unknown;
     bindings?: unknown;
   } | null;
   if (input && typeof input.contentHash === 'string' && isRecord(input.bindings)) {
     return {
+      schema: typeof input.schema === 'string' ? input.schema : undefined,
+      artifactRef: typeof input.artifactRef === 'string' ? input.artifactRef : undefined,
       contentHash: input.contentHash,
       semanticDigest: typeof input.semanticDigest === 'string' ? input.semanticDigest : undefined,
       bindings: input.bindings,

@@ -71,7 +71,7 @@ export function createLocalRunnabilityCheckProvider(input: {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-    run({ subjectCandidateSetRef }) {
+    run({ subjectCandidateSetRef, parameters }) {
       // LR-06 — DURABLE REPLAY. The readiness outcome + proof are persisted in
       // factory_check_receipts (the Gate-receipt substrate is the ONE durable
       // acceptance-authority store, per ADR-053). On any re-query for the same
@@ -87,7 +87,7 @@ export function createLocalRunnabilityCheckProvider(input: {
       if (replayed) return replayed;
       let subject;
       try {
-        subject = resolveSubject(input, subjectCandidateSetRef);
+        subject = resolveSubject(input, subjectCandidateSetRef, parameters);
       } catch (subjErr) {
         const reason = subjErr instanceof Error ? subjErr.message : String(subjErr);
         return {
@@ -223,6 +223,7 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
 function resolveSubject(
   input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
   candidateSetRef: string,
+  parameters: Readonly<Record<string, unknown>>,
 ): CandidateSubject {
   // ADR-053 — prove runnable the EXACT integrated-candidate product sealed as a
   // member of the accepted CandidateSet. The subject is resolved by the member's
@@ -240,6 +241,18 @@ function resolveSubject(
   let member = set?.members.find(
     candidate => candidate.productRef.schemaId === INTEGRATED_CANDIDATE_SCHEMA,
   ) ?? null;
+  const explicitProduct = parameters.upstreamProductSchema === INTEGRATED_CANDIDATE_SCHEMA
+    && typeof parameters.upstreamProductRef === 'string'
+    && typeof parameters.upstreamProductDigest === 'string'
+    ? {
+        schemaId: parameters.upstreamProductSchema,
+        ref: parameters.upstreamProductRef,
+        digest: parameters.upstreamProductDigest,
+      }
+    : null;
+  const evidenceBoundProduct = explicitProduct ?? readIntegratedCandidateBoundByEvidence(
+    input, subjectSet,
+  );
   // LR-01 fallback — the integrated candidate is a kernel-produced (freeze)
   // process product sealed into a freeze-authority CandidateSet, NOT the
   // verification-evidence set the gate named as subject. When the subject lacks
@@ -247,7 +260,7 @@ function resolveSubject(
   // process run (the member's content-addressed triple is the exact sealed
   // candidate). This preserves exact-member resolution — the product is read by
   // its immutable ProductRef, never by recency.
-  if (!member) {
+  if (!member && !evidenceBoundProduct) {
     const processRunId = subjectSet?.workplaceRef.processRunId
       ?? extractProcessRunIdFromRef(candidateSetRef);
     if (processRunId !== null) {
@@ -261,8 +274,8 @@ function resolveSubject(
     }
   }
   if (!set || set.role !== 'author') throw new Error('LOCAL_READINESS_SUBJECT_MISSING');
-  if (!member) throw new Error('LOCAL_READINESS_SUBJECT_NOT_SEALED');
-  const { schemaId, ref, digest } = member.productRef;
+  if (!member && !evidenceBoundProduct) throw new Error('LOCAL_READINESS_SUBJECT_NOT_SEALED');
+  const { schemaId, ref, digest } = evidenceBoundProduct ?? member!.productRef;
   if (typeof ref !== 'string' || ref.length === 0
       || typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest)) {
     throw new Error('LOCAL_READINESS_CANDIDATE_INVALID');
@@ -322,6 +335,44 @@ function resolveSubject(
     candidateHash: candidate.candidateHash,
     readiness: candidate.readiness,
   };
+}
+
+function readIntegratedCandidateBoundByEvidence(
+  input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
+  subjectSet: CandidateSet | null,
+): { schemaId: string; ref: string; digest: string } | null {
+  const evidence = subjectSet?.members.find(
+    member => member.productRef.schemaId
+      === 'factory.candidate-verification-evidence-product.v2',
+  );
+  if (!subjectSet || !evidence?.productRef.ref.startsWith('managed-node-submission:')) {
+    return null;
+  }
+  const submissionId = Number(evidence.productRef.ref.slice('managed-node-submission:'.length));
+  if (!Number.isSafeInteger(submissionId) || submissionId < 1) return null;
+  const row = input.db.prepare(
+    `SELECT payload_snapshot FROM factory_managed_node_submissions
+      WHERE id=? AND process_run_id=? AND content_hash=?`,
+  ).get(submissionId, subjectSet.workplaceRef.processRunId, evidence.productRef.digest) as
+    { payload_snapshot: string } | undefined;
+  if (!row) return null;
+  const payload = JSON.parse(row.payload_snapshot) as { candidateHash?: unknown };
+  if (typeof payload.candidateHash !== 'string' || !/^[a-f0-9]{64}$/u.test(payload.candidateHash)) {
+    return null;
+  }
+  const product = input.db.prepare(
+    `SELECT artifact_ref,product_hash FROM factory_process_products
+      WHERE process_run_id=? AND schema_id=? AND product_hash=?`,
+  ).get(
+    subjectSet.workplaceRef.processRunId,
+    INTEGRATED_CANDIDATE_SCHEMA,
+    payload.candidateHash,
+  ) as { artifact_ref: string; product_hash: string } | undefined;
+  return product ? {
+    schemaId: INTEGRATED_CANDIDATE_SCHEMA,
+    ref: product.artifact_ref,
+    digest: product.product_hash,
+  } : null;
 }
 
 /**

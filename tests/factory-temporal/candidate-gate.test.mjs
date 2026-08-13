@@ -416,10 +416,19 @@ test('Candidate/Gate: a GateRun with no live owner is diagnosed as waiting_expec
       // A sealed author CandidateSet exists (the worker did complete before
       // exiting) but the gate has not yet produced a decision.
       db.prepare(
+        `INSERT INTO factory_workplace_production_revisions
+           (revision_ref, workplace_ref, parent_revision_ref, members,
+            contributing_execution_refs, presenter_ref, material_digest,
+            semantic_digest, sealed_at)
+         VALUES ('production-revision-ownerless-1', ?, NULL, '[]',
+                 '["exec-exited-1"]', 'exec-exited-1', 'material-digest-1',
+                 'semantic-digest-1', datetime('now'))`,
+      ).run(workplaceRef);
+      db.prepare(
         `INSERT INTO factory_candidate_sets
-           (candidate_set_ref, workplace_ref,  role,
+           (candidate_set_ref, workplace_ref, production_revision_ref, role,
             candidate_set_digest, seal_receipt_ref, sealed_at)
-         VALUES ('cset-ownerless-1', ?, 'exec-exited-1', 'author',
+         VALUES ('cset-ownerless-1', ?, 'production-revision-ownerless-1', 'author',
                  'digest-1', 'receipt-1', datetime('now'))`,
       ).run(workplaceRef);
 

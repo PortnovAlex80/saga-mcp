@@ -5,6 +5,11 @@ import { encodeCheckDiagnostic } from '../domain/workplace/check-diagnostic.js';
 import { serializeWorkplaceRef } from '../domain/workplace/workplace-ref.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
+  parseRepositoryFilePath,
+  parseRepositoryScope,
+  repositoryScopeContainsPath,
+} from '../../shared/repository-scope.js';
+import {
   productPayloadContractDigest,
   type ProductPayloadContract,
 } from './product-payload-contract.js';
@@ -261,8 +266,12 @@ function isBlockingSeverity(severity: string | undefined): boolean {
 /** Path-containment identical to the deterministic scope gate: a scope is an
  * exact file or a directory prefix (trailing slash insignificant). */
 function pathWithinScopes(path: string, scopes: readonly string[]): boolean {
-  return scopes.some(scope => {
-    const normalized = scope.replace(/\/+$/, '');
-    return path === normalized || path.startsWith(`${normalized}/`);
-  });
+  try {
+    const candidate = parseRepositoryFilePath(path);
+    return scopes
+      .map(parseRepositoryScope)
+      .some(scope => repositoryScopeContainsPath(scope, candidate));
+  } catch {
+    return false;
+  }
 }

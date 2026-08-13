@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -18,12 +18,16 @@ function git(repo, ...args) {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
 }
 
-function setup() {
+function setup({ scopes = ['app.js'], files = {} } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-source-change-'));
   git(root, 'init');
   git(root, 'config', 'user.email', 'factory@example.test');
   git(root, 'config', 'user.name', 'Factory Test');
   writeFileSync(path.join(root, 'app.js'), 'export const value = 1;\n');
+  for (const [relativePath, content] of Object.entries(files)) {
+    mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true });
+    writeFileSync(path.join(root, relativePath), content);
+  }
   git(root, 'add', '.');
   git(root, 'commit', '-m', 'base');
   git(root, 'branch', '-M', 'dev');
@@ -52,7 +56,7 @@ function setup() {
        (epic_id,title,status,priority,execution_mode,project_repository_id,
         integration_state,metadata,workplace_ref)
      VALUES (1,'source','in_progress','high','artifact_change',1,'pending',?,?)`,
-  ).run(JSON.stringify({ cell_input_item: { changeScopes: ['app.js'] } }), workplace).lastInsertRowid);
+  ).run(JSON.stringify({ cell_input_item: { changeScopes: scopes } }), workplace).lastInsertRowid);
   db.prepare(
     `INSERT INTO worker_executions
        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase)
@@ -125,6 +129,59 @@ test('path escape and undeclared scope fail before any candidate ref is created'
       );
     }
     assert.equal(git(fixture.root, 'for-each-ref', '--format=%(refname)', 'refs/saga/candidates'), '');
+    assert.equal(git(fixture.root, 'rev-parse', 'dev'), fixture.base);
+  } finally {
+    if (previous === undefined) delete process.env.SAGA_EXECUTION_ID;
+    else process.env.SAGA_EXECUTION_ID = previous;
+    fixture.db.close();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('r8 mixed exact and directory scopes materialize a complete multi-file candidate', () => {
+  const scopes = [
+    'build.gradle.kts', 'gradle/', 'gradlew', 'gradlew.bat',
+    'src/main/kotlin/', 'src/test/',
+  ];
+  const fixture = setup({
+    scopes,
+    files: {
+      'gradle/wrapper/gradle-wrapper.properties': 'distributionUrl=old\n',
+      'gradlew.bat': 'set CLASSPATH=broken\r\n',
+      'src/main/kotlin/com/marsvenus/MessageService.kt': 'class MessageService\n',
+      'src/main/kotlin/com/marsvenus/Application.kt': 'class Application\n',
+    },
+  });
+  const previous = process.env.SAGA_EXECUTION_ID;
+  process.env.SAGA_EXECUTION_ID = 'exec-source';
+  try {
+    const result = materializeManagedSourceChange(fixture.db, SOURCE_CHANGE_CANDIDATE_SCHEMA, {
+      schemaVersion: SOURCE_CHANGE_CANDIDATE_SCHEMA,
+      workItemKey: 'item',
+      baseCommit: fixture.base,
+      entries: [
+        {
+          path: 'src/main/kotlin/com/marsvenus/MessageService.kt',
+          operation: 'modify',
+          content: '@Service\nclass MessageService\n',
+        },
+        {
+          path: 'src/main/kotlin/com/marsvenus/Application.kt',
+          operation: 'modify',
+          content: '@ComponentScan("com.marsvenus")\nclass Application\n',
+        },
+        {
+          path: 'gradlew.bat',
+          operation: 'modify',
+          content: 'set CLASSPATH=%DIRNAME%gradle\\wrapper\\gradle-wrapper.jar\r\n',
+        },
+      ],
+    });
+    assert.equal(result.textSet.entries.length, 3);
+    assert.equal(
+      git(fixture.root, 'show', `${result.source.commitSha}:gradlew.bat`),
+      'set CLASSPATH=%DIRNAME%gradle\\wrapper\\gradle-wrapper.jar',
+    );
     assert.equal(git(fixture.root, 'rev-parse', 'dev'), fixture.base);
   } finally {
     if (previous === undefined) delete process.env.SAGA_EXECUTION_ID;

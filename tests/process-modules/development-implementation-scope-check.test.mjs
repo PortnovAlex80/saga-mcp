@@ -82,7 +82,7 @@ test('implementation scope provider accepts typed changed-file objects from real
 
 test('implementation scope provider treats a normalized directory scope as its descendant tree', () => {
   assert.equal(fixture({
-    scopes: ['src/core'],
+    scopes: ['src/core/'],
     changedFiles: ['src/core/calculator.ts'],
   }), 'passed');
 });

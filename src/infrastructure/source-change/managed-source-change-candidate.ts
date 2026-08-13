@@ -9,6 +9,11 @@ import {
   type SourceChangeCandidateInput,
   type SourceChangeEntry,
 } from '../../process-modules/domain/source-change-candidate.js';
+import {
+  parseRepositoryFilePath,
+  parseRepositoryScope,
+  repositoryScopeContainsPath,
+} from '../../shared/repository-scope.js';
 
 export { SOURCE_CHANGE_CANDIDATE_SCHEMA };
 
@@ -43,30 +48,31 @@ function git(
   return result.stdout.trim();
 }
 
-function validatePath(candidate: string): string {
-  if (
-    !candidate
-    || candidate.startsWith('/')
-    || candidate.startsWith('\\')
-    || /^[A-Za-z]:/.test(candidate)
-    || candidate.includes('\\')
-    || candidate.split('/').some(segment => segment === '..' || segment === '.' || !segment)
-  ) {
-    throw new Error(`SOURCE_CHANGE_PATH_INVALID: ${candidate}`);
-  }
-  if (candidate === '.git' || candidate.startsWith('.git/')) {
-    throw new Error(`SOURCE_CHANGE_GIT_INTERNAL_PATH_DENIED: ${candidate}`);
-  }
-  return candidate;
-}
-
 function validateEntries(entries: readonly SourceChangeEntry[], scopes: readonly string[]): void {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error('SOURCE_CHANGE_ENTRIES_REQUIRED');
   }
+  const parsedScopes = scopes.map(scope => {
+    try {
+      return parseRepositoryScope(scope);
+    } catch (error) {
+      throw new Error(`SOURCE_CHANGE_FROZEN_SCOPE_INVALID: ${scope}`, { cause: error });
+    }
+  });
   const seen = new Set<string>();
   for (const entry of entries) {
-    const candidatePath = validatePath(entry.path);
+    let candidatePath: string;
+    try {
+      candidatePath = parseRepositoryFilePath(entry.path);
+    } catch (error) {
+      const denied = error instanceof Error && error.message.includes('GIT_INTERNAL');
+      throw new Error(
+        denied
+          ? `SOURCE_CHANGE_GIT_INTERNAL_PATH_DENIED: ${entry.path}`
+          : `SOURCE_CHANGE_PATH_INVALID: ${entry.path}`,
+        { cause: error },
+      );
+    }
     const folded = candidatePath.toLocaleLowerCase('en-US');
     if (seen.has(folded)) throw new Error(`SOURCE_CHANGE_PATH_DUPLICATE: ${candidatePath}`);
     seen.add(folded);
@@ -97,10 +103,7 @@ function validateEntries(entries: readonly SourceChangeEntry[], scopes: readonly
         );
       }
     }
-    const inScope = scopes.some(scope => {
-      const normalized = validatePath(scope).replace(/\/$/, '');
-      return candidatePath === normalized || candidatePath.startsWith(`${normalized}/`);
-    });
+    const inScope = parsedScopes.some(scope => repositoryScopeContainsPath(scope, candidatePath));
     if (!inScope) throw new Error(`SOURCE_CHANGE_OUT_OF_SCOPE: ${candidatePath}`);
   }
 }

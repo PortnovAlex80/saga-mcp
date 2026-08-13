@@ -326,6 +326,13 @@ const developmentImplement = async ({ client, task, prompt, repoPath, desk }) =>
       name: 'factory-contract-repo',
     },
     buildProducts: [],
+    readiness: {
+      kind: 'static',
+      commands: {
+        installCommand: null,
+        testCommand: 'node -e "process.exit(0)"',
+      },
+    },
     reasonCodes: [],
   });
   // NO checkout back to integration branch when using a desk — the worktree is

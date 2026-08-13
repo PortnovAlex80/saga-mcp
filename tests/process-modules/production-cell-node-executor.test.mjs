@@ -431,6 +431,28 @@ test('fan-out materializes every stable item and completes only after all pass',
   h.db.close();
 });
 
+test('fan-out never reuses a singleton pre-projected task or WorkIntent across workplaces', async () => {
+  const h = harness();
+  const definition = cell({ fanout: true });
+  const frame = {
+    runInput: {}, receipts: {},
+    productions: {
+      source: {
+        schema: 'factory.source.v1', artifactRef: 'source:prepared', contentHash: sha('source:prepared'),
+        semanticDigest: sha('source:prepared'),
+        bindings: { items: [{ key: 'a' }, { key: 'b' }] },
+      },
+    },
+  };
+  const ctx = context(definition, frame);
+  ctx.input = { bindings: { preProjectedTaskId: 91, preProjectedIntentId: 92 } };
+  await h.executor.execute(ctx);
+  assert.equal(h.plans.length, 2);
+  assert.equal(new Set(h.plans.map(plan => plan.result.taskId)).size, 2);
+  assert.equal(h.plans.some(plan => plan.result.taskId === 91), false);
+  h.db.close();
+});
+
 test('fan-out dependencies are projected to the Kanban before dispatch', async () => {
   const h = harness();
   const definition = cell({ fanout: true });

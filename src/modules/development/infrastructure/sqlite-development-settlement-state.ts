@@ -317,15 +317,6 @@ export class SqliteDevelopmentModuleStore implements
       // member is the exact sealed integrated candidate ProductRef. If the seal
       // fails, the candidate IS persisted — log and still return 'frozen' so the
       // lifecycle advances to verification.
-      try {
-        this.sealIntegratedCandidateAuthority(input.processRunId, stored.reference);
-      } catch (sealErr) {
-        process.stderr.write(
-          `[development-freeze] sealIntegratedCandidateAuthority failed (non-fatal): ${
-            sealErr instanceof Error ? sealErr.message : String(sealErr)
-          }\n`,
-        );
-      }
       return { status: 'frozen', candidate: stored.payload, reference: stored.reference };
     } catch {
       return { status: 'failed', reasonCodes: ['candidate-freeze-lineage-invalid'] };
@@ -341,59 +332,6 @@ export class SqliteDevelopmentModuleStore implements
    * settlement could resolve it as the runnability subject. Idempotent: a
    * replay of the same freeze finds the existing seal and skips.
    */
-  private sealIntegratedCandidateAuthority(
-    processRunId: number,
-    candidateRef: ContentAddressedReference,
-  ): void {
-    // Idempotent: if a member for this exact product already exists, skip.
-    const existingMember = this.db.prepare(
-      `SELECT 1 FROM factory_candidate_set_members m
-        WHERE m.product_schema=? AND m.product_ref=? AND m.product_digest=? LIMIT 1`,
-    ).get(candidateRef.schema, candidateRef.ref, candidateRef.hash);
-    if (existingMember) return;
-
-    const moduleRef = (
-      this.db.prepare(
-        `SELECT module_ref FROM factory_workplaces WHERE process_run_id=? LIMIT 1`,
-      ).get(processRunId) as { module_ref: string } | undefined
-    )?.module_ref ?? 'solution-development@1.2.0';
-    const workplaceRef = `workplace/${processRunId}/${moduleRef}/freeze-integrated-candidate/candidate`;
-    const now = new Date().toISOString();
-    this.db.prepare(
-      `INSERT OR IGNORE INTO factory_workplaces
-        (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
-         kanban_phase,loop_state,next_role,terminal_reason)
-       VALUES (?,?,?,?,'candidate','done','terminal','author','accepted')`,
-    ).run(workplaceRef, processRunId, moduleRef, 'freeze-integrated-candidate');
-
-    const members = JSON.stringify([{
-      schema: candidateRef.schema,
-      ref: candidateRef.ref,
-      digest: candidateRef.hash,
-      origin: 'produced',
-    }]);
-    const revisionRef = `revision:${candidateRef.ref}`;
-    this.db.prepare(
-      `INSERT OR IGNORE INTO factory_workplace_production_revisions
-        (revision_ref,workplace_ref,parent_revision_ref,members,
-         contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
-       VALUES (?,?,NULL,?,'[]','factory-candidate-freeze',?,?,?)`,
-    ).run(revisionRef, workplaceRef, members, candidateRef.hash, candidateRef.hash, now);
-
-    const candidateSetRef = `candidate-set:${candidateRef.ref}`;
-    this.db.prepare(
-      `INSERT OR IGNORE INTO factory_candidate_sets
-        (candidate_set_ref,workplace_ref,production_revision_ref,role,
-         subject_candidate_set_ref,candidate_set_digest,seal_receipt_ref,sealed_at)
-       VALUES (?,?,?,?,NULL,?,?,?)`,
-    ).run(candidateSetRef, workplaceRef, revisionRef, 'author', candidateRef.hash, `seal:freeze:${candidateRef.ref}`, now);
-    this.db.prepare(
-      `INSERT OR IGNORE INTO factory_candidate_set_members
-        (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,origin,source_candidate_set_ref)
-       VALUES (?,0,?,?,?,'produced',NULL)`,
-    ).run(candidateSetRef, candidateRef.schema, candidateRef.ref, candidateRef.hash);
-  }
-
   buildSettlementInput(input: {
     processRunId: number;
     developmentCase: DevelopmentCase;

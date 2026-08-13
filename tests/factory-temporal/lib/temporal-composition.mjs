@@ -28,6 +28,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createScriptedWorkerExecutorFactory } from '../../factory-contract/scenario-scripted-executor.mjs';
+import { createTestVerificationCheckProviderFactory } from '../../factory-contract/test-verification-check-provider.mjs';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
@@ -170,6 +171,7 @@ export async function createProductLifecycleComposition(context) {
       // classes; this test composition binds the EXACT same classes.
       taskGraphPolicy: new ReferenceDevelopmentTaskGraphPolicy(),
       settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
+      verificationCheckProviderFactory: createTestVerificationCheckProviderFactory(),
     },
 
     delivery: {
