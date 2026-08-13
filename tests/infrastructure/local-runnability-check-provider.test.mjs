@@ -10,8 +10,11 @@ import {
   ensureLocalRunnabilityProviderTrust,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../dist/infrastructure/verification/local-runnability-check-provider.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../dist/modules/development/domain/development-schemas.js';
+import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
+import { isDockerAvailableForReadiness } from '../../dist/infrastructure/verification/docker-readiness-executor.js';
 
 const PROCESS_RUN_ID = 1;
 const PRODUCT_KIND = 'development.integrated-candidate';
@@ -883,6 +886,200 @@ test('LR-06: a receipt for a different provider digest is not replayed', { timeo
     // a fresh 'passed' with fresh evidence (not the stale ref).
     assert.equal(result.outcome, 'passed');
     assert.notDeepEqual(result.evidenceRefs, ['local-readiness:stale']);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Phase-1 dockerization — environment.image on the readiness profile.
+// ---------------------------------------------------------------------------
+
+/**
+ * Decode the diagnostic code from a 'failed' result's evidence refs. The
+ * provider appends a factory-check-diagnostic/v1 ref as evidenceRefs[1] when
+ * the outcome is 'failed'; this extracts the `code` field so tests can assert
+ * the specific failure category.
+ */
+function decodeFailedDiagnosticCode(result) {
+  for (const ref of result.evidenceRefs) {
+    const diag = decodeCheckDiagnostic(ref);
+    if (diag) return diag.code;
+  }
+  return null;
+}
+
+test('invalid environment.image on the readiness profile fails closed (profile invalid)', { timeout: 30000 }, async () => {
+  // The profile states an environment with an invalid image. The provider MUST
+  // reject the whole profile (validateReadinessProfile returns null) and fail
+  // closed — it does not guess whether to use docker or host, and it does not
+  // silently strip the environment field.
+  const root = fixture({ passing: true });
+  const cases = [
+    { label: 'empty image', readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'npm test' }, environment: { image: '' } } },
+    { label: 'non-string image', readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'npm test' }, environment: { image: 42 } } },
+    { label: 'environment not object', readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'npm test' }, environment: 'alpine' } },
+    { label: 'environment null', readiness: { kind: 'static', commands: { installCommand: null, testCommand: 'npm test' }, environment: null } },
+    { label: 'served invalid image', readiness: { kind: 'served', commands: { installCommand: null, testCommand: 'npm test' }, serve: { startCommand: 'npm start' }, environment: { image: '' } } },
+  ];
+  try {
+    for (let i = 0; i < cases.length; i++) {
+      const c = cases[i];
+      const hash = (i + 10).toString(16).padStart(64, '0');
+      const { db, provider } = buildProvider({ root, candidateHash: hash, readiness: c.readiness });
+      try {
+        const result = await provider.run(RUN_ARGS);
+        assert.equal(result.outcome, 'failed', `${c.label} must fail closed`);
+        // The diagnostic code is the generic 'local-runnability' because the
+        // profile itself is invalid (not a docker substrate failure).
+        const code = decodeFailedDiagnosticCode(result);
+        assert.equal(code, 'local-runnability', `${c.label} diagnostic code`);
+      } finally {
+        db.close();
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('valid profile without environment.image uses the host substrate (backwards compatible)', { timeout: 30000 }, async () => {
+  // A profile with NO environment field must behave exactly as before Phase-1:
+  // host executor, no docker involvement. This is the backwards-compatibility
+  // guarantee — existing candidates are unaffected.
+  const root = fixture({ passing: true });
+  const { db, provider } = buildProvider({ root });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Trust migration: 1.0.0 → 1.1.0 (additive docker bump, not a policy drift).
+// ---------------------------------------------------------------------------
+
+test('trust migration: existing 1.0.0 row with correct attributes is migrated to 1.1.0 in place', () => {
+  // A prior run installed the provider at version 1.0.0 (correct category,
+  // determinism=full, status=active). The Phase-1 bump to 1.1.0 is additive
+  // (docker is opt-in; host path unchanged), so the trust row is UPDATED in
+  // place rather than treated as drift.
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE trusted_providers(
+    id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+    category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+  )`);
+  db.prepare(`INSERT INTO trusted_providers
+    (project_id,name,version,category,trust_basis,determinism,scope,status)
+    VALUES(NULL,'factory.local-runnability.v1','1.0.0','deterministic_evidence',
+      'built-in:olddigest','full','local-runnability','active')`).run();
+  ensureLocalRunnabilityProviderTrust(db);
+  const row = db.prepare(`SELECT version FROM trusted_providers WHERE name=?`)
+    .get('factory.local-runnability.v1');
+  assert.equal(row.version, LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+    '1.0.0 row must be migrated to the current version');
+  db.close();
+});
+
+test('trust migration: already-current 1.1.0 row is a no-op', () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE trusted_providers(
+    id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+    category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+  )`);
+  db.prepare(`INSERT INTO trusted_providers
+    (project_id,name,version,category,trust_basis,determinism,scope,status)
+    VALUES(NULL,'factory.local-runnability.v1',?,'deterministic_evidence',
+      'built-in:d','full','local-runnability','active')`).run(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION);
+  // Must not throw.
+  ensureLocalRunnabilityProviderTrust(db);
+  db.close();
+});
+
+test('trust migration: 1.0.0 row with tampered determinism still drifts (not migrated)', () => {
+  // A 1.0.0 row whose determinism was tampered (none instead of full) is NOT
+  // eligible for the additive migration — it drifts. This proves the migration
+  // only accepts genuinely trustworthy baseline rows.
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE trusted_providers(
+    id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+    category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+  )`);
+  db.prepare(`INSERT INTO trusted_providers
+    (project_id,name,version,category,trust_basis,determinism,scope,status)
+    VALUES(NULL,'factory.local-runnability.v1','1.0.0','deterministic_evidence',
+      'tampered','none','local-runnability','active')`).run();
+  assert.throws(
+    () => ensureLocalRunnabilityProviderTrust(db),
+    /LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT/u,
+  );
+  db.close();
+});
+
+// ---------------------------------------------------------------------------
+// Docker substrate: fail-closed when daemon is unavailable, e2e when it is.
+// ---------------------------------------------------------------------------
+
+const DOCKER_AVAILABLE = isDockerAvailableForReadiness();
+
+test('image declared + docker unavailable → failed (fail closed, NOT error)', {
+  timeout: 30_000,
+  skip: DOCKER_AVAILABLE ? 'docker daemon is available — covered by the e2e test' : false,
+}, async () => {
+  // The profile declares environment.image=alpine. Docker is NOT running. The
+  // provider MUST fail closed with outcome 'failed' (not 'error', which the
+  // gate would retry indefinitely) and a LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE
+  // diagnostic code so the verifier tells the worker exactly what happened.
+  const root = fixture({ passing: true });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: {
+      kind: 'static',
+      commands: { installCommand: null, testCommand: 'echo ok' },
+      environment: { image: 'alpine' },
+    },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'failed',
+      'docker unavailable + image declared must be failed (not error)');
+    const code = decodeFailedDiagnosticCode(result);
+    assert.equal(code, 'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
+      'diagnostic must name the docker-unavailable failure');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('docker e2e: static alpine profile passes in a container', {
+  timeout: 120_000,
+  skip: DOCKER_AVAILABLE ? false : 'docker daemon not available',
+}, async () => {
+  // A minimal static profile declaring image=alpine with testCommand 'echo ok'.
+  // The provider runs the command inside the alpine container via docker run.
+  // Outcome 'passed' proves the docker executor correctly: created the volume,
+  // streamed the tree, ran the command in the container, and cleaned up.
+  const root = seedRepo({
+    'placeholder.txt': 'this file exists so git archive produces a non-empty tree\n',
+    'package.json': JSON.stringify({ name: 'docker-e2e', version: '1.0.0' }),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: {
+      kind: 'static',
+      commands: { installCommand: null, testCommand: 'echo ok' },
+      environment: { image: 'alpine' },
+    },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });

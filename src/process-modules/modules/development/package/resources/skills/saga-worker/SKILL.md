@@ -79,6 +79,22 @@ schema. A prose completion message is not a product.
   commands verbatim and FAILS CLOSED when the profile is missing — it refuses
   to guess from build files, so without your declaration the product cannot
   pass acceptance regardless of code quality.
+- **Containerized execution (environment.image)** — optionally state
+  `"environment": { "image": "<docker-image-ref>" }` on either profile kind.
+  When present, the readiness gate runs the product's install/test/serve
+  commands INSIDE that Docker image instead of on the host. The image is the
+  AUTHORITY for the execution environment (toolchain, runtime, system deps) —
+  the gate does not install or infer tooling. A digest-pinned reference
+  (`image@sha256:...`) is encouraged so the image itself is content-addressed
+  and the readiness proof is reproducible; any valid docker image reference is
+  accepted. When `environment.image` is declared the product runs in a linux
+  container: the PORT is published to `127.0.0.1` on the host, and `HOST=0.0.0.0`
+  is passed — a served product MUST bind `0.0.0.0` (all interfaces) inside the
+  container, NOT loopback, or the host-side probe will never reach it. If the
+  docker daemon is unavailable while an image is declared, the readiness check
+  FAILS CLOSED (outcome `failed`, not retried) — it does not silently fall back
+  to host. Set `SAGA_LOCAL_RUNNABILITY_EXEC=host` to force the host path for
+  debugging.
 - Call `worker_done` and stop. The runtime-owned post-acceptance provider merges
   the exact reviewed source commit; an LM must not mutate the integration branch
   or manufacture an integration receipt.

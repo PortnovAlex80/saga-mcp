@@ -266,8 +266,13 @@ function observeUntilReady(
  * when the endpoint answered with a non-5xx status; false on any connect/read
  * failure or timeout. Keeping each shot to a single attempt lets the caller
  * interleave liveness checks so a dead process is detected promptly.
+ *
+ * Exported so the docker readiness executor can reuse the exact same host-side
+ * loopback probe against a docker-published port (the port is published to
+ * 127.0.0.1, so the probe is identical whether the server is a host process or
+ * a container).
  */
-function probeLoopbackOnce(url: string, attemptTimeoutMs: number): boolean {
+export function probeLoopbackOnce(url: string, attemptTimeoutMs: number): boolean {
   const script = String.raw`
 const http=require('http');
 const url=process.argv[1];

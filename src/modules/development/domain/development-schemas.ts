@@ -328,8 +328,31 @@ export interface RunnabilityCommands {
  *   - static: the product is a fixed artifact (a static site / library). It
  *     states only its runnability commands; runnability is proven by the test
  *     command alone, with no serve/probe phase.
+ *
+ * Phase-1 dockerization: both kinds may optionally carry an `environment.image`
+ * stating the Docker image the product must execute in. When present, the
+ * local-runnability provider runs the sealed tree's install/test/serve commands
+ * inside that image (via the docker CLI) instead of on the host. The image is
+ * part of the frozen profile, so it is covered by `candidateHash` — a changed
+ * image is a different candidate. When docker is unavailable but an image is
+ * declared, the provider fails closed ('failed', NOT 'error') with
+ * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE rather than silently falling back to host.
  */
 export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
+
+/**
+ * Optional Docker substrate declaration. When present on a readiness profile,
+ * the local-runnability provider executes the product's install/test/serve
+ * commands inside the named Docker image instead of on the host. The image
+ * string is opaque to the engine (no language/tool knowledge): it is passed
+ * verbatim to `docker run`. A digest-pinned reference (e.g.
+ * `alpine@sha256:...`) is encouraged so the image itself is content-addressed,
+ * but any valid docker image reference is accepted.
+ */
+export interface ReadinessEnvironment {
+  /** Docker image reference (non-empty). Passed verbatim to `docker run`. */
+  image: string;
+}
 
 export interface ServedReadinessProfile {
   kind: 'served';
@@ -344,12 +367,16 @@ export interface ServedReadinessProfile {
      */
     startCommand: string;
   };
+  /** @see ReadinessEnvironment — optional Docker image for containerized execution. */
+  environment?: ReadinessEnvironment;
 }
 
 export interface StaticReadinessProfile {
   kind: 'static';
   /** @see RunnabilityCommands — deterministic install + test commands. */
   commands: RunnabilityCommands;
+  /** @see ReadinessEnvironment — optional Docker image for containerized execution. */
+  environment?: ReadinessEnvironment;
 }
 
 /**

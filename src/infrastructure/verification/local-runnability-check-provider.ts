@@ -22,6 +22,14 @@ import {
   runServedProcess,
   type CommandTarget,
 } from './served-process-runner.js';
+import {
+  commandFailureDetail,
+  type ExecutorDescription,
+  type ReadinessExecutor,
+  type ServeEvidence,
+  ReadinessExecutionError,
+} from './readiness-executor.js';
+import { DockerReadinessExecutor } from './docker-readiness-executor.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -158,6 +166,24 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     status: string;
   } | undefined;
   if (existing) {
+    // Phase-1 docker executor migration: 1.0.0 → 1.1.0 is an additive, backwards-
+    // compatible bump. The docker substrate is opt-in via the profile's optional
+    // environment.image; the host execution path is byte-for-byte unchanged
+    // (same commands, same routing, same tree-kill). Migrate the trust row in
+    // place rather than drifting. The digest bump means all prior receipts are
+    // re-checked exactly once (by design) — the provider still fails closed on
+    // any real policy change (category/determinism/status tampering).
+    const trustworthyBaseline = existing.version === '1.0.0'
+      && existing.category === 'deterministic_evidence'
+      && existing.determinism === 'full'
+      && existing.status === 'active';
+    if (trustworthyBaseline) {
+      db.prepare(
+        `UPDATE trusted_providers SET version=?
+          WHERE project_id IS NULL AND name=?`,
+      ).run(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, LOCAL_RUNNABILITY_CHECK_PROVIDER_ID);
+      return;
+    }
     if (existing.version !== LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION
         || existing.category !== 'deterministic_evidence'
         || existing.determinism !== 'full'
@@ -333,6 +359,7 @@ function runLocalReadiness(
 ): CheckProviderResult {
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
+  let executor: ReadinessExecutor | null = null;
   try {
     // ADR-053 / LR-02 — read the exact sealed object by identity. The archive
     // is generated from the content-addressed commitSha verified above (whose
@@ -360,23 +387,32 @@ function runLocalReadiness(
           + 'readiness from incidental files',
       });
     }
-    // Build-system detection is a VALIDATOR only (LR-03 / LR-04): it selects the
-    // execution environment (JAVA_HOME/bin for JVM tooling). It is NEVER the
-    // authority for readiness (served vs static) or for which commands prove
-    // runnability — that is the explicit profile above.
-    const detected = detectBuildSystem(directory);
-    const env = detected === 'gradle' || detected === 'maven'
-      ? jvmEnv()
-      : { ...process.env };
+    // Phase-1 dockerization — select the execution substrate from the profile.
+    // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
+    // (host or docker). When the profile declares environment.image, the docker
+    // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
+    // host path). When docker is declared but unavailable, the executor throws
+    // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE → caught below → 'failed' (NOT
+    // 'error', which would retry indefinitely).
+    executor = selectReadinessExecutor(directory, archive, profile, subject);
     const phases: string[] = [];
     // Install (deterministic, from the profile) — only when stated.
     if (profile.commands.installCommand !== null) {
-      runContractCommand(profile.commands.installCommand, directory, env, 240_000);
+      executor.runCommand(profile.commands.installCommand, 240_000);
       phases.push('profile-install');
     }
     // Test (deterministic, from the profile) — the runnability authority.
-    runContractCommand(profile.commands.testCommand, directory, env, 600_000);
+    executor.runCommand(profile.commands.testCommand, 600_000);
     phases.push('profile-test');
+    // Additive substrate evidence (free in the digest).
+    const desc = executor.describe();
+    const substrateEvidence: Record<string, unknown> = {
+      substrate: desc.substrate,
+      ...(desc.image !== undefined ? { image: desc.image } : {}),
+      ...(desc.detectedBuildSystem !== undefined
+        ? { detectedBuildSystem: desc.detectedBuildSystem }
+        : {}),
+    };
     if (profile.kind === 'served') {
       // LR-04 — the SERVED profile states how the product serves. The provider
       // starts the stated serve command, probes loopback, and shuts it down.
@@ -384,26 +420,121 @@ function runLocalReadiness(
       // package.json.scripts.start. ADDITIVE evidence only — runnability was
       // already proven by the test command above; this proves the exact sealed
       // object can also be started, answer on loopback, and stop.
-      const serveEvidence = runServedProbe(directory, subject, profile.serve.startCommand);
+      const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
+      const serveEvidence = executor.runServed(profile.serve.startCommand, 15_000, port);
       phases.push('profile-serve', 'loopback-http-probe', 'clean-shutdown');
       return evidence('passed', subject, {
         phases,
         readinessKind: 'served',
-        detectedBuildSystem: detected,
+        ...substrateEvidence,
         ...serveEvidence,
       });
     }
     return evidence('passed', subject, {
       phases,
       readinessKind: 'static',
-      detectedBuildSystem: detected,
+      ...substrateEvidence,
       note: 'runnability proven by the profile-stated install/test commands',
     });
   } catch (error) {
-    return evidence('failed', subject, { reason: errorMessage(error) });
+    // A ReadinessExecutionError carries a specific diagnostic code (e.g.
+    // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) that the evidence function encodes
+    // into a decodable check-diagnostic so the verifier's recovery feedback
+    // names the exact substrate failure.
+    const code = error instanceof ReadinessExecutionError ? error.code : undefined;
+    return evidence('failed', subject, { reason: errorMessage(error) }, code);
   } finally {
+    // Release substrate resources (docker volumes) before removing the temp
+    // directory. Best-effort: a dispose failure must not mask the real result.
+    try { executor?.dispose(); } catch { /* best-effort cleanup */ }
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+/**
+ * Select the execution substrate for this readiness check. The profile is the
+ * COMMAND AUTHORITY; this function decides WHERE the commands run:
+ *
+ *   - SAGA_LOCAL_RUNNABILITY_EXEC=host → always host (forces host even when an
+ *     image is declared — useful for debugging / docker-less CI).
+ *   - auto (default) / docker → docker when the profile declares
+ *     environment.image; host otherwise (backwards-compatible).
+ *
+ * When docker is selected but the daemon is unavailable, the DockerReadinessExecutor
+ * throws LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE on first use (inside runLocalReadiness's
+ * try block) so the outcome is 'failed' (fail closed), NOT 'error'.
+ */
+function selectReadinessExecutor(
+  directory: string,
+  archivePath: string,
+  profile: ReadinessProfile,
+  subject: CandidateSubject,
+): ReadinessExecutor {
+  const mode = (process.env.SAGA_LOCAL_RUNNABILITY_EXEC ?? 'auto').toLowerCase();
+  const declaredImage = profile.environment?.image;
+  if (mode === 'host') {
+    return new HostReadinessExecutor(directory);
+  }
+  if (declaredImage !== undefined) {
+    return new DockerReadinessExecutor(archivePath, declaredImage, subject.candidateHash);
+  }
+  return new HostReadinessExecutor(directory);
+}
+
+/**
+ * Host execution substrate — preserves the exact pre-Phase-1 behavior. Build-
+ * system detection selects the JVM env (JAVA_HOME/bin); npm/node-prefixed
+ * contract commands route through bundled tooling; other commands run verbatim
+ * through the platform shell with leading ./ stripped on win32. The served
+ * probe uses the reliable detached-process runner with whole-tree termination.
+ */
+class HostReadinessExecutor implements ReadinessExecutor {
+  private readonly detected: 'gradle' | 'maven' | 'npm' | null;
+  private readonly env: NodeJS.ProcessEnv;
+
+  constructor(private readonly directory: string) {
+    // Build-system detection is a VALIDATOR only (LR-03 / LR-04): it selects the
+    // execution environment (JAVA_HOME/bin for JVM tooling). It is NEVER the
+    // authority for readiness (served vs static) or for which commands prove
+    // runnability — that is the explicit profile.
+    this.detected = detectBuildSystem(this.directory);
+    this.env = this.detected === 'gradle' || this.detected === 'maven'
+      ? jvmEnv()
+      : { ...process.env };
+  }
+
+  runCommand(command: string, timeoutMs: number): void {
+    runContractCommand(command, this.directory, this.env, timeoutMs);
+  }
+
+  runServed(startCommand: string, probeTimeoutMs: number, port: number): ServeEvidence {
+    const target = resolveCommandTarget(startCommand);
+    const observation = runServedProcess({
+      cwd: this.directory,
+      target,
+      port,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        HOST: '127.0.0.1',
+        BROWSER: 'none',
+        CI: '1',
+      },
+      probeTimeoutMs,
+    });
+    return {
+      port,
+      pid: observation.pid,
+      stdoutDigest: sha256Hex(observation.stdout),
+      stderrDigest: sha256Hex(observation.stderr),
+    };
+  }
+
+  describe(): ExecutorDescription {
+    return { substrate: 'host', detectedBuildSystem: this.detected };
+  }
+
+  dispose(): void { /* host substrate has no resources to release */ }
 }
 
 /**
@@ -415,18 +546,41 @@ function runLocalReadiness(
  */
 function validateReadinessProfile(raw: unknown): ReadinessProfile | null {
   if (raw === null || typeof raw !== 'object') return null;
-  const value = raw as { kind?: unknown; commands?: unknown; serve?: unknown };
+  const value = raw as {
+    kind?: unknown;
+    commands?: unknown;
+    serve?: unknown;
+    environment?: unknown;
+  };
   const commands = validateRunnability(value.commands);
   if (commands === null) return null;
+  // environment is optional. When present, it MUST be { image: non-empty string }.
+  // An invalid environment (wrong shape, empty/non-string image) invalidates the
+  // whole profile → null → 'failed' (fail closed). The product stated a docker
+  // substrate but could not state it correctly; the provider refuses to guess
+  // whether to fall back to host or which image to use.
+  let environment: { image: string } | undefined;
+  if (value.environment !== undefined) {
+    if (value.environment === null || typeof value.environment !== 'object') {
+      return null;
+    }
+    const image = (value.environment as { image?: unknown }).image;
+    if (typeof image !== 'string' || image.trim() === '') return null;
+    environment = { image };
+  }
   if (value.kind === 'static') {
-    return { kind: 'static', commands };
+    return environment
+      ? { kind: 'static', commands, environment }
+      : { kind: 'static', commands };
   }
   if (value.kind === 'served') {
     const serve = value.serve;
     if (serve === null || typeof serve !== 'object') return null;
     const startCommand = (serve as { startCommand?: unknown }).startCommand;
     if (typeof startCommand !== 'string' || startCommand.trim() === '') return null;
-    return { kind: 'served', commands, serve: { startCommand } };
+    return environment
+      ? { kind: 'served', commands, serve: { startCommand }, environment }
+      : { kind: 'served', commands, serve: { startCommand } };
   }
   return null;
 }
@@ -537,76 +691,12 @@ function runContractCommand(
   }
 }
 
-/**
- * Build a readable failure detail from a child-process error, preserving the
- * command's stderr/stdout (compiler errors, test failures) so the verifier's
- * recovery-feedback actually tells the worker WHAT broke — not just that it did.
- */
-function commandFailureDetail(
-  executable: string,
-  args: readonly string[],
-  error: unknown,
-): string {
-  const e = error as { stdout?: unknown; stderr?: unknown; message?: string; code?: unknown };
-  const cmd = `${executable} ${(args || []).join(' ')}`.trim();
-  const stderr = typeof e.stderr === 'string' ? e.stderr : '';
-  const stdout = typeof e.stdout === 'string' ? e.stdout : '';
-  const tail = (s: string): string => s.slice(-3000);
-  const timedOut = e.code === 'ETIMEDOUT';
-  const parts = [
-    timedOut ? `command timed out (${cmd})` : `command failed (${cmd})`,
-    stderr ? `--- stderr ---\n${tail(stderr)}` : '',
-    !stderr && stdout ? `--- stdout ---\n${tail(stdout)}` : '',
-  ].filter(Boolean);
-  const detail = parts.join('\n');
-  return detail || (e.message ?? 'command failed');
-}
-
 function jvmEnv(): NodeJS.ProcessEnv {
   const javaHome = process.env.JAVA_HOME;
   if (!javaHome) return { ...process.env };
   const javaBin = join(javaHome, 'bin');
   const path = process.env.PATH ? `${javaBin}${delimiter}${process.env.PATH}` : javaBin;
   return { ...process.env, JAVA_HOME: javaHome, PATH: path };
-}
-
-/**
- * LR-04 / LR-05 — run the SERVED profile's start command, probe loopback, and
- * shut it down. The serve command comes from the explicit readiness profile,
- * NOT from package.json.scripts.start. The provider delegates the served
- * lifecycle (start → observe → terminate) to the reliable runner so the process
- * is isolated (detached process group), observed (pid + liveness + loopback),
- * and reliably terminated (whole tree, kill errors surfaced, fail closed on
- * unsupported control). Throws {@link ServedProcessError} on any lifecycle
- * failure so the caller records a 'failed' readiness outcome; the runner's
- * finally guarantees cleanup on success, failure, and timeout/abort.
- */
-function runServedProbe(
-  directory: string,
-  subject: CandidateSubject,
-  startCommand: string,
-): { pid: number; port: number; stdoutDigest: string; stderrDigest: string } {
-  const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
-  const target = resolveCommandTarget(startCommand);
-  const observation = runServedProcess({
-    cwd: directory,
-    target,
-    port,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      HOST: '127.0.0.1',
-      BROWSER: 'none',
-      CI: '1',
-    },
-    probeTimeoutMs: 15_000,
-  });
-  return {
-    pid: observation.pid,
-    port,
-    stdoutDigest: sha256Hex(observation.stdout),
-    stderrDigest: sha256Hex(observation.stderr),
-  };
 }
 
 /**
@@ -635,6 +725,7 @@ function evidence(
   outcome: 'passed' | 'failed',
   subject: CandidateSubject,
   observation: Record<string, unknown>,
+  diagnosticCode?: string,
 ): CheckProviderResult {
   const digest = sha256Hex({
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -649,12 +740,15 @@ function evidence(
   // readCurrentProductionCellRecoveryFeedback decodes factory-check-diagnostic/v1
   // refs into issue.findings[]; a bare 'local-readiness:<hash>' ref is opaque and
   // collapses to a generic "check returned failed" message the worker cannot act on.
+  // A specific diagnosticCode (e.g. LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) from a
+  // ReadinessExecutionError names the exact substrate failure; the default
+  // 'local-runnability' covers command/profile failures.
   if (outcome === 'failed') {
     const reason = typeof observation.reason === 'string' && observation.reason.length > 0
       ? observation.reason
       : 'local runnability check failed';
     evidenceRefs.push(encodeCheckDiagnostic({
-      code: 'local-runnability',
+      code: diagnosticCode ?? 'local-runnability',
       message: reason.slice(0, 4000),
     }));
   }
