@@ -122,6 +122,19 @@ node scripts/factory.mjs start .factory-sandboxes/my-run/factory.sqlite \
 For a new run on an existing Project, omit `--sandbox` and point at its DB. Do
 not write launch rows manually and do not reset production tables.
 
+**Keep the DB outside the `--sandbox` root.** `factory.mjs start --sandbox`
+wipes the sandbox directory (`rmSync`) before provisioning. If the SQLite file
+— or any open handle to it, e.g. a running tracker-view — lives inside that
+root, provisioning fails (EBUSY on Windows). Use a sibling directory:
+
+```text
+.factory-sandboxes/<run>-db/factory.sqlite   ← DB + checkpoints (never wiped)
+.factory-sandboxes/<run>/                    ← sandbox root (wiped each start)
+```
+
+A tracker-view bound to the DB may keep running across provisioning; WAL
+allows the concurrent access.
+
 ## 4a. Resume from a checkpoint (skip completed stages, save LLM tokens)
 
 When the same project was already partially run (e.g. Discovery + Formalization
@@ -184,6 +197,96 @@ node scripts/restore-from-checkpoint.mjs golden.sqlite target.sqlite --reset-sta
 - **Code fix shipped, need to re-test** — restore + reset-stage + resume
 - **Regression test material** — golden snapshot + product code = reproducible fixtures
 - **Same project, different model** — restore formalization, re-run development with new model
+
+## 4b. Run on a local model (LM Studio)
+
+The factory spawns Claude Code CLI workers; a local model must speak the
+Anthropic protocol (`/v1/messages`). LM Studio does; raw Ollama/llama.cpp do
+not (they would need a translation proxy). `--model` on `factory.mjs` only
+accepts the checked-in cloud catalog (`glm-4.7`, `glm-5-turbo`, `glm-5.2`) —
+local models are selected at runtime via the board's model selector.
+
+**Prerequisite: the model must accept mid-conversation system messages.**
+Claude Code sends system messages after tool results; several local models'
+Jinja chat templates raise `System message must be at the beginning.` on that.
+The failure is silent in the LM Studio GUI (server-side render error before
+inference) — the worker JSONL log shows 10× `api_retry error_status 500` and
+then exit code 1. For Qwen 3.6 the patch procedure (and why patching hub
+`model.yaml` is not enough for some quants — the template is GGUF-embedded)
+is in [`CLAUDE.md`](../CLAUDE.md) → "LM Studio: Qwen 3.6 chat template patch".
+Verify before starting a run:
+
+```bash
+curl -s http://localhost:1234/v1/messages -H 'Content-Type: application/json' \
+  -d '{"model":"<id>","max_tokens":16,"messages":[{"role":"user","content":"hi"},{"role":"system","content":"mid"},{"role":"user","content":"reply ok"}]}'
+# must return 200 with text, not a 500 Jinja exception
+```
+
+Also check the loaded context length (`lms ps`): a factory worker session can
+easily consume 100K+ input tokens; a model loaded with a small context will
+fail late and slowly.
+
+Verified sequence for a NEW sandbox run on a local model:
+
+```bash
+# 1. LM Studio: load the model, Developer → Start Server (:1234).
+
+# 2. Start tracker-view FIRST (DB outside the sandbox root), warm the probe:
+DB_PATH=$PWD/.factory-sandboxes/<run>-db/factory.sqlite PORT=4321 \
+SAGA_PRODUCT_LIFECYCLE_COMPOSITION=$PWD/tracker-view/product-delivery-composition.mjs \
+SAGA_FACTORY_CHECKPOINT_STORE=$PWD/.factory-sandboxes/<run>-db/checkpoints \
+SAGA_FACTORY_CHECKPOINT_LOGS=1 \
+node tracker-view/tracker-view.mjs
+curl -s http://localhost:4321/api/lmstudio/models   # must list your model
+
+# 3. Start the factory (writes the CLOUD profile — see the race below):
+node scripts/factory.mjs start .factory-sandboxes/<run>-db/factory.sqlite \
+  '<idea text>' --model glm-4.7 --sandbox .factory-sandboxes/<run>
+
+# 4. Flip to the local model ASAP (epic_id=1 in a fresh sandbox):
+curl -X POST http://localhost:4321/api/model/set \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen/qwen3.6-35b-a3b","epic_id":1}'
+
+# 5. Verify: the worker process must be
+#    claude -p --bare --model qwen/qwen3.6-35b-a3b   (no --effort)
+```
+
+**The first-claim race.** The engine spawns immediately after `start` and may
+freeze the first worker's model route on the cloud profile before step 4
+lands. If it does, do NOT reach for recovery flags:
+
+```bash
+# 1. Kill the cloud worker (claude ... --bare) and the orchestrate-cli node.
+# 2. Plain resume — no flags. It adopts the active launch, supervision reaps
+#    the lost worker (REAPED ... action=lost), and the same task re-claims
+#    on the local model:
+node scripts/factory.mjs resume <db>
+```
+
+`--recover-orphaned-launch` is NOT the tool here: it requires the worker to be
+already detected `lost` with the workplace in `repair_wait` — a plain resume
+is what drives the state there. Resume runs have no race at all: the controls
+row is already local.
+
+**If the workplace lands in human-pause** (`blocked` + `loop_state=paused`
+after repeated lost workers; the engine logs `N workplace(s) require explicit
+resume` and plain resume just stops): `--requeue-paused` only fits nodes with
+a required submission validator, `--recover-orphaned-launch` only fits an
+already-detected `lost` worker. The platform primitive both of them wrap is
+`ConveyorRuntime.resumeFromHuman({workplaceRef, taskId, role})` (see
+`src/application/conveyor-runtime.ts`); it requeues the same workplace with
+revision+1 inside one transaction. Used as the documented last resort in the
+2026-08-13 mars-ballistic incident (`ЖУРНАЛ-ЗАПУСКОВ.md`) after the root
+cause (broken local-model endpoint) was fixed. Fix the cause first — resuming
+into a broken endpoint just burns another worker attempt.
+
+Side effect of step 4: `~/.claude/settings.json` is switched to the LM Studio
+template, so ALL claude usage on the machine routes locally until you pick a
+"Z.ai (облако)" model in the same selector (cloud token is frozen in
+`settings.cloud.json`). Concurrency for local models defaults to 4
+(`LMSTUDIO_DEFAULT_LIMIT`); effective concurrency stays
+`min(SAGA_FACTORY_CONCURRENCY, limit)`.
 
 ## 5. Observe the correct database
 

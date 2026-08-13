@@ -18,6 +18,31 @@ For a terminal downstream failure with a certified upstream prefix, use the
 quickstart's `factory.mjs continue ... --check` procedure. Never reopen terminal
 rows or restore an older whole-factory checkpoint merely to retry one workshop.
 
+### Running workers on a local LM Studio model
+
+Follow quickstart §4b. Short version: `--model` only accepts the checked-in
+cloud catalog, so a local model is selected at runtime — start the tracker
+first, warm the probe (`GET /api/lmstudio/models`), start the factory, then
+flip `POST /api/model/set {"model":"<id>","epic_id":<N>}`. The model route is
+read from `lifecycle_execution_controls` at claim time and frozen into the
+worker's execution_context.
+
+Expect the **first-claim race** on a NEW order: both start paths write the
+cloud profile and spawn the engine immediately, so the first claim may freeze
+on the cloud before the flip lands. Recovery: kill the cloud worker
+(`claude ... --bare`) and the orchestrate-cli process, then run a **plain**
+`factory.mjs resume` (no flags) — it adopts the active launch, supervision
+reaps the lost worker (`REAPED ... action=lost`), and the same task re-claims
+on the local model. `--recover-orphaned-launch` requires the worker to be
+already detected `lost` with the workplace in `repair_wait`; a plain resume is
+what drives the state there. Verify the win: the new worker process is
+`claude -p --bare --model <local-model>` with **no** `--effort`.
+
+Switching to LM Studio rewrites `~/.claude/settings.json` (cloud template
+frozen in `settings.cloud.json`), so ALL claude usage on the machine routes
+locally until you pick a Z.ai cloud model in the board selector. Keep the
+sandbox SQLite outside the `--sandbox` root (the root is wiped on start).
+
 ## LM Studio: Qwen 3.6 chat template patch
 
 ### Problem
@@ -152,6 +177,6 @@ Some models (e.g. `qwen/qwen3-4b-thinking-2507`) fail with `failed to parse gram
 | `zai-org/glm-4.7-flash` | ✅ Yes | No | Works out of the box |
 | `google/gemma-4-12b-qat` | ✅ Yes | No | Works out of the box |
 | `qwen/qwen3.6-27b` | ✅ Yes | Yes (Jinja `raise_exception`) | Patch hub model.yaml OR user override JSON |
-| `qwen/qwen3.6-35b-a3b` | ✅ Yes | Yes (same template as 3.6-27b) | Patch hub model.yaml |
+| `qwen/qwen3.6-35b-a3b` | ✅ Yes | Yes — **user override JSON only** | Hub `model.yaml` patch does NOT take effect (template is GGUF-embedded and wins at load); verified 2026-08-13: extract from `~/.lmstudio/.internal/gguf-metadata-cache.json`, patch, write as `llm.load.promptTemplate` into the user override JSON, reload. Symptom if unpatched: worker log shows 10× `api_retry ... error_status 500 "Jinja Exception: System message must be at the beginning"` then exit code 1; the LM Studio GUI does not surface these server-side render errors. |
 | `qwen/qwen3.5-9b` | ✅ Yes | Yes (Jinja, GGUF-embedded template) | Extract from GGUF → patch → write to user override JSON |
 | `qwen/qwen3-4b-thinking-2507` | ❌ No | N/A | `failed to parse grammar` — Claude Code sends incompatible structured output grammar. Not fixable via template/config patch. |

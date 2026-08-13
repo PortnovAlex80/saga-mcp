@@ -46,6 +46,12 @@ node scripts/factory.mjs start .factory-sandboxes/my-run/factory.sqlite \
   --model glm-4.7 --sandbox .factory-sandboxes/my-run
 ```
 
+Workers run on Z.ai cloud models by default (`glm-4.7` / `glm-5-turbo` /
+`glm-5.2`). To run them on a **local LM Studio model** (Anthropic-compatible
+endpoint, e.g. `qwen/qwen3.6-35b-a3b`) — including the model-selector switch
+and the first-claim race recovery — see
+[§4b of the operator guide](docs/FACTORY-START-QUICKSTART.md).
+
 **LLM-free development loop** — the Factory Contract test suite runs the real
 factory infrastructure (gates, CandidateSets, lifecycle routing) with scripted
 workers replacing only the LLM. No Claude, no GLM, no network — deterministic
