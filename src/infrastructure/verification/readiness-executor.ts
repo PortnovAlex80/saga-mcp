@@ -117,8 +117,15 @@ export function commandFailureDetail(
 ): string {
   const e = error as { stdout?: unknown; stderr?: unknown; message?: string; code?: unknown };
   const cmd = `${executable} ${(args || []).join(' ')}`.trim();
-  const stderr = typeof e.stderr === 'string' ? e.stderr : '';
-  const stdout = typeof e.stdout === 'string' ? e.stdout : '';
+  // execFileSync returns stdout/stderr as Buffers unless encoding is set —
+  // decode both shapes so compiler/test output never silently disappears.
+  const asText = (v: unknown): string => {
+    if (typeof v === 'string') return v;
+    if (Buffer.isBuffer(v)) return v.toString('utf-8');
+    return '';
+  };
+  const stderr = asText(e.stderr);
+  const stdout = asText(e.stdout);
   const tail = (s: string): string => s.slice(-3000);
   const timedOut = e.code === 'ETIMEDOUT';
   const parts = [
