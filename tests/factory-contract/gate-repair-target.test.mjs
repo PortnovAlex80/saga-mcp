@@ -136,6 +136,11 @@ function reviewOutcome(payload) {
     id INTEGER PRIMARY KEY, schema_version TEXT NOT NULL,
     payload_snapshot TEXT NOT NULL, content_hash TEXT NOT NULL
   )`);
+  // ADR-062 provider reads the subject author task's changeScopes from the
+  // tasks table; an empty table means "no scopes declared" (filter no-op).
+  db.exec(`CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY, workplace_ref TEXT, metadata TEXT
+  )`);
   db.prepare(`INSERT INTO factory_managed_node_submissions
     (id,schema_version,payload_snapshot,content_hash) VALUES (1,?,?,?)`).run(
       'factory.development-review-verdict.v1', JSON.stringify(payload), 'digest-1',
@@ -146,6 +151,15 @@ function reviewOutcome(payload) {
       return {
         role: 'reviewer',
         subjectCandidateSetRef: 'author-set',
+        // ADR-062 scope filter reads the set's workplaceRef to find the
+        // subject author task; the mock desk has no task row, so the filter
+        // is a no-op (scopes === null).
+        workplaceRef: {
+          processRunId: 1,
+          moduleRef: 'solution-development@1.2.0',
+          productionCellId: 'development-implementation',
+          workKey: 'impl-1',
+        },
         members: [{
           productRef: {
             schemaId: 'factory.development-review-verdict.v1',
