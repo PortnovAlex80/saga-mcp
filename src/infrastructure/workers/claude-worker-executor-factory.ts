@@ -605,14 +605,28 @@ export function createPinnedClaudeWorkerExecutorFactory(
           } else if (task.execution_mode === 'artifact_change') {
             const base = getDb().prepare(
               `SELECT receipt_ref,receipt_digest,effective_base_commit,
-                      observed_integration_head,project_repository_id,integration_branch
-                 FROM factory_effective_desk_base_receipts
-                WHERE execution_ref=?`,
+                      observed_integration_head,base.project_repository_id,integration_branch
+                 FROM factory_effective_desk_base_receipts r
+                 JOIN tasks t ON t.id=r.task_id
+                 JOIN project_repositories base ON base.id=t.project_repository_id
+                WHERE r.execution_ref=?`,
             ).get(executionRef) as Record<string, unknown> | undefined;
             if (base) {
+              // The managed author's tracker promises a read-only source
+              // snapshot "supplied by the Factory". Carry the repository path
+              // alongside the base receipt so the runner can materialize the
+              // exact tree into the execution workspace — without it the
+              // author is blind (observed live: five submissions editing one
+              // file from model memory, unable to see the code under repair).
+              const repo = getDb().prepare(
+                `SELECT local_path FROM project_repositories WHERE id=?`,
+              ).get(base.project_repository_id) as { local_path: string | null } | undefined;
               metadata.process_workspace = {
                 ...(metadata.process_workspace as Record<string, unknown>),
-                source_snapshot: base,
+                source_snapshot: {
+                  ...base,
+                  repository_local_path: repo?.local_path ?? null,
+                },
               };
               getDb().prepare(
                 `UPDATE tasks SET metadata=?,updated_at=datetime('now') WHERE id=?`,

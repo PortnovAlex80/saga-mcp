@@ -1,7 +1,7 @@
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn as nodeSpawn } from 'node:child_process';
+import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createRepeatedToolLoopDetector } from './repeated-tool-loop.mjs';
 import {
@@ -292,6 +292,14 @@ function buildPrompt({
           `workspace_files=${JSON.stringify(processWorkspace.workspaceFiles)}`,
           `materialized_call_files=${JSON.stringify(processWorkspace.callFiles)}`,
           `checklists=${JSON.stringify(processWorkspace.checklists)}`,
+          ...(processWorkspace.source_snapshot?.snapshot_directory
+            ? [
+                '',
+                `📁 READ-ONLY SOURCE SNAPSHOT (Factory-supplied): ${processWorkspace.source_snapshot.snapshot_directory}`,
+                'This is the EXACT repository tree at the effective base commit. READ the real files there (Read/Glob/Grep) BEFORE proposing changes — never reconstruct code from memory.',
+                '',
+              ]
+            : []),
           '',
           'Weak-model execution order:',
           `a. Read ${processWorkspace.trackerPath} before any domain action.`,
@@ -864,6 +872,41 @@ export class ClaudeBoardRunner {
       throw new Error(
         `REPOSITORY_DESK_PATH_MISSING: provisioned worktree '${executionCwd}' does not exist`,
       );
+    }
+
+    // Managed source snapshot (artifact_change): the managed author has no Git
+    // authority and no desk — without the actual source tree the worker is
+    // BLIND and repairs from model memory (observed live: five submissions
+    // re-editing one file, never seeing the code under repair). Materialize
+    // the exact effective-base tree read-only next to the execution log; the
+    // tracker already tells the worker the snapshot is Factory-supplied.
+    if (!processWorkspace?.repositoryDesk) {
+      const snapshot = processWorkspace?.source_snapshot;
+      const repoPath = snapshot?.repository_local_path;
+      const baseCommit = snapshot?.effective_base_commit;
+      if (typeof repoPath === 'string' && repoPath && /^[a-f0-9]{40}$/u.test(String(baseCommit))) {
+        const snapshotDir = path.join(workspaceRoot, 'repo-snapshot');
+        try {
+          mkdirSync(snapshotDir, { recursive: true });
+          const tar = spawnSync('git', ['-C', repoPath, 'archive', String(baseCommit)], {
+            encoding: 'buffer', maxBuffer: 256 * 1024 * 1024,
+          });
+          if (tar.status === 0 && tar.stdout?.length) {
+            spawnSync('tar', ['-x', '-C', snapshotDir], { input: tar.stdout, maxBuffer: 256 * 1024 * 1024 });
+            // Surface the snapshot directory to the prompt builder (the
+            // metadata copy travels to buildPrompt via processWorkspace).
+            processWorkspace.source_snapshot = {
+              ...processWorkspace.source_snapshot,
+              snapshot_directory: snapshotDir,
+            };
+            console.log(`[runner] repo snapshot materialized at ${snapshotDir} (base ${String(baseCommit).slice(0, 8)})`);
+          } else {
+            console.log(`[runner] repo snapshot unavailable: git archive failed in ${repoPath}`);
+          }
+        } catch (err) {
+          console.log(`[runner] repo snapshot failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }
 
     const prompt = buildPrompt({
