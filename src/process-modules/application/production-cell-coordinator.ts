@@ -157,6 +157,18 @@ export class ProductionCellCoordinator {
        */
       acceptedCandidateSetRef?: string;
       gateDecisionKey?: string;
+      /**
+       * ADR-053 C5-02 — the CURRENT workplace task at acceptance: the task whose
+       * material is being accepted. Sourced by the caller (the production-cell
+       * node executor) from the authoritative worker-execution→task binding
+       * (readExecutionReceipt), NOT from submission.task_id (the origin process's
+       * task — wrong after carry-forward) and NOT from ORDER BY t.id DESC
+       * (recency — wrong in repair cycles). Written to the authority head
+       * atomically with the C1 pointer so the head is the carry-forward-safe
+       * task authority. Null only when no task can be resolved at the acceptance
+       * site (the head records the C1 pointer but leaves task identity unbound).
+       */
+      acceptedAuthorTaskId?: string | null;
     },
   ): StepResult {
     let event: ProductionCellEvent;
@@ -183,6 +195,8 @@ export class ProductionCellCoordinator {
     // with the transition. The pointer is the single source of truth for "the
     // current accepted author CandidateSet", read by the reviewer subject pin,
     // reviewer projection and crash recovery — never `sets[0]` by hash order.
+    // ADR-053 C5-02 — the head ALSO carries the current workplace task identity
+    // (acceptedAuthorTaskId), the carry-forward-safe task binding.
     if (
       decision.verdict === 'accepted'
       && decision.acceptedCandidateSetRef
@@ -191,6 +205,7 @@ export class ProductionCellCoordinator {
       return this.applyAcceptanceEvent(ref, event!, {
         acceptedAuthorCandidateSetRef: decision.acceptedCandidateSetRef,
         acceptedAuthorGateDecisionKey: decision.gateDecisionKey,
+        acceptedAuthorTaskId: decision.acceptedAuthorTaskId ?? null,
       });
     }
     return this.applyEvent(ref, event!);
@@ -347,6 +362,10 @@ export class ProductionCellCoordinator {
    * the head UPSERT commit together: the authority pointer is durable IFF the
    * acceptance transition committed. On a CAS miss (`applied:false`) the head is
    * NOT written (a concurrent writer won the race).
+   *
+   * ADR-053 C5-02 — the head records the CURRENT workplace task identity
+   * (`acceptedAuthorTaskId`) alongside the C1 pointer, so the head is the
+   * carry-forward-safe task authority (neither submission.task_id nor recency).
    */
   private applyAcceptanceEvent(
     ref: WorkplaceRef,
@@ -354,6 +373,7 @@ export class ProductionCellCoordinator {
     authority: {
       acceptedAuthorCandidateSetRef: string;
       acceptedAuthorGateDecisionKey: string;
+      acceptedAuthorTaskId: string | null;
     },
   ): StepResult {
     const current = this.deps.workplaceRepo.read(ref);
@@ -382,6 +402,7 @@ export class ProductionCellCoordinator {
           acceptedAuthorCandidateSetRef: authority.acceptedAuthorCandidateSetRef,
           acceptedAuthorGateDecisionKey: authority.acceptedAuthorGateDecisionKey,
           revision: r.revision,
+          acceptedAuthorTaskId: authority.acceptedAuthorTaskId,
           now: this.deps.now,
         });
       }

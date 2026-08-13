@@ -139,7 +139,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     authorCandidateCarryForward,
     now: () => new Date(),
   });
-  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products, dependencyBindings, effectCalls };
+  return { db, workplaceRepo, coordinator, candidateSetRepo, gateRepo, executor, plans, activations, products, dependencyBindings, effectCalls, persistence };
 }
 
 function context(definition, frame = { productions: {}, receipts: {}, runInput: {} }) {
@@ -545,5 +545,95 @@ test('invalid fan-out cycle leaves every Workplace idle and unclaimable', async 
     ).all(),
     [{ loop_state: 'idle' }],
   );
+  h.db.close();
+});
+
+// ---------------------------------------------------------------------------
+// ADR-053 C5-02 — at final author acceptance, bind the CURRENT workplace task
+// onto the accepted-authority head. The authoritative source is the worker-
+// execution→task binding (readExecutionReceipt): the EXACT task the accepted
+// execution was launched for. This is carry-forward-safe — it is neither
+// submission.task_id (the ORIGIN process's task) nor ORDER BY t.id DESC
+// (recency). These tests prove the executor resolves the task from that
+// authoritative source (not recency) and falls back to the durable author-task
+// projection for a carry-forward presenter.
+// ---------------------------------------------------------------------------
+
+const C5_WREF = 'workplace/7/test-module@1.0.0/singleton-cell/singleton';
+
+test('ADR-053 C5-02: author acceptance binds the worker-execution receipt task, not a recency-picked task', async () => {
+  const h = harness();
+  // The accepted execution was launched for task 42 — the authoritative worker-
+  // execution→task binding.
+  h.persistence.readExecutionReceipt = (executionRef) =>
+    executionRef === 'execution:c5-author' ? { intentId: 1, taskId: 42 } : null;
+  // A DECOY task with a HIGHER id for the SAME workplace. This is exactly what
+  // `ORDER BY t.id DESC LIMIT 1` (the recency pole) would wrongly select.
+  h.db.prepare(
+    `INSERT INTO projects (id, name) VALUES (1, 'c5-decoy-project')`,
+  ).run();
+  h.db.prepare(
+    `INSERT INTO epics (id, project_id, name) VALUES (1, 1, 'c5-decoy-epic')`,
+  ).run();
+  h.db.prepare(
+    `INSERT INTO tasks (id, epic_id, title, workplace_ref, status, execution_mode)
+     VALUES (999, 1, 'decoy-recency-task', ?, 'todo', 'git_change')`,
+  ).run(C5_WREF);
+
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:c5-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:c5', digest: sha('c5-product'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+
+  const head = h.db.prepare(
+    `SELECT accepted_author_task_id AS task FROM factory_accepted_authority_head WHERE workplace_ref=?`,
+  ).get(C5_WREF);
+  assert.ok(head, 'C5-02: authority head must be recorded on author acceptance');
+  // The head carries the receipt's task (42), NOT the decoy recency task (999).
+  assert.equal(head.task, '42',
+    'C5-02: task identity comes from the worker-execution receipt, not ORDER BY t.id DESC');
+  h.db.close();
+});
+
+test('ADR-053 C5-02: a carry-forward presenter (no worker receipt) falls back to the durable author-task projection', async () => {
+  const directive = {
+    authorizationRef: 'author-carry-forward:c5',
+    presenterRef: 'factory-carry-forward-presenter:author-carry-forward:c5',
+    sourceCandidateSetRef: 'candidate-set:prior-author-c5',
+    sourceCandidateSetDigest: sha('prior-author-c5'),
+    products: [{
+      schemaId: 'factory.test-product.v1',
+      ref: 'managed-node-submission:prior-c5',
+      digest: sha('prior-product-c5'),
+    }],
+  };
+  const carry = { resolve: () => directive, consume: () => {} };
+  const h = harness(null, carry);
+  // A carry-forward presenter has NO worker receipt (readExecutionReceipt →
+  // null). The fallback is the durable author-task projection for this
+  // workplace — the current workplace's author task.
+  h.persistence.readExecutionReceipt = (executionRef) =>
+    executionRef.startsWith('factory-carry-forward-presenter:') ? null : { intentId: 1, taskId: 1 };
+  h.persistence.readProjectedRoleTask = (_workplaceRef, role) =>
+    role === 'author' ? { taskId: 77 } : null;
+
+  const ctx = context(cell({ review: true }));
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  assert.equal(h.coordinator.readState(ref).nextRole, 'reviewer',
+    'carry-forward author candidate was accepted (handed off to reviewer)');
+
+  const head = h.db.prepare(
+    `SELECT accepted_author_task_id AS task FROM factory_accepted_authority_head WHERE workplace_ref=?`,
+  ).get(C5_WREF);
+  assert.ok(head, 'C5-02: authority head must be recorded on carry-forward author acceptance');
+  // No worker receipt → bound from the author-task projection (the current
+  // workplace's author task), NOT submission.task_id (the origin task).
+  assert.equal(head.task, '77',
+    'C5-02: carry-forward acceptance binds the workplace author-task projection');
   h.db.close();
 });

@@ -43,7 +43,9 @@
     "test:dispatcher-race": "tsc && node tests/dispatcher-race/run.mjs && node tests/dispatcher-race/assign-race.mjs && node tests/dispatcher-race/isolation.mjs && node tests/dispatcher-race/review-verdict-race.mjs && node tests/dispatcher-race/worktree-isolation.mjs && node --test tests/dispatcher-race/parallel-concurrency.mjs && node --test tests/dispatcher-race/dispatch-loop-overlap.test.mjs && node --test tests/dispatcher-race/orchestrate-global-budget.test.mjs",
     "test:factory-contract": "tsc && node --test \"tests/factory-contract/*.test.mjs\"",
     "test:factory-temporal": "tsc && node --test --test-concurrency=1 \"tests/factory-temporal/*.test.mjs\"",
-    "test:factory-model": "tsc && node --test \"tests/factory-model/*.test.mjs\""
+    "test:factory-model": "tsc && node --test \"tests/factory-model/*.test.mjs\"",
+    "test:acceptance-matrix": "tsc && node tools/run-acceptance-matrix.mjs",
+    "test:acceptance-matrix:list": "node tools/run-acceptance-matrix.mjs --list"
   },
   "keywords": [
     "mcp",

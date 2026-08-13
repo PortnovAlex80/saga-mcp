@@ -73,6 +73,15 @@ export interface DevelopmentImplementationResultProduct {
   };
   buildProducts: readonly unknown[];
   reasonCodes: readonly string[];
+  /**
+   * @see ReadinessProfile — the EXPLICIT served|static readiness profile for
+   * the integrated product. When present on an accepted implementation result,
+   * the candidate freeze propagates it onto the IntegratedReleaseCandidate so
+   * the local-runnability provider (LR-04) can prove the exact sealed product
+   * runnable. Optional: a result frozen upstream of LR-07 wiring carries none
+   * and the freeze falls back to no profile (fail closed at runnability).
+   */
+  readiness?: ReadinessProfile;
 }
 
 export interface DevelopmentVerificationEvidenceProduct {
@@ -280,6 +289,70 @@ export interface CandidateBuildProduct {
 }
 
 /**
+ * The deterministic install + test commands that prove a candidate runnable.
+ *
+ * ADR-053 / LR-03 — the authority for "which commands prove runnability" is the
+ * accepted product contract (this frozen candidate), NOT inference from
+ * incidental files (package.json / build.gradle presence). The local-
+ * runnability provider runs these verbatim and fails closed when the contract
+ * cannot state them, rather than guessing. Reused by the LR-04 readiness
+ * profile, which embeds these commands as the runnability authority.
+ */
+export interface RunnabilityCommands {
+  /**
+   * Shell command that installs the candidate's dependencies, or null when the
+   * candidate needs no install step (e.g. a dependency-free static product).
+   */
+  installCommand: string | null;
+  /** Shell command that proves runnability (the test command). Non-empty. */
+  testCommand: string;
+}
+
+/**
+ * The EXPLICIT readiness profile (ADR-053 / LR-04) — the single authority that
+ * states how the exact sealed product proves itself runnable. The local-
+ * runnability provider does NOT infer product kind/readiness (served vs static)
+ * from incidental files (package.json / build.gradle); the profile is the
+ * authority, and the provider fails closed when it is absent or invalid.
+ *
+ * The profile rides on the frozen IntegratedReleaseCandidate, so it names the
+ * exact sealed subject (it is part of the frozen content covered by
+ * `candidateHash`) and it carries the runnability commands (LR-03
+ * RunnabilityCommands). Two kinds:
+ *
+ *   - served: the product is a long-running service. It states how it serves
+ *     (the serve command) plus its runnability commands. The provider starts it
+ *     on a deterministic loopback port, probes the endpoint, then shuts it down
+ *     — ADDITIVE evidence the exact sealed object can be started, answer on
+ *     loopback, and stop.
+ *   - static: the product is a fixed artifact (a static site / library). It
+ *     states only its runnability commands; runnability is proven by the test
+ *     command alone, with no serve/probe phase.
+ */
+export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
+
+export interface ServedReadinessProfile {
+  kind: 'served';
+  /** @see RunnabilityCommands — deterministic install + test commands. */
+  commands: RunnabilityCommands;
+  /** How the product serves itself on loopback. */
+  serve: {
+    /**
+     * Shell command that starts the service (long-running). The provider spawns
+     * it on a deterministic loopback port, probes the endpoint, then terminates
+     * the process tree. Non-empty.
+     */
+    startCommand: string;
+  };
+}
+
+export interface StaticReadinessProfile {
+  kind: 'static';
+  /** @see RunnabilityCommands — deterministic install + test commands. */
+  commands: RunnabilityCommands;
+}
+
+/**
  * The immutable code/build target that verification executes against.
  * `candidateHash` is over all fields except candidateHash itself.
  */
@@ -292,6 +365,14 @@ export interface IntegratedReleaseCandidate {
   integrationIntentRefs: readonly string[];
   frozen: true;
   candidateHash: string;
+  /**
+   * @see ReadinessProfile — the EXPLICIT served|static readiness authority. The
+   * local-runnability provider requires this and fails closed when it is absent;
+   * it does not infer readiness from incidental files. Optional only because a
+   * candidate frozen upstream before this wiring is populated (LR-07) is treated
+   * as "no explicit profile" → fail closed, never guessed.
+   */
+  readiness?: ReadinessProfile;
 }
 
 export type VerificationOutcome =
@@ -344,6 +425,37 @@ export interface VerifiedIntegrationBundle {
   bundleHash: string;
 }
 
+/**
+ * The durable local-readiness receipt for the EXACT frozen integrated candidate
+ * (LR-06 / LR-07 — closes W5). This is the persisted outcome of the local-
+ * runnability check provider (`factory_check_receipts`, the Gate-receipt
+ * substrate) for the candidate set that seals the integrated candidate.
+ *
+ * Development settlement's terminal `verified` decision REQUIRES this receipt to
+ * be (a) present, (b) outcome `passed`, and (c) bound to the exact frozen
+ * integrated candidate — `candidateHash === integratedCandidate.candidateHash`.
+ * Without it the product is not proven runnable locally and settlement returns
+ * `blocked` / `local-readiness-missing`. Before LR-07 the receipt ran during
+ * development verification but was NOT bound to the settlement's terminal
+ * decision, so Development could be "verified" without a proven-runnable-local
+ * product (W5).
+ *
+ * `candidateHash` is the SUBJECT IDENTITY of the receipt. The settlement policy
+ * enforces the binding; the builder populates it by reading the receipt whose
+ * subject candidate set seals THIS candidate (content-addressed member triple),
+ * so a different product's receipt can never satisfy the gate.
+ */
+export interface LocalReadinessReceipt {
+  /**
+   * The exact frozen candidate this receipt proves runnable. MUST equal the
+   * integrated candidate's sealed `candidateHash`.
+   */
+  candidateHash: string;
+  outcome: 'passed' | 'failed';
+  /** Sealed evidence refs produced by the local-runnability provider. */
+  evidenceRefs: readonly string[];
+}
+
 export interface DevelopmentSettlementInput {
   schemaVersion: typeof DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA;
   developmentCase: DevelopmentCase;
@@ -363,6 +475,13 @@ export interface DevelopmentSettlementInput {
     acceptanceVerification: ContentAddressedReference | null;
   };
   openHumanGateIds: readonly string[];
+  /**
+   * The durable local-readiness receipt for the exact frozen integrated
+   * candidate, or null when no passed/failed receipt is persisted for it
+   * (LR-06/LR-07). The terminal `verified` decision requires this to be present,
+   * `passed`, and bound to `integratedCandidate.candidateHash`. W5.
+   */
+  localReadinessReceipt: LocalReadinessReceipt | null;
 }
 
 export type DevelopmentDecision =
@@ -402,6 +521,7 @@ export type DevelopmentReasonCode =
   | 'verification-inconclusive'
   | 'verification-provider-untrusted'
   | 'human-decision-required'
+  | 'local-readiness-missing'
   | 'infrastructure-error';
 
 export interface DevelopmentCertificatePayload {

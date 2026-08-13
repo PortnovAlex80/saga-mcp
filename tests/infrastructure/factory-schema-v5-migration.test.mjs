@@ -111,7 +111,7 @@ test('getDb refuses to stamp an unknown future schema version as current', () =>
       encoding: 'utf8',
     });
     assert.equal(child.status, 23, child.stderr);
-    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->5/);
+    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->7/);
 
     const reopened = new Database(dbPath, { readonly: true });
     assert.equal(reopened.pragma('user_version', { simple: true }), 99);

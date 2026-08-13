@@ -33,7 +33,6 @@ test('Phase 8: CandidateSet seal creates a run-gate obligation', () => {
     candidateSetRef: 'cs-1',
     candidateSetDigest: 'sha256:cs',
     workplaceRef: 'workplace/1/cell/item',
-    fence: 1,
   });
   const ready = ledger.findReady();
   assert.equal(ready.length, 1);
@@ -45,11 +44,11 @@ test('Phase 8: CandidateSet seal creates a run-gate obligation', () => {
 test('Phase 8: all five source facts create their corresponding obligations', () => {
   const { ledger } = makeLedger();
   const integrator = new TransitionObligationIntegrator({ ledger });
-  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd1', workplaceRef: 'w1', fence: 1 });
-  integrator.onGateAccepted({ gateDecisionKey: 'gd-1', gateDecisionDigest: 'd2', workplaceRef: 'w1', fence: 1 });
-  integrator.onEffectsSettled({ workplaceRef: 'w1', effectReceiptDigest: 'd3', fence: 1 });
-  integrator.onFinalAcceptanceRecorded({ finalAcceptanceRef: 'fa-1', acceptanceDigest: 'd4', workplaceRef: 'w1', fence: 1 });
-  integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', workplaceRef: 'w1', fence: 1 });
+  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd1', workplaceRef: 'w1' });
+  integrator.onGateAccepted({ gateDecisionKey: 'gd-1', gateDecisionDigest: 'd2', workplaceRef: 'w1' });
+  integrator.onEffectsSettled({ workplaceRef: 'w1', effectReceiptDigest: 'd3' });
+  integrator.onFinalAcceptanceRecorded({ finalAcceptanceRef: 'fa-1', acceptanceDigest: 'd4', workplaceRef: 'w1' });
+  integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', workplaceRef: 'w1' });
   const ready = ledger.findReady();
   assert.equal(ready.length, 5);
   const handoffs = ready.map(o => o.handoffKind).sort();
@@ -68,8 +67,8 @@ test('Phase 8: all five source facts create their corresponding obligations', ()
 test('Phase 8: obligation creation is idempotent', () => {
   const { ledger, db } = makeLedger();
   const integrator = new TransitionObligationIntegrator({ ledger });
-  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1', fence: 1 });
-  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1', fence: 1 });
+  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1' });
+  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1' });
   const count = db.prepare('SELECT COUNT(*) AS n FROM factory_transition_obligations').get().n;
   assert.equal(count, 1);
 });
@@ -96,9 +95,8 @@ test('Phase 8: full cycle — CandidateSet seal → reconcile → gate runs', as
     candidateSetRef: 'cs-1',
     candidateSetDigest: 'sha256:cs',
     workplaceRef: 'workplace/1/cell/item',
-    fence: 1,
   });
-  const result = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  const result = await reconciler.reconcile({ leaseOwner: 'rec-1' });
   assert.equal(result.dispatched, 1);
   assert.equal(result.completed, 1);
   assert.ok(gateRan, 'gate handler ran');
@@ -120,12 +118,12 @@ test('Phase 8: crash recovery — obligation is redriven after crash', async () 
       return { completionReceipt: 'gate-1', resultDigest: 'sha256:r' };
     },
   });
-  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1', fence: 1 });
+  integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd', workplaceRef: 'w1' });
 
   // First sweep: crash.
-  await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 1 });
+  await reconciler.reconcile({ leaseOwner: 'rec-1' });
   // Second sweep: recovery.
-  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: 2 });
+  const r2 = await reconciler.reconcile({ leaseOwner: 'rec-1' });
   assert.equal(r2.completed, 1);
   assert.equal(calls, 2);
 });

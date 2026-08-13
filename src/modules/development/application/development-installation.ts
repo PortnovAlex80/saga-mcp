@@ -820,6 +820,7 @@ function emptySettlementInput(
       acceptanceVerification: null,
     },
     openHumanGateIds: [],
+    localReadinessReceipt: null,
   };
 }
 

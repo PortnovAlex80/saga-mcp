@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -40,6 +40,19 @@ let db: Database.Database | null = null;
  *   5 = factory_launch_requests.state accepts 'paused' as a terminal-for-this-
  *       launch state (lifecycle suspended without converging). Applied via
  *       table rebuild for existing DBs; relaxed CHECK + freed one-active slot.
+ *   6 = ADR-053 C5 — the accepted-authority head persists the identity of the
+ *       workplace task whose material it accepted (nullable
+ *       `accepted_author_task_id` on factory_accepted_authority_head). Additive
+ *       ADD COLUMN for existing DBs; no row reset. This is the carry-forward-
+ *       safe task binding (commit 3c5decc): neither submission.task_id (origin
+ *       process's task) nor ORDER BY t.id DESC (recency) is authority — the HEAD is.
+ *   7 = ADR-053 C7-02 — the monotonic lease fence gets its own DURABLE, DISTINCT
+ *       storage (nullable `lease_fence` on factory_transition_obligations),
+ *       separate from the causal source revision on `fence`. Additive ADD COLUMN
+ *       for existing DBs; no row reset. `lease` now writes the fence here
+ *       monotonically (never decreasing) instead of overwriting the causal
+ *       `fence` column. Storage + read/write only; atomic fence allocation is
+ *       C7-03.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -47,7 +60,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 7;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -101,6 +114,18 @@ export function getDb(): Database.Database {
   // DBs created before this column get it added here with the safe default
   // 'file_backed'. The synthetic brief is repaired to db_native separately.
   ensureArtifactStorageKindColumn(db);
+  // Additive migration (ADR-053 C5): factory_accepted_authority_head gains the
+  // nullable accepted_author_task_id column carrying the workplace task whose
+  // material the head accepted. Fresh DBs get it from CREATE TABLE; pre-v6 DBs
+  // get it added here as NULL. No row reset.
+  ensureAcceptedAuthorityHeadTaskIdColumn(db);
+  // Additive migration (ADR-053 C7-02): factory_transition_obligations gains a
+  // DISTINCT durable home for the monotonic lease fence (nullable `lease_fence`),
+  // separate from the causal source revision on `fence`. Fresh DBs get it from
+  // CREATE TABLE; pre-v7 DBs get it added here as NULL. No row reset, no rewrite
+  // of the existing `fence` column — pre-migration obligations read with
+  // lease_fence = NULL until they are next leased.
+  ensureTransitionObligationLeaseFenceColumn(db);
   // One-shot repair: promote synthetic auto-provisioned briefs (no physical
   // file, hash from canonical JSON) to db_native with content persisted in
   // metadata. Verified against the stored content_hash — never guesses.
@@ -139,7 +164,7 @@ export function getDb(): Database.Database {
   // the migrations above. Never stamp an unknown/future version as current:
   // doing so would launder an unexecuted migration into apparent success.
   const migratedVersion = db.pragma('user_version', { simple: true }) as number;
-  if (migratedVersion === 0 || migratedVersion === 4) {
+  if (migratedVersion === 0 || migratedVersion === 4 || migratedVersion === 5 || migratedVersion === 6) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {
     throw new Error(
