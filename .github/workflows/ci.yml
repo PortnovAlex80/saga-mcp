@@ -24,9 +24,12 @@ jobs:
       - name: TypeScript strict build
         run: npx tsc --noEmit
 
-      - name: ESLint
+      - name: ESLint (blocking lint gate)
+        # CI-01: lint is a BLOCKING acceptance gate. Factory-completion active
+        # paths must be lint-clean (errors fail the build). Legacy debt is
+        # quarantined by the eslint flat-config ratchet (see eslint.config.mjs),
+        # NOT by continue-on-error here. No allow-failure / retries hide errors.
         run: npx eslint src/
-        continue-on-error: true
 
       - name: Tests
         run: npm test

@@ -53,7 +53,7 @@
 
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
-| CI-01 | Make lint clean and blocking | Quality Q | C5-05, C7-07, LR-07 | pending | ci(factory): make lint a blocking acceptance gate | — |
+| CI-01 | Make lint clean and blocking | Quality Q | C5-05, C7-07, LR-07 | done | ci(factory): make lint a blocking acceptance gate | eslint.config.mjs ratchet (legacy globs off for eqeqeq/prefer-const/no-empty-object-type; Factory paths fully enforced); ci.yml lint blocking (no continue-on-error); eslint src/ exit 0; backlog docs/factory/CI-01-LEGACY-LINT-BACKLOG.md (84 legacy errors) |
 | CI-02 | Run the explicit Factory acceptance matrix in CI | Quality Q | CI-01 | pending | ci(factory): execute the full deterministic acceptance matrix | — |
 | CI-03 | Capture a clean-checkout green baseline | Integrator | CI-02 | pending | test(factory): record clean deterministic acceptance baseline | — |
 

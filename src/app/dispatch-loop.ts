@@ -144,8 +144,7 @@ export async function distributeQueuedTasks(
         `[dispatch] assigned task=${launched.assignment.taskId} `
         + `execution=${launched.assignment.workerExecutionId}\n`,
       );
-      let tracked!: Promise<number>;
-      tracked = launched.completion
+      const tracked: Promise<number> = launched.completion
         .then((count) => {
           terminalWorkers += count;
           return count;

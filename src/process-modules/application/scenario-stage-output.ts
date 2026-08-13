@@ -434,11 +434,11 @@ export function moduleOutputEnvelopeDigest(envelope: ProcessModuleOutputEnvelope
  * variant. Mirrors `LifecycleMappingRuntime` from `lifecycle-mapper.ts` but
  * expressed here so the handoff frame is self-describing.
  */
-export interface ScenarioHandoffRuntime extends LifecycleMappingRuntime {
-  // LifecycleMappingRuntime already carries projectId/epicId/lifecycleRunId/
-  // stageId/initiatedBy. No additional fields: the runtime must stay immutable
-  // and scenario-author-visible (plan §6.3.3).
-}
+// LifecycleMappingRuntime already carries projectId/epicId/lifecycleRunId/
+// stageId/initiatedBy. No additional fields: the runtime must stay immutable
+// and scenario-author-visible (plan §6.3.3). Expressed as a named type alias
+// so the handoff frame is self-describing without declaring an empty interface.
+export type ScenarioHandoffRuntime = LifecycleMappingRuntime;
 
 /**
  * Build the minimal, non-cumulative mapping frame for a target stage. This is

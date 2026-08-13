@@ -284,7 +284,9 @@ export function readExecutionContextStrict(db: Database, executionId: string): S
     return { ok: false, reason: 'execution_context_hash mismatch' };
   }
 
-  if (row.task_work_intent_id == null) {
+  // row.task_work_intent_id is typed `number | null`; the explicit null check
+  // is eqeqeq-safe and equivalent to the original `== null` guard here.
+  if (row.task_work_intent_id === null) {
     if (authority !== null || workIntentId !== null) {
       return { ok: false, reason: 'task has no WorkIntent binding but snapshot grants managed authority' };
     }

@@ -99,7 +99,10 @@ export function asWorkplaceRef(input: {
   productionCellId: string;
   workKey?: string;
 }): WorkplaceRef {
-  if (input == null || typeof input !== 'object') {
+  // `typeof null === 'object'`, so the explicit null check must precede the
+  // shape check. Together they cover null + undefined + all non-objects
+  // (equivalent to the original `input == null` guard, but eqeqeq-safe).
+  if (input === null || typeof input !== 'object') {
     throw new Error('asWorkplaceRef: expected an object');
   }
   const { processRunId, moduleRef, productionCellId } = input;
