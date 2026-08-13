@@ -69,7 +69,12 @@ schema. A prose completion message is not a product.
   plus, for `kind:"served"` only, `"serve": { "startCommand": <string> }`.
   `static` = runnability is proven by the test command alone (library, static
   site). `served` = a long-running service: state how it starts — the factory
-  will run it on loopback, probe it, then stop it. You are the AUTHORITY for
+  will run it on loopback, probe it, then stop it. **PORT CONTRACT (mandatory):**
+  the readiness gate assigns a DETERMINISTIC port and passes it in the `PORT`
+  environment variable (`HOST`=127.0.0.1) — a served product MUST read `PORT`
+  from the environment and bind EXACTLY that port (fallback default allowed
+  only when PORT is unset). A hardcoded port will never be probed and the
+  readiness check will fail regardless of code quality. You are the AUTHORITY for
   how your artifact runs: the final local-runnability gate executes these
   commands verbatim and FAILS CLOSED when the profile is missing — it refuses
   to guess from build files, so without your declaration the product cannot
