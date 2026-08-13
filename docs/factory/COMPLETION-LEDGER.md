@@ -70,7 +70,7 @@
 
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
-| W10-01 | Freeze the clean GLM-4.7 run profile | Integrator | W9-04 | pending | chore(factory): freeze clean glm-4.7 acceptance run | — |
+| W10-01 | Freeze the clean GLM-4.7 run profile | Integrator | W9-04 | done | chore(factory): freeze clean glm-4.7 acceptance run | docs/factory/W10-RUN-PROFILE.md (model GLM-4.7 operator-side; cap ≤2; product-build@1.2.0 fresh; no authority hacks; 5 acceptance criteria; DFX 3/3). Profile frozen; W10-02 launches it |
 | W10-02 | Execute the clean real-model product build | Operator + Integrator | W10-01 | pending | test(factory): record clean glm-4.7 product build | — |
 | W11-01 | Inspect the produced product and close W10/W11 | Verification V | W10-02 | pending | test(factory): verify real product and runtime acceptance evidence | — |
 
