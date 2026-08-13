@@ -240,9 +240,10 @@ function readParentDefectEvidence(
        FROM factory_stage_runs sr
        JOIN factory_process_runs pr ON pr.id=sr.process_run_id
        JOIN factory_check_receipts cr
-         ON cr.check_run_ref IN (
-           SELECT gr.check_plan_ref FROM factory_gate_runs gr
-            WHERE gr.workplace_ref LIKE 'workplace/' || pr.id || '/%'
+         ON cr.subject_candidate_set_ref IN (
+           SELECT cs.candidate_set_ref
+             FROM factory_candidate_sets cs
+            WHERE cs.workplace_ref LIKE 'workplace/' || pr.id || '/%'
          )
       WHERE sr.lifecycle_run_id=? AND cr.outcome='failed'
       ORDER BY cr.created_at DESC
