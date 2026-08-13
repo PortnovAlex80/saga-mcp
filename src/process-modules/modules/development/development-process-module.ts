@@ -92,6 +92,12 @@ const IMPLEMENTATION_AUTHOR_PLAN = buildCheckPlan(
     providerDigest: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
     repairTargetRoleOnFailure: 'author',
     repairTargetRoleOnIndeterminate: 'author',
+    // Desync firewall: this check reads an implementation-result payload and
+    // its Git diff. If the cell's product contract ever changes shape (e.g.
+    // a managed textual candidate), module install must fail here instead of
+    // the gate rejecting every submission live.
+    expectedSubjectSchemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+    subjectScope: 'cell-product',
   }],
 );
 const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
@@ -103,6 +109,8 @@ const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
     parameters: { verdictSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA },
     repairTargetRoleOnFailure: 'author',
     repairTargetRoleOnIndeterminate: 'reviewer',
+    expectedSubjectSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
+    subjectScope: 'cell-product',
   }],
 );
 const VERIFICATION_FINAL_PLAN = buildCheckPlan(
@@ -123,6 +131,8 @@ const VERIFICATION_FINAL_PLAN = buildCheckPlan(
     // of burning this workplace's repair budget on probe rewrites that
     // cannot fix the product.
     failureOwnership: 'upstream',
+    expectedSubjectSchemaRef: INTEGRATED_CANDIDATE_SCHEMA,
+    subjectScope: 'upstream',
     repairTargetRoleOnIndeterminate: 'author',
   }],
 );

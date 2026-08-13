@@ -124,6 +124,20 @@ export interface CheckPlanEntry {
    */
   readonly failureOwnership?: 'workplace' | 'upstream';
   /**
+   * Install-time conformance: the product schema id this check's SUBJECT
+   * must have. Paired with `subjectScope`:
+   *   - 'cell-product' — the validator HARD-CHECKS this value against the
+   *     cell's productContracts schemaRefs (author gate) / review verdict
+   *     schema (final gate) at module-install time. A mismatch is a load
+   *     error, turning the "entry format changed, exit validator didn't"
+   *     desync class into a startup failure instead of a live rupture.
+   *   - 'upstream' — the subject is a frozen upstream artifact (e.g. the
+   *     integrated candidate); the value is declarative documentation (no
+   *     local cross-check is possible).
+   */
+  readonly expectedSubjectSchemaRef?: string;
+  readonly subjectScope?: 'cell-product' | 'upstream';
+  /**
    * Optional reference to the disposable sandbox environment the check runs in.
    * Null for checks that need no external state (pure schema validation).
    */
@@ -185,6 +199,18 @@ export interface CheckProvider {
    * run checks under a plan that pinned a different implementation.
    */
   readonly providerDigest: string;
+  /**
+   * Conformance declaration (install-time): the product schema id this
+   * provider's SUBJECT must have, or null when the provider is
+   * schema-agnostic (pure contract/shape checks, review verdicts over
+   * reviewer products, generic product-contract). The module conformance
+   * validator cross-checks it against the cell's productContracts/review
+   * verdict schema so a plan cannot pair a provider with a product it was
+   * never built to check — the "entry changed, exit validator didn't"
+   * desync class becomes a hard module-load error instead of a live
+   * conveyor rupture.
+   */
+  readonly expectedSubjectSchemaRef?: string | null;
   /**
    * Run one check over an immutable CandidateSet snapshot. Returns a
    * CheckOutcome plus opaque evidence refs. The runtime wraps this into a

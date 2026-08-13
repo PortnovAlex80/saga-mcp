@@ -75,6 +75,8 @@ export function buildCheckPlan(
     repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';
     indeterminateDisposition?: 'repair' | 'human-required';
     failureOwnership?: 'workplace' | 'upstream';
+    expectedSubjectSchemaRef?: string;
+    subjectScope?: 'cell-product' | 'upstream';
   }[] = [],
   options: { includeProductContract?: boolean } = {},
 ): CheckPlan {
@@ -108,6 +110,12 @@ export function buildCheckPlan(
         : {}),
       ...(check.failureOwnership
         ? { failureOwnership: check.failureOwnership }
+        : {}),
+      ...(check.expectedSubjectSchemaRef
+        ? { expectedSubjectSchemaRef: check.expectedSubjectSchemaRef }
+        : {}),
+      ...(check.subjectScope
+        ? { subjectScope: check.subjectScope }
         : {}),
       environmentRef: null,
     })),

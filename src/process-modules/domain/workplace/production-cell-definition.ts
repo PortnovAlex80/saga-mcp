@@ -118,6 +118,27 @@ export function assertValidProductionCellDefinition(
   requireNonEmpty(cell.author.skillRef, 'author.skillRef');
   requireNonEmpty(cell.author.capabilityPreset, 'author.capabilityPreset');
   requireNonEmpty(cell.authorGate.gateId, 'authorGate.gateId');
+  // Install-time conformance (the "desync firewall"): a check-plan entry that
+  // declares a cell-product subject MUST target a schema this cell actually
+  // produces (author gate: one of productContracts.schemaRef; final gate: the
+  // review verdict schema). A mismatch means the entry format and the cell
+  // product drifted — the exact bug class that rejected every managed
+  // SourceChangeCandidate because an inherited gate still expected a
+  // git-diff implementation result. Fail the module LOAD, not the conveyor.
+  assertCheckPlanSubjectConformance(
+    cell,
+    'author-products',
+    cell.authorGate.checkPlan,
+    cell.productContracts.map(contract => contract.schemaRef),
+  );
+  if (cell.review) {
+    assertCheckPlanSubjectConformance(
+      cell,
+      'review-verdict',
+      cell.review.finalGate.checkPlan,
+      [cell.review.verdictSchemaRef],
+    );
+  }
   if (cell.review) {
     if (cell.authorGate.gatePhase !== 'author') {
       throw new Error(
@@ -194,5 +215,40 @@ export type { RepairTargetRole };
 function requireNonEmpty(value: unknown, label: string): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`ProductionCellDefinition.${label} must be a non-empty string`);
+  }
+}
+
+/**
+ * Desync firewall — see assertValidProductionCellDefinition. Every check-plan
+ * entry that declares `subjectScope:'cell-product'` must name a schema in
+ * `allowed` (the cell's product schemas for the author gate, the review
+ * verdict schema for the final gate). Entries declaring an `upstream` or no
+ * subject scope are not locally cross-checkable and pass through.
+ */
+function assertCheckPlanSubjectConformance(
+  cell: ProductionCellDefinition,
+  gate: 'author-products' | 'review-verdict',
+  checkPlan: CheckPlan,
+  allowed: readonly string[],
+): void {
+  for (const entry of checkPlan.entries) {
+    if (entry.subjectScope !== 'cell-product') continue;
+    const expected = entry.expectedSubjectSchemaRef;
+    if (typeof expected !== 'string' || expected === '') {
+      throw new Error(
+        `ProductionCellDefinition '${cell.id}' ${gate} gate: entry `
+        + `'${entry.check.providerId}' declares subjectScope 'cell-product' `
+        + `without expectedSubjectSchemaRef`,
+      );
+    }
+    if (!allowed.includes(expected)) {
+      throw new Error(
+        `CELL_CHECK_PLAN_SUBJECT_MISMATCH: ProductionCellDefinition '${cell.id}' `
+        + `${gate} gate entry '${entry.check.providerId}' expects subject `
+        + `'${expected}', but the cell produces [${allowed.join(', ')}]. `
+        + `The check plan and the cell product contract have drifted — `
+        + `this module cannot be installed.`,
+      );
+    }
   }
 }
