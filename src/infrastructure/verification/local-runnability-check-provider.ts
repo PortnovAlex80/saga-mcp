@@ -89,13 +89,29 @@ export function createLocalRunnabilityCheckProvider(input: {
       try {
         subject = resolveSubject(input, subjectCandidateSetRef);
       } catch (subjErr) {
-        return 'error';
+        const reason = subjErr instanceof Error ? subjErr.message : String(subjErr);
+        return {
+          outcome: 'error',
+          evidenceRefs: [encodeCheckDiagnostic({
+            code: 'local-runnability-subject-error',
+            message: 'subject resolution threw: ' + reason.slice(0, 900),
+          })],
+        };
       }
       let check: CheckProviderResult;
       try {
         check = runLocalReadiness(subject);
       } catch (diagErr) {
-        check = 'error';
+        const err = diagErr as { message?: unknown; stack?: unknown };
+        const reason = (err.message !== undefined ? String(err.message) : String(diagErr))
+          + (err.stack !== undefined ? ' | stack: ' + String(err.stack).slice(0, 600) : '');
+        check = {
+          outcome: 'error',
+          evidenceRefs: [encodeCheckDiagnostic({
+            code: 'local-runnability-execution-error',
+            message: 'execution threw: ' + reason.slice(0, 1200),
+          })],
+        };
       }
       return check;
     },
