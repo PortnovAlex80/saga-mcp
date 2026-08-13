@@ -29,6 +29,13 @@ schema. A prose completion message is not a product.
 
 ## Author desk
 
+- **REPAIR ATTEMPT (read this first):** if the runner prompt shows a
+  `⚠️ REPAIR ATTEMPT` block with `recovery_feedback=<path>`, this is a rework
+  cycle — a previous submission of this task was REJECTED by the gate. Read that
+  `recovery-feedback.json` file FIRST. Its `issue.findings[]` are
+  machine-authored loop input naming the EXACT defects (files to add/change,
+  assertions to satisfy, unmet ACs) and the required remediation. Address EVERY
+  finding before resubmitting; do not repeat the rejected content.
 - Work inside the machine-provisioned worktree (`execution_path` from the
   REPOSITORY DESK block). The task branch is already checked out for you.
 - Respect the item AC coverage, dependency results and `changeScopes`.

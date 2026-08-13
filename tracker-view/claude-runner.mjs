@@ -275,6 +275,18 @@ function buildPrompt({
       ? [
           '',
           '--- MACHINE-PROVISIONED PROCESS WORKSPACE (mandatory, exact paths) ---',
+          ...(processWorkspace?.recoveryFeedback?.present && processWorkspace?.recoveryFeedback?.path
+            ? [
+                '',
+                '⚠️⚠️⚠️ REPAIR ATTEMPT — YOUR PREVIOUS SUBMISSION WAS REJECTED BY THE GATE. ⚠️⚠️⚠️',
+                `recovery_feedback=${processWorkspace.recoveryFeedback.path}`,
+                `READ ${processWorkspace.recoveryFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is machine-authored loop input.`,
+                'It carries issue.findings[]: the EXACT reasons the previous submission was rejected and the SPECIFIC remediation (which files to add/change, which assertions to satisfy, which AC is unmet).',
+                'Address EVERY finding in that file before resubmitting. Repeating the rejected content verbatim wastes a repair attempt and will be rejected again.',
+                'The findings are authoritative for WHAT to fix; the gate already proved the previous output deficient on exactly those points.',
+                '',
+              ]
+            : []),
           `tracker_path=${processWorkspace.trackerPath}`,
           `execution_workspace=${processWorkspace.executionDirectory}`,
           `workspace_files=${JSON.stringify(processWorkspace.workspaceFiles)}`,
