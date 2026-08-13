@@ -1010,6 +1010,31 @@ implements DevelopmentSettlementPolicyPort {
       );
     }
 
+    // LR-07 / W5 — bind the terminal `verified` decision to the EXACT local-ready
+    // proof. Local runnability is proven during development verification by the
+    // local-runnability check provider and its receipt is durable (LR-06,
+    // factory_check_receipts). Before LR-07 that receipt ran but was NOT bound to
+    // settlement's terminal decision, so Development could be "verified" without a
+    // proven-runnable-local product (W5). The terminal state now REQUIRES a
+    // receipt that is (a) present, (b) outcome `passed`, and (c) bound to the
+    // exact frozen integrated candidate — receipt.candidateHash ===
+    // candidate.candidateHash. A missing, failed, or mismatched (different
+    // product's) receipt keeps the terminal state closed: blocked /
+    // local-readiness-missing. This does not alter any other branch.
+    const readiness = input.localReadinessReceipt;
+    if (
+      readiness === null
+      || readiness.outcome !== 'passed'
+      || readiness.candidateHash !== candidate.candidateHash
+    ) {
+      return result(
+        'blocked',
+        ['local-readiness-missing'],
+        'No passed local-readiness receipt is bound to the exact frozen integrated candidate.',
+        inputHash,
+      );
+    }
+
     const taskGraphRef = input.productReferences.taskGraph;
     const implementationRef = input.productReferences.implementationWorkset;
     const candidateRef = input.productReferences.integratedCandidate;

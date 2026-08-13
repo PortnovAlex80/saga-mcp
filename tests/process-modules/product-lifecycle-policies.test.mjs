@@ -202,6 +202,16 @@ function developmentFixture() {
       ),
     },
     openHumanGateIds: [],
+    // LR-07 / W5 — a fully-valid verified Development now carries the durable
+    // local-readiness receipt bound to the exact frozen candidate. The previous
+    // fixture omitted it, which was exactly the W5 defect (verified reachable
+    // without a proven-runnable-local product). With the binding in place this
+    // fixture reaches `verified` only because the proof is present and bound.
+    localReadinessReceipt: {
+      candidateHash: integratedCandidate.candidateHash,
+      outcome: 'passed',
+      evidenceRefs: ['local-readiness:proof'],
+    },
   };
 }
 
@@ -424,6 +434,16 @@ test('Development settles only complete reviewed work for the unchanged candidat
     result.bundle.integratedCandidate.hash,
     input.integratedCandidate.candidateHash,
   );
+  // LR-07 / W5 — without the local-readiness receipt the terminal state flips
+  // from `verified` to `blocked` / `local-readiness-missing`. The old fixture
+  // asserted `verified` with no receipt (the W5 defect); the binding is the new
+  // correctness, so dropping the now-required proof must close the terminal.
+  const withoutReceipt = developmentFixture();
+  withoutReceipt.localReadinessReceipt = null;
+  const blocked = new developmentPolicy.ReferenceDevelopmentSettlementPolicy()
+    .settle(withoutReceipt);
+  assert.equal(blocked.decision, 'blocked');
+  assert.ok(blocked.reasonCodes.includes('local-readiness-missing'));
 });
 
 test('Development blocks candidate drift and inconclusive verification', () => {

@@ -36,6 +36,7 @@ import {
   type DevelopmentTaskGraphSnapshot,
   type IntegratedReleaseCandidate,
   type DevelopmentVerificationEvidenceProduct,
+  type LocalReadinessReceipt,
   type VerificationProviderBinding,
 } from '../domain/development-schemas.js';
 import {
@@ -43,6 +44,10 @@ import {
   hashImplementationWorkset,
   hashIntegratedCandidate,
 } from '../domain/development-settlement-policy.js';
+import {
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+} from '../application/candidate-check-contracts.js';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../infrastructure/source-change/managed-source-change-candidate.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
@@ -333,6 +338,13 @@ export class SqliteDevelopmentModuleStore implements
       ? this.observeCandidate(candidate)
       : null;
     const openHumanGateIds = this.readPausedWorkplaces(input.processRunId);
+    const localReadinessReceipt = candidate && candidateProduct
+      ? this.readLocalReadinessReceipt(
+        input.processRunId,
+        candidate,
+        candidateProduct.reference,
+      )
+      : null;
 
     return {
       schemaVersion: DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA,
@@ -352,6 +364,85 @@ export class SqliteDevelopmentModuleStore implements
           : null,
       },
       openHumanGateIds,
+      localReadinessReceipt,
+    };
+  }
+
+  /**
+   * LR-07 / W5 — read the durable local-readiness receipt for the EXACT frozen
+   * integrated candidate from the Gate-receipt substrate (factory_check_receipts,
+   * the LR-06 durable store). The local-runnability provider's receipt is keyed
+   * by its subject CandidateSet; that subject is the author CandidateSet (in this
+   * process run) that seals THIS candidate as a member. The member is matched by
+   * its content-addressed triple (product_schema + product_ref + product_digest),
+   * where product_digest === candidateHash — so only a CandidateSet sealing THIS
+   * candidate matches, and a different product's receipt can never satisfy the
+   * binding. Returns null when no CandidateSet seals this candidate, no
+   * passed/failed receipt is persisted, or the Gate-receipt substrate is absent
+   * (settlement then returns blocked / local-readiness-missing — the W5 gate).
+   */
+  private readLocalReadinessReceipt(
+    processRunId: number,
+    candidate: IntegratedReleaseCandidate,
+    candidateRef: ContentAddressedReference,
+  ): LocalReadinessReceipt | null {
+    let subjectRow: { ref: string } | undefined;
+    try {
+      subjectRow = this.db.prepare(
+        `SELECT cs.candidate_set_ref AS ref
+           FROM factory_candidate_sets cs
+           JOIN factory_workplaces w
+             ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
+           JOIN factory_candidate_set_members m
+             ON m.candidate_set_ref=cs.candidate_set_ref
+            AND m.product_schema=? AND m.product_ref=? AND m.product_digest=?
+          WHERE cs.role='author'
+          ORDER BY cs.candidate_set_ref
+          LIMIT 1`,
+      ).get(
+        processRunId,
+        INTEGRATED_CANDIDATE_SCHEMA,
+        candidateRef.ref,
+        candidateRef.hash,
+      ) as { ref: string } | undefined;
+    } catch {
+      // Substrate tables absent (minimal test schema) → no persisted receipt.
+      return null;
+    }
+    if (!subjectRow) return null;
+    let row: { outcome: string; evidence_refs: string } | undefined;
+    try {
+      row = this.db.prepare(
+        `SELECT outcome, evidence_refs
+           FROM factory_check_receipts
+          WHERE subject_candidate_set_ref=?
+            AND provider_id=?
+            AND provider_digest=?
+            AND outcome IN ('passed','failed')
+          ORDER BY rowid DESC
+          LIMIT 1`,
+      ).get(
+        subjectRow.ref,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+      ) as { outcome: string; evidence_refs: string } | undefined;
+    } catch {
+      return null;
+    }
+    if (!row) return null;
+    let parsedEvidence: unknown;
+    try {
+      parsedEvidence = JSON.parse(row.evidence_refs);
+    } catch {
+      parsedEvidence = [];
+    }
+    const evidenceRefs = Array.isArray(parsedEvidence)
+      ? parsedEvidence.filter((value): value is string => typeof value === 'string')
+      : [];
+    return {
+      candidateHash: candidate.candidateHash,
+      outcome: row.outcome as 'passed' | 'failed',
+      evidenceRefs,
     };
   }
 

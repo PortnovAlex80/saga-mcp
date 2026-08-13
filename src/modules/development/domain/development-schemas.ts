@@ -416,6 +416,37 @@ export interface VerifiedIntegrationBundle {
   bundleHash: string;
 }
 
+/**
+ * The durable local-readiness receipt for the EXACT frozen integrated candidate
+ * (LR-06 / LR-07 — closes W5). This is the persisted outcome of the local-
+ * runnability check provider (`factory_check_receipts`, the Gate-receipt
+ * substrate) for the candidate set that seals the integrated candidate.
+ *
+ * Development settlement's terminal `verified` decision REQUIRES this receipt to
+ * be (a) present, (b) outcome `passed`, and (c) bound to the exact frozen
+ * integrated candidate — `candidateHash === integratedCandidate.candidateHash`.
+ * Without it the product is not proven runnable locally and settlement returns
+ * `blocked` / `local-readiness-missing`. Before LR-07 the receipt ran during
+ * development verification but was NOT bound to the settlement's terminal
+ * decision, so Development could be "verified" without a proven-runnable-local
+ * product (W5).
+ *
+ * `candidateHash` is the SUBJECT IDENTITY of the receipt. The settlement policy
+ * enforces the binding; the builder populates it by reading the receipt whose
+ * subject candidate set seals THIS candidate (content-addressed member triple),
+ * so a different product's receipt can never satisfy the gate.
+ */
+export interface LocalReadinessReceipt {
+  /**
+   * The exact frozen candidate this receipt proves runnable. MUST equal the
+   * integrated candidate's sealed `candidateHash`.
+   */
+  candidateHash: string;
+  outcome: 'passed' | 'failed';
+  /** Sealed evidence refs produced by the local-runnability provider. */
+  evidenceRefs: readonly string[];
+}
+
 export interface DevelopmentSettlementInput {
   schemaVersion: typeof DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA;
   developmentCase: DevelopmentCase;
@@ -435,6 +466,13 @@ export interface DevelopmentSettlementInput {
     acceptanceVerification: ContentAddressedReference | null;
   };
   openHumanGateIds: readonly string[];
+  /**
+   * The durable local-readiness receipt for the exact frozen integrated
+   * candidate, or null when no passed/failed receipt is persisted for it
+   * (LR-06/LR-07). The terminal `verified` decision requires this to be present,
+   * `passed`, and bound to `integratedCandidate.candidateHash`. W5.
+   */
+  localReadinessReceipt: LocalReadinessReceipt | null;
 }
 
 export type DevelopmentDecision =
@@ -474,6 +512,7 @@ export type DevelopmentReasonCode =
   | 'verification-inconclusive'
   | 'verification-provider-untrusted'
   | 'human-decision-required'
+  | 'local-readiness-missing'
   | 'infrastructure-error';
 
 export interface DevelopmentCertificatePayload {
