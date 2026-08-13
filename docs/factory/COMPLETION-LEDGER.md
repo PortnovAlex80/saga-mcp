@@ -54,7 +54,7 @@
 | ID | Outcome | Lane | Depends | Status | Commit | Evidence |
 |---|---|---|---|---|---|---|
 | CI-01 | Make lint clean and blocking | Quality Q | C5-05, C7-07, LR-07 | done | ci(factory): make lint a blocking acceptance gate | eslint.config.mjs ratchet (legacy globs off for eqeqeq/prefer-const/no-empty-object-type; Factory paths fully enforced); ci.yml lint blocking (no continue-on-error); eslint src/ exit 0; backlog docs/factory/CI-01-LEGACY-LINT-BACKLOG.md (84 legacy errors) |
-| CI-02 | Run the explicit Factory acceptance matrix in CI | Quality Q | CI-01 | pending | ci(factory): execute the full deterministic acceptance matrix | — |
+| CI-02 | Run the explicit Factory acceptance matrix in CI | Quality Q | CI-01 | done | ci(factory): execute the full deterministic acceptance matrix | tools/run-acceptance-matrix.mjs (explicit deterministic groups, isolated processes); removed hidden `\|\| true` on cgad-spec-lint (was masking exit-2); ci.yml blocking matrix (2× exit 0). QUARANTINED: golden-path, parallel-git-desk, factory-temporal (FLAKY→W9), +5 PRE-EXISTING-RED (C5-cutover/refactor casualties), + local-runnability-check-provider (FLAKY real-execution cold-start). docs/factory/CI-02-ACCEPTANCE-MATRIX.md |
 | CI-03 | Capture a clean-checkout green baseline | Integrator | CI-02 | pending | test(factory): record clean deterministic acceptance baseline | — |
 
 ## Phase W9 — scripted E2E (fresh state, concurrency ≤ 2, no authority hacks)
