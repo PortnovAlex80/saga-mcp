@@ -8,6 +8,7 @@ import type {
   CheckProvider,
   CheckProviderResult,
 } from '../../process-modules/domain/workplace/gate.js';
+import { encodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -266,16 +267,45 @@ function runBuild(
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
 ): void {
-  execFileSync(executable, [...args], {
-    cwd,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: timeoutMs,
-    maxBuffer: 16 * 1024 * 1024,
-    windowsHide: true,
-    // Windows wrapper scripts are .bat files — they need a shell to execute.
-    shell: process.platform === 'win32',
-  });
+  try {
+    execFileSync(executable, [...args], {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+      windowsHide: true,
+      // Windows wrapper scripts are .bat files — they need a shell to execute.
+      shell: process.platform === 'win32',
+    });
+  } catch (error) {
+    throw new Error(commandFailureDetail(executable, args, error));
+  }
+}
+
+/**
+ * Build a readable failure detail from a child-process error, preserving the
+ * command's stderr/stdout (compiler errors, test failures) so the verifier's
+ * recovery-feedback actually tells the worker WHAT broke — not just that it did.
+ */
+function commandFailureDetail(
+  executable: string,
+  args: readonly string[],
+  error: unknown,
+): string {
+  const e = error as { stdout?: unknown; stderr?: unknown; message?: string; code?: unknown };
+  const cmd = `${executable} ${(args || []).join(' ')}`.trim();
+  const stderr = typeof e.stderr === 'string' ? e.stderr : '';
+  const stdout = typeof e.stdout === 'string' ? e.stdout : '';
+  const tail = (s: string): string => s.slice(-3000);
+  const timedOut = e.code === 'ETIMEDOUT';
+  const parts = [
+    timedOut ? `command timed out (${cmd})` : `command failed (${cmd})`,
+    stderr ? `--- stderr ---\n${tail(stderr)}` : '',
+    !stderr && stdout ? `--- stdout ---\n${tail(stdout)}` : '',
+  ].filter(Boolean);
+  const detail = parts.join('\n');
+  return detail || (e.message ?? 'command failed');
 }
 
 function jvmEnv(): NodeJS.ProcessEnv {
@@ -347,19 +377,38 @@ function evidence(
     treeHash: subject.treeHash,
     observation,
   });
-  return { outcome, evidenceRefs: [`local-readiness:${digest}`] };
+  const evidenceRefs = [`local-readiness:${digest}`];
+  // Surface a DECODABLE diagnostic so the verifier's recovery-feedback carries
+  // the actionable failure detail (compile/test output), not a bare 'failed'.
+  // readCurrentProductionCellRecoveryFeedback decodes factory-check-diagnostic/v1
+  // refs into issue.findings[]; a bare 'local-readiness:<hash>' ref is opaque and
+  // collapses to a generic "check returned failed" message the worker cannot act on.
+  if (outcome === 'failed') {
+    const reason = typeof observation.reason === 'string' && observation.reason.length > 0
+      ? observation.reason
+      : 'local runnability check failed';
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'local-runnability',
+      message: reason.slice(0, 4000),
+    }));
+  }
+  return { outcome, evidenceRefs };
 }
 
 function runNpm(args: readonly string[], cwd: string, timeout: number): void {
   const npm = npmCommand(args);
-  execFileSync(npm.executable, npm.args, {
-    cwd,
-    env: { ...process.env, CI: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout,
-    maxBuffer: 8 * 1024 * 1024,
-    windowsHide: true,
-  });
+  try {
+    execFileSync(npm.executable, npm.args, {
+      cwd,
+      env: { ...process.env, CI: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout,
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new Error(commandFailureDetail(npm.executable, npm.args, error));
+  }
 }
 
 function hasDependencySpecifiers(packageJson: {

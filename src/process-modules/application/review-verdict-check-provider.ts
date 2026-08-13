@@ -145,8 +145,18 @@ export function createReviewVerdictCheckProvider(input: {
             });
           }),
         };
-      } catch {
-        return 'error';
+      } catch (error) {
+        // Surface a decodable diagnostic with the actual parse/contract error so
+        // a reviewer facing an indeterminate result is told WHAT was malformed
+        // (which field/value), not just that the verdict was unreadable.
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          outcome: 'error',
+          evidenceRefs: [encodeCheckDiagnostic({
+            code: 'review-verdict-contract',
+            message: `review-verdict check threw: ${reason.slice(0, 1000)}`,
+          })],
+        };
       }
 
     },
