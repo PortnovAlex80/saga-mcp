@@ -287,7 +287,7 @@ test('does not fall back to a process+kind product when the sealed set carries n
   const { db, provider } = buildProvider({ root, mode: 'no-member' });
   try {
     const result = await provider.run(RUN_ARGS);
-    assert.equal(result, 'error');
+    assert.equal(result.outcome, 'error');
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });
@@ -302,7 +302,7 @@ test('fails closed when the exact candidate set is absent, non-author, or the se
       const result = await provider.run(RUN_ARGS);
       // 'error' is the provider's fail-closed outcome for any subject-resolution
       // failure (absent set, wrong role, or sealed product not present in store).
-      assert.equal(result, 'error', `mode=${mode} should fail closed`);
+      assert.equal(result.outcome, 'error', `mode=${mode} should fail closed`);
     } finally {
       db.close();
     }
@@ -378,7 +378,7 @@ test('rejects a moving ref / branch tip / HEAD as the runnability authority', { 
       const result = await createLocalRunnabilityCheckProvider({
         db, candidateSets: candidateSetsReader('author', 'e'.repeat(64)),
       }).run(RUN_ARGS);
-      assert.equal(result, 'error', `moving ref "${badAuthority}" must be refused as authority`);
+      assert.equal(result.outcome, 'error', `moving ref "${badAuthority}" must be refused as authority`);
     } finally {
       db.close();
     }
@@ -409,7 +409,7 @@ test('rejects a missing or mismatched git object as the authority', { timeout: 3
       const result = await createLocalRunnabilityCheckProvider({
         db, candidateSets: candidateSetsReader('author', 'f'.repeat(64)),
       }).run(RUN_ARGS);
-      assert.equal(result, 'error', `${c.label} must be refused (fail closed)`);
+      assert.equal(result.outcome, 'error', `${c.label} must be refused (fail closed)`);
     } finally {
       db.close();
     }
