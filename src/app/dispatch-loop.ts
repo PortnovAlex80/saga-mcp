@@ -30,6 +30,16 @@ export interface DispatchLoopInput {
    * reconcile. Dispatch yields instead of filling a newly free worker slot.
    */
   shouldYieldToKernel?: () => boolean;
+  /**
+   * Durable terminal-state probe for one worker execution. The per-worker
+   * completion wait polls the executor's run snapshot; on Windows the runner's
+   * close event can be delayed indefinitely by inherited pipe handles, leaving
+   * the run non-terminal AFTER the execution itself already reached a terminal
+   * durable state (exited/lost/terminated). This probe is the fail-safe: when
+   * the durable execution is terminal, the wait resolves from authority
+   * instead of hanging the whole dispatch loop.
+   */
+  isExecutionDurableTerminal?: (workerExecutionId: string) => boolean;
   workerExecutorFactory: WorkerExecutorFactory;
   /** Single authority for selecting and fencing cards. */
   workAssignment: WorkAssignmentPort;
@@ -115,6 +125,7 @@ export async function distributeQueuedTasks(
       projectId: input.projectId,
       assignment,
       pollMs,
+      isExecutionDurableTerminal: input.isExecutionDurableTerminal,
     });
     return { assignment, completion };
   };
@@ -181,10 +192,34 @@ async function waitForAssignedWorker(input: {
   projectId: number;
   assignment: AssignedWork;
   pollMs: number;
+  isExecutionDurableTerminal?: (workerExecutionId: string) => boolean;
 }): Promise<number> {
   try {
     while (true) {
       await sleep(input.pollMs);
+      // Fail-safe (Windows pipe inheritance): the runner's run snapshot may
+      // never reach a terminal state even after the durable execution row did
+      // (state=exited). Resolve from the durable authority instead of hanging.
+      if (
+        input.isExecutionDurableTerminal?.(
+          String(input.assignment.workerExecutionId),
+        ) === true
+      ) {
+        logTerminal(input.assignment, {
+          id: 'durable',
+          project_id: input.projectId,
+          concurrency: 1,
+          status: 'completed',
+          started_at: '',
+          finished_at: new Date().toISOString(),
+          active: [],
+          completed: 1,
+          failed: 0,
+          claimed: 1,
+          last_error: null,
+        });
+        return 1;
+      }
       const snapshot = input.executor.status(input.projectId);
       if (snapshot === null) return 1;
       if (TERMINAL_RUN_STATES.has(snapshot.status)) {

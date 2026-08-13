@@ -363,6 +363,16 @@ async function main() {
               AND w.loop_state IN ('repair_wait','verifying','effect_pending')
             LIMIT 1`,
         ).get(epicId)),
+        // Windows pipe-inheritance fail-safe: resolve the per-worker wait from
+        // the durable execution state when the runner's run snapshot stalls.
+        isExecutionDurableTerminal: (workerExecutionId: string) => Boolean(
+          getDb().prepare(
+            `SELECT 1 FROM worker_executions
+              WHERE execution_id=?
+                AND state IN ('exited','lost','terminated','spawn_failed')
+              LIMIT 1`,
+          ).get(workerExecutionId),
+        ),
         // Conveyor model: this application service owns dispatch and the
         // global concurrency budget. It atomically assigns each exact card
         // before constructing the worker process; the runner only hosts the
