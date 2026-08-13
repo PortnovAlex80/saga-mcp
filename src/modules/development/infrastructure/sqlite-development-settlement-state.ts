@@ -277,10 +277,16 @@ export class SqliteDevelopmentModuleStore implements
       // the runnable artifact is the authority for how it runs; the freeze
       // carries the first declared profile so the local-runnability provider
       // (LR-07) can prove the exact sealed product runnable.
+      // Continuation fallback: a managed repair round submits textual
+      // SourceChangeCandidates, which carry no readiness profile by design —
+      // the run contract belongs to the BASELINE candidate the repair edits.
+      // Inherit the adopted baseline's profile so the re-frozen candidate
+      // keeps its runnability contract instead of silently losing it.
       const readinessProfile = accepted
         .map(product => product.payload)
         .find(payload => payload !== null && payload !== undefined && payload.readiness !== null && payload.readiness !== undefined)
-        ?.readiness;
+        ?.readiness
+        ?? this.readBaselineReadinessProfile(input.developmentCase);
       const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
         taskGraphHash: graphProduct.payload.graphHash,
@@ -953,6 +959,42 @@ export class SqliteDevelopmentModuleStore implements
       targetId: row.target_id,
       linkType: row.link_type,
     }));
+  }
+
+  /**
+   * LR-04 continuation fallback — read the readiness profile off the ADOPTED
+   * baseline integrated candidate. A managed repair round's products are
+   * textual change manifests with no run contract; the baseline candidate
+   * (produced by the original runnable-artifact worker) remains the authority.
+   * Returns null for non-continuation runs or a baseline without a profile.
+   */
+  private readBaselineReadinessProfile(
+    developmentCase: DevelopmentCase,
+  ): IntegratedReleaseCandidate['readiness'] | null {
+    const recovery = (developmentCase as unknown as {
+      continuationRecovery?: { adoptions?: readonly unknown[] };
+    }).continuationRecovery;
+    if (
+      !recovery
+      || !Array.isArray(recovery.adoptions)
+      || recovery.adoptions.length === 0
+    ) return null;
+    const adoptionRef = (recovery.adoptions[0] as { ref?: unknown }).ref;
+    if (typeof adoptionRef !== 'string' || adoptionRef === '') return null;
+    const adoption = this.db.prepare(
+      `SELECT source_process_run_id
+         FROM factory_production_adoption_decisions
+        WHERE adoption_ref=?`,
+    ).get(adoptionRef) as { source_process_run_id: number } | undefined;
+    if (
+      !adoption
+      || !Number.isInteger(adoption.source_process_run_id)
+    ) return null;
+    const baseline = this.products.read<IntegratedReleaseCandidate>(
+      adoption.source_process_run_id,
+      PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+    );
+    return baseline?.payload?.readiness ?? null;
   }
 
   private readRepositoryPath(
