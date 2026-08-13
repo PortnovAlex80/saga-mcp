@@ -5,15 +5,6 @@ import type {
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/domain/development-kernel-ports.js';
 import { INTEGRATED_CANDIDATE_SCHEMA } from '../../../modules/development/domain/development-schemas.js';
 import { developmentProcessModule } from './development-process-module.js';
-import { buildCheckPlan } from '../../application/standard-check-providers.js';
-import {
-  ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST,
-  ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID,
-  ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION,
-  AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST,
-  AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID,
-  AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
-} from '../../../modules/development/application/candidate-check-contracts.js';
 
 export const DEVELOPMENT_VERIFICATION_CONTINUATION_PROCESS_MODULE_REF = {
   name: 'solution-development-verification-continuation',
@@ -54,25 +45,14 @@ ProcessModuleDefinition = (() => {
         sourceBinding: 'adopt-verification-baseline',
         workKeySelector: 'verificationItems',
       },
-      authorGate: {
-        ...verification.cellDefinition!.authorGate!,
-        checkPlan: buildCheckPlan(
-          'development.verification-continuation.final.v1',
-          [
-            {
-              providerId: ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID,
-              version: ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION,
-              providerDigest: ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST,
-            },
-            {
-              providerId: AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID,
-              version: AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
-              providerDigest: AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST,
-              indeterminateDisposition: 'human-required',
-            },
-          ],
-        ),
-      },
+      // The author gate is INHERITED from the base verification cell on
+      // purpose: the base VERIFICATION_FINAL_PLAN carries the real conveyor
+      // contract (verification-product-contract + local-runnability with
+      // failureOwnership:'upstream'). The previous hand-rebuilt plan used the
+      // accessible-counter demo checks, which are product-coupled to the demo
+      // fixture AND drop local-runnability entirely — settlement then blocks
+      // forever on local-readiness-missing because no check can produce the
+      // receipt it requires.
     },
   };
   return {
@@ -100,7 +80,10 @@ ProcessModuleDefinition = (() => {
         { from: adopt.id, to: 'complete-failed', on: 'domain.failed' },
         { from: verificationNode.id, to: settlement.id, on: 'domain.accepted' },
         { from: verificationNode.id, to: 'complete-blocked', on: 'domain.human-required' },
-        { from: verificationNode.id, to: 'complete-failed', on: 'domain.failed' },
+        // Upstream-defect escalation mirrors the base flow fix: a failed
+        // verification verdict routes through settlement for an explicit
+        // completion and a continuation-acceptable terminal outcome.
+        { from: verificationNode.id, to: settlement.id, on: 'domain.failed' },
         ...['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']
           .map(code => ({
             from: settlement.id,
