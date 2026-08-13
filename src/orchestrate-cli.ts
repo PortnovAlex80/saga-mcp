@@ -365,6 +365,8 @@ async function main() {
         ).get(epicId)),
         // Windows pipe-inheritance fail-safe: resolve the per-worker wait from
         // the durable execution state when the runner's run snapshot stalls.
+        pollDebug: (message: string) => process.stdout.write(`[wait-poll] ${message}
+`),
         isExecutionDurableTerminal: (workerExecutionId: string) => Boolean(
           getDb().prepare(
             `SELECT 1 FROM worker_executions

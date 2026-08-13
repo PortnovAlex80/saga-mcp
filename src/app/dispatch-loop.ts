@@ -49,6 +49,8 @@ export interface DispatchLoopInput {
   machineId: string;
   /** Polling interval for one assigned worker. Default 1000ms. */
   pollMs?: number;
+  /** Diagnostics sink for the per-worker wait (throttled). */
+  pollDebug?: (message: string) => void;
   factoryContext: {
     projectId: number;
     epicId: number;
@@ -126,6 +128,7 @@ export async function distributeQueuedTasks(
       assignment,
       pollMs,
       isExecutionDurableTerminal: input.isExecutionDurableTerminal,
+      pollDebug: input.pollDebug,
     });
     return { assignment, completion };
   };
@@ -193,18 +196,43 @@ async function waitForAssignedWorker(input: {
   assignment: AssignedWork;
   pollMs: number;
   isExecutionDurableTerminal?: (workerExecutionId: string) => boolean;
+  pollDebug?: (message: string) => void;
 }): Promise<number> {
   try {
+    let polls = 0;
     while (true) {
       await sleep(input.pollMs);
+      polls += 1;
+      if (input.pollDebug && polls % 5 === 0) {
+        input.pollDebug(
+          `task=${input.assignment.taskId} polls=${polls} `
+          + `durable=${(() => {
+            try {
+              return input.isExecutionDurableTerminal?.(
+                String(input.assignment.workerExecutionId),
+              ) === true;
+            } catch (error) {
+              return `probe-error:${error instanceof Error ? error.message : String(error)}`;
+            }
+          })()}`,
+        );
+      }
       // Fail-safe (Windows pipe inheritance): the runner's run snapshot may
       // never reach a terminal state even after the durable execution row did
       // (state=exited). Resolve from the durable authority instead of hanging.
-      if (
-        input.isExecutionDurableTerminal?.(
+      let durableTerminal: boolean;
+      try {
+        durableTerminal = input.isExecutionDurableTerminal?.(
           String(input.assignment.workerExecutionId),
-        ) === true
-      ) {
+        ) === true;
+      } catch (error) {
+        durableTerminal = false;
+        input.pollDebug?.(
+          `task=${input.assignment.taskId} probe threw: `
+          + `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (durableTerminal) {
         logTerminal(input.assignment, {
           id: 'durable',
           project_id: input.projectId,
