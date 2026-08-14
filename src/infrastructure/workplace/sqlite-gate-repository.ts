@@ -91,27 +91,30 @@ export class SqliteGateRepository {
     if (!presentationRef.trim()) throw new Error('GATE_PRESENTATION_REF_REQUIRED');
     const execution = this.db.prepare(
       `SELECT json_extract(metadata,'$.execution_context.replay.key') AS replay_key,
+              json_extract(metadata,'$.execution_context.replay.key_material') AS key_material,
               json_extract(metadata,'$.execution_context.replay.capsule_ref') AS capsule_ref,
               json_extract(metadata,'$.execution_context.replay.capsule_payload_hash') AS payload_hash
          FROM worker_executions WHERE execution_id=?`,
     ).get(presentationRef) as {
       replay_key: string | null;
+      key_material: string | null;
       capsule_ref: string | null;
       payload_hash: string | null;
     } | undefined;
-    const binding = execution ?? { replay_key: null, capsule_ref: null, payload_hash: null };
+    const binding = execution ?? { replay_key: null, key_material: null, capsule_ref: null, payload_hash: null };
     this.db.prepare(
       `INSERT OR IGNORE INTO factory_gate_presentation_attempts
-         (gate_run_ref,presentation_ref,replay_key,replay_capsule_ref,replay_capsule_payload_hash)
-       VALUES (?,?,?,?,?)`,
-    ).run(gateRunRef, presentationRef, binding.replay_key, binding.capsule_ref, binding.payload_hash);
+         (gate_run_ref,presentation_ref,replay_key,replay_key_material,replay_capsule_ref,replay_capsule_payload_hash)
+       VALUES (?,?,?,?,?,?)`,
+    ).run(gateRunRef, presentationRef, binding.replay_key, binding.key_material, binding.capsule_ref, binding.payload_hash);
     const stored = this.db.prepare(
-      `SELECT replay_key,replay_capsule_ref AS capsule_ref,
+      `SELECT replay_key,replay_key_material AS key_material,replay_capsule_ref AS capsule_ref,
               replay_capsule_payload_hash AS payload_hash
          FROM factory_gate_presentation_attempts
         WHERE gate_run_ref=? AND presentation_ref=?`,
     ).get(gateRunRef, presentationRef) as typeof binding;
     if ((stored.replay_key ?? null) !== (binding.replay_key ?? null)
+        || (stored.key_material ?? null) !== (binding.key_material ?? null)
         || (stored.capsule_ref ?? null) !== (binding.capsule_ref ?? null)
         || (stored.payload_hash ?? null) !== (binding.payload_hash ?? null)) {
       throw new Error('GATE_PRESENTATION_REPLAY_BINDING_MISMATCH');

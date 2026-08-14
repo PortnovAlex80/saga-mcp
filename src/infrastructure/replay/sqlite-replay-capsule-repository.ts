@@ -18,6 +18,7 @@ import {
 // digest helper are shared with the claim binder — one formula, one file.
 import { resolveReplayKeyMaterial } from './replay-key-material.js';
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
+import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -25,6 +26,7 @@ interface ExecutionEnvelope {
       key?: unknown;
       key_material?: unknown;
       capsule_ref?: unknown;
+      capsule_payload_hash?: unknown;
     };
   };
 }
@@ -132,6 +134,37 @@ export function canonicalReplayInputBindings(
     path: binding.path,
     value: replayIdentityCandidate(binding.value) ? null : binding.value,
   }));
+}
+
+export function assertReplayGateBinding(input: {
+  expected: {
+    replayKey: string | null;
+    replayKeyMaterial: string | null;
+    replayCapsuleRef: string | null;
+    replayCapsulePayloadHash: string | null;
+  };
+  actual: {
+    replayKey: string;
+    replayKeyMaterial: ReplayKeyMaterial;
+    replayCapsuleRef: unknown;
+    replayCapsulePayloadHash: unknown;
+  };
+}): void {
+  let expectedMaterial: ReplayKeyMaterial | null = null;
+  try {
+    expectedMaterial = input.expected.replayKeyMaterial === null
+      ? null
+      : requireKeyMaterial(JSON.parse(input.expected.replayKeyMaterial));
+  } catch {
+    throw new Error('REPLAY_CAPTURE_GATE_BINDING_INVALID');
+  }
+  if (input.expected.replayKey !== input.actual.replayKey
+      || expectedMaterial === null
+      || sha256Hex(expectedMaterial) !== sha256Hex(input.actual.replayKeyMaterial)
+      || input.expected.replayCapsuleRef !== (input.actual.replayCapsuleRef ?? null)
+      || input.expected.replayCapsulePayloadHash !== (input.actual.replayCapsulePayloadHash ?? null)) {
+    throw new Error('REPLAY_CAPTURE_GATE_BINDING_MISMATCH');
+  }
 }
 
 function replayIdentityCandidate(value: unknown): boolean {
@@ -290,57 +323,11 @@ function readCandidateMembers(
   return { workplaceRef: candidate.workplace_ref, members };
 }
 
-function readTypedCandidateProduct(
-  db: Database.Database,
-  member: CandidateMemberRow,
-): { schema: string; content: unknown; contentHash: string } | null {
-  if (!member.product_ref.startsWith('managed-node-submission:')) return null;
-  const id = Number(member.product_ref.slice('managed-node-submission:'.length));
-  if (!Number.isSafeInteger(id) || id < 1) {
-    throw new Error(`REPLAY_CAPTURE_PRODUCT_REF_INVALID: ${member.product_ref}`);
-  }
-  const row = db.prepare(
-    `SELECT schema_version,payload_snapshot,content_hash
-       FROM factory_managed_node_submissions WHERE id=?`,
-  ).get(id) as {
-    schema_version: string;
-    payload_snapshot: string;
-    content_hash: string;
-  } | undefined;
-  if (!row
-      || row.schema_version !== member.product_schema
-      || row.content_hash !== member.product_digest) {
-    throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
-  }
-  return {
-    schema: row.schema_version,
-    content: JSON.parse(row.payload_snapshot),
-    contentHash: row.content_hash,
-  };
-}
-
-function readPersistedCandidateProduct(
-  db: Database.Database,
-  member: CandidateMemberRow,
-): unknown {
-  const rows = db.prepare(
-    `SELECT payload_snapshot,product_hash
-       FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
-  ).all(member.product_schema, member.product_ref, member.product_digest) as Array<{
-    payload_snapshot: string;
-    product_hash: string;
-  }>;
-  if (rows.length !== 1) {
-    throw new Error(`REPLAY_CAPTURE_PRODUCT_AUTHORITY_AMBIGUOUS: ${member.product_ref}`);
-  }
-  const row = rows[0]!;
-  return JSON.parse(row.payload_snapshot) as unknown;
-}
-
 export class SqliteReplayCapsuleRepository {
+  private readonly sealedProducts: SqliteSealedProductMaterialRepository;
   constructor(private readonly db: Database.Database) {
     ensureReplayCapsuleSchema(db);
+    this.sealedProducts = new SqliteSealedProductMaterialRepository(db);
   }
 
   /** Build the exact replay identity at claim time from server-authored bindings. */
@@ -413,6 +400,12 @@ export class SqliteReplayCapsuleRepository {
   captureAcceptedExecution(input: {
     executionRef: string;
     candidateSetRef: string;
+    expectedReplayBinding?: {
+      replayKey: string | null;
+      replayKeyMaterial: string | null;
+      replayCapsuleRef: string | null;
+      replayCapsulePayloadHash: string | null;
+    };
   }): ReplayCapsuleRecord {
     const execution = this.db.prepare(
       `SELECT we.metadata,we.task_id,t.metadata AS task_metadata
@@ -426,6 +419,16 @@ export class SqliteReplayCapsuleRepository {
     const replayKey = requireString(replay?.key, 'replay.key');
     if (replayKey !== computeReplayKey(keyMaterial)) {
       throw new Error('REPLAY_CAPTURE_KEY_MISMATCH: frozen key does not match key material');
+    }
+    if (input.expectedReplayBinding) {
+      assertReplayGateBinding({
+        expected: input.expectedReplayBinding,
+        actual: {
+          replayKey, replayKeyMaterial: keyMaterial,
+          replayCapsuleRef: replay?.capsule_ref,
+          replayCapsulePayloadHash: replay?.capsule_payload_hash,
+        },
+      });
     }
     const taskMetadata = parseJsonObject(execution.task_metadata);
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
@@ -446,21 +449,18 @@ export class SqliteReplayCapsuleRepository {
     const traceIds = new Set<number>();
 
     for (const member of candidate.members) {
-      const typed = readTypedCandidateProduct(this.db, member);
-      if (typed) {
+      const content = this.sealedProducts.readExact({
+        schemaId: member.product_schema,
+        ref: member.product_ref,
+        digest: member.product_digest,
+      });
+      if (!isWorkplaceProductionSnapshot(content)) {
         typedProducts.push({
-          schema: typed.schema,
-          content: templateAgainstInput(typed.content, sourceInputBindings),
-          contentHash: typed.contentHash,
+          schema: member.product_schema,
+          content: templateAgainstInput(content, sourceInputBindings),
+          contentHash: member.product_digest,
         });
         continue;
-      }
-
-      const content = readPersistedCandidateProduct(this.db, member);
-      if (!isWorkplaceProductionSnapshot(content)) {
-        throw new Error(
-          `REPLAY_CAPTURE_UNSUPPORTED_CANDIDATE_PRODUCT: ${member.product_ref}`,
-        );
       }
       if (content.workplaceRef !== candidate.workplaceRef) {
         throw new Error(

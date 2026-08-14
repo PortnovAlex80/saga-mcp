@@ -18,7 +18,7 @@ import { SqliteReplayCapsuleRepository } from './sqlite-replay-capsule-repositor
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import { assertPersistedAcceptedCandidateAuthority } from '../workplace/sqlite-accepted-candidate-authority.js';
-import { acceptedCandidatePresentationRefs } from './replay-presentation-authority.js';
+import { requireAcceptedCandidatePresentations } from './replay-presentation-authority.js';
 
 export const REPLAY_CAPTURE_EFFECT_ID = 'replay-capture' as const;
 export const REPLAY_CAPTURE_EFFECT_VERSION = '1.0.0';
@@ -98,17 +98,18 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
               `REPLAY_CERTIFICATION_CANDIDATE_MISSING: ${candidateSetRef}`,
             );
           }
-          const presentationRefs = acceptedCandidatePresentationRefs(db, {
+          const presentations = requireAcceptedCandidatePresentations(db, {
             workplaceRef,
             finalDecisionKey: input.authority.gateDecisionKey,
             finalSubjectCandidateSetRef: decision.subject_candidate_set_ref,
             candidateSetRef,
           });
-          for (const presentationRef of presentationRefs) {
+          for (const presentation of presentations) {
             captureReplayCapsuleFailClosed(db, () =>
               repo.captureAcceptedExecution({
-                executionRef: presentationRef,
+                executionRef: presentation.presentationRef,
                 candidateSetRef: candidate.candidate_set_ref,
+                expectedReplayBinding: presentation,
               }));
           }
         }

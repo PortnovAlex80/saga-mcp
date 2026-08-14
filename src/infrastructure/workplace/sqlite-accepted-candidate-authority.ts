@@ -36,20 +36,22 @@ export function assertPersistedAcceptedCandidateAuthority(
     ref: string;
     digest: string;
   }>;
-  if (canonicalProductRefs(members) !== canonicalProductRefs(authority.acceptedProductRefs)) {
+  const memberCoordinates = new Set(members.map(member => canonicalProductRefs([member])));
+  if (authority.acceptedProductRefs.some(product => !memberCoordinates.has(canonicalProductRefs([product])))) {
     throw new Error('AUTHORITY_PRODUCT_MEMBERS_MISMATCH');
   }
   if (members.filter(member => member.schemaId === authority.productSchema).length !== 1) {
     throw new Error('AUTHORITY_PRODUCT_SCHEMA_MISMATCH');
   }
   const decision = db.prepare(
-    `SELECT workplace_ref,subject_candidate_set_ref,gate_phase,verdict
+    `SELECT workplace_ref,subject_candidate_set_ref,gate_phase,verdict,accepted_output_bindings
        FROM factory_gate_decisions WHERE decision_key=?`,
   ).get(authority.gateDecisionKey) as {
     workplace_ref: string;
     subject_candidate_set_ref: string;
     gate_phase: string;
     verdict: string;
+    accepted_output_bindings: string;
   } | undefined;
   if (!decision
       || decision.workplace_ref !== workplaceRef
@@ -57,6 +59,17 @@ export function assertPersistedAcceptedCandidateAuthority(
       || decision.gate_phase !== 'final'
       || decision.verdict !== 'accepted') {
     throw new Error('AUTHORITY_GATE_DECISION_MISMATCH');
+  }
+  const bindings = JSON.parse(decision.accepted_output_bindings) as Array<{
+    binding: string;
+    productRefs: typeof members;
+    productContractRef?: AcceptedCandidateAuthority['productContractRef'];
+  }>;
+  const primary = bindings.filter(binding => binding.binding === 'primary-output');
+  if (primary.length !== 1
+      || canonicalProductRefs(primary[0]!.productRefs) !== canonicalProductRefs(authority.acceptedProductRefs)
+      || JSON.stringify(primary[0]!.productContractRef ?? null) !== JSON.stringify(authority.productContractRef)) {
+    throw new Error('AUTHORITY_ACCEPTED_OUTPUT_BINDING_MISMATCH');
   }
   const appliedHead = db.prepare(
     `SELECT decision_key FROM factory_workplace_gate_decision_heads

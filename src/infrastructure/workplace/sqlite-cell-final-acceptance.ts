@@ -176,8 +176,32 @@ export class SqliteCellFinalAcceptance {
     return this.readAcceptedDecision(workplaceRef, candidateSetRef).decision_key;
   }
 
+  getAcceptedPrimaryOutput(workplaceRef: string, candidateSetRef: string): {
+    productRefs: import('../../process-modules/domain/spi/production-envelope.js').ProductRef[];
+    productContractRef: import('../../process-modules/application/post-acceptance-effects.js').AcceptedCandidateAuthority['productContractRef'];
+  } {
+    const decision = this.readAcceptedDecision(workplaceRef, candidateSetRef) as {
+      decision_key: string;
+      accepted_output_bindings: string;
+    };
+    const bindings = JSON.parse(decision.accepted_output_bindings) as Array<{
+      binding: string;
+      productRefs: import('../../process-modules/domain/spi/production-envelope.js').ProductRef[];
+      productContractRef?: import('../../process-modules/application/post-acceptance-effects.js').AcceptedCandidateAuthority['productContractRef'];
+    }>;
+    const primary = bindings.filter(binding => binding.binding === 'primary-output');
+    if (primary.length !== 1 || primary[0]!.productRefs.length !== 1) {
+      throw new Error(`CELL_FINAL_ACCEPTANCE_PRIMARY_OUTPUT_INVALID: ${workplaceRef}/${candidateSetRef}`);
+    }
+    return {
+      productRefs: primary[0]!.productRefs,
+      productContractRef: primary[0]!.productContractRef ?? null,
+    };
+  }
+
   private readAcceptedDecision(workplaceRef: string, candidateSetRef: string): {
     decision_key: string;
+    accepted_output_bindings: string;
   } {
     // ADR-053 C4 — read the accepted FINAL gate decision by EXACT (workplace,
     // subject, gate_phase='final'), NOT by decided_at recency. For a given
@@ -190,11 +214,14 @@ export class SqliteCellFinalAcceptance {
     // Two accepted final decisions for one subject is an invariant violation and
     // must fail closed, not silently pick the "latest".
     const rows = this.db.prepare(
-      `SELECT decision_key
+      `SELECT decision_key,accepted_output_bindings
          FROM factory_gate_decisions
         WHERE workplace_ref=? AND subject_candidate_set_ref=? AND verdict='accepted'
           AND gate_phase='final'`,
-    ).all(workplaceRef, candidateSetRef) as Array<{ decision_key: string }>;
+    ).all(workplaceRef, candidateSetRef) as Array<{
+      decision_key: string;
+      accepted_output_bindings: string;
+    }>;
     if (rows.length === 0) {
       throw new Error(
         `CELL_FINAL_ACCEPTANCE_GATE_DECISION_MISSING: ${workplaceRef}/${candidateSetRef}`,

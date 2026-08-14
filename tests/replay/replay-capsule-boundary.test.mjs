@@ -23,7 +23,7 @@ import {
   computeReplayKey,
 } from '../../dist/replay/replay-capsule.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
-import { canonicalReplayInputBindings } from '../../dist/infrastructure/replay/sqlite-replay-capsule-repository.js';
+import { assertReplayGateBinding, canonicalReplayInputBindings } from '../../dist/infrastructure/replay/sqlite-replay-capsule-repository.js';
 import {
   executionContextHash,
   EXECUTION_CONTEXT_POLICY_VERSION,
@@ -246,4 +246,21 @@ test('equivalent presentation aliases have one canonical replay payload identity
   assert.deepEqual(b, a);
   assert.equal(a[0].value, null);
   assert.equal(a[1].value, 'mars-venus');
+});
+
+test('Gate-frozen replay binding rejects later execution-metadata drift', () => {
+  const materialA = baseKeyMaterial();
+  const materialB = { ...materialA, semanticInputDigest: 'b'.repeat(64) };
+  assert.throws(() => assertReplayGateBinding({
+    expected: {
+      replayKey: computeReplayKey(materialA),
+      replayKeyMaterial: JSON.stringify(materialA),
+      replayCapsuleRef: null,
+      replayCapsulePayloadHash: null,
+    },
+    actual: {
+      replayKey: computeReplayKey(materialB), replayKeyMaterial: materialB,
+      replayCapsuleRef: null, replayCapsulePayloadHash: null,
+    },
+  }), /REPLAY_CAPTURE_GATE_BINDING_MISMATCH/);
 });

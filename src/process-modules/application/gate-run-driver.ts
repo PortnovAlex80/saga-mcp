@@ -4,6 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import type {
+  AcceptedOutputBinding,
   CheckPlan,
   CheckProvider,
   CheckReceipt,
@@ -56,6 +57,8 @@ export interface DriveGateRunInput {
   readonly environmentRef: string | null;
   /** Audit-only current presentation; excluded from GateRun identity. */
   readonly presentationRef: string;
+  /** Exact downstream material selected before the Gate runs. */
+  readonly acceptedOutputBindings?: readonly AcceptedOutputBinding[];
 }
 
 export interface DriveGateRunResult {
@@ -83,6 +86,7 @@ export function driveGateRun(
       checkPlanDigest: input.checkPlan.checkPlanDigest,
       installationDigest: input.installationDigest,
       expectedWorkplaceRevision: input.expectedWorkplaceRevision,
+      acceptedOutputBindings: input.acceptedOutputBindings ?? [],
     }))
     .digest('hex');
   const gateRunRef = `gate-run:${gateRunIdentity}`;
@@ -218,7 +222,9 @@ export function driveGateRun(
     checkReceiptRefs: receipts.map(r => r.checkReceiptRef),
     installationDigest: input.installationDigest,
     decisionKey,
-    acceptedOutputBindings: [] as const,
+    acceptedOutputBindings: verdict === 'accepted' && input.gatePhase === 'final'
+      ? (input.acceptedOutputBindings ?? [])
+      : [],
     recoveryIssueRef: verdict === 'repair_required' ? `recovery:${decisionKey}` : null,
   };
   const decision: GateDecision = {

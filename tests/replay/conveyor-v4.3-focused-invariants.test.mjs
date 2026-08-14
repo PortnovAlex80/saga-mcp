@@ -23,6 +23,7 @@ import {
 import { computeReplayKey } from '../../dist/replay/replay-capsule.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { requireAcceptedCandidatePresentations } from '../../dist/infrastructure/replay/replay-presentation-authority.js';
 import { requiresDiscoveryProjection } from '../../dist/modules/discovery/infrastructure/discovery-proposal-projection.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../../dist/modules/discovery/domain/discovery-proposal.js';
 
@@ -263,4 +264,21 @@ test('11: failed replay execution is durable evidence for ineligibility', () => 
         AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?`,
   ).get('wp1', 'replay-capsule:1:broken');
   assert.ok(failed);
+});
+
+test('accepted replay certification fails closed when the exact Gate has no presentation', () => {
+  const db = makeIdempotencyDb();
+  db.pragma('foreign_keys=OFF');
+  db.prepare(`INSERT INTO factory_gate_decisions
+    (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,
+     subject_candidate_set_ref,assessment_candidate_set_refs,verdict,check_plan_ref,
+     check_plan_digest,decision_policy_ref,decision_policy_digest,check_receipt_refs,
+     installation_digest,accepted_output_bindings,decision_digest)
+    VALUES ('decision:empty','wp','gate','gate-run:empty','final','transition',
+      'candidate:author','["candidate:reviewer"]','accepted','plan','pd','policy','dd','[]','i','[]','digest')`).run();
+  assert.throws(() => requireAcceptedCandidatePresentations(db, {
+    workplaceRef: 'wp', finalDecisionKey: 'decision:empty',
+    finalSubjectCandidateSetRef: 'candidate:author', candidateSetRef: 'candidate:reviewer',
+  }), /REPLAY_CERTIFICATION_PRESENTATION_MISSING/);
+  db.close();
 });

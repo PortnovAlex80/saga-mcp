@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 
-const { relaxFactoryLaunchStateForPaused } = await import('../../dist/schema.js');
+const { ensureGatePresentationReplayBindingColumns, relaxFactoryLaunchStateForPaused } = await import('../../dist/schema.js');
 
 function createV4LaunchFixture(db) {
   db.exec(`
@@ -111,7 +111,7 @@ test('getDb refuses to stamp an unknown future schema version as current', () =>
       encoding: 'utf8',
     });
     assert.equal(child.status, 23, child.stderr);
-    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->9/);
+    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->10/);
 
     const reopened = new Database(dbPath, { readonly: true });
     assert.equal(reopened.pragma('user_version', { simple: true }), 99);
@@ -121,7 +121,7 @@ test('getDb refuses to stamp an unknown future schema version as current', () =>
   }
 });
 
-test('v8 to v9 adds immutable workshop binding receipts and stamps only after schema creation', () => {
+test('v8 migrates through current schema and preserves immutable workshop binding receipts', () => {
   const root = mkdtempSync(join(tmpdir(), 'saga-v9-binding-'));
   const dbPath = join(root, 'v8.sqlite');
   try {
@@ -142,7 +142,7 @@ test('v8 to v9 adds immutable workshop binding receipts and stamps only after sc
     });
     assert.equal(child.status, 0, child.stderr);
     const result = JSON.parse(child.stdout);
-    assert.equal(result.version, 9);
+    assert.equal(result.version, 10);
     assert.match(result.sql, /binding_digest/);
     const reopened = new Database(dbPath);
     assert.throws(
@@ -157,6 +157,41 @@ test('v8 to v9 adds immutable workshop binding receipts and stamps only after sc
     );
     reopened.close();
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  }
+});
+
+test('v9 to v10 freezes legacy Gate replay evidence before stamping the schema', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE worker_executions (execution_id TEXT PRIMARY KEY,metadata TEXT NOT NULL);
+      CREATE TABLE factory_gate_presentation_attempts (
+        gate_run_ref TEXT NOT NULL,presentation_ref TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(gate_run_ref,presentation_ref));
+    `);
+    db.prepare(`INSERT INTO worker_executions (execution_id,metadata)
+      VALUES ('exec:v9',?)`).run(JSON.stringify({
+      execution_context: { replay: {
+        key: 'key:v9', key_material: { projectId: 1 }, capsule_ref: 'capsule:v9',
+        capsule_payload_hash: 'a'.repeat(64),
+      } },
+    }));
+    db.prepare(`INSERT INTO factory_gate_presentation_attempts
+      (gate_run_ref,presentation_ref) VALUES ('gate:v9','exec:v9')`).run();
+    ensureGatePresentationReplayBindingColumns(db);
+    const row = db.prepare(`SELECT replay_key,replay_key_material,replay_capsule_ref,
+      replay_capsule_payload_hash FROM factory_gate_presentation_attempts`).get();
+    assert.equal(row.replay_key, 'key:v9');
+    assert.equal(JSON.parse(row.replay_key_material).projectId, 1);
+    assert.equal(row.replay_capsule_ref, 'capsule:v9');
+    assert.equal(row.replay_capsule_payload_hash, 'a'.repeat(64));
+    assert.throws(
+      () => db.prepare(`UPDATE factory_gate_presentation_attempts SET replay_key='changed'`).run(),
+      /immutable/,
+    );
+  } finally {
+    db.close();
   }
 });

@@ -10,7 +10,7 @@ import {
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
-import { acceptedCandidatePresentationRefs } from './replay-presentation-authority.js';
+import { requireAcceptedCandidatePresentations } from './replay-presentation-authority.js';
 // P6 consolidation: the STRICT key-material resolver is a single exported
 // function shared with the claim-side repository — no second hand-rolled
 // copy of the SQL/subject formula can drift again.
@@ -149,17 +149,18 @@ export function certifyAcceptedReplayCapsules(
           candidate_set_ref: string;
         } | undefined;
         if (!candidate) continue;
-        const presentationRefs = acceptedCandidatePresentationRefs(db, {
+        const presentations = requireAcceptedCandidatePresentations(db, {
           workplaceRef: workplace.workplace_ref,
           finalDecisionKey: decision.decision_key,
           finalSubjectCandidateSetRef: decision.subject_candidate_set_ref,
           candidateSetRef,
         });
-        for (const presentationRef of presentationRefs) {
+        for (const presentation of presentations) {
           captureReplayCapsuleFailClosed(db, () =>
             repo.captureAcceptedExecution({
-              executionRef: presentationRef,
+              executionRef: presentation.presentationRef,
               candidateSetRef: candidate.candidate_set_ref,
+              expectedReplayBinding: presentation,
             }));
         }
       }

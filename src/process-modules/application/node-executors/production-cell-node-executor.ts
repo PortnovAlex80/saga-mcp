@@ -409,7 +409,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         if (!accepted || !this.gateEffectHandoffReady(workplace.ref, accepted)) {
           return pendingOutcome();
         }
-        const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, cell, workplace);
+        const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, workplace);
         if (!settlementReady) return pendingOutcome();
       }
       return this.terminalOutcome(workplace.ref, state);
@@ -609,6 +609,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const decision = this.runGate(
         ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef, [],
         this.readGateUpstreamBinding(ctx, cell), executionRef,
+        !cell.review ? this.primaryOutputBindings(cell, candidate) : [],
       );
       if (decision.verdict === 'accepted') {
         if (!cell.review) postAcceptanceCandidate = candidate;
@@ -656,6 +657,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         [candidate.candidateSetRef],
         this.readGateUpstreamBinding(ctx, cell),
         executionRef,
+        this.primaryOutputBindings(cell, subjectAuthorSet),
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
@@ -698,7 +700,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // a crash/reconciliation fallback only.
       if (postAcceptanceCandidate) {
         const settlementReady = this.recordFinalAcceptanceAndCapture(
-          cell,
           workplace.ref,
           postAcceptanceCandidate,
           [],
@@ -742,12 +743,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // ADR-053 Phase 6 — build AcceptedCandidateAuthority so effects consume
       // exact material coordinates (revision, productRefs, gateDecision)
       // instead of re-deriving from presenter provenance.
-      const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
       const gateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
         serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
       );
-      const productContract = cell.productContracts[0]?.payloadContract ?? null;
-      const productSchema = cell.productContracts[0]?.schemaRef ?? '';
+      const primaryOutput = this.opts.finalAcceptance.getAcceptedPrimaryOutput(
+        serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
+      );
+      const acceptedProductRefs = primaryOutput.productRefs;
+      const productContract = primaryOutput.productContractRef;
+      const productSchema = acceptedProductRefs[0]!.schemaId;
       const acceptanceDigest = computeAcceptanceDigest({
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
@@ -808,7 +812,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
     const settlementReady = this.recordFinalAcceptanceAndCapture(
-      cell,
       workplace.ref,
       acceptedCandidate,
       [effectReceiptRef!],
@@ -819,7 +822,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private recordFinalAcceptanceAndCapture(
-    cell: ProductionCellDefinition,
     workplaceRef: WorkplaceRef,
     acceptedCandidate: CandidateSet,
     effectReceiptRefs: readonly string[],
@@ -833,9 +835,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
       serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
     );
-    const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
-    const productSchema = cell.productContracts[0]?.schemaRef ?? '';
-    const productContractRef = cell.productContracts[0]?.payloadContract ?? null;
+    const primaryOutput = this.opts.finalAcceptance.getAcceptedPrimaryOutput(
+      serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
+    );
+    const acceptedProductRefs = primaryOutput.productRefs;
+    const productSchema = acceptedProductRefs[0]!.schemaId;
+    const productContractRef = primaryOutput.productContractRef;
     const acceptanceDigest = computeAcceptanceDigest({
       candidateSetRef: acceptedCandidate.candidateSetRef,
       productionRevisionRef: acceptedCandidate.productionRevisionRef,
@@ -891,7 +896,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    */
   private ensureFinalAcceptanceForTerminalAccepted(
     node: ProductionCellFlowNodeDefinition,
-    cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
   ): boolean {
     const accepted = this.acceptedAuthorCandidate(workplace.ref);
@@ -902,7 +906,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         `terminal(accepted) Workplace has no accepted author CandidateSet to finalize (C8 crash recovery)`,
       );
     }
-    return this.recordFinalAcceptanceAndCapture(cell, workplace.ref, accepted, []);
+    return this.recordFinalAcceptanceAndCapture(workplace.ref, accepted, []);
   }
 
   /**
@@ -1344,6 +1348,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     assessmentCandidateSetRefs: readonly string[],
     upstreamProductBinding: Readonly<Record<string, unknown>>,
     presentationRef: string,
+    acceptedOutputBindings: readonly import('../../domain/workplace/gate.js').AcceptedOutputBinding[],
   ) {
     return this.opts.gateRepo.transaction(() => {
       const decision = driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
@@ -1366,6 +1371,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         },
         environmentRef: null,
         presentationRef,
+        acceptedOutputBindings,
       }).decision;
       const transitionObligation = decision.verdict === 'accepted'
         ? this.opts.obligationIntegrator.onGateAccepted({
@@ -1376,6 +1382,25 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         : null;
       return { ...decision, transitionObligation };
     });
+  }
+
+  private primaryOutputBindings(
+    cell: ProductionCellDefinition,
+    candidate: CandidateSet,
+  ): readonly import('../../domain/workplace/gate.js').AcceptedOutputBinding[] {
+    const contract = cell.productContracts[0];
+    if (!contract) throw new Error('ACCEPTED_PRIMARY_PRODUCT_CONTRACT_MISSING');
+    const refs = candidate.members
+      .map(member => member.productRef)
+      .filter(product => product.schemaId === contract.schemaRef);
+    if (refs.length !== 1) {
+      throw new Error(`ACCEPTED_PRIMARY_PRODUCT_AMBIGUOUS: ${contract.schemaRef}`);
+    }
+    return [{
+      binding: 'primary-output',
+      productRefs: refs,
+      productContractRef: contract.payloadContract ?? null,
+    }];
   }
 
   private readGateUpstreamBinding(

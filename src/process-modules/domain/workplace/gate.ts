@@ -356,6 +356,12 @@ export interface AcceptedOutputBinding {
   readonly binding: string;
   /** Exact ProductRefs published under this binding. */
   readonly productRefs: readonly ProductRef[];
+  /** Exact decoder contract frozen when the Gate accepted this output. */
+  readonly productContractRef?: {
+    readonly contractId: string;
+    readonly version: string;
+    readonly contractDigest: string;
+  } | null;
 }
 
 /**

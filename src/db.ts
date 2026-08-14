@@ -93,6 +93,14 @@ export function getDb(): Database.Database {
   // traces, tasks, evidence). Deleting it is never the right answer.
   // When the schema changes, versioned migrations must handle the upgrade.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
+  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, SCHEMA_VERSION]);
+  if (!supportedVersions.has(existingVersion)) {
+    db.close();
+    db = null;
+    throw new Error(
+      `FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${existingVersion}->${SCHEMA_VERSION}`,
+    );
+  }
   if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
     console.warn(
       `[saga] DB at ${dbPath} has user_version=${existingVersion}, ` +
@@ -180,6 +188,7 @@ export function getDb(): Database.Database {
     || migratedVersion === 6
     || migratedVersion === 7
     || migratedVersion === 8
+    || migratedVersion === 9
   ) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {

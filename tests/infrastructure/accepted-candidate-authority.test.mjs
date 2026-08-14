@@ -32,7 +32,10 @@ function fixture() {
      assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,
      decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decision_digest)
     VALUES ('decision:7',?,'gate:7','run:7','final','transition:7','candidate:7','[]','accepted',
-      'plan','${'d'.repeat(64)}','policy','${'e'.repeat(64)}','[]','${'f'.repeat(64)}','[]','${'1'.repeat(64)}')`).run(workplace);
+      'plan','${'d'.repeat(64)}','policy','${'e'.repeat(64)}','[]','${'f'.repeat(64)}',?,'${'1'.repeat(64)}')`).run(
+    workplace,
+    JSON.stringify([{ binding: 'primary-output', productRefs: [product], productContractRef: null }]),
+  );
   db.prepare(`INSERT INTO factory_workplace_gate_decision_heads
     (workplace_ref,decision_key,expected_workplace_revision) VALUES (?,'decision:7',1)`).run(workplace);
   new SqliteSealedProductMaterialRepository(db).seal({ productRef: product, payload });
@@ -83,6 +86,24 @@ test('product schema is bound to the exact accepted member set', () => {
     assert.throws(
       () => assertPersistedAcceptedCandidateAuthority(db, forged),
       /AUTHORITY_PRODUCT_SCHEMA_MISMATCH/,
+    );
+  } finally { db.close(); }
+});
+
+test('another valid CandidateSet schema cannot replace the Gate-bound primary output', () => {
+  const { db, authority } = fixture();
+  try {
+    const other = { schemaId: 'schema/other', ref: 'submission:18', digest: sha256Hex({ other: true }) };
+    db.prepare(`INSERT INTO factory_candidate_set_members
+      (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,origin)
+      VALUES ('candidate:7',1,?,?,?,'produced')`).run(other.schemaId, other.ref, other.digest);
+    const forged = {
+      ...authority, acceptedProductRefs: [other], productSchema: other.schemaId,
+    };
+    forged.acceptanceDigest = computeAcceptanceDigest(forged);
+    assert.throws(
+      () => assertPersistedAcceptedCandidateAuthority(db, forged),
+      /AUTHORITY_ACCEPTED_OUTPUT_BINDING_MISMATCH/,
     );
   } finally { db.close(); }
 });

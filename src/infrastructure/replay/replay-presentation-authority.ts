@@ -1,7 +1,15 @@
 import type Database from 'better-sqlite3';
 
-/** Exact worker presentations whose GateDecision accepted one CandidateSet. */
-export function acceptedCandidatePresentationRefs(
+export interface AcceptedCandidatePresentation {
+  readonly presentationRef: string;
+  readonly replayKey: string | null;
+  readonly replayKeyMaterial: string | null;
+  readonly replayCapsuleRef: string | null;
+  readonly replayCapsulePayloadHash: string | null;
+}
+
+/** Exact immutable presentations whose GateDecision accepted one CandidateSet. */
+export function acceptedCandidatePresentations(
   db: Database.Database,
   input: {
     workplaceRef: string;
@@ -9,7 +17,7 @@ export function acceptedCandidatePresentationRefs(
     finalSubjectCandidateSetRef: string;
     candidateSetRef: string;
   },
-): readonly string[] {
+): readonly AcceptedCandidatePresentation[] {
   let decisionKey = input.finalDecisionKey;
   if (input.candidateSetRef === input.finalSubjectCandidateSetRef) {
     const head = db.prepare(
@@ -21,7 +29,10 @@ export function acceptedCandidatePresentationRefs(
     decisionKey = head.decisionKey;
   }
   const rows = db.prepare(
-    `SELECT DISTINCT gpa.presentation_ref AS presentationRef
+    `SELECT DISTINCT gpa.presentation_ref AS presentationRef,
+            gpa.replay_key AS replayKey,gpa.replay_key_material AS replayKeyMaterial,
+            gpa.replay_capsule_ref AS replayCapsuleRef,
+            gpa.replay_capsule_payload_hash AS replayCapsulePayloadHash
        FROM factory_gate_decisions gd
        JOIN factory_gate_presentation_attempts gpa
          ON gpa.gate_run_ref=gd.gate_run_ref
@@ -31,8 +42,24 @@ export function acceptedCandidatePresentationRefs(
           OR EXISTS (SELECT 1 FROM json_each(gd.assessment_candidate_set_refs)
                       WHERE value=?))
       ORDER BY gpa.presentation_ref`,
-  ).all(decisionKey, input.workplaceRef, input.candidateSetRef, input.candidateSetRef) as Array<{
-    presentationRef: string;
-  }>;
-  return rows.map(row => row.presentationRef);
+  ).all(decisionKey, input.workplaceRef, input.candidateSetRef, input.candidateSetRef) as AcceptedCandidatePresentation[];
+  return rows;
+}
+
+export function acceptedCandidatePresentationRefs(
+  db: Database.Database,
+  input: Parameters<typeof acceptedCandidatePresentations>[1],
+): readonly string[] {
+  return acceptedCandidatePresentations(db, input).map(row => row.presentationRef);
+}
+
+export function requireAcceptedCandidatePresentations(
+  db: Database.Database,
+  input: Parameters<typeof acceptedCandidatePresentations>[1],
+): readonly AcceptedCandidatePresentation[] {
+  const rows = acceptedCandidatePresentations(db, input);
+  if (rows.length === 0) {
+    throw new Error(`REPLAY_CERTIFICATION_PRESENTATION_MISSING: ${input.candidateSetRef}`);
+  }
+  return rows;
 }
