@@ -48,6 +48,26 @@ test('Gate 2 [met]: CandidateSet has productionRevisionRef field and seal-key in
   assert.ok(schema.includes('production_revision_ref'), 'schema column exists');
 });
 
+test('Gate B3 [met]: post-seal material consumers do not select authority through presenter provenance', () => {
+  const materialConsumers = [
+    'src/process-modules/application/submission-validator-check-provider.ts',
+    'src/modules/development/infrastructure/sqlite-development-settlement-state.ts',
+    'src/modules/development/infrastructure/sqlite-development-baseline-adoption.ts',
+  ];
+  for (const rel of materialConsumers) {
+    const source = readSrc(rel).replaceAll(/\/\/.*$/gm, '');
+    assert.equal(source.includes('presenter_ref'), false, `${rel} must not query presenter_ref`);
+    assert.equal(source.includes('.presenterRef'), false, `${rel} must not read revision.presenterRef`);
+  }
+  const carrySource = readSrc('src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts');
+  const authorizationPath = carrySource.slice(
+    carrySource.indexOf('export function authorizeEligibleAuthorCandidateCarryForward'),
+    carrySource.indexOf('export class'),
+  );
+  assert.equal(authorizationPath.includes('presenter_ref'), false,
+    'carry-forward material authorization must not query presenter provenance');
+});
+
 // Gate 5: All production sources share one revision model.
 // STATUS: MET — Phase 4 adapters normalize all source types.
 test('Gate 5 [met]: production source adapters exist for all source types', () => {

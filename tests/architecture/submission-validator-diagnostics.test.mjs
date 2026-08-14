@@ -3,86 +3,107 @@ import assert from 'node:assert/strict';
 
 import { submissionValidatorCheckProvider } from '../../dist/process-modules/application/submission-validator-check-provider.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+} from '../../dist/process-modules/application/submission-validation-receipt-authority.js';
 
 const candidate = {
   candidateSetRef: 'candidate-set/test/author',
-  workplaceRef: { processRunId: 2, moduleRef: 'solution-formalization@1.0.0' },
+  workplaceRef: {
+    processRunId: 2,
+    moduleRef: 'solution-formalization@1.0.0',
+    cellId: 'formalization-product-contract',
+    workKey: 'product-contract',
+  },
   productionRevisionRef: 'production-revision:test',
   role: 'author',
 };
 
-function providerDb({ hasProduction = false } = {}) {
+const receipt = {
+  receiptId: 7,
+  validatorId: 'formalization.product-contract.v1',
+  validatorVersion: '1.0.0',
+  processRunId: 2,
+  moduleRef: 'solution-formalization@1.0.0',
+  nodeId: 'define-product-contract',
+  inputSnapshotHash: 'input-hash',
+  artifactIds: [11],
+  traceIds: [12],
+  artifactHashes: { 11: 'artifact-hash' },
+  traceDigest: 'trace-digest',
+  contractRef: null,
+  validatedSetDigest: 'validated-set',
+};
+
+function providerDb({ includeProof = true, presenterRef = 'exec-a', tamperDigest = false } = {}) {
+  const proof = {
+    memberKey: submissionValidationMemberKey(receipt),
+    productRef: `submission-validation-receipt:${receipt.receiptId}`,
+    contentDigest: tamperDigest ? 'tampered' : submissionValidationContentDigest(receipt),
+  };
   return {
     prepare(sql) {
       if (sql.includes('factory_workplace_production_revisions')) {
-        return { get: () => ({ presenter_ref: 'worker-execution:repair-2' }) };
+        // presenterRef deliberately varies: Gate outcome must not observe it.
+        return { get: () => ({ presenter_ref: presenterRef, members: JSON.stringify(includeProof ? [proof] : []) }) };
       }
-      if (sql.includes('factory_managed_artifact_productions')) {
-        return { get: () => hasProduction ? { present: 1 } : undefined };
-      }
-      if (sql.includes('factory_managed_trace_productions')) {
-        return { get: () => undefined };
-      }
-      if (sql.includes('FROM worker_executions')) {
-        return { get: () => ({ task_id: 3, epic_id: 1, project_id: 1 }) };
+      if (sql.includes('factory_submission_validation_receipts')) {
+        return { get: () => ({
+          ...receipt,
+          artifactIds: JSON.stringify(receipt.artifactIds),
+          traceIds: JSON.stringify(receipt.traceIds),
+          artifactHashes: JSON.stringify(receipt.artifactHashes),
+          contractRef: null,
+        }) };
       }
       throw new Error(`unexpected SQL: ${sql}`);
     },
   };
 }
 
-function runProvider({ hasProduction = false, validationResult }) {
+function runProvider(options = {}) {
+  let validatorCalls = 0;
   const provider = submissionValidatorCheckProvider({
-    db: providerDb({ hasProduction }),
+    db: providerDb(options),
     candidateSets: { read: ref => ref === candidate.candidateSetRef ? candidate : null },
     validator: {
-      validatorId: 'formalization.product-contract.v1',
-      validatorVersion: '1.0.0',
-      validate: () => validationResult,
+      validatorId: receipt.validatorId,
+      validatorVersion: receipt.validatorVersion,
+      validate: () => { validatorCalls += 1; throw new Error('post-seal validator must not run'); },
     },
-    nodeId: 'define-product-contract',
+    nodeId: receipt.nodeId,
     requireManagedProduction: true,
   });
-  return provider.run({
+  const result = provider.run({
     subjectCandidateSetRef: candidate.candidateSetRef,
-    parameters: { processRunId: 2, moduleRef: 'solution-formalization@1.0.0' },
+    parameters: { processRunId: 2, moduleRef: candidate.workplaceRef.moduleRef },
     environmentRef: null,
     candidateSnapshot: {},
   });
+  return { result, validatorCalls };
 }
 
-test('Gate reports an actionable diagnostic when only prior execution production exists', () => {
-  const result = runProvider({
-    hasProduction: false,
-    validationResult: { accepted: true, receipt: {} },
-  });
+test('Gate fails with an actionable diagnostic when the sealed revision has no validation proof', () => {
+  const { result, validatorCalls } = runProvider({ includeProof: false });
   assert.equal(result.outcome, 'failed');
-  assert.equal(result.evidenceRefs.length, 1);
+  assert.equal(validatorCalls, 0);
   const diagnostic = decodeCheckDiagnostic(result.evidenceRefs[0]);
-  assert.equal(diagnostic.code, 'MANAGED_PRODUCTION_REQUIRED');
-  assert.match(diagnostic.message, /artifact_update/);
-  assert.match(diagnostic.message, /Prior execution ledger rows cannot satisfy/);
+  assert.equal(diagnostic.code, 'SUBMISSION_VALIDATION_RECEIPT_REQUIRED');
+  assert.match(diagnostic.message, /sealed Workplace production revision/);
 });
 
-test('validator gaps survive the Gate as content-addressed recovery diagnostics', () => {
-  const result = runProvider({
-    hasProduction: true,
-    validationResult: {
-      accepted: false,
-      code: 'FORMALIZATION_CONTRACT_INCOMPLETE',
-      gaps: [{
-        artifactId: 7,
-        artifactCode: 'FR-2',
-        artifactType: 'FR',
-        existingTargets: [],
-        missing: { relation: 'derived_from', requiredTargetTypes: ['PRD'], minimum: 1 },
-        message: 'FR-2 must derive from the exact PRD.',
-      }],
-    },
-  });
-  assert.equal(result.outcome, 'failed');
-  const diagnostic = decodeCheckDiagnostic(result.evidenceRefs[0]);
-  assert.equal(diagnostic.code, 'FORMALIZATION_CONTRACT_INCOMPLETE:1');
-  assert.equal(diagnostic.message, 'FR-2 must derive from the exact PRD.');
-  assert.equal(diagnostic.subjectRef, 'artifact:7');
+test('Gate consumes exact revision proof and is invariant to audit presenter identity', () => {
+  const a = runProvider({ presenterRef: 'exec-a' });
+  const b = runProvider({ presenterRef: 'exec-b' });
+  assert.equal(a.result, 'passed');
+  assert.equal(b.result, 'passed');
+  assert.equal(a.validatorCalls, 0);
+  assert.equal(b.validatorCalls, 0);
+});
+
+test('Gate fails closed when the exact receipt does not match the sealed proof digest', () => {
+  const { result, validatorCalls } = runProvider({ tamperDigest: true });
+  assert.equal(result, 'error');
+  assert.equal(validatorCalls, 0);
 });

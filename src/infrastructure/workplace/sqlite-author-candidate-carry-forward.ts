@@ -177,15 +177,17 @@ export function authorizeEligibleAuthorCandidateCarryForward(
 
     const candidates = db.prepare(
       `SELECT cs.candidate_set_ref,cs.candidate_set_digest,
-              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
-                WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref,
               cs.workplace_ref,w.kanban_phase,w.loop_state,w.next_role,
               t.id AS task_id,t.metadata,t.project_repository_id,
               t.integration_state,t.integrated_commit,
               wi.output_schema
          FROM factory_candidate_sets cs
          JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref
-         JOIN tasks t ON t.workplace_ref=w.workplace_ref
+         JOIN factory_accepted_authority_head h
+           ON h.workplace_ref=w.workplace_ref
+          AND h.accepted_author_candidate_set_ref=cs.candidate_set_ref
+         JOIN tasks t ON CAST(t.id AS TEXT)=h.accepted_author_task_id
+          AND t.workplace_ref=w.workplace_ref
           AND json_extract(t.metadata,'$.role')='author'
          JOIN factory_work_intents wi
            ON wi.id=json_extract(t.metadata,'$.work_intent_id')
@@ -193,7 +195,6 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     ).all(stage.process_run_id) as Array<{
       candidate_set_ref: string;
       candidate_set_digest: string;
-      presenter_ref: string;
       workplace_ref: string;
       kanban_phase: string;
       loop_state: string;
@@ -333,11 +334,10 @@ export function authorizeEligibleAuthorCandidateCarryForward(
 
     const submissionId = parseManagedSubmissionRef(member.product_ref);
     const submission = db.prepare(
-      `SELECT task_id,execution_id,schema_version,payload_snapshot,content_hash
+      `SELECT task_id,schema_version,payload_snapshot,content_hash
          FROM factory_managed_node_submissions WHERE id=?`,
     ).get(submissionId) as {
       task_id: number;
-      execution_id: string;
       schema_version: string;
       payload_snapshot: string;
       content_hash: string;
@@ -350,13 +350,11 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     if (eligibleFailureCode === REVIEW_SCHEMA_FAILURE_CODE) {
       if (
         submission.task_id !== source.task_id
-        || submission.execution_id !== source.presenter_ref
       ) throw new Error('AUTHOR_CARRY_FORWARD_SUBMISSION_OWNER_DRIFT');
     } else {
       const lineage = db.prepare(
         `SELECT a.source_candidate_set_ref,a.source_product_schema,
-                a.source_product_ref,a.source_product_digest,
-                c.presenter_ref
+                a.source_product_ref,a.source_product_digest
            FROM factory_author_candidate_carry_forward_consumptions c
            JOIN factory_author_candidate_carry_forward_authorizations a
              ON a.authorization_ref=c.authorization_ref
@@ -366,7 +364,6 @@ export function authorizeEligibleAuthorCandidateCarryForward(
         source_product_schema: string;
         source_product_ref: string;
         source_product_digest: string;
-        presenter_ref: string;
       }>;
       if (
         lineage.length !== 1
@@ -374,7 +371,6 @@ export function authorizeEligibleAuthorCandidateCarryForward(
         || lineage[0]!.source_product_schema !== member.product_schema
         || lineage[0]!.source_product_ref !== member.product_ref
         || lineage[0]!.source_product_digest !== member.product_digest
-        || lineage[0]!.presenter_ref !== source.presenter_ref
       ) throw new Error('AUTHOR_CARRY_FORWARD_LINEAGE_DRIFT');
     }
     const payload = parseRecord(submission.payload_snapshot, 'source product');
@@ -629,7 +625,7 @@ export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryFo
 }
 
 function verifyCandidateDigest(
-  candidate: { workplace_ref: string; presenter_ref: string; candidate_set_digest: string },
+  candidate: { workplace_ref: string; candidate_set_digest: string },
   member: { product_schema: string; product_ref: string; product_digest: string },
 ): void {
   const digest = createHash('sha256').update(JSON.stringify({

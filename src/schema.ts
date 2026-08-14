@@ -2144,6 +2144,14 @@ CREATE INDEX IF NOT EXISTS idx_submission_receipts_task
   ON factory_submission_validation_receipts(task_id);
 CREATE INDEX IF NOT EXISTS idx_submission_receipts_run_node
   ON factory_submission_validation_receipts(process_run_id, node_id);
+CREATE TRIGGER IF NOT EXISTS trg_factory_submission_validation_receipts_no_update
+BEFORE UPDATE ON factory_submission_validation_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_submission_validation_receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_submission_validation_receipts_no_delete
+BEFORE DELETE ON factory_submission_validation_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_submission_validation_receipts are immutable');
+END;
 
 -- Durable preflight rejections. Unlike terminal command_receipts, these are
 -- append-only observations: the same execution may repair the artifact and

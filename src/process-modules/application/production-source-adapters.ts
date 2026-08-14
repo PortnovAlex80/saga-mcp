@@ -32,6 +32,11 @@ import {
   type SourceAdapter,
   type WorkplaceContribution,
 } from '../domain/workplace/workplace-production-revision.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+  type SubmissionValidationReceiptProjection,
+} from './submission-validation-receipt-authority.js';
 
 // ---------------------------------------------------------------------------
 // Managed artifacts → revision contribution.
@@ -90,6 +95,7 @@ export function producedProductsToContribution(input: {
   workplaceRef: string;
   executionRef: string;
   products: ReadonlyArray<{ readonly schemaId: string; readonly ref: string; readonly digest: string }>;
+  validationReceipts?: readonly SubmissionValidationReceiptProjection[];
   sourceAdapter?: SourceAdapter;
   parentContributionRef?: string | null;
 }): WorkplaceContribution {
@@ -101,6 +107,15 @@ export function producedProductsToContribution(input: {
     contentDigest: p.digest,
     sourceAdapter,
   }));
+  for (const receipt of input.validationReceipts ?? []) {
+    operations.push({
+      op: 'put',
+      memberKey: submissionValidationMemberKey(receipt),
+      productRef: `submission-validation-receipt:${receipt.receiptId}`,
+      contentDigest: submissionValidationContentDigest(receipt),
+      sourceAdapter: 'evidence',
+    });
+  }
   return buildContribution({
     workplaceRef: input.workplaceRef,
     contributorExecutionRef: input.executionRef,

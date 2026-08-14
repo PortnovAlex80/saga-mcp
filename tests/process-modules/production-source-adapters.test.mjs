@@ -16,9 +16,61 @@ import {
   typedSubmissionToContribution,
   gitChangesToContribution,
   carryForwardContribution,
+  producedProductsToContribution,
 } from '../../dist/process-modules/application/production-source-adapters.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+} from '../../dist/process-modules/application/submission-validation-receipt-authority.js';
 
 const WORKPLACE = 'workplace/1/cell/item';
+
+test('ADR-053 B-3: exact validation proof is a material revision member, execution-free', () => {
+  const receipt = {
+    receiptId: 9,
+    validatorId: 'contract.v1',
+    validatorVersion: '1.0.0',
+    processRunId: 1,
+    moduleRef: 'module@1.0.0',
+    nodeId: 'node',
+    inputSnapshotHash: 'input',
+    artifactIds: [1],
+    traceIds: [],
+    artifactHashes: { 1: 'content' },
+    traceDigest: 'trace',
+    contractRef: null,
+    validatedSetDigest: 'set',
+  };
+  const contribution = producedProductsToContribution({
+    workplaceRef: WORKPLACE,
+    executionRef: 'exec-A',
+    products: [{ schemaId: 'product.v1', ref: 'product:1', digest: 'content' }],
+    validationReceipts: [receipt],
+  });
+  assert.equal(contribution.operations.length, 2);
+  assert.deepEqual(contribution.operations[1], {
+    op: 'put',
+    memberKey: submissionValidationMemberKey(receipt),
+    productRef: 'submission-validation-receipt:9',
+    contentDigest: submissionValidationContentDigest(receipt),
+    sourceAdapter: 'evidence',
+  });
+  assert.equal(
+    submissionValidationContentDigest(receipt),
+    submissionValidationContentDigest({
+      ...receipt,
+      receiptId: 99,
+      processRunId: 99,
+      inputSnapshotHash: 'other-run-input',
+      artifactIds: [501],
+      traceIds: [],
+      artifactHashes: { 501: 'content' },
+      traceDigest: 'other-row-id-digest',
+      validatedSetDigest: 'other-run-set',
+    }),
+    'semantic proof identity must not contain run/execution/row coordinates',
+  );
+});
 
 // ===========================================================================
 // 1. Managed artifacts adapter — semantic memberKey by artifactType.

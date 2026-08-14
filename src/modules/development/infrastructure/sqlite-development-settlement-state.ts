@@ -463,10 +463,12 @@ export class SqliteDevelopmentModuleStore implements
              ON cs.candidate_set_ref=cr.subject_candidate_set_ref
            JOIN factory_workplaces w
              ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
-           JOIN factory_workplace_production_revisions rev
-             ON rev.revision_ref=cs.production_revision_ref
-           JOIN worker_executions we ON we.execution_id=rev.presenter_ref
-           JOIN tasks t ON t.id=we.task_id AND t.workplace_ref=w.workplace_ref
+           JOIN factory_accepted_authority_head h
+             ON h.workplace_ref=w.workplace_ref
+            AND h.accepted_author_candidate_set_ref=cs.candidate_set_ref
+           JOIN tasks t
+             ON CAST(t.id AS TEXT)=h.accepted_author_task_id
+            AND t.workplace_ref=w.workplace_ref
            JOIN factory_cell_final_acceptances cfa
              ON cfa.workplace_ref=w.workplace_ref
             AND cfa.candidate_set_ref=cs.candidate_set_ref
@@ -744,14 +746,14 @@ export class SqliteDevelopmentModuleStore implements
     const rows = this.db.prepare(
       `SELECT w.workplace_ref AS workplaceRef,
               cs.candidate_set_ref AS candidateSetRef,
-              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS executionId,
+              submission.execution_id AS executionId,
               submission.id AS submissionId,
               current_task.id AS taskId,
               current_task.metadata AS taskMetadata,
               submission.payload_snapshot AS payloadSnapshot,
               submission.content_hash AS contentHash,
               member.product_schema AS productSchema,
-              review_rev.presenter_ref AS reviewExecutionId
+              review_submission.execution_id AS reviewExecutionId
          FROM factory_workplaces w
          LEFT JOIN factory_cell_final_acceptances cfa
            ON cfa.workplace_ref=w.workplace_ref
@@ -776,8 +778,11 @@ export class SqliteDevelopmentModuleStore implements
           AND reviewer.workplace_ref=w.workplace_ref
           AND reviewer.role='reviewer'
           AND reviewer.subject_candidate_set_ref=cs.candidate_set_ref
-         LEFT JOIN factory_workplace_production_revisions review_rev
-           ON review_rev.revision_ref=reviewer.production_revision_ref
+         LEFT JOIN factory_candidate_set_members review_member
+           ON review_member.candidate_set_ref=reviewer.candidate_set_ref
+          AND review_member.ordinal=0
+         LEFT JOIN factory_managed_node_submissions review_submission
+           ON review_member.product_ref='managed-node-submission:' || review_submission.id
          JOIN tasks current_task
            ON CAST(current_task.id AS TEXT)=h.accepted_author_task_id
           AND current_task.workplace_ref=w.workplace_ref

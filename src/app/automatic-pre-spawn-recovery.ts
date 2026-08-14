@@ -140,16 +140,10 @@ export function reconcileAutomaticPreSpawnRecovery(
         `SELECT COUNT(*) n FROM command_receipts
           WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
       ).get(row.execution_id) as { n: number }).n,
-      candidate_sets: tableExists(db, 'factory_candidate_sets')
-        ? (db.prepare(
-            'SELECT COUNT(*) n FROM factory_candidate_sets cs JOIN factory_workplace_production_revisions rev ON rev.revision_ref = cs.production_revision_ref WHERE rev.presenter_ref=?',
-          ).get(row.execution_id) as { n: number }).n
-        : 0,
     };
     if (
       executionEvidence.submissions !== 0
       || executionEvidence.done_receipts !== 0
-      || executionEvidence.candidate_sets !== 0
     ) {
       throw new Error(
         `AUTOMATIC_PRE_SPAWN_RECOVERY_UNSAFE: execution ${row.execution_id} produced authority`,

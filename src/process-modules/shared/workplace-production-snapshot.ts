@@ -5,14 +5,13 @@ import type {
 import { sha256Hex } from '../../shared/canonical-json.js';
 
 export const WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION =
-  'factory.workplace-production-snapshot.v2' as const;
+  'factory.workplace-production-snapshot.v3' as const;
 
 export interface WorkplaceProductionArtifactSnapshot {
   readonly artifactId: number;
   readonly artifactType: string;
   readonly artifactStatus: string;
   readonly contentHash: string;
-  readonly operation: ManagedArtifactProductionRecord['operation'];
 }
 
 export interface WorkplaceProductionTraceSnapshot {
@@ -53,7 +52,6 @@ export function buildWorkplaceProductionSnapshot(input: {
       artifactType: row.artifactType,
       artifactStatus: row.artifactStatus,
       contentHash: row.contentHash,
-      operation: row.operation,
     }));
   const traces = input.traces.map(row => ({
     traceId: row.traceId,

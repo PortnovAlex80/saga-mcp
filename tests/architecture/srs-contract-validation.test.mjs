@@ -188,10 +188,11 @@ test('SRS validator policy: define-architecture-contract is required + version-p
   assert.equal(policy.contractRef.digest, SRS_CONTRACT_REF.digest);
   const validator = createSrsContractValidator(db);
   assert.equal(validator.validatorVersion, SRS_CONTRACT_VALIDATOR_VERSION);
+  assert.equal(FORMALIZATION_CHECK_REFS.architecture.version, '2.0.0');
   assert.equal(
-    validator.validatorVersion,
-    FORMALIZATION_CHECK_REFS.architecture.version,
-    'worker_done validator and author Gate CheckProvider must share one provider version',
+    FORMALIZATION_CHECK_REFS.architecture.providerId,
+    `factory.submission-validator.${validator.validatorId}`,
+    'Gate provider must bind the exact validator identity while versioning its sealed-proof protocol independently',
   );
   db.close();
 });
@@ -214,7 +215,7 @@ test('canonical valid SRS passes the validator', () => {
     console.error('GAPS:', JSON.stringify(result.gaps, null, 2));
   }
   assert.equal(result.accepted, true, 'canonical valid SRS must pass');
-  assert.equal(result.receipt.validatorVersion, FORMALIZATION_CHECK_REFS.architecture.version);
+  assert.equal(result.receipt.validatorVersion, SRS_CONTRACT_VALIDATOR_VERSION);
   db.close();
 });
 

@@ -134,21 +134,20 @@ test('P18-AC-1: replacement execution inherits all production from SAME Workplac
   assert.equal(Object.hasOwn(snapshot.artifacts[0], `lastProducer${'ExecutionRef'}`), false);
 });
 
-test('ADR-053 B-3: snapshot material hash is invariant to contributing execution identity', () => {
+test('ADR-053 B-3: snapshot material hash is invariant to execution and create/update path', () => {
   const base = {
     artifactId: 1,
     artifactType: 'PRD',
     artifactStatus: 'draft',
     contentHash: 'a'.repeat(64),
-    operation: 'update',
   };
-  const make = executionId => buildWorkplaceProductionSnapshot({
+  const make = (executionId, operation) => buildWorkplaceProductionSnapshot({
     workplaceRef: serializedA,
     expectedSchemaRef: 'factory.formalization-product-contract.v1',
-    artifacts: [{ ...base, executionId }],
+    artifacts: [{ ...base, executionId, operation }],
     traces: [],
   });
-  assert.equal(sha256Hex(make('exec-A')), sha256Hex(make('exec-B')));
+  assert.equal(sha256Hex(make('exec-A', 'create')), sha256Hex(make('exec-B', 'update')));
 });
 
 test('P18-AC-2: sibling Workplaces under SAME node are strictly isolated', () => {

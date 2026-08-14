@@ -14,8 +14,12 @@ import { ensureFactoryProcessProductV2Schema } from '../../dist/process-modules/
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+} from '../../dist/process-modules/application/submission-validation-receipt-authority.js';
 
-const FAILURE = 'CHECK_PROVIDER_VERSION_MISMATCH: expected 1.0.0, got 1.1.0';
+const FAILURE = 'CHECK_PROVIDER_VERSION_MISMATCH: expected 1.0.0, got 2.0.0';
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 function canonicalArchitecturePlan() {
@@ -128,20 +132,37 @@ function fixture() {
   ).run(product.schemaId, product.ref, product.digest);
   const candidateDigest = hash(JSON.stringify({
     workplaceRef,
-    executionRef,
     role: 'author',
     products: [product],
   }));
   const productionRevisionRef = hash(`revision:${workplaceRef}:${product.digest}`);
+  const validationProjection = {
+    receiptId: 1,
+    validatorId: 'formalization.srs-contract.v1',
+    validatorVersion: '1.1.0',
+    processRunId: 2,
+    moduleRef: 'solution-formalization@1.0.0',
+    nodeId: 'define-architecture-contract',
+    inputSnapshotHash: 'validated',
+    artifactIds: [22],
+    traceIds: [],
+    artifactHashes: { 22: srsHash },
+    traceDigest: '',
+    contractRef: {},
+    validatedSetDigest: 'validated',
+  };
   db.prepare(
     `INSERT INTO factory_workplace_production_revisions
        (revision_ref,workplace_ref,parent_revision_ref,members,
         contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
-     VALUES (?,?,NULL,?,?,?,?,?,?,datetime('now'))`,
+     VALUES (?,?,NULL,?,?,?,?,?,datetime('now'))`,
   ).run(
     productionRevisionRef,
     workplaceRef,
-    JSON.stringify([{ memberKey: `product/${product.schemaId}/${product.ref}`, productRef: product.ref, contentDigest: product.digest, sourceAdapter: 'typed-submission', contributorExecutionRef: executionRef }]),
+    JSON.stringify([
+      { memberKey: `product/${product.schemaId}/${product.ref}`, productRef: product.ref, contentDigest: product.digest, sourceAdapter: 'typed-submission', contributorExecutionRef: executionRef },
+      { memberKey: submissionValidationMemberKey(validationProjection), productRef: 'submission-validation-receipt:1', contentDigest: submissionValidationContentDigest(validationProjection), sourceAdapter: 'evidence', contributorExecutionRef: executionRef },
+    ]),
     JSON.stringify([executionRef]),
     executionRef,
     product.digest,

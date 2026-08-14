@@ -10,6 +10,11 @@ import {
   persistSubmissionValidationRejection,
 } from '../lifecycle/submission-validation-rejections.js';
 import type { CheckPlan } from '../process-modules/domain/workplace/gate.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+  type SubmissionValidationReceiptProjection,
+} from '../process-modules/application/submission-validation-receipt-authority.js';
 
 export const FACTORY_START_SCHEMA = 'saga.factory-start.v1' as const;
 
@@ -742,7 +747,7 @@ export function recoverFailedGateRun(
               w.active_reservation_ref,w.active_gate_ref,w.active_recovery_case_ref,
               t.id AS task_id,t.status AS task_status,t.assigned_to,t.current_execution_id,
               we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
-              cs.candidate_set_ref,cs.candidate_set_digest,
+              cs.candidate_set_ref,cs.candidate_set_digest,cs.production_revision_ref,
               (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
                 WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref,
               cs.role AS candidate_role,
@@ -756,15 +761,13 @@ export function recoverFailedGateRun(
          JOIN factory_workplaces w ON w.process_run_id=pr.id
          JOIN tasks t ON t.workplace_ref=w.workplace_ref
          JOIN worker_executions we ON we.execution_id=w.active_reservation_ref
-         JOIN factory_candidate_sets cs
-           ON cs.workplace_ref=w.workplace_ref
-          AND (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
-                WHERE rev.revision_ref = cs.production_revision_ref)=we.execution_id
-          AND cs.role='author'
          JOIN factory_gate_runs gr
            ON gr.workplace_ref=w.workplace_ref
-          AND gr.subject_candidate_set_ref=cs.candidate_set_ref
           AND gr.state='checking'
+         JOIN factory_candidate_sets cs
+           ON cs.candidate_set_ref=gr.subject_candidate_set_ref
+          AND cs.workplace_ref=w.workplace_ref
+          AND cs.role='author'
          JOIN factory_node_runs nr ON nr.id=(
            SELECT MAX(n2.id) FROM factory_node_runs n2
             WHERE n2.process_run_id=pr.id AND n2.status='failed'
@@ -1255,31 +1258,53 @@ function verifyAcceptedSubmissionSnapshot(
   plan: CheckPlan,
   expectedValidatorVersion: string,
 ): void {
-  const receipts = db.prepare(
-    `SELECT validator_id,validator_version,input_snapshot_hash,artifact_ids,
-            artifact_hashes,validated_set_digest
-       FROM factory_submission_validation_receipts
-      WHERE process_run_id=? AND execution_id=? AND task_id=?`,
-  ).all(row.process_run_id, row.presenter_ref, row.task_id) as Array<{
-    validator_id: string;
-    validator_version: string;
-    input_snapshot_hash: string;
-    artifact_ids: string;
-    artifact_hashes: string;
-    validated_set_digest: string;
+  const revision = db.prepare(
+    'SELECT members FROM factory_workplace_production_revisions WHERE revision_ref=?',
+  ).get(row.production_revision_ref) as { members: string } | undefined;
+  if (!revision) {
+    throw new FactoryStartError('FACTORY_RECOVERY_SNAPSHOT_DRIFT', 'accepted production revision is missing');
+  }
+  const members = JSON.parse(revision.members) as Array<{
+    memberKey: string; productRef: string; contentDigest: string;
   }>;
-  if (receipts.length !== 1) {
+  const proofMembers = members.filter(member => member.memberKey.startsWith('validation/'));
+  if (proofMembers.length !== 1) {
     throw new FactoryStartError(
       'FACTORY_FAILED_GATE_UNSAFE',
-      `producer execution has ${receipts.length} validation receipts; expected exactly one`,
+      `accepted production revision has ${proofMembers.length} validation proofs; expected exactly one`,
     );
   }
-  const receipt = receipts[0]!;
+  const receiptId = Number(/^submission-validation-receipt:(\d+)$/.exec(proofMembers[0]!.productRef)?.[1]);
+  const receipt = db.prepare(
+    `SELECT id AS receipt_id,validator_id,validator_version,process_run_id,module_ref,node_id,
+            input_snapshot_hash,artifact_ids,trace_ids,artifact_hashes,trace_digest,
+            contract_ref,validated_set_digest
+       FROM factory_submission_validation_receipts WHERE id=?`,
+  ).get(receiptId) as {
+    receipt_id: number;
+    validator_id: string;
+    validator_version: string;
+    process_run_id: number;
+    module_ref: string;
+    node_id: string;
+    input_snapshot_hash: string;
+    artifact_ids: string;
+    trace_ids: string;
+    artifact_hashes: string;
+    trace_digest: string;
+    contract_ref: string | null;
+    validated_set_digest: string;
+  } | undefined;
+  if (!receipt) {
+    throw new FactoryStartError(
+      'FACTORY_FAILED_GATE_UNSAFE',
+      'accepted production revision validation proof does not resolve',
+    );
+  }
   const providerId = `factory.submission-validator.${receipt.validator_id}`;
   const declaredProvider = plan.entries.find(entry => entry.check.providerId === providerId);
   if (
     !declaredProvider
-    || receipt.validator_version !== expectedValidatorVersion
     || declaredProvider.check.version !== expectedValidatorVersion
     || receipt.input_snapshot_hash !== receipt.validated_set_digest
   ) {
@@ -1289,6 +1314,7 @@ function verifyAcceptedSubmissionSnapshot(
     );
   }
   const artifactIds = JSON.parse(receipt.artifact_ids) as unknown;
+  const traceIds = JSON.parse(receipt.trace_ids) as unknown;
   const artifactHashes = JSON.parse(receipt.artifact_hashes) as unknown;
   if (
     !Array.isArray(artifactIds)
@@ -1300,6 +1326,30 @@ function verifyAcceptedSubmissionSnapshot(
     throw new FactoryStartError(
       'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
       'accepted submission artifact snapshot is malformed',
+    );
+  }
+  const projection: SubmissionValidationReceiptProjection = {
+    receiptId: receipt.receipt_id,
+    validatorId: receipt.validator_id,
+    validatorVersion: receipt.validator_version,
+    processRunId: receipt.process_run_id,
+    moduleRef: receipt.module_ref,
+    nodeId: receipt.node_id,
+    inputSnapshotHash: receipt.input_snapshot_hash,
+    artifactIds: artifactIds as number[],
+    traceIds: Array.isArray(traceIds) ? traceIds as number[] : [],
+    artifactHashes: artifactHashes as Record<string, string>,
+    traceDigest: receipt.trace_digest,
+    contractRef: receipt.contract_ref === null ? null : JSON.parse(receipt.contract_ref),
+    validatedSetDigest: receipt.validated_set_digest,
+  };
+  if (
+    proofMembers[0]!.memberKey !== submissionValidationMemberKey(projection)
+    || proofMembers[0]!.contentDigest !== submissionValidationContentDigest(projection)
+  ) {
+    throw new FactoryStartError(
+      'FACTORY_RECOVERY_SNAPSHOT_DRIFT',
+      'accepted production revision validation proof digest no longer verifies',
     );
   }
   for (const rawId of artifactIds) {

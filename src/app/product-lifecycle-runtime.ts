@@ -455,6 +455,38 @@ export function createProductLifecycleRuntime(
           ).get(executionRef) as { taskId: number; intentId: number } | undefined;
           return row ?? null;
         },
+        readSubmissionValidationReceipts: (executionRef) => {
+          const rows = db.prepare(
+            `SELECT id AS receiptId,validator_id AS validatorId,
+                    validator_version AS validatorVersion,
+                    process_run_id AS processRunId,module_ref AS moduleRef,
+                    node_id AS nodeId,input_snapshot_hash AS inputSnapshotHash,
+                    artifact_ids AS artifactIds,trace_ids AS traceIds,
+                    artifact_hashes AS artifactHashes,trace_digest AS traceDigest,
+                    contract_ref AS contractRef,
+                    validated_set_digest AS validatedSetDigest
+               FROM factory_submission_validation_receipts
+              WHERE execution_id=?
+              ORDER BY id`,
+          ).all(executionRef) as Array<Record<string, unknown>>;
+          return rows.map(row => ({
+            receiptId: Number(row.receiptId),
+            validatorId: String(row.validatorId),
+            validatorVersion: String(row.validatorVersion),
+            processRunId: Number(row.processRunId),
+            moduleRef: String(row.moduleRef),
+            nodeId: String(row.nodeId),
+            inputSnapshotHash: String(row.inputSnapshotHash),
+            artifactIds: JSON.parse(String(row.artifactIds)) as number[],
+            traceIds: JSON.parse(String(row.traceIds)) as number[],
+            artifactHashes: JSON.parse(String(row.artifactHashes)) as Record<string, string>,
+            traceDigest: String(row.traceDigest),
+            contractRef: row.contractRef === null
+              ? null
+              : JSON.parse(String(row.contractRef)) as { version: string; digest: string },
+            validatedSetDigest: String(row.validatedSetDigest),
+          }));
+        },
         readProcessInputHash: (processRunId) => {
           const row = db.prepare(
             'SELECT input_hash FROM factory_process_runs WHERE id=?',

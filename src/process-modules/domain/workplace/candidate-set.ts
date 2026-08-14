@@ -47,8 +47,8 @@
  *
  * A repair attempt receives the rejected author set as immutable INPUT (it
  * reads it) but seals a NEW, distinct CandidateSet (REG-12-AC-05). The new
- * execution's ref is different, so the gate sees two distinct attempts, not a
- * mutation of one.
+ * material revision is different, so the gate sees two distinct attempts, not
+ * a mutation of one. Execution identity remains audit provenance only.
  *
  * # Pure domain
  *
@@ -63,8 +63,8 @@ import type { WorkplaceRef } from './workplace-ref.js';
 /**
  * Which role produced this CandidateSet.
  *
- * `author` sets are produced by the author execution; `reviewer` sets are
- * produced by the reviewer execution and are PINNED to an author set via
+ * `author` sets present the sealed author revision; `reviewer` sets present
+ * reviewer material and are PINNED to an author set via
  * `subjectCandidateSetRef` (REG-12-AC-04).
  */
 export type CandidateSetRole = 'author' | 'reviewer';
@@ -72,7 +72,7 @@ export type CandidateSetRole = 'author' | 'reviewer';
 /**
  * How a member came to be in the set.
  *
- * `produced` — the active fenced execution created this product.
+ * `produced` — the product is material presented by this sealed revision.
  * `carried-forward` — the execution explicitly borrowed this product from a
  * NAMED prior CandidateSet under the product/recovery policy. An upstream
  * input that only appears in lineage is NOT a carried-forward member; it
@@ -85,13 +85,13 @@ export type CandidateMemberOrigin = 'produced' | 'carried-forward';
  *
  * A member is a (ProductRef, origin) pair. `sourceCandidateSetRef` is REQUIRED
  * when `origin=carried-forward` (which prior set was the product borrowed
- * from); it MUST be null when `origin=produced` (the active execution created
- * it, so there is no prior set to cite).
+ * from); it MUST be null when `origin=produced` (the sealed revision presents
+ * new material, so there is no prior set to cite).
  */
 export interface CandidateMember {
   /** Exact content-addressed reference to the product. */
   readonly productRef: ProductRef;
-  /** Was this product produced by this execution or borrowed from a prior set? */
+  /** Was this product presented as new revision material or carried forward? */
   readonly origin: CandidateMemberOrigin;
   /**
    * Required when `origin=carried-forward`: the prior CandidateSet this product
@@ -103,7 +103,7 @@ export interface CandidateMember {
 /**
  * A sealed immutable CandidateSet — the exact batch handed to quality control.
  *
- * Immutable after sealing. `execution_complete` produces exactly one of these;
+ * Immutable after sealing. A completed contribution presents one of these;
  * a replay with the same material returns the same `candidateSetRef`
  * (REG-12-AC-01). A different payload under the same seal key is rejected.
  */
@@ -239,7 +239,7 @@ export function assertValidCandidateSet(set: CandidateSet): void {
       if (m.sourceCandidateSetRef !== null) {
         throw new Error(
           `REG-12-AC-02 violation: member[${i}] origin=produced but cites a `
-            + `sourceCandidateSetRef — produced members belong to this execution`,
+            + `sourceCandidateSetRef — produced members belong to this sealed revision`,
         );
       }
     } else if (m.origin === 'carried-forward') {

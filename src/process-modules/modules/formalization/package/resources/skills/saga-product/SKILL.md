@@ -10,9 +10,9 @@ description: Produces the root brief plus PRD/FR/NFR/RULE product contract insid
 `Write` and `Edit` change workspace/repository bytes but do not publish Factory
 production. During a repair, call `artifact_update` for every changed existing
 artifact after the file write, reread the artifact, and only then call
-`worker_done`. Merely verifying an artifact produced by an older execution is
-not current author authority and will be rejected with
-`MANAGED_PRODUCTION_REQUIRED`.
+`worker_done`. Physical bytes and mutable ledger rows are contributions only;
+the kernel seals their successful validation receipt into the exact immutable
+WorkplaceProductionRevision that becomes CandidateSet authority.
 
 You are the author desk of `formalization-product-contract`. Your input is the
 immutable FormalizationCase handed off from Discovery. Your CandidateSet owns
@@ -71,7 +71,7 @@ Avoid duplicate requirements and speculative future scope.
 ## Product integrity before completion
 
 Before `worker_done`:
-1. re-read every artifact created by this exact execution;
+1. re-read every artifact changed by this contribution;
 2. verify there is one brief and one PRD root;
 3. verify PRD -> brief trace exists;
 4. verify every produced FR/NFR/RULE -> PRD trace exists;
@@ -97,8 +97,9 @@ post-acceptance effect then projects these exact products to `accepted`.
 
 A rejected CandidateSet is immutable history. A fresh fenced author execution
 arrives in the same Workplace with gate/reviewer feedback. Reuse valid context,
-correct only the stated defects, and create/update products under the new
-execution fence so the new CandidateSet has exact provenance.
+correct only the stated defects, and publish the changed material under the
+new execution fence. The kernel seals a new material revision and CandidateSet;
+the execution coordinate remains audit provenance only.
 
 ## Never
 

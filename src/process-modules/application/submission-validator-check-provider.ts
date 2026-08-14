@@ -1,16 +1,16 @@
 import { sha256Hex } from '../../shared/canonical-json.js';
 import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
 import type { CheckProvider } from '../domain/workplace/gate.js';
-import type {
-  ContractRef,
-  NodeSubmissionValidator,
-} from './node-submission-policy.js';
+import type { ContractRef, NodeSubmissionValidator } from './node-submission-policy.js';
 import { encodeCheckDiagnostic } from '../domain/workplace/check-diagnostic.js';
+import {
+  submissionValidationContentDigest,
+  submissionValidationMemberKey,
+  type SubmissionValidationReceiptProjection,
+} from './submission-validation-receipt-authority.js';
 
 interface DbHandle {
-  prepare(sql: string): {
-    get(...params: unknown[]): unknown;
-  };
+  prepare(sql: string): { get(...params: unknown[]): unknown };
 }
 
 export function submissionValidatorCheckProviderRef(input: {
@@ -21,7 +21,9 @@ export function submissionValidatorCheckProviderRef(input: {
   requireManagedProduction?: boolean;
 }) {
   const providerId = `factory.submission-validator.${input.validatorId}`;
-  const version = input.validatorVersion;
+  // v2 consumes the exact proof sealed into the production revision. v1
+  // re-selected mutable execution ledgers through presenter_ref.
+  const version = '2.0.0';
   const providerDigest = sha256Hex({
     providerId,
     version,
@@ -55,87 +57,104 @@ export function submissionValidatorCheckProvider(input: {
       try {
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
         if (!candidate || candidate.role !== 'author') return 'error';
-        // ADR-053 B-3 — execution provenance is on the immutable production
-        // revision (presenterRef), NOT on the CandidateSet. Resolve it here.
-        const presenterRef = (input.db.prepare(
-          'SELECT presenter_ref FROM factory_workplace_production_revisions WHERE revision_ref=?',
-        ).get(candidate.productionRevisionRef) as { presenter_ref: string } | undefined)?.presenter_ref;
-        if (!presenterRef) return 'error';
         const processRunId = Number(parameters.processRunId);
         const moduleRef = String(parameters.moduleRef ?? '');
         if (
           !Number.isSafeInteger(processRunId)
           || processRunId < 1
           || candidate.workplaceRef.processRunId !== processRunId
-          || !moduleRef
+          || candidate.workplaceRef.moduleRef !== moduleRef
         ) return 'error';
-        if (input.requireManagedProduction) {
-          const produced = input.db.prepare(
-            `SELECT 1 AS present
-               FROM factory_managed_artifact_productions
-              WHERE process_run_id=? AND execution_id=?
-              LIMIT 1`,
-          ).get(processRunId, presenterRef) as
-            | { present: number }
-            | undefined;
-          const traced = input.db.prepare(
-            `SELECT 1 AS present
-               FROM factory_managed_trace_productions
-              WHERE process_run_id=? AND execution_id=?
-              LIMIT 1`,
-          ).get(processRunId, presenterRef) as
-            | { present: number }
-            | undefined;
-          if (!produced && !traced) {
-            return {
-              outcome: 'failed',
-              evidenceRefs: [encodeCheckDiagnostic({
-                code: 'MANAGED_PRODUCTION_REQUIRED',
-                message: `Execution ${presenterRef} published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
-                subjectRef: subjectCandidateSetRef,
-              })],
-            };
-          }
-        }
-        const row = input.db.prepare(
-          `SELECT t.id AS task_id,t.epic_id,e.project_id
-             FROM worker_executions we
-             JOIN tasks t ON t.id=we.task_id
-             JOIN epics e ON e.id=t.epic_id
-            WHERE we.execution_id=?`,
-        ).get(presenterRef) as {
-          task_id: number;
-          epic_id: number;
-          project_id: number;
-        } | undefined;
-        if (!row) return 'error';
-        const result = input.validator.validate({
-          processRunId,
-          moduleRef,
+
+        const revision = input.db.prepare(
+          'SELECT members FROM factory_workplace_production_revisions WHERE revision_ref=?',
+        ).get(candidate.productionRevisionRef) as { members: string } | undefined;
+        if (!revision) return 'error';
+        const memberKey = submissionValidationMemberKey({
+          validatorId: input.validator.validatorId,
+          validatorVersion: input.validator.validatorVersion,
           nodeId: input.nodeId,
-          executionId: presenterRef,
-          taskId: row.task_id,
-          epicId: row.epic_id,
-          projectId: row.project_id,
-          ...(input.contractRef ? { contractRef: input.contractRef } : {}),
         });
-        if (result.accepted) return 'passed';
-        const diagnostics = result.gaps.length > 0
-          ? result.gaps.map((gap, index) => encodeCheckDiagnostic({
-              code: `${result.code}:${index + 1}`,
-              message: gap.message
-                ?? `${gap.artifactType} ${gap.artifactCode ?? gap.artifactId} requires ${gap.missing.relation} to at least ${gap.missing.minimum} of [${gap.missing.requiredTargetTypes.join(', ')}].`,
-              subjectRef: gap.artifactId > 0 ? `artifact:${gap.artifactId}` : subjectCandidateSetRef,
-            }))
-          : [encodeCheckDiagnostic({
-              code: result.code,
-              message: `Submission validator ${input.validator.validatorId}@${input.validator.validatorVersion} rejected the current production.`,
-              subjectRef: subjectCandidateSetRef,
-            })];
-        return { outcome: 'failed', evidenceRefs: diagnostics };
+        const members = JSON.parse(revision.members) as Array<{
+          memberKey: string;
+          productRef: string;
+          contentDigest: string;
+        }>;
+        const proofMembers = members.filter(member => member.memberKey === memberKey);
+        if (proofMembers.length !== 1) {
+          return missingProof(subjectCandidateSetRef, input.validator.validatorId, input.validator.validatorVersion);
+        }
+        const proof = proofMembers[0];
+        const match = /^submission-validation-receipt:(\d+)$/.exec(proof.productRef);
+        if (!match) return 'error';
+        const row = input.db.prepare(
+          `SELECT id AS receiptId,validator_id AS validatorId,
+                  validator_version AS validatorVersion,
+                  process_run_id AS processRunId,module_ref AS moduleRef,
+                  node_id AS nodeId,input_snapshot_hash AS inputSnapshotHash,
+                  artifact_ids AS artifactIds,trace_ids AS traceIds,
+                  artifact_hashes AS artifactHashes,trace_digest AS traceDigest,
+                  contract_ref AS contractRef,validated_set_digest AS validatedSetDigest
+             FROM factory_submission_validation_receipts
+            WHERE id=?`,
+        ).get(Number(match[1])) as Record<string, unknown> | undefined;
+        if (!row) return 'error';
+        const receipt = decodeReceipt(row);
+        if (
+          receipt.validatorId !== input.validator.validatorId
+          || receipt.validatorVersion !== input.validator.validatorVersion
+          || receipt.processRunId !== processRunId
+          || receipt.moduleRef !== moduleRef
+          || receipt.nodeId !== input.nodeId
+          || !sameContract(receipt.contractRef, input.contractRef ?? null)
+          || proof.contentDigest !== submissionValidationContentDigest(receipt)
+        ) return 'error';
+        if (input.requireManagedProduction
+          && receipt.artifactIds.length === 0
+          && receipt.traceIds.length === 0) {
+          return missingProof(subjectCandidateSetRef, input.validator.validatorId, input.validator.validatorVersion);
+        }
+        return 'passed';
       } catch {
         return 'error';
       }
     },
+  };
+}
+
+function sameContract(left: ContractRef | null, right: ContractRef | null): boolean {
+  return left === null
+    ? right === null
+    : right !== null && left.version === right.version && left.digest === right.digest;
+}
+
+function missingProof(subjectRef: string, validatorId: string, validatorVersion: string) {
+  return {
+    outcome: 'failed' as const,
+    evidenceRefs: [encodeCheckDiagnostic({
+      code: 'SUBMISSION_VALIDATION_RECEIPT_REQUIRED',
+      message: `The sealed Workplace production revision has no exact ${validatorId}@${validatorVersion} validation proof. Publish the required managed delta and complete worker_done so the kernel can seal its accepted receipt with the material.`,
+      subjectRef,
+    })],
+  };
+}
+
+function decodeReceipt(row: Record<string, unknown>): SubmissionValidationReceiptProjection {
+  return {
+    receiptId: Number(row.receiptId),
+    validatorId: String(row.validatorId),
+    validatorVersion: String(row.validatorVersion),
+    processRunId: Number(row.processRunId),
+    moduleRef: String(row.moduleRef),
+    nodeId: String(row.nodeId),
+    inputSnapshotHash: String(row.inputSnapshotHash),
+    artifactIds: JSON.parse(String(row.artifactIds)) as number[],
+    traceIds: JSON.parse(String(row.traceIds)) as number[],
+    artifactHashes: JSON.parse(String(row.artifactHashes)) as Record<string, string>,
+    traceDigest: String(row.traceDigest),
+    contractRef: row.contractRef === null
+      ? null
+      : JSON.parse(String(row.contractRef)) as ContractRef,
+    validatedSetDigest: String(row.validatedSetDigest),
   };
 }

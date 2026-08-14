@@ -49,6 +49,7 @@ import { producedProductsToContribution } from '../production-source-adapters.js
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
+import type { SubmissionValidationReceiptProjection } from '../submission-validation-receipt-authority.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -119,6 +120,10 @@ export interface ProductionCellProjectionPersistence {
    * receipt, so they resolve to null.
    */
   readExecutionReceipt(executionRef: string): { intentId: number; taskId: number } | null;
+  /** Successful validators durably committed by this exact worker_done. */
+  readSubmissionValidationReceipts?(
+    executionRef: string,
+  ): readonly SubmissionValidationReceiptProjection[];
   projectWorkplace(workplaceRef: WorkplaceRef): void;
   /**
    * Seal the complete fan-out topology before any Workplace is admitted.
@@ -1239,6 +1244,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       workplaceRef: workplaceSerialized,
       executionRef,
       products,
+      validationReceipts: this.opts.persistence.readSubmissionValidationReceipts?.(executionRef) ?? [],
     });
     // ADR-053 C14 — the revision is CUMULATIVE: apply this execution's
     // contribution as a delta on top of the workplace's current accepted-author
