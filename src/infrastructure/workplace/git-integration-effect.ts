@@ -17,7 +17,14 @@ export function createGitIntegrationEffect(
     effectId: GIT_INTEGRATION_EFFECT_ID,
     run(input) {
       // ADR-053 B-4 — material coordinates come ONLY from the authority.
-      const { authority, operational } = input;
+      const { authority } = input;
+      const processRunId = authority.workplaceRef.processRunId;
+      const moduleSeparator = authority.workplaceRef.moduleRef.lastIndexOf('@');
+      if (moduleSeparator <= 0) throw new Error('AUTHORITY_MODULE_REF_INVALID');
+      const moduleRef = {
+        name: authority.workplaceRef.moduleRef.slice(0, moduleSeparator),
+        version: authority.workplaceRef.moduleRef.slice(moduleSeparator + 1),
+      };
       const expectedProductSchema = authority.productSchema;
       const request = {
         schema: 'factory.git-integration-request.v1',
@@ -30,9 +37,9 @@ export function createGitIntegrationEffect(
       let action = ledger.start({
         providerNamespace: 'factory.git-integration.v1',
         actionKey,
-        processRunId: operational.processRunId,
-        moduleRef: operational.moduleRef,
-        nodeId: operational.nodeId,
+        processRunId,
+        moduleRef,
+        nodeId: authority.workplaceRef.productionCellId,
         request,
         requestHash: sha256Hex(request),
       }).record;
@@ -43,7 +50,7 @@ export function createGitIntegrationEffect(
       if (action.state === 'executing' || action.state === 'failed' || action.state === 'unknown') {
         const observationClaim = ledger.claimObservation({
           actionId: action.id,
-          owner: `cell-effect-observer:${operational.processRunId}`,
+          owner: `cell-effect-observer:${processRunId}`,
           leaseSeconds: 60,
         });
         if (!observationClaim) {
@@ -51,7 +58,7 @@ export function createGitIntegrationEffect(
         }
         const observation = integration.observeAcceptedWorkplace({
           workplaceRef: authority.workplaceRef,
-          processRunId: operational.processRunId,
+          processRunId,
           candidateSetRef: authority.candidateSetRef,
           expectedProductSchema,
         });
@@ -70,7 +77,7 @@ export function createGitIntegrationEffect(
       }
       const executionClaim = ledger.claim({
         actionId: action.id,
-        owner: `cell-effect-executor:${operational.processRunId}`,
+        owner: `cell-effect-executor:${processRunId}`,
         leaseSeconds: 60,
       });
       if (!executionClaim) {
@@ -79,7 +86,7 @@ export function createGitIntegrationEffect(
       try {
         const result = integration.integrateAcceptedWorkplace({
           workplaceRef: authority.workplaceRef,
-          processRunId: operational.processRunId,
+          processRunId,
           candidateSetRef: authority.candidateSetRef,
           expectedProductSchema,
         });

@@ -41,11 +41,6 @@ export interface PostAcceptanceEffectInput {
   /** ADR-053 B-4 — the SOLE material authority for effects. */
   readonly authority: AcceptedCandidateAuthority;
   /** Operational-only (observability/ownership). NON-material — MUST NOT select material. */
-  readonly operational: {
-    readonly processRunId: number;
-    readonly moduleRef: { readonly name: string; readonly version: string };
-    readonly nodeId: string;
-  };
 }
 
 /**

@@ -393,7 +393,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         && !this.opts.finalAcceptance.getAcceptedCandidateSetRef(
           serializeWorkplaceRef(workplace.ref),
         )) {
-        this.ensureFinalAcceptanceForTerminalAccepted(ctx, node, cell, workplace);
+        this.ensureFinalAcceptanceForTerminalAccepted(node, cell, workplace);
       }
       return this.terminalOutcome(workplace.ref, state);
     }
@@ -421,7 +421,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           `effect_pending Workplace lacks accepted candidate/effect declaration`,
         );
       }
-      return this.settleAcceptanceEffect(ctx, node, cell, workplace, acceptedCandidate);
+      return this.settleAcceptanceEffect(node, cell, workplace, acceptedCandidate);
     }
 
     if (state.loopState === 'idle') {
@@ -653,7 +653,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         throw new NodeExecutionError(this.kind, node.id, 'effect_pending has no accepted candidate');
       }
       return this.settleAcceptanceEffect(
-        ctx,
         node,
         cell,
         workplace,
@@ -668,7 +667,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // a crash/reconciliation fallback only.
       if (postAcceptanceCandidate) {
         this.recordFinalAcceptanceAndCapture(
-          ctx,
           cell,
           workplace.ref,
           postAcceptanceCandidate,
@@ -685,7 +683,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private settleAcceptanceEffect(
-    ctx: NodeExecutionContext,
     node: ProductionCellFlowNodeDefinition,
     cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
@@ -727,11 +724,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           productContractRef: productContract,
           acceptanceDigest,
         },
-        operational: {
-          processRunId: ctx.processRunId,
-          moduleRef: ctx.module.identity,
-          nodeId: node.id,
-        },
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {
@@ -762,7 +754,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
     this.recordFinalAcceptanceAndCapture(
-      ctx,
       cell,
       workplace.ref,
       acceptedCandidate,
@@ -772,7 +763,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private recordFinalAcceptanceAndCapture(
-    ctx: NodeExecutionContext,
     cell: ProductionCellDefinition,
     workplaceRef: WorkplaceRef,
     acceptedCandidate: CandidateSet,
@@ -819,11 +809,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         productContractRef: cell.productContracts[0]?.payloadContract ?? null,
         acceptanceDigest,
       },
-      operational: {
-        processRunId: ctx.processRunId,
-        moduleRef: ctx.module.identity,
-        nodeId: cell.id,
-      },
     };
     // ADR-053 C8 — replay capture is a MANDATORY durable obligation, NOT
     // best-effort. It archives accepted production for future deterministic
@@ -845,7 +830,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    * subject — both resolved as the workplace's accepted author candidate).
    */
   private ensureFinalAcceptanceForTerminalAccepted(
-    ctx: NodeExecutionContext,
     node: ProductionCellFlowNodeDefinition,
     cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
@@ -858,7 +842,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         `terminal(accepted) Workplace has no accepted author CandidateSet to finalize (C8 crash recovery)`,
       );
     }
-    this.recordFinalAcceptanceAndCapture(ctx, cell, workplace.ref, accepted, []);
+    this.recordFinalAcceptanceAndCapture(cell, workplace.ref, accepted, []);
   }
 
   private ensureRoleProjection(
