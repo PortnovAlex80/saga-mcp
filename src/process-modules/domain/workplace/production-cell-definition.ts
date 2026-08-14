@@ -27,7 +27,6 @@ export interface ProductContract {
   readonly schemaRef: string;
   readonly mediaType: string;
   readonly cardinality: string;
-  readonly productSource?: 'typed-submission' | 'managed-production';
   /** Exact executable payload decoder frozen into each projected WorkIntent. */
   readonly payloadContract?: {
     readonly contractId: string;

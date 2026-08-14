@@ -91,6 +91,7 @@ import {
   type ProductionCellProductReader,
   type ProductionCellProjectionPersistence,
 } from '../process-modules/application/node-executors/production-cell-node-executor.js';
+import { productionIngressModeFromAuthorityScope } from '../process-modules/application/production-ingress-contract.js';
 import {
   activateProductionCellRoleTask,
   completeProductionCellTaskProjections,
@@ -425,7 +426,6 @@ export function createProductLifecycleRuntime(
           workplaceRef,
           role,
           executionProfileId,
-          productSource,
         }) => {
           const workplace = serializeWorkplaceRef(workplaceRef);
           activateProductionCellRoleTask(db, {
@@ -434,7 +434,6 @@ export function createProductLifecycleRuntime(
             workplaceRef: workplace,
             role,
             executionProfileId,
-            productSource,
           });
         },
         concludeExecutionIntent: (executionRef) => {
@@ -538,37 +537,21 @@ export function createProductLifecycleRuntime(
         },
       } as ProductionCellProjectionPersistence,
       productReader: {
-        readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs, requireTypedSubmission }) => {
-          // Resolve the exact contribution produced by this fenced execution.
-          // Its row-id ProductRef is provenance only: the production-source
-          // adapter normalizes schema+content before revision/CandidateSet seal.
-          const submission = db.prepare(
-            `SELECT id,schema_version,content_hash
-               FROM factory_managed_node_submissions
-              WHERE process_run_id=? AND module_ref=? AND node_id=? AND execution_id=?
-              ORDER BY id DESC LIMIT 1`,
-          ).get(processRunId, moduleRef, nodeId, contributorRef) as
-            | { id: number; schema_version: string; content_hash: string }
-            | undefined;
-          if (submission) {
-            return [{
-              schemaId: submission.schema_version,
-              ref: `managed-node-submission:${submission.id}`,
-              digest: submission.content_hash,
-            }];
-          }
-          if (requireTypedSubmission) return [];
-
-          // Managed production is durable at the Workplace desk, not at the
-          // WorkerExecution and not at the Flow node. Resolve the exact
-          // Workplace from the server-authored execution -> task binding, then
-          // include contributions from every execution belonging to that desk.
+        readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs }) => {
+          // Select exactly one physical ingress from the immutable WorkIntent.
+          // Never probe typed rows and fall back to the managed desk: that would
+          // let incidental storage chronology choose accepted material.
           const executionContext = db.prepare(
-            `SELECT t.workplace_ref AS workplaceRef
+            `SELECT t.workplace_ref AS workplaceRef,wi.authority_scope AS authorityScope
                FROM worker_executions we
                JOIN tasks t ON t.id=we.task_id
+               JOIN factory_work_intents wi
+                 ON wi.id=json_extract(t.metadata,'$.work_intent_id')
               WHERE we.execution_id=?`,
-          ).get(contributorRef) as { workplaceRef: string | null } | undefined;
+          ).get(contributorRef) as {
+            workplaceRef: string | null;
+            authorityScope: string;
+          } | undefined;
           if (!executionContext?.workplaceRef) {
             throw new Error(
               `WORKPLACE_PRODUCT_CONTEXT_MISSING: contributor ${contributorRef} has no workplace_ref`,
@@ -583,6 +566,27 @@ export function createProductLifecycleRuntime(
               `WORKPLACE_PRODUCT_CONTEXT_MISMATCH: ${executionContext.workplaceRef}`,
             );
           }
+          const ingressMode = productionIngressModeFromAuthorityScope(
+            executionContext.authorityScope,
+          );
+          if (ingressMode === 'typed-submission') {
+            const submission = db.prepare(
+              `SELECT id,schema_version,content_hash
+                 FROM factory_managed_node_submissions
+                WHERE process_run_id=? AND module_ref=? AND node_id=? AND execution_id=?
+                ORDER BY id DESC LIMIT 1`,
+            ).get(processRunId, moduleRef, nodeId, contributorRef) as
+              | { id: number; schema_version: string; content_hash: string }
+              | undefined;
+            return submission ? [{
+              schemaId: submission.schema_version,
+              ref: `managed-node-submission:${submission.id}`,
+              digest: submission.content_hash,
+            }] : [];
+          }
+
+          // Managed production is durable at the Workplace desk, not at the
+          // WorkerExecution and not at the Flow node.
           const production = workplaceProductionResolver.read(workplaceRef);
           if (production.artifacts.length === 0 && production.traces.length === 0) {
             return [];

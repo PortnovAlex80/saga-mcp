@@ -9,6 +9,7 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
+import { productionIngressModeFromAuthorityScope } from '../process-modules/application/production-ingress-contract.js';
 import {
   clearSubmissionValidationFeedback,
   persistSubmissionValidationRejection,
@@ -1955,7 +1956,7 @@ function requireProductionCellSubmission(
   // projection and may be stale or incomplete after recovery; it must never
   // weaken the product boundary.
   const productionCell = db.prepare(
-    `SELECT w.production_cell_id,wi.id AS intent_id,wi.output_schema
+    `SELECT w.production_cell_id,wi.id AS intent_id,wi.output_schema,wi.authority_scope
        FROM tasks t
        JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
        JOIN factory_work_intents wi
@@ -1966,26 +1967,17 @@ function requireProductionCellSubmission(
     production_cell_id: string;
     intent_id: number;
     output_schema: string;
+    authority_scope: string;
   } | undefined;
   if (!productionCell) return;
 
-  // Managed-production cells (e.g. Formalization author nodes) do not require
+  // Managed Workplace ingress (e.g. Formalization author nodes) does not require
   // a typed product_submit — the factory assembles the product from the
   // Workplace desk (artifacts + traces) at CandidateSet seal time. Only
-  // typed-submission cells require an explicit product_submit before
-  // worker_done. The production-cell-node-executor makes the same distinction
-  // via requireTypedSubmission (line 495-496); this guard must agree.
-  const taskMeta = db.prepare(
-    `SELECT t.metadata, w.process_run_id
-       FROM tasks t
-       JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
-      WHERE t.id=?`,
-  ).get(taskId) as { metadata: string; process_run_id: number } | undefined;
-  if (taskMeta) {
-    const meta = JSON.parse(taskMeta.metadata ?? '{}') as Record<string, unknown>;
-    const productSource = meta.product_source ?? meta.cell_product_source ?? null;
-    if (productSource === 'managed-production') return;
-  }
+  // typed ingress requires an explicit product_submit before worker_done. The
+  // same immutable WorkIntent capability set drives the seal-time reader.
+  if (productionIngressModeFromAuthorityScope(productionCell.authority_scope)
+    === 'managed-workplace') return;
   const exactExecutionId = executionId ?? currentExecutionId;
   const submission = exactExecutionId
     ? db.prepare(

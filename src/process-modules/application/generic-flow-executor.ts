@@ -644,7 +644,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     const lastCompletedForChain =
       v2.repo.readLastCompletedV2(context.processRunId)
       ?? nodeRunRepo.readLastCompleted(context.processRunId);
-    let productSourceNodeId: string | null = lastCompletedForChain?.nodeId ?? null;
+    let upstreamProductNodeId: string | null = lastCompletedForChain?.nodeId ?? null;
     if (reexecutePausedNode) {
       chainInput = pausedVerifierInput;
     } else if (resumedRecoveryInput) {
@@ -734,12 +734,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // CGAD P18 — centralized node-scoped worker products. Resolved once per
         // node execution by the executor, so kernel handlers read ctx.nodeProducts
         // instead of querying the ledger by transient task identity.
-        ...(this.opts.resolveNodeProducts && node.kind === 'kernel' && productSourceNodeId
+        ...(this.opts.resolveNodeProducts && node.kind === 'kernel' && upstreamProductNodeId
           ? {
               nodeProducts: this.opts.resolveNodeProducts(
                 context.processRunId,
                 processModuleKey(module.identity),
-                productSourceNodeId,
+                upstreamProductNodeId,
               ) ?? undefined,
             }
           : {}),
@@ -858,7 +858,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         ?? result.production
         ?? result.receipt
         ?? chainInput;
-      productSourceNodeId = node.id;
+      upstreamProductNodeId = node.id;
 
       // Track the LAST non-terminal completion as a side-channel. Settlement
       // kernels emit `completion`; the terminal outcome-emitter does not. By

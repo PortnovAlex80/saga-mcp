@@ -34,7 +34,6 @@ test('desync firewall: a cell-product check entry mismatched with the product co
       schemaRef: 'factory.source-change-candidate.v1',
       mediaType: 'application/json',
       cardinality: '1',
-      productSource: 'typed-submission',
     }],
   };
   assert.throws(

@@ -56,63 +56,48 @@ function activate(db, overrides = {}) {
   };
 }
 
-test('activation recovers managed-production when composition drops productSource', () => {
+test('activation keeps physical ingress out of disposable task metadata', () => {
   const db = setup(['artifact_create', 'artifact_update', 'trace_add', 'worker_done']);
   try {
     const result = activate(db);
-    assert.equal(result.metadata.product_source, 'managed-production');
+    assert.equal(result.metadata.product_source, undefined);
     assert.equal(result.status, 'todo');
   } finally {
     db.close();
   }
 });
 
-test('activation recovers typed-submission from frozen WorkIntent capabilities', () => {
+test('typed WorkIntent activation also keeps ingress out of task metadata', () => {
   const db = setup(['product_submit', 'worker_done']);
   try {
     const result = activate(db);
-    assert.equal(result.metadata.product_source, 'typed-submission');
+    assert.equal(result.metadata.product_source, undefined);
   } finally {
     db.close();
   }
 });
 
-test('explicit author productSource remains authoritative', () => {
-  const db = setup(['product_submit', 'worker_done']);
-  try {
-    const result = activate(db, { productSource: 'managed-production' });
-    assert.equal(result.metadata.product_source, 'managed-production');
-  } finally {
-    db.close();
-  }
-});
-
-test('reviewer always uses typed-submission even when author cell is managed', () => {
+test('reviewer activation cannot inherit an obsolete task ingress projection', () => {
   const db = setup(
     ['candidate_read', 'product_read', 'product_submit', 'worker_done'],
-    { product_source: 'managed-production' },
+    {},
   );
   try {
-    const result = activate(db, {
-      role: 'reviewer',
-      productSource: 'managed-production',
-    });
-    assert.equal(result.metadata.product_source, 'typed-submission');
+    const result = activate(db, { role: 'reviewer' });
+    assert.equal(result.metadata.product_source, undefined);
     assert.equal(result.status, 'review');
   } finally {
     db.close();
   }
 });
 
-test('production composition forwards productSource instead of dropping the cell contract', () => {
+test('production composition derives ingress only from the frozen WorkIntent', () => {
   const source = readFileSync(
     new URL('../../src/app/product-lifecycle-runtime.ts', import.meta.url),
     'utf8',
   );
-  assert.match(
-    source,
-    /activateRoleTask:\s*\(\{[\s\S]*?productSource[\s\S]*?activateProductionCellRoleTask\(db,[\s\S]*?productSource/s,
-  );
+  assert.match(source, /productionIngressModeFromAuthorityScope/);
+  assert.doesNotMatch(source, /productSource|product_source|requireTypedSubmission/);
 });
 
 test('structured hook tells the worker to use the exact tracker instead of forbidding it', () => {

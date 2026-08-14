@@ -93,13 +93,11 @@ function reviewedCell(input: {
   outputSchema: string;
   check: { providerId: string; version: string; providerDigest: string };
   acceptedTransition: string;
-  productSource?: 'typed-submission' | 'managed-production';
 }) {
   return singletonProductionCell({
     id: input.id,
     executionProfileId: input.authorProfile,
     outputSchemaRef: input.outputSchema,
-    productSource: input.productSource ?? 'managed-production',
     cardinality: '1',
     maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS,
     onExhausted: 'pause',
@@ -210,7 +208,6 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
           outputSchema: FORMALIZATION_RECONCILIATION_SCHEMA,
           check: FORMALIZATION_CHECK_REFS.reconciliation,
           acceptedTransition: 'freeze-acceptance-baseline',
-          productSource: 'typed-submission',
         }),
       },
       {

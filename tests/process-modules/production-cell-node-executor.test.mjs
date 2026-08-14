@@ -147,7 +147,11 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined, r
     finalAcceptance: new SqliteCellFinalAcceptance(db),
     authorityHead: new SqliteAcceptedAuthorityHeadRepository(db),
     productReader: {
-      readContributionProducts: ({ contributorRef }) => products.get(contributorRef) ?? [],
+      readContributionProducts: ({ contributorRef }) => {
+        const value = products.get(contributorRef);
+        if (value instanceof Error) throw value;
+        return value ?? [];
+      },
       readContributionProductPayload: () => null,
     },
     checkProviders: {
@@ -314,6 +318,33 @@ test('ADR-053 C8: terminal(accepted) crash before FinalAcceptance is recovered o
     1,
     'C8: recovery must be idempotent — no duplicate FinalAcceptance',
   );
+  h.db.close();
+});
+
+test('ADR-067: malformed ingress creates no revision, CandidateSet, GateRun, or obligation', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:malformed-ingress', {
+    schemaId: 'factory.test-product.v1', ref: 'product:bad', digest: sha('bad'),
+  });
+  h.products.set(
+    'execution:malformed-ingress',
+    new Error('PRODUCTION_INGRESS_DIGEST_MISMATCH'),
+  );
+  await assert.rejects(
+    () => h.executor.execute(ctx),
+    /PRODUCTION_INGRESS_DIGEST_MISMATCH/,
+  );
+  for (const table of [
+    'factory_workplace_production_revisions',
+    'factory_candidate_sets',
+    'factory_gate_runs',
+    'factory_transition_obligations',
+  ]) {
+    assert.equal(h.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, 0, table);
+  }
   h.db.close();
 });
 

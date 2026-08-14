@@ -45,6 +45,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
 // the member for ingress diagnostics only.
 // ---------------------------------------------------------------------------
 export const SOURCE_ADAPTERS = [
+  'product-ref',
   'managed-artifact',
   'managed-trace',
   'typed-submission',

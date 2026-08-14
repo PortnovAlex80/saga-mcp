@@ -25,6 +25,16 @@ function readSrc(rel) {
 function srcExists(rel) {
   return existsSync(path.join(REPO_ROOT, rel));
 }
+function allTypeScriptSources(dir = path.join(REPO_ROOT, 'src')) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const absolute = path.join(dir, entry);
+    const stat = statSync(absolute);
+    if (stat.isDirectory()) out.push(...allTypeScriptSources(absolute));
+    else if (entry.endsWith('.ts')) out.push(readFileSync(absolute, 'utf8'));
+  }
+  return out;
+}
 
 // Gate 1: PostAcceptanceEffectInput contains no legacy execution-owner field.
 test('Gate 1 [met]: PostAcceptanceEffectInput has no execution-owner authority — authority is sole input', () => {
@@ -69,9 +79,7 @@ test('Gate B3 [met]: post-seal material consumers do not select authority throug
 
   const adapter = readSrc('src/process-modules/application/production-source-adapters.ts');
   const genericAdapter = adapter.slice(
-    adapter.indexOf('export function producedProductsToContribution'),
-    adapter.indexOf('// ---------------------------------------------------------------------------',
-      adapter.indexOf('export function producedProductsToContribution')),
+    adapter.indexOf('export function canonicalProductsToContribution'),
   );
   assert.equal(genericAdapter.includes('memberKey: `product/${p.schemaId}/${p.ref}`'), false,
     'real generic adapter must not put ProductRef row aliases into material keys');
@@ -106,16 +114,22 @@ test('Gate B3 [met]: post-seal material consumers do not select authority throug
   assert.ok(repositoryRegression.includes("origin: 'carried-forward'"));
 });
 
-// Gate 5: All production sources share one revision model.
-// STATUS: MET — Phase 4 adapters normalize all source types.
-test('Gate 5 [met]: production source adapters exist for all source types', () => {
+// Gate 5: All physical ingress is erased before the one revision model.
+// STATUS: MET — ADR-067 replaces tests-only adapters with one live ProductRef seam.
+test('Gate 5 [met]: the real executor uses the sole canonical ProductRef adapter', () => {
   assert.ok(srcExists('src/process-modules/application/production-source-adapters.ts'));
   const src = readSrc('src/process-modules/application/production-source-adapters.ts');
-  assert.ok(src.includes('managedArtifactsToContribution'));
-  assert.ok(src.includes('managedTracesToContribution'));
-  assert.ok(src.includes('typedSubmissionToContribution'));
-  assert.ok(src.includes('gitChangesToContribution'));
-  assert.ok(src.includes('carryForwardContribution'));
+  assert.ok(src.includes('canonicalProductsToContribution'));
+  assert.doesNotMatch(src, /managedArtifactsToContribution|typedSubmissionToContribution|gitChangesToContribution/);
+  const executor = readSrc(
+    'src/process-modules/application/node-executors/production-cell-node-executor.ts',
+  );
+  assert.ok(executor.includes('canonicalProductsToContribution'));
+  assert.doesNotMatch(executor, /productSource|requireTypedSubmission/);
+  const fullSource = allTypeScriptSources().join('\n');
+  assert.doesNotMatch(fullSource, /productSource|product_source|requireTypedSubmission/);
+  assert.doesNotMatch(fullSource,
+    /managedArtifactsToContribution|managedTracesToContribution|typedSubmissionToContribution|gitChangesToContribution|carryForwardContribution/);
 });
 
 // Gate 7: Every process uses one Workshop manifest digest.

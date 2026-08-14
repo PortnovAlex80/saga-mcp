@@ -45,7 +45,6 @@ export const developmentContinuationProcessModule: ProcessModuleDefinition = (()
         schemaRef: SOURCE_CHANGE_CANDIDATE_SCHEMA,
         mediaType: 'application/json',
         cardinality: '1',
-        productSource: 'typed-submission',
       }],
       author: {
         skillRef: 'development-managed-source-author',

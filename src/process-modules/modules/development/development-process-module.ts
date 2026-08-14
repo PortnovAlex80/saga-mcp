@@ -171,7 +171,6 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           id: 'development-plan-task-graph',
           executionProfileId: 'development-task-graph-planner',
           outputSchemaRef: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
-          productSource: 'typed-submission',
           payloadContract: {
             contractId: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID,
             version: DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_VERSION,
@@ -221,7 +220,6 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             schemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
             mediaType: 'application/json',
             cardinality: '1',
-            productSource: 'typed-submission',
           }],
           authorGate: {
             gateId: 'development-implementation-author',
@@ -294,7 +292,6 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             schemaRef: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
             mediaType: 'application/json',
             cardinality: '1',
-            productSource: 'typed-submission',
             payloadContract: {
               contractId: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_ID,
               version: DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_VERSION,

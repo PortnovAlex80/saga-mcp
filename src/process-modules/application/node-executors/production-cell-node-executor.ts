@@ -47,7 +47,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
 import { assembleRevision, type WorkplaceProductionRevision } from '../../domain/workplace/workplace-production-revision.js';
-import { producedProductsToContribution } from '../production-source-adapters.js';
+import { canonicalProductsToContribution } from '../production-source-adapters.js';
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
@@ -113,7 +113,6 @@ export interface ProductionCellProjectionPersistence {
     workplaceRef: WorkplaceRef;
     role: 'author' | 'reviewer';
     executionProfileId: string;
-    productSource?: 'typed-submission' | 'managed-production';
   }): void;
   concludeExecutionIntent(executionRef: string): void;
   /**
@@ -176,7 +175,6 @@ export interface ProductionCellProductReader {
     nodeId: string;
     contributorRef: string;
     expectedSchemaRefs: readonly string[];
-    requireTypedSubmission: boolean;
   }): readonly ProductRef[];
   /** Resolve one exact pre-seal ProductRef through its ingress adapter. */
   readContributionProductPayload(productRef: ProductRef): unknown;
@@ -554,8 +552,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           expectedSchemaRefs: role === 'reviewer'
             ? [cell.review?.verdictSchemaRef ?? '']
             : cell.productContracts.map(contract => contract.schemaRef),
-          requireTypedSubmission: role === 'reviewer'
-            || cell.productContracts.some(contract => contract.productSource === 'typed-submission'),
         });
     if (role === 'reviewer') {
       this.assertReviewerProductContract(cell, products, node.id);
@@ -1100,7 +1096,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       workplaceRef: workplace.ref,
       role,
       executionProfileId: profile.id,
-      productSource: cell.productContracts.find(c => c.schemaRef === node.outputSchema?.id)?.productSource,
     });
     return plan.taskId;
   }
@@ -1249,10 +1244,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
     // ADR-053 B-7 — route contribution building through the source adapter
-    // boundary (producedProductsToContribution), not inline. The adapter
+    // boundary (canonicalProductsToContribution), not inline. The adapter
     // canonicalizes schema+content and excludes ProductRef row aliases from
     // material identity.
-    const contribution = producedProductsToContribution({
+    const contribution = canonicalProductsToContribution({
       workplaceRef: workplaceSerialized,
       executionRef,
       products,

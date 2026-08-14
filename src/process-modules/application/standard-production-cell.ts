@@ -11,7 +11,6 @@ export interface SingletonProductionCellOptions {
   readonly capabilityPreset?: string;
   readonly mediaType?: string;
   readonly cardinality?: '1' | '0..1' | '1..n';
-  readonly productSource?: 'typed-submission' | 'managed-production';
   readonly payloadContract?: {
     readonly contractId: string;
     readonly version: string;
@@ -52,7 +51,6 @@ export function singletonProductionCell(
       schemaRef: options.outputSchemaRef,
       mediaType: options.mediaType ?? 'application/json',
       cardinality: options.cardinality ?? '1..n',
-      ...(options.productSource ? { productSource: options.productSource } : {}),
       ...(options.payloadContract ? { payloadContract: options.payloadContract } : {}),
     }],
     authorGate: {
