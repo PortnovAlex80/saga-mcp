@@ -98,10 +98,4 @@ export interface ManagedProductionLedger {
     nodeId: string,
   ): readonly ManagedTraceProductionRecord[];
 
-  /** Audit helper only; producer execution is provenance, not product identity. */
-  readLatestManagedProductionExecutionIdForNode?(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): string | null;
 }

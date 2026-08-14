@@ -58,7 +58,7 @@ function readFile(rel) {
 
 // ===========================================================================
 // G-1 — no post-seal material recency (latestCandidate / sealed_at) in code.
-// (decided_at is captured in the B-6 ratchet at baseline 9; B-9 lowers it.)
+// decided_at recency is forbidden by the B-6 zero-inventory ratchet.
 // ===========================================================================
 test('G-1: no latestCandidate / ORDER BY sealed_at DESC material recency in src/', () => {
   assert.equal(countInSrc('latestCandidate'), 0, 'latestCandidate eliminated');

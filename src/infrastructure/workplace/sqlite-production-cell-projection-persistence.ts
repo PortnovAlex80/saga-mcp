@@ -578,18 +578,17 @@ function readCurrentProductionCellRecoveryFeedback(
       : null;
   if (!workplaceRef || !role) return submissionValidationFeedback;
 
-  // Only the latest authoritative GateDecision can put a semantic defect sheet
+  // Only the explicit current GateDecision head can put a semantic defect sheet
   // on the desk. If a later decision accepted the work, stale feedback is
   // cleared even if older repair decisions still exist in the audit log.
   const decision = db.prepare(
-    `SELECT decision_key,gate_run_ref,gate_ref,gate_phase,
-            subject_candidate_set_ref,assessment_candidate_set_refs,
-            check_plan_ref,check_plan_digest,check_receipt_refs,verdict,
-            repair_target_role,recovery_issue_ref
-       FROM factory_gate_decisions
-      WHERE workplace_ref=?
-      ORDER BY decided_at DESC,rowid DESC
-      LIMIT 1`,
+    `SELECT gd.decision_key,gd.gate_run_ref,gd.gate_ref,gd.gate_phase,
+            gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs,
+            gd.check_plan_ref,gd.check_plan_digest,gd.check_receipt_refs,gd.verdict,
+            gd.repair_target_role,gd.recovery_issue_ref
+       FROM factory_workplace_gate_decision_heads h
+       JOIN factory_gate_decisions gd ON gd.decision_key=h.decision_key
+      WHERE h.workplace_ref=?`,
   ).get(workplaceRef) as GateDecisionRow | undefined;
   // Submission-preflight rejection occurs before CandidateSet/GateDecision.
   // Its append-only rejection ledger is a separate authoritative repair input

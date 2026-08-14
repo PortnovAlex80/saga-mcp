@@ -77,9 +77,13 @@ export function adoptIntegratedDevelopmentBaseline(
     // the audit trail), so "exactly one author set" is the wrong invariant;
     // resolve the accepted set through the decision instead.
     const finalDecision = db.prepare(
-      `SELECT * FROM factory_gate_decisions
-        WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
-        ORDER BY decided_at DESC LIMIT 1`,
+      `SELECT gd.*
+         FROM factory_cell_final_acceptances cfa
+         JOIN factory_gate_decisions gd
+           ON gd.decision_key=cfa.gate_decision_key
+        WHERE cfa.workplace_ref=?
+          AND gd.gate_phase='final'
+          AND gd.verdict='accepted'`,
     ).get(task.workplace_ref) as Record<string, unknown> | undefined;
     if (!finalDecision) throw new Error('DEVELOPMENT_ADOPTION_FINAL_GATE_MISSING');
     const author = requireCandidateByRef(

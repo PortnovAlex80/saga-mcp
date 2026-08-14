@@ -270,6 +270,7 @@ export class SqliteGateRepository {
             + `with digest '${existing.decision_digest}' (submitted '${decision.decisionDigest}')`,
         );
       }
+      this.advanceDecisionHead(decision);
       return { decision, replayed: true };
     }
     this.db.prepare(
@@ -302,7 +303,49 @@ export class SqliteGateRepository {
       decision.recoveryIssueRef,
       decision.decisionDigest,
     );
+    this.advanceDecisionHead(decision);
     return { decision, replayed: false };
+  }
+
+  private advanceDecisionHead(decision: GateDecision): void {
+    const workplaceRef = serializeWorkplaceRef(decision.workplaceRef);
+    const gateRun = this.db.prepare(
+      `SELECT expected_workplace_revision
+         FROM factory_gate_runs
+        WHERE gate_run_ref=? AND workplace_ref=?`,
+    ).get(decision.gateRunRef, workplaceRef) as
+      | { expected_workplace_revision: number }
+      | undefined;
+    if (!gateRun) {
+      throw new Error(`GATE_DECISION_HEAD_GATE_RUN_MISSING: ${decision.gateRunRef}`);
+    }
+    const head = this.db.prepare(
+      `SELECT decision_key,expected_workplace_revision
+         FROM factory_workplace_gate_decision_heads
+        WHERE workplace_ref=?`,
+    ).get(workplaceRef) as
+      | { decision_key: string; expected_workplace_revision: number }
+      | undefined;
+    if (
+      head
+      && head.expected_workplace_revision === gateRun.expected_workplace_revision
+      && head.decision_key !== decision.decisionKey
+    ) {
+      throw new Error(
+        `GATE_DECISION_HEAD_REVISION_CONFLICT: ${workplaceRef}/revision-${gateRun.expected_workplace_revision}`,
+      );
+    }
+    this.db.prepare(
+      `INSERT INTO factory_workplace_gate_decision_heads
+         (workplace_ref,decision_key,expected_workplace_revision)
+       VALUES (?,?,?)
+       ON CONFLICT(workplace_ref) DO UPDATE SET
+         decision_key=excluded.decision_key,
+         expected_workplace_revision=excluded.expected_workplace_revision,
+         recorded_at=datetime('now')
+       WHERE excluded.expected_workplace_revision
+             > factory_workplace_gate_decision_heads.expected_workplace_revision`,
+    ).run(workplaceRef, decision.decisionKey, gateRun.expected_workplace_revision);
   }
 
   readDecision(decisionKey: string): GateDecision | null {
@@ -313,16 +356,12 @@ export class SqliteGateRepository {
     return hydrateDecision(row);
   }
 
-  /**
-   * List decisions for a workplace, newest first. Used by diagnostics and by
-   * the recovery-policy reader (it finds the most recent decision to build a
-   * RecoveryIssue from).
-   */
+  /** List immutable decisions for diagnostics in stable identity order. */
   listDecisionsForWorkplace(workplaceRef: WorkplaceRef): GateDecision[] {
     const rows = this.db.prepare(
       `SELECT * FROM factory_gate_decisions
         WHERE workplace_ref=?
-        ORDER BY decided_at DESC, rowid DESC`,
+        ORDER BY decision_key ASC`,
     ).all(serializeWorkplaceRef(workplaceRef)) as GateDecisionRow[];
     return rows.map(hydrateDecision);
   }

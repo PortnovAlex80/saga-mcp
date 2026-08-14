@@ -53,6 +53,9 @@ let db: Database.Database | null = null;
  *       monotonically (never decreasing) instead of overwriting the causal
  *       `fence` column. Storage + read/write only; atomic fence allocation is
  *       C7-03.
+ *   8 = ADR-053 B-6 — explicit monotonic Workplace GateDecision head. The
+ *       immutable decision rows remain unchanged; current repair authority is
+ *       resolved by the head key instead of decided_at/rowid recency.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -60,7 +63,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -164,7 +167,13 @@ export function getDb(): Database.Database {
   // the migrations above. Never stamp an unknown/future version as current:
   // doing so would launder an unexecuted migration into apparent success.
   const migratedVersion = db.pragma('user_version', { simple: true }) as number;
-  if (migratedVersion === 0 || migratedVersion === 4 || migratedVersion === 5 || migratedVersion === 6) {
+  if (
+    migratedVersion === 0
+    || migratedVersion === 4
+    || migratedVersion === 5
+    || migratedVersion === 6
+    || migratedVersion === 7
+  ) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {
     throw new Error(

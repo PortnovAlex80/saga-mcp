@@ -344,9 +344,24 @@ function makeDecision(overrides = {}) {
   };
 }
 
+function prepareDecisionGateRun(repo, overrides = {}) {
+  repo.createGateRun({
+    gateRunRef: overrides.gateRunRef ?? 'gate-run-1',
+    workplaceRef: REF,
+    gatePhase: overrides.gatePhase ?? 'final',
+    subjectCandidateSetRef: overrides.subjectCandidateSetRef ?? 'cs-1',
+    assessmentCandidateSetRefs: [],
+    checkPlanRef: 'plan-1',
+    checkPlanDigest: 'd'.repeat(64),
+    expectedWorkplaceRevision: overrides.expectedWorkplaceRevision ?? 1,
+    gateLeaseRef: `lease-${overrides.gateRunRef ?? 'gate-run-1'}`,
+  });
+}
+
 test('REG-18: recordDecision is idempotent on same key+digest', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo);
   const r1 = repo.recordDecision(makeDecision());
   const r2 = repo.recordDecision(makeDecision());
   assert.equal(r1.replayed, false);
@@ -357,6 +372,7 @@ test('REG-18: recordDecision is idempotent on same key+digest', () => {
 test('REG-18: recordDecision rejects different digest under same key', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo);
   repo.recordDecision(makeDecision());
   assert.throws(
     () => repo.recordDecision(makeDecision({ decisionDigest: 'f'.repeat(64) })),
@@ -368,6 +384,7 @@ test('REG-18: recordDecision rejects different digest under same key', () => {
 test('REG-17: recordCheckReceipt is append-only (UPDATE rejected by trigger)', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo);
   repo.recordCheckReceipt({
     checkReceiptRef: 'cr-1',
     checkRunRef: 'gate-run-1',
@@ -390,6 +407,7 @@ test('REG-17: recordCheckReceipt is append-only (UPDATE rejected by trigger)', (
 test('REG-18: factory_gate_decisions UPDATE rejected by trigger', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo);
   repo.recordDecision(makeDecision());
   assert.throws(
     () => db.prepare("UPDATE factory_gate_decisions SET verdict='failed' WHERE decision_key='dk-1'").run(),
@@ -401,10 +419,35 @@ test('REG-18: factory_gate_decisions UPDATE rejected by trigger', () => {
 test('REG-18: factory_gate_decisions DELETE rejected by trigger', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo);
   repo.recordDecision(makeDecision());
   assert.throws(
     () => db.prepare("DELETE FROM factory_gate_decisions WHERE decision_key='dk-1'").run(),
     /immutable/i,
   );
+  db.close();
+});
+
+test('ADR-053 B-6: GateDecision head is monotonic and older replay cannot replace it', () => {
+  const db = freshDbWithWorkplace();
+  const repo = new SqliteGateRepository(db);
+  prepareDecisionGateRun(repo, { expectedWorkplaceRevision: 1 });
+  repo.recordDecision(makeDecision());
+  prepareDecisionGateRun(repo, {
+    gateRunRef: 'gate-run-2', expectedWorkplaceRevision: 4,
+  });
+  repo.recordDecision(makeDecision({
+    gateRunRef: 'gate-run-2', decisionKey: 'dk-2',
+    transitionRef: 't-2', decisionDigest: '2'.repeat(64),
+  }));
+  repo.recordDecision(makeDecision());
+  const head = db.prepare(
+    `SELECT decision_key,expected_workplace_revision
+       FROM factory_workplace_gate_decision_heads
+      WHERE workplace_ref=?`,
+  ).get(serializeWorkplaceRef(REF));
+  assert.deepEqual(head, {
+    decision_key: 'dk-2', expected_workplace_revision: 4,
+  });
   db.close();
 });

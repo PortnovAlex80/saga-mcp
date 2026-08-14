@@ -558,18 +558,4 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
     return rows.map(traceRowToRecord);
   }
 
-  readLatestManagedProductionExecutionIdForNode(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): string | null {
-    const row = this.db.prepare(
-      `SELECT execution_id
-         FROM factory_managed_artifact_productions
-        WHERE process_run_id=? AND module_ref=? AND node_id=?
-        ORDER BY recorded_at DESC, id DESC
-        LIMIT 1`,
-    ).get(processRunId, moduleRef, nodeId) as { execution_id: string } | undefined;
-    return row?.execution_id ?? null;
-  }
 }

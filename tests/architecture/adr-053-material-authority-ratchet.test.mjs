@@ -65,9 +65,8 @@ const BASELINE = Object.freeze({
   // ADR-053 B-6 — gate-decision recency: selecting "the latest accepted gate
   // decision" for a workplace by decided_at. Post-seal, the accepted gate
   // decision must be resolved by its exact decision_key (authority.
-  // gateDecisionKey), NOT by recency. Baseline captured B-6 (10); B-9 lowered
-  // it to 9 (replay-capture now uses exact gateDecisionKey).
-  orderByDecidedAtDesc: 9,
+  // gateDecisionKey), NOT by recency. B-6 is now a clean-break zero inventory.
+  orderByDecidedAtDesc: 0,
 });
 
 // ---------------------------------------------------------------------------

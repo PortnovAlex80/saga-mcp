@@ -1592,6 +1592,19 @@ CREATE TABLE IF NOT EXISTS factory_gate_decisions (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_gate_decisions_digest
   ON factory_gate_decisions(decision_digest);
+
+-- ADR-053 B-6 — explicit current GateDecision pointer for a Workplace.
+-- Decisions remain immutable; this monotonic projection is updated in the
+-- same transaction as recordDecision. Consumers resolve the current repair
+-- authority by key, never by decided_at/rowid recency.
+CREATE TABLE IF NOT EXISTS factory_workplace_gate_decision_heads (
+  workplace_ref               TEXT PRIMARY KEY,
+  decision_key                TEXT NOT NULL UNIQUE,
+  expected_workplace_revision INTEGER NOT NULL CHECK (expected_workplace_revision >= 0),
+  recorded_at                 TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
+);
 CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_workplace ON factory_gate_decisions(workplace_ref);
 CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_subject ON factory_gate_decisions(subject_candidate_set_ref);
 CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_verdict ON factory_gate_decisions(verdict);

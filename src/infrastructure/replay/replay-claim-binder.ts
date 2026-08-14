@@ -112,13 +112,13 @@ export function certifyAcceptedReplayCapsules(
   for (const workplace of workplaces) {
     try {
       const decision = db.prepare(
-        `SELECT subject_candidate_set_ref,assessment_candidate_set_refs
-           FROM factory_gate_decisions
-          WHERE workplace_ref=?
-            AND gate_phase='final'
-            AND verdict='accepted'
-          ORDER BY decided_at DESC,rowid DESC
-          LIMIT 1`,
+        `SELECT gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs
+           FROM factory_cell_final_acceptances cfa
+           JOIN factory_gate_decisions gd
+             ON gd.decision_key=cfa.gate_decision_key
+          WHERE cfa.workplace_ref=?
+            AND gd.gate_phase='final'
+            AND gd.verdict='accepted'`,
       ).get(workplace.workplace_ref) as {
         subject_candidate_set_ref: string;
         assessment_candidate_set_refs: string;

@@ -1483,16 +1483,8 @@ function readExecutionWrites(
   // gate requires the producer's executionId to find the 'review' receipt.
   // Resolve the producer from the managed_artifact_productions ledger — it
   // records the exact execution that produced artifacts for this node-scope.
-  const ledgerProducerExec = deps.ledger.readLatestManagedProductionExecutionIdForNode?.(
-    ctx.processRunId,
-    FORMALIZATION_MODULE_KEY,
-    sourceNodeId,
-  );
-  const finalReceipt = (ledgerProducerExec && ledgerProducerExec !== receipt.executionId)
-    ? { ...receipt, executionId: ledgerProducerExec }
-    : receipt;
   return {
-    receipt: finalReceipt,
+    receipt,
     artifactWrites: validArtifactWrites,
     traceWrites: validTraceWrites,
     artifacts,
