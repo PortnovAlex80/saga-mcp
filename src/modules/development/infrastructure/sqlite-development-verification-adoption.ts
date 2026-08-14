@@ -248,7 +248,15 @@ export function adoptDevelopmentVerificationBaseline(
     repositories[0]!.localPath,
   );
   for (const decoratedRef of effectReceiptRefs) {
-    const receiptRef = decoratedRef.split(':task:')[0]!;
+    // The settlement producer decorates the receipt ref as
+    // `<effectReceiptRef>:commit:<integratedCommit>` (sorted). Do NOT couple
+    // this reader to one decoration separator: anchor on the canonical
+    // receipt-ref shape and take whatever decoration follows. The previous
+    // `split(':task:')` never matched the written `:commit:` decoration and
+    // every adoption died as EFFECT_RECEIPT_DRIFT.
+    const match = /^(cell-effect-receipt:[a-f0-9]{64})/u.exec(decoratedRef);
+    const receiptRef = match?.[1];
+    if (!receiptRef) throw new Error('DEVELOPMENT_VERIFICATION_ADOPTION_EFFECT_RECEIPT_DRIFT');
     const count = (db.prepare(
       `SELECT COUNT(*) AS count FROM factory_cell_effect_receipts WHERE effect_receipt_ref=?`,
     ).get(receiptRef) as { count: number }).count;
