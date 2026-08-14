@@ -47,12 +47,8 @@ import {
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../application/candidate-check-contracts.js';
-import {
-  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
-  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
-  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
-} from '../application/development-check-providers.js';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../infrastructure/source-change/managed-source-change-candidate.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
@@ -648,9 +644,9 @@ export class SqliteDevelopmentModuleStore implements
     ).all(
       projectId,
       candidateSetRef,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
     ) as Array<{
       check_receipt_ref: string;
       receipt_digest: string;
@@ -667,16 +663,15 @@ export class SqliteDevelopmentModuleStore implements
       try {
         const refs = JSON.parse(row.evidence_refs) as unknown;
         return Array.isArray(refs)
+          && refs.length > 0
           && refs.every(ref => typeof ref === 'string' && ref.length > 0);
       } catch {
         return false;
       }
     });
-    // The immutable CheckReceipt (ref + receipt_digest below) is itself the
-    // trusted deterministic evidence consumed by settlement. Provider-specific
-    // evidence_refs are optional supporting artifacts; requiring at least one
-    // made the production product-contract provider's valid `passed` receipt
-    // invisible even though the Gate and trusted-provider binding were exact.
+    // The LM-authored verification product and its product-contract receipt
+    // establish shape and lineage only. Settlement authority is the exact
+    // factory-owned local-runnability receipt plus its immutable evidence.
     // v2 workset has one provider binding per AC. Multiple executable
     // authorities need an explicit aggregation receipt rather than an
     // arbitrary winner.
