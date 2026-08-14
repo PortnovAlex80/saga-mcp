@@ -275,12 +275,18 @@ if (command === 'continue') {
     const { SCHEMA_SQL, migrateFactorySchemaV3ToV4 } = await import('../dist/schema.js');
     db.exec(SCHEMA_SQL);
     migrateFactorySchemaV3ToV4(db);
+    // Resolve the order the way resume does: prefer the chain row, fall back
+    // to the root factory_orders row (the canonical start path writes only the
+    // root). Without the fallback every fresh-run continuation dies with
+    // "no root FactoryOrder".
     const parent = db.prepare(
-      `SELECT fo.order_ref
-         FROM factory_orders fo
-         JOIN factory_order_runs chain ON chain.order_ref=fo.order_ref
-        WHERE chain.lifecycle_run_id=?`,
-    ).get(input.parentLifecycleRunId);
+      `SELECT COALESCE(
+                (SELECT chain.order_ref FROM factory_order_runs chain
+                  WHERE chain.lifecycle_run_id=?),
+                (SELECT root.order_ref FROM factory_orders root
+                  WHERE root.lifecycle_run_id=?)
+              ) AS order_ref`,
+    ).get(input.parentLifecycleRunId, input.parentLifecycleRunId);
     if (!parent?.order_ref) {
       db.close();
       die(`continue: lifecycle ${input.parentLifecycleRunId} has no root FactoryOrder`);
