@@ -26,7 +26,7 @@ const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
 const DEVELOPMENT_MODULE_REFS = [
   'solution-development@1.1.0',
   'solution-development@1.2.0',
-  'solution-development@1.3.0',
+  'solution-development@1.3.1',
 ] as const;
 const DEVELOPMENT_CONTINUATION_MODULE_REF = 'solution-development-managed@1.1.0';
 const DEVELOPMENT_VERIFICATION_CONTINUATION_MODULE_REF =

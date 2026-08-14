@@ -1031,6 +1031,26 @@ test('trust migration: existing 1.1.0 row with correct attributes is migrated in
   db.close();
 });
 
+test('trust migration: existing 1.3.0 row advances version and implementation-bound trust basis', () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE trusted_providers(
+    id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+    category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+  )`);
+  db.prepare(`INSERT INTO trusted_providers
+    (project_id,name,version,category,trust_basis,determinism,scope,status)
+    VALUES(NULL,'factory.local-runnability.v1','1.3.0','deterministic_evidence',
+      'built-in:prior-implementation','full','local-runnability','active')`).run();
+  ensureLocalRunnabilityProviderTrust(db);
+  const row = db.prepare(`SELECT version,trust_basis FROM trusted_providers WHERE name=?`)
+    .get('factory.local-runnability.v1');
+  assert.deepEqual(row, {
+    version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+    trust_basis: `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
+  });
+  db.close();
+});
+
 test('trust migration: 1.0.0 row with tampered determinism still drifts (not migrated)', () => {
   // A 1.0.0 row whose determinism was tampered (none instead of full) is NOT
   // eligible for the additive migration — it drifts. This proves the migration

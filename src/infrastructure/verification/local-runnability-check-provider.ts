@@ -185,13 +185,15 @@ function readPersistedReadinessReceipt(
 
 export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
   const existingRows = db.prepare(
-    `SELECT version,category,determinism,status
+    `SELECT version,category,trust_basis,determinism,scope,status
        FROM trusted_providers
       WHERE project_id IS NULL AND name=?`,
   ).all(LOCAL_RUNNABILITY_CHECK_PROVIDER_ID) as Array<{
     version: string | null;
     category: string;
+    trust_basis: string;
     determinism: string;
+    scope: string;
     status: string;
   }>;
   if (existingRows.length > 1) {
@@ -208,20 +210,27 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // any real policy change (category/determinism/status tampering).
     // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation. Both are
     // substrate-only changes; the versioned CheckPlan still pins exact code.
-    const trustworthyBaseline = (existing.version === '1.0.0' || existing.version === '1.1.0')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
+      && existing.scope === 'local-runnability'
       && existing.status === 'active';
     if (trustworthyBaseline) {
       db.prepare(
-        `UPDATE trusted_providers SET version=?
+        `UPDATE trusted_providers SET version=?, trust_basis=?
           WHERE project_id IS NULL AND name=?`,
-      ).run(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, LOCAL_RUNNABILITY_CHECK_PROVIDER_ID);
+      ).run(
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+        `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      );
       return;
     }
     if (existing.version !== LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION
+        || existing.trust_basis !== `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`
         || existing.category !== 'deterministic_evidence'
         || existing.determinism !== 'full'
+        || existing.scope !== 'local-runnability'
         || existing.status !== 'active') {
       throw new Error('LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT');
     }

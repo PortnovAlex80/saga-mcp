@@ -56,7 +56,7 @@ test('implementation submission requires a complete explicit readiness profile',
 test('standard implementation cell pins the readiness-enforcing payload contract', () => {
   const node = developmentProcessModule.flow.nodes.find(candidate =>
     candidate.id === 'implement-work-items');
-  assert.equal(developmentProcessModule.identity.version, '1.3.0');
+  assert.equal(developmentProcessModule.identity.version, '1.3.1');
   assert.deepEqual(node.cellDefinition.productContracts[0].payloadContract, {
     contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
     version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,

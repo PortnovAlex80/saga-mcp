@@ -9,7 +9,7 @@ import { actions } from './scenario-engine.mjs';
 
 const FRM = 'solution-formalization@1.0.0';
 const DISC = 'product-discovery@3.0.2';
-const DEV = 'solution-development@1.3.0';
+const DEV = 'solution-development@1.3.1';
 
 function metaOf(task) {
   return typeof task.metadata === 'string'

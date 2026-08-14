@@ -39,7 +39,7 @@ export const FORMALIZATION_PROCESS_MODULE_REF = {
 
 export const DEVELOPMENT_PROCESS_MODULE_REF = {
   name: 'solution-development',
-  version: '1.3.0',
+  version: '1.3.1',
 } as const satisfies ProcessModuleReference;
 
 export const DELIVERY_PROCESS_MODULE_REF = {
