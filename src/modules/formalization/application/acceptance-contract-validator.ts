@@ -27,7 +27,7 @@ interface DbHandle {
 import {
   buildContractSnapshot,
   findContractGap,
-} from './formalization-installation.js';
+} from './formalization-contract-analysis.js';
 import type { FormalizationArtifactSnapshot, FormalizationCanonicalGraphPort, FormalizationTraceSnapshot } from '../domain/formalization-kernel-ports.js';
 import type {
   NodeSubmissionValidationInput,

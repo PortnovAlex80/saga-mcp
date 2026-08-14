@@ -18,7 +18,6 @@ import type { SqliteProcessOutcomeCertificateRepository } from '../process-modul
 import type { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
 import type { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import type { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
-import type { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import type { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import type { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import type { FactoryDiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
@@ -63,7 +62,6 @@ export interface ModuleSharedDeps {
   ) => void;
 
   readonly runtimePersistence: FactoryDiscoveryRuntimePersistence;
-  readonly exactCandidateAcceptance: SqliteExactCandidateAcceptance;
   readonly candidateSetRepo: SqliteCandidateSetRepository;
   readonly gateRepo: SqliteGateRepository;
   readonly workplaceProductPort: WorkplaceProductPort;

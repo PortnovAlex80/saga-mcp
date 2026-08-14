@@ -72,6 +72,14 @@ export function driveGateRun(
   input: DriveGateRunInput,
 ): DriveGateRunResult {
   const assessmentCandidateSetRefs = input.assessmentCandidateSetRefs ?? [];
+  const effectiveCheckInputs = input.checkPlan.entries.map(entry => ({
+    parameters: {
+      ...input.checkParameters,
+      ...entry.parameters,
+      assessmentCandidateSetRefs,
+    },
+    environmentRef: entry.environmentRef ?? input.environmentRef,
+  }));
   // ADR-053 C9 — the GateRun identity pins the INSTALLED package
   // (installationDigest) and the exact Workplace revision the gate ran against
   // (expectedWorkplaceRevision), in addition to the subject/assessment/checkPlan
@@ -86,6 +94,7 @@ export function driveGateRun(
     installationDigest: input.installationDigest,
     expectedWorkplaceRevision: input.expectedWorkplaceRevision,
     acceptedOutputBindings: input.acceptedOutputBindings ?? [],
+    effectiveCheckInputs,
   });
   const gateRunRef = `gate-run:${gateRunIdentity}`;
   repo.createGateRun({
@@ -138,17 +147,11 @@ export function driveGateRun(
           + `'${entry.check.providerDigest}', got '${provider.providerDigest}'`,
       );
     }
+    const effectiveInput = effectiveCheckInputs[entryIndex]!;
     const providerResult = provider.run({
       subjectCandidateSetRef: input.subjectCandidateSetRef,
-      parameters: {
-        ...input.checkParameters,
-        ...entry.parameters,
-        // Final-gate providers (review verdicts, comparison/consistency checks)
-        // receive the exact immutable assessment sets. The core does not
-        // interpret them and there is no latest/task fallback.
-        assessmentCandidateSetRefs,
-      },
-      environmentRef: entry.environmentRef ?? input.environmentRef,
+      parameters: effectiveInput.parameters,
+      environmentRef: effectiveInput.environmentRef,
       candidateSnapshot: {},
     });
     if (providerResult instanceof Promise) {
@@ -180,11 +183,12 @@ export function driveGateRun(
         checkReceiptRef,
         gateRunRef,
         input.subjectCandidateSetRef,
-        assessmentCandidateSetRefs,
-        entry.check,
-        entry.environmentRef ?? input.environmentRef,
-        outcome,
-        evidenceRefs,
+      assessmentCandidateSetRefs,
+      entry.check,
+      effectiveInput.environmentRef,
+      sha256Hex(effectiveInput.parameters),
+      outcome,
+      evidenceRefs,
       ),
     };
     repo.recordCheckReceipt(receipt);
@@ -302,6 +306,7 @@ function hashReceipt(
     readonly providerDigest: string;
   },
   environmentRef: string | null,
+  parametersDigest: string,
   outcome: CheckOutcome,
   evidenceRefs: readonly string[],
 ): string {
@@ -312,6 +317,7 @@ function hashReceipt(
     assessmentCandidateSetRefs,
     check,
     environmentRef,
+    parametersDigest,
     outcome,
     evidenceRefs,
   });

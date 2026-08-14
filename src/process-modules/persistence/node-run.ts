@@ -48,7 +48,7 @@ export interface NodeRunRecord {
    * materialization without pretending the task itself is the product.
    */
   executionReceipt: Record<string, unknown> | null;
-  /** Immutable exact-candidate gate receipt, separate from domain production. */
+  /** Historical pre-cutover acceptance receipt, retained as audit only. */
   acceptanceReceipt: Record<string, unknown> | null;
   /** Immutable issue emitted by this completed node, if it entered recovery. */
   recoveryIssue: RecoveryIssue | null;

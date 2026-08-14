@@ -22,7 +22,6 @@ import type {
   ProcessModuleDefinition,
 } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
-import type { ExactCandidateAcceptanceReceipt } from './exact-candidate-acceptance.js';
 import type { ManagedNodeSubmissionRecord } from './managed-node-submission.js';
 // Driver-neutral SPI types from the pure-SPI layer. Type-only import — these
 // are pure data types (interfaces) defined under domain/spi/. No runtime edge;
@@ -160,8 +159,8 @@ export interface NodeExecutionResult {
    * and only interprets the declared recovery policy.
    */
   recoveryIssue?: RecoveryIssue;
-  /** Immutable common-gate decision linked to this node execution. */
-  acceptanceReceipt?: ExactCandidateAcceptanceReceipt;
+  /** Historical persisted receipt, read-only for pre-cutover NodeRuns. */
+  acceptanceReceipt?: Record<string, unknown>;
   /** Только для terminal-узлов (outcome-emitter). */
   outcome?: string;
   /**

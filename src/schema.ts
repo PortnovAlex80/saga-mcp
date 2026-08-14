@@ -1615,8 +1615,7 @@ BEFORE DELETE ON factory_gate_presentation_attempts BEGIN
 END;
 
 -- CheckReceipt — immutable evidence of one check run (REG-17).
--- BEFORE UPDATE/DELETE triggers make receipts append-only (same pattern as
--- factory_exact_candidate_acceptance_decisions).
+-- BEFORE UPDATE/DELETE triggers make receipts append-only.
 CREATE TABLE IF NOT EXISTS factory_check_receipts (
   check_receipt_ref       TEXT PRIMARY KEY,
   check_run_ref           TEXT NOT NULL,
@@ -1652,9 +1651,8 @@ CREATE TRIGGER IF NOT EXISTS trg_factory_check_receipts_no_delete
   END;
 
 -- GateDecision — immutable domain decision (REG-18). The act of OTK.
--- BEFORE UPDATE/DELETE triggers make decisions append-only, mirroring the
--- existing factory_exact_candidate_acceptance_decisions (which step 3.A.3
--- generalizes into this universal contract).
+-- BEFORE UPDATE/DELETE triggers make decisions append-only under the
+-- universal GateDecision contract.
 CREATE TABLE IF NOT EXISTS factory_gate_decisions (
   decision_key            TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,

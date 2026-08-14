@@ -72,7 +72,6 @@ import { SqliteProcessProductRepository } from '../process-modules/persistence/s
 import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteWorkplaceProductAdapter } from '../process-modules/persistence/sqlite-workplace-product-adapter.js';
 import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
-import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
@@ -110,7 +109,7 @@ import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/pe
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
 import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
-import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-installation.js';
+import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import { createDevelopmentOutputPayloadResolver } from '../modules/development/application/development-installation.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../modules/development/domain/development-schemas.js';
@@ -300,7 +299,6 @@ export function createProductLifecycleRuntime(
     createSqliteProductionCellProjectionPersistence(db);
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
-  const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
   const centralLedger = new SqliteManagedProductionLedger(db);
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
@@ -390,10 +388,7 @@ export function createProductLifecycleRuntime(
   const obligationIntegrator = new TransitionObligationIntegrator({ ledger: obligationLedger });
 
   const nodeExecutors = new Map<string, NodeExecutor>([
-    ['kernel', new KernelNodeExecutor(
-      kernelHandlers,
-      exactCandidateAcceptance,
-    )],
+    ['kernel', new KernelNodeExecutor(kernelHandlers)],
     ['human', new HumanNodeExecutor(humanInteractions)],
     ['production-cell', new ProductionCellNodeExecutor({
       coordinator: productionCellCoordinator,
@@ -669,7 +664,6 @@ export function createProductLifecycleRuntime(
     resolveNodeProducts,
     executorV2Options,
     runtimePersistence,
-    exactCandidateAcceptance,
     candidateSetRepo,
     gateRepo,
     workplaceProductPort,

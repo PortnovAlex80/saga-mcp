@@ -42,7 +42,7 @@ import {
   FORMALIZATION_MODULE_KEY,
 } from '../../dist/process-modules/modules/formalization/package/index.js';
 import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
-import { FORMALIZATION_HANDLER_IDS } from '../../dist/modules/formalization/application/formalization-installation.js';
+import { FORMALIZATION_KERNEL_HANDLER_IDS as FORMALIZATION_HANDLER_IDS } from '../../dist/modules/formalization/application/formalization-production-cell-installation.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,

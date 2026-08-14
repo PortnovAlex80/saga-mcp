@@ -90,7 +90,7 @@ export interface ExecutionProfileDefinition {
   semanticSkill: string;
   /**
    * Who may transition artifacts produced by this profile to accepted.
-   * draft/in_review until an ExactCandidateAcceptance decision commits them.
+   * draft/in_review until the exact Production Cell Gate commits them.
    */
   artifactAcceptanceAuthority?: 'worker' | 'kernel-gate';
   executionMode: string;

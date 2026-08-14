@@ -30,7 +30,6 @@ import {
   FORMALIZATION_CAPABILITY_REQUIREMENTS,
   FORMALIZATION_GUARD_BINDINGS,
   FORMALIZATION_CAP_MANAGED_PRODUCTION_LEDGER,
-  FORMALIZATION_CAP_EXACT_CANDIDATE_ACCEPTANCE,
 } from '../../dist/process-modules/modules/formalization/package/contributions/acceptance-capabilities.js';
 
 import {
@@ -133,10 +132,9 @@ test('W8-A7 tool contributions: resource ids reference package-local call templa
 // ---------------------------------------------------------------------------
 
 test('W8-A7 acceptance capabilities: declares required platform capabilities', () => {
-  assert.ok(FORMALIZATION_CAPABILITY_REQUIREMENTS.length >= 5);
+  assert.ok(FORMALIZATION_CAPABILITY_REQUIREMENTS.length >= 4);
   const refs = new Set(FORMALIZATION_CAPABILITY_REQUIREMENTS.map((c) => c.ref));
   assert.ok(refs.has(FORMALIZATION_CAP_MANAGED_PRODUCTION_LEDGER.ref));
-  assert.ok(refs.has(FORMALIZATION_CAP_EXACT_CANDIDATE_ACCEPTANCE.ref));
 });
 
 test('W8-A7 acceptance capabilities: every requirement has non-empty ref + version', () => {

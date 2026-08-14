@@ -49,7 +49,7 @@ import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
 } from './srs-d2-parser.js';
-import { acContentRequiresImplementation } from './formalization-installation.js';
+import { acContentRequiresImplementation } from './formalization-contract-analysis.js';
 
 export const FORMALIZATION_KERNEL_HANDLER_IDS = {
   freezeBaseline: 'formalization-baseline-freezer',

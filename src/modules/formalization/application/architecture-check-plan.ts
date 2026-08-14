@@ -13,7 +13,7 @@
  *
  * The decision policy for the first slice is fail-closed: any 'failed' or
  * 'unknown'/'error' receipt → repair_required. This matches the existing
- * ExactCandidateAcceptance binary outcome.
+ * exact Production Cell Gate outcome.
  */
 
 import { createHash } from 'node:crypto';

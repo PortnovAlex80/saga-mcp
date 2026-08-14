@@ -23,9 +23,8 @@
  * infrastructure dependency — this file is what removes it.
  *
  * `getDb()` call and its allowlist entry. A new, port-injected handler surface
- * (`FormalizationPackageHandlerAdapter`, see `./handler-adapter.ts`) wraps the
- * existing handlers behind these ports. Wave 11 cutover will switch the
- * removed then.
+ * Production Cell handlers consume these ports directly. The alternate
+ * handler-adapter path was removed by the ADR-053 cutover.
  *
  * ── Purity / layering ─────────────────────────────────────────────────────
  *

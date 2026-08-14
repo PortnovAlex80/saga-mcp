@@ -9,8 +9,7 @@
  * Idempotency:
  *   - GateDecision: primary key is the deterministic `decision_key`; a replay
  *     returns the stored row, a different digest under the same key throws
- *     (mirrors ExactCandidateAcceptance, which step 3.A.3 generalizes into
- *     this universal contract).
+ *     under the universal GateDecision contract.
  *   - CheckReceipt: primary key is `check_receipt_ref`; a replay returns the
  *     stored row.
  *

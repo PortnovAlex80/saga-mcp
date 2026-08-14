@@ -59,10 +59,7 @@ import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { formalizationProcessModule } from '../formalization-process-module.js';
 import { FORMALIZATION_AGENT_ASSISTANCE } from './assistance.js';
-import {
-  FORMALIZATION_HANDLER_IDS,
-  FORMALIZATION_MODULE_KEY,
-} from '../../../../modules/formalization/application/formalization-installation.js';
+import { FORMALIZATION_KERNEL_HANDLER_IDS } from '../../../../modules/formalization/application/formalization-production-cell-installation.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
@@ -85,6 +82,9 @@ export const FORMALIZATION_MANIFEST_FORMAT_VERSION = '1';
  * any 3.x runtime. The `<4.0.0` upper bound reserves room for the 4.x cutover.
  */
 export const FORMALIZATION_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
+
+export const FORMALIZATION_MODULE_KEY =
+  `${formalizationProcessModule.identity.name}@${formalizationProcessModule.identity.version}`;
 
 // ---------------------------------------------------------------------------
 // Resource index.
@@ -281,16 +281,11 @@ function formalizationHandlerRef(logicalId: string): HandlerRef {
  * The complete set of kernel handler references for the formalization package.
  * Each `logicalId` matches the `handler:` field declared on the corresponding
  * kernel node in `formalization-process-module.ts` and the key registered in
- * `FORMALIZATION_HANDLER_IDS` (`formalization-installation.ts`).
+ * `FORMALIZATION_KERNEL_HANDLER_IDS` from the sole Production Cell runtime.
  */
 export const FORMALIZATION_HANDLER_REFS: readonly HandlerRef[] = [
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.resolveProduct),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.resolveUseCases),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.resolveAcceptance),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.resolveReconciliation),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.freezeBaseline),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.resolveArchitecture),
-  formalizationHandlerRef(FORMALIZATION_HANDLER_IDS.settle),
+  formalizationHandlerRef(FORMALIZATION_KERNEL_HANDLER_IDS.freezeBaseline),
+  formalizationHandlerRef(FORMALIZATION_KERNEL_HANDLER_IDS.settle),
 ];
 
 // ---------------------------------------------------------------------------
@@ -375,4 +370,3 @@ export const formalizationPackageManifest: ProcessModuleManifest = (() => {
  * Re-export the module key so consumers importing the manifest have the
  * canonical `name@version` identity on the same surface.
  */
-export { FORMALIZATION_MODULE_KEY };

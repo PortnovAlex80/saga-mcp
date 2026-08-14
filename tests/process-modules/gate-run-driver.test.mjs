@@ -288,6 +288,45 @@ test('ADR-053: semantically identical output bindings converge despite object ke
   db.close();
 });
 
+test('ADR-053: GateRun one-shot identity binds effective provider parameters and environment', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const checkPlan = buildArchitectureCheckPlan();
+  const observed = [];
+  const providers = {
+    resolve: () => ({
+      providerId: 'formalization.srs-structural.v1',
+      version: '1.0.0',
+      providerDigest: 'srs-structural-v1-digest',
+      run(input) {
+        observed.push({ mode: input.parameters.mode, environmentRef: input.environmentRef });
+        return input.parameters.mode === 'pass' ? 'passed' : 'failed';
+      },
+    }),
+  };
+  const base = {
+    workplaceRef: ref, subjectCandidateSetRef: 'cs-effective-input', checkPlan, gatePhase: 'author',
+    expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-effective', installationDigest: hash('install'),
+    presentationRef: 'worker-execution:effective', acceptedOutputBindings: [],
+  };
+  const passed = driveGateRun(gateRepo, providers, {
+    ...base, checkParameters: { mode: 'pass' }, environmentRef: 'environment:A',
+  });
+  const failed = driveGateRun(gateRepo, providers, {
+    ...base, checkParameters: { mode: 'fail' }, environmentRef: 'environment:B',
+    presentationRef: 'worker-execution:effective-fail',
+  });
+  assert.equal(passed.decision.verdict, 'accepted');
+  assert.equal(failed.decision.verdict, 'repair_required');
+  assert.notEqual(passed.decision.gateRunRef, failed.decision.gateRunRef);
+  assert.deepEqual(observed, [
+    { mode: 'pass', environmentRef: 'environment:A' },
+    { mode: 'fail', environmentRef: 'environment:B' },
+  ]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n, 2);
+  db.close();
+});
+
 test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt refs', () => {
   const { db, ref } = freshDb();
   const gateRepo = new SqliteGateRepository(db);

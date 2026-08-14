@@ -9,7 +9,7 @@
  *
  *   1. `CapabilityRequirement[]` — platform capabilities the package requires
  *      before it can run. These are the versioned platform services (the
- *      managed-production ledger, the exact-candidate-acceptance gate, the
+ *      managed-production ledger, the universal Production Cell Gate, the
  *      artifact-graph reader, the baseline freezer) that the formalization
  *      kernel handlers depend on. The runtime's capability-enforcement layer
  *      (Wave 6 `capability-packages.ts`) refuses to start a formalization run
@@ -50,16 +50,8 @@ export const FORMALIZATION_CAP_MANAGED_PRODUCTION_LEDGER: CapabilityRequirement 
 };
 
 /**
- * The exact-candidate-acceptance gate capability. Formalization's kernel
- * resolvers emit an `ExactCandidateAcceptanceDirective` that the common kernel
- * gate executes atomically (draft/in_review → accepted+clean). Required: it is
- * the ONLY path by which a formalization artifact reaches `accepted`.
+ * Acceptance is owned exclusively by the universal Production Cell Gate.
  */
-export const FORMALIZATION_CAP_EXACT_CANDIDATE_ACCEPTANCE: CapabilityRequirement = {
-  ref: 'capability.saga.exact-candidate-acceptance',
-  version: '1.0.0',
-};
-
 /**
  * The canonical artifact-graph reader capability. Formalization's resolvers and
  * settlement policy read accepted artifacts, their hashes, and their
@@ -110,7 +102,6 @@ export const FORMALIZATION_CAP_TRACEABILITY_POLICY: CapabilityRequirement = {
  */
 export const FORMALIZATION_CAPABILITY_REQUIREMENTS: readonly CapabilityRequirement[] = Object.freeze([
   FORMALIZATION_CAP_MANAGED_PRODUCTION_LEDGER,
-  FORMALIZATION_CAP_EXACT_CANDIDATE_ACCEPTANCE,
   FORMALIZATION_CAP_ARTIFACT_GRAPH_READER,
   FORMALIZATION_CAP_BASELINE_FREEZER,
   FORMALIZATION_CAP_SOLUTION_CONTRACT_REPOSITORY,

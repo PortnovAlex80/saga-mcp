@@ -22,7 +22,6 @@
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
 import type { ModuleCompletion } from '../domain/spi/module-completion.js';
-import type { ExactCandidateAcceptanceDirective } from './exact-candidate-acceptance.js';
 import type { NodeExecutionFrame, NodeProducts, NodeProduction } from './node-executor.js';
 
 /**
@@ -80,11 +79,6 @@ export interface KernelHandlerResult {
   runtimeEvent?: 'paused';
   /** Optional standardized issue used by the generic recovery interpreter. */
   recoveryIssue?: RecoveryIssue;
-  /**
-   * Semantic validation has passed and the common kernel executor must commit
-   * this exact candidate set before the domain event may drive the flow.
-   */
-  exactCandidateAcceptance?: ExactCandidateAcceptanceDirective;
   /** Для terminal-узлов: локальный outcome код (один из module.outcomes). */
   outcome?: string;
   /**

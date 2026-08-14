@@ -23,12 +23,8 @@
  *      the cell (REG-18-AC-01: "worker completion / CheckReceipt alone do not
  *      move Kanban").
  *
- * The current `ExactCandidateAcceptance` (in `application/exact-candidate-
- * acceptance.ts`) is a PROTO-`GateDecision` specialised for artifact CAS: it
- * already has the idempotency key, the immutable decision with hash, the
- * review-receipt binding and the lineage. Step 3.A.3 generalises it to this
- * universal contract. This file defines the target shape; the step-3 cutover
- * migrates the artifact-CAS adapter to implement it.
+ * The GateDecision below is the sole accepted-material decision authority.
+ * Module-local acceptance bridges were removed by the ADR-053 clean cutover.
  *
  * # Three layers (v4 §«The three layers of a universal quality gate»)
  *
@@ -375,8 +371,7 @@ export interface AcceptedOutputBinding {
  *
  * `decisionKey` is deterministic over (workplace, gate phase, exact
  * subject/assessment sets, plan digest, policy digest) — replays produce the
- * same key; a different payload under the same key is rejected. This mirrors
- * the existing `ExactCandidateAcceptance` idempotency contract.
+ * same key; a different payload under the same key is rejected.
  */
 export interface GateDecision {
   readonly workplaceRef: WorkplaceRef;
