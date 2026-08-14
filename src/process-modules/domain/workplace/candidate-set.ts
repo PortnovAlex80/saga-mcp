@@ -12,8 +12,8 @@
  * desk; and the gate read whatever was there at lookup time. Two runs of the
  * same gate against "the latest" could see DIFFERENT products and produce
  * DIFFERENT verdicts for the same logical candidate. v4 kills that:
- * `execution_complete` SEALS one exact, immutable CandidateSet owned by the
- * fenced execution. The gate reads that set by exact reference — never a
+ * completion SEALS one exact, immutable CandidateSet owned by the Workplace
+ * production revision. The gate reads that set by exact reference — never a
  * mutable latest view (REG-12-AC-04, REG-15-AC-03).
  *
  * The seal key `(workplaceRef, productionRevisionRef, role)` is DETERMINISTIC
@@ -27,7 +27,7 @@
  * # Membership discipline
  *
  * Each member is either:
- *   - `produced` — created by THIS fenced execution, OR
+ *   - `produced` — present in THIS sealed production revision, OR
  *   - `carried-forward` — explicitly borrowed from a NAMED prior CandidateSet
  *     under the product/recovery policy (REG-12-AC-03).
  *
@@ -104,7 +104,7 @@ export interface CandidateMember {
  * A sealed immutable CandidateSet — the exact batch handed to quality control.
  *
  * Immutable after sealing. `execution_complete` produces exactly one of these;
- * a replay with the same payload returns the same `candidateSetRef`
+ * a replay with the same material returns the same `candidateSetRef`
  * (REG-12-AC-01). A different payload under the same seal key is rejected.
  */
 export interface CandidateSet {
@@ -116,9 +116,8 @@ export interface CandidateSet {
    * ADR-053 B-3 — the immutable Workplace production revision this CandidateSet's
    * material was sealed from. This IS the MATERIAL AUTHORITY: the seal key is
    * derived from the revision. REQUIRED — no CandidateSet may be sealed
-   * without a revision ref. The execution provenance (presenter) lives on the
-   * REVISION (revisionRepo.getRevision(productionRevisionRef).presenterRef),
-   * NOT on the CandidateSet. LEGACY presenterExecutionRef FIELD IS DELETED.
+   * without a revision ref. Execution provenance lives only in the revision's
+   * immutable audit envelope and never participates in CandidateSet identity.
    */
   readonly productionRevisionRef: string;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
@@ -142,8 +141,8 @@ export interface CandidateSet {
  * Compute the deterministic seal key for a CandidateSet.
  *
  * ADR-053 clean-break: the seal key ALWAYS uses `productionRevisionRef` as the
- * material identity. There is NO fallback to `presenterExecutionRef`. Two
- * executions producing the same revision (recovery / carry-forward) derive the
+ * material identity. There is no execution-identity fallback. Two executions
+ * producing the same revision (recovery / carry-forward) derive the
  * same key → the second finds the first's already-sealed CandidateSet
  * (partition invariance).
  *

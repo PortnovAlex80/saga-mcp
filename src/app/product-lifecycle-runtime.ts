@@ -563,7 +563,6 @@ export function createProductLifecycleRuntime(
             const snapshot = buildWorkplaceProductionSnapshot({
               workplaceRef: executionContext.workplaceRef!,
               expectedSchemaRef: schemaId,
-              presenterExecutionRef: contributorRef,
               artifacts: production.artifacts,
               traces: production.traces,
             });

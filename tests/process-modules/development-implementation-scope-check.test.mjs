@@ -42,7 +42,6 @@ function fixture({
         candidateSetRef: candidateRef,
         role: 'author',
         workplaceRef: { processRunId: 77 },
-        producerExecutionRef: executionRef,
         members: [{
           productRef: {
             schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,

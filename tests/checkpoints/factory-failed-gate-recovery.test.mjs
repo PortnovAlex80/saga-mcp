@@ -132,9 +132,24 @@ function fixture() {
     role: 'author',
     products: [product],
   }));
+  const productionRevisionRef = hash(`revision:${workplaceRef}:${product.digest}`);
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref,workplace_ref,parent_revision_ref,members,
+        contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
+     VALUES (?,?,NULL,?,?,?,?,?,?,datetime('now'))`,
+  ).run(
+    productionRevisionRef,
+    workplaceRef,
+    JSON.stringify([{ memberKey: `product/${product.schemaId}/${product.ref}`, productRef: product.ref, contentDigest: product.digest, sourceAdapter: 'typed-submission', contributorExecutionRef: executionRef }]),
+    JSON.stringify([executionRef]),
+    executionRef,
+    product.digest,
+    product.digest,
+  );
   const candidate = new SqliteCandidateSetRepository(db).seal({
     workplaceRef: workplace,
-    producerExecutionRef: executionRef,
+    productionRevisionRef,
     role: 'author',
     subjectCandidateSetRef: null,
     members: [{ productRef: product, origin: 'produced', sourceCandidateSetRef: null }],

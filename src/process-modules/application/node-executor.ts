@@ -231,7 +231,7 @@ export interface NodeProduction {
    * Authored by the producer from KNOWN semantic material (cell/contract
    * identity, stable item identity, canonical ProductRefs as
    * `{ schemaId, digest }`). It MUST exclude run-specific provenance
-   * (WorkplaceRef, processRunId, CandidateSetRef, presenterExecutionRef,
+   * (WorkplaceRef, processRunId, CandidateSetRef, presenter provenance,
    * task/intent row ids, timestamps, transient paths). `contentHash` above
    * remains the current-run audit hash and may carry provenance; this field
    * is the cross-run replay identity.

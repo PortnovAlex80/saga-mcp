@@ -4,8 +4,8 @@
  * Target contract: REG-12 (Партия на проверку — CandidateSet).
  *
  * Idempotency (REG-12-AC-01): the seal key `(workplace_ref,
- * presenter_ref, role)` is UNIQUE. A replay of the same execution's
- * completion returns the existing row; a different payload under the same key
+ * production_revision_ref, role, subject)` is UNIQUE. A replay of the same
+ * material completion returns the existing row; a different payload under the same key
  * is rejected with `CANDIDATE_SET_REPLAY_MISMATCH`.
  *
  * Step 1.2 scope: repository EXISTS and is tested; nothing on the runtime
@@ -45,7 +45,7 @@ export class SqliteCandidateSetRepository {
 
   /**
    * Seal (persist) a CandidateSet. Idempotent on the seal key
-   * (workplace+execution+role). Returns `{set, replayed}`:
+   * (workplace+production revision+role+subject). Returns `{set, replayed}`:
    *   - `replayed=true` when an identical row already existed (same digest).
    *   - throws `CANDIDATE_SET_REPLAY_MISMATCH` when the same key exists with a
    *     DIFFERENT digest (REG-12-AC-01 — a mutation attempt).

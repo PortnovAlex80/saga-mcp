@@ -567,7 +567,7 @@ interface CandidateSet {
   workplaceRef: WorkplaceRef;
   candidateSetRef: string;          // opaque id
   candidateSetDigest: string;       // sha256 over {workplaceRef, executionRef, role, products}
-  producerExecutionRef: string;     // the worker execution that produced it
+  productionRevisionRef: string;   // immutable Workplace material authority
   role: 'author' | 'reviewer';
   subjectCandidateSetRef: string | null;   // for reviewer: the author set under review
   members: readonly CandidateMember[];     // one per product_submit

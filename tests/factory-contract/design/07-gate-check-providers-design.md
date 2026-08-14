@@ -848,7 +848,7 @@ Algorithm:
 1. Read `processRunId` from parameters (positive integer, else `'error'`).
 2. Read the author CandidateSet (must be author role, else `'error'`).
 3. Read the latest `factory_managed_node_submissions` row for
-   (processRunId, producerExecutionRef). Schema MUST equal
+   (productionRevisionRef, exact ProductRef). Schema MUST equal
    `DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA`, else `'failed'`.
 4. `decodeDevelopmentTaskGraphProposal(JSON.parse(payload))` — must decode
    OK, else `'failed'`.

@@ -120,7 +120,6 @@ function sealAuthor(candidateSetRepo, ref, products) {
     activeRevisionRepo.appendRevision(revision);
     return candidateSetRepo.seal({
       workplaceRef: ref,
-      producerExecutionRef: EXECUTION_REF,
       productionRevisionRef: revision.revisionRef,
       role: 'author',
       subjectCandidateSetRef: null,
@@ -265,7 +264,6 @@ test('цех: seal с ДРУГИМ digest под тем же key → REPLAY_MISM
   assert.throws(
     () => candidateSetRepo.seal({
       workplaceRef: ref,
-      producerExecutionRef: EXECUTION_REF,
       productionRevisionRef: first.productionRevisionRef,
       role: 'author',
       subjectCandidateSetRef: null,

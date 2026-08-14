@@ -129,8 +129,8 @@ test('Phase 4: PARTITION INVARIANCE — managed artifacts through different exec
     revisionB.semanticDigest,
     'managed artifacts through different execution partitions yield the same semanticDigest',
   );
-  // Material digests differ (different contributors).
-  assert.notEqual(revisionA.materialDigest, revisionB.materialDigest);
+  assert.equal(revisionA.materialDigest, revisionB.materialDigest);
+  assert.equal(revisionA.revisionRef, revisionB.revisionRef);
 });
 
 // ===========================================================================

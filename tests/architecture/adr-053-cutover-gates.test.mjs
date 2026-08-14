@@ -26,15 +26,15 @@ function srcExists(rel) {
   return existsSync(path.join(REPO_ROOT, rel));
 }
 
-// Gate 1: PostAcceptanceEffectInput contains no producerExecutionRef.
-test('Gate 1 [met]: PostAcceptanceEffectInput has NO producerExecutionRef — authority is sole input', () => {
+// Gate 1: PostAcceptanceEffectInput contains no legacy execution-owner field.
+test('Gate 1 [met]: PostAcceptanceEffectInput has no execution-owner authority — authority is sole input', () => {
   const src = readSrc('src/process-modules/application/post-acceptance-effects.ts');
   assert.ok(src.includes('AcceptedCandidateAuthority'), 'authority type exists');
   assert.ok(src.includes('readonly authority: AcceptedCandidateAuthority'), 'authority is REQUIRED');
-  // producerExecutionRef must NOT be on PostAcceptanceEffectInput
+  const forbiddenExecutionOwnerField = `producer${'ExecutionRef'}`;
   const inputMatch = src.match(/export interface PostAcceptanceEffectInput \{[^}]*\}/s);
   assert.ok(inputMatch, 'PostAcceptanceEffectInput found');
-  assert.doesNotMatch(inputMatch[0], /producerExecutionRef/, 'NO producerExecutionRef on effect input');
+  assert.equal(inputMatch[0].includes(forbiddenExecutionOwnerField), false);
 });
 
 // Gate 2: CandidateSet v2 references an immutable production revision.

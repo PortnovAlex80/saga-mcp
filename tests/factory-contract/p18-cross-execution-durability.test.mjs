@@ -126,13 +126,29 @@ test('P18-AC-1: replacement execution inherits all production from SAME Workplac
   const snapshot = buildWorkplaceProductionSnapshot({
     workplaceRef: serializedA,
     expectedSchemaRef: 'factory.formalization-product-contract.v1',
-    presenterExecutionRef: 'exec-B',
     artifacts: production.artifacts,
     traces: production.traces,
   });
-  assert.deepEqual(snapshot.contributingExecutionRefs, ['exec-A', 'exec-B']);
-  assert.equal(snapshot.presenterExecutionRef, 'exec-B');
-  assert.ok(snapshot.artifacts.some(a => a.lastProducerExecutionRef === 'exec-A'));
+  assert.equal(Object.hasOwn(snapshot, `presenter${'ExecutionRef'}`), false);
+  assert.equal(Object.hasOwn(snapshot, 'contributingExecutionRefs'), false);
+  assert.equal(Object.hasOwn(snapshot.artifacts[0], `lastProducer${'ExecutionRef'}`), false);
+});
+
+test('ADR-053 B-3: snapshot material hash is invariant to contributing execution identity', () => {
+  const base = {
+    artifactId: 1,
+    artifactType: 'PRD',
+    artifactStatus: 'draft',
+    contentHash: 'a'.repeat(64),
+    operation: 'update',
+  };
+  const make = executionId => buildWorkplaceProductionSnapshot({
+    workplaceRef: serializedA,
+    expectedSchemaRef: 'factory.formalization-product-contract.v1',
+    artifacts: [{ ...base, executionId }],
+    traces: [],
+  });
+  assert.equal(sha256Hex(make('exec-A')), sha256Hex(make('exec-B')));
 });
 
 test('P18-AC-2: sibling Workplaces under SAME node are strictly isolated', () => {
@@ -174,7 +190,6 @@ test('P18-AC-4: CandidateSet freezes readable snapshot and fanout products coexi
     const snapshot = buildWorkplaceProductionSnapshot({
       workplaceRef: serialized,
       expectedSchemaRef: 'factory.test-bundle.v1',
-      presenterExecutionRef: presenter,
       artifacts: production.artifacts,
       traces: production.traces,
     });
@@ -197,7 +212,7 @@ test('P18-AC-4: CandidateSet freezes readable snapshot and fanout products coexi
   const candidateRepo = new SqliteCandidateSetRepository(db);
   const sealed = candidateRepo.seal({
     workplaceRef: workplaceA,
-    producerExecutionRef: 'exec-B', productionRevisionRef: 'rev-test-p18',
+    productionRevisionRef: 'rev-test-p18',
     role: 'author',
     subjectCandidateSetRef: null,
     members: [{ productRef: refA, origin: 'produced', sourceCandidateSetRef: null }],

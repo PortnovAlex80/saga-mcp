@@ -371,7 +371,7 @@ readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef,
     const snapshot = buildWorkplaceProductionSnapshot({
       workplaceRef: executionContext.workplaceRef!,
       expectedSchemaRef: schemaId,
-      presenterExecutionRef: executionRef,
+      presentationAuditRef: executionRef,
       artifacts: production.artifacts,
       traces: production.traces,
     });
@@ -408,7 +408,7 @@ export interface WorkplaceProductionSnapshot {
   readonly schemaVersion: typeof WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION;
   readonly workplaceRef: string;
   readonly expectedSchemaRef: string;
-  readonly presenterExecutionRef: string;
+  readonly presentationAuditRef: string;
   readonly contributingExecutionRefs: readonly string[];
   readonly artifacts: readonly WorkplaceProductionArtifactSnapshot[];
   readonly traces: readonly WorkplaceProductionTraceSnapshot[];
@@ -416,9 +416,9 @@ export interface WorkplaceProductionSnapshot {
 ```
 
 Each artifact snapshot carries `{ artifactId, artifactType, artifactStatus,
-contentHash, operation, lastProducerExecutionRef }`. Each trace snapshot
+contentHash, operation }`. Each trace snapshot
 carries `{ traceId, sourceId, targetType, targetId, linkType, traceHash,
-lastProducerExecutionRef }`.
+traceHash }`.
 
 `workplaceProductionSemanticDigest(snapshot)` produces the cross-run-stable
 digest by stripping every run-specific id (artifactId, traceId, sourceId,
@@ -584,8 +584,8 @@ A CandidateSet is the immutable QC batch the gate evaluates. From
 `SqliteCandidateSetRepository` (line 1):
 
 > Target contract: REG-12 (Партия на проверку — CandidateSet).
-> Idempotency: the seal key `(workplace_ref, producer_execution_ref, role)`
-> is UNIQUE. A replay of the same execution's completion returns the
+> Idempotency: the seal key `(workplace_ref, production_revision_ref, role, subject)`
+> is UNIQUE. A replay of the same material completion returns the
 > existing row; a different payload under the same key is rejected with
 > `CANDIDATE_SET_REPLAY_MISMATCH`.
 
@@ -595,7 +595,7 @@ Domain type (rebuilt from `factory_candidate_sets` + members):
 interface CandidateSet {
   candidateSetRef: string;
   workplaceRef: WorkplaceRef;
-  producerExecutionRef: string;        // who sealed
+  productionRevisionRef: string;       // exact accepted material
   role: 'author' | 'reviewer';
   subjectCandidateSetRef: string | null; // reviewer → author subject
   members: CandidateMember[];            // ProductRefs + origin
@@ -615,7 +615,7 @@ Tables (lines 87-118):
 
 ```sql
 INSERT INTO factory_candidate_sets
-  (candidate_set_ref, workplace_ref, producer_execution_ref, role,
+  (candidate_set_ref, workplace_ref, production_revision_ref, role,
    subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
@@ -968,7 +968,7 @@ Three layered guarantees:
    universal desk: a second submit with the same `(schema, ref)` but
    different `digest` throws `WORKPLACE_PRODUCT_REPLAY_MISMATCH`.
 3. **CandidateSet immutability**: `factory_candidate_sets.candidate_set_digest`
-   + the UNIQUE seal key `(workplace_ref, producer_execution_ref, role)`.
+   + the UNIQUE seal key `(workplace_ref, production_revision_ref, role, subject)`.
    Re-sealing the same key with a different digest throws
    `CANDIDATE_SET_REPLAY_MISMATCH`.
 

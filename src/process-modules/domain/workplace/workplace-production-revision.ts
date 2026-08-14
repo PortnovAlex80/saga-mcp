@@ -20,8 +20,8 @@
 //   WorkplaceProductionRevision  (sealed immutable material state)
 //       │ { members[], contributingExecutionRefs[], presenterRef }
 //       │
-//       │ materialDigest   — over members INCLUDING provenance (partition-aware)
-//       │ semanticDigest   — over members EXCLUDING provenance (partition-inv.)
+//       │ materialDigest   — over canonical material only (partition-invariant)
+//       │ semanticDigest   — cross-run material projection
 //       ▼
 //   CandidateSet           (Phase 5: references this exact revision)
 //
@@ -190,28 +190,23 @@ function assertNoCaseCollision(keys: readonly string[]): void {
 // ===========================================================================
 
 /**
- * Partition-AWARE material digest: includes contributor and source provenance.
- * Two revisions with the same material from different execution partitions
- * have DIFFERENT materialDigests. Used as part of the revisionRef (the exact
- * material identity including who produced it).
+ * Material-only digest. Execution and adapter provenance are deliberately
+ * excluded: they remain in the immutable audit envelope, never in accepted
+ * material identity. Product refs are also excluded because two immutable
+ * refs may resolve to byte-identical material after a recovery presentation.
  */
 export function materialDigest(input: {
   workplaceRef: string;
-  parentRevisionRef: string | null;
   members: readonly RevisionMember[];
 }): string {
   const members = input.members
     .map(m => ({
       memberKey: m.memberKey,
-      productRef: m.productRef,
       contentDigest: m.contentDigest,
-      sourceAdapter: m.sourceAdapter,
-      contributorExecutionRef: m.contributorExecutionRef,
     }))
     .sort((a, b) => (a.memberKey < b.memberKey ? -1 : a.memberKey > b.memberKey ? 1 : 0));
   return sha256Hex({
     workplaceRef: input.workplaceRef,
-    parentRevisionRef: input.parentRevisionRef,
     members,
   });
 }
@@ -233,34 +228,18 @@ export function semanticDigest(input: {
 }
 
 /**
- * Content-addressed revision reference. Deterministic: the same workplace,
- * parent, members and presenter always produce the same revisionRef. A
- * replay of the same seal finds the existing revision rather than creating a
- * duplicate.
+ * Content-addressed material authority. The same final material in the same
+ * Workplace always has one revision ref, independent of execution partition,
+ * presenter, source adapter, parent path, or immutable ProductRef alias.
  */
 export function revisionRef(input: {
   workplaceRef: string;
-  parentRevisionRef: string | null;
-  members: readonly RevisionMember[];
-  contributingExecutionRefs: readonly string[];
-  presenterRef: string;
   materialDigestValue: string;
   semanticDigestValue: string;
 }): string {
-  // NOTE: revisionRef remains provenance-aware by design. ADR-053 B-2 partition
-  // invariance is delivered at the CandidateSet-seal-key level via a
-  // semanticDigest convergence probe in the seal path (see sealCandidateSet /
-  // sealArchitectureCandidateSet): when a second partition seals equivalent
-  // material, it reuses the first partition's revisionRef, so the seal key
-  // (workplace + revisionRef + role) converges. Making revisionRef itself
-  // material-only is deferred to B-9 where the replay-capsule key-material
-  // interaction (replay capture/certify timing) is fixed holistically.
   return sha256Hex({
+    schema: 'factory.workplace-production-revision.v2',
     workplaceRef: input.workplaceRef,
-    parentRevisionRef: input.parentRevisionRef,
-    members: input.members.length,
-    contributingExecutionRefs: [...input.contributingExecutionRefs].sort(),
-    presenterRef: input.presenterRef,
     materialDigest: input.materialDigestValue,
     semanticDigest: input.semanticDigestValue,
   });
@@ -327,17 +306,12 @@ export function assembleRevision(input: AssembleRevisionInput): WorkplaceProduct
   const parentRevisionRef = input.parent?.revisionRef ?? null;
   const materialDigestValue = materialDigest({
     workplaceRef: input.workplaceRef,
-    parentRevisionRef,
     members: memberList,
   });
   const semanticDigestValue = semanticDigest({ members: memberList });
   const contributingExecutionRefs = [...contributors].sort();
   const ref = revisionRef({
     workplaceRef: input.workplaceRef,
-    parentRevisionRef,
-    members: memberList,
-    contributingExecutionRefs,
-    presenterRef: input.presenterRef,
     materialDigestValue,
     semanticDigestValue,
   });

@@ -100,7 +100,7 @@ test('Phase 3: assemble a revision from a contribution (deterministic ref)', () 
 //    Partition B: exec-A produces PRD, then exec-B produces FR-1.
 //
 //    Both partitions produce revisions with the SAME semanticDigest, even
-//    though their contributingExecutionRefs and materialDigests differ.
+//    while their audit-only contributingExecutionRefs differ.
 // ===========================================================================
 test('Phase 3: PARTITION INVARIANCE — same material through different execution partitions yields the same semanticDigest', () => {
   // Partition A: exec-A produces both artifacts in one contribution.
@@ -155,19 +155,14 @@ test('Phase 3: PARTITION INVARIANCE — same material through different executio
       'must yield the same semanticDigest (Run 011 property)',
   );
 
-  // The materialDigests DIFFER (they include contributor provenance).
-  assert.notEqual(
+  // Material authority is execution-partition invariant.
+  assert.equal(
     partitionA.materialDigest,
     partitionB.materialDigest,
-    'materialDigest is partition-aware (includes contributor refs)',
+    'materialDigest excludes contributor provenance',
   );
 
-  // ADR-053 B-2 — revisionRef remains provenance-aware (deferred to B-9), so
-  // the two partitions still derive distinct revisionRefs here at the revision
-  // layer. Partition invariance is delivered at the CandidateSet-seal-key level
-  // via a semanticDigest convergence probe in the seal path (two partitions
-  // sealing equivalent material reuse one revisionRef → one CandidateSet).
-  assert.notEqual(partitionA.revisionRef, partitionB.revisionRef);
+  assert.equal(partitionA.revisionRef, partitionB.revisionRef);
 
   // Contributing executions correctly differ.
   assert.deepEqual(partitionA.contributingExecutionRefs, ['exec-A']);

@@ -728,7 +728,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       }
       // ADR-053 Phase 6 — build AcceptedCandidateAuthority so effects consume
       // exact material coordinates (revision, productRefs, gateDecision)
-      // instead of re-deriving from presenterExecutionRef.
+      // instead of re-deriving from presenter provenance.
       const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
       const gateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
         serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
@@ -1525,7 +1525,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // Cross-run-stable semantic digest (CONVEYOR v4.3 §6). Authored here from
     // a STABLE projection: cell/contract identity + stable item identity +
     // canonical ProductRefs ({ schemaId, digest }). Run-specific provenance
-    // (workplaceRef, candidateSetRef, presenterExecutionRef, execution ids) is
+    // (workplaceRef, candidateSetRef, presenter provenance, execution ids) is
     // excluded — those remain in `items`/`contentHash` for current-run audit.
     // Products are sorted per-item (multiset) and items sorted by id, so the
     // digest is order-independent and identical across two runs that produce

@@ -98,13 +98,11 @@ test('Phase 5: revision-based seal key gives partition invariance', () => {
 
   const keyA = candidateSetSealKey({
     workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-A',
     productionRevisionRef: revisionRef,
     role: 'author',
   });
   const keyB = candidateSetSealKey({
     workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-B',
     productionRevisionRef: revisionRef,
     role: 'author',
   });
@@ -125,7 +123,6 @@ test('Phase 5: repository persists productionRevisionRef and reads it back', () 
   const repo = new SqliteCandidateSetRepository(db);
   const { set } = repo.seal({
     workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-A',
     productionRevisionRef: 'revision/sha256:rev-1',
     role: 'author',
     subjectCandidateSetRef: null,
@@ -153,7 +150,6 @@ test('Phase 5: repository partition invariance — second execution finds the fi
 
   const { set: setA, replayed: replayedA } = repo.seal({
     workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-A',
     productionRevisionRef: 'revision/sha256:shared-rev',
     role: 'author',
     subjectCandidateSetRef: null,
@@ -166,7 +162,6 @@ test('Phase 5: repository partition invariance — second execution finds the fi
 
   const { set: setB, replayed: replayedB } = repo.seal({
     workplaceRef: WORKPLACE,
-    producerExecutionRef: 'exec-B',
     productionRevisionRef: 'revision/sha256:shared-rev',
     role: 'author',
     subjectCandidateSetRef: null,
@@ -195,7 +190,6 @@ test('B-1: sealing with a non-persisted revision ref is rejected (FK)', () => {
   assert.throws(
     () => repo.seal({
       workplaceRef: WORKPLACE,
-      producerExecutionRef: 'exec-A',
       productionRevisionRef: 'revision/sha256:absent',
       role: 'author',
       subjectCandidateSetRef: null,
@@ -226,7 +220,6 @@ test('B-1: appendRevision + seal are atomic — both rows appear together', () =
     revisionRepo.appendRevision(revision);
     return candidateSetRepo.seal({
       workplaceRef: WORKPLACE,
-      producerExecutionRef: 'exec-A',
       productionRevisionRef: revision.revisionRef,
       role: 'author',
       subjectCandidateSetRef: null,
@@ -293,7 +286,6 @@ test('B-8: run-gate obligation is appended atomically with the seal', () => {
     revisionRepo.appendRevision(revision);
     const set = candidateSetRepo.seal({
       workplaceRef: WORKPLACE,
-      producerExecutionRef: 'exec-A',
       productionRevisionRef: revision.revisionRef,
       role: 'author',
       subjectCandidateSetRef: null,
@@ -335,7 +327,6 @@ test('B-8: if the obligation append fails, the seal rolls back (atomic, non-supp
       revisionRepo.appendRevision(revision);
       const set = candidateSetRepo.seal({
         workplaceRef: WORKPLACE,
-        producerExecutionRef: 'exec-A',
         productionRevisionRef: revision.revisionRef,
         role: 'author',
         subjectCandidateSetRef: null,
@@ -380,17 +371,16 @@ test('B-2: two partitions sealing equivalent material converge to one CandidateS
   // (different contributor/presenter partition, SAME material).
   const revisionB = buildRevision('exec-B');
 
-  // Same material → same partition-invariant semanticDigest; the
-  // provenance-laden revisionRef still differs (material-only ref deferred to B-9).
+  // Same material → the same partition-invariant authority identity.
   assert.equal(revisionB.semanticDigest, revisionA.semanticDigest);
-  assert.notEqual(revisionB.revisionRef, revisionA.revisionRef);
+  assert.equal(revisionB.materialDigest, revisionA.materialDigest);
+  assert.equal(revisionB.revisionRef, revisionA.revisionRef);
 
   // Partition A seals first.
   const setA = revisionRepo.transaction(() => {
     revisionRepo.appendRevision(revisionA);
     return candidateSetRepo.seal({
       workplaceRef: WORKPLACE,
-      producerExecutionRef: 'exec-A',
       productionRevisionRef: revisionA.revisionRef,
       role: 'author',
       subjectCandidateSetRef: null,
@@ -412,7 +402,6 @@ test('B-2: two partitions sealing equivalent material converge to one CandidateS
     if (!existing) revisionRepo.appendRevision(revisionB);
     return candidateSetRepo.seal({
       workplaceRef: WORKPLACE,
-      producerExecutionRef: 'exec-B',
       productionRevisionRef: finalRef,
       role: 'author',
       subjectCandidateSetRef: null,

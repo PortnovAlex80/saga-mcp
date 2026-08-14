@@ -4,6 +4,7 @@ import type { ToolHandler } from '../types.js';
 import { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { writeProduct } from './universal-desk-helper.js';
 import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../modules/discovery/infrastructure/discovery-proposal-projection.js';
@@ -14,6 +15,7 @@ import { materializeManagedSourceChange } from '../infrastructure/source-change/
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
 let candidates: SqliteCandidateSetRepository | null = null;
+let revisions: SqliteWorkplaceProductionRevisionRepository | null = null;
 
 function submissionRepo(): SqliteManagedNodeSubmissionRepository {
   return submissions ??= new SqliteManagedNodeSubmissionRepository(getDb());
@@ -24,11 +26,15 @@ function productRepo(): SqliteProcessProductRepositoryV2 {
 function candidateRepo(): SqliteCandidateSetRepository {
   return candidates ??= new SqliteCandidateSetRepository(getDb());
 }
+function revisionRepo(): SqliteWorkplaceProductionRevisionRepository {
+  return revisions ??= new SqliteWorkplaceProductionRevisionRepository(getDb());
+}
 
 export function _resetProductToolRepositoriesForTests(): void {
   submissions = null;
   products = null;
   candidates = null;
+  revisions = null;
 }
 
 const productSubmit: ToolHandler = args => {
@@ -224,6 +230,10 @@ const candidateRead: ToolHandler = args => {
     .filter(isWorkplaceProductionSnapshot);
   const artifacts = managedSnapshots.flatMap(snapshot => snapshot.artifacts);
   const traces = managedSnapshots.flatMap(snapshot => snapshot.traces);
+  const revision = revisionRepo().getRevision(set.productionRevisionRef);
+  if (!revision) {
+    throw new Error(`CANDIDATE_REVISION_NOT_FOUND: ${set.productionRevisionRef}`);
+  }
 
   return {
     candidate_set_ref: set.candidateSetRef,
@@ -234,9 +244,7 @@ const candidateRead: ToolHandler = args => {
     product_refs: set.members.map(member => member.productRef),
     produced_artifacts: artifacts,
     produced_traces: traces,
-    contributing_execution_refs: [
-      ...new Set(managedSnapshots.flatMap(snapshot => snapshot.contributingExecutionRefs)),
-    ].sort(),
+    contributing_execution_refs: revision.contributingExecutionRefs,
     candidate_set_digest: set.candidateSetDigest,
     sealed_at: set.sealedAt,
   };

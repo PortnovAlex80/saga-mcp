@@ -262,7 +262,6 @@ test('REG-09: different revision produces a different reservation ref', () => {
 function makeAuthorSetInput(overrides = {}) {
   return {
     workplaceRef: REF,
-    producerExecutionRef: 'exec-1',
     productionRevisionRef: REVISION_REF,
     role: 'author',
     subjectCandidateSetRef: null,

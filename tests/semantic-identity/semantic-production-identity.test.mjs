@@ -62,12 +62,12 @@ test('C: manifest semanticDigest stable across runs with different provenance', 
   const runAItems = [{
     id: 'item-1', accepted: true, products,
     workplaceRef: 'workplace/1/mod/cell/item-1',
-    candidateSetRef: 'cs-A', producerExecutionRef: 'exec-A',
+    candidateSetRef: 'cs-A',
   }];
   const runBItems = [{
     id: 'item-1', accepted: true, products,
     workplaceRef: 'workplace/2/mod/cell/item-1',  // different processRunId
-    candidateSetRef: 'cs-B', producerExecutionRef: 'exec-B',
+    candidateSetRef: 'cs-B',
   }];
   const digestA = sha256Hex(manifestSemanticProjection({ cellId: 'cell-1', final: true, items: runAItems }));
   const digestB = sha256Hex(manifestSemanticProjection({ cellId: 'cell-1', final: true, items: runBItems }));

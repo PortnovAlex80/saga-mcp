@@ -147,7 +147,7 @@ function readWorkplaceChain(db, workplaceRef) {
       'SELECT loop_state, kanban_phase, terminal_reason, revision FROM factory_workplaces WHERE workplace_ref=?',
     ).get(workplaceRef) ?? null,
     candidateSets: db.prepare(
-      'SELECT candidate_set_ref, role, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE workplace_ref=? ORDER BY sealed_at',
+      'SELECT candidate_set_ref, role, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS presenter_audit_ref FROM factory_candidate_sets WHERE workplace_ref=? ORDER BY sealed_at',
     ).all(workplaceRef),
     gateRuns: db.prepare(
       'SELECT gate_run_ref, state, gate_phase FROM factory_gate_runs WHERE workplace_ref=? ORDER BY created_at',

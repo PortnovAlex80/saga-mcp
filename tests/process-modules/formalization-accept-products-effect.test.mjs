@@ -26,8 +26,6 @@ function buildSnapshot(artifacts) {
     schemaVersion: WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION,
     workplaceRef: `workplace:${MODULE_REF}:${NODE_ID}`,
     expectedSchemaRef: BUNDLE_SCHEMA,
-    presenterExecutionRef: 'worker-execution:test',
-    contributingExecutionRefs: ['worker-execution:test'],
     artifacts,
     traces: [],
   };
@@ -68,8 +66,8 @@ function fixture({ driftSecond = false } = {}) {
 
   // Build the Workplace production snapshot carrying both artifact ids.
   const snapshot = buildSnapshot([
-    { artifactId: 1, artifactType: 'PRD', artifactStatus: 'draft', contentHash: firstHash, operation: 'create', lastProducerExecutionRef: 'worker-execution:test' },
-    { artifactId: 2, artifactType: 'FR', artifactStatus: 'draft', contentHash: secondHash, operation: 'create', lastProducerExecutionRef: 'worker-execution:test' },
+    { artifactId: 1, artifactType: 'PRD', artifactStatus: 'draft', contentHash: firstHash, operation: 'create' },
+    { artifactId: 2, artifactType: 'FR', artifactStatus: 'draft', contentHash: secondHash, operation: 'create' },
   ]);
   const contentHash = sha256Hex(snapshot);
   const payloadSnapshot = canonicalJson(snapshot);
@@ -138,7 +136,7 @@ test('fails closed when an artifact row has no content_hash', () => {
     CREATE TABLE factory_process_products (id INTEGER PRIMARY KEY, process_run_id INTEGER NOT NULL, product_kind TEXT NOT NULL, product_key TEXT NOT NULL, schema_id TEXT NOT NULL, artifact_ref TEXT NOT NULL, product_hash TEXT NOT NULL, payload_snapshot TEXT NOT NULL, payload_hash TEXT NOT NULL, node_id TEXT);
   `);
   db.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,NULL)').run(1, 'draft', null, null, 'clean');
-  const snapshot = buildSnapshot([{ artifactId: 1, artifactType: 'PRD', artifactStatus: 'draft', contentHash: 'c'.repeat(64), operation: 'create', lastProducerExecutionRef: 'e' }]);
+  const snapshot = buildSnapshot([{ artifactId: 1, artifactType: 'PRD', artifactStatus: 'draft', contentHash: 'c'.repeat(64), operation: 'create' }]);
   const contentHash = sha256Hex(snapshot);
   const payloadSnapshot = canonicalJson(snapshot);
   const artifactRef = `workplace:${MODULE_REF}:${NODE_ID}:${contentHash}`;

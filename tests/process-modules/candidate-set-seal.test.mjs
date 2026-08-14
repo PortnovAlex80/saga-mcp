@@ -208,7 +208,7 @@ test('ADR-053 C15: two partitions with the same material converge to ONE persist
   const repo = new SqliteWorkplaceProductionRevisionRepository(db);
   // Partition A and B produce the SAME material (same memberKey + contentDigest)
   // through different executions. semanticDigest strips provenance, so it
-  // matches; materialDigest includes the contributor, so revisionRefs differ.
+  // matches, and material-only revision refs are identical.
   const buildRevision = (presenterRef) => {
     const contribution = buildContribution({
       workplaceRef: 'workplace/1/sf@1/cell/default',
@@ -232,11 +232,10 @@ test('ADR-053 C15: two partitions with the same material converge to ONE persist
   };
   const revisionA = buildRevision('exec-A');
   const first = repo.appendRevision(revisionA);
-  // Partition B: same material, different presenter → different revisionRef,
-  // same semanticDigest.
+  // Partition B: same material, different presenter → same material authority.
   const revisionB = buildRevision('exec-B');
   assert.equal(revisionB.semanticDigest, revisionA.semanticDigest, 'fixture: same semantic digest');
-  assert.notEqual(revisionB.revisionRef, revisionA.revisionRef, 'fixture: different revisionRef');
+  assert.equal(revisionB.revisionRef, revisionA.revisionRef, 'fixture: same material revisionRef');
   // C15: the second append MUST return the PERSISTED first revision (the
   // structural UNIQUE(workplace, semantic_digest) deduped it), not its own input.
   const result = repo.appendRevision(revisionB);

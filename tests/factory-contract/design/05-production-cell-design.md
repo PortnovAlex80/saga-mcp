@@ -164,7 +164,7 @@ const members: CandidateMember[] = products.map(productRef => ({
 }));
 const digest = hash({ workplaceRef, executionRef, role, products });
 return this.opts.candidateSetRepo.seal({
-  workplaceRef, producerExecutionRef: executionRef, role,
+  workplaceRef, productionRevisionRef, role,
   subjectCandidateSetRef, members,
   sealReceiptRef: `seal:${executionRef}:${role}`,
   candidateSetDigest: digest,
@@ -389,7 +389,7 @@ dependencies (coordinator, repos, check providers, effects).
 interface CandidateSet {
   candidateSetRef: string;           // deterministic seal key
   workplaceRef: WorkplaceRef;
-  producerExecutionRef: string;       // the fenced worker execution
+  productionRevisionRef: string;      // immutable Workplace material authority
   role: 'author' | 'reviewer';
   subjectCandidateSetRef: string | null;  // REQUIRED for reviewer, NULL for author
   members: readonly CandidateMember[];
@@ -406,7 +406,7 @@ interface CandidateMember {
 ```
 
 **Seal key** (candidate-set.ts:146-160) — deterministic over
-`(workplaceRef, producerExecutionRef, role)`:
+`(workplaceRef, productionRevisionRef, role, subjectCandidateSetRef)`:
 ```
 candidate-set/<processRunId>/<moduleRef>/<productionCellId>/<workKey>/<executionRef>/<role>
 ```

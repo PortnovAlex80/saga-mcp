@@ -81,7 +81,7 @@ function createSettlementHandler(input: {
         'discovery-settlement/readiness',
       );
       // ADR-053 cutover: resolve submissions by EXACT sealed productRef,
-      // NOT by presenterExecutionRef. The cell item's products[0] carries the
+      // NOT by presenter identity. The cell item's products[0] carries the
       // exact (schema, ref, digest) authority triple.
       if (!proposalCell.products[0]) throw new Error('DISCOVERY_PROPOSAL_PRODUCTREF_MISSING');
       if (!readinessCell.products[0]) throw new Error('DISCOVERY_READINESS_PRODUCTREF_MISSING');
