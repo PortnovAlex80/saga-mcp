@@ -9,7 +9,7 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
-import { readFrozenProductionIngress } from '../process-modules/application/production-ingress-contract.js';
+import { readFrozenProductionIngressIfBound } from '../process-modules/application/production-ingress-contract.js';
 import {
   clearSubmissionValidationFeedback,
   persistSubmissionValidationRejection,
@@ -1956,26 +1956,23 @@ function requireProductionCellSubmission(
   // projection and may be stale or incomplete after recovery; it must never
   // weaken the product boundary.
   const productionCell = db.prepare(
-    `SELECT w.production_cell_id,
-            json_extract(t.metadata,'$.work_intent_id') AS projected_intent_id
+    `SELECT w.production_cell_id
        FROM tasks t
        JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
       WHERE t.id=? AND w.production_cell_id IS NOT NULL`,
   ).get(taskId) as {
     production_cell_id: string;
-    projected_intent_id: number | null;
   } | undefined;
-  // Compatibility Workplaces created for non-Production-Cell tracker cards use
-  // the `default` cell but have no WorkIntent contract. They are outside this
-  // product boundary. A real Production Cell always projects a WorkIntent; its
-  // mutable id is used only to classify the card, never to select ingress.
-  if (!productionCell || productionCell.projected_intent_id === null) return;
+  if (!productionCell) return;
 
   const exactExecutionId = executionId ?? currentExecutionId;
   if (!exactExecutionId) {
     throw new Error(`PRODUCTION_INGRESS_EXECUTION_MISSING: task ${taskId}`);
   }
-  const ingress = readFrozenProductionIngress(db, exactExecutionId);
+  const ingress = readFrozenProductionIngressIfBound(db, exactExecutionId);
+  // Compatibility tracker cards freeze an explicitly null WorkIntent. This is
+  // the only lawful bypass; mutable task metadata never classifies ingress.
+  if (!ingress) return;
   const intent = db.prepare(
     `SELECT output_schema FROM factory_work_intents WHERE id=?`,
   ).get(ingress.workIntentId) as { output_schema: string } | undefined;

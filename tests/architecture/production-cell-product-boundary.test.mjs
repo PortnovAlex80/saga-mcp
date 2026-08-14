@@ -131,6 +131,10 @@ test('worker_done cannot advance a Production Cell without an exact typed produc
     'cell',
   );
 
+  // Task projection is mutable and may be cleared/rebound after claim. It must
+  // not disable the exact product boundary frozen in the execution context.
+  db.prepare(`UPDATE tasks SET metadata=json_remove(metadata,'$.work_intent_id') WHERE id=1`).run();
+
   assert.throws(
     () => handlers.worker_done({
       task_id: 1,

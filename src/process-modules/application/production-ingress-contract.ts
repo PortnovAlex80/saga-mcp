@@ -20,6 +20,16 @@ export function readFrozenProductionIngress(
   db: Database,
   executionId: string,
 ): FrozenProductionIngress {
+  const ingress = readFrozenProductionIngressIfBound(db, executionId);
+  if (!ingress) throw new Error('PRODUCTION_INGRESS_WORK_INTENT_MISSING');
+  return ingress;
+}
+
+/** Resolve an explicitly unbound legacy execution without consulting its task. */
+export function readFrozenProductionIngressIfBound(
+  db: Database,
+  executionId: string,
+): FrozenProductionIngress | null {
   const strict = readExecutionContextStrict(db, executionId, {
     requireCurrentTaskBinding: false,
   });
@@ -27,8 +37,11 @@ export function readFrozenProductionIngress(
     throw new Error(`PRODUCTION_INGRESS_EXECUTION_AUTHORITY_INVALID: ${strict.reason}`);
   }
   const authority = strict.snapshot.authority;
+  if (authority === null && strict.snapshot.work_intent_id === null) {
+    return null;
+  }
   if (!authority || strict.snapshot.work_intent_id === null) {
-    throw new Error('PRODUCTION_INGRESS_WORK_INTENT_MISSING');
+    throw new Error('PRODUCTION_INGRESS_EXECUTION_AUTHORITY_INCONSISTENT');
   }
   return {
     workIntentId: strict.snapshot.work_intent_id,
