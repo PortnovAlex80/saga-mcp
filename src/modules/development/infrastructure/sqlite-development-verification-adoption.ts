@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import type { KernelHandler } from '../../../process-modules/application/kernel-handler-registry.js';
 import { SqliteProcessProductRepository } from '../../../process-modules/persistence/sqlite-process-product-repository.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+import { parseAtomicAcceptanceCriteria } from '../../formalization/domain/acceptance-criterion-document.js';
 import { createGitPort, createMachinePort } from '../../../infrastructure/process-modules/git-machine-ports.js';
 import type { DevelopmentModuleInstallationDependencies } from '../domain/development-kernel-ports.js';
 import type {
@@ -457,6 +458,14 @@ function readVerificationMethodPlan(
   if (contentHash !== hashes[0]) {
     throw new Error('DEVELOPMENT_VERIFICATION_METHOD_SOURCE_DRIFT');
   }
+  // Cardinality comes from the CANONICAL formalization parser — the same one
+  // that sealed the artifacts — not from a private regex here. It keeps only
+  // leaf headings, so a flat `## AC-1` document and a refined `### AC-1.1`
+  // document both yield one unambiguous member set. A private `### AC-N.M`
+  // expectation was the r9 live-run failure: formalization canonically
+  // accepts flat documents, this reader did not, and no producer of the
+  // refined `**Verification Method:**` markup exists anywhere in the repo.
+  const leaves = parseAtomicAcceptanceCriteria(content);
   const obligations: Array<{
     obligationId: string;
     parentCriterionCode: string;
@@ -464,28 +473,37 @@ function readVerificationMethodPlan(
     requiredMethods: string[];
   }> = [];
   const lines = content.split(/\r?\n/u);
-  for (let index = 0; index < lines.length; index += 1) {
-    const heading = /^### (AC-(\d+)\.\d+):\s*(.+)$/u.exec(lines[index]!);
-    if (!heading) continue;
-    const methodLine = lines.slice(index + 1, index + 6)
-      .find(line => line.startsWith('**Verification Method:**'));
-    if (!methodLine) {
-      throw new Error(`DEVELOPMENT_VERIFICATION_METHOD_MISSING:${heading[1]}`);
+  let currentObligation: (typeof obligations)[number] | null = null;
+  for (const line of lines) {
+    const heading = /^#{2,3} (AC-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*):\s*(.+)$/u.exec(line);
+    if (heading) {
+      const code = heading[1]!;
+      const isLeaf = leaves.some(leaf => leaf.code === code);
+      if (!isLeaf) {
+        currentObligation = null;
+        continue;
+      }
+      const parentDot = code.lastIndexOf('.');
+      currentObligation = {
+        obligationId: code,
+        parentCriterionCode: parentDot === -1 ? code : code.slice(0, parentDot),
+        title: heading[2]!.trim(),
+        // Refined documents may carry an explicit method line right under the
+        // heading; flat documents carry a Gherkin scenario instead, which is
+        // the verification channel the conveyor actually dispatched.
+        requiredMethods: ['acceptance-scenario'],
+      };
+      obligations.push(currentObligation);
+      continue;
     }
-    const methods = methodLine.slice('**Verification Method:**'.length)
-      .trim()
-      .split(/\s+\+\s+/u)
-      .map(method => method.trim())
-      .filter(Boolean);
-    if (methods.length === 0) {
-      throw new Error(`DEVELOPMENT_VERIFICATION_METHOD_EMPTY:${heading[1]}`);
+    if (currentObligation && line.startsWith('**Verification Method:**')) {
+      const methods = line.slice('**Verification Method:**'.length)
+        .trim()
+        .split(/\s+\+\s+/u)
+        .map(method => method.trim())
+        .filter(Boolean);
+      if (methods.length > 0) currentObligation.requiredMethods = methods;
     }
-    obligations.push({
-      obligationId: heading[1]!,
-      parentCriterionCode: `AC-${heading[2]}`,
-      title: heading[3]!.trim(),
-      requiredMethods: methods,
-    });
   }
   const acceptedCodes = new Set(rows.map(row => row.code));
   if (
