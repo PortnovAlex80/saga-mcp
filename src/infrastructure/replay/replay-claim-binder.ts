@@ -39,9 +39,9 @@ function isCapsuleIneligibleInWorkplace(
         AND gd.verdict!='accepted'
         AND EXISTS (
           SELECT 1
-            FROM worker_executions we
-            JOIN tasks t ON t.id=we.task_id
-           WHERE t.workplace_ref=gd.workplace_ref
+            FROM factory_gate_presentation_attempts gpa
+            JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
+           WHERE gpa.gate_run_ref=gd.gate_run_ref
              AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
         )
       LIMIT 1`,

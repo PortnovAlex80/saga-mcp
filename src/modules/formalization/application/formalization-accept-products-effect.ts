@@ -2,6 +2,7 @@ import type { SqlDatabasePort } from '../../../application/ports/sql-database.js
 import type { PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
 import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-modules/shared/workplace-production-snapshot.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+import { FORMALIZATION_RECONCILIATION_SCHEMA } from '../domain/formalization-schemas.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
   'formalization.accept-exact-products.v1';
@@ -34,12 +35,6 @@ interface SnapshotPayload {
   artifacts?: unknown;
 }
 
-/**
- * Validate a parsed product payload IS a Workplace production snapshot and
- * extract its (artifactId, contentHash) pairs. A managed-production product
- * whose body is not a snapshot fails closed — it must carry the artifacts the
- * worker produced. (Typed-submission reports are skipped before reaching here.)
- */
 function extractSnapshotArtifacts(
   snapshot: SnapshotPayload,
   schemaId: string,
@@ -49,35 +44,55 @@ function extractSnapshotArtifacts(
     snapshot.schemaVersion !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
     || !Array.isArray(snapshot.artifacts)
   ) {
-    throw new Error(
-      `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_SNAPSHOT: ${schemaId}/${ref}`,
-    );
+    throw new Error(`FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_SNAPSHOT: ${schemaId}/${ref}`);
   }
-  return (snapshot.artifacts as SnapshotArtifact[]).map(a => ({
-    artifact_id: a.artifactId,
-    content_hash: a.contentHash,
+  return (snapshot.artifacts as SnapshotArtifact[]).map(artifact => ({
+    artifact_id: artifact.artifactId,
+    content_hash: artifact.contentHash,
   }));
 }
 
 /**
- * Projection effect after an authoritative Cell GateDecision=accepted.
- *
- * ADR-053 / conveyor-v4.3 — a formalization Cell's accepted product is one of:
- *   - a managed-production Workplace snapshot (`factory_process_products`, ref
- *     `workplace:<module>:<node>:<snapshotHash>`) — the artifact-producing
- *     cells (product-contract, use-cases, acceptance-contract, architecture).
- *     The artifact rows the worker created live INSIDE the snapshot, so the
- *     effect resolves them by reading the pinned snapshot payload and
- *     extracting the (artifactId, contentHash) pairs it carries.
- *   - a typed-submission report (`factory_managed_node_submissions`, ref
- *     `managed-node-submission:<id>`) — the reconciliation cell produces an
- *     authoritative report, NOT a desk snapshot. It carries no artifacts to
- *     accept (the WHAT artifacts were already accepted upstream), so such
- *     products are skipped.
- *
- * A managed-production product whose pinned row is missing or whose body is not
- * a Workplace snapshot fails closed. A typed-submission product whose pinned
- * row is missing also fails closed; a present report payload is skipped.
+ * Resolve accepted material by schema and content digest. ProductRef.ref is a
+ * provenance locator and must never select effect semantics. Duplicate aliases
+ * are legal only when they carry the byte-identical immutable payload.
+ */
+function resolveAcceptedPayload(
+  db: SqlDatabasePort,
+  schemaId: string,
+  digest: string,
+): unknown {
+  const rows = [
+    ...(tableExists(db, 'factory_managed_node_submissions') ? db.prepare(
+      `SELECT payload_snapshot FROM factory_managed_node_submissions
+        WHERE schema_version=? AND content_hash=?`,
+    ).all(schemaId, digest) as ProductSnapshotRow[] : []),
+    ...(tableExists(db, 'factory_process_products') ? db.prepare(
+      `SELECT payload_snapshot FROM factory_process_products
+        WHERE schema_id=? AND product_hash=?`,
+    ).all(schemaId, digest) as ProductSnapshotRow[] : []),
+  ];
+  const payloads = [...new Set(rows.map(row => row.payload_snapshot))];
+  if (payloads.length === 0) {
+    throw new Error(`FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${schemaId}/${digest}`);
+  }
+  if (payloads.length !== 1) {
+    throw new Error(`FORMALIZATION_ACCEPTANCE_PRODUCT_AMBIGUOUS: ${schemaId}/${digest}`);
+  }
+  return JSON.parse(payloads[0]!);
+}
+
+function tableExists(db: SqlDatabasePort, tableName: string): boolean {
+  return db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`,
+  ).get(tableName) !== undefined;
+}
+
+/**
+ * Projection effect after an authoritative GateDecision=accepted. The exact
+ * schema/content material comes from AcceptedCandidateAuthority. Typed reports
+ * have no artifacts to accept; Workplace snapshots carry exact artifact ids
+ * and sealed content hashes.
  */
 export function createFormalizationAcceptProductsEffect(
   db: SqlDatabasePort,
@@ -87,58 +102,21 @@ export function createFormalizationAcceptProductsEffect(
     version: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
     effectDigest: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST,
     run(input) {
-      const produced = input.authority.acceptedProductRefs.flatMap(p => {
-        if (!p.digest) {
+      const produced = input.authority.acceptedProductRefs.flatMap(product => {
+        if (!product.digest) {
           throw new Error(
-            `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${p.schemaId}/${p.ref}`,
+            `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${product.schemaId}/${product.ref}`,
           );
         }
-        // Typed-submission product (reconciliation report) — authoritative
-        // report document, not a desk snapshot: no artifacts to accept. Only a
-        // snapshot-typed submission would project artifacts; reports are
-        // skipped. A missing pinned row still fails closed.
-        const subMatch = /^managed-node-submission:(\d+)$/u.exec(p.ref);
-        if (subMatch) {
-          const sub = db.prepare(
-            `SELECT payload_snapshot
-               FROM factory_managed_node_submissions
-              WHERE id=?`,
-          ).get(Number(subMatch[1])) as ProductSnapshotRow | undefined;
-          if (!sub) {
-            throw new Error(
-              `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${p.schemaId}/${p.ref}`,
-            );
-          }
-          const parsed = JSON.parse(sub.payload_snapshot) as {
-            schemaVersion?: string;
-            artifacts?: unknown;
-          };
-          if (
-            parsed.schemaVersion
-              !== WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION
-          ) {
-            return []; // report product — no artifacts to accept
-          }
-          return extractSnapshotArtifacts(parsed, p.schemaId, p.ref);
+        const snapshot = resolveAcceptedPayload(
+          db,
+          product.schemaId,
+          product.digest,
+        ) as SnapshotPayload;
+        if (product.schemaId === FORMALIZATION_RECONCILIATION_SCHEMA) {
+          return [];
         }
-        // managed-production Workplace snapshot pinned in
-        // factory_process_products by the full ProductRef triple
-        // (schema_id, artifact_ref, product_hash) — the indexed exact lookup.
-        const row = db.prepare(
-          `SELECT payload_snapshot
-             FROM factory_process_products
-            WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
-        ).get(p.schemaId, p.ref, p.digest) as ProductSnapshotRow | undefined;
-        if (!row) {
-          throw new Error(
-            `FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${p.schemaId}/${p.ref}`,
-          );
-        }
-        const snapshot = JSON.parse(row.payload_snapshot) as {
-          schemaVersion?: string;
-          artifacts?: unknown;
-        };
-        return extractSnapshotArtifacts(snapshot, p.schemaId, p.ref);
+        return extractSnapshotArtifacts(snapshot, product.schemaId, product.ref);
       });
 
       const apply = db.transaction(() => {
@@ -148,31 +126,19 @@ export function createFormalizationAcceptProductsEffect(
                FROM artifacts WHERE id=?`,
           ).get(item.artifact_id) as ArtifactRow | undefined;
           if (!artifact) {
-            throw new Error(
-              `FORMALIZATION_ACCEPTANCE_ARTIFACT_MISSING: ${item.artifact_id}`,
-            );
+            throw new Error(`FORMALIZATION_ACCEPTANCE_ARTIFACT_MISSING: ${item.artifact_id}`);
           }
-          // Accept by the artifact's CURRENT (disk-verified) content_hash from
-          // the requirements table. The snapshot identifies WHICH artifacts the
-          // cell produced; the table's content_hash is the live source of truth.
-          //
-          // We deliberately do NOT compare the snapshot's sealed contentHash
-          // against the table: artifactDiskHash hashes the WHOLE file (it
-          // strips the `#anchor`), so all anchors sharing one file converge to
-          // one hash that evolves as the worker edits the file during the task.
-          // A snapshot-vs-table drift check would reject benign same-task edits,
-          // and the managed-production ledger can lag the table because
-          // refreshArtifactHash updates artifacts.content_hash from disk without
-          // recording a ledger row. Fail closed only when the artifact row is
-          // missing or carries no content_hash.
+          // The sealed snapshot hash is the accepted authority. A later mutable
+          // artifact row may not silently substitute different material.
           if (!artifact.content_hash) {
-            throw new Error(
-              `FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact ${item.artifact_id}`,
-            );
+            throw new Error(`FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact ${item.artifact_id}`);
+          }
+          if (artifact.content_hash !== item.content_hash) {
+            throw new Error(`FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact ${item.artifact_id}`);
           }
           if (
             artifact.status === 'accepted'
-            && artifact.accepted_hash === artifact.content_hash
+            && artifact.accepted_hash === item.content_hash
             && artifact.drift_state === 'clean'
           ) {
             continue;
@@ -182,11 +148,9 @@ export function createFormalizationAcceptProductsEffect(
                 SET status='accepted', accepted_hash=?, drift_state='clean',
                     updated_at=datetime('now')
               WHERE id=? AND content_hash=?`,
-          ).run(artifact.content_hash, item.artifact_id, artifact.content_hash);
+          ).run(item.content_hash, item.artifact_id, item.content_hash);
           if (updated.changes !== 1) {
-            throw new Error(
-              `FORMALIZATION_ACCEPTANCE_CAS_FAILED: artifact ${item.artifact_id}`,
-            );
+            throw new Error(`FORMALIZATION_ACCEPTANCE_CAS_FAILED: artifact ${item.artifact_id}`);
           }
         }
       });

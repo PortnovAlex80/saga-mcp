@@ -72,6 +72,31 @@ export interface RevisionMember {
   readonly contributorExecutionRef: string;
 }
 
+/** Reversible key for a product member; schema ids may be URIs or Unicode. */
+export function productRevisionMemberKey(schemaId: string, ordinal: number): string {
+  if (!schemaId.trim() || !Number.isSafeInteger(ordinal) || ordinal < 0) {
+    throw new Error('REVISION_PRODUCT_MEMBER_KEY_INVALID');
+  }
+  return `product/${encodeURIComponent(schemaId)}/${ordinal}`;
+}
+
+export function decodeProductRevisionMemberKey(
+  memberKey: string,
+): { schemaId: string; ordinal: number } | null {
+  const match = /^product\/([^/]+)\/(\d+)$/u.exec(memberKey);
+  if (!match) return null;
+  let schemaId: string;
+  try {
+    schemaId = decodeURIComponent(match[1]!);
+  } catch {
+    return null;
+  }
+  const ordinal = Number(match[2]);
+  return schemaId.trim() && Number.isSafeInteger(ordinal)
+    ? { schemaId, ordinal }
+    : null;
+}
+
 // ---------------------------------------------------------------------------
 // Member operations — what a contribution does to the material.
 //

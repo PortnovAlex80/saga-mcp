@@ -25,6 +25,7 @@ import {
 import type { ProductRef } from '../../process-modules/domain/spi/index.js';
 import type { WorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { decodeProductRevisionMemberKey } from '../../process-modules/domain/workplace/workplace-production-revision.js';
 
 export const CANDIDATE_SET_REPLAY_MISMATCH = 'CANDIDATE_SET_REPLAY_MISMATCH';
 
@@ -316,14 +317,13 @@ function assertInputMembersMatchRevision(
     contentDigest: string;
   }>;
   const revisionMaterial = revisionMembers
-    .filter(member => member.memberKey.startsWith('product/'))
-    .map(member => {
-      const suffix = member.memberKey.slice('product/'.length);
-      const schemaSeparator = suffix.indexOf('/');
-      if (schemaSeparator <= 0) {
+    .flatMap(member => {
+      if (!member.memberKey.startsWith('product/')) return [];
+      const decoded = decodeProductRevisionMemberKey(member.memberKey);
+      if (!decoded) {
         throw new Error(`${CANDIDATE_SET_REPLAY_MISMATCH}: malformed revision member key`);
       }
-      return `${suffix.slice(0, schemaSeparator)}\u0000${member.contentDigest}`;
+      return [`${decoded.schemaId}\u0000${member.contentDigest}`];
     });
   if (revisionMaterial.length !== input.members.length) {
     throw new Error(

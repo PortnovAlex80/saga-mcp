@@ -18,7 +18,11 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { candidateSetSealKey } from '../../dist/process-modules/domain/workplace/candidate-set.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
-import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
+import {
+  assembleRevision,
+  buildContribution,
+  productRevisionMemberKey,
+} from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 
@@ -276,6 +280,37 @@ test('ADR-053 B-3: CandidateSet must present every product member in its revisio
     /member count does not match revision material/,
   );
   assert.equal(db.prepare('SELECT COUNT(*) n FROM factory_candidate_sets').get().n, 0);
+  db.close();
+});
+
+test('ADR-053 B-3: URI and Unicode schema ids round-trip through one revision-key codec', () => {
+  const db = makeDb();
+  const schemaId = 'https://schemas.example/продукт/v1';
+  const revisionRef = 'revision/sha256:uri-schema';
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref,workplace_ref,parent_revision_ref,members,
+        contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
+     VALUES (?,?,NULL,?,'[]','',?,?,datetime('now'))`,
+  ).run(revisionRef, WORKPLACE_SERIALIZED, JSON.stringify([{
+    memberKey: productRevisionMemberKey(schemaId, 0),
+    productRef: 'managed-node-submission:uri',
+    contentDigest: 'sha256:uri',
+    sourceAdapter: 'typed-submission',
+  }]), revisionRef, revisionRef);
+  const sealed = new SqliteCandidateSetRepository(db).seal({
+    workplaceRef: WORKPLACE,
+    productionRevisionRef: revisionRef,
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [{
+      productRef: { schemaId, ref: 'managed-node-submission:uri', digest: 'sha256:uri' },
+      origin: 'produced', sourceCandidateSetRef: null,
+    }],
+    sealReceiptRef: 'receipt-uri', candidateSetDigest: '9'.repeat(64),
+    sealedAt: '2026-08-14T00:04:00Z',
+  });
+  assert.equal(sealed.set.members[0].productRef.schemaId, schemaId);
   db.close();
 });
 

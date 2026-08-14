@@ -26,6 +26,7 @@ import {
   type WorkplaceRef,
   type WorkplaceState,
 } from '../../domain/workplace/index.js';
+import { decodeProductRevisionMemberKey } from '../../domain/workplace/workplace-production-revision.js';
 import type { SqliteCandidateSetRepository } from '../../../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import type { SqliteGateRepository } from '../../../infrastructure/workplace/sqlite-gate-repository.js';
 import {
@@ -602,7 +603,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (role === 'author') {
       const decision = this.runGate(
         ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef, [],
-        this.readGateUpstreamBinding(ctx, cell),
+        this.readGateUpstreamBinding(ctx, cell), executionRef,
       );
       if (decision.verdict === 'accepted') {
         if (!cell.review) postAcceptanceCandidate = candidate;
@@ -649,6 +650,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         subjectAuthorSet.candidateSetRef,
         [candidate.candidateSetRef],
         this.readGateUpstreamBinding(ctx, cell),
+        executionRef,
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
@@ -1326,6 +1328,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     subjectCandidateSetRef: string,
     assessmentCandidateSetRefs: readonly string[] = [],
     upstreamProductBinding: Readonly<Record<string, unknown>> = {},
+    presentationRef?: string,
   ) {
     return this.opts.gateRepo.transaction(() => {
       const decision = driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
@@ -1347,6 +1350,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           ...upstreamProductBinding,
         },
         environmentRef: null,
+        presentationRef,
       }).decision;
       const transitionObligation = decision.verdict === 'accepted'
         ? this.opts.obligationIntegrator.onGateAccepted({
@@ -2005,14 +2009,13 @@ function candidateMembersForRevision(
 ): CandidateMember[] {
   const members = revision.members.flatMap(member => {
     if (!member.memberKey.startsWith('product/')) return [];
-    const suffix = member.memberKey.slice('product/'.length);
-    const separator = suffix.lastIndexOf('/');
-    if (separator <= 0) {
+    const decoded = decodeProductRevisionMemberKey(member.memberKey);
+    if (!decoded) {
       throw new Error(`REVISION_PRODUCT_MEMBER_KEY_INVALID: ${member.memberKey}`);
     }
     return [{
       productRef: {
-        schemaId: suffix.slice(0, separator),
+        schemaId: decoded.schemaId,
         ref: member.productRef,
         digest: member.contentDigest,
       },

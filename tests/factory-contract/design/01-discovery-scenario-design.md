@@ -398,9 +398,9 @@ that references a semantic CheckProvider.
 **Provider digest** is `sha256Hex({ providerId, version, invariant: 'discovery-proposal-schema-and-required-fields' })`.
 
 **What the check does** (`discovery-check-providers.ts:42-61`):
-1. Resolves the producer submission from the CandidateSet's
-   `subjectCandidateSetRef` (reads `factory_managed_node_submissions` by
-   `process_run_id + execution_id`).
+1. Resolves the exact ProductRef member from the CandidateSet and reads the
+   immutable managed submission by its pinned submission id, schema and hash.
+   Execution identity is audit provenance and is not a material selector.
 2. If no row OR `schema_version !== 'factory.discovery-proposal.v1'` →
    `'failed'`.
 3. Runs `validateDiscoveryProposal(JSON.parse(payload_snapshot))`

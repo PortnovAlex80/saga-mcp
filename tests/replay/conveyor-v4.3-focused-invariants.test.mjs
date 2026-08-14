@@ -197,39 +197,49 @@ test('10: gate-rejected replay capsule is detectable without string matching', (
   db.prepare(`INSERT INTO tasks (id,epic_id,title,status,metadata) VALUES (1,1,'t','in_progress','{}')`).run();
   db.prepare(`INSERT INTO factory_workplaces (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,kanban_phase,loop_state,next_role) VALUES ('wp1',1,'m@1','c1','wk','in_progress','leased','author')`).run();
   db.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,launcher,phase,metadata,lease_expires_at,state) VALUES ('exec1','r1',1,1,1,'w1','m1','l','executing','{"execution_context":{"replay":{"capsule_ref":"replay-capsule:1:abc"}}}','9999-12-31','running')`).run();
+  db.prepare(`INSERT INTO tasks (id,epic_id,title,status,metadata) VALUES (2,1,'t2','in_progress','{}')`).run();
+  db.prepare(`UPDATE tasks SET workplace_ref='wp1' WHERE id IN (1,2)`).run();
+  db.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,launcher,phase,metadata,lease_expires_at,state) VALUES ('exec2','r2',1,1,2,'w2','m1','l','executing','{"execution_context":{"replay":{"capsule_ref":"replay-capsule:999:xyz"}}}','9999-12-31','running')`).run();
   db.prepare(`INSERT INTO factory_workplace_production_revisions
     (revision_ref,workplace_ref,members,contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
     VALUES ('rev1','wp1','[]','["exec1"]','exec1','md1','sd1','2026-08-08')`).run();
   db.prepare(`INSERT INTO factory_candidate_sets
     (candidate_set_ref,workplace_ref,production_revision_ref,role,candidate_set_digest,seal_receipt_ref,sealed_at)
     VALUES ('cs1','wp1','rev1','author','d1','sr1','2026-08-08')`).run();
+  db.prepare(`INSERT INTO factory_gate_runs
+    (gate_run_ref,workplace_ref,gate_phase,subject_candidate_set_ref,
+     assessment_candidate_set_refs,check_plan_ref,check_plan_digest,
+     expected_workplace_revision,gate_lease_ref,state)
+    VALUES ('gr1','wp1','author','cs1','[]','cp1','cpd1',0,'lease1','terminal')`).run();
+  db.prepare(`INSERT INTO factory_gate_presentation_attempts
+    (gate_run_ref,presentation_ref) VALUES ('gr1','exec1')`).run();
   db.prepare(`INSERT INTO factory_gate_decisions (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,subject_candidate_set_ref,assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decided_at,decision_digest) VALUES ('dk1','wp1','g1','gr1','author','t1','cs1','[]','repair_required','cp1','cpd1','dp1','dpd1','[]','id1','[]','2026-08-08','dd1')`).run();
 
   const rejected = db.prepare(
     `SELECT 1
        FROM factory_gate_decisions gd
-       JOIN factory_candidate_sets cs
-         ON cs.candidate_set_ref=gd.subject_candidate_set_ref
-        AND cs.workplace_ref=gd.workplace_ref
-       JOIN worker_executions we
-         ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
       WHERE gd.workplace_ref=?
         AND gd.verdict!='accepted'
-        AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?`,
+        AND EXISTS (
+          SELECT 1 FROM factory_gate_presentation_attempts gpa
+          JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
+          WHERE gpa.gate_run_ref=gd.gate_run_ref
+            AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+        )`,
   ).get('wp1', 'replay-capsule:1:abc');
   assert.ok(rejected);
 
   const other = db.prepare(
     `SELECT 1
        FROM factory_gate_decisions gd
-       JOIN factory_candidate_sets cs
-         ON cs.candidate_set_ref=gd.subject_candidate_set_ref
-        AND cs.workplace_ref=gd.workplace_ref
-       JOIN worker_executions we
-         ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
       WHERE gd.workplace_ref=?
         AND gd.verdict!='accepted'
-        AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?`,
+        AND EXISTS (
+          SELECT 1 FROM factory_gate_presentation_attempts gpa
+          JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
+          WHERE gpa.gate_run_ref=gd.gate_run_ref
+            AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+        )`,
   ).get('wp1', 'replay-capsule:999:xyz');
   assert.equal(other, undefined);
 });

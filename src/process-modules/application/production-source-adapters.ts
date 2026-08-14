@@ -28,6 +28,7 @@
 
 import {
   buildContribution,
+  productRevisionMemberKey,
   type MemberOperation,
   type SourceAdapter,
   type WorkplaceContribution,
@@ -113,7 +114,7 @@ export function producedProductsToContribution(input: {
       schemaOrdinals.set(p.schemaId, ordinal + 1);
       return {
         op: 'put' as const,
-        memberKey: `product/${p.schemaId}/${ordinal}`,
+        memberKey: productRevisionMemberKey(p.schemaId, ordinal),
         productRef: p.ref,
         contentDigest: p.digest,
         sourceAdapter,

@@ -1550,6 +1550,19 @@ CREATE TABLE IF NOT EXISTS factory_gate_runs (
 CREATE INDEX IF NOT EXISTS idx_factory_gate_runs_workplace ON factory_gate_runs(workplace_ref);
 CREATE INDEX IF NOT EXISTS idx_factory_gate_runs_subject ON factory_gate_runs(subject_candidate_set_ref);
 
+-- Audit-only binding from a material GateRun to every presentation that drove
+-- or replayed it. Presentation identity never enters Gate decision identity.
+CREATE TABLE IF NOT EXISTS factory_gate_presentation_attempts (
+  gate_run_ref            TEXT NOT NULL,
+  presentation_ref        TEXT NOT NULL,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (gate_run_ref, presentation_ref),
+  FOREIGN KEY (gate_run_ref) REFERENCES factory_gate_runs(gate_run_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_gate_presentations_ref
+  ON factory_gate_presentation_attempts(presentation_ref);
+
 -- CheckReceipt — immutable evidence of one check run (REG-17).
 -- BEFORE UPDATE/DELETE triggers make receipts append-only (same pattern as
 -- factory_exact_candidate_acceptance_decisions).

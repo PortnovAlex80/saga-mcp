@@ -26,6 +26,7 @@ export interface GateRunDriverRepo {
     readonly expectedWorkplaceRevision: number;
     readonly gateLeaseRef: string;
   }): unknown;
+  recordGatePresentation?(gateRunRef: string, presentationRef: string): void;
   setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
   recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
   recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
@@ -53,6 +54,8 @@ export interface DriveGateRunInput {
   readonly installationDigest: string;
   readonly checkParameters: Readonly<Record<string, unknown>>;
   readonly environmentRef: string | null;
+  /** Audit-only current presentation; excluded from GateRun identity. */
+  readonly presentationRef?: string;
 }
 
 export interface DriveGateRunResult {
@@ -83,6 +86,20 @@ export function driveGateRun(
     }))
     .digest('hex');
   const gateRunRef = `gate-run:${gateRunIdentity}`;
+  repo.createGateRun({
+    gateRunRef,
+    workplaceRef: input.workplaceRef,
+    gatePhase: input.gatePhase,
+    subjectCandidateSetRef: input.subjectCandidateSetRef,
+    assessmentCandidateSetRefs,
+    checkPlanRef: input.checkPlan.checkPlanId,
+    checkPlanDigest: input.checkPlan.checkPlanDigest,
+    expectedWorkplaceRevision: input.expectedWorkplaceRevision,
+    gateLeaseRef: input.gateLeaseRef,
+  });
+  if (input.presentationRef) {
+    repo.recordGatePresentation?.(gateRunRef, input.presentationRef);
+  }
 
   // ADR-053 C12 — a GateRun is a ONE-SHOT immutable inspection. If a terminal
   // decision already exists for this exact identity, return the persisted
@@ -95,17 +112,6 @@ export function driveGateRun(
     return { decision: replayed.decision, receipts: replayed.receipts };
   }
 
-  repo.createGateRun({
-    gateRunRef,
-    workplaceRef: input.workplaceRef,
-    gatePhase: input.gatePhase,
-    subjectCandidateSetRef: input.subjectCandidateSetRef,
-    assessmentCandidateSetRefs,
-    checkPlanRef: input.checkPlan.checkPlanId,
-    checkPlanDigest: input.checkPlan.checkPlanDigest,
-    expectedWorkplaceRevision: input.expectedWorkplaceRevision,
-    gateLeaseRef: input.gateLeaseRef,
-  });
   repo.setGateRunState(gateRunRef, 'checking');
 
   const receipts: CheckReceipt[] = [];

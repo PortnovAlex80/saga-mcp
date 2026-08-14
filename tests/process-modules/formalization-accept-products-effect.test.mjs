@@ -109,20 +109,12 @@ test('snapshot payload projects artifacts (B-4: ref points at pinned snapshot)',
   }
 });
 
-test('accepts by table content_hash even when the snapshot hash differs (benign whole-file drift)', () => {
-  // driftSecond: the artifacts row for id=2 carries content_hash '9'*64, while
-  // the pinned snapshot says '2'*64. With artifactDiskHash hashing the whole
-  // file (anchor stripped), shared-file anchors legitimately evolve together,
-  // so the effect accepts the artifact's CURRENT table hash, not the snapshot's.
+test('rejects mutable artifact hash drift after the revision was sealed', () => {
   const fx = fixture({ driftSecond: true });
   try {
-    fx.effect.run(fx.input);
-    assert.deepEqual(
-      fx.db.prepare('SELECT id,status,accepted_hash,content_hash FROM artifacts ORDER BY id').all(),
-      [
-        { id: 1, status: 'accepted', accepted_hash: '1'.repeat(64), content_hash: '1'.repeat(64) },
-        { id: 2, status: 'accepted', accepted_hash: '9'.repeat(64), content_hash: '9'.repeat(64) },
-      ],
+    assert.throws(
+      () => fx.effect.run(fx.input),
+      /FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact 2/,
     );
   } finally {
     fx.db.close();
@@ -261,6 +253,47 @@ test('typed-submission with a missing pinned row fails closed', () => {
       }),
       /FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND/,
     );
+  } finally {
+    db.close();
+  }
+});
+
+test('equal schema/content aliases have identical effect semantics', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE artifacts (id INTEGER PRIMARY KEY, status TEXT NOT NULL, content_hash TEXT, accepted_hash TEXT, drift_state TEXT NOT NULL, updated_at TEXT);
+    CREATE TABLE factory_managed_node_submissions (
+      id INTEGER PRIMARY KEY, process_run_id INTEGER NOT NULL, module_ref TEXT NOT NULL, node_id TEXT NOT NULL,
+      intent_id INTEGER NOT NULL, task_id INTEGER NOT NULL, execution_id TEXT NOT NULL,
+      schema_version TEXT NOT NULL, payload_snapshot TEXT NOT NULL, content_hash TEXT NOT NULL, submitted_at TEXT NOT NULL
+    );
+    CREATE TABLE factory_process_products (
+      id INTEGER PRIMARY KEY, process_run_id INTEGER NOT NULL, product_kind TEXT NOT NULL, product_key TEXT NOT NULL,
+      schema_id TEXT NOT NULL, artifact_ref TEXT NOT NULL, product_hash TEXT NOT NULL,
+      payload_snapshot TEXT NOT NULL, payload_hash TEXT NOT NULL, node_id TEXT
+    );
+  `);
+  db.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,NULL)').run(1, 'draft', 'a'.repeat(64), null, 'clean');
+  const schemaId = 'factory.formalization-reconciliation-report.v1';
+  const payload = canonicalJson({ schemaVersion: schemaId, reconciledGaps: [], noOp: true });
+  const digest = sha256Hex(JSON.parse(payload));
+  db.prepare(`INSERT INTO factory_managed_node_submissions
+    (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,schema_version,payload_snapshot,content_hash,submitted_at)
+    VALUES (1,?,'formalization-reconciliation',1,1,'exec-a',?,?,?,datetime('now'))`)
+    .run(MODULE_REF, schemaId, payload, digest);
+  db.prepare(`INSERT INTO factory_process_products
+    (process_run_id,product_kind,product_key,schema_id,artifact_ref,product_hash,payload_snapshot,payload_hash,node_id)
+    VALUES (1,?,?,?,?,?,?,?,'formalization-reconciliation')`)
+    .run(schemaId, 'report', schemaId, 'process-product:1', digest, payload, digest);
+  const effect = createFormalizationAcceptProductsEffect(db);
+  try {
+    assert.doesNotThrow(() => effect.run({ authority: { acceptedProductRefs: [
+      { schemaId, ref: 'managed-node-submission:1', digest },
+    ] } }));
+    assert.doesNotThrow(() => effect.run({ authority: { acceptedProductRefs: [
+      { schemaId, ref: 'process-product:1', digest },
+    ] } }));
+    assert.equal(db.prepare('SELECT status FROM artifacts WHERE id=1').get().status, 'draft');
   } finally {
     db.close();
   }

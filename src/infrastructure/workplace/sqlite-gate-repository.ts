@@ -87,6 +87,14 @@ export class SqliteGateRepository {
     return this.readGateRun(input.gateRunRef)!;
   }
 
+  recordGatePresentation(gateRunRef: string, presentationRef: string): void {
+    if (!presentationRef.trim()) throw new Error('GATE_PRESENTATION_REF_REQUIRED');
+    this.db.prepare(
+      `INSERT OR IGNORE INTO factory_gate_presentation_attempts
+         (gate_run_ref,presentation_ref) VALUES (?,?)`,
+    ).run(gateRunRef, presentationRef);
+  }
+
   readGateRun(gateRunRef: string): GateRun | null {
     const row = this.db.prepare(
       `SELECT * FROM factory_gate_runs WHERE gate_run_ref=?`,
