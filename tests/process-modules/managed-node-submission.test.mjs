@@ -32,7 +32,7 @@ const {
   '../../dist/modules/development/application/development-check-providers.js'
 );
 
-function fixture(outputSchema = 'test.node-product.v1') {
+function fixture(outputSchema = 'test.node-product.v1', authorityScope = {}) {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-node-submit-'));
   process.env.DB_PATH = path.join(temp, 'submissions.db');
   const db = getDb();
@@ -65,8 +65,8 @@ function fixture(outputSchema = 'test.node-product.v1') {
   db.prepare(
     `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,status)
-     VALUES (501,10,'synthetic','produce','{}',?,'executing')`,
-  ).run(outputSchema);
+     VALUES (501,10,'synthetic','produce',?,?,'executing')`,
+  ).run(JSON.stringify(authorityScope), outputSchema);
   const taskId = db.prepare(
     `INSERT INTO tasks
        (epic_id,title,status,priority,task_kind,workflow_stage,
@@ -175,17 +175,14 @@ test('managed node submission is machine-bound, immutable and exactly replayable
 test('pinned task-graph contract rejects Run028 shape errors before storage and accepts a correction', () => {
   registerProductPayloadContract(developmentTaskGraphPayloadContract);
   const schema = 'factory.development-task-graph-proposal.v1';
-  const f = fixture(schema);
+  const f = fixture(schema, {
+    payload_contract: {
+      contractId: developmentTaskGraphPayloadContract.contractId,
+      version: developmentTaskGraphPayloadContract.version,
+      contractDigest: developmentTaskGraphPayloadContract.contractDigest,
+    },
+  });
   try {
-    f.db.prepare(
-      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
-    ).run(JSON.stringify({
-      payload_contract: {
-        contractId: developmentTaskGraphPayloadContract.contractId,
-        version: developmentTaskGraphPayloadContract.version,
-        contractDigest: developmentTaskGraphPayloadContract.contractDigest,
-      },
-    }), f.intentId);
     const repository = new SqliteManagedNodeSubmissionRepository(f.db);
     const baseItem = {
       key: 'impl-core',
@@ -318,17 +315,14 @@ test('managed node submission rejects a schema adjacent to the exact WorkIntent 
 test('registered Development review contract rejects an unbound verdict before storage', () => {
   registerProductPayloadContract(developmentReviewVerdictPayloadContract);
   const schema = 'factory.development-review-verdict.v1';
-  const f = fixture(schema);
+  const f = fixture(schema, {
+    payload_contract: {
+      contractId: developmentReviewVerdictPayloadContract.contractId,
+      version: developmentReviewVerdictPayloadContract.version,
+      contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
+    },
+  });
   try {
-    f.db.prepare(
-      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
-    ).run(JSON.stringify({
-      payload_contract: {
-        contractId: developmentReviewVerdictPayloadContract.contractId,
-        version: developmentReviewVerdictPayloadContract.version,
-        contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
-      },
-    }), f.intentId);
     const repository = new SqliteManagedNodeSubmissionRepository(f.db);
     assert.throws(
       () => repository.submitForCurrentExecution({
@@ -361,21 +355,18 @@ test('review submission must match the exact CandidateSet frozen by its WorkInte
   registerProductPayloadContract(developmentReviewVerdictPayloadContract);
   const schema = 'factory.development-review-verdict.v1';
   const expected = 'candidate-set/3/solution-development/cell/item/execution/author';
-  const f = fixture(schema);
+  const f = fixture(schema, {
+    payload_contract: {
+      contractId: developmentReviewVerdictPayloadContract.contractId,
+      version: developmentReviewVerdictPayloadContract.version,
+      contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
+    },
+    payload_bindings: [{
+      field: 'subject_candidate_set_ref',
+      equals: expected,
+    }],
+  });
   try {
-    f.db.prepare(
-      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
-    ).run(JSON.stringify({
-      payload_contract: {
-        contractId: developmentReviewVerdictPayloadContract.contractId,
-        version: developmentReviewVerdictPayloadContract.version,
-        contractDigest: developmentReviewVerdictPayloadContract.contractDigest,
-      },
-      payload_bindings: [{
-        field: 'subject_candidate_set_ref',
-        equals: expected,
-      }],
-    }), f.intentId);
     const repository = new SqliteManagedNodeSubmissionRepository(f.db);
     assert.throws(
       () => repository.submitForCurrentExecution({
@@ -430,17 +421,14 @@ test('review submission must match the exact CandidateSet frozen by its WorkInte
 test('registered executable product contract rejects malformed verification JSON before storage', () => {
   registerProductPayloadContract(developmentVerificationPayloadContract);
   const schema = 'factory.candidate-verification-evidence-product.v2';
-  const f = fixture(schema);
+  const f = fixture(schema, {
+    payload_contract: {
+      contractId: developmentVerificationPayloadContract.contractId,
+      version: developmentVerificationPayloadContract.version,
+      contractDigest: developmentVerificationPayloadContract.contractDigest,
+    },
+  });
   try {
-    f.db.prepare(
-      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
-    ).run(JSON.stringify({
-      payload_contract: {
-        contractId: developmentVerificationPayloadContract.contractId,
-        version: developmentVerificationPayloadContract.version,
-        contractDigest: developmentVerificationPayloadContract.contractDigest,
-      },
-    }), f.intentId);
     const repository = new SqliteManagedNodeSubmissionRepository(f.db);
     assert.throws(
       () => repository.submitForCurrentExecution({
@@ -487,17 +475,14 @@ test('registered executable product contract rejects malformed verification JSON
 test('durable WorkIntent payload-contract pin rejects ambient registry drift', () => {
   registerProductPayloadContract(developmentVerificationPayloadContract);
   const schema = 'factory.candidate-verification-evidence-product.v2';
-  const f = fixture(schema);
+  const f = fixture(schema, {
+    payload_contract: {
+      contractId: developmentVerificationPayloadContract.contractId,
+      version: developmentVerificationPayloadContract.version,
+      contractDigest: '0'.repeat(64),
+    },
+  });
   try {
-    f.db.prepare(
-      `UPDATE factory_work_intents SET authority_scope=? WHERE id=?`,
-    ).run(JSON.stringify({
-      payload_contract: {
-        contractId: developmentVerificationPayloadContract.contractId,
-        version: developmentVerificationPayloadContract.version,
-        contractDigest: '0'.repeat(64),
-      },
-    }), f.intentId);
     const repository = new SqliteManagedNodeSubmissionRepository(f.db);
     assert.throws(
       () => repository.submitForCurrentExecution({

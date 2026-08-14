@@ -1,5 +1,9 @@
 # Dispatcher and Worker Execution Lifecycle
 
+> **Historical pre-ADR-067 terminology:** task `product_source` metadata and
+> dispatcher source branching below are retired. Worker-done and seal-time reads
+> share the immutable execution→WorkIntent ingress resolver.
+
 How the Saga Factory claims tasks, spawns worker processes, and processes
 results. The goal of this document is to make the dispatch→spawn→drain loop
 fully legible so a scripted worker can be injected in place of the spawned LLM.

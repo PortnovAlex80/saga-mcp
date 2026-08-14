@@ -46,6 +46,12 @@ const { handlers } = await import('../../dist/tools/dispatcher.js');
 const { SqliteManagedNodeSubmissionRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js'
 );
+const { buildExecutionContext } = await import(
+  '../../dist/shared/authority/build-execution-context.js'
+);
+const { executionContextHash } = await import(
+  '../../dist/shared/authority/execution-context.js'
+);
 
 test('worker_done cannot advance a Production Cell without an exact typed product', () => {
   const db = getDb();
@@ -55,9 +61,14 @@ test('worker_done cannot advance a Production Cell without an exact typed produc
   db.prepare(
     `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,status)
-     VALUES (1,1,'synthetic.review','review','{}',
+     VALUES (1,1,'synthetic.review','review',?,
              'factory.development-review-verdict.v1','executing')`,
-  ).run();
+  ).run(JSON.stringify({
+    enforcement: 'runtime',
+    allowed_tools: ['product_submit', 'worker_done'],
+    scope: 'workplace:synthetic',
+    snapshot_ref: 'snapshot:synthetic',
+  }));
   db.prepare(
     `INSERT INTO factory_process_runs
        (id,project_id,module_name,module_version,module_ref_key,idempotency_key,
@@ -85,12 +96,24 @@ test('worker_done cannot advance a Production Cell without an exact typed produc
     production_cell_id: 'cell',
     work_intent_id: 1,
   }));
+  const intent = db.prepare('SELECT * FROM factory_work_intents WHERE id=1').get();
+  const executionContext = buildExecutionContext({
+    modelRoute: { provider: 'test', model: 'test', effort: 'low' },
+    workIntent: {
+      ...intent,
+      authority_scope: JSON.parse(intent.authority_scope),
+    },
+    capturedAt: new Date().toISOString(),
+  });
   db.prepare(
     `INSERT INTO worker_executions
        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
-        launcher,state,phase)
-     VALUES ('exec-1','dispatch-1',1,1,1,'worker-1','machine','test','running','executing')`,
-  ).run();
+        launcher,state,phase,metadata)
+     VALUES ('exec-1','dispatch-1',1,1,1,'worker-1','machine','test','running','executing',?)`,
+  ).run(JSON.stringify({
+    execution_context: executionContext,
+    execution_context_hash: executionContextHash(executionContext),
+  }));
   assert.equal(
     db.prepare('SELECT COUNT(*) AS n FROM factory_managed_node_submissions').get().n,
     0,

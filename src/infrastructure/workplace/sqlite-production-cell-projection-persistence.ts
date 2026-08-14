@@ -44,7 +44,12 @@ export function createSqliteProductionCellProjectionPersistence(
           if (
             intent.epic_id !== input.intent.epicId
             || intent.kind !== input.intent.kind
+            || intent.objective !== input.intent.objective
+            || canonicalJson(JSON.parse(intent.authority_scope))
+              !== canonicalJson(input.intent.authorityScope)
             || intent.output_schema !== input.intent.outputSchema
+            || intent.token_budget !== input.intent.tokenBudget
+            || intent.retry_budget !== input.intent.retryBudget
           ) {
             throw new Error(
               `PRODUCTION_CELL_PLAN_BINDING_MISMATCH: ${input.task.generationKey}`,
@@ -342,13 +347,18 @@ interface IntentRow {
   id: number;
   epic_id: number;
   kind: string;
+  objective: string;
+  authority_scope: string;
   output_schema: string;
+  token_budget: number;
+  retry_budget: number;
   projected_task_id: number | null;
 }
 
 function readIntent(db: Database.Database, intentId: number): IntentRow {
   const row = db.prepare(
-    `SELECT id,epic_id,kind,output_schema,projected_task_id
+    `SELECT id,epic_id,kind,objective,authority_scope,output_schema,
+            token_budget,retry_budget,projected_task_id
        FROM factory_work_intents WHERE id=?`,
   ).get(intentId) as IntentRow | undefined;
   if (!row) throw new Error(`PRODUCTION_CELL_INTENT_NOT_FOUND: ${intentId}`);
@@ -367,7 +377,7 @@ function createIntent(
     input.epicId,
     input.kind,
     input.objective,
-    JSON.stringify(input.authorityScope),
+    canonicalJson(input.authorityScope),
     input.outputSchema,
     input.tokenBudget,
     input.retryBudget,

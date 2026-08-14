@@ -91,7 +91,7 @@ import {
   type ProductionCellProductReader,
   type ProductionCellProjectionPersistence,
 } from '../process-modules/application/node-executors/production-cell-node-executor.js';
-import { productionIngressModeFromAuthorityScope } from '../process-modules/application/production-ingress-contract.js';
+import { readFrozenProductionIngress } from '../process-modules/application/production-ingress-contract.js';
 import {
   activateProductionCellRoleTask,
   completeProductionCellTaskProjections,
@@ -542,15 +542,12 @@ export function createProductLifecycleRuntime(
           // Never probe typed rows and fall back to the managed desk: that would
           // let incidental storage chronology choose accepted material.
           const executionContext = db.prepare(
-            `SELECT t.workplace_ref AS workplaceRef,wi.authority_scope AS authorityScope
+            `SELECT t.workplace_ref AS workplaceRef
                FROM worker_executions we
                JOIN tasks t ON t.id=we.task_id
-               JOIN factory_work_intents wi
-                 ON wi.id=json_extract(t.metadata,'$.work_intent_id')
               WHERE we.execution_id=?`,
           ).get(contributorRef) as {
             workplaceRef: string | null;
-            authorityScope: string;
           } | undefined;
           if (!executionContext?.workplaceRef) {
             throw new Error(
@@ -566,9 +563,7 @@ export function createProductLifecycleRuntime(
               `WORKPLACE_PRODUCT_CONTEXT_MISMATCH: ${executionContext.workplaceRef}`,
             );
           }
-          const ingressMode = productionIngressModeFromAuthorityScope(
-            executionContext.authorityScope,
-          );
+          const ingressMode = readFrozenProductionIngress(db, contributorRef).mode;
           if (ingressMode === 'typed-submission') {
             const submission = db.prepare(
               `SELECT id,schema_version,content_hash

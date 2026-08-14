@@ -1,5 +1,9 @@
 # 08 — Existing Scripted Harness Gap Analysis
 
+> **Historical pre-ADR-067 terminology:** source-mode branches documented below
+> are retired. ADR-067's single frozen execution→WorkIntent ProductRef ingress is
+> the normative implementation and test boundary.
+
 Complete audit of the existing `tests/factory-contract/` scripted harness: what
 exists, how it works, what passes, what fails, what is not faithfully reproduced
 vs the production Factory runtime, and what must change.

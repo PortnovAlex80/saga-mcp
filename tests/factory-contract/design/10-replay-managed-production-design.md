@@ -1,5 +1,11 @@
 # 10 — ReplayCapsule, Managed-Production and Typed-Submission Design
 
+> **Historical pre-ADR-067 terminology:** occurrences of `productSource`,
+> `product_source`, `requireTypedSubmission`, and multiple source adapters below
+> describe the retired implementation. The normative runtime contract is
+> ADR-067: one frozen execution→WorkIntent ingress resolves exact ProductRefs,
+> after which revision, CandidateSet, Gate, effect, and replay are source-blind.
+
 Exhaustive map of the three ways a worker's production becomes a durable,
 immutable, content-addressed Saga Factory product. Two of them are
 **production paths** (how the bytes first enter the immutable store); the

@@ -212,7 +212,11 @@ function parseAuthority(raw: unknown, topLevelIntentId: number | null): Executio
   return expected === authority.authority_hash ? authority : undefined;
 }
 
-export function readExecutionContextStrict(db: Database, executionId: string): StrictExecutionContextRead {
+export function readExecutionContextStrict(
+  db: Database,
+  executionId: string,
+  options: { requireCurrentTaskBinding?: boolean } = {},
+): StrictExecutionContextRead {
   const row = db.prepare(
     `SELECT we.metadata, we.task_id, we.worker_id, we.epic_id,
             t.task_kind,
@@ -284,14 +288,18 @@ export function readExecutionContextStrict(db: Database, executionId: string): S
     return { ok: false, reason: 'execution_context_hash mismatch' };
   }
 
-  // row.task_work_intent_id is typed `number | null`; the explicit null check
-  // is eqeqeq-safe and equivalent to the original `== null` guard here.
-  if (row.task_work_intent_id === null) {
-    if (authority !== null || workIntentId !== null) {
-      return { ok: false, reason: 'task has no WorkIntent binding but snapshot grants managed authority' };
+  if (options.requireCurrentTaskBinding !== false) {
+    // Tool authority belongs to the currently projected task, so live gateway
+    // calls retain the task-binding fence. Historical production presentation
+    // instead opts out and uses the hash-verified execution snapshot: a task
+    // may lawfully be projected to the next WorkIntent after worker_done.
+    if (row.task_work_intent_id === null) {
+      if (authority !== null || workIntentId !== null) {
+        return { ok: false, reason: 'task has no WorkIntent binding but snapshot grants managed authority' };
+      }
+    } else if (!authority || workIntentId !== row.task_work_intent_id) {
+      return { ok: false, reason: 'task WorkIntent binding does not match execution snapshot' };
     }
-  } else if (!authority || workIntentId !== row.task_work_intent_id) {
-    return { ok: false, reason: 'task WorkIntent binding does not match execution snapshot' };
   }
   return { ok: true, snapshot, row };
 }

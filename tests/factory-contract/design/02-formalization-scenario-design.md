@@ -1,5 +1,9 @@
 # Formalization Scenario Design — LLM-Free Scripted Test
 
+> **Historical pre-ADR-067 terminology:** managed/typed source branches below
+> are retired. The frozen execution WorkIntent selects one ingress, which seals
+> exact ProductRefs before WorkplaceProductionRevision assembly.
+
 This document is the complete specification of MCP tool calls for **цех Formalization**
 (`solution-formalization@1.0.0`), the second stage of the Product Delivery conveyor
 (Discovery → **Formalization** → Development → Delivery). It is written so a

@@ -96,7 +96,11 @@ test('production composition derives ingress only from the frozen WorkIntent', (
     new URL('../../src/app/product-lifecycle-runtime.ts', import.meta.url),
     'utf8',
   );
-  assert.match(source, /productionIngressModeFromAuthorityScope/);
+  assert.match(source, /readFrozenProductionIngress\(db, contributorRef\)/);
+  assert.doesNotMatch(
+    source,
+    /wi\.id=json_extract\(t\.metadata,'\$\.work_intent_id'\)/,
+  );
   assert.doesNotMatch(source, /productSource|product_source|requireTypedSubmission/);
 });
 

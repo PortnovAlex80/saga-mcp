@@ -1,5 +1,9 @@
 # 07 — Gate and Check Provider System Design
 
+> **Cutover note:** deleted compatibility acceptance and pre-ADR-067 physical
+> source descriptions below are historical only. Current Gates consume exact
+> WorkplaceProductionRevision/CandidateSet authority and source-blind ProductRefs.
+
 The deterministic validation layer that decides whether a worker's production
 is accepted. After a worker produces a candidate, the **Gate** runs
 deterministic checks (`GateDecision`) over an immutable `CandidateSet`

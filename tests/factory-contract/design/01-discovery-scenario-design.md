@@ -1,5 +1,9 @@
 # Discovery Scenario Design — LLM-Free Scripted Test
 
+> **Historical pre-ADR-067 terminology:** `productSource` is no longer a cell or
+> material authority. The frozen execution WorkIntent selects one ingress and
+> revision assembly receives only exact ProductRefs.
+
 This document is the complete specification of MCP tool calls for **цех Discovery**
 (`product-discovery@3.0.2`), the FIRST stage of the Product Delivery conveyor
 (**Discovery** → Formalization → Development → Delivery). It is written so a

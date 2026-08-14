@@ -9,7 +9,7 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
-import { productionIngressModeFromAuthorityScope } from '../process-modules/application/production-ingress-contract.js';
+import { readFrozenProductionIngress } from '../process-modules/application/production-ingress-contract.js';
 import {
   clearSubmissionValidationFeedback,
   persistSubmissionValidationRejection,
@@ -1956,47 +1956,55 @@ function requireProductionCellSubmission(
   // projection and may be stale or incomplete after recovery; it must never
   // weaken the product boundary.
   const productionCell = db.prepare(
-    `SELECT w.production_cell_id,wi.id AS intent_id,wi.output_schema,wi.authority_scope
+    `SELECT w.production_cell_id
        FROM tasks t
        JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
-       JOIN factory_work_intents wi
-         ON wi.id=json_extract(t.metadata,'$.work_intent_id')
-        AND (wi.projected_task_id=t.id OR wi.projected_task_id IS NULL)
       WHERE t.id=? AND w.production_cell_id IS NOT NULL`,
   ).get(taskId) as {
     production_cell_id: string;
-    intent_id: number;
-    output_schema: string;
-    authority_scope: string;
   } | undefined;
   if (!productionCell) return;
+
+  const exactExecutionId = executionId ?? currentExecutionId;
+  if (!exactExecutionId) {
+    throw new Error(`PRODUCTION_INGRESS_EXECUTION_MISSING: task ${taskId}`);
+  }
+  const ingress = readFrozenProductionIngress(db, exactExecutionId);
+  const intent = db.prepare(
+    `SELECT output_schema FROM factory_work_intents WHERE id=?`,
+  ).get(ingress.workIntentId) as { output_schema: string } | undefined;
+  if (!intent) {
+    throw new Error(`PRODUCTION_INGRESS_WORK_INTENT_NOT_FOUND: ${ingress.workIntentId}`);
+  }
 
   // Managed Workplace ingress (e.g. Formalization author nodes) does not require
   // a typed product_submit — the factory assembles the product from the
   // Workplace desk (artifacts + traces) at CandidateSet seal time. Only
   // typed ingress requires an explicit product_submit before worker_done. The
   // same immutable WorkIntent capability set drives the seal-time reader.
-  if (productionIngressModeFromAuthorityScope(productionCell.authority_scope)
-    === 'managed-workplace') return;
-  const exactExecutionId = executionId ?? currentExecutionId;
+  if (ingress.mode === 'managed-workplace') return;
   const submission = exactExecutionId
     ? db.prepare(
-        `SELECT s.id,s.schema_version,wi.output_schema
+        `SELECT s.id,s.intent_id,s.schema_version,wi.output_schema
            FROM factory_managed_node_submissions s
            JOIN factory_work_intents wi ON wi.id=s.intent_id
           WHERE s.task_id=? AND s.execution_id=?
           ORDER BY s.id DESC LIMIT 1`,
       ).get(taskId, exactExecutionId) as {
         id: number;
+        intent_id: number;
         schema_version: string;
         output_schema: string;
       } | undefined
     : undefined;
-  if (submission && submission.schema_version === submission.output_schema) return;
+  if (submission
+    && submission.intent_id === ingress.workIntentId
+    && submission.schema_version === intent.output_schema
+    && submission.output_schema === intent.output_schema) return;
   if (submission) {
     throw new Error(
       `PRODUCTION_CELL_PRODUCT_SCHEMA_MISMATCH: task ${taskId} execution `
-      + `'${exactExecutionId}' must submit '${submission.output_schema}', `
+      + `'${exactExecutionId}' must submit '${intent.output_schema}', `
       + `received '${submission.schema_version}'. The incompatible product `
       + 'remains immutable evidence but cannot complete this WorkIntent.',
     );

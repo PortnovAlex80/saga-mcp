@@ -229,7 +229,30 @@ authority.gateDecisionKey
 
 ---
 
-## B-7 — Подключить source adapters как единственный runtime path
+## B-7 — Single ProductRef ingress before revision (ADR-067)
+
+> **Supersession (2026-08-14):** ADR-067 replaces the speculative multi-source
+> adapter registry described in the legacy checklist below. Production has one
+> material ingress: resolve exact ProductRefs from the execution's immutable,
+> hash-verified WorkIntent authority; erase physical provenance; then assemble
+> WorkplaceProductionRevision through `canonicalProductsToContribution`.
+> Managed Workplace material is first sealed as an exact ProductRef.
+> Carry-forward reuses exact sealed ProductRefs and is not a source adapter.
+> The old “4–5 adapters” condition is **not applicable**.
+>
+> Current acceptance checks:
+> - [x] `productSource`, `product_source`, and `requireTypedSubmission` are absent
+>   from `src/`.
+> - [x] worker-done and seal-time presentation use the same frozen
+>   execution→WorkIntent authority; task projection churn cannot change ingress.
+> - [x] WorkIntent capability/product-contract fields are physically immutable.
+> - [x] exactly one ingress is selected; no typed→managed fallback exists.
+> - [x] malformed/missing ingress creates no revision, CandidateSet, GateRun, or
+>   transition obligation.
+> - [x] after ProductRef resolution, revision/CandidateSet/Gate/effect/replay are
+>   source-blind and presentation-partition invariant.
+
+### Superseded pre-ADR-067 proposal (historical, non-normative)
 
 **Scope:** все источники (managed artifacts, typed submissions, Git contributions, evidence, carry-forward) проходят:
 ```

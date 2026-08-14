@@ -1,5 +1,10 @@
 # 05 — Production Cell Design: Scripting the Universal Author→Reviewer Quality Loop
 
+> **Historical pre-ADR-067 terminology:** `productSource`, task metadata source
+> flags, and dispatcher source branches below are retired. Ingress is selected
+> once from the frozen execution→WorkIntent capability and erased after exact
+> ProductRefs are resolved.
+
 > This document explains how the Saga Factory's Production Cell works end-to-end
 > and how to script every phase without an LLM. Every claim is backed by a code
 > reference so a script author can verify the mechanism directly.

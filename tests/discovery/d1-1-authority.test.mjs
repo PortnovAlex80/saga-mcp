@@ -183,7 +183,7 @@ test('runtime: a Saga tool not in the allowlist is auto-denied (default-deny)', 
 
 // --- (5) WorkIntent mutated after claim → permissions unchanged ------------------
 
-test('immutable: mutating the WorkIntent after claim does not change gateway permissions', () => {
+test('immutable: WorkIntent contract mutation is rejected and frozen permissions remain unchanged', () => {
   // The gateway reads the FROZEN execution_context in worker_executions.metadata,
   // NOT the live factory_work_intents row. So even if a separate process rewrites
   // the WorkIntent to add 'task_create' to allowed_tools, this execution is still
@@ -191,12 +191,16 @@ test('immutable: mutating the WorkIntent after claim does not change gateway per
   const { temp, db } = makeFixture();
   try {
     seedExecution(db, 'exec-frozen', runtimeSnapshot());  // frozen WITHOUT task_create
-    // Simulate a concurrent WorkIntent mutation adding task_create.
+    // A concurrent attempt to widen the durable WorkIntent is rejected at the
+    // storage boundary. The already-frozen execution snapshot remains unchanged.
     db.prepare(`INSERT OR IGNORE INTO factory_work_intents
       (id, epic_id, kind, objective, authority_scope, output_schema, token_budget, retry_budget, projected_task_id, status)
       VALUES (7, 10, 'discovery', 'o', '{}', 's', 0, 0, 100, 'executing')`).run();
-    db.prepare(`UPDATE factory_work_intents SET authority_scope=? WHERE id=7`).run(
-      JSON.stringify({ allowed_tools: [...ALLOWED, 'task_create'], enforcement: 'runtime', scope: 's', snapshot_ref: 'e:10' }),
+    assert.throws(
+      () => db.prepare(`UPDATE factory_work_intents SET authority_scope=? WHERE id=7`).run(
+        JSON.stringify({ allowed_tools: [...ALLOWED, 'task_create'], enforcement: 'runtime', scope: 's', snapshot_ref: 'e:10' }),
+      ),
+      /FACTORY_WORK_INTENT_CONTRACT_IMMUTABLE/,
     );
     const d = authorizeSagaToolCall({ toolName: 'task_create', db, executionId: 'exec-frozen' });
     assert.equal(d.allow, false, 'frozen snapshot must not pick up the post-claim WorkIntent mutation');

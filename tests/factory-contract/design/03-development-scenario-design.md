@@ -1,5 +1,9 @@
 # Development Scenario Design — LLM-Free Scripted Test
 
+> **Historical pre-ADR-067 terminology:** source flags below are no longer
+> runtime authority. `product_submit` capability in the frozen execution
+> WorkIntent selects the sole pre-seal ingress; all later material is ProductRef-only.
+
 This document is the complete specification of MCP tool calls for **цех Development**
 (`solution-development@1.1.0`), the third stage of the Product Delivery conveyor
 (Discovery → Formalization → **Development** → Delivery). It is written so a

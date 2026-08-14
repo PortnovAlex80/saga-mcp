@@ -155,6 +155,25 @@ reuses exact sealed ProductRefs through the same canonical contribution path.
 - Update the ADR-053 B-7 tracker and architecture ratchets to test the runtime
   call path, not exported function names.
 
+## Implementation invariant discovered during strict verification
+
+The phrase “frozen WorkIntent” means the WorkIntent bound inside the
+hash-verified `worker_executions.metadata.execution_context`. It does **not**
+mean `tasks.metadata.work_intent_id`: that field is a mutable Kanban projection
+and is lawfully rebound when the next Production Cell role is activated.
+
+Accordingly:
+
+- WorkIntent contract columns (objective, authority scope, output schema and
+  budgets) are protected by a physical SQLite immutability trigger;
+- worker-done admission and CandidateSet presentation resolve ingress through
+  the same frozen execution-context helper;
+- live tool calls may additionally require the current task→WorkIntent fence,
+  but historical material presentation must not, because projection churn is
+  not material churn;
+- the task-reuse temporal test is a release veto: rebinding a projected task to
+  the next WorkIntent must not change the old execution's ingress or ProductRefs.
+
 ## Decision Journal
 
 **Date:** 2026-08-14  
