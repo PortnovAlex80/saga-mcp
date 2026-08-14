@@ -161,11 +161,12 @@ export interface ProductionCellProjectionPersistence {
 }
 
 export interface ProductionCellProductReader {
-  readExecutionProducts(input: {
+  /** Read pre-seal contributions presented by one fenced execution. */
+  readContributionProducts(input: {
     processRunId: number;
     moduleRef: string;
     nodeId: string;
-    executionRef: string;
+    contributorRef: string;
     expectedSchemaRefs: readonly string[];
     requireTypedSubmission: boolean;
   }): readonly ProductRef[];
@@ -528,11 +529,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     const products = carryDirective
       ? carryDirective.products
-      : this.opts.productReader.readExecutionProducts({
+      : this.opts.productReader.readContributionProducts({
           processRunId: ctx.processRunId,
           moduleRef,
           nodeId: node.id,
-          executionRef,
+          contributorRef: executionRef,
           expectedSchemaRefs: role === 'reviewer'
             ? [cell.review?.verdictSchemaRef ?? '']
             : cell.productContracts.map(contract => contract.schemaRef),
@@ -703,7 +704,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     if (!existing) {
       // ADR-053 Phase 6 — build AcceptedCandidateAuthority so effects consume
       // exact material coordinates (revision, productRefs, gateDecision)
-      // instead of re-deriving from producerExecutionRef.
+      // instead of re-deriving from presenterExecutionRef.
       const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
       const gateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
         serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
@@ -1463,7 +1464,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // Cross-run-stable semantic digest (CONVEYOR v4.3 §6). Authored here from
     // a STABLE projection: cell/contract identity + stable item identity +
     // canonical ProductRefs ({ schemaId, digest }). Run-specific provenance
-    // (workplaceRef, candidateSetRef, producerExecutionRef, execution ids) is
+    // (workplaceRef, candidateSetRef, presenterExecutionRef, execution ids) is
     // excluded — those remain in `items`/`contentHash` for current-run audit.
     // Products are sorted per-item (multiset) and items sorted by id, so the
     // digest is order-independent and identical across two runs that produce

@@ -97,12 +97,12 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
           const candidate = db.prepare(
             `SELECT cs.candidate_set_ref,
                     (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
-                      WHERE rev.revision_ref = cs.production_revision_ref) AS producer_execution_ref
+                      WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref
                FROM factory_candidate_sets cs
               WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?`,
           ).get(candidateSetRef, workplaceRef) as {
             candidate_set_ref: string;
-            producer_execution_ref: string;
+            presenter_ref: string;
           } | undefined;
           if (!candidate) {
             throw new Error(
@@ -111,13 +111,13 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
           }
           const worker = db.prepare(
             `SELECT 1 AS present FROM worker_executions WHERE execution_id=?`,
-          ).get(candidate.producer_execution_ref);
+          ).get(candidate.presenter_ref);
           // ProducerRef is wider than WorkerExecutionRef. Kernel presenters
           // preserve provenance but have no executable recipe to certify.
           if (!worker) continue;
           captureReplayCapsuleFailClosed(db, () =>
             repo.captureAcceptedExecution({
-              executionRef: candidate.producer_execution_ref,
+              executionRef: candidate.presenter_ref,
               candidateSetRef: candidate.candidate_set_ref,
             }));
         }

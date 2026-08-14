@@ -127,7 +127,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     },
     finalAcceptance: new SqliteCellFinalAcceptance(db),
     authorityHead: new SqliteAcceptedAuthorityHeadRepository(db),
-    productReader: { readExecutionProducts: ({ executionRef }) => products.get(executionRef) ?? [] },
+    productReader: { readContributionProducts: ({ contributorRef }) => products.get(contributorRef) ?? [] },
     checkProviders: {
       resolve(providerId) {
         return providerId === PROVIDER

@@ -142,7 +142,7 @@ export function certifyAcceptedReplayCapsules(
       for (const candidateSetRef of [...new Set(candidateRefs)]) {
         const candidate = db.prepare(
           `SELECT cs.candidate_set_ref,
-                  (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS producer_execution_ref
+                  (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS presenter_ref
              FROM factory_candidate_sets cs
              JOIN worker_executions we
                ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
@@ -154,13 +154,13 @@ export function certifyAcceptedReplayCapsules(
               AND rc.id IS NULL`,
         ).get(candidateSetRef, workplace.workplace_ref) as {
           candidate_set_ref: string;
-          producer_execution_ref: string;
+          presenter_ref: string;
         } | undefined;
         if (!candidate) continue;
 
         captureReplayCapsuleFailClosed(db, () =>
           repo.captureAcceptedExecution({
-            executionRef: candidate.producer_execution_ref,
+            executionRef: candidate.presenter_ref,
             candidateSetRef: candidate.candidate_set_ref,
           }));
       }

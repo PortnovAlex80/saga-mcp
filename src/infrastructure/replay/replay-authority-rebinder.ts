@@ -73,11 +73,9 @@ function rebindReviewerCandidateSet(
   // AUTHORITY-ACCEPTED author set, which is exactly what the gate decision
   // records. Recency could pick a rejected repair attempt sealed later.
   const currentAuthor = db.prepare(
-    `SELECT subject_candidate_set_ref AS candidate_set_ref
-       FROM factory_gate_decisions
-      WHERE workplace_ref=? AND gate_phase='final' AND verdict='accepted'
-      ORDER BY decided_at DESC,rowid DESC
-      LIMIT 1`,
+    `SELECT accepted_author_candidate_set_ref AS candidate_set_ref
+       FROM factory_accepted_authority_head
+      WHERE workplace_ref=?`,
   ).get(workplaceRef) as { candidate_set_ref: string } | undefined;
   if (!currentAuthor) {
     throw new Error(

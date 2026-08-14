@@ -118,7 +118,7 @@ export interface CandidateSet {
    * derived from the revision. REQUIRED — no CandidateSet may be sealed
    * without a revision ref. The execution provenance (presenter) lives on the
    * REVISION (revisionRepo.getRevision(productionRevisionRef).presenterRef),
-   * NOT on the CandidateSet. LEGACY producerExecutionRef FIELD IS DELETED.
+   * NOT on the CandidateSet. LEGACY presenterExecutionRef FIELD IS DELETED.
    */
   readonly productionRevisionRef: string;
   /** author or reviewer (REG-12-AC-04 requires subject for reviewer). */
@@ -142,7 +142,7 @@ export interface CandidateSet {
  * Compute the deterministic seal key for a CandidateSet.
  *
  * ADR-053 clean-break: the seal key ALWAYS uses `productionRevisionRef` as the
- * material identity. There is NO fallback to `producerExecutionRef`. Two
+ * material identity. There is NO fallback to `presenterExecutionRef`. Two
  * executions producing the same revision (recovery / carry-forward) derive the
  * same key → the second finds the first's already-sealed CandidateSet
  * (partition invariance).

@@ -4,7 +4,7 @@
  * Target contract: REG-12 (Партия на проверку — CandidateSet).
  *
  * Idempotency (REG-12-AC-01): the seal key `(workplace_ref,
- * producer_execution_ref, role)` is UNIQUE. A replay of the same execution's
+ * presenter_ref, role)` is UNIQUE. A replay of the same execution's
  * completion returns the existing row; a different payload under the same key
  * is rejected with `CANDIDATE_SET_REPLAY_MISMATCH`.
  *

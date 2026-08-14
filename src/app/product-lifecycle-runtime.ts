@@ -494,7 +494,7 @@ export function createProductLifecycleRuntime(
         },
       } as ProductionCellProjectionPersistence,
       productReader: {
-        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs, requireTypedSubmission }) => {
+        readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs, requireTypedSubmission }) => {
           // Typed submissions are immutable products of one exact execution and
           // therefore remain execution-scoped.
           const submission = db.prepare(
@@ -502,7 +502,7 @@ export function createProductLifecycleRuntime(
                FROM factory_managed_node_submissions
               WHERE process_run_id=? AND module_ref=? AND node_id=? AND execution_id=?
               ORDER BY id DESC LIMIT 1`,
-          ).get(processRunId, moduleRef, nodeId, executionRef) as
+          ).get(processRunId, moduleRef, nodeId, contributorRef) as
             | { id: number; schema_version: string; content_hash: string }
             | undefined;
           if (submission) {
@@ -523,10 +523,10 @@ export function createProductLifecycleRuntime(
                FROM worker_executions we
                JOIN tasks t ON t.id=we.task_id
               WHERE we.execution_id=?`,
-          ).get(executionRef) as { workplaceRef: string | null } | undefined;
+          ).get(contributorRef) as { workplaceRef: string | null } | undefined;
           if (!executionContext?.workplaceRef) {
             throw new Error(
-              `WORKPLACE_PRODUCT_CONTEXT_MISSING: execution ${executionRef} has no workplace_ref`,
+              `WORKPLACE_PRODUCT_CONTEXT_MISSING: contributor ${contributorRef} has no workplace_ref`,
             );
           }
           const workplaceRef = deserializeWorkplaceRef(executionContext.workplaceRef);
@@ -551,7 +551,7 @@ export function createProductLifecycleRuntime(
             const snapshot = buildWorkplaceProductionSnapshot({
               workplaceRef: executionContext.workplaceRef!,
               expectedSchemaRef: schemaId,
-              presenterExecutionRef: executionRef,
+              presenterExecutionRef: contributorRef,
               artifacts: production.artifacts,
               traces: production.traces,
             });
@@ -563,7 +563,7 @@ export function createProductLifecycleRuntime(
               schema: schemaId,
               content: snapshot,
               contentHash,
-              executionRef,
+              executionRef: contributorRef,
             }).productRef;
           });
         },

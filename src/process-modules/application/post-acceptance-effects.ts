@@ -5,7 +5,7 @@ import { sha256Hex } from '../../shared/canonical-json.js';
 /**
  * ADR-053 Phase 6 — the exact accepted-candidate authority an effect consumes.
  *
- * This replaces the execution-scoped fields (producerExecutionRef, process/node/
+ * This replaces the execution-scoped fields (presenterExecutionRef, process/node/
  * task selectors, expected-schema rediscovery) in PostAcceptanceEffectInput.
  * Every material coordinate an effect needs is already resolved BEFORE the
  * Gate: the revision, the exact accepted ProductRefs, the GateDecision, and the
@@ -13,7 +13,7 @@ import { sha256Hex } from '../../shared/canonical-json.js';
  * IDs, task IDs, or "latest" lookups.
  *
  * Phase 6 ADDS this to PostAcceptanceEffectInput alongside the legacy fields
- * (migration). Phase 7 REMOVES producerExecutionRef and the legacy fields,
+ * (migration). Phase 7 REMOVES presenterExecutionRef and the legacy fields,
  * leaving AcceptedCandidateAuthority as the sole input.
  */
 export interface AcceptedCandidateAuthority {

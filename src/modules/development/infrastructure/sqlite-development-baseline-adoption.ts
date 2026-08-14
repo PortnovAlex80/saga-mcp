@@ -134,7 +134,7 @@ export function adoptIntegratedDevelopmentBaseline(
       if (
         product.sourceCandidateSetRef !== null
         || submission.task_id !== command.sourceTaskId
-        || submission.execution_id !== author.producer_execution_ref
+        || submission.execution_id !== author.presenter_ref
       ) throw new Error('DEVELOPMENT_ADOPTION_PRODUCT_OWNER_DRIFT');
     } else if (product.origin === 'carried-forward') {
       const lineage = db.prepare(
@@ -157,7 +157,7 @@ export function adoptIntegratedDevelopmentBaseline(
         || lineage[0]!.source_product_schema !== product.schemaId
         || lineage[0]!.source_product_ref !== product.ref
         || lineage[0]!.source_product_digest !== product.digest
-        || lineage[0]!.presenter_ref !== author.producer_execution_ref
+        || lineage[0]!.presenter_ref !== author.presenter_ref
       ) throw new Error('DEVELOPMENT_ADOPTION_CARRY_LINEAGE_DRIFT');
     } else {
       throw new Error('DEVELOPMENT_ADOPTION_PRODUCT_ORIGIN_INVALID');
@@ -300,7 +300,7 @@ export function adoptIntegratedDevelopmentBaseline(
 interface CandidateRow {
   candidate_set_ref: string;
   workplace_ref: string;
-  producer_execution_ref: string;
+  presenter_ref: string;
   role: 'author' | 'reviewer';
   subject_candidate_set_ref: string | null;
   candidate_set_digest: string;
@@ -308,7 +308,7 @@ interface CandidateRow {
 
 function requireCandidateByRef(db: Database.Database, ref: string): CandidateRow {
   const row = db.prepare(
-    `SELECT *, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS producer_execution_ref FROM factory_candidate_sets WHERE candidate_set_ref=?`,
+    `SELECT *, (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=factory_candidate_sets.production_revision_ref) AS presenter_ref FROM factory_candidate_sets WHERE candidate_set_ref=?`,
   ).get(ref) as CandidateRow | undefined;
   if (!row) throw new Error('DEVELOPMENT_ADOPTION_CANDIDATE_MISSING');
   return row;

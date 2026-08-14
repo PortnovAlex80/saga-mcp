@@ -730,7 +730,7 @@ implements DevelopmentSettlementPolicyPort {
     //      implementation workset as a `succeeded` result carrying
     //      implementationExecutionId + reviewExecutionId + reviewedSourceCommit
     //      + result ProductRef (Step 7 of the ADR — "GateAccepted -> RunPostAcceptanceEffects").
-    //   3. Remove producerExecutionRef / latest-execution / latest-task as
+    //   3. Remove presenterExecutionRef / latest-execution / latest-task as
     //      material authority — settlement must read only exact sealed
     //      revision refs and accepted CandidateSet refs (Step 3 of the ADR:
     //      AcceptedCandidateAuthority instead of execution-scoped input).
