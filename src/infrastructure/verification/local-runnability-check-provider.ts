@@ -436,7 +436,13 @@ function runLocalReadiness(
       '-C', subject.repositoryPath, 'archive', '--format=tar', subject.commitSha,
     ], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     writeFileSync(archive, tar);
-    execFileSync('tar', ['-xf', archive, '-C', directory, '--force-local'], {
+    // Windows ships bsdtar, which does not implement GNU tar's
+    // `--force-local`. Because execFileSync passes the archive path as one
+    // argv value (there is no remote-shell parsing), the flag is unnecessary
+    // on Windows and made every local readiness check fail before extraction.
+    const tarArgs = ['-xf', archive, '-C', directory];
+    if (process.platform !== 'win32') tarArgs.push('--force-local');
+    execFileSync('tar', tarArgs, {
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
     });
     // LR-04 — the EXPLICIT readiness profile (served | static) is the single

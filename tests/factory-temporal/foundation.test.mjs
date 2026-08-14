@@ -37,7 +37,7 @@ test('Foundation: canonical composition fingerprint is stable and overlay allowl
   try {
     const fingerprint = await computeCompositionFingerprint(dbPath);
     assert.ok(fingerprint.lifecycle.id.includes('product-build'), `lifecycle id: ${fingerprint.lifecycle.id}`);
-    assert.equal(fingerprint.lifecycle.version, '1.1.0');
+    assert.equal(fingerprint.lifecycle.version, '1.2.0');
     assert.equal(fingerprint.lifecycle.stagesDigest.length, 64);
     assert.equal(typeof fingerprint.fingerprint, 'string');
     assert.equal(fingerprint.fingerprint.length, 64);

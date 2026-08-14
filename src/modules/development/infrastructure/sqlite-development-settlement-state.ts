@@ -48,6 +48,11 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
 } from '../application/candidate-check-contracts.js';
+import {
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+} from '../application/development-check-providers.js';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../infrastructure/source-change/managed-source-change-candidate.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
@@ -442,10 +447,9 @@ export class SqliteDevelopmentModuleStore implements
       // Substrate tables absent (minimal test schema) → no persisted receipt.
       return null;
     }
-    if (!subjectRow) return null;
-    let row: { outcome: string; evidence_refs: string } | undefined;
-    try {
-      row = this.db.prepare(
+    let rows: Array<{ outcome: string; evidence_refs: string }> = [];
+    if (subjectRow) try {
+      const row = this.db.prepare(
         `SELECT outcome, evidence_refs
            FROM factory_check_receipts
           WHERE subject_candidate_set_ref=?
@@ -459,46 +463,54 @@ export class SqliteDevelopmentModuleStore implements
         LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
         LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
       ) as { outcome: string; evidence_refs: string } | undefined;
+      if (row) rows = [row];
     } catch {
       return null;
     }
     // LR-07 fallback: when the LR provider resolved the subject via its
     // freeze-authority fallback (the gate named the verifier's evidence set as
     // subject, but the provider tested the freeze's candidate), the receipt is
-    // keyed by the verifier's set, not the freeze's set. Search for any passed/
-    // failed LR receipt in THIS process run — there is at most one frozen
-    // candidate, so any LR receipt in the run IS for this candidate.
-    if (!row) {
+    // keyed by the verifier's set, not the freeze's set. Accept only receipts
+    // whose immutable task input pins this exact candidate ref and digest.
+    if (rows.length === 0) {
       try {
-        row = this.db.prepare(
+        rows = this.db.prepare(
           `SELECT cr.outcome, cr.evidence_refs
              FROM factory_check_receipts cr
              JOIN factory_candidate_sets cs ON cs.candidate_set_ref=cr.subject_candidate_set_ref
              JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
+             JOIN tasks t ON t.workplace_ref=w.workplace_ref
             WHERE cr.provider_id=? AND cr.provider_digest=? AND cr.outcome IN ('passed','failed')
-            ORDER BY cr.rowid DESC LIMIT 1`,
-        ).get(
+              AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.ref')=?
+              AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.hash')=?
+            ORDER BY cr.rowid`,
+        ).all(
           processRunId,
           LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
           LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-        ) as { outcome: string; evidence_refs: string } | undefined;
+          candidateRef.ref,
+          candidateRef.hash,
+        ) as Array<{ outcome: string; evidence_refs: string }>;
       } catch {
         return null;
       }
     }
-    if (!row) return null;
-    let parsedEvidence: unknown;
-    try {
-      parsedEvidence = JSON.parse(row.evidence_refs);
-    } catch {
-      parsedEvidence = [];
-    }
-    const evidenceRefs = Array.isArray(parsedEvidence)
-      ? parsedEvidence.filter((value): value is string => typeof value === 'string')
-      : [];
+    if (rows.length === 0) return null;
+    const outcomes = new Set(rows.map(row => row.outcome));
+    if (outcomes.size !== 1) return null;
+    const evidenceRefs = [...new Set(rows.flatMap(row => {
+      try {
+        const parsed = JSON.parse(row.evidence_refs) as unknown;
+        return Array.isArray(parsed)
+          ? parsed.filter((value): value is string => typeof value === 'string')
+          : [];
+      } catch {
+        return [];
+      }
+    }))];
     return {
       candidateHash: candidate.candidateHash,
-      outcome: row.outcome as 'passed' | 'failed',
+      outcome: rows[0]!.outcome as 'passed' | 'failed',
       evidenceRefs,
     };
   }
@@ -661,11 +673,20 @@ export class SqliteDevelopmentModuleStore implements
           AND tp.determinism='full'
           AND tp.status='active'
         WHERE cr.subject_candidate_set_ref=?
+          AND cr.provider_id=?
+          AND cr.provider_version=?
+          AND cr.provider_digest=?
           AND cr.outcome='passed'
           AND gd.gate_phase='final'
           AND gd.verdict='accepted'
         ORDER BY tp.project_id DESC,cr.check_receipt_ref`,
-    ).all(projectId, candidateSetRef) as Array<{
+    ).all(
+      projectId,
+      candidateSetRef,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+    ) as Array<{
       check_receipt_ref: string;
       receipt_digest: string;
       provider_id: string;

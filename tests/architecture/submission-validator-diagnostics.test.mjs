@@ -7,13 +7,16 @@ import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workpla
 const candidate = {
   candidateSetRef: 'candidate-set/test/author',
   workplaceRef: { processRunId: 2, moduleRef: 'solution-formalization@1.0.0' },
-  producerExecutionRef: 'worker-execution:repair-2',
+  productionRevisionRef: 'production-revision:test',
   role: 'author',
 };
 
 function providerDb({ hasProduction = false } = {}) {
   return {
     prepare(sql) {
+      if (sql.includes('factory_workplace_production_revisions')) {
+        return { get: () => ({ presenter_ref: 'worker-execution:repair-2' }) };
+      }
       if (sql.includes('factory_managed_artifact_productions')) {
         return { get: () => hasProduction ? { present: 1 } : undefined };
       }

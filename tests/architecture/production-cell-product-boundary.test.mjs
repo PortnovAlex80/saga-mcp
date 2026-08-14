@@ -176,5 +176,6 @@ test('Development verification gate executes the v2 payload/lineage contract, no
   const readinessEntry = node.cellDefinition.authorGate.checkPlan.entries
     .find(entry => entry.check.providerId === 'factory.local-runnability.v1');
   assert.ok(readinessEntry, 'local runnability provider is mandatory');
-  assert.equal(readinessEntry.repairTargetRoleOnFailure, 'author');
+  assert.equal(readinessEntry.failureOwnership, 'upstream');
+  assert.equal(readinessEntry.repairTargetRoleOnFailure, undefined);
 });
