@@ -415,6 +415,7 @@ function createPinnedWorkerFactory(
     workspaceTemplatePreparers: new Map([
       ['solution-development@1.1.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development@1.2.0', prepareDevelopmentWorkspaceTemplate],
+      ['solution-development@1.3.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development-managed@1.1.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development-verification-continuation@1.0.0', prepareDevelopmentWorkspaceTemplate],
     ]),

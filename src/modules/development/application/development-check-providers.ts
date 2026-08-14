@@ -77,12 +77,12 @@ export const developmentTaskGraphPayloadContract: ProductPayloadContract = {
 // observed on live conveyor submissions.
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID =
   'development.implementation-result-payload.v1';
-export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.1.0';
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   decoder: 'validateDevelopmentImplementationResultPayload',
   schemaVersion: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
-  invariant: 'implementation-result-carries-exact-git-snapshot-and-declared-files',
+  invariant: 'implementation-result-carries-exact-git-snapshot-declared-files-and-readiness-profile',
 } as const;
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DIGEST =
   productPayloadContractDigest({
@@ -161,9 +161,49 @@ function validateDevelopmentImplementationResultPayload(payload: unknown): strin
       errors.push('snapshot.changedFiles must be a non-empty array of paths or {path} entries');
     }
   }
-  if (payload.readiness !== undefined && payload.readiness !== null
-      && !isRecordValue(payload.readiness)) {
-    errors.push('readiness, when present, must be an object');
+  errors.push(...validateReadinessProfile(payload.readiness));
+  return errors;
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * LR-04 submission firewall. Every standard implementation presentation must
+ * state the same explicit final-product run contract. This is deliberately
+ * checked before INSERT so a worker can repair the payload in the same
+ * execution; the verification fan-out must never discover that the frozen
+ * candidate was structurally unverifiable.
+ */
+function validateReadinessProfile(value: unknown): string[] {
+  if (!isRecordValue(value)) {
+    return ['readiness must be an object with kind, commands, and (for served) serve'];
+  }
+  const errors: string[] = [];
+  if (value.kind !== 'static' && value.kind !== 'served') {
+    errors.push('readiness.kind must be "static" or "served"');
+  }
+  if (!isRecordValue(value.commands)) {
+    errors.push('readiness.commands must be an object');
+  } else {
+    const install = value.commands.installCommand;
+    if (install !== null && !nonEmptyString(install)) {
+      errors.push('readiness.commands.installCommand must be null or a non-empty string');
+    }
+    if (!nonEmptyString(value.commands.testCommand)) {
+      errors.push('readiness.commands.testCommand must be a non-empty string');
+    }
+  }
+  if (value.kind === 'served') {
+    if (!isRecordValue(value.serve) || !nonEmptyString(value.serve.startCommand)) {
+      errors.push('readiness.serve.startCommand must be a non-empty string for served products');
+    }
+  }
+  if (value.environment !== undefined) {
+    if (!isRecordValue(value.environment) || !nonEmptyString(value.environment.image)) {
+      errors.push('readiness.environment.image must be a non-empty string when environment is present');
+    }
   }
   return errors;
 }

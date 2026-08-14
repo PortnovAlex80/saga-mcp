@@ -135,6 +135,7 @@ async function main() {
 
     // Create a feature branch and make a code change
     const branchName = `task-${taskId}`;
+    const baseCommit = git(repoPath, ['rev-parse', 'HEAD']);
     git(repoPath, ['checkout', '-b', branchName]);
 
     // Write a minimal code file
@@ -162,11 +163,20 @@ async function main() {
       snapshot: {
         commitSha,
         treeSha,
+        changedFiles: [`src/impl-${taskId}.ts`],
       },
       repository: {
         projectRepositoryId: 1,
         integrationBranch: 'dev',
+        baseCommit,
+        name: 'mock-development-repository',
       },
+      buildProducts: [],
+      readiness: {
+        kind: 'static',
+        commands: { installCommand: null, testCommand: 'node -e "process.exit(0)"' },
+      },
+      reasonCodes: [],
     };
 
     emit('assistant', { message: { content: [{ type: 'text', text: `[mock] product_submit: implementation-result for ${workItemKey}` }] } });

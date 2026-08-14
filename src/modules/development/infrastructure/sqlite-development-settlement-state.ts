@@ -37,6 +37,7 @@ import {
   type IntegratedReleaseCandidate,
   type DevelopmentVerificationEvidenceProduct,
   type LocalReadinessReceipt,
+  type ReadinessProfile,
   type VerificationProviderBinding,
 } from '../domain/development-schemas.js';
 import {
@@ -55,6 +56,32 @@ const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 const PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE = 'development.integrated-candidate';
 const PROCESS_PRODUCT_KIND_ADOPTED_IMPLEMENTATION_WORKSET =
   'development.adopted-implementation-workset';
+
+export function resolveIntegratedReadinessProfile(
+  presentations: readonly {
+    schemaId: string;
+    readiness?: ReadinessProfile;
+  }[],
+  baseline: ReadinessProfile | null,
+):
+  | { ok: true; profile: ReadinessProfile }
+  | { ok: false; reasonCode: 'implementation-readiness-profile-missing' | 'implementation-readiness-profile-mismatch' } {
+  const implementationPresentations = presentations.filter(presentation =>
+    presentation.schemaId === DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA);
+  if (implementationPresentations.length === 0) {
+    return baseline
+      ? { ok: true, profile: baseline }
+      : { ok: false, reasonCode: 'implementation-readiness-profile-missing' };
+  }
+  if (implementationPresentations.some(presentation => !presentation.readiness)) {
+    return { ok: false, reasonCode: 'implementation-readiness-profile-missing' };
+  }
+  const profiles = implementationPresentations.map(presentation => presentation.readiness!);
+  if (new Set(profiles.map(profile => sha256Hex(profile))).size !== 1) {
+    return { ok: false, reasonCode: 'implementation-readiness-profile-mismatch' };
+  }
+  return { ok: true, profile: profiles[0]! };
+}
 
 /**
  * SQLite-backed Development module store. Implements the declarative ports over
@@ -274,20 +301,24 @@ export class SqliteDevelopmentModuleStore implements
         `${integrations[index]!.effectReceiptRef}:commit:${integrations[index]!.integratedCommit}`)
         .sort();
       // LR-04 — propagate the EXPLICIT readiness profile from the accepted
-      // implementation results onto the frozen candidate. The worker that built
-      // the runnable artifact is the authority for how it runs; the freeze
-      // carries the first declared profile so the local-runnability provider
-      // (LR-07) can prove the exact sealed product runnable.
+      // implementation results onto the frozen candidate. Every standard
+      // presentation must declare it, and all declarations must be identical;
+      // arrival order must never choose the accepted run contract.
       // Continuation fallback: a managed repair round submits textual
       // SourceChangeCandidates, which carry no readiness profile by design —
       // the run contract belongs to the BASELINE candidate the repair edits.
       // Inherit the adopted baseline's profile so the re-frozen candidate
       // keeps its runnability contract instead of silently losing it.
-      const readinessProfile = accepted
-        .map(product => product.payload)
-        .find(payload => payload !== null && payload !== undefined && payload.readiness !== null && payload.readiness !== undefined)
-        ?.readiness
-        ?? this.readBaselineReadinessProfile(input.developmentCase);
+      const readiness = resolveIntegratedReadinessProfile(
+        accepted.map(product => ({
+          schemaId: product.reference.schema,
+          readiness: product.reference.schema === DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA
+            ? product.payload?.readiness
+            : undefined,
+        })),
+        this.readBaselineReadinessProfile(input.developmentCase) ?? null,
+      );
+      if (!readiness.ok) return { status: 'failed', reasonCodes: [readiness.reasonCode] };
       const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
         taskGraphHash: graphProduct.payload.graphHash,
@@ -296,7 +327,7 @@ export class SqliteDevelopmentModuleStore implements
         buildProducts,
         integrationIntentRefs,
         frozen: true,
-        ...(readinessProfile ? { readiness: readinessProfile } : {}),
+        readiness: readiness.profile,
       };
       const candidate = {
         ...body,
