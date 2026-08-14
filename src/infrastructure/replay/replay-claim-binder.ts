@@ -195,15 +195,18 @@ export function bindReplayToClaim(
   certifyAcceptedReplayCapsules(db, keyMaterial.projectId);
 
   const replayKey = computeReplayKey(keyMaterial);
-  const capsule = db.prepare(
+  const capsules = db.prepare(
     `SELECT capsule_ref,payload_hash
        FROM factory_replay_capsules
-      WHERE project_id=? AND replay_key=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(keyMaterial.projectId, replayKey) as {
+      WHERE project_id=? AND replay_key=?`,
+  ).all(keyMaterial.projectId, replayKey) as Array<{
     capsule_ref: string;
     payload_hash: string;
-  } | undefined;
+  }>;
+  if (capsules.length > 1) {
+    throw new Error(`REPLAY_CAPSULE_AUTHORITY_AMBIGUOUS: ${replayKey}`);
+  }
+  const capsule = capsules[0];
 
   const workplaceRef = readWorkplaceRefForTask(db, input.task);
   const effectiveCapsule = capsule && workplaceRef

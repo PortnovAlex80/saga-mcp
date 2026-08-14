@@ -75,7 +75,8 @@ export function executeCapsuleReplay(
   context: CapsuleReplayContext,
 ): CapsuleReplayOutcome {
   const execRow = db.prepare(
-    `SELECT we.metadata,t.metadata AS task_metadata,we.project_id,t.epic_id
+    `SELECT we.metadata,t.metadata AS task_metadata,t.workplace_ref,
+            we.project_id,t.epic_id
        FROM worker_executions we
        JOIN tasks t ON t.id=we.task_id
       WHERE we.execution_id=? AND we.task_id=?`,
@@ -84,6 +85,7 @@ export function executeCapsuleReplay(
     task_metadata: string;
     project_id: number;
     epic_id: number | null;
+    workplace_ref: string | null;
   } | undefined;
   if (!execRow) {
     throw new Error(`CAPSULE_REPLAY_EXECUTION_NOT_FOUND: ${context.executionId}`);
@@ -211,6 +213,9 @@ export function executeCapsuleReplay(
       const resolved = resolveCurrentTaskFromCapturedGenerationKey(
         db,
         execRow.project_id,
+        execRow.workplace_ref
+          ? deserializeWorkplaceRef(execRow.workplace_ref).processRunId
+          : null,
         trace.targetTaskGenerationKey,
       );
       if (!resolved) {
@@ -407,16 +412,20 @@ function parseObject(raw: unknown): Record<string, unknown> {
 function resolveCurrentTaskFromCapturedGenerationKey(
   db: Database.Database,
   projectId: number,
+  currentProcessRunId: number | null,
   capturedGenerationKey: string,
 ): number | null {
   // Same-run replay/debug may still resolve the exact key directly.
-  const exact = db.prepare(
-    `SELECT t.id
+  const exactRows = db.prepare(
+    `SELECT t.id,t.workplace_ref
        FROM tasks t JOIN epics e ON e.id=t.epic_id
-      WHERE e.project_id=? AND t.generation_key=?
-      ORDER BY t.id DESC LIMIT 1`,
-  ).get(projectId, capturedGenerationKey) as { id: number } | undefined;
-  if (exact) return exact.id;
+      WHERE e.project_id=? AND t.generation_key=?`,
+  ).all(projectId, capturedGenerationKey) as Array<{ id: number; workplace_ref: string | null }>;
+  const exact = exactRows.filter(row => currentProcessRunId === null
+    || (row.workplace_ref !== null
+      && deserializeWorkplaceRef(row.workplace_ref).processRunId === currentProcessRunId));
+  if (exact.length === 1) return exact[0]!.id;
+  if (exact.length > 1) return null;
 
   const role = capturedGenerationKey.endsWith(':author')
     ? 'author'
@@ -432,23 +441,25 @@ function resolveCurrentTaskFromCapturedGenerationKey(
 
   // Cross-run semantic task identity excludes old processRunId but retains the
   // module/cell/workKey/role that define the same materialized work item.
-  const current = db.prepare(
-    `SELECT t.id
+  const currentRows = db.prepare(
+    `SELECT t.id,t.workplace_ref
        FROM tasks t JOIN epics e ON e.id=t.epic_id
       WHERE e.project_id=?
         AND json_extract(t.metadata,'$.process_module_ref')=?
         AND json_extract(t.metadata,'$.production_cell_id')=?
         AND json_extract(t.metadata,'$.work_key')=?
-        AND json_extract(t.metadata,'$.role')=?
-      ORDER BY t.id DESC LIMIT 1`,
-  ).get(
+        AND json_extract(t.metadata,'$.role')=?`,
+  ).all(
     projectId,
     oldRef.moduleRef,
     oldRef.productionCellId,
     oldRef.workKey,
     role,
-  ) as { id: number } | undefined;
-  return current?.id ?? null;
+  ) as Array<{ id: number; workplace_ref: string | null }>;
+  const current = currentRows.filter(row => currentProcessRunId === null
+    || (row.workplace_ref !== null
+      && deserializeWorkplaceRef(row.workplace_ref).processRunId === currentProcessRunId));
+  return current.length === 1 ? current[0]!.id : null;
 }
 
 function resolveExistingArtifactId(
@@ -456,7 +467,7 @@ function resolveExistingArtifactId(
   projectId: number,
   selector: ReplayArtifactSelector,
 ): number | null {
-  const row = db.prepare(
+  const rows = db.prepare(
     `SELECT id
        FROM artifacts
       WHERE project_id=?
@@ -464,9 +475,8 @@ function resolveExistingArtifactId(
         AND COALESCE(code,'')=COALESCE(?,'')
         AND title=?
         AND path=?
-        AND (? IS NULL OR content_hash=?)
-      ORDER BY id DESC LIMIT 1`,
-  ).get(
+        AND (? IS NULL OR content_hash=?)`,
+  ).all(
     projectId,
     selector.type,
     selector.code,
@@ -474,8 +484,8 @@ function resolveExistingArtifactId(
     selector.path,
     selector.contentHash,
     selector.contentHash,
-  ) as { id: number } | undefined;
-  return row?.id ?? null;
+  ) as Array<{ id: number }>;
+  return rows.length === 1 ? rows[0]!.id : null;
 }
 
 function materializeArtifactFile(

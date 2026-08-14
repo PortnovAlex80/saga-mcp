@@ -1,7 +1,7 @@
 /** Development module registration. */
 
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
-import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';
+import { registerWorkshopCheckProvider } from '../../process-modules/application/workshop-capability-manifest.js';
 import { createReviewVerdictCheckProvider } from '../../process-modules/application/review-verdict-check-provider.js';
 import { SqliteDevelopmentOutputRepository } from './infrastructure/development-persistence.js';
 import { SqliteDevelopmentModuleStore } from './infrastructure/sqlite-development-settlement-state.js';
@@ -110,19 +110,19 @@ export function registerDevelopment(
     certificateRepository: certificateRepo,
   };
 
-  registerFactoryCheckProvider(createDevelopmentTaskGraphCheckProvider({
+  registerWorkshopCheckProvider(createDevelopmentTaskGraphCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     taskGraphPolicy,
   }));
-  registerFactoryCheckProvider(createDevelopmentImplementationScopeCheckProvider({
+  registerWorkshopCheckProvider(createDevelopmentImplementationScopeCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     git,
   }));
   // ADR-053 Phase 1: payload contracts are installed from the single workshop
   // capability manifest by the orchestrator composition root, not per-module.
-  registerFactoryCheckProvider(options.verificationCheckProviderFactory
+  registerWorkshopCheckProvider(options.verificationCheckProviderFactory
     ? options.verificationCheckProviderFactory({
       db,
       candidateSets: sharedDeps.candidateSetRepo,
@@ -131,19 +131,19 @@ export function registerDevelopment(
       db,
       candidateSets: sharedDeps.candidateSetRepo,
     }));
-  registerFactoryCheckProvider(createReviewVerdictCheckProvider({
+  registerWorkshopCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));
   ensureLocalRunnabilityProviderTrust(db);
-  registerFactoryCheckProvider(createLocalRunnabilityCheckProvider({
+  registerWorkshopCheckProvider(createLocalRunnabilityCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));
   for (const provider of installAccessibleCounterCheckProviders(
     db,
     sharedDeps.candidateSetRepo,
-  )) registerFactoryCheckProvider(provider);
+  )) registerWorkshopCheckProvider(provider);
   registries.kernelHandlers.registerAll(createDevelopmentKernelHandlers(deps));
   const continuationHandlers = createVersionedDevelopmentKernelHandlers(
     deps,

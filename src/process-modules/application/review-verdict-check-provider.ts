@@ -155,7 +155,11 @@ export function createReviewVerdictCheckProvider(input: {
         // graph item — it is DEFERRED and cannot, alone, produce
         // changes_requested. Universal: when no scopes are declared for the
         // subject (non-repository cells), the filter is a no-op.
-        const scopes = readSubjectChangeScopes(input.db, reviewSet.workplaceRef);
+        const scopes = readSubjectChangeScopes(
+          input.db,
+          reviewSet.workplaceRef,
+          subjectCandidateSetRef,
+        );
         const actionable: Array<{ finding: typeof payload.findings[number]; index: number }> = [];
         const deferred: Array<{ finding: typeof payload.findings[number]; index: number }> = [];
         payload.findings.forEach((finding, index) => {
@@ -234,12 +238,23 @@ export function createReviewVerdictCheckProvider(input: {
 function readSubjectChangeScopes(
   db: Database.Database,
   workplaceRef: Parameters<typeof serializeWorkplaceRef>[0],
+  subjectCandidateSetRef: string,
 ): string[] | null {
+  // ADR-053 B-6: the accepted-author head binds the exact author task whose
+  // immutable CandidateSet is under review. A later repair task on the same
+  // Workplace must never change the jurisdiction of an already-sealed review.
   const row = db.prepare(
-    `SELECT metadata FROM tasks
-      WHERE workplace_ref=? AND json_extract(metadata,'$.role')='author'
-      ORDER BY id DESC LIMIT 1`,
-  ).get(serializeWorkplaceRef(workplaceRef)) as { metadata: string } | undefined;
+    `SELECT t.metadata
+       FROM factory_accepted_authority_head h
+       JOIN tasks t ON CAST(t.id AS TEXT)=h.accepted_author_task_id
+      WHERE h.workplace_ref=?
+        AND h.accepted_author_candidate_set_ref=?
+        AND t.workplace_ref=h.workplace_ref
+        AND json_extract(t.metadata,'$.role')='author'`,
+  ).get(
+    serializeWorkplaceRef(workplaceRef),
+    subjectCandidateSetRef,
+  ) as { metadata: string } | undefined;
   if (!row) return null;
   let metadata: Record<string, unknown>;
   try {

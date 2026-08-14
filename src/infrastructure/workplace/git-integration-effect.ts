@@ -8,6 +8,12 @@ import type {
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 
 export const GIT_INTEGRATION_EFFECT_ID = 'git-integration';
+export const GIT_INTEGRATION_EFFECT_VERSION = '1.0.0';
+export const GIT_INTEGRATION_EFFECT_DIGEST = sha256Hex({
+  effectId: GIT_INTEGRATION_EFFECT_ID,
+  version: GIT_INTEGRATION_EFFECT_VERSION,
+  invariant: 'accepted-authority-external-effect-ledger-cas-integration',
+});
 
 export function createGitIntegrationEffect(
   integration: SqliteProductionCellIntegration,
@@ -15,6 +21,8 @@ export function createGitIntegrationEffect(
 ): PostAcceptanceEffect {
   return {
     effectId: GIT_INTEGRATION_EFFECT_ID,
+    version: GIT_INTEGRATION_EFFECT_VERSION,
+    effectDigest: GIT_INTEGRATION_EFFECT_DIGEST,
     run(input) {
       // ADR-053 B-4 — material coordinates come ONLY from the authority.
       const { authority } = input;

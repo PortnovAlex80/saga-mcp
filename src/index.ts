@@ -55,7 +55,10 @@ import {
   visibleSagaToolNames,
 } from './shared/authority/authorize-tool-call.js';
 import { closeDb, getDb } from './db.js';
-import { installWorkshopPayloadContracts } from './process-modules/application/workshop-capability-manifest.js';
+import {
+  installWorkshopPayloadContracts,
+  recordWorkshopBindingReceipt,
+} from './process-modules/application/workshop-capability-manifest.js';
 
 // ADR-053 Phase 1: the worker MCP host is a separate process from the
 // lifecycle orchestrator, but BOTH install payload contracts from the SAME
@@ -226,6 +229,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main() {
   assertManagedExecutionIdentity();
+  recordWorkshopBindingReceipt({
+    db: getDb(),
+    role: 'worker-mcp',
+    processIdentity: `worker-mcp:${process.pid}`,
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Tracker MCP Server running on stdio');

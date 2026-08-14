@@ -629,6 +629,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           verdict: decision.verdict,
           isFinal: !cell.review,
           repairTargetRole: decision.repairTargetRole ?? undefined,
+          gateDecisionKey: decision.decisionKey,
         });
       }
     } else {
@@ -654,6 +655,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         verdict: decision.verdict,
         repairTargetRole: decision.repairTargetRole ?? undefined,
         effectRequired: decision.verdict === 'accepted' && Boolean(cell.postAcceptanceEffect),
+        gateDecisionKey: decision.decisionKey,
       });
     }
     if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);

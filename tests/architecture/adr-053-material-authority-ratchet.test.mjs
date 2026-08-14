@@ -67,7 +67,19 @@ const BASELINE = Object.freeze({
   // decision must be resolved by its exact decision_key (authority.
   // gateDecisionKey), NOT by recency. B-6 is now a clean-break zero inventory.
   orderByDecidedAtDesc: 0,
+  postSealDescendingWinner: 0,
 });
+
+const POST_SEAL_AUTHORITY_FILES = Object.freeze([
+  'src/modules/discovery/application/discovery-check-providers.ts',
+  'src/process-modules/application/review-verdict-check-provider.ts',
+  'src/infrastructure/verification/local-runnability-check-provider.ts',
+  'src/modules/development/infrastructure/sqlite-development-settlement-state.ts',
+  'src/infrastructure/replay/replay-claim-binder.ts',
+  'src/infrastructure/replay/sqlite-replay-capsule-repository.ts',
+  'src/infrastructure/replay/capsule-replay-executor.ts',
+  'src/tools/products.ts',
+]);
 
 // ---------------------------------------------------------------------------
 // File discovery — every .ts file under src/ (recursive).
@@ -213,6 +225,27 @@ test('ADR-053 B-6 ratchet: ORDER BY decided_at DESC count must not exceed baseli
 // it exists so the inventory is versioned alongside the ratchet and reviewers
 // can see exactly what the cutover must remove. Update as Phases 5–7 land.
 // ===========================================================================
+test('ADR-053 B-6 ratchet: sealed-authority consumers have no descending LIMIT-1 winner', () => {
+  const sites = [];
+  const winner = /order\s+by[\s\S]{0,240}?\bdesc\b[\s\S]{0,120}?limit\s+1/giu;
+  for (const rel of POST_SEAL_AUTHORITY_FILES) {
+    const source = stripComments(readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
+    const matches = source.match(winner) ?? [];
+    for (const match of matches) sites.push(`${rel}: ${match.replace(/\s+/gu, ' ').trim()}`);
+  }
+  assert.equal(
+    sites.length,
+    BASELINE.postSealDescendingWinner,
+    `ADR-053 B-6 regression: a sealed-authority consumer selects a winner by recency/order:\n  - ${sites.join('\n  - ')}`,
+  );
+});
+
+test('ADR-053 B-6 ratchet: candidate_read never treats singleton cardinality as acceptance', () => {
+  const source = stripComments(readFileSync(path.join(REPO_ROOT, 'src/tools/products.ts'), 'utf8'));
+  assert.doesNotMatch(source, /sets\.length\s*===\s*1/gu);
+  assert.match(source, /CANDIDATE_SET_AUTHORITY_REQUIRED/gu);
+});
+
 test('ADR-053 Phase 0 inventory: post-seal-authority defect sites are documented', () => {
   const inventory = [
     // A. Gate check providers selecting by execution_id / latest.

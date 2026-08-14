@@ -57,13 +57,16 @@ let db: Database.Database | null = null;
  *       immutable decision rows remain unchanged; current repair authority is
  *       resolved by the head key instead of decided_at/rowid recency.
  *
+ *   9 = ADR-053 executable-composition binding receipts. Each process role
+ *       persists exact manifest and resolved implementation digests before work.
+ *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -173,6 +176,7 @@ export function getDb(): Database.Database {
     || migratedVersion === 5
     || migratedVersion === 6
     || migratedVersion === 7
+    || migratedVersion === 8
   ) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {

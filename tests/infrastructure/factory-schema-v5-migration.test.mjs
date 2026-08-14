@@ -111,10 +111,50 @@ test('getDb refuses to stamp an unknown future schema version as current', () =>
       encoding: 'utf8',
     });
     assert.equal(child.status, 23, child.stderr);
-    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->7/);
+    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->9/);
 
     const reopened = new Database(dbPath, { readonly: true });
     assert.equal(reopened.pragma('user_version', { simple: true }), 99);
+    reopened.close();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v8 to v9 adds immutable workshop binding receipts and stamps only after schema creation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'saga-v9-binding-'));
+  const dbPath = join(root, 'v8.sqlite');
+  try {
+    const fixture = new Database(dbPath);
+    fixture.pragma('user_version=8');
+    fixture.close();
+    const script = `
+      import { getDb, closeDb } from './dist/db.js';
+      const db = getDb();
+      const table = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_workshop_binding_receipts'").get();
+      process.stdout.write(JSON.stringify({ version: db.pragma('user_version', { simple: true }), sql: table?.sql ?? '' }));
+      closeDb();
+    `;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: process.cwd(),
+      env: { ...process.env, DB_PATH: dbPath },
+      encoding: 'utf8',
+    });
+    assert.equal(child.status, 0, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.version, 9);
+    assert.match(result.sql, /binding_digest/);
+    const reopened = new Database(dbPath);
+    assert.throws(
+      () => {
+        reopened.prepare(`INSERT INTO factory_workshop_binding_receipts
+          (receipt_ref,workshop_id,epoch,process_role,process_identity,manifest_digest,
+           declared_snapshot,resolved_snapshot,binding_digest)
+          VALUES ('r','w','e','worker-mcp','p','m','[]','[]','d')`).run();
+        reopened.prepare("UPDATE factory_workshop_binding_receipts SET binding_digest='x'").run();
+      },
+      /immutable/,
+    );
     reopened.close();
   } finally {
     rmSync(root, { recursive: true, force: true });

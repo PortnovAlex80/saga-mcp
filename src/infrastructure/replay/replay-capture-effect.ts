@@ -15,8 +15,15 @@ import type { PostAcceptanceEffect } from '../../process-modules/application/pos
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteReplayCapsuleRepository } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 export const REPLAY_CAPTURE_EFFECT_ID = 'replay-capture' as const;
+export const REPLAY_CAPTURE_EFFECT_VERSION = '1.0.0';
+export const REPLAY_CAPTURE_EFFECT_DIGEST = sha256Hex({
+  effectId: REPLAY_CAPTURE_EFFECT_ID,
+  version: REPLAY_CAPTURE_EFFECT_VERSION,
+  invariant: 'exact-final-acceptance-candidate-set-capsule',
+});
 
 function parseAssessmentRefs(raw: string): string[] {
   let parsed: unknown;
@@ -35,6 +42,8 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
   const repo = new SqliteReplayCapsuleRepository(db);
   return {
     effectId: REPLAY_CAPTURE_EFFECT_ID,
+    version: REPLAY_CAPTURE_EFFECT_VERSION,
+    effectDigest: REPLAY_CAPTURE_EFFECT_DIGEST,
     run(input) {
       // ADR-053 B-4 — consume material coordinates from the authority only.
       const workplaceRef = serializeWorkplaceRef(input.authority.workplaceRef);

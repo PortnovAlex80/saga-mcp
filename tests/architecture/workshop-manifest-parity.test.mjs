@@ -27,6 +27,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import test from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,4 +169,98 @@ test('ADR-053 Phase 1: workshop manifest digest is deterministic', async () => {
   const schemaIds = a.payloadContracts.map(e => e.schemaId);
   const sorted = [...schemaIds].sort();
   assert.deepEqual(schemaIds, sorted, 'payload contract entries are sorted by schemaId');
+  assert.ok(a.executableCapabilityCount >= 15, 'manifest declares executable providers/effects/handlers');
+  const executableKeys = a.executableCapabilities.map(entry => `${entry.kind}/${entry.logicalId}`);
+  assert.equal(new Set(executableKeys).size, executableKeys.length, 'executable identities are unique');
+  for (const entry of a.executableCapabilities) {
+    assert.ok(entry.version && entry.implementationDigest, `${entry.kind}/${entry.logicalId} is pinned`);
+    assert.doesNotMatch(entry.implementationDigest, /placeholder|pending|unknown/iu);
+  }
+});
+
+test('ADR-053 Phase 1: check/effect registrations cannot bypass the workshop manifest', () => {
+  const files = listTypeScriptFiles(SRC_ROOT);
+  const allowed = new Map([
+    ['registerFactoryCheckProvider', new Set([
+      MANIFEST_FILE,
+      'src/process-modules/application/standard-check-providers.ts',
+    ])],
+    ['registerFactoryPostAcceptanceEffect', new Set([
+      MANIFEST_FILE,
+      'src/process-modules/application/post-acceptance-effects.ts',
+    ])],
+  ]);
+  const violations = [];
+  for (const [callee, allowedFiles] of allowed) {
+    const callRe = new RegExp(`(^|[^.\\w])${callee}\\s*\\(`, 'gu');
+    for (const { rel, abs } of files) {
+      if (allowedFiles.has(rel)) continue;
+      const source = stripComments(readFileSync(abs, 'utf8'));
+      if (callRe.test(source)) violations.push(`${rel}: direct ${callee} call`);
+      callRe.lastIndex = 0;
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
+test('ADR-053 Phase 1: binding receipt is immutable and exact for worker role', async () => {
+  const {
+    installWorkshopPayloadContracts,
+    recordWorkshopBindingReceipt,
+  } = await import('../../dist/process-modules/application/workshop-capability-manifest.js');
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE factory_workshop_binding_receipts (
+      receipt_ref TEXT PRIMARY KEY, workshop_id TEXT, epoch TEXT,
+      process_role TEXT, process_identity TEXT, manifest_digest TEXT,
+      declared_snapshot TEXT, resolved_snapshot TEXT, binding_digest TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(process_identity,process_role,manifest_digest)
+    );
+    CREATE TRIGGER binding_no_update BEFORE UPDATE ON factory_workshop_binding_receipts
+    BEGIN SELECT RAISE(ABORT,'immutable'); END;
+  `);
+  installWorkshopPayloadContracts();
+  const first = recordWorkshopBindingReceipt({
+    db,
+    role: 'worker-mcp',
+    processIdentity: 'test-worker',
+  });
+  const replay = recordWorkshopBindingReceipt({
+    db,
+    role: 'worker-mcp',
+    processIdentity: 'test-worker',
+  });
+  assert.deepEqual(replay, first);
+  const row = db.prepare('SELECT * FROM factory_workshop_binding_receipts').get();
+  assert.equal(row.binding_digest, first.bindingDigest);
+  assert.equal(row.declared_snapshot, row.resolved_snapshot);
+  assert.throws(
+    () => db.prepare('UPDATE factory_workshop_binding_receipts SET binding_digest=?').run('x'),
+    /immutable/,
+  );
+  db.close();
+});
+
+test('ADR-053 Phase 1: missing or mutated executable binding fails before orchestration', async () => {
+  const {
+    registerWorkshopCheckProvider,
+    assertWorkshopTransitionHandlerBinding,
+  } = await import('../../dist/process-modules/application/workshop-capability-manifest.js');
+  assert.throws(
+    () => registerWorkshopCheckProvider({
+      providerId: 'factory.product-contract.v1',
+      version: '1.0.0',
+      providerDigest: '0'.repeat(64),
+      run: () => 'passed',
+    }),
+    /WORKSHOP_CAPABILITY_BINDING_MISMATCH/,
+  );
+  assert.throws(
+    () => assertWorkshopTransitionHandlerBinding({
+      handoffKind: 'run-gate',
+      ownerCapability: 'mutated-owner',
+    }),
+    /WORKSHOP_CAPABILITY_BINDING_MISMATCH/,
+  );
 });

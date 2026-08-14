@@ -1361,6 +1361,32 @@ CREATE TABLE IF NOT EXISTS factory_transition_obligations (
 CREATE INDEX IF NOT EXISTS idx_transition_obligations_ready
   ON factory_transition_obligations (state, lease_expires_at);
 
+CREATE TABLE IF NOT EXISTS factory_workshop_binding_receipts (
+  receipt_ref        TEXT PRIMARY KEY,
+  workshop_id       TEXT NOT NULL,
+  epoch             TEXT NOT NULL,
+  process_role      TEXT NOT NULL CHECK (
+                      process_role IN ('orchestrator','worker-mcp','scripted-worker')
+                    ),
+  process_identity  TEXT NOT NULL,
+  manifest_digest   TEXT NOT NULL,
+  declared_snapshot TEXT NOT NULL,
+  resolved_snapshot TEXT NOT NULL,
+  binding_digest    TEXT NOT NULL,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(process_identity, process_role, manifest_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_workshop_binding_receipts_role
+  ON factory_workshop_binding_receipts(process_role, manifest_digest);
+CREATE TRIGGER IF NOT EXISTS trg_workshop_binding_receipts_no_update
+BEFORE UPDATE ON factory_workshop_binding_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_workshop_binding_receipts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_workshop_binding_receipts_no_delete
+BEFORE DELETE ON factory_workshop_binding_receipts BEGIN
+  SELECT RAISE(ABORT, 'factory_workshop_binding_receipts are immutable');
+END;
+
 -- ADR-053 Phase 3 — immutable Workplace production material model.
 --
 -- factory_workplace_contributions: one execution's material delta (ordered

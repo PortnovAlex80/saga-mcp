@@ -424,9 +424,9 @@ export class SqliteDevelopmentModuleStore implements
     candidate: IntegratedReleaseCandidate,
     candidateRef: ContentAddressedReference,
   ): LocalReadinessReceipt | null {
-    let subjectRow: { ref: string } | undefined;
+    let subjectRows: Array<{ ref: string }> = [];
     try {
-      subjectRow = this.db.prepare(
+      subjectRows = this.db.prepare(
         `SELECT cs.candidate_set_ref AS ref
            FROM factory_candidate_sets cs
            JOIN factory_workplaces w
@@ -435,65 +435,60 @@ export class SqliteDevelopmentModuleStore implements
              ON m.candidate_set_ref=cs.candidate_set_ref
             AND m.product_schema=? AND m.product_ref=? AND m.product_digest=?
           WHERE cs.role='author'
-          ORDER BY cs.candidate_set_ref
-          LIMIT 1`,
-      ).get(
+          ORDER BY cs.candidate_set_ref`,
+      ).all(
         processRunId,
         INTEGRATED_CANDIDATE_SCHEMA,
         candidateRef.ref,
         candidateRef.hash,
-      ) as { ref: string } | undefined;
+      ) as Array<{ ref: string }>;
     } catch {
       // Substrate tables absent (minimal test schema) → no persisted receipt.
       return null;
     }
+    // The frozen candidate must have one unambiguous sealing CandidateSet.
+    // A lexical/rowid winner would re-introduce post-seal temporal authority.
+    if (subjectRows.length !== 1) return null;
     let rows: Array<{ outcome: string; evidence_refs: string }> = [];
-    if (subjectRow) try {
-      const row = this.db.prepare(
-        `SELECT outcome, evidence_refs
-           FROM factory_check_receipts
-          WHERE subject_candidate_set_ref=?
-            AND provider_id=?
-            AND provider_digest=?
-            AND outcome IN ('passed','failed')
-          ORDER BY rowid DESC
-          LIMIT 1`,
-      ).get(
-        subjectRow.ref,
-        LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
-        LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-      ) as { outcome: string; evidence_refs: string } | undefined;
-      if (row) rows = [row];
-    } catch {
-      return null;
-    }
     // LR-07 fallback: when the LR provider resolved the subject via its
     // freeze-authority fallback (the gate named the verifier's evidence set as
     // subject, but the provider tested the freeze's candidate), the receipt is
     // keyed by the verifier's set, not the freeze's set. Accept only receipts
     // whose immutable task input pins this exact candidate ref and digest.
-    if (rows.length === 0) {
-      try {
-        rows = this.db.prepare(
-          `SELECT cr.outcome, cr.evidence_refs
-             FROM factory_check_receipts cr
-             JOIN factory_candidate_sets cs ON cs.candidate_set_ref=cr.subject_candidate_set_ref
-             JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
-             JOIN tasks t ON t.workplace_ref=w.workplace_ref
-            WHERE cr.provider_id=? AND cr.provider_digest=? AND cr.outcome IN ('passed','failed')
-              AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.ref')=?
-              AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.hash')=?
-            ORDER BY cr.rowid`,
-        ).all(
-          processRunId,
-          LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
-          LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-          candidateRef.ref,
-          candidateRef.hash,
-        ) as Array<{ outcome: string; evidence_refs: string }>;
-      } catch {
-        return null;
-      }
+    try {
+      rows = this.db.prepare(
+        `SELECT cr.outcome, cr.evidence_refs
+           FROM factory_check_receipts cr
+           JOIN factory_candidate_sets cs
+             ON cs.candidate_set_ref=cr.subject_candidate_set_ref
+           JOIN factory_workplaces w
+             ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
+           JOIN factory_workplace_production_revisions rev
+             ON rev.revision_ref=cs.production_revision_ref
+           JOIN worker_executions we ON we.execution_id=rev.presenter_ref
+           JOIN tasks t ON t.id=we.task_id AND t.workplace_ref=w.workplace_ref
+           JOIN factory_cell_final_acceptances cfa
+             ON cfa.workplace_ref=w.workplace_ref
+            AND cfa.candidate_set_ref=cs.candidate_set_ref
+           JOIN factory_gate_decisions gd
+             ON gd.decision_key=cfa.gate_decision_key
+            AND gd.gate_run_ref=cr.check_run_ref
+            AND gd.subject_candidate_set_ref=cs.candidate_set_ref
+            AND gd.gate_phase='final' AND gd.verdict='accepted'
+          WHERE cr.provider_id=? AND cr.provider_digest=?
+            AND cr.outcome IN ('passed','failed')
+            AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.ref')=?
+            AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.hash')=?
+          ORDER BY cr.check_receipt_ref`,
+      ).all(
+        processRunId,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+        candidateRef.ref,
+        candidateRef.hash,
+      ) as Array<{ outcome: string; evidence_refs: string }>;
+    } catch {
+      return null;
     }
     if (rows.length === 0) return null;
     const outcomes = new Set(rows.map(row => row.outcome));
@@ -679,7 +674,7 @@ export class SqliteDevelopmentModuleStore implements
           AND cr.outcome='passed'
           AND gd.gate_phase='final'
           AND gd.verdict='accepted'
-        ORDER BY tp.project_id DESC,cr.check_receipt_ref`,
+        ORDER BY cr.check_receipt_ref`,
     ).all(
       projectId,
       candidateSetRef,
@@ -756,13 +751,7 @@ export class SqliteDevelopmentModuleStore implements
               submission.payload_snapshot AS payloadSnapshot,
               submission.content_hash AS contentHash,
               member.product_schema AS productSchema,
-              (SELECT rev.presenter_ref
-                 FROM factory_workplace_production_revisions rev
-                 JOIN factory_candidate_sets reviewer ON reviewer.production_revision_ref=rev.revision_ref
-                WHERE reviewer.workplace_ref=w.workplace_ref
-                  AND reviewer.role='reviewer'
-                ORDER BY reviewer.candidate_set_ref DESC
-                LIMIT 1) AS reviewExecutionId
+              review_rev.presenter_ref AS reviewExecutionId
          FROM factory_workplaces w
          LEFT JOIN factory_cell_final_acceptances cfa
            ON cfa.workplace_ref=w.workplace_ref
@@ -776,8 +765,22 @@ export class SqliteDevelopmentModuleStore implements
           AND member.product_schema IN (${schemaIds.map(() => '?').join(',')})
          JOIN factory_managed_node_submissions submission
            ON member.product_ref='managed-node-submission:' || submission.id
+         LEFT JOIN factory_gate_decisions final_decision
+           ON final_decision.decision_key=cfa.gate_decision_key
+          AND final_decision.subject_candidate_set_ref=cs.candidate_set_ref
+          AND final_decision.gate_phase='final'
+          AND final_decision.verdict='accepted'
+         LEFT JOIN factory_candidate_sets reviewer
+           ON reviewer.candidate_set_ref=json_extract(final_decision.assessment_candidate_set_refs,'$[0]')
+          AND json_array_length(final_decision.assessment_candidate_set_refs)=1
+          AND reviewer.workplace_ref=w.workplace_ref
+          AND reviewer.role='reviewer'
+          AND reviewer.subject_candidate_set_ref=cs.candidate_set_ref
+         LEFT JOIN factory_workplace_production_revisions review_rev
+           ON review_rev.revision_ref=reviewer.production_revision_ref
          JOIN tasks current_task
-           ON current_task.workplace_ref=w.workplace_ref
+           ON CAST(current_task.id AS TEXT)=h.accepted_author_task_id
+          AND current_task.workplace_ref=w.workplace_ref
           AND json_extract(current_task.metadata,'$.role')='author'
         WHERE w.process_run_id=?
           AND w.production_cell_id=?

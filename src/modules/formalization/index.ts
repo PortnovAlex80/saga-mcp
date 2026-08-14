@@ -4,8 +4,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
-import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';
-import { registerFactoryPostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
+import {
+  registerWorkshopCheckProvider,
+  registerWorkshopPostAcceptanceEffect,
+} from '../../process-modules/application/workshop-capability-manifest.js';
 import {
   createReviewVerdictCheckProvider,
 } from '../../process-modules/application/review-verdict-check-provider.js';
@@ -56,11 +58,11 @@ export function registerFormalization(
   });
   // ADR-053 Phase 1: payload contracts are installed from the single workshop
   // capability manifest by the orchestrator composition root, not per-module.
-  registerFactoryCheckProvider(createReviewVerdictCheckProvider({
+  registerWorkshopCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));
-  registerFactoryPostAcceptanceEffect(
+  registerWorkshopPostAcceptanceEffect(
     createFormalizationAcceptProductsEffect(db),
   );
 

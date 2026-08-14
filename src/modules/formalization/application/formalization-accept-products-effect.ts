@@ -1,9 +1,16 @@
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import type { PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
 import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-modules/shared/workplace-production-snapshot.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
   'formalization.accept-exact-products.v1';
+export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION = '1.0.0';
+export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST = sha256Hex({
+  effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
+  version: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
+  invariant: 'accepted-authority-exact-artifact-hash-transition',
+});
 
 interface ArtifactRow {
   id: number;
@@ -77,6 +84,8 @@ export function createFormalizationAcceptProductsEffect(
 ): PostAcceptanceEffect {
   return {
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
+    version: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
+    effectDigest: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST,
     run(input) {
       const produced = input.authority.acceptedProductRefs.flatMap(p => {
         if (!p.digest) {

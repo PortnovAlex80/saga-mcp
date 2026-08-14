@@ -3,11 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
+import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 
 const REF = asWorkplaceRef({
@@ -20,8 +22,9 @@ function harness() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
+  const gateRepo = new SqliteGateRepository(db);
   const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, authorityHeadRepo: new SqliteAcceptedAuthorityHeadRepository(db), now: () => new Date() });
-  return { db, workplaceRepo, coordinator };
+  return { db, workplaceRepo, gateRepo, coordinator };
 }
 
 /** Simulate the canonical dispatcher's projected lease/start events. */
@@ -186,6 +189,48 @@ function headRow(db) {
   ).get();
 }
 
+function recordAcceptedAuthorDecision(h, candidateSetRef, suffix) {
+  const expectedWorkplaceRevision = h.workplaceRepo.read(REF).revision;
+  const gateRunRef = `gate-run/${suffix}`;
+  const decisionKey = `gate-decision/${suffix}`;
+  h.gateRepo.createGateRun({
+    gateRunRef,
+    workplaceRef: REF,
+    gatePhase: 'author',
+    subjectCandidateSetRef: candidateSetRef,
+    assessmentCandidateSetRefs: [],
+    checkPlanRef: 'plan/author',
+    checkPlanDigest: 'd'.repeat(64),
+    expectedWorkplaceRevision,
+    gateLeaseRef: `lease/${suffix}`,
+  });
+  const body = {
+    workplaceRef: REF,
+    gateRef: 'gate/author',
+    gateRunRef,
+    gatePhase: 'author',
+    transitionRef: `transition/${suffix}`,
+    subjectCandidateSetRef: candidateSetRef,
+    assessmentCandidateSetRefs: [],
+    verdict: 'accepted',
+    repairTargetRole: null,
+    checkPlanRef: 'plan/author',
+    checkPlanDigest: 'd'.repeat(64),
+    decisionPolicyRef: 'policy/author',
+    decisionPolicyDigest: 'p'.repeat(64),
+    checkReceiptRefs: [],
+    installationDigest: 'i'.repeat(64),
+    decisionKey,
+    acceptedOutputBindings: [],
+    recoveryIssueRef: null,
+  };
+  h.gateRepo.recordDecision({
+    ...body,
+    decisionDigest: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
+  });
+  return decisionKey;
+}
+
 /** Force the workplace back to in_progress/verifying (author) via direct CAS,
  * simulating a repair cycle returning the author to a fresh acceptance visit. */
 function forceAuthorVerifying(workplaceRepo, ref, reservationRef) {
@@ -205,10 +250,11 @@ function forceAuthorVerifying(workplaceRepo, ref, reservationRef) {
 test('ADR-053 C5-02: author acceptance writes the current workplace task id onto the authority head', () => {
   const h = runningHarness();
   h.coordinator.sealCandidateSet(REF);
+  const decisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-1', 'author/accepted/rev-1');
   h.coordinator.applyGateDecision(REF, {
     verdict: 'accepted', isFinal: false,
     acceptedCandidateSetRef: 'candidate-set/attempt-1',
-    gateDecisionKey: 'gate-decision/author/accepted/rev-1',
+    gateDecisionKey: decisionKey,
     acceptedAuthorTaskId: 'task-42',
   });
   const head = headRow(h.db);
@@ -223,11 +269,12 @@ test('ADR-053 C5-02: author acceptance writes the current workplace task id onto
 test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identity to the now-current task', () => {
   const h = runningHarness();
   h.coordinator.sealCandidateSet(REF);
+  const firstDecisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-1', 'author/accepted/rev-1');
   // First author acceptance (with-review): head records the first task.
   h.coordinator.applyGateDecision(REF, {
     verdict: 'accepted', isFinal: false,
     acceptedCandidateSetRef: 'candidate-set/attempt-1',
-    gateDecisionKey: 'gate-decision/author/accepted/rev-1',
+    gateDecisionKey: firstDecisionKey,
     acceptedAuthorTaskId: 'task-A',
   });
   let head = headRow(h.db);
@@ -238,10 +285,11 @@ test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identit
   // A repair cycle returns the author to verifying and a NEW author CandidateSet
   // is accepted. The head must re-bind to the now-current task — not stay stale.
   forceAuthorVerifying(h.workplaceRepo, REF, 'execution:repair-2');
+  const secondDecisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-2', 'author/accepted/rev-3');
   h.coordinator.applyGateDecision(REF, {
     verdict: 'accepted', isFinal: false,
     acceptedCandidateSetRef: 'candidate-set/attempt-2',
-    gateDecisionKey: 'gate-decision/author/accepted/rev-3',
+    gateDecisionKey: secondDecisionKey,
     acceptedAuthorTaskId: 'task-B',
   });
   head = headRow(h.db);
@@ -255,15 +303,51 @@ test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identit
 test('ADR-053 C5-02: acceptance without a resolvable task leaves the head task identity null (C1 pointer still recorded)', () => {
   const h = runningHarness();
   h.coordinator.sealCandidateSet(REF);
+  const decisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/1', '1');
   h.coordinator.applyGateDecision(REF, {
     verdict: 'accepted', isFinal: false,
     acceptedCandidateSetRef: 'candidate-set/1',
-    gateDecisionKey: 'gate-decision/1',
+    gateDecisionKey: decisionKey,
     // acceptedAuthorTaskId omitted: the acceptance site could not resolve a task.
   });
   const head = headRow(h.db);
   assert.ok(head);
   assert.equal(head.cs, 'candidate-set/1');
   assert.equal(head.task, null);
+  h.db.close();
+});
+
+test('ADR-053 B-6: stale GateDecision rolls back the Workplace CAS and never advances applied head', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  const decisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/stale', 'stale');
+
+  const sealed = h.workplaceRepo.read(REF);
+  const concurrent = h.workplaceRepo.applyTransition({
+    workplaceRef: REF,
+    expectedRevision: sealed.revision,
+    kanbanPhase: sealed.kanbanPhase,
+    loopState: sealed.loopState,
+    nextRole: sealed.nextRole,
+    terminalReason: sealed.terminalReason,
+    activeGateRef: 'gate/concurrent-owner',
+  });
+  assert.equal(concurrent.applied, true);
+  const before = h.workplaceRepo.read(REF);
+
+  assert.throws(
+    () => h.coordinator.applyGateDecision(REF, {
+      verdict: 'accepted',
+      isFinal: false,
+      acceptedCandidateSetRef: 'candidate-set/stale',
+      gateDecisionKey: decisionKey,
+    }),
+    /GATE_DECISION_HEAD_AUTHORITY_MISMATCH/,
+  );
+  assert.deepEqual(h.workplaceRepo.read(REF), before, 'failed authority check rolls back CAS');
+  assert.equal(
+    h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_gate_decision_heads').get().n,
+    0,
+  );
   h.db.close();
 });

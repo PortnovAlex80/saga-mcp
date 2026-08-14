@@ -28,17 +28,83 @@
 // `installWorkshopPayloadContracts` below. The test
 // tests/architecture/workshop-manifest-parity.test.mjs enforces this.
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import type { SqlDatabasePort } from '../../application/ports/sql-database.js';
 import type { ProductPayloadContract } from './product-payload-contract.js';
 import {
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
+  DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
   developmentImplementationPayloadContract,
   developmentReviewVerdictPayloadContract,
   developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
   sourceChangeCandidatePayloadContract,
 } from '../../modules/development/application/development-check-providers.js';
-import { factoryReviewVerdictPayloadContract } from './review-verdict-check-provider.js';
-import { registerProductPayloadContract } from './product-payload-contract.js';
+import {
+  ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST,
+  ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID,
+  ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION,
+  AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST,
+  AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID,
+  AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+} from '../../modules/development/application/candidate-check-contracts.js';
+import {
+  DISCOVERY_PROPOSAL_CHECK_PROVIDER_DIGEST,
+  DISCOVERY_PROPOSAL_CHECK_PROVIDER_ID,
+  DISCOVERY_PROPOSAL_CHECK_PROVIDER_VERSION,
+  DISCOVERY_READINESS_CHECK_PROVIDER_DIGEST,
+  DISCOVERY_READINESS_CHECK_PROVIDER_ID,
+  DISCOVERY_READINESS_CHECK_PROVIDER_VERSION,
+} from '../../modules/discovery/application/discovery-check-providers.js';
+import { FORMALIZATION_CHECK_REFS } from '../../modules/formalization/application/formalization-check-refs.js';
+import {
+  factoryReviewVerdictPayloadContract,
+  REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
+  REVIEW_VERDICT_CHECK_PROVIDER_ID,
+  REVIEW_VERDICT_CHECK_PROVIDER_VERSION,
+} from './review-verdict-check-provider.js';
+import {
+  registerProductPayloadContract,
+  snapshotProductPayloadContracts,
+} from './product-payload-contract.js';
+import {
+  PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+  createStandardCheckProviderRegistry,
+  registerFactoryCheckProvider,
+} from './standard-check-providers.js';
+import type { CheckProvider } from '../domain/workplace/gate.js';
+import {
+  registerFactoryPostAcceptanceEffect,
+  createPostAcceptanceEffectRegistry,
+  type PostAcceptanceEffect,
+} from './post-acceptance-effects.js';
+import {
+  GIT_INTEGRATION_EFFECT_DIGEST,
+  GIT_INTEGRATION_EFFECT_ID,
+  GIT_INTEGRATION_EFFECT_VERSION,
+} from '../../infrastructure/workplace/git-integration-effect.js';
+import {
+  REPLAY_CAPTURE_EFFECT_DIGEST,
+  REPLAY_CAPTURE_EFFECT_ID,
+  REPLAY_CAPTURE_EFFECT_VERSION,
+} from '../../infrastructure/replay/replay-capture-effect.js';
+import {
+  FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST,
+  FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
+  FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
+} from '../../modules/formalization/application/formalization-accept-products-effect.js';
 
 // ---------------------------------------------------------------------------
 // Manifest identity.
@@ -97,8 +163,73 @@ export interface WorkshopCapabilityManifest {
   readonly epoch: string;
   readonly payloadContracts: readonly PayloadContractManifestEntry[];
   readonly payloadContractCount: number;
+  readonly executableCapabilities: readonly ExecutableCapabilityManifestEntry[];
+  readonly executableCapabilityCount: number;
   readonly manifestDigest: string;
 }
+
+export interface ExecutableCapabilityManifestEntry {
+  readonly kind: 'check-provider' | 'post-acceptance-effect' | 'transition-handler';
+  readonly logicalId: string;
+  readonly version: string;
+  readonly implementationDigest: string;
+  readonly roles: readonly ('orchestrator' | 'worker-mcp' | 'scripted-worker')[];
+}
+
+const orchestratorOnly = ['orchestrator'] as const;
+export type WorkshopProcessRole = 'orchestrator' | 'worker-mcp' | 'scripted-worker';
+const checkProvider = (
+  logicalId: string, version: string, implementationDigest: string,
+): ExecutableCapabilityManifestEntry => ({
+  kind: 'check-provider', logicalId, version, implementationDigest,
+  roles: orchestratorOnly,
+});
+const effect = (
+  logicalId: string, version: string, implementationDigest: string,
+): ExecutableCapabilityManifestEntry => ({
+  kind: 'post-acceptance-effect', logicalId, version, implementationDigest,
+  roles: orchestratorOnly,
+});
+
+export const WORKSHOP_EXECUTABLE_CAPABILITIES: readonly ExecutableCapabilityManifestEntry[] = [
+  checkProvider(PRODUCT_CONTRACT_CHECK_PROVIDER_ID, PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION, PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST),
+  checkProvider(REVIEW_VERDICT_CHECK_PROVIDER_ID, REVIEW_VERDICT_CHECK_PROVIDER_VERSION, REVIEW_VERDICT_CHECK_PROVIDER_DIGEST),
+  checkProvider(DISCOVERY_PROPOSAL_CHECK_PROVIDER_ID, DISCOVERY_PROPOSAL_CHECK_PROVIDER_VERSION, DISCOVERY_PROPOSAL_CHECK_PROVIDER_DIGEST),
+  checkProvider(DISCOVERY_READINESS_CHECK_PROVIDER_ID, DISCOVERY_READINESS_CHECK_PROVIDER_VERSION, DISCOVERY_READINESS_CHECK_PROVIDER_DIGEST),
+  checkProvider(DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID, DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION, DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST),
+  checkProvider(DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID, DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION, DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST),
+  checkProvider(DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID, DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION, DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST),
+  checkProvider(LOCAL_RUNNABILITY_CHECK_PROVIDER_ID, LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST),
+  checkProvider(ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID, ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION, ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST),
+  checkProvider(AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID, AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION, AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST),
+  ...Object.values(FORMALIZATION_CHECK_REFS).map(ref =>
+    checkProvider(ref.providerId, ref.version, ref.providerDigest)),
+  effect(GIT_INTEGRATION_EFFECT_ID, GIT_INTEGRATION_EFFECT_VERSION, GIT_INTEGRATION_EFFECT_DIGEST),
+  effect(REPLAY_CAPTURE_EFFECT_ID, REPLAY_CAPTURE_EFFECT_VERSION, REPLAY_CAPTURE_EFFECT_DIGEST),
+  effect(FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID, FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION, FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST),
+  ...[
+    ['run-gate', 'gate-run-driver'],
+    ['run-effects', 'production-cell-node-executor'],
+    ['record-final-acceptance', 'production-cell-node-executor'],
+    ['settle-process', 'production-cell-node-executor'],
+    ['route-lifecycle', 'lifecycle-orchestrator'],
+  ].map(([logicalId, owner]) => ({
+    kind: 'transition-handler' as const,
+    logicalId: logicalId!,
+    version: '1.0.0',
+    implementationDigest: sha256Hex({ logicalId, owner, protocol: 'factory-transition-obligation.v1' }),
+    roles: orchestratorOnly,
+  })),
+];
+
+export interface WorkshopResolvedBinding {
+  readonly kind: 'payload-contract' | ExecutableCapabilityManifestEntry['kind'];
+  readonly logicalId: string;
+  readonly version: string;
+  readonly implementationDigest: string;
+}
+
+const resolvedTransitionHandlers = new Map<string, WorkshopResolvedBinding>();
 
 // Owner map: which workshop module contributes each payload contract. This is
 // declarative metadata for audit; it does not affect registration (every
@@ -142,18 +273,170 @@ export function buildWorkshopCapabilityManifest(): WorkshopCapabilityManifest {
   const payloadContracts = [...WORKSHOP_PAYLOAD_CONTRACTS]
     .map(payloadContractEntry)
     .sort((a, b) => (a.schemaId < b.schemaId ? -1 : a.schemaId > b.schemaId ? 1 : 0));
+  const executableCapabilities = [...WORKSHOP_EXECUTABLE_CAPABILITIES]
+    .sort((a, b) => `${a.kind}/${a.logicalId}`.localeCompare(`${b.kind}/${b.logicalId}`));
   const manifestDigest = sha256Hex({
     workshopId: WORKSHOP_ID,
     epoch: WORKSHOP_EPOCH,
     payloadContracts,
+    executableCapabilities,
   });
   return {
     workshopId: WORKSHOP_ID,
     epoch: WORKSHOP_EPOCH,
     payloadContracts,
     payloadContractCount: payloadContracts.length,
+    executableCapabilities,
+    executableCapabilityCount: executableCapabilities.length,
     manifestDigest,
   };
+}
+
+function requireExecutableCapability(
+  kind: ExecutableCapabilityManifestEntry['kind'],
+  logicalId: string,
+  version: string,
+  implementationDigest: string,
+): void {
+  const binding = WORKSHOP_EXECUTABLE_CAPABILITIES.find(entry =>
+    entry.kind === kind && entry.logicalId === logicalId);
+  if (!binding) throw new Error(`WORKSHOP_CAPABILITY_UNDECLARED: ${kind}/${logicalId}`);
+  if (
+    binding.version !== version
+    || binding.implementationDigest !== implementationDigest
+  ) {
+    throw new Error(`WORKSHOP_CAPABILITY_BINDING_MISMATCH: ${kind}/${logicalId}`);
+  }
+}
+
+export function registerWorkshopCheckProvider(provider: CheckProvider): void {
+  requireExecutableCapability(
+    'check-provider', provider.providerId, provider.version, provider.providerDigest,
+  );
+  registerFactoryCheckProvider(provider);
+}
+
+export function registerWorkshopPostAcceptanceEffect(effectBinding: PostAcceptanceEffect): void {
+  requireExecutableCapability(
+    'post-acceptance-effect', effectBinding.effectId,
+    effectBinding.version, effectBinding.effectDigest,
+  );
+  registerFactoryPostAcceptanceEffect(effectBinding);
+}
+
+export function assertWorkshopTransitionHandlerBinding(input: {
+  readonly handoffKind: string;
+  readonly ownerCapability: string;
+}): void {
+  requireExecutableCapability(
+    'transition-handler', input.handoffKind, '1.0.0',
+    sha256Hex({
+      logicalId: input.handoffKind,
+      owner: input.ownerCapability,
+      protocol: 'factory-transition-obligation.v1',
+    }),
+  );
+  const manifestEntry = WORKSHOP_EXECUTABLE_CAPABILITIES.find(entry =>
+    entry.kind === 'transition-handler' && entry.logicalId === input.handoffKind)!;
+  resolvedTransitionHandlers.set(input.handoffKind, {
+    kind: 'transition-handler',
+    logicalId: manifestEntry.logicalId,
+    version: manifestEntry.version,
+    implementationDigest: manifestEntry.implementationDigest,
+  });
+}
+
+function expectedBindings(role: WorkshopProcessRole): WorkshopResolvedBinding[] {
+  const payloads = buildWorkshopCapabilityManifest().payloadContracts.map(entry => ({
+    kind: 'payload-contract' as const,
+    logicalId: entry.schemaId,
+    version: `${entry.contractId}@${entry.version}`,
+    implementationDigest: entry.contractDigest,
+  }));
+  const executable = WORKSHOP_EXECUTABLE_CAPABILITIES
+    .filter(entry => entry.roles.includes(role))
+    .map(entry => ({
+      kind: entry.kind,
+      logicalId: entry.logicalId,
+      version: entry.version,
+      implementationDigest: entry.implementationDigest,
+    }));
+  return [...payloads, ...executable]
+    .sort((a, b) => `${a.kind}/${a.logicalId}`.localeCompare(`${b.kind}/${b.logicalId}`));
+}
+
+function resolvedBindings(role: WorkshopProcessRole): WorkshopResolvedBinding[] {
+  const payloads = snapshotProductPayloadContracts().map(entry => ({
+    kind: 'payload-contract' as const,
+    logicalId: entry.schemaId,
+    version: `${entry.contractId}@${entry.version}`,
+    implementationDigest: entry.contractDigest,
+  }));
+  if (role !== 'orchestrator') {
+    return payloads.sort((a, b) => `${a.kind}/${a.logicalId}`.localeCompare(`${b.kind}/${b.logicalId}`));
+  }
+  const checks = createStandardCheckProviderRegistry().snapshot().map(entry => ({
+    kind: 'check-provider' as const,
+    logicalId: entry.providerId,
+    version: entry.version,
+    implementationDigest: entry.providerDigest,
+  }));
+  const effects = createPostAcceptanceEffectRegistry().snapshot().map(entry => ({
+    kind: 'post-acceptance-effect' as const,
+    logicalId: entry.effectId,
+    version: entry.version,
+    implementationDigest: entry.effectDigest,
+  }));
+  return [...payloads, ...checks, ...effects, ...resolvedTransitionHandlers.values()]
+    .sort((a, b) => `${a.kind}/${a.logicalId}`.localeCompare(`${b.kind}/${b.logicalId}`));
+}
+
+export function recordWorkshopBindingReceipt(input: {
+  readonly db: SqlDatabasePort;
+  readonly role: WorkshopProcessRole;
+  readonly processIdentity: string;
+}): { readonly receiptRef: string; readonly bindingDigest: string } {
+  const manifest = buildWorkshopCapabilityManifest();
+  const expected = expectedBindings(input.role);
+  const resolved = resolvedBindings(input.role);
+  if (canonicalJson(expected) !== canonicalJson(resolved)) {
+    throw new Error(
+      `WORKSHOP_PROCESS_BINDING_MISMATCH: role=${input.role}; expected=${canonicalJson(expected)}; `
+      + `resolved=${canonicalJson(resolved)}`,
+    );
+  }
+  const bindingDigest = sha256Hex({
+    manifestDigest: manifest.manifestDigest,
+    role: input.role,
+    bindings: resolved,
+  });
+  const receiptRef = `workshop-binding:${sha256Hex({
+    bindingDigest,
+    processIdentity: input.processIdentity,
+  })}`;
+  input.db.prepare(
+    `INSERT OR IGNORE INTO factory_workshop_binding_receipts
+      (receipt_ref,workshop_id,epoch,process_role,process_identity,
+       manifest_digest,declared_snapshot,resolved_snapshot,binding_digest)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    receiptRef,
+    manifest.workshopId,
+    manifest.epoch,
+    input.role,
+    input.processIdentity,
+    manifest.manifestDigest,
+    canonicalJson(expected),
+    canonicalJson(resolved),
+    bindingDigest,
+  );
+  const row = input.db.prepare(
+    `SELECT binding_digest FROM factory_workshop_binding_receipts WHERE receipt_ref=?`,
+  ).get(receiptRef) as { binding_digest: string } | undefined;
+  if (!row || row.binding_digest !== bindingDigest) {
+    throw new Error(`WORKSHOP_BINDING_RECEIPT_REPLAY_MISMATCH: ${receiptRef}`);
+  }
+  return { receiptRef, bindingDigest };
 }
 
 /**

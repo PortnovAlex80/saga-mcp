@@ -428,7 +428,7 @@ test('REG-18: factory_gate_decisions DELETE rejected by trigger', () => {
   db.close();
 });
 
-test('ADR-053 B-6: GateDecision head is monotonic and older replay cannot replace it', () => {
+test('ADR-053 B-6: recording immutable decisions alone never advances applied-transition head', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
   prepareDecisionGateRun(repo, { expectedWorkplaceRevision: 1 });
@@ -446,8 +446,6 @@ test('ADR-053 B-6: GateDecision head is monotonic and older replay cannot replac
        FROM factory_workplace_gate_decision_heads
       WHERE workplace_ref=?`,
   ).get(serializeWorkplaceRef(REF));
-  assert.deepEqual(head, {
-    decision_key: 'dk-2', expected_workplace_revision: 4,
-  });
+  assert.equal(head, undefined);
   db.close();
 });

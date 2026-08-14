@@ -25,7 +25,12 @@ import { HumanInteractionRegistry } from '../process-modules/application/human-i
 import { KernelHandlerRegistry } from '../process-modules/application/kernel-handler-registry.js';
 import { LifecycleOrchestrationEngineAdapter } from '../process-modules/application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
-import { installWorkshopPayloadContracts } from '../process-modules/application/workshop-capability-manifest.js';
+import {
+  assertWorkshopTransitionHandlerBinding,
+  installWorkshopPayloadContracts,
+  recordWorkshopBindingReceipt,
+  registerWorkshopPostAcceptanceEffect,
+} from '../process-modules/application/workshop-capability-manifest.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
 import {
@@ -93,7 +98,6 @@ import {
 import { createStandardCheckProviderRegistry } from '../process-modules/application/standard-check-providers.js';
 import {
   createPostAcceptanceEffectRegistry,
-  registerFactoryPostAcceptanceEffect,
 } from '../process-modules/application/post-acceptance-effects.js';
 import { createReplayCaptureEffect } from '../infrastructure/replay/replay-capture-effect.js';
 import {
@@ -308,13 +312,13 @@ export function createProductLifecycleRuntime(
     now: () => new Date(),
   });
 
-  registerFactoryPostAcceptanceEffect(
+  registerWorkshopPostAcceptanceEffect(
     createGitIntegrationEffect(
       new SqliteProductionCellIntegration(db, authorityHeadRepo),
       new SqliteExternalEffectLedger(db),
     ),
   );
-  registerFactoryPostAcceptanceEffect(createReplayCaptureEffect(db));
+  registerWorkshopPostAcceptanceEffect(createReplayCaptureEffect(db));
 
   const resolveNodeProducts = (
     processRunId: number,
@@ -832,6 +836,12 @@ export function createProductLifecycleRuntime(
     'settle-process',
     'route-lifecycle',
   ] as const) {
+    const ownerCapability = handoffKind === 'run-gate'
+      ? 'gate-run-driver'
+      : handoffKind === 'route-lifecycle'
+        ? 'lifecycle-orchestrator'
+        : 'production-cell-node-executor';
+    assertWorkshopTransitionHandlerBinding({ handoffKind, ownerCapability });
     const handler: TransitionObligationHandler = {
       handoffKind,
       async execute(obligation) {
@@ -850,6 +860,11 @@ export function createProductLifecycleRuntime(
     };
     obligationReconciler.registerHandler(handler);
   }
+  recordWorkshopBindingReceipt({
+    db,
+    role: 'orchestrator',
+    processIdentity: `orchestrator:${process.pid}`,
+  });
   const engine: OrchestrationEngine = {
     async run(command: RunEpisodeCommand) {
       await obligationReconciler.reconcile({

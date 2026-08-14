@@ -131,6 +131,8 @@ export type PostAcceptanceEffectResult =
 
 export interface PostAcceptanceEffect {
   readonly effectId: string;
+  readonly version: string;
+  readonly effectDigest: string;
   run(input: PostAcceptanceEffectInput): void | PostAcceptanceEffectResult;
 }
 
@@ -138,13 +140,25 @@ export class FactoryPostAcceptanceEffectRegistry {
   private readonly effects = new Map<string, PostAcceptanceEffect>();
 
   register(effect: PostAcceptanceEffect): void {
-    if (!effect.effectId.trim()) throw new Error('POST_ACCEPTANCE_EFFECT_ID_REQUIRED');
+    if (!effect.effectId.trim() || !effect.version.trim() || !effect.effectDigest.trim()) {
+      throw new Error('POST_ACCEPTANCE_EFFECT_IDENTITY_REQUIRED');
+    }
     // Idempotent on effectId: a fresh instance of the same capability wired to
     // the same db may be re-registered (e.g. createProductLifecycleRuntime is
     // called once per process, but tests and the dispatch loop may rebuild the
     // runtime). Post-acceptance effects are stateless capabilities, so replacing
     // is safe and avoids a process-singleton accumulation bug. A genuinely
-    // different effect would carry a different effectId by design.
+    // different effect would carry a different digest and must fail closed.
+    const existing = this.effects.get(effect.effectId);
+    if (existing) {
+      if (
+        existing.version !== effect.version
+        || existing.effectDigest !== effect.effectDigest
+      ) {
+        throw new Error(`POST_ACCEPTANCE_EFFECT_BINDING_MISMATCH: ${effect.effectId}`);
+      }
+      return;
+    }
     this.effects.set(effect.effectId, effect);
   }
 
@@ -165,6 +179,16 @@ export class FactoryPostAcceptanceEffectRegistry {
       receiptRef,
       receiptDigest: receiptRef,
     };
+  }
+
+  snapshot(): readonly Pick<PostAcceptanceEffect, 'effectId' | 'version' | 'effectDigest'>[] {
+    return [...this.effects.values()]
+      .map(effect => ({
+        effectId: effect.effectId,
+        version: effect.version,
+        effectDigest: effect.effectDigest,
+      }))
+      .sort((a, b) => a.effectId.localeCompare(b.effectId));
   }
 }
 

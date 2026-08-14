@@ -83,13 +83,20 @@ export function createDiscoveryReadinessCheckProvider(input: {
           || !Number.isSafeInteger(processRunId)
           || processRunId < 1
         ) return 'failed';
+        const assessment = JSON.parse(readiness.payload_snapshot) as Record<string, unknown>;
+        const proposalId = assessment.proposal_id;
+        const proposalHash = assessment.proposal_content_hash;
+        if (
+          !Number.isSafeInteger(proposalId)
+          || Number(proposalId) < 1
+          || typeof proposalHash !== 'string'
+        ) return 'failed';
         const proposal = input.db.prepare(
           `SELECT id,content_hash,payload_snapshot
              FROM factory_managed_node_submissions
-            WHERE process_run_id=? AND node_id='produce-proposal'
-              AND schema_version=?
-            ORDER BY id DESC LIMIT 1`,
-        ).get(processRunId, DISCOVERY_PROPOSAL_SCHEMA) as {
+            WHERE id=? AND process_run_id=? AND node_id='produce-proposal'
+              AND schema_version=? AND content_hash=?`,
+        ).get(proposalId, processRunId, DISCOVERY_PROPOSAL_SCHEMA, proposalHash) as {
           id: number;
           content_hash: string;
           payload_snapshot: string;
@@ -97,7 +104,6 @@ export function createDiscoveryReadinessCheckProvider(input: {
         if (!proposal) return 'error';
         const proposalPayload = JSON.parse(proposal.payload_snapshot) as Record<string, unknown>;
         const allowedRefs = allowedProposalSourceRefs(proposalPayload);
-        const assessment = JSON.parse(readiness.payload_snapshot);
         return validateReadinessAssessment(
           assessment,
           proposal.id,
@@ -134,12 +140,19 @@ function producerSubmission(
   // productRef digest, NOT by execution_id. The member's digest IS the sealed
   // content authority.
   const member = candidate.members[0]!;
+  if (!member.productRef.ref.startsWith('managed-node-submission:')) return null;
+  const submissionId = Number(member.productRef.ref.slice('managed-node-submission:'.length));
+  if (!Number.isSafeInteger(submissionId) || submissionId < 1) return null;
   const row = db.prepare(
     `SELECT id,process_run_id,node_id,execution_id,schema_version,payload_snapshot,content_hash
        FROM factory_managed_node_submissions
-      WHERE process_run_id=? AND content_hash=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(candidate.workplaceRef.processRunId, member.productRef.digest) as
+      WHERE id=? AND process_run_id=? AND schema_version=? AND content_hash=?`,
+  ).get(
+    submissionId,
+    candidate.workplaceRef.processRunId,
+    member.productRef.schemaId,
+    member.productRef.digest,
+  ) as
     SubmissionRow | undefined;
   return row ?? null;
 }

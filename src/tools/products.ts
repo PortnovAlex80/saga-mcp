@@ -148,8 +148,8 @@ const candidateRead: ToolHandler = args => {
   const requestedRef = typeof args.candidate_set_ref === 'string'
     ? args.candidate_set_ref.trim()
     : '';
-  let authorityRef = requestedRef;
-  if (!authorityRef && role === 'author') {
+  let boundAuthorityRef = '';
+  if (role === 'author') {
     const executionRef = process.env.SAGA_EXECUTION_ID;
     if (executionRef) {
       const row = getDb().prepare(
@@ -166,21 +166,28 @@ const candidateRead: ToolHandler = args => {
         };
         const binding = scope.payload_bindings?.find(item =>
           item.field === 'subject_candidate_set_ref');
-        if (typeof binding?.equals === 'string') authorityRef = binding.equals;
+        if (typeof binding?.equals === 'string') boundAuthorityRef = binding.equals;
       }
     }
   }
+  if (boundAuthorityRef && requestedRef && requestedRef !== boundAuthorityRef) {
+    throw new Error(
+      `CANDIDATE_SET_AUTHORITY_MISMATCH: requested ${requestedRef}; `
+      + `WorkIntent binds ${boundAuthorityRef}`,
+    );
+  }
+  const authorityRef = boundAuthorityRef || requestedRef;
   const sets = candidateRepo().listForWorkplace(workplaceRef)
     .filter(set => set.role === role);
   if (sets.length === 0) throw new Error('CANDIDATE_SET_NOT_FOUND');
   const set = authorityRef
     ? sets.find(candidate => candidate.candidateSetRef === authorityRef)
-    : sets.length === 1 ? sets[0] : undefined;
+    : undefined;
   if (!set) {
     throw new Error(
       authorityRef
         ? `CANDIDATE_SET_AUTHORITY_MISMATCH: ${authorityRef}`
-        : 'CANDIDATE_SET_AMBIGUOUS: provide candidate_set_ref or use the exact reviewer WorkIntent binding',
+        : 'CANDIDATE_SET_AUTHORITY_REQUIRED: provide candidate_set_ref or use the exact reviewer WorkIntent binding',
     );
   }
 

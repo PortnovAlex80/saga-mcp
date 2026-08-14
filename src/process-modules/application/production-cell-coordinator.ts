@@ -208,7 +208,9 @@ export class ProductionCellCoordinator {
         acceptedAuthorTaskId: decision.acceptedAuthorTaskId ?? null,
       });
     }
-    return this.applyEvent(ref, event!);
+    return decision.gateDecisionKey
+      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey)
+      : this.applyEvent(ref, event!);
   }
 
   /**
@@ -242,6 +244,7 @@ export class ProductionCellCoordinator {
       verdict: 'accepted' | 'repair_required' | 'human_required' | 'failed';
       repairTargetRole?: NextRole;
       effectRequired?: boolean;
+      gateDecisionKey?: string;
     },
   ): StepResult {
     let event: ProductionCellEvent;
@@ -272,7 +275,9 @@ export class ProductionCellCoordinator {
         event = { kind: 'human-required' };
         break;
     }
-    const result = this.applyEvent(ref, event!);
+    const result = decision.gateDecisionKey
+      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey)
+      : this.applyEvent(ref, event!);
     return result;
   }
 
@@ -397,6 +402,11 @@ export class ProductionCellCoordinator {
         serialized,
       );
       if (r.applied) {
+        this.recordAppliedGateDecisionHead(
+          serialized,
+          authority.acceptedAuthorGateDecisionKey,
+          current.revision,
+        );
         this.deps.authorityHeadRepo.record({
           workplaceRef: serialized,
           acceptedAuthorCandidateSetRef: authority.acceptedAuthorCandidateSetRef,
@@ -413,6 +423,66 @@ export class ProductionCellCoordinator {
       state: result.state,
       revision: result.revision,
     };
+  }
+
+  private applyGateEvent(
+    ref: WorkplaceRef,
+    event: ProductionCellEvent,
+    gateDecisionKey: string,
+  ): StepResult {
+    const current = this.deps.workplaceRepo.read(ref);
+    if (!current) {
+      throw new Error(
+        `ProductionCellCoordinator: workplace ${serializeWorkplaceRef(ref)} not materialized`,
+      );
+    }
+    const target = reduceWorkplaceEvent(current, event);
+    const serialized = serializeWorkplaceRef(ref);
+    const result = this.deps.db.transaction(() => {
+      const transitioned = this.deps.workplaceRepo.applyTransitionInTx({
+        workplaceRef: ref,
+        expectedRevision: current.revision,
+        kanbanPhase: target.kanbanPhase,
+        loopState: target.loopState,
+        nextRole: target.nextRole,
+        terminalReason: target.terminalReason,
+      }, serialized);
+      if (transitioned.applied) {
+        this.recordAppliedGateDecisionHead(serialized, gateDecisionKey, current.revision);
+      }
+      return transitioned;
+    }).immediate();
+    return { applied: result.applied, state: result.state, revision: result.revision };
+  }
+
+  private recordAppliedGateDecisionHead(
+    workplaceRef: string,
+    decisionKey: string,
+    expectedWorkplaceRevision: number,
+  ): void {
+    const decision = this.deps.db.prepare(
+      `SELECT gd.decision_key,gr.expected_workplace_revision
+         FROM factory_gate_decisions gd
+         JOIN factory_gate_runs gr ON gr.gate_run_ref=gd.gate_run_ref
+        WHERE gd.decision_key=? AND gd.workplace_ref=? AND gr.workplace_ref=?`,
+    ).get(decisionKey, workplaceRef, workplaceRef) as {
+      decision_key: string;
+      expected_workplace_revision: number;
+    } | undefined;
+    if (!decision || decision.expected_workplace_revision !== expectedWorkplaceRevision) {
+      throw new Error(`GATE_DECISION_HEAD_AUTHORITY_MISMATCH: ${decisionKey}`);
+    }
+    this.deps.db.prepare(
+      `INSERT INTO factory_workplace_gate_decision_heads
+         (workplace_ref,decision_key,expected_workplace_revision)
+       VALUES (?,?,?)
+       ON CONFLICT(workplace_ref) DO UPDATE SET
+         decision_key=excluded.decision_key,
+         expected_workplace_revision=excluded.expected_workplace_revision,
+         recorded_at=datetime('now')
+       WHERE excluded.expected_workplace_revision
+             > factory_workplace_gate_decision_heads.expected_workplace_revision`,
+    ).run(workplaceRef, decisionKey, expectedWorkplaceRevision);
   }
 
   // -----------------------------------------------------------------------

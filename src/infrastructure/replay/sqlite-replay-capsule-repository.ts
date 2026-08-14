@@ -308,16 +308,18 @@ function readPersistedCandidateProduct(
   db: Database.Database,
   member: CandidateMemberRow,
 ): unknown {
-  const row = db.prepare(
+  const rows = db.prepare(
     `SELECT payload_snapshot,product_hash
        FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(member.product_schema, member.product_ref, member.product_digest) as {
+      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
+  ).all(member.product_schema, member.product_ref, member.product_digest) as Array<{
     payload_snapshot: string;
     product_hash: string;
-  } | undefined;
-  if (!row) throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
+  }>;
+  if (rows.length !== 1) {
+    throw new Error(`REPLAY_CAPTURE_PRODUCT_AUTHORITY_AMBIGUOUS: ${member.product_ref}`);
+  }
+  const row = rows[0]!;
   return JSON.parse(row.payload_snapshot) as unknown;
 }
 
@@ -343,12 +345,18 @@ export class SqliteReplayCapsuleRepository {
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
     const replayKey = computeReplayKey(keyMaterial);
-    const capsule = this.db.prepare(
+    const capsules = this.db.prepare(
       `SELECT capsule_ref,payload_hash
          FROM factory_replay_capsules
-        WHERE project_id=? AND replay_key=?
-        ORDER BY id DESC LIMIT 1`,
-    ).get(keyMaterial.projectId, replayKey) as { capsule_ref: string; payload_hash: string } | undefined;
+        WHERE project_id=? AND replay_key=?`,
+    ).all(keyMaterial.projectId, replayKey) as Array<{
+      capsule_ref: string;
+      payload_hash: string;
+    }>;
+    if (capsules.length > 1) {
+      throw new Error(`REPLAY_CAPSULE_AUTHORITY_AMBIGUOUS: ${replayKey}`);
+    }
+    const capsule = capsules[0];
     return {
       replayKey,
       capsuleRef: capsule?.capsule_ref ?? null,

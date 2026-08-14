@@ -139,23 +139,22 @@ export function createLocalRunnabilityCheckProvider(input: {
 function readPersistedReadinessReceipt(
   db: SqlDatabasePort,
   subjectCandidateSetRef: string,
-): { outcome: 'passed' | 'failed'; evidenceRefs: readonly string[] } | null {
-  let row;
+): CheckProviderResult | null {
+  let rows;
   try {
-    row = db.prepare(
+    rows = db.prepare(
       `SELECT outcome, evidence_refs
          FROM factory_check_receipts
         WHERE subject_candidate_set_ref=?
           AND provider_id=?
           AND provider_digest=?
           AND outcome IN ('passed','failed')
-        ORDER BY rowid DESC
-        LIMIT 1`,
-    ).get(
+        ORDER BY check_receipt_ref`,
+    ).all(
       subjectCandidateSetRef,
       LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
       LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-    ) as { outcome: string; evidence_refs: string } | undefined;
+    ) as Array<{ outcome: string; evidence_refs: string }>;
   } catch {
     // The table is absent (e.g. a minimal in-memory test schema that did not
     // create the Gate receipt substrate). In production the table always exists
@@ -163,7 +162,21 @@ function readPersistedReadinessReceipt(
     // proceed to run the check.
     return null;
   }
-  if (!row) return null;
+  if (rows.length === 0) return null;
+  const canonical = new Set(rows.map(row => JSON.stringify({
+    outcome: row.outcome,
+    evidenceRefs: JSON.parse(row.evidence_refs) as string[],
+  })));
+  if (canonical.size !== 1) {
+    return {
+      outcome: 'error',
+      evidenceRefs: [encodeCheckDiagnostic({
+        code: 'local-runnability-receipt-conflict',
+        message: `Conflicting immutable readiness receipts exist for ${subjectCandidateSetRef}`,
+      })],
+    };
+  }
+  const row = rows[0]!;
   return {
     outcome: row.outcome as 'passed' | 'failed',
     evidenceRefs: JSON.parse(row.evidence_refs) as string[],
@@ -171,16 +184,20 @@ function readPersistedReadinessReceipt(
 }
 
 export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
-  const existing = db.prepare(
+  const existingRows = db.prepare(
     `SELECT version,category,determinism,status
        FROM trusted_providers
-      WHERE project_id IS NULL AND name=? ORDER BY id LIMIT 1`,
-  ).get(LOCAL_RUNNABILITY_CHECK_PROVIDER_ID) as {
+      WHERE project_id IS NULL AND name=?`,
+  ).all(LOCAL_RUNNABILITY_CHECK_PROVIDER_ID) as Array<{
     version: string | null;
     category: string;
     determinism: string;
     status: string;
-  } | undefined;
+  }>;
+  if (existingRows.length > 1) {
+    throw new Error('LOCAL_RUNNABILITY_PROVIDER_TRUST_AMBIGUOUS');
+  }
+  const existing = existingRows[0];
   if (existing) {
     // Phase-1 docker executor migration: 1.0.0 → 1.1.0 is an additive, backwards-
     // compatible bump. The docker substrate is opt-in via the profile's optional
@@ -387,9 +404,9 @@ function readFreezeAuthorityCandidateSet(
   input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
   processRunId: number,
 ): CandidateSet | null {
-  let row: { ref: string } | undefined;
+  let rows: Array<{ ref: string }>;
   try {
-    row = input.db.prepare(
+    rows = input.db.prepare(
       `SELECT cs.candidate_set_ref AS ref
          FROM factory_candidate_sets cs
          JOIN factory_workplaces w
@@ -398,14 +415,13 @@ function readFreezeAuthorityCandidateSet(
            ON m.candidate_set_ref=cs.candidate_set_ref
           AND m.product_schema=?
         WHERE cs.role='author'
-        ORDER BY cs.candidate_set_ref
-        LIMIT 1`,
-    ).get(processRunId, INTEGRATED_CANDIDATE_SCHEMA) as { ref: string } | undefined;
+        ORDER BY cs.candidate_set_ref`,
+    ).all(processRunId, INTEGRATED_CANDIDATE_SCHEMA) as Array<{ ref: string }>;
   } catch {
     return null;
   }
-  if (!row) return null;
-  return input.candidateSets.read(row.ref);
+  if (rows.length !== 1) return null;
+  return input.candidateSets.read(rows[0]!.ref);
 }
 
 /**

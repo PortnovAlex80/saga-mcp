@@ -93,6 +93,17 @@ class ProductPayloadContractRegistry {
       .filter(contract => contract.schemaId === schemaId);
     return matches.length === 1 ? matches[0]! : null;
   }
+
+  snapshot(): readonly (ProductPayloadContractRef & { readonly schemaId: string })[] {
+    return [...this.contracts.values()]
+      .map(contract => ({
+        contractId: contract.contractId,
+        version: contract.version,
+        contractDigest: contract.contractDigest,
+        schemaId: contract.schemaId,
+      }))
+      .sort((a, b) => a.schemaId.localeCompare(b.schemaId));
+  }
 }
 
 const registry = new ProductPayloadContractRegistry();
@@ -108,6 +119,12 @@ export function productPayloadContractDigest(input: {
 
 export function registerProductPayloadContract(contract: ProductPayloadContract): void {
   registry.register(contract);
+}
+
+export function snapshotProductPayloadContracts(): readonly (ProductPayloadContractRef & {
+  readonly schemaId: string;
+})[] {
+  return registry.snapshot();
 }
 
 export function validateProductPayload(

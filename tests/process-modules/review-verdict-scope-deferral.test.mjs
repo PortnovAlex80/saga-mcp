@@ -27,6 +27,11 @@ function fixture({ scopes }) {
     CREATE TABLE tasks (
       id INTEGER PRIMARY KEY, workplace_ref TEXT, metadata TEXT
     );
+    CREATE TABLE factory_accepted_authority_head (
+      workplace_ref TEXT PRIMARY KEY,
+      accepted_author_candidate_set_ref TEXT NOT NULL,
+      accepted_author_task_id TEXT
+    );
     CREATE TABLE factory_managed_node_submissions (
       id INTEGER PRIMARY KEY, schema_version TEXT,
       payload_snapshot TEXT, content_hash TEXT
@@ -38,6 +43,8 @@ function fixture({ scopes }) {
   };
   db.prepare('INSERT INTO tasks VALUES (1, ?, ?)')
     .run(WORKPLACE_REF, JSON.stringify(metadata));
+  db.prepare('INSERT INTO factory_accepted_authority_head VALUES (?, ?, ?)')
+    .run(WORKPLACE_REF, 'candidate-set/subject', '1');
   const candidateSets = {
     read(ref) {
       if (ref !== 'candidate-set/review') return null;
@@ -139,5 +146,22 @@ test('file-scope matches exactly; directory scope matches descendants', () => {
   ]);
   // zone-b/manifest is an exact declared scope → actionable blocker stays.
   assert.equal(result.outcome, 'failed');
+  db.close();
+});
+
+test('a later author task cannot change the sealed subject scope authority', () => {
+  const { db, candidateSets } = fixture({ scopes: SCOPES });
+  db.prepare('INSERT INTO tasks VALUES (2, ?, ?)').run(
+    WORKPLACE_REF,
+    JSON.stringify({
+      role: 'author',
+      cell_input_item: { key: 'repair-decoy', changeScopes: ['launcher/'] },
+    }),
+  );
+  const result = runProvider(db, candidateSets, [
+    { message: 'accepted-scope defect', severity: 'error', paths: ['zone-a/widget-x'] },
+  ]);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(decoded(result)[0].code, 'review-finding-1');
   db.close();
 });

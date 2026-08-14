@@ -197,7 +197,12 @@ test('10: gate-rejected replay capsule is detectable without string matching', (
   db.prepare(`INSERT INTO tasks (id,epic_id,title,status,metadata) VALUES (1,1,'t','in_progress','{}')`).run();
   db.prepare(`INSERT INTO factory_workplaces (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,kanban_phase,loop_state,next_role) VALUES ('wp1',1,'m@1','c1','wk','in_progress','leased','author')`).run();
   db.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,launcher,phase,metadata,lease_expires_at,state) VALUES ('exec1','r1',1,1,1,'w1','m1','l','executing','{"execution_context":{"replay":{"capsule_ref":"replay-capsule:1:abc"}}}','9999-12-31','running')`).run();
-  db.prepare(`INSERT INTO factory_candidate_sets (candidate_set_ref,workplace_ref,role,candidate_set_digest,seal_receipt_ref,sealed_at) VALUES ('cs1','wp1','exec1','author','d1','sr1','2026-08-08')`).run();
+  db.prepare(`INSERT INTO factory_workplace_production_revisions
+    (revision_ref,workplace_ref,members,contributing_execution_refs,presenter_ref,material_digest,semantic_digest,sealed_at)
+    VALUES ('rev1','wp1','[]','["exec1"]','exec1','md1','sd1','2026-08-08')`).run();
+  db.prepare(`INSERT INTO factory_candidate_sets
+    (candidate_set_ref,workplace_ref,production_revision_ref,role,candidate_set_digest,seal_receipt_ref,sealed_at)
+    VALUES ('cs1','wp1','rev1','author','d1','sr1','2026-08-08')`).run();
   db.prepare(`INSERT INTO factory_gate_decisions (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,subject_candidate_set_ref,assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decided_at,decision_digest) VALUES ('dk1','wp1','g1','gr1','author','t1','cs1','[]','repair_required','cp1','cpd1','dp1','dpd1','[]','id1','[]','2026-08-08','dd1')`).run();
 
   const rejected = db.prepare(

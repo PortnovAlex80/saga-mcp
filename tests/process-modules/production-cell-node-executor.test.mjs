@@ -13,6 +13,7 @@ import { ProductionCellCoordinator } from '../../dist/process-modules/applicatio
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
+import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -232,6 +233,11 @@ test('author product is sealed, gated, and completed with exact provenance', asy
   assert.equal(result.runtimeEvent, 'completed');
   assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
   assert.equal(h.gateRepo.listDecisionsForWorkplace(ref).length, 1);
+  const decision = h.gateRepo.listDecisionsForWorkplace(ref)[0];
+  const appliedHead = h.db.prepare(
+    `SELECT decision_key FROM factory_workplace_gate_decision_heads WHERE workplace_ref=?`,
+  ).get(serializeWorkplaceRef(ref));
+  assert.equal(appliedHead.decision_key, decision.decisionKey);
   assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 1);
   h.db.close();
 });

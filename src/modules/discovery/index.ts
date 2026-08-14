@@ -1,7 +1,7 @@
 /** Discovery module registration on the universal Production Cell runtime. */
 
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
-import { registerFactoryCheckProvider } from '../../process-modules/application/standard-check-providers.js';
+import { registerWorkshopCheckProvider } from '../../process-modules/application/workshop-capability-manifest.js';
 import {
   createDiscoveryProposalCheckProvider,
   createDiscoveryReadinessCheckProvider,
@@ -23,11 +23,11 @@ export function registerDiscovery(
   sharedDeps: ModuleSharedDeps,
   _options?: RegisterDiscoveryOptions,
 ): GenericFlowExecutor {
-  registerFactoryCheckProvider(createDiscoveryProposalCheckProvider({
+  registerWorkshopCheckProvider(createDiscoveryProposalCheckProvider({
     db: sharedDeps.db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));
-  registerFactoryCheckProvider(createDiscoveryReadinessCheckProvider({
+  registerWorkshopCheckProvider(createDiscoveryReadinessCheckProvider({
     db: sharedDeps.db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));

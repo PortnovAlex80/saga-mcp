@@ -32,14 +32,27 @@ export class FactoryCheckProviderRegistry implements CheckProviderRegistry {
     }
     const existing = this.providers.get(provider.providerId);
     if (existing) {
-      if (existing === provider || existing.version === provider.version) return;
-      throw new Error(`CHECK_PROVIDER_DUPLICATE: ${provider.providerId}`);
+      if (
+        existing.version === provider.version
+        && existing.providerDigest === provider.providerDigest
+      ) return;
+      throw new Error(`CHECK_PROVIDER_BINDING_MISMATCH: ${provider.providerId}`);
     }
     this.providers.set(provider.providerId, provider);
   }
 
   resolve(providerId: string): CheckProvider | null {
     return this.providers.get(providerId) ?? null;
+  }
+
+  snapshot(): readonly Pick<CheckProvider, 'providerId' | 'version' | 'providerDigest'>[] {
+    return [...this.providers.values()]
+      .map(provider => ({
+        providerId: provider.providerId,
+        version: provider.version,
+        providerDigest: provider.providerDigest,
+      }))
+      .sort((a, b) => a.providerId.localeCompare(b.providerId));
   }
 }
 
