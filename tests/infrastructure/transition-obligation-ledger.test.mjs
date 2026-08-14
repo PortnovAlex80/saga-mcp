@@ -295,6 +295,35 @@ test('Phase 2: reconciler crash mid-execution → retry converges to one receipt
 // 9. Reconciler skips obligations with no registered handler (Phase 2
 //    substrate — handlers are registered in Phase 8).
 // ===========================================================================
+test('ADR-053: a handler defers until its durable postcondition exists', async () => {
+  const db = makeDb();
+  const ledger = new SqliteTransitionObligationLedger(db);
+  const reconciler = new TransitionObligationReconciler(ledger);
+  let ready = false;
+  reconciler.registerHandler({
+    handoffKind: 'run-gate',
+    execute() {
+      return ready
+        ? { completionReceipt: 'gate:durable', resultDigest: 'sha256:durable' }
+        : { outcome: 'deferred', reason: 'terminal GateRun is not durable yet' };
+    },
+  });
+  const obligation = ledger.append(sampleObligation());
+
+  const first = await reconciler.reconcile({ leaseOwner: 'rec-1', fence: leaseFence(1) });
+  assert.equal(first.completed, 0);
+  assert.equal(first.failed, 0);
+  assert.equal(first.deferred, 1);
+  assert.equal(ledger.get(obligation.obligationKey).state, 'pending');
+  assert.match(ledger.get(obligation.obligationKey).lastError, /^DEFERRED:/);
+
+  ready = true;
+  const second = await reconciler.reconcile({ leaseOwner: 'rec-2', fence: leaseFence(2) });
+  assert.equal(second.completed, 1);
+  assert.equal(second.deferred, 0);
+  assert.equal(ledger.get(obligation.obligationKey).state, 'completed');
+});
+
 test('Phase 2: reconciler skips obligations without a registered handler', async () => {
   const db = makeDb();
   const ledger = new SqliteTransitionObligationLedger(db);

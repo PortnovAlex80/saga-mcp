@@ -44,13 +44,23 @@ export interface TransitionObligationHandler {
   readonly handoffKind: TransitionHandoffKind;
   execute(
     obligation: TransitionObligation,
-  ): Promise<TransitionObligationCompletion> | TransitionObligationCompletion;
+  ): Promise<TransitionObligationHandlerResult> | TransitionObligationHandlerResult;
 }
 
 export interface TransitionObligationCompletion {
+  readonly outcome?: 'completed';
   readonly completionReceipt: string;
   readonly resultDigest: string;
 }
+
+export interface TransitionObligationDeferred {
+  readonly outcome: 'deferred';
+  readonly reason: string;
+}
+
+export type TransitionObligationHandlerResult =
+  | TransitionObligationCompletion
+  | TransitionObligationDeferred;
 
 // ---------------------------------------------------------------------------
 // Reconciler.
@@ -80,6 +90,7 @@ export interface ReconcileResult {
   readonly dispatched: number;
   readonly completed: number;
   readonly failed: number;
+  readonly deferred: number;
   readonly skipped: number;
 }
 
@@ -113,6 +124,7 @@ export class TransitionObligationReconciler {
     let dispatched = 0;
     let completed = 0;
     let failed = 0;
+    let deferred = 0;
     let skipped = 0;
 
     for (const obligation of ready) {
@@ -176,6 +188,16 @@ export class TransitionObligationReconciler {
 
       try {
         const result = await handler.execute(leasedObligation);
+        if (result.outcome === 'deferred') {
+          this.ledger.defer({
+            obligationKey: obligation.obligationKey,
+            reason: result.reason,
+            owner: options.leaseOwner,
+            fence,
+          });
+          deferred += 1;
+          continue;
+        }
         // ADR-053 C7-04 — completion is fenced by the lease token this sweep
         // just acquired: the owner that holds the lease and the SAME fence the
         // lease was taken under (allocated from the store when none was
@@ -215,6 +237,6 @@ export class TransitionObligationReconciler {
       }
     }
 
-    return { dispatched, completed, failed, skipped };
+    return { dispatched, completed, failed, deferred, skipped };
   }
 }

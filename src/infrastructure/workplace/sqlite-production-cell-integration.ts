@@ -35,9 +35,9 @@ export type ProductionCellIntegrationResult =
   | {
       readonly outcome: 'repair_required';
       readonly taskId: number;
-      readonly sourceCommit: string;
-      readonly sourceTree: string;
-      readonly beforeHead: string;
+      readonly sourceCommit?: string;
+      readonly sourceTree?: string;
+      readonly beforeHead?: string;
       readonly reason: string;
     };
 
@@ -109,15 +109,44 @@ export class SqliteProductionCellIntegration {
       return { outcome: 'blocked', reason: 'integration task missing', evidence: { workplace } };
     }
     const payload = this.readAcceptedProduct(input) as {
-      source?: { commitSha?: unknown };
-      snapshot?: { treeSha?: unknown };
+      workItemKey?: unknown;
+      terminalStatus?: unknown;
+      source?: { branch?: unknown; commitSha?: unknown; workItemKey?: unknown };
+      snapshot?: { commitSha?: unknown; treeSha?: unknown };
+      repository?: { projectRepositoryId?: unknown; integrationBranch?: unknown };
     };
     const sourceCommit = payload.source?.commitSha;
-    if (typeof sourceCommit !== 'string' || !sourceCommit) {
+    const sourceBranch = payload.source?.branch;
+    const sourceWorkItemOk = payload.source?.workItemKey === undefined
+      || payload.source?.workItemKey === payload.workItemKey;
+    if (
+      payload.terminalStatus !== 'complete'
+      || typeof payload.workItemKey !== 'string'
+      || typeof sourceCommit !== 'string' || !sourceCommit
+      || typeof sourceBranch !== 'string' || !sourceBranch
+      || !sourceWorkItemOk
+      || payload.snapshot?.commitSha !== sourceCommit
+      || typeof payload.snapshot?.treeSha !== 'string'
+      || payload.repository?.projectRepositoryId !== task.project_repository_id
+      || payload.repository?.integrationBranch !== task.integration_branch
+    ) {
       return {
         outcome: 'blocked',
-        reason: 'integration source commit missing',
+        reason: `PRODUCTION_CELL_INTEGRATION_SOURCE_COMMIT_MISSING: task ${task.id}`,
         evidence: { taskId: task.id },
+      };
+    }
+    const sourceRef = sourceBranch.startsWith('refs/')
+      ? sourceBranch
+      : `refs/heads/${sourceBranch}`;
+    const source = git(task.local_path, ['rev-parse', `${sourceCommit}^{commit}`]);
+    const branchHead = git(task.local_path, ['rev-parse', sourceRef]);
+    const sourceTree = git(task.local_path, ['rev-parse', `${sourceCommit}^{tree}`]);
+    if (source !== sourceCommit || branchHead !== sourceCommit || sourceTree !== payload.snapshot.treeSha) {
+      return {
+        outcome: 'blocked',
+        reason: `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task ${task.id}`,
+        evidence: { taskId: task.id, sourceCommit, branchHead, sourceTree },
       };
     }
     const targetHead = git(task.local_path, [
@@ -227,7 +256,11 @@ export class SqliteProductionCellIntegration {
       || payload.repository?.projectRepositoryId !== task.project_repository_id
       || payload.repository?.integrationBranch !== task.integration_branch
     ) {
-      throw new Error(`PRODUCTION_CELL_INTEGRATION_SOURCE_COMMIT_MISSING: task ${task.id}`);
+      return {
+        outcome: 'repair_required',
+        taskId: task.id,
+        reason: `PRODUCTION_CELL_INTEGRATION_SOURCE_COMMIT_MISSING: task ${task.id}`,
+      };
     }
     const source = git(task.local_path, [
       'rev-parse', `${sourceCommit}^{commit}`,
@@ -242,10 +275,14 @@ export class SqliteProductionCellIntegration {
       || branchHead !== sourceCommit
       || sourceTree !== payload.snapshot.treeSha
     ) {
-      throw new Error(
-        `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task ${task.id} submitted `
-        + `${sourceCommit} but branch is ${branchHead ?? 'missing'}`,
-      );
+      return {
+        outcome: 'repair_required',
+        taskId: task.id,
+        sourceCommit,
+        sourceTree: sourceTree ?? payload.snapshot.treeSha,
+        reason: `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task ${task.id} submitted `
+          + `${sourceCommit} but branch is ${branchHead ?? 'missing'}`,
+      };
     }
     const targetHead = git(task.local_path, [
       'rev-parse', `refs/heads/${task.integration_branch}`,

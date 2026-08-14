@@ -80,7 +80,7 @@ export function createGitIntegrationEffect(
           return { outcome: 'pending', reason: 'absence proven; retry authorized' };
         }
         return {
-          outcome: observation.outcome === 'blocked' && observation.reason.includes('CONFLICT')
+          outcome: observation.outcome === 'blocked' && isRepairableIntegrationReason(observation.reason)
             ? 'repair_required'
             : 'human_required',
           reason: observation.outcome === 'blocked' ? observation.reason : 'integration observation blocked',
@@ -126,6 +126,12 @@ export function createGitIntegrationEffect(
       }
     },
   };
+}
+
+function isRepairableIntegrationReason(reason: string): boolean {
+  return reason.startsWith('PRODUCTION_CELL_INTEGRATION_CONFLICT:')
+    || reason.startsWith('PRODUCTION_CELL_INTEGRATION_SOURCE_COMMIT_MISSING:')
+    || reason.startsWith('PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH:');
 }
 
 function succeeded(action: ExternalEffectActionRecord): {

@@ -141,6 +141,13 @@ export interface CompleteObligationInput {
   readonly fence: LeaseFence;
 }
 
+export interface DeferObligationInput {
+  readonly obligationKey: string;
+  readonly reason: string;
+  readonly owner: string;
+  readonly fence: LeaseFence;
+}
+
 /**
  * ADR-053 C7-05 — fence obligation FAILURE (business-handler failure). The
  * handler threw: the effect ITSELF failed (a genuine business error). This is a
@@ -589,6 +596,37 @@ export class SqliteTransitionObligationLedger {
       receipt: input.completionReceipt,
       resultDigest: input.resultDigest,
     });
+    return this.getOrThrow(input.obligationKey);
+  }
+
+  /** Release a live lease without claiming that the handoff completed. */
+  defer(input: DeferObligationInput): TransitionObligation {
+    assertLeaseFence(input.fence);
+    if (typeof input.owner !== 'string' || input.owner.trim() === '') {
+      throw new Error(`TRANSITION_OBLIGATION_DEFER_REQUIRES_OWNER: ${input.obligationKey}`);
+    }
+    const existing = this.get(input.obligationKey);
+    if (!existing) {
+      throw new Error(`TRANSITION_OBLIGATION_NOT_FOUND: ${input.obligationKey}`);
+    }
+    if (existing.state !== 'in_progress' || existing.leaseOwner !== input.owner) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_DEFER_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`,
+      );
+    }
+    const storedFenceFloor = existing.leaseFence ?? 0;
+    if (input.fence.value < storedFenceFloor) {
+      throw new Error(
+        `TRANSITION_OBLIGATION_STALE_FENCE: ${input.obligationKey} defer fence `
+          + `${input.fence.value} is lower than ${storedFenceFloor}`,
+      );
+    }
+    this.db.prepare(
+      `UPDATE factory_transition_obligations
+          SET state='pending',lease_owner=NULL,lease_expires_at=NULL,
+              last_error=@reason,updated_at=datetime('now')
+        WHERE obligation_key=@key`,
+    ).run({ key: input.obligationKey, reason: `DEFERRED: ${input.reason}` });
     return this.getOrThrow(input.obligationKey);
   }
 

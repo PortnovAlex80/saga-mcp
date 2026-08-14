@@ -37,6 +37,7 @@ import {
   TransitionObligationReconciler,
   type TransitionObligationHandler,
 } from '../process-modules/application/transition-obligation-reconciler.js';
+import { readTransitionHandoffPostcondition } from '../process-modules/application/transition-handoff-postconditions.js';
 import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import type {
   OrchestrationEngine,
@@ -885,6 +886,10 @@ export function createProductLifecycleRuntime(
       async execute(obligation) {
         const command = transitionRedriveCommand(db, obligation.subjectRef, obligation.sourceRef);
         const result = await baseEngine.run(command);
+        const postcondition = readTransitionHandoffPostcondition(db, obligation);
+        if (!postcondition.satisfied) {
+          return { outcome: 'deferred', reason: postcondition.reason };
+        }
         return {
           completionReceipt: `transition-completion:${obligation.obligationKey}`,
           resultDigest: sha256Hex({

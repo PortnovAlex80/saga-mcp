@@ -163,23 +163,37 @@ test('integration consumes the exact current CandidateSet even when its managed 
     // merge through these working-directory bytes.
     writeFileSync(join(root, 'untracked-worker-leak.txt'), 'must remain unrelated\n');
 
+    const integration = new SqliteProductionCellIntegration(
+      db,
+      new SqliteAcceptedAuthorityHeadRepository(db),
+    );
+    const integrationInput = {
+      workplaceRef: { processRunId: 22, moduleRef: 'module@1', productionCellId: 'cell', workKey: 'item' },
+      processRunId: 22,
+      candidateSetRef: authorSet,
+      gateDecisionKey: 'decision:final',
+      expectedProductSchema: 'factory.source-change-candidate.v1',
+      acceptedProductRefs: [{
+        schemaId: 'factory.source-change-candidate.v1',
+        ref: 'managed-node-submission:91',
+        digest: sourceDigest,
+      }],
+    };
+
+    // A branch/tree mismatch is known before the integration ref CAS. It is a
+    // semantic author repair, never an ambiguous external-effect outcome.
+    git(root, 'update-ref', 'refs/saga/candidates/exact', base);
+    const observedMismatch = integration.observeAcceptedWorkplace(integrationInput);
+    assert.equal(observedMismatch.outcome, 'blocked');
+    assert.match(observedMismatch.reason, /^PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH:/);
+    const mismatch = integration.integrateAcceptedWorkplace(integrationInput);
+    assert.equal(mismatch.outcome, 'repair_required');
+    assert.match(mismatch.reason, /^PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH:/);
+    git(root, 'update-ref', 'refs/saga/candidates/exact', sourceCommit);
+
     let result;
     try {
-      result = new SqliteProductionCellIntegration(
-        db,
-        new SqliteAcceptedAuthorityHeadRepository(db),
-      ).integrateAcceptedWorkplace({
-        workplaceRef: { processRunId: 22, moduleRef: 'module@1', productionCellId: 'cell', workKey: 'item' },
-        processRunId: 22,
-        candidateSetRef: authorSet,
-        gateDecisionKey: 'decision:final',
-        expectedProductSchema: 'factory.source-change-candidate.v1',
-        acceptedProductRefs: [{
-          schemaId: 'factory.source-change-candidate.v1',
-          ref: 'managed-node-submission:91',
-          digest: sourceDigest,
-        }],
-      });
+      result = integration.integrateAcceptedWorkplace(integrationInput);
     } catch (error) {
       throw new Error(`integration fixture failed: ${error?.message ?? error}`, { cause: error });
     }

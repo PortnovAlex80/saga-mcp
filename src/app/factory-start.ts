@@ -1249,12 +1249,10 @@ export function resumeWorkerLossWorkplace(
       `SELECT lr.id AS lifecycle_run_id, sr.id AS stage_run_id,
               sr.process_run_id, w.workplace_ref, w.revision,
               w.next_role, w.active_reservation_ref, w.active_gate_ref,
-              w.active_recovery_case_ref, t.id AS task_id, t.assigned_to,
-              t.current_execution_id
+              w.active_recovery_case_ref
          FROM factory_lifecycle_runs lr
          JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
          JOIN factory_workplaces w ON w.process_run_id=sr.process_run_id
-         JOIN tasks t ON t.workplace_ref=w.workplace_ref
         WHERE lr.id=? AND lr.status='paused' AND sr.status='paused'
           AND w.kanban_phase='blocked' AND w.loop_state='paused'`,
     ).all(input.lifecycleRunId) as Array<{
@@ -1267,9 +1265,6 @@ export function resumeWorkerLossWorkplace(
       active_reservation_ref: string | null;
       active_gate_ref: string | null;
       active_recovery_case_ref: string | null;
-      task_id: number;
-      assigned_to: string | null;
-      current_execution_id: string | null;
     }>;
     if (candidates.length !== 1) {
       throw new FactoryStartError(
@@ -1283,8 +1278,6 @@ export function resumeWorkerLossWorkplace(
       || candidate.active_reservation_ref
       || candidate.active_gate_ref
       || candidate.active_recovery_case_ref
-      || candidate.assigned_to
-      || candidate.current_execution_id
     ) {
       throw new FactoryStartError(
         'FACTORY_WORKER_LOSS_UNSAFE',
@@ -1296,25 +1289,42 @@ export function resumeWorkerLossWorkplace(
     // what separates "worker process died under supervision" from every
     // semantic failure class that has its own recovery verb.
     const latest = db.prepare(
-      `SELECT execution_id, state FROM worker_executions
-        WHERE task_id=?
-        ORDER BY reserved_at DESC, execution_id DESC LIMIT 1`,
-    ).get(candidate.task_id) as { execution_id: string; state: string } | undefined;
+      `SELECT we.execution_id,we.state,t.id AS task_id,
+              t.assigned_to,t.current_execution_id
+         FROM tasks t
+         JOIN worker_executions we ON we.task_id=t.id
+        WHERE t.workplace_ref=?
+          AND json_extract(t.metadata,'$.role')='author'
+        ORDER BY we.reserved_at DESC,we.execution_id DESC LIMIT 1`,
+    ).get(candidate.workplace_ref) as {
+      execution_id: string;
+      state: string;
+      task_id: number;
+      assigned_to: string | null;
+      current_execution_id: string | null;
+    } | undefined;
     const activeExecutions = (db.prepare(
       `SELECT COUNT(*) AS n FROM worker_executions
-        WHERE task_id=? AND state IN ('reserved','running','cancel_requested')`,
-    ).get(candidate.task_id) as { n: number }).n;
+        WHERE task_id IN (
+          SELECT id FROM tasks
+           WHERE workplace_ref=? AND json_extract(metadata,'$.role')='author'
+        ) AND state IN ('reserved','running','cancel_requested')`,
+    ).get(candidate.workplace_ref) as { n: number }).n;
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
-        WHERE task_id=? AND command_kind='worker_done' AND accepted=1`,
-    ).get(candidate.task_id) as { n: number }).n;
-    if (!latest || latest.state !== 'lost' || activeExecutions !== 0 || acceptedDone !== 0) {
+        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
+    ).get(latest?.execution_id ?? '') as { n: number }).n;
+    if (
+      !latest || latest.state !== 'lost' || activeExecutions !== 0 || acceptedDone !== 0
+      || latest.assigned_to || latest.current_execution_id
+    ) {
       throw new FactoryStartError(
         'FACTORY_WORKER_LOSS_UNSAFE',
-        `task ${candidate.task_id} is not a supervised worker-loss incident `
+        `workplace ${candidate.workplace_ref} is not a supervised worker-loss incident `
           + `(latest=${latest?.state ?? 'none'}, active=${activeExecutions}, done=${acceptedDone})`,
       );
     }
+    const taskId = latest.task_id;
     const candidateSets = (db.prepare(
       `SELECT COUNT(*) AS n FROM factory_candidate_sets WHERE workplace_ref=?`,
     ).get(candidate.workplace_ref) as { n: number }).n;
@@ -1344,7 +1354,7 @@ export function resumeWorkerLossWorkplace(
       candidate.process_run_id,
       candidate.workplace_ref,
       candidate.revision,
-      candidate.task_id,
+      taskId,
       latest.execution_id,
       candidateSets,
       gateDecisions,
@@ -1353,7 +1363,7 @@ export function resumeWorkerLossWorkplace(
     );
     const resumed = new ConveyorRuntime(db).resumeFromHuman({
       workplaceRef: deserializeWorkplaceRef(candidate.workplace_ref),
-      taskId: candidate.task_id,
+      taskId,
       role: 'author',
     });
     if (!resumed.applied || resumed.workplace.revision !== candidate.revision + 1) {
@@ -1371,7 +1381,7 @@ export function resumeWorkerLossWorkplace(
       authorizationRef,
       lostExecutionRef: latest.execution_id,
       workplaceRef: candidate.workplace_ref,
-      taskId: candidate.task_id,
+      taskId,
       resultingRevision: resumed.workplace.revision,
       replayed: false,
     };

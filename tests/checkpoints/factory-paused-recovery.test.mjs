@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { ensureFactoryLifecycleRunSchema } from '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import { persistSubmissionValidationRejection } from '../../dist/lifecycle/submission-validation-rejections.js';
-import { resumePausedSubmissionWorkplace } from '../../dist/app/factory-start.js';
+import { resumePausedSubmissionWorkplace, resumeWorkerLossWorkplace } from '../../dist/app/factory-start.js';
 import { reconcileAutomaticPreSpawnRecovery } from '../../dist/app/automatic-pre-spawn-recovery.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -146,6 +146,50 @@ test('guarded recovery refuses artifact bytes changed after rejection', () => {
   );
   assert.equal(db.prepare('SELECT revision FROM factory_workplaces').get().revision, 7);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_operator_recovery_authorizations').get().n, 0);
+  db.close();
+});
+
+test('worker-loss recovery resolves the exact lost author across multiple role tasks', () => {
+  const { db, workplaceRef } = fixture();
+  db.prepare(
+    `UPDATE tasks SET metadata=json_set(metadata,'$.role','author') WHERE id=11`,
+  ).run();
+  db.prepare(
+    `INSERT INTO tasks
+       (id,epic_id,title,status,workplace_ref,task_kind,execution_mode,
+        project_repository_id,metadata)
+     VALUES (12,1,'reviewer','done',?,'formalization.architecture',
+             'tracker_only',1,'{"role":"reviewer"}')`,
+  ).run(workplaceRef);
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+        launcher,state,phase,reserved_at,finished_at,last_error)
+     VALUES ('lost-author','run-a',1,1,11,'author','machine','factory',
+             'lost','executing','2026-01-02 00:00:00','2026-01-02 00:01:00','process lost'),
+            ('done-reviewer','run-r',1,1,12,'reviewer','machine','factory',
+             'exited','reviewing','2026-01-03 00:00:00','2026-01-03 00:01:00',NULL)`,
+  ).run();
+
+  const input = { lifecycleRunId: 1, actorId: 'operator', reason: 'worker loss' };
+  const result = resumeWorkerLossWorkplace(db, input);
+  assert.equal(result.lostExecutionRef, 'lost-author');
+  assert.equal(result.taskId, 11);
+  assert.equal(result.resultingRevision, 8);
+  assert.equal(result.replayed, false);
+  assert.deepEqual(
+    db.prepare(
+      'SELECT kanban_phase,loop_state,revision FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(workplaceRef),
+    { kanban_phase: 'in_progress', loop_state: 'queued', revision: 8 },
+  );
+  assert.equal(db.prepare(
+    'SELECT COUNT(*) n FROM factory_worker_loss_resume_authorizations',
+  ).get().n, 1);
+
+  const replay = resumeWorkerLossWorkplace(db, input);
+  assert.equal(replay.authorizationRef, result.authorizationRef);
+  assert.equal(replay.replayed, true);
   db.close();
 });
 
