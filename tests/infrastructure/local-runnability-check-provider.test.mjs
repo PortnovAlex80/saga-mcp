@@ -500,6 +500,35 @@ test('runs the contract-stated test command verbatim, not a package.json script 
   }
 });
 
+test('runs an explicit pip profile in a disposable virtualenv instead of system Python', { timeout: 120000 }, async () => {
+  const root = seedRepo({
+    'requirements.txt': '',
+    'check_venv.py': [
+      'import sys',
+      'raise SystemExit(0 if sys.prefix != sys.base_prefix else 41)',
+      '',
+    ].join('\n'),
+  });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: {
+      kind: 'static',
+      commands: {
+        installCommand: 'pip install -r requirements.txt',
+        testCommand: 'python check_venv.py',
+      },
+    },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('the contract test command is the authority, not the package.json test script', { timeout: 30000 }, async () => {
   // package.json scripts.test points at a FAILING script. The readiness profile
   // states a DIFFERENT test command that passes. The provider MUST run the
@@ -963,7 +992,7 @@ test('valid profile without environment.image uses the host substrate (backwards
 // Trust migration: 1.0.0 → 1.1.0 (additive docker bump, not a policy drift).
 // ---------------------------------------------------------------------------
 
-test('trust migration: existing 1.0.0 row with correct attributes is migrated to 1.1.0 in place', () => {
+test('trust migration: existing 1.0.0 row with correct attributes is migrated to the current version', () => {
   // A prior run installed the provider at version 1.0.0 (correct category,
   // determinism=full, status=active). The Phase-1 bump to 1.1.0 is additive
   // (docker is opt-in; host path unchanged), so the trust row is UPDATED in
@@ -985,7 +1014,7 @@ test('trust migration: existing 1.0.0 row with correct attributes is migrated to
   db.close();
 });
 
-test('trust migration: already-current 1.1.0 row is a no-op', () => {
+test('trust migration: existing 1.1.0 row with correct attributes is migrated in place', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE trusted_providers(
     id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
@@ -993,10 +1022,12 @@ test('trust migration: already-current 1.1.0 row is a no-op', () => {
   )`);
   db.prepare(`INSERT INTO trusted_providers
     (project_id,name,version,category,trust_basis,determinism,scope,status)
-    VALUES(NULL,'factory.local-runnability.v1',?,'deterministic_evidence',
-      'built-in:d','full','local-runnability','active')`).run(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION);
-  // Must not throw.
+    VALUES(NULL,'factory.local-runnability.v1','1.1.0','deterministic_evidence',
+      'built-in:d','full','local-runnability','active')`).run();
   ensureLocalRunnabilityProviderTrust(db);
+  const row = db.prepare(`SELECT version FROM trusted_providers WHERE name=?`)
+    .get('factory.local-runnability.v1');
+  assert.equal(row.version, LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION);
   db.close();
 });
 

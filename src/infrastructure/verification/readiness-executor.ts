@@ -39,6 +39,8 @@ export interface ExecutorDescription {
    * docker (the image IS the environment).
    */
   readonly detectedBuildSystem?: 'gradle' | 'maven' | 'npm' | null;
+  /** Ephemeral host isolation selected from an explicit profile command. */
+  readonly isolation?: 'python-venv';
 }
 
 /**

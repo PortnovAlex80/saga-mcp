@@ -206,7 +206,9 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // place rather than drifting. The digest bump means all prior receipts are
     // re-checked exactly once (by design) — the provider still fails closed on
     // any real policy change (category/determinism/status tampering).
-    const trustworthyBaseline = existing.version === '1.0.0'
+    // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation. Both are
+    // substrate-only changes; the versioned CheckPlan still pins exact code.
+    const trustworthyBaseline = (existing.version === '1.0.0' || existing.version === '1.1.0')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.status === 'active';
@@ -562,12 +564,12 @@ function selectReadinessExecutor(
   const mode = (process.env.SAGA_LOCAL_RUNNABILITY_EXEC ?? 'auto').toLowerCase();
   const declaredImage = profile.environment?.image;
   if (mode === 'host') {
-    return new HostReadinessExecutor(directory);
+    return new HostReadinessExecutor(directory, profile);
   }
   if (declaredImage !== undefined) {
     return new DockerReadinessExecutor(archivePath, declaredImage, subject.candidateHash);
   }
-  return new HostReadinessExecutor(directory);
+  return new HostReadinessExecutor(directory, profile);
 }
 
 /**
@@ -580,16 +582,20 @@ function selectReadinessExecutor(
 class HostReadinessExecutor implements ReadinessExecutor {
   private readonly detected: 'gradle' | 'maven' | 'npm' | null;
   private readonly env: NodeJS.ProcessEnv;
+  private readonly isolation: 'python-venv' | undefined;
 
-  constructor(private readonly directory: string) {
+  constructor(private readonly directory: string, profile: ReadinessProfile) {
     // Build-system detection is a VALIDATOR only (LR-03 / LR-04): it selects the
     // execution environment (JAVA_HOME/bin for JVM tooling). It is NEVER the
     // authority for readiness (served vs static) or for which commands prove
     // runnability — that is the explicit profile.
     this.detected = detectBuildSystem(this.directory);
-    this.env = this.detected === 'gradle' || this.detected === 'maven'
+    const baseEnv = this.detected === 'gradle' || this.detected === 'maven'
       ? jvmEnv()
       : { ...process.env };
+    const pythonEnv = createPythonVirtualEnvironment(directory, profile, baseEnv);
+    this.env = pythonEnv?.env ?? baseEnv;
+    this.isolation = pythonEnv ? 'python-venv' : undefined;
   }
 
   runCommand(command: string, timeoutMs: number): void {
@@ -603,7 +609,7 @@ class HostReadinessExecutor implements ReadinessExecutor {
       target,
       port,
       env: {
-        ...process.env,
+        ...this.env,
         PORT: String(port),
         HOST: '127.0.0.1',
         BROWSER: 'none',
@@ -620,10 +626,60 @@ class HostReadinessExecutor implements ReadinessExecutor {
   }
 
   describe(): ExecutorDescription {
-    return { substrate: 'host', detectedBuildSystem: this.detected };
+    return {
+      substrate: 'host',
+      detectedBuildSystem: this.detected,
+      ...(this.isolation ? { isolation: this.isolation } : {}),
+    };
   }
 
   dispose(): void { /* host substrate has no resources to release */ }
+}
+
+/**
+ * PEP 668 correctly prevents a readiness check from installing candidate
+ * dependencies into the controller's system Python. When the frozen profile
+ * explicitly declares a pip install, create a disposable virtualenv inside
+ * the already-disposable exact-tree extraction and expose it through PATH.
+ * The profile command remains byte-for-byte command authority; this function
+ * chooses only the host execution substrate, just like JAVA_HOME selection.
+ */
+function createPythonVirtualEnvironment(
+  directory: string,
+  profile: ReadinessProfile,
+  baseEnv: NodeJS.ProcessEnv,
+): { env: NodeJS.ProcessEnv } | null {
+  const installCommand = profile.commands.installCommand?.trim() ?? '';
+  if (!/^(?:pip(?:3)?|python(?:3)?\s+-m\s+pip)(?:\s|$)/u.test(installCommand)) {
+    return null;
+  }
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const virtualEnv = join(directory, '.saga-readiness-python');
+  try {
+    execFileSync(python, ['-m', 'venv', virtualEnv], {
+      cwd: directory,
+      env: baseEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 60_000,
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new ReadinessExecutionError(
+      'LOCAL_RUNNABILITY_PYTHON_VENV_UNAVAILABLE',
+      commandFailureDetail(python, ['-m', 'venv', virtualEnv], error),
+    );
+  }
+  const bin = join(virtualEnv, process.platform === 'win32' ? 'Scripts' : 'bin');
+  return {
+    env: {
+      ...baseEnv,
+      VIRTUAL_ENV: virtualEnv,
+      PATH: baseEnv.PATH ? `${bin}${delimiter}${baseEnv.PATH}` : bin,
+      PYTHONNOUSERSITE: '1',
+      PIP_DISABLE_PIP_VERSION_CHECK: '1',
+    },
+  };
 }
 
 /**
