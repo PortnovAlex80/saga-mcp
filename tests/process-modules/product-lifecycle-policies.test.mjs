@@ -474,6 +474,7 @@ test('ADR-053 B-3: Development material is invariant to execution provenance fie
   const input = developmentFixture();
   const baselineWorksetHash = input.implementationWorkset.worksetHash;
   const baselineVerificationHash = input.acceptanceVerification.verificationHash;
+  const baselineCandidateHash = input.integratedCandidate.candidateHash;
   input.implementationWorkset.results[0].implementationExecutionId = 'replacement-author';
   input.implementationWorkset.results[0].reviewExecutionId = 'replacement-reviewer';
   input.implementationWorkset.results[0].taskId += 1000;
@@ -482,6 +483,9 @@ test('ADR-053 B-3: Development material is invariant to execution provenance fie
   input.acceptanceVerification.evidence[0].taskId += 1000;
   input.acceptanceVerification.evidence[0].evidence.ref = 'check-receipt:replacement';
   input.acceptanceVerification.evidence[0].provider.providerId += 1000;
+  input.integratedCandidate.integrationIntentRefs = [
+    'external-effect-action:999:task:9999:commit:integrated-commit',
+  ];
   assert.equal(
     developmentPolicy.hashImplementationWorkset(input.implementationWorkset),
     baselineWorksetHash,
@@ -489,6 +493,10 @@ test('ADR-053 B-3: Development material is invariant to execution provenance fie
   assert.equal(
     developmentPolicy.hashAcceptanceVerification(input.acceptanceVerification),
     baselineVerificationHash,
+  );
+  assert.equal(
+    developmentPolicy.hashIntegratedCandidate(input.integratedCandidate),
+    baselineCandidateHash,
   );
   const result = new developmentPolicy.ReferenceDevelopmentSettlementPolicy().settle(input);
   assert.equal(result.decision, 'verified');

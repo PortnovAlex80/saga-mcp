@@ -115,10 +115,10 @@ export interface ProductionCellProjectionPersistence {
   }): void;
   concludeExecutionIntent(executionRef: string): void;
   /**
-   * Resolve worker-only execution coordinates when the CandidateSet producer
-   * is a WorkerExecution. Kernel presenters (for example an authorized
-   * carry-forward) are lawful ProducerRefs but deliberately have no worker
-   * receipt, so they resolve to null.
+   * Resolve audit/operational coordinates for a worker presentation.
+   * Kernel presentations (for example authorized carry-forward) deliberately
+   * have no worker receipt and resolve to null. Material authority remains the
+   * WorkplaceProductionRevision in either case.
    */
   readExecutionReceipt(executionRef: string): { intentId: number; taskId: number } | null;
   /** Successful validators durably committed by this exact worker_done. */
@@ -1155,11 +1155,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     subjectCandidateSetRef: string | null,
     products: readonly ProductRef[],
   ): CandidateSet {
-    const members: CandidateMember[] = products.map(productRef => ({
-      productRef,
-      origin: 'produced',
-      sourceCandidateSetRef: null,
-    }));
     // ADR-053 Phase 5 — assemble an immutable Workplace production revision
     // from the sealed products and carry its ref as the CandidateSet material
     // authority. Two executions producing the same products derive the same
@@ -1180,8 +1175,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const existing = this.opts.revisionRepo.getRevisionByMaterialDigest(
         revision.workplaceRef, revision.materialDigest,
       );
-      const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
+      const finalRevision = existing ?? revision;
+      const finalRevisionRef = finalRevision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      const members = candidateMembersForRevision(finalRevision, 'produced', null);
       const digest = candidateSetDigestForRevision({
         workplaceRef,
         productionRevisionRef: finalRevisionRef,
@@ -1276,11 +1273,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     workplaceRef: WorkplaceRef,
     directive: import('../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js').AuthorCandidateCarryForwardDirective,
   ): CandidateSet {
-    const members: CandidateMember[] = directive.products.map(productRef => ({
-      productRef,
-      origin: 'carried-forward',
-      sourceCandidateSetRef: directive.sourceCandidateSetRef,
-    }));
     // ADR-053 B-1 — carry-forward seals append the revision and seal the set
     // atomically, same invariant as the produced-member path.
     const revision = this.assembleRevisionFromProducts(
@@ -1290,8 +1282,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const existing = this.opts.revisionRepo.getRevisionByMaterialDigest(
         revision.workplaceRef, revision.materialDigest,
       );
-      const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
+      const finalRevision = existing ?? revision;
+      const finalRevisionRef = finalRevision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      const members = candidateMembersForRevision(
+        finalRevision,
+        'carried-forward',
+        directive.sourceCandidateSetRef,
+      );
       const digest = candidateSetDigestForRevision({
         workplaceRef,
         productionRevisionRef: finalRevisionRef,
@@ -1992,6 +1990,40 @@ function failedOutcome(): ReconcileOutcome {
     candidateSetRef: null,
     executionRef: null,
   };
+}
+
+/**
+ * Present the complete product material named by a persisted revision.
+ * CandidateSet is a view of the revision, never a view of only the execution
+ * delta that happened to trigger the seal. Validation/evidence members remain
+ * in the revision authority but are not ProductRefs exposed for review.
+ */
+function candidateMembersForRevision(
+  revision: WorkplaceProductionRevision,
+  origin: CandidateMember['origin'],
+  sourceCandidateSetRef: string | null,
+): CandidateMember[] {
+  const members = revision.members.flatMap(member => {
+    if (!member.memberKey.startsWith('product/')) return [];
+    const suffix = member.memberKey.slice('product/'.length);
+    const separator = suffix.lastIndexOf('/');
+    if (separator <= 0) {
+      throw new Error(`REVISION_PRODUCT_MEMBER_KEY_INVALID: ${member.memberKey}`);
+    }
+    return [{
+      productRef: {
+        schemaId: suffix.slice(0, separator),
+        ref: member.productRef,
+        digest: member.contentDigest,
+      },
+      origin,
+      sourceCandidateSetRef,
+    } satisfies CandidateMember];
+  });
+  if (members.length === 0) {
+    throw new Error(`REVISION_HAS_NO_PRODUCT_MATERIAL: ${revision.revisionRef}`);
+  }
+  return members;
 }
 
 function hash(value: unknown): string {

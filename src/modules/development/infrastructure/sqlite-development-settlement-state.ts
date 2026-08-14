@@ -274,8 +274,8 @@ export class SqliteDevelopmentModuleStore implements
         ref: `project-repository:${repository.projectRepositoryId}:${repository.commitSha}`,
         digest: repository.treeHash,
       }));
-      const integrationIntentRefs = accepted.map((product, index) =>
-        `${integrations[index]!.effectReceiptRef}:task:${product.taskId}:commit:${integrations[index]!.integratedCommit}`)
+      const integrationIntentRefs = accepted.map((_product, index) =>
+        `${integrations[index]!.effectReceiptRef}:commit:${integrations[index]!.integratedCommit}`)
         .sort();
       // LR-04 — propagate the EXPLICIT readiness profile from the accepted
       // implementation results onto the frozen candidate. The worker that built

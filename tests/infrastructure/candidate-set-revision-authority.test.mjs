@@ -71,6 +71,26 @@ function insertRevision(db, revisionRef) {
   ).run(revisionRef, WORKPLACE_SERIALIZED, revisionMembers, revisionRef, revisionRef);
 }
 
+function insertTwoProductRevision(db, revisionRef) {
+  const revisionMembers = JSON.stringify([
+    {
+      memberKey: 'product/factory.product.v1/0', productRef: 'product/sha256:test',
+      contentDigest: 'sha256:test', sourceAdapter: 'typed-submission',
+    },
+    {
+      memberKey: 'product/factory.other.v1/0', productRef: 'product/sha256:other',
+      contentDigest: 'sha256:other', sourceAdapter: 'typed-submission',
+    },
+  ]);
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref, workplace_ref, parent_revision_ref, members,
+        contributing_execution_refs, presenter_ref, material_digest,
+        semantic_digest, sealed_at)
+     VALUES (?, ?, NULL, ?, '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
+  ).run(revisionRef, WORKPLACE_SERIALIZED, revisionMembers, revisionRef, revisionRef);
+}
+
 // Build a real content-addressed revision (used by the atomic tests).
 function buildRevision(executionRef) {
   const contribution = buildContribution({
@@ -236,6 +256,27 @@ test('ADR-053 B-3: repository replay ignores execution-scoped ProductRef aliases
   });
   assert.equal(carried.replayed, true);
   assert.equal(carried.set.members[0].origin, 'produced');
+});
+
+test('ADR-053 B-3: CandidateSet must present every product member in its revision', () => {
+  const db = makeDb();
+  insertTwoProductRevision(db, 'revision/sha256:complete-material');
+  const repo = new SqliteCandidateSetRepository(db);
+  assert.throws(
+    () => repo.seal({
+      workplaceRef: WORKPLACE,
+      productionRevisionRef: 'revision/sha256:complete-material',
+      role: 'author',
+      subjectCandidateSetRef: null,
+      members: MEMBERS,
+      sealReceiptRef: 'receipt-subset',
+      candidateSetDigest: '8'.repeat(64),
+      sealedAt: '2026-08-14T00:03:00Z',
+    }),
+    /member count does not match revision material/,
+  );
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM factory_candidate_sets').get().n, 0);
+  db.close();
 });
 
 // ===========================================================================

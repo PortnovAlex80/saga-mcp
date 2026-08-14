@@ -280,3 +280,34 @@ test('failed gate recovery refuses replacement plans that retain the legacy dige
   assert.equal(db.prepare('SELECT COUNT(*) n FROM factory_failed_gate_recovery_authorizations').get().n, 0);
   db.close();
 });
+
+test('failed gate recovery follows the active completion, not revision presenter audit metadata', () => {
+  const { db, plan, workplaceRef, candidate } = fixture();
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+        launcher,state,phase,exit_code,finished_at)
+     VALUES ('worker-execution:equivalent-retry','run-b',1,1,11,'worker-b','machine',
+             'claude_cli','exited','finishing',0,datetime('now'))`,
+  ).run();
+  db.prepare(
+    `INSERT INTO command_receipts
+       (command_id,command_kind,actor_kind,execution_id,task_id,payload_hash,
+        accepted,result_json,reply_json)
+     VALUES ('done-b','worker_done','managed_execution',
+             'worker-execution:equivalent-retry',11,'payload-b',1,'{}','{}')`,
+  ).run();
+  db.prepare(
+    `UPDATE factory_workplaces SET active_reservation_ref='worker-execution:equivalent-retry'
+      WHERE workplace_ref=?`,
+  ).run(workplaceRef);
+
+  const recovered = recoverFailedGateRun(db, {
+    projectId: 1,
+    replacementCheckPlan: plan,
+    actorId: 'operator',
+    reason: 'equivalent retry presentation',
+  });
+  assert.equal(recovered.candidateSetRef, candidate.candidateSetRef);
+  db.close();
+});

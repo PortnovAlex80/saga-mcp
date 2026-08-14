@@ -750,8 +750,6 @@ export function recoverFailedGateRun(
               we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
               cs.candidate_set_ref,cs.candidate_set_digest,cs.production_revision_ref,
               cs.subject_candidate_set_ref AS candidate_subject_candidate_set_ref,
-              (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
-                WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref,
               cs.role AS candidate_role,
               gr.gate_run_ref,gr.gate_phase,gr.subject_candidate_set_ref,
               gr.assessment_candidate_set_refs,gr.check_plan_ref,
@@ -808,7 +806,6 @@ export function recoverFailedGateRun(
       || row.gate_state !== 'checking'
       || row.subject_candidate_set_ref !== row.candidate_set_ref
       || row.expected_workplace_revision !== row.workplace_revision
-      || row.active_reservation_ref !== row.presenter_ref
       || row.assessment_candidate_set_refs !== '[]'
     ) {
       throw new FactoryStartError(
@@ -845,7 +842,7 @@ export function recoverFailedGateRun(
       `SELECT COUNT(*) AS n FROM command_receipts
         WHERE task_id=? AND execution_id=?
           AND command_kind='worker_done' AND accepted=1`,
-    ).get(row.task_id, row.presenter_ref) as { n: number }).n;
+    ).get(row.task_id, row.active_reservation_ref) as { n: number }).n;
     const gateDecisionCount = (db.prepare(
       'SELECT COUNT(*) AS n FROM factory_gate_decisions WHERE gate_run_ref=?',
     ).get(row.gate_run_ref) as { n: number }).n;

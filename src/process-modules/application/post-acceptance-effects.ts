@@ -21,7 +21,10 @@ export interface AcceptedCandidateAuthority {
   readonly candidateSetRef: string;
   /** The immutable Workplace production revision the accepted material was sealed from. */
   readonly productionRevisionRef: string;
-  /** The exact accepted ProductRefs from the accepted CandidateSet members. */
+  /**
+   * Exact locators for the products presented by the revision. `ref` is
+   * provenance/lookup only; accepted material identity binds schema+digest.
+   */
   readonly acceptedProductRefs: readonly ProductRef[];
   /** The accepted product's output schema (material coordinate). */
   readonly productSchema: string;
@@ -60,9 +63,13 @@ export function computeAcceptanceDigest(input: {
   return sha256Hex({
     candidateSetRef: input.candidateSetRef,
     productionRevisionRef: input.productionRevisionRef,
-    productRefs: input.acceptedProductRefs
-      .map(p => ({ schemaId: p.schemaId, ref: p.ref, digest: p.digest }))
-      .sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0)),
+    // ProductRef.ref is a presentation locator and may contain a submission
+    // row id.  The accepted material identity is the schema/content multiset;
+    // equivalent presentations must therefore produce the same digest.
+    products: input.acceptedProductRefs
+      .map(p => ({ schemaId: p.schemaId, digest: p.digest }))
+      .sort((a, b) => a.schemaId.localeCompare(b.schemaId)
+        || a.digest.localeCompare(b.digest)),
     gateDecisionKey: input.gateDecisionKey,
   });
 }

@@ -31,8 +31,10 @@ export function submissionValidationMemberKey(input: {
 }
 
 /**
- * Material identity for a successful validation. Row ids, execution ids,
- * task ids and timestamps are audit provenance and cannot affect acceptance.
+ * Material identity for a successful validation. Receipt/execution/task row
+ * ids and timestamps are audit provenance and cannot affect acceptance.
+ * Artifact and trace ids are durable logical material coordinates inside one
+ * project; they are intentionally bound together with their exact hashes.
  */
 export function submissionValidationContentDigest(
   receipt: Omit<SubmissionValidationReceiptProjection, 'receiptId'>,

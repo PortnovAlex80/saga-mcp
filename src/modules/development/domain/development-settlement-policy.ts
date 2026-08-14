@@ -104,7 +104,19 @@ export function hashImplementationWorkset(
 export function hashIntegratedCandidate(
   candidate: IntegratedReleaseCandidate,
 ): string {
-  return hashWithoutField(candidate, 'candidateHash');
+  // Integration receipt refs are proof/provenance coordinates. Repository
+  // commit/tree snapshots already carry the resulting material, so receipt
+  // row allocation (and legacy task decoration) cannot change candidate
+  // identity.
+  return sha256Hex({
+    schemaVersion: candidate.schemaVersion,
+    taskGraphHash: candidate.taskGraphHash,
+    implementationWorksetHash: candidate.implementationWorksetHash,
+    repositories: candidate.repositories,
+    buildProducts: candidate.buildProducts,
+    frozen: candidate.frozen,
+    ...(candidate.readiness ? { readiness: candidate.readiness } : {}),
+  });
 }
 
 export function hashAcceptanceVerification(

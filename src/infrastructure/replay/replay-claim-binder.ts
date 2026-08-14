@@ -35,14 +35,15 @@ function isCapsuleIneligibleInWorkplace(
   const rejectedByGate = db.prepare(
     `SELECT 1
        FROM factory_gate_decisions gd
-       JOIN factory_candidate_sets cs
-         ON cs.candidate_set_ref=gd.subject_candidate_set_ref
-        AND cs.workplace_ref=gd.workplace_ref
-       JOIN worker_executions we
-         ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
       WHERE gd.workplace_ref=?
         AND gd.verdict!='accepted'
-        AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+        AND EXISTS (
+          SELECT 1
+            FROM worker_executions we
+            JOIN tasks t ON t.id=we.task_id
+           WHERE t.workplace_ref=gd.workplace_ref
+             AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+        )
       LIMIT 1`,
   ).get(workplaceRef, capsuleRef);
   if (rejectedByGate) return true;

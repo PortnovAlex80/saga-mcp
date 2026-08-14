@@ -119,3 +119,24 @@ test('C17: assertAuthorityBound rejects a drifted product list whose digest no l
     /AUTHORITY_ACCEPTANCE_DIGEST_MISMATCH/,
   );
 });
+
+test('ADR-053 B-3: acceptance identity ignores execution-scoped ProductRef aliases', () => {
+  const shared = {
+    candidateSetRef: 'candidate-set/shared',
+    productionRevisionRef: 'revision/shared',
+    gateDecisionKey: 'decision/shared',
+  };
+  const fromA = computeAcceptanceDigest({
+    ...shared,
+    acceptedProductRefs: [{
+      schemaId: 'factory.product.v1', ref: 'managed-node-submission:101', digest: 'sha256:same',
+    }],
+  });
+  const fromB = computeAcceptanceDigest({
+    ...shared,
+    acceptedProductRefs: [{
+      schemaId: 'factory.product.v1', ref: 'managed-node-submission:202', digest: 'sha256:same',
+    }],
+  });
+  assert.equal(fromB, fromA);
+});

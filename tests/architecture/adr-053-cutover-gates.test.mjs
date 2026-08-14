@@ -84,10 +84,22 @@ test('Gate B3 [met]: post-seal material consumers do not select authority throug
     'CandidateSet replay must not veto equivalent revision material by ProductRef alias');
   assert.ok(replayCheck.includes('memberMaterialKey'),
     'CandidateSet replay compares schema+content material');
+  assert.ok(candidateRepo.includes('revisionMaterial.length !== input.members.length'),
+    'CandidateSet must present the complete revision product material');
 
   const recovery = readSrc('src/app/factory-start.ts');
   assert.ok(recovery.includes('AS candidate_subject_candidate_set_ref'),
     'candidate subject and Gate subject must have distinct recovery bindings');
+  assert.equal(recovery.includes('active_reservation_ref !== row.presenter_ref'), false,
+    'failed-gate recovery must not use revision presenter as current authority');
+
+  const replayBinder = readSrc('src/infrastructure/replay/replay-claim-binder.ts');
+  const replayEligibility = replayBinder.slice(
+    replayBinder.indexOf('function isCapsuleIneligibleInWorkplace'),
+    replayBinder.indexOf('function metadataObject'),
+  );
+  assert.equal(replayEligibility.includes('execution_id=(SELECT rev.presenter_ref'), false,
+    'replay rejection must bind the current replay attempt, not revision presenter');
 
   const repositoryRegression = readSrc('tests/infrastructure/candidate-set-revision-authority.test.mjs');
   assert.ok(repositoryRegression.includes('repository replay ignores execution-scoped ProductRef aliases'));

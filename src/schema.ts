@@ -1486,8 +1486,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_candidate_sets_author
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_candidate_sets_reviewer
   ON factory_candidate_sets(workplace_ref, production_revision_ref, subject_candidate_set_ref) WHERE role='reviewer';
 
--- CandidateSet members (REG-12-AC-02/03). Each member is either produced by
--- the active execution or explicitly carried-forward from a named prior set.
+-- CandidateSet members (REG-12-AC-02/03). They present the complete product
+-- material of the named WorkplaceProductionRevision. Origin is presentation
+-- provenance only and never material authority.
 CREATE TABLE IF NOT EXISTS factory_candidate_set_members (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,
   candidate_set_ref       TEXT NOT NULL,

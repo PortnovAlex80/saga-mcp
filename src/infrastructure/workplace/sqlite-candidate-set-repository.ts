@@ -325,6 +325,11 @@ function assertInputMembersMatchRevision(
       }
       return `${suffix.slice(0, schemaSeparator)}\u0000${member.contentDigest}`;
     });
+  if (revisionMaterial.length !== input.members.length) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member count does not match revision material`,
+    );
+  }
   const available = new Map<string, number>();
   for (const key of revisionMaterial) available.set(key, (available.get(key) ?? 0) + 1);
   const missing = input.members.some(member => {
