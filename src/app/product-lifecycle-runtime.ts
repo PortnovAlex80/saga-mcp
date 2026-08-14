@@ -403,9 +403,12 @@ export function createProductLifecycleRuntime(
         ...productionCellProjectionPersistence,
         readAuthorSemanticDigestForWorkplace: (serializedWorkplaceRef: string): string | null => {
           const row = db.prepare(
-            `SELECT metadata FROM tasks
-              WHERE workplace_ref=? AND metadata LIKE '%"role":"author"%'
-              ORDER BY id DESC LIMIT 1`,
+            `SELECT t.metadata
+               FROM factory_accepted_authority_head h
+               JOIN tasks t
+                 ON CAST(t.id AS TEXT)=h.accepted_author_task_id
+                AND t.workplace_ref=h.workplace_ref
+              WHERE h.workplace_ref=?`,
           ).get(serializedWorkplaceRef) as { metadata: string } | undefined;
           if (!row?.metadata) return null;
           try {

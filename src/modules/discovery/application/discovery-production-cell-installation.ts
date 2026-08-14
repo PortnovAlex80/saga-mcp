@@ -313,15 +313,23 @@ function readSubmission(
   productRef: ProductRef,
   expectedSchema: string,
 ): SubmissionRow {
-  // ADR-053 cutover: resolve the submission by EXACT productRef content hash,
-  // NOT by execution_id. The productRef.digest IS the sealed content authority.
+  // ADR-053 cutover: resolve the exact sealed ProductRef alias and verify its
+  // content digest. Equal-content rows are provenance aliases, but selecting a
+  // newer alias here would let post-seal chronology change the terminal output.
+  const prefix = 'managed-node-submission:';
+  if (!productRef.ref.startsWith(prefix)) {
+    throw new Error(`DISCOVERY_PRODUCT_REF_UNSUPPORTED: ${productRef.ref}`);
+  }
+  const submissionId = Number(productRef.ref.slice(prefix.length));
+  if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+    throw new Error(`DISCOVERY_PRODUCT_REF_INVALID: ${productRef.ref}`);
+  }
   const row = db.prepare(
     `SELECT id,process_run_id,node_id,intent_id,task_id,execution_id,
             schema_version,payload_snapshot,content_hash,submitted_at
        FROM factory_managed_node_submissions
-      WHERE process_run_id=? AND schema_version=? AND content_hash=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(processRunId, expectedSchema, productRef.digest) as SubmissionRow | undefined;
+      WHERE id=? AND process_run_id=? AND schema_version=? AND content_hash=?`,
+  ).get(submissionId, processRunId, expectedSchema, productRef.digest) as SubmissionRow | undefined;
   if (!row) throw new Error(`DISCOVERY_PRODUCT_MISSING: ${productRef.ref}`);
   if (row.schema_version !== expectedSchema) {
     throw new Error(

@@ -72,6 +72,7 @@ const BASELINE = Object.freeze({
 
 const POST_SEAL_AUTHORITY_FILES = Object.freeze([
   'src/modules/discovery/application/discovery-check-providers.ts',
+  'src/modules/discovery/application/discovery-production-cell-installation.ts',
   'src/process-modules/application/review-verdict-check-provider.ts',
   'src/infrastructure/verification/local-runnability-check-provider.ts',
   'src/modules/development/infrastructure/sqlite-development-settlement-state.ts',
@@ -238,6 +239,20 @@ test('ADR-053 B-6 ratchet: sealed-authority consumers have no descending LIMIT-1
     BASELINE.postSealDescendingWinner,
     `ADR-053 B-6 regression: a sealed-authority consumer selects a winner by recency/order:\n  - ${sites.join('\n  - ')}`,
   );
+});
+
+test('ADR-053 B-6 ratchet: reviewer projection resolves author semantics from the exact authority head', () => {
+  const source = stripComments(readFileSync(
+    path.join(REPO_ROOT, 'src/app/product-lifecycle-runtime.ts'),
+    'utf8',
+  ));
+  const start = source.indexOf('readAuthorSemanticDigestForWorkplace:');
+  const end = source.indexOf('activateRoleTask:', start);
+  assert.ok(start >= 0 && end > start, 'reviewer semantic-input authority region exists');
+  const region = source.slice(start, end);
+  assert.match(region, /factory_accepted_authority_head/gu);
+  assert.match(region, /accepted_author_task_id/gu);
+  assert.doesNotMatch(region, /order\s+by|limit\s+1/giu);
 });
 
 test('ADR-053 B-6 ratchet: candidate_read never treats singleton cardinality as acceptance', () => {
