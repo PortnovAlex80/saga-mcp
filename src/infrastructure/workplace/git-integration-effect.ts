@@ -72,6 +72,7 @@ export function createGitIntegrationEffect(
           candidateSetRef: authority.candidateSetRef,
           gateDecisionKey: authority.gateDecisionKey,
           expectedProductSchema,
+          acceptedProductRefs: authority.acceptedProductRefs,
         });
         action = ledger.recordObservation({ claim: observationClaim.claim, observation });
         if (action.state === 'succeeded') return succeeded(action);
@@ -101,6 +102,7 @@ export function createGitIntegrationEffect(
           candidateSetRef: authority.candidateSetRef,
           gateDecisionKey: authority.gateDecisionKey,
           expectedProductSchema,
+          acceptedProductRefs: authority.acceptedProductRefs,
         });
         if (result.outcome === 'repair_required') {
           ledger.recordExecutionResult({

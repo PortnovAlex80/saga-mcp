@@ -1594,6 +1594,9 @@ CREATE INDEX IF NOT EXISTS idx_factory_gate_runs_subject ON factory_gate_runs(su
 CREATE TABLE IF NOT EXISTS factory_gate_presentation_attempts (
   gate_run_ref            TEXT NOT NULL,
   presentation_ref        TEXT NOT NULL,
+  replay_key              TEXT,
+  replay_capsule_ref      TEXT,
+  replay_capsule_payload_hash TEXT,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (gate_run_ref, presentation_ref),
   FOREIGN KEY (gate_run_ref) REFERENCES factory_gate_runs(gate_run_ref)
@@ -2468,6 +2471,24 @@ export function ensureAcceptedAuthorityHeadTaskIdColumn(db: {
   db.exec(
     'ALTER TABLE factory_accepted_authority_head ADD COLUMN accepted_author_task_id TEXT',
   );
+}
+
+/** Freeze replay selection at Gate presentation time on pre-existing DBs. */
+export function ensureGatePresentationReplayBindingColumns(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(factory_gate_presentation_attempts)').all();
+  const names = new Set(columns.map(column => column.name));
+  if (!names.has('replay_key')) {
+    db.exec('ALTER TABLE factory_gate_presentation_attempts ADD COLUMN replay_key TEXT');
+  }
+  if (!names.has('replay_capsule_ref')) {
+    db.exec('ALTER TABLE factory_gate_presentation_attempts ADD COLUMN replay_capsule_ref TEXT');
+  }
+  if (!names.has('replay_capsule_payload_hash')) {
+    db.exec('ALTER TABLE factory_gate_presentation_attempts ADD COLUMN replay_capsule_payload_hash TEXT');
+  }
 }
 
 /**

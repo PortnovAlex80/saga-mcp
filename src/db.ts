@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -59,6 +59,8 @@ let db: Database.Database | null = null;
  *
  *   9 = ADR-053 executable-composition binding receipts. Each process role
  *       persists exact manifest and resolved implementation digests before work.
+ *  10 = Gate presentation attempts freeze replay key/capsule/hash so later
+ *       WorkerExecution metadata changes cannot rewrite Gate authority.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -66,7 +68,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -125,6 +127,7 @@ export function getDb(): Database.Database {
   // material the head accepted. Fresh DBs get it from CREATE TABLE; pre-v6 DBs
   // get it added here as NULL. No row reset.
   ensureAcceptedAuthorityHeadTaskIdColumn(db);
+  ensureGatePresentationReplayBindingColumns(db);
   // Additive migration (ADR-053 C7-02): factory_transition_obligations gains a
   // DISTINCT durable home for the monotonic lease fence (nullable `lease_fence`),
   // separate from the causal source revision on `fence`. Fresh DBs get it from

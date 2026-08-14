@@ -20,7 +20,8 @@ function database() {
     CREATE TABLE factory_workplace_production_revisions (revision_ref TEXT PRIMARY KEY,workplace_ref TEXT NOT NULL);
     CREATE TABLE factory_candidate_sets (candidate_set_ref TEXT PRIMARY KEY,workplace_ref TEXT NOT NULL,production_revision_ref TEXT NOT NULL);
     CREATE TABLE factory_candidate_set_members (candidate_set_ref TEXT NOT NULL,ordinal INTEGER NOT NULL,product_schema TEXT NOT NULL,product_ref TEXT NOT NULL,product_digest TEXT NOT NULL,PRIMARY KEY(candidate_set_ref,ordinal));
-    CREATE TABLE factory_gate_decisions (decision_key TEXT PRIMARY KEY,workplace_ref TEXT NOT NULL,subject_candidate_set_ref TEXT NOT NULL,verdict TEXT NOT NULL);
+    CREATE TABLE factory_gate_decisions (decision_key TEXT PRIMARY KEY,workplace_ref TEXT NOT NULL,subject_candidate_set_ref TEXT NOT NULL,gate_phase TEXT NOT NULL,verdict TEXT NOT NULL);
+    CREATE TABLE factory_workplace_gate_decision_heads (workplace_ref TEXT PRIMARY KEY,decision_key TEXT NOT NULL);
     CREATE TABLE factory_sealed_product_materials (schema_id TEXT NOT NULL,content_digest TEXT NOT NULL,payload_snapshot TEXT NOT NULL,payload_hash TEXT NOT NULL,PRIMARY KEY(schema_id,content_digest));
     CREATE TABLE factory_sealed_product_aliases (product_ref TEXT NOT NULL,schema_id TEXT NOT NULL,content_digest TEXT NOT NULL,PRIMARY KEY(product_ref,schema_id,content_digest),UNIQUE(product_ref,schema_id));
   `);
@@ -36,7 +37,8 @@ function seedAuthority(db, { schemaId = BUNDLE_SCHEMA, ref = 'product:snapshot',
   db.prepare('INSERT INTO factory_workplace_production_revisions VALUES (?,?)').run(revision, workplaceKey);
   db.prepare('INSERT INTO factory_candidate_sets VALUES (?,?,?)').run(candidate, workplaceKey, revision);
   db.prepare('INSERT INTO factory_candidate_set_members VALUES (?,0,?,?,?)').run(candidate, schemaId, ref, digest);
-  db.prepare('INSERT INTO factory_gate_decisions VALUES (?,?,?,?)').run(decision, workplaceKey, candidate, 'accepted');
+  db.prepare('INSERT INTO factory_gate_decisions VALUES (?,?,?,?,?)').run(decision, workplaceKey, candidate, 'final', 'accepted');
+  db.prepare('INSERT INTO factory_workplace_gate_decision_heads VALUES (?,?)').run(workplaceKey, decision);
   if (seal) new SqliteSealedProductMaterialRepository(db).seal({ productRef, payload });
   const authority = {
     workplaceRef, candidateSetRef: candidate, productionRevisionRef: revision,
@@ -63,8 +65,10 @@ function effect(db) {
     assertPersisted(authority) {
       const candidate = db.prepare('SELECT workplace_ref,production_revision_ref FROM factory_candidate_sets WHERE candidate_set_ref=?').get(authority.candidateSetRef);
       if (!candidate || candidate.workplace_ref !== workplaceKey || candidate.production_revision_ref !== authority.productionRevisionRef) throw new Error('AUTHORITY_CANDIDATE_REVISION_MISMATCH');
-      const decision = db.prepare('SELECT workplace_ref,subject_candidate_set_ref,verdict FROM factory_gate_decisions WHERE decision_key=?').get(authority.gateDecisionKey);
-      if (!decision || decision.workplace_ref !== workplaceKey || decision.subject_candidate_set_ref !== authority.candidateSetRef || decision.verdict !== 'accepted') throw new Error('AUTHORITY_GATE_DECISION_MISMATCH');
+      const decision = db.prepare('SELECT workplace_ref,subject_candidate_set_ref,gate_phase,verdict FROM factory_gate_decisions WHERE decision_key=?').get(authority.gateDecisionKey);
+      if (!decision || decision.workplace_ref !== workplaceKey || decision.subject_candidate_set_ref !== authority.candidateSetRef || decision.gate_phase !== 'final' || decision.verdict !== 'accepted') throw new Error('AUTHORITY_GATE_DECISION_MISMATCH');
+      const head = db.prepare('SELECT decision_key FROM factory_workplace_gate_decision_heads WHERE workplace_ref=?').get(workplaceKey);
+      if (!head || head.decision_key !== authority.gateDecisionKey) throw new Error('AUTHORITY_APPLIED_GATE_HEAD_MISMATCH');
       const members = db.prepare('SELECT product_schema AS schemaId,product_ref AS ref,product_digest AS digest FROM factory_candidate_set_members WHERE candidate_set_ref=? ORDER BY ordinal').all(authority.candidateSetRef);
       assert.deepEqual(members, authority.acceptedProductRefs);
     },

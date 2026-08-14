@@ -19,6 +19,7 @@ export interface SqliteProductionCellIntegrationInput {
   readonly candidateSetRef: string;
   readonly gateDecisionKey: string;
   readonly expectedProductSchema: string;
+  readonly acceptedProductRefs: AcceptedCandidateAuthority['acceptedProductRefs'];
 }
 
 export type ProductionCellIntegrationResult =
@@ -393,28 +394,13 @@ export class SqliteProductionCellIntegration {
   }
 
   private readAcceptedProduct(input: SqliteProductionCellIntegrationInput): unknown {
-    const workplace = serializeWorkplaceRef(input.workplaceRef);
-    const rows = this.db.prepare(
-      `SELECT m.product_schema AS schema_id,m.product_ref,m.product_digest
-         FROM factory_candidate_sets cs
-         JOIN factory_candidate_set_members m
-           ON m.candidate_set_ref=cs.candidate_set_ref
-        WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?
-          AND m.product_schema=?`,
-    ).all(input.candidateSetRef, workplace, input.expectedProductSchema) as Array<{
-      schema_id: string;
-      product_ref: string;
-      product_digest: string;
-    }>;
-    if (rows.length !== 1) {
+    const refs = input.acceptedProductRefs.filter(
+      product => product.schemaId === input.expectedProductSchema,
+    );
+    if (refs.length !== 1) {
       throw new Error(`PRODUCTION_CELL_INTEGRATION_PRODUCT_AMBIGUOUS: ${input.candidateSetRef}`);
     }
-    const row = rows[0]!;
-    return this.sealedProducts.readExact({
-      schemaId: row.schema_id,
-      ref: row.product_ref,
-      digest: row.product_digest,
-    });
+    return this.sealedProducts.readExact(refs[0]!);
   }
 }
 

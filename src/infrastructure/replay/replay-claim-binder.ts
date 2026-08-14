@@ -41,9 +41,8 @@ function isCapsuleIneligibleInWorkplace(
         AND EXISTS (
           SELECT 1
             FROM factory_gate_presentation_attempts gpa
-            JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
            WHERE gpa.gate_run_ref=gd.gate_run_ref
-             AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+             AND gpa.replay_capsule_ref=?
         )
       LIMIT 1`,
   ).get(workplaceRef, capsuleRef);

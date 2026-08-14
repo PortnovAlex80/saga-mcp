@@ -60,6 +60,7 @@ import {
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { SqliteProductionCellIntegration } from '../../dist/infrastructure/workplace/sqlite-production-cell-integration.js';
+import { SqliteSealedProductMaterialRepository } from '../../dist/infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteManagedNodeSubmissionRepository } from '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
@@ -222,12 +223,17 @@ function insertAcceptanceChain(db, opts) {
     repository: { projectRepositoryId: 1, integrationBranch: 'dev', baseCommit: base },
   };
   const sourceDigest = sha(sourcePayload);
+  const sealedProducts = new SqliteSealedProductMaterialRepository(db);
   db.prepare(
     `INSERT INTO factory_managed_node_submissions
        (id,process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
         schema_version,payload_snapshot,content_hash)
      VALUES (91,22,'module@1','cell',1,?,'origin-author',?,?,?)`,
   ).run(originTaskId, SCHEMA, JSON.stringify(sourcePayload), sourceDigest);
+  sealedProducts.seal({
+    productRef: { schemaId: SCHEMA, ref: `managed-node-submission:${sourceSubId}`, digest: sourceDigest },
+    payload: sourcePayload,
+  });
 
   db.prepare(
     `INSERT INTO factory_candidate_sets
@@ -258,6 +264,10 @@ function insertAcceptanceChain(db, opts) {
         schema_version,payload_snapshot,content_hash)
      VALUES (?,22,'module@1','cell',2,0,'reviewer',?,?,?)`,
   ).run(reviewSubId, REVIEW_SCHEMA, JSON.stringify(reviewPayload), reviewDigest);
+  sealedProducts.seal({
+    productRef: { schemaId: REVIEW_SCHEMA, ref: `managed-node-submission:${reviewSubId}`, digest: reviewDigest },
+    payload: reviewPayload,
+  });
 
   db.prepare(
     `INSERT INTO factory_candidate_sets
@@ -336,11 +346,17 @@ function forceAuthorVerifying(workplaceRepo, ref, reservationRef) {
 }
 
 function integrationInput(w, authorSetRef) {
+  const acceptedProductRefs = w.db.prepare(
+    `SELECT product_schema AS schemaId,product_ref AS ref,product_digest AS digest
+       FROM factory_candidate_set_members WHERE candidate_set_ref=? ORDER BY ordinal`,
+  ).all(authorSetRef);
   return {
     workplaceRef: w.ref,
     processRunId: w.ref.processRunId,
     candidateSetRef: authorSetRef,
+    gateDecisionKey: 'decision:final',
     expectedProductSchema: SCHEMA,
+    acceptedProductRefs,
   };
 }
 

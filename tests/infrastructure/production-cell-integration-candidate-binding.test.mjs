@@ -174,6 +174,11 @@ test('integration consumes the exact current CandidateSet even when its managed 
         candidateSetRef: authorSet,
         gateDecisionKey: 'decision:final',
         expectedProductSchema: 'factory.source-change-candidate.v1',
+        acceptedProductRefs: [{
+          schemaId: 'factory.source-change-candidate.v1',
+          ref: 'managed-node-submission:91',
+          digest: sourceDigest,
+        }],
       });
     } catch (error) {
       throw new Error(`integration fixture failed: ${error?.message ?? error}`, { cause: error });
@@ -266,6 +271,11 @@ test('integration fails closed when the accepted-authority head has no task iden
       candidateSetRef: authorSet,
       gateDecisionKey: 'decision:missing-authority-head',
       expectedProductSchema: 'factory.source-change-candidate.v1',
+      acceptedProductRefs: [{
+        schemaId: 'factory.source-change-candidate.v1',
+        ref: 'managed-node-submission:91',
+        digest: sourceDigest,
+      }],
     };
 
     // Integrate path: fails closed (throws) — does NOT fall back to origin task 33.

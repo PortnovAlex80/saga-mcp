@@ -30,20 +30,24 @@ function validAuthority() {
     { schemaId: 'factory.product.v1', ref: 'product/abc', digest: 'sha256:abc' },
   ];
   const gateDecisionKey = 'decision:gate-run/xyz';
+  const productSchema = 'factory.product.v1';
+  const productContractRef = null;
   const acceptanceDigest = computeAcceptanceDigest({
     candidateSetRef: 'candidate-set/1/m/c/i/rev/author',
     productionRevisionRef: 'revision/1/m/c/i/abc',
     acceptedProductRefs,
     gateDecisionKey,
+    productSchema,
+    productContractRef,
   });
   return {
     workplaceRef: { processRunId: 1, moduleRef: 'm', productionCellId: 'c', workKey: 'i' },
     candidateSetRef: 'candidate-set/1/m/c/i/rev/author',
     productionRevisionRef: 'revision/1/m/c/i/abc',
     acceptedProductRefs,
-    productSchema: 'factory.product.v1',
+    productSchema,
     gateDecisionKey,
-    productContractRef: null,
+    productContractRef,
     acceptanceDigest,
   };
 }
@@ -125,6 +129,8 @@ test('ADR-053 B-3: acceptance identity ignores execution-scoped ProductRef alias
     candidateSetRef: 'candidate-set/shared',
     productionRevisionRef: 'revision/shared',
     gateDecisionKey: 'decision/shared',
+    productSchema: 'factory.product.v1',
+    productContractRef: null,
   };
   const fromA = computeAcceptanceDigest({
     ...shared,

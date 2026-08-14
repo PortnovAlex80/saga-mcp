@@ -39,19 +39,31 @@ export function assertPersistedAcceptedCandidateAuthority(
   if (canonicalProductRefs(members) !== canonicalProductRefs(authority.acceptedProductRefs)) {
     throw new Error('AUTHORITY_PRODUCT_MEMBERS_MISMATCH');
   }
+  if (members.filter(member => member.schemaId === authority.productSchema).length !== 1) {
+    throw new Error('AUTHORITY_PRODUCT_SCHEMA_MISMATCH');
+  }
   const decision = db.prepare(
-    `SELECT workplace_ref,subject_candidate_set_ref,verdict
+    `SELECT workplace_ref,subject_candidate_set_ref,gate_phase,verdict
        FROM factory_gate_decisions WHERE decision_key=?`,
   ).get(authority.gateDecisionKey) as {
     workplace_ref: string;
     subject_candidate_set_ref: string;
+    gate_phase: string;
     verdict: string;
   } | undefined;
   if (!decision
       || decision.workplace_ref !== workplaceRef
       || decision.subject_candidate_set_ref !== authority.candidateSetRef
+      || decision.gate_phase !== 'final'
       || decision.verdict !== 'accepted') {
     throw new Error('AUTHORITY_GATE_DECISION_MISMATCH');
+  }
+  const appliedHead = db.prepare(
+    `SELECT decision_key FROM factory_workplace_gate_decision_heads
+      WHERE workplace_ref=?`,
+  ).get(workplaceRef) as { decision_key: string } | undefined;
+  if (!appliedHead || appliedHead.decision_key !== authority.gateDecisionKey) {
+    throw new Error('AUTHORITY_APPLIED_GATE_HEAD_MISMATCH');
   }
 }
 

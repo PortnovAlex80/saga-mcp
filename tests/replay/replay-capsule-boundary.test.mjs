@@ -23,6 +23,7 @@ import {
   computeReplayKey,
 } from '../../dist/replay/replay-capsule.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
+import { canonicalReplayInputBindings } from '../../dist/infrastructure/replay/sqlite-replay-capsule-repository.js';
 import {
   executionContextHash,
   EXECUTION_CONTEXT_POLICY_VERSION,
@@ -231,4 +232,18 @@ test('fail-closed: capsule payload hash mismatch is corruption, not a miss', () 
   const corruptedPayload = { data: 'corrupted' };
   assert.notEqual(sha256Hex(validPayload), sha256Hex(corruptedPayload));
   assert.ok(true, 'hash mismatch fail-closed enforced in capsule-replay.mjs');
+});
+
+test('equivalent presentation aliases have one canonical replay payload identity', () => {
+  const a = canonicalReplayInputBindings([
+    { path: '$.accepted', value: 'managed-node-submission:111' },
+    { path: '$.stable', value: 'mars-venus' },
+  ]);
+  const b = canonicalReplayInputBindings([
+    { path: '$.accepted', value: 'managed-node-submission:222' },
+    { path: '$.stable', value: 'mars-venus' },
+  ]);
+  assert.deepEqual(b, a);
+  assert.equal(a[0].value, null);
+  assert.equal(a[1].value, 'mars-venus');
 });

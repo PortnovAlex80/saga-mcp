@@ -747,11 +747,14 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         serializeWorkplaceRef(workplace.ref), acceptedCandidate.candidateSetRef,
       );
       const productContract = cell.productContracts[0]?.payloadContract ?? null;
+      const productSchema = cell.productContracts[0]?.schemaRef ?? '';
       const acceptanceDigest = computeAcceptanceDigest({
         candidateSetRef: acceptedCandidate.candidateSetRef,
         productionRevisionRef: acceptedCandidate.productionRevisionRef,
         acceptedProductRefs,
         gateDecisionKey,
+        productSchema,
+        productContractRef: productContract,
       });
       const result = this.opts.postAcceptanceEffects.run(effectId, {
         authority: {
@@ -759,7 +762,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           candidateSetRef: acceptedCandidate.candidateSetRef,
           productionRevisionRef: acceptedCandidate.productionRevisionRef,
           acceptedProductRefs,
-          productSchema: cell.productContracts[0]?.schemaRef ?? '',
+          productSchema,
           gateDecisionKey,
           productContractRef: productContract,
           acceptanceDigest,
@@ -831,15 +834,35 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
     );
     const acceptedProductRefs = acceptedCandidate.members.map(m => m.productRef);
+    const productSchema = cell.productContracts[0]?.schemaRef ?? '';
+    const productContractRef = cell.productContracts[0]?.payloadContract ?? null;
     const acceptanceDigest = computeAcceptanceDigest({
       candidateSetRef: acceptedCandidate.candidateSetRef,
       productionRevisionRef: acceptedCandidate.productionRevisionRef,
       acceptedProductRefs,
       gateDecisionKey: finalGateDecisionKey,
+      productSchema,
+      productContractRef,
     });
     // ADR-053 B-8 — final acceptance recorded → process must settle (mandatory).
     // The obligation digest is the REAL acceptance digest (not the candidate-set
     // digest), binding the handoff to the exact accepted material + decision.
+    const effectInput = {
+      authority: {
+        workplaceRef,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        productionRevisionRef: acceptedCandidate.productionRevisionRef,
+        acceptedProductRefs,
+        productSchema,
+        gateDecisionKey: finalGateDecisionKey,
+        productContractRef,
+        acceptanceDigest,
+      },
+    };
+    // Capture precedes FinalAcceptance. On failure/host crash the final row is
+    // absent, so terminal recovery redrives this exact idempotent effect. A
+    // false-success receipt can therefore never settle an uncaptured product.
+    this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
     const settlementObligation = this.opts.finalAcceptance.transaction(() => {
       this.opts.finalAcceptance.recordFinalAcceptance({
         workplaceRef,
@@ -854,26 +877,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       });
     });
     if (settlementObligation.state !== 'in_progress') return false;
-    const effectInput = {
-      authority: {
-        workplaceRef,
-        candidateSetRef: acceptedCandidate.candidateSetRef,
-        productionRevisionRef: acceptedCandidate.productionRevisionRef,
-        acceptedProductRefs,
-        productSchema: cell.productContracts[0]?.schemaRef ?? '',
-        gateDecisionKey: finalGateDecisionKey,
-        productContractRef: cell.productContracts[0]?.payloadContract ?? null,
-        acceptanceDigest,
-      },
-    };
-    // ADR-053 C8 — replay capture is a MANDATORY durable obligation, NOT
-    // best-effort. It archives accepted production for future deterministic
-    // replay, so a failure indicates a real defect (or a non-idempotent
-    // capture) and MUST surface — silently swallowing it would leave the
-    // workplace without a recoverable replay capsule and contradicts the
-    // mandatory-obligation model. The effect itself is idempotent on the exact
-    // acceptance identity, so a legitimate replay is safe to re-run.
-    this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
     return true;
   }
 

@@ -57,6 +57,8 @@ export function computeAcceptanceDigest(input: {
   readonly productionRevisionRef: string | null;
   readonly acceptedProductRefs: readonly ProductRef[];
   readonly gateDecisionKey: string;
+  readonly productSchema: string;
+  readonly productContractRef: AcceptedCandidateAuthority['productContractRef'];
 }): string {
   // Lazy import to avoid a circular dependency at module load (sha256Hex is
   // in shared/canonical-json). Imported once, cached.
@@ -71,6 +73,8 @@ export function computeAcceptanceDigest(input: {
       .sort((a, b) => a.schemaId.localeCompare(b.schemaId)
         || a.digest.localeCompare(b.digest)),
     gateDecisionKey: input.gateDecisionKey,
+    productSchema: input.productSchema,
+    productContractRef: input.productContractRef,
   });
 }
 
@@ -106,6 +110,8 @@ export function assertAuthorityBound(input: PostAcceptanceEffectInput): void {
     productionRevisionRef: a.productionRevisionRef,
     acceptedProductRefs: a.acceptedProductRefs,
     gateDecisionKey: a.gateDecisionKey,
+    productSchema: a.productSchema,
+    productContractRef: a.productContractRef,
   });
   if (recomputed !== a.acceptanceDigest) {
     throw new Error(

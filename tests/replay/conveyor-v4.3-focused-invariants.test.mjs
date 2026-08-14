@@ -22,6 +22,7 @@ import {
 } from '../../dist/shared/authority/execution-context.js';
 import { computeReplayKey } from '../../dist/replay/replay-capsule.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
+import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { requiresDiscoveryProjection } from '../../dist/modules/discovery/infrastructure/discovery-proposal-projection.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../../dist/modules/discovery/domain/discovery-proposal.js';
 
@@ -211,8 +212,7 @@ test('10: gate-rejected replay capsule is detectable without string matching', (
      assessment_candidate_set_refs,check_plan_ref,check_plan_digest,
      expected_workplace_revision,gate_lease_ref,state)
     VALUES ('gr1','wp1','author','cs1','[]','cp1','cpd1',0,'lease1','terminal')`).run();
-  db.prepare(`INSERT INTO factory_gate_presentation_attempts
-    (gate_run_ref,presentation_ref) VALUES ('gr1','exec1')`).run();
+  new SqliteGateRepository(db).recordGatePresentation('gr1', 'exec1');
   db.prepare(`INSERT INTO factory_gate_decisions (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,subject_candidate_set_ref,assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decided_at,decision_digest) VALUES ('dk1','wp1','g1','gr1','author','t1','cs1','[]','repair_required','cp1','cpd1','dp1','dpd1','[]','id1','[]','2026-08-08','dd1')`).run();
 
   const rejected = db.prepare(
@@ -222,12 +222,15 @@ test('10: gate-rejected replay capsule is detectable without string matching', (
         AND gd.verdict!='accepted'
         AND EXISTS (
           SELECT 1 FROM factory_gate_presentation_attempts gpa
-          JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
           WHERE gpa.gate_run_ref=gd.gate_run_ref
-            AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+            AND gpa.replay_capsule_ref=?
         )`,
   ).get('wp1', 'replay-capsule:1:abc');
   assert.ok(rejected);
+
+  db.prepare(`UPDATE worker_executions SET metadata=
+    '{"execution_context":{"replay":{"capsule_ref":"replay-capsule:999:xyz"}}}'
+    WHERE execution_id='exec1'`).run();
 
   const other = db.prepare(
     `SELECT 1
@@ -236,12 +239,16 @@ test('10: gate-rejected replay capsule is detectable without string matching', (
         AND gd.verdict!='accepted'
         AND EXISTS (
           SELECT 1 FROM factory_gate_presentation_attempts gpa
-          JOIN worker_executions we ON we.execution_id=gpa.presentation_ref
           WHERE gpa.gate_run_ref=gd.gate_run_ref
-            AND json_extract(we.metadata,'$.execution_context.replay.capsule_ref')=?
+            AND gpa.replay_capsule_ref=?
         )`,
   ).get('wp1', 'replay-capsule:999:xyz');
   assert.equal(other, undefined);
+  const stillRejected = db.prepare(
+    `SELECT 1 FROM factory_gate_presentation_attempts
+      WHERE gate_run_ref='gr1' AND replay_capsule_ref='replay-capsule:1:abc'`,
+  ).get();
+  assert.ok(stillRejected);
 });
 
 test('11: failed replay execution is durable evidence for ineligibility', () => {

@@ -154,8 +154,13 @@ export function executeCapsuleReplay(
     }
 
     materializeArtifactFile(db, artifact, context.cwd);
-    const reboundMetadata = rebindCapturedIdentityValues(
+    const markedMetadata = rehydrateReplayValue(
       artifact.metadata,
+      currentInput,
+      allowedBindingPaths,
+    );
+    const reboundMetadata = rebindCapturedIdentityValues(
+      markedMetadata,
       payload.inputBindings ?? [],
       currentInput,
     );

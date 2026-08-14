@@ -31,8 +31,10 @@ function fixture() {
     (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,subject_candidate_set_ref,
      assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,
      decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decision_digest)
-    VALUES ('decision:7',?,'gate:7','run:7','author','transition:7','candidate:7','[]','accepted',
+    VALUES ('decision:7',?,'gate:7','run:7','final','transition:7','candidate:7','[]','accepted',
       'plan','${'d'.repeat(64)}','policy','${'e'.repeat(64)}','[]','${'f'.repeat(64)}','[]','${'1'.repeat(64)}')`).run(workplace);
+  db.prepare(`INSERT INTO factory_workplace_gate_decision_heads
+    (workplace_ref,decision_key,expected_workplace_revision) VALUES (?,'decision:7',1)`).run(workplace);
   new SqliteSealedProductMaterialRepository(db).seal({ productRef: product, payload });
   const authority = {
     workplaceRef: ref, candidateSetRef: 'candidate:7', productionRevisionRef: 'revision:7',
@@ -55,6 +57,33 @@ test('self-consistent forged coordinates fail before an effect can act', () => {
     const forged = { ...authority, gateDecisionKey: 'decision:missing' };
     forged.acceptanceDigest = computeAcceptanceDigest(forged);
     assert.throws(() => assertPersistedAcceptedCandidateAuthority(db, forged), /AUTHORITY_GATE_DECISION_MISMATCH/);
+  } finally { db.close(); }
+});
+
+test('an accepted author-phase decision cannot substitute the final authority', () => {
+  const { db, authority } = fixture();
+  try {
+    db.prepare(`INSERT INTO factory_gate_decisions
+      (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,subject_candidate_set_ref,
+       assessment_candidate_set_refs,verdict,check_plan_ref,check_plan_digest,decision_policy_ref,
+       decision_policy_digest,check_receipt_refs,installation_digest,accepted_output_bindings,decision_digest)
+      VALUES ('decision:author',?,'gate:author','run:author','author','transition:author','candidate:7','[]','accepted',
+        'plan','${'d'.repeat(64)}','policy','${'e'.repeat(64)}','[]','${'f'.repeat(64)}','[]','${'2'.repeat(64)}')`).run(workplace);
+    const forged = { ...authority, gateDecisionKey: 'decision:author' };
+    forged.acceptanceDigest = computeAcceptanceDigest(forged);
+    assert.throws(() => assertPersistedAcceptedCandidateAuthority(db, forged), /AUTHORITY_GATE_DECISION_MISMATCH/);
+  } finally { db.close(); }
+});
+
+test('product schema is bound to the exact accepted member set', () => {
+  const { db, authority } = fixture();
+  try {
+    const forged = { ...authority, productSchema: 'schema/other' };
+    forged.acceptanceDigest = computeAcceptanceDigest(forged);
+    assert.throws(
+      () => assertPersistedAcceptedCandidateAuthority(db, forged),
+      /AUTHORITY_PRODUCT_SCHEMA_MISMATCH/,
+    );
   } finally { db.close(); }
 });
 

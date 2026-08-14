@@ -119,6 +119,21 @@ function collectIdentityBindings(
   return out;
 }
 
+/**
+ * Presentation aliases may differ across otherwise equivalent executions.
+ * Captured products contain path markers for those aliases, so the capsule
+ * only needs the allowed path, never the run-scoped value itself. Keeping the
+ * raw value in payload identity would create two capsules for one replay key.
+ */
+export function canonicalReplayInputBindings(
+  bindings: readonly { path: string; value: string | number | boolean | null }[],
+): Array<{ path: string; value: string | number | boolean | null }> {
+  return bindings.map(binding => ({
+    path: binding.path,
+    value: replayIdentityCandidate(binding.value) ? null : binding.value,
+  }));
+}
+
 function replayIdentityCandidate(value: unknown): boolean {
   if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
   if (typeof value !== 'string') return false;
@@ -414,7 +429,8 @@ export class SqliteReplayCapsuleRepository {
     }
     const taskMetadata = parseJsonObject(execution.task_metadata);
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
-    const inputBindings = collectIdentityBindings(inputValue);
+    const sourceInputBindings = collectIdentityBindings(inputValue);
+    const inputBindings = canonicalReplayInputBindings(sourceInputBindings);
 
     const candidate = readCandidateMembers(this.db, input.candidateSetRef);
     const expectedWorkplace = typeof taskMetadata.workplace_ref === 'string'
@@ -434,7 +450,7 @@ export class SqliteReplayCapsuleRepository {
       if (typed) {
         typedProducts.push({
           schema: typed.schema,
-          content: templateAgainstInput(typed.content, inputBindings),
+          content: templateAgainstInput(typed.content, sourceInputBindings),
           contentHash: typed.contentHash,
         });
         continue;
@@ -485,7 +501,9 @@ export class SqliteReplayCapsuleRepository {
         projectRepositoryId: row.project_repository_id,
         status: 'draft' as const,
         tags: JSON.parse(row.tags || '[]') as string[],
-        metadata: parseJsonObject(row.metadata),
+        metadata: templateAgainstInput(
+          parseJsonObject(row.metadata), sourceInputBindings,
+        ) as Readonly<Record<string, unknown>>,
         parent,
         file: readArtifactBytes(this.db, row),
       };

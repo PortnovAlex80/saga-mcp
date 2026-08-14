@@ -67,7 +67,7 @@ function cell({ fanout = false, review = false, effect = false } = {}) {
   };
 }
 
-function harness(effectResult = null, authorCandidateCarryForward = undefined) {
+function harness(effectResult = null, authorCandidateCarryForward = undefined, replayError = null) {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
@@ -135,6 +135,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     postAcceptanceEffects: {
       run(effectId, input) {
         effectCalls.push({ effectId, input });
+        if (effectId === 'replay-capture' && replayError) throw replayError;
         if (effectId === 'test-effect' && effectResult) return effectResult;
         return {
           outcome: 'succeeded',
@@ -312,6 +313,24 @@ test('ADR-053 C8: terminal(accepted) crash before FinalAcceptance is recovered o
     h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n,
     1,
     'C8: recovery must be idempotent — no duplicate FinalAcceptance',
+  );
+  h.db.close();
+});
+
+test('ADR-053 C8: replay capture failure cannot create a false FinalAcceptance', async () => {
+  const h = harness(null, undefined, new Error('REPLAY_AUTHOR_GATE_AUTHORITY_MISSING'));
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:c8-replay-fail', {
+    schemaId: 'factory.test-product.v1', ref: 'product:c8-replay-fail', digest: sha('c8-replay-fail'),
+  });
+  await assert.rejects(() => h.executor.execute(ctx), /REPLAY_AUTHOR_GATE_AUTHORITY_MISSING/);
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  assert.equal(
+    h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n,
+    0,
+    'mandatory replay evidence must precede FinalAcceptance',
   );
   h.db.close();
 });
