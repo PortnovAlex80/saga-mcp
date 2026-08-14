@@ -57,7 +57,8 @@ test('W9-02 happy path #1: cohort converges to runnable-local (verified + passed
   assert.equal(evidence.devOutcome, 'verified', 'drive-1: development outcome=verified');
   assert.equal(evidence.lrReceiptOutcome, 'passed', 'drive-1: LR receipt=passed');
   assert.equal(evidence.readinessKind, 'static', 'drive-1: readiness profile kind=static');
-  assert.equal(evidence.candidateSealed, true, 'drive-1: integrated candidate sealed as member');
+  assert.equal(evidence.candidateFrozen, true,
+    'drive-1: integrated candidate is an exact frozen kernel product');
   assert.equal(evidence.strandedActiveExecutions, 0, 'drive-1: no stranded executions');
   assert.ok(evidence.effectiveConcurrency <= 2, 'drive-1: concurrency ≤ 2');
   assert.deepEqual(evidence.invariantsDeclared.includes('no-authority-hacks'), true,

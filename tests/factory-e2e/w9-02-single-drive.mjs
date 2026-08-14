@@ -76,18 +76,11 @@ try {
   ).get();
 
   const candidateProduct = db.prepare(
-    `SELECT payload_snapshot FROM factory_process_products
+    `SELECT payload_snapshot,product_hash FROM factory_process_products
       WHERE schema_id='factory.integrated-release-candidate.v1'
       ORDER BY id DESC LIMIT 1`,
   ).get();
   const candidatePayload = candidateProduct ? JSON.parse(candidateProduct.payload_snapshot) : {};
-
-  const candidateMember = db.prepare(
-    `SELECT m.candidate_set_ref FROM factory_candidate_set_members m
-      JOIN factory_candidate_sets cs ON cs.candidate_set_ref=m.candidate_set_ref
-     WHERE m.product_schema='factory.integrated-release-candidate.v1' AND cs.role='author'
-      ORDER BY m.id DESC LIMIT 1`,
-  ).get();
 
   // Authority-table no-hack guard (post-drive): authority rows exist ONLY from
   // the production runtime, never from the harness. We can't re-assert zero
@@ -101,7 +94,8 @@ try {
     lrReceiptOutcome: lrReceipt?.outcome ?? null,
     candidateHasReadiness: Boolean(candidatePayload.readiness),
     readinessKind: candidatePayload.readiness?.kind ?? null,
-    candidateSealed: Boolean(candidateMember),
+    candidateFrozen: Boolean(candidateProduct)
+      && candidateProduct.product_hash === candidatePayload.candidateHash,
     cycles: result.cycles,
     terminalReason: result.terminalReason,
     scriptedInvocationCount: result.scriptedInvocationCount,
@@ -110,6 +104,76 @@ try {
     effectiveConcurrency: result.effectiveConcurrency,
     invariantsDeclared: happyScenario.expectedAuthorityInvariants.map(i => i.id),
   };
+
+  if (devRun?.local_outcome !== 'verified') {
+    const diagnostic = {
+      developmentWorkplaces: db.prepare(
+        `SELECT workplace_ref,kanban_phase,loop_state,terminal_reason,revision
+           FROM factory_workplaces WHERE process_run_id=? ORDER BY workplace_ref`,
+      ).all(devRun?.id ?? -1),
+      obligations: db.prepare(
+        `SELECT source_kind,source_ref,handoff_kind,state,last_error
+           FROM factory_transition_obligations
+          WHERE state<>'completed' ORDER BY created_at,obligation_key`,
+      ).all(),
+      finalAcceptances: db.prepare(
+        `SELECT workplace_ref,candidate_set_ref,gate_decision_key
+           FROM factory_cell_final_acceptances ORDER BY workplace_ref`,
+      ).all(),
+      decisions: db.prepare(
+        `SELECT gd.workplace_ref,gd.decision_key,gd.gate_phase,gd.verdict
+           FROM factory_gate_decisions gd
+           LEFT JOIN factory_cell_final_acceptances cfa
+             ON cfa.gate_decision_key=gd.decision_key
+          WHERE gd.verdict<>'accepted' OR cfa.gate_decision_key IS NULL
+          ORDER BY gd.decided_at,gd.decision_key`,
+      ).all(),
+      readinessReceipts: db.prepare(
+        `SELECT subject_candidate_set_ref,provider_id,provider_digest,outcome,evidence_refs
+           FROM factory_check_receipts
+          WHERE provider_id='factory.local-runnability.v1'
+          ORDER BY check_receipt_ref`,
+      ).all(),
+      verificationProducts: db.prepare(
+        `SELECT s.id,s.task_id,s.content_hash,s.payload_snapshot,
+                cs.candidate_set_ref
+           FROM factory_managed_node_submissions s
+           JOIN factory_candidate_set_members m
+             ON m.product_ref='managed-node-submission:' || s.id
+           JOIN factory_candidate_sets cs
+             ON cs.candidate_set_ref=m.candidate_set_ref
+          WHERE s.schema_version='factory.candidate-verification-evidence-product.v2'
+          ORDER BY s.id`,
+      ).all(),
+      verificationReceipts: db.prepare(
+        `SELECT cr.subject_candidate_set_ref,cr.provider_id,cr.provider_version,
+                cr.provider_digest,cr.outcome,cr.evidence_refs,
+                gd.gate_phase,gd.verdict
+           FROM factory_check_receipts cr
+           LEFT JOIN factory_gate_decisions gd
+             ON gd.gate_run_ref=cr.check_run_ref
+            AND gd.subject_candidate_set_ref=cr.subject_candidate_set_ref
+          WHERE cr.subject_candidate_set_ref IN (
+            SELECT cs.candidate_set_ref
+              FROM factory_candidate_sets cs
+              JOIN factory_workplaces w ON w.workplace_ref=cs.workplace_ref
+             WHERE w.process_run_id=?
+               AND w.production_cell_id='development-verification'
+          )
+          ORDER BY cr.subject_candidate_set_ref,cr.check_receipt_ref`,
+      ).all(devRun?.id ?? -1),
+      trustedProviders: db.prepare(
+        `SELECT id,project_id,name,version,category,determinism,status
+           FROM trusted_providers ORDER BY id`,
+      ).all(),
+      developmentCertificates: db.prepare(
+        `SELECT decision,reason_codes,rationale
+           FROM factory_process_outcome_certificates
+          WHERE process_run_id=?`,
+      ).all(devRun?.id ?? -1),
+    };
+    process.stderr.write(`[w9-diagnostic] ${JSON.stringify(diagnostic)}\n`);
+  }
 
   // Assertions (throw → non-zero exit → test failure).
   const A = (await import('node:assert')).default;
@@ -120,7 +184,8 @@ try {
   A.equal(devRun?.local_outcome, 'verified', `${label}: development outcome=verified`);
   A.ok(lrReceipt, `${label}: passed local-readiness receipt exists`);
   A.equal(lrReceipt.outcome, 'passed', `${label}: LR receipt outcome=passed`);
-  A.ok(candidateMember, `${label}: integrated candidate sealed as CandidateSet member`);
+  A.equal(evidence.candidateFrozen, true,
+    `${label}: integrated candidate is an exact frozen kernel product`);
   A.ok(candidatePayload.readiness, `${label}: candidate carries readiness profile`);
 
   process.stdout.write(JSON.stringify(evidence) + '\n');

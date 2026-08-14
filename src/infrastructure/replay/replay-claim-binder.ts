@@ -105,6 +105,8 @@ export function certifyAcceptedReplayCapsules(
     `SELECT w.workplace_ref
        FROM factory_workplaces w
        JOIN factory_process_runs pr ON pr.id=w.process_run_id
+       JOIN factory_cell_final_acceptances cfa
+         ON cfa.workplace_ref=w.workplace_ref
       WHERE pr.project_id=?
         AND w.loop_state='terminal'
         AND w.terminal_reason='accepted'`,
@@ -118,7 +120,6 @@ export function certifyAcceptedReplayCapsules(
            JOIN factory_gate_decisions gd
              ON gd.decision_key=cfa.gate_decision_key
           WHERE cfa.workplace_ref=?
-            AND gd.gate_phase='final'
             AND gd.verdict='accepted'`,
       ).get(workplace.workplace_ref) as {
         decision_key: string;
@@ -127,7 +128,7 @@ export function certifyAcceptedReplayCapsules(
       } | undefined;
       if (!decision) {
         process.stderr.write(
-          `[replay-certification] terminal accepted workplace has no final accepted GateDecision: `
+          `[replay-certification] terminal accepted workplace has no exact FinalAcceptance GateDecision: `
           + `${workplace.workplace_ref}\n`,
         );
         continue;

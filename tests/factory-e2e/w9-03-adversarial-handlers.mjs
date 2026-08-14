@@ -120,6 +120,31 @@ export function buildCrossExecutionDurabilityHandlers() {
 // ---------------------------------------------------------------------------
 
 const reviewRejectFired = new Set();
+const reconciliationRepairFired = new Set();
+
+function reconciliationAuthorWithMaterialRepair(ctx) {
+  const { handlers, assignment, meta } = ctx;
+  const workplaceRef = meta.workplace_ref ?? meta.workplaceRef;
+  if (!workplaceRef || !reconciliationRepairFired.has(workplaceRef)) {
+    if (workplaceRef) reconciliationRepairFired.add(workplaceRef);
+    return W9_HAPPY_HANDLERS[`${FRM}/reconcile-what/author/singleton`](ctx);
+  }
+
+  // A semantic repair must create new material. Re-presenting the identical
+  // report is deliberately convergent under ADR-053 and cannot manufacture a
+  // second CandidateSet merely because another execution presented it.
+  handlers.product_submit({
+    schema: 'factory.formalization-reconciliation-report.v1',
+    content: {
+      status: 'reconciled',
+      rationale: 'Reviewer-requested reconciliation rationale was repaired.',
+      remaining_gaps: [],
+      repairs: ['clarified reconciliation rationale'],
+    },
+  });
+  done(handlers, assignment, 'W9-03 reject-repair: author produced repaired material');
+  return { kind: 'worker-done-accepted' };
+}
 
 function reviewerRejectThenApprove(ctx) {
   const { handlers, assignment, meta, db } = ctx;
@@ -175,8 +200,10 @@ function reviewerRejectThenApprove(ctx) {
  */
 export function buildReviewerRejectRepairHandlers() {
   reviewRejectFired.clear();
+  reconciliationRepairFired.clear();
   return {
     ...W9_HAPPY_HANDLERS,
+    [`${FRM}/reconcile-what/author/singleton`]: reconciliationAuthorWithMaterialRepair,
     [`${FRM}/reconcile-what/reviewer/singleton`]: reviewerRejectThenApprove,
   };
 }

@@ -142,6 +142,46 @@ try {
 
   const evidence = { ...baseEvidence, ...scenarioEvidence };
 
+  if (!devRun || devRun.local_outcome !== 'verified') {
+    const diagnostic = {
+      processRuns: db.prepare(
+        `SELECT id,module_name,status,local_outcome
+           FROM factory_process_runs ORDER BY id`,
+      ).all(),
+      openWorkplaces: db.prepare(
+        `SELECT process_run_id,workplace_ref,kanban_phase,loop_state,
+                next_role,terminal_reason,active_reservation_ref,revision
+           FROM factory_workplaces
+          WHERE loop_state<>'terminal' OR terminal_reason<>'accepted'
+          ORDER BY process_run_id,workplace_ref`,
+      ).all(),
+      activeTasks: db.prepare(
+        `SELECT id,status,assigned_to,current_execution_id,workplace_ref
+           FROM tasks
+          WHERE status NOT IN ('done','completed','cancelled')
+          ORDER BY id`,
+      ).all(),
+      activeExecutions: db.prepare(
+        `SELECT execution_id,task_id,state,phase,last_error
+           FROM worker_executions
+          WHERE state NOT IN ('exited','lost','spawn_failed','cancelled')
+          ORDER BY execution_id`,
+      ).all(),
+      pendingObligations: db.prepare(
+        `SELECT source_kind,source_ref,handoff_kind,state,last_error
+           FROM factory_transition_obligations
+          WHERE state<>'completed' ORDER BY created_at,obligation_key`,
+      ).all(),
+      nonAcceptedGates: db.prepare(
+        `SELECT workplace_ref,gate_phase,verdict,subject_candidate_set_ref,
+                assessment_candidate_set_refs
+           FROM factory_gate_decisions
+          WHERE verdict<>'accepted' ORDER BY decided_at,decision_key`,
+      ).all(),
+    };
+    process.stderr.write(`[w9-adversarial-diagnostic] ${JSON.stringify(diagnostic)}\n`);
+  }
+
   // Assertions (throw → non-zero exit → test failure).
   const A = (await import('node:assert')).default;
   A.equal(result.strandedActiveExecutions, 0, `${label}: no stranded executions`);

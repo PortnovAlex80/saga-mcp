@@ -667,12 +667,16 @@ export class SqliteDevelopmentModuleStore implements
       try {
         const refs = JSON.parse(row.evidence_refs) as unknown;
         return Array.isArray(refs)
-          && refs.length > 0
           && refs.every(ref => typeof ref === 'string' && ref.length > 0);
       } catch {
         return false;
       }
     });
+    // The immutable CheckReceipt (ref + receipt_digest below) is itself the
+    // trusted deterministic evidence consumed by settlement. Provider-specific
+    // evidence_refs are optional supporting artifacts; requiring at least one
+    // made the production product-contract provider's valid `passed` receipt
+    // invisible even though the Gate and trusted-provider binding were exact.
     // v2 workset has one provider binding per AC. Multiple executable
     // authorities need an explicit aggregation receipt rather than an
     // arbitrary winner.
