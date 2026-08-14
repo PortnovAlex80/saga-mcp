@@ -2,7 +2,7 @@
  * GateRun driver — orchestrates one immutable quality inspection.
  */
 
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
   AcceptedOutputBinding,
   CheckPlan,
@@ -78,17 +78,15 @@ export function driveGateRun(
   // inputs. Without these, swapping a handler/provider package or re-running
   // against a newer Workplace revision could reuse a stale GateRun/Decision
   // under the same key.
-  const gateRunIdentity = createHash('sha256')
-    .update(JSON.stringify({
-      gatePhase: input.gatePhase,
-      subjectCandidateSetRef: input.subjectCandidateSetRef,
-      assessmentCandidateSetRefs,
-      checkPlanDigest: input.checkPlan.checkPlanDigest,
-      installationDigest: input.installationDigest,
-      expectedWorkplaceRevision: input.expectedWorkplaceRevision,
-      acceptedOutputBindings: input.acceptedOutputBindings ?? [],
-    }))
-    .digest('hex');
+  const gateRunIdentity = sha256Hex({
+    gatePhase: input.gatePhase,
+    subjectCandidateSetRef: input.subjectCandidateSetRef,
+    assessmentCandidateSetRefs,
+    checkPlanDigest: input.checkPlan.checkPlanDigest,
+    installationDigest: input.installationDigest,
+    expectedWorkplaceRevision: input.expectedWorkplaceRevision,
+    acceptedOutputBindings: input.acceptedOutputBindings ?? [],
+  });
   const gateRunRef = `gate-run:${gateRunIdentity}`;
   repo.createGateRun({
     gateRunRef,
@@ -229,7 +227,7 @@ export function driveGateRun(
   };
   const decision: GateDecision = {
     ...decisionBody,
-    decisionDigest: createHash('sha256').update(JSON.stringify(decisionBody)).digest('hex'),
+    decisionDigest: sha256Hex(decisionBody),
   };
   const recorded = repo.recordDecision(decision);
   repo.setGateRunState(gateRunRef, 'terminal');
@@ -307,17 +305,15 @@ function hashReceipt(
   outcome: CheckOutcome,
   evidenceRefs: readonly string[],
 ): string {
-  return createHash('sha256')
-    .update(JSON.stringify({
-      ref,
-      checkRunRef,
-      subjectCandidateSetRef,
-      assessmentCandidateSetRefs,
-      check,
-      environmentRef,
-      outcome,
-      evidenceRefs,
-    }))
-    .digest('hex');
+  return sha256Hex({
+    ref,
+    checkRunRef,
+    subjectCandidateSetRef,
+    assessmentCandidateSetRefs,
+    check,
+    environmentRef,
+    outcome,
+    evidenceRefs,
+  });
 }
 

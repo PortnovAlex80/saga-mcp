@@ -108,6 +108,22 @@ test('another valid CandidateSet schema cannot replace the Gate-bound primary ou
   } finally { db.close(); }
 });
 
+test('product schema cannot select another member while retaining the exact Gate-bound refs', () => {
+  const { db, authority } = fixture();
+  try {
+    const other = { schemaId: 'schema/other', ref: 'submission:18', digest: sha256Hex({ other: true }) };
+    db.prepare(`INSERT INTO factory_candidate_set_members
+      (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,origin)
+      VALUES ('candidate:7',1,?,?,?,'produced')`).run(other.schemaId, other.ref, other.digest);
+    const forged = { ...authority, productSchema: other.schemaId };
+    forged.acceptanceDigest = computeAcceptanceDigest(forged);
+    assert.throws(
+      () => assertPersistedAcceptedCandidateAuthority(db, forged),
+      /AUTHORITY_ACCEPTED_OUTPUT_BINDING_MISMATCH/,
+    );
+  } finally { db.close(); }
+});
+
 test('sealed product aliases and payloads are append-only exact authority', () => {
   const { db, product } = fixture();
   try {

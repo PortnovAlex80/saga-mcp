@@ -135,7 +135,14 @@ export function getDb(): Database.Database {
   // material the head accepted. Fresh DBs get it from CREATE TABLE; pre-v6 DBs
   // get it added here as NULL. No row reset.
   ensureAcceptedAuthorityHeadTaskIdColumn(db);
-  ensureGatePresentationReplayBindingColumns(db);
+  // Version 10 freezes replay coordinates at Gate presentation time. Run the
+  // legacy evidence migration exactly once while crossing into v10. Re-running
+  // it on an already-v10 database would temporarily remove immutability
+  // triggers and could reinterpret an intentionally empty binding from mutable
+  // WorkerExecution metadata on a later process start.
+  if (existingVersion > 0 && existingVersion < 10) {
+    ensureGatePresentationReplayBindingColumns(db);
+  }
   // Additive migration (ADR-053 C7-02): factory_transition_obligations gains a
   // DISTINCT durable home for the monotonic lease fence (nullable `lease_fence`),
   // separate from the causal source revision on `fence`. Fresh DBs get it from

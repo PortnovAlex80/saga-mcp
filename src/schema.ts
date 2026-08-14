@@ -2501,16 +2501,20 @@ export function ensureGatePresentationReplayBindingColumns(db: {
     DROP TRIGGER IF EXISTS trg_factory_gate_presentation_attempts_no_update;
     DROP TRIGGER IF EXISTS trg_factory_gate_presentation_attempts_no_delete;
     UPDATE factory_gate_presentation_attempts
-       SET replay_key=(SELECT json_extract(we.metadata,'$.execution_context.replay.key')
-                         FROM worker_executions we WHERE we.execution_id=presentation_ref),
-           replay_key_material=(SELECT json_extract(we.metadata,'$.execution_context.replay.key_material')
-                                  FROM worker_executions we WHERE we.execution_id=presentation_ref),
-           replay_capsule_ref=(SELECT json_extract(we.metadata,'$.execution_context.replay.capsule_ref')
-                                 FROM worker_executions we WHERE we.execution_id=presentation_ref),
-           replay_capsule_payload_hash=(SELECT json_extract(we.metadata,'$.execution_context.replay.capsule_payload_hash')
-                                          FROM worker_executions we WHERE we.execution_id=presentation_ref)
-     WHERE replay_key IS NULL AND replay_key_material IS NULL AND replay_capsule_ref IS NULL
-       AND replay_capsule_payload_hash IS NULL
+       SET replay_key=COALESCE(replay_key,
+             (SELECT json_extract(we.metadata,'$.execution_context.replay.key')
+                FROM worker_executions we WHERE we.execution_id=presentation_ref)),
+           replay_key_material=COALESCE(replay_key_material,
+             (SELECT json_extract(we.metadata,'$.execution_context.replay.key_material')
+                FROM worker_executions we WHERE we.execution_id=presentation_ref)),
+           replay_capsule_ref=COALESCE(replay_capsule_ref,
+             (SELECT json_extract(we.metadata,'$.execution_context.replay.capsule_ref')
+                FROM worker_executions we WHERE we.execution_id=presentation_ref)),
+           replay_capsule_payload_hash=COALESCE(replay_capsule_payload_hash,
+             (SELECT json_extract(we.metadata,'$.execution_context.replay.capsule_payload_hash')
+                FROM worker_executions we WHERE we.execution_id=presentation_ref))
+     WHERE (replay_key IS NULL OR replay_key_material IS NULL OR replay_capsule_ref IS NULL
+       OR replay_capsule_payload_hash IS NULL)
        AND EXISTS (SELECT 1 FROM worker_executions we WHERE we.execution_id=presentation_ref);
     CREATE TRIGGER trg_factory_gate_presentation_attempts_no_update
     BEFORE UPDATE ON factory_gate_presentation_attempts BEGIN

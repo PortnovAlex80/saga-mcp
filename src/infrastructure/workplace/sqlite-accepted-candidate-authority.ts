@@ -68,6 +68,8 @@ export function assertPersistedAcceptedCandidateAuthority(
   const primary = bindings.filter(binding => binding.binding === 'primary-output');
   if (primary.length !== 1
       || canonicalProductRefs(primary[0]!.productRefs) !== canonicalProductRefs(authority.acceptedProductRefs)
+      || primary[0]!.productRefs.length !== 1
+      || primary[0]!.productRefs[0]!.schemaId !== authority.productSchema
       || JSON.stringify(primary[0]!.productContractRef ?? null) !== JSON.stringify(authority.productContractRef)) {
     throw new Error('AUTHORITY_ACCEPTED_OUTPUT_BINDING_MISMATCH');
   }

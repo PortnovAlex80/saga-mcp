@@ -247,6 +247,47 @@ test('ADR-053 C12: replaying a terminal GateRun does NOT re-run providers (one-s
   db.close();
 });
 
+test('ADR-053: semantically identical output bindings converge despite object key order', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const checkPlan = buildArchitectureCheckPlan();
+  let runCount = 0;
+  const providers = {
+    resolve: () => ({
+      providerId: 'formalization.srs-structural.v1',
+      version: '1.0.0',
+      providerDigest: 'srs-structural-v1-digest',
+      run() { runCount += 1; return 'passed'; },
+    }),
+  };
+  const productA = { schemaId: 'schema/output', ref: 'product:1', digest: hash('material') };
+  const productB = { digest: productA.digest, ref: productA.ref, schemaId: productA.schemaId };
+  const base = {
+    workplaceRef: ref, subjectCandidateSetRef: 'cs-canonical', checkPlan, gatePhase: 'final',
+    expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-canonical', installationDigest: hash('install'),
+    checkParameters: {}, environmentRef: null, presentationRef: 'worker-execution:canonical',
+  };
+  const first = driveGateRun(gateRepo, providers, {
+    ...base,
+    acceptedOutputBindings: [{
+      binding: 'primary-output', productRefs: [productA],
+      productContractRef: { contractId: 'c', version: '1', contractDigest: hash('contract') },
+    }],
+  });
+  const second = driveGateRun(gateRepo, providers, {
+    ...base,
+    acceptedOutputBindings: [{
+      productContractRef: { contractDigest: hash('contract'), version: '1', contractId: 'c' },
+      productRefs: [productB], binding: 'primary-output',
+    }],
+  });
+  assert.equal(first.decision.gateRunRef, second.decision.gateRunRef);
+  assert.equal(first.decision.decisionDigest, second.decision.decisionDigest);
+  assert.equal(runCount, 1, 'canonical replay must not invoke the provider twice');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n, 1);
+  db.close();
+});
+
 test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt refs', () => {
   const { db, ref } = freshDb();
   const gateRepo = new SqliteGateRepository(db);
