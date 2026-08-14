@@ -132,6 +132,11 @@ export SAGA_FACTORY_CHECKPOINT_LOGS=1   # checkpoint logging
 export SAGA_CLAUDE_PATH=/path/to/claude # worker CLI binary
 ```
 
+Unless explicitly overridden with `SAGA_PACKAGE_STORE_DIR`, the public CLI
+stores immutable installed-package bytes in `package-store/` beside the SQLite
+DB. This keeps resume portable across Docker containers and replaced code
+checkouts; the package store is part of the durable run state.
+
 The tracker composition is a safe local-dry-run Delivery profile. Discovery,
 Formalization and Development use real LLM workers. Delivery never fabricates a
 publication or release receipt; it fails closed or requests approval.

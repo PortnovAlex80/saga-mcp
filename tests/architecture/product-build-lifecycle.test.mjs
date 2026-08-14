@@ -38,3 +38,10 @@ test('generic Factory Start does not silently force static/no-dependency product
   assert.match(gateway, /buildReferenceDevelopmentPolicy\(\)/);
   assert.doesNotMatch(gateway, /reference-development-policy['"],\s*version/);
 });
+
+test('Factory Start keeps the immutable package store beside the durable DB by default', () => {
+  const gateway = readFileSync(new URL('../../scripts/factory.mjs', import.meta.url), 'utf8');
+  assert.match(gateway, /SAGA_PACKAGE_STORE_DIR:\s*process\.env\.SAGA_PACKAGE_STORE_DIR/);
+  assert.match(gateway, /join\(dirname\(resolve\(dbPath\)\),\s*'package-store'\)/);
+  assert.doesNotMatch(gateway, /SAGA_PACKAGE_STORE_DIR:\s*join\(repoRoot/);
+});

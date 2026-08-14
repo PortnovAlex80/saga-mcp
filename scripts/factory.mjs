@@ -28,7 +28,7 @@
  */
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -126,6 +126,13 @@ function spawnOrchestrateCli(dbPath, launchRef, compositionPath = factoryComposi
   const childEnv = {
     ...process.env,
     DB_PATH: dbPath,
+    // Package bytes are durable execution authority. Keep their default next
+    // to the durable DB, not under the code checkout: container/image or
+    // release-directory replacement must not make an unchanged active
+    // installation look corrupt on resume. Explicit operator configuration
+    // remains authoritative.
+    SAGA_PACKAGE_STORE_DIR: process.env.SAGA_PACKAGE_STORE_DIR?.trim()
+      || join(dirname(resolve(dbPath)), 'package-store'),
     SAGA_PRODUCT_LIFECYCLE_COMPOSITION: compositionPath,
   };
   // Spawn detached so the factory outlives this script. stdio inherited so
