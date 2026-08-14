@@ -69,12 +69,15 @@ test('AC-44: no module-name branching that selects different Factory state machi
   assert.deepEqual(violations, [], `Factory runtime branches on module name:\n${violations.join('\n')}`);
 });
 
-test('P18: gate path resolves managed production through exact Workplace', () => {
+test('P18: gate path consumes the exact completion-frozen Workplace product', () => {
   const runtimePath = path.join(SRC_ROOT, 'app', 'product-lifecycle-runtime.ts');
   const runtimeContent = allSrcContent.get(runtimePath);
   assert.ok(runtimeContent, 'product-lifecycle-runtime.ts exists');
-  assert.ok(runtimeContent.includes('workplaceProductionResolver.read(workplaceRef)'), 'Gate path uses exact Workplace production resolver');
-  assert.ok(runtimeContent.includes('buildWorkplaceProductionSnapshot'), 'Gate path freezes an immutable Workplace snapshot before CandidateSet seal');
+  assert.ok(runtimeContent.includes('readManagedCompletionProducts(db, contributorRef)'), 'Gate path reads the immutable worker_done material close');
+  assert.ok(!runtimeContent.includes('workplaceProductionResolver.read(workplaceRef)'), 'Gate path must not reread the mutable Workplace desk after worker_done');
+  const closePath = path.join(SRC_ROOT, 'infrastructure', 'workplace', 'sqlite-managed-completion-product.ts');
+  const closeContent = allSrcContent.get(closePath);
+  assert.ok(closeContent?.includes('buildWorkplaceProductionSnapshot'), 'worker_done close freezes the exact Workplace snapshot');
   assert.ok(!runtimeContent.includes('ref: `node-product-set:'), 'Generic managed-production ProductRef is not node-wide synthetic identity');
 });
 

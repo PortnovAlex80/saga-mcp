@@ -84,7 +84,6 @@ import {
   createGitIntegrationEffect,
 } from '../infrastructure/workplace/git-integration-effect.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
-import { SqliteWorkplaceProductionResolver } from '../infrastructure/workplace/sqlite-workplace-production-resolver.js';
 import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
 import {
   ProductionCellNodeExecutor,
@@ -92,6 +91,7 @@ import {
   type ProductionCellProjectionPersistence,
 } from '../process-modules/application/node-executors/production-cell-node-executor.js';
 import { readFrozenProductionIngress } from '../process-modules/application/production-ingress-contract.js';
+import { readManagedCompletionProducts } from '../infrastructure/workplace/sqlite-managed-completion-product.js';
 import {
   activateProductionCellRoleTask,
   completeProductionCellTaskProjections,
@@ -105,7 +105,7 @@ import {
   deserializeWorkplaceRef,
   serializeWorkplaceRef,
 } from '../process-modules/domain/workplace/workplace-ref.js';
-import { buildWorkplaceProductionSnapshot, isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../process-modules/shared/workplace-production-snapshot.js';
+import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -184,7 +184,6 @@ export function createProductLifecycleRuntime(
     db,
     processProductRepoV2,
   );
-  const workplaceProductionResolver = new SqliteWorkplaceProductionResolver(db);
   const sealedProductMaterials = new SqliteSealedProductMaterialRepository(db);
 
   const lookupProduction = db.prepare(
@@ -580,35 +579,18 @@ export function createProductLifecycleRuntime(
             }] : [];
           }
 
-          // Managed production is durable at the Workplace desk, not at the
-          // WorkerExecution and not at the Flow node.
-          const production = workplaceProductionResolver.read(workplaceRef);
-          if (production.artifacts.length === 0 && production.traces.length === 0) {
-            return [];
+          // Managed material is frozen atomically with accepted worker_done.
+          // Never reread the mutable Workplace desk at CandidateSet seal time.
+          const frozen = readManagedCompletionProducts(db, contributorRef);
+          const expected = [...new Set(expectedSchemaRefs.filter(Boolean))].sort();
+          const actual = frozen.map(product => product.schemaId).sort();
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error(
+              `MANAGED_COMPLETION_PRODUCT_SET_MISMATCH: ${contributorRef}; `
+              + `expected=${JSON.stringify(expected)} actual=${JSON.stringify(actual)}`,
+            );
           }
-
-          // Freeze the exact desk state into the universal exact-product store
-          // BEFORE sealing CandidateSet. Later repairs can change the live desk,
-          // but this ProductRef remains immutable and therefore candidate_read,
-          // Gate audit and replay all observe the same QC snapshot.
-          return expectedSchemaRefs.filter(Boolean).map(schemaId => {
-            const snapshot = buildWorkplaceProductionSnapshot({
-              workplaceRef: executionContext.workplaceRef!,
-              expectedSchemaRef: schemaId,
-              artifacts: production.artifacts,
-              traces: production.traces,
-            });
-            const contentHash = sha256Hex(snapshot);
-            return workplaceProductPort.submitProduct({
-              processRunId,
-              nodeId,
-              moduleRef,
-              schema: schemaId,
-              content: snapshot,
-              contentHash,
-              executionRef: contributorRef,
-            }).productRef;
-          });
+          return frozen;
         },
         readContributionProductPayload: (productRef) => {
           if (productRef.ref.startsWith('managed-node-submission:')) {

@@ -754,6 +754,30 @@ CREATE TABLE IF NOT EXISTS factory_work_intents (
 -- Only projected_task_id, status, and updated_at are mutable lifecycle fields.
 ${WORK_INTENT_CONTRACT_IMMUTABILITY_SQL}
 
+-- Exact managed material frozen atomically with accepted worker_done. The
+-- Production Cell seal reads this immutable ProductRef instead of the live
+-- Workplace desk, closing the post-completion mutation race.
+CREATE TABLE IF NOT EXISTS factory_execution_completion_products (
+  execution_id TEXT NOT NULL REFERENCES worker_executions(execution_id),
+  work_intent_id INTEGER NOT NULL REFERENCES factory_work_intents(id),
+  workplace_ref TEXT NOT NULL REFERENCES factory_workplaces(workplace_ref),
+  schema_id TEXT NOT NULL,
+  product_ref TEXT NOT NULL,
+  product_digest TEXT NOT NULL,
+  worker_done_command_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (execution_id, schema_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_execution_completion_products_immutable_update
+BEFORE UPDATE ON factory_execution_completion_products BEGIN
+  SELECT RAISE(ABORT, 'FACTORY_COMPLETION_PRODUCT_IMMUTABLE');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_execution_completion_products_immutable_delete
+BEFORE DELETE ON factory_execution_completion_products BEGIN
+  SELECT RAISE(ABORT, 'FACTORY_COMPLETION_PRODUCT_IMMUTABLE');
+END;
+
 CREATE TABLE IF NOT EXISTS factory_raw_submissions (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_id             INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,

@@ -10,6 +10,7 @@ import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-h
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
 import { readFrozenProductionIngressIfBound } from '../process-modules/application/production-ingress-contract.js';
+import { freezeManagedCompletionProduct } from '../infrastructure/workplace/sqlite-managed-completion-product.js';
 import {
   clearSubmissionValidationFeedback,
   persistSubmissionValidationRejection,
@@ -591,6 +592,15 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
         return { kind: 'submission-rejected', error: validationError };
       }
     }
+
+    // Accepted worker_done is the material close boundary. Managed Workplace
+    // material becomes an immutable exact ProductRef inside this transaction,
+    // before the task transition and command receipt. Typed ingress is already
+    // frozen by product_submit and is a no-op here.
+    freezeManagedCompletionProduct(db, {
+      executionId: (args.execution_id as string) ?? task.current_execution_id ?? workerId,
+      workerDoneCommandId: commandId,
+    });
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
     //    T-013: для verification.ac — review-loop escape. Если verifier уже

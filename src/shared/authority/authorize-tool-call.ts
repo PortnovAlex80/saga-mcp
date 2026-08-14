@@ -351,6 +351,25 @@ export function authorizeSagaToolCall(input: AuthorizeSagaToolCallInput): Author
 
   const authority = strict.snapshot.authority;
   if (!authority) return invalid(input.toolName, executionId, 'execution snapshot is missing authority');
+  const completion = input.db.prepare(
+    `SELECT 1 FROM command_receipts
+      WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+      LIMIT 1`,
+  ).get(executionId);
+  if (completion && input.toolName !== 'worker_done') {
+    return {
+      allow: false,
+      code: 'AUTHORITY_DENIED',
+      details: {
+        execution_id: executionId,
+        work_intent_id: authority.work_intent_id,
+        requested_tool: input.toolName,
+        allowed_tools: ['worker_done'],
+        policy_version: strict.snapshot.policy_version,
+        recovery: 'worker_done is already accepted; material authority is closed. Only byte-identical worker_done replay is allowed.',
+      },
+    };
+  }
   if (authority.enforcement === 'advisory') {
     const allowed = authority.allowed_saga_tools.includes(input.toolName);
     return {
