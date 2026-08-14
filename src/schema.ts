@@ -1,5 +1,24 @@
 import { createHash } from 'node:crypto';
 
+/** Reinstalled after any compatibility table rebuild of factory_work_intents. */
+export const WORK_INTENT_CONTRACT_IMMUTABILITY_SQL = `
+CREATE TRIGGER IF NOT EXISTS trg_factory_work_intents_contract_immutable
+BEFORE UPDATE OF epic_id,kind,objective,authority_scope,output_schema,
+                 token_budget,retry_budget,created_at
+ON factory_work_intents
+WHEN OLD.epic_id IS NOT NEW.epic_id
+  OR OLD.kind IS NOT NEW.kind
+  OR OLD.objective IS NOT NEW.objective
+  OR OLD.authority_scope IS NOT NEW.authority_scope
+  OR OLD.output_schema IS NOT NEW.output_schema
+  OR OLD.token_budget IS NOT NEW.token_budget
+  OR OLD.retry_budget IS NOT NEW.retry_budget
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'FACTORY_WORK_INTENT_CONTRACT_IMMUTABLE');
+END;
+`;
+
 export const SCHEMA_SQL = `
 -- Core hierarchy: projects > epics > tasks > subtasks
 
@@ -733,21 +752,7 @@ CREATE TABLE IF NOT EXISTS factory_work_intents (
 
 -- WorkIntent freezes capability and product-contract authority before claim.
 -- Only projected_task_id, status, and updated_at are mutable lifecycle fields.
-CREATE TRIGGER IF NOT EXISTS trg_factory_work_intents_contract_immutable
-BEFORE UPDATE OF epic_id,kind,objective,authority_scope,output_schema,
-                 token_budget,retry_budget,created_at
-ON factory_work_intents
-WHEN OLD.epic_id IS NOT NEW.epic_id
-  OR OLD.kind IS NOT NEW.kind
-  OR OLD.objective IS NOT NEW.objective
-  OR OLD.authority_scope IS NOT NEW.authority_scope
-  OR OLD.output_schema IS NOT NEW.output_schema
-  OR OLD.token_budget IS NOT NEW.token_budget
-  OR OLD.retry_budget IS NOT NEW.retry_budget
-  OR OLD.created_at IS NOT NEW.created_at
-BEGIN
-  SELECT RAISE(ABORT, 'FACTORY_WORK_INTENT_CONTRACT_IMMUTABLE');
-END;
+${WORK_INTENT_CONTRACT_IMMUTABILITY_SQL}
 
 CREATE TABLE IF NOT EXISTS factory_raw_submissions (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,

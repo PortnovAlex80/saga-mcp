@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { productionIngressModeFromAuthorityScope } = await import(
@@ -16,6 +17,9 @@ const { buildExecutionContext } = await import(
 );
 const { executionContextHash } = await import(
   '../../dist/shared/authority/execution-context.js'
+);
+const { SqliteFactoryDiscoveryRuntime } = await import(
+  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 
 test('WorkIntent contract is physically immutable and cannot switch production ingress', () => {
@@ -124,6 +128,60 @@ test('execution ingress survives lawful task projection to the next WorkIntent',
       taskId,
     );
     assert.equal(readFrozenProductionIngress(db, 'exec:typed').mode, 'typed-submission');
+  } finally {
+    closeDb();
+    delete process.env.DB_PATH;
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('supported legacy WorkIntent table rebuild reinstalls the contract seal', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-intent-legacy-'));
+  const dbPath = path.join(temp, 'factory.sqlite');
+  const legacy = new Database(dbPath);
+  legacy.exec(`
+    PRAGMA user_version=9;
+    CREATE TABLE factory_work_intents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      objective TEXT NOT NULL,
+      authority_scope TEXT NOT NULL,
+      output_schema TEXT NOT NULL,
+      token_budget INTEGER NOT NULL DEFAULT 0,
+      retry_budget INTEGER NOT NULL DEFAULT 0,
+      projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open','executing','concluded','cancelled')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  legacy.close();
+  process.env.DB_PATH = dbPath;
+  try {
+    const db = getDb();
+    new SqliteFactoryDiscoveryRuntime();
+    db.prepare(`INSERT INTO projects(id,name,status) VALUES(1,'P','active')`).run();
+    db.prepare(`INSERT INTO epics(id,project_id,name) VALUES(1,1,'E')`).run();
+    const id = Number(db.prepare(
+      `INSERT INTO factory_work_intents
+         (epic_id,kind,objective,authority_scope,output_schema,status)
+       VALUES (1,'discovery','legacy','{}','schema.v1','open') RETURNING id`,
+    ).get().id);
+    assert.throws(
+      () => db.prepare(
+        `UPDATE factory_work_intents SET authority_scope='{"allowed_tools":[]}' WHERE id=?`,
+      ).run(id),
+      /FACTORY_WORK_INTENT_CONTRACT_IMMUTABLE/,
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT COUNT(*) AS n FROM sqlite_schema
+          WHERE type='trigger' AND name='trg_factory_work_intents_contract_immutable'`,
+      ).get().n,
+      1,
+    );
   } finally {
     closeDb();
     delete process.env.DB_PATH;

@@ -1,4 +1,5 @@
 import { getDb } from '../../../db.js';
+import { WORK_INTENT_CONTRACT_IMMUTABILITY_SQL } from '../../../schema.js';
 import {
   prepareFactoryProjectedTaskForExecution,
   transitionTaskToInRepair,
@@ -1288,6 +1289,7 @@ function ensurePausedWorkIntentStatus(db: ReturnType<typeof getDb>): void {
       ALTER TABLE factory_work_intents_new RENAME TO factory_work_intents;
       CREATE INDEX IF NOT EXISTS idx_factory_work_intents_epic ON factory_work_intents(epic_id);
       CREATE INDEX IF NOT EXISTS idx_factory_work_intents_kind_status ON factory_work_intents(kind, status);
+      ${WORK_INTENT_CONTRACT_IMMUTABILITY_SQL}
     `);
     db.exec('COMMIT');
   } catch (error) {
