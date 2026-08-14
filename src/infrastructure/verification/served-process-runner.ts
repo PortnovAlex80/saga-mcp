@@ -1,4 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 /**
  * LR-05 — a focused, RELIABLE lifecycle runner for the served process a local
@@ -381,12 +382,32 @@ function waitForExit(pid: number, timeoutMs: number): void {
  */
 function isPidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
+  // A killed direct child remains as a Linux zombie until Node's event loop
+  // gets a chance to deliver the exit event and reap it. This runner is
+  // deliberately synchronous, so signal 0 alone would report that harmless
+  // zombie as "alive" and falsely fail every successful Docker readiness run.
+  // /proc exposes the kernel state synchronously: Z/X has no executable
+  // process and cannot retain sockets or mutate the checkout.
+  if (process.platform === 'linux') {
+    try {
+      return isLinuxProcStatLive(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+    } catch (error) {
+      if (isErrnoCode(error, 'ENOENT') || isErrnoCode(error, 'ESRCH')) return false;
+      // Fall through to signal 0 when /proc is unavailable/restricted.
+    }
+  }
   try {
     process.kill(pid, 0);
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
+}
+
+export function isLinuxProcStatLive(stat: string): boolean {
+  const close = stat.lastIndexOf(')');
+  const state = close >= 0 ? stat.slice(close + 1).trimStart()[0] : undefined;
+  return state !== undefined && state !== 'Z' && state !== 'X';
 }
 
 function isErrnoCode(error: unknown, code: string): boolean {

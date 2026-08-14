@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,6 +8,7 @@ import {
   runServedProcess,
   assertPlatformSupportsProcessTreeControl,
   ServedProcessError,
+  isLinuxProcStatLive,
 } from '../../dist/infrastructure/verification/served-process-runner.js';
 
 // LR-05 — focused tests for the reliable served-process lifecycle runner.
@@ -21,8 +22,18 @@ import {
 
 const NODE = process.execPath;
 
+test('Linux proc-state parsing treats an unreaped zombie as terminated', () => {
+  assert.equal(isLinuxProcStatLive('1676 (node) S 1 2 3 4'), true);
+  assert.equal(isLinuxProcStatLive('1676 (node worker) Z 1 2 3 4'), false);
+  assert.equal(isLinuxProcStatLive('1676 (node) X 1 2 3 4'), false);
+});
+
 /** True when `pid` is a live OS process (signal-0 probe; EPERM = alive, foreign). */
 function isAlive(pid) {
+  if (process.platform === 'linux') {
+    try { return isLinuxProcStatLive(readFileSync(`/proc/${pid}/stat`, 'utf8')); }
+    catch (e) { if (e.code === 'ENOENT') return false; }
+  }
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
 
