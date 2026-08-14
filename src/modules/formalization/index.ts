@@ -17,6 +17,8 @@ import {
 } from './application/formalization-production-cell-installation.js';
 import { registerFormalizationCheckProviders } from './application/formalization-check-providers.js';
 import { createFormalizationAcceptProductsEffect } from './application/formalization-accept-products-effect.js';
+import { SqliteSealedProductMaterialRepository } from '../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
+import { assertPersistedAcceptedCandidateAuthority } from '../../infrastructure/workplace/sqlite-accepted-candidate-authority.js';
 import { formalizationProcessModule } from '../../process-modules/modules/formalization/formalization-process-module.js';
 import {
   SqliteFormalizationBaselineRepository,
@@ -63,7 +65,10 @@ export function registerFormalization(
     candidateSets: sharedDeps.candidateSetRepo,
   }));
   registerWorkshopPostAcceptanceEffect(
-    createFormalizationAcceptProductsEffect(db),
+    createFormalizationAcceptProductsEffect(db, {
+      assertPersisted: authority => assertPersistedAcceptedCandidateAuthority(db, authority),
+      readSealedProduct: ref => new SqliteSealedProductMaterialRepository(db).readExact(ref),
+    }),
   );
 
   registries.kernelHandlers.registerAll(

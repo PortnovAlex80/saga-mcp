@@ -4,6 +4,9 @@ import type Database from 'better-sqlite3';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { DEVELOPMENT_REVIEW_VERDICT_SCHEMA } from '../../modules/development/domain/development-schemas.js';
 import { SqliteAcceptedAuthorityHeadRepository } from './sqlite-accepted-authority-head-repository.js';
+import { SqliteSealedProductMaterialRepository } from './sqlite-sealed-product-material-repository.js';
+import { assertPersistedAcceptedCandidateAuthority } from './sqlite-accepted-candidate-authority.js';
+import type { AcceptedCandidateAuthority } from '../../process-modules/application/post-acceptance-effects.js';
 
 /**
  * Runtime-owned integration effect for an accepted git-changing Workplace.
@@ -14,6 +17,7 @@ export interface SqliteProductionCellIntegrationInput {
   readonly workplaceRef: import('../../process-modules/domain/workplace/workplace-ref.js').WorkplaceRef;
   readonly processRunId: number;
   readonly candidateSetRef: string;
+  readonly gateDecisionKey: string;
   readonly expectedProductSchema: string;
 }
 
@@ -42,6 +46,8 @@ export type ProductionCellIntegrationObservation =
   | { readonly outcome: 'blocked'; readonly reason: string; readonly evidence: Readonly<Record<string, unknown>> };
 
 export class SqliteProductionCellIntegration {
+  private readonly sealedProducts: SqliteSealedProductMaterialRepository;
+
   constructor(
     private readonly db: Database.Database,
     /**
@@ -52,7 +58,13 @@ export class SqliteProductionCellIntegration {
      * submission.task_id (origin process's task) or recency.
      */
     private readonly authorityHeadRepo: SqliteAcceptedAuthorityHeadRepository,
-  ) {}
+  ) {
+    this.sealedProducts = new SqliteSealedProductMaterialRepository(db);
+  }
+
+  assertAuthority(authority: AcceptedCandidateAuthority): void {
+    assertPersistedAcceptedCandidateAuthority(this.db, authority);
+  }
 
   observeAcceptedWorkplace(
     input: SqliteProductionCellIntegrationInput,
@@ -73,28 +85,17 @@ export class SqliteProductionCellIntegration {
     const task = this.db.prepare(
       `SELECT t.id,t.integration_state,t.project_repository_id,
               COALESCE(rc.local_path, pr.local_path) AS local_path,
-              pr.integration_branch,s.payload_snapshot
-         FROM factory_candidate_sets cs
-         JOIN factory_candidate_set_members m
-           ON m.candidate_set_ref=cs.candidate_set_ref
-          AND m.product_schema=?
-          AND m.product_ref LIKE 'managed-node-submission:%'
-         JOIN factory_managed_node_submissions s
-           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
-          AND s.schema_version=m.product_schema
-          AND s.content_hash=m.product_digest
-         JOIN tasks t ON t.id = ?
+              pr.integration_branch
+         FROM tasks t
          JOIN project_repositories pr ON pr.id=t.project_repository_id
          LEFT JOIN repository_checkouts rc
            ON rc.project_repository_id=pr.id AND rc.status='active'
-        WHERE cs.candidate_set_ref=?
-          AND cs.workplace_ref=?
+        WHERE t.id=?
+          AND t.workplace_ref=?
           AND t.execution_mode IN ('git_change','artifact_change')
         LIMIT 1`,
     ).get(
-      input.expectedProductSchema,
       authorTaskId,
-      input.candidateSetRef,
       workplace,
     ) as {
       id: number;
@@ -102,12 +103,11 @@ export class SqliteProductionCellIntegration {
       project_repository_id: number;
       local_path: string;
       integration_branch: string;
-      payload_snapshot: string;
     } | undefined;
     if (!task) {
       return { outcome: 'blocked', reason: 'integration task missing', evidence: { workplace } };
     }
-    const payload = JSON.parse(task.payload_snapshot) as {
+    const payload = this.readAcceptedProduct(input) as {
       source?: { commitSha?: unknown };
       snapshot?: { treeSha?: unknown };
     };
@@ -176,29 +176,17 @@ export class SqliteProductionCellIntegration {
     const task = this.db.prepare(
       `SELECT t.id,t.integration_state,t.project_repository_id,t.metadata,
               COALESCE(rc.local_path, pr.local_path) AS local_path,
-              pr.integration_branch,
-              s.payload_snapshot
-         FROM factory_candidate_sets cs
-         JOIN factory_candidate_set_members m
-           ON m.candidate_set_ref=cs.candidate_set_ref
-          AND m.product_schema=?
-          AND m.product_ref LIKE 'managed-node-submission:%'
-         JOIN factory_managed_node_submissions s
-           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
-          AND s.schema_version=m.product_schema
-          AND s.content_hash=m.product_digest
-         JOIN tasks t ON t.id = ?
+              pr.integration_branch
+         FROM tasks t
          JOIN project_repositories pr ON pr.id=t.project_repository_id
          LEFT JOIN repository_checkouts rc
            ON rc.project_repository_id=pr.id AND rc.status='active'
-        WHERE cs.candidate_set_ref=?
-          AND cs.workplace_ref=?
+        WHERE t.id=?
+          AND t.workplace_ref=?
           AND t.execution_mode IN ('git_change','artifact_change')
         LIMIT 1`,
     ).get(
-      input.expectedProductSchema,
       authorTaskId,
-      input.candidateSetRef,
       workplace,
     ) as {
       id: number;
@@ -206,13 +194,12 @@ export class SqliteProductionCellIntegration {
       project_repository_id: number;
       local_path: string;
       integration_branch: string;
-      payload_snapshot: string;
       metadata: string;
     } | undefined;
     if (!task) {
       throw new Error(`PRODUCTION_CELL_INTEGRATION_TASK_MISSING: ${workplace}`);
     }
-    const payload = JSON.parse(task.payload_snapshot) as {
+    const payload = this.readAcceptedProduct(input) as {
       workItemKey?: unknown;
       terminalStatus?: unknown;
       source?: { branch?: unknown; commitSha?: unknown; workItemKey?: unknown };
@@ -283,7 +270,7 @@ export class SqliteProductionCellIntegration {
       };
     }
     const review = this.db.prepare(
-      `SELECT s.payload_snapshot,rcs.subject_candidate_set_ref
+      `SELECT material.payload_snapshot,rcs.subject_candidate_set_ref
          FROM factory_gate_decisions gd
          JOIN json_each(gd.assessment_candidate_set_refs) assessment
          JOIN factory_candidate_sets rcs
@@ -292,19 +279,22 @@ export class SqliteProductionCellIntegration {
          JOIN factory_candidate_set_members m
            ON m.candidate_set_ref=rcs.candidate_set_ref
           AND m.product_schema='${DEVELOPMENT_REVIEW_VERDICT_SCHEMA}'
-          AND m.product_ref LIKE 'managed-node-submission:%'
-         JOIN factory_managed_node_submissions s
-           ON s.id=CAST(substr(m.product_ref,25) AS INTEGER)
-          AND s.schema_version=m.product_schema
-          AND s.content_hash=m.product_digest
-        WHERE gd.workplace_ref=?
+         JOIN factory_sealed_product_aliases alias
+           ON alias.product_ref=m.product_ref
+          AND alias.schema_id=m.product_schema
+          AND alias.content_digest=m.product_digest
+         JOIN factory_sealed_product_materials material
+           ON material.schema_id=alias.schema_id
+          AND material.content_digest=alias.content_digest
+        WHERE gd.decision_key=?
+          AND gd.workplace_ref=?
           AND gd.gate_phase='final'
           AND gd.verdict='accepted'
           AND gd.subject_candidate_set_ref=?`,
         // ADR-053 C4/C5 — the filter (workplace, subject, gate_phase='final',
         // verdict='accepted') is unique per subject (one final accepted decision
         // per subject), so no decided_at recency / LIMIT 1 tiebreaker is needed.
-    ).get(workplace, input.candidateSetRef) as {
+    ).get(input.gateDecisionKey, workplace, input.candidateSetRef) as {
       payload_snapshot: string;
       subject_candidate_set_ref: string;
     } | undefined;
@@ -400,6 +390,31 @@ export class SqliteProductionCellIntegration {
       afterHead: afterHead!,
       alreadyApplied: false,
     };
+  }
+
+  private readAcceptedProduct(input: SqliteProductionCellIntegrationInput): unknown {
+    const workplace = serializeWorkplaceRef(input.workplaceRef);
+    const rows = this.db.prepare(
+      `SELECT m.product_schema AS schema_id,m.product_ref,m.product_digest
+         FROM factory_candidate_sets cs
+         JOIN factory_candidate_set_members m
+           ON m.candidate_set_ref=cs.candidate_set_ref
+        WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?
+          AND m.product_schema=?`,
+    ).all(input.candidateSetRef, workplace, input.expectedProductSchema) as Array<{
+      schema_id: string;
+      product_ref: string;
+      product_digest: string;
+    }>;
+    if (rows.length !== 1) {
+      throw new Error(`PRODUCTION_CELL_INTEGRATION_PRODUCT_AMBIGUOUS: ${input.candidateSetRef}`);
+    }
+    const row = rows[0]!;
+    return this.sealedProducts.readExact({
+      schemaId: row.schema_id,
+      ref: row.product_ref,
+      digest: row.product_digest,
+    });
   }
 }
 

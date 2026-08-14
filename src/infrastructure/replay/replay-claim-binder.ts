@@ -10,6 +10,7 @@ import {
   SqliteReplayCapsuleRepository,
 } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
+import { acceptedCandidatePresentationRefs } from './replay-presentation-authority.js';
 // P6 consolidation: the STRICT key-material resolver is a single exported
 // function shared with the claim-side repository — no second hand-rolled
 // copy of the SQL/subject formula can drift again.
@@ -113,7 +114,7 @@ export function certifyAcceptedReplayCapsules(
   for (const workplace of workplaces) {
     try {
       const decision = db.prepare(
-        `SELECT gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs
+        `SELECT gd.decision_key,gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs
            FROM factory_cell_final_acceptances cfa
            JOIN factory_gate_decisions gd
              ON gd.decision_key=cfa.gate_decision_key
@@ -121,6 +122,7 @@ export function certifyAcceptedReplayCapsules(
             AND gd.gate_phase='final'
             AND gd.verdict='accepted'`,
       ).get(workplace.workplace_ref) as {
+        decision_key: string;
         subject_candidate_set_ref: string;
         assessment_candidate_set_refs: string;
       } | undefined;
@@ -142,28 +144,25 @@ export function certifyAcceptedReplayCapsules(
 
       for (const candidateSetRef of [...new Set(candidateRefs)]) {
         const candidate = db.prepare(
-          `SELECT cs.candidate_set_ref,
-                  (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref) AS presenter_ref
-             FROM factory_candidate_sets cs
-             JOIN worker_executions we
-               ON we.execution_id=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
-             LEFT JOIN factory_replay_capsules rc
-               ON rc.source_execution_ref=(SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev WHERE rev.revision_ref=cs.production_revision_ref)
-              AND rc.source_candidate_set_ref=cs.candidate_set_ref
-            WHERE cs.candidate_set_ref=?
-              AND cs.workplace_ref=?
-              AND rc.id IS NULL`,
+          `SELECT candidate_set_ref FROM factory_candidate_sets
+            WHERE candidate_set_ref=? AND workplace_ref=?`,
         ).get(candidateSetRef, workplace.workplace_ref) as {
           candidate_set_ref: string;
-          presenter_ref: string;
         } | undefined;
         if (!candidate) continue;
-
-        captureReplayCapsuleFailClosed(db, () =>
-          repo.captureAcceptedExecution({
-            executionRef: candidate.presenter_ref,
-            candidateSetRef: candidate.candidate_set_ref,
-          }));
+        const presentationRefs = acceptedCandidatePresentationRefs(db, {
+          workplaceRef: workplace.workplace_ref,
+          finalDecisionKey: decision.decision_key,
+          finalSubjectCandidateSetRef: decision.subject_candidate_set_ref,
+          candidateSetRef,
+        });
+        for (const presentationRef of presentationRefs) {
+          captureReplayCapsuleFailClosed(db, () =>
+            repo.captureAcceptedExecution({
+              executionRef: presentationRef,
+              candidateSetRef: candidate.candidate_set_ref,
+            }));
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

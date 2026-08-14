@@ -164,6 +164,7 @@ test('GateRun integration: full lifecycle via driveGateRun + SqliteGateRepositor
     installationDigest: hash('install'),
     checkParameters: { srsArtifactRef: 'artifact:1' },
     environmentRef: null,
+    presentationRef: 'worker-execution:architecture-gate-e2e',
   });
 
   // Assert: gate accepted, decision recorded, receipt recorded.

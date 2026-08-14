@@ -185,7 +185,8 @@ test('Gate C5 [met]: authority head persists accepted_author_task_id', () => {
 test('Gate C5 [met]: git-integration consumer binds the task from the authority head (parameterized, not submission)', () => {
   const consumer = readSrc('src/infrastructure/workplace/sqlite-production-cell-integration.ts');
   assert.ok(consumer.includes('readAuthorTaskId'), 'consumer reads task id from the authority head');
-  assert.ok(consumer.includes('JOIN tasks t ON t.id = ?'), 'consumer binds task via a parameterized join');
+  assert.ok(consumer.includes('WHERE t.id=?'), 'consumer binds the exact task id via a parameterized predicate');
+  assert.ok(consumer.includes('AND t.workplace_ref=?'), 'consumer also binds the exact Workplace');
 });
 
 // Substrate completeness: all Phase 3 entities exist.

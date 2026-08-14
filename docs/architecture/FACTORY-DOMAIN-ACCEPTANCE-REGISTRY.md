@@ -391,8 +391,9 @@ CheckProvider не может получить право двигать Flow т
 
 - **Тип:** sealed immutable evidence.
 - **Identity:** `candidateSetRef`; deterministic seal key
-  `(workplaceRef,producerExecutionRef,role)`.
-- **Lifetime:** создаётся один раз на attempt и никогда не изменяется.
+  `(workplaceRef,productionRevisionRef,role,subjectCandidateSetRef?)`.
+- **Lifetime:** одна immutable presentation точной Workplace production
+  revision; эквивалентные execution presentations сходятся в тот же set.
 - **Содержимое:** produced members, явно разрешённые carried-forward members,
   optional reviewer subject set и authority seal receipt.
 - **Человеческое поведение:** рабочий сдаёт ОТК конкретную партию, а не всё
@@ -402,7 +403,8 @@ CheckProvider не может получить право двигать Flow т
 
 - `REG-12-AC-01`: replay с тем же payload возвращает тот же ref; mismatch
   отклоняется.
-- `REG-12-AC-02`: produced member принадлежит текущему execution.
+- `REG-12-AC-02`: каждый member принадлежит точной sealed revision;
+  WorkerExecution, row alias и presentation origin — только audit provenance.
 - `REG-12-AC-03`: carried-forward member содержит разрешённый
   `sourceCandidateSetRef`; upstream input нельзя выдать за новый output.
 - `REG-12-AC-04`: reviewer CandidateSet обязан ссылаться на exact author subject.

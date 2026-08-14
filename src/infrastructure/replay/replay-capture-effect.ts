@@ -16,6 +16,8 @@ import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/wo
 import { SqliteReplayCapsuleRepository } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import { assertPersistedAcceptedCandidateAuthority } from '../workplace/sqlite-accepted-candidate-authority.js';
+import { acceptedCandidatePresentationRefs } from './replay-presentation-authority.js';
 
 export const REPLAY_CAPTURE_EFFECT_ID = 'replay-capture' as const;
 export const REPLAY_CAPTURE_EFFECT_VERSION = '1.0.0';
@@ -45,6 +47,7 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
     version: REPLAY_CAPTURE_EFFECT_VERSION,
     effectDigest: REPLAY_CAPTURE_EFFECT_DIGEST,
     run(input) {
+      assertPersistedAcceptedCandidateAuthority(db, input.authority);
       // ADR-053 B-4 — consume material coordinates from the authority only.
       const workplaceRef = serializeWorkplaceRef(input.authority.workplaceRef);
       const state = db.prepare(
@@ -104,31 +107,27 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
 
         for (const candidateSetRef of [...new Set(candidateRefs)]) {
           const candidate = db.prepare(
-            `SELECT cs.candidate_set_ref,
-                    (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
-                      WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref
-               FROM factory_candidate_sets cs
-              WHERE cs.candidate_set_ref=? AND cs.workplace_ref=?`,
-          ).get(candidateSetRef, workplaceRef) as {
-            candidate_set_ref: string;
-            presenter_ref: string;
-          } | undefined;
+            `SELECT candidate_set_ref FROM factory_candidate_sets
+              WHERE candidate_set_ref=? AND workplace_ref=?`,
+          ).get(candidateSetRef, workplaceRef) as { candidate_set_ref: string } | undefined;
           if (!candidate) {
             throw new Error(
               `REPLAY_CERTIFICATION_CANDIDATE_MISSING: ${candidateSetRef}`,
             );
           }
-          const worker = db.prepare(
-            `SELECT 1 AS present FROM worker_executions WHERE execution_id=?`,
-          ).get(candidate.presenter_ref);
-          // ProducerRef is wider than WorkerExecutionRef. Kernel presenters
-          // preserve provenance but have no executable recipe to certify.
-          if (!worker) continue;
-          captureReplayCapsuleFailClosed(db, () =>
-            repo.captureAcceptedExecution({
-              executionRef: candidate.presenter_ref,
-              candidateSetRef: candidate.candidate_set_ref,
-            }));
+          const presentationRefs = acceptedCandidatePresentationRefs(db, {
+            workplaceRef,
+            finalDecisionKey: input.authority.gateDecisionKey,
+            finalSubjectCandidateSetRef: decision.subject_candidate_set_ref,
+            candidateSetRef,
+          });
+          for (const presentationRef of presentationRefs) {
+            captureReplayCapsuleFailClosed(db, () =>
+              repo.captureAcceptedExecution({
+                executionRef: presentationRef,
+                candidateSetRef: candidate.candidate_set_ref,
+              }));
+          }
         }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);

@@ -1455,6 +1455,45 @@ END;
 -- is REQUIRED. The seal key is (workplace_ref, production_revision_ref, role).
 -- ADR-053 B-3: presenter_ref column DELETED. Execution provenance
 -- lives on the immutable revision (presenterRef), NOT on the CandidateSet.
+-- ADR-053 B-5: canonical product payloads are frozen before CandidateSet seal.
+-- Post-seal consumers read this store instead of execution-scoped ingress rows.
+CREATE TABLE IF NOT EXISTS factory_sealed_product_materials (
+  schema_id        TEXT NOT NULL,
+  content_digest   TEXT NOT NULL,
+  payload_snapshot TEXT NOT NULL,
+  payload_hash     TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (schema_id, content_digest)
+);
+CREATE TABLE IF NOT EXISTS factory_sealed_product_aliases (
+  product_ref      TEXT NOT NULL,
+  schema_id        TEXT NOT NULL,
+  content_digest   TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (product_ref, schema_id, content_digest),
+  FOREIGN KEY (schema_id, content_digest)
+    REFERENCES factory_sealed_product_materials(schema_id, content_digest)
+    ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_sealed_product_alias_identity
+  ON factory_sealed_product_aliases(product_ref, schema_id);
+CREATE TRIGGER IF NOT EXISTS trg_factory_sealed_product_materials_no_update
+BEFORE UPDATE ON factory_sealed_product_materials BEGIN
+  SELECT RAISE(ABORT, 'factory_sealed_product_materials are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_sealed_product_materials_no_delete
+BEFORE DELETE ON factory_sealed_product_materials BEGIN
+  SELECT RAISE(ABORT, 'factory_sealed_product_materials are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_sealed_product_aliases_no_update
+BEFORE UPDATE ON factory_sealed_product_aliases BEGIN
+  SELECT RAISE(ABORT, 'factory_sealed_product_aliases are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_sealed_product_aliases_no_delete
+BEFORE DELETE ON factory_sealed_product_aliases BEGIN
+  SELECT RAISE(ABORT, 'factory_sealed_product_aliases are immutable');
+END;
+
 CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
@@ -1562,6 +1601,14 @@ CREATE TABLE IF NOT EXISTS factory_gate_presentation_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_factory_gate_presentations_ref
   ON factory_gate_presentation_attempts(presentation_ref);
+CREATE TRIGGER IF NOT EXISTS trg_factory_gate_presentation_attempts_no_update
+BEFORE UPDATE ON factory_gate_presentation_attempts BEGIN
+  SELECT RAISE(ABORT, 'factory_gate_presentation_attempts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_gate_presentation_attempts_no_delete
+BEFORE DELETE ON factory_gate_presentation_attempts BEGIN
+  SELECT RAISE(ABORT, 'factory_gate_presentation_attempts are immutable');
+END;
 
 -- CheckReceipt — immutable evidence of one check run (REG-17).
 -- BEFORE UPDATE/DELETE triggers make receipts append-only (same pattern as

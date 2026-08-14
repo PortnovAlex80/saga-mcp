@@ -12,9 +12,9 @@ import { sha256Hex } from '../../shared/canonical-json.js';
  * product contract. The effect must NOT re-derive any of these from execution
  * IDs, task IDs, or "latest" lookups.
  *
- * Phase 6 ADDS this to PostAcceptanceEffectInput alongside the legacy fields
- * (migration). Phase 7 REMOVES presenter identity and the legacy fields,
- * leaving AcceptedCandidateAuthority as the sole input.
+ * Clean-break contract: AcceptedCandidateAuthority is the sole post-seal
+ * material input. Presenter/execution/task coordinates are provenance only
+ * and cannot be used to rediscover accepted material.
  */
 export interface AcceptedCandidateAuthority {
   readonly workplaceRef: WorkplaceRef;

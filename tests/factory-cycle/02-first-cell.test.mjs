@@ -33,7 +33,7 @@ import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
-import { assembleRevision, buildContribution } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
+import { assembleRevision, buildContribution, productRevisionMemberKey } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import {
   createStandardCheckProviderRegistry,
@@ -101,9 +101,9 @@ function sealAuthor(candidateSetRepo, ref, products) {
     workplaceRef: workplaceSerialized,
     contributorExecutionRef: EXECUTION_REF,
     sourceAdapter: 'typed-submission',
-    operations: products.map(p => ({
+    operations: products.map((p, ordinal) => ({
       op: 'put',
-      memberKey: `product/${p.schemaId}/${p.ref}`,
+      memberKey: productRevisionMemberKey(p.schemaId, ordinal),
       productRef: p.ref,
       contentDigest: p.digest,
       sourceAdapter: 'typed-submission',
@@ -196,6 +196,7 @@ test('цех: полный цикл todo/idle → done/terminal(accepted)', () =
     installationDigest: 'pkg-digest-test',
     checkParameters: { processRunId: 1, moduleRef: 'product-discovery@3.0.2' },
     environmentRef: null,
+    presentationRef: 'worker-execution:first-cell',
   });
   assert.equal(decision.verdict, 'accepted');
 
@@ -293,6 +294,7 @@ test('цех: GateDecision нельзя UPDATE (append-only, REG-18)', () => {
     assessmentCandidateSetRefs: [], checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: s.revision, gateLeaseRef: 'gl',
     installationDigest: 'pkg', checkParameters: {}, environmentRef: null,
+    presentationRef: 'worker-execution:first-cell',
   });
 
   // UPDATE должен быть заблокирован триггером.
@@ -365,6 +367,7 @@ test('цех: gate repair_required → repair_wait → requeue(author) → queue
     assessmentCandidateSetRefs: [], checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: s.revision, gateLeaseRef: 'gl-repair',
     installationDigest: 'pkg', checkParameters: {}, environmentRef: null,
+    presentationRef: 'worker-execution:first-cell-repair',
   });
   assert.equal(decision.verdict, 'repair_required');
 
@@ -398,6 +401,7 @@ test('цех: повторная запись той же GateDecision идем�
     assessmentCandidateSetRefs: [], checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: s.revision, gateLeaseRef: 'gl',
     installationDigest: 'pkg', checkParameters: {}, environmentRef: null,
+    presentationRef: 'worker-execution:first-cell-replay',
   });
   const first = drive();
   const second = drive();

@@ -50,6 +50,7 @@ import { assembleRevision, type WorkplaceProductionRevision } from '../../domain
 import { producedProductsToContribution } from '../production-source-adapters.js';
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
+import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 import type { SubmissionValidationReceiptProjection } from '../submission-validation-receipt-authority.js';
 
@@ -177,6 +178,8 @@ export interface ProductionCellProductReader {
     expectedSchemaRefs: readonly string[];
     requireTypedSubmission: boolean;
   }): readonly ProductRef[];
+  /** Resolve one exact pre-seal ProductRef through its ingress adapter. */
+  readContributionProductPayload(productRef: ProductRef): unknown;
 }
 
 export interface ProductionCellNodeExecutorOptions {
@@ -195,6 +198,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly obligationIntegrator: TransitionObligationIntegrator;
   /** ADR-053 B-1 — MANDATORY. CandidateSet seals append the revision and seal the set in one transaction; a set can never reference an absent revision. */
   readonly revisionRepo: SqliteWorkplaceProductionRevisionRepository;
+  /** ADR-053 B-5 — immutable canonical product bodies sealed with the revision. */
+  readonly sealedProductMaterials: SqliteSealedProductMaterialRepository;
   /** ADR-053 C1 — MANDATORY. The durable current accepted-author authority pointer; read by acceptedAuthorCandidate instead of hash-order selection. */
   readonly authorityHead: SqliteAcceptedAuthorityHeadRepository;
   readonly now?: () => Date;
@@ -1170,6 +1175,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // persisted. revisionRepo is mandatory; if either write fails, neither
     // commits (all-or-nothing).
     const sealed = this.opts.revisionRepo.transaction(() => {
+      // Freeze ingress payloads atomically with revision/CandidateSet seal.
+      for (const productRef of products) {
+        this.opts.sealedProductMaterials.seal({
+          productRef,
+          payload: this.opts.productReader.readContributionProductPayload(productRef),
+        });
+      }
       // ADR-053 B-2 — partition convergence: if an equivalent revision (same
       // semanticDigest) already exists for this workplace, reuse its revisionRef
       // so the CandidateSet seal key (workplace + revisionRef + role) converges
@@ -1326,9 +1338,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     workplaceRef: WorkplaceRef,
     gate: ProductionCellDefinition['authorGate'],
     subjectCandidateSetRef: string,
-    assessmentCandidateSetRefs: readonly string[] = [],
-    upstreamProductBinding: Readonly<Record<string, unknown>> = {},
-    presentationRef?: string,
+    assessmentCandidateSetRefs: readonly string[],
+    upstreamProductBinding: Readonly<Record<string, unknown>>,
+    presentationRef: string,
   ) {
     return this.opts.gateRepo.transaction(() => {
       const decision = driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {

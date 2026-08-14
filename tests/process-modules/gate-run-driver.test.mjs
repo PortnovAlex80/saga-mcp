@@ -64,6 +64,7 @@ test('driveGateRun: all passed → verdict accepted, decision recorded', () => {
     installationDigest: hash('install'),
     checkParameters: { srsArtifactRef: 'artifact:42' },
     environmentRef: null,
+    presentationRef: 'worker-execution:gate-test',
   });
 
   assert.equal(result.decision.verdict, 'accepted');
@@ -109,6 +110,7 @@ test('driveGateRun: check failed → verdict repair_required', () => {
     installationDigest: hash('install'),
     checkParameters: { srsArtifactRef: 'artifact:42' },
     environmentRef: null,
+    presentationRef: 'worker-execution:gate-test',
   });
 
   assert.equal(result.decision.verdict, 'repair_required');
@@ -136,6 +138,7 @@ test('driveGateRun: unknown outcome + fail-closed → repair_required', () => {
     installationDigest: hash('install'),
     checkParameters: { srsArtifactRef: 'artifact:42' },
     environmentRef: null,
+    presentationRef: 'worker-execution:gate-test',
   });
 
   assert.equal(result.decision.verdict, 'repair_required',
@@ -160,6 +163,7 @@ test('driveGateRun: provider not registered → CHECK_PROVIDER_MISSING', () => {
       installationDigest: hash('install'),
       checkParameters: {},
       environmentRef: null,
+      presentationRef: 'worker-execution:gate-test',
     }),
     /CHECK_PROVIDER_MISSING/,
   );
@@ -175,6 +179,7 @@ test('ADR-053 C9: GateRun identity binds installationDigest + expectedWorkplaceR
   const base = {
     workplaceRef: ref, subjectCandidateSetRef: 'cs-c9', checkPlan, gatePhase: 'author',
     gateLeaseRef: 'lease-c9', checkParameters: {}, environmentRef: null,
+    presentationRef: 'worker-execution:gate-c9',
   };
   const a = driveGateRun(gateRepo, providers, { ...base, expectedWorkplaceRevision: 1, installationDigest: hash('install-A') });
   // A different installed package (different installationDigest) must NOT reuse
@@ -196,7 +201,8 @@ test('ADR-053 C13: decisionDigest covers the full canonical body (drift → diff
   const providers = { resolve: () => stubProvider('passed') };
   const base = {
     workplaceRef: ref, checkPlan, gatePhase: 'author', gateLeaseRef: 'lease-c13',
-    checkParameters: {}, environmentRef: null, expectedWorkplaceRevision: 1, installationDigest: hash('i-A'),
+    checkParameters: {}, environmentRef: null, presentationRef: 'worker-execution:gate-c13',
+    expectedWorkplaceRevision: 1, installationDigest: hash('i-A'),
   };
   const a = driveGateRun(gateRepo, providers, { ...base, subjectCandidateSetRef: 'cs-x' });
   const b = driveGateRun(gateRepo, providers, { ...base, subjectCandidateSetRef: 'cs-y' });
@@ -225,7 +231,7 @@ test('ADR-053 C12: replaying a terminal GateRun does NOT re-run providers (one-s
   const drive = () => driveGateRun(gateRepo, providers, {
     workplaceRef: ref, subjectCandidateSetRef: 'cs-c12', checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-c12', installationDigest: hash('i-c12'),
-    checkParameters: {}, environmentRef: null,
+    checkParameters: {}, environmentRef: null, presentationRef: 'worker-execution:gate-c12',
   });
   const first = drive();
   assert.equal(runCount, 1, 'provider runs once on the initial GateRun');
@@ -260,7 +266,7 @@ test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt re
   const result = driveGateRun(gateRepo, providers, {
     workplaceRef: ref, subjectCandidateSetRef: 'cs-c11', checkPlan, gatePhase: 'author',
     expectedWorkplaceRevision: 1, gateLeaseRef: 'lease-c11', installationDigest: hash('i'),
-    checkParameters: {}, environmentRef: null,
+    checkParameters: {}, environmentRef: null, presentationRef: 'worker-execution:gate-c11',
   });
   assert.equal(result.receipts.length, 2);
   assert.notEqual(result.receipts[0].checkReceiptRef, result.receipts[1].checkReceiptRef,

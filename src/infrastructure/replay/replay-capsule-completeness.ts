@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { ReplayCapsuleRecord } from '../../replay/replay-capsule.js';
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
+import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
 
 interface CandidateMemberRow {
   product_schema: string;
@@ -29,16 +30,11 @@ function readPersistedProduct(
   db: Database.Database,
   member: CandidateMemberRow,
 ): unknown {
-  const row = db.prepare(
-    `SELECT payload_snapshot
-       FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(member.product_schema, member.product_ref, member.product_digest) as {
-    payload_snapshot: string;
-  } | undefined;
-  if (!row) throw new Error(`REPLAY_CAPTURE_PRODUCT_NOT_FOUND: ${member.product_ref}`);
-  return JSON.parse(row.payload_snapshot) as unknown;
+  return new SqliteSealedProductMaterialRepository(db).readExact({
+    schemaId: member.product_schema,
+    ref: member.product_ref,
+    digest: member.product_digest,
+  });
 }
 
 /**
@@ -68,15 +64,10 @@ export function assertReplayCapsuleComplete(
   const expectedTraceIds = new Set<number>();
 
   for (const member of members) {
-    if (member.product_ref.startsWith('managed-node-submission:')) {
-      expectedTyped.set(`${member.product_schema}:${member.product_digest}`, member);
-      continue;
-    }
     const product = readPersistedProduct(db, member);
     if (!isWorkplaceProductionSnapshot(product)) {
-      throw new Error(
-        `REPLAY_CAPTURE_UNSUPPORTED_CANDIDATE_PRODUCT: ${member.product_ref}`,
-      );
+      expectedTyped.set(`${member.product_schema}:${member.product_digest}`, member);
+      continue;
     }
     for (const artifact of product.artifacts) expectedArtifactIds.add(artifact.artifactId);
     for (const trace of product.traces) expectedTraceIds.add(trace.traceId);

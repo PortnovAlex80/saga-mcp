@@ -1,8 +1,9 @@
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
-import type { PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
+import type { AcceptedCandidateAuthority, PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
 import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-modules/shared/workplace-production-snapshot.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import { FORMALIZATION_RECONCILIATION_SCHEMA } from '../domain/formalization-schemas.js';
+import type { ProductRef } from '../../../process-modules/domain/spi/production-envelope.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
   'formalization.accept-exact-products.v1';
@@ -19,10 +20,6 @@ interface ArtifactRow {
   content_hash: string | null;
   accepted_hash: string | null;
   drift_state: string;
-}
-
-interface ProductSnapshotRow {
-  payload_snapshot: string;
 }
 
 interface SnapshotArtifact {
@@ -53,42 +50,6 @@ function extractSnapshotArtifacts(
 }
 
 /**
- * Resolve accepted material by schema and content digest. ProductRef.ref is a
- * provenance locator and must never select effect semantics. Duplicate aliases
- * are legal only when they carry the byte-identical immutable payload.
- */
-function resolveAcceptedPayload(
-  db: SqlDatabasePort,
-  schemaId: string,
-  digest: string,
-): unknown {
-  const rows = [
-    ...(tableExists(db, 'factory_managed_node_submissions') ? db.prepare(
-      `SELECT payload_snapshot FROM factory_managed_node_submissions
-        WHERE schema_version=? AND content_hash=?`,
-    ).all(schemaId, digest) as ProductSnapshotRow[] : []),
-    ...(tableExists(db, 'factory_process_products') ? db.prepare(
-      `SELECT payload_snapshot FROM factory_process_products
-        WHERE schema_id=? AND product_hash=?`,
-    ).all(schemaId, digest) as ProductSnapshotRow[] : []),
-  ];
-  const payloads = [...new Set(rows.map(row => row.payload_snapshot))];
-  if (payloads.length === 0) {
-    throw new Error(`FORMALIZATION_ACCEPTANCE_PRODUCT_NOT_FOUND: ${schemaId}/${digest}`);
-  }
-  if (payloads.length !== 1) {
-    throw new Error(`FORMALIZATION_ACCEPTANCE_PRODUCT_AMBIGUOUS: ${schemaId}/${digest}`);
-  }
-  return JSON.parse(payloads[0]!);
-}
-
-function tableExists(db: SqlDatabasePort, tableName: string): boolean {
-  return db.prepare(
-    `SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`,
-  ).get(tableName) !== undefined;
-}
-
-/**
  * Projection effect after an authoritative GateDecision=accepted. The exact
  * schema/content material comes from AcceptedCandidateAuthority. Typed reports
  * have no artifacts to accept; Workplace snapshots carry exact artifact ids
@@ -96,23 +57,24 @@ function tableExists(db: SqlDatabasePort, tableName: string): boolean {
  */
 export function createFormalizationAcceptProductsEffect(
   db: SqlDatabasePort,
+  authority: {
+    assertPersisted(value: AcceptedCandidateAuthority): void;
+    readSealedProduct(ref: ProductRef): unknown;
+  },
 ): PostAcceptanceEffect {
   return {
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     version: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
     effectDigest: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST,
     run(input) {
+      authority.assertPersisted(input.authority);
       const produced = input.authority.acceptedProductRefs.flatMap(product => {
         if (!product.digest) {
           throw new Error(
             `FORMALIZATION_ACCEPTANCE_HASH_MISSING: ${product.schemaId}/${product.ref}`,
           );
         }
-        const snapshot = resolveAcceptedPayload(
-          db,
-          product.schemaId,
-          product.digest,
-        ) as SnapshotPayload;
+        const snapshot = authority.readSealedProduct(product) as SnapshotPayload;
         if (product.schemaId === FORMALIZATION_RECONCILIATION_SCHEMA) {
           return [];
         }

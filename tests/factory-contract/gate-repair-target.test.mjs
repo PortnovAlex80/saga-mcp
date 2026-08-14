@@ -18,6 +18,7 @@ function drive(outcomes, checks) {
   const decisions = [];
   const repo = {
     createGateRun() {},
+    recordGatePresentation() {},
     setGateRunState() {},
     recordCheckReceipt(receipt) { receipts.push(receipt); return receipt; },
     recordDecision(decision) { decisions.push(decision); return { decision, replayed: false }; },
@@ -54,6 +55,7 @@ function drive(outcomes, checks) {
     installationDigest: 'install:1',
     checkParameters: {},
     environmentRef: null,
+    presentationRef: 'worker-execution:gate-repair-target',
   }).decision;
 }
 
@@ -140,6 +142,11 @@ function reviewOutcome(payload) {
   // tasks table; an empty table means "no scopes declared" (filter no-op).
   db.exec(`CREATE TABLE tasks (
     id INTEGER PRIMARY KEY, workplace_ref TEXT, metadata TEXT
+  )`);
+  db.exec(`CREATE TABLE factory_accepted_authority_head (
+    workplace_ref TEXT PRIMARY KEY,
+    accepted_author_candidate_set_ref TEXT NOT NULL,
+    accepted_author_task_id TEXT
   )`);
   db.prepare(`INSERT INTO factory_managed_node_submissions
     (id,schema_version,payload_snapshot,content_hash) VALUES (1,?,?,?)`).run(

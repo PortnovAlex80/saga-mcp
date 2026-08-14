@@ -10,6 +10,7 @@ import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteProductionCellIntegration } from '../../dist/infrastructure/workplace/sqlite-production-cell-integration.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { SqliteManagedNodeSubmissionRepository } from '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js';
+import { SqliteSealedProductMaterialRepository } from '../../dist/infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 function git(root, ...args) {
@@ -77,6 +78,14 @@ test('integration consumes the exact current CandidateSet even when its managed 
        VALUES (91,11,'old@1','cell',1,33,'old-author',
                'factory.source-change-candidate.v1',?,?)`,
     ).run(JSON.stringify(sourcePayload), sourceDigest);
+    new SqliteSealedProductMaterialRepository(db).seal({
+      productRef: {
+        schemaId: 'factory.source-change-candidate.v1',
+        ref: 'managed-node-submission:91',
+        digest: sourceDigest,
+      },
+      payload: sourcePayload,
+    });
 
     const authorSet = 'candidate-set/current-author';
     db.prepare(
@@ -104,6 +113,14 @@ test('integration consumes the exact current CandidateSet even when its managed 
        VALUES (92,22,'module@1','cell',2,45,'reviewer',
                'factory.development-review-verdict.v1',?,?)`,
     ).run(JSON.stringify(reviewPayload), reviewDigest);
+    new SqliteSealedProductMaterialRepository(db).seal({
+      productRef: {
+        schemaId: 'factory.development-review-verdict.v1',
+        ref: 'managed-node-submission:92',
+        digest: reviewDigest,
+      },
+      payload: reviewPayload,
+    });
     const reviewerSet = 'candidate-set/current-reviewer';
     db.prepare(
       `INSERT INTO factory_candidate_sets
@@ -155,6 +172,7 @@ test('integration consumes the exact current CandidateSet even when its managed 
         workplaceRef: { processRunId: 22, moduleRef: 'module@1', productionCellId: 'cell', workKey: 'item' },
         processRunId: 22,
         candidateSetRef: authorSet,
+        gateDecisionKey: 'decision:final',
         expectedProductSchema: 'factory.source-change-candidate.v1',
       });
     } catch (error) {
@@ -246,6 +264,7 @@ test('integration fails closed when the accepted-authority head has no task iden
       workplaceRef: { processRunId: 22, moduleRef: 'module@1', productionCellId: 'cell', workKey: 'item-failclosed' },
       processRunId: 22,
       candidateSetRef: authorSet,
+      gateDecisionKey: 'decision:missing-authority-head',
       expectedProductSchema: 'factory.source-change-candidate.v1',
     };
 

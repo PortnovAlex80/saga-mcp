@@ -25,6 +25,7 @@ import {
   isWorkplaceProductionSnapshot,
   workplaceProductionSemanticDigest,
 } from '../../process-modules/shared/workplace-production-snapshot.js';
+import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
 
 export { computeReplayKey };
 export type { ReplayKeyMaterial };
@@ -43,15 +44,13 @@ export function resolveStableProductDigest(
   ref: string,
   digest: string,
 ): string {
-  if (ref.startsWith('managed-node-submission:')) return digest;
-  const row = db.prepare(
-    `SELECT payload_snapshot FROM factory_process_products
-      WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
-  ).get(schemaId, ref, digest) as { payload_snapshot: string } | undefined;
-  if (!row) return digest;
   let payload: unknown;
   try {
-    payload = JSON.parse(row.payload_snapshot);
+    payload = new SqliteSealedProductMaterialRepository(db).readExact({
+      schemaId,
+      ref,
+      digest,
+    });
   } catch {
     return digest;
   }

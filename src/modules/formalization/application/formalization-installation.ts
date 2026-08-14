@@ -87,7 +87,7 @@ import {
   type SolutionContractBundle,
 } from '../domain/formalization-schemas.js';
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../domain/formalization-schemas.js';
-import { assembleRevision, buildContribution, type WorkplaceProductionRevision } from '../../../process-modules/domain/workplace/workplace-production-revision.js';
+import { assembleRevision, buildContribution, productRevisionMemberKey, type WorkplaceProductionRevision } from '../../../process-modules/domain/workplace/workplace-production-revision.js';
 
 export const FORMALIZATION_MODULE_KEY =
   `${FORMALIZATION_PROCESS_MODULE_REF.name}@${FORMALIZATION_PROCESS_MODULE_REF.version}`;
@@ -240,6 +240,7 @@ export interface GateRunPort {
     readonly expectedWorkplaceRevision: number;
     readonly gateLeaseRef: string;
   }): unknown;
+  recordGatePresentation(gateRunRef: string, presentationRef: string): void;
   setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
   recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
   recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
@@ -1091,7 +1092,7 @@ function sealArchitectureCandidateSet(
         schemaOrdinals.set(m.productRef.schemaId, ordinal + 1);
         return {
           op: 'put' as const,
-          memberKey: `product/${m.productRef.schemaId}/${ordinal}`,
+          memberKey: productRevisionMemberKey(m.productRef.schemaId, ordinal),
           productRef: m.productRef.ref,
           contentDigest: m.productRef.digest,
           sourceAdapter: 'managed-artifact' as const,
@@ -1188,6 +1189,7 @@ function runArchitectureGate(
       installationDigest,
       checkParameters: { srsArtifactRef },
       environmentRef: null,
+      presentationRef: writes.receipt.executionId ?? `kernel-presentation:${candidateSetRef}`,
     },
   );
   return {

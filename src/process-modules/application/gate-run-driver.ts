@@ -26,7 +26,7 @@ export interface GateRunDriverRepo {
     readonly expectedWorkplaceRevision: number;
     readonly gateLeaseRef: string;
   }): unknown;
-  recordGatePresentation?(gateRunRef: string, presentationRef: string): void;
+  recordGatePresentation(gateRunRef: string, presentationRef: string): void;
   setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
   recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
   recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
@@ -55,7 +55,7 @@ export interface DriveGateRunInput {
   readonly checkParameters: Readonly<Record<string, unknown>>;
   readonly environmentRef: string | null;
   /** Audit-only current presentation; excluded from GateRun identity. */
-  readonly presentationRef?: string;
+  readonly presentationRef: string;
 }
 
 export interface DriveGateRunResult {
@@ -97,9 +97,7 @@ export function driveGateRun(
     expectedWorkplaceRevision: input.expectedWorkplaceRevision,
     gateLeaseRef: input.gateLeaseRef,
   });
-  if (input.presentationRef) {
-    repo.recordGatePresentation?.(gateRunRef, input.presentationRef);
-  }
+  repo.recordGatePresentation(gateRunRef, input.presentationRef);
 
   // ADR-053 C12 — a GateRun is a ONE-SHOT immutable inspection. If a terminal
   // decision already exists for this exact identity, return the persisted

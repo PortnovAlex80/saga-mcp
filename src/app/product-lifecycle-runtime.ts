@@ -78,6 +78,7 @@ import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-re
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
 import { SqliteCellFinalAcceptance } from '../infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
+import { SqliteSealedProductMaterialRepository } from '../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteAuthorCandidateCarryForward } from '../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import { SqliteExternalEffectLedger } from '../process-modules/persistence/sqlite-external-effect-ledger.js';
 import {
@@ -184,6 +185,7 @@ export function createProductLifecycleRuntime(
     processProductRepoV2,
   );
   const workplaceProductionResolver = new SqliteWorkplaceProductionResolver(db);
+  const sealedProductMaterials = new SqliteSealedProductMaterialRepository(db);
 
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
@@ -611,6 +613,31 @@ export function createProductLifecycleRuntime(
             }).productRef;
           });
         },
+        readContributionProductPayload: (productRef) => {
+          if (productRef.ref.startsWith('managed-node-submission:')) {
+            const id = Number(productRef.ref.slice('managed-node-submission:'.length));
+            if (!Number.isSafeInteger(id) || id < 1) {
+              throw new Error(`PRODUCT_INGRESS_REF_INVALID: ${productRef.ref}`);
+            }
+            const row = db.prepare(
+              `SELECT payload_snapshot FROM factory_managed_node_submissions
+                WHERE id=? AND schema_version=? AND content_hash=?`,
+            ).get(id, productRef.schemaId, productRef.digest) as {
+              payload_snapshot: string;
+            } | undefined;
+            if (!row) throw new Error(`PRODUCT_INGRESS_NOT_FOUND: ${productRef.ref}`);
+            const payload = JSON.parse(row.payload_snapshot) as unknown;
+            if (sha256Hex(payload) !== productRef.digest) {
+              throw new Error(`PRODUCT_INGRESS_DIGEST_MISMATCH: ${productRef.ref}`);
+            }
+            return payload;
+          }
+          const product = workplaceProductPort.readProduct(productRef);
+          if (!product || product.contentHash !== productRef.digest) {
+            throw new Error(`PRODUCT_INGRESS_NOT_FOUND: ${productRef.ref}`);
+          }
+          return product.content;
+        },
       } as ProductionCellProductReader,
       resolveInstallationDigest: moduleName =>
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
@@ -623,6 +650,7 @@ export function createProductLifecycleRuntime(
       // ADR-053 Phase 5 — revision repository so CandidateSet seals carry a
       // productionRevisionRef (the immutable material authority).
       revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
+      sealedProductMaterials,
       // ADR-053 Phase 8 — obligation integrator for durable transition handoffs.
       obligationIntegrator,
     })],

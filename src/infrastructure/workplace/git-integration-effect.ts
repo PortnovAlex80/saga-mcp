@@ -26,6 +26,7 @@ export function createGitIntegrationEffect(
     run(input) {
       // ADR-053 B-4 — material coordinates come ONLY from the authority.
       const { authority } = input;
+      integration.assertAuthority(authority);
       const processRunId = authority.workplaceRef.processRunId;
       const moduleSeparator = authority.workplaceRef.moduleRef.lastIndexOf('@');
       if (moduleSeparator <= 0) throw new Error('AUTHORITY_MODULE_REF_INVALID');
@@ -39,6 +40,7 @@ export function createGitIntegrationEffect(
         workplaceRef: serializeWorkplaceRef(authority.workplaceRef),
         candidateSetRef: authority.candidateSetRef,
         productionRevisionRef: authority.productionRevisionRef,
+        gateDecisionKey: authority.gateDecisionKey,
         expectedProductSchema,
       } as const;
       const actionKey = sha256Hex(request);
@@ -68,6 +70,7 @@ export function createGitIntegrationEffect(
           workplaceRef: authority.workplaceRef,
           processRunId,
           candidateSetRef: authority.candidateSetRef,
+          gateDecisionKey: authority.gateDecisionKey,
           expectedProductSchema,
         });
         action = ledger.recordObservation({ claim: observationClaim.claim, observation });
@@ -96,6 +99,7 @@ export function createGitIntegrationEffect(
           workplaceRef: authority.workplaceRef,
           processRunId,
           candidateSetRef: authority.candidateSetRef,
+          gateDecisionKey: authority.gateDecisionKey,
           expectedProductSchema,
         });
         if (result.outcome === 'repair_required') {

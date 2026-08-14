@@ -129,6 +129,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     candidateSetRepo,
     gateRepo,
     revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
+    sealedProductMaterials: { seal() {}, readExact() { throw new Error('not used'); } },
     obligationIntegrator,
     persistence,
     postAcceptanceEffects: {
@@ -144,7 +145,10 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     },
     finalAcceptance: new SqliteCellFinalAcceptance(db),
     authorityHead: new SqliteAcceptedAuthorityHeadRepository(db),
-    productReader: { readContributionProducts: ({ contributorRef }) => products.get(contributorRef) ?? [] },
+    productReader: {
+      readContributionProducts: ({ contributorRef }) => products.get(contributorRef) ?? [],
+      readContributionProductPayload: () => null,
+    },
     checkProviders: {
       resolve(providerId) {
         return providerId === PROVIDER
