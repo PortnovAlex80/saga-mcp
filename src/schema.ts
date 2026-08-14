@@ -2345,6 +2345,45 @@ CREATE TRIGGER IF NOT EXISTS trg_operator_recovery_consumption_no_delete
   BEFORE DELETE ON factory_operator_recovery_consumptions
   BEGIN SELECT RAISE(ABORT, 'operator recovery consumptions are immutable'); END;
 
+-- Worker-loss resume: the operator answer to a repair-budget pause caused by
+-- supervised worker process loss (host restart, orchestrator kill). Unlike
+-- the submission-preflight class, no semantic rejection exists to key on —
+-- the authorization binds the LOST execution identity instead.
+CREATE TABLE IF NOT EXISTS factory_worker_loss_resume_authorizations (
+  authorization_ref       TEXT PRIMARY KEY,
+  lifecycle_run_id        INTEGER NOT NULL,
+  stage_run_id            INTEGER NOT NULL,
+  process_run_id          INTEGER NOT NULL,
+  workplace_ref           TEXT NOT NULL,
+  expected_revision       INTEGER NOT NULL,
+  task_id                 INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  repair_role             TEXT NOT NULL CHECK (repair_role IN ('author','reviewer')),
+  lost_execution_ref      TEXT NOT NULL,
+  observed_candidate_sets INTEGER NOT NULL DEFAULT 0,
+  observed_gate_decisions INTEGER NOT NULL DEFAULT 0,
+  actor_id                TEXT NOT NULL,
+  reason                  TEXT NOT NULL,
+  authorized_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS factory_worker_loss_resume_consumptions (
+  authorization_ref       TEXT PRIMARY KEY
+                            REFERENCES factory_worker_loss_resume_authorizations(authorization_ref),
+  resulting_revision      INTEGER NOT NULL,
+  consumed_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TRIGGER IF NOT EXISTS trg_worker_loss_resume_auth_no_update
+  BEFORE UPDATE ON factory_worker_loss_resume_authorizations
+  BEGIN SELECT RAISE(ABORT, 'worker loss resume authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_worker_loss_resume_auth_no_delete
+  BEFORE DELETE ON factory_worker_loss_resume_authorizations
+  BEGIN SELECT RAISE(ABORT, 'worker loss resume authorizations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_worker_loss_resume_consumption_no_update
+  BEFORE UPDATE ON factory_worker_loss_resume_consumptions
+  BEGIN SELECT RAISE(ABORT, 'worker loss resume consumptions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_worker_loss_resume_consumption_no_delete
+  BEFORE DELETE ON factory_worker_loss_resume_consumptions
+  BEGIN SELECT RAISE(ABORT, 'worker loss resume consumptions are immutable'); END;
+
 -- A crashed/stopped runtime host may leave its launch row active after the
 -- worker watchman has already proved the exact child process dead and released
 -- its card. Closing that controller fence is a separate, immutable operator

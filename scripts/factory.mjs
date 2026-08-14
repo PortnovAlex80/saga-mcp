@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node scripts/factory.mjs start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]
- *   node scripts/factory.mjs resume <db-path> [--requeue-paused|--recover-failed-gate]
+ *   node scripts/factory.mjs resume <db-path> [--requeue-paused|--recover-failed-gate|--resume-worker-loss]
  *
  * `start` provisions a sandbox (project + epic + repo + order), creates a
  * `mode:'new'` launch, and spawns orchestrate-cli.
@@ -408,7 +408,11 @@ async function ensurePausedRecoveryFeedback(db, lifecycleRunId) {
     metadata.process_node_id,
   );
   if (!policy || policy.mode !== 'required') {
-    die(`resume: paused node ${metadata.process_node_id} has no required submission validator`);
+    die(
+      `resume: paused node ${metadata.process_node_id} has no required submission validator. `
+      + 'This pause is not a submission-preflight incident; if it was caused by '
+      + 'supervised worker loss, use --resume-worker-loss instead.',
+    );
   }
   const validator = getSubmissionValidatorRegistry()?.resolve(policy.validatorId);
   if (!validator) die(`resume: validator ${policy.validatorId} is unavailable`);
@@ -453,6 +457,7 @@ if (command === 'resume') {
       && option !== '--recover-failed-gate'
       && option !== '--recover-missing-product'
       && option !== '--recover-orphaned-launch'
+      && option !== '--resume-worker-loss'
     ) {
       die(`resume: unsupported option '${option}'`);
     }
@@ -462,6 +467,7 @@ if (command === 'resume') {
     '--recover-failed-gate',
     '--recover-missing-product',
     '--recover-orphaned-launch',
+    '--resume-worker-loss',
   ].filter(option => resumeOptions.has(option)).length > 1) {
     die('resume: recovery options are mutually exclusive');
   }
@@ -472,6 +478,7 @@ if (command === 'resume') {
     recoverOrphanedFactoryLaunch,
     resolveFactoryResumeTarget,
     resumePausedSubmissionWorkplace,
+    resumeWorkerLossWorkplace,
   } = await import('../dist/app/factory-start.js');
   const { SCHEMA_SQL } = await import('../dist/schema.js');
   const { requestFactoryLaunch } = await import('../dist/infrastructure/factory/sqlite-factory-launch-repository.js');
@@ -545,6 +552,18 @@ if (command === 'resume') {
         `[factory] workplace recovery=${recovery.authorizationRef} `
         + `rejection=${recovery.rejectionRef} revision=${recovery.resultingRevision} `
         + `replayed=${recovery.replayed}\n`,
+      );
+    }
+    if (resumeOptions.has('--resume-worker-loss')) {
+      const recovery = resumeWorkerLossWorkplace(db, {
+        lifecycleRunId: target.lifecycleRunId,
+        actorId: 'factory-resume-operator',
+        reason: 'resume repair-budget pause after supervised worker loss',
+      });
+      process.stdout.write(
+        `[factory] worker-loss recovery=${recovery.authorizationRef} `
+        + `lost-execution=${recovery.lostExecutionRef} task=${recovery.taskId} `
+        + `revision=${recovery.resultingRevision} replayed=${recovery.replayed}\n`,
       );
     }
     const activeLaunch = db.prepare(

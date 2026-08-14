@@ -45,7 +45,9 @@ export class FactoryStartError extends Error {
       | 'FACTORY_MISSING_PRODUCT_NOT_UNIQUE'
       | 'FACTORY_MISSING_PRODUCT_UNSAFE'
       | 'FACTORY_ORPHANED_LAUNCH_NOT_UNIQUE'
-      | 'FACTORY_ORPHANED_LAUNCH_UNSAFE',
+      | 'FACTORY_ORPHANED_LAUNCH_UNSAFE'
+      | 'FACTORY_WORKER_LOSS_NOT_UNIQUE'
+      | 'FACTORY_WORKER_LOSS_UNSAFE',
     message: string,
   ) {
     super(message);
@@ -206,6 +208,15 @@ export function resolveFactoryResumeTarget(
 export interface PausedWorkplaceRecoveryResult {
   readonly authorizationRef: string;
   readonly rejectionRef: string;
+  readonly workplaceRef: string;
+  readonly taskId: number;
+  readonly resultingRevision: number;
+  readonly replayed: boolean;
+}
+
+export interface WorkerLossResumeResult {
+  readonly authorizationRef: string;
+  readonly lostExecutionRef: string;
   readonly workplaceRef: string;
   readonly taskId: number;
   readonly resultingRevision: number;
@@ -1168,6 +1179,197 @@ export function resumePausedSubmissionWorkplace(
     return {
       authorizationRef,
       rejectionRef,
+      workplaceRef: candidate.workplace_ref,
+      taskId: candidate.task_id,
+      resultingRevision: resumed.workplace.revision,
+      replayed: false,
+    };
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+    throw error;
+  }
+}
+
+/**
+ * Operator answer to a repair-budget pause whose attempts were all SUPERVISED
+ * WORKER LOSSES (host restart, orchestrator kill) rather than semantic
+ * failures. The submission-preflight class keys its authorization on a durable
+ * rejection receipt; this class has no rejection to manufacture — the worker
+ * never produced anything rejectable. The authorization therefore binds the
+ * LOST execution identity, and the only state change is the legal reducer
+ * transition `resumeFromHuman` (paused → queued, revision +1).
+ *
+ * Unlike the preflight class, prior CandidateSets/GateDecisions are NOT
+ * refused: earlier accepted rounds are legitimate workplace history, and this
+ * resume adds no semantic verdict of its own. Their counts are recorded on
+ * the immutable authorization for audit.
+ */
+export function resumeWorkerLossWorkplace(
+  db: Database.Database,
+  input: {
+    readonly lifecycleRunId: number;
+    readonly actorId: string;
+    readonly reason: string;
+  },
+): WorkerLossResumeResult {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    // Idempotent replay after a host crash between committed resume and
+    // launch creation: return the already-consumed directive.
+    const prior = db.prepare(
+      `SELECT a.authorization_ref, a.lost_execution_ref, a.workplace_ref,
+              a.task_id, c.resulting_revision, w.loop_state
+         FROM factory_worker_loss_resume_authorizations a
+         JOIN factory_worker_loss_resume_consumptions c
+           ON c.authorization_ref=a.authorization_ref
+         JOIN factory_workplaces w ON w.workplace_ref=a.workplace_ref
+        WHERE a.lifecycle_run_id=? AND a.actor_id=? AND a.reason=?
+        ORDER BY a.authorized_at DESC LIMIT 1`,
+    ).get(input.lifecycleRunId, input.actorId, input.reason) as {
+      authorization_ref: string;
+      lost_execution_ref: string;
+      workplace_ref: string;
+      task_id: number;
+      resulting_revision: number;
+      loop_state: string;
+    } | undefined;
+    if (prior && prior.loop_state === 'queued') {
+      db.exec('COMMIT');
+      return {
+        authorizationRef: prior.authorization_ref,
+        lostExecutionRef: prior.lost_execution_ref,
+        workplaceRef: prior.workplace_ref,
+        taskId: prior.task_id,
+        resultingRevision: prior.resulting_revision,
+        replayed: true,
+      };
+    }
+
+    const candidates = db.prepare(
+      `SELECT lr.id AS lifecycle_run_id, sr.id AS stage_run_id,
+              sr.process_run_id, w.workplace_ref, w.revision,
+              w.next_role, w.active_reservation_ref, w.active_gate_ref,
+              w.active_recovery_case_ref, t.id AS task_id, t.assigned_to,
+              t.current_execution_id
+         FROM factory_lifecycle_runs lr
+         JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
+         JOIN factory_workplaces w ON w.process_run_id=sr.process_run_id
+         JOIN tasks t ON t.workplace_ref=w.workplace_ref
+        WHERE lr.id=? AND lr.status='paused' AND sr.status='paused'
+          AND w.kanban_phase='blocked' AND w.loop_state='paused'`,
+    ).all(input.lifecycleRunId) as Array<{
+      lifecycle_run_id: number;
+      stage_run_id: number;
+      process_run_id: number;
+      workplace_ref: string;
+      revision: number;
+      next_role: 'author' | 'reviewer';
+      active_reservation_ref: string | null;
+      active_gate_ref: string | null;
+      active_recovery_case_ref: string | null;
+      task_id: number;
+      assigned_to: string | null;
+      current_execution_id: string | null;
+    }>;
+    if (candidates.length !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_WORKER_LOSS_NOT_UNIQUE',
+        `lifecycle ${input.lifecycleRunId} resolves to ${candidates.length} blocked/paused workplaces; expected exactly one`,
+      );
+    }
+    const candidate = candidates[0]!;
+    if (
+      candidate.next_role !== 'author'
+      || candidate.active_reservation_ref
+      || candidate.active_gate_ref
+      || candidate.active_recovery_case_ref
+      || candidate.assigned_to
+      || candidate.current_execution_id
+    ) {
+      throw new FactoryStartError(
+        'FACTORY_WORKER_LOSS_UNSAFE',
+        `workplace ${candidate.workplace_ref} still has an actor/fence or is not an author repair`,
+      );
+    }
+    // Class proof: the newest execution must be a terminal LOSS, no execution
+    // may still be active, and no worker_done may have been accepted. This is
+    // what separates "worker process died under supervision" from every
+    // semantic failure class that has its own recovery verb.
+    const latest = db.prepare(
+      `SELECT execution_id, state FROM worker_executions
+        WHERE task_id=?
+        ORDER BY reserved_at DESC, execution_id DESC LIMIT 1`,
+    ).get(candidate.task_id) as { execution_id: string; state: string } | undefined;
+    const activeExecutions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM worker_executions
+        WHERE task_id=? AND state IN ('reserved','running','cancel_requested')`,
+    ).get(candidate.task_id) as { n: number }).n;
+    const acceptedDone = (db.prepare(
+      `SELECT COUNT(*) AS n FROM command_receipts
+        WHERE task_id=? AND command_kind='worker_done' AND accepted=1`,
+    ).get(candidate.task_id) as { n: number }).n;
+    if (!latest || latest.state !== 'lost' || activeExecutions !== 0 || acceptedDone !== 0) {
+      throw new FactoryStartError(
+        'FACTORY_WORKER_LOSS_UNSAFE',
+        `task ${candidate.task_id} is not a supervised worker-loss incident `
+          + `(latest=${latest?.state ?? 'none'}, active=${activeExecutions}, done=${acceptedDone})`,
+      );
+    }
+    const candidateSets = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_candidate_sets WHERE workplace_ref=?`,
+    ).get(candidate.workplace_ref) as { n: number }).n;
+    const gateDecisions = (db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_gate_decisions WHERE workplace_ref=?`,
+    ).get(candidate.workplace_ref) as { n: number }).n;
+
+    const authorizationRef = `worker-loss-resume:${sha256Hex({
+      lifecycleRunId: input.lifecycleRunId,
+      workplaceRef: candidate.workplace_ref,
+      expectedRevision: candidate.revision,
+      lostExecutionRef: latest.execution_id,
+      actorId: input.actorId,
+      reason: input.reason,
+    })}`;
+    db.prepare(
+      `INSERT INTO factory_worker_loss_resume_authorizations
+         (authorization_ref, lifecycle_run_id, stage_run_id, process_run_id,
+          workplace_ref, expected_revision, task_id, repair_role,
+          lost_execution_ref, observed_candidate_sets, observed_gate_decisions,
+          actor_id, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'author', ?, ?, ?, ?, ?)`,
+    ).run(
+      authorizationRef,
+      input.lifecycleRunId,
+      candidate.stage_run_id,
+      candidate.process_run_id,
+      candidate.workplace_ref,
+      candidate.revision,
+      candidate.task_id,
+      latest.execution_id,
+      candidateSets,
+      gateDecisions,
+      input.actorId,
+      input.reason,
+    );
+    const resumed = new ConveyorRuntime(db).resumeFromHuman({
+      workplaceRef: deserializeWorkplaceRef(candidate.workplace_ref),
+      taskId: candidate.task_id,
+      role: 'author',
+    });
+    if (!resumed.applied || resumed.workplace.revision !== candidate.revision + 1) {
+      throw new FactoryStartError(
+        'FACTORY_WORKER_LOSS_UNSAFE',
+        `workplace ${candidate.workplace_ref} changed during operator recovery`,
+      );
+    }
+    db.prepare(
+      `INSERT INTO factory_worker_loss_resume_consumptions
+         (authorization_ref, resulting_revision) VALUES (?, ?)`,
+    ).run(authorizationRef, resumed.workplace.revision);
+    db.exec('COMMIT');
+    return {
+      authorizationRef,
+      lostExecutionRef: latest.execution_id,
       workplaceRef: candidate.workplace_ref,
       taskId: candidate.task_id,
       resultingRevision: resumed.workplace.revision,
