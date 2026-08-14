@@ -39,9 +39,9 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     label: 'GLM 5.2',
     provider: 'zai',
     effort: 'high',
-    limit: 3,
+    limit: 10,
     tier: 'flagship',
-    note: 'Opus-level, x3 peak rate',
+    note: 'Opus-level, x3 peak rate — operator-approved ceiling 10 (A/B vs turbo on RTK-Dual)',
   }),
 ]);
 
