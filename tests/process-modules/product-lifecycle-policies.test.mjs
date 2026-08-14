@@ -476,7 +476,12 @@ test('ADR-053 B-3: Development material is invariant to execution provenance fie
   const baselineVerificationHash = input.acceptanceVerification.verificationHash;
   input.implementationWorkset.results[0].implementationExecutionId = 'replacement-author';
   input.implementationWorkset.results[0].reviewExecutionId = 'replacement-reviewer';
+  input.implementationWorkset.results[0].taskId += 1000;
+  input.implementationWorkset.results[0].result.ref = 'managed-node-submission:replacement';
   input.acceptanceVerification.evidence[0].executionId = 'replacement-verifier';
+  input.acceptanceVerification.evidence[0].taskId += 1000;
+  input.acceptanceVerification.evidence[0].evidence.ref = 'check-receipt:replacement';
+  input.acceptanceVerification.evidence[0].provider.providerId += 1000;
   assert.equal(
     developmentPolicy.hashImplementationWorkset(input.implementationWorkset),
     baselineWorksetHash,

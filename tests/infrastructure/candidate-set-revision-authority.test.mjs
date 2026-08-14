@@ -56,13 +56,19 @@ const MEMBERS = [
 
 // Insert a minimal revision row so a CandidateSet may reference it (FK target).
 function insertRevision(db, revisionRef) {
+  const revisionMembers = JSON.stringify([{
+    memberKey: 'product/factory.product.v1/0',
+    productRef: 'product/sha256:test',
+    contentDigest: 'sha256:test',
+    sourceAdapter: 'typed-submission',
+  }]);
   db.prepare(
     `INSERT INTO factory_workplace_production_revisions
        (revision_ref, workplace_ref, parent_revision_ref, members,
         contributing_execution_refs, presenter_ref, material_digest,
         semantic_digest, sealed_at)
-     VALUES (?, ?, NULL, '[]', '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
-  ).run(revisionRef, WORKPLACE_SERIALIZED, revisionRef, revisionRef);
+     VALUES (?, ?, NULL, ?, '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
+  ).run(revisionRef, WORKPLACE_SERIALIZED, revisionMembers, revisionRef, revisionRef);
 }
 
 // Build a real content-addressed revision (used by the atomic tests).
@@ -73,7 +79,7 @@ function buildRevision(executionRef) {
     sourceAdapter: 'typed-submission',
     operations: [{
       op: 'put',
-      memberKey: 'product/factory.product.v1/product/sha256:test',
+      memberKey: 'product/factory.product.v1/0',
       productRef: 'product/sha256:test',
       contentDigest: 'sha256:test',
       sourceAdapter: 'typed-submission',
@@ -179,6 +185,59 @@ test('Phase 5: repository partition invariance — second execution finds the fi
   assert.equal(count, 1);
 });
 
+test('ADR-053 B-3: repository replay ignores execution-scoped ProductRef aliases for equal revision material', () => {
+  const db = makeDb();
+  insertRevision(db, 'revision/sha256:alias-invariant');
+  const repo = new SqliteCandidateSetRepository(db);
+  const digest = '7'.repeat(64);
+  const member = ref => ({
+    productRef: { schemaId: 'factory.product.v1', ref, digest: 'sha256:test' },
+    origin: 'produced',
+    sourceCandidateSetRef: null,
+  });
+  const first = repo.seal({
+    workplaceRef: WORKPLACE,
+    productionRevisionRef: 'revision/sha256:alias-invariant',
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [member('managed-node-submission:101')],
+    sealReceiptRef: 'receipt-exec-A',
+    candidateSetDigest: digest,
+    sealedAt: '2026-08-14T00:00:00Z',
+  });
+  const second = repo.seal({
+    workplaceRef: WORKPLACE,
+    productionRevisionRef: 'revision/sha256:alias-invariant',
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [member('managed-node-submission:202')],
+    sealReceiptRef: 'receipt-exec-B',
+    candidateSetDigest: digest,
+    sealedAt: '2026-08-14T00:01:00Z',
+  });
+  assert.equal(first.replayed, false);
+  assert.equal(second.replayed, true);
+  assert.equal(second.set.candidateSetRef, first.set.candidateSetRef);
+  assert.equal(second.set.members[0].productRef.ref, 'managed-node-submission:101');
+
+  const carried = repo.seal({
+    workplaceRef: WORKPLACE,
+    productionRevisionRef: 'revision/sha256:alias-invariant',
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members: [{
+      ...member('managed-node-submission:303'),
+      origin: 'carried-forward',
+      sourceCandidateSetRef: 'candidate-set/source',
+    }],
+    sealReceiptRef: 'receipt-carry',
+    candidateSetDigest: digest,
+    sealedAt: '2026-08-14T00:02:00Z',
+  });
+  assert.equal(carried.replayed, true);
+  assert.equal(carried.set.members[0].origin, 'produced');
+});
+
 // ===========================================================================
 // 4. B-1: a CandidateSet may NEVER reference a revision that was not persisted.
 //    Enforced structurally (FK; foreign_keys=ON in db.ts).
@@ -198,8 +257,9 @@ test('B-1: sealing with a non-persisted revision ref is rejected (FK)', () => {
       candidateSetDigest: 'c'.repeat(64),
       sealedAt: '2026-08-12T00:00:00Z',
     }),
-    err => err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY',
-    'sealing against an absent revision must fail with an FK violation',
+    err => err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
+      || /revision is missing/.test(String(err.message)),
+    'sealing against an absent revision must fail before persistence',
   );
 
   // And no CandidateSet row was left behind.

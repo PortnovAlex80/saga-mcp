@@ -162,12 +162,13 @@ must match.
 const members: CandidateMember[] = products.map(productRef => ({
   productRef, origin: 'produced', sourceCandidateSetRef: null,
 }));
-const digest = hash({ workplaceRef, executionRef, role, products });
 return this.opts.candidateSetRepo.seal({
   workplaceRef, productionRevisionRef, role,
   subjectCandidateSetRef, members,
   sealReceiptRef: `seal:${executionRef}:${role}`,
-  candidateSetDigest: digest,
+  candidateSetDigest: candidateSetDigestForRevision({
+    workplaceRef, productionRevisionRef, role, subjectCandidateSetRef,
+  }),
   sealedAt: now,
 }).set;
 ```
@@ -408,11 +409,11 @@ interface CandidateMember {
 **Seal key** (candidate-set.ts:146-160) — deterministic over
 `(workplaceRef, productionRevisionRef, role, subjectCandidateSetRef)`:
 ```
-candidate-set/<processRunId>/<moduleRef>/<productionCellId>/<workKey>/<executionRef>/<role>
+candidate-set/<processRunId>/<moduleRef>/<productionCellId>/<workKey>/<productionRevisionRef>/<role>[/<subject>]
 ```
 
 **Storage** — two tables:
-- `factory_candidate_sets` — the set row (ref, workplace, execution, role, subject, digest, seal_receipt, sealed_at).
+- `factory_candidate_sets` — the set row (ref, workplace, production revision, role, subject, digest, seal receipt, sealed_at).
 - `factory_candidate_set_members` — one row per member (ordinal, product_schema, product_ref, product_digest, origin, source_candidate_set_ref).
 
 **Idempotency** (sqlite-candidate-set-repository.ts:52-121): sealing with the same

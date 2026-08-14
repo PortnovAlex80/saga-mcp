@@ -749,7 +749,7 @@ export function recoverFailedGateRun(
               t.id AS task_id,t.status AS task_status,t.assigned_to,t.current_execution_id,
               we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
               cs.candidate_set_ref,cs.candidate_set_digest,cs.production_revision_ref,
-              cs.subject_candidate_set_ref,
+              cs.subject_candidate_set_ref AS candidate_subject_candidate_set_ref,
               (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
                 WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref,
               cs.role AS candidate_role,
@@ -1242,9 +1242,9 @@ function verifyCandidateSetDigest(
     workplaceRef: String(row.workplace_ref),
     productionRevisionRef: String(row.production_revision_ref),
     role: String(row.candidate_role) as 'author' | 'reviewer',
-    subjectCandidateSetRef: row.subject_candidate_set_ref == null
+    subjectCandidateSetRef: row.candidate_subject_candidate_set_ref == null
       ? null
-      : String(row.subject_candidate_set_ref),
+      : String(row.candidate_subject_candidate_set_ref),
   });
   if (actualDigest !== row.candidate_set_digest) {
     throw new FactoryStartError(

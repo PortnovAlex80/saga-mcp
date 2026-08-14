@@ -28,6 +28,22 @@ function makeMembers(n = 1) {
   }));
 }
 
+function insertRevisionMaterial(db, revisionRef, workplaceRef, members) {
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref,workplace_ref,members) VALUES (?,?,?)`,
+  ).run(
+    revisionRef,
+    `workplace/${workplaceRef.processRunId}/${workplaceRef.moduleRef}/${workplaceRef.productionCellId}/${workplaceRef.workKey}`,
+    JSON.stringify(members.map((member, ordinal) => ({
+      memberKey: `product/${member.productRef.schemaId}/${ordinal}`,
+      productRef: member.productRef.ref,
+      contentDigest: member.productRef.digest,
+      sourceAdapter: 'typed-submission',
+    }))),
+  );
+}
+
 test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true', () => {
   const db = new Database(':memory:');
   db.exec(`
@@ -52,6 +68,9 @@ test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true
       source_candidate_set_ref TEXT,
       PRIMARY KEY (candidate_set_ref, ordinal)
     );
+    CREATE TABLE factory_workplace_production_revisions (
+      revision_ref TEXT PRIMARY KEY, workplace_ref TEXT NOT NULL, members TEXT NOT NULL
+    );
   `);
   const repo = new SqliteCandidateSetRepository(db);
   const wpRef = makeWorkplaceRef();
@@ -65,6 +84,7 @@ test('AC-30a: CandidateSet idempotent seal — same digest returns replayed=true
     candidateSetDigest: 'digest-abc',
     sealedAt: '2026-01-01T00:00:00Z',
   };
+  insertRevisionMaterial(db, sealInput.productionRevisionRef, wpRef, sealInput.members);
 
   const result1 = repo.seal({
     ...sealInput,
@@ -105,9 +125,13 @@ test('AC-30b: CandidateSet replay mismatch — different digest under same seal 
       source_candidate_set_ref TEXT,
       PRIMARY KEY (candidate_set_ref, ordinal)
     );
+    CREATE TABLE factory_workplace_production_revisions (
+      revision_ref TEXT PRIMARY KEY, workplace_ref TEXT NOT NULL, members TEXT NOT NULL
+    );
   `);
   const repo = new SqliteCandidateSetRepository(db);
   const wpRef = makeWorkplaceRef();
+  insertRevisionMaterial(db, 'rev-test-1', wpRef, makeMembers(1));
 
   repo.seal({
     workplaceRef: wpRef, productionRevisionRef: 'rev-test-1', role: 'author',

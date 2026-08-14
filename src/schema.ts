@@ -1424,7 +1424,6 @@ CREATE TABLE IF NOT EXISTS factory_workplace_production_revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_workplace_revisions_workplace
   ON factory_workplace_production_revisions (workplace_ref, sealed_at);
--- ADR-053 C15 — UNIQUE: one revision per (workplace, semantic_digest). Two
 -- Within one Workplace, only the exact material digest (including validation
 -- proof) may converge to one revision row. semantic_digest is a cross-run
 -- comparison projection and is intentionally non-unique.

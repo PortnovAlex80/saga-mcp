@@ -539,8 +539,9 @@ export function createProductLifecycleRuntime(
       } as ProductionCellProjectionPersistence,
       productReader: {
         readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs, requireTypedSubmission }) => {
-          // Typed submissions are immutable products of one exact execution and
-          // therefore remain execution-scoped.
+          // Resolve the exact contribution produced by this fenced execution.
+          // Its row-id ProductRef is provenance only: the production-source
+          // adapter normalizes schema+content before revision/CandidateSet seal.
           const submission = db.prepare(
             `SELECT id,schema_version,content_hash
                FROM factory_managed_node_submissions

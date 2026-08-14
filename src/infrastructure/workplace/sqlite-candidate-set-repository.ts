@@ -71,6 +71,11 @@ export class SqliteCandidateSetRepository {
     };
     // Validate cross-field rules BEFORE any DB write (REG-12).
     assertValidCandidateSet(set);
+    // The persisted Workplace revision is the material authority. Candidate
+    // ProductRefs are readback/provenance aliases and may contain submission
+    // row ids, so validate schema+content against the revision before either
+    // first seal or replay, then let the first immutable alias presentation win.
+    assertInputMembersMatchRevision(this.db, input, sealKey);
 
     const workplaceSerialized = serializeWorkplaceRef(input.workplaceRef);
     const existing = this.db.prepare(
@@ -241,11 +246,10 @@ function deserializeWorkplaceRef(serialized: string): WorkplaceRef {
 
 /**
  * ADR-053 C3 — on a same-key, same-digest replay, verify the persisted immutable
- * material still matches what the caller is trying to seal. The digest covers
- * (workplace, role, subject, products), so a digest match already proves the
- * material content is identical; this is a defense-in-depth check that also
- * binds the revision ref, member order and member provenance, and fails closed
- * if a same-key seal ever carries divergent material (a bug, not a replay).
+ * material still matches what the caller is trying to seal. ProductRef aliases,
+ * member origin and source-set references are provenance and may differ across
+ * equivalent presentations. Revision ref + role + subject + schema/content
+ * multiset are the accepted material identity.
  */
 function assertPersistedMaterialMatches(
   persisted: CandidateSet,
@@ -273,19 +277,66 @@ function assertPersistedMaterialMatches(
       `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member count drift`,
     );
   }
-  for (let i = 0; i < persisted.members.length; i += 1) {
-    const p = persisted.members[i]!;
-    const s = input.members[i]!;
-    if (
-      p.productRef.schemaId !== s.productRef.schemaId
-      || p.productRef.ref !== s.productRef.ref
-      || p.productRef.digest !== s.productRef.digest
-      || p.origin !== s.origin
-      || p.sourceCandidateSetRef !== s.sourceCandidateSetRef
-    ) {
-      throw new Error(
-        `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member[${i}] drift`,
-      );
-    }
+  const persistedMaterial = persisted.members
+    .map(memberMaterialKey)
+    .sort();
+  const submittedMaterial = input.members
+    .map(memberMaterialKey)
+    .sort();
+  if (persistedMaterial.some((value, index) => value !== submittedMaterial[index])) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' member material drift`,
+    );
+  }
+}
+
+function memberMaterialKey(member: CandidateMember): string {
+  return `${member.productRef.schemaId}\u0000${member.productRef.digest}`;
+}
+
+function assertInputMembersMatchRevision(
+  db: Database.Database,
+  input: SealInput,
+  sealKey: string,
+): void {
+  const row = db.prepare(
+    `SELECT members FROM factory_workplace_production_revisions
+      WHERE revision_ref=? AND workplace_ref=?`,
+  ).get(
+    input.productionRevisionRef,
+    serializeWorkplaceRef(input.workplaceRef),
+  ) as { members: string } | undefined;
+  if (!row) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' revision is missing`,
+    );
+  }
+  const revisionMembers = JSON.parse(row.members) as Array<{
+    memberKey: string;
+    contentDigest: string;
+  }>;
+  const revisionMaterial = revisionMembers
+    .filter(member => member.memberKey.startsWith('product/'))
+    .map(member => {
+      const suffix = member.memberKey.slice('product/'.length);
+      const schemaSeparator = suffix.indexOf('/');
+      if (schemaSeparator <= 0) {
+        throw new Error(`${CANDIDATE_SET_REPLAY_MISMATCH}: malformed revision member key`);
+      }
+      return `${suffix.slice(0, schemaSeparator)}\u0000${member.contentDigest}`;
+    });
+  const available = new Map<string, number>();
+  for (const key of revisionMaterial) available.set(key, (available.get(key) ?? 0) + 1);
+  const missing = input.members.some(member => {
+    const key = memberMaterialKey(member);
+    const count = available.get(key) ?? 0;
+    if (count === 0) return true;
+    available.set(key, count - 1);
+    return false;
+  });
+  if (missing) {
+    throw new Error(
+      `${CANDIDATE_SET_REPLAY_MISMATCH}: key '${sealKey}' members do not match revision material`,
+    );
   }
 }

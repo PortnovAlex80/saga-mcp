@@ -148,7 +148,7 @@ Worker completion seals exact products:
 CandidateSet {
   candidateSetRef
   workplaceRef
-  producerExecutionRef
+  productionRevisionRef
   role                    // author | reviewer
   subjectCandidateSetRef? // reviewer only
   members[] { productRef, origin, sourceCandidateSetRef? }
@@ -157,25 +157,26 @@ CandidateSet {
 }
 ```
 
-Worker completion means only:
+An execution contribution means only:
 
-> this execution stopped and left a candidate batch on the desk.
+> this execution stopped and left material on the Workplace desk.
 
 It does not mean acceptance.
 
-CandidateSet authority identity may include current run/execution provenance.
-That is correct for QC and audit, but it is **not automatically a cross-run
-replay identity**.
+CandidateSet authority identity never includes execution provenance. Its key
+and digest bind the immutable Workplace production revision (plus role and the
+exact author subject for a review). Presenter/contributor executions live only
+in the revision audit envelope.
 
 > **⚠️ Architectural diagnosis (ADR-053):** Run 011 stabilization chain
-> proved that treating `producerExecutionRef` as material authority (rather
+> proved that treating an execution ref as material authority (rather
 > than provenance) is a systemic defect. When material is produced across
 > multiple executions (recovery, carry-forward, repair), a post-acceptance
 > effect that reads only the latest execution loses parts of the accepted
 > desk. The fix is an explicit immutable
 > **`WorkplaceProductionRevision`** between the mutable desk and the
-> CandidateSet; execution becomes provenance only. Until that cutover lands,
-> every new real run is expected to find another re-encoding boundary.
+> CandidateSet; execution becomes provenance only. The clean-break cutover is
+> the normative runtime model below.
 > See
 > [ADR-053: Accepted material is a sealed Workplace production revision](decisions/053-workplace-production-revision-as-accepted-material-authority.md)
 > — **обязательно прочитать перед следующим Factory-стабилизационным
@@ -396,7 +397,7 @@ Factory Runs:
 - WorkerExecution id;
 - task/intent row ids;
 - CandidateSetRef;
-- producerExecutionRef;
+- presenter/contributor execution refs;
 - timestamps;
 - transient filesystem paths.
 
@@ -425,8 +426,8 @@ manifest hash that includes Workplace/CandidateSet/execution/task identities.
 Reviewer execution is authoritatively pinned to the **exact current-run author
 CandidateSetRef**. That remains required for QC.
 
-But cross-run replay identity cannot use a CandidateSet digest that includes
-WorkplaceRef or producerExecutionRef.
+But cross-run replay identity cannot use a current-run CandidateSet digest,
+because that digest intentionally includes WorkplaceRef.
 
 Reviewer ReplayKey therefore uses a semantic digest such as:
 
@@ -754,12 +755,12 @@ freeze or integration effect. It creates current verification Workplaces,
 CheckReceipts, settlement and certificate, then routes through ordinary
 Delivery. Historical verifier products and GateDecisions remain ineligible.
 
-`CandidateSet.producerExecutionRef` is historically named but semantically a
-`ProducerRef`. A normal worker producer has a resolvable WorkerExecution
-receipt; a kernel carry-forward presenter does not and must not be represented
-by a fabricated worker. Output manifests preserve the ProducerRef and expose
-worker-only execution coordinates as nullable. Replay certification likewise
-skips non-worker presenters unless a distinct certified material recipe exists.
+`CandidateSet` has no execution-owner field. Its identity and digest bind the
+exact `WorkplaceProductionRevision`; ProductRef row aliases and presentation
+origin remain provenance only. A normal worker presenter has a resolvable
+WorkerExecution receipt; a kernel carry-forward presenter does not and must not
+be represented by a fabricated worker. Replay may retain presenter/contributor
+refs only in its audit recipe and never use them as accepted material identity.
 
 ---
 

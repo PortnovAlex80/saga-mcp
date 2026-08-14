@@ -26,7 +26,7 @@ export interface ReplayKeyMaterial {
    * Reviewer capsules are pinned to the semantic author production digest
    * (CONVEYOR v4.3 §10): a canonical { schemaId, digest } multiset of the
    * subject author CandidateSet's products. Stable across runs even though
-   * the CandidateSet's own digest includes WorkplaceRef/executionRef.
+   * the CandidateSet's own digest binds WorkplaceRef + production revision.
    */
   readonly subjectProductionDigest: string | null;
 }

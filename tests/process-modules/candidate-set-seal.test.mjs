@@ -42,9 +42,9 @@ function appendRevision(db, presenterRef) {
     sourceAdapter: 'typed-submission',
     operations: [{
       op: 'create',
-      memberKey: 'product/SRS/product:1',
+      memberKey: 'product/SRS/0',
       productRef: 'artifact:1',
-      contentDigest: hash('content'),
+      contentDigest: hash('SRS'),
       sourceAdapter: 'typed-submission',
     }],
     parentContributionRef: null,

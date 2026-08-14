@@ -1051,8 +1051,8 @@ function sealArchitectureCandidateSet(
   const candidateSetRepo = deps.candidateSetRepo;
   const revisionRepo = deps.revisionRepo;
   if (!writes.receipt.executionId) return null;
-  // Build the CandidateSet members from the worker's produced SRS artifacts.
-  // Each artifact is a 'produced' member (originated from this execution).
+  // Build the CandidateSet presentation from the sealed SRS revision material.
+  // Execution identity remains contribution/presenter audit provenance only.
   const members = writes.artifacts
     .filter((artifact): artifact is typeof artifact & { contentHash: string } =>
       isSha256(artifact.contentHash))

@@ -66,6 +66,32 @@ test('Gate B3 [met]: post-seal material consumers do not select authority throug
   );
   assert.equal(authorizationPath.includes('presenter_ref'), false,
     'carry-forward material authorization must not query presenter provenance');
+
+  const adapter = readSrc('src/process-modules/application/production-source-adapters.ts');
+  const genericAdapter = adapter.slice(
+    adapter.indexOf('export function producedProductsToContribution'),
+    adapter.indexOf('// ---------------------------------------------------------------------------',
+      adapter.indexOf('export function producedProductsToContribution')),
+  );
+  assert.equal(genericAdapter.includes('memberKey: `product/${p.schemaId}/${p.ref}`'), false,
+    'real generic adapter must not put ProductRef row aliases into material keys');
+  assert.ok(genericAdapter.includes('schemaOrdinals'),
+    'real generic adapter canonicalizes equal typed material');
+
+  const candidateRepo = readSrc('src/infrastructure/workplace/sqlite-candidate-set-repository.ts');
+  const replayCheck = candidateRepo.slice(candidateRepo.indexOf('function assertPersistedMaterialMatches'));
+  assert.equal(replayCheck.includes('p.productRef.ref !== s.productRef.ref'), false,
+    'CandidateSet replay must not veto equivalent revision material by ProductRef alias');
+  assert.ok(replayCheck.includes('memberMaterialKey'),
+    'CandidateSet replay compares schema+content material');
+
+  const recovery = readSrc('src/app/factory-start.ts');
+  assert.ok(recovery.includes('AS candidate_subject_candidate_set_ref'),
+    'candidate subject and Gate subject must have distinct recovery bindings');
+
+  const repositoryRegression = readSrc('tests/infrastructure/candidate-set-revision-authority.test.mjs');
+  assert.ok(repositoryRegression.includes('repository replay ignores execution-scoped ProductRef aliases'));
+  assert.ok(repositoryRegression.includes("origin: 'carried-forward'"));
 });
 
 // Gate 5: All production sources share one revision model.

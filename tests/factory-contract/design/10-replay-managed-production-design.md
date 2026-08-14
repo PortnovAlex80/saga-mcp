@@ -20,14 +20,14 @@ without ever calling a model).
   (one row per execution, immutable)               factory_managed_trace_productions
             │                                                 │
             │              ProductionCellNodeExecutor         │
-            │        sealCandidateSet(workplaceRef,           │
-            │          executionRef, role, products)          │
+            │        assemble WorkplaceProductionRevision     │
+            │          then seal CandidateSet by revision     │
             │                      │                          │
             └──────────────────────►│◄─────────────────────────┘
                                    ▼
                           factory_candidate_sets
                           factory_candidate_set_members
-                          (one sealed QC batch per role per execution)
+                          (one sealed QC batch per revision/role/subject)
                                    │
                           GateRun + GateDecision
                                    │
@@ -628,13 +628,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 ### 4.2 When is it captured?
 
 Only the `ProductionCellNodeExecutor.reconcile` loop seals CandidateSets,
-once per `(workplace, execution, role)` when the Workplace reaches the
+once per `(workplace, production revision, role[, subject])` when the Workplace reaches the
 `verifying` loop state. Two sealing paths:
 
 1. **Normal production** (`sealCandidateSet`, line 827). Members are the
    `ProductRef[]` returned by `productReader.readExecutionProducts`.
-   `candidateSetDigest` is `sha256({ workplaceRef, executionRef, role,
-   products })`.
+   `candidateSetDigest` binds `{workplaceRef, productionRevisionRef, role,
+   subjectCandidateSetRef}`; ProductRef aliases are provenance only.
 2. **Carried-forward candidate** (`sealCarriedForwardCandidateSet`, line
    852). Used when an `AuthorCandidateCarryForward` directive authorises
    reusing an upstream accepted CandidateSet; members are stamped

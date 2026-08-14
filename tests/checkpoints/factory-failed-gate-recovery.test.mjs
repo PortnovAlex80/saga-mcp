@@ -13,6 +13,7 @@ import { ensureFactoryNodeRunSchema } from '../../dist/process-modules/persisten
 import { ensureFactoryProcessProductV2Schema } from '../../dist/process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
+import { candidateSetDigestForRevision } from '../../dist/process-modules/domain/workplace/candidate-set.js';
 import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
 import {
   submissionValidationContentDigest,
@@ -130,12 +131,13 @@ function fixture() {
         product_hash,payload_snapshot,payload_hash,node_id)
      VALUES (2,'bundle','architecture',?,?,?,'{}','payload','define-architecture-contract')`,
   ).run(product.schemaId, product.ref, product.digest);
-  const candidateDigest = hash(JSON.stringify({
-    workplaceRef,
-    role: 'author',
-    products: [product],
-  }));
   const productionRevisionRef = hash(`revision:${workplaceRef}:${product.digest}`);
+  const candidateDigest = candidateSetDigestForRevision({
+    workplaceRef: workplace,
+    productionRevisionRef,
+    role: 'author',
+    subjectCandidateSetRef: null,
+  });
   const validationProjection = {
     receiptId: 1,
     validatorId: 'formalization.srs-contract.v1',
@@ -160,7 +162,7 @@ function fixture() {
     productionRevisionRef,
     workplaceRef,
     JSON.stringify([
-      { memberKey: `product/${product.schemaId}/${product.ref}`, productRef: product.ref, contentDigest: product.digest, sourceAdapter: 'typed-submission', contributorExecutionRef: executionRef },
+      { memberKey: `product/${product.schemaId}/0`, productRef: product.ref, contentDigest: product.digest, sourceAdapter: 'typed-submission', contributorExecutionRef: executionRef },
       { memberKey: submissionValidationMemberKey(validationProjection), productRef: 'submission-validation-receipt:1', contentDigest: submissionValidationContentDigest(validationProjection), sourceAdapter: 'evidence', contributorExecutionRef: executionRef },
     ]),
     JSON.stringify([executionRef]),

@@ -566,7 +566,7 @@ execution. Defined in `src/process-modules/domain/workplace/` (the
 interface CandidateSet {
   workplaceRef: WorkplaceRef;
   candidateSetRef: string;          // opaque id
-  candidateSetDigest: string;       // sha256 over {workplaceRef, executionRef, role, products}
+  candidateSetDigest: string;       // sha256 over {workplaceRef, productionRevisionRef, role, subject}
   productionRevisionRef: string;   // immutable Workplace material authority
   role: 'author' | 'reviewer';
   subjectCandidateSetRef: string | null;   // for reviewer: the author set under review

@@ -56,13 +56,19 @@ const REVISION_REF = 'revision/sha256:reg12-rev';
 
 /** ADR-053 B-1 — insert a minimal revision row so a CandidateSet may reference it. */
 function insertRevision(db, revisionRef) {
+  const members = JSON.stringify([{
+    memberKey: 'product/s/0',
+    productRef: 'r',
+    contentDigest: DIGEST,
+    sourceAdapter: 'typed-submission',
+  }]);
   db.prepare(
     `INSERT INTO factory_workplace_production_revisions
        (revision_ref, workplace_ref, parent_revision_ref, members,
         contributing_execution_refs, presenter_ref, material_digest,
         semantic_digest, sealed_at)
-     VALUES (?, ?, NULL, '[]', '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
-  ).run(revisionRef, serializeWorkplaceRef(REF), revisionRef, revisionRef);
+     VALUES (?, ?, NULL, ?, '[]', '', ?, ?, '2026-08-12T00:00:00Z')`,
+  ).run(revisionRef, serializeWorkplaceRef(REF), members, revisionRef, revisionRef);
 }
 
 // ---------------------------------------------------------------------------

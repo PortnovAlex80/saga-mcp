@@ -1217,8 +1217,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
   /**
    * ADR-053 B-1 — assemble a sealed Workplace production revision from a set of
-   * ProductRefs. Each product becomes a revision member keyed by its semantic
-   * identity (schemaId + ref). Returns the revision; the CALLER appends it
+   * ProductRefs. Each product becomes a revision member keyed by stable schema
+   * + ordinal; execution-scoped ProductRef aliases remain provenance. The caller appends it
    * atomically with the CandidateSet seal (see sealCandidateSet).
    */
   private assembleRevisionFromProducts(
@@ -1231,9 +1231,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     const workplaceSerialized = serializeWorkplaceRef(workplaceRef);
     // ADR-053 B-7 — route contribution building through the source adapter
-    // boundary (producedProductsToContribution), not inline. memberKey scheme
-    // `product/{schemaId}/{ref}` is preserved, so the revision digest is
-    // unchanged (no partition-convergence break).
+    // boundary (producedProductsToContribution), not inline. The adapter
+    // canonicalizes schema+content and excludes ProductRef row aliases from
+    // material identity.
     const contribution = producedProductsToContribution({
       workplaceRef: workplaceSerialized,
       executionRef,

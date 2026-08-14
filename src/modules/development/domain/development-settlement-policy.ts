@@ -89,9 +89,11 @@ export function hashImplementationWorkset(
     results: workset.results.map(item => ({
       key: item.key,
       status: item.status,
-      taskId: item.taskId,
       reviewedSourceCommit: item.reviewedSourceCommit,
-      result: item.result,
+      result: item.result === null ? null : {
+        schema: item.result.schema,
+        hash: item.result.hash,
+      },
       reasonCodes: item.reasonCodes,
     })),
     complete: workset.complete,
@@ -114,13 +116,20 @@ export function hashAcceptanceVerification(
     candidateHash: verification.candidateHash,
     evidence: verification.evidence.map(item => ({
       verificationItemKey: item.verificationItemKey,
-      taskId: item.taskId,
       acceptanceCriterionId: item.acceptanceCriterionId,
       acceptedCriterionHash: item.acceptedCriterionHash,
       candidateHash: item.candidateHash,
       outcome: item.outcome,
-      evidence: item.evidence,
-      provider: item.provider,
+      evidence: {
+        schema: item.evidence.schema,
+        hash: item.evidence.hash,
+      },
+      provider: {
+        name: item.provider.name,
+        version: item.provider.version,
+        category: item.provider.category,
+        trusted: item.provider.trusted,
+      },
     })),
     complete: verification.complete,
   });

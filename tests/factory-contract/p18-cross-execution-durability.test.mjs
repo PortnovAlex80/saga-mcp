@@ -82,6 +82,9 @@ function createDb() {
       source_candidate_set_ref TEXT,
       PRIMARY KEY (candidate_set_ref, ordinal)
     );
+    CREATE TABLE factory_workplace_production_revisions (
+      revision_ref TEXT PRIMARY KEY, workplace_ref TEXT NOT NULL, members TEXT NOT NULL
+    );
   `);
   const productRepo = new SqliteProcessProductRepositoryV2(db);
   db.prepare(`INSERT INTO factory_process_runs
@@ -207,6 +210,16 @@ test('P18-AC-4: CandidateSet freezes readable snapshot and fanout products coexi
   const refB = persistSnapshot(workplaceB, serializedB, 'exec-C');
   assert.notEqual(refA.ref, refB.ref, 'same-schema fanout products have distinct exact refs');
   assert.equal(productPort.readNodeProducts(processRunId, nodeId).length, 2, 'both same-schema fanout snapshots coexist');
+
+  db.prepare(
+    `INSERT INTO factory_workplace_production_revisions
+       (revision_ref,workplace_ref,members) VALUES (?,?,?)`,
+  ).run('rev-test-p18', serializedA, JSON.stringify([{
+    memberKey: `product/${refA.schemaId}/0`,
+    productRef: refA.ref,
+    contentDigest: refA.digest,
+    sourceAdapter: 'managed-artifact',
+  }]));
 
   const candidateRepo = new SqliteCandidateSetRepository(db);
   const sealed = candidateRepo.seal({
