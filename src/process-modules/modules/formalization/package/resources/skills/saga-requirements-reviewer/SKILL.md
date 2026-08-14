@@ -14,7 +14,7 @@ CandidateSet.
 
 1. Read `task_get({id:<task id>})` and copy `task.metadata.workplace_ref`.
 2. Call `candidate_read({workplace_ref, role:'author'})`.
-3. Record `candidate_set_ref`, `producer_execution_ref`, `product_refs`,
+3. Record `candidate_set_ref`, `production_revision_ref`, `product_refs`,
    `produced_artifacts`, and `produced_traces`. These are the only author writes
    you are reviewing. Never substitute epic-wide "latest" results.
 4. For each produced artifact id, use `artifact_get` and read its document at

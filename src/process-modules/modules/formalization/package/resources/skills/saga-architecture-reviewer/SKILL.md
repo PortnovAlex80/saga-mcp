@@ -13,7 +13,7 @@ accept artifacts, move task status, or settle Formalization.
 
 1. Read `task_get({id:<task id>})` and copy `task.metadata.workplace_ref`.
 2. Call `candidate_read({workplace_ref, role:'author'})`.
-3. Record the exact `candidate_set_ref`, `producer_execution_ref`,
+3. Record the exact `candidate_set_ref`, `production_revision_ref`,
    `produced_artifacts`, `produced_traces`, and ProductRefs.
 4. Identify the SRS produced by that exact execution and read its registered
    file. Never substitute an epic-wide latest SRS.
