@@ -33,6 +33,10 @@ function createDb() {
       recovery_issue_ref TEXT,
       decided_at TEXT NOT NULL
     );
+    CREATE TABLE factory_workplace_gate_decision_heads (
+      workplace_ref TEXT PRIMARY KEY,
+      decision_key TEXT NOT NULL
+    );
     CREATE TABLE factory_check_receipts (
       check_receipt_ref TEXT PRIMARY KEY,
       check_run_ref TEXT NOT NULL,
@@ -119,6 +123,9 @@ function insertRepairDecision(db, {
     VALUES (?,?,?,?,?,?,'failed',?)`).run(
       `${run}:check:0`, run, 'cs1', 'factory.test-check.v1', '1.0.0', 'provider-digest', JSON.stringify(evidenceRefs),
     );
+  db.prepare(`INSERT INTO factory_workplace_gate_decision_heads(workplace_ref,decision_key)
+    VALUES (?,?) ON CONFLICT(workplace_ref) DO UPDATE SET decision_key=excluded.decision_key`)
+    .run(baseTaskMetadata().workplace_ref, key);
 }
 
 function bind(adapter, taskId = 10) {
@@ -210,6 +217,8 @@ test('later accepted GateDecision clears stale recovery feedback', () => {
       'candidate-author-1','[]','formalization-acceptance-plan','plan-digest','[]',
       'accepted',NULL,NULL,'2026-08-09T07:01:00.000Z')`)
     .run(meta.workplace_ref);
+  db.prepare(`UPDATE factory_workplace_gate_decision_heads SET decision_key='decision-2'
+    WHERE workplace_ref=?`).run(meta.workplace_ref);
 
   bind(createSqliteProductionCellProjectionPersistence(db));
   const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);

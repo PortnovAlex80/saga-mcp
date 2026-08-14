@@ -1,3 +1,5 @@
+import { sha256Hex } from '../../../shared/canonical-json.js';
+
 /**
  * Universal quality-gate contracts: CheckPlan, CheckProvider, CheckReceipt,
  * GateRun, GateDecision.
@@ -164,6 +166,20 @@ export interface CheckPlan {
    * (REG-14-AC-03); a plan may declare an explicit safe non-accepting outcome.
    */
   readonly unknownErrorPolicy: 'fail-closed' | 'fail-open-safe';
+}
+
+/** Canonical content digest for an installed CheckPlan definition. */
+export function computeCheckPlanDigest(
+  plan: Omit<CheckPlan, 'checkPlanDigest'>,
+): string {
+  return sha256Hex({
+    checkPlanId: plan.checkPlanId,
+    version: plan.version,
+    entries: plan.entries,
+    decisionPolicyRef: plan.decisionPolicyRef,
+    decisionPolicyDigest: plan.decisionPolicyDigest,
+    unknownErrorPolicy: plan.unknownErrorPolicy,
+  });
 }
 
 // ---------------------------------------------------------------------------

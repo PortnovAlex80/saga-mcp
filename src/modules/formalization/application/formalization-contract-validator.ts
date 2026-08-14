@@ -48,16 +48,17 @@ export function createFormalizationContractValidator(
     architecture?: boolean;
   },
 ): NodeSubmissionValidator {
+  const validatorVersion = '1.0.0';
   return {
     validatorId,
-    validatorVersion: '1.0.0',
+    validatorVersion,
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
       if (artifacts.length === 0) {
         // No artifacts produced — resolver will catch. Accept (not a
         // structural gap the validator can describe).
-        return acceptWithReceipt(input, [], []);
+        return acceptWithReceipt(input, [], [], validatorId, validatorVersion);
       }
       const snapshot = buildContractSnapshot(graph, artifacts);
       const gap = findContractGap(snapshot, required);
@@ -69,7 +70,7 @@ export function createFormalizationContractValidator(
         };
       }
       const traceIds = snapshot.traces.map(t => t.id);
-      return acceptWithReceipt(input, artifacts, traceIds);
+      return acceptWithReceipt(input, artifacts, traceIds, validatorId, validatorVersion);
     },
   };
 }
@@ -178,6 +179,8 @@ function acceptWithReceipt(
   input: NodeSubmissionValidationInput,
   artifacts: readonly { id: number; contentHash: string | null }[],
   traceIds: number[],
+  validatorId: string,
+  validatorVersion: string,
 ): NodeSubmissionValidationResult {
   const artifactIds = artifacts.map(a => a.id);
   const artifactHashes: Record<string, string> = {};
@@ -192,8 +195,8 @@ function acceptWithReceipt(
     traceIds: sortedTraceIds,
   });
   const receipt: SubmissionValidationReceipt = {
-    validatorId: 'formalization.contract.v1',
-    validatorVersion: '1.0.0',
+    validatorId,
+    validatorVersion,
     processRunId: input.processRunId,
     moduleRef: input.moduleRef,
     nodeId: input.nodeId,

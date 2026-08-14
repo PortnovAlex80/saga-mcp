@@ -13,6 +13,7 @@ import type {
   GateVerdict,
   RepairTargetRole,
 } from '../domain/workplace/gate.js';
+import { computeCheckPlanDigest } from '../domain/workplace/gate.js';
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
 
 export interface GateRunDriverRepo {
@@ -71,6 +72,12 @@ export function driveGateRun(
   providers: CheckProviderRegistry,
   input: DriveGateRunInput,
 ): DriveGateRunResult {
+  const actualCheckPlanDigest = computeCheckPlanDigest(input.checkPlan);
+  if (actualCheckPlanDigest !== input.checkPlan.checkPlanDigest) {
+    throw new Error(
+      `CHECK_PLAN_DIGEST_MISMATCH: declared ${input.checkPlan.checkPlanDigest}, actual ${actualCheckPlanDigest}`,
+    );
+  }
   const assessmentCandidateSetRefs = input.assessmentCandidateSetRefs ?? [];
   const effectiveCheckInputs = input.checkPlan.entries.map(entry => ({
     parameters: {

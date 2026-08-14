@@ -1,5 +1,9 @@
 import { sha256Hex } from '../../shared/canonical-json.js';
-import type { CheckPlan, CheckProvider } from '../domain/workplace/gate.js';
+import {
+  computeCheckPlanDigest,
+  type CheckPlan,
+  type CheckProvider,
+} from '../domain/workplace/gate.js';
 import type { CheckProviderRegistry } from './gate-run-driver.js';
 
 export const PRODUCT_CONTRACT_CHECK_PROVIDER_ID = 'factory.product-contract.v1';
@@ -136,22 +140,15 @@ export function buildCheckPlan(
   const decisionPolicyRef = 'factory.fail-closed-check-plan.v1';
   const decisionPolicyDigest = sha256Hex({ decisionPolicyRef, version });
   const unknownErrorPolicy = 'fail-closed' as const;
-  return {
+  const plan = {
     checkPlanId,
     version,
-    checkPlanDigest: sha256Hex({
-      checkPlanId,
-      version,
-      entries,
-      decisionPolicyRef,
-      decisionPolicyDigest,
-      unknownErrorPolicy,
-    }),
     entries,
     decisionPolicyRef,
     decisionPolicyDigest,
     unknownErrorPolicy,
   };
+  return { ...plan, checkPlanDigest: computeCheckPlanDigest(plan) };
 }
 
 export function buildProductContractCheckPlan(checkPlanId: string): CheckPlan {

@@ -17,7 +17,10 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { CheckPlan } from '../../../process-modules/domain/workplace/gate.js';
+import {
+  computeCheckPlanDigest,
+  type CheckPlan,
+} from '../../../process-modules/domain/workplace/gate.js';
 import {
   SRS_STRUCTURAL_CHECK_PROVIDER_ID,
   SRS_STRUCTURAL_CHECK_PROVIDER_VERSION,
@@ -55,23 +58,13 @@ export function buildArchitectureCheckPlan(): CheckPlan {
   const checkPlanId = 'formalization.architecture-check-plan.v1';
   const version = '1.0.0';
   const unknownErrorPolicy = 'fail-closed' as const;
-  const checkPlanDigest = createHash('sha256')
-    .update(JSON.stringify({
-      checkPlanId,
-      version,
-      entries,
-      decisionPolicyRef: ARCHITECTURE_DECISION_POLICY_REF,
-      decisionPolicyDigest: ARCHITECTURE_DECISION_POLICY_DIGEST,
-      unknownErrorPolicy,
-    }))
-    .digest('hex');
-  return {
+  const plan = {
     checkPlanId,
     version,
-    checkPlanDigest,
     entries,
     decisionPolicyRef: ARCHITECTURE_DECISION_POLICY_REF,
     decisionPolicyDigest: ARCHITECTURE_DECISION_POLICY_DIGEST,
     unknownErrorPolicy,
   };
+  return { ...plan, checkPlanDigest: computeCheckPlanDigest(plan) };
 }

@@ -409,14 +409,12 @@ export class SqliteDevelopmentModuleStore implements
   /**
    * LR-07 / W5 — read the durable local-readiness receipt for the EXACT frozen
    * integrated candidate from the Gate-receipt substrate (factory_check_receipts,
-   * the LR-06 durable store). The local-runnability provider's receipt is keyed
-   * by its subject CandidateSet; that subject is the author CandidateSet (in this
-   * process run) that seals THIS candidate as a member. The member is matched by
-   * its content-addressed triple (product_schema + product_ref + product_digest),
-   * where product_digest === candidateHash — so only a CandidateSet sealing THIS
-   * candidate matches, and a different product's receipt can never satisfy the
-   * binding. Returns null when no CandidateSet seals this candidate, no
-   * passed/failed receipt is persisted, or the Gate-receipt substrate is absent
+   * the LR-06 durable store). The receipt is keyed by the verification author's
+   * CandidateSet. Its immutable accepted-authority head and final acceptance
+   * prove that the check belongs to an accepted verification Workplace; the
+   * frozen WorkIntent input binds that Workplace to THIS candidate's exact ref
+   * and digest. Returns null when no accepted receipt is bound to this candidate,
+   * when receipts disagree, or when the Gate-receipt substrate is absent
    * (settlement then returns blocked / local-readiness-missing — the W5 gate).
    */
   private readLocalReadinessReceipt(
@@ -424,37 +422,12 @@ export class SqliteDevelopmentModuleStore implements
     candidate: IntegratedReleaseCandidate,
     candidateRef: ContentAddressedReference,
   ): LocalReadinessReceipt | null {
-    let subjectRows: Array<{ ref: string }> = [];
-    try {
-      subjectRows = this.db.prepare(
-        `SELECT cs.candidate_set_ref AS ref
-           FROM factory_candidate_sets cs
-           JOIN factory_workplaces w
-             ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
-           JOIN factory_candidate_set_members m
-             ON m.candidate_set_ref=cs.candidate_set_ref
-            AND m.product_schema=? AND m.product_ref=? AND m.product_digest=?
-          WHERE cs.role='author'
-          ORDER BY cs.candidate_set_ref`,
-      ).all(
-        processRunId,
-        INTEGRATED_CANDIDATE_SCHEMA,
-        candidateRef.ref,
-        candidateRef.hash,
-      ) as Array<{ ref: string }>;
-    } catch {
-      // Substrate tables absent (minimal test schema) → no persisted receipt.
-      return null;
-    }
-    // The frozen candidate must have one unambiguous sealing CandidateSet.
-    // A lexical/rowid winner would re-introduce post-seal temporal authority.
-    if (subjectRows.length !== 1) return null;
     let rows: Array<{ outcome: string; evidence_refs: string }> = [];
-    // LR-07 fallback: when the LR provider resolved the subject via its
-    // freeze-authority fallback (the gate named the verifier's evidence set as
-    // subject, but the provider tested the freeze's candidate), the receipt is
-    // keyed by the verifier's set, not the freeze's set. Accept only receipts
-    // whose immutable task input pins this exact candidate ref and digest.
+    // The provider tests the frozen integrated candidate while its durable Gate
+    // receipt is keyed by the verification author's CandidateSet. The integrated
+    // candidate is a kernel freeze product, not a member produced by that worker.
+    // Bind the accepted verification authority to the exact frozen candidate
+    // coordinates carried by its immutable WorkIntent instead.
     try {
       rows = this.db.prepare(
         `SELECT cr.outcome, cr.evidence_refs

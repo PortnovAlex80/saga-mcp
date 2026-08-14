@@ -18,6 +18,7 @@ import { ensureManagedProductionLedgerSchema } from '../../dist/process-modules/
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
+import { computeCheckPlanDigest } from '../../dist/process-modules/domain/workplace/gate.js';
 import { buildArchitectureCheckPlan } from '../../dist/modules/formalization/application/architecture-check-plan.js';
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
@@ -341,7 +342,7 @@ test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt re
     decisionPolicyRef: 'dup.policy', decisionPolicyDigest: hash('dup.policy'),
     unknownErrorPolicy: 'fail-closed',
   };
-  const checkPlan = { ...planBase, checkPlanDigest: hash(JSON.stringify(planBase)) };
+  const checkPlan = { ...planBase, checkPlanDigest: computeCheckPlanDigest(planBase) };
   const providers = { resolve: () => ({ providerId: 'dup.provider', version: '1.0.0', providerDigest: hash('dup'), run: () => 'passed' }) };
   const result = driveGateRun(gateRepo, providers, {
     workplaceRef: ref, subjectCandidateSetRef: 'cs-c11', checkPlan, gatePhase: 'author',
@@ -351,5 +352,60 @@ test('ADR-053 C11: two entries of the same provider get distinct CheckReceipt re
   assert.equal(result.receipts.length, 2);
   assert.notEqual(result.receipts[0].checkReceiptRef, result.receipts[1].checkReceiptRef,
     'two entries of one provider must get distinct receipt refs (C11 ordinal)');
+  db.close();
+});
+
+test('ADR-053: a stale self-attested CheckPlan digest cannot replay a different provider or policy', () => {
+  const { db, ref } = freshDb();
+  const gateRepo = new SqliteGateRepository(db);
+  const entry = (providerId, providerDigest) => ({
+    check: { providerId, version: '1.0.0', providerDigest },
+    parameters: {},
+    environmentRef: null,
+  });
+  const base = {
+    checkPlanId: 'bound-plan',
+    version: '1.0.0',
+    entries: [entry('provider:A', hash('provider:A'))],
+    decisionPolicyRef: 'policy:A',
+    decisionPolicyDigest: hash('policy:A'),
+    unknownErrorPolicy: 'fail-closed',
+  };
+  const declaredDigest = computeCheckPlanDigest(base);
+  const validPlan = { ...base, checkPlanDigest: declaredDigest };
+  const providers = {
+    resolve: providerId => ({
+      providerId,
+      version: '1.0.0',
+      providerDigest: hash(providerId),
+      run: () => providerId === 'provider:A' ? 'passed' : 'failed',
+    }),
+  };
+  const input = {
+    workplaceRef: ref,
+    subjectCandidateSetRef: 'cs-plan-binding',
+    gatePhase: 'author',
+    expectedWorkplaceRevision: 1,
+    gateLeaseRef: 'lease-plan-binding',
+    installationDigest: hash('installation'),
+    checkParameters: {},
+    environmentRef: null,
+    presentationRef: 'worker-execution:plan-binding',
+  };
+  const first = driveGateRun(gateRepo, providers, { ...input, checkPlan: validPlan });
+  assert.equal(first.decision.verdict, 'accepted');
+
+  const forgedPlan = {
+    ...base,
+    entries: [entry('provider:B', hash('provider:B'))],
+    decisionPolicyRef: 'policy:B',
+    decisionPolicyDigest: hash('policy:B'),
+    checkPlanDigest: declaredDigest,
+  };
+  assert.throws(
+    () => driveGateRun(gateRepo, providers, { ...input, checkPlan: forgedPlan }),
+    /CHECK_PLAN_DIGEST_MISMATCH/,
+  );
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_gate_decisions').get().n, 1);
   db.close();
 });
