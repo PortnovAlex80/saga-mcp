@@ -413,6 +413,7 @@ function buildDeferredOrchestrator(fixture) {
     moduleRegistry,
     installationRegistry,
     resolveOutputPayload,
+    transitionObligations: { onProcessSettled: () => ({ state: 'in_progress' }) },
   });
   return { orchestrator, executionLog, installationRegistry };
 }

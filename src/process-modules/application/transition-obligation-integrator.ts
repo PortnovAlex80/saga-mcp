@@ -24,6 +24,7 @@
 import type { SqliteTransitionObligationLedger } from '../persistence/sqlite-transition-obligation-ledger.js';
 import type {
   AppendFencedObligationInput,
+  TransitionObligation,
   TransitionSourceKind,
   TransitionHandoffKind,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
@@ -56,8 +57,8 @@ export class TransitionObligationIntegrator {
     candidateSetRef: string;
     candidateSetDigest: string;
     workplaceRef: string;
-  }): void {
-    this.appendFenced({
+  }): TransitionObligation {
+    return this.appendFenced({
       sourceKind: 'candidate-set-sealed',
       sourceRef: input.candidateSetRef,
       sourceDigest: input.candidateSetDigest,
@@ -72,8 +73,8 @@ export class TransitionObligationIntegrator {
     gateDecisionKey: string;
     gateDecisionDigest: string;
     workplaceRef: string;
-  }): void {
-    this.appendFenced({
+  }): TransitionObligation {
+    return this.appendFenced({
       sourceKind: 'gate-accepted',
       sourceRef: input.gateDecisionKey,
       sourceDigest: input.gateDecisionDigest,
@@ -87,8 +88,8 @@ export class TransitionObligationIntegrator {
   onEffectsSettled(input: {
     workplaceRef: string;
     effectReceiptDigest: string;
-  }): void {
-    this.appendFenced({
+  }): TransitionObligation {
+    return this.appendFenced({
       sourceKind: 'effects-settled',
       sourceRef: input.workplaceRef,
       sourceDigest: input.effectReceiptDigest,
@@ -103,8 +104,8 @@ export class TransitionObligationIntegrator {
     finalAcceptanceRef: string;
     acceptanceDigest: string;
     workplaceRef: string;
-  }): void {
-    this.appendFenced({
+  }): TransitionObligation {
+    return this.appendFenced({
       sourceKind: 'final-acceptance-recorded',
       sourceRef: input.finalAcceptanceRef,
       sourceDigest: input.acceptanceDigest,
@@ -118,19 +119,19 @@ export class TransitionObligationIntegrator {
   onProcessSettled(input: {
     processRunId: number;
     settlementDigest: string;
-    workplaceRef: string;
-  }): void {
-    this.appendFenced({
+    subjectRef: string;
+  }): TransitionObligation {
+    return this.appendFenced({
       sourceKind: 'process-settled',
       sourceRef: `process-run:${input.processRunId}`,
       sourceDigest: input.settlementDigest,
-      subjectRef: input.workplaceRef,
+      subjectRef: input.subjectRef,
       handoffKind: 'route-lifecycle',
       ownerCapability: 'lifecycle-router',
     });
   }
 
-  private appendFenced(input: AppendFencedObligationInput): void {
+  private appendFenced(input: AppendFencedObligationInput): TransitionObligation {
     // ADR-053 B-8 — obligations are MANDATORY crash-recovery facts, NOT
     // best-effort. A failure to append MUST propagate. When this is called
     // inside the source transition's transaction (e.g. the CandidateSet seal
@@ -142,7 +143,7 @@ export class TransitionObligationIntegrator {
     // ADR-053 C7-06 — the causal source revision is ALLOCATED by the store
     // (appendFenced), not supplied by the caller. No fabricated `fence` token
     // crosses this seam.
-    this.deps.ledger.appendFenced(input);
+    return this.deps.ledger.appendFenced(input);
   }
 }
 

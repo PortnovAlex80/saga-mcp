@@ -194,6 +194,7 @@ export function registerDevelopment(
     processRunRepo: sharedDeps.processRunRepo,
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
+    transitionObligations: sharedDeps.transitionObligations,
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createDevelopmentOutputResolver(outputRepository),
@@ -212,6 +213,7 @@ export function registerDevelopment(
     processRunRepo: sharedDeps.processRunRepo,
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
+    transitionObligations: sharedDeps.transitionObligations,
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createVersionedDevelopmentOutputResolver(
@@ -232,6 +234,7 @@ export function registerDevelopment(
     processRunRepo: sharedDeps.processRunRepo,
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
+    transitionObligations: sharedDeps.transitionObligations,
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createVersionedDevelopmentOutputResolver(

@@ -86,6 +86,8 @@ import type {
   NodeRunRepositoryV2,
 } from '../persistence/node-run-v2.js';
 import type { AdoptedNodeResultPort } from '../../checkpoints/sqlite-resume-directive-repository.js';
+import type { TransitionObligationIntegrator } from './transition-obligation-integrator.js';
+import { processSettlementDigest } from './process-settlement-digest.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -148,6 +150,8 @@ export interface GenericFlowExecutorOptions {
   ) => void;
   /** Verified checkpoint result consumed before an LM worker is launched. */
   adoptedNodeResults?: AdoptedNodeResultPort;
+  /** ADR-053: ProcessRun terminalization atomically emits RouteLifecycle. */
+  transitionObligations: TransitionObligationIntegrator;
 }
 
 /**
@@ -379,17 +383,24 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
 
       // Drive settling → completed, writing terminal fields once.
-      processRunRepo.update(context.processRunId, {
-        status: 'completed',
-        localOutcome: terminal.outcome,
-        authority,
-        output,
-        certificate,
-        activeIssue: null,
-        // A resumable pause is diagnostic state, not terminal history.  Once
-        // the same ProcessRun settles successfully, retaining that message
-        // makes projections report a red incident beside a completed run.
-        error: null,
+      processRunRepo.transaction(() => {
+        processRunRepo.update(context.processRunId, {
+          status: 'completed',
+          localOutcome: terminal.outcome,
+          authority,
+          output,
+          certificate,
+          activeIssue: null,
+          // A resumable pause is diagnostic state, not terminal history. Once
+          // the same ProcessRun settles successfully, retaining that message
+          // makes projections report a red incident beside a completed run.
+          error: null,
+        });
+        this.opts.transitionObligations.onProcessSettled({
+          processRunId: context.processRunId,
+          settlementDigest: processSettlementDigest(runResult),
+          subjectRef: `process-run:${context.processRunId}`,
+        });
       });
 
       return runResult;

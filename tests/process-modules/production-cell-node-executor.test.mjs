@@ -78,6 +78,24 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
   const products = new Map();
   const dependencyBindings = [];
   const effectCalls = [];
+  const obligationLedger = new SqliteTransitionObligationLedger(db);
+  const durableIntegrator = new TransitionObligationIntegrator({ ledger: obligationLedger });
+  const eagerLease = method => input => {
+    let obligation = durableIntegrator[method](input);
+    if (obligation.state === 'pending') {
+      const fence = obligationLedger.allocateLeaseFence(obligation.obligationKey);
+      obligationLedger.lease(obligation.obligationKey, 'node-executor-unit-test', fence);
+      obligation = obligationLedger.get(obligation.obligationKey);
+    }
+    return obligation;
+  };
+  const obligationIntegrator = {
+    onCandidateSetSealed: eagerLease('onCandidateSetSealed'),
+    onGateAccepted: eagerLease('onGateAccepted'),
+    onEffectsSettled: eagerLease('onEffectsSettled'),
+    onFinalAcceptanceRecorded: eagerLease('onFinalAcceptanceRecorded'),
+    onProcessSettled: eagerLease('onProcessSettled'),
+  };
   let id = 100;
   const persistence = {
     ensureExecutionPlan(input) {
@@ -110,9 +128,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined) {
     candidateSetRepo,
     gateRepo,
     revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),
-    obligationIntegrator: new TransitionObligationIntegrator({
-      ledger: new SqliteTransitionObligationLedger(db),
-    }),
+    obligationIntegrator,
     persistence,
     postAcceptanceEffects: {
       run(effectId, input) {

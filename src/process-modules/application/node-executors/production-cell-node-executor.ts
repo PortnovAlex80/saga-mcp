@@ -393,7 +393,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         && !this.opts.finalAcceptance.getAcceptedCandidateSetRef(
           serializeWorkplaceRef(workplace.ref),
         )) {
-        this.ensureFinalAcceptanceForTerminalAccepted(node, cell, workplace);
+        const accepted = this.acceptedAuthorCandidate(workplace.ref);
+        if (!accepted || !this.gateEffectHandoffReady(workplace.ref, accepted)) {
+          return pendingOutcome();
+        }
+        const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, cell, workplace);
+        if (!settlementReady) return pendingOutcome();
       }
       return this.terminalOutcome(workplace.ref, state);
     }
@@ -557,6 +562,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           subjectAuthorSet?.candidateSetRef ?? null,
           products,
         );
+    // ADR-053 B-8: sealing creates the durable RunGate obligation. A normal
+    // lifecycle episode stops at that boundary. The fenced reconciler leases
+    // the obligation and re-drives this idempotent node; only that leased
+    // (`in_progress`) episode may enter GateRun.
+    const runGateObligation = this.opts.obligationIntegrator.onCandidateSetSealed({
+      candidateSetRef: candidate.candidateSetRef,
+      candidateSetDigest: candidate.candidateSetDigest,
+      workplaceRef: serializeWorkplaceRef(workplace.ref),
+    });
+    if (runGateObligation.state !== 'in_progress') {
+      if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
+      this.opts.persistence.projectWorkplace(workplace.ref);
+      return pendingOutcome(candidate.candidateSetRef);
+    }
     if (carryDirective) {
       this.opts.authorCandidateCarryForward!.consume({
         authorizationRef: carryDirective.authorizationRef,
@@ -572,6 +591,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // after the transition. Track the accepted candidate, apply the transition,
     // then fire effects only when the workplace is durably terminal(accepted).
     let postAcceptanceCandidate: CandidateSet | null = null;
+    let nextHandoffReady = true;
 
     if (role === 'author') {
       const decision = this.runGate(
@@ -603,11 +623,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // identity (decisionKey + decisionDigest from runGate), not a fabricated
         // workplace-scoped string — so crash recovery redrives effects against
         // the precise accepted decision instead of guessing one by recency.
-        this.opts.obligationIntegrator.onGateAccepted({
-          gateDecisionKey: decision.decisionKey,
-          gateDecisionDigest: decision.decisionDigest,
-          workplaceRef: serializeWorkplaceRef(workplace.ref),
-        });
+        nextHandoffReady = decision.transitionObligation?.state === 'in_progress';
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -632,11 +648,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // ADR-053 B-8/C6 — reviewer gate accepted → effects must run (mandatory).
         // Obligation carries the EXACT reviewer GateDecision identity (not the
         // author subject's digest), so recovery redrives the right verdict.
-        this.opts.obligationIntegrator.onGateAccepted({
-          gateDecisionKey: decision.decisionKey,
-          gateDecisionDigest: decision.decisionDigest,
-          workplaceRef: serializeWorkplaceRef(workplace.ref),
-        });
+        nextHandoffReady = decision.transitionObligation?.state === 'in_progress';
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -646,6 +658,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
     if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
     this.opts.persistence.projectWorkplace(workplace.ref);
+
+    if (!nextHandoffReady) {
+      return pendingOutcome(candidate.candidateSetRef);
+    }
 
     state = this.requireState(workplace.ref);
     if (state.loopState === 'effect_pending') {
@@ -666,12 +682,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // normal certification mechanism; the lazy claim-bound sweep remains as
       // a crash/reconciliation fallback only.
       if (postAcceptanceCandidate) {
-        this.recordFinalAcceptanceAndCapture(
+        const settlementReady = this.recordFinalAcceptanceAndCapture(
           cell,
           workplace.ref,
           postAcceptanceCandidate,
           [],
         );
+        if (!settlementReady) return pendingOutcome(candidate.candidateSetRef);
       }
       return this.terminalOutcome(workplace.ref, state);
     }
@@ -698,7 +715,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       acceptedCandidate.candidateSetRef,
     );
     let effectReceiptRef = existing?.effectReceiptRef ?? null;
+    let finalAcceptanceObligation = null;
     if (!existing) {
+      // Before an effect receipt exists, only the leased RunEffects obligation
+      // may invoke the provider. After the receipt exists, authority has moved
+      // to RecordFinalAcceptance and this prior handoff is expected to be
+      // completed rather than in_progress.
+      if (!this.gateEffectHandoffReady(workplace.ref, acceptedCandidate)) {
+        return pendingOutcome(acceptedCandidate.candidateSetRef);
+      }
       // ADR-053 Phase 6 — build AcceptedCandidateAuthority so effects consume
       // exact material coordinates (revision, productRefs, gateDecision)
       // instead of re-deriving from presenterExecutionRef.
@@ -739,27 +764,40 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         this.opts.persistence.projectWorkplace(workplace.ref);
         return pausedOutcome(acceptedCandidate.candidateSetRef);
       }
-      effectReceiptRef = this.opts.finalAcceptance.recordEffectReceipt({
-        workplaceRef: workplace.ref,
-        effectId,
-        candidateSetRef: acceptedCandidate.candidateSetRef,
-        result,
-      }).effectReceiptRef;
-      // ADR-053 B-8 — effects settled → final acceptance must be recorded (mandatory).
-      this.opts.obligationIntegrator.onEffectsSettled({
-        workplaceRef: serializeWorkplaceRef(workplace.ref),
-        effectReceiptDigest: effectReceiptRef,
+      const committed = this.opts.finalAcceptance.transaction(() => {
+        const receipt = this.opts.finalAcceptance.recordEffectReceipt({
+          workplaceRef: workplace.ref,
+          effectId,
+          candidateSetRef: acceptedCandidate.candidateSetRef,
+          result,
+        });
+        const obligation = this.opts.obligationIntegrator.onEffectsSettled({
+          workplaceRef: serializeWorkplaceRef(workplace.ref),
+          effectReceiptDigest: receipt.effectReceiptRef,
+        });
+        return { receipt, obligation };
       });
+      effectReceiptRef = committed.receipt.effectReceiptRef;
+      finalAcceptanceObligation = committed.obligation;
+    }
+    finalAcceptanceObligation ??= this.opts.obligationIntegrator.onEffectsSettled({
+      workplaceRef: serializeWorkplaceRef(workplace.ref),
+      effectReceiptDigest: effectReceiptRef!,
+    });
+    if (finalAcceptanceObligation.state !== 'in_progress') {
+      return pendingOutcome(acceptedCandidate.candidateSetRef);
     }
     this.opts.coordinator.completeAcceptanceEffect(workplace.ref);
     this.opts.persistence.projectWorkplace(workplace.ref);
-    this.recordFinalAcceptanceAndCapture(
+    const settlementReady = this.recordFinalAcceptanceAndCapture(
       cell,
       workplace.ref,
       acceptedCandidate,
       [effectReceiptRef!],
     );
-    return this.terminalOutcome(workplace.ref, this.requireState(workplace.ref));
+    return settlementReady
+      ? this.terminalOutcome(workplace.ref, this.requireState(workplace.ref))
+      : pendingOutcome(acceptedCandidate.candidateSetRef);
   }
 
   private recordFinalAcceptanceAndCapture(
@@ -767,13 +805,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     workplaceRef: WorkplaceRef,
     acceptedCandidate: CandidateSet,
     effectReceiptRefs: readonly string[],
-  ): void {
-    this.opts.finalAcceptance.recordFinalAcceptance({
-      workplaceRef,
-      candidateSetRef: acceptedCandidate.candidateSetRef,
-      effectReceiptRefs,
-      acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
-    });
+  ): boolean {
     // ADR-053 B-9/C6/C17 — resolve the EXACT accepted GateDecision key ONCE
     // (fail closed — no '' placeholder) and compute the real acceptance digest
     // once. The same (finalGateDecisionKey, acceptanceDigest) pair is shared by
@@ -793,11 +825,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // ADR-053 B-8 — final acceptance recorded → process must settle (mandatory).
     // The obligation digest is the REAL acceptance digest (not the candidate-set
     // digest), binding the handoff to the exact accepted material + decision.
-    this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
-      finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
-      acceptanceDigest,
-      workplaceRef: serializeWorkplaceRef(workplaceRef),
+    const settlementObligation = this.opts.finalAcceptance.transaction(() => {
+      this.opts.finalAcceptance.recordFinalAcceptance({
+        workplaceRef,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        effectReceiptRefs,
+        acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
+      });
+      return this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
+        finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
+        acceptanceDigest,
+        workplaceRef: serializeWorkplaceRef(workplaceRef),
+      });
     });
+    if (settlementObligation.state !== 'in_progress') return false;
     const effectInput = {
       authority: {
         workplaceRef,
@@ -818,6 +859,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // mandatory-obligation model. The effect itself is idempotent on the exact
     // acceptance identity, so a legitimate replay is safe to re-run.
     this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
+    return true;
   }
 
   /**
@@ -833,7 +875,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     node: ProductionCellFlowNodeDefinition,
     cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
-  ): void {
+  ): boolean {
     const accepted = this.acceptedAuthorCandidate(workplace.ref);
     if (!accepted) {
       throw new NodeExecutionError(
@@ -842,7 +884,30 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         `terminal(accepted) Workplace has no accepted author CandidateSet to finalize (C8 crash recovery)`,
       );
     }
-    this.recordFinalAcceptanceAndCapture(cell, workplace.ref, accepted, []);
+    return this.recordFinalAcceptanceAndCapture(cell, workplace.ref, accepted, []);
+  }
+
+  /**
+   * Recreate the exact GateAccepted obligation from the durable authority head
+   * and admit the next handoff only while the reconciler owns its live lease.
+   */
+  private gateEffectHandoffReady(
+    workplaceRef: WorkplaceRef,
+    acceptedCandidate: CandidateSet,
+  ): boolean {
+    const decisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef),
+      acceptedCandidate.candidateSetRef,
+    );
+    const decision = this.opts.gateRepo.readDecision(decisionKey);
+    if (!decision || decision.verdict !== 'accepted') {
+      throw new Error(`ACCEPTED_GATE_DECISION_NOT_FOUND: ${decisionKey}`);
+    }
+    return this.opts.obligationIntegrator.onGateAccepted({
+      gateDecisionKey: decision.decisionKey,
+      gateDecisionDigest: decision.decisionDigest,
+      workplaceRef: serializeWorkplaceRef(workplaceRef),
+    }).state === 'in_progress';
   }
 
   private ensureRoleProjection(
@@ -1261,26 +1326,36 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     assessmentCandidateSetRefs: readonly string[] = [],
     upstreamProductBinding: Readonly<Record<string, unknown>> = {},
   ) {
-    return driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
-      workplaceRef,
-      subjectCandidateSetRef,
-      assessmentCandidateSetRefs,
-      checkPlan: gate.checkPlan,
-      gatePhase: gate.gatePhase,
-      expectedWorkplaceRevision: this.requireState(workplaceRef).revision,
-      gateLeaseRef: `gate-lease:${sha256Hex({
-        gatePhase: gate.gatePhase,
+    return this.opts.gateRepo.transaction(() => {
+      const decision = driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
+        workplaceRef,
         subjectCandidateSetRef,
         assessmentCandidateSetRefs,
-      })}`,
-      installationDigest: this.opts.resolveInstallationDigest(ctx.module.identity.name),
-      checkParameters: {
-        processRunId: ctx.processRunId,
-        moduleRef: `${ctx.module.identity.name}@${ctx.module.identity.version}`,
-        ...upstreamProductBinding,
-      },
-      environmentRef: null,
-    }).decision;
+        checkPlan: gate.checkPlan,
+        gatePhase: gate.gatePhase,
+        expectedWorkplaceRevision: this.requireState(workplaceRef).revision,
+        gateLeaseRef: `gate-lease:${sha256Hex({
+          gatePhase: gate.gatePhase,
+          subjectCandidateSetRef,
+          assessmentCandidateSetRefs,
+        })}`,
+        installationDigest: this.opts.resolveInstallationDigest(ctx.module.identity.name),
+        checkParameters: {
+          processRunId: ctx.processRunId,
+          moduleRef: `${ctx.module.identity.name}@${ctx.module.identity.version}`,
+          ...upstreamProductBinding,
+        },
+        environmentRef: null,
+      }).decision;
+      const transitionObligation = decision.verdict === 'accepted'
+        ? this.opts.obligationIntegrator.onGateAccepted({
+            gateDecisionKey: decision.decisionKey,
+            gateDecisionDigest: decision.decisionDigest,
+            workplaceRef: serializeWorkplaceRef(workplaceRef),
+          })
+        : null;
+      return { ...decision, transitionObligation };
+    });
   }
 
   private readGateUpstreamBinding(

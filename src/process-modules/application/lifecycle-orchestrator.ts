@@ -28,6 +28,11 @@ import {
   mapLifecycleValues,
   type LifecycleMappingRuntime,
 } from './lifecycle-mapper.js';
+import type { TransitionObligationIntegrator } from './transition-obligation-integrator.js';
+import {
+  processRunResultSnapshot,
+  processSettlementDigest,
+} from './process-settlement-digest.js';
 
 const LIFECYCLE_LEASE_MS = 120_000;
 
@@ -128,6 +133,8 @@ export interface LifecycleOrchestratorOptions {
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
+  /** ADR-053: Process settlement cannot route a Lifecycle without a fenced obligation. */
+  transitionObligations: TransitionObligationIntegrator;
 }
 
 export class LifecycleRunBusyError extends Error {
@@ -164,6 +171,7 @@ export class LifecycleOrchestrator {
     | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
+  private readonly transitionObligations: TransitionObligationIntegrator;
 
   constructor(options: LifecycleOrchestratorOptions) {
     this.lifecycleRunRepo = options.lifecycleRunRepo;
@@ -177,6 +185,7 @@ export class LifecycleOrchestrator {
     this.resolveInheritedStageFrame = options.resolveInheritedStageFrame ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
+    this.transitionObligations = options.transitionObligations;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
       throw new Error('LifecycleOrchestrator leaseDurationMs must be positive');
     }
@@ -375,6 +384,20 @@ export class LifecycleOrchestrator {
         }
 
         const persistedResult = processResult.result;
+        const routeObligation = this.transitionObligations.onProcessSettled({
+          processRunId: processStart.record.id,
+          settlementDigest: processSettlementDigest(persistedResult),
+          subjectRef: `process-run:${processStart.record.id}`,
+        });
+        if (routeObligation.state !== 'in_progress') {
+          const paused = this.lifecycleRunRepo.pauseStage(
+            lifecycleRun.id,
+            stageRun.id,
+            `TRANSITION_OBLIGATION_PENDING:${routeObligation.obligationKey}`,
+            lease,
+          );
+          return this.result(paused);
+        }
         const route = routeProcessOutcome(
           stage,
           persistedResult.outcome,
@@ -780,19 +803,7 @@ function processRecordToResult(process: ProcessRunRecord): ProcessModuleRunResul
 }
 
 function resultSnapshot(result: ProcessModuleRunResult): Record<string, unknown> {
-  return {
-    code: result.outcome,
-    outcome: result.outcome,
-    authority: result.authority,
-    output: result.output,
-    certificate: result.certificate,
-    outputRef: result.output?.artifactRef ?? result.certificate?.certificateRef ?? null,
-    outputHash: result.output?.contentHash ?? result.certificate?.certificateHash ?? null,
-    outputSchema: result.output?.schema ?? result.certificate?.schema ?? null,
-    certificateRef: result.certificate?.certificateRef ?? null,
-    certificateHash: result.certificate?.certificateHash ?? null,
-    certificateSchema: result.certificate?.schema ?? null,
-  };
+  return processRunResultSnapshot(result);
 }
 
 function withStageOutput(

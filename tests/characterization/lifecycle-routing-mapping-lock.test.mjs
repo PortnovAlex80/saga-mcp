@@ -674,6 +674,7 @@ test('lifecycle-orchestrator: a paused LifecycleRun reloads and resumes from its
     processRunRepo,
     moduleRegistry: registry(),
     installationRegistry,
+    transitionObligations: { onProcessSettled: () => ({ state: 'in_progress' }) },
   });
 
   const result = await orchestrator.run(definition, {
@@ -1053,6 +1054,7 @@ test('cumulative-frame handoff: stage 3 input envelope contains data from stage 
     processRunRepo,
     moduleRegistry,
     installationRegistry,
+    transitionObligations: { onProcessSettled: () => ({ state: 'in_progress' }) },
   });
 
   const result = await orchestrator.run(definition, {

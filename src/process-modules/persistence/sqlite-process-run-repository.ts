@@ -242,6 +242,10 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     ensureFactoryProcessRunSchema(this.db);
   }
 
+  transaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)();
+  }
+
   start(command: StartProcessModuleCommand): { record: ProcessRunRecord; replayed: boolean } {
     if (this.db.inTransaction) {
       return this.startReserved(command);

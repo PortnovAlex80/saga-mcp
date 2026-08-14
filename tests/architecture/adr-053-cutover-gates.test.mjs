@@ -74,7 +74,7 @@ test('Gate 7 [met]: single WorkshopCapabilityManifest installed in both processe
 // STATUS: MET (4 of 5 handoffs live) — substrate + integrator + composition root
 // wiring + 4 executor call sites. The 5th (onProcessSettled) belongs in the
 // lifecycle orchestrator.
-test('Gate 8 [met]: durable obligation substrate + integrator + 4 of 5 handoffs wired', () => {
+test('Gate 8 [met]: durable reconciler owns all five production handoffs', () => {
   assert.ok(srcExists('src/process-modules/persistence/sqlite-transition-obligation-ledger.ts'));
   assert.ok(srcExists('src/process-modules/application/transition-obligation-reconciler.ts'));
   assert.ok(srcExists('src/process-modules/application/transition-obligation-integrator.ts'));
@@ -88,9 +88,16 @@ test('Gate 8 [met]: durable obligation substrate + integrator + 4 of 5 handoffs 
   // Integrator is instantiated and passed in the production composition root.
   const runtime = readSrc('src/app/product-lifecycle-runtime.ts');
   assert.ok(runtime.includes('new TransitionObligationIntegrator'), 'integrator instantiated');
+  assert.ok(runtime.includes('new TransitionObligationReconciler'), 'reconciler instantiated');
+  assert.ok(runtime.includes('obligationReconciler.reconcile'), 'reconciler runs in production engine');
   assert.ok(runtime.includes('obligationIntegrator'), 'passed to executor');
   // 4 call sites exist in the executor.
   const exec = readSrc('src/process-modules/application/node-executors/production-cell-node-executor.ts');
+  const lifecycle = readSrc('src/process-modules/application/lifecycle-orchestrator.ts');
+  assert.ok(lifecycle.includes('onProcessSettled'), 'handoff 5 is wired');
+  assert.ok(lifecycle.includes("routeObligation.state !== 'in_progress'"), 'route requires a reconciler lease');
+  assert.ok(exec.includes("runGateObligation.state !== 'in_progress'"), 'gate requires a reconciler lease');
+  assert.ok(exec.includes("finalAcceptanceObligation.state !== 'in_progress'"), 'acceptance requires a reconciler lease');
   assert.ok(exec.includes('onCandidateSetSealed'), 'handoff 1: candidate-set-sealed → run-gate');
   assert.ok(exec.includes('onGateAccepted'), 'handoff 2: gate-accepted → run-effects');
   assert.ok(exec.includes('onEffectsSettled'), 'handoff 3: effects-settled → record-final-acceptance');

@@ -82,7 +82,7 @@ test('G-2: factory_candidate_sets.production_revision_ref has a structural FK', 
 // ===========================================================================
 // G-4 — post-acceptance effect input is authority-only (no legacy selectors).
 // ===========================================================================
-test('G-4: PostAcceptanceEffectInput is { authority, operational } (no legacy material selectors)', () => {
+test('G-4: PostAcceptanceEffectInput is authority-only (no legacy material selectors)', () => {
   const src = readFile('src/process-modules/application/post-acceptance-effects.ts');
   assert.match(src, /readonly authority: AcceptedCandidateAuthority/, 'authority field present');
   assert.doesNotMatch(src, /readonly operational: \{/, 'effect input has no secondary selector bag');

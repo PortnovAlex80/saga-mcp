@@ -19,6 +19,8 @@ import type {
 } from './process-run.js';
 
 export interface ProcessRunRepository {
+  /** Execute related durable source facts in the same database transaction. */
+  transaction<T>(operation: () => T): T;
   /**
    * Idempotent start. The idempotency_key is unique within (project, module).
    * Same key + same input_hash → returns the existing row with replayed=true.

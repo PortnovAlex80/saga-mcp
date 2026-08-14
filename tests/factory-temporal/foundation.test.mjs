@@ -197,6 +197,27 @@ test('Foundation: full product-build lifecycle traverses from idea to terminal v
       const active = predicates.countActiveWorkerExecutions(resultDb, 1, 1);
       assert.equal(active, 0, 'no active worker executions after terminal');
 
+      const strandedObligations = resultDb.prepare(
+        `SELECT obligation_key,state,last_error
+           FROM factory_transition_obligations
+          WHERE state<>'completed'`,
+      ).all();
+      assert.deepEqual(
+        strandedObligations,
+        [],
+        `no durable handoff may remain ownerless/non-terminal: ${JSON.stringify(strandedObligations)}`,
+      );
+      const observedHandoffs = new Set(resultDb.prepare(
+        `SELECT DISTINCT handoff_kind FROM factory_transition_obligations`,
+      ).all().map(row => row.handoff_kind));
+      assert.deepEqual(observedHandoffs, new Set([
+        'run-gate',
+        'run-effects',
+        'record-final-acceptance',
+        'settle-process',
+        'route-lifecycle',
+      ]), 'canonical E2E traverses every ADR-053 durable handoff');
+
       // Scripted workers were invoked.
       const invocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
       assert.ok(invocations.length >= 12, `scripted workers invoked: ${invocations.length}`);

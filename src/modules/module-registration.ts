@@ -25,6 +25,7 @@ import type { FactoryDiscoveryRuntimePersistence } from './discovery/infrastruct
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
 import type { AdoptedNodeResultPort } from '../checkpoints/sqlite-resume-directive-repository.js';
+import type { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
 
 export interface ModuleRegistries {
   kernelHandlers: KernelHandlerRegistry;
@@ -67,4 +68,5 @@ export interface ModuleSharedDeps {
   readonly gateRepo: SqliteGateRepository;
   readonly workplaceProductPort: WorkplaceProductPort;
   readonly adoptedNodeResults?: AdoptedNodeResultPort;
+  readonly transitionObligations: TransitionObligationIntegrator;
 }

@@ -8,6 +8,15 @@ const { canonicalJson, sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
 
+const leasedTransitionObligations = {
+  onProcessSettled(input) {
+    return {
+      obligationKey: `process-settled:process-run:${input.processRunId}:route-lifecycle`,
+      state: 'in_progress',
+    };
+  },
+};
+
 const moduleDefinition = {
   identity: {
     name: 'test-module',
@@ -251,6 +260,7 @@ function createHarness({
       processRunRepo,
       moduleRegistry,
       installationRegistry,
+      transitionObligations: leasedTransitionObligations,
       leaseDurationMs,
     }),
     command: {
@@ -600,6 +610,7 @@ function loopingHarness({ definition = loopingLifecycleDefinition(), processId =
       processRunRepo,
       moduleRegistry,
       installationRegistry,
+      transitionObligations: leasedTransitionObligations,
     }),
     command: {
       projectId: 1,

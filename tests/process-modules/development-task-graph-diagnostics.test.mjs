@@ -68,7 +68,16 @@ test('task-graph provider preserves exact policy failures as content-addressed d
     .run('execution:1', DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA, JSON.stringify(proposal), 'a'.repeat(64));
   const provider = createDevelopmentTaskGraphCheckProvider({
     db,
-    candidateSets: { read: () => ({ role: 'author', producerExecutionRef: 'execution:1' }) },
+    candidateSets: { read: () => ({
+      role: 'author',
+      members: [{
+        productRef: {
+          schemaId: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+          ref: 'managed-node-submission:1',
+          digest: 'a'.repeat(64),
+        },
+      }],
+    }) },
   });
   const result = provider.run({
     subjectCandidateSetRef: 'candidate-set/1', parameters: { processRunId: 1 },

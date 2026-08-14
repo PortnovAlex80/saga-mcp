@@ -28,7 +28,15 @@ import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-
 import { installWorkshopPayloadContracts } from '../process-modules/application/workshop-capability-manifest.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
+import {
+  TransitionObligationReconciler,
+  type TransitionObligationHandler,
+} from '../process-modules/application/transition-obligation-reconciler.js';
 import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
+import type {
+  OrchestrationEngine,
+  RunEpisodeCommand,
+} from '../application/ports/orchestration-engine.js';
 import type {
   NodeExecutor,
   NodeProducts,
@@ -602,6 +610,7 @@ export function createProductLifecycleRuntime(
     gateRepo,
     workplaceProductPort,
     adoptedNodeResults: new SqliteResumeDirectiveRepository(db),
+    transitionObligations: obligationIntegrator,
 
     onWorkplaceVerified: (processRunId, repairNodeId) => {
       const generationKey =
@@ -695,6 +704,7 @@ export function createProductLifecycleRuntime(
       }),
     resolveInheritedStageFrame: lifecycleRun =>
       lifecycleContinuationRepo.readInheritedStageFrame(lifecycleRun.id),
+    transitionObligations: obligationIntegrator,
     ...(packageInstallation
       ? {
         resolveModuleInstallation: (moduleRef: {
@@ -725,7 +735,7 @@ export function createProductLifecycleRuntime(
       }),
   });
 
-  const engine = new LifecycleOrchestrationEngineAdapter({
+  const baseEngine = new LifecycleOrchestrationEngineAdapter({
     definition: productBuildLifecycle,
     orchestrator,
     resolveDefinition(command, input) {
@@ -809,6 +819,47 @@ export function createProductLifecycleRuntime(
     },
   });
 
+  // ADR-053 B-8: the reconciler is part of the canonical production engine,
+  // not a test-only/bootstrap utility. Each leased handoff re-drives the same
+  // idempotent lifecycle episode for the exact ProcessRun that produced the
+  // source fact. The node/lifecycle guards admit the transition only while the
+  // obligation is `in_progress` under this reconciler lease.
+  const obligationReconciler = new TransitionObligationReconciler(obligationLedger);
+  for (const handoffKind of [
+    'run-gate',
+    'run-effects',
+    'record-final-acceptance',
+    'settle-process',
+    'route-lifecycle',
+  ] as const) {
+    const handler: TransitionObligationHandler = {
+      handoffKind,
+      async execute(obligation) {
+        const command = transitionRedriveCommand(db, obligation.subjectRef, obligation.sourceRef);
+        const result = await baseEngine.run(command);
+        return {
+          completionReceipt: `transition-completion:${obligation.obligationKey}`,
+          resultDigest: sha256Hex({
+            obligationKey: obligation.obligationKey,
+            lifecycleRunId: result.lifecycleRun?.id ?? null,
+            lifecycleStatus: result.lifecycleRun?.status ?? result.reason,
+            terminalStatus: result.lifecycleRun?.terminalStatus ?? null,
+          }),
+        };
+      },
+    };
+    obligationReconciler.registerHandler(handler);
+  }
+  const engine: OrchestrationEngine = {
+    async run(command: RunEpisodeCommand) {
+      await obligationReconciler.reconcile({
+        leaseOwner: `product-lifecycle:${process.pid}:${randomUUID()}`,
+        batchSize: 32,
+      });
+      return baseEngine.run(command);
+    },
+  };
+
   return {
     engine,
     orchestrator,
@@ -844,6 +895,43 @@ export function createProductLifecycleRuntime(
       developmentOutputRepository: development.outputRepository,
       deliveryOutputRepository: delivery.outputRepository,
     },
+  };
+}
+
+function transitionRedriveCommand(
+  db: Database.Database,
+  subjectRef: string,
+  sourceRef: string,
+): RunEpisodeCommand {
+  const processRunId = subjectRef.startsWith('workplace/')
+    ? deserializeWorkplaceRef(subjectRef).processRunId
+    : Number((subjectRef.startsWith('process-run:') ? subjectRef : sourceRef).replace('process-run:', ''));
+  if (!Number.isSafeInteger(processRunId) || processRunId <= 0) {
+    throw new Error(`TRANSITION_OBLIGATION_PROCESS_REF_INVALID: ${subjectRef}`);
+  }
+  const row = db.prepare(
+    `SELECT lr.project_id AS projectId,
+            lr.epic_id AS epicId,
+            lr.idempotency_key AS idempotencyKey,
+            lr.initiated_by AS initiatedBy
+       FROM factory_stage_runs sr
+       JOIN factory_lifecycle_runs lr ON lr.id=sr.lifecycle_run_id
+      WHERE sr.process_run_id=?`,
+  ).get(processRunId) as {
+    projectId: number;
+    epicId: number | null;
+    idempotencyKey: string;
+    initiatedBy: string;
+  } | undefined;
+  if (!row || row.epicId === null) {
+    throw new Error(`TRANSITION_OBLIGATION_LIFECYCLE_NOT_FOUND: process-run:${processRunId}`);
+  }
+  return {
+    projectId: row.projectId,
+    epicId: row.epicId,
+    idempotencyKey: row.idempotencyKey,
+    initiatedBy: row.initiatedBy,
+    resumePaused: true,
   };
 }
 

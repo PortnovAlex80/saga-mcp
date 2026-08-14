@@ -13,6 +13,10 @@ export interface CellEffectReceipt {
 export class SqliteCellFinalAcceptance {
   constructor(private readonly db: Database.Database) {}
 
+  transaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)();
+  }
+
   readEffectReceipt(
     workplaceRef: WorkplaceRef,
     effectId: string,

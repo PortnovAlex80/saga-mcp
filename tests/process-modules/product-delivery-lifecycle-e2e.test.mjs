@@ -353,6 +353,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       moduleRegistry,
       installationRegistry,
       resolveOutputPayload,
+      transitionObligations: { onProcessSettled: () => ({ state: 'in_progress' }) },
     });
     const developmentPolicyBody = {
       id: 'circle-development-policy',

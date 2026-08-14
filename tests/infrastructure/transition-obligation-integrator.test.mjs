@@ -48,7 +48,7 @@ test('Phase 8: all five source facts create their corresponding obligations', ()
   integrator.onGateAccepted({ gateDecisionKey: 'gd-1', gateDecisionDigest: 'd2', workplaceRef: 'w1' });
   integrator.onEffectsSettled({ workplaceRef: 'w1', effectReceiptDigest: 'd3' });
   integrator.onFinalAcceptanceRecorded({ finalAcceptanceRef: 'fa-1', acceptanceDigest: 'd4', workplaceRef: 'w1' });
-  integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', workplaceRef: 'w1' });
+  integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', subjectRef: 'process-run:1' });
   const ready = ledger.findReady();
   assert.equal(ready.length, 5);
   const handoffs = ready.map(o => o.handoffKind).sort();

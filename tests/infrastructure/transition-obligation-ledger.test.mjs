@@ -59,6 +59,20 @@ test('Phase 2: append is idempotent on the deterministic key', () => {
   assert.equal(count, 1);
 });
 
+test('Phase 2: same key with a different source digest fails closed', () => {
+  const db = makeDb();
+  const ledger = new SqliteTransitionObligationLedger(db);
+  ledger.append(sampleObligation());
+  assert.throws(
+    () => ledger.append(sampleObligation({ sourceDigest: 'sha256:drifted-source' })),
+    /TRANSITION_OBLIGATION_REPLAY_MISMATCH.*sourceDigest/,
+  );
+  const row = db.prepare(
+    'SELECT source_digest FROM factory_transition_obligations',
+  ).get();
+  assert.equal(row.source_digest, 'sha256:source-fact');
+});
+
 // ===========================================================================
 // 2. Deterministic key — same source fact + handoff always the same key.
 // ===========================================================================

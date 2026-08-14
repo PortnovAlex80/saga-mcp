@@ -56,6 +56,10 @@ export interface CreateGateRunInput {
 export class SqliteGateRepository {
   constructor(private readonly db: Database.Database) {}
 
+  transaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)();
+  }
+
   /**
    * Create a GateRun row. Idempotent on gate_run_ref (INSERT OR IGNORE); a
    * repeat call for the same ref returns the existing row. The runtime claims

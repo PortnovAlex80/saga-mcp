@@ -80,6 +80,7 @@ export function registerFormalization(
     processRunRepo: sharedDeps.processRunRepo,
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
+    transitionObligations: sharedDeps.transitionObligations,
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createFormalizationOutputResolver(solutionContractRepository),

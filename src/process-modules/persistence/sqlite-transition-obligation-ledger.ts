@@ -258,7 +258,9 @@ export class SqliteTransitionObligationLedger {
       ownerCapability: input.ownerCapability,
       fence: input.causalSourceRevision.value,
     });
-    return this.getOrThrow(key);
+    const obligation = this.getOrThrow(key);
+    assertObligationReplayMatches(obligation, input);
+    return obligation;
   }
 
   /**
@@ -330,7 +332,9 @@ export class SqliteTransitionObligationLedger {
       // Replay (changes === 0): the existing obligation's causal revision and
       // lease fence are preserved — no allocation, no overwrite.
     });
-    return this.getOrThrow(key);
+    const obligation = this.getOrThrow(key);
+    assertObligationReplayMatches(obligation, input);
+    return obligation;
   }
 
   /**
@@ -808,6 +812,28 @@ function rowToObligation(row: TransitionObligationRow): TransitionObligation {
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
   };
+}
+
+function assertObligationReplayMatches(
+  existing: TransitionObligation,
+  input: AppendFencedObligationInput | AppendObligationInput,
+): void {
+  const mismatches: string[] = [];
+  for (const [field, actual, expected] of [
+    ['sourceKind', existing.sourceKind, input.sourceKind],
+    ['sourceRef', existing.sourceRef, input.sourceRef],
+    ['sourceDigest', existing.sourceDigest, input.sourceDigest],
+    ['subjectRef', existing.subjectRef, input.subjectRef],
+    ['handoffKind', existing.handoffKind, input.handoffKind],
+    ['ownerCapability', existing.ownerCapability, input.ownerCapability],
+  ] as const) {
+    if (actual !== expected) mismatches.push(`${field}:${actual}!=${expected}`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `TRANSITION_OBLIGATION_REPLAY_MISMATCH: ${existing.obligationKey}: ${mismatches.join(', ')}`,
+    );
+  }
 }
 
 /**
