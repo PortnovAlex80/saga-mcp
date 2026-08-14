@@ -222,6 +222,11 @@ export function semanticDigest(input: {
   members: readonly RevisionMember[];
 }): string {
   const members = input.members
+    // Exact validation receipts contain run-scoped artifact/trace coordinates.
+    // Product members already carry the semantic material they validate, so
+    // proof members are excluded only from cross-run semantic projection.
+    // materialDigest/revisionRef still bind the exact proof in this Workplace.
+    .filter(m => !m.memberKey.startsWith('validation/'))
     .map(m => ({ memberKey: m.memberKey, contentDigest: m.contentDigest }))
     .sort((a, b) => (a.memberKey < b.memberKey ? -1 : a.memberKey > b.memberKey ? 1 : 0));
   return sha256Hex({ members });

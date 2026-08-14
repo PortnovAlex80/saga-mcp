@@ -18,6 +18,7 @@ import type { ProductRef } from '../../domain/spi/index.js';
 import {
   assertValidProductionCellDefinition,
   asWorkplaceRef,
+  candidateSetDigestForRevision,
   serializeWorkplaceRef,
   type CandidateMember,
   type CandidateSet,
@@ -1159,19 +1160,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       origin: 'produced',
       sourceCandidateSetRef: null,
     }));
-    // ADR-053 B-3 — candidateSetDigest is execution-free: it captures only the
-    // material (workplace + role + products). Including executionRef would break
-    // B-2 partition convergence (two partitions with identical material would
-    // derive different digests under the same converged seal key → false
-    // REPLAY_MISMATCH instead of replay).
-    // ADR-053 C2 — a REVIEWER digest additionally binds its subject author
-    // CandidateSet, so two reviewer verdicts over different subjects (same
-    // workplace/revision/products) get distinct digests under distinct keys.
-    // Author digest is unchanged.
-    const digest = role === 'reviewer'
-      ? hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, subjectCandidateSetRef, products })
-      : hash({ workplaceRef: serializeWorkplaceRef(workplaceRef), role, products });
-
     // ADR-053 Phase 5 — assemble an immutable Workplace production revision
     // from the sealed products and carry its ref as the CandidateSet material
     // authority. Two executions producing the same products derive the same
@@ -1189,11 +1177,17 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // semanticDigest) already exists for this workplace, reuse its revisionRef
       // so the CandidateSet seal key (workplace + revisionRef + role) converges
       // across execution partitions (same material → one authority).
-      const existing = this.opts.revisionRepo.getRevisionBySemanticDigest(
-        revision.workplaceRef, revision.semanticDigest,
+      const existing = this.opts.revisionRepo.getRevisionByMaterialDigest(
+        revision.workplaceRef, revision.materialDigest,
       );
       const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      const digest = candidateSetDigestForRevision({
+        workplaceRef,
+        productionRevisionRef: finalRevisionRef,
+        role,
+        subjectCandidateSetRef,
+      });
       const set = this.opts.candidateSetRepo.seal({
         workplaceRef,
         productionRevisionRef: finalRevisionRef,
@@ -1287,22 +1281,23 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       origin: 'carried-forward',
       sourceCandidateSetRef: directive.sourceCandidateSetRef,
     }));
-    const digest = hash({
-      workplaceRef: serializeWorkplaceRef(workplaceRef),
-      role: 'author',
-      products: directive.products,
-    });
     // ADR-053 B-1 — carry-forward seals append the revision and seal the set
     // atomically, same invariant as the produced-member path.
     const revision = this.assembleRevisionFromProducts(
       workplaceRef, directive.presenterRef, directive.products,
     );
     return this.opts.revisionRepo.transaction(() => {
-      const existing = this.opts.revisionRepo.getRevisionBySemanticDigest(
-        revision.workplaceRef, revision.semanticDigest,
+      const existing = this.opts.revisionRepo.getRevisionByMaterialDigest(
+        revision.workplaceRef, revision.materialDigest,
       );
       const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
       if (!existing) this.opts.revisionRepo.appendRevision(revision);
+      const digest = candidateSetDigestForRevision({
+        workplaceRef,
+        productionRevisionRef: finalRevisionRef,
+        role: 'author',
+        subjectCandidateSetRef: null,
+      });
       const set = this.opts.candidateSetRepo.seal({
         workplaceRef,
         productionRevisionRef: finalRevisionRef,

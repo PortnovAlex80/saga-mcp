@@ -54,6 +54,7 @@ export type {
 // REG-12 — CandidateSet (sealed handoff to OTK).
 export {
   candidateSetSealKey,
+  candidateSetDigestForRevision,
   computeCandidateSetRef,
   assertValidCandidateSet,
 } from './candidate-set.js';

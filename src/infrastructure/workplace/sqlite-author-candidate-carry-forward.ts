@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 
@@ -10,6 +9,7 @@ import {
   serializeWorkplaceRef,
 } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { candidateSetDigestForRevision } from '../../process-modules/domain/workplace/candidate-set.js';
 
 export const REVIEW_SCHEMA_FAILURE_CODE = 'review-output-schema-mismatch' as const;
 export const POST_ACCEPTANCE_MANIFEST_FAILURE_CODE =
@@ -176,7 +176,7 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     }
 
     const candidates = db.prepare(
-      `SELECT cs.candidate_set_ref,cs.candidate_set_digest,
+      `SELECT cs.candidate_set_ref,cs.candidate_set_digest,cs.production_revision_ref,
               cs.workplace_ref,w.kanban_phase,w.loop_state,w.next_role,
               t.id AS task_id,t.metadata,t.project_repository_id,
               t.integration_state,t.integrated_commit,
@@ -195,6 +195,7 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     ).all(stage.process_run_id) as Array<{
       candidate_set_ref: string;
       candidate_set_digest: string;
+      production_revision_ref: string;
       workplace_ref: string;
       kanban_phase: string;
       loop_state: string;
@@ -246,7 +247,7 @@ export function authorizeEligibleAuthorCandidateCarryForward(
       throw new Error('AUTHOR_CARRY_FORWARD_SOURCE_PRODUCT_NOT_EXACT');
     }
     const member = members[0]!;
-    verifyCandidateDigest(source, member);
+    verifyCandidateDigest(source);
 
     const authorDecisions = db.prepare(
       `SELECT decision_key,decision_digest,verdict FROM factory_gate_decisions
@@ -625,14 +626,14 @@ export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryFo
 }
 
 function verifyCandidateDigest(
-  candidate: { workplace_ref: string; candidate_set_digest: string },
-  member: { product_schema: string; product_ref: string; product_digest: string },
+  candidate: { workplace_ref: string; production_revision_ref: string; candidate_set_digest: string },
 ): void {
-  const digest = createHash('sha256').update(JSON.stringify({
+  const digest = candidateSetDigestForRevision({
     workplaceRef: candidate.workplace_ref,
+    productionRevisionRef: candidate.production_revision_ref,
     role: 'author',
-    products: [{ schemaId: member.product_schema, ref: member.product_ref, digest: member.product_digest }],
-  })).digest('hex');
+    subjectCandidateSetRef: null,
+  });
   if (digest !== candidate.candidate_set_digest) {
     throw new Error('AUTHOR_CARRY_FORWARD_CANDIDATE_DIGEST_MISMATCH');
   }

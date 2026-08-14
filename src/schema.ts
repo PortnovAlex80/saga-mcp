@@ -1425,10 +1425,13 @@ CREATE TABLE IF NOT EXISTS factory_workplace_production_revisions (
 CREATE INDEX IF NOT EXISTS idx_workplace_revisions_workplace
   ON factory_workplace_production_revisions (workplace_ref, sealed_at);
 -- ADR-053 C15 — UNIQUE: one revision per (workplace, semantic_digest). Two
--- partitions sealing equivalent material converge to ONE revision row (the
--- convergence probe guarantees identical semantic_digest ⟹ identical material),
--- enforced structurally rather than by read-then-write convention.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_workplace_revisions_semantic
+-- Within one Workplace, only the exact material digest (including validation
+-- proof) may converge to one revision row. semantic_digest is a cross-run
+-- comparison projection and is intentionally non-unique.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workplace_revisions_material
+  ON factory_workplace_production_revisions (workplace_ref, material_digest);
+DROP INDEX IF EXISTS idx_workplace_revisions_semantic;
+CREATE INDEX IF NOT EXISTS idx_workplace_revisions_semantic
   ON factory_workplace_production_revisions (workplace_ref, semantic_digest);
 
 CREATE TRIGGER IF NOT EXISTS trg_factory_workplace_contributions_no_update

@@ -11,6 +11,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assembleRevision } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
 import {
+  candidateSetDigestForRevision,
+  candidateSetSealKey,
+} from '../../dist/process-modules/domain/workplace/candidate-set.js';
+import {
   managedArtifactsToContribution,
   managedTracesToContribution,
   typedSubmissionToContribution,
@@ -55,20 +59,86 @@ test('ADR-053 B-3: exact validation proof is a material revision member, executi
     contentDigest: submissionValidationContentDigest(receipt),
     sourceAdapter: 'evidence',
   });
+  for (const changed of [
+    { inputSnapshotHash: 'other-input' },
+    { artifactIds: [501] },
+    { traceIds: [502] },
+    { artifactHashes: { 1: 'other-content' } },
+    { traceDigest: 'other-trace' },
+    { validatedSetDigest: 'other-set' },
+  ]) {
+    assert.notEqual(
+      submissionValidationContentDigest(receipt),
+      submissionValidationContentDigest({ ...receipt, ...changed }),
+      `exact validation proof must bind ${Object.keys(changed)[0]}`,
+    );
+  }
+});
+
+test('ADR-053 B-3: different exact proofs cannot collide while semantic product identity stays stable', () => {
+  const baseReceipt = {
+    receiptId: 1, validatorId: 'contract.v1', validatorVersion: '1.0.0',
+    processRunId: 1, moduleRef: 'module@1.0.0', nodeId: 'node',
+    inputSnapshotHash: 'input', artifactIds: [1], traceIds: [],
+    artifactHashes: { 1: 'content' }, traceDigest: 'trace', contractRef: null,
+    validatedSetDigest: 'set-a',
+  };
+  const make = receipt => assembleRevision({
+    workplaceRef: WORKPLACE,
+    parent: null,
+    contributions: [producedProductsToContribution({
+      workplaceRef: WORKPLACE,
+      executionRef: 'exec-A',
+      products: [{ schemaId: 'product.v1', ref: 'product:1', digest: 'content' }],
+      validationReceipts: [receipt],
+    })],
+    presenterRef: 'exec-A',
+  });
+  const a = make(baseReceipt);
+  const b = make({ ...baseReceipt, receiptId: 2, validatedSetDigest: 'set-b' });
+  assert.equal(a.semanticDigest, b.semanticDigest, 'proof coordinates are not cross-run product semantics');
+  assert.notEqual(a.materialDigest, b.materialDigest, 'exact proof is part of within-Workplace material authority');
+  assert.notEqual(a.revisionRef, b.revisionRef);
+  const workplaceRef = { processRunId: 1, moduleRef: 'module@1.0.0', productionCellId: 'cell', workKey: 'item' };
+  assert.notEqual(
+    candidateSetSealKey({ workplaceRef, productionRevisionRef: a.revisionRef, role: 'author', subjectCandidateSetRef: null }),
+    candidateSetSealKey({ workplaceRef, productionRevisionRef: b.revisionRef, role: 'author', subjectCandidateSetRef: null }),
+  );
+});
+
+test('ADR-053 B-3: real generic typed path converges across execution-scoped ProductRef aliases', () => {
+  const workplaceRef = {
+    processRunId: 1,
+    moduleRef: 'module@1.0.0',
+    productionCellId: 'cell',
+    workKey: 'item',
+  };
+  const make = (executionRef, productRef) => assembleRevision({
+    workplaceRef: WORKPLACE,
+    parent: null,
+    contributions: [producedProductsToContribution({
+      workplaceRef: WORKPLACE,
+      executionRef,
+      products: [{
+        schemaId: 'factory.typed-product.v1',
+        ref: productRef,
+        digest: 'same-payload-digest',
+      }],
+    })],
+    presenterRef: executionRef,
+  });
+  const a = make('exec-A', 'managed-node-submission:101');
+  const b = make('exec-B', 'managed-node-submission:202');
+  assert.equal(a.materialDigest, b.materialDigest);
+  assert.equal(a.semanticDigest, b.semanticDigest);
+  assert.equal(a.revisionRef, b.revisionRef);
   assert.equal(
-    submissionValidationContentDigest(receipt),
-    submissionValidationContentDigest({
-      ...receipt,
-      receiptId: 99,
-      processRunId: 99,
-      inputSnapshotHash: 'other-run-input',
-      artifactIds: [501],
-      traceIds: [],
-      artifactHashes: { 501: 'content' },
-      traceDigest: 'other-row-id-digest',
-      validatedSetDigest: 'other-run-set',
-    }),
-    'semantic proof identity must not contain run/execution/row coordinates',
+    candidateSetSealKey({ workplaceRef, productionRevisionRef: a.revisionRef, role: 'author' }),
+    candidateSetSealKey({ workplaceRef, productionRevisionRef: b.revisionRef, role: 'author' }),
+  );
+  assert.equal(
+    candidateSetDigestForRevision({ workplaceRef, productionRevisionRef: a.revisionRef, role: 'author' }),
+    candidateSetDigestForRevision({ workplaceRef, productionRevisionRef: b.revisionRef, role: 'author' }),
   );
 });
 

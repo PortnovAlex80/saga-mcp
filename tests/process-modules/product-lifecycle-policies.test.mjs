@@ -470,22 +470,24 @@ test('Development blocks candidate drift and inconclusive verification', () => {
   assert.deepEqual(result.reasonCodes, ['verification-inconclusive']);
 });
 
-test('Development rejects a succeeded item without independent review lineage', () => {
+test('ADR-053 B-3: Development material is invariant to execution provenance fields', () => {
   const input = developmentFixture();
-  input.implementationWorkset.results[0].reviewExecutionId = null;
-  input.implementationWorkset.worksetHash =
-    developmentPolicy.hashImplementationWorkset(input.implementationWorkset);
-  input.productReferences.implementationWorkset = ref(
-    developmentSchemas.DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
-    'implementation-workset',
-    input.implementationWorkset.worksetHash,
+  const baselineWorksetHash = input.implementationWorkset.worksetHash;
+  const baselineVerificationHash = input.acceptanceVerification.verificationHash;
+  input.implementationWorkset.results[0].implementationExecutionId = 'replacement-author';
+  input.implementationWorkset.results[0].reviewExecutionId = 'replacement-reviewer';
+  input.acceptanceVerification.evidence[0].executionId = 'replacement-verifier';
+  assert.equal(
+    developmentPolicy.hashImplementationWorkset(input.implementationWorkset),
+    baselineWorksetHash,
   );
-  const result = new developmentPolicy.ReferenceDevelopmentSettlementPolicy()
-    .settle(input);
-  assert.equal(result.decision, 'failed');
-  assert.deepEqual(result.reasonCodes, [
-    'implementation-workset-hash-invalid',
-  ]);
+  assert.equal(
+    developmentPolicy.hashAcceptanceVerification(input.acceptanceVerification),
+    baselineVerificationHash,
+  );
+  const result = new developmentPolicy.ReferenceDevelopmentSettlementPolicy().settle(input);
+  assert.equal(result.decision, 'verified');
+  assert.deepEqual(result.reasonCodes, []);
 });
 
 test('Delivery releases an uncertain response only after authoritative match', () => {

@@ -40,11 +40,15 @@ export function submissionValidationContentDigest(
   return sha256Hex({
     validatorId: receipt.validatorId,
     validatorVersion: receipt.validatorVersion,
+    processRunId: receipt.processRunId,
     moduleRef: receipt.moduleRef,
     nodeId: receipt.nodeId,
-    artifactCount: receipt.artifactIds.length,
-    traceCount: receipt.traceIds.length,
-    artifactContentHashes: Object.values(receipt.artifactHashes).sort(),
+    inputSnapshotHash: receipt.inputSnapshotHash,
+    artifactIds: [...receipt.artifactIds].sort((a, b) => a - b),
+    traceIds: [...receipt.traceIds].sort((a, b) => a - b),
+    artifactHashes: receipt.artifactHashes,
+    traceDigest: receipt.traceDigest,
     contractRef: receipt.contractRef,
+    validatedSetDigest: receipt.validatedSetDigest,
   });
 }

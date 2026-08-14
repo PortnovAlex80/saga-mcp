@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 import { deserializeWorkplaceRef } from '../../../process-modules/domain/workplace/workplace-ref.js';
+import { candidateSetDigestForRevision } from '../../../process-modules/domain/workplace/candidate-set.js';
 
 export interface AdoptDevelopmentBaselineCommand {
   readonly continuationRef: string;
@@ -303,6 +304,7 @@ interface CandidateRow {
   role: 'author' | 'reviewer';
   subject_candidate_set_ref: string | null;
   candidate_set_digest: string;
+  production_revision_ref: string;
 }
 
 function requireCandidateByRef(db: Database.Database, ref: string): CandidateRow {
@@ -338,18 +340,12 @@ function verifyCandidateSetDigest(db: Database.Database, candidate: CandidateRow
   // ADR-053 B-3/C2 — recompute the digest with the SAME formula the seal used:
   // execution-free (including executionRef would mismatch every author set),
   // with the reviewer digest additionally binding its subject author set.
-  const actual = candidate.role === 'reviewer'
-    ? jsonHash({
-      workplaceRef: candidate.workplace_ref,
-      role: candidate.role,
-      subjectCandidateSetRef: candidate.subject_candidate_set_ref,
-      products,
-    })
-    : jsonHash({
-      workplaceRef: candidate.workplace_ref,
-      role: candidate.role,
-      products,
-    });
+  const actual = candidateSetDigestForRevision({
+    workplaceRef: candidate.workplace_ref,
+    productionRevisionRef: candidate.production_revision_ref,
+    role: candidate.role,
+    subjectCandidateSetRef: candidate.subject_candidate_set_ref,
+  });
   if (actual !== candidate.candidate_set_digest) {
     throw new Error('DEVELOPMENT_ADOPTION_CANDIDATE_DIGEST_MISMATCH');
   }

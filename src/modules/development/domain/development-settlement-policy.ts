@@ -80,7 +80,23 @@ export function hashDevelopmentTaskGraph(
 export function hashImplementationWorkset(
   workset: DevelopmentImplementationWorkset,
 ): string {
-  return hashWithoutField(workset, 'worksetHash');
+  // Explicit projection: callers may carry audit-only execution coordinates
+  // from older package snapshots. Unknown/provenance fields must never enter
+  // accepted material identity.
+  return sha256Hex({
+    schemaVersion: workset.schemaVersion,
+    taskGraphHash: workset.taskGraphHash,
+    results: workset.results.map(item => ({
+      key: item.key,
+      status: item.status,
+      taskId: item.taskId,
+      reviewedSourceCommit: item.reviewedSourceCommit,
+      result: item.result,
+      reasonCodes: item.reasonCodes,
+    })),
+    complete: workset.complete,
+    blockingItemKeys: workset.blockingItemKeys,
+  });
 }
 
 export function hashIntegratedCandidate(
@@ -92,7 +108,22 @@ export function hashIntegratedCandidate(
 export function hashAcceptanceVerification(
   verification: AcceptanceVerificationWorkset,
 ): string {
-  return hashWithoutField(verification, 'verificationHash');
+  return sha256Hex({
+    schemaVersion: verification.schemaVersion,
+    acceptanceBaselineHash: verification.acceptanceBaselineHash,
+    candidateHash: verification.candidateHash,
+    evidence: verification.evidence.map(item => ({
+      verificationItemKey: item.verificationItemKey,
+      taskId: item.taskId,
+      acceptanceCriterionId: item.acceptanceCriterionId,
+      acceptedCriterionHash: item.acceptedCriterionHash,
+      candidateHash: item.candidateHash,
+      outcome: item.outcome,
+      evidence: item.evidence,
+      provider: item.provider,
+    })),
+    complete: verification.complete,
+  });
 }
 
 export function hashVerifiedIntegrationBundle(
@@ -690,9 +721,7 @@ implements DevelopmentSettlementPolicyPort {
     const invalidSucceededImplementation = implementation.results.filter(item =>
       item.status === 'succeeded'
       && (
-        !item.implementationExecutionId?.trim()
-        || !item.reviewExecutionId?.trim()
-        || !item.reviewedSourceCommit?.trim()
+        !item.reviewedSourceCommit?.trim()
         || item.result === null
         || !validRef(item.result)
       ));
@@ -700,52 +729,15 @@ implements DevelopmentSettlementPolicyPort {
       return result(
         'failed',
         ['implementation-workset-hash-invalid'],
-        `Succeeded implementation/review results lack execution, review, commit or product evidence: ${invalidSucceededImplementation.map(item => item.key).join(', ')}.`,
+        `Succeeded implementation/review results lack exact commit or product evidence: ${invalidSucceededImplementation.map(item => item.key).join(', ')}.`,
         inputHash,
       );
     }
     const incompleteImplementation = [...requiredImplementationKeys].filter(key =>
       implementationByKey.get(key)?.status !== 'succeeded');
-    // ADR-053 — TEMPORARY POINT FIX (do not expand without reading the ADR).
-    //
-    // Symptom observed in -024 / -025: a development.code.review task
-    // records an approved verdict with a sealed source commit
-    // (e.g. task 20: "Review completed and approved", commit d2630683...),
-    // but this settlement still returns `blocked` because
-    // `implementationByKey.get(key)?.status !== 'succeeded'`. The reviewer's
-    // approved CandidateSet is not projected into
-    // `implementation.results[key]` with execution IDs + reviewed commit +
-    // ProductRef. So the factory keeps spawning new authors on the same AC
-    // (observed: 10–11 attempts on implement-work-items in -022/-024, then
-    // retry budget exhausted).
-    //
-    // REFACTOR REQUIRED per ADR-053
-    // (docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md):
-    //   1. Introduce an immutable `WorkplaceProductionRevision` entity that
-    //      records each implementation/review increment as an exact sealed
-    //      material state of the Workplace (Step 2 of the ADR).
-    //   2. A `GateDecision = accepted` on an implementation/review
-    //      CandidateSet MUST atomically create a durable transition
-    //      obligation that projects the accepted CandidateSet into the
-    //      implementation workset as a `succeeded` result carrying
-    //      implementationExecutionId + reviewExecutionId + reviewedSourceCommit
-    //      + result ProductRef (Step 7 of the ADR — "GateAccepted -> RunPostAcceptanceEffects").
-    //   3. Remove presenter identity / latest-execution / latest-task as
-    //      material authority — settlement must read only exact sealed
-    //      revision refs and accepted CandidateSet refs (Step 3 of the ADR:
-    //      AcceptedCandidateAuthority instead of execution-scoped input).
-    //   4. Add a generative partition-invariance test covering:
-    //      (a) single author + reviewer, (b) author crash + reviewer
-    //      replacement, (c) carry-forward + repair — all must yield the
-    //      same semantic workset state (ADR-053 §"Contribution partition
-    //      invariance").
-    //
-    // Until the cutover is complete, this branch will keep returning
-    // `implementation-incomplete` whenever the post-review effect fails to
-    // materialise a succeeded workset entry. Do NOT paper over it by
-    // deriving success from the latest review execution alone — that
-    // re-introduces the execution-scoped material authority the ADR
-    // forbids.
+    // ADR-053: execution identities are provenance only. Completion below is
+    // derived from exact accepted CandidateSet/revision products projected by
+    // the durable authority head, never from author/reviewer execution ids.
     if (
       !implementation.complete
       || implementation.blockingItemKeys.length > 0

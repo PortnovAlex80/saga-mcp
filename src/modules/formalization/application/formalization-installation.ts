@@ -60,6 +60,7 @@ import type {
 } from '../domain/formalization-kernel-ports.js';
 import { buildFormalizationCertificatePayload } from '../domain/formalization-kernel-ports.js';
 import type { WorkplaceRef } from '../../../process-modules/domain/workplace/workplace-ref.js';
+import { candidateSetDigestForRevision } from '../../../process-modules/domain/workplace/candidate-set.js';
 import type { CheckProvider, CheckReceipt, GateDecision } from '../../../process-modules/domain/workplace/gate.js';
 import { driveGateRun } from '../../../process-modules/application/gate-run-driver.js';
 import { buildArchitectureCheckPlan } from './architecture-check-plan.js';
@@ -217,8 +218,8 @@ export interface CandidateSetSealPort {
 export interface WorkplaceProductionRevisionRepositoryPort {
   appendRevision(revision: WorkplaceProductionRevision): WorkplaceProductionRevision;
   transaction<T>(work: () => T): T;
-  /** ADR-053 B-2 — partition-convergence probe: find an equivalent existing revision by semanticDigest. */
-  getRevisionBySemanticDigest(workplaceRef: string, semanticDigest: string): { revisionRef: string } | null;
+  /** ADR-053 B-2 — exact within-Workplace convergence probe by materialDigest. */
+  getRevisionByMaterialDigest(workplaceRef: string, materialDigest: string): { revisionRef: string } | null;
 }
 
 /**
@@ -1065,8 +1066,6 @@ function sealArchitectureCandidateSet(
       sourceCandidateSetRef: null,
     }));
   if (members.length === 0) return null;
-  // Compute a deterministic digest over the member set.
-  const candidateSetDigest = sha256Hex(members);
   // Build the WorkplaceRef. The architecture cell's workplace is identified
   // by (processRunId, moduleRef, productionCellId, workKey). The
   // productionCellId for the architecture node is its node id.
@@ -1079,17 +1078,25 @@ function sealArchitectureCandidateSet(
   const sealReceiptRef = `execution-complete:${writes.receipt.executionId}`;
   // ADR-053: assemble a revision from the artifacts to carry productionRevisionRef.
   const workplaceSerialized = `${workplaceRef.processRunId}/${workplaceRef.moduleRef}/${workplaceRef.productionCellId}/${workplaceRef.workKey}`;
+  const schemaOrdinals = new Map<string, number>();
   const revisionContribution = buildContribution({
     workplaceRef: `workplace/${workplaceSerialized}`,
     contributorExecutionRef: writes.receipt.executionId,
     sourceAdapter: 'managed-artifact',
-    operations: members.map(m => ({
-      op: 'put' as const,
-      memberKey: `product/${m.productRef.schemaId}/${m.productRef.ref}`,
-      productRef: m.productRef.ref,
-      contentDigest: m.productRef.digest,
-      sourceAdapter: 'managed-artifact' as const,
-    })),
+    operations: [...members]
+      .sort((a, b) => a.productRef.schemaId.localeCompare(b.productRef.schemaId)
+        || a.productRef.digest.localeCompare(b.productRef.digest))
+      .map(m => {
+        const ordinal = schemaOrdinals.get(m.productRef.schemaId) ?? 0;
+        schemaOrdinals.set(m.productRef.schemaId, ordinal + 1);
+        return {
+          op: 'put' as const,
+          memberKey: `product/${m.productRef.schemaId}/${ordinal}`,
+          productRef: m.productRef.ref,
+          contentDigest: m.productRef.digest,
+          sourceAdapter: 'managed-artifact' as const,
+        };
+      }),
     parentContributionRef: null,
   });
   const revision = assembleRevision({
@@ -1103,11 +1110,17 @@ function sealArchitectureCandidateSet(
   const result = revisionRepo.transaction(() => {
     // ADR-053 B-2 — partition convergence: reuse an equivalent existing
     // revision's ref so the CandidateSet seal key converges across partitions.
-    const existing = revisionRepo.getRevisionBySemanticDigest(
-      revision.workplaceRef, revision.semanticDigest,
+    const existing = revisionRepo.getRevisionByMaterialDigest(
+      revision.workplaceRef, revision.materialDigest,
     );
     const finalRevisionRef = existing?.revisionRef ?? revision.revisionRef;
     if (!existing) revisionRepo.appendRevision(revision);
+    const candidateSetDigest = candidateSetDigestForRevision({
+      workplaceRef,
+      productionRevisionRef: finalRevisionRef,
+      role: 'author',
+      subjectCandidateSetRef: null,
+    });
     return candidateSetRepo.seal({
       workplaceRef,
       productionRevisionRef: finalRevisionRef,

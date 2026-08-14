@@ -58,7 +58,8 @@
  */
 
 import type { ProductRef } from '../spi/index.js';
-import type { WorkplaceRef } from './workplace-ref.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
+import { deserializeWorkplaceRef, serializeWorkplaceRef, type WorkplaceRef } from './workplace-ref.js';
 
 /**
  * Which role produced this CandidateSet.
@@ -191,6 +192,39 @@ export function candidateSetSealKey(input: {
     );
   }
   return parts.join('/');
+}
+
+/**
+ * Digest of the sealed material authority, independent of presentation aliases.
+ * Exact ProductRefs remain in members for audit/readback, but may contain a
+ * submission row id. The revision is the immutable accepted material identity.
+ */
+export function candidateSetDigestForRevision(input: {
+  workplaceRef: WorkplaceRef | string;
+  productionRevisionRef: string;
+  role: CandidateSetRole;
+  subjectCandidateSetRef?: string | null;
+}): string {
+  if (!input.productionRevisionRef.trim()) {
+    throw new Error('CandidateSet digest requires productionRevisionRef');
+  }
+  if (input.role === 'reviewer' && !input.subjectCandidateSetRef) {
+    throw new Error('Reviewer CandidateSet digest requires subjectCandidateSetRef');
+  }
+  if (input.role === 'author' && input.subjectCandidateSetRef) {
+    throw new Error('Author CandidateSet digest must not carry subjectCandidateSetRef');
+  }
+  const workplaceRef = typeof input.workplaceRef === 'string'
+    ? serializeWorkplaceRef(deserializeWorkplaceRef(input.workplaceRef))
+    : serializeWorkplaceRef(input.workplaceRef);
+  return sha256Hex({
+    workplaceRef,
+    productionRevisionRef: input.productionRevisionRef,
+    role: input.role,
+    subjectCandidateSetRef: input.role === 'reviewer'
+      ? input.subjectCandidateSetRef
+      : null,
+  });
 }
 
 /**

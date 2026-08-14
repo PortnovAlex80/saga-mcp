@@ -392,11 +392,11 @@ test('B-2: two partitions sealing equivalent material converge to one CandidateS
   });
 
   // Partition B seals the SAME material via the convergence probe: it finds
-  // partition A's revision by semanticDigest and reuses its revisionRef, so the
+  // partition A's revision by materialDigest and reuses its revisionRef, so the
   // CandidateSet seal key matches → B replays A (one authority).
   const resultB = revisionRepo.transaction(() => {
-    const existing = revisionRepo.getRevisionBySemanticDigest(
-      revisionB.workplaceRef, revisionB.semanticDigest,
+    const existing = revisionRepo.getRevisionByMaterialDigest(
+      revisionB.workplaceRef, revisionB.materialDigest,
     );
     const finalRef = existing?.revisionRef ?? revisionB.revisionRef;
     if (!existing) revisionRepo.appendRevision(revisionB);

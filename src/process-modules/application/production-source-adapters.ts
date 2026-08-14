@@ -100,13 +100,24 @@ export function producedProductsToContribution(input: {
   parentContributionRef?: string | null;
 }): WorkplaceContribution {
   const sourceAdapter: SourceAdapter = input.sourceAdapter ?? 'typed-submission';
-  const operations: MemberOperation[] = input.products.map(p => ({
-    op: 'put',
-    memberKey: `product/${p.schemaId}/${p.ref}`,
-    productRef: p.ref,
-    contentDigest: p.digest,
-    sourceAdapter,
-  }));
+  // ProductRef aliases may contain execution-scoped DB row ids. They are kept
+  // as provenance but cannot define revision material identity. Canonical
+  // schema+digest ordering makes equal typed material converge across runs.
+  const schemaOrdinals = new Map<string, number>();
+  const operations: MemberOperation[] = [...input.products]
+    .sort((a, b) => a.schemaId.localeCompare(b.schemaId)
+      || a.digest.localeCompare(b.digest))
+    .map(p => {
+      const ordinal = schemaOrdinals.get(p.schemaId) ?? 0;
+      schemaOrdinals.set(p.schemaId, ordinal + 1);
+      return {
+        op: 'put' as const,
+        memberKey: `product/${p.schemaId}/${ordinal}`,
+        productRef: p.ref,
+        contentDigest: p.digest,
+        sourceAdapter,
+      };
+    });
   for (const receipt of input.validationReceipts ?? []) {
     operations.push({
       op: 'put',

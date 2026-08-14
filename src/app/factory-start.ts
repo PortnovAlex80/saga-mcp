@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
+import { candidateSetDigestForRevision } from '../process-modules/domain/workplace/candidate-set.js';
 import { sha256Hex } from '../shared/canonical-json.js';
 import {
   SUBMISSION_VALIDATION_FEEDBACK_SCHEMA,
@@ -748,6 +749,7 @@ export function recoverFailedGateRun(
               t.id AS task_id,t.status AS task_status,t.assigned_to,t.current_execution_id,
               we.state AS execution_state,we.exit_code,we.last_error AS execution_error,
               cs.candidate_set_ref,cs.candidate_set_digest,cs.production_revision_ref,
+              cs.subject_candidate_set_ref,
               (SELECT rev.presenter_ref FROM factory_workplace_production_revisions rev
                 WHERE rev.revision_ref = cs.production_revision_ref) AS presenter_ref,
               cs.role AS candidate_role,
@@ -1236,14 +1238,14 @@ function verifyCandidateSetDigest(
       );
     }
   }
-  // Reproduce the CandidateSet sealer's identity function byte-for-byte. That
-  // domain currently hashes JSON.stringify (not canonicalJson); a recovery
-  // verifier must validate the stored identity, not silently mint another one.
-  const actualDigest = createHash('sha256').update(JSON.stringify({
+  const actualDigest = candidateSetDigestForRevision({
     workplaceRef: String(row.workplace_ref),
-    role: String(row.candidate_role),
-    products,
-  })).digest('hex');
+    productionRevisionRef: String(row.production_revision_ref),
+    role: String(row.candidate_role) as 'author' | 'reviewer',
+    subjectCandidateSetRef: row.subject_candidate_set_ref == null
+      ? null
+      : String(row.subject_candidate_set_ref),
+  });
   if (actualDigest !== row.candidate_set_digest) {
     throw new FactoryStartError(
       'FACTORY_RECOVERY_SNAPSHOT_DRIFT',

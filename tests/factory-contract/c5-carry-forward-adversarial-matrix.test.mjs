@@ -290,7 +290,27 @@ function insertAcceptanceChain(db, opts) {
 }
 
 /** Drive the production coordinator's author-gate acceptance (writes the head). */
-function acceptAuthor(coordinator, ref, { candidateSetRef, gateDecisionKey, authorTaskId }) {
+function acceptAuthor(db, coordinator, ref, { candidateSetRef, gateDecisionKey, authorTaskId }) {
+  const expectedRevision = coordinator.readState(ref).revision;
+  const gateRunRef = `gate-run:${gateDecisionKey}`;
+  db.prepare(
+    `INSERT INTO factory_gate_runs
+       (gate_run_ref,workplace_ref,gate_phase,subject_candidate_set_ref,
+        assessment_candidate_set_refs,check_plan_ref,check_plan_digest,
+        expected_workplace_revision,gate_lease_ref,state)
+     VALUES (?,?, 'author',?,'[]','plan',?,?,?,'decided')`,
+  ).run(gateRunRef, serializeWorkplaceRef(ref), candidateSetRef, HEX64, expectedRevision, `lease:${gateDecisionKey}`);
+  db.prepare(
+    `INSERT INTO factory_gate_decisions
+       (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,
+        subject_candidate_set_ref,assessment_candidate_set_refs,verdict,
+        check_plan_ref,check_plan_digest,decision_policy_ref,decision_policy_digest,
+        check_receipt_refs,installation_digest,accepted_output_bindings,decision_digest)
+     VALUES (?,?,?,?,'author',?,?,'[]','accepted','plan',?,'policy',?,'[]',?,'[]',?)`,
+  ).run(
+    gateDecisionKey, serializeWorkplaceRef(ref), `gate:${gateDecisionKey}`, gateRunRef,
+    `transition:${gateDecisionKey}`, candidateSetRef, HEX64, HEX64, HEX64, sha(gateDecisionKey),
+  );
   coordinator.applyGateDecision(ref, {
     verdict: 'accepted',
     isFinal: false,
@@ -359,7 +379,7 @@ test('M1: integration binds the head task, not submission.task_id (origin proces
     });
 
     // Production acceptance API writes the head with the CURRENT task (44).
-    acceptAuthor(w.coordinator, w.ref, {
+    acceptAuthor(w.db, w.coordinator, w.ref, {
       candidateSetRef: authorSet,
       gateDecisionKey: 'gate-decision/m1-author',
       authorTaskId: String(HEAD_TASK),
@@ -406,7 +426,7 @@ test('M2: a repair/re-accept cycle RE-BINDS the head — consumer follows the no
     });
 
     // First author acceptance: head binds task-A (attempt-1).
-    acceptAuthor(w.coordinator, w.ref, {
+    acceptAuthor(w.db, w.coordinator, w.ref, {
       candidateSetRef: authorSet1,
       gateDecisionKey: 'gate-decision/m2-rev-1',
       authorTaskId: String(TASK_A),
@@ -417,7 +437,7 @@ test('M2: a repair/re-accept cycle RE-BINDS the head — consumer follows the no
     // Repair cycle returns the author to a fresh verifying visit.
     forceAuthorVerifying(w.workplaceRepo, w.ref, 'execution:repair-2');
     // Second acceptance: head RE-BINDS to task-B (attempt-2).
-    acceptAuthor(w.coordinator, w.ref, {
+    acceptAuthor(w.db, w.coordinator, w.ref, {
       candidateSetRef: authorSet2,
       gateDecisionKey: 'gate-decision/m2-rev-3',
       authorTaskId: String(TASK_B),
@@ -511,7 +531,7 @@ test('M4: head present but task identity NULL → DENY (fail-closed); no fallbac
 
     // Production acceptance API writes the head with the C1 pointer but a NULL
     // task identity (acceptedAuthorTaskId omitted — the pre-C5-02 shape).
-    acceptAuthor(w.coordinator, w.ref, {
+    acceptAuthor(w.db, w.coordinator, w.ref, {
       candidateSetRef: authorSet,
       gateDecisionKey: 'gate-decision/m4-author',
       // acceptedAuthorTaskId intentionally omitted → head records NULL.
@@ -565,7 +585,7 @@ test('M5: a newer-task decoy and an origin-submission decoy do NOT divert the he
       base: w.base, marker: 'm5', workKey: w.ref.workKey,
     });
 
-    acceptAuthor(w.coordinator, w.ref, {
+    acceptAuthor(w.db, w.coordinator, w.ref, {
       candidateSetRef: authorSet,
       gateDecisionKey: 'gate-decision/m5-author',
       authorTaskId: String(HEAD_TASK),

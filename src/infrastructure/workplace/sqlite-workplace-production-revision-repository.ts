@@ -9,8 +9,8 @@
 // cell executor), not selected by ordering. This is the ADR-053 invariant: no
 // post-seal consumer selects material by latest.
 //
-// `getRevisionBySemanticDigest` is the partition-invariance probe: if a
-// revision with the same semanticDigest already exists for this workplace,
+// `getRevisionByMaterialDigest` is the partition-invariance probe: if a
+// revision with the same materialDigest already exists for this workplace,
 // the same material was already sealed (possibly through a different execution
 // partition) and the existing revision is returned. This is how Run 011
 // recovery converges: the second partition finds the first partition's
@@ -116,7 +116,7 @@ export class SqliteWorkplaceProductionRevisionRepository {
   /**
    * Append a sealed revision. Idempotent: a replay of the same seal, or a second
    * partition sealing semantically-equivalent material, finds the existing row
-   * (PK on revision_ref, and the UNIQUE(workplace, semantic_digest) index from
+   * (PK on revision_ref, and the UNIQUE(workplace, material_digest) index from
    * ADR-053 C15). Either way the INSERT is ignored and the PERSISTED row wins.
    *
    * Returns the PERSISTED revision (C15 persisted-return discipline), NOT the
@@ -149,7 +149,7 @@ export class SqliteWorkplaceProductionRevisionRepository {
     // existed (different revisionRef, same semantic_digest), surface THAT row so
     // the caller converges on the canonical revision rather than its own input.
     const persisted = this.getRevision(revision.revisionRef)
-      ?? this.getRevisionBySemanticDigest(revision.workplaceRef, revision.semanticDigest);
+      ?? this.getRevisionByMaterialDigest(revision.workplaceRef, revision.materialDigest);
     if (!persisted) {
       throw new Error(
         `REVISION_APPEND_INVARIANT: insert was ignored but no persisted row found for `
@@ -174,15 +174,15 @@ export class SqliteWorkplaceProductionRevisionRepository {
    *
    * This is an EXACT-VALUE lookup on semantic_digest, NOT a recency ordering.
    */
-  getRevisionBySemanticDigest(
+  getRevisionByMaterialDigest(
     workplaceRef: string,
-    semanticDigest: string,
+    materialDigest: string,
   ): WorkplaceProductionRevision | null {
     const row = this.db.prepare(
       `SELECT * FROM factory_workplace_production_revisions
-       WHERE workplace_ref = ? AND semantic_digest = ?
+       WHERE workplace_ref = ? AND material_digest = ?
        LIMIT 1`,
-    ).get(workplaceRef, semanticDigest) as RevisionRow | undefined;
+    ).get(workplaceRef, materialDigest) as RevisionRow | undefined;
     return row ? revisionRowToObject(row) : null;
   }
 
@@ -191,7 +191,7 @@ export class SqliteWorkplaceProductionRevisionRepository {
    * transaction. Used to make revision-append + CandidateSet-seal atomic, so a
    * CandidateSet can never reference a revision that was not persisted. BEGIN
    * IMMEDIATE acquires the write lock before the probe read, so the
-   * getRevisionBySemanticDigest → appendRevision convergence sequence is
+   * getRevisionByMaterialDigest -> appendRevision convergence sequence is
    * serialized across concurrent partitions (structural UNIQUE backs it up).
    * Both repositories share this `db`, and neither appendRevision nor
    * CandidateSetRepo.seal opens its own BEGIN, so this SAVEPOINT spans both.

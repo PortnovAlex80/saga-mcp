@@ -399,12 +399,12 @@ test('Phase 3: repository persists contributions and revisions (append-only, ide
   assert.ok(fetchedRev);
   assert.equal(fetchedRev.semanticDigest, revision.semanticDigest);
 
-  // Partition-invariance probe: find by semantic digest.
-  const bySemantic = repo.getRevisionBySemanticDigest(WORKPLACE, revision.semanticDigest);
-  assert.ok(bySemantic);
-  assert.equal(bySemantic.revisionRef, revision.revisionRef);
+  // Partition-invariance probe: find by exact material digest.
+  const byMaterial = repo.getRevisionByMaterialDigest(WORKPLACE, revision.materialDigest);
+  assert.ok(byMaterial);
+  assert.equal(byMaterial.revisionRef, revision.revisionRef);
   assert.equal(
-    repo.getRevisionBySemanticDigest(WORKPLACE, 'sha256:nonexistent'),
+    repo.getRevisionByMaterialDigest(WORKPLACE, 'sha256:nonexistent'),
     null,
   );
 });

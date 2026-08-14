@@ -532,8 +532,6 @@ export class SqliteDevelopmentModuleStore implements
           key: item.key,
           status: 'blocked' as const,
           taskId: 0,
-          implementationExecutionId: null,
-          reviewExecutionId: null,
           reviewedSourceCommit: null,
           result: null,
           reasonCodes: ['accepted-cell-product-missing'],
@@ -545,8 +543,6 @@ export class SqliteDevelopmentModuleStore implements
           ? 'succeeded' as const
           : product.payload.terminalStatus,
         taskId: product.taskId,
-        implementationExecutionId: product.executionId,
-        reviewExecutionId: product.reviewExecutionId,
         reviewedSourceCommit: product.payload.source.commitSha,
         result: product.reference,
         reasonCodes: [...product.payload.reasonCodes],
@@ -615,7 +611,6 @@ export class SqliteDevelopmentModuleStore implements
       evidence.push({
         verificationItemKey: item.key,
         taskId: product.taskId,
-        executionId: product.executionId,
         acceptanceCriterionId: criterionId,
         acceptedCriterionHash: product.payload.acceptedCriterionHash,
         candidateHash: product.payload.candidateHash,
@@ -735,8 +730,6 @@ export class SqliteDevelopmentModuleStore implements
     workplaceRef: string;
     candidateSetRef: string;
     taskId: number;
-    executionId: string;
-    reviewExecutionId: string | null;
     reference: ContentAddressedReference;
     taskMetadata: unknown;
     payload: T;
@@ -746,14 +739,12 @@ export class SqliteDevelopmentModuleStore implements
     const rows = this.db.prepare(
       `SELECT w.workplace_ref AS workplaceRef,
               cs.candidate_set_ref AS candidateSetRef,
-              submission.execution_id AS executionId,
               submission.id AS submissionId,
               current_task.id AS taskId,
               current_task.metadata AS taskMetadata,
               submission.payload_snapshot AS payloadSnapshot,
               submission.content_hash AS contentHash,
-              member.product_schema AS productSchema,
-              review_submission.execution_id AS reviewExecutionId
+              member.product_schema AS productSchema
          FROM factory_workplaces w
          LEFT JOIN factory_cell_final_acceptances cfa
            ON cfa.workplace_ref=w.workplace_ref
@@ -778,11 +769,6 @@ export class SqliteDevelopmentModuleStore implements
           AND reviewer.workplace_ref=w.workplace_ref
           AND reviewer.role='reviewer'
           AND reviewer.subject_candidate_set_ref=cs.candidate_set_ref
-         LEFT JOIN factory_candidate_set_members review_member
-           ON review_member.candidate_set_ref=reviewer.candidate_set_ref
-          AND review_member.ordinal=0
-         LEFT JOIN factory_managed_node_submissions review_submission
-           ON review_member.product_ref='managed-node-submission:' || review_submission.id
          JOIN tasks current_task
            ON CAST(current_task.id AS TEXT)=h.accepted_author_task_id
           AND current_task.workplace_ref=w.workplace_ref
@@ -795,14 +781,12 @@ export class SqliteDevelopmentModuleStore implements
     ).all(...schemaIds, processRunId, cellId) as Array<{
       workplaceRef: string;
       candidateSetRef: string;
-      executionId: string;
       submissionId: number;
       taskId: number;
       taskMetadata: string;
       payloadSnapshot: string;
       contentHash: string;
       productSchema: string;
-      reviewExecutionId: string | null;
     }>;
     const seen = new Set<string>();
     return rows.flatMap(row => {
@@ -816,8 +800,6 @@ export class SqliteDevelopmentModuleStore implements
         workplaceRef: row.workplaceRef,
         candidateSetRef: row.candidateSetRef,
         taskId: row.taskId,
-        executionId: row.executionId,
-        reviewExecutionId: row.reviewExecutionId,
         reference: {
           schema: row.productSchema,
           ref: `managed-node-submission:${row.submissionId}`,

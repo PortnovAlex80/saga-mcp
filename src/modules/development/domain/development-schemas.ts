@@ -259,8 +259,6 @@ export interface ImplementationWorkItemResult {
   key: string;
   status: WorkItemTerminalStatus;
   taskId: number;
-  implementationExecutionId: string | null;
-  reviewExecutionId: string | null;
   reviewedSourceCommit: string | null;
   result: ContentAddressedReference | null;
   reasonCodes: readonly string[];
@@ -419,7 +417,6 @@ export interface VerificationProviderBinding {
 export interface CandidateVerificationEvidence {
   verificationItemKey: string;
   taskId: number;
-  executionId: string | null;
   acceptanceCriterionId: number;
   acceptedCriterionHash: string;
   /** Exact frozen target. Evidence for any other value is inadmissible. */
