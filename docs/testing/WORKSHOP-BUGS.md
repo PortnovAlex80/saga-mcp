@@ -19,15 +19,15 @@
 
 | ID | PID | Цех | Кат | S | Симптом (точная строка лога/артефакт) | Гипотеза | Статус |
 |---|---|---|---|---|---|---|---|
-| TB-1 | — | — | env | S3 | `DELETE FROM projects` падает `no such table: main.factory_node_runs` (схема создаёт триггер на таблицу, которой нет) — мешает очистке тестбеда | SCHEMA_SQL неполон относительно своих же триггеров | open |
-| TB-2 | P01,P03 | W1 | engine | S1 | **KI-1, 3 воспроизведения**: (1) mars 19:38 use-cases gate; (2) P01 07:17 discovery-proposal; (3) P03 07:40 discovery-proposal — везде: воркер чисто выходит (worker_done accepted), workplace → verifying rev.3 с НЕочищенным active_reservation_ref, движок 100% CPU spin (≈5s/5s), тишина до смерти. **Контр-факты**: тот же workplace после kill+resume обрабатывается штатно (P01 07:28, P03 resume); P02 прошёл идентичный гейт без спина → недетерминизм, race | гонка между наблюдением выхода воркера (ObserveProcessExited/runner close) и синхронным verifying-переходом ядра; подозрение на retry-цикл при неочищенном reservation | open — субагент расследует (передана улика №3); workaround: spin-детект → kill+resume
-| TB-3 | — | — | env | S2 | Трекер запущен БЕЗ `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` → каждый его resume-движок умирает на старте `SAGA_PRODUCT_LIFECYCLE_COMPOSITION_REQUIRED` (лог /tmp/saga-engine-3-*.log 07:23) — завод выглядит «на паузе», воркеров нет. ЗАВОД молча не сообщает на доске | трекеровские движки наследуют env трекера; в доках env есть (ЗАВОД-ЗАПУСК §2), но легко упустить. Фикс: полный env у трекера. Предложение: engine-start фейл должен показываться на доске | mitigated (трекер перезапущен с полным env); docs-hardening предложение записано |
-| TB-4 | — | — | tooling | S2 | stopEverything/psKill убивал СВОЙ powershell (его CommandLine содержит match-паттерн) → count=0, движки/воркеры выживали, копились сироты и параллельные карточки (нарушение rate=1). Фикс: фильтр Name (node.exe/claude%) в psKill | инструментальный, завода не касается; после фикса — клинап до 0 процессов | fixed |
-| TB-5 | — | — | engine | S3 | Мёртвый артефакт сборки: dist/process-modules/application/node-executors/lm-node-executor.js:470 — сырой while(true)-поллинг, никем не импортируется (src мапит lm→production-cell); сбивает диагностику спинов | удалить | open |
+| TB-1 | — | — | env | S3 | `DELETE FROM projects` падает `no such table: main.factory_node_runs` (схема создаёт триггер на таблицу, которой нет) — мешает очистке тестбеда | FK `factory_protocol_runs.node_run_id REFERENCES factory_node_runs(id)`, но таблица создаётся лениво | **fixed** (dfc9e28b: ensureFactoryNodeRunSchema в getDb) |
+| TB-2 | P01,P03 | W1 | engine | S1 | **KI-1, 3 воспроизведения**: движок 100% CPU spin (≈5s/5s), тишина до смерти | Коллизия write-lock → busy-spin 5с на главном потоке; markExited на отдельном соединении (openRuntimeDb-per-call) | **fixed** (9a41748f: сериализация соединений + busy_timeout 250мс + withBusyRetry) |
+| TB-3 | — | — | env | S2 | Трекер без `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` → движок умирает молча | Дефолт env не прокидывался в чайлда; ошибки launch не читались UI | **fixed** (cf71e4c0: composition-env дефолт + last_launch.error в /api/factory/status) |
+| TB-4 | — | — | tooling | S2 | stopEverything/psKill убивал СВОЙ powershell | фильтр Name (node.exe/claude%) | fixed |
+| TB-5 | — | — | engine | S3 | Мёртвый артефакт сборки lm-node-executor.js (while(true)), tsc без clean не удаляет; 156 устаревших файлов в dist | clean-шаг в build — см. план п.13 (Окно 2) | open (перенесён в п.13) |
 
 
-| TB-6 | P02 | W2 | engine | S1 | Формализация упала terminal `FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact 37` (09:34:58). Артефакт 37 = UC "Start/Pause Timer" (P02): **draft**, создан 09:29:57, **изменён 09:34:16 — между двумя ACCEPTED-гейтами use-cases (09:34:01 и 09:34:50, после REPAIR_REQUIRED 09:32)**. Ремонт-автор редактировал draft в тот же момент, когда reviewer принимал CandidateSet; второй accept прошёл, но замороженный хэш базлайна соответствовал до-редакционной версии → дрифт → fail-closed цеха | гонка repair-edit vs gate-accept vs baseline-freeze на одном workplace; вопрос к архитектуре: почему гейт принял дважды за 49с и чей хэш фризит baseline | open — нужен разбор по логам воркеров task72-75; P02 = первый содержательный ✖ W2; корреляция: у P02 был слабейший proposal партии (18/25, слепой ревью) |
-| TB-7 | P04 | W2 | engine | S3 | 25-мин задержка старта W2 у P04: движки падали `FACTORY_LAUNCH_ALREADY_CONTROLLED` (лиз-эпохи до 6), пока трекеровский engine-supervisor переспавнивал их друг против друга; итог — самозакрепление на epoch 6, работа пошла (без ручного вмешательства) | respawn-гонка супервизора против 30с лиз-истечения — шумно, но самолечится; при повторах чаще — кандидат на backoff | mitigated (self-healed); наблюдение |
+| TB-6 | P02 | W2 | engine | S1 | Формализация упала terminal `FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact 37` (09:34:58). Артефакт 37 = UC "Start/Pause Timer": draft, создан 09:29:57, **изменён 09:34:16 — между двумя ACCEPTED-гейтами use-cases**. | **Диагноз субагента**: `refreshArtifactHash` перештамповывал хэш при ЧТЕНИИ (artifact_get); артефакты 37/39/40 получили новый хэш без ledger-строки. Писатель неатрибутируем | **fixed** (b8c667eb: refreshArtifactHash пишет ledger при изменении хэша; закрыт класс немых перештамповок) |
+| TB-7 | P04 | W2 | engine | S3 | 25-мин задержка старта W2 у P04: движки падали `FACTORY_LAUNCH_ALREADY_CONTROLLED` (лиз-эпохи до 6) | **Корень глубже**: killEngineTree матчил легаси-паттерн `orchestrate-cli.js <pid> <eid>`, никогда не совпадал с реальным `--launch-ref` → isEngineAlive ложно «мёртв» → каждый start() плодил конкурента и убивал живых воркеров | **fixed** (b0b0bb2c: kill/verify по авторитетному engine_pid с гардом командной строки) |
 ## Root-cause note TB-2 (субагент-расследование, 2026-08-15)
 
 Механизм доказан контролируемым экспериментом (копия БД во временном каталоге):
@@ -148,6 +148,55 @@ ADR-053-паттерн: authority перехода привязана к жив�
 verifying идемпотентно по sealed-материалу и задиспетчеризовал карточку заново
 (execution bb60d2ad, task 30, hb свежий). Потери данных нет (7/8 карточек и все артефакты целы).
 
+**Коррекция нарратива лечения (субагент-форензика 2026-08-15, по бэкапу БД):**
+после ручного NULLing канбан **FAILED** (lc9, 14:15:06, та же ошибка «no producer
+reservation»). «Execution bb60d2ad, task 30» — это следующий в очереди expenses
+(P12), стартовавший 14:15:27, НЕ выздоровевший канбан. Канбан восстановлен только
+новым lifecycle 23 (16:10:25) с новыми workplaces wp/49/wp/50 и новыми воркерами
+(tasks 141–165), не идемпотентным re-drive.
+
 **Фикс-направления:** (1) при engine-start — reap/adopt чужих executions: exited + stuck_state=active
 → обработать выход (markExited-эквивалент) или очистить reservation; (2) lease kernel-owned
 verifying с TTL + идемпотентный re-drive; (3) obligation-aware pump (пункт #4).
+**Статус:** направление (1) реализовано (bfa9f761 RETAIN + cf71e4c0 spawn-гибриды);
+класс TB-9/TB-10 закрыт парой RETAIN (корень) + fallback по конверту (7fb53ea6,
+оживление повреждённых строк).
+
+## TB-10 — 5 терминальных провалов: «verifying Workplace has no producer reservation»
+
+| Поле | Значение |
+|---|---|
+| PID | P10 expenses, P11 markdown, P12 typing + P08 pomodoro (транзиентно) + P09 kanban (TB-9-класс) |
+| Цех | W2 Formalization |
+| Кат | engine |
+| S | S1 (5 lifecycle-ранов terminally failed) |
+
+**Симптом:** lifecycle failed с ошибкой `verifying Workplace has no producer reservation`
+на ячейке define-product-contract. При этом у каждого workplace: worker_done принят,
+execution exited/exit=0, revision запечатана, CandidateSet запечатан, completion_products=1,
+run-gate obligation pending, gate_runs=0, active_reservation_ref IS NULL.
+
+**Root cause:** engine-start adoption (коммит 17a3f7d7) НАЧИСТО очищал
+active_reservation_ref у терминальных executions в kernel-owned состояниях —
+резервация там указатель на автора вклада, а не замок. Executor требует её для
+readContributionProducts(contributorRef), NULL → throw → lifecycle failed.
+
+**Фикс:** пара коммитов: (1) `bfa9f761` — RETAIN (резервация сохраняется,
+reconciler доводит verifying идемпотентно); (2) `7fb53ea6` — fallback по конверту
+(completion_products → revision.presenterRef, с роль-фильтром и carry-forward guard)
+для уже повреждённых строк. **fixed**.
+
+## TB-12 — дедлок executor'а после крэша в окне «гейт решил → вердикт не применён»
+
+**Симптом:** каждый redrive выходил в pending, никогда не доводя workplace до конца.
+Обязательство run-gate уже completed, но verifying-ветка парковалась на guard'е
+`state !== 'in_progress'`.
+
+**Root cause:** оригинальный эпизод умер после того как гейт записал решение durably,
+но до применения вердикта к Workplace. Обязательство перешло в completed, а код
+обрабатывал только pending/in_progress.
+
+**Фикс:** `9ec914b6` — completed-обязательство = «авторитет durable, продолжай»:
+driveGateRun переигрывает persisted-решение (C12 one-shot), CAS координатора делает
+повторное применение безопасным. Оба nextHandoffReady-гварда принимают completed.
+**fixed**.
