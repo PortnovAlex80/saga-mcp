@@ -735,3 +735,54 @@ test('ADR-053 C5-02: a carry-forward presenter (no worker receipt) falls back to
     'C5-02: carry-forward acceptance binds the workplace author-task projection');
   h.db.close();
 });
+
+test('TB-10: verifying desk with a lost reservation recovers the contributor from the durable envelope', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:1', digest: sha('product'),
+  });
+  // The verified live failure: the reservation pointer is cleared AFTER the
+  // material is on the desk (engine-start machinery once did exactly this).
+  h.db.prepare(
+    'UPDATE factory_workplaces SET active_reservation_ref=NULL WHERE workplace_ref=?',
+  ).run(serializeWorkplaceRef(ref));
+  h.persistence.readDurableContributionAuthor = ({ expectedSchemaRefs }) => {
+    // The executor must ask with the AUTHOR role's product schemas — a
+    // reviewer desk must never resolve an author execution (and vice versa).
+    assert.deepEqual(expectedSchemaRefs, ['factory.test-product.v1']);
+    return 'execution:author';
+  };
+
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'completed', 'gate driven from the recovered contributor');
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  const set = h.db.prepare(
+    'SELECT production_revision_ref FROM factory_candidate_sets WHERE workplace_ref=?',
+  ).get(serializeWorkplaceRef(ref));
+  assert.ok(set.production_revision_ref, 'CandidateSet sealed on the recovered author revision');
+  h.db.close();
+});
+
+test('TB-10: without any durable author the verifying desk still fails loudly', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:1', digest: sha('product'),
+  });
+  h.db.prepare(
+    'UPDATE factory_workplaces SET active_reservation_ref=NULL WHERE workplace_ref=?',
+  ).run(serializeWorkplaceRef(ref));
+  h.persistence.readDurableContributionAuthor = () => null;
+
+  await assert.rejects(
+    () => h.executor.execute(ctx),
+    /no durable contribution author/,
+    'fail-closed, but with the checked-sources message',
+  );
+  h.db.close();
+});

@@ -99,6 +99,21 @@ export interface ProductionCellProjectionPersistence {
     projectRepositoryId?: number | null;
   }): void;
   readAuthorSemanticDigestForWorkplace?(serializedWorkplaceRef: string): string | null;
+  /**
+   * TB-10 fallback: resolve the contribution author (execution ref) from the
+   * DURABLE envelope when the live reservation pointer is gone. Sources, in
+   * order: factory_execution_completion_products (written atomically with the
+   * accepted worker_done — its execution_id IS the author), then the presenter
+   * of the latest sealed revision whose product members match the role's
+   * expected schemas. Schema-filtered so a reviewer gate can never resolve an
+   * author row and vice versa; carry-forward presenters are excluded (they
+   * have no worker receipt and no completion row). Returns null when no
+   * durable author exists — the caller then fails loudly.
+   */
+  readDurableContributionAuthor?(input: {
+    serializedWorkplaceRef: string;
+    expectedSchemaRefs: readonly string[];
+  }): string | null;
   readTaskProjectRepositoryId(taskId: number): number | null;
   readProcessInputHash(processRunId: number): string;
   readTrustedProviders?(projectId: number): readonly {
@@ -525,11 +540,43 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
 
     const actors = this.opts.coordinator.readActiveActors(workplace.ref);
-    const executionRef = actors?.activeReservationRef;
-    if (!executionRef) {
-      throw new NodeExecutionError(this.kind, node.id, 'verifying Workplace has no producer reservation');
-    }
     const role = state.nextRole;
+    const expectedSchemaRefs = role === 'reviewer'
+      ? [cell.review?.verdictSchemaRef ?? '']
+      : cell.productContracts.map(contract => contract.schemaRef);
+    let executionRef = actors?.activeReservationRef ?? null;
+    if (!executionRef) {
+      // TB-10: the live reservation pointer can be lost AFTER the material
+      // was already durably sealed (the verified live failure: engine-start
+      // machinery cleared it on terminal executions in kernel-owned states).
+      // The envelope is the authority — resolve the contributor from
+      // completion products / the sealed revision presenter instead of
+      // terminally failing the run. readContributionProducts below re-verifies
+      // the exact schema set against that contributor, so a wrong resolution
+      // fails closed (MANAGED_COMPLETION_PRODUCT_SET_MISMATCH), never seals
+      // mismatched material. A carry-forward desk always carries its presenter
+      // reservation from the queued→verifying transition, so a missing
+      // reservation is never a carry case (the guard below still runs).
+      executionRef = this.opts.persistence.readDurableContributionAuthor?.({
+        serializedWorkplaceRef: serializeWorkplaceRef(workplace.ref),
+        expectedSchemaRefs,
+      }) ?? null;
+      if (!executionRef) {
+        throw new NodeExecutionError(
+          this.kind,
+          node.id,
+          'verifying Workplace has no producer reservation and no durable '
+          + 'contribution author (completion products and revision presenter '
+          + 'were checked for schemas '
+          + `[${[...new Set(expectedSchemaRefs.filter(Boolean))].join(', ')}])`,
+        );
+      }
+      process.stderr.write(
+        `[production-cell] reservation pointer lost — recovered contributor `
+        + `${executionRef} from the durable envelope for `
+        + `${serializeWorkplaceRef(workplace.ref)}\n`,
+      );
+    }
     const carryDirective = role === 'author' && this.opts.authorCandidateCarryForward
       ? this.opts.authorCandidateCarryForward.resolve({
           processRunId: ctx.processRunId,
@@ -549,9 +596,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           moduleRef,
           nodeId: node.id,
           contributorRef: executionRef,
-          expectedSchemaRefs: role === 'reviewer'
-            ? [cell.review?.verdictSchemaRef ?? '']
-            : cell.productContracts.map(contract => contract.schemaRef),
+          expectedSchemaRefs,
         });
     if (role === 'reviewer') {
       this.assertReviewerProductContract(cell, products, node.id);
