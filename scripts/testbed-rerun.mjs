@@ -35,11 +35,15 @@ const projectId = pid => db.prepare('SELECT id FROM projects WHERE name=?').get(
 const epicOf = pid => db.prepare('SELECT max(id) id FROM epics WHERE project_id=?').get(projectId(pid)).id;
 
 function lifecycleOf(pid) {
+  // Read the NEWEST lifecycle run of the project directly. Joining through
+  // factory_orders picks the OLD run right after new_start (the fresh order
+  // has not linked its lifecycle yet) — that false read made the stall probe
+  // restart healthy engines every 30s.
   const row = db.prepare(`
-    SELECT lr.id, lr.status, lr.terminal_status, lr.current_stage_id
-      FROM factory_lifecycle_runs lr
-      JOIN factory_orders o ON o.lifecycle_run_id=lr.id
-     WHERE o.project_id=? ORDER BY lr.id DESC LIMIT 1`).get(projectId(pid));
+    SELECT id, status, terminal_status, current_stage_id
+      FROM factory_lifecycle_runs
+     WHERE project_id=?
+     ORDER BY id DESC LIMIT 1`).get(projectId(pid));
   return row ?? null;
 }
 
@@ -62,16 +66,21 @@ for (const pid of ids) {
     if (boundary) { log(pid, 'W2 BOUNDARY REACHED (solution-development) — PASS'); break; }
     if (terminal) { log(pid, `TERMINAL ${lr.status}/${lr.terminal_status}`); break; }
     if (mins > 240) { log(pid, 'TIMEOUT 240m'); break; }
-    // TB-9 self-heal probe: hb stale >10 min with zero claude processes -> restart engine (adoption fixes it on start)
+    // TB-9 self-heal probe: hb stale >10 min AND zero workers AND the ENGINE
+    // PROCESS ITSELF IS GONE. A live engine with stale hb is doing kernel
+    // work (replay / verifying / effects) — restarting it mid-flight only
+    // churns; only a dead engine needs a resume.
     if (hb) {
       const ageMs = Date.now() - Date.parse(hb);
-      const claude = Number(sh('powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \\"claude.exe\\" }).Count"') || '0');
-      if (ageMs > 10 * 60_000 && claude === 0) {
-        log(pid, `stall detected (hb ${Math.round(ageMs / 60000)}m, 0 workers) — engine restart`);
-        await postJson(`${TRACKER}/api/factory/stop`, { epic_id: epic });
-        await new Promise(r => setTimeout(r, 5_000));
-        const r2 = await postJson(`${TRACKER}/api/factory/start`, { project_id: projectId(pid) });
-        log(pid, `resume -> ${r2.slice(0, 120)}`);
+      const procCount = cmd => Number(sh(cmd) || '0');
+      if (ageMs > 10 * 60_000) {
+        const claude = procCount('powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \'claude.exe\' }).Count"');
+        const engine = procCount('powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\'\\" | Where-Object { $_.CommandLine -match \'orchestrate\' }).Count"');
+        if (claude === 0 && engine === 0) {
+          log(pid, `stall detected (hb ${Math.round(ageMs / 60000)}m, engine dead) — resume engine`);
+          await postJson(`${TRACKER}/api/factory/start`, { project_id: projectId(pid) })
+            .then(r2 => log(pid, `resume -> ${r2.slice(0, 120)}`));
+        }
       }
     }
   }
