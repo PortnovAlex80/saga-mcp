@@ -101,3 +101,23 @@ Testbed-workaround: автоворекавери harness (stall→kill→tracker
 
 Фикс: расширить regex до `AC-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*` в ОБОИХ местах + ранний чекер
 heading↔code на гейте ревью AC (draft-стадия с repair-циклом), а не терминальный kernel-freeze.
+
+### Уточнения по независимой проверке (2026-08-15, ревьюер кода + локальная верификация)
+
+- **TB-8 → S1** (был S2): по собственной шкале реестра S1 = «прогон умер»; P07 завершился
+  terminal failed. Fail-closed сработал корректно (данные целы), но исход — потеря прогона.
+  **Диагноз подтверждён независимо** (accepted-документ содержит корректный заголовок
+  `AC-NFR-1.1`; узкая грамматика была продублирована в Formalization и Development).
+  **Исправлено**: PR #31 (`4af3adb5`/`961c1d0f`), regex `AC-[A-Za-z0-9-]+` в обоих цехах,
+  regression-тесты + architecture-ratchet на расхождение грамматик. Влито в saga4 `d4098f02`.
+- **TB-6 → статус понижен до НЕдоказанной гипотезы.** Сам HASH_DRIFT реален, effect
+  fail-closed по дизайну (mutable artifacts не могут подменить sealed material); managed
+  artifact writes требуют живого producer execution — значит по одному `artifacts.updated_at`
+  нельзя определить, какой execution сделал запись. Варианты A–E (repair-запись после
+  submission / законный новый execution / неверная revision у гейта / смешение версий
+  CandidateSet / system-writer) требуют точной provenance-цепочки:
+  `factory_managed_artifact_productions → execution_id → worker_executions →
+  WorkplaceProductionRevision → CandidateSet #1/#2 → GateDecision → sealed hash vs
+  artifacts.content_hash`. **До форензики — никаких архитектурных ослаблений HASH_DRIFT.**
+- W1 слепое ревью: среднее 21.64/25 (86.6%) по 14 оценкам (303/14), а не 21.8/25 —
+  исправлено в W1-BLIND-REVIEW.md (335c1bc3).
