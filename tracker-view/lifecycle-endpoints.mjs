@@ -600,6 +600,18 @@ export function createLifecycleEndpointsApi({
                 model_concurrency_limit AS model_limit
            FROM lifecycle_execution_controls WHERE epic_id=?`,
       ).get(state.epicId));
+      // TB-3: a dead engine leaves its reason ONLY in
+      // factory_launch_requests/factory_orders — surface the last failure so
+      // the board shows WHY the factory is silent instead of a bare toggle.
+      const launch = withDb(db => db.prepare(
+        `SELECT l.state AS launch_state, l.error AS launch_error,
+                l.completed_at AS launch_finished_at,
+                o.state AS order_state, o.last_error AS order_error
+           FROM factory_launch_requests l
+           JOIN factory_orders o ON o.order_ref=l.order_ref
+          WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
+          ORDER BY l.rowid DESC LIMIT 1`,
+      ).get(state.epicId));
       respondJson(res, 200, {
         ok: true,
         epic_id: state.epicId,
@@ -611,6 +623,12 @@ export function createLifecycleEndpointsApi({
         model: route?.model ?? null,
         provider: route?.provider ?? null,
         model_limit: route?.model_limit ?? null,
+        last_launch: launch ? {
+          state: launch.launch_state,
+          error: launch.launch_error ?? launch.order_error ?? null,
+          finished_at: launch.launch_finished_at,
+          order_state: launch.order_state,
+        } : null,
       });
     } catch (error) {
       respondEngineError(res, error);

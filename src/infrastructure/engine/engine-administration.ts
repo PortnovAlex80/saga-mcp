@@ -87,6 +87,19 @@ export class EngineProcessAdministration implements EngineAdministration {
       ?? path.join(here, '..', '..', 'orchestrate-cli.js');
   }
 
+  /**
+   * TB-3: canonical tracker composition used when the host process was
+   * started without SAGA_PRODUCT_LIFECYCLE_COMPOSITION in its environment.
+   * Mirrors scripts/factory.mjs resolveFactoryComposition: repo-root relative
+   * (dist/infrastructure/engine -> repo root is three levels up), existing
+   * file required — a missing canonical composition is a hard setup error
+   * the engine child will report verbatim.
+   */
+  private resolveDefaultComposition(): string {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    return path.join(here, '..', '..', '..', 'tracker-view', 'product-delivery-composition.mjs');
+  }
+
   start(command: EngineStartCommand): EngineStateSnapshot {
     const projectId = this.projectIdForEpic(command.epicId);
     const resumable = this.findResumableLifecycleRun(projectId, command.epicId);
@@ -124,6 +137,16 @@ export class EngineProcessAdministration implements EngineAdministration {
         concurrency,
       );
       const cliArgs = [this.orchestrateCliPath, `--launch-ref=${launchRef}`];
+      // TB-3 root: a tracker started without SAGA_PRODUCT_LIFECYCLE_COMPOSITION
+      // in its own env used to pass `undefined` through to the engine child,
+      // which then died at startup with
+      // SAGA_PRODUCT_LIFECYCLE_COMPOSITION_REQUIRED — invisibly (see the
+      // status visibility fix in handleEngineStatus). Default to the canonical
+      // tracker composition exactly like scripts/factory.mjs does, so an
+      // env-less tracker can no longer spawn dead engines.
+      const composition
+        = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION?.trim()
+        ?? this.resolveDefaultComposition();
       const child = this.spawnProcess(
         'node',
         cliArgs,
@@ -134,7 +157,7 @@ export class EngineProcessAdministration implements EngineAdministration {
             ...this.baseEnv,
             DB_PATH: this.config.dbPath,
             SAGA_ORCHESTRATION_MODE: this.config.orchestrationMode,
-            SAGA_PRODUCT_LIFECYCLE_COMPOSITION: process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION,
+            SAGA_PRODUCT_LIFECYCLE_COMPOSITION: composition,
           },
         },
       );
