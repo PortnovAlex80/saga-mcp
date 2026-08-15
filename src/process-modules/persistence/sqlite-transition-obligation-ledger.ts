@@ -207,12 +207,18 @@ export class SqliteTransitionObligationLedger {
 
   findReady(limit = 32): readonly TransitionObligation[] {
     const now = Math.floor(Date.now() / 1000);
+    // Round-robin fairness: lease/defer/complete bump updated_at, so an
+    // obligation that was just swept (e.g. deferred because its lifecycle is
+    // not yet at the postcondition) rotates to the BACK of the batch. Ordering
+    // by created_at alone starves every obligation created after the first
+    // `limit` entries when permanently-deferring ones keep re-queuing at the
+    // front with an old created_at.
     const rows = this.db.prepare(
       `SELECT * FROM factory_transition_obligations
         WHERE state='pending'
            OR (state='in_progress' AND lease_expires_at IS NOT NULL
                AND unixepoch(lease_expires_at) < ?)
-        ORDER BY created_at ASC
+        ORDER BY unixepoch(updated_at) ASC, created_at ASC, obligation_key ASC
         LIMIT ?`,
     ).all(now, limit) as TransitionObligationRow[];
     return rows.map(rowToObligation);

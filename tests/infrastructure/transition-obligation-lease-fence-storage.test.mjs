@@ -14,9 +14,11 @@
 //      `lease_fence`) keeps every row and every `fence` value untouched after
 //      `ensureTransitionObligationLeaseFenceColumn`; the new column lands as
 //      NULL (no backfill, no reset). Idempotent on replay.
-//   2. MONOTONIC STORAGE — writing a higher fence persists it; writing a LOWER
-//      fence does NOT overwrite (storage-level guarantee, independent of the
-//      C7-03 allocator). The causal `fence` column is preserved across leases.
+//   2. MONOTONIC STORAGE — writing a higher fence persists it; a lease carrying
+//      a LOWER fence than the persisted one is REJECTED by the fail-closed
+//      lease CAS (storage-level guarantee, independent of the C7-03 allocator;
+//      a stale caller gets no authority and the stored value stands). The
+//      causal `fence` column is preserved across leases.
 //
 // Out of scope (later cards): atomic fence ALLOCATION ("callers can't choose a
 // future fence") — C7-03; completion/failure CAS — C7-04/C7-05.
@@ -175,7 +177,9 @@ test('C7-02: a migrated (lease_fence=NULL) obligation becomes usable on its next
 
 // ===========================================================================
 // 4. MONOTONIC STORAGE via `lease`: a higher fence persists; a LOWER fence on a
-//    later lease does NOT overwrite (storage-level guarantee, no allocator).
+//    later lease is REJECTED by the fail-closed lease CAS (a stale caller gets
+//    no authority, the stored fence stands). Storage-level guarantee, no
+//    allocator involved.
 // ===========================================================================
 test('C7-02 storage monotonicity: lease never decreases a persisted lease_fence', () => {
   const { ledger, db } = freshLedger();
@@ -194,10 +198,26 @@ test('C7-02 storage monotonicity: lease never decreases a persisted lease_fence'
   assert.equal(ledger.readLeaseFence(ob.obligationKey), 30, 'higher fence 30 overwrites');
 
   backdate();
-  // A stale caller hands a LOWER fence than the one already persisted. The
-  // storage layer must NOT let it decrease the durable value.
-  assert.ok(ledger.lease(ob.obligationKey, 'rec-stale', leaseFence(5)));
-  assert.equal(ledger.readLeaseFence(ob.obligationKey), 30, 'lower fence does NOT overwrite — monotonic');
+  // A stale caller hands a LOWER fence than the one already persisted. Fail-
+  // closed lease semantics (exact-lease-authority hardening): a caller that
+  // cannot present a fence at least as high as the stored monotonic value is
+  // stale and the lease CAS is REJECTED — the stored fence is preserved, the
+  // obligation keeps its current holder, and no authority is granted.
+  assert.equal(ledger.lease(ob.obligationKey, 'rec-stale', leaseFence(5)), false,
+    'stale lower-fence lease is rejected');
+  assert.equal(ledger.readLeaseFence(ob.obligationKey), 30,
+    'rejected stale lease does not lower the fence');
+  assert.equal(ledger.get(ob.obligationKey).state, 'in_progress',
+    'rejected stale lease leaves the obligation in_progress');
+  assert.equal(ledger.get(ob.obligationKey).leaseOwner, 'rec-2',
+    'rejected stale lease grants no lease authority');
+
+  // Positive control: after the rejection, a caller presenting a HIGHER fence
+  // still leases successfully and the durable fence advances monotonically.
+  backdate();
+  assert.ok(ledger.lease(ob.obligationKey, 'rec-3', leaseFence(31)),
+    'higher-fence lease succeeds after a rejected stale one');
+  assert.equal(ledger.readLeaseFence(ob.obligationKey), 31, 'fence advanced to 31');
 });
 
 // ===========================================================================

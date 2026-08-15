@@ -192,12 +192,18 @@ test('C7-03: a lower supplied fence is ignored — the allocated monotonic value
     'persistLeaseFence returns the higher stored value');
   assert.equal(ledger.readLeaseFence(ob.obligationKey), 5, 'lower persist did not decrease the fence');
 
-  // A stale caller leases with a LOWER fence. lease's MAX-CAS must preserve 5.
-  // (The obligation is still pending, so the lease CAS is eligible.)
+  // A stale caller leases with a LOWER fence. Fail-closed lease semantics
+  // (exact-lease-authority hardening): a caller that cannot present a fence at
+  // least as high as the stored monotonic value is stale and the lease CAS is
+  // REJECTED — the stored fence is preserved and no authority is granted.
+  // (The obligation is still pending, so only the fence guard rejects it.)
   assert.equal(ledger.get(ob.obligationKey).state, 'pending');
-  assert.ok(ledger.lease(ob.obligationKey, 'stale-rec', leaseFence(1)), 'lease succeeds');
+  assert.equal(ledger.lease(ob.obligationKey, 'stale-rec', leaseFence(1)), false,
+    'stale lower-fence lease is rejected');
   assert.equal(ledger.readLeaseFence(ob.obligationKey), 5,
-    'stale lower lease does not lower the fence');
+    'rejected stale lease does not lower the fence');
+  assert.equal(ledger.get(ob.obligationKey).state, 'pending',
+    'rejected stale lease leaves the obligation pending');
 
   // Allocation continues strictly increasing from the stored value.
   assert.equal(ledger.allocateLeaseFence(ob.obligationKey).value, 6, 'next allocation is 6');

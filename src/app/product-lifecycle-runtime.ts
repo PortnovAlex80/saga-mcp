@@ -928,7 +928,11 @@ export function createProductLifecycleRuntime(
     async run(command: RunEpisodeCommand) {
       await obligationReconciler.reconcile({
         leaseOwner: `product-lifecycle:${process.pid}:${randomUUID()}`,
-        batchSize: 32,
+        // One sweep must cover EVERY ready obligation: the engine loop gives
+        // up after a bounded number of empty cycles, so an obligation left
+        // outside the batch (starved by older deferring ones) parks the
+        // lifecycle in TRANSITION_OBLIGATION_PENDING until a manual restart.
+        batchSize: 256,
       });
       return baseEngine.run(command);
     },
