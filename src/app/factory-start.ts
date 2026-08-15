@@ -16,6 +16,7 @@ import {
   submissionValidationMemberKey,
   type SubmissionValidationReceiptProjection,
 } from '../process-modules/application/submission-validation-receipt-authority.js';
+import { buryDeadLifecycleObligations } from './engine-start-lifecycle-burial.js';
 
 export const FACTORY_START_SCHEMA = 'saga.factory-start.v1' as const;
 
@@ -47,7 +48,13 @@ export class FactoryStartError extends Error {
       | 'FACTORY_ORPHANED_LAUNCH_NOT_UNIQUE'
       | 'FACTORY_ORPHANED_LAUNCH_UNSAFE'
       | 'FACTORY_WORKER_LOSS_NOT_UNIQUE'
-      | 'FACTORY_WORKER_LOSS_UNSAFE',
+      | 'FACTORY_WORKER_LOSS_UNSAFE'
+      | 'FACTORY_ABANDON_NOT_UNIQUE'
+      | 'FACTORY_ABANDON_EPIC_MISSING'
+      | 'FACTORY_ABANDON_ACTIVE_WORKERS'
+      | 'FACTORY_ABANDON_HUMAN_OPEN'
+      | 'FACTORY_ABANDON_ENGINE_LIVE'
+      | 'FACTORY_ABANDON_CAS_FAILED',
     message: string,
   ) {
     super(message);
@@ -1683,6 +1690,150 @@ function parseMetadata(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// Abandon — the first-class "drop this poisoned run" verb (plan item 24).
+//
+// The operator pain this removes: a PAUSED poisoned lifecycle (dead workers,
+// stalled obligations, no live owner) blocked BOTH resume (deadlock) and
+// new_start (scope occupied), and the only way out was manual SQL. Abandon
+// terminally fails the run with a durable justification and then reuses the
+// engine-start burial cascade (obligations -> failed, kernel-owned workplaces
+// -> terminal, phantom tasks -> cancelled), freeing new_start.
+//
+// Criteria are deliberately FAIL-CLOSED: every refusal is a typed error, never
+// a guess. A run with live workers, an open human request, or a live engine
+// lease is NOT abandoned — the operator resolves that state through its own
+// machinery first.
+// ---------------------------------------------------------------------------
+
+export type AbandonedLifecycleResult = {
+  readonly lifecycleRunId: number;
+  readonly projectId: number;
+  readonly epicId: number;
+  readonly reason: string;
+  readonly burial: ReturnType<typeof buryDeadLifecycleObligations>;
+  readonly alreadyTerminal: boolean;
+};
+
+export function abandonLifecycleRun(
+  db: Database.Database,
+  input: {
+    readonly projectId: number;
+    readonly actorId: string;
+    readonly reason: string;
+  },
+): AbandonedLifecycleResult {
+  const justification = `LIFECYCLE_ABANDONED: actor=${input.actorId}; reason=${input.reason}`;
+
+  const project = db.prepare('SELECT id FROM projects WHERE id=?').get(input.projectId);
+  if (!project) {
+    throw new FactoryStartError('FACTORY_PROJECT_NOT_FOUND', `project ${input.projectId} does not exist`);
+  }
+  const lifecycles = db.prepare(
+    `SELECT id, epic_id, status FROM factory_lifecycle_runs
+      WHERE project_id=? AND status IN ('created','running','paused')
+      ORDER BY id DESC`,
+  ).all(input.projectId) as Array<{ id: number; epic_id: number | null; status: string }>;
+  if (lifecycles.length === 0) {
+    // Nothing to abandon — the run is already terminal. Idempotent no-op so a
+    // rerun verb can call abandon unconditionally.
+    const last = db.prepare(
+      'SELECT id, epic_id FROM factory_lifecycle_runs WHERE project_id=? ORDER BY id DESC LIMIT 1',
+    ).get(input.projectId) as { id: number; epic_id: number | null } | undefined;
+    if (!last) {
+      throw new FactoryStartError('FACTORY_PROJECT_NOT_FOUND', `project ${input.projectId} has no lifecycle runs`);
+    }
+    return {
+      lifecycleRunId: last.id,
+      projectId: input.projectId,
+      epicId: last.epic_id ?? 0,
+      reason: justification,
+      burial: buryDeadLifecycleObligations(db, { projectId: input.projectId }),
+      alreadyTerminal: true,
+    };
+  }
+  if (lifecycles.length > 1) {
+    throw new FactoryStartError(
+      'FACTORY_ABANDON_NOT_UNIQUE',
+      `project ${input.projectId} has ${lifecycles.length} nonterminal lifecycle runs; refusing to guess`,
+    );
+  }
+  const lifecycle = lifecycles[0]!;
+  if (lifecycle.epic_id === null) {
+    throw new FactoryStartError(
+      'FACTORY_ABANDON_EPIC_MISSING',
+      `lifecycle ${lifecycle.id} has no epic binding`,
+    );
+  }
+
+  const activeExecutions = (db.prepare(
+    `SELECT COUNT(*) AS n FROM worker_executions
+      WHERE epic_id=? AND state IN ('reserved','running','cancel_requested')`,
+  ).get(lifecycle.epic_id) as { n: number }).n;
+  if (activeExecutions > 0) {
+    throw new FactoryStartError(
+      'FACTORY_ABANDON_ACTIVE_WORKERS',
+      `lifecycle ${lifecycle.id} still has ${activeExecutions} active worker execution(s); resolve them first`,
+    );
+  }
+  const openHuman = (db.prepare(
+    `SELECT COUNT(*) AS n FROM human_requests hr
+      JOIN tasks t ON t.id=hr.task_id
+     WHERE t.epic_id=? AND hr.state='open'`,
+  ).get(lifecycle.epic_id) as { n: number }).n;
+  if (openHuman > 0) {
+    throw new FactoryStartError(
+      'FACTORY_ABANDON_HUMAN_OPEN',
+      `lifecycle ${lifecycle.id} has ${openHuman} open human request(s); answer or cancel them first`,
+    );
+  }
+  const liveLease = db.prepare(
+    `SELECT l.launch_ref FROM factory_launch_controller_leases cl
+      JOIN factory_launch_requests l ON l.launch_ref=cl.launch_ref
+      JOIN factory_orders o ON o.order_ref=l.order_ref
+     WHERE o.project_id=? AND l.state IN ('requested','claimed','running')
+       AND unixepoch(cl.expires_at) > unixepoch('now')
+     LIMIT 1`,
+  ).get(input.projectId) as { launch_ref: string } | undefined;
+  if (liveLease) {
+    throw new FactoryStartError(
+      'FACTORY_ABANDON_ENGINE_LIVE',
+      `launch ${liveLease.launch_ref} holds a live controller lease; stop the engine first`,
+    );
+  }
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const cas = db.prepare(
+      `UPDATE factory_lifecycle_runs
+          SET status='failed', terminal_status='failed', error=?,
+              execution_lease_owner=NULL, execution_lease_expires_at=NULL,
+              completed_at=datetime('now'), version=version+1, updated_at=datetime('now')
+        WHERE id=? AND status IN ('created','running','paused')`,
+    ).run(justification, lifecycle.id);
+    if (cas.changes !== 1) {
+      throw new FactoryStartError(
+        'FACTORY_ABANDON_CAS_FAILED',
+        `lifecycle ${lifecycle.id} changed state during abandon`,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* tx may already be closed */ }
+    throw error;
+  }
+
+  const burial = buryDeadLifecycleObligations(db, { projectId: input.projectId });
+  return {
+    lifecycleRunId: lifecycle.id,
+    projectId: input.projectId,
+    epicId: lifecycle.epic_id,
+    reason: justification,
+    burial,
+    alreadyTerminal: false,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
