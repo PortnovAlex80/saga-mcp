@@ -121,3 +121,33 @@ heading↔code на гейте ревью AC (draft-стадия с repair-ци�
   artifacts.content_hash`. **До форензики — никаких архитектурных ослаблений HASH_DRIFT.**
 - W1 слепое ревью: среднее 21.64/25 (86.6%) по 14 оценкам (303/14), а не 21.8/25 —
   исправлено в W1-BLIND-REVIEW.md (335c1bc3).
+
+## TB-9 — P09 kanban: deadlock kernel-verifying после смены движка (root-caused, вылечено вручную)
+
+| Поле | Значение |
+|---|---|
+| PID | P09 (kanban, epic 11, process_run 18) |
+| Цех | W2 Formalization |
+| Кат | engine (supervision/recovery не переисполняет kernel-owned verifying) |
+| S | S1 (очередь стояла ~57 мин, 13:16→14:13) |
+
+**Симптом:** воркер последней карточки acceptance-contract завершился ШТАТНО (exit 0, 13:16:14),
+но движок был остановлен (переход на TB-8-фикс, kill ~13:21) до обработки его выхода.
+Workplace `formalization-acceptance-contract/singleton` остался в `loop_state=verifying`
+с `active_reservation_ref` мёртвой execution; узел define-acceptance-contract сделал 4600+
+runtime.paused-попыток; supervision-sweep держал lease (kept=1, renewed=1), CPU 0% (не TB-2-спин).
+Новые движки не пожинают executions чужих инстансов → само не рассасывалось (наблюдали 9 срезов).
+
+**Root cause:** «обработка выхода воркера» живёт в процессе движка, а не в БД-обязательстве.
+ADR-053-паттерн: authority перехода привязана к живому процессу. Пункт #4 отложенного списка
+автора фиксов (obligation-aware pump) прямо про это.
+
+**Лечение (применено 14:14–14:15 UTC, оператор санкционировал):** бэкап БД
+(`factory.sqlite.bak-tb9-1415`) → `UPDATE factory_workplaces SET active_reservation_ref=NULL`
+для зависшего workplace (ровно post-seal/gate состояние по дизайну) → движок переисполнил
+verifying идемпотентно по sealed-материалу и задиспетчеризовал карточку заново
+(execution bb60d2ad, task 30, hb свежий). Потери данных нет (7/8 карточек и все артефакты целы).
+
+**Фикс-направления:** (1) при engine-start — reap/adopt чужих executions: exited + stuck_state=active
+→ обработать выход (markExited-эквивалент) или очистить reservation; (2) lease kernel-owned
+verifying с TTL + идемпотентный re-drive; (3) obligation-aware pump (пункт #4).
