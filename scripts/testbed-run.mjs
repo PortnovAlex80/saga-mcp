@@ -24,13 +24,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const importAbs = p => import(pathToFileURL(p).href);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TESTBED = path.join(ROOT, '.factory-testbed');
+// Кампании изолируются env-ом: qwen-тестбед (по умолчанию) и glm-46
+// (.factory-testbed-glm46 / zai / glm-4.6 / порт 4323 / док-файлы WORKSHOP-GLM46-*).
+const TESTBED = path.join(ROOT, process.env.SAGA_TESTBED_DIR || '.factory-testbed');
 const DB_PATH = path.join(TESTBED, 'factory.sqlite');
 process.env.DB_PATH = DB_PATH; // dist/db.js getDb() читает env — до импортов app-слоя
 const REPOS = path.join(TESTBED, 'repos');
 const RUNS = path.join(TESTBED, 'runs');
-const TRACKER = 'http://localhost:4321';
-const MODEL = 'qwen/qwen3.6-35b-a3b';
+const TRACKER = `http://localhost:${process.env.SAGA_TESTBED_TRACKER_PORT || '4321'}`;
+const PROVIDER = process.env.SAGA_TESTBED_PROVIDER || 'lmstudio';
+const MODEL = process.env.SAGA_TESTBED_MODEL || 'qwen/qwen3.6-35b-a3b';
+const DOCS_TAG = process.env.SAGA_TESTBED_DOCS_TAG || 'WORKSHOP';
 const COMPOSITION = path.join(ROOT, 'tracker-view', 'product-delivery-composition.mjs');
 
 const ROUND_BOUNDARY = {
@@ -91,13 +95,14 @@ function provision(db) {
     const e = db.prepare("INSERT INTO epics (project_id,name,description,status,priority) VALUES (?,?,?,'planned','high')")
       .run(projectId, `REQ-001-${slug}`, project.idea);
     const epicId = Number(e.lastInsertRowid);
-    // control-строка ДО первого claim: lmstudio/qwen/limit 1 (KI-3 исключён архитектурно)
+    // control-строка ДО первого claim (KI-3 исключён архитектурно).
+    // Провайдер/модель — из env кампании (zai/glm-4.6 или lmstudio/qwen).
     db.prepare(`INSERT INTO lifecycle_execution_controls
                   (epic_id,engine_state,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-                VALUES (?, 'stopped', 1, 'lmstudio', ?, NULL, 1)
+                VALUES (?, 'stopped', 1, ?, ?, NULL, 1)
                 ON CONFLICT(epic_id) DO UPDATE SET
-                  concurrency=1, model_provider='lmstudio', model_name=?, model_effort=NULL,
-                  model_concurrency_limit=1, updated_at=datetime('now')`).run(epicId, MODEL, MODEL);
+                  concurrency=1, model_provider=?, model_name=?, model_effort=NULL,
+                  model_concurrency_limit=1, updated_at=datetime('now')`).run(epicId, PROVIDER, MODEL, PROVIDER, MODEL);
     const orderRef = `order-testbed-${slug}-${Date.now()}`;
     db.prepare(`INSERT INTO factory_orders (order_ref,project_id,epic_id,lifecycle_run_id,source_kind,state)
                 VALUES (?,?,?,NULL,'existing_project','starting')`).run(orderRef, projectId, epicId);
@@ -116,7 +121,7 @@ function journalProject(lines) {
   appendFileSync(path.join(dir, 'journal.md'), lines.join('\n') + '\n');
 }
 function updateRoundJournal(row) {
-  const file = path.join(ROOT, 'docs', 'testing', 'WORKSHOP-JOURNAL.md');
+  const file = path.join(ROOT, 'docs', 'testing', `${DOCS_TAG}-JOURNAL.md`);
   let text = readFileSync(file, 'utf8');
   const section = text.indexOf(`## Раунд ${round}`);
   if (section < 0) return;
@@ -128,7 +133,7 @@ function updateRoundJournal(row) {
   writeFileSync(file, text, 'utf8');
 }
 function updateStatusGrid(outcomeGlyph, note) {
-  const file = path.join(ROOT, 'docs', 'testing', 'WORKSHOP-STATUS.md');
+  const file = path.join(ROOT, 'docs', 'testing', `${DOCS_TAG}-STATUS.md`);
   let text = readFileSync(file, 'utf8');
   const col = round === 'W1' ? 1 : round === 'W2' ? 2 : 3;
   const lines = text.split('\n').map(line => {

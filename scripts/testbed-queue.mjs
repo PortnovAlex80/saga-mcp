@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const QUEUE_LOG = path.join(ROOT, '.factory-testbed', 'queue.log');
+// Кампанию задаёт env (см. testbed-run.mjs): каталог тестбеда и док-файлы.
+const TESTBED_DIR = process.env.SAGA_TESTBED_DIR || '.factory-testbed';
+const QUEUE_LOG = path.join(ROOT, TESTBED_DIR, 'queue.log');
 const reg = JSON.parse(readFileSync(path.join(ROOT, 'docs', 'testing', 'projects.json'), 'utf8'));
 
 const args = process.argv.slice(2);
@@ -30,18 +32,20 @@ if (onlyArg) pids = onlyArg.split('=')[1].split(',').filter(x => reg.projects.so
 const line = s => appendFileSync(QUEUE_LOG, s + '\n', 'utf8');
 line(`${new Date().toISOString()} QUEUE-START round=${round} pids=${pids.join(',')}`);
 
-const db = new Database(path.join(ROOT, '.factory-testbed', 'factory.sqlite'), { readonly: true });
+const db = new Database(path.join(ROOT, TESTBED_DIR, 'factory.sqlite'), { readonly: true });
 for (const pid of pids) {
   const def = reg.projects.find(p => p.id === pid);
   const exists = !!db.prepare('SELECT id FROM projects WHERE name=?').get(def.slug);
   const perProjectTimeout = { W1: 150, W2: 480, W3: 1440 }[round] || 150;
   const runArgs = ['scripts/testbed-run.mjs', pid, `--round=${round}`, `--timeout-min=${perProjectTimeout}`];
   if (exists) runArgs.push('--attach');
-  const runDir = path.join(ROOT, '.factory-testbed', 'runs', pid);
+  const runDir = path.join(ROOT, TESTBED_DIR, 'runs', pid);
   mkdirSync(runDir, { recursive: true });
   const harnessLog = path.join(runDir, `harness-${round}.log`);
   line(`${new Date().toISOString()} RUN ${pid} mode=${exists ? 'attach' : 'provision'}`);
-  const r = spawnSync('node', runArgs, { cwd: ROOT, encoding: 'utf8', timeout: 160 * 60_000 });
+  // Внешний kill-лимит = внутренний дедлайн + 10 мин запаса (раньше был
+  // жёсткий 160-мин кап — обрубал W3-прогоны с таймаутом 1440 мин).
+  const r = spawnSync('node', runArgs, { cwd: ROOT, encoding: 'utf8', timeout: (perProjectTimeout + 10) * 60_000 });
   writeFileSync(harnessLog, `STDOUT:\n${r.stdout || ''}\nSTDERR:\n${r.stderr || ''}\nexit=${r.status}\n`, 'utf8');
   const tail = ((r.stderr || '').trim() || (r.stdout || '').trim()).split('\n').slice(-4).join(' | ');
   line(`${new Date().toISOString()} DONE ${pid} exit=${r.status} ${r.status === 0 ? 'PASS' : 'FAIL'} ${tail}`);
