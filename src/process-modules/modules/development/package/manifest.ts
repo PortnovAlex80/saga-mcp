@@ -103,6 +103,7 @@ const RESOURCE_PATHS = {
   plannerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planner/SKILL.md`,
   workerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-worker/SKILL.md`,
   implementationReviewerSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-development-code-reviewer/SKILL.md`,
+  readinessCertifierSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-readiness-certifier/SKILL.md`,
   // Planning reviewer skill — reviews the planner's task graph proposal.
   // Owned by the development package (mirrors formalization's reviewer skills).
   planningReviewerSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planning-reviewer/SKILL.md`,
@@ -120,6 +121,7 @@ const RESOURCE_PATHS = {
   stageTracker: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/process-module-stage-tracker.md`,
   implementationTracker: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/implementation-task-tracker.md`,
   implementationChecklist: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/implementation-worker-checklist.md`,
+  readinessChecklist: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/readiness-certification-checklist.md`,
 } as const;
 
 /**
@@ -145,6 +147,12 @@ export const DEVELOPMENT_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     logicalId: 'development.skill.implementation-reviewer',
     path: RESOURCE_PATHS.implementationReviewerSkill,
     kind: 'reviewer-skill',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'development.skill.readiness-certifier',
+    path: RESOURCE_PATHS.readinessCertifierSkill,
+    kind: 'skill',
     digest: PENDING_DIGEST,
   },
   // --- Shared protocol skill ---------------------------------------------
@@ -199,6 +207,12 @@ export const DEVELOPMENT_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     kind: 'checklist',
     digest: PENDING_DIGEST,
   },
+  {
+    logicalId: 'development.checklist.readiness-certification',
+    path: RESOURCE_PATHS.readinessChecklist,
+    kind: 'checklist',
+    digest: PENDING_DIGEST,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -231,6 +245,8 @@ function developmentHandlerRef(logicalId: string): HandlerRef {
  */
 export const DEVELOPMENT_HANDLER_REFS: readonly HandlerRef[] = [
   developmentHandlerRef(DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph),
+  developmentHandlerRef(DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate),
+  developmentHandlerRef(DEVELOPMENT_KERNEL_HANDLER_IDS.bindRunnableCandidate),
   developmentHandlerRef(DEVELOPMENT_KERNEL_HANDLER_IDS.settle),
 ];
 

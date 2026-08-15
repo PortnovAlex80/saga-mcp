@@ -1,9 +1,9 @@
 # ADR-069: Readiness profile is an implementation submission contract
 
-- **Status:** Accepted
+- **Status:** Superseded
 - **Date:** 2026-08-14
 - **Supersedes:** —
-- **Superseded by:** —
+- **Superseded by:** ADR-070
 - **Decision-maker:** autonomous-decision skill
 
 ## Context

@@ -12,7 +12,11 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../dist/infrastructure/verification/local-runnability-check-provider.js';
-import { INTEGRATED_CANDIDATE_SCHEMA } from '../../dist/modules/development/domain/development-schemas.js';
+import {
+  DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  INTEGRATED_CANDIDATE_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+} from '../../dist/modules/development/domain/development-schemas.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import { isDockerAvailableForReadiness } from '../../dist/infrastructure/verification/docker-readiness-executor.js';
 
@@ -494,6 +498,87 @@ test('runs the contract-stated test command verbatim, not a package.json script 
     const result = await provider.run(RUN_ARGS);
     assert.equal(result.outcome, 'passed');
     assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ADR-070 readiness manifest executes against its exact integrated-source ProductRef', { timeout: 30000 }, async () => {
+  const root = fixture({ testOnly: true });
+  const db = newDb();
+  const sourceHash = '7'.repeat(64);
+  const manifestHash = '8'.repeat(64);
+  const commitSha = git(root, 'rev-parse', 'HEAD');
+  const treeHash = git(root, 'rev-parse', 'HEAD^{tree}');
+  db.prepare('INSERT INTO project_repositories VALUES (?,?)').run(7, root);
+  const sourceRef = {
+    schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+    ref: `development-integrated-source:${PROCESS_RUN_ID}:${sourceHash}`,
+    hash: sourceHash,
+  };
+  db.prepare(
+    `INSERT INTO factory_process_products
+       (process_run_id,product_kind,schema_id,artifact_ref,product_hash,payload_snapshot)
+     VALUES (?,?,?,?,?,?)`,
+  ).run(
+    PROCESS_RUN_ID,
+    'development.integrated-source-candidate',
+    sourceRef.schema,
+    sourceRef.ref,
+    sourceRef.hash,
+    JSON.stringify({
+      sourceHash,
+      repositories: [{ projectRepositoryId: 7, commitSha, treeHash }],
+    }),
+  );
+  db.exec(`CREATE TABLE factory_managed_node_submissions(
+    id INTEGER PRIMARY KEY, process_run_id INTEGER, schema_version TEXT,
+    content_hash TEXT, payload_snapshot TEXT
+  )`);
+  db.prepare('INSERT INTO factory_managed_node_submissions VALUES (?,?,?,?,?)').run(
+    41,
+    PROCESS_RUN_ID,
+    DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+    manifestHash,
+    JSON.stringify({
+      schemaVersion: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+      sourceCandidate: sourceRef,
+      targets: [{
+        key: 'primary',
+        readiness: {
+          kind: 'static',
+          commands: { installCommand: null, testCommand: 'npm test' },
+        },
+      }],
+    }),
+  );
+  const candidateSets = {
+    read(ref) {
+      return ref === 'candidate-set/test' ? {
+        candidateSetRef: ref,
+        role: 'author',
+        workplaceRef: {
+          processRunId: PROCESS_RUN_ID,
+          moduleRef: 'solution-development',
+          productionCellId: 'development-readiness-certification',
+          workKey: 'singleton',
+        },
+        members: [{
+          productRef: {
+            schemaId: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+            ref: 'managed-node-submission:41',
+            digest: manifestHash,
+          },
+          origin: 'produced', sourceCandidateSetRef: null,
+        }],
+      } : null;
+    },
+  };
+  try {
+    const provider = createLocalRunnabilityCheckProvider({ db, candidateSets });
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed');
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });

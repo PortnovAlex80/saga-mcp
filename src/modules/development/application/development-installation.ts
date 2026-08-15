@@ -39,6 +39,7 @@ import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
   type ContentAddressedReference,
   type DevelopmentCase,
@@ -61,6 +62,7 @@ export const DEVELOPMENT_NODE_IDS = {
   resolveTaskGraph: 'resolve-task-graph',
   settlement: 'settle-development',
   freezeIntegratedCandidate: 'freeze-integrated-candidate',
+  bindRunnableCandidate: 'bind-runnable-candidate',
 } as const;
 
 /**
@@ -108,6 +110,8 @@ export function createDevelopmentKernelHandlers(
       ),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate]:
       createIntegratedCandidateFreezeHandler(deps),
+    [DEVELOPMENT_KERNEL_HANDLER_IDS.bindRunnableCandidate]:
+      createRunnableCandidateBindingHandler(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.settle]:
       createDevelopmentSettlementHandler(deps, moduleRef),
   };
@@ -128,7 +132,7 @@ function createIntegratedCandidateFreezeHandler(
         event: 'waiting',
         runtimeEvent: 'paused',
         production: {
-          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
           artifactRef: `development-candidate-wait:${ctx.processRunId}:${contentHash}`,
           contentHash,
           bindings: { reasonCodes: result.reasonCodes },
@@ -140,7 +144,7 @@ function createIntegratedCandidateFreezeHandler(
       return {
         event: 'failed',
         production: {
-          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
           artifactRef: `development-candidate-failed:${ctx.processRunId}:${contentHash}`,
           contentHash,
           bindings: { reasonCodes: result.reasonCodes },
@@ -150,11 +154,11 @@ function createIntegratedCandidateFreezeHandler(
     return {
       event: 'frozen',
       production: {
-        schema: INTEGRATED_CANDIDATE_SCHEMA,
+        schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
         artifactRef: result.reference.ref,
         contentHash: result.reference.hash,
         semanticDigest: sha256Hex({
-          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
           frozen: result.candidate.frozen,
           repositories: result.candidate.repositories,
           buildProducts: result.candidate.buildProducts,
@@ -163,6 +167,39 @@ function createIntegratedCandidateFreezeHandler(
           candidate: result.candidate,
           candidateRef: result.reference,
         },
+      },
+    };
+  };
+}
+
+function createRunnableCandidateBindingHandler(
+  deps: DevelopmentModuleInstallationDependencies,
+): KernelHandler {
+  return ctx => {
+    const result = deps.settlementState.bindRunnableCandidate({
+      processRunId: ctx.processRunId,
+      developmentCase: requireDevelopmentCase(ctx),
+    });
+    if (result.status !== 'bound') {
+      const contentHash = sha256Hex(result);
+      return {
+        event: result.status === 'waiting' ? 'waiting' : 'failed',
+        ...(result.status === 'waiting' ? { runtimeEvent: 'paused' as const } : {}),
+        production: {
+          schema: INTEGRATED_CANDIDATE_SCHEMA,
+          artifactRef: `development-runnable-${result.status}:${ctx.processRunId}:${contentHash}`,
+          contentHash,
+          bindings: { reasonCodes: result.reasonCodes },
+        },
+      };
+    }
+    return {
+      event: 'bound',
+      production: {
+        schema: INTEGRATED_CANDIDATE_SCHEMA,
+        artifactRef: result.reference.ref,
+        contentHash: result.reference.hash,
+        bindings: { candidate: result.candidate, candidateRef: result.reference },
       },
     };
   };

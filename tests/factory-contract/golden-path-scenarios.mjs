@@ -9,7 +9,7 @@ import { actions } from './scenario-engine.mjs';
 
 const FRM = 'solution-formalization@1.0.0';
 const DISC = 'product-discovery@3.0.2';
-const DEV = 'solution-development@1.3.1';
+const DEV = 'solution-development@1.4.0';
 
 function metaOf(task) {
   return typeof task.metadata === 'string'
@@ -411,6 +411,29 @@ const developmentVerify = async ({ client, task, prompt }) => {
     `verified ${item.key}`);
 };
 
+const developmentReadiness = async ({ client, task, prompt }) => {
+  const meta = metaOf(task);
+  const sourceRef = findObject(
+    meta.process_node_input ?? meta,
+    value => value.schema === 'factory.integrated-source-candidate.v1'
+      && typeof value.ref === 'string' && typeof value.hash === 'string',
+  );
+  if (!sourceRef) throw new Error('integrated source ProductRef not found');
+  await actions.submitProduct(client, 'factory.development-readiness-manifest.v1', {
+    schemaVersion: 'factory.development-readiness-manifest.v1',
+    sourceCandidate: sourceRef,
+    targets: [{
+      key: 'primary',
+      readiness: {
+        kind: 'static',
+        commands: { installCommand: null, testCommand: 'node -e "process.exit(0)"' },
+      },
+    }],
+  });
+  await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
+    'certified product readiness');
+};
+
 export const goldenPathScenarios = {
   [`${DISC}/produce-proposal/author/singleton`]: discoveryProposal,
   [`${DISC}/assess-readiness/author/singleton`]: discoveryReadiness,
@@ -429,5 +452,6 @@ export const goldenPathScenarios = {
   [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
   [`${DEV}/implement-work-items/author/*`]: developmentImplement,
   [`${DEV}/implement-work-items/reviewer/*`]: developmentReview,
+  [`${DEV}/certify-product-readiness/author/singleton`]: developmentReadiness,
   [`${DEV}/verify-acceptance/author/*`]: developmentVerify,
 };

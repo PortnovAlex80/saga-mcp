@@ -116,6 +116,23 @@ export function hashIntegratedCandidate(
     buildProducts: candidate.buildProducts,
     frozen: candidate.frozen,
     ...(candidate.readiness ? { readiness: candidate.readiness } : {}),
+    ...(candidate.sourceCandidate ? { sourceCandidate: candidate.sourceCandidate } : {}),
+    ...(candidate.readinessCertification
+      ? { readinessCertification: candidate.readinessCertification }
+      : {}),
+  });
+}
+
+export function hashIntegratedSourceCandidate(
+  candidate: import('./development-schemas.js').IntegratedSourceCandidate,
+): string {
+  return sha256Hex({
+    schemaVersion: candidate.schemaVersion,
+    taskGraphHash: candidate.taskGraphHash,
+    implementationWorksetHash: candidate.implementationWorksetHash,
+    repositories: candidate.repositories,
+    buildProducts: candidate.buildProducts,
+    frozen: candidate.frozen,
   });
 }
 

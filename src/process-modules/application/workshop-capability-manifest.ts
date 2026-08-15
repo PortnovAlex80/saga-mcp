@@ -42,6 +42,7 @@ import {
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
   developmentImplementationPayloadContract,
+  developmentReadinessManifestPayloadContract,
   developmentReviewVerdictPayloadContract,
   developmentTaskGraphPayloadContract,
   developmentVerificationPayloadContract,
@@ -136,6 +137,7 @@ export const WORKSHOP_PAYLOAD_CONTRACTS: readonly ProductPayloadContract[] = [
   // skill prose. Pinning the consumer read surface here installs the contract
   // in BOTH the orchestrator and the worker MCP with no hand-list to drift.
   developmentImplementationPayloadContract,
+  developmentReadinessManifestPayloadContract,
   sourceChangeCandidatePayloadContract,
   // --- cross-cutting (review verdict used by development + formalization) ---
   factoryReviewVerdictPayloadContract,

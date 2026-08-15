@@ -20,7 +20,7 @@ export const AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
   'factory.local-runnability.v1';
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.3.1';
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.4.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -30,4 +30,5 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'verbatim-profile-commands-on-isolated-host-or-worker-declared-docker-image-loopback-only',
   processTerminationPolicy:
     'linux-proc-zombie-aware-and-live-process-tree-fail-closed-v1',
+  subjectPolicy: 'accepted-readiness-manifest-bound-to-exact-integrated-source-v1',
 });

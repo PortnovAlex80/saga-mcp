@@ -39,6 +39,17 @@ function parsePrompt(text) {
   return kv;
 }
 
+function findObject(value, predicate, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return null;
+  seen.add(value);
+  if (predicate(value)) return value;
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    const found = findObject(child, predicate, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
 function emit(type, extra = {}) {
   process.stdout.write(JSON.stringify({ type, ...extra }) + '\n');
 }
@@ -115,6 +126,35 @@ async function main() {
     const meta = typeof taskData.metadata === 'string'
       ? JSON.parse(taskData.metadata || '{}')
       : (taskData.metadata || {});
+    if (prompt.task_kind === 'development.readiness') {
+      const sourceRef = findObject(
+        meta.process_node_input ?? meta,
+        value => value.schema === 'factory.integrated-source-candidate.v1'
+          && typeof value.ref === 'string' && typeof value.hash === 'string',
+      );
+      if (!sourceRef) throw new Error('integrated source ProductRef not found');
+      await client.call('product_submit', {
+        schema: 'factory.development-readiness-manifest.v1',
+        content: {
+          schemaVersion: 'factory.development-readiness-manifest.v1',
+          sourceCandidate: sourceRef,
+          targets: [{
+            key: 'primary',
+            readiness: {
+              kind: 'static',
+              commands: { installCommand: null, testCommand: 'node -e "process.exit(0)"' },
+            },
+          }],
+        },
+      });
+      await client.call('worker_done', {
+        task_id: taskId,
+        worker_id: prompt.worker_id,
+        result: 'certified product readiness',
+        execution_id: prompt.execution_id,
+      });
+      return;
+    }
     const processRunId = meta.process_run_id;
     const workItemKey = meta.work_key || meta.cell_input_item?.key || `verify-${taskId}`;
     const acId = taskData.verification_target_artifact_id

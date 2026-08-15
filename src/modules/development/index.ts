@@ -19,6 +19,9 @@ import {
   createDevelopmentTaskGraphCheckProvider,
   createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
 } from './application/development-check-providers.js';
 import { developmentProcessModule } from '../../process-modules/modules/development/development-process-module.js';
 import {
@@ -131,6 +134,32 @@ export function registerDevelopment(
       db,
       candidateSets: sharedDeps.candidateSetRepo,
     }));
+  const verificationTrust = db.prepare(
+    `SELECT id,version,trust_basis,category,determinism,status
+       FROM trusted_providers WHERE project_id IS NULL AND name=?`,
+  ).all(DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID) as Array<{
+    id: number; version: string | null; trust_basis: string;
+    category: string; determinism: string; status: string;
+  }>;
+  const expectedVerificationTrust = `built-in:${DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST}`;
+  if (verificationTrust.length === 0) {
+    db.prepare(
+      `INSERT INTO trusted_providers
+        (project_id,name,version,category,trust_basis,determinism,scope,status)
+       VALUES (NULL,?,?,'deterministic_evidence',?,'full','verification-lineage','active')`,
+    ).run(
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+      expectedVerificationTrust,
+    );
+  } else if (verificationTrust.length !== 1
+      || verificationTrust[0]!.version !== DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION
+      || verificationTrust[0]!.trust_basis !== expectedVerificationTrust
+      || verificationTrust[0]!.category !== 'deterministic_evidence'
+      || verificationTrust[0]!.determinism !== 'full'
+      || verificationTrust[0]!.status !== 'active') {
+    throw new Error('DEVELOPMENT_VERIFICATION_PROVIDER_TRUST_DRIFT');
+  }
   registerWorkshopCheckProvider(createReviewVerdictCheckProvider({
     db,
     candidateSets: sharedDeps.candidateSetRepo,

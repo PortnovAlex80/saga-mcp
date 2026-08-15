@@ -9,6 +9,7 @@ import { SqliteDevelopmentModuleStore } from '../../dist/modules/development/inf
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../dist/modules/development/application/candidate-check-contracts.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -83,9 +84,11 @@ test('Development settlement binds readiness through accepted verification autho
       check_run_ref TEXT NOT NULL,
       subject_candidate_set_ref TEXT NOT NULL,
       provider_id TEXT NOT NULL,
+      provider_version TEXT NOT NULL,
       provider_digest TEXT NOT NULL,
       outcome TEXT NOT NULL,
-      evidence_refs TEXT NOT NULL
+      evidence_refs TEXT NOT NULL,
+      receipt_digest TEXT NOT NULL
     );
   `);
 
@@ -111,15 +114,17 @@ test('Development settlement binds readiness through accepted verification autho
     .run('workplace:verification', 'candidate:verification', 'decision:final');
   db.prepare('INSERT INTO factory_gate_decisions VALUES (?, ?, ?, ?, ?)')
     .run('decision:final', 'gate:final', 'candidate:verification', 'final', 'accepted');
-  db.prepare('INSERT INTO factory_check_receipts VALUES (?, ?, ?, ?, ?, ?, ?)')
+  db.prepare('INSERT INTO factory_check_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(
       'receipt:readiness',
       'gate:final',
       'candidate:verification',
       LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
       LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
       'passed',
       JSON.stringify(['evidence:exact']),
+      'b'.repeat(64),
     );
 
   // Construct only the read-side under test. TypeScript `private` is not a JS
@@ -128,7 +133,14 @@ test('Development settlement binds readiness through accepted verification autho
   store.db = db;
   const receipt = store.readLocalReadinessReceipt(
     3,
-    { candidateHash: candidateRef.hash },
+    {
+      candidateHash: candidateRef.hash,
+      sourceCandidate: { schema: 'source', ref: 'source:1', hash: 'c'.repeat(64) },
+      readinessCertification: {
+        candidateSetRef: 'candidate:verification',
+        checkReceipt: { schema: 'factory.check-receipt.v1', ref: 'receipt:readiness', hash: 'b'.repeat(64) },
+      },
+    },
     candidateRef,
   );
   assert.deepEqual(receipt, {

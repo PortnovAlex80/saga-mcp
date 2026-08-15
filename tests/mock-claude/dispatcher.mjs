@@ -44,6 +44,7 @@ const KIND_TO_SCRIPT = {
   'planning.decomposition': 'workshops/development/task-graph-planner.mjs',
   'development.code': 'workshops/development/implementation-worker.mjs',
   'development.review': 'workshops/development/review-worker.mjs',
+  'development.readiness': 'workshops/development/verification-worker.mjs',
   'verification.ac': 'workshops/development/verification-worker.mjs',
   // Delivery (kernel + human — не нужны mock-воркеры)
 };

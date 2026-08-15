@@ -26,6 +26,8 @@ import {
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+  DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
   type AcceptanceVerificationWorkset,
   type CandidateVerificationEvidence,
   type ContentAddressedReference,
@@ -35,15 +37,17 @@ import {
   type DevelopmentSettlementInput,
   type DevelopmentTaskGraphSnapshot,
   type IntegratedReleaseCandidate,
+  type IntegratedSourceCandidate,
+  type DevelopmentReadinessManifest,
   type DevelopmentVerificationEvidenceProduct,
   type LocalReadinessReceipt,
-  type ReadinessProfile,
   type VerificationProviderBinding,
 } from '../domain/development-schemas.js';
 import {
   hashAcceptanceVerification,
   hashImplementationWorkset,
   hashIntegratedCandidate,
+  hashIntegratedSourceCandidate,
 } from '../domain/development-settlement-policy.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -51,37 +55,17 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../application/candidate-check-contracts.js';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../infrastructure/source-change/managed-source-change-candidate.js';
+import {
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+  DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+} from '../application/development-check-providers.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 const PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE = 'development.integrated-candidate';
+const PROCESS_PRODUCT_KIND_INTEGRATED_SOURCE = 'development.integrated-source-candidate';
 const PROCESS_PRODUCT_KIND_ADOPTED_IMPLEMENTATION_WORKSET =
   'development.adopted-implementation-workset';
-
-export function resolveIntegratedReadinessProfile(
-  presentations: readonly {
-    schemaId: string;
-    readiness?: ReadinessProfile;
-  }[],
-  baseline: ReadinessProfile | null,
-):
-  | { ok: true; profile: ReadinessProfile }
-  | { ok: false; reasonCode: 'implementation-readiness-profile-missing' | 'implementation-readiness-profile-mismatch' } {
-  const implementationPresentations = presentations.filter(presentation =>
-    presentation.schemaId === DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA);
-  if (implementationPresentations.length === 0) {
-    return baseline
-      ? { ok: true, profile: baseline }
-      : { ok: false, reasonCode: 'implementation-readiness-profile-missing' };
-  }
-  if (implementationPresentations.some(presentation => !presentation.readiness)) {
-    return { ok: false, reasonCode: 'implementation-readiness-profile-missing' };
-  }
-  const profiles = implementationPresentations.map(presentation => presentation.readiness!);
-  if (new Set(profiles.map(profile => sha256Hex(profile))).size !== 1) {
-    return { ok: false, reasonCode: 'implementation-readiness-profile-mismatch' };
-  }
-  return { ok: true, profile: profiles[0]! };
-}
 
 /**
  * SQLite-backed Development module store. Implements the declarative ports over
@@ -214,15 +198,15 @@ export class SqliteDevelopmentModuleStore implements
     processRunId: number;
     developmentCase: DevelopmentCase;
   }):
-    | { status: 'frozen'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
+    | { status: 'frozen'; candidate: IntegratedSourceCandidate; reference: ContentAddressedReference }
     | { status: 'waiting'; reasonCodes: readonly string[] }
     | { status: 'failed'; reasonCodes: readonly string[] } {
-    const existing = this.products.read<IntegratedReleaseCandidate>(
+    const existing = this.products.read<IntegratedSourceCandidate>(
       input.processRunId,
-      PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+      PROCESS_PRODUCT_KIND_INTEGRATED_SOURCE,
     );
     if (existing) {
-      if (hashIntegratedCandidate(existing.payload) !== existing.payload.candidateHash) {
+      if (hashIntegratedSourceCandidate(existing.payload) !== existing.payload.sourceHash) {
         return { status: 'failed', reasonCodes: ['frozen-candidate-corrupt'] };
       }
       return {
@@ -300,46 +284,28 @@ export class SqliteDevelopmentModuleStore implements
       const integrationIntentRefs = accepted.map((_product, index) =>
         `${integrations[index]!.effectReceiptRef}:commit:${integrations[index]!.integratedCommit}`)
         .sort();
-      // LR-04 — propagate the EXPLICIT readiness profile from the accepted
-      // implementation results onto the frozen candidate. Every standard
-      // presentation must declare it, and all declarations must be identical;
-      // arrival order must never choose the accepted run contract.
-      // Continuation fallback: a managed repair round submits textual
-      // SourceChangeCandidates, which carry no readiness profile by design —
-      // the run contract belongs to the BASELINE candidate the repair edits.
-      // Inherit the adopted baseline's profile so the re-frozen candidate
-      // keeps its runnability contract instead of silently losing it.
-      const readiness = resolveIntegratedReadinessProfile(
-        accepted.map(product => ({
-          schemaId: product.reference.schema,
-          readiness: product.reference.schema === DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA
-            ? product.payload?.readiness
-            : undefined,
-        })),
-        this.readBaselineReadinessProfile(input.developmentCase) ?? null,
-      );
-      if (!readiness.ok) return { status: 'failed', reasonCodes: [readiness.reasonCode] };
-      const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
-        schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
+      // ADR-070: freeze integrated material only. Scoped implementation
+      // readiness remains evidence and cannot vote on candidate-wide commands.
+      const body: Omit<IntegratedSourceCandidate, 'sourceHash'> = {
+        schemaVersion: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
         taskGraphHash: graphProduct.payload.graphHash,
         implementationWorksetHash: workset.worksetHash,
         repositories,
         buildProducts,
         integrationIntentRefs,
         frozen: true,
-        readiness: readiness.profile,
       };
       const candidate = {
         ...body,
-        candidateHash: hashIntegratedCandidate({ ...body, candidateHash: '' }),
+        sourceHash: hashIntegratedSourceCandidate({ ...body, sourceHash: '' }),
       };
       const stored = this.products.persist({
         processRunId: input.processRunId,
-        productKind: PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
-        schema: INTEGRATED_CANDIDATE_SCHEMA,
-        productHash: candidate.candidateHash,
+        productKind: PROCESS_PRODUCT_KIND_INTEGRATED_SOURCE,
+        schema: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+        productHash: candidate.sourceHash,
         payload: candidate,
-        artifactRefPrefix: 'development-integrated-candidate',
+        artifactRefPrefix: 'development-integrated-source',
       }).record;
       // LR-01 / LR-07 — seal the integrated candidate into an author candidate
       // set so the local-runnability provider can resolve it as its subject
@@ -353,6 +319,102 @@ export class SqliteDevelopmentModuleStore implements
     } catch {
       return { status: 'failed', reasonCodes: ['candidate-freeze-lineage-invalid'] };
     }
+  }
+
+  bindRunnableCandidate(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+  }):
+    | { status: 'bound'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
+    | { status: 'waiting'; reasonCodes: readonly string[] }
+    | { status: 'failed'; reasonCodes: readonly string[] } {
+    const existing = this.products.read<IntegratedReleaseCandidate>(
+      input.processRunId, PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+    );
+    if (existing) {
+      return hashIntegratedCandidate(existing.payload) === existing.payload.candidateHash
+        ? { status: 'bound', candidate: existing.payload, reference: existing.reference }
+        : { status: 'failed', reasonCodes: ['frozen-candidate-corrupt'] };
+    }
+    const source = this.products.read<IntegratedSourceCandidate>(
+      input.processRunId, PROCESS_PRODUCT_KIND_INTEGRATED_SOURCE,
+    );
+    if (!source || hashIntegratedSourceCandidate(source.payload) !== source.payload.sourceHash) {
+      return { status: 'failed', reasonCodes: ['integrated-source-missing'] };
+    }
+    const manifests = this.readAcceptedCellProducts<DevelopmentReadinessManifest>(
+      input.processRunId,
+      'development-readiness-certification',
+      DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+    );
+    if (manifests.length !== 1) {
+      return { status: 'waiting', reasonCodes: ['readiness-manifest-missing'] };
+    }
+    const presentation = manifests[0]!;
+    const manifest = presentation.payload;
+    if (manifest.sourceCandidate.schema !== source.reference.schema
+        || manifest.sourceCandidate.ref !== source.reference.ref
+        || manifest.sourceCandidate.hash !== source.reference.hash
+        || manifest.targets.length !== 1
+        || manifest.targets[0]?.key !== 'primary') {
+      return { status: 'failed', reasonCodes: ['readiness-manifest-source-mismatch'] };
+    }
+    const receipt = this.readExactReadinessReceipt(presentation.candidateSetRef);
+    if (!receipt) return { status: 'waiting', reasonCodes: ['local-readiness-missing'] };
+    const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
+      schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
+      taskGraphHash: source.payload.taskGraphHash,
+      implementationWorksetHash: source.payload.implementationWorksetHash,
+      repositories: source.payload.repositories,
+      buildProducts: source.payload.buildProducts,
+      integrationIntentRefs: source.payload.integrationIntentRefs,
+      frozen: true,
+      readiness: manifest.targets[0].readiness,
+      sourceCandidate: source.reference,
+      readinessCertification: {
+        manifest: presentation.reference,
+        candidateSetRef: presentation.candidateSetRef,
+        checkReceipt: receipt,
+      },
+    };
+    const candidate: IntegratedReleaseCandidate = {
+      ...body,
+      candidateHash: hashIntegratedCandidate({ ...body, candidateHash: '' }),
+    };
+    const stored = this.products.persist({
+      processRunId: input.processRunId,
+      productKind: PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
+      schema: INTEGRATED_CANDIDATE_SCHEMA,
+      productHash: candidate.candidateHash,
+      payload: candidate,
+      artifactRefPrefix: 'development-integrated-candidate',
+    }).record;
+    return { status: 'bound', candidate: stored.payload, reference: stored.reference };
+  }
+
+  private readExactReadinessReceipt(candidateSetRef: string): ContentAddressedReference | null {
+    const rows = this.db.prepare(
+      `SELECT cr.check_receipt_ref,cr.receipt_digest
+         FROM factory_check_receipts cr
+         JOIN factory_gate_decisions gd
+           ON gd.gate_run_ref=cr.check_run_ref
+          AND gd.subject_candidate_set_ref=cr.subject_candidate_set_ref
+        WHERE cr.subject_candidate_set_ref=?
+          AND cr.provider_id=? AND cr.provider_version=? AND cr.provider_digest=?
+          AND cr.outcome='passed' AND gd.gate_phase='final' AND gd.verdict='accepted'
+        ORDER BY cr.check_receipt_ref`,
+    ).all(
+      candidateSetRef,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+    ) as Array<{ check_receipt_ref: string; receipt_digest: string }>;
+    if (rows.length !== 1) return null;
+    return {
+      schema: 'factory.check-receipt.v1',
+      ref: rows[0]!.check_receipt_ref,
+      hash: rows[0]!.receipt_digest,
+    };
   }
 
   /**
@@ -445,49 +507,31 @@ export class SqliteDevelopmentModuleStore implements
    * (settlement then returns blocked / local-readiness-missing — the W5 gate).
    */
   private readLocalReadinessReceipt(
-    processRunId: number,
+    _processRunId: number,
     candidate: IntegratedReleaseCandidate,
-    candidateRef: ContentAddressedReference,
+    _candidateRef: ContentAddressedReference,
   ): LocalReadinessReceipt | null {
     let rows: Array<{ outcome: string; evidence_refs: string }> = [];
-    // The provider tests the frozen integrated candidate while its durable Gate
-    // receipt is keyed by the verification author's CandidateSet. The integrated
-    // candidate is a kernel freeze product, not a member produced by that worker.
-    // Bind the accepted verification authority to the exact frozen candidate
-    // coordinates carried by its immutable WorkIntent instead.
+    const certification = candidate.readinessCertification;
+    if (!certification || !candidate.sourceCandidate) return null;
     try {
       rows = this.db.prepare(
         `SELECT cr.outcome, cr.evidence_refs
            FROM factory_check_receipts cr
-           JOIN factory_candidate_sets cs
-             ON cs.candidate_set_ref=cr.subject_candidate_set_ref
-           JOIN factory_workplaces w
-             ON w.workplace_ref=cs.workplace_ref AND w.process_run_id=?
-           JOIN factory_accepted_authority_head h
-             ON h.workplace_ref=w.workplace_ref
-            AND h.accepted_author_candidate_set_ref=cs.candidate_set_ref
-           JOIN tasks t
-             ON CAST(t.id AS TEXT)=h.accepted_author_task_id
-            AND t.workplace_ref=w.workplace_ref
-           JOIN factory_cell_final_acceptances cfa
-             ON cfa.workplace_ref=w.workplace_ref
-            AND cfa.candidate_set_ref=cs.candidate_set_ref
            JOIN factory_gate_decisions gd
-             ON gd.decision_key=cfa.gate_decision_key
-            AND gd.gate_run_ref=cr.check_run_ref
-            AND gd.subject_candidate_set_ref=cs.candidate_set_ref
-            AND gd.gate_phase='final' AND gd.verdict='accepted'
-          WHERE cr.provider_id=? AND cr.provider_digest=?
+             ON gd.gate_run_ref=cr.check_run_ref
+            AND gd.subject_candidate_set_ref=cr.subject_candidate_set_ref
+          WHERE cr.check_receipt_ref=? AND cr.receipt_digest=?
+            AND cr.subject_candidate_set_ref=?
+            AND cr.provider_id=? AND cr.provider_digest=?
             AND cr.outcome IN ('passed','failed')
-            AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.ref')=?
-            AND json_extract(t.metadata,'$.process_node_input.upstream.bindings.candidateRef.hash')=?
-          ORDER BY cr.check_receipt_ref`,
+            AND gd.gate_phase='final' AND gd.verdict='accepted'`,
       ).all(
-        processRunId,
+        certification.checkReceipt.ref,
+        certification.checkReceipt.hash,
+        certification.candidateSetRef,
         LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
         LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-        candidateRef.ref,
-        candidateRef.hash,
       ) as Array<{ outcome: string; evidence_refs: string }>;
     } catch {
       return null;
@@ -660,7 +704,14 @@ export class SqliteDevelopmentModuleStore implements
           AND gd.subject_candidate_set_ref=cr.subject_candidate_set_ref
          JOIN trusted_providers tp
            ON tp.name=cr.provider_id
-          AND (tp.project_id=? OR tp.project_id IS NULL)
+          AND (tp.project_id=? OR (
+            tp.project_id IS NULL AND NOT EXISTS (
+              SELECT 1 FROM trusted_providers scoped
+               WHERE scoped.project_id=? AND scoped.name=cr.provider_id
+                 AND scoped.category='deterministic_evidence'
+                 AND scoped.determinism='full' AND scoped.status='active'
+            )
+          ))
           AND tp.category='deterministic_evidence'
           AND tp.determinism='full'
           AND tp.status='active'
@@ -674,10 +725,11 @@ export class SqliteDevelopmentModuleStore implements
         ORDER BY cr.check_receipt_ref`,
     ).all(
       projectId,
+      projectId,
       candidateSetRef,
-      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
-      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
-      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
     ) as Array<{
       check_receipt_ref: string;
       receipt_digest: string;
@@ -911,69 +963,6 @@ export class SqliteDevelopmentModuleStore implements
       targetId: row.target_id,
       linkType: row.link_type,
     }));
-  }
-
-  /**
-   * LR-04 continuation fallback — read the readiness profile off the ADOPTED
-   * baseline integrated candidate, walking the adoption chain UP to the first
-   * ancestor candidate that carries a profile. A repair round's products are
-   * textual change manifests with no run contract; the ancestor candidate
-   * produced by the original runnable-artifact worker remains the authority.
-   * Chain-walking matters: an intermediate continuation frozen before this
-   * fallback existed carries no profile itself, and stopping at it would
-   * re-sever the contract instead of restoring it.
-   * Returns null for non-continuation runs or a chain without any profile.
-   */
-  private readBaselineReadinessProfile(
-    developmentCase: DevelopmentCase,
-  ): IntegratedReleaseCandidate['readiness'] | null {
-    const recovery = (developmentCase as unknown as {
-      continuationRecovery?: { adoptions?: readonly unknown[] };
-    }).continuationRecovery;
-    if (
-      !recovery
-      || !Array.isArray(recovery.adoptions)
-      || recovery.adoptions.length === 0
-    ) return null;
-    let adoptionRef = (recovery.adoptions[0] as { ref?: unknown }).ref;
-    for (let depth = 0; depth < 10; depth += 1) {
-      if (typeof adoptionRef !== 'string' || adoptionRef === '') return null;
-      const adoption = this.db.prepare(
-        `SELECT source_process_run_id
-           FROM factory_production_adoption_decisions
-          WHERE adoption_ref=?`,
-      ).get(adoptionRef) as { source_process_run_id: number } | undefined;
-      if (!adoption || !Number.isInteger(adoption.source_process_run_id)) {
-        return null;
-      }
-      const baseline = this.products.read<IntegratedReleaseCandidate>(
-        adoption.source_process_run_id,
-        PROCESS_PRODUCT_KIND_INTEGRATED_CANDIDATE,
-      );
-      if (baseline?.payload?.readiness) return baseline.payload.readiness;
-      // No profile at this hop — climb to THIS run's own parent (its
-      // development case input carries the next continuationRecovery hop).
-      const parentCase = this.db.prepare(
-        `SELECT input_snapshot FROM factory_process_runs WHERE id=?`,
-      ).get(adoption.source_process_run_id) as { input_snapshot: string | null } | undefined;
-      if (!parentCase?.input_snapshot) return null;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(parentCase.input_snapshot);
-      } catch {
-        return null;
-      }
-      const nextRecovery = (parsed as {
-        continuationRecovery?: { adoptions?: readonly unknown[] };
-      }).continuationRecovery;
-      if (
-        !nextRecovery
-        || !Array.isArray(nextRecovery.adoptions)
-        || nextRecovery.adoptions.length === 0
-      ) return null;
-      adoptionRef = (nextRecovery.adoptions[0] as { ref?: unknown }).ref;
-    }
-    return null;
   }
 
   private readRepositoryPath(

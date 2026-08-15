@@ -18,6 +18,8 @@ import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+  DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
 } from '../../../modules/development/domain/development-schemas.js';
@@ -43,6 +45,9 @@ import {
   DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_DIGEST,
   DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_ID,
   DEVELOPMENT_REVIEW_VERDICT_PAYLOAD_CONTRACT_VERSION,
+  DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST,
+  DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID,
+  DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION,
 } from '../../../modules/development/application/development-check-providers.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -65,6 +70,8 @@ const IMPLEMENTATION_TRACKER =
   `${DEVELOPMENT_RESOURCE_ROOT}/implementation-task-tracker.md`;
 const IMPLEMENTATION_CHECKLIST =
   `${DEVELOPMENT_RESOURCE_ROOT}/implementation-worker-checklist.md`;
+const READINESS_CHECKLIST =
+  `${DEVELOPMENT_RESOURCE_ROOT}/readiness-certification-checklist.md`;
 
 const COMMON_READ_TOOLS = [
   'task_get', 'task_list', 'artifact_list', 'artifact_get', 'trace_list', 'repository_list',
@@ -117,13 +124,17 @@ const IMPLEMENTATION_FINAL_PLAN = buildCheckPlan(
   }],
 );
 const VERIFICATION_FINAL_PLAN = buildCheckPlan(
-  'development.verification.final.v3',
+  'development.verification.final.v4',
   [{
     providerId: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
     providerDigest: DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
     repairTargetRoleOnIndeterminate: 'author',
-  }, {
+  }],
+);
+const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
+  'development.readiness-certification.final.v1',
+  [{
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -133,9 +144,8 @@ const VERIFICATION_FINAL_PLAN = buildCheckPlan(
     // (continuation re-routes the defect to the producing workshop) instead
     // of burning this workplace's repair budget on probe rewrites that
     // cannot fix the product.
-    failureOwnership: 'upstream',
-    expectedSubjectSchemaRef: INTEGRATED_CANDIDATE_SCHEMA,
-    subjectScope: 'upstream',
+    expectedSubjectSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+    subjectScope: 'cell-product',
     repairTargetRoleOnIndeterminate: 'author',
   }],
 );
@@ -268,6 +278,40 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           'Observe the declared integration branches and persist one immutable content-addressed candidate after all accepted implementation results are merged.',
         handler: DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate,
         inputSchema: { id: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA },
+        outputSchema: { id: INTEGRATED_SOURCE_CANDIDATE_SCHEMA },
+      },
+      {
+        id: 'certify-product-readiness',
+        label: 'Certify Product Readiness',
+        kind: 'production-cell',
+        description: 'Declare and execute one candidate-wide run contract against the exact integrated source.',
+        inputSchema: { id: INTEGRATED_SOURCE_CANDIDATE_SCHEMA },
+        outputSchema: { id: DEVELOPMENT_READINESS_MANIFEST_SCHEMA },
+        cellDefinition: singletonProductionCell({
+          id: 'development-readiness-certification',
+          executionProfileId: 'development-readiness-certifier',
+          outputSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+          payloadContract: {
+            contractId: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID,
+            version: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION,
+            contractDigest: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST,
+          },
+          cardinality: '1',
+          maxAttempts: 3,
+          onExhausted: 'pause',
+          checkPlan: READINESS_CERTIFICATION_PLAN,
+          acceptedTransition: 'bind-runnable-candidate',
+          failedTransition: 'complete-failed',
+          humanRequiredTransition: 'complete-blocked',
+        }),
+      },
+      {
+        id: 'bind-runnable-candidate',
+        label: 'Bind Runnable Candidate',
+        kind: 'kernel',
+        description: 'Bind the exact accepted readiness manifest and deterministic receipt to the frozen source.',
+        handler: DEVELOPMENT_KERNEL_HANDLER_IDS.bindRunnableCandidate,
+        inputSchema: { id: DEVELOPMENT_READINESS_MANIFEST_SCHEMA },
         outputSchema: { id: INTEGRATED_CANDIDATE_SCHEMA },
       },
       {
@@ -280,7 +324,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           id: 'development-verification',
           inputSelectors: [
             'resolve-task-graph.verificationItems',
-            'freeze-integrated-candidate.candidate',
+            'bind-runnable-candidate.candidate',
           ],
           materialization: {
             sourceBinding: 'resolve-task-graph',
@@ -350,8 +394,12 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       { from: 'resolve-task-graph', to: 'settle-development', on: 'domain.failed' },
       { from: 'implement-work-items', to: 'freeze-integrated-candidate', on: 'domain.accepted' },
       { from: 'implement-work-items', to: 'complete-failed', on: 'domain.failed' },
-      { from: 'freeze-integrated-candidate', to: 'verify-acceptance', on: 'domain.frozen' },
+      { from: 'freeze-integrated-candidate', to: 'certify-product-readiness', on: 'domain.frozen' },
       { from: 'freeze-integrated-candidate', to: 'settle-development', on: 'domain.failed' },
+      { from: 'certify-product-readiness', to: 'bind-runnable-candidate', on: 'domain.accepted' },
+      { from: 'certify-product-readiness', to: 'complete-failed', on: 'domain.failed' },
+      { from: 'bind-runnable-candidate', to: 'verify-acceptance', on: 'domain.bound' },
+      { from: 'bind-runnable-candidate', to: 'settle-development', on: 'domain.failed' },
       { from: 'verify-acceptance', to: 'settle-development', on: 'domain.accepted' },
       // Upstream-defect escalation: a failed verification verdict refuted the
       // FROZEN integrated candidate (failureOwnership:'upstream'). Route the
@@ -379,6 +427,8 @@ export const developmentProcessModule: ProcessModuleDefinition = {
     { type: 'development-task-graph', schema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA }, authority: 'kernel', description: 'Canonical coverage-complete acyclic work graph.' },
     { type: 'development-implementation-workset', schema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA }, authority: 'kernel', description: 'Accepted implementation/review products reconstructed from Cell CandidateSets.' },
     { type: 'integrated-release-candidate', schema: { id: INTEGRATED_CANDIDATE_SCHEMA }, authority: 'kernel', description: 'Frozen integrated repository/build target.' },
+    { type: 'integrated-source-candidate', schema: { id: INTEGRATED_SOURCE_CANDIDATE_SCHEMA }, authority: 'kernel', description: 'Exact integrated source before run certification.' },
+    { type: 'development-readiness-manifest', schema: { id: DEVELOPMENT_READINESS_MANIFEST_SCHEMA }, authority: 'worker', description: 'Candidate-wide run contract checked against the exact source.' },
     { type: 'acceptance-verification-workset', schema: { id: ACCEPTANCE_VERIFICATION_SCHEMA }, authority: 'kernel', description: 'Independent verification evidence bound to the frozen candidate.' },
     { type: 'verified-integration-bundle', schema: { id: VERIFIED_INTEGRATION_BUNDLE_SCHEMA }, authority: 'kernel', description: 'Canonical Development output for Delivery.' },
     { type: 'development-certificate', schema: { id: DEVELOPMENT_CERTIFICATE_SCHEMA }, authority: 'kernel', description: 'Immutable Development settlement decision.' },
@@ -461,6 +511,26 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       checklists: [IMPLEMENTATION_CHECKLIST],
       outputSchema: { id: DEVELOPMENT_REVIEW_VERDICT_SCHEMA },
       retryPolicy: { maxAttempts: 2, retryOn: ['review-rejected'], backoff: 'none' },
+      recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },
+    },
+    {
+      id: 'development-readiness-certifier',
+      workIntentKind: 'development.readiness-certification',
+      workIntentSchema: { id: 'factory.work-intent.development-readiness-certification.v1' },
+      taskKind: 'development.readiness',
+      executionSkill: 'saga-readiness-certifier',
+      reviewSkill: null,
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-readiness-certifier',
+      artifactAcceptanceAuthority: 'kernel-gate',
+      executionMode: 'tracker_only',
+      allowedTools: COMMON_WRITE_TOOLS,
+      trackerTemplate: IMPLEMENTATION_TRACKER,
+      workspaceTemplates: [READINESS_CHECKLIST],
+      callTemplates: [],
+      checklists: [READINESS_CHECKLIST],
+      outputSchema: { id: DEVELOPMENT_READINESS_MANIFEST_SCHEMA },
+      retryPolicy: { maxAttempts: 3, retryOn: ['evidence-rejected'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },
     },
     {

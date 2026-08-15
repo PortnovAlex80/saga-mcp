@@ -7,7 +7,7 @@
 
 ## Machine binding
 
-- process_module_ref: `solution-development@1.3.1`
+- process_module_ref: `solution-development@1.4.0`
 - task_kind: `implementation.feature`
 - execution_mode: `git_change`
 - project_id: `{PROJECT_ID}`

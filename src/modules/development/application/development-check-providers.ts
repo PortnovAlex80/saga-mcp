@@ -13,6 +13,7 @@ import {
 import {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+  DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
   DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
@@ -161,7 +162,10 @@ function validateDevelopmentImplementationResultPayload(payload: unknown): strin
       errors.push('snapshot.changedFiles must be a non-empty array of paths or {path} entries');
     }
   }
-  errors.push(...validateReadinessProfile(payload.readiness));
+  // ADR-070: readiness on a scoped implementation result is item-local
+  // evidence only. Candidate-wide authority is produced after integration by
+  // the dedicated readiness-certification Cell.
+  if (payload.readiness !== undefined) errors.push(...validateReadinessProfile(payload.readiness));
   return errors;
 }
 
@@ -203,6 +207,60 @@ function validateReadinessProfile(value: unknown): string[] {
   if (value.environment !== undefined) {
     if (!isRecordValue(value.environment) || !nonEmptyString(value.environment.image)) {
       errors.push('readiness.environment.image must be a non-empty string when environment is present');
+    }
+  }
+  return errors;
+}
+
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID =
+  'development.readiness-manifest-payload.v1';
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DEFINITION = {
+  type: 'object',
+  decoder: 'validateDevelopmentReadinessManifest',
+  schemaVersion: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  invariant: 'one-primary-target-bound-to-exact-integrated-source-product',
+} as const;
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST =
+  productPayloadContractDigest({
+    schemaId: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+    contractId: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID,
+    version: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION,
+    definition: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DEFINITION,
+  });
+
+export const developmentReadinessManifestPayloadContract: ProductPayloadContract = {
+  schemaId: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  contractId: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID,
+  version: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION,
+  definition: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DEFINITION,
+  contractDigest: DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST,
+  validate: validateDevelopmentReadinessManifest,
+};
+
+function validateDevelopmentReadinessManifest(payload: unknown): string[] {
+  if (!isRecordValue(payload)) return ['payload must be an object'];
+  const errors: string[] = [];
+  if (payload.schemaVersion !== DEVELOPMENT_READINESS_MANIFEST_SCHEMA) {
+    errors.push(`schemaVersion must be ${DEVELOPMENT_READINESS_MANIFEST_SCHEMA}`);
+  }
+  const source = payload.sourceCandidate;
+  if (!isRecordValue(source)
+      || source.schema !== 'factory.integrated-source-candidate.v1'
+      || !nonEmptyString(source.ref)
+      || typeof source.hash !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(source.hash)) {
+    errors.push('sourceCandidate must be the exact integrated-source ProductRef');
+  }
+  if (!Array.isArray(payload.targets) || payload.targets.length !== 1) {
+    errors.push('targets must contain exactly one primary target');
+  } else {
+    const target = payload.targets[0];
+    if (!isRecordValue(target) || target.key !== 'primary') {
+      errors.push('targets[0].key must be "primary"');
+    } else {
+      errors.push(...validateReadinessProfile(target.readiness)
+        .map(error => `targets[0].${error}`));
     }
   }
   return errors;

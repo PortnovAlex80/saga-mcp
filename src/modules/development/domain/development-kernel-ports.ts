@@ -32,6 +32,7 @@ import type {
   DevelopmentSettlementInput,
   DevelopmentTaskGraphSnapshot,
   IntegratedReleaseCandidate,
+  IntegratedSourceCandidate,
   VerifiedIntegrationBundle,
   ContentAddressedReference,
   DevelopmentCase,
@@ -76,6 +77,7 @@ export const DEVELOPMENT_KERNEL_HANDLER_IDS = {
   resolveTaskGraph: 'development-resolve-task-graph',
   resolveContinuationTaskGraph: 'development-resolve-continuation-task-graph',
   freezeIntegratedCandidate: 'development-freeze-integrated-candidate',
+  bindRunnableCandidate: 'development-bind-runnable-candidate',
   freezeContinuationCandidate: 'development-freeze-continuation-candidate',
   settle: 'development-settlement-policy',
   settleContinuation: 'development-continuation-settlement-policy',
@@ -163,7 +165,14 @@ export interface DevelopmentSettlementStatePort {
     processRunId: number;
     developmentCase: DevelopmentCase;
   }):
-    | { status: 'frozen'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
+    | { status: 'frozen'; candidate: IntegratedSourceCandidate; reference: ContentAddressedReference }
+    | { status: 'waiting'; reasonCodes: readonly string[] }
+    | { status: 'failed'; reasonCodes: readonly string[] };
+  bindRunnableCandidate(input: {
+    processRunId: number;
+    developmentCase: DevelopmentCase;
+  }):
+    | { status: 'bound'; candidate: IntegratedReleaseCandidate; reference: ContentAddressedReference }
     | { status: 'waiting'; reasonCodes: readonly string[] }
     | { status: 'failed'; reasonCodes: readonly string[] };
 

@@ -16,7 +16,11 @@ import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
 } from '../../modules/development/application/candidate-check-contracts.js';
-import { INTEGRATED_CANDIDATE_SCHEMA } from '../../modules/development/domain/development-schemas.js';
+import {
+  DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  INTEGRATED_CANDIDATE_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+} from '../../modules/development/domain/development-schemas.js';
 import type { ReadinessProfile, RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
 import {
   runServedProcess,
@@ -210,7 +214,7 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // any real policy change (category/determinism/status tampering).
     // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation. Both are
     // substrate-only changes; the versioned CheckPlan still pins exact code.
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -278,9 +282,43 @@ function resolveSubject(
         digest: parameters.upstreamProductDigest,
       }
     : null;
-  const evidenceBoundProduct = explicitProduct ?? readIntegratedCandidateBoundByEvidence(
+  let evidenceBoundProduct = explicitProduct ?? readIntegratedCandidateBoundByEvidence(
     input, subjectSet,
   );
+  let manifestReadiness: unknown = undefined;
+  const manifestMember = set?.members.find(candidate =>
+    candidate.productRef.schemaId === DEVELOPMENT_READINESS_MANIFEST_SCHEMA);
+  if (set && manifestMember?.productRef.ref.startsWith('managed-node-submission:')) {
+    const id = Number(manifestMember.productRef.ref.slice('managed-node-submission:'.length));
+    const row = Number.isSafeInteger(id) ? input.db.prepare(
+      `SELECT payload_snapshot FROM factory_managed_node_submissions
+        WHERE id=? AND process_run_id=? AND schema_version=? AND content_hash=?`,
+    ).get(
+      id,
+      set.workplaceRef.processRunId,
+      DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+      manifestMember.productRef.digest,
+    ) as { payload_snapshot: string } | undefined : undefined;
+    if (!row) throw new Error('LOCAL_READINESS_MANIFEST_MISSING');
+    const manifest = JSON.parse(row.payload_snapshot) as {
+      sourceCandidate?: { schema?: unknown; ref?: unknown; hash?: unknown };
+      targets?: Array<{ key?: unknown; readiness?: unknown }>;
+    };
+    if (manifest.sourceCandidate?.schema !== INTEGRATED_SOURCE_CANDIDATE_SCHEMA
+        || typeof manifest.sourceCandidate.ref !== 'string'
+        || typeof manifest.sourceCandidate.hash !== 'string'
+        || !Array.isArray(manifest.targets)
+        || manifest.targets.length !== 1
+        || manifest.targets[0]?.key !== 'primary') {
+      throw new Error('LOCAL_READINESS_MANIFEST_INVALID');
+    }
+    evidenceBoundProduct = {
+      schemaId: INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+      ref: manifest.sourceCandidate.ref,
+      digest: manifest.sourceCandidate.hash,
+    };
+    manifestReadiness = manifest.targets[0].readiness;
+  }
   // LR-01 fallback — the integrated candidate is a kernel-produced (freeze)
   // process product sealed into a freeze-authority CandidateSet, NOT the
   // verification-evidence set the gate named as subject. When the subject lacks
@@ -321,6 +359,7 @@ function resolveSubject(
   if (!product) throw new Error('LOCAL_READINESS_CANDIDATE_MISSING');
   const candidate = JSON.parse(product.payload_snapshot) as {
     candidateHash?: unknown;
+    sourceHash?: unknown;
     repositories?: Array<{
       projectRepositoryId?: unknown;
       commitSha?: unknown;
@@ -332,7 +371,10 @@ function resolveSubject(
     // commands (LR-03 RunnabilityCommands) and names the readiness shape.
     readiness?: unknown;
   };
-  if (typeof candidate.candidateHash !== 'string'
+  const candidateHash = typeof candidate.candidateHash === 'string'
+    ? candidate.candidateHash
+    : candidate.sourceHash;
+  if (typeof candidateHash !== 'string'
       || !Array.isArray(candidate.repositories)
       || candidate.repositories.length !== 1) {
     throw new Error('LOCAL_READINESS_CANDIDATE_INVALID');
@@ -360,8 +402,8 @@ function resolveSubject(
     repositoryPath: binding.local_path,
     commitSha: repository.commitSha,
     treeHash: repository.treeHash,
-    candidateHash: candidate.candidateHash,
-    readiness: candidate.readiness,
+    candidateHash,
+    readiness: manifestReadiness ?? candidate.readiness,
   };
 }
 

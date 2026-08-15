@@ -29,6 +29,10 @@ export const DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA =
   'factory.development-implementation-workset.v1';
 export const INTEGRATED_CANDIDATE_SCHEMA =
   'factory.integrated-release-candidate.v1';
+export const INTEGRATED_SOURCE_CANDIDATE_SCHEMA =
+  'factory.integrated-source-candidate.v1';
+export const DEVELOPMENT_READINESS_MANIFEST_SCHEMA =
+  'factory.development-readiness-manifest.v1';
 export const ACCEPTANCE_VERIFICATION_SCHEMA =
   'factory.acceptance-verification-workset.v1';
 export const VERIFIED_INTEGRATION_BUNDLE_SCHEMA =
@@ -398,6 +402,32 @@ export interface IntegratedReleaseCandidate {
    * as "no explicit profile" → fail closed, never guessed.
    */
   readiness?: ReadinessProfile;
+  /** Exact post-integration source material certified by the readiness Cell. */
+  sourceCandidate?: ContentAddressedReference;
+  /** Exact accepted manifest and deterministic Gate receipt. */
+  readinessCertification?: {
+    manifest: ContentAddressedReference;
+    candidateSetRef: string;
+    checkReceipt: ContentAddressedReference;
+  };
+}
+
+/** Exact integrated material before candidate-wide run authority is certified. */
+export interface IntegratedSourceCandidate {
+  schemaVersion: typeof INTEGRATED_SOURCE_CANDIDATE_SCHEMA;
+  taskGraphHash: string;
+  implementationWorksetHash: string;
+  repositories: readonly CandidateRepositorySnapshot[];
+  buildProducts: readonly CandidateBuildProduct[];
+  integrationIntentRefs: readonly string[];
+  frozen: true;
+  sourceHash: string;
+}
+
+export interface DevelopmentReadinessManifest {
+  schemaVersion: typeof DEVELOPMENT_READINESS_MANIFEST_SCHEMA;
+  sourceCandidate: ContentAddressedReference;
+  targets: readonly [{ key: 'primary'; readiness: ReadinessProfile }];
 }
 
 export type VerificationOutcome =
