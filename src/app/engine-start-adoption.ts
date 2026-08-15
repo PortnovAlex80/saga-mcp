@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { ConveyorRuntime } from '../application/conveyor-runtime.js';
+import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 
 /**
  * TB-9 engine-start adoption.
@@ -36,6 +38,11 @@ const TERMINAL_EXECUTION_STATES = "('exited','failed','terminated','lost')";
 
 export interface EngineStartAdoptionResult {
   readonly adopted: number;
+  readonly repaired: readonly {
+    readonly executionId: string;
+    readonly workplaceRef: string;
+    readonly loopState: string;
+  }[];
   readonly skippedNoReceipt: number;
   readonly details: readonly {
     readonly executionId: string;
@@ -70,10 +77,19 @@ export function adoptTerminalExecutionsAtEngineStart(
   ).all() as { execution_id: string; workplace_ref: string; loop_state: string }[];
 
   const details: { executionId: string; workplaceRef: string; loopState: string }[] = [];
+  const repaired: { executionId: string; workplaceRef: string; loopState: string }[] = [];
   let skippedNoReceipt = 0;
 
   const adopt = db.transaction((row: { execution_id: string; workplace_ref: string }) => {
-    if (!hasAcceptedWorkerDone(db, row.execution_id)) return false;
+    // Without a durable worker_done receipt the completion is NOT proven, so
+    // the reservation must not be silently cleared. The conveyor already owns
+    // the right transition for exactly this case: a verifying Workplace whose
+    // presenter produced no mandatory material goes back to repair
+    // (rejectIncompleteCompletion — an operator-recovery transition that also
+    // clears the fence). A fresh author/reviewer worker is then hired.
+    if (!hasAcceptedWorkerDone(db, row.execution_id)) {
+      return false;
+    }
     // Clearing the reservation is the adoption AND the idempotency fence:
     // the JOIN above can never match this pair again. stuck_state keeps its
     // historical value — the column CHECK is a stuck-policy state machine
@@ -87,9 +103,37 @@ export function adoptTerminalExecutionsAtEngineStart(
     return true;
   });
 
+  const repairWithoutReceipt = db.transaction(
+    (row: { execution_id: string; workplace_ref: string; loop_state: string }) => {
+      const workplace = db.prepare(
+        `SELECT next_role FROM factory_workplaces WHERE workplace_ref=?`,
+      ).get(row.workplace_ref) as { next_role: 'author' | 'reviewer' } | undefined;
+      const task = db.prepare(
+        `SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1`,
+      ).get(row.workplace_ref) as { id: number } | undefined;
+      if (!workplace || !task) return false;
+      try {
+        new ConveyorRuntime(db).rejectIncompleteCompletion({
+          workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
+          taskId: task.id,
+          role: workplace.next_role,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+
   for (const row of rows) {
     if (adopt(row)) {
       details.push({
+        executionId: row.execution_id,
+        workplaceRef: row.workplace_ref,
+        loopState: row.loop_state,
+      });
+    } else if (repairWithoutReceipt(row)) {
+      repaired.push({
         executionId: row.execution_id,
         workplaceRef: row.workplace_ref,
         loopState: row.loop_state,
@@ -98,5 +142,5 @@ export function adoptTerminalExecutionsAtEngineStart(
       skippedNoReceipt += 1;
     }
   }
-  return { adopted: details.length, skippedNoReceipt, details };
+  return { adopted: details.length, repaired, skippedNoReceipt, details };
 }
