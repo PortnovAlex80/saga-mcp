@@ -3,6 +3,7 @@ import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHea
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
+import { ensureFactoryNodeRunSchema } from './process-modules/persistence/sqlite-node-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
 import { ensureFactoryProcessRunSchema } from './process-modules/persistence/sqlite-process-run-repository.js';
 import { ensureManagedNodeSubmissionSchema } from './process-modules/persistence/sqlite-managed-node-submission-repository.js';
@@ -175,6 +176,15 @@ export function getDb(): Database.Database {
   // ancestor cards from being claimed. The table is therefore core runtime
   // schema, not merely a lazy orchestrator detail.
   ensureFactoryProcessRunSchema(db);
+  // TB-1: factory_protocol_runs (created above by ensureFactoryProtocolRunSchema)
+  // carries `node_run_id REFERENCES factory_node_runs(id)`, but this table was
+  // only created lazily by the SqliteNodeRunRepository constructor. A DB opened
+  // without the runtime constructed (testbed cleanup, operator scripts) had no
+  // factory_node_runs, and SQLite resolves the FK parent when compiling the
+  // DELETE cascade program — so even `DELETE FROM projects WHERE id=-999` threw
+  // 'no such table: main.factory_node_runs'. Creating it eagerly is idempotent
+  // (CREATE TABLE IF NOT EXISTS) and a no-op for existing DBs.
+  ensureFactoryNodeRunSchema(db);
   // worker_done enforces the exact frozen WorkIntent against this immutable
   // ledger even before the composition root is constructed.
   ensureManagedNodeSubmissionSchema(db);
