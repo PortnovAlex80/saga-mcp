@@ -141,11 +141,26 @@ const REASON = {
 //                Entries removed when the stayed process-module + package/
 //                layer is also relocated into src/modules/discovery/. Owner:
 //                saga4 discovery-consolidation task.)
-const ALLOWLIST_BASELINE = 0;
+// 2026-08-15 (owner: workshop W2 session) — baseline 0 -> 1: the TB-8 fix
+// intentionally made development reuse formalization's canonical AC parser
+// (ONE grammar, pinned by acceptance-code-grammar-consistency ratchet).
+// Removal plan: extract the parser into a shared kernel module both
+// workshops import, then drop the KNOWN_VIOLATIONS entry and return to 0.
+const ALLOWLIST_BASELINE = 1;
 
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
   // (delivery→development-schemas removed in CONVEYOR Wave 7: schema-id constants inlined)
+  {
+    source: 'src/modules/development/infrastructure/sqlite-development-verification-adoption.ts',
+    target: 'src/modules/formalization/domain/acceptance-criterion-document.ts',
+    rule: 1,
+    reason: 'TB-8 follow-up: development reuses the canonical atomic-AC parser ' +
+      'from formalization domain so both workshops read ONE AC-heading grammar ' +
+      '(hyphenated codes included; grammar-consistency ratchet pins the regexes). ' +
+      'Fixing wave: extract the parser into a shared kernel module both ' +
+      'workshops import, then remove this entry.',
+  },
 
   // ---- Rule 2: module imports Runtime persistence adapter / infra / db ----
   // CONVEYOR Wave 7 — Isolate modules behind ports: ALL module→infra/db
