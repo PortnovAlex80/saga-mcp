@@ -58,3 +58,4 @@ index.html
 .factory-sandboxes/
 .real-factory-smoke/
 tests/golden-runs/
+.factory-testbed/
