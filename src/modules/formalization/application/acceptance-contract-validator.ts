@@ -159,7 +159,7 @@ export function createAcceptanceContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    validatorVersion: '1.1.0',
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
@@ -183,10 +183,93 @@ export function createAcceptanceContractValidator(
           gaps: structuredGaps,
         };
       }
+      // TB-8 shift-left: every AC artifact's code must have a matching
+      // heading in its document. The freeze kernel checks this at a TERMINAL
+      // node (no repair path); here the worker sees the gap at worker_done
+      // with the full 5-attempt repair cycle. Uses the SAME canonical parser
+      // as the freezer, so gate and freeze can never disagree.
+      const headingGaps = checkAcCodeHeadingMatches(db, artifacts);
+      if (headingGaps.length > 0) {
+        return {
+          accepted: false,
+          code: 'FORMALIZATION_AC_CODE_HEADING_MISMATCH',
+          gaps: headingGaps,
+        };
+      }
       const traceIds = snapshot.traces.map(t => t.id);
       return acceptWithReceipt(db, input, artifacts, traceIds);
     },
   };
+}
+
+/**
+ * TB-8: check that every AC artifact's code matches a document heading in the
+ * canonical grammar. The freezer's acceptanceCriteriaForArtifact throws on a
+ * mismatch at a terminal kernel node; the same check here routes the worker
+ * into repair instead. Reads the artifact's file-backed content through the
+ * same path/hash chain the freezer uses (no separate content store).
+ */
+function checkAcCodeHeadingMatches(
+  db: DbHandle,
+  artifacts: readonly FormalizationArtifactSnapshot[],
+): SubmissionGap[] {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { createHash } = require('node:crypto') as typeof import('node:crypto');
+  const { join } = require('node:path') as typeof import('node:path');
+  const { acceptanceCriteriaForArtifact } = require('../domain/acceptance-criterion-document.js') as
+    typeof import('../domain/acceptance-criterion-document.js');
+  const gaps: SubmissionGap[] = [];
+  for (const artifact of artifacts) {
+    if (artifact.type !== 'AC' || !artifact.code || !/^AC-/i.test(artifact.code)) continue;
+    const row = db.prepare(
+      `SELECT a.path, a.content_hash, r.local_path
+         FROM artifacts a
+         JOIN project_repositories r ON r.id = a.project_repository_id
+        WHERE a.id = ?`,
+    ).get(artifact.id) as { path: string; content_hash: string | null; local_path: string } | undefined;
+    if (!row?.content_hash || !row?.local_path) continue;
+    const filePath = join(row.local_path, row.path.split('#')[0]!);
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf8');
+    } catch {
+      continue; // unreadable file — the freezer will be loud about it
+    }
+    const actual = createHash('sha256').update(content, 'utf8').digest('hex');
+    if (actual !== row.content_hash) {
+      gaps.push({
+        artifactId: artifact.id,
+        artifactCode: artifact.code,
+        artifactType: 'AC',
+        existingTargets: [],
+        missing: {
+          relation: 'content_matches_declared_hash',
+          requiredTargetTypes: ['exact_file_content'],
+          minimum: 1,
+        },
+      });
+      continue;
+    }
+    try {
+      acceptanceCriteriaForArtifact(content, artifact.code);
+    } catch (error) {
+      gaps.push({
+        artifactId: artifact.id,
+        artifactCode: artifact.code,
+        artifactType: 'AC',
+        existingTargets: [],
+        missing: {
+          relation: 'document_heading_matches_code',
+          requiredTargetTypes: [`${artifact.code}: <heading>`],
+          minimum: 1,
+        },
+        // The exact parser message (which heading was expected) rides as the
+        // gap's implicit detail — the worker sees it in the rejection.
+        ...(error instanceof Error ? { message: error.message } : {}),
+      } as SubmissionGap);
+    }
+  }
+  return gaps;
 }
 
 function acceptWithReceipt(
