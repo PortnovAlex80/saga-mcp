@@ -71,6 +71,14 @@ export interface ProcessModuleRunResult {
   authority: string | null;
   /** Executor-specific fields the outcome projector may consume. */
   raw?: Record<string, unknown> | null;
+  /**
+   * TB-8: human-readable reason for a deterministic failed/inconclusive
+   * outcome (extracted from the terminal node's production bindings). Lives
+   * on the result so lifecycle completeStage/fail writes it into
+   * stage_runs.error and lifecycle_runs.error — without it, the operator
+   * sees a silently failed run with NULL error everywhere above NodeRun.
+   */
+  error?: string;
 }
 
 /**

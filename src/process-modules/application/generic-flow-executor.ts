@@ -383,6 +383,14 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
 
       // Drive settling → completed, writing terminal fields once.
+      // TB-8 silent-fail fix: a deterministic 'failed'/'inconclusive' outcome
+      // is a LEGITIMATE settlement — but the REASON (baselineFailure,
+      // settlementError) was only in production bindings, never in the error
+      // column. Extract it from the terminal result so the operator sees WHY
+      // the run deterministically failed, not just that it did.
+      const terminalError = isFailedOutcome
+        ? extractFailedOutcomeReason(terminal.result)
+        : null;
       processRunRepo.transaction(() => {
         processRunRepo.update(context.processRunId, {
           status: 'completed',
@@ -394,7 +402,8 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           // A resumable pause is diagnostic state, not terminal history. Once
           // the same ProcessRun settles successfully, retaining that message
           // makes projections report a red incident beside a completed run.
-          error: null,
+          // A deterministic failed outcome KEEPS its reason (see above).
+          error: terminalError,
         });
         this.opts.transitionObligations.onProcessSettled({
           processRunId: context.processRunId,
@@ -1510,6 +1519,30 @@ function assertNodeExecutionResult(
 
 function isTerminal(status: string): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/**
+ * TB-8: extract the human-readable failure reason from a deterministic
+ * failed-outcome terminal result. The reason lives in the terminal node's
+ * production bindings (baselineFailure, settlementError, error fields) —
+ * the kernel handler deliberately returns it there instead of throwing, so
+ * the flow completes as a typed failed outcome rather than an infrastructure
+ * crash. Without this extraction the reason was invisible everywhere above
+ * the NodeRun (stage/lifecycle error columns all NULL).
+ */
+function extractFailedOutcomeReason(
+  result: NodeExecutionResult,
+): string | null {
+  const bindings = result.production?.bindings;
+  if (!bindings || typeof bindings !== 'object') return null;
+  const record = bindings as Record<string, unknown>;
+  for (const key of ['baselineFailure', 'settlementError', 'error', 'reason']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.slice(0, 500);
+    }
+  }
+  return null;
 }
 
 /**

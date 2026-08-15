@@ -799,6 +799,11 @@ function processRecordToResult(process: ProcessRunRecord): ProcessModuleRunResul
     output,
     certificate,
     authority: process.authority,
+    // TB-8: carry the deterministic failure reason (extracted from production
+    // bindings by the executor's settlement) into the lifecycle result so the
+    // completeStage / fail paths write it into stage_runs.error and
+    // lifecycle_runs.error — the operator sees WHY, not just THAT.
+    error: process.error ?? undefined,
   };
 }
 
