@@ -1,0 +1,159 @@
+{
+  "schema": "factory.testbed.projects.v2",
+  "environment": {
+    "model": "qwen/qwen3.6-35b-a3b",
+    "provider": "lmstudio",
+    "concurrency": 1,
+    "note": "Idea text is the ONLY product input (English, verbosity scales with tier). Passed via app-layer provisioning (WORKSHOP-TEST-PLAN §4.3)."
+  },
+  "projects": [
+    {
+      "id": "P01",
+      "slug": "counter",
+      "tier": "XS",
+      "title": "Click Counter",
+      "idea": "A single-page click counter app: one large button, a live count display, a reset button, adjustable step (1/5/10), and the counter value persists in localStorage across page reloads."
+    },
+    {
+      "id": "P02",
+      "slug": "stopwatch",
+      "tier": "XS",
+      "title": "Stopwatch with Laps",
+      "idea": "A stopwatch web app: start/pause/reset controls with 10 ms precision, lap capture, and a lap table showing each lap time plus delta to the best lap."
+    },
+    {
+      "id": "P03",
+      "slug": "tips",
+      "tier": "XS",
+      "title": "Tip Calculator",
+      "idea": "A tip calculator: bill amount input, tip percentage slider (0-30), number of people, and outputs showing tip total, grand total, and per-person amount with rounding up/down options."
+    },
+    {
+      "id": "P04",
+      "slug": "themes",
+      "tier": "XS",
+      "title": "Theme Switcher",
+      "idea": "A demo page with a light/dark/system theme switcher built on CSS variables, three accent color choices, saved preference, and correct prefers-color-scheme handling when 'system' is selected."
+    },
+    {
+      "id": "P05",
+      "slug": "todo",
+      "tier": "S",
+      "title": "Todo List with Filters",
+      "idea": "A single-page todo application. Features: add, edit and delete tasks; mark tasks complete; three priority levels (low/medium/high) shown as colored markers; filter tabs for all/active/completed; live counters of remaining tasks; all data persisted in localStorage. No backend, no frameworks."
+    },
+    {
+      "id": "P06",
+      "slug": "units",
+      "tier": "S",
+      "title": "Unit Converter",
+      "idea": "A unit converter covering ten categories: length, mass, temperature, volume, area, speed, pressure, energy, time, and digital data. The UI is two directionally-linked fields: pick a category, choose units on each side, type in either field and the other updates instantly. Temperature conversions use real formulas (not multipliers) and handle negative values correctly. Include a swap-units button and show the conversion factor used."
+    },
+    {
+      "id": "P07",
+      "slug": "snake",
+      "tier": "S",
+      "title": "Snake (2D game)",
+      "idea": "The classic Snake game on an HTML canvas: a 20x20 grid, keyboard control with arrow keys and WASD (no reversal into yourself), food that grows the snake and increases score, gradual speed-up every five foods, death on wall or self collision, pause on Space, and a persistent best score in localStorage. Include a start screen and a game-over screen with restart."
+    },
+    {
+      "id": "P08",
+      "slug": "pomodoro",
+      "tier": "S",
+      "title": "Pomodoro Timer",
+      "idea": "A Pomodoro timer: configurable work (default 25 min), short break (5 min) and long break (15 min) durations, automatic phase transitions with four works before a long break, a visible circular countdown, completed-Pomodoro counter, daily statistics (pomodoros and focus minutes) persisted in localStorage, and an audible chime on phase change using the Web Audio API."
+    },
+    {
+      "id": "P09",
+      "slug": "kanban",
+      "tier": "M",
+      "title": "Kanban Board",
+      "idea": "A Kanban board application with four columns: Backlog, In Progress, Review, Done. Cards support create (title + description + color tag), edit inline, and delete. Moving cards between columns works via native HTML5 drag-and-drop with visual drop indication, and also via buttons for accessibility. The board persists to localStorage and restores on reload. Show a per-column card counter and a 'clear done' action with confirmation."
+    },
+    {
+      "id": "P10",
+      "slug": "expenses",
+      "tier": "M",
+      "title": "Expense Tracker",
+      "idea": "An expense tracker: add expenses with amount, category (8 preset categories with icons), date and optional note; list grouped by day with edit and delete; monthly totals per category drawn as a canvas bar chart with axis labels; month navigation back and forward; category filter; and a summary strip (total, average per day, top category). Data persists in localStorage. Validate amount input and show inline errors."
+    },
+    {
+      "id": "P11",
+      "slug": "markdown",
+      "tier": "M",
+      "title": "Markdown Editor",
+      "idea": "A two-pane Markdown editor: left textarea source, right live-rendered preview updating on every keystroke. Support headings, bold/italic, inline code and fenced code blocks, links, images, blockquotes, ordered/unordered lists, tables, and horizontal rules. Include synchronized scrolling of the two panes, a word/character/line counter, a formatting toolbar (bold, italic, link, code, list) that wraps the selection, and export of the document as a .md file download. Rendering must escape raw HTML."
+    },
+    {
+      "id": "P12",
+      "slug": "typing",
+      "tier": "M",
+      "title": "Typing Speed Test",
+      "idea": "A typing speed test (WPM): shows a random paragraph from a built-in set of ten; the user types it in an input area; characters are highlighted live in green (correct) or red (wrong) with the caret position visible; timer starts on first keystroke. On completion show WPM, accuracy percentage, and time. Keep a history of the last ten attempts rendered as a canvas line chart. Support restart with a new paragraph and a 60-second timed mode that ends mid-text."
+    },
+    {
+      "id": "P13",
+      "slug": "mars",
+      "tier": "L",
+      "title": "Mars Ballistic Calculator",
+      "idea": "A single-page Mars transfer calculator using the analytical Hohmann model. Inputs: launch date (date picker, 1950-2100) and Earth parking orbit altitude in km (160-50000, default 200). Outputs: next synodic launch window date and duration, heliocentric phase-angle check, trans-Mars injection delta-V from the parking orbit, Mars orbit insertion delta-V, total delta-V, and flight time (half the transfer orbit period). Render a mission-stage table and a canvas chart of total delta-V across ±6 months of launch dates (daily resolution, 361 points) with synodic-window markers. Constants from JPL J2000: use the documented values for orbit radii, periods and the Sun's gravitational parameter. Formulas must actually consume the parking-orbit altitude. Everything runs locally in one HTML file with no external dependencies.",
+      "reference_run": ".factory-sandboxes/mars-ballistic-db"
+    },
+    {
+      "id": "P14",
+      "slug": "sortviz",
+      "tier": "L",
+      "title": "Sorting Algorithm Visualizer",
+      "idea": "A sorting visualizer for six algorithms: bubble, insertion, selection, merge, quick, and heap sort. An array of 30-120 bars (adjustable) is displayed on canvas; sorting runs as an animated generator stepping comparison/swap operations with adjustable speed and pause/step controls. Bars currently compared are highlighted in one color, swapped in another, sorted suffix in a third. Count total comparisons and swaps per run. A side-by-side race mode runs two chosen algorithms on identical arrays simultaneously. Include input options: random, nearly-sorted, reversed, and few-unique values."
+    },
+    {
+      "id": "P15",
+      "slug": "sudoku",
+      "tier": "L",
+      "title": "Sudoku Generator and Solver",
+      "idea": "A Sudoku app with a 9x9 interactive grid (keyboard navigation, pencil-mark notes mode, conflict highlighting, undo). The solver uses backtracking with constraint propagation and can visualize its solving steps one by one. The generator produces puzzles with exactly one solution: generate a full valid grid, then remove cells while checking uniqueness with a solution counter, targeting four difficulty levels by given-cell count. A hint button reveals one correct cell with its reasoning (row/column/box elimination when possible). Include error checking, completion detection, and a timer."
+    },
+    {
+      "id": "P16",
+      "slug": "tetris",
+      "tier": "L",
+      "title": "Tetris",
+      "idea": "A complete Tetris on canvas: 10x20 field; all seven tetrominoes in their standard spawn orientations; rotation using the SRS wall-kick system with correct kick tables; 7-bag randomizer; soft drop, hard drop, and hold piece (one hold per drop); line clear with classic scoring (100/300/500/800 x level, soft-drop +1 per cell); level increases every ten lines with a speed curve by level; next-piece preview and ghost piece at drop position; pause; game over detection and restart. Controls: arrows plus Z/X for rotation, C for hold. The game loop uses a fixed timestep decoupled from rendering."
+    },
+    {
+      "id": "P17",
+      "slug": "sheets",
+      "tier": "XL",
+      "title": "Mini Spreadsheet with Formulas",
+      "idea": "A mini spreadsheet in one page. Grid 26 columns (A-Z) x 50 rows (1-50) rendered as a scrollable table with a name box and formula bar; click selects a cell, double-click or F2 edits it; Enter commits and moves down, Tab moves right, Escape cancels; keyboard navigation with arrows. Values: numbers, text, and formulas starting with '='. Formula support: cell references (A1), ranges (A1:B5), arithmetic with correct precedence and parentheses, comparison operators, and functions SUM, AVG, MIN, MAX, COUNT, ABS, ROUND, IF, CONCAT. Implement a dependency graph so only affected cells recompute on change; detect and report circular references as '#CYCLE!' instead of freezing. Formatting: right-align numbers, show '#ERR!' on bad formulas. Include a recalculate-all button and CSV export of the current grid."
+    },
+    {
+      "id": "P18",
+      "slug": "elite",
+      "tier": "XL",
+      "title": "Elite Tribute: Wireframe Space",
+      "idea": "A tribute to the 1984 game Elite, rendered with a hand-written wireframe 3D engine on canvas (no 3D libraries). World: a starfield, a rotating cubic space station with an entry slot, and an asteroid field of 3D wireframe rocks. Flight model: pitch/yaw/roll and thrust with Newtonian-ish inertia and damping; the camera is the cockpit. Combat: a laser with heat/energy management that overheats, hits asteroids and enemy ships (simple AI: approach and orbit), shield and hull integrity on both sides. Docking: lining up with the station slot at low speed docks successfully and opens the trade screen. Trading: two star systems, each with buy/sell prices for five commodities that differ per system, cargo hold capacity, and credits; buying low and selling high is the core loop. HUD: crosshair, speed, energy/shield bars, radar-style 2D minimap showing station and enemies. Include a pause menu with controls reference and a respawn on death."
+    },
+    {
+      "id": "P19",
+      "slug": "mario3d",
+      "tier": "XXL",
+      "title": "3D Platformer (Mario-style)",
+      "idea": "A 3D platformer level in the spirit of Mario 64, running locally in the browser. Rendering: WebGL via one embedded library file (no CDN; e.g. a bundled three.js single file) or raw WebGL — the architecture may choose, but the result must open offline from one HTML file. Level: a designed platform course over a void — starting plaza, static platforms at varying heights, ramps, moving platforms on looping paths, rotating platform, collectible coins in arcs and rows, one checkpoint flag mid-level, and a goal star at the end. Player: a capsule character with third-person follow camera (orbit with mouse, zoom with wheel), WASD movement relative to camera, running acceleration/friction, jump with variable height (hold), double jump, coyote time, and landing squash animation. Enemies: two patrol types (ground walker reversing at edges, circular flyer) that damage the player on contact with knockback and invulnerability frames; jumping on a walker defeats it. Health: three hearts, fall into void or zero hearts respawns at the last checkpoint. HUD: coins, hearts, timer. Win screen with time and coins on collecting the star; restart button. Fixed-timestep physics with interpolated rendering; keyboard + mouse controls shown on an overlay."
+    },
+    {
+      "id": "P20",
+      "slug": "interp",
+      "tier": "XXL",
+      "title": "Mini Language Interpreter",
+      "idea": "An interpreter for a small teaching language, running entirely in the browser. Language: integer and float numbers, strings, booleans; variables with let; arrays with indexing and length; arithmetic, comparison and logical operators with correct precedence; if/else, while, for; user-defined functions with parameters, return values and recursion; built-ins: print, len, push, pop, str, num, rand. Implementation: a hand-written lexer, recursive-descent parser producing an AST, and a tree-walking evaluator with proper environments and closures; errors must report line/column with a readable message, not a stack trace. UI: a code editor pane (textarea with line numbers), Run button with output console, and an examples dropdown (factorial, fibonacci, fizzbuzz, bubble sort, prime sieve). Stepping: a step-by-step execution mode highlighting the current AST node and showing the current environment (variable watch table) on each step, with step/continue controls and a step limit guard against infinite loops. Include a short built-in tutorial page summarizing the language with runnable snippets."
+    },
+    {
+      "id": "P21",
+      "slug": "foodlog",
+      "tier": "S",
+      "title": "Food & Weight Diary",
+      "idea": "A local-first food and body weight diary for a person who prefers a plain spreadsheet over ad-loaded apps. Core philosophy: manual entry and manual awareness — no barcode scanning, no food database, no accounts, no ads, no network calls; all data in localStorage. Entries: a daily food log where each row is date, meal name (free text), and calories (a number the user fills in by hand, intentionally no autocomplete); rows can be added, edited and deleted; a date picker with prev/next day navigation. Body weight: a separate daily entry (one per date) with an optional note. Reports: (1) weekly calorie summary table — one row per ISO week showing total calories, daily average, and days logged; (2) monthly top-calorie dishes — for a chosen month, an aggregate list of meals by identical free-text name, sorted by total calories descending, showing times eaten and total, top 20; (3) weight dynamics — a line chart of weight over time (hand-rolled SVG, no chart libraries) with weekly moving average and min/max/first/last/change values. Reports are computed live from the log. Data: export to CSV and import from CSV, plus a clear-all-data button with confirmation. Single-page app, no frameworks, no backend."
+    }
+  ]
+}
