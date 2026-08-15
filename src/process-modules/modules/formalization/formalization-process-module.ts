@@ -57,6 +57,12 @@ const COMMON_READ_TOOLS = [
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
   'artifact_create', 'artifact_update', 'trace_add', 'trace_delete',
+  // GB-4: formalization cells declare typed output contracts (the acceptance
+  // bundle et al.), so the author surface must carry the product protocol.
+  // Without product_submit the ingress mode falls back to 'managed-workplace',
+  // the worker literally cannot submit the declared product, and the kernel
+  // fail-closes worker_done into an unbounded requeue loop (15x on P01 W2).
+  'product_read', 'candidate_read', 'product_submit',
   // Formalization produces managed documents, not executable repository
   // changes. Keep file mutation on the structured Write/Edit surface: a
   // general shell lets a model bypass the registered workspace-relative path
@@ -310,7 +316,10 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
     authorProfile('formalization-acceptance', 'formalization.acceptance', 'formalization.acceptance', 'saga-analyst', FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA),
     {
       ...authorProfile('formalization-reconciler', 'formalization.reconcile', 'formalization.reconcile', 'saga-reconciler', FORMALIZATION_RECONCILIATION_SCHEMA),
-      allowedTools: [...COMMON_WRITE_TOOLS, 'product_submit'],
+      // GB-4: product_submit now ships in COMMON_WRITE_TOOLS; the explicit
+      // append used to be the only source and must not repeat it (the
+      // registry rejects duplicate allowed tools at registration).
+      allowedTools: COMMON_WRITE_TOOLS,
       workspaceTemplates: [ARTIFACT_CALL, TRACE_CALL, DONE_CALL, CHECKLIST, RECONCILIATION_CALL],
       callTemplates: [ARTIFACT_CALL, TRACE_CALL, DONE_CALL, RECONCILIATION_CALL],
     },

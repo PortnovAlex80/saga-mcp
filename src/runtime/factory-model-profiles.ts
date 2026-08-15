@@ -17,6 +17,15 @@ export interface FactoryModelProfile {
  */
 export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freeze([
   Object.freeze({
+    id: 'glm-4.6',
+    label: 'GLM 4.6',
+    provider: 'zai',
+    effort: 'high',
+    limit: 3,
+    tier: 'sonnet',
+    note: 'Served by the z.ai Coding Plan endpoint (operator-verified 2026-08-15); plan concurrency ceiling 3',
+  }),
+  Object.freeze({
     id: 'glm-4.7',
     label: 'GLM 4.7 — recommended default',
     provider: 'zai',

@@ -39,8 +39,28 @@
 
 | PID | Цех | DB | Начало | Длительность | Outcome | Воркеры | Рестарты | Артефакты | Аномалии |
 |---|---|---|---|---|---|---|---|---|---|
+| P07 | W2 | shared | 22:15 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P06 | W2 | shared | 22:15 | 0m | fail | 2exited/2lost | 0 | brief:1 | {"status":"failed","current_stage_id":"s |
+| P05 | W2 | shared | 22:15 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P04 | W2 | shared | 22:15 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P03 | W2 | shared | 22:14 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P02 | W2 | shared | 22:14 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P01 | W2 | shared | 21:32 | 42m | fail | 24exited/2lost | 0 | AC:27,FR:1,NFR:1,PRD:1,RULE:1,UC:5,brief:1 | {"status":"failed","current_stage_id":"s |
 
 ## Раунд W3 — Development (21 прогон)
 
 | PID | Цех | DB | Начало | Длительность | Outcome | Воркеры | Рестарты | Артефакты | Аномалии |
 |---|---|---|---|---|---|---|---|---|---|
+| P21 | W3 | shared | 22:18 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P20 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P19 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P18 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P17 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P16 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P15 | W3 | shared | 22:17 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P14 | W3 | shared | 22:16 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P13 | W3 | shared | 22:16 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P12 | W3 | shared | 22:16 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P11 | W3 | shared | 22:16 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P10 | W3 | shared | 22:16 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
+| P09 | W3 | shared | 22:15 | 0m | fail | 2exited/1lost | 0 | — | {"status":"failed","current_stage_id":"s |
