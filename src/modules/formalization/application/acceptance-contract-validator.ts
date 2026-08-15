@@ -296,7 +296,11 @@ function acceptWithReceipt(
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    // GB-8: the receipt MUST carry the validator's actual version. A stale
+    // hardcoded '1.0.0' made the gate's version comparison fail forever
+    // (SUBMISSION_VALIDATION_RECEIPT_REQUIRED repair loop) while the check
+    // plan and rejections correctly declared 1.1.0.
+    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
     processRunId: input.processRunId,
     moduleRef: input.moduleRef,
     nodeId: input.nodeId,

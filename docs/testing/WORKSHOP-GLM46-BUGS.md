@@ -48,3 +48,19 @@ pre-restart-2100, pre-gb4-renewal-2220.
 Утренние решения для оператора: (1) GB-5 вариант A или B (рекомендую B);
 (2) изолировать первоначальную причину GB-4-цикла в managed-workplace режиме;
 (3) GB-3b/c (liveness по durable-свидетельству + бюджет reopen-циклов) — по плану из qwen-реестра.
+
+## GB-8 — acceptance-ячейка: вечный repair из-за версии валидатора в квитанции (fixed)
+
+**Симптом:** каждый сабмит acceptance-бандла проходил (GB-5/B-снапшот запечатан канонически),
+но чек `submission-validator.formalization.acceptance-contract.v1` выдавал
+`SUBMISSION_VALIDATION_RECEIPT_REQUIRED` → гейт `repair_required` → авторская карточка
+переоткрывалась (у P01 — 5 исполнений, до исчерпания repair-бюджета).
+
+**Root cause (доказано по БД+код):** `acceptWithReceipt` в acceptance-contract-validator.ts
+писал в квитанцию захардкоженный `validatorVersion: '1.0.0'`, тогда как валидатор, его
+rejection'и и check-plan корректно объявляют `ACCEPTANCE_CONTRACT_VALIDATOR_VERSION`='1.1.0'
+(bump TB-8). Чек сравнивает версии → детерминированный mismatch на каждом сабмите.
+Квитанции id 25-29 в живой БД несут 1.0.0 при rejection'ах 1.1.0 — прямое доказательство.
+
+**Фикс:** `validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION` (константа, не строка).
+Свип по остальным модулям — других захардкоженных версий нет. **fixed**.
