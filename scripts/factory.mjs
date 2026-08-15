@@ -86,11 +86,13 @@ function parseStartArguments(rawArgs) {
   };
 }
 
-if (command !== 'start' && command !== 'resume' && command !== 'continue') {
-  die(`usage: node scripts/factory.mjs <start|resume|continue> <db-path> [options]\n`
-    + `  start  <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
-    + `  resume <db-path> [--requeue-paused|--recover-failed-gate]\n`
-    + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]`);
+if (command !== 'start' && command !== 'resume' && command !== 'continue' && command !== 'abandon' && command !== 'rerun') {
+  die(`usage: node scripts/factory.mjs <start|resume|continue|abandon|rerun> <db-path> [options]\n`
+    + `  start   <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
+    + `  resume  <db-path> [--requeue-paused|--recover-failed-gate]\n`
+    + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]\n`
+    + `  abandon <db-path> <project-id> [--reason <text>]   — drop a poisoned run (fail-closed)\n`
+    + `  rerun   <db-path> <project-id> [--model <name>] [--reason <text>]   — abandon-if-poisoned + new_start`);
 }
 
 function resolveFactoryComposition() {
@@ -444,6 +446,137 @@ async function ensurePausedRecoveryFeedback(db, lifecycleRunId) {
     contractRef: policy.contractRef,
     inputSnapshotHash: metadata.process_node_input_hash ?? metadata.process_input_hash ?? '',
   }))();
+}
+
+// ─── abandon / rerun: drop a poisoned run, optionally restart the project ──
+function parseAbandonArguments(rawArgs) {
+  const result = { dbPath: rawArgs[1], projectId: null, reason: 'operator abandon', rerun: false, modelName: null };
+  for (let index = 2; index < rawArgs.length; index += 1) {
+    const option = rawArgs[index];
+    if (option === '--reason') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) die(`abandon/rerun: --reason requires a value`);
+      result.reason = value; index += 1; continue;
+    }
+    if (option === '--model') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) die(`rerun: --model requires a value`);
+      result.modelName = value; index += 1; continue;
+    }
+    if (option.startsWith('--')) die(`abandon/rerun: unsupported option '${option}'`);
+    if (result.projectId !== null) die(`abandon/rerun: exactly one <project-id> expected`);
+    const pid = Number(option);
+    if (!Number.isSafeInteger(pid) || pid < 1) die(`abandon/rerun: <project-id> must be a positive integer`);
+    result.projectId = pid;
+  }
+  if (!result.dbPath) die('abandon/rerun: db-path argument is required');
+  if (result.projectId === null) die('abandon/rerun: <project-id> argument is required');
+  if (!existsSync(resolve(result.dbPath))) die(`abandon/rerun: DB not found: ${resolve(result.dbPath)}`);
+  return result;
+}
+
+async function runAbandon(input) {
+  const { abandonLifecycleRun } = await import('../dist/app/factory-start.js');
+  const { SCHEMA_SQL } = await import('../dist/schema.js');
+  const { ensureFactoryLifecycleRunSchema } = await import(
+    '../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js'
+  );
+  const db = new Database(input.dbPath);
+  try {
+    db.exec(SCHEMA_SQL);
+    // burial joins factory_stage_runs — lazily created by the lifecycle repo,
+    // so ensure it exists even on a DB where no engine has ever run.
+    ensureFactoryLifecycleRunSchema(db);
+    const result = abandonLifecycleRun(db, {
+      projectId: input.projectId,
+      actorId: 'factory-cli',
+      reason: input.reason,
+    });
+    process.stdout.write(
+      `[factory] abandon: lifecycle=${result.lifecycleRunId} `
+      + `already_terminal=${result.alreadyTerminal} `
+      + `buried=${result.burial.buried} workplaces=${result.burial.workplacesReleased} `
+      + `tasks=${result.burial.tasksCancelled}\n`
+      + `[factory] justification: ${result.reason}\n`,
+    );
+    return result;
+  } finally {
+    db.close();
+  }
+}
+
+if (command === 'abandon') {
+  await runAbandon(parseAbandonArguments(process.argv.slice(2)));
+  process.exit(0);
+}
+
+if (command === 'rerun') {
+  const input = parseAbandonArguments(process.argv.slice(2));
+  input.rerun = true;
+  const { requestFactoryLaunch } = await import('../dist/infrastructure/factory/sqlite-factory-launch-repository.js');
+  const { buildReferenceDevelopmentPolicy } = await import('../dist/app/start-product-lifecycle-from-idea.js');
+  const { sha256Hex } = await import('../dist/shared/canonical-json.js');
+
+  const abandoned = await runAbandon(input);
+
+  const db = new Database(input.dbPath);
+  let launchRef;
+  try {
+    const project = db.prepare('SELECT id, name FROM projects WHERE id=?').get(input.projectId);
+    if (!project) die(`rerun: project ${input.projectId} not found`);
+    const repoRow = db.prepare(
+      `SELECT pr.local_path, pr.role AS repo_role, pr.integration_branch, r.name AS repo_name
+         FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
+        WHERE pr.project_id=? AND pr.status='active' ORDER BY pr.id LIMIT 1`,
+    ).get(input.projectId);
+    if (!repoRow) die(`rerun: no active project_repository for project ${input.projectId}`);
+
+    // Rebuild the lifecycle input from the ABANDONED run's frozen snapshot,
+    // re-anchored to the CURRENT repository HEAD: an old expectedBaseCommit
+    // would fail desk provisioning for code-changing work done since.
+    const snapshot = db.prepare(
+      'SELECT input_schema, input_snapshot FROM factory_lifecycle_runs WHERE id=?',
+    ).get(abandoned.lifecycleRunId);
+    if (!snapshot?.input_snapshot) die(`rerun: lifecycle ${abandoned.lifecycleRunId} has no input snapshot`);
+    const lifecycleInput = JSON.parse(snapshot.input_snapshot);
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRow.local_path, encoding: 'utf8' });
+    if (head.status !== 0) die(`rerun: git rev-parse failed in ${repoRow.local_path}`);
+    const repositories = lifecycleInput?.development?.repositories;
+    if (!Array.isArray(repositories) || repositories.length === 0) {
+      die('rerun: snapshot has no development.repositories — start from idea instead');
+    }
+    repositories[0].expectedBaseCommit = head.stdout.trim();
+    if (input.modelName) {
+      const profile = factoryModelProfile(input.modelName);
+      if (!profile) die(`rerun: unknown Factory model '${input.modelName}'`);
+      db.prepare(
+        `UPDATE lifecycle_execution_controls SET model_provider=?, model_name=?, model_effort=?, model_concurrency_limit=?, updated_at=datetime('now') WHERE epic_id=?`,
+      ).run(profile.provider, profile.id, profile.effort, profile.limit,
+        db.prepare('SELECT epic_id FROM factory_lifecycle_runs WHERE id=?').get(abandoned.lifecycleRunId).epic_id);
+    }
+
+    const orderRef = `order-${crypto.randomUUID()}`;
+    db.prepare(
+      `INSERT INTO factory_orders (order_ref,project_id,epic_id,lifecycle_run_id,source_kind,state)
+       VALUES (?,?,?,NULL,'existing_project','starting')`,
+    ).run(orderRef, input.projectId, project.id);
+    launchRef = requestFactoryLaunch({
+      orderRef,
+      mode: 'new',
+      projectId: input.projectId,
+      epicId: db.prepare('SELECT epic_id FROM factory_lifecycle_runs WHERE id=?').get(abandoned.lifecycleRunId).epic_id,
+      lifecycleInput,
+      lifecycleInputSchema: snapshot.input_schema,
+      initiatedBy: `factory-rerun (${input.reason})`,
+      idempotencyKey: `rerun-${input.projectId}-${crypto.randomUUID()}`,
+      concurrency: parseConcurrency(process.env.SAGA_FACTORY_CONCURRENCY),
+    }, db);
+  } finally {
+    db.close();
+  }
+  process.stdout.write(`[factory] rerun: launch=${launchRef} db=${input.dbPath}\n`);
+  spawnOrchestrateCli(input.dbPath, launchRef);
+  // spawnOrchestrateCli wires exit — we don't reach here.
 }
 
 // ─── resume: continue an existing durable lifecycle run ───────────────────
