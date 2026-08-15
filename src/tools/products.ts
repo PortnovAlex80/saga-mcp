@@ -11,6 +11,7 @@ import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../module
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 import { materializeManagedSourceChange } from '../infrastructure/source-change/managed-source-change-candidate.js';
+import { materializeFormalizationSnapshot } from '../modules/formalization/application/formalization-snapshot-materializer.js';
 import { withImmediateTransaction } from '../lifecycle/work-assignment-core.js';
 import { recordFinalPresentationCommitment } from '../infrastructure/workplace/sqlite-final-presentation-commitment.js';
 import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
@@ -52,6 +53,9 @@ const productSubmit: ToolHandler = args => {
     try { content = JSON.parse(content); } catch { /* strings are legal products */ }
   }
   content = materializeManagedSourceChange(getDb(), schema, content);
+  // GB-5/B: formalization bundles seal the factory-computed workplace
+  // production snapshot (managed ledger), not the worker's raw payload.
+  content = materializeFormalizationSnapshot(getDb(), schema, content);
   const committed = withImmediateTransaction(getDb(), () => {
     const result = submissionRepo().submitForCurrentExecution({ schema, payload: content });
     const universalRef = writeProduct(getDb(), {
