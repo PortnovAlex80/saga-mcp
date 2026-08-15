@@ -1451,7 +1451,7 @@ function verifyCandidateSetDigest(
     workplaceRef: String(row.workplace_ref),
     productionRevisionRef: String(row.production_revision_ref),
     role: String(row.candidate_role) as 'author' | 'reviewer',
-    subjectCandidateSetRef: row.candidate_subject_candidate_set_ref == null
+    subjectCandidateSetRef: row.candidate_subject_candidate_set_ref === null
       ? null
       : String(row.candidate_subject_candidate_set_ref),
   });
