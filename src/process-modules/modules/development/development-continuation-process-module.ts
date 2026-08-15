@@ -121,8 +121,16 @@ export const developmentContinuationProcessModule: ProcessModuleDefinition = (()
       entryNodeId: 'resolve-task-graph',
       nodes: continuationNodes,
       transitions: base.flow.transitions.filter(
-        transition => transition.from !== 'plan-task-graph',
+        transition => transition.from !== 'plan-task-graph'
+          && transition.to !== 'plan-task-graph',
       ),
+      // The base module's recovery policies reference nodes we removed
+      // (plan-task-graph is filtered out above). Drop any policy whose
+      // verify/repair nodes no longer exist — otherwise the module validator
+      // rejects the continuation at registration.
+      recovery: (base.flow.recovery ?? []).filter(policy =>
+        continuationNodes.some(node => node.id === policy.verifyNodeId)
+        && continuationNodes.some(node => node.id === policy.repairNodeId)),
     },
     executionProfiles: profiles,
     artifacts: [

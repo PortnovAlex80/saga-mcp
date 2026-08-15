@@ -365,7 +365,21 @@ export class FilesystemModulePackageStore implements ModulePackageStore {
         );
       }
       const actualDigest = computeResourceDigest(bytes);
-      if (actualDigest !== entry.digest && entry.digest !== 'pending@wave-2') {
+      // ADR-066 item 3 (plan item 15): the pending@wave-2 fail-open let
+      // mismatched handler resources through verification silently. Now a
+      // placeholder digest is a hard error at READ time too — the installer
+      // stamps all resourceIndex entries before store, so a placeholder can
+      // only mean a hand-authored manifest that bypassed the normal install
+      // path. Historical installations are unaffected: their stored digests
+      // were stamped by the pre-change installer and are real sha256.
+      if (actualDigest !== entry.digest) {
+        if (entry.digest === 'pending@wave-2') {
+          throw new PackageStoreError(
+            PACKAGE_STORE_DIGEST_MISMATCH,
+            `resource '${entry.logicalId}' carries placeholder digest 'pending@wave-2' — `
+            + `the installer must stamp real digests before store (ADR-066 item 3)`,
+          );
+        }
         throw new PackageStoreError(
           PACKAGE_STORE_DIGEST_MISMATCH,
           `resource '${entry.logicalId}' digest mismatch: stored manifest declares '${entry.digest}' but bytes hash to '${actualDigest}'`,

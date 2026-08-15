@@ -92,6 +92,10 @@ ProcessModuleDefinition = (() => {
           })),
       ],
       terminalNodeIds: terminals.map(node => node.id),
+      // The base module's recovery policies reference nodes we don't have
+      // (plan-task-graph, resolve-task-graph). Drop them — otherwise the
+      // module validator rejects the continuation at registration.
+      recovery: [],
     },
     executionProfiles: base.executionProfiles.filter(
       profile => profile.id === 'development-verification-worker',

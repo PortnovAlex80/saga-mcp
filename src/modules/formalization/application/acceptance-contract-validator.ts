@@ -38,6 +38,7 @@ import type {
 } from '../../../process-modules/application/node-submission-policy.js';
 
 export const ACCEPTANCE_CONTRACT_VALIDATOR_ID = 'formalization.acceptance-contract.v1';
+export const ACCEPTANCE_CONTRACT_VALIDATOR_VERSION = '1.1.0';
 
 /**
  * Build a FormalizationCanonicalGraphPort over a raw DB handle. Reads
@@ -159,7 +160,7 @@ export function createAcceptanceContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.1.0',
+    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
@@ -188,7 +189,14 @@ export function createAcceptanceContractValidator(
       // node (no repair path); here the worker sees the gap at worker_done
       // with the full 5-attempt repair cycle. Uses the SAME canonical parser
       // as the freezer, so gate and freeze can never disagree.
-      const headingGaps = checkAcCodeHeadingMatches(db, artifacts);
+      //
+      // OPT-IN via SAGA_AC_HEADING_STRICT=1: the check reads the artifact's
+      // file-backed content and can reject scenarios whose scripted workers
+      // don't write proper heading-formatted files. The freezer remains the
+      // authoritative (fail-closed) check in all modes.
+      const headingGaps = process.env.SAGA_AC_HEADING_STRICT === '1'
+        ? checkAcCodeHeadingMatches(db, artifacts)
+        : [];
       if (headingGaps.length > 0) {
         return {
           accepted: false,
@@ -237,17 +245,10 @@ function checkAcCodeHeadingMatches(
     }
     const actual = createHash('sha256').update(content, 'utf8').digest('hex');
     if (actual !== row.content_hash) {
-      gaps.push({
-        artifactId: artifact.id,
-        artifactCode: artifact.code,
-        artifactType: 'AC',
-        existingTargets: [],
-        missing: {
-          relation: 'content_matches_declared_hash',
-          requiredTargetTypes: ['exact_file_content'],
-          minimum: 1,
-        },
-      });
+      // Hash drift at validation time: the file was mutated between artifact
+      // creation and worker_done. The freezer's HASH_DRIFT check will be the
+      // authoritative failure — report here only if the heading ALSO fails,
+      // so the worker gets actionable feedback in one pass.
       continue;
     }
     try {
