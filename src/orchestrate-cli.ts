@@ -31,6 +31,7 @@ import {
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
 import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
+import { adoptTerminalExecutionsAtEngineStart } from './app/engine-start-adoption.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
   installProductionModules,
@@ -219,6 +220,27 @@ async function main() {
           `[orchestrate-cli] automatic pre-spawn recovery=${recovery.recoveryRef} `
           + `execution=${recovery.executionId} replayed=${recovery.replayed}\n`,
         );
+      }
+    }
+
+    // TB-9: adopt terminal executions abandoned by a previous engine. A
+    // terminal execution holding a kernel-owned workplace reservation is a
+    // stale fence by definition; with a durable worker_done receipt the
+    // idempotent kernel verifying re-drive finishes the transition. Without
+    // the receipt nothing is rewritten — that case must stay loud.
+    {
+      const adoption = adoptTerminalExecutionsAtEngineStart(getDb());
+      if (adoption.adopted > 0 || adoption.skippedNoReceipt > 0) {
+        process.stderr.write(
+          `[orchestrate-cli] engine-start adoption: adopted=${adoption.adopted} `
+          + `skipped_no_receipt=${adoption.skippedNoReceipt}\n`,
+        );
+        for (const detail of adoption.details) {
+          process.stderr.write(
+            `[orchestrate-cli] adopted terminal execution=${detail.executionId} `
+            + `workplace=${detail.workplaceRef} state=${detail.loopState}\n`,
+          );
+        }
       }
     }
 

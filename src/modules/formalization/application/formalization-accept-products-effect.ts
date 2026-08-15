@@ -1,5 +1,9 @@
 import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
-import type { AcceptedCandidateAuthority, PostAcceptanceEffect } from '../../../process-modules/application/post-acceptance-effects.js';
+import type {
+  AcceptedCandidateAuthority,
+  PostAcceptanceEffect,
+  PostAcceptanceEffectResult,
+} from '../../../process-modules/application/post-acceptance-effects.js';
 import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-modules/shared/workplace-production-snapshot.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import { FORMALIZATION_RECONCILIATION_SCHEMA } from '../domain/formalization-schemas.js';
@@ -66,7 +70,7 @@ export function createFormalizationAcceptProductsEffect(
     effectId: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     version: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION,
     effectDigest: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST,
-    run(input) {
+    run(input): PostAcceptanceEffectResult | undefined {
       authority.assertPersisted(input.authority);
       const produced = input.authority.acceptedProductRefs.flatMap(product => {
         if (!product.digest) {
@@ -81,6 +85,41 @@ export function createFormalizationAcceptProductsEffect(
         return extractSnapshotArtifacts(snapshot, product.schemaId, product.ref);
       });
 
+      // TB-6: drift detection is a read-only pre-pass, so a repair outcome is
+      // decided BEFORE the mutation transaction opens — no partial mutation is
+      // ever committed. Detection is unchanged and fail-closed; the RESPONSE
+      // is a repair_required outcome the executor routes into
+      // acceptance-effect repair instead of a terminal stage failure.
+      for (const item of produced) {
+        const artifact = db.prepare(
+          `SELECT id,status,content_hash,accepted_hash,drift_state
+             FROM artifacts WHERE id=?`,
+        ).get(item.artifact_id) as ArtifactRow | undefined;
+        if (!artifact) {
+          throw new Error(`FORMALIZATION_ACCEPTANCE_ARTIFACT_MISSING: ${item.artifact_id}`);
+        }
+        // The sealed snapshot hash is the accepted authority. A later mutable
+        // artifact row may not silently substitute different material.
+        if (!artifact.content_hash) {
+          return {
+            outcome: 'repair_required',
+            reason: `FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact ${item.artifact_id}`,
+            evidence: { artifactId: item.artifact_id, sealedHash: item.content_hash },
+          };
+        }
+        if (artifact.content_hash !== item.content_hash) {
+          return {
+            outcome: 'repair_required',
+            reason: `FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact ${item.artifact_id}`,
+            evidence: {
+              artifactId: item.artifact_id,
+              sealedHash: item.content_hash,
+              rowHash: artifact.content_hash,
+            },
+          };
+        }
+      }
+
       const apply = db.transaction(() => {
         for (const item of produced) {
           const artifact = db.prepare(
@@ -89,14 +128,6 @@ export function createFormalizationAcceptProductsEffect(
           ).get(item.artifact_id) as ArtifactRow | undefined;
           if (!artifact) {
             throw new Error(`FORMALIZATION_ACCEPTANCE_ARTIFACT_MISSING: ${item.artifact_id}`);
-          }
-          // The sealed snapshot hash is the accepted authority. A later mutable
-          // artifact row may not silently substitute different material.
-          if (!artifact.content_hash) {
-            throw new Error(`FORMALIZATION_ACCEPTANCE_HASH_MISSING: artifact ${item.artifact_id}`);
-          }
-          if (artifact.content_hash !== item.content_hash) {
-            throw new Error(`FORMALIZATION_ACCEPTANCE_HASH_DRIFT: artifact ${item.artifact_id}`);
           }
           if (
             artifact.status === 'accepted'
@@ -117,6 +148,7 @@ export function createFormalizationAcceptProductsEffect(
         }
       });
       apply.immediate();
+      return undefined;
     },
   };
 }

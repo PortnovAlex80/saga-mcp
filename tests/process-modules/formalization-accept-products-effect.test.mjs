@@ -93,7 +93,7 @@ test('accepts exactly the artifacts in sealed accepted material', () => {
   } finally { db.close(); }
 });
 
-test('rejects mutable artifact drift and performs no partial mutation', () => {
+test('mutable artifact drift routes to acceptance-effect repair and performs no partial mutation', () => {
   const db = database();
   try {
     db.prepare('INSERT INTO artifacts VALUES (1,\'draft\',?,?,\'clean\',NULL)').run('1'.repeat(64), null);
@@ -102,7 +102,12 @@ test('rejects mutable artifact drift and performs no partial mutation', () => {
       { artifactId: 1, contentHash: '1'.repeat(64) },
       { artifactId: 2, contentHash: '2'.repeat(64) },
     ]) });
-    assert.throws(() => effect(db).run(input), /HASH_DRIFT: artifact 2/);
+    // TB-6: drift detection is unchanged and fail-closed; the response is a
+    // repair_required outcome the executor routes into acceptance-effect
+    // repair instead of a terminal stage failure.
+    const result = effect(db).run(input);
+    assert.equal(result.outcome, 'repair_required');
+    assert.match(result.reason, /HASH_DRIFT: artifact 2/);
     assert.equal(db.prepare('SELECT status FROM artifacts WHERE id=1').get().status, 'draft');
   } finally { db.close(); }
 });
