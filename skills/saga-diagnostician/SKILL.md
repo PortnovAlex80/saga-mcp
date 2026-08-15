@@ -339,7 +339,9 @@ After the four files are written:
 
 3. `worker_done({task_id, worker_id, result: 'diagnosis complete: P5 infra-limitation; 3 hypotheses written to .solla/hypotheses/task-<id>/'})`.
 
-4. Exit. Do **not** call `worker_next`. Do **not** call `episode_transition`.
+4. Exit. Do **not** call `worker_next`. Stage advancement is owned by the
+   Lifecycle Orchestrator; do not attempt to call `episode_transition`
+   (deleted in the saga4 cutover).
 
 ## Evidence-chain output format (structured, not freeform)
 

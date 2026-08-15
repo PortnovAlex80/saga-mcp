@@ -60,7 +60,9 @@ COVERAGE-GAPS:
 
 ## Phase 1 — Producing independent verification
 
-1. Claim task via worker_next({role:'reviewer'}) — then run Phase 0 above first.
+1. Your verification task is pre-assigned by the dispatcher — read it via
+   `task_get({ id: <SAGA_TASK_ID> })`; do NOT call `worker_next` (it is
+   disabled). Then run Phase 0 above first.
 2. Read the AC artifact (artifact_get) — especially the YAML properties block.
 3. Read the function signature from code (grep the public API in `src/`).
 4. DO NOT read the `tests/` tree (Builder's tests are off-limits — see the
@@ -72,19 +74,36 @@ COVERAGE-GAPS:
    - identity → assert neutral input produces identity output
    - idempotency → assert applying twice == applying once
 6. Write to tests/verifier/AC-N_property_test.py (or .ts depending on stack)
-7. Run the tests
-8. Record evidence:
+7. **Register your work in the contribution ledger** (REQUIRED — the gate
+   checks this BEFORE evaluating your verdict):
+   - `artifact_update` for each test file you wrote/changed in `tests/verifier/`
+   - `trace_add` to link the AC artifact to your verification evidence
+     (source: the AC artifact, target: your test artifact, relation: `verified_by`)
+   - Without these, the submission validator check provider will REJECT your
+     submission as "no managed contribution" — even if your tests all pass.
+8. Run the tests
+9. Record evidence:
    - passed → verification_record({outcome:'passed', provider:'hypothesis', test_layer:'L3'})
    - failed → verification_record({outcome:'failed', provider:'hypothesis', test_layer:'L3'})
    - couldn't run → verification_record({outcome:'unknown', provider:'hypothesis'})
    - crashed → verification_record({outcome:'error', provider:'hypothesis'})
+
+> **Why artifact_update + trace_add are mandatory.** The conveyor requires an
+> audit trail for every worker transition. Formalization workers call
+> `artifact_update` (PRD, SRS) + `trace_add` (UC→FR). Development workers call
+> `artifact_update` (code) + `trace_add` (impl→AC). Verification workers MUST
+> do the same — register test artifacts and traceability links. The gate's
+> `submissionValidatorCheckProvider` checks `factory_managed_artifact_productions`
+> and `factory_managed_trace_productions`. Empty ledger → `repair_required`.
 
 ## Rules
 - NEVER read Builder's test files. You generate your own from the contract.
 - Your test layer (L3) MUST differ from Builder's (L2). This is structural independence.
 - If AC has no properties block → verification_record outcome='unknown' with reason "no contract-as-data in AC"
 - tests/verifier/ directory is YOUR territory. Builder does not touch it.
-- Never worker_next again after worker_done.
+- Do NOT call `worker_next` at all — your card is pre-assigned by the dispatcher.
+- **MANDATORY: call `artifact_update` + `trace_add` before `worker_done`.**
+  The gate rejects submissions without managed contributions in the ledger.
 
 ## NEVER call worker_ask_need
 

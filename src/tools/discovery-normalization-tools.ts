@@ -1,0 +1,298 @@
+import { createHash } from 'node:crypto';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { getDb } from '../db.js';
+import type { ToolHandler } from '../types.js';
+import { withImmediateTransaction } from './dispatcher.js';
+import { argInt, argStr, FACTORY_TOOL_CALL_SHAPES, FACTORY_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
+import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
+import {
+  DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
+  validateDiscoveryNormalizationProposal,
+  type DiscoveryNormalizationProposalPayload,
+} from '../modules/discovery/domain/discovery-normalization-proposal.js';
+import type { ProposalProvenance } from '../modules/discovery/domain/proposal.js';
+import {
+  canonicalJson,
+  ensureFactoryNormalizationSchema,
+  insertNormalizationProposal,
+  markNormalizationAccepted,
+  markRawSubmissionNormalized,
+  readRawSubmission,
+} from '../modules/discovery/infrastructure/discovery-normalization-repository.js';
+
+export interface DiscoveryNormalizationHandlersOptions {
+  db?: () => ReturnType<typeof getDb>;
+  now?: () => Date;
+}
+
+interface ControlIntentRow {
+  id: number;
+  epic_id: number;
+  source_submission_id: number;
+  authority_intent_id: number;
+  projected_task_id: number | null;
+  status: string;
+}
+
+function requireControlBinding(
+  db: ReturnType<typeof getDb>,
+  controlIntentId: number,
+  sourceSubmissionId: number,
+  executionId: string,
+): { control: ControlIntentRow; provenance: ProposalProvenance } {
+  const strict = readExecutionContextStrict(db, executionId);
+  if (!strict.ok) {
+    throw new Error(`normalization: AUTHORITY_CONTEXT_INVALID — ${strict.reason}`);
+  }
+  if (!strict.snapshot.authority) {
+    throw new Error('normalization: execution has no Saga 3 authority');
+  }
+  const control = db.prepare(
+    `SELECT id, epic_id, source_submission_id, authority_intent_id,
+            projected_task_id, status
+       FROM factory_control_intents WHERE id=?`,
+  ).get(controlIntentId) as ControlIntentRow | undefined;
+  if (!control) throw new Error(`normalization: ControlIntent ${controlIntentId} not found`);
+  if (control.source_submission_id !== sourceSubmissionId) {
+    throw new Error(`normalization: ControlIntent ${controlIntentId} is not for source ${sourceSubmissionId}`);
+  }
+  if (control.authority_intent_id !== strict.snapshot.work_intent_id) {
+    throw new Error('normalization: execution authority is not bound to this ControlIntent');
+  }
+  if (control.projected_task_id !== strict.row.task_id) {
+    throw new Error('normalization: execution task is not the ControlIntent projected task');
+  }
+  if (control.status !== 'open' && control.status !== 'executing' && control.status !== 'paused') {
+    throw new Error(`normalization: ControlIntent ${controlIntentId} status '${control.status}' is not active`);
+  }
+  const exec = db.prepare(
+    `SELECT worker_id, state FROM worker_executions WHERE execution_id=?`,
+  ).get(executionId) as { worker_id: string; state: string } | undefined;
+  if (!exec || (exec.state !== 'reserved' && exec.state !== 'running')) {
+    throw new Error(`normalization: execution ${executionId} is not live`);
+  }
+  const route = strict.snapshot.model_route;
+  return {
+    control,
+    provenance: {
+      model: route.model,
+      provider: route.provider,
+      effort: route.effort,
+      worker_id: exec.worker_id,
+      execution_id: executionId,
+      submitted_at: new Date().toISOString(),
+    },
+  };
+}
+
+export function createDiscoveryNormalizationHandlers(
+  options: DiscoveryNormalizationHandlersOptions = {},
+): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
+  const getDbFn = options.db ?? getDb;
+  const now = options.now ?? (() => new Date());
+  ensureFactoryNormalizationSchema(getDbFn());
+
+  const normalizationGet: ToolHandler = args => {
+    const controlIntentId = integerArg(args, 'control_intent_id');
+    const sourceSubmissionId = integerArg(args, 'source_submission_id');
+    const executionId = stringArg(args, 'execution_id');
+    const db = getDbFn();
+    requireControlBinding(db, controlIntentId, sourceSubmissionId, executionId);
+    const source = readRawSubmission(db, sourceSubmissionId);
+    if (!source) throw new Error(`normalization_get: source submission ${sourceSubmissionId} not found`);
+    if (source.status !== 'normalization_required') {
+      throw new Error(`normalization_get: source submission ${sourceSubmissionId} status is '${source.status}'`);
+    }
+    return {
+      control_intent_id: controlIntentId,
+      source_submission_id: source.id,
+      source_raw_hash: source.raw_hash,
+      raw_payload: source.raw_payload,
+      parsed_payload: source.parsed_payload,
+      deterministic_trace: source.normalization_trace,
+      validation_errors: source.validation_errors,
+      alias_conflicts: source.alias_conflicts,
+      allowed_evidence_refs: source.allowed_evidence_refs,
+      output_schema: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
+      rule: 'Transform only what is present in parsed_payload. Do not add evidence. Cite top-level source paths for every canonical field.',
+    };
+  };
+
+  const normalizationSubmit: ToolHandler = args => {
+    const controlIntentId = integerArg(args, 'control_intent_id');
+    const sourceSubmissionId = integerArg(args, 'source_submission_id');
+    const executionId = stringArg(args, 'execution_id');
+    const schemaVersion = stringArg(args, 'schema_version');
+    const payload = args.payload;
+    if (schemaVersion !== DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA) {
+      throw new Error(
+        `normalization_submit: schema_version mismatch — expected '${DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA}'`,
+      );
+    }
+
+    return withImmediateTransaction(getDbFn(), () => {
+      const db = getDbFn();
+      const binding = requireControlBinding(
+        db,
+        controlIntentId,
+        sourceSubmissionId,
+        executionId,
+      );
+      const source = readRawSubmission(db, sourceSubmissionId);
+      if (!source) throw new Error(`normalization_submit: source submission ${sourceSubmissionId} not found`);
+      const sourceIntent = db.prepare(`SELECT epic_id FROM factory_work_intents WHERE id=?`).get(source.intent_id) as { epic_id: number } | undefined;
+      if (!sourceIntent || sourceIntent.epic_id !== binding.control.epic_id) {
+        throw new Error('normalization_submit: source submission/control epic mismatch');
+      }
+      if (source.status !== 'normalization_required') {
+        throw new Error(`normalization_submit: source submission status is '${source.status}'`);
+      }
+      if (!source.provenance) {
+        throw new Error('normalization_submit: source submission has no product provenance');
+      }
+
+      const validation = validateDiscoveryNormalizationProposal(
+        payload,
+        source.parsed_payload,
+        source.allowed_evidence_refs,
+      );
+      if (!validation.valid) {
+        throw new Error(`normalization_submit: proposal validation failed — ${enrichPayloadErrors('normalization_submit', validation.errors).join('; ')}`);
+      }
+      const typed = payload as DiscoveryNormalizationProposalPayload;
+      if (typed.source_submission_id !== source.id || typed.source_raw_hash !== source.raw_hash) {
+        throw new Error('normalization_submit: source identity/hash mismatch');
+      }
+
+      const normalizerProvenance: ProposalProvenance = {
+        ...binding.provenance,
+        submitted_at: now().toISOString(),
+      };
+      const inserted = insertNormalizationProposal(db, {
+        controlIntentId,
+        sourceSubmissionId,
+        taskId: binding.control.projected_task_id!,
+        executionId,
+        payload,
+        provenance: normalizerProvenance,
+      });
+
+      const normalizedText = canonicalJson(typed.normalized_payload);
+      const contentHash = createHash('sha256').update(normalizedText).digest('hex');
+      const productProvenance: ProposalProvenance = {
+        ...source.provenance,
+        normalization_mode: 'lm_transformation',
+        source_submission_id: source.id,
+        normalization_proposal_id: inserted.record.id,
+        normalizer: {
+          model: normalizerProvenance.model,
+          provider: normalizerProvenance.provider,
+          effort: normalizerProvenance.effort,
+          worker_id: normalizerProvenance.worker_id,
+          execution_id: normalizerProvenance.execution_id,
+          submitted_at: normalizerProvenance.submitted_at,
+        },
+      };
+
+      // The canonical product Proposal remains attached to the original product
+      // task/execution. The normalizer owns a separate normalization proposal;
+      // mixing its execution_id with the product task_id would create a false
+      // task↔execution pair and break D1's provenance invariant.
+      const productInsert = db.prepare(
+        `INSERT INTO factory_proposals
+           (intent_id, task_id, execution_id, kind, schema_version, payload,
+            content_hash, status, provenance, source_submission_id,
+            normalization_proposal_id)
+         VALUES (?,?,?,?,?,?,?, 'submitted', ?, ?, ?)
+         ON CONFLICT(intent_id, execution_id, content_hash) DO NOTHING`,
+      ).run(
+        source.intent_id,
+        source.task_id,
+        source.execution_id,
+        source.kind,
+        source.schema_version,
+        normalizedText,
+        contentHash,
+        JSON.stringify(productProvenance),
+        source.id,
+        inserted.record.id,
+      );
+      const product = db.prepare(
+        `SELECT id FROM factory_proposals
+          WHERE intent_id=? AND execution_id=? AND content_hash=?`,
+      ).get(source.intent_id, source.execution_id, contentHash) as { id: number } | undefined;
+      if (!product) throw new Error('normalization_submit: accepted product proposal vanished');
+
+      markNormalizationAccepted(db, inserted.record.id);
+      markRawSubmissionNormalized(db, source.id);
+      if (productInsert.changes === 1) {
+        db.prepare(
+          `INSERT INTO comments (task_id, author, content)
+           VALUES (?, 'factory-kernel', ?)`,
+        ).run(
+          source.task_id,
+          `Normalization accepted: source=${source.id} normalization=${inserted.record.id} proposal=${product.id} hash=${contentHash.slice(0, 12)}…`,
+        );
+      }
+      return {
+        normalization_proposal_id: inserted.record.id,
+        proposal_id: product.id,
+        content_hash: contentHash,
+        status: 'accepted_by_kernel',
+        replayed: inserted.replayed && productInsert.changes === 0,
+      };
+    });
+  };
+
+  return {
+    definitions: [
+      {
+        name: 'normalization_get',
+        description: 'Read the immutable raw discovery submission and deterministic normalization diagnostics for the assigned NormalizeDiscoveryProposal ControlIntent. Call shape: normalization_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from task_get.metadata.source_submission_id>, execution_id: <string, your execution_id> }) — returns source_submission_id, source_raw_hash, raw_payload, parsed_payload, deterministic_trace, validation_errors, alias_conflicts, allowed_evidence_refs, output_schema, rule. Echo source_submission_id and source_raw_hash verbatim into the subsequent normalization_submit payload.',
+        annotations: { title: 'Factory: Read Normalization Input', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        inputSchema: {
+          type: 'object',
+          required: ['control_intent_id', 'source_submission_id', 'execution_id'],
+          properties: {
+            control_intent_id: { type: 'integer' },
+            source_submission_id: { type: 'integer' },
+            execution_id: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'normalization_submit',
+        description: 'Submit a transformation proposal for a raw discovery response. The LM cannot accept it; the deterministic kernel validates source paths, schema, raw hash and evidence non-invention before creating the canonical product proposal. Call shape: normalization_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from normalization_get, echo verbatim>, execution_id: <string, your execution_id>, schema_version: "factory.discovery-normalization-proposal.v1", payload: { source_submission_id: <int, echo normalization_get>, source_raw_hash: "<64-char hex, echo normalization_get>", normalized_payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale }, source_field_map: { problem_statement: [<JSON paths into parsed_payload>], observed_context: [...], candidate_scope: [...], rationale: [...], stakeholders_or_actors: [...], assumptions: [...], unknowns: [...], risks: [...], evidence_refs: [...] }, notes: <string[]> } }). IMPORTANT: control_intent_id/source_submission_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; every source_field_map path MUST resolve in normalization_get.parsed_payload; evidence_refs must come from allowed_evidence_refs.',
+        annotations: { title: 'Factory: Submit Normalization Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        inputSchema: {
+          type: 'object',
+          required: ['control_intent_id', 'source_submission_id', 'execution_id', 'schema_version', 'payload'],
+          properties: {
+            control_intent_id: { type: 'integer' },
+            source_submission_id: { type: 'integer' },
+            execution_id: { type: 'string' },
+            schema_version: { type: 'string', enum: [DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA] },
+            payload: { type: 'object' },
+          },
+        },
+      },
+    ],
+    handlers: {
+      normalization_get: normalizationGet,
+      normalization_submit: normalizationSubmit,
+    },
+  };
+}
+
+function integerArg(args: Record<string, unknown>, name: string): number {
+  // normalization_get uses control_intent_id+source_submission_id+execution_id;
+  // normalization_submit adds schema_version. Pick the shape by whether schema_version
+  // is among the args (submit) or not (get).
+  const shape = args.schema_version !== undefined ? FACTORY_TOOL_CALL_SHAPES.normalization_submit : FACTORY_TOOL_CALL_SHAPES.normalization_get;
+  return argInt('normalization', args, name, { source: FACTORY_ARG_SOURCES[name as keyof typeof FACTORY_ARG_SOURCES] ?? name, expected: shape });
+}
+
+function stringArg(args: Record<string, unknown>, name: string): string {
+  const shape = args.schema_version !== undefined ? FACTORY_TOOL_CALL_SHAPES.normalization_submit : FACTORY_TOOL_CALL_SHAPES.normalization_get;
+  return argStr('normalization', args, name, { source: FACTORY_ARG_SOURCES[name as keyof typeof FACTORY_ARG_SOURCES] ?? name, expected: shape });
+}

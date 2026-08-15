@@ -205,7 +205,7 @@ function handleCheckoutBootstrap(args: Record<string, unknown>) {
 export const definitions: Tool[] = [
   {
     name: 'repository_register',
-    description: 'Register or update a physical repository under one logical product project. Idempotent by project + repository name.',
+    description: 'Register or update a physical repository under one logical product project. Idempotent by project + repository name. Call shape: repository_register({ project_id: <integer>, name: "<string>", local_path: "<string|null>", remote_url: "<string|null>", default_branch: "<string, default main>", integration_branch: "<string, default dev>", role: "<string, default component>", docs_root: "<string|null>", status: "planned|active|on_hold|archived" }). Required: project_id, name.',
     annotations: { title: 'Repository: Register', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -221,7 +221,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'repository_list',
-    description: 'List all physical repositories attached to a logical product project.',
+    description: 'List all physical repositories attached to a logical product project. Call shape: repository_list({ project_id: <integer>, status: "planned|active|on_hold|archived" }). Required: project_id.',
     annotations: { title: 'Repository: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -231,13 +231,13 @@ export const definitions: Tool[] = [
   },
   {
     name: 'repository_get',
-    description: 'Get one project repository binding including local workspace and branch settings.',
+    description: 'Get one project repository binding including local workspace and branch settings. Call shape: repository_get({ id: <integer> }). The parameter is "id" (not "repository_id" or "repositoryId").',
     annotations: { title: 'Repository: Get', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'] },
   },
   {
     name: 'repository_update',
-    description: 'Update a project repository binding or its repository identity.',
+    description: 'Update a project repository binding or its repository identity. Call shape: repository_update({ id: <integer>, name: "<string>", local_path: "<string|null>", remote_url: "<string|null>", default_branch: "<string>", integration_branch: "<string>", role: "<string>", docs_root: "<string|null>", status: "planned|active|on_hold|archived" }). Required: id. Pass only fields to change.',
     annotations: { title: 'Repository: Update', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -252,7 +252,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'repository_checkout_register',
-    description: 'Register this machine checkout for a product repository. Idempotent per repository + machine.',
+    description: 'Register this machine checkout for a product repository. Idempotent per repository + machine. Call shape: repository_checkout_register({ project_repository_id: <integer>, machine_id: "<string>", local_path: "<string>", status: "active|missing|on_hold", metadata: <object> }). Required: project_repository_id, machine_id, local_path.',
     annotations: { title: 'Repository Checkout: Register', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -266,7 +266,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'repository_checkout_list',
-    description: 'List machine-specific repository checkouts.',
+    description: 'List machine-specific repository checkouts. Call shape: repository_checkout_list({ project_id: <integer>, machine_id: "<string>" }). Both filters optional.',
     annotations: { title: 'Repository Checkout: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -275,7 +275,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'repository_checkout_bootstrap',
-    description: 'Clone a planned repository remote into an explicitly provided empty path, then register the machine checkout.',
+    description: 'Clone a planned repository remote into an explicitly provided empty path, then register the machine checkout. Call shape: repository_checkout_bootstrap({ project_repository_id: <integer>, machine_id: "<string>", local_path: "<string, must not exist or be empty>" }). Required: project_repository_id, machine_id, local_path.',
     annotations: { title: 'Repository Checkout: Bootstrap', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: 'object',

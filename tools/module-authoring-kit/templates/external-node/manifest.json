@@ -1,0 +1,73 @@
+{
+  "manifestFormatVersion": "1",
+  "definition": {
+    "identity": {
+      "name": "{{MODULE_NAME}}",
+      "version": "{{MODULE_VERSION}}",
+      "kind": "{{MODULE_KIND}}",
+      "displayName": "{{MODULE_DISPLAY_NAME}}",
+      "description": "{{MODULE_DESCRIPTION}}"
+    },
+    "inputContract": { "id": "{{MODULE_NAME}}.input.v1" },
+    "outputContract": { "id": "{{MODULE_NAME}}.output.v1" },
+    "outcomes": [
+      { "code": "fetched", "description": "A typed snapshot envelope was fetched from the external source.", "terminal": true }
+    ],
+    "flow": {
+      "id": "{{MODULE_NAME}}.standard",
+      "version": "{{MODULE_VERSION}}",
+      "entryNodeId": "fetch",
+      "nodes": [
+        {
+          "id": "fetch",
+          "label": "Fetch",
+          "kind": "external",
+          "description": "Fetch a snapshot from an external source through a registered adapter.",
+          "adapter": "{{MODULE_NAME}}-adapter@1.0.0",
+          "inputSchema": { "id": "{{MODULE_NAME}}.input.v1" },
+          "outputSchema": { "id": "{{MODULE_NAME}}.output.v1" },
+          "emitsOutcome": "fetched"
+        }
+      ],
+      "transitions": [],
+      "terminalNodeIds": ["fetch"]
+    },
+    "artifacts": [
+      {
+        "type": "{{MODULE_NAME}}.snapshot",
+        "schema": { "id": "{{MODULE_NAME}}.output.v1" },
+        "authority": "external",
+        "description": "Opaque snapshot envelope produced by the External node."
+      }
+    ],
+    "policies": [],
+    "invariants": [],
+    "executionProfiles": []
+  },
+  "resourceIndex": [
+    {
+      "logicalId": "input-schema",
+      "path": "resources/input.schema.json",
+      "kind": "schema",
+      "digest": "pending@wave-2"
+    }
+  ],
+  "handlerRefs": [
+    {
+      "logicalId": "{{MODULE_NAME}}-adapter",
+      "version": "1.0.0",
+      "digest": "pending@wave-2"
+    }
+  ],
+  "inputContractRef": {
+    "schemaId": "{{MODULE_NAME}}.input.v1",
+    "version": "1.0.0",
+    "digest": "pending@wave-2"
+  },
+  "outputContractRef": {
+    "schemaId": "{{MODULE_NAME}}.output.v1",
+    "version": "1.0.0",
+    "digest": "pending@wave-2"
+  },
+  "runtimeCompatibilityRange": "^3.0.0"
+}

@@ -7,7 +7,8 @@ export const definitions: Tool[] = [
   {
     name: 'subtask_create',
     description:
-      'Create one or more subtasks (checklist items) for a task. Accepts a single title string or an array of title strings for batch creation.',
+      'Create one or more subtasks (checklist items) for a task. Accepts a single title string or an array of title strings for batch creation. ' +
+      'Call shape: subtask_create({ task_id: <integer>, titles: "<single title string>" | ["<title1>", "<title2>", ...] }). The parameter is "task_id" (not "id") and "titles" (not "title").',
     annotations: { title: 'Create Subtask(s)', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -25,7 +26,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'subtask_update',
-    description: 'Update a subtask title, status, or sort order.',
+    description:
+      'Update a subtask title, status, or sort order. ' +
+      'Call shape: subtask_update({ id: <integer>, title: "<string>", status: "todo|in_progress|done", sort_order: <integer> }). The parameter is "id" (the subtask ID, not task_id). Pass only fields to change.',
     annotations: { title: 'Update Subtask', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -40,7 +43,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'subtask_delete',
-    description: 'Delete one or more subtasks. Accepts a single ID or array of IDs.',
+    description:
+      'Delete one or more subtasks. Accepts a single ID or array of IDs. ' +
+      'Call shape: subtask_delete({ ids: <single integer> | [<integer>, <integer>, ...] }). The parameter is "ids" (not "id"); pass an integer for one or an array for many.',
     annotations: { title: 'Delete Subtask(s)', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

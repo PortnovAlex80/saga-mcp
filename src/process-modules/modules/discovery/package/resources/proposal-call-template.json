@@ -1,0 +1,15 @@
+{
+  "schema": "factory.discovery-proposal.v1",
+  "content": {
+    "problem_statement": "FILL_FROM_DISCOVERY_DOC_PROBLEM_SECTION",
+    "observed_context": "FILL_FROM_DISCOVERY_DOC_CONTEXT_SECTION",
+    "stakeholders_or_actors": ["FILL_USER_1", "FILL_USER_2"],
+    "assumptions": ["FILL_ASSUMPTION_1"],
+    "unknowns": ["FILL_UNKNOWN_1"],
+    "risks": ["FILL_RISK_1"],
+    "candidate_scope": "FILL_FROM_DISCOVERY_DOC_CANDIDATE_SCOPE_SECTION",
+    "evidence_refs": ["FILL_EVIDENCE_1"],
+    "recommended_outcome": "go",
+    "rationale": "FILL_FROM_DISCOVERY_DOC_RECOMMENDATION_SECTION"
+  }
+}

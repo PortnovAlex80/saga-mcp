@@ -1,0 +1,237 @@
+{
+  "manifestFormatVersion": "0.1.0",
+  "identity": {
+    "name": "campaign",
+    "version": "1.0.0",
+    "displayName": "Campaign Lifecycle",
+    "description": "W10-A4 installable lifecycle scenario. Composes the three sibling-wave external packages (lm-marketing + external-seo + human-director-approval) across 5 stages, reuses external-seo three times, declarative static routes only. Proves arbitrary scenario extensibility (plan §0.13.10)."
+  },
+  "inputContractRef": {
+    "schemaId": "campaign.input.v1",
+    "version": "1.0.0",
+    "digest": "sha256:campaign.input.v1"
+  },
+  "outputContractRef": {
+    "schemaId": "campaign.output.v1",
+    "version": "1.0.0",
+    "digest": "sha256:campaign.output.v1"
+  },
+  "entryStageId": "draft",
+  "stageBindings": [
+    {
+      "id": "draft",
+      "displayName": "Draft Campaign",
+      "moduleRef": {
+        "name": "lm-marketing",
+        "version": "1.0.0"
+      },
+      "inputMapping": {
+        "brief": "initiative.brief",
+        "audience": "initiative.audience"
+      },
+      "outputMapping": {
+        "campaignDraft": "output.campaignDraft"
+      },
+      "outcomeRoutes": {
+        "campaign-drafted": {
+          "type": "stage",
+          "stageId": "seo-baseline"
+        }
+      },
+      "entryConditions": [
+        "Scenario root input present"
+      ],
+      "exitConditions": [
+        "campaign-drafted outcome emitted"
+      ],
+      "moduleSelector": {
+        "name": "lm-marketing",
+        "versionRange": "^1.0.0"
+      }
+    },
+    {
+      "id": "seo-baseline",
+      "displayName": "SEO Baseline Fetch",
+      "moduleRef": {
+        "name": "external-seo",
+        "version": "1.0.0"
+      },
+      "inputMapping": {
+        "keywords": "stages.draft.output.keywords",
+        "market": {
+          "literal": "baseline"
+        }
+      },
+      "outputMapping": {
+        "baselineRanking": "output.rankingSnapshot"
+      },
+      "outcomeRoutes": {
+        "ranking-fetched": {
+          "type": "stage",
+          "stageId": "metrics"
+        }
+      },
+      "entryConditions": [
+        "draft stage produced a campaign draft"
+      ],
+      "exitConditions": [
+        "ranking-fetched outcome emitted"
+      ],
+      "moduleSelector": {
+        "name": "external-seo",
+        "versionRange": "^1.0.0"
+      }
+    },
+    {
+      "id": "metrics",
+      "displayName": "Compute Metrics",
+      "moduleRef": {
+        "name": "external-seo",
+        "version": "1.0.0"
+      },
+      "inputMapping": {
+        "keywords": "stages.draft.output.keywords",
+        "baselineRanking": "stages.seo-baseline.output.baselineRanking",
+        "market": {
+          "literal": "metrics"
+        }
+      },
+      "outputMapping": {
+        "metrics": "output.metrics"
+      },
+      "outcomeRoutes": {
+        "ranking-fetched": {
+          "type": "stage",
+          "stageId": "seo-followup"
+        }
+      },
+      "entryConditions": [
+        "baseline ranking available"
+      ],
+      "exitConditions": [
+        "ranking-fetched outcome emitted"
+      ],
+      "moduleSelector": {
+        "name": "external-seo",
+        "versionRange": "^1.0.0"
+      }
+    },
+    {
+      "id": "seo-followup",
+      "displayName": "SEO Follow-up Fetch",
+      "moduleRef": {
+        "name": "external-seo",
+        "version": "1.0.0"
+      },
+      "inputMapping": {
+        "keywords": "stages.draft.output.keywords",
+        "metrics": "stages.metrics.output.metrics",
+        "market": {
+          "literal": "followup"
+        }
+      },
+      "outputMapping": {
+        "followupRanking": "output.rankingSnapshot"
+      },
+      "outcomeRoutes": {
+        "ranking-fetched": {
+          "type": "stage",
+          "stageId": "approve"
+        }
+      },
+      "entryConditions": [
+        "metrics stage produced a metrics snapshot"
+      ],
+      "exitConditions": [
+        "ranking-fetched outcome emitted"
+      ],
+      "moduleSelector": {
+        "name": "external-seo",
+        "versionRange": "^1.0.0"
+      }
+    },
+    {
+      "id": "approve",
+      "displayName": "Director Sign-off",
+      "moduleRef": {
+        "name": "human-director-approval",
+        "version": "1.0.0"
+      },
+      "inputMapping": {
+        "campaignDraft": "stages.draft.output.campaignDraft",
+        "metrics": "stages.metrics.output.metrics",
+        "followupRanking": "stages.seo-followup.output.followupRanking",
+        "requestedBy": {
+          "runtime": "initiatedBy"
+        }
+      },
+      "outputMapping": {
+        "directorDecision": "output.decision"
+      },
+      "outcomeRoutes": {
+        "approved": {
+          "type": "terminal",
+          "status": "campaign-approved"
+        },
+        "rejected": {
+          "type": "terminal",
+          "status": "campaign-rejected"
+        }
+      },
+      "entryConditions": [
+        "all upstream stage outputs available"
+      ],
+      "exitConditions": [
+        "approved or rejected outcome emitted"
+      ],
+      "moduleSelector": {
+        "name": "human-director-approval",
+        "versionRange": "^1.0.0"
+      }
+    }
+  ],
+  "outcomeRoutes": {},
+  "inputMappings": {},
+  "outputMappings": {},
+  "terminalStatuses": [
+    "campaign-approved",
+    "campaign-rejected"
+  ],
+  "scenarioPolicies": {
+    "retry": {
+      "kind": "bounded-retry",
+      "params": {
+        "maxAttempts": 2
+      }
+    },
+    "pause": {
+      "kind": "manual-resume"
+    },
+    "cancellation": {
+      "kind": "terminal-only"
+    },
+    "escalation": {
+      "kind": "director-escalation"
+    }
+  },
+  "requiredModuleSelectors": [
+    {
+      "name": "lm-marketing",
+      "versionRange": "^1.0.0"
+    },
+    {
+      "name": "external-seo",
+      "versionRange": "^1.0.0"
+    },
+    {
+      "name": "human-director-approval",
+      "versionRange": "^1.0.0"
+    }
+  ],
+  "transitionBudgets": {
+    "maxTransitions": 32
+  },
+  "reentryBudgets": {
+    "maxReentries": 0
+  }
+}

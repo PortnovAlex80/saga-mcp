@@ -1,0 +1,33 @@
+{
+  "description": "Negative case: two handlerRefs entries share a logicalId. Expected error code HANDLER_LOGICAL_ID_DUPLICATE at $.handlerRefs.",
+  "expectedErrorCodes": ["HANDLER_LOGICAL_ID_DUPLICATE"],
+  "manifest": {
+    "manifestFormatVersion": "1",
+    "definition": {
+      "identity": { "name": "neg-hdup", "version": "0.1.0", "kind": "neg", "displayName": "Neg", "description": "negative" },
+      "inputContract": { "id": "neg-hdup.input.v1" },
+      "outputContract": { "id": "neg-hdup.output.v1" },
+      "outcomes": [{ "code": "done", "description": "x", "terminal": true }],
+      "flow": {
+        "id": "neg-hdup.standard",
+        "version": "0.1.0",
+        "entryNodeId": "n",
+        "nodes": [{ "id": "n", "label": "N", "kind": "lm", "description": "x", "inputSchema": { "id": "neg-hdup.input.v1" }, "outputSchema": { "id": "neg-hdup.output.v1" }, "emitsOutcome": "done" }],
+        "transitions": [],
+        "terminalNodeIds": ["n"]
+      },
+      "artifacts": [{ "type": "neg-hdup.out", "schema": { "id": "neg-hdup.output.v1" }, "authority": "worker", "description": "x" }],
+      "policies": [],
+      "invariants": [],
+      "executionProfiles": []
+    },
+    "resourceIndex": [],
+    "handlerRefs": [
+      { "logicalId": "dup-handler", "version": "1.0.0", "digest": "pending@wave-2" },
+      { "logicalId": "dup-handler", "version": "1.0.0", "digest": "pending@wave-2" }
+    ],
+    "inputContractRef": { "schemaId": "neg-hdup.input.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+    "outputContractRef": { "schemaId": "neg-hdup.output.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+    "runtimeCompatibilityRange": "^3.0.0"
+  }
+}

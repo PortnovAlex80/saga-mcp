@@ -17,3 +17,44 @@ tracker-view/.tracker-view.pid
 
 # temp test/build logs
 *.log
+
+# Wave 0 hygiene (W0-A8): leftover SQLite DBs + per-epic/orchestrate run logs
+# should never be checked in. APPEND only — do not remove prior entries.
+tests/planner-ac9/.tmp-*.db*
+*.tmp.db*
+epic*-run.log
+orchestrate-*.log
+
+# Runtime/test databases created by bootstrap scripts and manual testing
+saga*.db*
+.tracker.db*
+saga4-*.db*
+
+# Real/model factory smoke outputs (DB, logs, generated product repositories)
+.real-factory-smoke/
+.real-factory-smoke-*/
+
+# Factory run artifacts — leftover from mock/real factory runs in the repo root.
+# These are never source; the orchestrator and simulator regenerate them per run.
+db.sqlite
+db.sqlite-*
+*.sqlite
+*.sqlite-*
+saga-launch-ref.txt
+sim-workspace/
+
+# Generated product emitted into repo root by factory smoke runs.
+index.html
+
+# Saga runtime package-store — content-addressed cache of module resources,
+# materialized at install time by production-install.ts. Regenerable from
+# src/process-modules/<module>/package/resources/. Never check in.
+.saga/package-store/
+
+# Saga project binding — per-machine pointer to a tracker DB project row.
+# Created by `saga start` for local development; not portable across machines.
+.saga/project.json
+.button-color-replay-e2e/
+.factory-sandboxes/
+.real-factory-smoke/
+tests/golden-runs/

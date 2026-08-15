@@ -39,14 +39,17 @@ function seedProject(name = 'Delete-Me') {
     local_path: `/tmp/repo-${project.id}`,
   });
   const epic = epics.epic_create({ project_id: project.id, name: `REQ-${project.id}` });
+  // saga4: provenance is always required for typed dev tasks. Create the AC
+  // artifact first, then bind the task to it via source_artifact_ids.
+  const artifact = artifacts.artifact_create({
+    project_id: project.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
+    title: 'Test AC', path: `docs/test-${project.id}.md#AC-1`, status: 'accepted',
+  });
   const task = tasks.task_create({
     epic_id: epic.id, title: 'Dev task', priority: 'high',
     task_kind: 'development.code', workflow_stage: 'development',
     project_repository_id: repo.id,
-  });
-  const artifact = artifacts.artifact_create({
-    project_id: project.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
-    title: 'Test AC', path: `docs/test-${project.id}.md#AC-1`, status: 'accepted',
+    source_artifact_ids: [artifact.id],
   });
   return { project, repo, epic, task, artifact };
 }
@@ -89,21 +92,25 @@ test('project_delete: cascades through epics, tasks, artifacts, traces', () => {
 // Test 2: project_delete throws when engine_running=1 for any epic.
 // ---------------------------------------------------------------------------
 
-test('project_delete: rejects when engine is running', () => {
-  const { project, epic } = seedProject('Engine-Running');
+test('project_delete: rejects when a lifecycle run is active', () => {
+  const { project, epic } = seedProject('Lifecycle-Running');
   const db = getDb();
 
-  // episode_workflows row is created lazily by lifecycle.getOrCreate —
-  // epic_create does NOT seed it. Insert one explicitly with engine_running=1.
+  // saga4: the guard checks factory_lifecycle_runs.status, not episode_workflows.
+  // Seed a lifecycle run in 'running' state for this epic.
   db.prepare(
-    `INSERT INTO episode_workflows (epic_id, stage, metadata)
-     VALUES (?, 'discovery', '{"engine_running":1}')`,
-  ).run(epic.id);
+    `INSERT INTO factory_lifecycle_runs
+       (lifecycle_name, lifecycle_version, lifecycle_ref_key, display_name, description,
+        definition_snapshot, definition_hash, project_id, epic_id, initiated_by,
+        idempotency_key, input_schema, input_snapshot, input_hash, status, entry_stage_id)
+     VALUES ('test','1.0.0','test@1.0.0','T','test','{}','hash', ?, ?, 'test',
+             'key-1','test-input','{}','ihash','running','discovery')`,
+  ).run(project.id, epic.id);
 
   assert.throws(
     () => projects.project_delete({ project_id: project.id }),
-    /engine is running for epic/i,
-    'must reject when engine_running=1',
+    /Product Lifecycle is active/i,
+    'must reject when a lifecycle run is running',
   );
 
   // Project must still exist (delete was rejected before any DB change).
@@ -252,61 +259,7 @@ test('project_delete: second call throws not-found (no silent success)', () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// Test 10: project_delete succeeds when work_attempts reference
-//         worker_executions via execution_id (no ON DELETE CASCADE).
-//         This is the regression test for the FK constraint failure
-//         observed when deleting project 42 (epic 129) after a full
-//         formalization+development pipeline run.
-// ---------------------------------------------------------------------------
-
-test('project_delete: succeeds when work_attempts reference worker_executions', () => {
-  const { project, epic, task } = seedProject('WorkAttempts-Test');
-  const db = getDb();
-
-  // Seed a worker_execution + task_work_item + work_attempt cycle that
-  // mirrors what a real engine run leaves behind.
-  const executionId = `exec-test-${project.id}-${Date.now()}`;
-  db.prepare(
-    `INSERT INTO worker_executions
-       (execution_id, run_id, project_id, epic_id, task_id, worker_id,
-        machine_id, state, phase)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'reserved', 'executing')`,
-  ).run(executionId, `run-${project.id}`, project.id, epic.id, task.id,
-        'test-worker', 'test-machine');
-
-  const workItemId = `wi-test-${project.id}-${Date.now()}`;
-  db.prepare(
-    `INSERT INTO task_work_items
-       (work_item_id, task_id, kind, cycle_no, item_no, state)
-     VALUES (?, ?, 'implementation', 1, 1, 'active')`,
-  ).run(workItemId, task.id);
-
-  db.prepare(
-    `INSERT INTO work_attempts
-       (attempt_id, work_item_id, ordinal, state, execution_id)
-     VALUES (?, ?, 1, 'running', ?)`,
-  ).run(`wa-test-${project.id}-${Date.now()}`, workItemId, executionId);
-
-  // Pre-condition: rows exist.
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM worker_executions WHERE project_id=?').get(project.id).n, 1);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM work_attempts WHERE execution_id=?').get(executionId).n, 1);
-
-  // The delete must not trip FK on work_attempts.execution_id.
-  assert.doesNotThrow(
-    () => projects.project_delete({ project_id: project.id }),
-    /FOREIGN KEY constraint failed/i,
-    'project_delete must clean work_attempts before worker_executions',
-  );
-
-  // Verify cascade left nothing behind.
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects WHERE id=?').get(project.id).n, 0);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM worker_executions WHERE project_id=?').get(project.id).n, 0,
-    'no orphan worker_executions');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM work_attempts WHERE execution_id=?').get(executionId).n, 0,
-    'no orphan work_attempts');
-
-  // FK integrity must still be clean.
-  const fkc = db.prepare('PRAGMA foreign_key_check').all();
-  assert.equal(fkc.length, 0, 'no FK violations after delete');
-});
+// saga4 cutover: Test 10 (work_attempts FK cleanup) removed — the
+// task_work_items + work_attempts tables were deleted as orphaned dead code
+// (the "passive worker kernel" Slice 2 cluster that was never finished).
+// worker_executions cleanup is still tested by the other project_delete tests.

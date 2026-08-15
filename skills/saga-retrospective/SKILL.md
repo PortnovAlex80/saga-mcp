@@ -33,8 +33,10 @@ retrospective adds 0 value. The 10th adds 10 episodes worth of patterns. The
 - Repository: the episode's physical repository (where the code lives).
 
 No `worker_next` — this skill is **not** dispatched through the kanban. It is
-triggered by the orchestrator on `episode_transition(to_stage='completed')`
-and runs as a one-shot, not as a claimed task.
+triggered by the orchestrator when the episode reaches `completed` (the old
+`episode_transition(to_stage='completed')` MCP call was deleted in the saga4
+cutover; the Lifecycle Orchestrator now owns that stage advancement) and runs
+as a one-shot, not as a claimed task.
 
 If you are running this skill via direct invocation (operator command,
 saga-orchestrator sub-step), pass `--epic-id=<N>` or read it from
@@ -54,8 +56,10 @@ already exists for this epic → exit without re-writing.
 
 ## When to use
 
-Triggered automatically by `saga-orchestrator` after a successful
-`episode_transition(to_stage='completed')`. Can also be invoked manually:
+Triggered automatically by `saga-orchestrator` after the episode reaches
+`completed` (the old `episode_transition(to_stage='completed')` call was
+deleted in the saga4 cutover; the Lifecycle Orchestrator now advances the
+stage). Can also be invoked manually:
 
 ```
 saga-retrospective --epic-id=42
@@ -77,7 +81,9 @@ Do NOT use:
 ### Step 1. Load episode context
 
 ```
-episode_status({ epic_id })
+# episode_status was deleted in the saga4 cutover; read the run/stage via the
+# Lifecycle Orchestrator's durable state instead.
+lifecycle_run_list({ project_id, epic_id })
 ```
 
 Extract:
@@ -391,7 +397,8 @@ knowledge base for all future episodes.
 Triggered after REQ-001-Cannon reaches `completed`.
 
 ```
-episode_status({ epic_id: 1 }) → current_stage='completed'
+# (episode_status was deleted in saga4; use lifecycle_run_list/get for the stage)
+lifecycle_run_list({ project_id, epic_id: 1 }) → stage='completed'
 
 worker_executions scan:
 - 133 executions

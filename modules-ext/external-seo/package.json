@@ -1,0 +1,40 @@
+{
+  "name": "@saga-modules-ext/external-seo",
+  "version": "1.0.0",
+  "description": "Installable External-node Process Module package: SEO/Analytics ranking snapshot fetch. Wave 10 extensibility proof (W10-A2). Upgrades the W0-A7 synthetic fixture into a real package with a real adapter and node protocol.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./manifest": "./manifest.mjs",
+    "./definition": "./definition.mjs",
+    "./adapter": "./adapter.mjs",
+    "./node-protocols": "./node-protocols.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "manifest.mjs",
+    "definition.mjs",
+    "adapter.mjs",
+    "node-protocols.mjs",
+    "manifest.json",
+    "schemas",
+    "resources",
+    "README.md"
+  ],
+  "keywords": [
+    "saga",
+    "process-module",
+    "external-node",
+    "seo",
+    "analytics",
+    "extensibility"
+  ],
+  "license": "MIT",
+  "private": true,
+  "saga": {
+    "packageKind": "external-node",
+    "runtimeCompatibilityRange": "^3.0.0",
+    "proofTarget": "WAVE10-EXTENSIBILITY-SPEC §0.13.10 — arbitrary External-node extensibility"
+  }
+}

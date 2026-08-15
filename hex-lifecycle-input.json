@@ -1,0 +1,71 @@
+{
+  "initiative": {
+    "subject": "Hex Button Autism UI Component Library",
+    "brief": "Build a React component library of hexagonal buttons optimized for autism spectrum users.",
+    "context": "UI component library for accessible web applications targeting users with autism spectrum disorder",
+    "evidence": [
+      "WCAG 2.2 guidelines"
+    ],
+    "constraints": {
+      "platform": "web",
+      "framework": "React 18+"
+    },
+    "stakeholders": [
+      "UI Designer"
+    ],
+    "candidateScope": "full",
+    "discoveryGate": "permissive"
+  },
+  "development": {
+    "repositories": [
+      {
+        "projectRepositoryId": 1,
+        "integrationBranch": "dev",
+        "expectedBaseCommit": "0000000000000000000000000000000000000000"
+      }
+    ],
+    "policy": {
+      "id": "hex-button-policy",
+      "version": "1.0.0",
+      "maxAttempts": 2,
+      "onExhausted": "pause",
+      "contentHash": "1a852fd1f5ec24bf73ae8d2c656ad6cf98eea0affceeafc6f7409a216be4faa1"
+    }
+  },
+  "delivery": {
+    "policy": {
+      "id": "hex-delivery-policy",
+      "version": "1.0.0",
+      "channel": "npm",
+      "releaseVersion": "1.0.0",
+      "releaseTag": "v1.0.0",
+      "humanApprovalRequired": false,
+      "actions": [
+        {
+          "actionId": "publish-npm",
+          "kind": "package-publish",
+          "target": "npm:hex-button-autism-ui",
+          "desiredStateHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "payloadHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "required": true
+        }
+      ],
+      "requiredPreflightCheckIds": [
+        "lint",
+        "test",
+        "build"
+      ],
+      "contentHash": "81d805f81e60cf3c873dc4d285c5c59d32906c1c8dcfb7c4e751f78c977ffa90"
+    },
+    "operatorAuthorization": {
+      "schema": "saga3.delivery-authorization.v1",
+      "ref": "auth:hex-operator",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "requestedBy": "test-operator",
+      "releasePolicyHash": "81d805f81e60cf3c873dc4d285c5c59d32906c1c8dcfb7c4e751f78c977ffa90",
+      "candidateScope": {
+        "mode": "lifecycle-output"
+      }
+    }
+  }
+}

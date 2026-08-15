@@ -1,0 +1,14 @@
+{
+  "_PRE_CALL_INSTRUCTION": "As a reviewer, your job is to inspect the exact author CandidateSet, render a verdict, and call worker_done. Do NOT create artifacts, traces, or files.",
+  "tool": "product_submit",
+  "arguments": {
+    "schema": "factory.review-verdict.v1",
+    "content": {
+      "subject_candidate_set_ref": "FILL_EXACT_CANDIDATE_SET_REF_FROM_candidate_read",
+      "verdict": "approved",
+      "findings": []
+    }
+  },
+  "_VERDICT_VALUES": "approved = author work accepted; changes_requested = author must fix specific issues (list each finding with severity+message)",
+  "_POST_CALL_INSTRUCTION": "After product_submit, call worker_done exactly once. Do not perform any other semantic work."
+}

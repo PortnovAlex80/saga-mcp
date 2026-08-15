@@ -120,7 +120,9 @@ function derivePolicyMinimum(tags: string[], taskKind: string | null): 'low' | '
 export const definitions: Tool[] = [
   {
     name: 'task_create',
-    description: 'Create a task within an epic. Tasks are the primary unit of work.',
+    description:
+      'Create a task within an epic. Tasks are the primary unit of work. ' +
+      'Call shape: task_create({ epic_id: <integer>, title: "<string>", description: "<string>", status: "todo|in_progress|review|review_in_progress|done|blocked", priority: "low|medium|high|critical", assigned_to: "<string>", estimated_hours: <number>, due_date: "<YYYY-MM-DD>", depends_on: [<task_id>, ...], tags: ["<string>", ...], task_kind: "<string>", workflow_stage: "discovery|formalization|planning|development|verification|integration", execution_skill: "<string>", review_skill: "<string>", execution_mode: "git_change|tracker_only|read_only_evidence|interactive", project_repository_id: <integer>, generated_from_task_id: <integer>, source_artifact_ids: [<artifact_id>, ...], verification_target_artifact_id: <integer>, generation_key: "<string>" }). Required: epic_id, title. The parameter names are snake_case (e.g. epic_id, task_kind, project_repository_id) — NOT camelCase.',
     annotations: { title: 'Create Task', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -147,7 +149,7 @@ export const definitions: Tool[] = [
           // may STORE.
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
-          description: 'REQ-009 / CGAD §11 — risk proposed by the change author (Builder). Defaults to legacy `priority` if omitted. The agent cannot lower final_risk below derived_risk or policy_minimum (CGAD P15).',
+          description: 'REQ-009 / CGAD §11 — risk proposed by the change author. The agent cannot lower final_risk below derived_risk or policy_minimum.',
         },
         derived_risk: {
           // See declared_risk: enum constrains user input; the stored value may
@@ -198,7 +200,8 @@ export const definitions: Tool[] = [
   {
     name: 'task_list',
     description:
-      'List tasks with optional filters. If no epic_id given, lists across ALL epics. Includes subtask counts and dependency info. Pass branch="current" to restrict to tasks whose epic is scoped to the active git branch.',
+      'List tasks with optional filters. If no epic_id given, lists across ALL epics. Includes subtask counts and dependency info. Pass branch="current" to restrict to tasks whose epic is scoped to the active git branch. ' +
+      'Call shape: task_list({ epic_id: <integer>, status: "todo|in_progress|review|review_in_progress|done|blocked", priority: "low|medium|high|critical", assigned_to: "<string>", tag: "<string>", task_kind: "<string>", workflow_stage: "<string>", project_repository_id: <integer>, branch: "current|<branch-name>|", sort_by: "priority|created|due_date|status", limit: <integer> }). All params optional.',
     annotations: { title: 'List Tasks', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -227,7 +230,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'task_get',
-    description: 'Get a single task with full details including all subtasks, related notes, comments, and dependencies.',
+    description:
+      'Get a single task with full details including all subtasks, related notes, comments, and dependencies. ' +
+      'Call shape: task_get({ id: <integer> }). The parameter is "id" (not "task_id" or "taskId").',
     annotations: { title: 'Get Task', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -240,7 +245,9 @@ export const definitions: Tool[] = [
   {
     name: 'task_update',
     description:
-      'Update a task. Pass only fields to change. Status transitions are automatically logged in the activity log.',
+      'Update a task. Pass only fields to change. Status transitions are automatically logged in the activity log. ' +
+      'NOTE: the "status" field is IGNORED — only the dispatcher (worker_next / worker_done) may change task status; to move a task use worker_done. ' +
+      'Call shape: task_update({ id: <integer>, title: "<string>", description: "<string>", priority: "low|medium|high|critical", assigned_to: "<string>", estimated_hours: <number>, actual_hours: <number>, due_date: "<YYYY-MM-DD>", depends_on: [<task_id>, ...] (replaces existing), tags: ["<string>", ...], task_kind: "<string>", workflow_stage: "<string>", execution_skill: "<string>", review_skill: "<string>", execution_mode: "git_change|tracker_only|read_only_evidence|interactive", declared_risk: "low|medium|high|critical", derived_risk: "low|medium|high|critical", policy_minimum: "low|medium|high|critical", ... }). Required: id. The parameter is "id" (not "task_id" or "taskId").',
     annotations: { title: 'Update Task', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -301,6 +308,15 @@ function setDependencies(db: Database.Database, taskId: number, dependsOn: numbe
     if (depId === taskId) continue; // prevent self-dependency
     insert.run(taskId, depId);
   }
+}
+
+export function replaceTaskDependencies(
+  db: Database.Database,
+  taskId: number,
+  dependsOn: readonly number[],
+): void {
+  setDependencies(db, taskId, [...dependsOn]);
+  evaluateAndUpdateDependencies(db, taskId);
 }
 
 function getUnmetDependencies(db: Database.Database, taskId: number): Array<{ id: number; title: string; status: string }> {
@@ -407,7 +423,6 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const sourceArtifactIds = (args.source_artifact_ids as number[] | undefined) ?? [];
   const explicitVerificationTarget = (args.verification_target_artifact_id as number | undefined) ?? null;
 
-  // REQ-009 / CGAD §11 — RiskClass. declared_risk defaults to legacy `priority`
   // for backward compatibility. derived_risk and policy_minimum can be passed
   // explicitly or auto-derived from tags + task_kind. final_risk is always
   // computed = max(declared, derived, policy_minimum) — the agent cannot
@@ -439,11 +454,11 @@ function handleTaskCreate(args: Record<string, unknown>) {
       throw new Error(`generated_from_task_id ${generatedFromTaskId} must belong to epic ${epicId}`);
     }
   }
-  const episodeInitialized = Boolean(
-    db.prepare('SELECT 1 FROM episode_workflows WHERE epic_id=?').get(epicId),
-  );
-  const provenanceRequired = episodeInitialized
-    && ['development', 'verification', 'integration'].includes(workflowStage ?? '');
+  // Saga4 task provenance is a property of the typed workflow stage, not of
+  // projects intentionally have no such row, so consulting it here silently
+  // disabled the provenance gate for development/verification/integration work.
+  const provenanceRequired = ['development', 'verification', 'integration']
+    .includes(workflowStage ?? '');
   // Scaffold is infrastructure that materializes stubs for ALL accepted ACs in the
   // episode — it is not a per-AC implementation, so it is exempt from the per-AC
   // provenance gate. A scaffold CAN still carry source_artifact_ids if the caller
@@ -701,7 +716,46 @@ function handleTaskGet(args: Record<string, unknown>) {
     )
     .all(id);
 
-  return { ...(task as object), subtasks, notes, comments, depends_on: dependsOn, dependents };
+  // Workflow hint: for saga3 tasks, remind the model to maintain its stage tracker.
+  // Works for ANY saga3 stage (discovery.*, formalization.*, etc.) — extracts
+  // the stage name from task_kind and builds the tracker path dynamically.
+  const taskRow = task as Record<string, unknown>;
+  const taskKind = typeof taskRow.task_kind === 'string' ? taskRow.task_kind : '';
+  const isFactoryTask = taskKind.includes('.');
+  const result: Record<string, unknown> = { ...taskRow, subtasks, notes, comments, depends_on: dependsOn, dependents };
+  if (isFactoryTask) {
+    const stage = taskKind.split('.')[0]; // 'discovery', 'formalization', etc.
+    let metadata: Record<string, unknown> = {};
+    if (taskRow.metadata && typeof taskRow.metadata === 'object' && !Array.isArray(taskRow.metadata)) {
+      metadata = taskRow.metadata as Record<string, unknown>;
+    } else if (typeof taskRow.metadata === 'string') {
+      try {
+        const parsed = JSON.parse(taskRow.metadata);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          metadata = parsed as Record<string, unknown>;
+        }
+      } catch {
+        metadata = {};
+      }
+    }
+    const processWorkspace = metadata.process_workspace;
+    if (processWorkspace && typeof processWorkspace === 'object' && !Array.isArray(processWorkspace)) {
+      const workspace = processWorkspace as Record<string, unknown>;
+      const trackerPath = String(workspace.tracker_path ?? '');
+      const callFiles = Array.isArray(workspace.call_files) ? workspace.call_files : [];
+      const checklists = Array.isArray(workspace.checklists) ? workspace.checklists : [];
+      result._workflow_hint =
+        `Process Module ${stage} task. Read the exact machine-provisioned tracker: ${trackerPath}. `
+        + `Update it after every action. Materialized calls: ${JSON.stringify(callFiles)}. `
+        + `Before submitting, read back the call file and apply: ${JSON.stringify(checklists)}.`;
+    } else {
+      result._workflow_hint =
+        `Factory ${stage} task has no machine-provisioned process_workspace. `
+        + 'Do not guess tracker, template, or call-file paths. Stop this execution '
+        + 'and let the controller rematerialize the pinned process-module workspace.';
+    }
+  }
+  return result;
 }
 
 function handleTaskUpdate(args: Record<string, unknown>) {
@@ -841,18 +895,12 @@ function handleTaskUpdate(args: Record<string, unknown>) {
       };
       // If derived_risk / policy_minimum were not explicitly written, auto-derive
       // them from the (possibly updated) tags + task_kind. declared_risk follows
-      // priority when not set, to keep the legacy column authoritative.
       let effectiveDerived = fresh.derived_risk;
       let effectivePolicy = fresh.policy_minimum;
       let effectiveDeclared = fresh.declared_risk;
       const tagsParsed = (() => { try { return JSON.parse(fresh.tags || '[]') as string[]; } catch { return []; } })();
       if (effectiveDerived == null) effectiveDerived = deriveRiskFromTags(tagsParsed, fresh.task_kind);
       if (effectivePolicy == null) effectivePolicy = derivePolicyMinimum(tagsParsed, fresh.task_kind);
-      if (effectiveDeclared == null) {
-        // Fall back to legacy priority column if declared_risk never set.
-        const legacyPriority = db.prepare('SELECT priority FROM tasks WHERE id=?').get(id) as { priority: string };
-        effectiveDeclared = legacyPriority.priority || null;
-      }
       const computedFinal = computeFinalRisk(effectiveDeclared, effectiveDerived, effectivePolicy);
 
       // CGAD P15 monotonicity guard (BEFORE the risk UPDATE).

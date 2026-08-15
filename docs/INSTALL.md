@@ -99,12 +99,45 @@ DB_PATH=C:/Users/<вы>/.zcode/saga.db npm run tracker
    активные доработают на старой.
 
 **Как это работает.** LM Studio отдаёт Anthropic-совместимый эндпоинт `/v1/messages`.
-saga перенаправляет claude CLI воркера на него через env в spawn:
-`ANTHROPIC_BASE_URL=http://localhost:1234/v1` + плейсхолдер-токен `lm-studio`
-(LM Studio токен не проверяет — он нужен только чтобы claude CLI стартовал).
-Env в spawn перекрывает `~/.claude/settings.json`, поэтому **глобальный ZCode-агент**
-(через который вы общаетесь интерактивно) **остаётся на Z.ai** — переключение
-касается только saga-воркеров выбранного эпизода.
+saga переключает claude CLI воркера на него через перезапись
+`~/.claude/settings.json` (шаблоны `settings.cloud.json` ↔ `settings.lmstudio.json`,
+атомарно + fsync + readback). В claude CLI v2 spawn-env `ANTHROPIC_BASE_URL`
+больше не перекрывает settings.json (регрессия anthropics/claude-code#8500),
+поэтому на время эпизода **весь claude на машине** идёт через LM Studio.
+Облачный токен заморожен в `settings.cloud.json` и не теряется.
+
+**Preflight: saga MCP-сервер обязан загружаться.** Каждый воркер спавнит
+`node dist/index.js` как приватный stdio-MCP-child. Если сервер не грузится —
+воркер молча теряет ВСЕ saga-инструменты (видит только Bash/Read/Edit), сжигает
+бюджет на реверс-инжиниринг `product_submit` и умирает без сабмита. В панели
+клиента то же самое выглядит как `MCP error -32000: Connection closed` /
+`0 tools`. `node_modules` и скиллы клиента НЕ обновляются вместе с
+`git pull`: новая зависимость в package.json убивает загрузку с
+`ERR_MODULE_NOT_FOUND: Cannot find package '@modelcontextprotocol/sdk'`, а
+установленные скиллы (`~/.zcode/skills/`) молча дрейфуют от репо. Поэтому
+после каждого pull — полный триплет:
+
+```bash
+npm install && npm run build
+cp -r skills/* ~/.zcode/skills/     # синк операторских скиллов (перезапусти сессию клиента)
+DB_PATH=<db> TRACKER_AUTOSTART=0 node dist/index.js   # смоук: баннер + живёт, не падает
+```
+
+**Гонка нового заказа.** Оба стартовых пути (`factory.mjs start`,
+`POST /api/factory/start`) записывают облачный профиль в
+`lifecycle_execution_controls` и сразу спавнят движок — первый claim может
+уйти в облако до переключения селектора. Если это случилось: убить облачного
+воркера и движок, затем `node scripts/factory.mjs resume <db>` без флагов —
+supervision пометит воркера `lost`, и task перезаклеймится на локальную
+модель. Подробности: `docs/FACTORY-START-QUICKSTART.md` §4b.
+
+**Prerequisite: модель должна принимать system-сообщения в середине диалога**
+(Claude Code шлёт их после tool-результатов). У ряда локальных моделей Jinja
+шаблон кидает `System message must be at the beginning.` → LM Studio отдаёт
+500, причём **GUI эти ошибки не показывает**. Симптом в логе воркера: 10×
+`api_retry error_status 500`, затем exit code 1. Процедура патча (Qwen 3.6 и
+почему патч hub `model.yaml` не действует для GGUF-вшитых шаблонов) — в
+`CLAUDE.md` → «LM Studio: Qwen 3.6 chat template patch».
 
 **Нестандартный адрес LM Studio.** Если LM Studio на другом хосте/порту — задайте
 env перед запуском saga-mcp:

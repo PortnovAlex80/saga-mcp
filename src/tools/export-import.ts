@@ -7,7 +7,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_export',
     description:
-      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing.',
+      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing. Call shape: tracker_export({ project_id: <integer> }). project_id is optional — omit if only one project exists.',
     annotations: { title: 'Export Project', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -22,7 +22,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_import',
     description:
-      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity.',
+      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity. Call shape: tracker_import({ data: <object, the full export JSON from tracker_export> }). Required: data.',
     annotations: { title: 'Import Project', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -119,7 +119,9 @@ function handleExport(args: Record<string, unknown>) {
       branch: epic.branch,
       tags: epic.tags,
       metadata: epic.metadata,
-      workflow: db.prepare('SELECT * FROM episode_workflows WHERE epic_id=?').get(epic.id),
+      // saga4 cutover (EXECUTION-PLAN §B.1 #8): the `episode_workflows` row
+      // snapshot used to be serialized here. Lifecycle runs are now the source
+      // of truth, so the writer is gone and this reader is dropped to match.
       tasks: taskData,
     };
   });
@@ -192,7 +194,7 @@ function handleExport(args: Record<string, unknown>) {
   ).all(...artifactIds);
 
   return {
-    format_version: '1.4',
+    format_version: '1.5',
     exported_at: new Date().toISOString(),
     project: {
       name: project.name,
@@ -215,8 +217,8 @@ function handleImport(args: Record<string, unknown>) {
   const data = args.data as Record<string, unknown>;
 
   const version = data.format_version as string;
-  if (!['1.0', '1.1', '1.2', '1.3', '1.4'].includes(version)) {
-    throw new Error(`Unsupported format version: ${version}. Expected 1.0 through 1.4.`);
+  if (!['1.0', '1.1', '1.2', '1.3', '1.4', '1.5'].includes(version)) {
+    throw new Error(`Unsupported format version: ${version}. Expected 1.0 through 1.5.`);
   }
 
   const projectData = data.project as Record<string, unknown>;
@@ -402,13 +404,9 @@ function handleImport(args: Record<string, unknown>) {
           commentCount++;
         }
       }
-      const workflow = epicData.workflow as Record<string, unknown> | undefined;
-      if (workflow) {
-        db.prepare(
-          `INSERT INTO episode_workflows (epic_id,stage,baseline_hash,metadata)
-           VALUES (?,?,?,?)`,
-        ).run(newEpicId, workflow.stage ?? 'discovery', workflow.baseline_hash ?? null, workflow.metadata ?? '{}');
-      }
+      // saga4 cutover (EXECUTION-PLAN §B.1 #8a): the `episode_workflows` INSERT
+      // that mirrored the exported `workflow` row is gone — lifecycle runs own
+      // `workflow` field on imported epics (if present) is simply ignored.
     }
 
     // 6. Create dependencies with ID remapping
@@ -491,15 +489,10 @@ function handleImport(args: Record<string, unknown>) {
           evidence.created_at ?? new Date().toISOString());
       }
     }
-    for (const epicData of epics) {
-      const workflow = epicData.workflow as Record<string, unknown> | undefined;
-      if (!workflow?.baseline_artifact_id) continue;
-      const epic = epicIdMap.get(epicData._original_id as number);
-      const baseline = artifactIdMap.get(workflow.baseline_artifact_id as number);
-      if (epic && baseline) {
-        db.prepare('UPDATE episode_workflows SET baseline_artifact_id=? WHERE epic_id=?').run(baseline, epic);
-      }
-    }
+    // saga4 cutover (EXECUTION-PLAN §B.1 #8b): the `episode_workflows`
+    // `baseline_artifact_id` backfill UPDATE is gone — that column lived on the
+    // on accepted AC artifacts themselves (accepted_hash), which are remapped
+    // above through `artifactIdMap`.
 
     // 8. Create notes with ID remapping
     const importNotes = (data.notes as Array<Record<string, unknown>>) ?? [];

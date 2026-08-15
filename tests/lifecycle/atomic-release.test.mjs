@@ -14,8 +14,6 @@
  *   - process loss after reassignment: stale execution can't release the new
  *     owner's task;
  *   - terminal execution cannot remain a task fence (invariant enforced);
- *   - legacy unfenced task: no execution to terminalize, no-op (handled by
- *     the callers' legacy branch, not this primitive);
  *   - already-terminal execution is a no-op (idempotency).
  */
 

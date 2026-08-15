@@ -1,14 +1,29 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
-import os from 'node:os';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
-import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../worker-executions.js';
+import { assertExecutionFence, updateExecutionPhase, isProcessAlive, ACTIVE_EXECUTION_STATES } from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
-import { generateNextForCompletedTask } from './workflow.js';
-import { advanceReadyEpisodes } from './lifecycle.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
+import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
+import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
+import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
+import { readFrozenProductionIngressIfBound } from '../process-modules/application/production-ingress-contract.js';
+import { freezeManagedCompletionProduct } from '../infrastructure/workplace/sqlite-managed-completion-product.js';
+import {
+  clearSubmissionValidationFeedback,
+  persistSubmissionValidationRejection,
+} from '../lifecycle/submission-validation-rejections.js';
+// CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
+// This module imports it for internal use AND re-exports it (below) so existing
+// consumers (tasks.ts, factory-* tools) keep their './dispatcher.js' imports.
+import {
+  withImmediateTransaction,
+  skillForTask,
+  findNextClaimable,
+  type WorkerSkill,
+} from '../lifecycle/work-assignment-core.js';
 import {
   checkReceipt,
   storeReceipt,
@@ -16,25 +31,35 @@ import {
   workerDonePayload,
   hashPayload,
 } from '../lifecycle/idempotency.js';
-import {
-  enqueueOutboxIntent,
-  drainOutbox,
-  readOutboxResult,
-  generateDownstreamIntentKey,
-} from '../lifecycle/outbox.js';
-import { withRepositoryLock } from '../lifecycle/repository-lock.js';
+import type { WorkerExecutionRoute } from '../application/routing/worker-execution-route.js';
+
+/**
+ * Optional route resolver injected by the factory host (composition root).
+ * When set, the MCP `worker_next` claim path resolves the execution route at
+ * claim and freezes it into the execution_context — same as the engine
+ * dispatch path. The dispatcher falls back to the legacy model-route read when
+ * this is unset (e.g. MCP-only sessions without a factory host).
+ */
+let injectedRouteResolver: ((key: {
+  module: string | null;
+  cell: string | null;
+  role: 'author' | 'reviewer' | null;
+  executionProfile: string | null;
+}) => WorkerExecutionRoute) | null = null;
+
+export function setWorkerRouteResolver(
+  resolver: ((key: {
+    module: string | null;
+    cell: string | null;
+    role: 'author' | 'reviewer' | null;
+    executionProfile: string | null;
+  }) => WorkerExecutionRoute) | null,
+): void {
+  injectedRouteResolver = resolver;
+}
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
-//
-//   ⚠  ADR-013 Phase 4.1+ migration target: this module is a LEGACY ADAPTER.
-//      New code should call src/lifecycle/application-service.ts
-//      (handleLifecycleCommand) — the typed command-bus entry point that
-//      also writes audit rows. The handlers here still own their SQL until
-//      they are migrated one at a time; the TEMPORARY_EXCEPTIONS list in
-//      tests/lifecycle/architecture.test.mjs tracks the migration surface.
-//      Do NOT add new direct-lifecycle-SQL here — add a command kind to the
-//      application service and route through it.
 //
 // Две ручки поверх существующих 31 тулз saga (старые НЕ трогаем):
 //   worker_next({worker_id})          — взять следующую свободную задачу
@@ -46,59 +71,25 @@ import { withRepositoryLock } from '../lifecycle/repository-lock.js';
 // только assigned_to. Так worker_done отличает циклы по ТЕКУЩЕМУ статусу задачи.
 // ============================================================================
 
-const PRIORITY_ORDER = "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
-
-// Верхняя граница попыток claim в findNextClaimable. Под IMMEDIATE-локом retry
-// срабатывает крайне редко (мы держим эксклюзивный lock), но лимит страховает
-// от livelock и от удержания глобального write-lock'а сколь угодно долго.
-const MAX_CLAIM_ATTEMPTS = 10;
-
-// better-sqlite3 db.transaction(fn) всегда DEFERRED и не принимает mode (типы
-// @types/better-sqlite3 в форке: transaction<F>(fn: F): Transaction<F>). Нам же
-// нужен BEGIN IMMEDIATE — write-lock всей БД с старта транзакции (аналог
-// SELECT FOR UPDATE, которого нет в SQLite), чтобы сериализовать писателей.
-// Поэтому оборачиваем логику в явные BEGIN IMMEDIATE / COMMIT / ROLLBACK.
-// Exported so other handlers (e.g. task_update RMW sequence) can wrap their
-// own read-modify-write critical sections in the same atomic boundary.
-export function withImmediateTransaction<T>(db: Database.Database, fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
-  } catch (err) {
-    // Если транзакция ещё активна — откатить. ROLLBACK без активной tx бросит
-    // ошибку, глотаем её (мы и так в пути ошибки).
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      /* ignore — tx could not be active */
-    }
-    throw err;
-  }
-}
-
-type WorkerSkill = string;
-
-/** Central workflow routing with a strict legacy fallback. */
-function skillForTask(task: Task, sourceStatus: string): WorkerSkill {
-  const review = sourceStatus === 'review' || sourceStatus === 'review_in_progress';
-  if (review && task.review_skill) return task.review_skill;
-  if (!review && task.execution_skill) return task.execution_skill;
-
-  let tags: string[] = [];
-  try {
-    const parsed = JSON.parse(task.tags || '[]');
-    if (Array.isArray(parsed)) tags = parsed.filter((value): value is string => typeof value === 'string');
-  } catch { /* malformed legacy tags: use status fallback */ }
-  const explicit = tags.find(tag => tag.startsWith(review ? 'review-skill:' : 'skill:'));
-  if (explicit) return explicit.slice(explicit.indexOf(':') + 1);
-  if (!review) {
-    const role = tags.find(tag => tag.startsWith('role:'))?.slice('role:'.length);
-    if (role) return `saga-${role}`;
-  }
-  return review ? 'saga-reviewer' : 'saga-developer';
-}
+// CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts
+// (infrastructure-side, away from the MCP/tool layer — see CONVEYOR-MENTAL-MODEL
+// §"Adapter rules"). This module re-exports it so existing consumers
+// (tasks.ts, factory-* tools, the adapter) keep importing from './dispatcher.js'
+// without churn; the canonical home is the lifecycle module.
+export {
+  withImmediateTransaction,
+  skillForTask,
+  findNextClaimable,
+  buildAssignedWorkFromClaim,
+  readModelRouteAtClaim,
+  readWorkIntentForTaskClaim,
+  strictAuthorityScope,
+  claimRowToIntent,
+  WORKER_LEASE_TTL_MS,
+  MAX_CLAIM_ATTEMPTS,
+  PRIORITY_ORDER,
+  type WorkIntentClaimRow,
+} from '../lifecycle/work-assignment-core.js';
 
 // ============================================================================
 // Worktree-изоляция: каждый воркер работает в своём git worktree на ветке
@@ -216,188 +207,22 @@ function addTag(db: Database.Database, taskId: number, tag: string): void {
 // excludeTaskId — чтобы worker_done не отдал тому же агенту только что
 // закрытую задачу на ревью (anti-self-review).
 // ============================================================================
-function findNextClaimable(
-  db: Database.Database,
-  workerId: string,
-  projectId: number,
-  excludeTaskId?: number,
-  attempt: number = 0,
-  role?: string,
-  epicId?: number,
-  reservation?: {
-    executionId: string;
-    runId: string;
-    machineId: string;
-  },
-): Task | null {
-  // Стоп через MAX_CLAIM_ATTEMPTS: под IMMEDIATE-локом контентция редка, но
-  // бесконечная рекурсия могла бы livelock'нуть глобальный write-lock.
-  if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
-  // 1. SELECT кандидата: статус todo/review, свободна, без невыполненных deps.
-  //    Шаблон NOT EXISTS сверен с tasks.ts:139-145 и blocked_by_count (tasks.ts:279-281).
-  //    project-фильтр через tasks.epic_id → epics.project_id (precedent в dashboard.ts).
-  //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
-  //
-  //    Priority: раздаём ЛЮБЫЕ приоритеты (critical/high/medium/low). ORDER BY
-  //    PRIORITY_ORDER сохраняет предпочтение (critical раньше low), но low не
-  //    блокируется. Это снимает dead-lock «задача готова, depend_on выполнены,
-  //    но не выдаётся потому что priority=low» — saga-planner имеет право
-  //    ставить low для extension-задач, и pipeline всё равно должен их выдать.
-  //    Применяется к todo И review единообразно.
-  //
-  //    role (опционально): фильтр по тегу `role:<name>` (например role:analyst).
-  //    Теги хранятся JSON-массивом; json_each разворачивает, EXISTS проверяет.
-  //    Без role — обратная совместимость: любой тег подходит.
-  const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
-  const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
-  const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';
-  const selectSql = `
-    SELECT t.* FROM tasks t
-    WHERE t.status IN ('todo', 'review')
-      AND (t.assigned_to IS NULL OR t.assigned_to = '')
-      AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
-      ${epicClause}
-      AND (
-        t.workflow_stage IS NULL
-        OR t.task_kind = 'summary.stage'   -- bookkeeping: claimable on ANY stage
-        OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
-        OR EXISTS (
-          SELECT 1 FROM episode_workflows ew
-          WHERE ew.epic_id=t.epic_id AND ew.stage=t.workflow_stage
-        )
-      )
-      ${excludeClause}
-      ${roleClause}
-      AND t.current_execution_id IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM worker_executions we
-        WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM human_requests hr
-        WHERE hr.task_id = t.id AND hr.state = 'open'
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM task_dependencies d
-        JOIN tasks dep ON dep.id = d.depends_on_task_id
-        WHERE d.task_id = t.id AND (
-          dep.status != 'done'
-          OR (
-            dep.task_kind IS NOT NULL
-            AND dep.execution_mode = 'git_change'
-            AND dep.integration_state != 'merged'
-          )
-        )
-      )
-      AND NOT EXISTS (
-        -- T-008 kanban: НЕ выдаём dev-задачу, если есть другая task с тем же
-        -- conflict_key, ещё не слитая в integration-ветку. Ждём, пока pending-merge
-        -- закроется — иначе параллельные задачи на один файл (single-file monolith)
-        -- гарантированно конфликтуют.
-        --
-        -- Узкий фильтр: только git_change задачи с integration_state РОВНО
-        -- 'pending' или 'conflict'. 'not_required' / '' / NULL нас не касается
-        -- (это tracker_only / recovery / read-only — они не пишут код).
-        -- Также ограничиваем тем же workflow_stage, чтобы verification-задачи
-        -- не блокировались development pending-merge'ами.
-        SELECT 1 FROM tasks other
-        JOIN task_conflict_keys k1 ON k1.task_id = t.id
-        JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
-                                   AND k2.key_value = k1.key_value
-        WHERE other.id = k2.task_id
-          AND other.id != t.id
-          AND other.workflow_stage = t.workflow_stage
-          AND other.execution_mode = 'git_change'
-          AND other.integration_state IN ('pending', 'conflict')
-      )
-    ORDER BY
-      -- T-008 kanban: review задачи выдаются РАНЬШЕ todo при равном priority.
-      -- Принцип: «сначала закрой начатое». Пока задача висит в review, она
-      -- блокирует очередь (новые todo на тот же conflict_key ждут её merge).
-      CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,
-      ${PRIORITY_ORDER},
-      t.created_at
-    LIMIT 1
-  `;
-  // Сбор параметров в порядке появления ? в SQL.
-  const params: unknown[] = [projectId];
-  if (epicId !== undefined) params.push(epicId);
-  if (excludeTaskId !== undefined) params.push(excludeTaskId);
-  if (role) params.push(`role:${role}`);
-  const task = db.prepare(selectSql).get(...params) as Task | undefined;
+// D1.1 claim-time snapshot helpers. Both read inside the claim IMMEDIATE
+// transaction so the snapshot is internally consistent with the atomic claim.
+// ============================================================================
 
-  if (!task) return null;
+// D1.1 claim-time snapshot helpers (readModelRouteAtClaim, strictAuthorityScope,
+// readWorkIntentForTaskClaim, claimRowToIntent, WorkIntentClaimRow) now live in
+// lifecycle/work-assignment-core.ts and are re-exported above. Kept out of this
+// MCP/tool module so the outbound SQLite adapter depends only on the lifecycle
+// core, not on the tool layer (CONVEYOR-MENTAL-MODEL §"Adapter rules").
 
-  // 2. Conditional-UPDATE — защита от гонок (defence in depth):
-  //    даже если SELECT вернул кандидата, другой процесс мог занять его
-  //    между SELECT и UPDATE. WHERE ... AND assigned_to IS NULL|'' это отсечёт.
-  //    Tolerant к пустой строке (saga-API может записать '' вместо NULL при
-  //    ручном обновлении; инвариант todo/done ⇒ NULL ловит основную массу,
-  //    это — страховка на случай stale-данных).
-  let info: Database.RunResult;
-  if (task.status === 'todo') {
-    // Цикл разработки: задача уходит в работу.
-    info = db
-      .prepare(
-         `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?,
-                           updated_at=datetime('now')
-          WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,
-       )
-      .run(workerId, reservation?.executionId ?? null, task.id);
-  } else {
-    // Цикл ревью: задача из буфера review (ждёт ревьюера) переходит в
-    // review_in_progress (ревьюер работает). Зеркало todo→in_progress для
-    // ревью-фазы. assigned_to = reviewer.
-    info = db
-      .prepare(
-         `UPDATE tasks SET status='review_in_progress', assigned_to=?, current_execution_id=?,
-                           updated_at=datetime('now')
-          WHERE id=? AND status='review' AND (assigned_to IS NULL OR assigned_to = '')`,
-       )
-      .run(workerId, reservation?.executionId ?? null, task.id);
-  }
+// ============================================================================
+// findNextClaimable + buildAssignedWorkFromClaim now live in
+// lifecycle/work-assignment-core.ts and are re-exported above. This module
+// keeps only the MCP handlers (handleWorkerNext etc.); the atomic assignment
+// transaction is infrastructure-side, not an MCP/tool concern.
 
-  // 3. Кто-то успел занять под носом — ищем следующего кандидата,
-  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId и role пробрасываем.
-  if (info.changes !== 1) {
-    return findNextClaimable(
-      db, workerId, projectId, excludeTaskId, attempt + 1, role, epicId, reservation,
-    );
-  }
-
-  if (reservation) {
-    db.prepare(
-      `INSERT INTO worker_executions
-        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase)
-       VALUES (?,?,?,?,?,?,?,?)`,
-    ).run(
-      reservation.executionId,
-      reservation.runId,
-      projectId,
-      task.epic_id,
-      task.id,
-      workerId,
-      reservation.machineId,
-      task.status === 'review' ? 'reviewing' : 'executing',
-    );
-  }
-
-  // logActivity на назначение. Оба цикла (dev: todo→in_progress, review:
-  // review→review_in_progress) меняют статус — логируем как status_changed.
-  const newClaimedStatus = task.status === 'todo' ? 'in_progress' : 'review_in_progress';
-  logActivity(
-    db,
-    'task',
-    task.id,
-    'status_changed',
-    'status',
-    task.status,
-    newClaimedStatus,
-    `Task '${task.title}' claimed by ${workerId} (from ${task.status} to ${newClaimedStatus})`,
-  );
-
-  return task;
-}
 
 // ============================================================================
 // Handlers
@@ -425,10 +250,57 @@ function handleWorkerNext(args: Record<string, unknown>): {
   }>;
   reason?: string;
   execution_id?: string;
+  /**
+   * D1.1: the frozen execution-context snapshot (model route + authority)
+   * captured at claim. The board runner consumes `model_route` to spawn the
+   * worker (single source of truth, no re-read) and the saga MCP child receives
+   * `SAGA_EXECUTION_ID` so the gateway can authorize calls against `authority`.
+   * Absent for the empty-queue path.
+   */
+  execution_context?: unknown;
 } {
   const db = getDb();
   const workerId = args.worker_id as string;
   const machineId = args.machine_id == null ? null : String(args.machine_id);
+
+  // WAVE-3 server-side fence rejection (conveyor-wave-review
+  // ПОВТОРНАЯ ПРОВЕРКА 2026-08-02). "One launch = one card": if this calling
+  // execution ALREADY holds an active assignment, worker_next must be REJECTED
+  // BEFORE the queue is read, regardless of which client or launcher issued the
+  // call. The per-launcher --disallowedTools flag only constrains ONE launcher;
+  // this check is the single server-side chokepoint covering MCP-direct, every
+  // launcher, and tests.
+  //
+  // Detection: when execution_id is present AND either (a) an active
+  // worker_executions row exists for it, or (b) some task row carries it as
+  // current_execution_id, the execution already holds a card. We probe BOTH
+  // signals because the assignment writes them atomically in one transaction
+  // (findNextClaimable): a half-written state should still reject rather than
+  // hand out a second card. The probe is a read-only SELECT — it runs BEFORE
+  // findNextClaimable, so no claim SQL executes for a fenced execution.
+  const fenceExecutionId = args.execution_id as string | undefined;
+  if (typeof fenceExecutionId === 'string' && fenceExecutionId !== '') {
+    const placeholders = ACTIVE_EXECUTION_STATES.map(() => '?').join(',');
+    const holdsActiveExecution = db.prepare(
+      `SELECT 1 FROM worker_executions
+        WHERE execution_id=? AND state IN (${placeholders})
+        LIMIT 1`,
+    ).get(fenceExecutionId, ...ACTIVE_EXECUTION_STATES);
+    const holdsFencedTask = holdsActiveExecution
+      ? undefined
+      : db.prepare(
+          'SELECT 1 FROM tasks WHERE current_execution_id=? LIMIT 1',
+        ).get(fenceExecutionId);
+    if (holdsActiveExecution || holdsFencedTask) {
+      throw new Error(
+        `AUTHORITY_DENIED: execution '${fenceExecutionId}' already holds an active card; ` +
+        `one launch = one card. worker_next is forbidden for an execution that already has ` +
+        `an assignment — finish the current card via worker_done/worker_ask_need and let the ` +
+        `controller launch a fresh execution for the next card. This rejection is enforced ` +
+        `server-side before the queue is read, independent of any client --disallowedTools flag.`,
+      );
+    }
+  }
 
   // project_id REQUIRED — иначе в общей БД агенту подсовывается чужая задача.
   // Бросаем actionable-ошибку (НЕ через required inputSchema): так агент
@@ -439,26 +311,34 @@ function handleWorkerNext(args: Record<string, unknown>): {
       [
         'project_id is missing — cannot dispatch work without knowing the project.',
         'HOW TO GET project_id (do this ONCE, then retry worker_next):',
-        '1. Read ./projectname.txt.',
-        '2. If it exists: call project_resolve_by_name({ name: "<file contents>" }) and use its project_id.',
-        '3. If it does NOT exist: ask the user "What is the saga project name for this folder?",',
-        '   create ./projectname.txt with that single line as its only contents,',
-        '   then call project_resolve_by_name({ name: "<that name>" }).',
+        '1. Read the runner-supplied project binding or .saga/project.json.',
+        '2. If neither exists, stop and use the canonical saga-start gateway.',
         'Then retry: worker_next({ worker_id, project_id }).',
       ].join('\n'),
     );
   }
   const exists = db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId);
   if (!exists) {
-    throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
+    throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or use saga-start to create a new product order.`);
   }
-  advanceReadyEpisodes(projectId);
+  // saga4 cutover (Phase 4): worker_next is a PURE claim — it must not advance
+  // lifecycle stages. The previous advanceReadyEpisodes(projectId) call let a
+  // worker tool mutate episode_workflows.stage as a side-effect of claiming
+  // work. Stage advancement is now a module-owned settlement decision routed
+  // through the lifecycle orchestrator, never a worker side-effect.
 
   // role (опционально): фильтрует очередь по тегу `role:<name>` на задаче.
   // Применение: проект требований, где задачи тегированы role:product / role:analyst
   // / role:architect — каждый агент получает только свои задачи. Без role — любое.
   const role = args.role as string | undefined;
   const epicId = args.epic_id as number | undefined;
+  // Claim scope (Saga 3 engine): optional explicit task-id allowlist forwarded
+  // from the board runner's run.claimTaskIds. When present, only these task ids
+  // are eligible, regardless of priority — the engine dispatches exactly its
+  const rawTaskIds = args.task_ids;
+  const taskIds = Array.isArray(rawTaskIds)
+    ? rawTaskIds.filter((id): id is number => Number.isInteger(id))
+    : undefined;
   if (epicId !== undefined) {
     const epic = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as
       | { project_id: number }
@@ -483,9 +363,24 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
-  const task = withImmediateTransaction(db, () =>
-    findNextClaimable(db, workerId, projectId, undefined, 0, role, epicId, reservation),
-  );
+  const task = withImmediateTransaction(db, () => {
+    const claimed = findNextClaimable(
+      db, workerId, projectId, undefined, 0, role, epicId, reservation, taskIds,
+      injectedRouteResolver ?? undefined,
+    );
+    if (claimed) {
+      reserveTaskExecution(db, {
+        taskId: claimed.id,
+        epicId: claimed.epic_id,
+        projectId,
+        taskKind: claimed.task_kind,
+        metadata: claimed.metadata,
+        executionId: executionId ?? workerId,
+        preClaimStatus: claimed.status === 'in_progress' ? 'todo' : 'review',
+      });
+    }
+    return claimed;
+  });
 
   // active_tasks — read-only снапшот параллельной работы. Берём ПОСЛЕ транзакции,
   // чтобы не держать write-lock дольше необходимого: видимость — best-effort,
@@ -493,6 +388,10 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const active_tasks = getActiveTasks(db, projectId);
 
   if (!task) return { task: null, skill: null, repository: null, active_tasks, reason: 'очередь пуста' };
+
+  // The Factory workplace is the unconditional claim authority.
+  // Conveyor v4: ConveyorRuntime is the authority — bind the task to its
+  // workplace, lease the loop channel, reverse-project tasks.status.
   const repository = task.project_repository_id == null ? null : db.prepare(`
     SELECT pr.id, pr.repository_id, r.name,
            COALESCE(rc.local_path,pr.local_path) AS local_path, pr.role,
@@ -509,18 +408,60 @@ function handleWorkerNext(args: Record<string, unknown>): {
   if (task.project_repository_id != null && !repository) {
     throw new Error(`Task ${task.id} targets missing or foreign project_repository_id=${task.project_repository_id}`);
   }
+  // D1.1: read the frozen execution_context back from the row the claim just
+  // wrote, and surface it to the runner so spawn + provenance read the SAME
+  // frozen model route (no re-read). Absent when no reservation was supplied.
+  let executionContext: unknown = undefined;
+  if (executionId) {
+    const execRow = db.prepare(
+      'SELECT metadata FROM worker_executions WHERE execution_id=?',
+    ).get(executionId) as { metadata: string } | undefined;
+    if (execRow?.metadata) {
+      try {
+        const parsed = JSON.parse(execRow.metadata) as { execution_context?: unknown };
+        executionContext = parsed.execution_context;
+      } catch {
+        executionContext = undefined;
+      }
+    }
+  }
   return {
     task,
     skill: skillForTask(task, task.status),
     repository: repository ?? null,
     active_tasks,
     execution_id: executionId,
+    execution_context: executionContext,
   };
 }
 
-function handleWorkerDone(args: Record<string, unknown>): {
+function parseTaskMetadataRecord(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function positiveIntegerOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
+}
+
+type WorkerDoneReply = {
   completed: number;
-  completed_new_status: 'review' | 'done' | 'todo';
+  completed_new_status: 'review' | 'done' | 'todo' | 'blocked';
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -536,11 +477,37 @@ function handleWorkerDone(args: Record<string, unknown>): {
   stop_reason: string;
   workflow_generation?: unknown;
   workflow_generation_error?: string;
-} {
+};
+
+type WorkerDoneTransactionResult =
+  | { readonly kind: 'completed'; readonly reply: WorkerDoneReply }
+  | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError };
+
+interface KernelPresentationCloseAuthority {
+  readonly commitmentRef: string;
+  readonly productRef: string;
+  readonly productDigest: string;
+}
+
+function handleWorkerDone(
+  args: Record<string, unknown>,
+  kernelClose?: KernelPresentationCloseAuthority,
+): WorkerDoneReply {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
   const result = args.result as string;
+  // Defensive: canonicalJson crashes on undefined. Catch missing fields early
+  // with an actionable error instead of an opaque serialization crash.
+  if (!Number.isInteger(taskId)) {
+    throw new Error(`worker_done: 'task_id' must be an integer. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.task_id)}`);
+  }
+  if (typeof workerId !== 'string' || workerId.trim() === '') {
+    throw new Error(`worker_done: 'worker_id' must be a non-empty string (your worker_id from the system prompt). Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.worker_id)}`);
+  }
+  if (typeof result !== 'string' || result.trim() === '') {
+    throw new Error(`worker_done: 'result' must be a non-empty string describing what you did. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.result)}`);
+  }
   // verdict — только для задач в review. По умолчанию 'approved' (обратная
   // совместимость: старые вызовы без verdict ведут себя как раньше — review→done).
   // 'changes_requested' возвращает задачу в in_progress: ветка task/<id> и её
@@ -551,7 +518,21 @@ function handleWorkerDone(args: Record<string, unknown>): {
     throw new Error(`verdict must be 'approved' or 'changes_requested', got '${verdict}'`);
   }
 
-  const completeTask = (): ReturnType<typeof handleWorkerDone> => {
+  const completeTask = (): WorkerDoneTransactionResult => {
+    // A typed product_submit may already have committed and closed this exact
+    // presentation through ADR-072. An LM that follows the legacy hint and
+    // calls worker_done afterwards receives the durable close reply; it does
+    // not create a second completion authority.
+    if (!kernelClose && typeof args.execution_id === 'string') {
+      const closed = db.prepare(
+        `SELECT reply_json FROM command_receipts
+          WHERE execution_id=? AND command_kind='presentation_close'
+            AND accepted=1 LIMIT 1`,
+      ).get(args.execution_id) as { reply_json: string } | undefined;
+      if (closed) {
+        return { kind: 'completed', reply: JSON.parse(closed.reply_json) as WorkerDoneReply };
+      }
+    }
     // Slice 4 (blueprint §10, §16:894-898): idempotency FIRST. A retry of a
     // previously-accepted worker_done (same command_id + payload) must return
     // the stored reply WITHOUT touching the task row. We check this BEFORE
@@ -559,16 +540,28 @@ function handleWorkerDone(args: Record<string, unknown>): {
     // the assignment — the owner-check would otherwise reject the retry as
     // "not assigned to you", masking the replay.
     //
-    // The command_id is derived from execution_id + verdict (or, for legacy
     // unfenced tasks, from task+worker+verdict+result-identity). We use the
     // CALLER-SUPPLIED execution_id, not task.current_execution_id (which may
     // already be null after the first call cleared the fence).
-    const commandId = workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
-    const payload = workerDonePayload(taskId, workerId, result, verdict);
+    const commandId = kernelClose
+      ? `${String(args.execution_id)}:presentation-close:${kernelClose.commitmentRef}`
+      : workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
+    const payload = kernelClose
+      ? {
+          task_id: taskId,
+          execution_id: args.execution_id,
+          commitment_ref: kernelClose.commitmentRef,
+          product_ref: kernelClose.productRef,
+          product_digest: kernelClose.productDigest,
+        }
+      : workerDonePayload(taskId, workerId, result, verdict);
     const payloadHash = hashPayload(payload);
     const prior = checkReceipt(db, commandId, payloadHash);
     if (prior.kind === 'replay') {
-      return JSON.parse(prior.receipt.reply_json) as ReturnType<typeof handleWorkerDone>;
+      return {
+        kind: 'completed',
+        reply: JSON.parse(prior.receipt.reply_json) as WorkerDoneReply,
+      };
     }
     if (prior.kind === 'idempotency_key_reused') {
       throw new Error(
@@ -599,17 +592,76 @@ function handleWorkerDone(args: Record<string, unknown>): {
       args.execution_id,
     );
 
+    // A Production Cell completion is never authoritative prose. The exact
+    // fenced execution must first persist at least one typed managed product;
+    // otherwise running -> verifying creates a state that cannot seal a
+    // CandidateSet and the conveyor has no lawful next transition. Keep the
+    // worker and its fence alive so it can repair the product_submit call.
+    requireProductionCellSubmission(
+      db,
+      taskId,
+      task.current_execution_id,
+      args.execution_id as string | undefined,
+    );
+
+    // Submission validation gate (shift-left). For author completion only
+    // (in_progress → review/done), NOT for reviewer verdicts. Resolves the
+    // authoritative execution binding, looks up the node's declared submission
+    // policy, and — if `required` — runs the module-owned validator BEFORE the
+    // task transitions. Rejection leaves the worker as execution owner and
+    // throws SubmissionValidationError with structured gaps so the LM sees
+    // exactly what to fix without burning a recovery epoch.
+    if (task.status === 'in_progress') {
+      const validationError = validateSubmissionIfRequired(
+        db,
+        task,
+        workerId,
+        args.execution_id as string | undefined,
+      );
+      if (validationError) {
+        // The rejection row + feedback pointer have been written in this SAME
+        // transaction. Return a sentinel so BEGIN IMMEDIATE commits; only then
+        // does the outer handler throw the actionable MCP error.
+        return { kind: 'submission-rejected', error: validationError };
+      }
+    }
+
+    // Accepted worker_done is the material close boundary. Managed Workplace
+    // material becomes an immutable exact ProductRef inside this transaction,
+    // before the task transition and command receipt. Typed ingress is already
+    // frozen by product_submit and is a no-op here.
+    freezeManagedCompletionProduct(db, {
+      executionId: (args.execution_id as string) ?? task.current_execution_id ?? workerId,
+      workerDoneCommandId: commandId,
+    });
+
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
     //    T-013: для verification.ac — review-loop escape. Если verifier уже
     //    записал ≥2 failed evidence records, changes_requested НЕ возвращают
     //    задачу в todo (это создаёт бесконечный цикл — verifier не может
     //    фиксить product bugs). Вместо этого задача закрывается как done с
     //    пометкой verification_outcome=failed в metadata.
-    let newStatus: 'review' | 'done' | 'todo';
+    let newStatus: 'review' | 'done' | 'todo' | 'blocked';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
-      newStatus = 'review';            // цикл разработки завершён → буфер ревью
-      newAssignedTo = null;            // в очереди на ревью (без исполнителя)
+      // UNIVERSAL CONVEYOR (CONVEYOR-MENTAL-MODEL §"One queue"):
+      // Runtime core does NOT switch on module names (line 254 of the model
+      // doc). Instead, the task's DECLARED review_skill determines the path:
+      //   - review_skill IS NULL → no reviewer needed → done immediately
+      //     (tracker_only tasks: discovery.work, discovery.assess, etc.)
+      //   - review_skill IS SET → needs review → goes to 'review' buffer.
+      //     The LM-executor detects 'review' and pauses the run; orchestrate-cli
+      //     drains the review queue through dispatch-loop; the reviewer worker
+      //     approves; the run resumes and re-reads the settled task.
+      // This replaces the old isDiscoveryOnly hardcode (task_kind.startsWith).
+      const hasReviewSkill = !!task.review_skill;
+      if (!hasReviewSkill) {
+        newStatus = 'done';            // no reviewer declared: close immediately
+        newAssignedTo = null;
+      } else {
+        newStatus = 'review';          // review declared: buffer for reviewer
+        newAssignedTo = null;
+      }
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
         // T-013: verification review-loop escape.
@@ -640,11 +692,51 @@ function handleWorkerDone(args: Record<string, unknown>): {
             newAssignedTo = null;
           }
         } else {
-          newStatus = 'todo';          // non-verification: normal changes_requested
+          const metadata = parseTaskMetadataRecord(task.metadata);
+          const reviewBudget = positiveIntegerOrNull(
+            metadata.managed_review_budget,
+          );
+          const historical = db.prepare(
+            `SELECT COUNT(*) AS count
+               FROM command_receipts
+              WHERE task_id=?
+                AND command_kind='worker_done'
+                AND accepted=1
+                AND command_id LIKE '%:worker-done:changes_requested'`,
+          ).get(taskId) as { count: number };
+          const rejectionCount =
+            Math.max(
+              nonNegativeInteger(metadata.managed_review_rejections),
+              historical.count,
+            ) + 1;
+          const exhausted =
+            reviewBudget !== null && rejectionCount >= reviewBudget;
+          newStatus = exhausted ? 'blocked' : 'todo';
           newAssignedTo = null;
+          db.prepare(
+            `UPDATE tasks
+                SET metadata=json_set(
+                  CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,
+                  '$.managed_review_rejections', ?,
+                  '$.managed_review_last_feedback', ?,
+                  '$.managed_review_last_execution_id', ?,
+                  '$.managed_review_exhausted', ?
+                )
+              WHERE id=?`,
+          ).run(
+            rejectionCount,
+            result,
+            args.execution_id ?? null,
+            exhausted ? 1 : 0,
+            taskId,
+          );
         }
       } else {
-        newStatus = 'done';            // цикл ревью завершён (APPROVED)
+        // Ревью пройдено (APPROVED) — done. Kernel gate внутри lifecycle
+        // (runEpisode → resolve-node) примет артефакты. Не нужен промежуточный
+        // awaiting_verification — конвейерная модель: author → review → done.
+        // Kernel gate работает внутри lifecycle, не блокирует tasks.status.
+        newStatus = 'done';
         newAssignedTo = null;
       }
     } else {
@@ -664,7 +756,16 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //      (a) есть passed evidence (APPROVED — нормальный путь)
     //      (b) loop_escaped (≥2 failed evidence — verifier нашёл product bugs,
     //          retrying бессмысленно, pipeline должен идти дальше с degraded verification)
-    if (newStatus === 'done' && task.task_kind === 'verification.ac') {
+    const workplaceManagedVerification = task.workplace_ref !== null
+      && db.prepare(
+        `SELECT 1 FROM factory_workplaces
+          WHERE workplace_ref=? AND production_cell_id IS NOT NULL`,
+      ).get(task.workplace_ref) !== undefined;
+    if (
+      newStatus === 'done'
+      && task.task_kind === 'verification.ac'
+      && !workplaceManagedVerification
+    ) {
       const target = db.prepare(
         `SELECT a.id, a.accepted_hash
          FROM tasks t JOIN artifacts a ON a.id=t.verification_target_artifact_id
@@ -702,6 +803,21 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `Task ${taskId} assignment changed before completion (expected owner ${workerId})`,
       );
     }
+
+    // Conveyor v4: ConveyorRuntime releases the execution (loop advances).
+    releaseTaskExecution(db, {
+      taskId,
+      epicId: task.epic_id,
+      projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+      taskKind: task.task_kind,
+      metadata: task.metadata,
+      executionId: (args.execution_id as string) ?? task.current_execution_id ?? workerId,
+      outcome: 'completed',
+      taskStatus: newStatus,
+      executionMode: task.execution_mode,
+      integrationState: task.integration_state,
+    });
+
     if (newStatus === 'done') {
       let taskTags: string[] = [];
       try { taskTags = JSON.parse(task.tags || '[]') as string[]; } catch { taskTags = []; }
@@ -715,7 +831,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
       taskId,
       workerId,
       args.execution_id,
-      newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
+      // awaiting_verification ждёт проверки ядром — ещё не 'integrating'
+      newStatus === 'done'
+        && task.task_kind
+        && task.execution_mode === 'git_change'
+        && task.integration_state === 'pending'
         ? 'integrating'
         : 'finishing',
     );
@@ -754,7 +874,6 @@ function handleWorkerDone(args: Record<string, unknown>): {
           merge_conflict: false,
         });
       } else {
-        // Legacy and non-git tasks keep the historical done-is-ready behavior.
         db.prepare(
           `UPDATE tasks SET integration_state='not_required', updated_at=datetime('now') WHERE id=?`,
         ).run(taskId);
@@ -790,7 +909,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     const projectId = projectIdRow?.project_id;
     const active_tasks = projectId != null ? getActiveTasks(db, projectId) : [];
 
-    const reply: ReturnType<typeof handleWorkerDone> = {
+    const reply: WorkerDoneReply = {
       completed: taskId,
       completed_new_status: newStatus,
       active_tasks,
@@ -798,7 +917,9 @@ function handleWorkerDone(args: Record<string, unknown>): {
       // отдаёт следующую задачу — без этого сигнала воркер мог бы попытаться
       // продолжить цикл. Сага говорит чётко: стоп.
       stop: true,
-      stop_reason: 'task completed — stop now and return your summary',
+      stop_reason: newStatus === 'blocked'
+        ? 'review correction budget exhausted — task blocked; stop now'
+        : 'task completed — stop now and return your summary',
     };
 
     // Slice 4: record the receipt inside this transaction so the side effects
@@ -806,79 +927,55 @@ function handleWorkerDone(args: Record<string, unknown>): {
     // + payload will short-circuit above and return this reply verbatim.
     storeReceipt(db, {
       commandId,
-      commandKind: 'worker_done',
-      actorKind: 'managed_execution',
-      actorId: workerId,
+      commandKind: kernelClose ? 'presentation_close' : 'worker_done',
+      actorKind: kernelClose ? 'controller' : 'managed_execution',
+      actorId: kernelClose ? 'presentation-closure' : workerId,
       executionId: task.current_execution_id,
       taskId,
       payload,
       reply,
     });
 
-    // ADR-013 Phase 1.2: enqueue a durable outbox intent for downstream
-    // workflow generation. The actual generation runs AFTER COMMIT (below)
-    // via drainOutbox — but if we crash between COMMIT and that call, the
-    // intent row survives and a future drain picks it up. The intent is
-    // only enqueued when the task is in a generation-eligible state
-    // (non-git_change done — see the drain section below for why git_change
-    // tasks are excluded: their generation runs after merge, not after done).
-    if (newStatus === 'done') {
-      const completedTaskRow = db.prepare(
-        'SELECT task_kind, execution_mode FROM tasks WHERE id=?',
-      ).get(taskId) as { task_kind: string | null; execution_mode: string } | undefined;
-      const isGitChange =
-        completedTaskRow?.task_kind != null
-        && completedTaskRow.execution_mode === 'git_change';
-      if (!isGitChange) {
-        enqueueOutboxIntent(db, {
-          intentKey: generateDownstreamIntentKey(taskId),
-          commandKind: 'generate_downstream',
-          originatingCommandId: commandId,
-          taskId,
-        });
-      }
-    }
-
-    return reply;
+    return { kind: 'completed', reply };
   }; // end completeTask
 
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
-
-  // ADR-013 Phase 1.2: drain pending workflow-generation intents OUTSIDE the
-  // tx. The intent row was enqueued inside the tx, so it survives any crash
-  // after COMMIT. drainOutbox is idempotent: workflow generation itself is
-  // idempotent (workflow.ts:handleWorkflowGenerateNext uses INSERT OR IGNORE
-  // + tracks created vs reused), so even a partial crash between enqueue and
-  // here, or a duplicate drain, is safe.
-  if (completed.completed_new_status === 'done') {
-    const summary = drainOutbox(
-      db,
-      'generate_downstream',
-      (id) => generateNextForCompletedTask(id),
-      { intentKey: generateDownstreamIntentKey(taskId) },
-    );
-    if (summary.processed > 0) {
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, null,
-        `Outbox drain: ${summary.succeeded} ok, ${summary.failed} failed, ${summary.skipped} skipped`);
-    }
-    // Augment the reply with the persisted result (if any). This is the
-    // byte-equivalent-replay guarantee: two identical retries return the
-    // same response because both read from the durable outbox row.
-    const intentRow = readOutboxResult(db, generateDownstreamIntentKey(taskId));
-    if (intentRow?.state === 'done' && intentRow.result_json) {
-      try {
-        const parsed = JSON.parse(intentRow.result_json);
-        if (parsed != null) completed.workflow_generation = parsed;
-      } catch {
-        // Defensive: corrupt result_json — leave workflow_generation unset.
-      }
-    } else if (intentRow?.state === 'failed') {
-      completed.workflow_generation_error = intentRow.last_error ?? 'unknown';
-    }
+  if (completed.kind === 'submission-rejected') {
+    throw completed.error;
   }
-  return completed;
+  // saga4 cutover (Phase 4): worker_done no longer auto-generates downstream
+  // escape hatch where generic task status produced new work. After the
+  // cutover only a module-owned node/settlement may generate work; a completed
+  // task is evidence consumed by its owning Process Module node.
+  return completed.reply;
+}
+
+/**
+ * ADR-072 kernel adapter. The immutable commitment authenticates the exact
+ * ProductRef; this invokes the same close transaction as worker_done while
+ * recording an honest controller-owned `presentation_close` receipt.
+ */
+export function closeFinalPresentationFromKernel(input: {
+  readonly taskId: number;
+  readonly executionId: string;
+  readonly workerId: string;
+  readonly commitmentRef: string;
+  readonly productRef: string;
+  readonly productDigest: string;
+}): WorkerDoneReply {
+  return handleWorkerDone({
+    task_id: input.taskId,
+    worker_id: input.workerId,
+    execution_id: input.executionId,
+    result: `Factory closed immutable final presentation ${input.commitmentRef}`,
+    verdict: 'approved',
+  }, {
+    commitmentRef: input.commitmentRef,
+    productRef: input.productRef,
+    productDigest: input.productDigest,
+  });
 }
 
 // ============================================================================
@@ -1033,7 +1130,6 @@ function handleWorkerAskNeed(args: Record<string, unknown>): {
       });
       releasedExecution = outcome.taskReleased;
     } else {
-      // Legacy unfenced task — just clear assigned_to.
       db.prepare(
         `UPDATE tasks SET assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
       ).run(taskId);
@@ -1319,29 +1415,6 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
   }
   const commitSha = (args.commit_sha as string | undefined) ?? null;
 
-  // ADR-013 Phase 2.1: resolve the repoPath up-front so we can take a
-  // cross-process advisory lock scoped to this repository only. Two saga
-  // processes serving workers on DIFFERENT repositories now run fully in
-  // parallel — the DB-level BEGIN IMMEDIATE still serializes writers, but
-  // the filesystem-level git work (and any non-DB bookkeeping) does not
-  // contend across repos. Read-only; no transaction needed.
-  const repoScopeRow = db.prepare(
-    `SELECT t.task_kind, t.project_repository_id,
-            COALESCE(rc.local_path, pr.local_path) AS local_path
-       FROM tasks t
-       LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
-       LEFT JOIN repository_checkouts rc
-         ON rc.project_repository_id=pr.id AND rc.machine_id=? AND rc.status='active'
-      WHERE t.id=?`,
-  ).get(os.hostname(), taskId) as
-    | { task_kind: string | null; project_repository_id: number | null; local_path: string | null }
-    | undefined;
-  const repoLockPath =
-    repoScopeRow?.task_kind != null && repoScopeRow.project_repository_id != null
-      ? repoScopeRow.local_path ?? null
-      : null;
-
-  const runMergeRelease = () => {
   withImmediateTransaction(db, () => {
     const task = db.prepare(
       `SELECT t.id, t.title, t.status, t.tags, t.task_kind, t.project_repository_id,
@@ -1433,41 +1506,13 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     updateExecutionPhase(db, taskId, workerId, args.execution_id, 'finishing');
     if (outcome === 'merged') {
       reevaluateDownstream(db, taskId);
-      // ADR-013 Phase 1.2: enqueue durable intent for post-merge downstream
-      // generation. git_change tasks reach 'done' through worker_done but
-      // only become eligible for downstream generation AFTER merge into the
-      // integration branch (their formal work is not yet complete). The
-      // direct call to generateNextForCompletedTask that used to live here
-      // ran outside the tx — a crash between COMMIT and that call would
-      // lose downstream tasks forever.
-      enqueueOutboxIntent(db, {
-        intentKey: generateDownstreamIntentKey(taskId),
-        commandKind: 'generate_downstream',
-        originatingCommandId: `merge-release:${taskId}`,
-        taskId,
-      });
     }
   });
 
-  // Drain pending intents OUTSIDE the tx (idempotent side effect).
-  if (outcome === 'merged') {
-    const summary = drainOutbox(db, 'generate_downstream', (id) => generateNextForCompletedTask(id));
-    if (summary.processed > 0) {
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, null,
-        `Post-merge outbox drain: ${summary.succeeded} ok, ${summary.failed} failed, ${summary.skipped} skipped`);
-    }
-  }
+  // saga4 cutover (Phase 4): worker_merge_release no longer auto-generates
+  // downstream tasks via the task-kind ladder. The owning Process Module node
+  // settles the merge result and decides whether to advance.
   return { task_id: taskId, result: outcome, merged_commit: outcome === 'merged' ? commitSha : null };
-  }; // end runMergeRelease
-
-  // ADR-013 Phase 2.1: serialize per-repo filesystem operations across saga
-  // processes via an OS-level advisory lock. When repoLockPath is null
-  // (legacy global task, or repo path not resolvable), skip the advisory
-  // lock — the DB-level BEGIN IMMEDIATE inside still serializes writers.
-  if (repoLockPath) {
-    return withRepositoryLock(repoLockPath, runMergeRelease);
-  }
-  return runMergeRelease();
 }
 
 // ============================================================================
@@ -1486,7 +1531,7 @@ function handleWorkerHealth(args: Record<string, unknown>): {
   const projectId = args.project_id as number | undefined;
   if (projectId == null) {
     throw new Error(
-      'project_id is required. Resolve it once from ./projectname.txt via project_resolve_by_name, then pass it here.',
+      'project_id is required. Use the runner binding or .saga/project.json, then pass it here.',
     );
   }
 
@@ -1561,7 +1606,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Tasks of ANY priority (critical/high/medium/low) are handed out, ordered by priority (critical first, low last). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. project_id is REQUIRED from the runner binding or .saga/project.json. Other projects are never touched. Returns {task: null} when the queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
@@ -1580,7 +1625,7 @@ export const definitions: Tool[] = [
         project_id: {
           type: 'integer',
           description:
-            'ID of the project to claim work from (REQUIRED). Get it once via project_resolve_by_name from the name in ./projectname.txt. Tasks from other projects are never returned.',
+            'ID of the project to claim work from (REQUIRED), supplied by the runner binding or .saga/project.json.',
         },
         role: {
           type: 'string',
@@ -1606,7 +1651,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, verdict="changes_requested" returns it to the unassigned todo queue for a fresh developer execution.',
+      'Complete the held task and free its assignment. Author completion enters review; approved repository work remains gated until worker_merge_release(result="merged"). A changes_requested verdict returns the card to the author queue with review feedback. The response carries stop:true and never assigns another card.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,
@@ -1641,7 +1686,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_ask_need',
     description:
-      "TERMINAL park for human input (Slice 3, ADR-011, blueprint §12.3). Use this when you are blocked on a task and need a human answer that genuinely cannot be assumed or deferred. The call persists the question and resume context, opens a human_request, releases your execution (terminalized atomically), and clears your assignment so the task returns to its queue once answered. The 'needs-human' tag pulses red (⚠) on the kanban. The response carries stop:true — your process exits cleanly; do NOT plan to continue in this session. A fresh worker later claims the answered task and reads the question and answer from human_requests. This replaces the previous in-session ASK protocol, which was incompatible with headless `claude -p` (stdin disabled). Pass 'reason' with the question text. Reserved for genuine blockers — prefer the 80% rule (assume + comment) for reversible decisions.",
+      "TERMINAL park for human input (Slice 3, ADR-011, blueprint §12.3). Use this when you are blocked on a task and need a human answer that genuinely cannot be assumed or deferred. The call persists the question and resume context, opens a human_request, releases your execution (terminalized atomically), and clears your assignment so the task returns to its queue once answered. The 'needs-human' tag pulses red (⚠) on the kanban. The response carries stop:true — your process exits cleanly; do NOT plan to continue in this session. A fresh worker later claims the answered task and reads the question and answer from human_requests. This replaces the previous in-session ASK protocol, which was incompatible with headless `claude -p` (stdin disabled). Pass 'reason' with the question text. Reserved for genuine blockers — prefer the 80% rule (assume + comment) for reversible decisions. Call shape: worker_ask_need({ task_id: <integer>, worker_id: <string>, reason: <string, the question text>, execution_id: <string> }). Required: task_id, worker_id, reason.",
     annotations: {
       title: 'Worker: Ask Human (terminal park)',
       readOnlyHint: false,
@@ -1666,7 +1711,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_ask_done',
     description:
-      "Record the human's answer to an open needs-human request on a task. Looks up the most recent OPEN human_requests row for this task, stores the answer, flips state to 'answered', and clears the needs-human tag. The task becomes claimable again; a fresh worker will pick it up and read the persisted question and answer. Does NOT require the original execution_id — that execution was terminalized by worker_ask_need and is gone. Any authorized caller (UI, human, fresh worker) may invoke this. If there is no open request, clears any stale needs-human tag and returns state='no_open_request'.",
+      "Record the human's answer to an open needs-human request on a task. Looks up the most recent OPEN human_requests row for this task, stores the answer, flips state to 'answered', and clears the needs-human tag. The task becomes claimable again; a fresh worker will pick it up and read the persisted question and answer. Does NOT require the original execution_id — that execution was terminalized by worker_ask_need and is gone. Any authorized caller (UI, human, fresh worker) may invoke this. If there is no open request, clears any stale needs-human tag and returns state='no_open_request'. Call shape: worker_ask_done({ task_id: <integer>, worker_id: <string>, answer: <string, the human's answer> }). Required: task_id, worker_id, answer.",
     annotations: {
       title: 'Worker: Ask Human (record answer)',
       readOnlyHint: false,
@@ -1690,7 +1735,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_acquire',
     description:
-      'Acquire the merge-lock before integrating task/<id>. Typed repository tasks lock only their project_repository and use its integration_branch, so different repositories may merge concurrently. Legacy tasks retain the project-level dev lock. The lock auto-expires after 10 minutes.',
+      'Acquire the repository-scoped merge lock before integration. Different repositories may merge concurrently. The lock auto-expires after 10 minutes and requires the exact execution fence.',
     annotations: {
       title: 'Worker: Merge Lock (acquire)',
       readOnlyHint: false,
@@ -1711,7 +1756,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_release',
     description:
-      'Release the merge-lock you hold and record the outcome of integrating task/<id> into the integration branch. Call this AFTER running git merge (success: result="merged", pass the resulting commit sha) or after a merge CONFLICT (result="conflict", abort the merge first). On "merged", sets metadata.worktree.merged_into="dev" — work is integrated. On "conflict", sets merged_into="conflict" and flags the task needs-human (it pulses red on the board); the task stays done, the worktree and branch are kept so a human can resolve. Only the lock holder may release. If you crashed mid-merge, the lock will expire after 10 minutes and another worker can reclaim it.',
+      'Release the merge-lock you hold and record the outcome of integrating task/<id> into the integration branch. Call this AFTER running git merge (success: result="merged", pass the resulting commit sha) or after a merge CONFLICT (result="conflict", abort the merge first). On "merged", sets metadata.worktree.merged_into="dev" — work is integrated. On "conflict", sets merged_into="conflict" and flags the task needs-human (it pulses red on the board); the task stays done, the worktree and branch are kept so a human can resolve. Only the lock holder may release. If you crashed mid-merge, the lock will expire after 10 minutes and another worker can reclaim it. Call shape: worker_merge_release({ task_id: <integer>, worker_id: "<string>", result: "merged|conflict", commit_sha: "<string (only when result=merged)>", execution_id: "<string>" }). Required: task_id, worker_id, result.',
     annotations: {
       title: 'Worker: Merge Lock (release)',
       readOnlyHint: false,
@@ -1734,7 +1779,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_health',
     description:
-      'Read-only check for stuck worktrees in a project. Returns three lists: zombies (in_progress tasks idle > 30 min — a worker may have died holding them), never_merged (done tasks whose branch was never merged into dev, or is still "pending" — work that could be lost), and stuck_merges (done tasks whose merge conflicted and need human resolution). Use this from a watcher/orchestrator, or a worker noticing the queue stalled, to find orphaned worktrees. Saga does NOT delete anything — worktrees may hold another worker\'s uncommitted work; a human decides.',
+      "Read-only check for stuck worktrees in a project. Returns three lists: zombies (in_progress tasks idle > 30 min — a worker may have died holding them), never_merged (done tasks whose branch was never merged into dev, or is still \"pending\" — work that could be lost), and stuck_merges (done tasks whose merge conflicted and need human resolution). Use this from a watcher/orchestrator, or a worker noticing the queue stalled, to find orphaned worktrees. Saga does NOT delete anything — worktrees may hold another worker's uncommitted work; a human decides. Call shape: worker_health({ project_id: <integer> }). Required: project_id.",
     annotations: {
       title: 'Worker: Health (stuck worktrees)',
       readOnlyHint: true,
@@ -1745,12 +1790,305 @@ export const definitions: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        project_id: { type: 'integer', description: 'Project to scan. Resolve it once via project_resolve_by_name from ./projectname.txt.' },
+        project_id: { type: 'integer', description: 'Project to scan, supplied by the runner binding or .saga/project.json.' },
       },
       required: ['project_id'],
     },
   },
 ];
+
+/**
+ * Resolve the authoritative execution binding and run the node's submission
+ * validator if one is declared.
+ *
+ * Binding resolution (T1.5): task.metadata is a consistency read, NOT the
+ * authority. Two fail-closed rules:
+ *   - If the registries are not initialized → infra failure (throw), not a
+ *     production. Tests that don't exercise validation initialize the DB
+ *     without calling initSubmissionRegistries, but those tests also don't
+ *     call handleWorkerDone for factory-managed tasks.
+ *   - If task.metadata declares a process_module_ref but the binding fields
+ *     are malformed/missing → FACTORY_BINDING_MISSING (throw), not a silent
+ *   - If task.metadata has NO process_module_ref key at all → the task is
+ *     correct here — return without validation.
+ *
+ * Contract ref (T1.6): if the resolved policy carries a contractRef, it is
+ * passed to the validator input. A version-pinned validator compares it
+ * against its own canonical contract and rejects on mismatch.
+ */
+function validateSubmissionIfRequired(
+  db: Database.Database,
+  task: Task,
+  workerId: string,
+  executionId: string | undefined,
+): SubmissionValidationError | null {
+  const policyRegistry = getSubmissionPolicyRegistry();
+  const validatorRegistry = getSubmissionValidatorRegistry();
+
+  // Parse task.metadata once. The presence of the `process_module_ref` key
+  // distinguishes "factory-managed task with binding" from "non-factory task".
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = typeof task.metadata === 'string'
+      ? JSON.parse(task.metadata)
+      : (task.metadata as Record<string, unknown>) ?? {};
+  } catch {
+    // Malformed metadata JSON. If the raw string contains process_module_ref,
+    // it's a broken factory binding → fail-closed. Otherwise non-factory.
+    const rawMeta = typeof task.metadata === 'string' ? task.metadata : '';
+    if (rawMeta.includes('process_module_ref')) {
+      throw new Error(
+        `FACTORY_BINDING_MALFORMED: task ${task.id} metadata contains `
+        + `process_module_ref but JSON is unparseable`,
+      );
+    }
+    return null; // genuinely non-factory task with malformed metadata
+  }
+
+  const hasProcessModuleRef = Object.prototype.hasOwnProperty.call(metadata, 'process_module_ref');
+
+  if (!hasProcessModuleRef) return null;
+
+  // Factory-managed task: registries MUST be wired (fail-closed, T1.5).
+  if (!policyRegistry || !validatorRegistry) {
+    throw new Error(
+      `SUBMISSION_INFRASTRUCTURE_NOT_INITIALIZED: task ${task.id} is `
+      + `factory-managed (has process_module_ref) but submission registries `
+      + `are not wired. Call initSubmissionRegistries(db) at composition root.`,
+    );
+  }
+
+  const processRunId = metadata['process_run_id'];
+  const moduleRef = metadata['process_module_ref'];
+  const nodeId = metadata['process_node_id'];
+  if (
+    typeof processRunId !== 'number'
+    || typeof moduleRef !== 'string'
+    || typeof nodeId !== 'string'
+  ) {
+    // Factory-managed task (has process_module_ref key) but binding fields
+    throw new Error(
+      `FACTORY_BINDING_INCOMPLETE: task ${task.id} has process_module_ref `
+      + `but binding is incomplete (process_run_id=${JSON.stringify(processRunId)}, `
+      + `process_module_ref=${JSON.stringify(moduleRef)}, `
+      + `process_node_id=${JSON.stringify(nodeId)})`,
+    );
+  }
+
+  const policy = policyRegistry.resolve(moduleRef, nodeId);
+  if (!policy) {
+    // Every LM-node MUST declare a policy. The absence of a declaration is a
+    // configuration error, not a silent bypass.
+    throw new Error(
+      `SUBMISSION_VALIDATION_POLICY_MISSING: ${moduleRef}/${nodeId}`,
+    );
+  }
+
+  if (policy.mode === 'none') return null; // explicitly no validation — allowed
+  // mode === 'required'
+  const validator = validatorRegistry.resolve(policy.validatorId);
+  if (!validator) {
+    throw new Error(`SUBMISSION_VALIDATOR_MISSING: ${policy.validatorId}`);
+  }
+
+  const projectId = (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0;
+
+  const currentExecutionId = executionId ?? task.current_execution_id ?? '';
+  const hasManagedProduction = policy.requireManagedProduction !== true || Boolean(
+    db.prepare(
+      `SELECT 1 AS present
+         FROM (
+           SELECT execution_id FROM factory_managed_artifact_productions
+           UNION ALL
+           SELECT execution_id FROM factory_managed_trace_productions
+         )
+        WHERE execution_id=?
+        LIMIT 1`,
+    ).get(currentExecutionId),
+  );
+  const result = hasManagedProduction
+    ? validator.validate({
+    processRunId,
+    moduleRef,
+    nodeId,
+    executionId: currentExecutionId,
+    taskId: task.id,
+    epicId: task.epic_id,
+    projectId,
+    // T1.6: pass the pinned contract ref from the policy declaration so the
+    // validator can detect version mismatch between author and validator.
+    contractRef: policy.contractRef,
+      })
+    : {
+        accepted: false as const,
+        code: 'MANAGED_PRODUCTION_REQUIRED',
+        gaps: [{
+          artifactId: -1,
+          artifactCode: null,
+          artifactType: 'MANAGED_PRODUCTION',
+          existingTargets: [],
+          missing: {
+            relation: 'published_by_current_execution',
+            requiredTargetTypes: ['artifact_create', 'artifact_update', 'trace_add'],
+            minimum: 1,
+          },
+          message: `Execution ${currentExecutionId} changed or verified Workplace material but published no current managed contribution. After Write/Edit, call artifact_update for every changed existing artifact (or artifact_create/trace_add for new material), reread it, then retry worker_done. Prior execution ledger rows cannot satisfy current author authority.`,
+        }],
+        details: {
+          executionId: currentExecutionId,
+          requiredTools: ['artifact_create', 'artifact_update', 'trace_add'],
+        },
+      };
+
+  if (!result.accepted) {
+    const error = new SubmissionValidationError(
+      result.code,
+      result.gaps,
+      result.details ?? {},
+      {
+        validatorId: validator.validatorId,
+        validatorVersion: validator.validatorVersion,
+        processRunId,
+        moduleRef,
+        nodeId,
+        executionId: currentExecutionId,
+        taskId: task.id,
+        contractRef: policy.contractRef ?? null,
+        inputSnapshotHash: typeof metadata.process_node_input_hash === 'string'
+          ? metadata.process_node_input_hash
+          : typeof metadata.process_input_hash === 'string'
+            ? metadata.process_input_hash
+            : '',
+      },
+    );
+    persistSubmissionValidationRejection(db, {
+      validatorId: validator.validatorId,
+      validatorVersion: validator.validatorVersion,
+      processRunId,
+      moduleRef,
+      nodeId,
+      executionId: currentExecutionId,
+      taskId: task.id,
+      actorKind: 'managed_execution',
+      workerId,
+      rejectionCode: result.code,
+      gaps: result.gaps,
+      details: result.details,
+      contractRef: policy.contractRef,
+      inputSnapshotHash: typeof metadata.process_node_input_hash === 'string'
+        ? metadata.process_node_input_hash
+        : typeof metadata.process_input_hash === 'string'
+          ? metadata.process_input_hash
+          : '',
+    });
+    return error;
+  }
+
+  clearSubmissionValidationFeedback(db, task.id);
+
+  // Persist the receipt — durable proof validation passed. The receipt and
+  // the task transition run in the same transaction (the caller wraps
+  // handleWorkerDone in withImmediateTransaction).
+  const receipt = result.receipt;
+  db.prepare(
+    `INSERT INTO factory_submission_validation_receipts
+       (validator_id, validator_version, process_run_id, module_ref, node_id,
+        execution_id, task_id, input_snapshot_hash, artifact_ids, trace_ids,
+        artifact_hashes, trace_digest, contract_ref, validated_set_digest)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    receipt.validatorId,
+    receipt.validatorVersion,
+    receipt.processRunId,
+    receipt.moduleRef,
+    receipt.nodeId,
+    receipt.executionId,
+    receipt.taskId,
+    receipt.inputSnapshotHash,
+    JSON.stringify(receipt.artifactIds),
+    JSON.stringify(receipt.traceIds),
+    JSON.stringify(receipt.artifactHashes ?? {}),
+    receipt.traceDigest ?? '',
+    receipt.contractRef ? JSON.stringify(receipt.contractRef) : null,
+    receipt.validatedSetDigest,
+  );
+  return null;
+}
+
+function requireProductionCellSubmission(
+  db: Database.Database,
+  taskId: number,
+  currentExecutionId: string | null,
+  executionId: string | undefined,
+): void {
+  // The Workplace aggregate is the authority. Task metadata is only a
+  // projection and may be stale or incomplete after recovery; it must never
+  // weaken the product boundary.
+  const productionCell = db.prepare(
+    `SELECT w.production_cell_id
+       FROM tasks t
+       JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
+      WHERE t.id=? AND w.production_cell_id IS NOT NULL`,
+  ).get(taskId) as {
+    production_cell_id: string;
+  } | undefined;
+  if (!productionCell) return;
+
+  const exactExecutionId = executionId ?? currentExecutionId;
+  if (!exactExecutionId) {
+    throw new Error(`PRODUCTION_INGRESS_EXECUTION_MISSING: task ${taskId}`);
+  }
+  const ingress = readFrozenProductionIngressIfBound(db, exactExecutionId);
+  // Compatibility tracker cards freeze an explicitly null WorkIntent. This is
+  // the only lawful bypass; mutable task metadata never classifies ingress.
+  if (!ingress) return;
+  const intent = db.prepare(
+    `SELECT output_schema FROM factory_work_intents WHERE id=?`,
+  ).get(ingress.workIntentId) as { output_schema: string } | undefined;
+  if (!intent) {
+    throw new Error(`PRODUCTION_INGRESS_WORK_INTENT_NOT_FOUND: ${ingress.workIntentId}`);
+  }
+
+  // Managed Workplace ingress (e.g. Formalization author nodes) does not require
+  // a typed product_submit — the factory assembles the product from the
+  // Workplace desk (artifacts + traces) at CandidateSet seal time. Only
+  // typed ingress requires an explicit product_submit before worker_done. The
+  // same immutable WorkIntent capability set drives the seal-time reader.
+  if (ingress.mode === 'managed-workplace') return;
+  const submission = exactExecutionId
+    ? db.prepare(
+        `SELECT s.id,s.intent_id,s.schema_version,wi.output_schema
+           FROM factory_managed_node_submissions s
+           JOIN factory_work_intents wi ON wi.id=s.intent_id
+          WHERE s.task_id=? AND s.execution_id=?
+          ORDER BY s.id DESC LIMIT 1`,
+      ).get(taskId, exactExecutionId) as {
+        id: number;
+        intent_id: number;
+        schema_version: string;
+        output_schema: string;
+      } | undefined
+    : undefined;
+  if (submission
+    && submission.intent_id === ingress.workIntentId
+    && submission.schema_version === intent.output_schema
+    && submission.output_schema === intent.output_schema) return;
+  if (submission) {
+    throw new Error(
+      `PRODUCTION_CELL_PRODUCT_SCHEMA_MISMATCH: task ${taskId} execution `
+      + `'${exactExecutionId}' must submit '${intent.output_schema}', `
+      + `received '${submission.schema_version}'. The incompatible product `
+      + 'remains immutable evidence but cannot complete this WorkIntent.',
+    );
+  }
+  throw new Error(
+    `PRODUCTION_CELL_PRODUCT_REQUIRED: task ${taskId} cannot call worker_done `
+    + `before its exact execution '${exactExecutionId ?? '(missing)'}' has a `
+    + `typed product_submit. Submit the declared product as `
+    + `product_submit({ schema: '<declared schema>', content: { ... } }) and `
+    + `retry worker_done without leaving the execution.`,
+  );
+}
 
 export const handlers: Record<string, ToolHandler> = {
   worker_next: handleWorkerNext,

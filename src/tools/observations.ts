@@ -117,7 +117,9 @@ function handleObservationList(args: Record<string, unknown>) {
 export const definitions: Tool[] = [
   {
     name: 'observation_record',
-    description: 'REQ-011 — Record an immutable runtime observation (CGAD §4 third truth axis). Observation types: benchmark/canary/shadow/incident/runtime_metric/integration_output/other. Append-only: cannot mutate the acceptance oracle (CGAD P17). Use a new artifact supersede to update the oracle if observation contradicts it.',
+    description:
+      'REQ-011 — Record an immutable runtime observation (CGAD §4 third truth axis). Observation types: benchmark/canary/shadow/incident/runtime_metric/integration_output/other. Append-only: cannot mutate the acceptance oracle (CGAD P17). Use a new artifact supersede to update the oracle if observation contradicts it. ' +
+      'Call shape: observation_record({ observation_type: "benchmark|canary|shadow|incident|runtime_metric|integration_output|other", observed_value: "<string (number/JSON/prose)>", epic_id: <integer>, task_id: <integer>, artifact_id: <integer>, baseline_value: "<string>", content_hash: "<string>", observed_by: "<string>", metadata: {<object>} }). Required: observation_type, observed_value. At least one of epic_id/task_id/artifact_id is required to scope the observation.',
     annotations: { title: 'Observation: Record', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -137,7 +139,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'observation_list',
-    description: 'REQ-011 — List runtime observations, optionally filtered by epic/task/artifact/type.',
+    description:
+      'REQ-011 — List runtime observations, optionally filtered by epic/task/artifact/type. ' +
+      'Call shape: observation_list({ epic_id: <integer>, task_id: <integer>, artifact_id: <integer>, observation_type: "benchmark|canary|shadow|incident|runtime_metric|integration_output|other", limit: <integer (1..200)> }). All params optional.',
     annotations: { title: 'Observation: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

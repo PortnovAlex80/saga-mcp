@@ -11,6 +11,7 @@ import { handlers } from '../../dist/tools/dispatcher.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { rmSync } from 'node:fs';
+import { ensureRunningProcessRun } from './process-run-fixture.mjs';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(thisDir, 'iso.db');
@@ -35,10 +36,18 @@ setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'epic-A')").run(a
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'epic-B')").run(bId);
 const epicA = setup.prepare("SELECT id FROM epics WHERE name='epic-A'").get().id;
 const epicB = setup.prepare("SELECT id FROM epics WHERE name='epic-B'").get().id;
-setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-in-A', 'todo', 'low', NULL)").run(epicA);
-setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-in-B', 'todo', 'critical', NULL)").run(epicB);
+ensureRunningProcessRun(setup, 1001, aId, epicA);
+ensureRunningProcessRun(setup, 1002, bId, epicB);
+// saga4 authority gate (findNextClaimable): a card is claimable ONLY if
+// metadata.process_run_id IS NOT NULL. Stamp it on every fixture task so the
+// isolation assertions exercise real claimability, not the gate filtering them
+// all out. Distinct run ids per project keep the conflict-key guard honest.
+const runA = JSON.stringify({ process_run_id: 1001 });
+const runB = JSON.stringify({ process_run_id: 1002 });
+setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-in-A', 'todo', 'low', NULL, ?)").run(epicA, runA);
+setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-in-B', 'todo', 'critical', NULL, ?)").run(epicB, runB);
 // Add a medium task in A so the worker has something to claim (A's main task above is now low — must be skipped)
-setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-in-A-medium', 'todo', 'medium', NULL)").run(epicA);
+setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-in-A-medium', 'todo', 'medium', NULL, ?)").run(epicA, runA);
 setup.close();
 
 // --- run via the real handler, asking for project A ---
@@ -60,18 +69,21 @@ console.log('task-in-A (low) after:', aLowAfter);
 const pass =
   claimedTitle === 'task-in-A-medium'                  // got A's medium task
   && bTaskAfter.assigned_to === null                   // B's critical task untouched (cross-project)
-  && aLowAfter.assigned_to === null                    // A's low task untouched (priority filter)
+  && aLowAfter.assigned_to === null                    // A's low task untouched (medium ranked higher)
   && aLowAfter.status === 'todo';                      // A's low task still todo
 
 console.log('\n=== VERDICT ===');
 console.log(`worker got A's medium task (not B, not A's low): ${claimedTitle === 'task-in-A-medium' ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`cross-project: B task untouched:           ${bTaskAfter.assigned_to === null ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(`priority filter: A's LOW task untouched:   ${aLowAfter.assigned_to === null ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(`priority filter: A's LOW task still todo:  ${aLowAfter.status === 'todo' ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(pass ? '\n✅✅✅ ISOLATION HOLDS — project_id scoping prevents cross-project leak, low-priority filter holds.\n'
+console.log(`priority order: A's LOW task untouched:    ${aLowAfter.assigned_to === null ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(`priority order: A's LOW task still todo:   ${aLowAfter.status === 'todo' ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(pass ? '\n✅✅✅ ISOLATION HOLDS — project_id scoping prevents cross-project leak; higher priority is claimed first.\n'
                  : '\n❌❌❌ FAILED.\n');
 
-// === Priority-filter sub-test: ALL tasks low in a fresh DB → queue empty ===
+// === Priority sub-test (fresh DB): a lone low card IS dispatched, and the
+//     saga4 process_run_id gate is what makes a card unclaimable, NOT priority.
+//     Contract (commit 95a9049): priority=low means "dispatched last", not
+//     "skipped" — the old priority floor was deliberately removed. ===
 const dbPath2 = join(thisDir, 'iso-low.db');
 for (const ext of ['', '-wal', '-shm']) { try { rmSync(dbPath2 + ext); } catch {} }
 const setup2 = new Database(dbPath2);
@@ -83,16 +95,33 @@ setup2.prepare("INSERT INTO projects (name) VALUES ('all-low')").run();
 const p2 = setup2.prepare("SELECT id FROM projects WHERE name='all-low'").get().id;
 setup2.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(p2);
 const e2 = setup2.prepare("SELECT id FROM epics WHERE name='e'").get().id;
-setup2.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'only-low', 'todo', 'low', NULL)").run(e2);
+ensureRunningProcessRun(setup2, 2001, p2, e2);
+// Stamp process_run_id so the saga4 authority gate admits the card (a card
+// WITHOUT it must remain unclaimable — that half is covered below).
+setup2.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'only-low', 'todo', 'low', NULL, ?)").run(e2, JSON.stringify({ process_run_id: 2001 }));
 setup2.close();
 
+// getDb() caches its handle on first open, so close the main-DB handle before
+// pointing DB_PATH at the sub-test DB.
+closeDb();
 process.env.DB_PATH = dbPath2;
 const db2 = getDb();
 const resLow = handlers.worker_next({ worker_id: 'iso-agent', project_id: p2 });
 console.log('=== LOW-ONLY SUB-TEST ===');
-console.log('worker_next on a project with only a low task →', JSON.stringify({ task: resLow.task, skill: resLow.skill, reason: resLow.reason }));
-const passLow = resLow.task === null && resLow.reason === 'очередь пуста';
-console.log(`only-low project → queue empty: ${passLow ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log('worker_next on a project with only a low task →', JSON.stringify({ task: resLow.task ? { id: resLow.task.id, title: resLow.task.title } : null, skill: resLow.skill, reason: resLow.reason }));
+const passLow = resLow.task != null && resLow.task.title === 'only-low';
+console.log(`only-low project → low task dispatched (no priority floor): ${passLow ? 'PASS ✅' : 'FAIL ❌'}`);
+
+// saga4 authority gate: strip process_run_id, release the card, and the SAME
+// low card must now be unclaimable — proving the gate (not priority) controls
+// claimability.
+const onlyLowId = resLow.task?.id ?? null;
+if (onlyLowId != null) {
+  db2.prepare("UPDATE tasks SET assigned_to=NULL, status='todo', metadata='{}' WHERE id=?").run(onlyLowId);
+}
+const resUngated = handlers.worker_next({ worker_id: 'iso-agent-2', project_id: p2 });
+const passUngated = resUngated.task === null && resUngated.reason === 'очередь пуста';
+console.log(`low card without process_run_id → unclaimable (saga4 gate): ${passUngated ? 'PASS ✅' : 'FAIL ❌'}`);
 closeDb();
 
 // === Error paths (back on the main DB) ===
@@ -112,5 +141,5 @@ try {
 }
 closeDb();
 
-const allPass = pass && passLow;
+const allPass = pass && passLow && passUngated;
 process.exit(allPass ? 0 : 1);

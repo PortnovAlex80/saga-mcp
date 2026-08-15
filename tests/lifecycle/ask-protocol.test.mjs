@@ -69,9 +69,14 @@ function makeTask(epicId) {
 function claimAndSpawn(taskId, workerId, executionId) {
   // Claim the task and inject an active execution row (simulating what the
   // runner does after worker_next).
+  // saga4 Phase 4 cutover: a task is only claimable via worker_next if
+  // tasks.metadata.process_run_id IS NOT NULL. A task the runner spawns here
+  // would carry that stamp, so stamp it for any task that flows through this
+  // helper (otherwise later worker_next claims in these tests return null).
   const db = getDb();
   db.prepare(
     `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?,
+                       metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999),
                        updated_at=datetime('now') WHERE id=?`,
   ).run(workerId, executionId, taskId);
   db.prepare(

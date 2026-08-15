@@ -12,7 +12,6 @@
  * Critical guardrail (blueprint §6.2:307-308):
  *   "Do not make the managed decoder fail open when `current_execution_id` is null."
  * I.e. a managed task with `current_execution_id=null` while `status='in_progress'`
- * is a violation (`ACTIVE_WITHOUT_EXECUTION`), not a fallback to legacy.
  *
  * The decoder is PURE: no DB, no clock, no I/O. It receives plain data objects.
  *

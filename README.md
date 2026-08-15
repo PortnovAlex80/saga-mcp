@@ -35,6 +35,34 @@ Skill("saga-start")
 
 Full install guide: [docs/INSTALL.md](docs/INSTALL.md)
 
+## Factory (automated pipeline)
+
+The Factory is the automated conveyor: Idea → Discovery → Formalization → Development → verified-local.
+One entry point, one command:
+
+```bash
+node scripts/factory.mjs start .factory-sandboxes/my-run/factory.sqlite \
+  'Build an accessible single-page counter with keyboard support.' \
+  --model glm-4.7 --sandbox .factory-sandboxes/my-run
+```
+
+Workers run on Z.ai cloud models by default (`glm-4.7` / `glm-5-turbo` /
+`glm-5.2`). To run them on a **local LM Studio model** (Anthropic-compatible
+endpoint, e.g. `qwen/qwen3.6-35b-a3b`) — including the model-selector switch
+and the first-claim race recovery — see
+[§4b of the operator guide](docs/FACTORY-START-QUICKSTART.md).
+
+**LLM-free development loop** — the Factory Contract test suite runs the real
+factory infrastructure (gates, CandidateSets, lifecycle routing) with scripted
+workers replacing only the LLM. No Claude, no GLM, no network — deterministic
+and fast (~25s per full lifecycle):
+
+```bash
+npm run test:factory-contract
+```
+
+Full factory operator guide: [docs/FACTORY-START-QUICKSTART.md](docs/FACTORY-START-QUICKSTART.md)
+
 ## Kanban Board (auto-started)
 
 saga-mcp bundles a read-only web kanban (`tracker-view/`) that auto-starts when
@@ -92,7 +120,7 @@ A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native,
 > - **Dispatcher** (worker_next/worker_done/merge-lock) for parallel agent orchestration
 > - **Episode state machine** (7 stages with hard gates: discovery→formalization→planning→development→verification→integration→completed)
 > - **CGAD enforcement layer** (Contract-Governed Agentic Development): 18 lint rules, 4-valued verdict, RiskClass computation, semantic conflict detection, runtime observations
-> - **13 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, saga-release, senior-analyst)
+> - **22 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, saga-release, senior-analyst + 9 diagnostic/patrol/recovery skills)
 > - **14 artifact types**, **7 trace link types**, **trusted provider registry**
 > - **Product discovery cycle**: hypothesis → metric → observation → hit/kill
 >
@@ -316,8 +344,8 @@ mcp__saga__worker_next({ worker_id: "smoke", project_id: 1 })
 ## Testing
 
 ```bash
-npm test                    # 163 tests (tsc + node --test)
-npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.3.0 (16 rules)
+npm test                    # 3170+ tests (tsc + node --test)
+npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.4.0 (18 rules)
 ```
 
 ---

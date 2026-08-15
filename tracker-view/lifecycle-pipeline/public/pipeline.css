@@ -1,0 +1,239 @@
+/* Lifecycle Pipeline Renderer — styles.
+   Color palette and sizing mirror the sibling tracker-view.mjs `.pipeline-*`
+   classes (dark #0d1117 theme, same status colors) but are namespaced under
+   `.lp-` so the two never collide if both appear on the same page.
+
+   Layout: a compact horizontal bar, horizontally scrollable on overflow.
+   Readable at small size (the bar lives in a 360px-wide sidebar normally). */
+
+.lp-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 2px 0;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Optional header above the bar: lifecycle display name + run status chip. */
+.lp-header {
+  /* Not part of the horizontal scroll flex row: the renderer places the
+     header as a sibling above .lp-bar inside the container. */
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 0 6px 0;
+  font-size: 12px;
+  color: #8b949e;
+}
+.lp-header .lp-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+.lp-header .lp-run-status {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+.lp-run-status.running {
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, .4);
+}
+.lp-run-status.completed { color: #3fb950; border-color: rgba(63, 185, 80, .4); }
+.lp-run-status.failed { color: #f85149; border-color: rgba(248, 81, 73, .4); }
+.lp-run-status.paused { color: #f39c12; border-color: rgba(243, 158, 18, .4); }
+.lp-run-error {
+  font-size: 11px;
+  color: #f85149;
+}
+.lp-run-lineage {
+  font-size: 10px;
+  color: #a5d6ff;
+  border: 1px dashed rgba(165, 214, 255, .4);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+/* A single stage tile in the horizontal row. */
+.lp-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 6px;
+  min-width: 58px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  color: #8b949e;
+  position: relative; /* anchors the rework counter badge */
+  line-height: 1.2;
+}
+.lp-stage .lp-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+.lp-stage .lp-name {
+  margin-top: 2px;
+  font-weight: 500;
+  color: #c9d1d9;
+}
+.lp-stage .lp-module {
+  margin-top: 1px;
+  font-size: 9px;
+  color: #6e7681;
+  opacity: .85;
+}
+.lp-stage .lp-dur {
+  margin-top: 1px;
+  font-size: 9px;
+  opacity: .7;
+  font-variant-numeric: tabular-nums;
+}
+.lp-stage .lp-worker-activity {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #58a6ff;
+  white-space: nowrap;
+}
+.lp-stage.lp-inherited {
+  background: rgba(63, 185, 80, .06);
+  border: 1px dashed rgba(63, 185, 80, .28);
+}
+.lp-stage .lp-inherited-label {
+  margin-top: 1px;
+  font-size: 8px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+
+/* Status-driven colors (mirror the monolith's .pipeline-stage.* palette). */
+.lp-stage.completed { color: #3fb950; }
+.lp-stage.completed .lp-name { color: #3fb950; }
+
+.lp-stage.in_progress { color: #58a6ff; }
+.lp-stage.in_progress .lp-name { color: #58a6ff; }
+.lp-stage.in_progress .lp-icon { animation: lp-pulse-blue 2s infinite; }
+
+.lp-stage.failed { color: #f85149; }
+.lp-stage.failed .lp-name { color: #f85149; }
+
+.lp-stage.paused { color: #f39c12; }
+.lp-stage.paused .lp-name { color: #f39c12; }
+
+/* Pending & skipped: muted. Skipped additionally struck-through to signal
+   "stages after a terminal exit". */
+.lp-stage.pending { opacity: .35; }
+.lp-stage.skipped { opacity: .45; }
+.lp-stage.skipped .lp-name {
+  text-decoration: line-through;
+  text-decoration-color: #6e7681;
+}
+
+/* Rework counter "↻N" pinned to the top-right of the stage tile. */
+.lp-stage .lp-attempt {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #d29922;
+  background: rgba(187, 128, 9, .15);
+  border-radius: 8px;
+  padding: 1px 5px;
+  line-height: 1.3;
+}
+
+/* Module outcome badge, shown when localOutcome != null. Color is
+   lifecycle-agnostic; we tint by common outcome words but always fall back. */
+.lp-stage .lp-outcome {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 7px;
+  line-height: 1.5;
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+.lp-outcome.go,
+.lp-outcome.formalized,
+.lp-outcome.accepted,
+.lp-outcome.delivered,
+.lp-outcome.passed { color: #3fb950; border-color: rgba(63, 185, 80, .4); }
+.lp-outcome.infeasible,
+.lp-outcome.failed,
+.lp-outcome.rejected,
+.lp-outcome.error { color: #f85149; border-color: rgba(248, 81, 73, .4); }
+.lp-outcome.clarify,
+.lp-outcome.deferred,
+.lp-outcome.paused { color: #f39c12; border-color: rgba(243, 158, 18, .4); }
+
+/* Arrow between stages. Aligns with the icon row, not the name, so the
+   → sits visually next to the status glyphs. */
+.lp-arrow {
+  color: #30363d;
+  flex-shrink: 0;
+  padding: 0 1px;
+  font-size: 11px;
+  align-self: flex-start;
+  margin-top: 7px; /* line up with the .lp-icon (13px) roughly centered */
+  user-select: none;
+}
+/* The arrow leading into a terminal badge is dimmed to signal the stop. */
+.lp-arrow-terminal { opacity: .6; }
+
+/* Terminal badge appended after the last stage when the lifecycle ended. */
+.lp-terminal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 6px;
+  min-width: 54px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #8b949e;
+}
+.lp-terminal.failed,
+.lp-terminal.infeasible,
+.lp-terminal.rejected,
+.lp-terminal.error {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, .5);
+  background: rgba(248, 81, 73, .08);
+}
+.lp-terminal.completed,
+.lp-terminal.delivered {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, .5);
+  background: rgba(63, 185, 80, .08);
+}
+
+/* Live-tick animations (pulse the in-progress glyph like the monolith). */
+@keyframes lp-pulse-blue {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* Respect reduced-motion: stop the pulsing for accessibility. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-stage.in_progress .lp-icon { animation: none; }
+}

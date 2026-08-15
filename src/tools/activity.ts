@@ -7,7 +7,8 @@ export const definitions: Tool[] = [
   {
     name: 'activity_log',
     description:
-      'View the activity log showing what changed and when. Useful for understanding recent progress or reviewing what happened since the last session.',
+      'View the activity log showing what changed and when. Useful for understanding recent progress or reviewing what happened since the last session. ' +
+      'Call shape: activity_log({ entity_type: "project|epic|task|subtask|note", entity_id: <integer>, action: "created|updated|deleted|status_changed", since: "<ISO 8601 datetime>", limit: <integer> }). All params optional.',
     annotations: { title: 'Activity Log', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -31,7 +32,8 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_session_diff',
     description:
-      'Show what changed since a given timestamp. Returns aggregated summary with counts by action and entity type, plus highlights of key changes. Call this at the start of a session to understand what happened since the last one.',
+      'Show what changed since a given timestamp. Returns aggregated summary with counts by action and entity type, plus highlights of key changes. Call this at the start of a session to understand what happened since the last one. ' +
+      'Call shape: tracker_session_diff({ since: "<ISO 8601 datetime, e.g. 2026-02-21T15:00:00>" }). Required: since.',
     annotations: { title: 'Session Diff', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -47,7 +49,8 @@ export const definitions: Tool[] = [
   {
     name: 'task_batch_update',
     description:
-      'Update the PRIORITY of multiple tasks at once. This is a bulk convenience for triage/reprioritization. As of Slice 3 (ADR-011 audit fix), this tool NO LONGER accepts `status` or `assigned_to` — those fields bypass the dispatcher fence, review-verdict flow, verification gates, and integration_state projection, which produced structurally invalid rows (TERMINAL_EXECUTION_OWNS_TASK, BUFFER_WITH_OWNER, etc.). To change lifecycle state, route through the regulated tools: worker_next (claim), worker_done (advance/review), worker_ask_need (park for human), or worker_merge_release (integration). To reassign, use task_update only on unfenced tasks or admin_override_lifecycle for audited recovery.',
+      'Update the PRIORITY of multiple tasks at once. This is a bulk convenience for triage/reprioritization. As of Slice 3 (ADR-011 audit fix), this tool NO LONGER accepts `status` or `assigned_to` — those fields bypass the dispatcher fence, review-verdict flow, verification gates, and integration_state projection, which produced structurally invalid rows (TERMINAL_EXECUTION_OWNS_TASK, BUFFER_WITH_OWNER, etc.). To change lifecycle state, route through the regulated tools: worker_next (claim), worker_done (advance/review), worker_ask_need (park for human), or worker_merge_release (integration). To reassign, use task_update only on unfenced tasks or admin_override_lifecycle for audited recovery. ' +
+      'Call shape: task_batch_update({ ids: [<integer>, <integer>, ...], priority: "low|medium|high|critical" }). Required: ids (an array of task IDs) and priority. NOTE: only `priority` is accepted — not status or assigned_to.',
     annotations: { title: 'Batch Update Task Priority', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

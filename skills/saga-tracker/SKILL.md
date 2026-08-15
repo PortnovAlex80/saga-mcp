@@ -1,6 +1,6 @@
 ---
 name: saga-tracker
-description: "Bootstrap and dispatcher contract for one logical product board. Resolve `.saga/project.json` or a runner-supplied project binding, then use worker_next/worker_done for exactly one assigned task. `projectname.txt` is legacy fallback."
+description: "Bootstrap and dispatcher contract for one logical product board. Require `.saga/project.json` or a runner-supplied project binding, then use worker_next/worker_done for exactly one assigned task."
 ---
 
 # Saga tracker — bootstrap (начальная загрузка) + the one rule that matters (единственное правило, которое важно)
@@ -29,7 +29,7 @@ product from a repository directory; one product may contain many repositories.
 1. Use the `project_id` supplied by the board runner, or read
    `.saga/project.json`.
 2. Validate its project/repository IDs. If absent, use `saga-start`.
-3. Only for legacy repositories, resolve the exact name from `projectname.txt`.
+3. If neither binding exists, hard stop and use `saga-start`.
 4. Hold project_id. Pass it to every worker_next call.
 ```
 

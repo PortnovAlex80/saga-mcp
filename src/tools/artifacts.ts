@@ -1,9 +1,18 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { validateBrief } from '../validators/brief.js';
 import { artifactDiskHash, refreshArtifactHash } from '../helpers/artifact-file.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
+import {
+  recordManagedArtifactProduction,
+  recordManagedTraceProduction,
+  resolveManagedExecutionProvenance,
+  type ManagedExecutionProvenance,
+} from '../process-modules/persistence/sqlite-managed-production-ledger.js';
+import { writeProduct } from './universal-desk-helper.js';
+import { ARTIFACT_REF_SCHEMA } from '../modules/formalization/domain/artifact-ref-bridge.js';
 
 // ============================================================================
 // Requirements & design artifacts + traceability graph.
@@ -44,17 +53,132 @@ const BUSINESS_PROJECT_NAME = 'business';
 // the metadata key under which the validated BriefPayload is stored.
 const BRIEF_PAYLOAD_KEY = 'brief_payload';
 
+function assertManagedArtifactMutationAuthority(
+  provenance: ManagedExecutionProvenance | null,
+  requestedStatus: typeof ARTIFACT_STATUSES[number] | undefined,
+  existingStatus: string | null = null,
+  hasMutation = true,
+): void {
+  if (
+    !provenance
+    || provenance.artifactAcceptanceAuthority !== 'kernel-gate'
+    || !hasMutation
+  ) {
+    return;
+  }
+  if (requestedStatus === 'accepted') {
+    throw new Error(
+      'ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION: this Process Module task '
+        + 'produces candidates only; keep status draft/in_review and let the '
+        + 'common kernel gate commit accepted+clean after validation',
+    );
+  }
+  if (
+    existingStatus === 'accepted'
+    && requestedStatus !== 'draft'
+    && requestedStatus !== 'in_review'
+  ) {
+    throw new Error(
+      'ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION: an accepted artifact cannot '
+        + 'be mutated in place by this worker; explicitly reopen it as draft/'
+        + 'in_review so the common kernel gate can validate the new version',
+    );
+  }
+}
+
+/**
+ * T2.1A — Guard against frozen-baseline AC tag mutation.
+ *
+ * After the acceptance baseline is frozen (freeze-acceptance-baseline node),
+ * the architect runs and produces the SRS. The architect must NOT mutate the
+ * tags of accepted ACs that belong to the frozen baseline — that would let a
+ * HOW-role weaken the WHAT contract (e.g. flip criticality:blocker →
+ * criticality:degradable) after freeze, and the baseline-drift detector
+ * (which checks content_hash, not tags) would not catch it.
+ *
+ * If this artifact id appears in any frozen baseline's acArtifactIds, tag
+ * mutation is forbidden. The architect should instead record criticality /
+ * ac_kind decisions in its OWN product (SRS §D2 or a future
+ * ImplementationBinding), not by mutating the AC row.
+ *
+ * This guard is intentionally narrow: it blocks ONLY tag mutation on accepted
+ * ACs that are part of a frozen baseline. Non-accepted ACs, non-AC artifacts,
+ * and ACs not in any baseline are unaffected.
+ */
+function assertAcceptedAcNotFrozenByTags(
+  db: Database.Database,
+  artifactId: number,
+  existingTags: unknown,
+  newTags: string[],
+): void {
+  // Quick check: if the tag set is unchanged (same values, any order), allow.
+  // This avoids blocking idempotent re-writes of the same tags.
+  const existing = Array.isArray(existingTags) ? [...existingTags].sort() : [];
+  const incoming = [...newTags].sort();
+  if (existing.length === incoming.length && existing.every((t, i) => t === incoming[i])) {
+    return;
+  }
+  // Check whether this AC is part of any frozen acceptance baseline. The
+  // payload JSON contains acArtifactIds. We scan all baselines for the epic
+  // (there is typically just one per process run).
+  const baselines = db.prepare(
+    `SELECT payload FROM factory_formalization_acceptance_baselines`,
+  ).all() as Array<{ payload: string }>;
+  for (const row of baselines) {
+    try {
+      const payload = JSON.parse(row.payload) as { acArtifactIds?: number[] };
+      if (Array.isArray(payload.acArtifactIds) && payload.acArtifactIds.includes(artifactId)) {
+        throw new Error(
+          `ACCEPTED_AC_TAG_MUTATION_FORBIDDEN: artifact ${artifactId} is part `
+          + `of a frozen acceptance baseline and its tags cannot be mutated `
+          + `after baseline freeze. Record criticality/ac_kind decisions in `
+          + `the SRS §D2 (the architect's own product), not by mutating the `
+          + `AC artifact row.`,
+        );
+      }
+    } catch (e) {
+      // Re-throw the guard error; swallow JSON parse errors (malformed
+      // baseline payload is a separate problem, not a tag-mutation case).
+      if (e instanceof Error && e.message.startsWith('ACCEPTED_AC_TAG_MUTATION_FORBIDDEN')) {
+        throw e;
+      }
+    }
+  }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
 
 function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleArtifactCreate(args)).immediate();
+  }
   const projectId = args.project_id as number;
   const epicId = args.epic_id as number;
   const type = args.type as typeof ARTIFACT_TYPES[number];
   const title = args.title as string;
-  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  let projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  // Server-side fallback: if the worker omitted project_repository_id but we
+  // are running under managed execution, read it from the task's metadata.
+  // Without it, artifactDiskHash cannot resolve the file path and content_hash
+  // ends up NULL — which causes formalization resolvers to reject the artifact
+  // ("does not match its canonical row"). The worker SHOULD pass it (the
+  // template and checklist say so), but models sometimes forget — this guard
+  // makes the infrastructure resilient to that omission.
+  if (projectRepositoryId === null && managedExecution) {
+    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    if (taskRow) {
+      try {
+        const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
+        if (typeof taskMeta.project_repository_id === 'number') {
+          projectRepositoryId = taskMeta.project_repository_id;
+        }
+      } catch { /* metadata not JSON — ignore */ }
+    }
+  }
   // Workers sometimes write absolute paths (D:\Development\moscito\docs\...md)
   // despite the skill template saying 'docs/...'. On Windows this breaks
   // path.join(root, absPath) downstream (tracker-view resolver, artifactDiskHash).
@@ -74,6 +198,7 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (!ARTIFACT_STATUSES.includes(status)) {
     throw new Error(`status must be one of ${ARTIFACT_STATUSES.join(', ')}, got '${status}'`);
   }
+  assertManagedArtifactMutationAuthority(managedExecution, status);
   if (title === undefined || title === null || title === '') {
     throw new Error('title and path are required');
   }
@@ -169,9 +294,14 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
 
   if (code !== null) {
     const existing = db.prepare(
-      'SELECT id FROM artifacts WHERE epic_id=? AND type=? AND code=?',
-    ).get(epicId, type, code) as { id: number } | undefined;
+      'SELECT id,status FROM artifacts WHERE epic_id=? AND type=? AND code=?',
+    ).get(epicId, type, code) as { id: number; status: string } | undefined;
     if (existing) {
+      assertManagedArtifactMutationAuthority(
+        managedExecution,
+        status,
+        existing.status,
+      );
       db.prepare(
         `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
                               project_repository_id=?, content_hash=?, accepted_hash=?,
@@ -222,6 +352,24 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   }
 
   const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(artifactId) as Artifact;
+  recordManagedArtifactProduction(
+    db,
+    artifact,
+    updatedExisting ? 'upsert' : 'create',
+  );
+  // Conveyor v4 step 3.A.2: dual-write artifact-ref onto the universal desk.
+  // productKey='artifact:<id>' gives each logical artifact instance its own
+  // identity under the triple UNIQUE(process_run_id, product_kind, product_key)
+  // constraint — without it, every artifact-ref product of one process run
+  // would collide on (process_run_id, product_kind='factory.artifact-ref.v1').
+  if (artifact.content_hash) {
+    writeProduct(db, {
+      schemaRef: ARTIFACT_REF_SCHEMA,
+      content: { artifactId: artifact.id, type: artifact.type, contentHash: artifact.content_hash },
+      executionRef: managedExecution?.executionId ?? 'system',
+      productKey: `artifact:${artifact.id}`,
+    });
+  }
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,
     `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' ${updatedExisting ? 'updated (upsert)' : 'created'}`);
   return artifact;
@@ -317,6 +465,10 @@ function handleArtifactList(args: Record<string, unknown>): {
 
 function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleArtifactUpdate(args)).immediate();
+  }
   const id = args.id as number;
   const existing = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
   if (!existing) throw new Error(`Artifact ${id} not found`);
@@ -341,6 +493,7 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
     }
     fields.push('status=?'); params.push(status); trackedFields.push(['status', 'status']);
   }
+  assertManagedArtifactMutationAuthority(managedExecution, status);
 
   const parentArtifactId = args.parent_artifact_id as number | null | undefined;
   if (parentArtifactId !== undefined) {
@@ -349,8 +502,20 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
   const projectRepositoryId = args.project_repository_id as number | null | undefined;
   const effectivePath = path ?? existing.path;
-  const effectiveRepositoryId = projectRepositoryId !== undefined
+  let effectiveRepositoryId = projectRepositoryId !== undefined
     ? projectRepositoryId : existing.project_repository_id;
+  // Server-side fallback: if still null and under managed execution, read from task metadata.
+  if (effectiveRepositoryId == null && managedExecution) {
+    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    if (taskRow) {
+      try {
+        const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
+        if (typeof taskMeta.project_repository_id === 'number') {
+          effectiveRepositoryId = taskMeta.project_repository_id;
+        }
+      } catch { /* metadata not JSON — ignore */ }
+    }
+  }
   const diskHash = artifactDiskHash(db, effectivePath, effectiveRepositoryId);
   const contentHash = diskHash ?? (args.content_hash as string | null | undefined);
   if (contentHash !== undefined) {
@@ -381,7 +546,24 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   }
 
   const tags = args.tags as string[] | undefined;
-  if (tags !== undefined) { fields.push('tags=?'); params.push(JSON.stringify(tags)); }
+  if (tags !== undefined) {
+    // T2.1A — Frozen AC tag mutation guard.
+    //
+    // The architect (a HOW-role) runs AFTER the acceptance baseline is frozen.
+    // It must not mutate the tags of an accepted AC that belongs to a frozen
+    // baseline — that would let a HOW-role weaken the frozen WHAT contract
+    // (e.g. re-tag criticality: blocker → criticality: degradable). The
+    // baseline-drift detector (findBaselineDrift) checks content_hash but is
+    // blind to tag changes, so without this guard the mutation is invisible.
+    //
+    // The only legitimate way to change an AC's criticality after baseline is
+    // a separate immutable product (ImplementationBinding / SrsDecomposition)
+    // created by the architect as ITS OWN output, not by mutating the AC row.
+    if (existing.type === 'AC' && existing.status === 'accepted') {
+      assertAcceptedAcNotFrozenByTags(db, id, existing.tags, tags);
+    }
+    fields.push('tags=?'); params.push(JSON.stringify(tags));
+  }
 
   const metadata = args.metadata as Record<string, unknown> | undefined;
   if (metadata !== undefined) { fields.push('metadata=?'); params.push(JSON.stringify(metadata)); }
@@ -389,11 +571,18 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   if (fields.length === 0) {
     return existing; // nothing to update
   }
+  assertManagedArtifactMutationAuthority(
+    managedExecution,
+    status,
+    existing.status,
+    true,
+  );
   fields.push("updated_at=datetime('now')");
   params.push(id);
 
   db.prepare(`UPDATE artifacts SET ${fields.join(', ')} WHERE id=?`).run(...params);
   const updated = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact;
+  recordManagedArtifactProduction(db, updated, 'update');
 
   // logActivity: one summary line; status change is the most interesting
   const statusChanged = trackedFields.some(([f]) => f === 'status');
@@ -411,6 +600,10 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
 function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleTraceAdd(args)).immediate();
+  }
   const sourceId = args.source_id as number;
   const targetType = args.target_type as 'artifact' | 'task';
   const targetId = args.target_id as number;
@@ -492,9 +685,43 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
     'SELECT * FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?',
   ).get(sourceId, targetType, targetId, linkType) as ArtifactTrace;
 
+  recordManagedTraceProduction(db, trace);
   logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
     `Trace ${linkType} added: artifact ${sourceId} → ${targetType} ${targetId}${info.changes === 0 ? ' (already existed)' : ''}`);
   return trace;
+}
+
+function handleTraceDelete(args: Record<string, unknown>): { deleted: boolean } {
+  const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleTraceDelete(args)).immediate();
+  }
+  const sourceId = args.source_id as number;
+  const targetType = args.target_type as 'artifact' | 'task';
+  const targetId = args.target_id as number;
+  const linkType = args.link_type as typeof LINK_TYPES[number];
+
+  if (!['artifact', 'task'].includes(targetType)) {
+    throw new Error(`target_type must be 'artifact' or 'task', got '${targetType}'`);
+  }
+  if (!LINK_TYPES.includes(linkType)) {
+    throw new Error(`link_type must be one of ${LINK_TYPES.join(', ')}, got '${linkType}'`);
+  }
+
+  // Block deletion of verified_by traces — they are derived from passing
+  // verification evidence, not arbitrary worker writes.
+  if (linkType === 'verified_by') {
+    throw new Error('verified_by traces cannot be deleted; they are derived from verification evidence');
+  }
+
+  const info = db.prepare(
+    `DELETE FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?`,
+  ).run(sourceId, targetType, targetId, linkType);
+
+  logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
+    `Trace ${linkType} deleted: artifact ${sourceId} → ${targetType} ${targetId}`);
+  return { deleted: info.changes > 0 };
 }
 
 function handleTraceList(args: Record<string, unknown>): {
@@ -596,7 +823,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_create',
     description:
-      "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD).",
+      "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD). " +
+      'Call shape: artifact_create({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", title: "<string>", path: "<string>", code: "<string (e.g. AC-1)>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: project_id, epic_id, type, title, path.',
     annotations: { title: 'Artifact: Create', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -620,7 +848,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_get',
     description:
-      'Get one artifact with its full context: parents up the hierarchy, direct children, outgoing traces (this artifact → others/tasks), and incoming traces (others → this artifact). Use this to understand an AC: which UC/FR it derives from, and which dev-tasks implement it.',
+      'Get one artifact with its full context: parents up the hierarchy, direct children, outgoing traces (this artifact → others/tasks), and incoming traces (others → this artifact). Use this to understand an AC: which UC/FR it derives from, and which dev-tasks implement it. ' +
+      'Call shape: artifact_get({ id: <integer> }). The parameter is "id" (not "artifact_id").',
     annotations: { title: 'Artifact: Get', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -631,7 +860,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_list',
     description:
-      'List artifacts with optional filters (project, epic, type, status, parent). Ordered by epic, type, code. Use type:"AC" + epic to get all acceptance criteria of a REQ episode.',
+      'List artifacts with optional filters (project, epic, type, status, parent). Ordered by epic, type, code. Use type:"AC" + epic to get all acceptance criteria of a REQ episode. ' +
+      'Call shape: artifact_list({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer> }). All params optional.',
     annotations: { title: 'Artifact: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -647,7 +877,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_update',
     description:
-      "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes.",
+      "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes. " +
+      'Call shape: artifact_update({ id: <integer>, title: "<string>", path: "<string>", code: "<string>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer (pass null to detach)>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: id. The parameter is "id" (not "artifact_id").',
     annotations: { title: 'Artifact: Update', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -669,7 +900,8 @@ export const definitions: Tool[] = [
   {
     name: 'trace_add',
     description:
-      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'implements_spec' (FR or RULE implemented by a SPEC design contract), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph.",
+      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'implements_spec' (FR or RULE implemented by a SPEC design contract), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph. " +
+      'Call shape: trace_add({ source_id: <integer (artifact ID)>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). Required: all four. source_id is always an artifact; target may be artifact or task.',
     annotations: { title: 'Trace: Add', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -685,7 +917,8 @@ export const definitions: Tool[] = [
   {
     name: 'trace_list',
     description:
-      "List traces with optional filters (source, target_type, target_id, link_type). Returns source/target titles and the target's current status, so you can see e.g. which AC are implemented by done tasks vs in_progress tasks.",
+      "List traces with optional filters (source, target_type, target_id, link_type). Returns source/target titles and the target's current status, so you can see e.g. which AC are implemented by done tasks vs in_progress tasks. " +
+      'Call shape: trace_list({ source_id: <integer>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). All params optional.',
     annotations: { title: 'Trace: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -698,9 +931,27 @@ export const definitions: Tool[] = [
     },
   },
   {
+    name: 'trace_delete',
+    description:
+      "Delete a directed trace edge. Use to remove stale or duplicate traces left by earlier worker attempts (e.g. hypothesis → old business_metric after creating correct ones). Cannot delete 'verified_by' traces (those are derived from evidence). " +
+      'Call shape: trace_delete({ source_id: <integer>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|superseded_by" }). Required: all four.',
+    annotations: { title: 'Trace: Delete', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'integer', description: 'Source artifact ID.' },
+        target_type: { type: 'string', enum: ['artifact', 'task'] },
+        target_id: { type: 'integer', description: 'Target artifact or task ID.' },
+        link_type: { type: 'string', enum: [...LINK_TYPES.filter(l => l !== 'verified_by')] },
+      },
+      required: ['source_id', 'target_type', 'target_id', 'link_type'],
+    },
+  },
+  {
     name: 'artifact_coverage',
     description:
-      "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'.",
+      "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'. " +
+      'Call shape: artifact_coverage({ epic_id: <integer>, type: "AC (default)|PRD|SRS|UC|FR|NFR|...", link_type: "implements (default)|covers|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). Required: epic_id.',
     annotations: { title: 'Artifact: Coverage', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -720,6 +971,7 @@ export const handlers: Record<string, ToolHandler> = {
   artifact_list: handleArtifactList,
   artifact_update: handleArtifactUpdate,
   trace_add: handleTraceAdd,
+  trace_delete: handleTraceDelete,
   trace_list: handleTraceList,
   artifact_coverage: handleArtifactCoverage,
 };

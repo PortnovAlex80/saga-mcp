@@ -1,0 +1,81 @@
+{
+  "manifestFormatVersion": "0.1.0",
+  "source": "W0-A7 synthetic fixture (data-only)",
+  "identity": {
+    "name": "synthetic-lm-marketing",
+    "version": "0.1.0",
+    "kind": "lm-marketing",
+    "displayName": "Synthetic LM Marketing",
+    "description": "W0-A7 synthetic LM-node fixture. Data-only — no real handlers. Proves the SPI is module-kind-agnostic."
+  },
+  "inputContract": { "id": "synthetic.marketing.input.v1" },
+  "outputContract": { "id": "synthetic.marketing.output.v1" },
+  "outcomes": [
+    { "code": "campaign-drafted", "description": "A typed CampaignDraft envelope was produced.", "terminal": true }
+  ],
+  "flow": {
+    "id": "synthetic.lm-marketing.standard",
+    "version": "0.1.0",
+    "entryNodeId": "draft-campaign",
+    "nodes": [
+      {
+        "id": "draft-campaign",
+        "label": "Draft Campaign",
+        "kind": "lm",
+        "description": "Produce a typed CampaignDraft envelope from a brief.",
+        "executionProfile": "marketing-author",
+        "inputSchema": { "id": "synthetic.marketing.input.v1" },
+        "outputSchema": { "id": "synthetic.marketing.output.v1" },
+        "emitsOutcome": "campaign-drafted"
+      }
+    ],
+    "transitions": [],
+    "terminalNodeIds": ["draft-campaign"]
+  },
+  "artifacts": [
+    {
+      "type": "synthetic.campaign-draft",
+      "schema": { "id": "synthetic.marketing.output.v1" },
+      "authority": "worker",
+      "description": "Opaque campaign draft envelope produced by the LM node."
+    }
+  ],
+  "policies": [],
+  "invariants": [],
+  "executionProfiles": [
+    {
+      "id": "marketing-author",
+      "workIntentKind": "synthetic.marketing.campaign-draft",
+      "workIntentSchema": { "id": "synthetic.marketing.work-intent.v1" },
+      "taskKind": "marketing.draft-campaign",
+      "executionSkill": "synthetic-marketing-execution-skill",
+      "reviewSkill": "synthetic-marketing-review-skill",
+      "protocolSkill": "synthetic-process-module-worker-protocol",
+      "semanticSkill": "skills/synthetic-marketing-skill.md",
+      "executionMode": "git_change",
+      "allowedTools": ["Read", "Write", "Edit"],
+      "trackerTemplate": "templates/campaign-draft-tracker.md",
+      "workspaceTemplates": [],
+      "callTemplates": [],
+      "checklists": [],
+      "outputSchema": { "id": "synthetic.marketing.output.v1" },
+      "retryPolicy": {
+        "maxAttempts": 2,
+        "retryOn": ["draft-rejected"],
+        "backoff": "fixed"
+      },
+      "recoveryPolicy": {
+        "resumeFromCheckpoint": true,
+        "reuseWorkIntent": false,
+        "reuseAcceptedOutput": false,
+        "onExhausted": "pause"
+      }
+    }
+  ],
+  "resourceIndex": [
+    { "logicalId": "semantic-skill", "path": "skills/synthetic-marketing-skill.md", "kind": "skill" },
+    { "logicalId": "campaign-template", "path": "templates/campaign-draft-template.md", "kind": "template" },
+    { "logicalId": "draft-tracker", "path": "templates/campaign-draft-tracker.md", "kind": "tracker" }
+  ],
+  "handlerReferences": []
+}

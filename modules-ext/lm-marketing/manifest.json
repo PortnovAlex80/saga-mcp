@@ -1,0 +1,120 @@
+{
+  "manifestFormatVersion": "1",
+  "source": "W10-A1 (upgrades W0-A7 synthetic fixture into a real installable package)",
+  "spec": "docs/refactor-management/09-contracts/WAVE10-EXTENSIBILITY-SPEC.md",
+  "runtimeCompatibilityRange": "^3.0.0",
+  "definition": {
+    "identity": {
+      "name": "lm-marketing",
+      "version": "1.0.0",
+      "kind": "lm-marketing",
+      "displayName": "LM Marketing",
+      "description": "W10-A1 arbitrary-extensibility proof: a self-contained LM-node Process Module package that installs and executes through the public SPI alone, with no Runtime, catalog, runner, or existing-module dependency."
+    },
+    "inputContract": { "id": "saga3-ext.marketing.input.v1" },
+    "outputContract": { "id": "saga3-ext.marketing.output.v1" },
+    "outcomes": [
+      {
+        "code": "campaign-drafted",
+        "description": "A typed CampaignDraft envelope was produced and accepted.",
+        "terminal": true
+      }
+    ],
+    "flow": {
+      "id": "lm-marketing.draft-campaign",
+      "version": "1.0.0",
+      "entryNodeId": "draft-campaign",
+      "nodes": [
+        {
+          "id": "draft-campaign",
+          "label": "Draft Campaign",
+          "kind": "lm",
+          "description": "Produce a typed CampaignDraft envelope from a MarketingBrief using the marketing-author execution profile.",
+          "executionProfile": "marketing-author",
+          "inputSchema": { "id": "saga3-ext.marketing.input.v1" },
+          "outputSchema": { "id": "saga3-ext.marketing.output.v1" },
+          "emitsOutcome": "campaign-drafted"
+        }
+      ],
+      "transitions": [],
+      "terminalNodeIds": ["draft-campaign"]
+    },
+    "artifacts": [
+      {
+        "type": "marketing.campaign-draft",
+        "schema": { "id": "saga3-ext.marketing.output.v1" },
+        "authority": "worker",
+        "description": "The typed CampaignDraft envelope produced by the draft-campaign LM node."
+      }
+    ],
+    "policies": [],
+    "invariants": [],
+    "executionProfiles": [
+      {
+        "id": "marketing-author",
+        "workIntentKind": "marketing.campaign-draft",
+        "workIntentSchema": { "id": "saga3-ext.marketing.work-intent.v1" },
+        "taskKind": "marketing.draft-campaign",
+        "executionSkill": "marketing-author-execution-skill",
+        "reviewSkill": "marketing-author-review-skill",
+        "protocolSkill": "skills/marketing-author-skill.md",
+        "semanticSkill": "skills/marketing-author-skill.md",
+        "artifactAcceptanceAuthority": "kernel-gate",
+        "executionMode": "git_change",
+        "allowedTools": ["Read", "Write", "Edit", "worker_done"],
+        "trackerTemplate": "templates/campaign-draft-tracker.md",
+        "workspaceTemplates": ["templates/campaign-draft-template.md"],
+        "callTemplates": ["templates/campaign-draft-call-template.json"],
+        "checklists": ["templates/campaign-draft-checklist.md"],
+        "outputSchema": { "id": "saga3-ext.marketing.output.v1" },
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "retryOn": ["draft-rejected"],
+          "backoff": "fixed"
+        },
+        "recoveryPolicy": {
+          "resumeFromCheckpoint": true,
+          "reuseWorkIntent": false,
+          "reuseAcceptedOutput": false,
+          "onExhausted": "pause"
+        }
+      }
+    ]
+  },
+  "resourceIndex": [
+    { "logicalId": "marketing.skill.author", "path": "skills/marketing-author-skill.md", "kind": "skill", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.template.draft", "path": "templates/campaign-draft-template.md", "kind": "template", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.tracker.draft", "path": "templates/campaign-draft-tracker.md", "kind": "template", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.checklist.draft", "path": "templates/campaign-draft-checklist.md", "kind": "checklist", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.call-template.draft", "path": "templates/campaign-draft-call-template.json", "kind": "mcp-call-template", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.schema.input", "path": "schemas/marketing-input.schema.json", "kind": "schema", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.schema.output", "path": "schemas/marketing-output.schema.json", "kind": "schema", "digest": "pending@wave-2" },
+    { "logicalId": "marketing.schema.work-intent", "path": "schemas/marketing-work-intent.schema.json", "kind": "schema", "digest": "pending@wave-2" }
+  ],
+  "handlerRefs": [
+    { "logicalId": "marketing-resolve-campaign-draft", "version": "1.0.0", "digest": "pending@wave-2" }
+  ],
+  "inputContractRef": { "schemaId": "saga3-ext.marketing.input.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+  "outputContractRef": { "schemaId": "saga3-ext.marketing.output.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+  "nodeProtocols": [
+    {
+      "id": "lm-marketing.draft-campaign",
+      "version": "1.0.0",
+      "owningFlowNodeId": "draft-campaign",
+      "entryStep": "load-brief",
+      "steps": [
+        { "id": "load-brief", "resources": ["marketing.skill.author"], "allowedTools": ["Read"] },
+        { "id": "draft-campaign", "resources": ["marketing.skill.author", "marketing.template.draft", "marketing.call-template.draft"], "allowedTools": ["Read", "Write", "Edit"] },
+        { "id": "verify-completeness", "resources": ["marketing.checklist.draft"], "allowedTools": ["Read"] },
+        { "id": "submit-campaign-bundle", "resources": [], "allowedTools": ["worker_done"] }
+      ],
+      "transitions": [
+        { "from": "load-brief", "to": "draft-campaign", "kind": "linear" },
+        { "from": "draft-campaign", "to": "verify-completeness", "kind": "linear" },
+        { "from": "verify-completeness", "to": "submit-campaign-bundle", "kind": "linear" }
+      ],
+      "recoveryEntrySteps": ["draft-campaign"],
+      "retrySemantics": "runtime-implemented-linear"
+    }
+  ]
+}

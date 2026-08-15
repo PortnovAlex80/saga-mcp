@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "saga3.human-director-approval.input.v1",
+  "title": "Director Sign-off Input (scored campaign bundle)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["campaignBundleId", "scoringSummary"],
+  "properties": {
+    "campaignBundleId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Content-addressed id of the scored campaign bundle awaiting a director decision."
+    },
+    "scoringSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Opaque scoring summary produced by the upstream kernel-analytics stage. The director reviews this before recording a decision."
+    }
+  },
+  "description": "Input contract for the director-signoff Human node: a scored campaign bundle plus the scoring summary the director reviews. Produced by the upstream campaign stages; consumed verbatim by the director-console adapter."
+}

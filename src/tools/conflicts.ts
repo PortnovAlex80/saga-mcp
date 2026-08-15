@@ -328,7 +328,7 @@ function integrationBranchCollisionIsSequenced(
 export const definitions: Tool[] = [
   {
     name: 'conflict_keys_set',
-    description: 'REQ-010 — Tag a task with semantic conflict keys (file_path/schema/public_protocol/integration_branch). Two active tasks sharing a key pair collide semantically (CGAD §34: git conflict must not be the only detector).',
+    description: 'REQ-010 — Tag a task with semantic conflict keys (file_path/schema/public_protocol/integration_branch). Two active tasks sharing a key pair collide semantically (CGAD §34: git conflict must not be the only detector). Call shape: conflict_keys_set({ task_id: <integer>, keys: [ { key_type: "file_path|schema|public_protocol|integration_branch", key_value: "<string>" }, ... ] }). Required: task_id, keys (non-empty array).',
     annotations: { title: 'Conflict Keys: Set', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -352,7 +352,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'conflict_keys_list',
-    description: 'REQ-010 — List a task\'s semantic conflict keys.',
+    description: 'REQ-010 — List a task\'s semantic conflict keys. Call shape: conflict_keys_list({ task_id: <integer> }). Required: task_id.',
     annotations: { title: 'Conflict Keys: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -362,7 +362,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'conflict_keys_clear',
-    description: 'REQ-010 — Remove all semantic conflict keys from a task.',
+    description: 'REQ-010 — Remove all semantic conflict keys from a task. Call shape: conflict_keys_clear({ task_id: <integer> }). Required: task_id.',
     annotations: { title: 'Conflict Keys: Clear', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -372,7 +372,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'conflict_keys_auto_derive',
-    description: 'REQ-010 — Auto-derive conflict keys from task fields (source_ref → file_path, metadata.schema → schema, metadata.public_protocol → public_protocol, repository binding → integration_branch). Preserves manually-set keys.',
+    description: 'REQ-010 — Auto-derive conflict keys from task fields (source_ref → file_path, metadata.schema → schema, metadata.public_protocol → public_protocol, repository binding → integration_branch). Preserves manually-set keys. Call shape: conflict_keys_auto_derive({ task_id: <integer> }). Required: task_id.',
     annotations: { title: 'Conflict Keys: Auto-Derive', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -382,7 +382,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'conflict_check',
-    description: 'REQ-010 — Scan an epic or repository scope for semantic collisions: pairs of ACTIVE tasks sharing a (key_type, key_value) pair. Returns the collision set. Use at planning time to decide whether Pattern B (scaffold) is required.',
+    description: 'REQ-010 — Scan an epic or repository scope for semantic collisions: pairs of ACTIVE tasks sharing a (key_type, key_value) pair. Returns the collision set. Use at planning time to decide whether Pattern B (scaffold) is required. Call shape: conflict_check({ epic_id: <integer>, project_repository_id: <integer> }). At least one of epic_id or project_repository_id is required.',
     annotations: { title: 'Conflict: Check', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

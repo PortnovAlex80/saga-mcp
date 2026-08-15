@@ -1,0 +1,33 @@
+{
+  "description": "Negative case: two resourceIndex entries share a logicalId. Expected error code RESOURCE_LOGICAL_ID_DUPLICATE at $.resourceIndex.",
+  "expectedErrorCodes": ["RESOURCE_LOGICAL_ID_DUPLICATE"],
+  "manifest": {
+    "manifestFormatVersion": "1",
+    "definition": {
+      "identity": { "name": "neg-rdup", "version": "0.1.0", "kind": "neg", "displayName": "Neg", "description": "negative" },
+      "inputContract": { "id": "neg-rdup.input.v1" },
+      "outputContract": { "id": "neg-rdup.output.v1" },
+      "outcomes": [{ "code": "done", "description": "x", "terminal": true }],
+      "flow": {
+        "id": "neg-rdup.standard",
+        "version": "0.1.0",
+        "entryNodeId": "n",
+        "nodes": [{ "id": "n", "label": "N", "kind": "lm", "description": "x", "inputSchema": { "id": "neg-rdup.input.v1" }, "outputSchema": { "id": "neg-rdup.output.v1" }, "emitsOutcome": "done" }],
+        "transitions": [],
+        "terminalNodeIds": ["n"]
+      },
+      "artifacts": [{ "type": "neg-rdup.out", "schema": { "id": "neg-rdup.output.v1" }, "authority": "worker", "description": "x" }],
+      "policies": [],
+      "invariants": [],
+      "executionProfiles": []
+    },
+    "resourceIndex": [
+      { "logicalId": "dup", "path": "resources/a.md", "kind": "skill", "digest": "pending@wave-2" },
+      { "logicalId": "dup", "path": "resources/b.md", "kind": "skill", "digest": "pending@wave-2" }
+    ],
+    "handlerRefs": [],
+    "inputContractRef": { "schemaId": "neg-rdup.input.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+    "outputContractRef": { "schemaId": "neg-rdup.output.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+    "runtimeCompatibilityRange": "^3.0.0"
+  }
+}

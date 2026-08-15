@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -24,214 +24,161 @@ function fakeChild(pid) {
   child.pid = pid;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
-  child.kill = () => {
-    queueMicrotask(() => child.emit('close', 143));
-    return true;
-  };
+  child.stdin = new PassThrough();
+  child.prompt = '';
+  child.stdin.on('data', chunk => { child.prompt += chunk.toString('utf8'); });
+  child.kill = () => true;
   return child;
 }
 
-test('board runner launches one fresh Claude process per claimed task', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-test-'));
-  const queue = [101, 102, 103];
-  const states = new Map(queue.map(id => [id, { id, status:'todo', assigned_to:null }]));
+function makeHarness(overrides = {}) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-runner-'));
+  const skills = path.join(root, 'package', 'skills');
+  const protocolPath = path.join(skills, 'protocol', 'SKILL.md');
+  const authorPath = path.join(skills, 'author', 'SKILL.md');
+  const reviewerPath = path.join(skills, 'reviewer', 'SKILL.md');
+  for (const file of [protocolPath, authorPath, reviewerPath]) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `instructions:${path.basename(path.dirname(file))}`, 'utf8');
+  }
   const spawns = [];
-  let live = 0;
-  let maxLive = 0;
-  let pid = 1000;
-
+  const executionEvents = [];
+  const task = {
+    id: 101, title: 'Build target', status: 'in_progress', tags: '[]', description: 'test',
+    task_kind: 'factory.author', workflow_stage: 'development', execution_mode: 'git_change',
+  };
+  const profile = {
+    protocolSkill: 'protocol', semanticSkill: 'author', reviewSkill: 'reviewer',
+  };
   const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'test-project', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    claimTask: ({ worker_id }) => {
-      const id = queue.shift();
-      if (!id) return { task:null, skill:null };
-      states.set(id, { id, status:'in_progress', assigned_to:worker_id });
-      return {
-        task: { id, title:`Task ${id}`, status:'todo', tags:'[]', description:'test' },
-        skill:'saga-developer',
-      };
-    },
-    getTaskState: id => states.get(id),
-    recoverAssignment: () => {
-      throw new Error('recovery should not run');
+    dbPath: path.join(root, 'saga.db'), sagaEntry: path.join(root, 'index.js'),
+    sagaSkillRoot: path.join(root, 'unused'), logRoot: path.join(root, 'logs'),
+    getProject: id => ({ id, name: 'target-project', tags: '[]' }),
+    resolveWorkspace: () => root, getTask: () => task,
+    getTaskState: overrides.getTaskState
+      ?? (() => ({ id: task.id, status: 'review', assigned_to: null })),
+    recoverAssignment: event => executionEvents.push(['recover', event]),
+    resolveProfile: () => ({ profile }),
+    resolveLaunchSpec: () => ({
+      installationId: 77, role: profile, allowedToolIds: ['Read', 'Edit'],
+      strictResources: true,
+      resolveSkill: name => ({ protocol: protocolPath, author: authorPath, reviewer: reviewerPath })[name] ?? null,
+    }),
+    executionStore: {
+      markExited: (...args) => executionEvents.push(['exited', args]),
+      markProgress: () => {}, markRunning: (...args) => executionEvents.push(['running', args]),
+      markSpawnFailed: (...args) => executionEvents.push(['spawn-failed', args]),
+      readBirthToken: () => 'birth-token',
     },
     spawn: (command, args, options) => {
-      const child = fakeChild(++pid);
-      live += 1;
-      maxLive = Math.max(maxLive, live);
+      const child = fakeChild(1001);
       spawns.push({ command, args, options, child });
-      setTimeout(() => {
-        const taskId = Number(options.env.SAGA_TASK_ID);
-        states.set(taskId, { id:taskId, status:'review', assigned_to:null });
-        live -= 1;
-        child.emit('close', 0);
-      }, 20);
+      setTimeout(() => child.emit('close', overrides.closeCode ?? 0), 20);
       return child;
     },
   });
+  const assignment = {
+    taskId: task.id, epicId: 1, projectId: 7, status: 'in_progress', skill: 'author',
+    workerExecutionId: 'exec-101', fenceToken: 'fence-101', runId: 'run-101',
+    workerId: 'worker-101', machineId: 'test-host',
+    repository: { name: 'product', local_path: root },
+    executionContext: {
+      policy_version: 'factory.execution.v1', authority: { enforcement: 'strict', allowed_saga_tools: ['task_get', 'worker_done'] },
+      model_route: { provider: 'zai', model: null, effort: 'high' }, captured_at: new Date().toISOString(),
+    },
+  };
+  return { root, runner, assignment, spawns, executionEvents };
+}
 
+test('accepted worker_done for the exact execution dominates later task projection and nonzero close', async () => {
+  const observed = [];
+  const h = makeHarness({
+    closeCode: 1,
+    getTaskState: (taskId, executionId) => {
+      observed.push({ taskId, executionId });
+      return {
+        id: taskId,
+        status: 'in_progress',
+        assigned_to: null,
+        integration_state: 'pending',
+        worker_done_accepted: executionId === 'exec-101',
+      };
+    },
+  });
   try {
-    const initial = runner.start({ projectId:7, concurrency:2 });
-    assert.equal(initial.concurrency, 2);
-    await waitFor(() => runner.status(7)?.status === 'completed');
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    const status = h.runner.status(7);
+    assert.equal(status.completed, 1);
+    assert.equal(status.failed, 0);
+    assert.deepEqual(observed.at(-1), { taskId: 101, executionId: 'exec-101' });
+    assert.equal(h.executionEvents.some(([event]) => event === 'recover'), false);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
+});
 
-    const result = runner.status(7);
-    assert.equal(result.claimed, 3);
-    assert.equal(result.completed, 3);
-    assert.equal(result.failed, 0);
-    assert.equal(spawns.length, 3);
-    assert.equal(maxLive, 2);
-    assert.equal(new Set(spawns.map(call => call.options.env.SAGA_WORKER_ID)).size, 3);
-    assert.deepEqual(
-      spawns.map(call => Number(call.options.env.SAGA_TASK_ID)).sort(),
-      [101, 102, 103],
+test('runner rejects any launch that is not preassigned and fenced', () => {
+  const h = makeHarness();
+  try {
+    assert.throws(() => h.runner.start({ projectId: 7, concurrency: 1 }), /PREASSIGNED_WORK_REQUIRED/);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
+});
+
+test('runner launches one frozen card with pinned skills, tools, repository and execution identity', async () => {
+  const h = makeHarness();
+  try {
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    assert.equal(h.spawns.length, 1);
+    const call = h.spawns[0];
+    assert.equal(call.options.cwd, h.root);
+    assert.equal(call.options.env.SAGA_EXECUTION_ID, 'exec-101');
+    const prompt = call.child.prompt;
+    assert.match(prompt, /instructions:protocol/);
+    assert.match(prompt, /instructions:author/);
+    assert.match(prompt, /launch_spec_installation=77/);
+    const allowed = call.args[call.args.indexOf('--allowedTools') + 1];
+    assert.match(allowed, /Read/);
+    assert.match(allowed, /Edit/);
+    assert.match(allowed, /mcp__saga__task_get/);
+    const disallowed = call.args[call.args.indexOf('--disallowedTools') + 1];
+    assert.match(disallowed, /mcp__saga__worker_next/);
+    assert.match(disallowed, /Bash/);
+    assert.match(disallowed, /Write/);
+    assert.match(disallowed, /MultiEdit/);
+    assert.match(disallowed, /Task/);
+    assert.doesNotMatch(disallowed, /(?:^|,)Read(?:,|$)/);
+    assert.doesNotMatch(disallowed, /(?:^|,)Edit(?:,|$)/);
+    assert.equal(call.args[call.args.indexOf('--permission-mode') + 1], 'dontAsk');
+    assert.equal(call.args.includes('--dangerously-skip-permissions'), false);
+    assert.doesNotMatch(prompt, /bash -c/);
+    assert.match(prompt, /Runtime owns the operator heartbeat/);
+    const runnerSource = readFileSync(
+      new URL('../tracker-view/claude-runner.mjs', import.meta.url),
+      'utf8',
     );
-    for (const call of spawns) {
-      assert.equal(call.command, 'claude');
-      assert.ok(call.args.includes('--no-session-persistence'));
-      assert.ok(call.args.includes('mcp__saga__worker_next'));
-      assert.ok(call.args.includes('bypassPermissions'));
-      assert.ok(call.args.includes('--dangerously-skip-permissions'));
-      assert.equal(call.options.cwd, temp);
-    }
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
+    assert.match(runnerSource, /tracker is runtime-owned for this read-only profile/);
+    assert.match(runnerSource, /modelMayUpdateTracker/);
+    assert.ok(h.executionEvents.some(([event]) => event === 'running'));
+    assert.ok(h.executionEvents.some(([event]) => event === 'exited'));
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });
 
-test('board runner completes without spawning when queue is empty', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-empty-'));
-  let spawnCount = 0;
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'empty', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    claimTask: () => ({ task:null, skill:null }),
-    getTaskState: () => null,
-    recoverAssignment: () => false,
-    spawn: () => {
-      spawnCount += 1;
-      return fakeChild(1);
-    },
-  });
-
-  try {
-    runner.start({ projectId:8, concurrency:5 });
-    await waitFor(() => runner.status(8)?.status === 'completed');
-    assert.equal(spawnCount, 0);
-    assert.equal(runner.status(8).claimed, 0);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
-});
-
-test('board runner recovers a claim when Claude exits before worker_done', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-fail-'));
-  let claimed = false;
-  const recoveries = [];
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'failure', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    claimTask: ({ worker_id }) => {
-      if (claimed) return { task:null, skill:null };
-      claimed = true;
-      return {
-        task: { id:201, title:'Failing task', status:'todo', tags:'[]' },
-        skill:'saga-developer',
-        worker_id,
-      };
-    },
-    getTaskState: () => ({ id:201, status:'in_progress', assigned_to:'still-owned' }),
-    recoverAssignment: input => {
-      recoveries.push(input);
-      return true;
-    },
-    spawn: () => {
-      const child = fakeChild(2001);
-      setTimeout(() => child.emit('close', 1), 10);
-      return child;
-    },
-  });
-
-  try {
-    runner.start({ projectId:9, concurrency:1 });
-    await waitFor(() => runner.status(9)?.status === 'failed');
-    assert.equal(runner.status(9).failed, 1);
-    assert.equal(recoveries.length, 1);
-    assert.equal(recoveries[0].taskId, 201);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
-});
-
-test('board runner launches each typed task in its repository checkout', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-multirepo-'));
-  const legacyRoot = path.join(temp, 'legacy');
-  const repoA = path.join(temp, 'repo-a');
-  const repoB = path.join(temp, 'repo-b');
-  const { mkdirSync } = await import('node:fs');
-  mkdirSync(legacyRoot); mkdirSync(repoA); mkdirSync(repoB);
-  const queue = [
-    { id:301, repo:{ id:1, name:'repo-a', local_path:repoA } },
-    { id:302, repo:{ id:2, name:'repo-b', local_path:repoB } },
-  ];
-  const states = new Map();
-  const cwdByTask = new Map();
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'multi-repo', tags:'[]' }),
-    resolveWorkspace: () => legacyRoot,
-    claimTask: ({ worker_id }) => {
-      const next = queue.shift();
-      if (!next) return { task:null, skill:null };
-      states.set(next.id, { id:next.id, status:'in_progress', assigned_to:worker_id });
-      return {
-        task: {
-          id:next.id, title:`Task ${next.id}`, status:'todo', tags:'[]',
-          task_kind:'development.code', workflow_stage:'development', execution_mode:'git_change',
-        },
-        skill:'saga-developer',
-        repository:next.repo,
-      };
-    },
-    getTaskState: id => states.get(id),
-    recoverAssignment: () => { throw new Error('recovery should not run'); },
-    spawn: (_command, _args, options) => {
-      const child = fakeChild(3000 + cwdByTask.size);
-      const taskId = Number(options.env.SAGA_TASK_ID);
-      cwdByTask.set(taskId, options.cwd);
-      setTimeout(() => {
-        states.set(taskId, { id:taskId, status:'review', assigned_to:null });
-        child.emit('close', 0);
-      }, 10);
-      return child;
+test('runner starts a repository task in the exact Factory-provisioned desk', async () => {
+  const h = makeHarness();
+  const desk = path.join(h.root, '.worktrees', 'task-101');
+  mkdirSync(desk, { recursive: true });
+  h.runner.prepareWorkspace = () => ({
+    repositoryDesk: {
+      executionPath: desk,
+      repositoryRoot: h.root,
+      role: 'author',
+      git: { branch: 'task/101', baseCommit: 'base', integrationBranch: 'dev', detached: false },
     },
   });
   try {
-    runner.start({ projectId:10, concurrency:2 });
-    await waitFor(() => runner.status(10)?.status === 'completed');
-    assert.equal(cwdByTask.get(301), repoA);
-    assert.equal(cwdByTask.get(302), repoB);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    assert.equal(h.spawns.length, 1);
+    assert.equal(h.spawns[0].options.cwd, desk);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });

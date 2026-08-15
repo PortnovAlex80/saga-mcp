@@ -8,7 +8,8 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_dashboard',
     description:
-      'Get a comprehensive project overview in a single call. Returns: project info, all epics with task counts, overall stats (total/done/blocked/in_progress), recent activity, and recent notes. This is the best first tool to call when starting work on a project. Pass branch="current" to scope the dashboard to the active git branch.',
+      'Get a comprehensive project overview in a single call. Returns: project info, all epics with task counts, overall stats (total/done/blocked/in_progress), recent activity, and recent notes. This is the best first tool to call when starting work on a project. Pass branch="current" to scope the dashboard to the active git branch. ' +
+      'Call shape: tracker_dashboard({ project_id: <integer (omit if only one project exists)>, branch: "current|<branch-name>|" }). All params optional.',
     annotations: { title: 'Project Dashboard', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -24,7 +25,8 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_init',
     description:
-      'Initialize the tracker for a project. If the database is empty, creates a project with the given name. If a project already exists, returns its info.',
+      'Initialize the tracker for a project. If the database is empty, creates a project with the given name. If a project already exists, returns its info. ' +
+      'Call shape: tracker_init({ project_name: "<string>", project_description: "<string>" }). project_name only used if DB is empty.',
     annotations: { title: 'Initialize Tracker', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

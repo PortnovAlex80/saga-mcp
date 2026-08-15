@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "saga3.human-director-approval.output.v1",
+  "title": "Director Sign-off Output (director decision envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "campaignBundleId", "decidedBy", "decidedAt"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["approved", "rejected"],
+      "description": "The director's sign-off decision. Maps 1:1 to the module's two terminal outcomes."
+    },
+    "campaignBundleId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The scored campaign bundle id the decision applies to. Must match the input bundle id."
+    },
+    "decidedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identity of the director who recorded the decision (human authority)."
+    },
+    "decidedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp at which the director-console adapter recorded the decision."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Optional free-text rationale the director attached to the decision."
+    }
+  },
+  "description": "Output contract for the director-signoff Human node: the opaque director decision envelope produced by the director-console adapter. authority: human. The runtime records this envelope as the node-run production."
+}

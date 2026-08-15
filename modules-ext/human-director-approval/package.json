@@ -1,0 +1,45 @@
+{
+  "name": "@saga-ext/human-director-approval",
+  "version": "1.0.0",
+  "description": "Installable Human-node Process Module for the saga process-module runtime. Pauses for a director sign-off decision (approve/reject) on a scored campaign bundle. Proves arbitrary Human-node extensibility (WAVE10-EXTENSIBILITY-SPEC lane W10-A3).",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts",
+    "./definition": "./src/definition.ts",
+    "./node-protocols/director-signoff": "./src/node-protocols/director-signoff-node-protocol.ts",
+    "./schemas/*": "./schemas/*",
+    "./resources/*": "./resources/*"
+  },
+  "files": [
+    "src",
+    "schemas",
+    "resources",
+    "test",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/human-director-approval.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "saga",
+    "process-module",
+    "human-node",
+    "director-approval",
+    "extensibility",
+    "mcp",
+    "wave-10"
+  ],
+  "license": "MIT",
+  "saga": {
+    "packageKind": "human-approval",
+    "moduleRef": "human-director-approval@1.0.0",
+    "manifestFormatVersion": "1",
+    "runtimeCompatibilityRange": "^3.0.0",
+    "wave": "W10-A3",
+    "spec": "docs/refactor-management/09-contracts/WAVE10-EXTENSIBILITY-SPEC.md"
+  }
+}

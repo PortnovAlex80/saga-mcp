@@ -1,0 +1,9 @@
+{
+  "schema": "factory.formalization-reconciliation-report.v1",
+  "content": {
+    "status": "reconciled",
+    "repairs": [],
+    "remaining_gaps": [],
+    "rationale": "FILL_EXACT_RESULT_OF_WHAT_RECONCILIATION"
+  }
+}

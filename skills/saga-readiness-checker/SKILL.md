@@ -34,9 +34,12 @@ must mitigate.
 ## Product-board contract
 
 Same as `saga-worker` — use the assignment's product, epic, repository.
-Resolve `project_id` from `.saga/project.json`. This skill is invoked by
-the orchestrator between `episode_transition(to_stage='planning', ...)` and
-`episode_transition(to_stage='development', ...)`.
+Resolve `project_id` from `.saga/project.json`. This skill runs in the
+planning → development window. (Note: the old `episode_transition` MCP calls
+were deleted in the saga4 cutover — stage advancement is now owned by the
+Lifecycle Orchestrator, and the planning→development route is enforced by the
+Development module's settlement policy. This skill still emits its verdict
+before that route fires.)
 
 It is dispatched as a **claimed task** with `task_kind='planning.readiness'`.
 Use `worker_next({ role: 'reviewer' })` to claim, `worker_done` to release.
@@ -54,9 +57,10 @@ determines S-size + low complexity. Don't second-guess that.)
   `saga-planner` but NOT yet dispatched.
 - **Postcondition:** task transitions to `done`. The `result` field carries
   the verdict and the orchestrator reads it to decide:
-  - PASS → proceed to `episode_transition(to_stage='development')`.
-  - CONCERNS → proceed but with risk-mitigation notes attached to specific
-    tasks (`task.metadata.readiness_concerns`).
+  - PASS → let the Lifecycle Orchestrator route into development (the
+    Development module's settlement policy is the gate that follows).
+  - CONCERNS → let it route but with risk-mitigation notes attached to
+    specific tasks (`task.metadata.readiness_concerns`).
   - FAIL → do NOT transition. The planner must re-plan. The orchestrator
     sends the plan back to `saga-planner` with the failure modes listed.
 
@@ -129,7 +133,9 @@ with `result='wrong skill for task_kind=<X>'`.
 
 ```
 task_get({ id })                         # the readiness task itself
-episode_status({ epic_id })              # episode state
+# episode state (note: episode_status was deleted in saga4; read the run/stage
+# via the Lifecycle Orchestrator's durable state instead)
+lifecycle_run_list({ project_id, epic_id })   # current run + stage for this epic
 artifact_list({ epic_id, type: 'SRS' })  # the SRS
 artifact_list({ epic_id, type: 'PRD' })  # the PRD
 artifact_list({ epic_id, type: 'AC', status: 'accepted' })  # all ACs
@@ -477,8 +483,8 @@ call `task_update` on dev-tasks.
 
 | Verdict | Orchestrator action |
 |---|---|
-| `PASS` | `episode_transition(to_stage='development')`. Dev tasks become claimable. |
-| `CONCERNS` | `episode_transition(to_stage='development')` + tag affected dev-tasks with `metadata.readiness_concerns`. saga-worker reads the concerns before claiming. |
+| `PASS` | Let the Lifecycle Orchestrator route the epic into development (the `episode_transition` MCP call was deleted in saga4; the Development module's settlement policy is now the gate). Dev tasks become claimable. |
+| `CONCERNS` | Let it route into development + tag affected dev-tasks with `metadata.readiness_concerns`. saga-worker reads the concerns before claiming. |
 | `FAIL` | Do NOT transition. Re-dispatch `saga-planner` with the failure modes. Planner re-plans. New `planning.readiness` task is created. This skill re-runs. |
 
 The verdict is the only thing the orchestrator reads. The result text must

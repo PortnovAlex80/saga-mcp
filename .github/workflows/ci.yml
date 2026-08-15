@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, main, saga2-refactoring, saga4]
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, saga2-refactoring, saga4]
 
 jobs:
   quality:
@@ -21,17 +21,94 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: TypeScript strict build
-        run: npx tsc --noEmit
+      - name: TypeScript build (type-check + emit dist/ for the acceptance matrix)
+        # CI-03: the acceptance matrix runs `node --test` on *.mjs that import
+        # from dist/, so dist/ MUST be emitted (not just --noEmit type-checked).
+        run: npm run build
 
-      - name: ESLint
+      - name: ESLint (blocking lint gate)
+        # CI-01: lint is a BLOCKING acceptance gate. Factory-completion active
+        # paths must be lint-clean (errors fail the build). Legacy debt is
+        # quarantined by the eslint flat-config ratchet (see eslint.config.mjs),
+        # NOT by continue-on-error here. No allow-failure / retries hide errors.
         run: npx eslint src/
-        continue-on-error: true
 
-      - name: Tests
-        run: npm test
+      # ─────────────────────────────────────────────────────────────────────
+      # CI-02 — the deterministic Factory acceptance matrix.
+      #
+      # Replaces the blanket `npm test` (= `tsc && node --test`, which ran EVERY
+      # *.test.mjs — including FLAKY and pre-existing-RED files — so its exit
+      # code was never a trustworthy blocking signal). Each deterministic-green
+      # Factory suite is now its OWN blocking step, driven through
+      # tools/run-acceptance-matrix.mjs. No blanket run, no continue-on-error,
+      # no `|| true`, no retries that hide failures.
+      #
+      # Flaky / pre-existing-red suites are QUARANTINED — excluded from the
+      # blocking matrix with a documented reason (FLAKY / PRE-EXISTING-RED) in
+      # docs/factory/CI-02-ACCEPTANCE-MATRIX.md and enforced by the runner's
+      # quarantine table. The fresh W9 scripted E2E harness (cards W9-01..W9-04)
+      # is the deterministic successor for the flaky orchestrate-cli / replay
+      # driven suites; it is out of this matrix's scope until those cards land.
+      #
+      # Quarantined at CI-02 (single source of truth: tools/run-acceptance-matrix.mjs):
+      #   FLAKY            golden-path, parallel-git-desk, factory-temporal/*
+      #   PRE-EXISTING-RED development-task-graph-diagnostics,
+      #                    worker-done-completion-authority (deleted module),
+      #                    submission-validator-diagnostics (assertion drift),
+      #                    dispatcher-race/worktree-isolation.mjs (C5 cutover).
+      #
+      # The final matrix-coverage step machine-checks that no required
+      # deterministic suite is silently omitted and that no hidden failure is
+      # reintroduced (the CI-02 exit rule).
+      # ─────────────────────────────────────────────────────────────────────
 
-      - name: cgad-spec-lint self-check
-        run: node tools/cgad-spec-lint.mjs tools/cgad-spec-lint.test.mjs || true
-        # Self-check: linter should run without crashing on any SQLite DB
-        # Real enforcement: run against project saga.db in a separate step
+      - name: Matrix — architecture invariants (ADR-053 gates, ratchets)
+        run: node tools/run-acceptance-matrix.mjs --group architecture
+
+      - name: Matrix — factory model
+        run: node tools/run-acceptance-matrix.mjs --group factory-model
+
+      - name: Matrix — readiness & fencing (C7 + LR local-readiness)
+        run: node tools/run-acceptance-matrix.mjs --group readiness-fencing
+
+      - name: Matrix — factory contract (C5 adversarial, production-cell)
+        run: node tools/run-acceptance-matrix.mjs --group factory-contract
+
+      - name: Matrix — process modules (LR-07 readiness binding)
+        run: node tools/run-acceptance-matrix.mjs --group process-modules
+
+      - name: Dispatcher race gate (concurrency safety)
+        # Concurrent worker_next must never double-claim a card. These are plain
+        # .mjs scripts (not auto-discovered by `node --test`), so they have their
+        # own explicit blocking command. The pre-existing-red
+        # worktree-isolation.mjs is EXCLUDED here: it is broken by the C5
+        # accepted-authority-head cutover (worker_next returns null because the
+        # test seeds tasks the pre-C5 way). W9 scripted E2E replaces it. See
+        # docs/factory/CI-02-ACCEPTANCE-MATRIX.md.
+        run: |
+          node tests/dispatcher-race/run.mjs &&
+          node tests/dispatcher-race/assign-race.mjs &&
+          node tests/dispatcher-race/isolation.mjs &&
+          node tests/dispatcher-race/review-verdict-race.mjs &&
+          node --test tests/dispatcher-race/parallel-concurrency.test.mjs tests/dispatcher-race/dispatch-loop-overlap.test.mjs tests/dispatcher-race/orchestrate-global-budget.test.mjs
+
+      - name: cgad-spec-lint unit suite
+        # CI-02: removed the hidden `|| true` self-check (it masked a real exit-2
+        # "file is not a database" failure — exactly the kind of hidden failure
+        # this card eliminates). The linter's own unit suite (30 cases) is the
+        # blocking check instead.
+        run: node --test tools/cgad-spec-lint.test.mjs
+
+      - name: Completion-evidence validation
+        # P0-02 evidence contract: every done/dfx task has non-empty evidence,
+        # no task is done while a dependency is not, DFX budget <= 3. CI-02 wires
+        # this into the acceptance matrix (per COMPLETION-EVIDENCE-CONTRACT.md).
+        run: node tools/validate-completion-evidence.mjs
+
+      - name: Matrix — coverage & no-hidden-failure guard
+        # CI-02 self-check (runs last): asserts the matrix covers every required
+        # deterministic suite, quarantines the flaky / pre-existing-red files
+        # with reasons, and that ci.yml hides no failure (no `|| true`, no
+        # continue-on-error, no blanket npm test). This is the machine-checked
+        # form of the CI-02 exit rule.
+        run: node tools/run-acceptance-matrix.mjs --group matrix-coverage

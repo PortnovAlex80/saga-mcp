@@ -8,7 +8,9 @@ import type { ToolHandler } from '../types.js';
 export const definitions: Tool[] = [
   {
     name: 'project_create',
-    description: 'Create a new project. Projects are the top-level container for all work.',
+    description:
+      'Create a new project. Projects are the top-level container for all work. ' +
+      'Call shape: project_create({ name: "<string>", description: "<string>", status: "active|on_hold|completed|archived", tags: ["<string>", ...] }). Required: name.',
     annotations: { title: 'Create Project', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -33,7 +35,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_list',
     description:
-      'List all projects with epic/task counts and completion percentages. Optionally filter by status.',
+      'List all projects with epic/task counts and completion percentages. Optionally filter by status. ' +
+      'Call shape: project_list({ status: "active|on_hold|completed|archived" }). All params optional.',
     annotations: { title: 'List Projects', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -49,7 +52,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_update',
     description:
-      'Update a project. Pass only the fields you want to change. Set status to "archived" to soft-delete.',
+      'Update a project. Pass only the fields you want to change. Set status to "archived" to soft-delete. ' +
+      'Call shape: project_update({ id: <integer>, name: "<string>", description: "<string>", status: "active|on_hold|completed|archived", tags: ["<string>", ...] }). Required: id.',
     annotations: { title: 'Update Project', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -66,7 +70,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_resolve_by_name',
     description:
-      'Get-or-create a project by its exact name, atomically. Returns {project_id, created, project}. created:true if a new project was inserted, false if an existing name matched. Use this when a worker needs a stable project_id from a project name (e.g. read from ./projectname.txt) — guarantees no duplicate projects are created when multiple agents start cold at once (name is not unique in saga, so the atomic lookup-or-insert under a write lock is what prevents duplicates).',
+      'Internal factory operation: get-or-create a project by its exact name atomically. This tool is not exposed in the public MCP catalog; new orders use saga-start. ' +
+      'Call shape: project_resolve_by_name({ name: "<string (exact match)>", description: "<string (only used if creating)>" }). Required: name.',
     annotations: { title: 'Resolve Project by Name', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -86,7 +91,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_delete',
     description:
-      'Hard-delete a project and cascade-clean all epics, tasks, artifacts, traces, worker_executions, episode_workflows, and repository bindings. Admin escape hatch — VIOLATES CGAD P2 ("status change, not destruction"). Prefer project_update({status:"archived"}) for soft-delete. Safety: rejects if any engine is running for an epic in this project. Leaves intact: repositories rows (resource, P17), activity_log (audit trail, P12), command_receipts (idempotency ledger), on-disk .md artifact files. Returns deregistered_checkouts so the operator can clean disk separately.',
+      'Hard-delete a project and cascade-clean all epics, tasks, artifacts, traces, worker_executions, episode_workflows, and repository bindings. Admin escape hatch — VIOLATES CGAD P2 ("status change, not destruction"). Prefer project_update({status:"archived"}) for soft-delete. Safety: rejects if any engine is running for an epic in this project. Leaves intact: repositories rows (resource, P17), activity_log (audit trail, P12), command_receipts (idempotency ledger), on-disk .md artifact files. Returns deregistered_checkouts so the operator can clean disk separately. ' +
+      'Call shape: project_delete({ project_id: <integer> }). The parameter is "project_id" (not "id"). Required: project_id.',
     annotations: { title: 'Delete Project (hard)', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -254,20 +260,20 @@ function handleProjectDelete(args: Record<string, unknown>): {
     throw new Error('project_id must be a positive integer');
   }
 
-  // Safety guard: reject if any engine is running for an epic in this
-  // project. Killing a running engine via DB delete would orphan claude.exe
-  // worker processes. The user must stop engines explicitly first.
+  // Safety guard: durable lifecycle execution owns run activity in Saga4.
+  // Reject while a lifecycle is created/running so deleting the project cannot
+  // orphan the orchestrator or workers attached to its ProcessRuns.
   const runningEpics = db.prepare(
-    `SELECT ew.epic_id FROM episode_workflows ew
-      JOIN epics e ON e.id = ew.epic_id
-      WHERE e.project_id = ?
-        AND json_extract(ew.metadata, '$.engine_running') = 1`,
-  ).all(projectId) as Array<{ epic_id: number }>;
+    `SELECT DISTINCT epic_id
+       FROM factory_lifecycle_runs
+      WHERE project_id = ?
+        AND status IN ('created','running')`,
+  ).all(projectId) as Array<{ epic_id: number | null }>;
   if (runningEpics.length > 0) {
-    const ids = runningEpics.map((r) => r.epic_id).join(', ');
+    const ids = runningEpics.map((r) => r.epic_id ?? '<project-scope>').join(', ');
     throw new Error(
-      `Cannot delete project ${projectId}: engine is running for epic(s) ${ids}. ` +
-      `Stop engine(s) first via worker tools or /api/engine/stop.`,
+      `Cannot delete project ${projectId}: Product Lifecycle is active for scope(s) ${ids}. ` +
+      `Wait for completion or cancel the lifecycle run first.`,
     );
   }
 
@@ -291,30 +297,23 @@ function handleProjectDelete(args: Record<string, unknown>): {
 
   db.exec('BEGIN IMMEDIATE');
   try {
-    // work_attempts.execution_id REFERENCES worker_executions(execution_id)
-    // WITHOUT ON DELETE CASCADE (schema.ts). When we delete worker_executions
-    // below, work_attempts would dangle and trip FK. Clean manually first.
-    // (work_attempts also cascades from task_work_items, but execution_id is
-    // a separate FK column with no cascade rule.)
-    db.prepare(
-      `DELETE FROM work_attempts
-        WHERE execution_id IN (
-          SELECT execution_id FROM worker_executions WHERE project_id = ?
-        )`,
-    ).run(projectId);
     // worker_executions has no FK on project_id — must clean manually.
     db.prepare('DELETE FROM worker_executions WHERE project_id = ?').run(projectId);
     // DELETE FROM projects triggers every other CASCADE (schema.ts):
     //   epics → tasks → (subtasks, task_dependencies, comments,
     //                    task_conflict_keys, verification_evidence,
-    //                    task_work_items → work_attempts,
     //                    human_requests, integration_intents)
     //   epics → artifacts → artifact_traces
     //   epics → episode_workflows
     //   epics → runtime_observations
+    //   epics → factory_work_intents → factory_proposals (D1 protocol entities)
     //   artifacts (direct project_id) — also cascaded
     //   project_repositories → repository_checkouts
     //   trusted_providers (project-scoped rows; NULL = global survives)
+    // factory_proposals also has task_id REFERENCES tasks CASCADE, so it is
+    // removed whichever path fires first; its execution_id is deliberately NOT
+    // a FK (worker_executions row may be pruned), but it cannot dangle because
+    // its parent row is gone.
     const info = db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
     if (info.changes === 0) {
       throw new Error(`Project ${projectId} not found (already deleted?)`);

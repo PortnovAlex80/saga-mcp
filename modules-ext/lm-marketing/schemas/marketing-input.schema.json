@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "saga3-ext.marketing.input.v1",
+  "title": "MarketingBrief",
+  "description": "Input contract for the lm-marketing@1.0.0 Process Module. A MarketingBrief binds an audience, a goal, an allowed channel set, a key message, and optional constraints. Wave 10 extensibility proof: a package-local schema registered behind this opaque id by the ContractSchemaRegistry (Wave 2/3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["audience", "goal", "channels", "keyMessage"],
+  "properties": {
+    "audience": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target audience for the campaign."
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The single measurable campaign goal."
+    },
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Allowed channel set; the draft may only select from these."
+    },
+    "keyMessage": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Key message reproduced verbatim in the draft."
+    },
+    "constraints": {
+      "type": "array",
+      "default": [],
+      "items": { "type": "string" },
+      "description": "Optional constraints (word/length limits, legal, brand)."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Generated Module Authoring Kit package template.
+#
+# Generated packages live outside src/ (plan §0.13.10 / WAVE10-EXTENSIBILITY-SPEC §3).
+# This file is committed so the scaffolded package starts clean.
+
+dist/
+node_modules/
+*.log

@@ -352,7 +352,9 @@ asks for ≥80, the verdict is `partial`, not `works`.
 
 4. `worker_done({task_id, worker_id, result: 'exploration complete: <hypothesis_id> verdict=<works|partial|fails>; result written to <path>'})`.
 
-5. Exit. Do **not** call `worker_next`. Do **not** call `episode_transition`.
+5. Exit. Do **not** call `worker_next`. Stage advancement is owned by the
+   Lifecycle Orchestrator; do not attempt to call `episode_transition`
+   (deleted in the saga4 cutover).
 
 ## Edge cases
 
@@ -476,7 +478,8 @@ Synthesis will route the bonus coverage appropriately.
 - `worker_next` — you already hold a task; one task = one launch.
 - `worker_merge_acquire` / `worker_merge_release` — your worktree is **not**
   destined for `dev`. Synthesis handles merging.
-- `episode_transition` — the engine drives stage transitions.
+- `episode_transition` — deleted in the saga4 cutover; the Lifecycle
+  Orchestrator now owns stage advancement.
 - `task_update({status:...})` on the stuck task — you do not decide its fate.
 - `verification_record` on the stuck task — that's the synthesis worker's job
   (or the original verifier's, after synthesis).

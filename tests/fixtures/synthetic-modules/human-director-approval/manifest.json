@@ -1,0 +1,53 @@
+{
+  "manifestFormatVersion": "0.1.0",
+  "source": "W0-A7 synthetic fixture (data-only)",
+  "identity": {
+    "name": "synthetic-human-director-approval",
+    "version": "0.1.0",
+    "kind": "human-approval",
+    "displayName": "Synthetic Human Director Approval",
+    "description": "W0-A7 synthetic Human-node fixture. Data-only — no real adapter. Proves the SPI is module-kind-agnostic."
+  },
+  "inputContract": { "id": "synthetic.director-approval.input.v1" },
+  "outputContract": { "id": "synthetic.director-approval.output.v1" },
+  "outcomes": [
+    { "code": "approved", "description": "The director approved the campaign.", "terminal": true },
+    { "code": "rejected", "description": "The director rejected the campaign.", "terminal": true }
+  ],
+  "flow": {
+    "id": "synthetic.human-director-approval.standard",
+    "version": "0.1.0",
+    "entryNodeId": "director-signoff",
+    "nodes": [
+      {
+        "id": "director-signoff",
+        "label": "Director Sign-off",
+        "kind": "human",
+        "description": "Pause for a director sign-off decision (approve / reject) on the scored campaign.",
+        "interactionContract": { "id": "synthetic.director.signoff.v1" },
+        "inputSchema": { "id": "synthetic.director-approval.input.v1" },
+        "outputSchema": { "id": "synthetic.director-approval.output.v1" }
+      }
+    ],
+    "transitions": [],
+    "terminalNodeIds": ["director-signoff"]
+  },
+  "artifacts": [
+    {
+      "type": "synthetic.director-decision",
+      "schema": { "id": "synthetic.director-approval.output.v1" },
+      "authority": "human",
+      "description": "Opaque director decision envelope produced by the Human node."
+    }
+  ],
+  "policies": [],
+  "invariants": [],
+  "executionProfiles": [],
+  "resourceIndex": [
+    { "logicalId": "interaction-schema", "path": "schemas/director-signoff.schema.json", "kind": "schema" }
+  ],
+  "handlerReferences": [],
+  "adapterReferences": [
+    { "nodeId": "director-signoff", "adapterRef": "director-console-adapter@1.0.0" }
+  ]
+}

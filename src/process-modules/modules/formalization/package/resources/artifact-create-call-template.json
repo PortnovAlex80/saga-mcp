@@ -1,0 +1,35 @@
+{
+  "_PRE_CALL_INSTRUCTION": "BEFORE calling artifact_create, you MUST: (1) call artifact_list({project_id, epic_id}) to check if an artifact of this type already exists; (2) if it does, call artifact_update on the EXISTING id instead — do NOT create duplicates; (3) Write the file to disk at <workspace_root>/<path> before create/update. Code MUST be stable: use 'PRD', 'FR-1', 'NFR-1', 'RULE-1', 'brief' — NOT execution-specific like 'PRD-exec-abc123'. artifact_create is an upsert by (epic, type, code): the same code updates the existing draft, a different code creates an unwanted duplicate.",
+  "tool": "artifact_create",
+  "arguments": {
+    "project_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_ID",
+    "epic_id": "FILL_INTEGER_MACHINE_BOUND_EPIC_ID",
+    "project_repository_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_REPOSITORY_ID",
+    "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
+    "title": "FILL_ARTIFACT_TITLE",
+    "path": "FILL_RELATIVE_ARTIFACT_PATH_docs_requirements_REQ_NNN_slug",
+    "code": "FILL_STABLE_CODE",
+    "status": "draft",
+    "parent_artifact_id": "FILL_INTEGER_PARENT_ID_OR_NULL",
+    "metadata": {
+      "process_module_ref": "solution-formalization@1.0.0",
+      "process_run_id": "FILL_MACHINE_BOUND_PROCESS_RUN_ID",
+      "node_id": "FILL_MACHINE_BOUND_NODE_ID",
+      "work_intent_id": "FILL_INTEGER_MACHINE_BOUND_WORK_INTENT_ID",
+      "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+      "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+      "input_snapshot_hash": "FILL_MACHINE_BOUND_INPUT_HASH"
+    }
+  },
+  "_TYPE_SPECIFIC_NOTES": {
+    "brief": "When type='brief', metadata.brief_payload MUST be an object with: { decision: 'go'|'fast-track'|'clarify'|'reject', reasoning: 'non-empty string', affected_projects: [...], topology_hint: 'sequence'|'parallel-independent'|..., completeness: 'high'|'medium'|'low', ... }. Without brief_payload, artifact_create is REJECTED.",
+    "PRD": "PRD artifacts require a derived_from → brief trace after creation.",
+    "FR": "FR artifacts require a derived_from → PRD trace after creation.",
+    "NFR": "NFR artifacts require a derived_from → PRD trace after creation.",
+    "RULE": "RULE artifacts require a derived_from → PRD trace after creation.",
+    "UC": "UC artifacts require a covers → FR trace after creation.",
+    "AC": "AC artifacts require a derived_from → FR and/or derived_from → UC trace after creation.",
+    "SRS": "SRS artifacts require a derived_from → PRD trace. The SRS must contain §12 Decision Log and §D2 stanzas."
+  },
+  "_POST_CALL_VERIFY": "After artifact_create, call artifact_list and verify content_hash is NOT null. If null, the file was not found — Write it and call artifact_create again."
+}

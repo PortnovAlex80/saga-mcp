@@ -36,7 +36,6 @@ export interface Task {
   // always computed server-side. Any of these may be NULL in the DB row (e.g. a
   // plain task with no security/contract surface auto-derives derived_risk and
   // policy_minimum to null, and final_risk is then driven by declared_risk /
-  // legacy priority). The runtime (src/tools/tasks.ts) may persist null when
   // auto-derivation yields no level — keep these nullable here to match the
   // schema, even though the user-facing input schemas use a non-null enum.
   declared_risk: 'low' | 'medium' | 'high' | 'critical' | null;
@@ -61,6 +60,9 @@ export interface Task {
   generated_from_task_id: number | null;
   generation_key: string | null;
   current_execution_id: string | null;
+  // Conveyor v4 binding to the authoritative Workplace aggregate (step 5.2
+  // cutover). NULL for tasks not tracked as a Production Cell instance.
+  workplace_ref: string | null;
   verification_target_artifact_id: number | null;
   tags: string;
   metadata: string;

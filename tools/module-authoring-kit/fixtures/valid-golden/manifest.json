@@ -1,0 +1,75 @@
+{
+  "manifestFormatVersion": "1",
+  "definition": {
+    "identity": {
+      "name": "golden-example",
+      "version": "0.1.0",
+      "kind": "example-lm",
+      "displayName": "Golden Example",
+      "description": "Kit fixture: a canonical ProcessModuleManifest that passes validation."
+    },
+    "inputContract": { "id": "golden-example.input.v1" },
+    "outputContract": { "id": "golden-example.output.v1" },
+    "outcomes": [
+      { "code": "drafted", "description": "A typed draft envelope was produced.", "terminal": true }
+    ],
+    "flow": {
+      "id": "golden-example.standard",
+      "version": "0.1.0",
+      "entryNodeId": "draft",
+      "nodes": [
+        {
+          "id": "draft",
+          "label": "Draft",
+          "kind": "lm",
+          "description": "Produce a typed draft envelope.",
+          "executionProfile": "author",
+          "inputSchema": { "id": "golden-example.input.v1" },
+          "outputSchema": { "id": "golden-example.output.v1" },
+          "emitsOutcome": "drafted"
+        }
+      ],
+      "transitions": [],
+      "terminalNodeIds": ["draft"]
+    },
+    "artifacts": [
+      {
+        "type": "golden-example.draft",
+        "schema": { "id": "golden-example.output.v1" },
+        "authority": "worker",
+        "description": "Opaque draft envelope."
+      }
+    ],
+    "policies": [],
+    "invariants": [],
+    "executionProfiles": [
+      {
+        "id": "author",
+        "workIntentKind": "golden-example.draft",
+        "workIntentSchema": { "id": "golden-example.work-intent.v1" },
+        "taskKind": "example.draft",
+        "executionSkill": "golden-example-execution-skill",
+        "reviewSkill": "golden-example-review-skill",
+        "protocolSkill": "golden-example-worker-protocol",
+        "semanticSkill": "resources/execution-skill.md",
+        "executionMode": "git_change",
+        "allowedTools": ["Read", "Write", "Edit"],
+        "trackerTemplate": "resources/tracker.md",
+        "workspaceTemplates": [],
+        "callTemplates": [],
+        "checklists": [],
+        "outputSchema": { "id": "golden-example.output.v1" },
+        "retryPolicy": { "maxAttempts": 2, "retryOn": ["draft-rejected"], "backoff": "fixed" },
+        "recoveryPolicy": { "resumeFromCheckpoint": true, "reuseWorkIntent": false, "reuseAcceptedOutput": false, "onExhausted": "pause" }
+      }
+    ]
+  },
+  "resourceIndex": [
+    { "logicalId": "execution-skill", "path": "resources/execution-skill.md", "kind": "skill", "digest": "pending@wave-2" },
+    { "logicalId": "tracker", "path": "resources/tracker.md", "kind": "template", "digest": "pending@wave-2" }
+  ],
+  "handlerRefs": [],
+  "inputContractRef": { "schemaId": "golden-example.input.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+  "outputContractRef": { "schemaId": "golden-example.output.v1", "version": "1.0.0", "digest": "pending@wave-2" },
+  "runtimeCompatibilityRange": "^3.0.0"
+}

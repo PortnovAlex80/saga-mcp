@@ -25,15 +25,85 @@ import { definitions as exportImportDefs, handlers as exportImportHandlers } fro
 import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { definitions as artifactDefs, handlers as artifactHandlers } from './tools/artifacts.js';
 import { definitions as repositoryDefs, handlers as repositoryHandlers } from './tools/repositories.js';
-import { definitions as workflowDefs, handlers as workflowHandlers } from './tools/workflow.js';
 import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './tools/lifecycle.js';
 import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
-import { closeDb } from './db.js';
+import { definitions as productDefs, handlers as productHandlers } from './tools/products.js';
+import {
+  definitions as processModuleDefs,
+  handlers as processModuleHandlers,
+} from './tools/process-modules.js';
+import {
+  definitions as processNodeSubmissionDefs,
+  handlers as processNodeSubmissionHandlers,
+} from './tools/process-node-submissions.js';
+import {
+  definitions as deliveryApprovalDefs,
+  handlers as deliveryApprovalHandlers,
+} from './tools/delivery-approvals.js';
+import {
+  definitions as lifecycleRunDefs,
+  handlers as lifecycleRunHandlers,
+} from './tools/lifecycle-runs.js';
+import {
+  definitions as settlementDebugDefs,
+  handlers as settlementDebugHandlers,
+} from './tools/settlement-debug.js';
+import {
+  authorizeSagaToolCall,
+  visibleSagaToolNames,
+} from './shared/authority/authorize-tool-call.js';
+import { closeDb, getDb } from './db.js';
+import {
+  installWorkshopPayloadContracts,
+  recordWorkshopBindingReceipt,
+} from './process-modules/application/workshop-capability-manifest.js';
+
+// ADR-053 Phase 1: the worker MCP host is a separate process from the
+// lifecycle orchestrator, but BOTH install payload contracts from the SAME
+// single source of truth — `WORKSHOP_PAYLOAD_CONTRACTS` in the workshop
+// capability manifest. There is no hand-list to drift: adding a contract to
+// the manifest registers it in both processes. Durable WorkIntent pins still
+// reject any id/version/digest drift at runtime.
+installWorkshopPayloadContracts();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.env): void {
+  const marker = env.SAGA_MANAGED_EXECUTION;
+  const executionId = env.SAGA_EXECUTION_ID;
+  if (marker !== undefined && marker !== '0' && marker !== '1') {
+    throw new Error(`AUTHORITY_CONTEXT_INVALID: invalid SAGA_MANAGED_EXECUTION='${marker}'`);
+  }
+  if (marker === '1' && !executionId) {
+    throw new Error('AUTHORITY_CONTEXT_INVALID: managed MCP child is missing SAGA_EXECUTION_ID');
+  }
+  if (marker !== '1' && executionId) {
+    throw new Error('AUTHORITY_CONTEXT_INVALID: SAGA_EXECUTION_ID requires SAGA_MANAGED_EXECUTION=1');
+  }
+}
+
+/**
+ * Saga4 exposes one worker-production desk for every workshop:
+ *
+ *   product_submit / product_read / candidate_read
+ *
+ * Discovery-specific proposal/normalization/readiness submit protocols are no
+ * longer registered on the MCP surface. Discovery compatibility tables may
+ * still exist as deterministic kernel/read-model projections behind
+ * `product_submit`, but a worker cannot select another persistence protocol by
+ * choosing a module-specific tool.
+ */
+const INTERNAL_ONLY_TOOL_NAMES = new Set([
+  'project_create',
+  'project_resolve_by_name',
+  'epic_create',
+  'process_run_start',
+  'process_run_set',
+  'process_run_cancel',
+]);
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -50,12 +120,17 @@ const ALL_TOOLS: Tool[] = [
   ...dispatcherDefs,
   ...artifactDefs,
   ...repositoryDefs,
-  ...workflowDefs,
   ...lifecycleDefs,
   ...observationDefs,
   ...conflictDefs,
   ...providerDefs,
-];
+  ...productDefs,
+  ...processModuleDefs,
+  ...processNodeSubmissionDefs,
+  ...deliveryApprovalDefs,
+  ...lifecycleRunDefs,
+  ...settlementDebugDefs,
+].filter(tool => !INTERNAL_ONLY_TOOL_NAMES.has(tool.name));
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
   ...projectHandlers,
@@ -72,12 +147,18 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...dispatcherHandlers,
   ...artifactHandlers,
   ...repositoryHandlers,
-  ...workflowHandlers,
   ...lifecycleHandlers,
   ...observationHandlers,
   ...conflictHandlers,
   ...providerHandlers,
+  ...productHandlers,
+  ...processModuleHandlers,
+  ...processNodeSubmissionHandlers,
+  ...deliveryApprovalHandlers,
+  ...lifecycleRunHandlers,
+  ...settlementDebugHandlers,
 };
+for (const name of INTERNAL_ONLY_TOOL_NAMES) delete ALL_HANDLERS[name];
 
 const server = new Server(
   { name: 'tracker', version: '1.0.0' },
@@ -85,7 +166,12 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: ALL_TOOLS };
+  const visibleNames = visibleSagaToolNames(getDb());
+  return {
+    tools: visibleNames === null
+      ? ALL_TOOLS
+      : ALL_TOOLS.filter(tool => visibleNames.has(tool.name)),
+  };
 });
 
 function friendlyError(msg: string): string {
@@ -113,6 +199,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!handler) {
       throw new Error(`Unknown tool: ${name}`);
     }
+    const decision = authorizeSagaToolCall({ toolName: name, db: getDb() });
+    if (!decision.allow) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ code: decision.code, ...decision.details }, null, 2),
+        }],
+        isError: true,
+      };
+    }
+    if (decision.advisory) {
+      console.error(`[saga-authority] advisory ${decision.observation} (execution=${decision.executionId ?? '-'})`);
+    }
 
     const result = handler(args ?? {});
     return {
@@ -122,27 +221,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const msg = error instanceof Error ? error.message : String(error);
     const friendly = friendlyError(msg);
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Error: ${friendly}`,
-        },
-      ],
+      content: [{ type: 'text', text: `Error: ${friendly}` }],
       isError: true,
     };
   }
 });
 
 async function main() {
+  assertManagedExecutionIdentity();
+  recordWorkshopBindingReceipt({
+    db: getDb(),
+    role: 'worker-mcp',
+    processIdentity: `worker-mcp:${process.pid}`,
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Tracker MCP Server running on stdio');
 
-  // Автозапуск веб-канбана tracker-view как detached child-процесса.
-  // stdio:'ignore' — КРИТИЧНО: MCP-протокол saga идёт по stdio родителя,
-  // любой вывод child'а сюда сломал бы протокол. detached + unref — child
-  // живёт независимо и не держит родительский процесс при выходе.
-  // TRACKER_AUTOSTART=0 → не запускать (headless/CI/тихий режим).
   if (process.env.TRACKER_AUTOSTART !== '0' && process.env.DB_PATH) {
     try {
       const trackerPath = path.join(__dirname, '..', 'tracker-view', 'tracker-view.mjs');
@@ -155,11 +250,6 @@ async function main() {
             ...process.env,
             PORT: trackerPort,
             DB_PATH: process.env.DB_PATH,
-            // Маркер: «я spawn'ут saga-MCP». В этом режиме tracker-view при
-            // занятом порту ТИХО выходит (уже бежит другой — браузер открыт),
-            // не убивает старый процесс и не открывает второе окно.
-            // Ручной `npm run tracker` (без маркера) сохраняет старое поведение
-            // — перезапуск + открытие браузера.
             TRACKER_SPAWNED: '1',
           },
         });
@@ -167,15 +257,10 @@ async function main() {
         console.error(`Tracker view → http://localhost:${trackerPort} (set TRACKER_AUTOSTART=0 to disable)`);
       }
     } catch (err) {
-      // Tracker view не критичен для MCP-сервера — логируем и продолжаем.
       console.error('Tracker view failed to start (non-fatal):', err instanceof Error ? err.message : err);
     }
   }
 
-  // Автозапуск docs-graph viewer (унифицированный граф артефактов + .md).
-  // Тот же паттерн, что и tracker-view: detached + stdio:'ignore' (MCP-протокол
-  // родителя нельзя трогать), unref — child живёт независимо. Порт 4322 по
-  // умолчанию. DOCS_GRAPH_AUTOSTART=0 → не запускать.
   if (process.env.DOCS_GRAPH_AUTOSTART !== '0' && process.env.DB_PATH) {
     try {
       const docsGraphPath = path.join(__dirname, '..', 'tracker-view', 'docs-graph', 'server.mjs');
@@ -194,7 +279,7 @@ async function main() {
         console.error(`Docs graph   → http://localhost:${docsPort} (set DOCS_GRAPH_AUTOSTART=0 to disable)`);
       }
     } catch (err) {
-      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : err);
+      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : String(err));
     }
   }
 }

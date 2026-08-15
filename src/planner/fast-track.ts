@@ -202,14 +202,11 @@ export function routeFastTrack(
     .get(epicId, title, description, sourceRef, JSON.stringify(tags),
       projectRepositoryId, generationKey) as { id: number };
   const devTaskId = inserted.id;
-  conn.prepare(
-    `INSERT INTO episode_workflows (epic_id,stage,metadata)
-     VALUES (?,'development',json_object('fast_track',1,'brief_artifact_id',?))
-     ON CONFLICT(epic_id) DO UPDATE SET
-       stage='development',
-       metadata=json_set(episode_workflows.metadata,'$.fast_track',1,'$.brief_artifact_id',json_extract(excluded.metadata,'$.brief_artifact_id')),
-       updated_at=datetime('now')`,
-  ).run(epicId, briefArtifactId);
+  // saga4 cutover (EXECUTION-PLAN §B.1 #6): the `episode_workflows` INSERT that
+  // used to stamp `stage='development'` + `fast_track` metadata here has been
+  // removed — the formalization module now owns XS routing decisions and the
+  // latest LifecycleRun is the single source of truth for the stage. The dev
+  // task created above carries `generation_key` + tags, so the fast-track intent
 
   // Trace edge: brief ← derived_from ← dev-task. In artifact_traces the source
   // is the artifact (brief) and the target is the task, mirroring how an AC

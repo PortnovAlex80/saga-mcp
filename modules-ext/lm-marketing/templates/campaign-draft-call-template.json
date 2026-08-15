@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lm-marketing campaign-draft MCP call template",
+  "description": "Pinned by the marketing-author execution profile. Declares the MCP tool call shape a worker uses to record a CampaignDraft checkpoint. Wave 10 extensibility proof: a package-local call template, resolved through the resource index, never via global lookup (plan §5.3).",
+  "toolName": "worker_done",
+  "argumentsShape": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["task_id", "worker_id", "result"],
+    "properties": {
+      "task_id": { "type": "integer", "description": "The marketing-author task holding the draft-campaign node." },
+      "worker_id": { "type": "string", "description": "Worker identifier (must match task.assigned_to)." },
+      "result": {
+        "type": "string",
+        "description": "Human-readable summary of the CampaignDraft produced; recorded as a comment on the task."
+      }
+    }
+  },
+  "producesArtifact": {
+    "type": "marketing.campaign-draft",
+    "schemaId": "saga3-ext.marketing.output.v1"
+  }
+}
