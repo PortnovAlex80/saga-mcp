@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import { probeLoopbackOnce } from './served-process-runner.js';
 import {
@@ -12,20 +11,18 @@ import {
 } from './readiness-executor.js';
 
 /**
- * Phase-1 docker readiness executor — runs the profile-stated install/test/serve
- * commands inside the worker-declared Docker image.
+ * Docker readiness executor — prepares one post-install OCI environment, then
+ * runs test and serve in independent fresh containers from that exact image.
  *
  * The executor is SYNCHRONOUS (the gate-run-driver rejects async providers).
  * Every docker CLI call goes through execFileSync/spawnSync with bounded
  * timeouts. No dockerode, no daemon API — just the docker CLI, the same way a
  * human runs `docker run`.
  *
- * Tree transfer: the sealed git archive tar (the exact frozen commitSha's tree)
- * is streamed into a named docker volume via a throwaway alpine container. This
- * avoids bind mounts (which the task forbids and which break on Windows path
- * translation) — the tar bytes are substrate-neutral. `git archive` already
- * excludes gitignored paths (node_modules etc.), so the volume carries only
- * tracked files.
+ * Tree transfer: the provider extracts the exact git archive into a disposable
+ * build context. Docker builds one session-owned image from an exact local tag
+ * of the declared base plus the verbatim install command. Test mutations then
+ * cannot prepare the separately-created serve container.
  *
  * Fail-closed policy: when the profile declares an image but docker is
  * unavailable (daemon down, not linux), the executor throws
@@ -41,8 +38,8 @@ const DOCKER_INFO_TIMEOUT_MS = 8_000;
 const DOCKER_PULL_TIMEOUT_MS = 600_000;
 /** `docker volume rm` / `docker rm -f` cleanup timeout. */
 const DOCKER_RM_TIMEOUT_MS = 30_000;
-/** Tree-copy (tar stream into volume) timeout. */
-const DOCKER_TREE_COPY_TIMEOUT_MS = 120_000;
+/** Prepared-image build timeout, including the profile install command. */
+const DOCKER_BUILD_TIMEOUT_MS = 600_000;
 /** `docker run -d` (served start) timeout. */
 const DOCKER_RUN_D_TIMEOUT_MS = 30_000;
 /** Container state inspect timeout per poll. */
@@ -119,15 +116,20 @@ function errorMessage(error: unknown): string {
 }
 
 export class DockerReadinessExecutor implements ReadinessExecutor {
-  private readonly volumeName: string;
-  private volumeCreated = false;
+  private readonly sessionId = randomBytes(8).toString('hex');
+  private readonly preparedTag: string;
+  private readonly baseTag: string;
+  private readonly servedContainerName: string;
+  private preparedImageId: string | null = null;
+  private resolvedBaseImageId: string | null = null;
 
   constructor(
-    private readonly archivePath: string,
+    private readonly contextDirectory: string,
     private readonly image: string,
-    private readonly candidateHash: string,
   ) {
-    this.volumeName = `saga-lr-${randomBytes(6).toString('hex')}`;
+    this.preparedTag = `saga-lr-prepared:${this.sessionId}`;
+    this.baseTag = `saga-lr-base:${this.sessionId}`;
+    this.servedContainerName = `saga-lr-serve-${this.sessionId}`;
   }
 
   /**
@@ -137,8 +139,7 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
    * ReadinessExecutionError on any substrate-level failure so the provider
    * records a decodable 'failed' outcome.
    */
-  private ensurePrepared(): void {
-    if (this.volumeCreated) return;
+  private ensureDockerAvailable(): void {
     // 1. Daemon availability + linux runtime.
     const docker = checkDockerAvailable();
     if (!docker.available) {
@@ -158,11 +159,8 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
           + 'a containerized linux substrate; refusing to run on a non-linux runtime.',
       );
     }
-    // 2. Ensure the declared image is present locally (pull if absent).
+    // Ensure the declared image is present locally (pull if absent).
     this.ensureImagePulled();
-    // 3. Create a named volume and stream the sealed git archive tar into it.
-    this.createVolumeAndCopyTree();
-    this.volumeCreated = true;
   }
 
   private ensureImagePulled(): void {
@@ -192,56 +190,84 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
     }
   }
 
-  private createVolumeAndCopyTree(): void {
+  prepare(installCommand: string | null, timeoutMs: number): void {
+    if (this.preparedImageId !== null) {
+      throw new ReadinessExecutionError(
+        'LOCAL_RUNNABILITY_DOCKER_PREPARE_REPLAY',
+        'the Docker readiness environment was prepared more than once',
+      );
+    }
+    this.ensureDockerAvailable();
     try {
-      execFileSync('docker', ['volume', 'create', this.volumeName], {
+      this.resolvedBaseImageId = execFileSync(
+        'docker', ['image', 'inspect', '--format', '{{.Id}}', this.image],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
+          windowsHide: true, encoding: 'utf8',
+        },
+      ).trim();
+      execFileSync('docker', ['tag', this.resolvedBaseImageId, this.baseTag], {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 30_000,
         windowsHide: true,
       });
     } catch (error) {
       throw new ReadinessExecutionError(
-        'LOCAL_RUNNABILITY_DOCKER_VOLUME_CREATE_FAILED',
-        `docker volume create "${this.volumeName}" failed: ${errorMessage(error)}`,
+        'LOCAL_RUNNABILITY_DOCKER_BASE_RESOLUTION_FAILED',
+        `could not freeze declared image "${this.image}" to a local image identity: ${errorMessage(error)}`,
       );
     }
-    // Stream the git archive tar into the volume via a throwaway alpine
-    // container. The tar bytes are substrate-neutral (no Windows path
-    // translation). alpine ships tar, so `tar -xf -` extracts the stream into
-    // the volume-mounted /work. `git archive` already excludes gitignored
-    // paths, so node_modules etc. are absent.
-    let tarData: Buffer;
-    try {
-      tarData = readFileSync(this.archivePath);
-    } catch (error) {
-      throw new ReadinessExecutionError(
-        'LOCAL_RUNNABILITY_DOCKER_TREE_COPY_FAILED',
-        `could not read candidate archive "${this.archivePath}": ${errorMessage(error)}`,
-      );
-    }
+    const dockerfile = [
+      `FROM ${this.baseTag}`,
+      'WORKDIR /work',
+      'COPY . /work',
+      ...(installCommand === null
+        ? []
+        : [`RUN ["sh", "-c", ${JSON.stringify(installCommand)}]`]),
+      '',
+    ].join('\n');
     const result = spawnSync(
-      'docker',
-      ['run', '--rm', '-i', '-v', `${this.volumeName}:/work`, 'alpine', 'sh', '-c', 'tar -xf - -C /work'],
+      'docker', [
+        'build', '--quiet', '--file', '-', '--tag', this.preparedTag,
+        '--label', `saga.readiness.session=${this.sessionId}`,
+        this.contextDirectory,
+      ],
       {
-        input: tarData,
-        timeout: DOCKER_TREE_COPY_TIMEOUT_MS,
+        input: dockerfile,
+        timeout: Math.max(timeoutMs, DOCKER_BUILD_TIMEOUT_MS),
         windowsHide: true,
+        encoding: 'utf8',
         maxBuffer: 8 * 1024 * 1024,
       },
     );
     if (result.status !== 0) {
-      const detail = typeof result.stderr === 'string'
-        ? result.stderr
-        : Buffer.isBuffer(result.stderr) ? result.stderr.toString('utf8') : '';
+      throw new Error(
+        commandFailureDetail('docker build', [installCommand ?? '<no-install>'], {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          code: result.error && (result.error as NodeJS.ErrnoException).code,
+          message: result.error?.message,
+        }),
+      );
+    }
+    try {
+      this.preparedImageId = execFileSync(
+        'docker', ['image', 'inspect', '--format', '{{.Id}}', this.preparedTag],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
+          windowsHide: true, encoding: 'utf8',
+        },
+      ).trim();
+    } catch (error) {
       throw new ReadinessExecutionError(
-        'LOCAL_RUNNABILITY_DOCKER_TREE_COPY_FAILED',
-        `docker tree copy into volume "${this.volumeName}" failed (exit status=${result.status}): ${detail.slice(-2000)}`,
+        'LOCAL_RUNNABILITY_DOCKER_PREPARED_IMAGE_MISSING',
+        `Docker build completed without an inspectable prepared image: ${errorMessage(error)}`,
       );
     }
   }
 
   runCommand(command: string, timeoutMs: number): void {
-    this.ensurePrepared();
+    const preparedImage = this.requirePreparedImage();
     // The command runs verbatim via `sh -c` inside the container. No npm/node
     // routing, no ./ stripping, no JVM env — the image IS the environment. CI=1
     // matches the host executor's convention so the product's test command
@@ -249,10 +275,9 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
     try {
       execFileSync('docker', [
         'run', '--rm',
-        '-v', `${this.volumeName}:/work`,
         '-w', '/work',
         '-e', 'CI=1',
-        this.image,
+        preparedImage,
         'sh', '-c', command,
       ], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -262,7 +287,7 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       });
     } catch (error) {
       throw new Error(commandFailureDetail(
-        `docker run ${this.image} sh -c`,
+        `docker run ${preparedImage} sh -c`,
         [command],
         error,
       ));
@@ -270,10 +295,8 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
   }
 
   runServed(startCommand: string, probeTimeoutMs: number, port: number): ServeEvidence {
-    this.ensurePrepared();
-    // Deterministic container name from the candidate hash (first 8 hex chars).
-    // Pre-run collision cleanup: a prior crashed run may have left a container.
-    const containerName = `saga-lr-${this.candidateHash.slice(0, 8)}`;
+    const preparedImage = this.requirePreparedImage();
+    const containerName = this.servedContainerName;
     this.removeContainer(containerName);
     // Start the serve command detached. The port is published to 127.0.0.1 so
     // the host-side loopback probe can reach it. HOST=0.0.0.0 tells the product
@@ -285,13 +308,13 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       execFileSync('docker', [
         'run', '-d',
         '--name', containerName,
+        '--label', `saga.readiness.session=${this.sessionId}`,
         '-p', `127.0.0.1:${port}:${port}`,
-        '-v', `${this.volumeName}:/work`,
         '-w', '/work',
         '-e', `PORT=${port}`,
         '-e', 'HOST=0.0.0.0',
         '-e', 'CI=1',
-        this.image,
+        preparedImage,
         'sh', '-c', startCommand,
       ], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -301,7 +324,7 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       });
     } catch (error) {
       throw new Error(commandFailureDetail(
-        `docker run -d ${this.image} sh -c`,
+        `docker run -d ${preparedImage} sh -c`,
         [startCommand],
         error,
       ));
@@ -314,7 +337,6 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       const { stdout, stderr } = this.captureLogs(containerName);
       return {
         port,
-        containerName,
         stdoutDigest: sha256Hex(stdout),
         stderrDigest: sha256Hex(stderr),
       };
@@ -326,24 +348,30 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
   }
 
   describe(): ExecutorDescription {
-    return { substrate: 'docker', image: this.image };
+    return {
+      substrate: 'docker',
+      image: this.image,
+      ...(this.resolvedBaseImageId ? { resolvedImageId: this.resolvedBaseImageId } : {}),
+      phaseModel: 'prepared-oci-image',
+    };
   }
 
   dispose(): void {
-    // Remove the named volume. Best-effort: a volume-leak does not invalidate
-    // the readiness result (the outcome was already determined), but it should
-    // be cleaned up so repeated runs do not accumulate stale volumes.
-    if (!this.volumeCreated) return;
-    try {
-      execFileSync('docker', ['volume', 'rm', this.volumeName], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: DOCKER_RM_TIMEOUT_MS,
-        windowsHide: true,
-      });
-    } catch {
-      // Best-effort — a leftover volume is a janitorial concern, not a gate failure.
+    this.removeContainer(this.servedContainerName);
+    this.removeImage(this.preparedTag);
+    this.removeImage(this.baseTag);
+    this.preparedImageId = null;
+    this.resolvedBaseImageId = null;
+  }
+
+  private requirePreparedImage(): string {
+    if (this.preparedImageId === null) {
+      throw new ReadinessExecutionError(
+        'LOCAL_RUNNABILITY_DOCKER_NOT_PREPARED',
+        'Docker readiness test/serve was invoked before environment preparation',
+      );
     }
-    this.volumeCreated = false;
+    return this.preparedImageId;
   }
 
   /**
@@ -456,6 +484,19 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       // A missing container is expected on the pre-run cleanup and after a
       // container that exited on its own. Swallow — the observe/terminate
       // logic above already detected the real failure mode.
+    }
+  }
+
+  /** Remove only an image tag owned by this readiness session. */
+  private removeImage(imageRef: string): void {
+    try {
+      execFileSync('docker', ['image', 'rm', '-f', imageRef], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: DOCKER_RM_TIMEOUT_MS,
+        windowsHide: true,
+      });
+    } catch {
+      // Best-effort cleanup; tags are random and session-owned.
     }
   }
 }

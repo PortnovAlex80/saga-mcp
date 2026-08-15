@@ -1116,7 +1116,7 @@ test('trust migration: existing 1.1.0 row with correct attributes is migrated in
   db.close();
 });
 
-test('trust migration: existing 1.3.0 row advances version and implementation-bound trust basis', () => {
+test('trust migration: existing 1.4.0 row advances to prepared-OCI provider trust', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE trusted_providers(
     id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
@@ -1124,7 +1124,7 @@ test('trust migration: existing 1.3.0 row advances version and implementation-bo
   )`);
   db.prepare(`INSERT INTO trusted_providers
     (project_id,name,version,category,trust_basis,determinism,scope,status)
-    VALUES(NULL,'factory.local-runnability.v1','1.3.0','deterministic_evidence',
+    VALUES(NULL,'factory.local-runnability.v1','1.4.0','deterministic_evidence',
       'built-in:prior-implementation','full','local-runnability','active')`).run();
   ensureLocalRunnabilityProviderTrust(db);
   const row = db.prepare(`SELECT version,trust_basis FROM trusted_providers WHERE name=?`)
@@ -1220,4 +1220,48 @@ test('docker e2e: static alpine profile passes in a container', {
     db.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('docker e2e: one prepared image conserves install state and isolates test from serve', {
+  timeout: 120_000,
+  skip: DOCKER_AVAILABLE ? false : 'docker daemon not available',
+}, async () => {
+  const ownedResources = () => ({
+    containers: execFileSync('docker', [
+      'ps', '-aq', '--filter', 'label=saga.readiness.session',
+    ], { encoding: 'utf8' }).trim().split(/\s+/u).filter(Boolean).sort(),
+    images: execFileSync('docker', [
+      'images', '-q', '--filter', 'label=saga.readiness.session',
+    ], { encoding: 'utf8' }).trim().split(/\s+/u).filter(Boolean).sort(),
+  });
+  const before = ownedResources();
+  const root = seedRepo({
+    'index.html': '<!doctype html><title>prepared</title>\n',
+  });
+  const { db, provider } = buildProvider({
+    root,
+    readiness: {
+      kind: 'served',
+      commands: {
+        installCommand: 'mkdir -p /opt && printf installed > /opt/saga-installed',
+        testCommand: 'test -f /opt/saga-installed && touch /work/test-only',
+      },
+      serve: {
+        startCommand:
+          'test -f /opt/saga-installed && test ! -f /work/test-only '
+          + '&& exec python3 -m http.server "$PORT" --bind 0.0.0.0 --directory /work',
+      },
+      environment: { image: 'python:3.11-slim' },
+    },
+  });
+  try {
+    const result = await provider.run(RUN_ARGS);
+    assert.equal(result.outcome, 'passed', JSON.stringify(result.evidenceRefs));
+    assert.match(result.evidenceRefs[0], /^local-readiness:[a-f0-9]{64}$/u);
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+  assert.deepEqual(ownedResources(), before,
+    'the provider must remove its served container and prepared/base image tags');
 });

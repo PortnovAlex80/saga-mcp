@@ -214,7 +214,7 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // any real policy change (category/determinism/status tampering).
     // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation. Both are
     // substrate-only changes; the versioned CheckPlan still pins exact code.
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -537,11 +537,13 @@ function runLocalReadiness(
     // host path). When docker is declared but unavailable, the executor throws
     // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE → caught below → 'failed' (NOT
     // 'error', which would retry indefinitely).
-    executor = selectReadinessExecutor(directory, archive, profile, subject);
+    executor = selectReadinessExecutor(directory, profile);
     const phases: string[] = [];
-    // Install (deterministic, from the profile) — only when stated.
+    // Prepare one environment from the exact candidate and the profile-stated
+    // install command. Docker freezes post-install state as a disposable OCI
+    // image; host uses its disposable tree/venv.
+    executor.prepare(profile.commands.installCommand, 240_000);
     if (profile.commands.installCommand !== null) {
-      executor.runCommand(profile.commands.installCommand, 240_000);
       phases.push('profile-install');
     }
     // Test (deterministic, from the profile) — the runnability authority.
@@ -609,9 +611,7 @@ function runLocalReadiness(
  */
 function selectReadinessExecutor(
   directory: string,
-  archivePath: string,
   profile: ReadinessProfile,
-  subject: CandidateSubject,
 ): ReadinessExecutor {
   const mode = (process.env.SAGA_LOCAL_RUNNABILITY_EXEC ?? 'auto').toLowerCase();
   const declaredImage = profile.environment?.image;
@@ -619,7 +619,7 @@ function selectReadinessExecutor(
     return new HostReadinessExecutor(directory, profile);
   }
   if (declaredImage !== undefined) {
-    return new DockerReadinessExecutor(archivePath, declaredImage, subject.candidateHash);
+    return new DockerReadinessExecutor(directory, declaredImage);
   }
   return new HostReadinessExecutor(directory, profile);
 }
@@ -648,6 +648,10 @@ class HostReadinessExecutor implements ReadinessExecutor {
     const pythonEnv = createPythonVirtualEnvironment(directory, profile, baseEnv);
     this.env = pythonEnv?.env ?? baseEnv;
     this.isolation = pythonEnv ? 'python-venv' : undefined;
+  }
+
+  prepare(installCommand: string | null, timeoutMs: number): void {
+    if (installCommand !== null) this.runCommand(installCommand, timeoutMs);
   }
 
   runCommand(command: string, timeoutMs: number): void {

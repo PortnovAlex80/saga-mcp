@@ -417,6 +417,7 @@ function createPinnedWorkerFactory(
       ['solution-development@1.2.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development@1.4.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development@1.4.1', prepareDevelopmentWorkspaceTemplate],
+      ['solution-development@1.4.2', prepareDevelopmentWorkspaceTemplate],
       ['solution-development-managed@1.1.0', prepareDevelopmentWorkspaceTemplate],
       ['solution-development-verification-continuation@1.0.0', prepareDevelopmentWorkspaceTemplate],
     ]),

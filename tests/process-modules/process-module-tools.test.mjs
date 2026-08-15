@@ -46,7 +46,7 @@ test('process_module_list returns the complete product lifecycle catalog', () =>
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
     'product-discovery@3.0.2',
-    'solution-development@1.4.1',
+    'solution-development@1.4.2',
     'solution-formalization@1.0.0',
   ]);
   assert.ok(result.modules.every(module => module.valid === true));

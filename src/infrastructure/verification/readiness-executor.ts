@@ -13,14 +13,14 @@
  *   2. validate the readiness profile
  *   3. select an executor (host by default; docker when the profile declares
  *      environment.image and docker is available)
- *   4. executor.runCommand(install?) → executor.runCommand(test) → optionally
+ *   4. executor.prepare(install?) → executor.runCommand(test) → optionally
  *      executor.runServed(start) → executor.dispose()
  *
  * Both executors are SYNCHRONOUS (the gate-run-driver rejects async providers).
  * The host executor preserves the exact pre-Phase-1 behavior (npm/node routing,
  * JVM env selection, ./ stripping, detached process tree kill). The docker
- * executor runs commands via `docker run` against a named volume populated from
- * the git archive tar.
+ * executor prepares a disposable derived OCI image and runs test/serve in
+ * independent containers from that exact post-install environment.
  */
 
 /**
@@ -33,6 +33,10 @@ export interface ExecutorDescription {
   readonly substrate: 'host' | 'docker';
   /** Docker image reference, present only for the docker substrate. */
   readonly image?: string;
+  /** Exact local base-image id observed before Docker preparation. */
+  readonly resolvedImageId?: string;
+  /** Physical phase model used to conserve install/test/serve semantics. */
+  readonly phaseModel?: 'prepared-oci-image';
   /**
    * Host build-system detection (gradle/maven/npm/null). Present only for the
    * host substrate where it informed JVM env selection; meaningless under
@@ -67,6 +71,12 @@ export interface ServeEvidence {
  * is stateless.
  */
 export interface ReadinessExecutor {
+  /**
+   * Prepare the exact candidate environment once. Host execution runs the
+   * install command in its disposable tree/venv; Docker builds one disposable
+   * derived image which both later phases consume from fresh containers.
+   */
+  prepare(installCommand: string | null, timeoutMs: number): void;
   /**
    * Run one profile-stated contract command (install or test). Throws on
    * non-zero exit or timeout with a readable detail (stderr/stdout tail) so the
