@@ -27,7 +27,7 @@ const STATIC = Object.freeze({
 const SERVED = Object.freeze({
   kind: 'served',
   commands: { installCommand: 'pip install -r requirements.txt', testCommand: 'python -m pytest' },
-  serve: { startCommand: 'python -m app' },
+  serve: { startCommand: 'python -m app --port=${PORT}' },
   environment: { image: 'python:3.13-slim' },
 });
 
@@ -61,7 +61,7 @@ test('implementation readiness is optional item evidence but malformed evidence 
 test('standard implementation cell pins the readiness-enforcing payload contract', () => {
   const node = developmentProcessModule.flow.nodes.find(candidate =>
     candidate.id === 'implement-work-items');
-  assert.equal(developmentProcessModule.identity.version, '1.4.2');
+  assert.equal(developmentProcessModule.identity.version, '1.4.3');
   assert.deepEqual(node.cellDefinition.productContracts[0].payloadContract, {
     contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
     version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,
@@ -101,6 +101,18 @@ test('readiness certification cell pins one exact source-bound manifest', () => 
     targets: [{ key: 'primary', readiness: SERVED }],
   };
   assert.deepEqual(developmentReadinessManifestPayloadContract.validate(manifest), []);
+  for (const startCommand of [
+    'flask run --host=0.0.0.0 --port=5000',
+    'FLASK_APP=reading_queue.app:create_app flask run --host=0.0.0.0 --port=5000',
+    "python -c \"app.run(host='0.0.0.0', port=5000)\"",
+  ]) {
+    const invalid = structuredClone(manifest);
+    invalid.targets[0].readiness.serve.startCommand = startCommand;
+    assert.match(
+      developmentReadinessManifestPayloadContract.validate(invalid).join('\n'),
+      /must not hardcode a numeric port.*PORT/s,
+    );
+  }
   assert.match(
     developmentReadinessManifestPayloadContract.validate({ ...manifest, targets: [] }).join('\n'),
     /exactly one primary target/,

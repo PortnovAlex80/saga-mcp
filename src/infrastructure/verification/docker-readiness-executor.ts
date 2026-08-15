@@ -412,7 +412,8 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
         }
         throw new Error(
           `loopback readiness probe timed out after ${deadlineMs}ms `
-            + `(container="${containerName}", port=${port})`,
+          + `(container="${containerName}", port=${port}); the served command `
+          + 'must bind the Factory-provided PORT environment variable',
         );
       }
       sleepSync(PROBE_POLL_INTERVAL_MS);

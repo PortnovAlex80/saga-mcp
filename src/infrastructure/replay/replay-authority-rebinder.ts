@@ -11,6 +11,7 @@ const DEVELOPMENT_MODULE_REFS = new Set([
   'solution-development@1.4.0',
   'solution-development@1.4.1',
   'solution-development@1.4.2',
+  'solution-development@1.4.3',
 ]);
 const DEVELOPMENT_VERIFICATION_NODE = 'verify-acceptance';
 const DEVELOPMENT_INTEGRATED_CANDIDATE_SCHEMA = 'factory.integrated-release-candidate.v1';

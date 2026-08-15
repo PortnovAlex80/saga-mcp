@@ -67,7 +67,7 @@ const {
 // ---------------------------------------------------------------------------
 
 const MODULE_NAME = 'synthetic-workspace-demo';
-const MODULE_VERSION = '1.4.2';
+const MODULE_VERSION = '1.4.3';
 const INPUT_SCHEMA = 'synthetic.workspace.input.v1';
 const OUTPUT_SCHEMA = 'synthetic.workspace.output.v1';
 

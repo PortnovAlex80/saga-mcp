@@ -173,6 +173,10 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+function declaresHardcodedServePort(command: string): boolean {
+  return /(?:--port(?:=|\s+)|\bport\s*=\s*)[0-9]{2,5}\b/iu.test(command);
+}
+
 /**
  * LR-04 submission firewall. Every standard implementation presentation must
  * state the same explicit final-product run contract. This is deliberately
@@ -214,12 +218,12 @@ function validateReadinessProfile(value: unknown): string[] {
 
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID =
   'development.readiness-manifest-payload.v1';
-export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.0.0';
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.1.0';
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   decoder: 'validateDevelopmentReadinessManifest',
   schemaVersion: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
-  invariant: 'one-primary-target-bound-to-exact-integrated-source-product',
+  invariant: 'one-primary-target-bound-to-exact-integrated-source-product-and-dynamic-port-contract',
 } as const;
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST =
   productPayloadContractDigest({
@@ -261,6 +265,16 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
     } else {
       errors.push(...validateReadinessProfile(target.readiness)
         .map(error => `targets[0].${error}`));
+      const readiness = target.readiness;
+      if (isRecordValue(readiness) && readiness.kind === 'served'
+          && isRecordValue(readiness.serve)
+          && nonEmptyString(readiness.serve.startCommand)
+          && declaresHardcodedServePort(readiness.serve.startCommand)) {
+        errors.push(
+          'targets[0].readiness.serve.startCommand must not hardcode a numeric port; '
+          + 'the service must bind the Factory-provided PORT environment variable',
+        );
+      }
     }
   }
   return errors;

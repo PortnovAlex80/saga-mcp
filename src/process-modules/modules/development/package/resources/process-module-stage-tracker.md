@@ -5,7 +5,7 @@
 
 ## Machine binding
 
-- process_module_ref: `solution-development@1.4.2`
+- process_module_ref: `solution-development@1.4.3`
 - process_run_id: `{PROCESS_RUN_ID}`
 - node_id: `{NODE_ID}`
 - work_intent_id: `{WORK_INTENT_ID}`

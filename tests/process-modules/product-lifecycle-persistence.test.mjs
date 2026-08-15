@@ -72,7 +72,7 @@ test('Development output is canonical, write-once and bound to its exact Process
   try {
     const run = startProcess(
       fx.processRepo,
-      { name: 'solution-development', version: '1.4.2' },
+      { name: 'solution-development', version: '1.4.3' },
       'development-output',
     );
     const payload = {
