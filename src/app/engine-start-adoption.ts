@@ -19,11 +19,10 @@ import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/wor
  *
  * This pass runs once at engine start. Authority stays in the DB: an
  * execution that is TERMINAL in worker_executions and holds a kernel-owned
- * workplace reservation can never produce new work, so the reservation is
- * stale by definition. When the durable worker_done receipt exists, the
- * completion is already semantically proven — clearing the stale reservation
- * restores exactly the post-observation state the dead engine would have
- * written, and the idempotent kernel verifying re-drive finishes the
+ * workplace reservation can never produce new work. When the durable
+ * worker_done receipt exists, the completion is already semantically proven —
+ * the reservation is retained as the contribution-author pointer and the
+ * unstarved obligation reconciler finishes the idempotent verifying
  * transition. Without the receipt the reservation is left alone: that case
  * never legitimately reaches verifying (releaseExecution('completed') is the
  * only entry) and must fail loudly instead of being silently rewritten.
@@ -44,6 +43,11 @@ export interface EngineStartAdoptionResult {
     readonly loopState: string;
   }[];
   readonly skippedNoReceipt: number;
+  readonly spawnFailedRepaired: readonly {
+    readonly executionId: string;
+    readonly workplaceRef: string;
+    readonly loopState: string;
+  }[];
   readonly details: readonly {
     readonly executionId: string;
     readonly workplaceRef: string;
@@ -90,16 +94,16 @@ export function adoptTerminalExecutionsAtEngineStart(
     if (!hasAcceptedWorkerDone(db, row.execution_id)) {
       return false;
     }
-    // Clearing the reservation is the adoption AND the idempotency fence:
-    // the JOIN above can never match this pair again. stuck_state keeps its
-    // historical value — the column CHECK is a stuck-policy state machine
-    // ('active'/'suspected_stuck'/'cancel_requested') and adoption is not a
-    // stuck-policy transition.
-    db.prepare(
-      `UPDATE factory_workplaces
-          SET active_reservation_ref=NULL, updated_at=datetime('now')
-        WHERE workplace_ref=? AND active_reservation_ref=?`,
-    ).run(row.workplace_ref, row.execution_id);
+    // With an accepted receipt the completion is already semantically proven.
+    // The reservation is RETAINED: in verifying it is not a liveness lock but
+    // the durable pointer to the contribution's author — the executor reads
+    // `activeReservationRef` to locate `readContributionProducts(contributorRef)`
+    // and nulling it puts the Workplace in an unrecoverable state
+    // ("verifying Workplace has no producer reservation" → lifecycle failed).
+    // Nothing to rewrite: the unstarved obligation reconciler re-drives the
+    // idempotent kernel verifying transition and the reducer clears the
+    // reservation when the gate settles. This branch is a no-op fence so the
+    // adoption report still counts the adopted pair.
     return true;
   });
 
@@ -142,5 +146,80 @@ export function adoptTerminalExecutionsAtEngineStart(
       skippedNoReceipt += 1;
     }
   }
-  return { adopted: details.length, repaired, skippedNoReceipt, details };
+
+  // Spawn-failed reservations: the executor's own failure path labels the
+  // execution 'spawn_failed' and then pauses the Workplace for a human, but a
+  // concurrent engine crash (observed: the dispatch-time replay-binder abort)
+  // can kill the process between those two writes. The residue is a
+  // worker-owned `leased`/`running` Workplace whose reservation holder never
+  // had a process (pid NULL, started_at NULL): no submission, no receipt, no
+  // contribution can exist. Neither the reaper (selects
+  // reserved/running/cancel_requested states) nor the no-receipt branch above
+  // (kernel-owned states only) can see it.
+  //
+  // The repair mirrors the semantics the dead engine intended, per state:
+  //  - `leased` → pauseForHuman (the reducer's `human-required` edge has no
+  //    source-state precondition, so it is the ONLY legal transition out of a
+  //    leased desk whose holder provably never started; the standard
+  //    resumeFromHuman path then requeues a replacement worker);
+  //  - `running` → releaseExecution('crashed'), the conveyor's own
+  //    fence-checked running→repair_wait transition.
+  // Using releaseExecution('crashed') for BOTH would silently no-op on leased:
+  // the `worker-crashed` reducer edge requires `running` and the throw would be
+  // swallowed below, re-stranding the workplace on every engine start.
+  const spawnFailedRows = db.prepare(
+    `SELECT we.execution_id, w.workplace_ref, w.loop_state
+       FROM worker_executions we
+       JOIN factory_workplaces w
+         ON w.active_reservation_ref = we.execution_id
+        AND w.loop_state IN ('leased','running')
+      WHERE we.state = 'spawn_failed'
+        AND we.pid IS NULL
+        AND we.started_at IS NULL
+      ORDER BY we.reserved_at`,
+  ).all() as { execution_id: string; workplace_ref: string; loop_state: string }[];
+
+  const spawnFailedRepaired: {
+    executionId: string;
+    workplaceRef: string;
+    loopState: string;
+  }[] = [];
+  for (const row of spawnFailedRows) {
+    const task = db.prepare(
+      `SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1`,
+    ).get(row.workplace_ref) as { id: number } | undefined;
+    if (!task) continue;
+    const runtime = new ConveyorRuntime(db);
+    try {
+      if (row.loop_state === 'leased') {
+        runtime.pauseForHuman({
+          workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
+          taskId: task.id,
+        });
+      } else {
+        runtime.releaseExecution({
+          workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
+          reservationRef: row.execution_id,
+          taskId: task.id,
+          outcome: 'crashed',
+        });
+      }
+      spawnFailedRepaired.push({
+        executionId: row.execution_id,
+        workplaceRef: row.workplace_ref,
+        loopState: row.loop_state,
+      });
+    } catch {
+      // A concurrent writer already moved this workplace; the next engine
+      // start re-evaluates idempotently.
+    }
+  }
+
+  return {
+    adopted: details.length,
+    repaired,
+    skippedNoReceipt,
+    spawnFailedRepaired,
+    details,
+  };
 }

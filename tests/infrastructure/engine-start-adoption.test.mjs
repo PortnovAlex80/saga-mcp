@@ -44,7 +44,24 @@ function seedReceipt(db, executionId) {
   ).run(executionId);
 }
 
-test('adopted: terminal execution with accepted worker_done loses its stale verifying reservation', () => {
+function seedSpawnFailed(db, executionId) {
+  // pid/started_at stay NULL: the process never existed (dispatch-time abort).
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id,
+        launcher, state, phase, stuck_state)
+     VALUES (?, 'run:1', 1, 1, 1, 'w:1', 'host', 'claude', 'spawn_failed', 'executing', 'active')`,
+  ).run(executionId);
+}
+
+function seedTask(db, ref) {
+  db.prepare(
+    `INSERT INTO tasks (epic_id, title, status, workplace_ref)
+     VALUES (1, 't', 'in_progress', ?)`,
+  ).run(ref);
+}
+
+test('adopted: terminal execution with accepted worker_done keeps its verifying reservation (contribution-author pointer)', () => {
   const db = fresh();
   try {
     const ref = 'workplace/1/m@1/cell/singleton';
@@ -60,6 +77,11 @@ test('adopted: terminal execution with accepted worker_done loses its stale veri
     const wp = db.prepare('SELECT loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?').get(ref);
     // Kernel-owned state preserved: the idempotent verifying re-drive continues.
     assert.equal(wp.loop_state, 'verifying');
+    // The reservation is RETAINED: in verifying it is the durable pointer to
+    // the contribution's author (executor: readActiveActors → contributorRef).
+    // Nulling it makes the lifecycle fail with "verifying Workplace has no
+    // producer reservation".
+    assert.equal(wp.active_reservation_ref, exec);
   } finally {
     db.close();
   }
@@ -110,7 +132,7 @@ test('ignored: live (running) reservation holder and non-kernel workplaces are i
   }
 });
 
-test('idempotent: second adoption pass is a no-op', () => {
+test('idempotent: repeated adoption passes are no-ops on the DB', () => {
   const db = fresh();
   try {
     const ref = 'workplace/1/m@1/cell/singleton';
@@ -121,8 +143,73 @@ test('idempotent: second adoption pass is a no-op', () => {
 
     assert.equal(adoptTerminalExecutionsAtEngineStart(db).adopted, 1);
     const second = adoptTerminalExecutionsAtEngineStart(db);
-    assert.equal(second.adopted, 0);
+    // The receipt branch re-counts the pair (the reservation is deliberately
+    // retained), but it performs no writes — repeated passes converge.
+    assert.equal(second.adopted, 1);
     assert.equal(second.skippedNoReceipt, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('spawn-failed hybrid (leased desk): paused for human, fence cleared, idempotent', () => {
+  const db = fresh();
+  try {
+    const ref = 'workplace/1/m@1/cell/leased';
+    const exec = 'worker-execution:never-spawned';
+    seedWorkplace(db, { ref, loopState: 'leased', reservation: exec });
+    seedSpawnFailed(db, exec);
+    seedTask(db, ref);
+
+    const result = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(result.spawnFailedRepaired.length, 1);
+    assert.equal(result.spawnFailedRepaired[0].loopState, 'leased');
+
+    const wp = db.prepare(
+      'SELECT kanban_phase, loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(ref);
+    // The reducer's human-required edge has no source-state precondition — the
+    // ONLY legal way out of a leased desk whose holder provably never started.
+    // releaseExecution('crashed') would throw here (worker-crashed requires
+    // running) and be silently swallowed, re-stranding the desk every restart.
+    assert.equal(wp.loop_state, 'paused');
+    assert.equal(wp.kanban_phase, 'blocked');
+    assert.equal(wp.active_reservation_ref, null);
+
+    const task = db.prepare('SELECT status FROM tasks WHERE workplace_ref=?').get(ref);
+    assert.equal(task.status, 'blocked');
+
+    // Idempotent: the desk left leased/running, so the second pass sees nothing.
+    const second = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(second.spawnFailedRepaired.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('spawn-failed hybrid (running desk): crashed to repair_wait, kanban preserved', () => {
+  const db = fresh();
+  try {
+    const ref = 'workplace/1/m@1/cell/running';
+    const exec = 'worker-execution:never-spawned-2';
+    seedWorkplace(db, { ref, loopState: 'running', reservation: exec });
+    seedSpawnFailed(db, exec);
+    seedTask(db, ref);
+
+    const result = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(result.spawnFailedRepaired.length, 1);
+    assert.equal(result.spawnFailedRepaired[0].loopState, 'running');
+
+    const wp = db.prepare(
+      'SELECT kanban_phase, loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(ref);
+    // REG-28-AC-02: a crash moves the loop only — the kanban stage stays.
+    assert.equal(wp.loop_state, 'repair_wait');
+    assert.equal(wp.kanban_phase, 'in_progress');
+    assert.equal(wp.active_reservation_ref, null);
+
+    const task = db.prepare('SELECT status FROM tasks WHERE workplace_ref=?').get(ref);
+    assert.equal(task.status, 'in_progress');
   } finally {
     db.close();
   }
