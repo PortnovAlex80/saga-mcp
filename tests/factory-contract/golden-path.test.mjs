@@ -337,7 +337,7 @@ test('Factory transition conformance: reject -> repair -> accept, then replay wi
 
     const runAInvocations = JSON.parse(readFileSync(invocationLogPath, 'utf8'));
     assert.ok(runAInvocations.length >= 12, `scripted workers invoked on cold path: ${runAInvocations.length}`);
-    assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.4.0'), 'Run A Development used scripted physical workers');
+    assert.ok(runAInvocations.some(i => i.key?.module === 'solution-development@1.4.1'), 'Run A Development used scripted physical workers');
     assertPhysicalRepairInvocations(runAInvocations, CONFORMANCE_AUTHOR_KEY, 'author');
     assertPhysicalRepairInvocations(
       runAInvocations,

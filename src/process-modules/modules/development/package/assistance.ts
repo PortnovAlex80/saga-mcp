@@ -145,6 +145,15 @@ export const DEVELOPMENT_AGENT_ASSISTANCE: readonly AgentAssistanceDefinition[] 
         'This is a resumed execution. Read {TRACKER_PATH} and recovery-feedback.json or review-feedback.json when present; continue at the first unchecked item.',
     }),
     developmentAssistance({
+      nodeId: 'certify-product-readiness',
+      goal:
+        'Read the exact integrated source candidate and publish one source-bound readiness manifest describing how the complete product is installed, tested and started.',
+      completion:
+        'process_node_submit has returned a durable readiness-manifest receipt bound to the exact integrated source candidate, the tracker is current, and worker_done is called exactly once.',
+      resumeHint:
+        'This is a resumed readiness certification. Read {TRACKER_PATH} and recovery-feedback.json when present; preserve the exact source candidate binding and repair only the rejected readiness fields.',
+    }),
+    developmentAssistance({
       nodeId: 'verify-acceptance',
       goal:
         'Verify one acceptance criterion against the exact frozen implementation candidate and publish typed deterministic evidence.',

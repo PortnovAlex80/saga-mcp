@@ -27,6 +27,7 @@ const DEVELOPMENT_MODULE_REFS = [
   'solution-development@1.1.0',
   'solution-development@1.2.0',
   'solution-development@1.4.0',
+  'solution-development@1.4.1',
 ] as const;
 const DEVELOPMENT_CONTINUATION_MODULE_REF = 'solution-development-managed@1.1.0';
 const DEVELOPMENT_VERIFICATION_CONTINUATION_MODULE_REF =

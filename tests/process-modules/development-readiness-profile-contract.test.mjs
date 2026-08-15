@@ -12,6 +12,7 @@ import {
   developmentReadinessManifestPayloadContract,
 } from '../../dist/modules/development/application/development-check-providers.js';
 import { developmentProcessModule } from '../../dist/process-modules/modules/development/development-process-module.js';
+import { developmentPackageManifest } from '../../dist/process-modules/modules/development/package/manifest.js';
 import { SqliteDevelopmentModuleStore } from '../../dist/modules/development/infrastructure/sqlite-development-settlement-state.js';
 import {
   hashIntegratedSourceCandidate,
@@ -60,12 +61,26 @@ test('implementation readiness is optional item evidence but malformed evidence 
 test('standard implementation cell pins the readiness-enforcing payload contract', () => {
   const node = developmentProcessModule.flow.nodes.find(candidate =>
     candidate.id === 'implement-work-items');
-  assert.equal(developmentProcessModule.identity.version, '1.4.0');
+  assert.equal(developmentProcessModule.identity.version, '1.4.1');
   assert.deepEqual(node.cellDefinition.productContracts[0].payloadContract, {
     contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
     version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,
     contractDigest: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DIGEST,
   });
+});
+
+test('every Development Production Cell has package-owned agent assistance', () => {
+  const assistedNodeIds = new Set(
+    developmentPackageManifest.assistance.map(definition => definition.nodeId),
+  );
+  const productionCellNodeIds = developmentProcessModule.flow.nodes
+    .filter(node => node.kind === 'production-cell')
+    .map(node => node.id);
+  assert.deepEqual(
+    productionCellNodeIds.filter(nodeId => !assistedNodeIds.has(nodeId)),
+    [],
+    'a Production Cell without assistance fails later at worker pre-spawn',
+  );
 });
 
 test('readiness certification cell pins one exact source-bound manifest', () => {
