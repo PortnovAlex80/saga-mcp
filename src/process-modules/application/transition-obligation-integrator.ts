@@ -3,24 +3,8 @@
 // ADR-053 Phase 8 / ADR-072 — wire the six conveyor handoffs onto the durable
 // transition-obligation substrate (Phase 2).
 //
-// Each source fact (CandidateSet seal, Gate acceptance, Effects settlement,
-// FinalAcceptance recording, Process settlement) appends a durable obligation
-// in the SAME logical step. The reconciler (Phase 2) then redrives any
-// obligation that was not completed (e.g. after a crash between seal and gate).
-//
-// The six handoffs:
-//   final-presentation-committed → close-presentation
-//   candidate-set-sealed       → run-gate
-//   gate-accepted              → run-effects
-//   effects-settled            → record-final-acceptance
-//   final-acceptance-recorded  → settle-process
-//   process-settled            → route-lifecycle
-//
-// Phase 8 creates the integrator and obligation-creation utilities. The
-// handlers are registered with production transition logic. Each handler is
-// idempotent: if the transition already happened (e.g. the gate already ran
-// before the crash), the handler discovers this and completes the obligation
-// with the existing receipt.
+// Each source fact appends a durable obligation in the SAME logical step. The
+// reconciler redrives any obligation that was not completed after a crash.
 
 import type { SqliteTransitionObligationLedger } from '../persistence/sqlite-transition-obligation-ledger.js';
 import type {
@@ -30,30 +14,15 @@ import type {
   TransitionHandoffKind,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
 
-// ---------------------------------------------------------------------------
-// Obligation-creation utilities — one per source fact kind.
-//
-// Each is called in the SAME transaction (or logical step) as the source fact.
-// The obligation key is deterministic: a replay of the source fact finds the
-// existing obligation (INSERT OR IGNORE).
-//
-// ADR-053 C7-06 — the causal source revision (provenance) is NO LONGER supplied
-// by the caller as a fabricated `fence: 1` stub. It is ALLOCATED by the store
-// inside {@link SqliteTransitionObligationLedger.appendFenced}: the creation-
-// generation fence IS the provenance revision. The obligation's `lease_fence` is
-// pre-reserved to the same value, so the reconciler's first lease runs under a
-// REAL monotonic fence. A replay (same source fact after crash recovery) is a
-// no-op: the existing causal revision and lease fence are preserved.
-// ---------------------------------------------------------------------------
-
 export interface ObligationIntegratorDeps {
   readonly ledger: SqliteTransitionObligationLedger;
 }
 
+const CELL_EFFECT_RECEIPT_PREFIX = 'cell-effect-receipt:';
+
 export class TransitionObligationIntegrator {
   constructor(private readonly deps: ObligationIntegratorDeps) {}
 
-  /** Final typed presentation committed -> kernel must close its producer. */
   onFinalPresentationCommitted(input: {
     commitmentRef: string;
     commitmentDigest: string;
@@ -69,7 +38,6 @@ export class TransitionObligationIntegrator {
     });
   }
 
-  /** CandidateSet sealed → the Gate must run. */
   onCandidateSetSealed(input: {
     candidateSetRef: string;
     candidateSetDigest: string;
@@ -85,7 +53,6 @@ export class TransitionObligationIntegrator {
     });
   }
 
-  /** Gate accepted → post-acceptance effects must run. */
   onGateAccepted(input: {
     gateDecisionKey: string;
     gateDecisionDigest: string;
@@ -101,22 +68,39 @@ export class TransitionObligationIntegrator {
     });
   }
 
-  /** Effects settled → final acceptance must be recorded. */
+  /**
+   * Effects settled → final acceptance must be recorded.
+   *
+   * The existing caller passes the content-addressed
+   * `cell-effect-receipt:<digest>` ref through the historically named
+   * `effectReceiptDigest` parameter. Normalize it here so the obligation source
+   * identifies the exact persisted EffectReceipt instead of the whole Workplace.
+   */
   onEffectsSettled(input: {
     workplaceRef: string;
     effectReceiptDigest: string;
   }): TransitionObligation {
+    const effect = exactEffectReceiptIdentity(input.effectReceiptDigest);
     return this.appendFenced({
       sourceKind: 'effects-settled',
-      sourceRef: input.workplaceRef,
-      sourceDigest: input.effectReceiptDigest,
+      sourceRef: effect.ref,
+      sourceDigest: effect.digest,
       subjectRef: input.workplaceRef,
       handoffKind: 'record-final-acceptance',
       ownerCapability: 'production-cell-node-executor',
     });
   }
 
-  /** Final acceptance recorded → process must settle. */
+  /**
+   * Final acceptance recorded → process must settle.
+   *
+   * NOTE: the current ProductionCellNodeExecutor still passes a legacy alias
+   * (`final-acceptance:<workplace>:<candidate>`) rather than the persisted
+   * `cell-final-acceptance:<rowDigest>` ref. Do not fabricate a conversion here:
+   * the semantic acceptance digest passed by that caller is intentionally not
+   * the row digest used by SqliteCellFinalAcceptance. Exact-ref cutover must be
+   * performed at the caller that receives recordFinalAcceptance()'s return.
+   */
   onFinalAcceptanceRecorded(input: {
     finalAcceptanceRef: string;
     acceptanceDigest: string;
@@ -128,11 +112,13 @@ export class TransitionObligationIntegrator {
       sourceDigest: input.acceptanceDigest,
       subjectRef: input.workplaceRef,
       handoffKind: 'settle-process',
-      ownerCapability: 'process-settlement',
+      // Runtime registration executes settlement through the Production Cell
+      // node executor. Persist the same owner identity the executable manifest
+      // enforces instead of the historical `process-settlement` alias.
+      ownerCapability: 'production-cell-node-executor',
     });
   }
 
-  /** Process settled → lifecycle must route. */
   onProcessSettled(input: {
     processRunId: number;
     settlementDigest: string;
@@ -144,39 +130,38 @@ export class TransitionObligationIntegrator {
       sourceDigest: input.settlementDigest,
       subjectRef: input.subjectRef,
       handoffKind: 'route-lifecycle',
-      ownerCapability: 'lifecycle-router',
+      ownerCapability: 'lifecycle-orchestrator',
     });
   }
 
   private appendFenced(input: AppendFencedObligationInput): TransitionObligation {
-    // ADR-053 B-8 — obligations are MANDATORY crash-recovery facts, NOT
-    // best-effort. A failure to append MUST propagate. When this is called
-    // inside the source transition's transaction (e.g. the CandidateSet seal
-    // txn), the propagation rolls the source fact back — so the obligation is
-    // recorded iff the source commits (atomic, all-or-nothing). Swallowing
-    // here would leave a sealed CandidateSet with no redrive target after a
-    // crash between seal and gate.
-    //
-    // ADR-053 C7-06 — the causal source revision is ALLOCATED by the store
-    // (appendFenced), not supplied by the caller. No fabricated `fence` token
-    // crosses this seam.
     return this.deps.ledger.appendFenced(input);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Handler registration helpers — bind production transition logic to the
-// reconciler. Each handler is idempotent: it either performs the transition
-// or discovers it was already performed and completes with the existing receipt.
-// ---------------------------------------------------------------------------
+function exactEffectReceiptIdentity(value: string): { ref: string; digest: string } {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('TRANSITION_EFFECT_RECEIPT_IDENTITY_REQUIRED');
+  }
+  const normalized = value.trim();
+  if (normalized.startsWith(CELL_EFFECT_RECEIPT_PREFIX)) {
+    const digest = normalized.slice(CELL_EFFECT_RECEIPT_PREFIX.length);
+    if (!digest) throw new Error('TRANSITION_EFFECT_RECEIPT_DIGEST_REQUIRED');
+    return { ref: normalized, digest };
+  }
+  return {
+    ref: `${CELL_EFFECT_RECEIPT_PREFIX}${normalized}`,
+    digest: normalized,
+  };
+}
 
 export const HANDOFF_OWNERS: Readonly<Record<TransitionHandoffKind, string>> = Object.freeze({
   'close-presentation': 'presentation-closure',
   'run-gate': 'gate-run-driver',
   'run-effects': 'production-cell-node-executor',
   'record-final-acceptance': 'production-cell-node-executor',
-  'settle-process': 'process-settlement',
-  'route-lifecycle': 'lifecycle-router',
+  'settle-process': 'production-cell-node-executor',
+  'route-lifecycle': 'lifecycle-orchestrator',
 });
 
 export const SOURCE_TO_HANDOFF: Readonly<Record<TransitionSourceKind, TransitionHandoffKind>> = Object.freeze({
