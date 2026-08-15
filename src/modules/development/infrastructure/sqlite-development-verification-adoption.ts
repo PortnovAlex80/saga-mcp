@@ -483,7 +483,7 @@ function readVerificationMethodPlan(
   const lines = content.split(/\r?\n/u);
   let currentObligation: (typeof obligations)[number] | null = null;
   for (const line of lines) {
-    const heading = /^#{2,3} (AC-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*):\s*(.+)$/u.exec(line);
+    const heading = /^#{2,3} (AC-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*):\s*(.+)$/u.exec(line);
     if (heading) {
       const code = heading[1]!;
       const isLeaf = leaves.some(leaf => leaf.code === code);
