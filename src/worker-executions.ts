@@ -86,11 +86,66 @@ export interface WorkerExecutionRow {
   accepted_worker_done: number;
 }
 
+// TB-2 root cause: every mark* call opened its OWN connection and closed it,
+// so the runner's markExited (inside the engine process) competed for the
+// write lock on a second connection while the engine held BEGIN IMMEDIATE on
+// the first — the blocked window is one full busy_timeout with the event loop
+// frozen (timers dead). Serialize all of this module's writes onto ONE cached
+// connection per database path per process; the cache is unbounded in path
+// count but process-lifetime, matching how the engine/test hosts use a single
+// DB (tests that open many temp DBs may call closeRuntimeDbCache between
+// cases).
+const runtimeDbCache = new Map<string, Database.Database>();
+
+export function closeRuntimeDbCache(): void {
+  for (const db of runtimeDbCache.values()) db.close();
+  runtimeDbCache.clear();
+}
+
+// TB-2 pair (ADR verdict: timeout only WITH a paired backoff): a short
+// busy_timeout turns "used to wait 5s and pass" into a thrown SqliteError, so
+// every write through this module retries a bounded number of times before
+// surfacing. Worst-case blocked time is attempts × busy_timeout (750ms here),
+// not one 5s window with the event loop frozen.
+const RUNTIME_BUSY_TIMEOUT_MS = 250;
+const RUNTIME_BUSY_ATTEMPTS = 3;
+const RUNTIME_BUSY_BACKOFF_MS = [50, 150];
+
 function openRuntimeDb(dbPath: string): Database.Database {
+  const cached = runtimeDbCache.get(dbPath);
+  if (cached) return cached;
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
-  db.pragma('busy_timeout = 5000');
+  db.pragma(`busy_timeout = ${RUNTIME_BUSY_TIMEOUT_MS}`);
+  runtimeDbCache.set(dbPath, db);
   return db;
+}
+
+/** Synchronous sleep for the bounded backoff (event loop is blocked anyway). */
+function sleepSync(ms: number): void {
+  const sab = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(sab), 0, 0, ms);
+}
+
+/**
+ * Run one statement (or transaction) with the paired busy backoff. Rethrows
+ * the last SqliteError after the final attempt; non-busy errors surface
+ * immediately.
+ */
+function withBusyRetry<T>(run: () => T): T {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RUNTIME_BUSY_ATTEMPTS; attempt += 1) {
+    try {
+      return run();
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'SQLITE_BUSY') throw error;
+      lastError = error;
+      if (attempt < RUNTIME_BUSY_ATTEMPTS - 1) {
+        sleepSync(RUNTIME_BUSY_BACKOFF_MS[Math.min(attempt, RUNTIME_BUSY_BACKOFF_MS.length - 1)]!);
+      }
+    }
+  }
+  throw lastError;
 }
 
 export function assertExecutionFence(
@@ -124,7 +179,7 @@ export function markExecutionRunning(
     throw new Error(`cannot fence execution ${executionId}: process birth identity is unavailable`);
   }
   const db = openRuntimeDb(dbPath);
-  try {
+  withBusyRetry(() => {
     const info = db.prepare(
       `UPDATE worker_executions
        SET state='running', pid=?, process_birth_token=?, log_path=?,
@@ -139,9 +194,7 @@ export function markExecutionRunning(
          '$.worker_pid', ?, '$.worker_started_at', ?)
        WHERE current_execution_id=?`,
     ).run(pid, startedAt, executionId);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 /**
@@ -160,15 +213,13 @@ export function markExecutionProgress(
   executionId: string,
 ): void {
   const db = openRuntimeDb(dbPath);
-  try {
+  withBusyRetry(() => {
     db.prepare(
       `UPDATE worker_executions
        SET progress_at=datetime('now')
        WHERE execution_id=? AND state IN ('reserved','running','cancel_requested')`,
     ).run(executionId);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export function markExecutionSpawnFailed(
@@ -177,15 +228,13 @@ export function markExecutionSpawnFailed(
   error: string,
 ): void {
   const db = openRuntimeDb(dbPath);
-  try {
+  withBusyRetry(() => {
     db.prepare(
       `UPDATE worker_executions
        SET state='spawn_failed', finished_at=datetime('now'), last_error=?
        WHERE execution_id=? AND state IN ('reserved','running')`,
     ).run(error, executionId);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 /**
@@ -218,16 +267,14 @@ export function markExecutionExited(
   state: 'exited' | 'terminated' = 'exited',
 ): void {
   const db = openRuntimeDb(dbPath);
-  try {
+  withBusyRetry(() => {
     releaseExecutionAtomically(db, {
       executionId,
       terminalState: state,
       exitCode,
       reason: `process exited (state=${state}, exitCode=${exitCode ?? 'null'})`,
     });
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export function updateExecutionPhase(
