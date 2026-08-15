@@ -350,14 +350,18 @@ export class SqliteReplayCapsuleRepository {
     const capsules = this.db.prepare(
       `SELECT capsule_ref,payload_hash
          FROM factory_replay_capsules
-        WHERE project_id=? AND replay_key=?`,
+        WHERE project_id=? AND replay_key=?
+        ORDER BY created_at DESC, capsule_ref DESC`,
     ).all(keyMaterial.projectId, replayKey) as Array<{
       capsule_ref: string;
       payload_hash: string;
     }>;
-    if (capsules.length > 1) {
-      throw new Error(`REPLAY_CAPSULE_AUTHORITY_AMBIGUOUS: ${replayKey}`);
-    }
+    // More than one capsule per semantic replay key is the normal aftermath
+    // of a failed lifecycle followed by new_start (each accepted run captures
+    // the same semantic work). The LATEST capture is the current material
+    // authority — see bindReplayToClaim for the full rationale; this
+    // resolver shares that newest-wins selection so claim resolution and
+    // binding can never disagree.
     const capsule = capsules[0];
     return {
       replayKey,
