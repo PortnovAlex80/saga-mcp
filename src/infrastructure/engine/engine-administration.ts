@@ -328,6 +328,17 @@ export class EngineProcessAdministration implements EngineAdministration {
 
   private killEngineTree(projectId: number, epicId: number): void {
     try {
+      // TB-7/TB-3 root: the legacy matcher looked for positional args
+      // `orchestrate-cli.js <projectId> <epicId>`, but the engine is spawned
+      // as `node orchestrate-cli.js --launch-ref=<uuid>` (see start(), line
+      // ~126). The matcher NEVER matched, so stop() left the engine running
+      // and isEngineAlive() reported every live engine as dead — each
+      // subsequent start() spawned a competitor into a 30s lease race.
+      // The authoritative coordinates are the persisted engine_pid (written
+      // atomically with the spawn) plus a command-line guard so a reused PID
+      // of an unrelated process is never killed.
+      const persisted = this.readPersisted(epicId);
+      const enginePid = persisted.running ? persisted.pid : null;
       if (this.platform === 'win32') {
         this.spawnProcessSync(
           'powershell',
@@ -337,9 +348,13 @@ export class EngineProcessAdministration implements EngineAdministration {
             + `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } `
             + `} ; `
             + `$toKill = @(); `
-            + `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | `
+            + (enginePid !== null
+              ? `$engines = Get-CimInstance Win32_Process -Filter "ProcessId=${enginePid}" | `
+                + `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js*' }; `
+              : `$engines = @(); `)
+            + `$legacy = Get-CimInstance Win32_Process -Filter "name='node.exe'" | `
             + `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; `
-            + `foreach ($e in $engines) { `
+            + `foreach ($e in (@($engines) + @($legacy))) { `
             + `  $toKill += $e.ProcessId; `
             + `  $toKill += Get-Descendants $e.ProcessId `
             + `} ; `
@@ -356,6 +371,13 @@ export class EngineProcessAdministration implements EngineAdministration {
           { encoding: 'utf8', stdio: 'ignore', windowsHide: true },
         );
       } else {
+        if (enginePid !== null) {
+          this.spawnProcessSync(
+            'kill',
+            ['-9', String(enginePid)],
+            { encoding: 'utf8' },
+          );
+        }
         this.spawnProcessSync(
           'pkill',
           ['-f', `orchestrate-cli.js ${projectId} ${epicId}`],
@@ -393,20 +415,22 @@ export class EngineProcessAdministration implements EngineAdministration {
 
     let verified: boolean = fastAlive;
     try {
+      // TB-7: verify THE persisted PID's command line instead of searching by
+      // the legacy positional-args pattern (which never matched the real
+      // `--launch-ref` spawn, so every live engine was reported dead).
       if (this.platform === 'win32') {
         const result = this.spawnProcessSync(
           'powershell',
           ['-Command',
-            `$es = Get-CimInstance Win32_Process -Filter "name='node.exe'" | `
-            + `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; `
-            + `if ($es) { 'alive' } else { 'dead' }`],
+            `$e = Get-CimInstance Win32_Process -Filter "ProcessId=${persisted.pid}" ; `
+            + `if ($e -and $e.CommandLine -like '*orchestrate-cli.js*') { 'alive' } else { 'dead' }`],
           { encoding: 'utf8', windowsHide: true },
         );
         verified = String(result.stdout || '').trim() === 'alive';
       } else {
         const result = this.spawnProcessSync(
-          'pgrep',
-          ['-f', `orchestrate-cli.js ${projectId} ${epicId}`],
+          'sh',
+          ['-c', `grep -q orchestrate-cli.js /proc/${persisted.pid}/cmdline`],
           { encoding: 'utf8' },
         );
         verified = result.status === 0;
