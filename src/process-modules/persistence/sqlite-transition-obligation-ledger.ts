@@ -30,10 +30,11 @@ import {
 // ---------------------------------------------------------------------------
 // Obligation identity.
 //
-// The five conveyor transitions that MUST become durable. Each source kind is
+// The six conveyor transitions that MUST become durable. Each source kind is
 // a sealed fact; each handoff kind is the transition that fact requires.
 // ---------------------------------------------------------------------------
 export const TRANSITION_SOURCE_KINDS = [
+  'final-presentation-committed',
   'candidate-set-sealed',
   'gate-accepted',
   'effects-settled',
@@ -43,6 +44,7 @@ export const TRANSITION_SOURCE_KINDS = [
 export type TransitionSourceKind = (typeof TRANSITION_SOURCE_KINDS)[number];
 
 export const TRANSITION_HANDOFF_KINDS = [
+  'close-presentation',
   'run-gate',
   'run-effects',
   'record-final-acceptance',

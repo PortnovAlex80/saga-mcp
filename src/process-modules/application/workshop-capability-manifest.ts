@@ -210,6 +210,7 @@ export const WORKSHOP_EXECUTABLE_CAPABILITIES: readonly ExecutableCapabilityMani
   effect(REPLAY_CAPTURE_EFFECT_ID, REPLAY_CAPTURE_EFFECT_VERSION, REPLAY_CAPTURE_EFFECT_DIGEST),
   effect(FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID, FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_VERSION, FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_DIGEST),
   ...[
+    ['close-presentation', 'presentation-closure'],
     ['run-gate', 'gate-run-driver'],
     ['run-effects', 'production-cell-node-executor'],
     ['record-final-acceptance', 'production-cell-node-executor'],

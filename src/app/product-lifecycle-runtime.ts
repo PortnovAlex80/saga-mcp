@@ -37,6 +37,7 @@ import {
   TransitionObligationReconciler,
   type TransitionObligationHandler,
 } from '../process-modules/application/transition-obligation-reconciler.js';
+import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
 import { readTransitionHandoffPostcondition } from '../process-modules/application/transition-handoff-postconditions.js';
 import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import type {
@@ -869,13 +870,16 @@ export function createProductLifecycleRuntime(
   // obligation is `in_progress` under this reconciler lease.
   const obligationReconciler = new TransitionObligationReconciler(obligationLedger);
   for (const handoffKind of [
+    'close-presentation',
     'run-gate',
     'run-effects',
     'record-final-acceptance',
     'settle-process',
     'route-lifecycle',
   ] as const) {
-    const ownerCapability = handoffKind === 'run-gate'
+    const ownerCapability = handoffKind === 'close-presentation'
+      ? 'presentation-closure'
+      : handoffKind === 'run-gate'
       ? 'gate-run-driver'
       : handoffKind === 'route-lifecycle'
         ? 'lifecycle-orchestrator'
@@ -884,6 +888,18 @@ export function createProductLifecycleRuntime(
     const handler: TransitionObligationHandler = {
       handoffKind,
       async execute(obligation) {
+        if (handoffKind === 'close-presentation') {
+          const closed = closeCommittedTypedPresentation(db, obligation.sourceRef);
+          return {
+            completionReceipt: closed.receiptRef,
+            resultDigest: sha256Hex({
+              obligationKey: obligation.obligationKey,
+              commitmentRef: closed.commitment.commitmentRef,
+              productRef: closed.commitment.productRef,
+              productDigest: closed.commitment.productDigest,
+            }),
+          };
+        }
         const command = transitionRedriveCommand(db, obligation.subjectRef, obligation.sourceRef);
         const result = await baseEngine.run(command);
         const postcondition = readTransitionHandoffPostcondition(db, obligation);

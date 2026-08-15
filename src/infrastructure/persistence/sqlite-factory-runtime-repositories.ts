@@ -324,7 +324,7 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
         // not send worker-lost to a Workplace now owned by its GateRun.
         const semanticCompletionAccepted = Boolean(db.prepare(
           `SELECT 1 FROM command_receipts
-            WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+            WHERE execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1
             LIMIT 1`,
         ).get(projection.executionId));
         if (semanticCompletionAccepted) continue;

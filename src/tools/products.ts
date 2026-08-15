@@ -11,6 +11,9 @@ import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../module
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 import { materializeManagedSourceChange } from '../infrastructure/source-change/managed-source-change-candidate.js';
+import { withImmediateTransaction } from '../lifecycle/work-assignment-core.js';
+import { recordFinalPresentationCommitment } from '../infrastructure/workplace/sqlite-final-presentation-commitment.js';
+import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
 
 let submissions: SqliteManagedNodeSubmissionRepository | null = null;
 let products: SqliteProcessProductRepositoryV2 | null = null;
@@ -49,52 +52,67 @@ const productSubmit: ToolHandler = args => {
     try { content = JSON.parse(content); } catch { /* strings are legal products */ }
   }
   content = materializeManagedSourceChange(getDb(), schema, content);
-  const result = submissionRepo().submitForCurrentExecution({ schema, payload: content });
-  const universalRef = writeProduct(getDb(), {
-    schemaRef: schema,
-    content,
-    executionRef: result.record.executionId,
-    productKey: `content:${result.record.contentHash}`,
-  });
-  // CONVEYOR v4.3 PART 5-7: Discovery proposal compatibility projection. When
-  // the managed submission is a Discovery proposal, deterministically project
-  // it into factory_proposals (the D3/D4/D5 settlement spine). This makes
-  // inference and replay follow the EXACT same path: both call product_submit,
-  // both produce a managed submission, both get the same projection. The
-  // readiness Gate reads factory_proposals and cannot distinguish how the
-  // product was produced. This is the architectural criterion.
-  let discoveryProjection: { proposalId: number; contentHash: string } | null = null;
-  if (requiresDiscoveryProjection(schema)) {
-    discoveryProjection = projectDiscoveryProposal(getDb(), {
-      submissionId: result.record.submissionId,
+  const committed = withImmediateTransaction(getDb(), () => {
+    const result = submissionRepo().submitForCurrentExecution({ schema, payload: content });
+    const universalRef = writeProduct(getDb(), {
+      schemaRef: schema,
+      content,
+      executionRef: result.record.executionId,
+      productKey: `content:${result.record.contentHash}`,
     });
-    if (discoveryProjection) {
-      writeProduct(getDb(), {
-        schemaRef: PROPOSAL_REF_SCHEMA,
-        content: {
-          proposalId: discoveryProjection.proposalId,
-          contentHash: discoveryProjection.contentHash,
-        },
-        executionRef: result.record.executionId,
+    // Compatibility projections are part of the same source transaction as
+    // the final-presentation commitment. A crash cannot expose a commitment
+    // whose deterministic product projections are missing.
+    let discoveryProjection: { proposalId: number; contentHash: string } | null = null;
+    if (requiresDiscoveryProjection(schema)) {
+      discoveryProjection = projectDiscoveryProposal(getDb(), {
+        submissionId: result.record.submissionId,
       });
+      if (discoveryProjection) {
+        writeProduct(getDb(), {
+          schemaRef: PROPOSAL_REF_SCHEMA,
+          content: {
+            proposalId: discoveryProjection.proposalId,
+            contentHash: discoveryProjection.contentHash,
+          },
+          executionRef: result.record.executionId,
+        });
+      }
     }
+    const commitment = recordFinalPresentationCommitment(getDb(), {
+      taskId: result.record.taskId,
+      executionId: result.record.executionId,
+      productSchema: result.record.schema,
+      productRef: result.record.artifactRef,
+      productDigest: result.record.contentHash,
+    });
+    return { result, universalRef, discoveryProjection, commitment };
+  });
+  // Fast path. The durable obligation written above remains the crash/restart
+  // owner; this synchronous attempt only avoids waiting for the next sweep.
+  if (committed.commitment) {
+    closeCommittedTypedPresentation(getDb(), committed.commitment.commitmentRef);
   }
   return {
     accepted: true,
-    replayed: result.replayed,
+    replayed: committed.result.replayed,
     product_ref: {
-      schemaId: result.record.schema,
-      ref: result.record.artifactRef,
-      digest: result.record.contentHash,
+      schemaId: committed.result.record.schema,
+      ref: committed.result.record.artifactRef,
+      digest: committed.result.record.contentHash,
     },
-    universal_ref: universalRef,
-    submission_id: result.record.submissionId,
-    process_run_id: result.record.processRunId,
-    module_ref: result.record.moduleRef,
-    node_id: result.record.nodeId,
-    execution_id: result.record.executionId,
-    discovery_proposal_id: discoveryProjection?.proposalId ?? null,
-    _workflow_hint: 'Product sealed on the desk. Call worker_done exactly once.',
+    universal_ref: committed.universalRef,
+    submission_id: committed.result.record.submissionId,
+    process_run_id: committed.result.record.processRunId,
+    module_ref: committed.result.record.moduleRef,
+    node_id: committed.result.record.nodeId,
+    execution_id: committed.result.record.executionId,
+    discovery_proposal_id: committed.discoveryProjection?.proposalId ?? null,
+    presentation_commitment_ref: committed.commitment?.commitmentRef ?? null,
+    stop: committed.commitment !== null,
+    _workflow_hint: committed.commitment
+      ? 'Final presentation committed and closed by the Factory. Stop now; do not call more tools.'
+      : 'Product sealed on the desk. Call worker_done exactly once.',
   };
 };
 

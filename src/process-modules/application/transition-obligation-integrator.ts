@@ -1,6 +1,6 @@
 // src/process-modules/application/transition-obligation-integrator.ts
 //
-// ADR-053 Phase 8 — wire the five conveyor handoffs onto the durable
+// ADR-053 Phase 8 / ADR-072 — wire the six conveyor handoffs onto the durable
 // transition-obligation substrate (Phase 2).
 //
 // Each source fact (CandidateSet seal, Gate acceptance, Effects settlement,
@@ -8,7 +8,8 @@
 // in the SAME logical step. The reconciler (Phase 2) then redrives any
 // obligation that was not completed (e.g. after a crash between seal and gate).
 //
-// The five handoffs:
+// The six handoffs:
+//   final-presentation-committed → close-presentation
 //   candidate-set-sealed       → run-gate
 //   gate-accepted              → run-effects
 //   effects-settled            → record-final-acceptance
@@ -51,6 +52,22 @@ export interface ObligationIntegratorDeps {
 
 export class TransitionObligationIntegrator {
   constructor(private readonly deps: ObligationIntegratorDeps) {}
+
+  /** Final typed presentation committed -> kernel must close its producer. */
+  onFinalPresentationCommitted(input: {
+    commitmentRef: string;
+    commitmentDigest: string;
+    workplaceRef: string;
+  }): TransitionObligation {
+    return this.appendFenced({
+      sourceKind: 'final-presentation-committed',
+      sourceRef: input.commitmentRef,
+      sourceDigest: input.commitmentDigest,
+      subjectRef: input.workplaceRef,
+      handoffKind: 'close-presentation',
+      ownerCapability: 'presentation-closure',
+    });
+  }
 
   /** CandidateSet sealed → the Gate must run. */
   onCandidateSetSealed(input: {
@@ -154,6 +171,7 @@ export class TransitionObligationIntegrator {
 // ---------------------------------------------------------------------------
 
 export const HANDOFF_OWNERS: Readonly<Record<TransitionHandoffKind, string>> = Object.freeze({
+  'close-presentation': 'presentation-closure',
   'run-gate': 'gate-run-driver',
   'run-effects': 'production-cell-node-executor',
   'record-final-acceptance': 'production-cell-node-executor',
@@ -162,6 +180,7 @@ export const HANDOFF_OWNERS: Readonly<Record<TransitionHandoffKind, string>> = O
 });
 
 export const SOURCE_TO_HANDOFF: Readonly<Record<TransitionSourceKind, TransitionHandoffKind>> = Object.freeze({
+  'final-presentation-committed': 'close-presentation',
   'candidate-set-sealed': 'run-gate',
   'gate-accepted': 'run-effects',
   'effects-settled': 'record-final-acceptance',

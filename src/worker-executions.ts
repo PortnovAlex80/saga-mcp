@@ -380,7 +380,7 @@ export function reconcileWorkerExecutions(
             EXISTS(
               SELECT 1 FROM command_receipts cr
                WHERE cr.execution_id=we.execution_id
-                 AND cr.command_kind='worker_done'
+                 AND cr.command_kind IN ('worker_done','presentation_close')
                  AND cr.accepted=1
             ) AS accepted_worker_done
      FROM worker_executions we

@@ -4,6 +4,8 @@ import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
 import { isRetryableFactoryProvisioningFailure } from './pre-spawn-failure-policy.js';
+import { readFinalPresentationCommitmentForExecution } from '../workplace/sqlite-final-presentation-commitment.js';
+import { closeCommittedTypedPresentation } from '../../application/final-presentation-closure.js';
 
 export interface ManagedWorkerProcessTerminationInput {
   readonly taskId: number;
@@ -30,7 +32,7 @@ export function hasAcceptedWorkerDone(
       `SELECT 1
          FROM command_receipts
         WHERE execution_id=?
-          AND command_kind='worker_done'
+          AND command_kind IN ('worker_done','presentation_close')
           AND accepted=1
         LIMIT 1`,
     ).get(executionId));
@@ -101,6 +103,21 @@ export function finalizeManagedWorkerProcess(
   db: Database.Database,
   input: ManagedWorkerProcessTerminationInput,
 ): ManagedWorkerProcessTerminationOutcome {
+  // ADR-072: physical termination may redrive an already durable final
+  // presentation commitment. It never manufactures commitment from a live or
+  // mutable desk. If the close fails deterministic validation, ordinary crash
+  // repair remains the fail-closed path below.
+  if (!hasAcceptedWorkerDone(db, input.executionId)) {
+    const commitment = readFinalPresentationCommitmentForExecution(db, input.executionId);
+    if (commitment) {
+      try {
+        closeCommittedTypedPresentation(db, commitment.commitmentRef);
+      } catch {
+        // Preserve the original termination classification. The durable
+        // obligation remains retryable and carries the exact failure evidence.
+      }
+    }
+  }
   if (hasAcceptedWorkerDone(db, input.executionId)) {
     const release = releaseExecutionAtomically(db, {
       executionId: input.executionId,

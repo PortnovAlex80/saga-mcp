@@ -200,9 +200,18 @@ test('Development verification gate executes the v2 payload/lineage contract, no
   const verificationEntry = node.cellDefinition.authorGate.checkPlan.entries
     .find(entry => entry.check.providerId === 'development.verification-product-contract.v2');
   assert.equal(verificationEntry?.repairTargetRoleOnIndeterminate, 'author');
-  const readinessEntry = node.cellDefinition.authorGate.checkPlan.entries
+  assert.equal(
+    node.cellDefinition.authorGate.checkPlan.entries.some(
+      entry => entry.check.providerId === 'factory.local-runnability.v1',
+    ),
+    false,
+    'ADR-070 moved candidate-wide runnability out of per-AC verification',
+  );
+  const readinessNode = developmentProcessModule.flow.nodes.find(
+    candidate => candidate.id === 'certify-product-readiness',
+  );
+  assert.equal(readinessNode?.kind, 'production-cell');
+  const readinessEntry = readinessNode.cellDefinition.authorGate.checkPlan.entries
     .find(entry => entry.check.providerId === 'factory.local-runnability.v1');
-  assert.ok(readinessEntry, 'local runnability provider is mandatory');
-  assert.equal(readinessEntry.failureOwnership, 'upstream');
-  assert.equal(readinessEntry.repairTargetRoleOnFailure, undefined);
+  assert.ok(readinessEntry, 'readiness certification owns local runnability');
 });

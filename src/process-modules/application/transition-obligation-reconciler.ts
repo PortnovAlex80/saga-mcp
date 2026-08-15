@@ -18,7 +18,7 @@
 //   eventually dispatched exactly once and converges to one completion receipt.
 //
 // Phase 2 creates the reconciler skeleton with a handler registry. Phase 8
-// registers the five production handoff handlers and drives the reconciler
+// registers the production handoff handlers and drives the reconciler
 // from the lifecycle loop.
 
 import type { SqliteTransitionObligationLedger } from '../persistence/sqlite-transition-obligation-ledger.js';

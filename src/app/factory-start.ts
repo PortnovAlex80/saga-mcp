@@ -351,7 +351,7 @@ export function recoverOrphanedFactoryLaunch(
     ).get(row.execution_id) as { n: number }).n;
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
-        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
+        WHERE execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
     ).get(row.execution_id) as { n: number }).n;
     if (
       row.lifecycle_status !== 'paused'
@@ -544,7 +544,7 @@ export function recoverMissingProductionCellProduct(
     ).get(input.lifecycleRunId) as { n: number }).n;
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
-        WHERE task_id=? AND execution_id=? AND command_kind='worker_done' AND accepted=1`,
+        WHERE task_id=? AND execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
     ).get(row.task_id, row.execution_id) as { n: number }).n;
     const submissions = (db.prepare(
       `SELECT COUNT(*) AS n FROM factory_managed_node_submissions
@@ -852,7 +852,7 @@ export function recoverFailedGateRun(
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
         WHERE task_id=? AND execution_id=?
-          AND command_kind='worker_done' AND accepted=1`,
+          AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
     ).get(row.task_id, row.active_reservation_ref) as { n: number }).n;
     const gateDecisionCount = (db.prepare(
       'SELECT COUNT(*) AS n FROM factory_gate_decisions WHERE gate_run_ref=?',
@@ -1079,7 +1079,7 @@ export function resumePausedSubmissionWorkplace(
     ).get(candidate.task_id) as { n: number }).n;
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
-        WHERE task_id=? AND command_kind='worker_done' AND accepted=1`,
+        WHERE task_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
     ).get(candidate.task_id) as { n: number }).n;
     const candidateSets = (db.prepare(
       `SELECT COUNT(*) AS n FROM factory_candidate_sets WHERE workplace_ref=?`,
@@ -1312,7 +1312,7 @@ export function resumeWorkerLossWorkplace(
     ).get(candidate.workplace_ref) as { n: number }).n;
     const acceptedDone = (db.prepare(
       `SELECT COUNT(*) AS n FROM command_receipts
-        WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
+        WHERE execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
     ).get(latest?.execution_id ?? '') as { n: number }).n;
     if (
       !latest || latest.state !== 'lost' || activeExecutions !== 0 || acceptedDone !== 0

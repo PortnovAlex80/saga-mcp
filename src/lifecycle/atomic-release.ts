@@ -250,7 +250,7 @@ function hasAcceptedWorkerDoneReceipt(db: Database, executionId: string): boolea
       `SELECT 1
          FROM command_receipts
         WHERE execution_id=?
-          AND command_kind='worker_done'
+          AND command_kind IN ('worker_done','presentation_close')
           AND accepted=1
         LIMIT 1`,
     ).get(executionId));

@@ -2,7 +2,7 @@
 //
 // ADR-053 Phase 8 — transition-obligation integrator tests.
 //
-// Proves the five conveyor handoffs can be recorded as durable obligations
+// Proves the six conveyor handoffs can be recorded as durable obligations
 // and the reconciler drives them to completion. Each obligation is
 // idempotent: a replay of the source fact finds the existing obligation.
 
@@ -41,18 +41,20 @@ test('Phase 8: CandidateSet seal creates a run-gate obligation', () => {
   assert.equal(ready[0].ownerCapability, 'gate-run-driver');
 });
 
-test('Phase 8: all five source facts create their corresponding obligations', () => {
+test('Phase 8: all six source facts create their corresponding obligations', () => {
   const { ledger } = makeLedger();
   const integrator = new TransitionObligationIntegrator({ ledger });
+  integrator.onFinalPresentationCommitted({ commitmentRef: 'pc-1', commitmentDigest: 'd0', workplaceRef: 'w1' });
   integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd1', workplaceRef: 'w1' });
   integrator.onGateAccepted({ gateDecisionKey: 'gd-1', gateDecisionDigest: 'd2', workplaceRef: 'w1' });
   integrator.onEffectsSettled({ workplaceRef: 'w1', effectReceiptDigest: 'd3' });
   integrator.onFinalAcceptanceRecorded({ finalAcceptanceRef: 'fa-1', acceptanceDigest: 'd4', workplaceRef: 'w1' });
   integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', subjectRef: 'process-run:1' });
   const ready = ledger.findReady();
-  assert.equal(ready.length, 5);
+  assert.equal(ready.length, 6);
   const handoffs = ready.map(o => o.handoffKind).sort();
   assert.deepEqual(handoffs, [
+    'close-presentation',
     'record-final-acceptance',
     'route-lifecycle',
     'run-effects',
@@ -131,7 +133,8 @@ test('Phase 8: crash recovery — obligation is redriven after crash', async () 
 // ===========================================================================
 // 5. Source-to-handoff mapping is complete and consistent.
 // ===========================================================================
-test('Phase 8: SOURCE_TO_HANDOFF maps all five source kinds', () => {
+test('Phase 8: SOURCE_TO_HANDOFF maps all six source kinds', () => {
+  assert.equal(SOURCE_TO_HANDOFF['final-presentation-committed'], 'close-presentation');
   assert.equal(SOURCE_TO_HANDOFF['candidate-set-sealed'], 'run-gate');
   assert.equal(SOURCE_TO_HANDOFF['gate-accepted'], 'run-effects');
   assert.equal(SOURCE_TO_HANDOFF['effects-settled'], 'record-final-acceptance');

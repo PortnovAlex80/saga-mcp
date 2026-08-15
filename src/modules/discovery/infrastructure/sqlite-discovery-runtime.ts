@@ -531,7 +531,7 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
     const row = getDb().prepare(
       `SELECT execution_id
          FROM command_receipts
-        WHERE task_id=? AND command_kind='worker_done' AND accepted=1
+        WHERE task_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1
           AND result_json LIKE '%"completed_new_status":"review"%'
         ORDER BY accepted_at ASC
         LIMIT 1`,
@@ -565,7 +565,7 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
            JOIN managed_execution_ids managed
              ON managed.execution_id=cr.execution_id
           WHERE cr.task_id=?
-            AND cr.command_kind='worker_done'
+            AND cr.command_kind IN ('worker_done','presentation_close')
             AND cr.accepted=1
             AND json_valid(cr.result_json)
             AND json_extract(

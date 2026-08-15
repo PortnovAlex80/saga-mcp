@@ -483,7 +483,16 @@ type WorkerDoneTransactionResult =
   | { readonly kind: 'completed'; readonly reply: WorkerDoneReply }
   | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError };
 
-function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
+interface KernelPresentationCloseAuthority {
+  readonly commitmentRef: string;
+  readonly productRef: string;
+  readonly productDigest: string;
+}
+
+function handleWorkerDone(
+  args: Record<string, unknown>,
+  kernelClose?: KernelPresentationCloseAuthority,
+): WorkerDoneReply {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
@@ -510,6 +519,20 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
   }
 
   const completeTask = (): WorkerDoneTransactionResult => {
+    // A typed product_submit may already have committed and closed this exact
+    // presentation through ADR-072. An LM that follows the legacy hint and
+    // calls worker_done afterwards receives the durable close reply; it does
+    // not create a second completion authority.
+    if (!kernelClose && typeof args.execution_id === 'string') {
+      const closed = db.prepare(
+        `SELECT reply_json FROM command_receipts
+          WHERE execution_id=? AND command_kind='presentation_close'
+            AND accepted=1 LIMIT 1`,
+      ).get(args.execution_id) as { reply_json: string } | undefined;
+      if (closed) {
+        return { kind: 'completed', reply: JSON.parse(closed.reply_json) as WorkerDoneReply };
+      }
+    }
     // Slice 4 (blueprint §10, §16:894-898): idempotency FIRST. A retry of a
     // previously-accepted worker_done (same command_id + payload) must return
     // the stored reply WITHOUT touching the task row. We check this BEFORE
@@ -520,8 +543,18 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
     // unfenced tasks, from task+worker+verdict+result-identity). We use the
     // CALLER-SUPPLIED execution_id, not task.current_execution_id (which may
     // already be null after the first call cleared the fence).
-    const commandId = workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
-    const payload = workerDonePayload(taskId, workerId, result, verdict);
+    const commandId = kernelClose
+      ? `${String(args.execution_id)}:presentation-close:${kernelClose.commitmentRef}`
+      : workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
+    const payload = kernelClose
+      ? {
+          task_id: taskId,
+          execution_id: args.execution_id,
+          commitment_ref: kernelClose.commitmentRef,
+          product_ref: kernelClose.productRef,
+          product_digest: kernelClose.productDigest,
+        }
+      : workerDonePayload(taskId, workerId, result, verdict);
     const payloadHash = hashPayload(payload);
     const prior = checkReceipt(db, commandId, payloadHash);
     if (prior.kind === 'replay') {
@@ -894,9 +927,9 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
     // + payload will short-circuit above and return this reply verbatim.
     storeReceipt(db, {
       commandId,
-      commandKind: 'worker_done',
-      actorKind: 'managed_execution',
-      actorId: workerId,
+      commandKind: kernelClose ? 'presentation_close' : 'worker_done',
+      actorKind: kernelClose ? 'controller' : 'managed_execution',
+      actorId: kernelClose ? 'presentation-closure' : workerId,
       executionId: task.current_execution_id,
       taskId,
       payload,
@@ -917,6 +950,32 @@ function handleWorkerDone(args: Record<string, unknown>): WorkerDoneReply {
   // cutover only a module-owned node/settlement may generate work; a completed
   // task is evidence consumed by its owning Process Module node.
   return completed.reply;
+}
+
+/**
+ * ADR-072 kernel adapter. The immutable commitment authenticates the exact
+ * ProductRef; this invokes the same close transaction as worker_done while
+ * recording an honest controller-owned `presentation_close` receipt.
+ */
+export function closeFinalPresentationFromKernel(input: {
+  readonly taskId: number;
+  readonly executionId: string;
+  readonly workerId: string;
+  readonly commitmentRef: string;
+  readonly productRef: string;
+  readonly productDigest: string;
+}): WorkerDoneReply {
+  return handleWorkerDone({
+    task_id: input.taskId,
+    worker_id: input.workerId,
+    execution_id: input.executionId,
+    result: `Factory closed immutable final presentation ${input.commitmentRef}`,
+    verdict: 'approved',
+  }, {
+    commitmentRef: input.commitmentRef,
+    productRef: input.productRef,
+    productDigest: input.productDigest,
+  });
 }
 
 // ============================================================================

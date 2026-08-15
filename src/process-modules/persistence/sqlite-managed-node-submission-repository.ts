@@ -112,7 +112,7 @@ implements ManagedNodeSubmissionReader {
     const payloadSnapshot = canonicalSnapshot(command.payload);
     const contentHash = sha256Hex(command.payload);
 
-    const write = this.db.transaction(() => {
+    const write = () => {
       const provenance = resolveManagedExecutionProvenance(this.db, env);
       if (provenance === null) {
         throw new Error(
@@ -180,9 +180,9 @@ implements ManagedNodeSubmissionReader {
         throw new Error('MANAGED_NODE_SUBMISSION_VANISHED_AFTER_INSERT');
       }
       return { record: rowToRecord(inserted), replayed: false };
-    });
+    };
 
-    return write.immediate();
+    return this.db.inTransaction ? write() : this.db.transaction(write).immediate();
   }
 
   /**

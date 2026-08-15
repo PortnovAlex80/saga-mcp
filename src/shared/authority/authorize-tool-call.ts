@@ -353,7 +353,7 @@ export function authorizeSagaToolCall(input: AuthorizeSagaToolCallInput): Author
   if (!authority) return invalid(input.toolName, executionId, 'execution snapshot is missing authority');
   const completion = input.db.prepare(
     `SELECT 1 FROM command_receipts
-      WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+      WHERE execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1
       LIMIT 1`,
   ).get(executionId);
   if (completion && input.toolName !== 'worker_done') {

@@ -138,7 +138,7 @@ export function reconcileAutomaticPreSpawnRecovery(
         : 0,
       done_receipts: (db.prepare(
         `SELECT COUNT(*) n FROM command_receipts
-          WHERE execution_id=? AND command_kind='worker_done' AND accepted=1`,
+          WHERE execution_id=? AND command_kind IN ('worker_done','presentation_close') AND accepted=1`,
       ).get(row.execution_id) as { n: number }).n,
     };
     if (

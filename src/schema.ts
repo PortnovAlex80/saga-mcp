@@ -1382,6 +1382,37 @@ END;
 --                           (Atomic allocation / callers can't choose a future
 --                           fence is C7-03; this column only stores and reads
 --                           monotonically.)
+-- ADR-072: immutable final typed presentation, source fact for the pre-seal
+-- close-presentation durable handoff.
+CREATE TABLE IF NOT EXISTS factory_final_presentation_commitments (
+  commitment_ref       TEXT PRIMARY KEY,
+  workplace_ref        TEXT NOT NULL
+                         REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  work_intent_id        INTEGER NOT NULL
+                         REFERENCES factory_work_intents(id) ON DELETE RESTRICT,
+  task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+  execution_id          TEXT NOT NULL
+                         REFERENCES worker_executions(execution_id) ON DELETE RESTRICT,
+  role                  TEXT NOT NULL CHECK (role IN ('author','reviewer')),
+  product_schema        TEXT NOT NULL,
+  product_ref           TEXT NOT NULL,
+  product_digest        TEXT NOT NULL,
+  contract_digest       TEXT NOT NULL,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (execution_id),
+  UNIQUE (workplace_ref, role, product_ref, product_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_final_presentation_commitments_workplace
+  ON factory_final_presentation_commitments(workplace_ref, role);
+CREATE TRIGGER IF NOT EXISTS trg_final_presentation_commitments_no_update
+BEFORE UPDATE ON factory_final_presentation_commitments BEGIN
+  SELECT RAISE(ABORT, 'factory_final_presentation_commitments are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_final_presentation_commitments_no_delete
+BEFORE DELETE ON factory_final_presentation_commitments BEGIN
+  SELECT RAISE(ABORT, 'factory_final_presentation_commitments are immutable');
+END;
+
 CREATE TABLE IF NOT EXISTS factory_transition_obligations (
   obligation_key      TEXT PRIMARY KEY,
   source_kind         TEXT NOT NULL,

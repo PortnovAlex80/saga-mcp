@@ -13,6 +13,18 @@ export function readTransitionHandoffPostcondition(
   obligation: TransitionObligation,
 ): TransitionHandoffPostcondition {
   switch (obligation.handoffKind) {
+    case 'close-presentation': {
+      const row = db.prepare(
+        `SELECT 1
+           FROM factory_final_presentation_commitments c
+           JOIN command_receipts cr ON cr.execution_id=c.execution_id
+          WHERE c.commitment_ref=?
+            AND cr.command_kind IN ('worker_done','presentation_close')
+            AND cr.accepted=1
+          LIMIT 1`,
+      ).get(obligation.sourceRef);
+      return fact(row, 'presentation closure receipt is not durable yet');
+    }
     case 'run-gate': {
       const row = db.prepare(
         `SELECT 1 FROM factory_gate_runs gr
