@@ -420,6 +420,20 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       'complete-verified', 'complete-rework-required',
       'complete-clarification-required', 'complete-blocked', 'complete-failed',
     ],
+    // TB-mine fix: the resolveTaskGraph kernel handler wraps itself in
+    // withKernelRecoveryIssue({policyId:'repair-development-task-graph'}) —
+    // without this declaration, the FIRST 'clarification-required' verdict
+    // crashes the executor with "recovery policy not declared by module"
+    // instead of routing to the planner for repair.
+    recovery: [{
+      id: 'repair-development-task-graph',
+      verifyNodeId: 'resolve-task-graph',
+      repairNodeId: 'plan-task-graph',
+      triggerEvents: ['clarification-required'],
+      resolvedEvents: ['valid'],
+      maxAttempts: 3,
+      onExhausted: 'pause',
+    }],
   },
   artifacts: [
     { type: 'development-case', schema: { id: DEVELOPMENT_CASE_SCHEMA }, authority: 'kernel', description: 'Immutable Development input.' },
