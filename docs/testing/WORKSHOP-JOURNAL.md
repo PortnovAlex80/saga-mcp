@@ -55,6 +55,13 @@ Outcome: `pass` (stage terminal + критерий капсулы §4.5) / `fail
 
 | PID | Цех | DB | Начало | Длительность | Outcome | Воркеры | Рестарты | Артефакты | Аномалии |
 |---|---|---|---|---|---|---|---|---|---|
+| P12 | W2 | shared | 15:06 | 0m | fail | 3exited/1lost | 0 | FR:1,NFR:1,PRD:1,RULE:1,brief:1 | {"status":"failed","current_stage_id":"s |
+| P08 | W2 | shared | 15:06 | 0m | pass | 12exited/2lost | 0 | AC:19,FR:6,NFR:3,PRD:1,RULE:1,SRS:1,UC:3,brief:1 | — |
+| P11 | W2 | shared | 14:55 | 0m | fail | 3exited/1lost | 0 | FR:6,NFR:1,PRD:1,RULE:1,brief:1 | {"status":"failed","current_stage_id":"s |
+| P10 | W2 | shared | 14:55 | 0m | fail | 3exited/1lost | 0 | FR:7,NFR:1,PRD:1,RULE:1,brief:1 | {"status":"failed","current_stage_id":"s |
+| P10 | W2 | shared | 14:15 | 33m | stalled | 3exited/1lost | 0 | FR:7,NFR:1,PRD:1,RULE:1,brief:1 | no change since 2026-08-15T14:39:56.994Z |
+| P09 | W2 | shared | 14:12 | 3m | fail | 8exited/1lost | 0 | AC:18,FR:1,NFR:1,PRD:1,RULE:1,UC:8,brief:1 | {"status":"failed","current_stage_id":"s |
+| P08 | W2 | shared | 12:29 | 30m | pass (dirty:1) | 12exited/1lost/1running | 0 | AC:19,FR:6,NFR:3,PRD:1,RULE:1,SRS:1,UC:3,brief:1 | — |
 | P07 | W2 | shared | 12:03 | 26m | fail | 10exited/1lost | 0 | AC:42,FR:9,NFR:2,PRD:1,RULE:1,UC:6,brief:1 | {"status":"completed","current_stage_id" |
 | P06 | W2 | shared | 11:20 | 42m | pass (dirty:1) | 14exited/2lost/1running | 0 | AC:10,FR:26,NFR:2,PRD:1,RULE:1,SRS:1,UC:7,brief:1 | — |
 | P05 | W2 | shared | 10:46 | 35m | pass (dirty:1) | 13exited/3lost/1running | 0 | AC:32,FR:8,NFR:2,PRD:1,RULE:2,SRS:1,UC:8,brief:1 | — |

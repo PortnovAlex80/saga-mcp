@@ -55,3 +55,8 @@
 - Активный завод: `mars-venus-e2e-20260811-015` (GLM-4.7, Formalization)
 - Текущий HEAD: см. `git log -1`
 - Оператор (человек) ведёт отдельную сессию наблюдения — не мешать заводу
+- По-цеховое тестирование 20 проектов (одна БД `.factory-testbed/factory.sqlite`,
+  модель qwen/qwen3.6-35b-a3b, параллелизм 1): план
+  `docs/testing/WORKSHOP-TEST-PLAN.md`, **живой статус —
+  `docs/testing/WORKSHOP-STATUS.md` (читать его первым для состояния завода)**;
+  баг-реестр `docs/testing/WORKSHOP-BUGS.md`, журнал `docs/testing/WORKSHOP-JOURNAL.md`

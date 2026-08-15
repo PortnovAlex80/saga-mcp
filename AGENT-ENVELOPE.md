@@ -263,3 +263,164 @@ C7, LR(W5), CI, W9 — CLOSED. **DFX 0/3.** Профиль реал-прогон
 затем W12-01/02/03 (reconcile + runbook + финальный go/no-go+tag). Активному заводу
 не мешал — работал только в `finish/*`, `saga4` не трогал.
 
+### 2026-08-15 13:25 — ZCode / root — оператору (снимок цеха 20+1 в PDF)
+
+По запросу оператора собрал сводный лист статуса цеха в PDF:
+`docs/testing/WORKSHOP-STATUS-SHEET.pdf` (A4 альбомный, 1 стр., рядом —
+`.html`-исходник и `.png`-превью). Таблица сверена с живой БД
+`.factory-testbed/factory.sqlite` на 13:20 UTC, завод не трогал (read-only):
+
+- **P09 kanban: 7/8 карточек** (у оператора в снапшоте было 6/7), финальная
+  карточка в работе, hb 13:15:58 — свежий; трекер жив (hb 13:16:04), LM Studio
+  с `qwen/qwen3.6-35b-a3b` на месте.
+- Итог W2 на снимок: **6 pass / 2 fail (TB-6 stopwatch, TB-8 snake) /
+  1 в работе / 11 в очереди + P21** (foodlog, W1 авто после W2).
+- Остальные статусы совпали с WORKSHOP-STATUS.md (его последний апдейт был
+  12:59 UTC, до старта P09).
+
+### 2026-08-15 — ZCode / «дракон» (новый агент, съел мозг завода) — оператору
+
+Проглотил мозг целиком по протоколу DRAGON-PROMPT/DRAGON-MAP (этапы 0→5, ~99
+файлов: домен, ядро исполнения, композиция/запуск, schema.ts, все 4 цеха +
+continuation-модули, SPI, external-seo, ADR-маршрут 025→072, WORKSHOP-BUGS).
+Отвечаю на три стоящих вопроса своими глазами, по коду, не по чужим отчётам:
+
+1. **ADR-053 прочитан целиком** (плюс реестр REG-01..29, CONVEYOR-MENTAL-MODEL,
+   переходные чек-листы и все ADR маршрута).
+
+2. **Cutover уже в основном вкоде — продолжать надо его завершение, а не точечные
+   фиксы.** В current saga4 я своими глазами проверил: B-1 (seal+ревизия в одной
+   транзакции, FK), B-2 (partition-convergence по materialDigest), C1/C5
+   (authority head + accepted_author_task_id, атомарно с CAS), C2 (reviewer
+   subject в seal key + partial UNIQUE), C7 (lease_fence отдельной колонкой,
+   store-minted allocateLeaseFence, fenced complete/reclaim), C8 (терминальное
+   восстановление FinalAcceptance), C9–C13 (GateRun identity с
+   installationDigest + provider digest + one-shot replay + полный decision
+   digest), C14 (cumulative revision с родителем из head), ingress ADR-067
+   (один ProductRef-шов, fail-closed), Phase 1 workshop-manifest, ADR-070/071
+   (readiness-cell + подготовленный OCI), ADR-072 (final-presentation
+   commitment как 6-й handoff). Что реально ОСТАЛОСЬ из обязательств ADR-066:
+   (а) `handlerRefs` во всех четырёх package-manifest всё ещё `pending@wave-2`
+   — binding receipts не могут доказать состав бинарников/хендлеров (r8-класс
+   «5 коммитов при живом launch'е»); (б) синхронные переходы в
+   ProductionCellNodeExecutor живут РЯДОМ с obligation-леджером (reconciler
+   метёт перед каждым runEpisode, но dual-path не вырезан — пункт 4 ADR-066);
+   (в) TB-2: worker-executions.ts по-прежнему открывает отдельное соединение
+   на каждый вызов (openRuntimeDb-per-call) при busy_timeout 5000 —ready
+   воспроизвести busy-spin deadlock, фикс-направление уже выдано тикетом.
+
+3. **Следующая граница Mars/Venus без завершения cutover:** ровно пересечение
+   (а)+(б): правка кода/скилла во время живого прогона (placeholder-дайджесты
+   не ловят drift) + крэш движка в окне «seal → gate» по синхронному пути,
+   когда obligation ещё не leased — получаем либо дубль GateRun/эффекта, либо
+   ownerless-pending (TB-9 это уже показал вживую; engine-start-adoption
+   лечит подкласс, но дуализм путей остаётся). На управляемом testbed с
+   замороженным кодом главный практический риск — TB-2 (S1, три
+   воспроизведения) и TB-8-класс «позднего строгого чекера без repair-пути»
+   (грамматики цехов уже синхронизированы PR #31, но паттерн «kernel-node без
+   repair» остаётся системным: freeze-acceptance-baseline всё ещё терминален
+   при семантическом отказе).
+
+Мозг проглочен, карты не требует; готов работать по любому из оставшихся
+пунктов ADR-066 или по багам TB-реестра по команде оператора. Активному
+заводу и тестбеду не мешал (только чтение).
+
+
+### 2026-08-15 — ZCode / TB-11 fix agent — оператору и оркестратору
+
+Выполнял выделенный тикет TB-11 (gate poisoning в formalization settlement),
+не коммитил, dist/ не трогал (сборка за оркестратором).
+
+1. **ADR-053 прочитан** (диагноз + итоговый вердикт), вместе с ним — релевантные
+   части CONVEYOR-модели в объёме, необходимом для тикета.
+2. **TB-11 — это проявление того же системного дефекта**, что описывает ADR-053:
+   `areTasksReady(epicId)` судил готовность сэттлмента по JOIN tasks →
+   factory_workplaces через workplace_ref **по всем lifecycle-ранам эпика**,
+   т.е. материальный авторитет разрешался по накоплению, а не по текущему
+   запущенному рану. Мёртвый раны 2 (workplace/4/.../formalization-use-cases,
+   effect_pending) отравлял сэттлмент нового рана 25 (blocking 73,74,75 —
+   воспроизведено read-only на testbed-БД).
+   **Сделано (точечный фикс в рамках тикета, без новых fallback'ов):**
+   - порт: `areTasksReady(epicId, lifecycleRunId)` + новый
+     `readOwningLifecycleRunId(processRunId)` (формализация-модуль, без
+     правок process-modules);
+   - SQL гейта скоупирован на stage-runs текущего lifecycle-рана;
+   - `settle(graph, input, lifecycleRunId)` — раны передаётся out-of-band,
+     чтобы не менять хэшируемый settlement-контракт;
+   - prod-cell handler резолвит раны через `factory_stage_runs` (fail-closed,
+     если у process-run нет владельца);
+   - регрессионные тесты (два раны на одном эпике) — 18/18 зелёные,
+     `tsc --noEmit` чист. По поводу «точечные фиксы vs cutover»: этот фикс —
+     сужение авторитета до текущего рана, т.е. шаг В СТОРОНУ cutover, не
+     новый перекодирующий костыль; полный cutover
+     (WorkplaceProductionRevision как sole authority) им не заменяется.
+3. **Следующая граница без cutover (в зоне formalization-settlement):**
+   артефактные проверки гейта (`readAcceptedArtifacts`, baseline,
+   traceability) остаются epic-scoped, не lifecycle-scoped — они читают
+   НАКОПЛЕННЫЙ принятый материал эпика. Пока accepted-артефакты монотонно
+   накапливаются это безопасно, но любой механизм supersede/drift между ранами
+   снова даст двойной авторитет: сэттлмент нового рана будет сертифицировать
+   baseline, завязанный на материал мёртвого рана. Это ровно пункт
+   «cross-run material authority» из вердикта ADR-053.
+
+Live-проверка на `.factory-testbed/factory.sqlite` (read-only): для
+(epic 4, lifecycle 25) гейт после фикса даёт **ready=true, blocking=[]**;
+все workplaces рана 25 terminal (не-terminal у рана 25 нет вообще). Ядро —
+workplace/4/solution-formalization@1.0.0/formalization-use-cases/singleton
+(ран 2, effect_pending) — больше не попадает в гейт рана 25.
+
+---
+
+**2026-08-15 — TB-11 lifecycle burial agent (subagent, orchestrator-assigned)**
+
+1. ADR-053 прочитан (диагноз целиком: владелец материала — Workplace /
+   WorkplaceProductionRevision, WorkerExecution — только provenance; серия
+   ночных fix(...) — проявления одного дефекта перекодирования на границе
+   execution→workplace).
+
+2. Моя задача была точечной (TB-11 death cascade), сделана как точечный фикс
+   БЕЗ cutover: новый engine-start pass
+   `src/app/engine-start-lifecycle-burial.ts` + lease-free `abandon()` в
+   obligation-леджере (CAS open→failed, lease_fence монотонный). Согласен с
+   диагнозом ADR-053: TB-11 — ещё одно проявление той же трещины (обязательство
+   живёт дольше своего lifecycle-владельца). Сам я cutover не начинал; по
+   команде оператора готов работать по фазам ADR-053.
+
+3. Следующая граница Mars/Venus без cutover: **new_start→settlement** —
+   новый lifecycle переиспользует workplaces мёртвого (этот фикс снимает
+   подкласс: effect_pending/verifying больше не заморожены навсегда), но
+   material authority по-прежнему ищется через producerExecutionRef: crash в
+   окне «seal → gate» с частично принятым contribution даст потерю/дубль
+   материала у нового автора (post-acceptance effect выбирает продукты
+   последнего execution). Плюс TB-2 (openRuntimeDb-per-call + busy_timeout
+   5000) остаётся готовым deadlock-воспроизведением.
+
+Живой прогон на копии testbed-БД (readonly backup): buried=17 obligations
+(включая attempt=1667), released=7 workplaces, второй проход — 0/0.
+Завод и тестбед не трогал (только чтение). Не коммитил.
+
+### 2026-08-15 (вечер) — ZCode / архитектурный аналитик (read-only) — оператору
+
+Отвечаю на пункты протокола по итогам анализа «почему W2 = 4+ часа и почему
+не восстанавливается» (полный отчёт:
+`docs/testing/W2-SPEED-AND-RECOVERY-ARCHITECTURE-ANALYSIS.md`, только числа
+из read-only БД и логов движков):
+
+1. **ADR-053 прочитан** (целиком, включая вердикт и критерии cutover).
+2. **Дальше — не точечные фиксы и не полный cutover одним коммитом**, а два
+   слоя: (а) немедленно — типизация фаталов диспетчеризации (REPLAY_CAPSULE_*
+   не должен ронять движок), bounded kernel-spin без чекпоинтов на каждый цикл,
+   lifecycle-scope всех epic-чтений W2, каскад смерти в момент терминализации
+   (не только на engine-start, как сегодняшний burial); (б) параллельно — cutover
+   по ADR-053 + два новых требования: obligation/workplace несут lifecycle_run_id
+   как owner-column, death-cascade — первоклассный переход в таблице
+   синхронизации §23. Сегодняшние незакоммиченные фиксы (a)–(f) — правильные,
+   но это 6 симптомов одного дефекта: состояние переживает владельца.
+3. **Следующая граница без cutover:** replay-капсулы после failed-reran. Уже
+   сегодня 4 ключа P02 имеют по 2 капсулы; newest-wins снял фатал, но
+   FINAL_PRESENTATION_FENCE_MISMATCH оставил P02 запаркованным навсегда —
+   нет пути invalidate/Regenerate. Следом — readAcceptedArtifacts/baseline/
+   traceability сэттлмента (epic-scoped, flagged TB-11-агентом). Число дня:
+   P02 elapsed 8ч25м, из них LM 35.5м (7%); 5 из 6 fail-ов W2 — один и тот же
+   шов «verifying Workplace has no producer reservation» (reaper/adoption
+   стирали указатель продюсера). Завод и БД не трогал (readonly).
