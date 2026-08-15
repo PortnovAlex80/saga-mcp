@@ -433,8 +433,21 @@ export class EngineProcessAdministration implements EngineAdministration {
     concurrency: number,
   ): string {
     return this.withDb(db => db.transaction(() => {
-      const existing = db.prepare(
-        'SELECT order_ref FROM factory_orders WHERE project_id=?',
+      // A project may now hold SEVERAL orders (CONVEYOR v4.3 §7 new_start for
+      // an existing project keeps the old terminal one beside the fresh run).
+      // The resume launch must be scoped to the order that OWNS this run —
+      // picking an arbitrary order row fails the launch scope check
+      // (FACTORY_LAUNCH_ORDER_SCOPE_MISMATCH) for every attempt after a
+      // new_start. Fall back to the project's latest order only when no order
+      // is bound to the run yet (pre-new_start single-order world).
+      const owning = db.prepare(
+        `SELECT order_ref FROM factory_orders
+          WHERE project_id=? AND lifecycle_run_id=?
+          ORDER BY rowid DESC LIMIT 1`,
+      ).get(projectId, run.id) as { order_ref: string } | undefined;
+      const existing = owning ?? db.prepare(
+        `SELECT order_ref FROM factory_orders
+          WHERE project_id=? ORDER BY rowid DESC LIMIT 1`,
       ).get(projectId) as { order_ref: string } | undefined;
       const orderRef = existing?.order_ref ?? `order-${randomUUID()}`;
       if (!existing) {
