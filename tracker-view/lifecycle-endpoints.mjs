@@ -19,6 +19,12 @@ import {
 // (a fresh require call each time) without changing the code path.
 const require = createRequire(import.meta.url);
 
+// Live token-rate samples, keyed by worker log path. thinking_tokens events
+// carry no timestamps, so an instantaneous tok/s can only be derived from the
+// delta of the token total between consecutive /api/workers/active polls
+// (the board polls every ~2s).
+const tokenRateSamples = new Map();
+
 export function createLifecycleEndpointsApi({
   sagaApplication,
   repositoryHandlers,
@@ -466,17 +472,22 @@ export function createLifecycleEndpointsApi({
         const QUIET_AFTER_MS = 30 * 1000;
         const is_quiet = log_mtime_ms != null && (Date.now() - log_mtime_ms) > QUIET_AFTER_MS;
 
-        // Token speed: scan the last ~32KB of JSONL for thinking_tokens events
-        // (stream-json emits them per-token with estimated_tokens_delta). Count
-        // deltas within the last 10 seconds of log mtime → tokens/sec.
-        // This is a live throughput indicator — how fast the model is producing.
+        // Token accounting. thinking_tokens events carry a PER-TURN cumulative
+        // counter (estimated_tokens): it starts at 1 for each new assistant
+        // turn and resets after every tool_use → tool_result round-trip, so
+        // the global max is merely the longest single turn. Correct total =
+        // sum of every turn's peak. The whole log is read (capped at 4MB):
+        // a tail-only window made the total shrink whenever a long turn
+        // scrolled out of the window. Events carry no timestamps, so tok/s
+        // is the delta of that total between consecutive polls — see
+        // tokenRateSamples at module level.
         let tokens_per_sec = null;
         let total_tokens = null;
         if (logPath) {
           try {
             const fs2 = require('node:fs');
             const st2 = fs2.statSync(logPath);
-            const tailBytes2 = Math.min(st2.size, 128 * 1024);
+            const tailBytes2 = Math.min(st2.size, 4 * 1024 * 1024);
             const fd2 = fs2.openSync(logPath, 'r');
             const buf2 = Buffer.alloc(tailBytes2);
             fs2.readSync(fd2, buf2, 0, tailBytes2, Math.max(0, st2.size - tailBytes2));
@@ -485,37 +496,52 @@ export function createLifecycleEndpointsApi({
             // Try thinking_tokens first (smart models stream real token counts).
             // If they're all 1 (z.ai proxy for flash models), fall back to
             // counting assistant output characters as a throughput proxy.
-            let lastTotal = 0;
+            let turnLast = 0;   // current turn's counter value
+            let peakSum = 0;    // sum of completed turns' peaks
+            let sawRealCounter = false;
             let totalChars = 0;
-            let assistantBlocks = 0;
             for (const line of lines) {
               try {
                 const evt = JSON.parse(line);
                 if (evt.type === 'system' && evt.subtype === 'thinking_tokens') {
-                  lastTotal = Math.max(lastTotal, evt.estimated_tokens || 0);
+                  const v = evt.estimated_tokens || 0;
+                  if (v > 1) sawRealCounter = true;
+                  if (v < turnLast) peakSum += turnLast; // counter reset → new turn
+                  turnLast = v;
                 }
                 if (evt.type === 'assistant' && evt.message?.content) {
                   for (const b of evt.message.content) {
-                    if (b.type === 'text' && b.text) { totalChars += b.text.length; assistantBlocks++; }
-                    if (b.type === 'tool_use') { totalChars += JSON.stringify(b.input || {}).length; assistantBlocks++; }
+                    if (b.type === 'text' && b.text) totalChars += b.text.length;
+                    if (b.type === 'tool_use') totalChars += JSON.stringify(b.input || {}).length;
                   }
                 }
               } catch { /* non-JSON */ }
             }
             // Use thinking_tokens if they're real (> 1). Otherwise use assistant
             // output chars / 4 as rough token estimate (~4 chars per token).
-            if (lastTotal > 1) {
-              total_tokens = lastTotal;
+            if (sawRealCounter) {
+              total_tokens = peakSum + turnLast;
             } else if (totalChars > 0) {
               total_tokens = Math.round(totalChars / 4);
             } else {
               total_tokens = null;
             }
-            // tokens_per_sec: divide total tokens by the worker's running time.
-            const startMs = startedRaw ? new Date(startedIso).getTime() : null;
-            if (startMs && total_tokens != null && total_tokens > 0) {
-              const elapsedSec = Math.max(1, (Date.now() - startMs) / 1000);
-              tokens_per_sec = Math.round(total_tokens / elapsedSec * 10) / 10;
+            if (total_tokens != null && total_tokens > 0) {
+              const nowMs = Date.now();
+              const prev = tokenRateSamples.get(logPath);
+              if (prev && nowMs - prev.tMs > 500) {
+                const dtSec = (nowMs - prev.tMs) / 1000;
+                tokens_per_sec = Math.max(0, Math.round((total_tokens - prev.total) / dtSec * 10) / 10);
+              } else if (startedRaw && !Number.isNaN(new Date(startedIso).getTime())) {
+                // First observation after server start: lifetime average until
+                // the next poll provides a real delta.
+                const elapsedSec = Math.max(1, (nowMs - new Date(startedIso).getTime()) / 1000);
+                tokens_per_sec = Math.round(total_tokens / elapsedSec * 10) / 10;
+              }
+              tokenRateSamples.set(logPath, { tMs: nowMs, total: total_tokens });
+              if (tokenRateSamples.size > 64) {
+                tokenRateSamples.delete(tokenRateSamples.keys().next().value);
+              }
             }
           } catch { /* stat/read fail */ }
         }

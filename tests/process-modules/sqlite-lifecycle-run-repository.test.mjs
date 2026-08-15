@@ -167,6 +167,7 @@ function resultSnapshot(output, certificate) {
     certificateRef: certificate.certificateRef,
     certificateHash: certificate.certificateHash,
     certificateSchema: certificate.schema,
+    error: null,
   };
 }
 

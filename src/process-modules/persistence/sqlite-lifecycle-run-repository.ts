@@ -885,7 +885,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
       const process = this.db.prepare(
         `SELECT status,local_outcome,authority,output_schema,output_ref,output_hash,
-                certificate_schema,certificate_ref,certificate_hash
+                certificate_schema,certificate_ref,certificate_hash,error
            FROM factory_process_runs WHERE id=?`,
       ).get(stage.process_run_id) as {
         status: string;
@@ -897,6 +897,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         certificate_schema: string | null;
         certificate_ref: string | null;
         certificate_hash: string | null;
+        error: string | null;
       } | undefined;
       if (
         !process
@@ -936,6 +937,12 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         certificateRef: process.certificate_ref,
         certificateHash: process.certificate_hash,
         certificateSchema: process.certificate_schema,
+        // GB-1: the engine-side snapshot (processRunResultSnapshot) carries the
+        // TB-8 deterministic failure reason as an 11th key. The row-side
+        // rebuild must include the same key or the hashes NEVER match on the
+        // real lifecycle-orchestrator path (golden-path masked it: the
+        // scripted runner used a local 10-key builder).
+        error: process.error ?? null,
       };
       if (sha256Hex(command.resultSnapshot) !== sha256Hex(expectedResultSnapshot)) {
         throw new Error('LIFECYCLE_RESULT_SNAPSHOT_MISMATCH');

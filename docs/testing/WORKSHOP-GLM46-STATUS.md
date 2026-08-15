@@ -2,7 +2,7 @@
 
 > Единая точка входа для наблюдающей сессии. Обновляется harness'ом (testbed-run.mjs) после каждого прогона.
 
-**Обновлено:** 2026-08-15 20:29 UTC (P01/W1: ✖)
+**Обновлено:** 2026-08-15 21:34 UTC (W1 21/21 GO → W2 старт)
 **Текущая фаза:** каскад W1→W2→W3 (драйвер testbed-cascade.mjs)
 **Пространство:** одна БД `.factory-testbed-glm46/factory.sqlite`, фронт `http://localhost:4323`
 **МОДЕЛЬ:** `glm-4.6` (провайдер zai, effort high, параллелизм 1)
@@ -13,27 +13,27 @@
 
 | PID | Проект | Тир | W1 Discovery | W2 Formaliz. | W3 Development | Примечание |
 |---|---|---|---|---|---|---|
-| P01 | counter | XS | ✖ | ⬚ | ⬚ | fail |
-| P02 | stopwatch | XS | ⬚ | ⬚ | ⬚ | — |
-| P03 | tips | XS | ⬚ | ⬚ | ⬚ | — |
-| P04 | themes | XS | ⬚ | ⬚ | ⬚ | — |
-| P05 | todo | S | ⬚ | ⬚ | ⬚ | — |
-| P06 | units | S | ⬚ | ⬚ | ⬚ | — |
-| P07 | snake | S | ⬚ | ⬚ | ⬚ | — |
-| P08 | pomodoro | S | ⬚ | ⬚ | ⬚ | — |
-| P09 | kanban | M | ⬚ | ⬚ | ⬚ | — |
-| P10 | expenses | M | ⬚ | ⬚ | ⬚ | — |
-| P11 | markdown | M | ⬚ | ⬚ | ⬚ | — |
-| P12 | typing | M | ⬚ | ⬚ | ⬚ | — |
-| P13 | mars | L | ⬚ | ⬚ | ⬚ | — |
-| P14 | sortviz | L | ⬚ | ⬚ | ⬚ | — |
-| P15 | sudoku | L | ⬚ | ⬚ | ⬚ | — |
-| P16 | tetris | L | ⬚ | ⬚ | ⬚ | — |
-| P17 | sheets | XL | ⬚ | ⬚ | ⬚ | — |
-| P18 | elite | XL | ⬚ | ⬚ | ⬚ | — |
-| P19 | mario3d | XXL | ⬚ | ⬚ | ⬚ | — |
-| P20 | interp | XXL | ⬚ | ⬚ | ⬚ | — |
-| P21 | foodlog | S | ⬚ | ⬚ | ⬚ | — |
+| P01 | counter | XS | ✖ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P02 | stopwatch | XS | ✖ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P03 | tips | XS | ✖ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P04 | themes | XS | ✖ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P05 | todo | S | ✖ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P06 | units | S | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P07 | snake | S | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P08 | pomodoro | S | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P09 | kanban | M | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P10 | expenses | M | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P11 | markdown | M | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P12 | typing | M | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P13 | mars | L | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P14 | sortviz | L | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P15 | sudoku | L | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P16 | tetris | L | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P17 | sheets | XL | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P18 | elite | XL | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P19 | mario3d | XXL | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P20 | interp | XXL | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
+| P21 | foodlog | S | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |
 
 ## Последние события (журнал-хвост, новые сверху)
 

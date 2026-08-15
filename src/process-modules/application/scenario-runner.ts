@@ -61,6 +61,7 @@ import type {
 } from '../persistence/process-run.js';
 import type { ProcessRunRepository } from '../persistence/process-run-repository.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { processRunResultSnapshot } from './process-settlement-digest.js';
 
 import type { ProcessModuleInstallation, ProcessModuleRunResult } from './process-module-executor.js';
 import type { ProcessModuleInstallationRegistry } from './process-module-installation-registry.js';
@@ -1312,19 +1313,10 @@ function processRecordToResult(process: ProcessRunRecord): ProcessModuleRunResul
 }
 
 function resultSnapshot(result: ProcessModuleRunResult): Record<string, unknown> {
-  return {
-    code: result.outcome,
-    outcome: result.outcome,
-    authority: result.authority,
-    output: result.output,
-    certificate: result.certificate,
-    outputRef: result.output?.artifactRef ?? result.certificate?.certificateRef ?? null,
-    outputHash: result.output?.contentHash ?? result.certificate?.certificateHash ?? null,
-    outputSchema: result.output?.schema ?? result.certificate?.schema ?? null,
-    certificateRef: result.certificate?.certificateRef ?? null,
-    certificateHash: result.certificate?.certificateHash ?? null,
-    certificateSchema: result.certificate?.schema ?? null,
-  };
+  // GB-1: single canonical snapshot builder. The previous local 10-key variant
+  // diverged from processRunResultSnapshot (11 keys, TB-8 error reason) — the
+  // scripted and real paths must hash identically.
+  return processRunResultSnapshot(result);
 }
 
 function withStageOutput(

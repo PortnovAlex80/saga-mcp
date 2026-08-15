@@ -98,12 +98,21 @@ export function releaseExecutionAtomically(
       && hasAcceptedWorkerDoneReceipt(db, input.executionId)
     ) {
       let taskReleased = false;
+      let preserved: string | null = null;
       db.transaction(() => {
+        // GB-3: read the preserved status under the same write lock as the
+        // fence clear. presentation_close (ADR-072) may complete the task
+        // between the outer snapshot and this transaction; clearing with the
+        // stale snapshot would resurrect a completed task.
+        const fresh = db
+          .prepare('SELECT status FROM tasks WHERE id=?')
+          .get(task.id) as { status: string } | undefined;
+        preserved = fresh?.status ?? task.status;
         taskReleased = clearTaskFence(
           db,
           task.id,
           input.executionId,
-          task.status,
+          preserved,
           input.reason,
           true,
         );
@@ -111,7 +120,7 @@ export function releaseExecutionAtomically(
       return {
         terminalized: false,
         taskReleased,
-        restoredStatus: taskReleased ? task.status : null,
+        restoredStatus: taskReleased ? preserved : null,
         blockedReason: taskReleased ? '' : 'fence CAS failed while reconciling terminal execution',
         taskId: task.id,
       };
@@ -143,20 +152,30 @@ export function releaseExecutionAtomically(
 
   const preserveTaskStatus = input.preserveTaskStatus
     ?? hasAcceptedWorkerDoneReceipt(db, input.executionId);
-  const restoredStatus = preserveTaskStatus
-    ? task.status
-    : physicalRetryExhausted(db, task.id)
-      ? 'blocked'
-      : computeRestoredStatus(task.status, task.integration_state);
 
   let taskReleased = false;
+  let releasedStatus: string | null = null;
   db.transaction(() => {
     writeExecutionTerminal(db, input);
+    // GB-3: compute the restored status INSIDE the write lock. The outer
+    // `task` snapshot can be stale when presentation_close (ADR-072) commits
+    // a semantic completion between the outer read and this transaction —
+    // clearing with the snapshot would overwrite durable 'done' with the
+    // pre-close projection ('review_in_progress') and strand the Workplace.
+    const fresh = db
+      .prepare('SELECT status, integration_state FROM tasks WHERE id=?')
+      .get(task.id) as { status: string; integration_state: string | null } | undefined;
+    const effective = preserveTaskStatus
+      ? (fresh?.status ?? task.status)
+      : physicalRetryExhausted(db, task.id)
+        ? 'blocked'
+        : computeRestoredStatus(fresh?.status ?? task.status, fresh?.integration_state ?? task.integration_state);
+    releasedStatus = effective;
     taskReleased = clearTaskFence(
       db,
       task.id,
       input.executionId,
-      restoredStatus,
+      effective,
       input.reason,
       preserveTaskStatus,
     );
@@ -165,7 +184,7 @@ export function releaseExecutionAtomically(
   return {
     terminalized: true,
     taskReleased,
-    restoredStatus: taskReleased ? restoredStatus : null,
+    restoredStatus: taskReleased ? releasedStatus : null,
     blockedReason: taskReleased ? '' : 'fence CAS failed (task reassigned mid-release)',
     taskId: task.id,
   };

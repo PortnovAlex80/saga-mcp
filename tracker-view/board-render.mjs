@@ -625,8 +625,9 @@ export function createBoardRenderApi({
           row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
           row.querySelector('.wr-age').textContent = ageMin + 'm';
           // Worker subtitle: show token speed (tok/s) if available, else worker_id.
-          // tok/s = total thinking_tokens / elapsed_seconds — a live throughput
-          // indicator. Helps spot slow models vs fast ones at a glance.
+          // tok/s = token delta between consecutive polls (server-side cache in
+          // lifecycle-endpoints.mjs) — a live throughput indicator. Helps spot
+          // slow models vs fast ones at a glance.
           const tps = w.tokens_per_sec;
           const tt = w.total_tokens;
           if (tps != null && tt != null) {
