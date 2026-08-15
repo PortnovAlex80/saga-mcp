@@ -7,7 +7,11 @@ export interface TransitionHandoffPostcondition {
   readonly reason: string;
 }
 
-/** A returned orchestration episode is not proof that its handoff completed. */
+/**
+ * A returned orchestration episode, a changed Workplace state, or a broadly
+ * matching downstream row is not proof that THIS handoff completed. Wherever
+ * the source has an exact persisted identity today, postconditions bind to it.
+ */
 export function readTransitionHandoffPostcondition(
   db: Database.Database,
   obligation: TransitionObligation,
@@ -27,40 +31,63 @@ export function readTransitionHandoffPostcondition(
     }
     case 'run-gate': {
       const row = db.prepare(
-        `SELECT 1 FROM factory_gate_runs gr
-          WHERE gr.state='terminal'
-            AND (gr.subject_candidate_set_ref=? OR EXISTS (
+        `SELECT 1
+           FROM factory_candidate_sets cs
+           JOIN factory_gate_runs gr
+             ON gr.state='terminal'
+            AND (gr.subject_candidate_set_ref=cs.candidate_set_ref OR EXISTS (
               SELECT 1 FROM json_each(gr.assessment_candidate_set_refs) a
-               WHERE a.value=?
-            )) LIMIT 1`,
-      ).get(obligation.sourceRef, obligation.sourceRef);
-      return fact(row, 'terminal GateRun is not durable yet');
+               WHERE a.value=cs.candidate_set_ref
+            ))
+          WHERE cs.candidate_set_ref=?
+            AND cs.candidate_set_digest=?
+          LIMIT 1`,
+      ).get(obligation.sourceRef, obligation.sourceDigest);
+      return fact(row, 'terminal GateRun for the exact CandidateSet is not durable yet');
     }
     case 'run-effects': {
-      const receipt = db.prepare(
-        `SELECT 1 FROM factory_cell_effect_receipts
-          WHERE workplace_ref=? AND gate_decision_key=? LIMIT 1`,
-      ).get(obligation.subjectRef, obligation.sourceRef);
-      if (receipt) return fact(receipt, 'effect receipt is durable');
-      const workplace = db.prepare(
-        `SELECT loop_state FROM factory_workplaces WHERE workplace_ref=?`,
-      ).get(obligation.subjectRef) as { loop_state: string } | undefined;
-      const routed = workplace !== undefined && workplace.loop_state !== 'effect_pending';
-      return {
-        satisfied: routed,
-        reason: routed
-          ? `Workplace durably routed to ${workplace.loop_state}`
-          : 'effect is still pending and has no durable receipt',
-      };
+      // Exact effect receipt for this accepted GateDecision, or an exact
+      // FinalAcceptance for the same GateDecision in the no-effect path.
+      // A changed loop state alone is never a completion proof.
+      const row = db.prepare(
+        `SELECT 1
+           FROM factory_cell_effect_receipts er
+          WHERE er.workplace_ref=? AND er.gate_decision_key=?
+          UNION ALL
+         SELECT 1
+           FROM factory_cell_final_acceptances fa
+          WHERE fa.workplace_ref=? AND fa.gate_decision_key=?
+          LIMIT 1`,
+      ).get(
+        obligation.subjectRef,
+        obligation.sourceRef,
+        obligation.subjectRef,
+        obligation.sourceRef,
+      );
+      return fact(
+        row,
+        'exact GateDecision has neither an effect receipt nor a FinalAcceptance yet',
+      );
     }
     case 'record-final-acceptance': {
+      // effects-settled now uses the exact CellEffectReceipt as its source.
       const row = db.prepare(
-        `SELECT 1 FROM factory_cell_final_acceptances
-          WHERE workplace_ref=? LIMIT 1`,
-      ).get(obligation.subjectRef);
-      return fact(row, 'FinalAcceptance is not durable yet');
+        `SELECT 1
+           FROM factory_cell_final_acceptances fa
+          WHERE fa.workplace_ref=?
+            AND EXISTS (
+              SELECT 1 FROM json_each(fa.effect_receipt_refs) er
+               WHERE er.value=?
+            )
+          LIMIT 1`,
+      ).get(obligation.subjectRef, obligation.sourceRef);
+      return fact(row, 'FinalAcceptance for the exact EffectReceipt is not durable yet');
     }
     case 'settle-process': {
+      // The current ProductionCellNodeExecutor still emits a legacy
+      // final-acceptance source alias rather than the persisted row ref. Until
+      // that call site is cut over, the strongest safe proof here is the exact
+      // next process-settled obligation for this Workplace's ProcessRun.
       const processRunId = processRunIdFromSubject(obligation.subjectRef);
       const row = db.prepare(
         `SELECT 1 FROM factory_transition_obligations
@@ -83,14 +110,17 @@ export function readTransitionHandoffPostcondition(
         current_stage_run_id: number | null;
         stage_run_id: number;
       } | undefined;
+      // `paused` is explicitly NOT a routing receipt: the lifecycle may be
+      // paused on this exact StageRun because routing is still pending.
       const routed = row !== undefined && (
         row.current_stage_run_id !== row.stage_run_id
-        || ['completed', 'failed', 'paused', 'cancelled'].includes(row.lifecycle_status)
-        || ['completed', 'failed', 'paused', 'cancelled'].includes(row.stage_status)
+        || ['completed', 'failed', 'cancelled'].includes(row.lifecycle_status)
       );
       return {
         satisfied: routed,
-        reason: routed ? 'Lifecycle routing is durable' : 'Lifecycle has not routed the settled ProcessRun yet',
+        reason: routed
+          ? 'Lifecycle routing is durable for the settled ProcessRun'
+          : 'Lifecycle has not routed the settled ProcessRun yet',
       };
     }
   }
@@ -98,7 +128,7 @@ export function readTransitionHandoffPostcondition(
 
 function fact(row: unknown, missingReason: string): TransitionHandoffPostcondition {
   return row
-    ? { satisfied: true, reason: 'durable postcondition exists' }
+    ? { satisfied: true, reason: 'durable exact postcondition exists' }
     : { satisfied: false, reason: missingReason };
 }
 
