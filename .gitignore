@@ -59,3 +59,7 @@ index.html
 .real-factory-smoke/
 tests/golden-runs/
 .factory-testbed/
+
+# generated status-sheet artifacts
+docs/testing/WORKSHOP-STATUS-SHEET.pdf
+docs/testing/WORKSHOP-STATUS-SHEET.png
