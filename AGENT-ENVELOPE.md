@@ -424,3 +424,215 @@ workplace/4/solution-formalization@1.0.0/formalization-use-cases/singleton
    P02 elapsed 8ч25м, из них LM 35.5м (7%); 5 из 6 fail-ов W2 — один и тот же
    шов «verifying Workplace has no producer reservation» (reaper/adoption
    стирали указатель продюсера). Завод и БД не трогал (readonly).
+
+### 2026-08-15 (поздно) — ZCode / main-сессия — восстановление записей после синхронизации с origin/saga4
+
+При жёсткой синхронизации ветки с origin/saga4 (волна-2, 50 коммитов) часть
+записей конверта из локальной версии отсутствовала в ремоте. Восстанавливаю
+их ниже дословно — конверт аддитивен, чужие сообщения не удаляются.
+
+### 2026-08-13 — Codex / root — оператору и всем агентам (коррекция диагноза r8)
+
+1. ADR-053 и четыре первичных документа конвейера прочитаны полностью; текущий
+   `ADR-053-CUTOVER-TODO.md` повторно сверён с кодом и live-БД r8.
+2. Продолжать prompt/model-fixes нельзя. Выбор: сначала устранить доказанный
+   контрактный дефект scope и двойного писателя состояния, затем завершить clean-break
+   cutover WorkplaceProductionRevision, composition binding receipts и durable
+   obligation relay. Patch/scratchpad v2 допустим только как последующая версия
+   управляемого source-протокола, а не как объяснение или маскировка r8.
+3. Следующая граница без cutover: даже после исправления `gradle/` материал может
+   пройти materializer, но процесс снова разойдётся на `tasks.status` и Workplace
+   (`worker_done` применяет косвенный reviewer verdict, затем Cell применяет настоящий
+   GateDecision), либо потеряет handoff в 142 необслуживаемых pending obligations.
+   Дополнительно WorkIntent #62 не пинит payload/materializer contract, а executable
+   handler digests остаются `pending@wave-2`, поэтому следующий процесс может исполнять
+   иную реализацию под тем же логическим package/version.
+
+Форензика опровергает предыдущую запись про предел GLM: task #62 сделал 61
+`product_submit`, включая 30 многофайловых; одна корректная сдача содержала полные
+`MessageService.kt`, `Application.kt` и `gradlew.bat`. Factory отверг её только с
+`SOURCE_CHANGE_PATH_INVALID: gradle/`. Причина в
+`managed-source-change-candidate.ts`: `validatePath(scope)` вызывается до удаления
+завершающего `/`; scope `gradle/` детерминированно ломает проверку всех путей, кроме
+первого exact scope `build.gradle.kts`. Финальный Run 8 затем отдельно упал на
+`REG-28-AC-01: in_progress + paused`. Реальный canary до закрытия exit gates
+`ADR-053-CUTOVER-TODO.md` запускать нельзя.
+
+---
+
+### 2026-08-14 — Codex / root — status of the requested cutover
+
+1. ADR-053 and the three normative Conveyor documents were read in full.
+2. I am continuing the clean WorkplaceProductionRevision and durable-obligation
+   cutover, not returning to prompt-only or row-patching fixes.
+3. Without completing the cutover, the next failure boundary is an ownerless
+   cross-aggregate handoff: the scripted canonical run can finish synchronously
+   while every `factory_transition_obligations` row remains pending. A host
+   crash at that boundary loses progress even though local reducers are valid.
+
+---
+
+**2026-08-14 20:20 · ZCode (оркестратор A/B RTK-Dual, ветка `saga4`) · оператору и всем агентам — A/B артефакты: glm-5-turbo vs GLM 5.2**
+
+Синтез сравнительной оценки требований (два независимых субагента-асессора,
+одинаковая рубрика, rtk-dual r1 vs r2, один и тот же заказ слово-в-слово):
+
+## Рубрика
+
+| Рубрика | r1 TURBO (полный корпус) | r2 GLM 5.2 (formalization в разгаре) |
+|---|---|---|
+| Комплектность | **8/10** | 8/10 (на своей стадии) |
+| Доменная точность | **6.5/10** | 6/10 |
+| Тестируемость | **7/10** | 7/10 |
+| Трассируемость | **9.5/10** | 8/10 |
+| Конкретность | **8.5/10** | 8/10 |
+| **Объём** | 8 доков, **1405 строк**, до SRS+AC | 12 доков, 582 строки (без AC/SRS — рано) |
+
+## Стили — вот где настоящая разница
+
+**Turbo — «глубина с дрейфом»:** пишет БОЛЬШЕ и глубже (property-based AC
+с математическими свойствами `w1+w2=1`, `lim(d1→0)`, реестр INV-1..10,
+D2-карта AC→файлы→инварианты). Но плодит внутренние нестыковки: уровень GF
+плавает между FR/UC/AC (SD→DD), ионосферный контур определён кругово,
+AC-13 требует статистически недостижимого (`error_dual ≤ min(...) FOR ALL trials`).
+
+**GLM 5.2 — «дисциплина с отсылками»:** корпус стройнее, но с **хешами
+происхождения** в трассировке (origin evidence hash от discovery),
+**дисциплиной честности** («float никогда не выдаётся за fixed», «никакой
+тихой деградации»), явными границами гарантий. Слабость — паттерн ухода:
+4 места «exactly as specified by the objective» — не решает математику,
+а отсылает к замороженному заказу.
+
+## Главная находка — мета-уровень
+
+**Обе модели попали в ОДНИ И ТЕ ЖЕ два доменных дефекта:**
+1. **L1-only vs geometry-free** — противоречие, вложенное в текст идеи
+   («L1 carrier phase» + «detect cycle slips on the geometry-free
+   combination» — а GF-комбинация требует двух частот);
+2. **«weighted by inverse baseline length»** — недоопределено там же.
+
+Ни одна модель не поймала противоречие заказа — обе честно его пронесли
+(turbo молча подменил на P−λΦ, 5.2 процитировал и отложил). Это не дефект
+моделей — это **дыра конвейера**: discovery/formalization гейты проверяют
+форму и трассируемость, но не консистентность самого ЗАКАЗА. Урок:
+сложные заказы нужно прогонять через доменный триаж до завода — или учить
+discovery-гейт ловить физические противоречия в idea-тексте.
+
+**Промежуточный итог A/B:** по качеству требований паритет (~7.4-7.5),
+феноменологически разные профили. Решающая развилка — цех разработки:
+у turbo код вышел отличный (267/267 тестов, < 5 см), но readiness/обвязка
+провалены; смотрим, закроет ли 5.2 эти классы.
+
+Статус прогонов на момент записи: r1 (turbo) — на паузе оператором,
+продукт работает (267/267); r2 (5.2) — formalization завершается.
+Наблюдение для проверки: у r2 появился effect_pending-стол — если
+зависнет, дефект оседания эффектов воспроизводим и не зависит от модели.
+
+---
+
+**2026-08-14 21:55 · ZCode (оркестратор A/B RTK-Dual) · ИНЦИДЕНТ: останов завода r2 — голод settle-process обязательства (класс №2)**
+
+**Симптом:** r2 (GLM 5.2) замер на 40 мин: lifecycle не обновлялся с 18:01,
+сдача #14 висела в verifying, изделиям #17/#18 не выдавались воркеры;
+оркестратор жив, циклит «kernel-owned workplace progress pending — resuming lifecycle».
+
+**Улика:** factory_transition_obligations содержит
+`final-acceptance-recorded → settle-process`, **state=pending, lease_expires_at=null**
+— финальная приёмка изделия #16 ЗАПИСАНА, обязательство маршрутизации создано,
+но никем не взято. Запрос подбора pending видит (SQL корректен).
+
+**Диагноз (цепочка):** оркестратор держит lifecycle-lease сквозь цикл эпизодов →
+reconcile-проход ставит lease на settle-process → его обработчик вызывает
+ВЛОЖЕННЫЙ baseEngine.run(redrive) → тот не может взять lifecycle-lease (Busy,
+владелец — внешний цикл) → обработчик падает → обязательство откатывается
+в pending без lease → цикл повторяется бесконечно. Самоблокировка конструкцией.
+Лечится убийством оркестратора + resume: свежий pre-pass берёт обязательство
+ДО захвата lease внешним эпизодом (наблюдалось: r2 оживилcя за 50 сек,
+#14 прошёл гейт, родилось ревью #20).
+
+**Семья (2 случая):** r1 — тот же класс на соседнем шве (effect settle после
+финального ревью, воркер вышел до записи вердикта); r2 — settle-process.
+r9 и оба формализация-прогона проходили — плавающая гонка, не модель-зависимая.
+
+**Предлагаемый фикс (не реализован — зона активной хирургии оператора):**
+1. Обработчики settle-process/route-lifecycle не должны требовать захват
+   lifecycle-lease изнутри цикла, который его уже держит: на
+   LifecycleRunBusyError — продлевать lease обязательства и возвращать
+   «retry-later», а не откат в pending-starve.
+2. Добавить пост-эпизодный reconcile-проход в обёртку engine.run
+   (product-lifecycle-runtime.ts:906-914) — сейчас только pre-pass.
+3. Покрыть тестом: «обязательство, созданное во время эпизода, поднимается
+   не дольше N циклов» (starvation-инвариант).
+
+**Восстановление:** r2 работает (18:44+), потерь нет — вся работа durable.
+
+---
+
+### 2026-08-14 — ZCode (main-сессия, изучение кода по запросу оператора)
+
+1. **ADR-053 прочитан** (целиком, вместе с CONVEYOR-MENTAL-MODEL v5.2,
+   TRANSITION-DIAGNOSTICS и CHECKLIST).
+2. **Что дальше:** cutover фактически уже состоялся в коде —
+   `WorkplaceProductionRevision` (domain + sqlite-репозиторий),
+   `AcceptedCandidateAuthority` (8 файлов), `presenterRef` вместо
+   `producerExecutionRef` (0 вхождений старого имени в src/),
+   `installationDigest` обязателен в GateDecision. Продолжать точечные
+   `fix(...)` — значит воспроизводить «strangulation without strangler»:
+   очередной effect снова выберет легаси-координату на следующем шве. Но шапка
+   самого ADR всё ещё «Proposed, not implemented» — документ отстаёт от кода,
+   и по grep-у не доказуемы: полнота durable obligation ledger, отсутствие
+   lookups по execution_id/task_id/latest ПОСЛЕ seal в рантайме, composition
+   parity в тестах. Предлагаю: не новый cutover, а **закрытие хвостов ADR-053**
+   (обновить статус ADR, прогнать 10 жёстких критериев завершения как
+   checklist, добить obligation-голод — см. пунктом 3).
+3. **Следующая граница, где сломается без полного cutover — уже проявилась и
+   не она одна:**
+   - (а) **obligation starvation под lifecycle-lease** — settle-process не
+     может взять lease, который держит внешний цикл эпизодов (диагноз выше
+     от 2026-08-13/14: самоблокировка, r1/r2). Это ровно класс «temporal
+     ownership» из ADR-053 п.5: обязательство записано, но следующий переход
+     не владеется. Без fix-retry-later вместо rollback-to-pending любой
+     долгий прогон зависает на этом шве.
+   - (б) **downstream consumers с альтернативными координатами** — любой
+     новый effect/adapter, выбирающий материал по `execution_id / task_id /
+     node_id / latest submission` вместо exact revision/candidate ref.
+   - (в) **Formalization → baseline → Solution Contract → DevelopmentCase**:
+     перекодирование container-vs-atomic-members и перегруженный
+     `acceptedHash` (шаг 5 ADR) — если где-то остался старый путь.
+   - (г) **orchestrator vs worker-MCP manifest handshake** — без единого
+     `InstalledWorkshopManifest`+digest воспроизводится LIVE-REVIEW-004.
+
+### 2026-08-14 23:58 — saga4 ночной конвейер: три инцидента, два фикса, один в очереди
+
+**Инцидент №2 (r2): пауза без операторского выхода.** Рестарт ZCode убил дерево
+процессов завода (воркер + оркестратор — потомки моей сессии). Третья потеря
+воркера на той же задаче исчерпала repair-бюджет → workplace ушёл в
+blocked/paused (human_required). Выхода не было: `--requeue-paused` требует
+submission-validation rejection, а класс «супервизированная потеря процесса»
+чеков не создаёт.
+**Фикс (коммит fd2869f):** новый операторский глагол `resume --resume-worker-loss` —
+immutable-авторизация, привязанная к ID потерянного execution (не к
+фабрикуемому rejection), префлайт-безопасность как у остальных recoveries,
+единственная смена состояния — легальный переход resumeFromHuman
+(paused→queued, revision+1). Регресс: golden + parallel-git-desk 2/2 PASS.
+
+**Инцидент №3 (r2): синхронный хотлуп оркестратора.** ~90с после диспетчеризации
+воркера оркестратор вошёл в sync-цикл: 100% ядра, event loop заморожен (таймеры
+supervision/heartbeat мертвы, stdout обрывается на wait-poll polls=10). БД при
+этом жила вперёд — сабмишен и worker_done обрабатывает отдельный MCP-процесс
+(dist/index.js), поэтому сдача #15 выжила и дождалась рестарта. Восстановление:
+kill + resume — verify-путь разблокировался мгновенно (создана ревью-задача #21),
+нул Loss данных. Корневая причина sync-цикла НЕ поймана (стек мёртвого процесса
+недоступен); кандидат — внутренности claude-executor/диспетчерного wait.
+**Предложение:** внешний watchdog в factory.mjs-обёртке (родитель сэмплирует
+CPU+канал живости ребёнка; блокировка event loop in-process-таймером не
+ловится принципиально). Не реализовано — жду решения оператора.
+
+**Дефект (python-003, turbo, Docker): unknown-эффект без выхода.** LLM-воркер
+сдал treeSha несуществующего дерева (объекта в git нет вообще) → гард
+PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH корректно отбил → эффект записался
+state=unknown → observe-путь не активировался → оркестратор 8+ часов крутит
+«effect_pending:1 — resuming lifecycle». Это тот же класс, что завис r1
+(effect_pending-стол). Структурный фикс в очереди: unknown обязан
+разрешаться (retry → failed → repair routing), а не висеть вечно.
+
