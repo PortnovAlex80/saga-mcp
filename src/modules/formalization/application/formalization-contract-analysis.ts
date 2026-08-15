@@ -131,6 +131,28 @@ export function findContractGap(
         gaps.push(`FR-derived AC ${ac.id} has no derived_from → exact UC trace`);
       }
     }
+    // KI-5 reverse coverage: every FR/NFR must have at least one incoming
+    // covers or derived_from edge from a UC/AC. Without this, a requirement
+    // that no use case covers and no acceptance criterion validates slips
+    // through every one-directional gate (live proof: units FR-3 accepted
+    // with zero consumers).
+    const acIds = new Set(idsOf(categories.acs));
+    for (const fr of [...categories.frs, ...categories.nfrs]) {
+      const coveredByUc = snapshot.traces.some(trace =>
+        trace.targetId === fr.id
+        && trace.targetType === 'artifact'
+        && trace.linkType === 'covers'
+        && targetById.get(trace.sourceArtifactId)?.type === 'UC');
+      const coveredByAc = snapshot.traces.some(trace =>
+        trace.targetId === fr.id
+        && trace.targetType === 'artifact'
+        && trace.linkType === 'derived_from'
+        && targetById.get(trace.sourceArtifactId)?.type === 'AC'
+        && acIds.has(trace.sourceArtifactId));
+      if (!coveredByUc && !coveredByAc) {
+        gaps.push(`FR/NFR ${fr.id} (${fr.code ?? fr.type}) has no incoming covers/derived_from from any UC/AC — orphan requirement`);
+      }
+    }
   }
   if (required.architecture) {
     if (categories.srs.length !== 1) return 'contract must contain exactly one SRS';
