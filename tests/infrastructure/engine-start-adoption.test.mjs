@@ -12,14 +12,14 @@ function fresh() {
   return db;
 }
 
-function seedWorkplace(db, { ref, loopState, reservation }) {
+function seedWorkplace(db, { ref, loopState, reservation, nextRole = 'author' }) {
   db.prepare(
     `INSERT INTO factory_workplaces
        (workplace_ref, process_run_id, module_ref, production_cell_id, work_key,
         kanban_phase, loop_state, next_role, revision, created_at, updated_at)
-     VALUES (?, 1, 'm@1', 'cell', 'singleton', 'in_progress', ?, 'reviewer', 6,
+     VALUES (?, 1, 'm@1', 'cell', 'singleton', 'in_progress', ?, ?, 6,
              datetime('now'), datetime('now'))`,
-  ).run(ref, loopState);
+  ).run(ref, loopState, nextRole);
   if (reservation) {
     db.prepare('UPDATE factory_workplaces SET active_reservation_ref=? WHERE workplace_ref=?')
       .run(reservation, ref);
@@ -55,6 +55,14 @@ function seedSpawnFailed(db, executionId) {
 }
 
 function seedTask(db, ref) {
+  // ConveyorRuntime enables foreign_keys on the connection, so the full
+  // tasks -> epics -> projects chain must exist for the projection UPDATE.
+  db.prepare(
+    `INSERT INTO projects (id, name) VALUES (1, 'p') ON CONFLICT(id) DO NOTHING`,
+  ).run();
+  db.prepare(
+    `INSERT INTO epics (id, project_id, name) VALUES (1, 1, 'e') ON CONFLICT(id) DO NOTHING`,
+  ).run();
   db.prepare(
     `INSERT INTO tasks (epic_id, title, status, workplace_ref)
      VALUES (1, 't', 'in_progress', ?)`,

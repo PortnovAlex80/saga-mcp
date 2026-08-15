@@ -209,9 +209,15 @@ export function adoptTerminalExecutionsAtEngineStart(
         workplaceRef: row.workplace_ref,
         loopState: row.loop_state,
       });
-    } catch {
-      // A concurrent writer already moved this workplace; the next engine
-      // start re-evaluates idempotently.
+    } catch (err) {
+      // Log and skip: a concurrent writer may have moved this workplace, but a
+      // silent catch would also hide real repair defects (observed: a seeded
+      // illegal kanban/role pair surfaced only as a silent 0-repair count).
+      // The next engine start re-evaluates idempotently either way.
+      process.stderr.write(
+        `[engine-start-adoption] spawn-failed repair skipped execution=${row.execution_id} `
+        + `workplace=${row.workplace_ref}: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
     }
   }
 
