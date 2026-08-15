@@ -619,12 +619,23 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // lifecycle episode stops at that boundary. The fenced reconciler leases
     // the obligation and re-drives this idempotent node; only that leased
     // (`in_progress`) episode may enter GateRun.
+    //
+    // Crash-window completion (TB-12): a COMPLETED obligation must fall
+    // through instead of returning pending. The original episode may have
+    // crashed after the gate decided but before the verdict was applied to
+    // the Workplace (observed: final gate verdict repair_required recorded
+    // durably, Workplace still `verifying`, every redrive re-sealed and
+    // parked here forever). `driveGateRun` replays the persisted decision for
+    // the same gate identity and the coordinator's revision CAS makes the
+    // re-application safe, so a completed handoff means "authority already
+    // durable — continue the state machine below", exactly like
+    // settleAcceptanceEffect treats a completed RunEffects handoff.
     const runGateObligation = this.opts.obligationIntegrator.onCandidateSetSealed({
       candidateSetRef: candidate.candidateSetRef,
       candidateSetDigest: candidate.candidateSetDigest,
       workplaceRef: serializeWorkplaceRef(workplace.ref),
     });
-    if (runGateObligation.state !== 'in_progress') {
+    if (runGateObligation.state === 'pending') {
       if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
       this.opts.persistence.projectWorkplace(workplace.ref);
       return pendingOutcome(candidate.candidateSetRef);
@@ -677,7 +688,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // identity (decisionKey + decisionDigest from runGate), not a fabricated
         // workplace-scoped string — so crash recovery redrives effects against
         // the precise accepted decision instead of guessing one by recency.
-        nextHandoffReady = decision.transitionObligation?.state === 'in_progress';
+        // TB-12: a COMPLETED handoff is ready too — the effects are already
+        // durable and the post-gate state machine below must proceed.
+        nextHandoffReady = decision.transitionObligation?.state === 'in_progress'
+          || decision.transitionObligation?.state === 'completed';
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -705,7 +719,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // ADR-053 B-8/C6 — reviewer gate accepted → effects must run (mandatory).
         // Obligation carries the EXACT reviewer GateDecision identity (not the
         // author subject's digest), so recovery redrives the right verdict.
-        nextHandoffReady = decision.transitionObligation?.state === 'in_progress';
+        // TB-12: completed counts as ready — see the author-gate branch above.
+        nextHandoffReady = decision.transitionObligation?.state === 'in_progress'
+          || decision.transitionObligation?.state === 'completed';
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,

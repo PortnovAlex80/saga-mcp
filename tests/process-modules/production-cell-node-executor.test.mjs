@@ -786,3 +786,28 @@ test('TB-10: without any durable author the verifying desk still fails loudly', 
   );
   h.db.close();
 });
+
+test('TB-12: a COMPLETED run-gate obligation falls through — the gate is re-driven, not parked', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:1', digest: sha('product'),
+  });
+  // Crash-window residue: the obligation machinery reports the handoff as
+  // already completed (the original episode decided the gate but died before
+  // applying the verdict). The old `state !== 'in_progress'` check parked the
+  // desk in pending forever on every redrive.
+  const original = h.executor['opts'].obligationIntegrator.onCandidateSetSealed;
+  h.executor['opts'].obligationIntegrator.onCandidateSetSealed = input => {
+    const obligation = original.call(h.executor['opts'].obligationIntegrator, input);
+    return { ...obligation, state: 'completed' };
+  };
+
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'completed', 'state machine proceeds past a completed handoff');
+  assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
+  assert.ok(h.gateRepo.listDecisionsForWorkplace(ref).length >= 1, 'gate ran (replayed or fresh)');
+  h.db.close();
+});
