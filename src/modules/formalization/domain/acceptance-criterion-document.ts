@@ -6,7 +6,10 @@ export interface AtomicAcceptanceCriterion {
   readonly contentHash: string;
 }
 
-const HEADING = /^(#{2,3})\s+(AC-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*):\s+(.+?)\s*$/gm;
+// Acceptance criterion codes are hierarchical identifiers, not numeric-only
+// ordinals. Each segment may contain hyphens (for example AC-NFR-1.1), and the
+// same grammar must be accepted anywhere the conveyor reads AC headings.
+const HEADING = /^(#{2,3})\s+(AC-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*):\s+(.+?)\s*$/gm;
 
 /**
  * Converts an accepted AC document into the atomic criteria that downstream
