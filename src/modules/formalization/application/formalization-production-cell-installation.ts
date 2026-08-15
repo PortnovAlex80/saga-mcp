@@ -164,6 +164,13 @@ function createSettlementHandler(
   return ctx => {
     try {
       const epicId = requireEpicId(ctx);
+      // TB-11: the settlement task-readiness gate is scoped to the CURRENT
+      // lifecycle run. The executor context carries only processRunId, so the
+      // owning lifecycle run is recovered through the graph port (see
+      // readOwningLifecycleRunId for why this lookup lives there). A process
+      // run without an owning lifecycle run is an infrastructure failure —
+      // fail closed into the 'failed' settlement path below.
+      const lifecycleRunId = requireLifecycleRunId(deps.graph, ctx.processRunId);
       const formalizationCase = requireFormalizationCase(ctx.frame.runInput);
       if (formalizationCase.formalizationEpicId !== epicId) {
         throw new Error('FormalizationCase epic does not match ProcessRun epic');
@@ -179,7 +186,7 @@ function createSettlementHandler(
         discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
         bundle,
       };
-      const decision = deps.settlementPolicy.settle(deps.graph, settlementInput);
+      const decision = deps.settlementPolicy.settle(deps.graph, settlementInput, lifecycleRunId);
       const formalizationPayload = buildFormalizationCertificatePayload(
         decision,
         bundle,
@@ -471,6 +478,24 @@ function requireEpicId(ctx: KernelHandlerContext): number {
     throw new Error('formalization requires epicId');
   }
   return ctx.epicId as number;
+}
+
+/**
+ * TB-11: resolve the lifecycle run owning this process run and fail closed
+ * when there is none — settlement MUST be scoped to a concrete lifecycle run
+ * so that workplaces of DEAD runs cannot poison the task-readiness gate.
+ */
+function requireLifecycleRunId(
+  graph: FormalizationProductionCellInstallationDeps['graph'],
+  processRunId: number,
+): number {
+  const lifecycleRunId = graph.readOwningLifecycleRunId(processRunId);
+  if (!Number.isSafeInteger(lifecycleRunId) || (lifecycleRunId ?? 0) < 1) {
+    throw new Error(
+      `formalization settlement requires an owning lifecycle run for process run ${processRunId}`,
+    );
+  }
+  return lifecycleRunId as number;
 }
 
 function acceptedHash(artifact: {

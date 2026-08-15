@@ -154,11 +154,35 @@ export interface FormalizationArtifactGraphPort {
     description: string;
   } | null;
 
-  /** True if all formalization tasks for the epic are done+integrated. */
-  areTasksReady(epicId: number): {
+  /**
+   * True if all formalization tasks of the epic that belong to the CURRENT
+   * lifecycle run are done+integrated (workplace loop_state='terminal', plus
+   * integration_state='merged' for git_change tasks).
+   *
+   * TB-11 (gate poisoning): readiness MUST be scoped to `lifecycleRunId`.
+   * Tasks join their workplace by workplace_ref, and one epic accumulates
+   * workplace rows across ALL of its lifecycle runs; a workplace frozen by a
+   * DEAD previous run must not poison the settlement of a new run. Tasks whose
+   * workplace belongs to an older lifecycle run are not gateable at all — they
+   * belong to the dead run, not to this settlement.
+   */
+  areTasksReady(epicId: number, lifecycleRunId: number): {
     ready: boolean;
     blockingTaskIds: readonly number[];
   };
+
+  /**
+   * Resolve the lifecycle run that owns a process run (TB-11).
+   *
+   * WHY a graph-port method instead of a ctx field: KernelHandlerContext
+   * carries processRunId but not the owning lifecycle run id, and threading
+   * one through the executor's context construction lives outside this
+   * module's boundary. factory_stage_runs is the authoritative
+   * (process_run_id → lifecycle_run_id) mapping — its process_run_id is
+   * UNIQUE, so the lookup is exact. Returns null when the process run is not
+   * (yet) attached to a lifecycle run; callers must fail closed on that.
+   */
+  readOwningLifecycleRunId(processRunId: number): number | null;
 }
 
 /**
@@ -175,13 +199,19 @@ export interface FormalizationSettlementResult {
 /**
  * The deterministic settlement policy. Given a snapshot of the artifact graph
  * + the settlement input, it returns a decision. It MUST be a pure function
- * of (graph, input) — no time, no randomness, no LM. Production wires a SQLite
- * implementation; tests inject a fake.
+ * of (graph, input, lifecycleRunId) — no time, no randomness, no LM.
+ * Production wires a SQLite implementation; tests inject a fake.
+ *
+ * `lifecycleRunId` is passed out-of-band (not inside the input) on purpose:
+ * the input is hashed into `inputHash` as the settlement contract, and the
+ * lifecycle run is orchestration scoping (TB-11), not contract content — the
+ * same accepted contract settles identically in any run of the lifecycle.
  */
 export interface FormalizationSettlementPolicyPort {
   settle(
     graph: FormalizationArtifactGraphPort,
     input: FormalizationSettlementInput,
+    lifecycleRunId: number,
   ): FormalizationSettlementResult;
 }
 

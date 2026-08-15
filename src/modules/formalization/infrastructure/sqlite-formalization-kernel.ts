@@ -3,7 +3,9 @@
  *
  * This wires the formalization settlement policy to the EXISTING saga artifact
  * store (artifacts, artifact_traces, tasks tables). It reuses the same SQL
- * assertTasksReady) — same semantics, exposed through the formalization port.
+ * task-readiness semantics, exposed through the formalization port, with one
+ * fix: areTasksReady(epicId, lifecycleRunId) scopes the gate to the CURRENT
+ * lifecycle run (TB-11 — dead-run workplaces must not poison settlement).
  *
  * The policy itself is in a separate class so it can be unit-tested with a
  * fake graph port (no DB needed).
@@ -256,11 +258,19 @@ export class SqliteFormalizationArtifactGraph implements
     return null;
   }
 
-  areTasksReady(epicId: number) {
+  areTasksReady(epicId: number, lifecycleRunId: number) {
     // Factory workplace state is the unconditional orchestration authority.
     // task's done-ness is the AUTHORITATIVE factory_workplaces loop_state (terminal
     // integration_state / execution_mode / task_kind stay on tasks (DATA
     // columns — they describe the task, not its orchestration loop state).
+    //
+    // TB-11 (gate poisoning): scope the gate to the CURRENT lifecycle run.
+    // Workplace rows accumulate across ALL lifecycle runs of an epic; a
+    // workplace frozen by a DEAD previous run (e.g. stuck in effect_pending)
+    // must not block the settlement of a new run. We only join tasks to
+    // workplaces whose process_run_id belongs to a stage run of the given
+    // lifecycle run; tasks of older runs drop out of the join entirely and
+    // are therefore not gateable for this settlement.
     interface TaskRow {
       id: number; execution_mode: string; status: string;
       loop_state: string | null;
@@ -273,12 +283,19 @@ export class SqliteFormalizationArtifactGraph implements
                   t.integration_state, t.task_kind
              FROM tasks t
              JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
-            WHERE t.epic_id=? AND t.workflow_stage='formalization'`,
-        ).all(epicId) as TaskRow[];
+            WHERE t.epic_id=? AND t.workflow_stage='formalization'
+              AND w.process_run_id IN (
+                SELECT sr.process_run_id
+                  FROM factory_stage_runs sr
+                 WHERE sr.lifecycle_run_id=?
+              )`,
+        ).all(epicId, lifecycleRunId) as TaskRow[];
     // Exclude bookkeeping tasks (summary/recovery) — same exclusion as lifecycle.ts.
     const gateable = rows.filter(t =>
       t.task_kind !== 'summary.stage' && t.task_kind !== 'recovery.heal');
     if (gateable.length === 0) {
+      // Fail closed: for THIS lifecycle run there is nothing to settle — the
+      // policy maps this to 'No formalization tasks exist for this episode'.
       return { ready: false, blockingTaskIds: [] };
     }
     const blocking = gateable
@@ -292,6 +309,21 @@ export class SqliteFormalizationArtifactGraph implements
       })
       .map(t => t.id);
     return { ready: blocking.length === 0, blockingTaskIds: blocking };
+  }
+
+  readOwningLifecycleRunId(processRunId: number): number | null {
+    // TB-11: the settlement handler must scope the task-readiness gate to the
+    // CURRENT lifecycle run, but KernelHandlerContext carries only
+    // processRunId — the owning lifecycle run id would have to be threaded
+    // through the process-modules executor context, outside this module's
+    // boundary. factory_stage_runs is the authoritative ownership chain
+    // (process_run_id is UNIQUE there), so this exact lookup is the
+    // module-local way to recover it. Null means the process run is not
+    // attached to any lifecycle run — callers fail closed on that.
+    const row = this.db.prepare(
+      `SELECT lifecycle_run_id FROM factory_stage_runs WHERE process_run_id=?`,
+    ).get(processRunId) as { lifecycle_run_id: number } | undefined;
+    return row?.lifecycle_run_id ?? null;
   }
 }
 
@@ -320,6 +352,7 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
   settle(
     graph: FormalizationArtifactGraphPort,
     input: FormalizationSettlementInput,
+    lifecycleRunId: number,
   ): FormalizationSettlementResult {
     const epicId = input.formalizationEpicId;
     const inputHash = createHash('sha256')
@@ -401,8 +434,9 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
         `Traceability gap: ${gap.description}`);
     }
 
-    // Tasks: all formalization tasks must be done+integrated.
-    const tasks = graph.areTasksReady(epicId);
+    // Tasks: all formalization tasks of the CURRENT lifecycle run must be
+    // done+integrated (TB-11 — dead-run workplaces must not poison the gate).
+    const tasks = graph.areTasksReady(epicId, lifecycleRunId);
     if (!tasks.ready) {
       return fail(inputHash, ['tasks-not-ready'],
         tasks.blockingTaskIds.length > 0
