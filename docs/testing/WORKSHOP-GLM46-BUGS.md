@@ -64,3 +64,19 @@ rejection'и и check-plan корректно объявляют `ACCEPTANCE_CON
 
 **Фикс:** `validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION` (константа, не строка).
 Свип по остальным модулям — других захардкоженных версий нет. **fixed**.
+
+## GB-9 — Development: workplace уходит в explicit-pause ПОСЛЕ accepted-гейта (open, жду вторую выборку)
+
+**Симптом (P02, L29, карточка #109 development.code):** 3 исполнения; история гейта
+repair_required → repair_required → **accepted**; git-эффект для этой карточки НЕ создан
+(единственный эффект-action в БД — другая карточка, succeeded); workplace → loop_state=paused
+(«requires explicit resume»), движок штатно остановился, драйвер ушёл на P03. Карточки
+#105-116 (9 шт.) остались todo/review.
+
+**Гипотезы:** (а) recovery-budget pause сработал по счётчику repair-попыток в момент,
+когда финальный accept уже был durable (гонка бюджета и вердикта); (б) пост-акцептанс
+обязательство (run-effects) не создалось/не клеймилось и workplace спроецировался в pause.
+**План:** дождаться повтора на P03/P04 (development дойдёт через ~30-40 мин/проект),
+диффить две выборки; затем изолировать по obligations/production_envelope карточки.
+**Статус:** open. Recovery-путь: factory.mjs continue (explicit resume) — проверю на P02
+финальным проходом, если движок не разберётся сам.
