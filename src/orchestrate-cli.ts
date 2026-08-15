@@ -32,6 +32,7 @@ import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
 import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
 import { adoptTerminalExecutionsAtEngineStart } from './app/engine-start-adoption.js';
+import { buryDeadLifecycleObligations } from './app/engine-start-lifecycle-burial.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
   installProductionModules,
@@ -230,15 +231,64 @@ async function main() {
     // the receipt nothing is rewritten — that case must stay loud.
     {
       const adoption = adoptTerminalExecutionsAtEngineStart(getDb());
-      if (adoption.adopted > 0 || adoption.skippedNoReceipt > 0) {
+      if (
+        adoption.adopted > 0 || adoption.skippedNoReceipt > 0
+        || adoption.spawnFailedRepaired.length > 0
+      ) {
         process.stderr.write(
           `[orchestrate-cli] engine-start adoption: adopted=${adoption.adopted} `
-          + `skipped_no_receipt=${adoption.skippedNoReceipt}\n`,
+          + `skipped_no_receipt=${adoption.skippedNoReceipt} `
+          + `spawn_failed_repaired=${adoption.spawnFailedRepaired.length}\n`,
         );
         for (const detail of adoption.details) {
           process.stderr.write(
             `[orchestrate-cli] adopted terminal execution=${detail.executionId} `
             + `workplace=${detail.workplaceRef} state=${detail.loopState}\n`,
+          );
+        }
+        for (const detail of adoption.spawnFailedRepaired) {
+          process.stderr.write(
+            `[orchestrate-cli] repaired spawn-failed reservation execution=${detail.executionId} `
+            + `workplace=${detail.workplaceRef} state=${detail.loopState}\n`,
+          );
+        }
+      }
+    }
+
+    // TB-11: bury the death cascade of terminally failed lifecycles. Their
+    // open transition obligations would be re-leased by the reconciler
+    // forever (the obligation's owner — the lifecycle — is dead, so no lease
+    // holder can ever complete it), and the kernel-owned workplaces of the
+    // dead process runs stay frozen in verifying/effect_pending, later
+    // poisoning the settlement gate of a NEW lifecycle that reuses the same
+    // workplaces. Abandon the obligations and release the workplaces.
+    {
+      const burial = buryDeadLifecycleObligations(getDb());
+      if (
+        burial.buried > 0 || burial.workplacesReleased > 0
+        || burial.tasksCancelled > 0
+      ) {
+        process.stderr.write(
+          `[orchestrate-cli] engine-start lifecycle burial: buried=${burial.buried} `
+          + `workplaces_released=${burial.workplacesReleased} `
+          + `tasks_cancelled=${burial.tasksCancelled}\n`,
+        );
+        for (const detail of burial.details) {
+          process.stderr.write(
+            `[orchestrate-cli] abandoned obligation=${detail.obligationKey} `
+            + `prior_state=${detail.priorState} lifecycle_run=${detail.lifecycleRunId}\n`,
+          );
+        }
+        for (const workplace of burial.releasedWorkplaces) {
+          process.stderr.write(
+            `[orchestrate-cli] released workplace=${workplace.workplaceRef} `
+            + `loop_state=${workplace.loopState} reason=lifecycle_terminal\n`,
+          );
+        }
+        for (const task of burial.cancelledTasks) {
+          process.stderr.write(
+            `[orchestrate-cli] cancelled task #${task.taskId} `
+            + `prior_status=${task.priorStatus} lifecycle_run=${task.lifecycleRunId}\n`,
           );
         }
       }

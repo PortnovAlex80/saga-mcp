@@ -439,6 +439,39 @@ export class SqliteTransitionObligationLedger {
     return this.getOrThrow(input.obligationKey);
   }
 
+  /**
+   * Abandon differs from complete/fail/defer/reclaim: it deliberately does
+   * NOT require a lease. Every other transition is driven by the obligation's
+   * owner holding the current fence; abandon is the kernel recovery path for
+   * the case where that owner (the lifecycle run that sourced the obligation)
+   * is itself terminally dead — no legitimate lease holder can ever exist
+   * again, so demanding one would re-create the immortal re-lease loop this
+   * method exists to end. The CAS is fail-closed: only an OPEN row
+   * (pending/in_progress) can be abandoned, lease_fence stays monotonic
+   * (bumped past any in-flight lease so a stale driver's fence is provably
+   * stale), and the row lands in the same 'failed' terminal state as an
+   * owned failure. Returns null when the row is already terminal or missing,
+   * making recovery passes idempotent instead of loud.
+   */
+  abandon(obligationKey: string, reason: string): TransitionObligation | null {
+    if (typeof reason !== 'string' || reason.trim() === '') {
+      throw new Error(`TRANSITION_OBLIGATION_ABANDON_REQUIRES_REASON: ${obligationKey}`);
+    }
+    const result = this.db.prepare(
+      `UPDATE factory_transition_obligations
+          SET state='failed',
+              lease_owner=NULL,
+              lease_expires_at=NULL,
+              last_error=@reason,
+              lease_fence=COALESCE(lease_fence,0)+1,
+              updated_at=datetime('now')
+        WHERE obligation_key=@key
+          AND state IN ('pending','in_progress')`,
+    ).run({ key: obligationKey, reason });
+    if (result.changes !== 1) return null;
+    return this.getOrThrow(obligationKey);
+  }
+
   private assertCurrentLease(
     existing: TransitionObligation,
     owner: string,
