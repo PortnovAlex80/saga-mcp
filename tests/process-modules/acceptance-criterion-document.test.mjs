@@ -22,6 +22,26 @@ test('atomic artifact selects only its anchor from a shared AC document', () => 
   );
 });
 
+test('atomic artifact resolves hyphenated hierarchical codes such as AC-NFR-1.1', () => {
+  const content = [
+    '## AC-1: Functional criterion',
+    'Functional body.',
+    '## AC-NFR-1: Non-functional group',
+    '### AC-NFR-1.1: Offline Operation — Local Filesystem',
+    'Given local files are available',
+    'Then the application works offline',
+  ].join('\n');
+
+  assert.deepEqual(
+    parseAtomicAcceptanceCriteria(content).map(item => item.code),
+    ['AC-1', 'AC-NFR-1.1'],
+  );
+  assert.deepEqual(
+    acceptanceCriteriaForArtifact(content, 'AC-NFR-1.1').map(item => item.code),
+    ['AC-NFR-1.1'],
+  );
+});
+
 test('atomic artifact fails closed when its shared document anchor is missing', () => {
   assert.throws(
     () => acceptanceCriteriaForArtifact('## AC-1: First\nBody', 'AC-2'),
