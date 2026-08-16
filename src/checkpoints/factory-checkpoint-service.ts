@@ -324,7 +324,7 @@ export class FactoryCheckpointService {
     const stale = db.prepare(
       `SELECT checkpoint_ref FROM factory_checkpoints
          WHERE project_id=? AND epic_id IS ?
-         ORDER BY id DESC LIMIT -1 OFFSET ?`,
+         ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?`,
     ).all(
       projectId,
       epicId,
