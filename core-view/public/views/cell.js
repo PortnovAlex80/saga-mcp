@@ -50,6 +50,10 @@ let snapshot = null; // последний snapshot от main.js (может б�
 let cellData = null; // последний ответ /api/core/cell (ok)
 let selectedRef = null;
 
+// Раскрытые причины возвратов в хронологии (gateRunRef → раскрыто).
+// Модульный уровень: состояние переживает re-render и mount/destroy.
+const expandedReasons = new Set();
+
 let pollTimer = 0;
 let inflight = false;
 let abortCtl = null;
@@ -129,6 +133,18 @@ export function mount(container, viewCtx) {
     }
   });
   renderFollowBtn();
+
+  // Раскрытие/сворачивание причины возврата в хронологии (делегирование:
+  // innerHTML перерисовывается каждый poll, отдельные листенеры не выживут).
+  root.addEventListener('click', (ev) => {
+    const box = ev.target && ev.target.closest && ev.target.closest('.core-cell-tl-reason');
+    if (!box) return;
+    const ref = box.getAttribute('data-ref');
+    if (!ref) return;
+    if (expandedReasons.has(ref)) expandedReasons.delete(ref);
+    else expandedReasons.add(ref);
+    render();
+  });
 
   // В закреплённом режиме восстанавливаем последний выбор (событие могло
   // прийти до mount). В режиме слежения выбор подберёт update() из снапшота.
@@ -629,6 +645,7 @@ function renderTimeline(data) {
     items.push({
       at: parseTs(g.decidedAt), ts: g.decidedAt, kind: 'gate',
       verdict: String(g.verdict || ''), gatePhase: g.gatePhase, ref: g.gateRunRef,
+      reason: g.reason || null,
     });
   }
   for (const e of data.executions || []) {
@@ -647,11 +664,35 @@ function renderTimeline(data) {
       const tone = v === 'accepted' ? 'ok'
         : v.includes('repair') ? 'wait'
           : v.includes('reject') || v.includes('fail') ? 'fail' : 'scan';
-      return '<div class="core-cell-tl-row">'
+      // причина возврата: строка-превью + разворачиваемый список всех замечаний.
+      // Состояние раскрытия живёт в expandedReasons (по gateRunRef) —
+      // переживает ежесекундный re-render.
+      let reasonHtml = '';
+      if (v.includes('repair') && it.reason && it.ref) {
+        const all = it.reason.source === 'review'
+          ? (it.reason.findings && it.reason.findings.length
+              ? it.reason.findings : ['ревью: ' + (it.reason.reviewVerdict || 'без текста')])
+          : ['провалены чеки: ' + (it.reason.checksFailed || []).join(', ')];
+        const expanded = expandedReasons.has(it.ref);
+        if (expanded) {
+          reasonHtml = '<div class="core-cell-tl-reason is-open" data-ref="' + esc(it.ref) + '">'
+            + '<span class="core-cell-tl-reason-line">↳ причина возврата <span class="core-cell-tl-reason-toggle">[свернуть]</span></span>'
+            + '<ul class="core-cell-tl-reason-full">'
+            + all.map((f) => '<li>' + esc(f) + '</li>').join('')
+            + '</ul></div>';
+        } else {
+          reasonHtml = '<div class="core-cell-tl-reason" data-ref="' + esc(it.ref) + '">'
+            + '<span class="core-cell-tl-reason-line">↳ причина возврата: ' + esc(trunc(all[0], 96))
+            + ' <span class="core-cell-tl-reason-toggle">[' + all.length + ' — раскрыть]</span></span>'
+            + '</div>';
+        }
+      }
+      return '<div class="core-cell-tl-row core-cell-tl-row--gate">'
         + '<span class="core-cell-tl-time">' + esc(t) + '</span>'
         + '<i class="core-cell-tl-dot core-cell-t-' + tone + '"></i>'
         + '<span class="core-cell-tl-text">гейт <b>' + esc(it.gatePhase || '—') + '</b> → '
         + esc(it.verdict || '—') + '</span>'
+        + reasonHtml
         + '</div>';
     }
     const s = it.state.toLowerCase();

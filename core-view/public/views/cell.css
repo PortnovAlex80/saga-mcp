@@ -532,6 +532,35 @@ a.core-cell-kb-chip:hover { border-color: var(--cc-flow); color: var(--cc-flow);
 .core-cell-kb-loop-title { color: var(--cc-replay); }
 .core-cell-kb-loop-note { margin-left: auto; font-size: 10px; opacity: .75; }
 
+/* ---- причины возврата в хронологии попыток ---- */
+.core-cell-tl-reason { margin: 3px 0 4px 22px; cursor: pointer; }
+.core-cell-tl-reason-line {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--cc-wait);
+  opacity: .92;
+}
+.core-cell-tl-reason-toggle { color: var(--cc-muted); font-size: 10px; white-space: nowrap; }
+.core-cell-tl-reason:hover .core-cell-tl-reason-toggle { color: var(--cc-flow); }
+.core-cell-tl-reason-full {
+  margin: 4px 0 0;
+  padding: 6px 8px 6px 20px;
+  list-style: none;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-left: 2px solid var(--cc-wait);
+  border-radius: 5px;
+}
+.core-cell-tl-reason-full li {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--cc-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.core-cell-tl-reason-full li + li { margin-top: 5px; }
+.core-cell-tl-reason-full li::before { content: '↳ '; color: var(--cc-wait); }
+
 /* ------------------------ финал/recovery/эффекты ------------------------ */
 
 .core-cell-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
