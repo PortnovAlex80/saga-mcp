@@ -81,6 +81,32 @@ const PID_FILE = path.join(__dirname, '.tracker-view.pid');
 const RELOAD_SEC = runtimeConfig.trackerReloadSec;
 const sagaApplication = createSagaControlApplication(process.env);
 
+// Factory boot revision (plan: "двигать задачи назад при старте"):
+// adoption → burial → stale-worker sweep across ALL projects, BEFORE the
+// server accepts connections. Dead worker reservations cleared, phantom
+// "In Progress"/"Reviewing" cards moved to repair_wait (the executor drives
+// them to queued on the next engine start). Live workers untouched.
+try {
+  const { runFactoryBootRevision } = await import('../dist/app/factory-boot-revision.js');
+  const { getDb } = await import('../dist/db.js');
+  const revision = runFactoryBootRevision(getDb());
+  if (revision.swept.length > 0 || revision.adoption.adopted > 0
+    || revision.burial.buried > 0 || revision.burial.workplacesReleased > 0) {
+    console.log(`[factory-boot-revision] adoption=${revision.adoption.adopted} `
+      + `spawn_repaired=${revision.adoption.spawnFailedRepaired?.length ?? 0} `
+      + `buried=${revision.burial.buried} released=${revision.burial.workplacesReleased} `
+      + `tasks_cancelled=${revision.burial.tasksCancelled} `
+      + `swept=${revision.swept.length} (scopes: ${revision.scopesChecked})`);
+    for (const s of revision.swept.slice(0, 10)) {
+      console.log(`  [boot-revision] execution=${s.executionId.slice(0, 22)} `
+        + `task=${s.taskId} action=${s.action} reason=${s.reason.slice(0, 60)}`);
+    }
+  }
+} catch (err) {
+  console.error('[factory-boot-revision] failed (non-fatal, tracker continues):',
+    err instanceof Error ? err.message : String(err));
+}
+
 const COLS = [
   { key: 'todo',               label: 'Backlog' },
   { key: 'in_progress',        label: 'In Progress' },
