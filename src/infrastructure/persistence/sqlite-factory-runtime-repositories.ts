@@ -368,7 +368,12 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
     return run.immediate();
   }
 
-  renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number {
+  renewLeases(
+    projectId: number,
+    epicId: number,
+    leaseTtlMs: number,
+    excludeExecutionIds?: readonly string[],
+  ): number {
     // CONVEYOR Wave 5 (BUG 2 fix, §363-370): LIVENESS lease renewal. Two
     // distinct signals must never be conflated:
     //   * heartbeat_at — LIVENESS: "the supervisor still owns this execution".
@@ -385,15 +390,24 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
     // Only LOCAL executions are renewed: a remote machine's worker is not ours
     // to supervise (its own host's supervisor renews it, or it expires if that
     // host died — see the lease-first release in reconcileWorkerExecutions).
+    //
+    // FIX 1 (2026-08-16 incident): executions whose PID is alive-but-foreign
+    // are EXCLUDED (their reconcile projection carries withholdRenewal). A
+    // reused PID must not keep its heartbeat fresh forever — the aging
+    // heartbeat is what lets the supervision stale gate classify the row lost.
     const db = getDb();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + leaseTtlMs).toISOString();
+    const excluded = (excludeExecutionIds ?? []).filter(id => typeof id === 'string' && id !== '');
+    const exclusionSql = excluded.length > 0
+      ? `AND execution_id NOT IN (${excluded.map(() => '?').join(',')})`
+      : '';
     const info = db.prepare(
       `UPDATE worker_executions
           SET lease_expires_at=?, heartbeat_at=?
         WHERE project_id=? AND epic_id=? AND machine_id=?
-          AND state IN ('reserved','running','cancel_requested')`,
-    ).run(expiresAt, now.toISOString(), projectId, epicId, os.hostname());
+          AND state IN ('reserved','running','cancel_requested') ${exclusionSql}`,
+    ).run(expiresAt, now.toISOString(), projectId, epicId, os.hostname(), ...excluded);
     return info.changes;
   }
 

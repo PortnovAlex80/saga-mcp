@@ -37,6 +37,22 @@ export interface ExecutionReconcileProjection {
   action: 'kept' | 'lost' | 'terminated' | 'remote_unknown';
   released: boolean;
   reason: string;
+  /**
+   * FIX 1 (2026-08-16 incident): released because the PID was dead or reused
+   * by a foreign process (drives the sweep line's lost_dead_pid=N counter).
+   */
+  lostViaDeadPid?: boolean;
+  /**
+   * FIX 1: alive-but-foreign PID with a still-fresh heartbeat — the sweep
+   * keeps the execution but must NOT renew its lease (renewLeases skips it)
+   * so the heartbeat ages toward the stale gate.
+   */
+  withholdRenewal?: boolean;
+  /**
+   * FIX 1: PID liveness/identity could not be determined (tooling error);
+   * the sweep keeps + renews per the OLD behavior and logs the degradation.
+   */
+  pidIdentityUnverifiable?: boolean;
 }
 
 export interface ConcurrencyAdmissionSnapshot {
@@ -85,8 +101,17 @@ export interface ExecutionRuntimeRepository {
    * is alive — independent of model behaviour. This is the "liveness heartbeat"
    * that does NOT depend on the language model remembering to call a tool.
    * Returns the count of leases renewed.
+   *
+   * FIX 1 (2026-08-16 incident): `excludeExecutionIds` lists executions whose
+   * PID is alive-but-foreign — their renewal is WITHHELD so heartbeat_at ages
+   * toward the supervision stale gate instead of being refreshed forever.
    */
-  renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number;
+  renewLeases(
+    projectId: number,
+    epicId: number,
+    leaseTtlMs: number,
+    excludeExecutionIds?: readonly string[],
+  ): number;
   /**
    * CONVEYOR Wave 5 — progress signal (§363-370). Records that the worker
    * produced observable activity. This is the PROGRESS heartbeat, distinct

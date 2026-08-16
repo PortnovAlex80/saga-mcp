@@ -6,6 +6,7 @@ import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
 import {
   decideStuckAction,
   FINISH_GRACE_MS,
+  PID_GUARD_HEARTBEAT_STALE_MS,
   REAL_SUPERVISION_CLOCK,
   type SupervisionClock,
 } from './lifecycle/stuck-policy.js';
@@ -28,6 +29,16 @@ export interface ProcessProbe {
   isAlive(pid: number | null): boolean;
   readBirthToken(pid: number): string | null;
   killVerified(pid: number, expectedToken: string): boolean;
+  /**
+   * FIX 1 (2026-08-16 incident): command line of a live PID, or null when
+   * unreadable (tooling error / unsupported platform). Used ONLY as a
+   * read-only PID-reuse guard — the same guarded-predicate shape as
+   * src/app/operator-soft-stop.ts::realReadCommandLine and the engine guard
+   * in src/infrastructure/engine/engine-administration.ts. Optional so
+   * existing probe fakes keep compiling; when absent the identity classifier
+   * fails toward 'unknown' (keep + renew — the OLD behavior).
+   */
+  readCommandLine?(pid: number): string | null;
 }
 
 /**
@@ -37,6 +48,7 @@ export interface ProcessProbe {
 export const REAL_PROCESS_PROBE: ProcessProbe = {
   isAlive: isProcessAlive,
   readBirthToken: (pid: number) => readProcessBirthToken(pid),
+  readCommandLine: (pid: number) => readProcessCommandLine(pid),
   killVerified: (pid: number, expectedToken: string) => terminateVerifiedProcess({
     pid, machine_id: os.hostname(), process_birth_token: expectedToken,
   }),
@@ -79,6 +91,9 @@ export interface WorkerExecutionRow {
   suspected_stuck_at: string | null;
   cancel_requested_at: string | null;
   stuck_state: string | null;
+  // Schema v13: operator soft-stop VOID marker. A voided execution was
+  // recalled by an operator stop; supervision's PID guard must never touch it.
+  voided_at: string | null;
   task_status: string | null;
   task_assigned_to: string | null;
   current_execution_id: string | null;
@@ -364,6 +379,41 @@ export function readProcessBirthToken(pid: number | null): string | null {
 }
 
 /**
+ * FIX 1 (2026-08-16 incident): read the command line of a live PID, or null
+ * when unreadable. Read-only PID-reuse evidence — the SAME guarded predicate
+ * shape as src/app/operator-soft-stop.ts::realReadCommandLine (read-only
+ * reference; not imported to keep infrastructure → app layering clean) and
+ * the engine guard in src/infrastructure/engine/engine-administration.ts.
+ * Never spawns a kill; only a CIM query (win32) or /proc read (linux).
+ */
+export function readProcessCommandLine(pid: number | null): string | null {
+  if (!pid || pid <= 0) return null;
+  try {
+    if (process.platform === 'win32') {
+      const powershellPath = process.env.POWERSHELL_PATH
+        ?? 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+      const result = spawnSync(
+        powershellPath,
+        [
+          '-NoProfile', '-NonInteractive', '-Command',
+          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 5000 },
+      );
+      return String(result.stdout ?? '').trim() || null;
+    }
+    if (process.platform === 'linux') {
+      return readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+        .replaceAll('\0', ' ')
+        .trim() || null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
  * CONVEYOR Wave 5: verify a stored process birth token still matches the live
  * OS process for this PID. Returns false when the PID is gone OR when the PID
  * is alive but its birth token differs (PID was reused by an unrelated process
@@ -415,12 +465,109 @@ function parseDbTime(value: string | null): number {
 // to that single function. This eliminates the duplicate recovery SQL the
 // audit flagged (blueprint §22:1199) and collapses the close/reconciler race.
 
+// ---------------------------------------------------------------------------
+// FIX 1 (2026-08-16 incident, project 4) — supervision PID liveness guard.
+//
+// A worker died silently (no exit receipt); Windows reused its PID for an
+// unrelated process; process existence then reported "alive" forever, while
+// renewLeases kept the heartbeat fresh — so the sweep reported kept=1
+// leases_renewed=1 for ~3 hours and one stuck task froze the whole engine.
+// The guard below closes that automatic-resolution gap: before a local
+// running execution is KEPT/RENEWED, its PID must be verifiably OUR worker.
+// Everything here is READ-ONLY classification — the only transition is the
+// existing lost-worker release primitive; nothing is ever killed.
+// ---------------------------------------------------------------------------
+
+/** Read-only verdict of the PID identity classification. */
+export type WorkerPidIdentity = 'ours' | 'foreign' | 'unknown';
+
+/**
+ * Positive engine marker — the SAME guard string the engine brake
+ * (src/app/operator-soft-stop.ts) and engine-administration.ts use. A PID
+ * whose command line carries this marker is provably an orchestrate engine
+ * process, never a worker: decisive 'foreign' evidence.
+ */
+const ENGINE_COMMAND_LINE_MARKER = 'orchestrate-cli.js';
+
+/**
+ * Runner-injected universal worker spawn flags (tracker-view/claude-runner.mjs
+ * attaches them to EVERY worker spawn regardless of executor kind/ backend).
+ * Present together → the live process is plausibly a saga worker.
+ */
+function looksLikeWorkerCommandLine(commandLine: string): boolean {
+  return commandLine.includes('--permission-mode')
+    && commandLine.includes('--output-format');
+}
+
+/**
+ * Classify whether the OS process behind a running execution's PID is still
+ * plausibly THE SAME worker the row recorded. Read-only; never kills.
+ *
+ * Evidence order:
+ *   1. Birth token (primary, precise): markExecutionRunning stores the CIM
+ *      CreationDate (win32) / /proc starttime (linux) at spawn time. A PID
+ *      reused by a different process has a different birth time, so a
+ *      readable mismatch is DECISIVE 'foreign' (scenario 16).
+ *   2. Command line (fallback, guarded — the operator-soft-stop /
+ *      engine-administration predicate shape): consulted only when the token
+ *      comparison is inconclusive. The engine marker is decisive 'foreign';
+ *      the worker flags are 'ours'; anything else is 'unknown'.
+ *
+ * `preReadBirthToken` lets the reconcile loop REUSE the token read it already
+ * performed for birthTokenMatches — one OS probe call per row, not two (the
+ * probe spawns PowerShell on Windows and runs inside the sweep transaction).
+ *
+ * Conservatism contract: 'unknown' (tooling error, unsupported platform,
+ * ambiguous command line) means KEEP + RENEW — the OLD behavior. A false
+ * 'ours' merely delays detection; a false 'foreign' could lose a live
+ * worker, so only the two decisive evidences above may return 'foreign'.
+ */
+export function classifyWorkerProcessIdentity(
+  row: Pick<WorkerExecutionRow, 'pid' | 'process_birth_token'>,
+  probe: ProcessProbe,
+  preReadBirthToken?: string | null,
+): WorkerPidIdentity {
+  if (row.pid === null) return 'unknown';
+  if (row.process_birth_token !== null) {
+    const currentToken = preReadBirthToken !== undefined
+      ? preReadBirthToken
+      : probe.readBirthToken(row.pid);
+    if (currentToken !== null) {
+      return currentToken === row.process_birth_token ? 'ours' : 'foreign';
+    }
+    // Token unreadable (tooling error) — fall through to command-line evidence.
+  }
+  const readCommandLine = probe.readCommandLine;
+  if (typeof readCommandLine !== 'function') return 'unknown';
+  const commandLine = readCommandLine(row.pid);
+  if (commandLine === null || commandLine === '') return 'unknown';
+  if (commandLine.includes(ENGINE_COMMAND_LINE_MARKER)) return 'foreign';
+  if (looksLikeWorkerCommandLine(commandLine)) return 'ours';
+  return 'unknown';
+}
+
 export interface ReconcileResult {
   executionId: string;
   taskId: number;
   action: 'kept' | 'lost' | 'terminated' | 'remote_unknown';
   released: boolean;
   reason: string;
+  /**
+   * FIX 1: this sweep classified the execution lost because its PID was dead
+   * or reused by a foreign process (drives the sweep line's lost_dead_pid=N).
+   */
+  lostViaDeadPid?: boolean;
+  /**
+   * FIX 1: the PID is alive-but-foreign and the heartbeat is still fresh, so
+   * the sweep KEEPS the row but must NOT renew its lease — the withheld (and
+   * therefore aging) heartbeat is what trips the stale gate on later sweeps.
+   */
+  withholdRenewal?: boolean;
+  /**
+   * FIX 1: liveness/identity could not be determined (tooling error). The
+   * sweep keeps + renews per the OLD behavior — fail toward conservatism.
+   */
+  pidIdentityUnverifiable?: boolean;
 }
 
 export function reconcileWorkerExecutions(
@@ -477,9 +624,76 @@ export function reconcileWorkerExecutions(
     // either is missing OR when the PID was reused — scenario 16).
     const isAlive = row.state === 'reserved' ? false : probe.isAlive(row.pid);
     const expectedToken = row.process_birth_token;
-    const birthTokenMatches = row.pid !== null
-      && expectedToken !== null
-      && probe.readBirthToken(row.pid) === expectedToken;
+    // Read the live birth token ONCE per row: birthTokenMatches and the FIX 1
+    // identity classifier below share it (the probe spawns a PowerShell CIM
+    // query on Windows and this loop runs inside the sweep transaction —
+    // one OS probe per row, not two).
+    const currentBirthToken = row.pid !== null && expectedToken !== null
+      ? probe.readBirthToken(row.pid)
+      : null;
+    const birthTokenMatches = currentBirthToken !== null
+      && currentBirthToken === expectedToken;
+
+    // --- FIX 1 — PID liveness & identity guard (2026-08-16 incident). -------
+    // For every LOCAL RUNNING execution the sweep would otherwise KEEP/RENEW,
+    // verify the OS process is alive AND plausibly the SAME worker the row
+    // recorded. Scope is deliberately narrow:
+    //   * reserved rows have no PID (the boot-timeout path owns them);
+    //   * rows already inside the stuck-state machine (suspected_stuck /
+    //     cancel_requested) keep their OWN bounded escalation (scenario 16
+    //     and the PID-reuse grace in the policy);
+    //   * voided rows (operator soft-stop, schema v13) are never touched;
+    //   * remote rows keep today's durable-lease classification.
+    // A 'foreign' verdict (alive PID that is provably not our worker — token
+    // mismatch or the engine command-line marker) releases as 'lost' ONLY
+    // once the heartbeat is stale; until then the row is kept but its lease
+    // renewal is WITHHELD so the heartbeat ages toward the gate. A plainly
+    // dead PID needs no guard: the policy's notAlive release below already
+    // owns it. 'unknown' identity (tooling error) keeps the OLD behavior.
+    let pidIdentity: WorkerPidIdentity | null = null;
+    if (
+      isLocal
+      && row.state === 'running'
+      && row.voided_at === null
+      && row.pid !== null
+      && (row.stuck_state === null || row.stuck_state === 'active')
+    ) {
+      pidIdentity = classifyWorkerProcessIdentity(row, probe, currentBirthToken);
+      if (pidIdentity === 'foreign') {
+        const heartbeatMs = parseDbTime(row.heartbeat_at);
+        const heartbeatStale = heartbeatMs === 0
+          || (sweepMs - heartbeatMs) >= PID_GUARD_HEARTBEAT_STALE_MS;
+        if (heartbeatStale) {
+          const reason = 'worker PID dead or reused by a foreign process — '
+            + `heartbeat stale past ${PID_GUARD_HEARTBEAT_STALE_MS / 1000}s supervision guard`;
+          const outcome = releaseExecutionAtomically(db, {
+            executionId: row.execution_id,
+            terminalState: 'lost',
+            reason,
+            lastError: reason,
+          });
+          results.push({
+            executionId: row.execution_id, taskId: row.task_id, action: 'lost',
+            released: outcome.taskReleased, reason, lostViaDeadPid: true,
+          });
+          continue;
+        }
+        // Alive-but-foreign with a FRESH heartbeat: KEEP for now, but tell
+        // the sweep to WITHHOLD lease renewal. This is the exact loop the
+        // incident exposed — renewLeases kept refreshing heartbeat_at while
+        // the reused PID kept passing process-existence, so nothing ever
+        // escalated. Withholding renewal makes the heartbeat age, and the
+        // stale gate above fires on a later sweep.
+        results.push({
+          ...keptResult(
+            row,
+            'PID alive but foreign (reuse suspected); renewal withheld until heartbeat stale',
+          ),
+          withholdRenewal: true,
+        });
+        continue;
+      }
+    }
 
     const phaseAge = sweepMs - parseDbTime(row.phase_updated_at);
     const fenceOurs = row.current_execution_id === row.execution_id;
@@ -582,9 +796,12 @@ export function reconcileWorkerExecutions(
         // Remote-lease-expired, dead-local, and reserved-boot-timeout releases
         // all report action 'lost' in the result enum (the result action tracks
         // the outcome class, not the terminal-state name).
+        // FIX 1: a non-reserved release driven by a dead OS process counts
+        // toward the sweep's lost_dead_pid observability field.
         results.push({
           executionId: row.execution_id, taskId: row.task_id, action: 'lost',
           released: outcome.taskReleased, reason: action.reason,
+          lostViaDeadPid: row.state !== 'reserved' && !isAlive,
         });
         break;
       }
@@ -593,6 +810,17 @@ export function reconcileWorkerExecutions(
         // we never silently drop a new Action kind.
         const _exhaustive: never = action;
         void _exhaustive;
+      }
+    }
+
+    // FIX 1: ride the unverifiable-identity marker on the row's result so the
+    // supervision sweep can log it (kept + renewed — the conservative OLD
+    // behavior on tooling errors). The switch above pushed exactly one result
+    // for this row.
+    if (pidIdentity === 'unknown') {
+      const last = results[results.length - 1];
+      if (last !== undefined && last.executionId === row.execution_id) {
+        last.pidIdentityUnverifiable = true;
       }
     }
   }

@@ -77,6 +77,21 @@ export const CANCEL_GRACE_MS = 60_000;
  * the per-sweep jitter while bounding the worst-case stall.
  */
 export const PID_REUSE_GRACE_MS = 10 * 60 * 1000;
+/**
+ * FIX 1 (2026-08-16 incident, project 4): heartbeat-staleness gate for the
+ * supervision sweep's dead-or-foreign-PID classification. A local running
+ * execution whose PID is gone (or was reused by an unrelated process) is
+ * classified 'lost' ONLY once its last liveness heartbeat is at least this
+ * old. The gate exists because renewLeases refreshes heartbeat_at on every
+ * sweep: the sweep first WITHHOLDS renewal for a dead-or-foreign execution
+ * (never for a live one), and only after the withheld heartbeat has aged past
+ * this conservative window — proving the PID stayed dead-or-foreign across
+ * consecutive sweeps — does the release fire. Two minutes comfortably exceeds
+ * the default sweep interval (30s) and any close-callback delivery window,
+ * while bounding the worst-case stall the incident exposed (3h of
+ * kept=1 leases_renewed=1) at roughly this threshold plus one sweep.
+ */
+export const PID_GUARD_HEARTBEAT_STALE_MS = 2 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // The policy decision surface.
