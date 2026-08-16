@@ -690,20 +690,35 @@ function renderTerminal(logTail) {
   if (!logTail || !Array.isArray(logTail.lines) || logTail.lines.length === 0) {
     inner = '<div class="core-cell-none">лог недоступен</div>';
   } else {
-    inner = logTail.lines.map((l) => {
+    // Подряд идущие одинаковые строки схлопываем: одна строка + счётчик ×N
+    // (как повторы в консоли браузера) — иначе system/thinking_tokens
+    // заливают терминал.
+    const rows = [];
+    for (const l of logTail.lines) {
       const lv = String((l && l.level) || 'info').toLowerCase();
-      const cls = lv.startsWith('warn') ? 'lv-warn' : lv.startsWith('err') ? 'lv-error' : 'lv-info';
-      const t = parseTs(l && l.ts);
-      const ts = Number.isNaN(t) ? trunc(String((l && l.ts) || ''), 12) : fmtTime(t);
+      const text = String((l && l.text) || '');
+      const lastRow = rows[rows.length - 1];
+      if (lastRow && lastRow.lv === lv && lastRow.text === text) { lastRow.n += 1; continue; }
+      rows.push({ lv, text, ts: (l && l.ts) || '', n: 1 });
+    }
+    inner = rows.map((r) => {
+      const cls = r.lv.startsWith('warn') ? 'lv-warn'
+        : r.lv.startsWith('err') ? 'lv-error'
+        : r.lv.startsWith('think') ? 'lv-think'
+        : r.lv.startsWith('sys') ? 'lv-sys'
+        : 'lv-info';
+      const t = parseTs(r.ts);
+      const ts = Number.isNaN(t) ? trunc(String(r.ts || ''), 12) : fmtTime(t);
       return '<div class="core-cell-logline ' + cls + '">'
         + '<span class="core-cell-logts">' + esc(ts) + '</span>'
-        + '<span class="core-cell-logtext">' + esc(String((l && l.text) || '')) + '</span>'
+        + '<span class="core-cell-logtext">' + esc(r.text) + '</span>'
+        + (r.n > 1 ? '<span class="core-cell-logrepeat" title="повтор подряд: ' + r.n + '">×' + r.n + '</span>' : '')
         + '</div>';
     }).join('');
   }
   return [
     '<section class="core-cell-card core-cell-card--term">',
-    '  <div class="core-cell-card-title">Терминал <span class="core-cell-card-note">logTail</span></div>',
+    '  <div class="core-cell-card-title">Терминал <span class="core-cell-card-note">logTail · фиолетовое — мысли модели</span></div>',
     '  <div class="core-cell-terminal">', inner, '</div>',
     '</section>',
   ].join('');

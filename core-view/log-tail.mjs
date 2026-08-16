@@ -121,51 +121,56 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
-/** Одна строка JSONL → { ts, level, text }. JSON.parse с fallback на сырую
- *  строку (SPEC: cell.logTail.lines). */
-function jsonlLineToEntry(raw) {
+/** Одна строка JSONL → массив записей { ts, level, text }. У assistant-сообщения
+ *  может быть несколько блоков (мысль + tool_use + текст) — отдаём каждый,
+ *  чтобы терминал показывал внутренний монолог модели. JSON.parse с fallback
+ *  на сырую строку (SPEC: cell.logTail.lines). */
+function jsonlLineToEntries(raw) {
   let evt = null;
   try { evt = JSON.parse(raw); } catch { /* raw line */ }
   if (!evt || typeof evt !== 'object') {
-    return { ts: null, level: 'raw', text: truncate(raw, 160) };
+    return [{ ts: null, level: 'raw', text: truncate(raw, 160) }];
   }
   const ts = evt.timestamp ?? evt.ts ?? null;
   if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
+    const out = [];
     for (const block of evt.message.content) {
-      if (block.type === 'tool_use') {
-        return { ts, level: 'info', text: truncate(`tool ${block.name} ${JSON.stringify(block.input || {})}`, 160) };
-      }
-      if (block.type === 'text' && typeof block.text === 'string') {
-        return { ts, level: 'info', text: truncate(block.text, 160) };
+      if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim()) {
+        out.push({ ts, level: 'thinking', text: truncate(block.thinking, 200) });
+      } else if (block.type === 'tool_use') {
+        out.push({ ts, level: 'info', text: truncate(`tool ${block.name} ${JSON.stringify(block.input || {})}`, 160) });
+      } else if (block.type === 'text' && typeof block.text === 'string') {
+        out.push({ ts, level: 'info', text: truncate(block.text, 160) });
       }
     }
-    return { ts, level: 'info', text: 'assistant (empty content)' };
+    if (out.length === 0) return [{ ts, level: 'info', text: 'assistant (empty content)' }];
+    return out;
   }
   if (evt.type === 'user' && Array.isArray(evt.message?.content)) {
     for (const block of evt.message.content) {
       if (block.type === 'tool_result') {
         const c = typeof block.content === 'string' ? block.content : JSON.stringify(block.content || '');
-        return { ts, level: 'info', text: truncate(`result ${c}`, 160) };
+        return [{ ts, level: 'info', text: truncate(`result ${c}`, 160) }];
       }
     }
-    return { ts, level: 'info', text: 'user message' };
+    return [{ ts, level: 'info', text: 'user message' }];
   }
   if (evt.type === 'system') {
-    return { ts, level: 'system', text: truncate(`system/${evt.subtype || '?'}`, 160) };
+    return [{ ts, level: 'system', text: truncate(`system/${evt.subtype || '?'}`, 160) }];
   }
   if (evt.type === 'result') {
-    return {
+    return [{
       ts, level: 'result',
       text: truncate(`result ${evt.subtype || ''} turns=${evt.num_turns ?? '?'} cost=${evt.total_cost_usd ?? '?'}`, 160),
-    };
+    }];
   }
-  return { ts, level: 'info', text: truncate(evt.type || 'unknown', 160) };
+  return [{ ts, level: 'info', text: truncate(evt.type || 'unknown', 160) }];
 }
 
-/** Последние maxLines строк JSONL-лога как { lines: [...] } | null. */
+/** Последние maxLines записей JSONL-лога как { lines: [...] } | null. */
 export function tailJsonl(logPath, maxLines = 40) {
   const lines = readTailLines(logPath, 256 * 1024);
   if (!lines) return null;
-  const tail = lines.slice(-maxLines).map(jsonlLineToEntry);
+  const tail = lines.slice(-maxLines * 3).flatMap(jsonlLineToEntries).slice(-maxLines);
   return { lines: tail };
 }

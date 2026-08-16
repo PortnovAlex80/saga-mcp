@@ -440,6 +440,25 @@ svg .core-cell-seg--on {
 .core-cell-logline.lv-warn .core-cell-logtext { color: var(--cc-wait); }
 .core-cell-logline.lv-error .core-cell-logtext { color: var(--cc-fail); }
 .core-cell-logline.lv-info .core-cell-logtext { color: var(--cc-text); }
+/* мысли модели — фиолетовые курсивом (цвет replay-капсул) */
+.core-cell-logline.lv-think .core-cell-logtext {
+  color: var(--cc-replay);
+  font-style: italic;
+  opacity: .92;
+}
+/* системные тики (thinking_tokens и т.п.) — приглушены */
+.core-cell-logline.lv-sys .core-cell-logtext { color: var(--cc-muted); opacity: .7; }
+.core-cell-logrepeat {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--cc-muted);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  white-space: nowrap;
+}
 
 /* ------------------------ финал/recovery/эффекты ------------------------ */
 

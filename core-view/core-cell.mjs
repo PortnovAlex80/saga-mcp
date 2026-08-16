@@ -166,7 +166,7 @@ export function buildCell(db, { workplaceRef } = {}) {
 
   // --- logTail: хвост JSONL живого/последнего execution ---
   let logTail = null;
-  if (lastLogPath) logTail = tailJsonl(lastLogPath, 40);
+  if (lastLogPath) logTail = tailJsonl(lastLogPath, 120);
 
   return {
     ok: true,
