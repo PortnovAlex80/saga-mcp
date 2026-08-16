@@ -83,6 +83,7 @@ import { fileURLToPath } from 'node:url';
  */
 const IMMUTABILITY_TRIGGERS = [
   'trg_factory_cell_effect_receipts_no_delete',
+  'trg_factory_cell_effect_repair_issues_no_delete',
   'trg_factory_cell_final_acceptances_no_delete',
   'trg_factory_check_receipts_no_delete',
   'trg_factory_gate_decisions_no_delete',
@@ -234,6 +235,10 @@ function resetStageRun(db, stage) {
     deleteRange(
       db, 'factory_cell_effect_receipts',
       `DELETE FROM factory_cell_effect_receipts WHERE workplace_ref IN (${wpSubsql})`,
+    );
+    deleteRange(
+      db, 'factory_cell_effect_repair_issues',
+      `DELETE FROM factory_cell_effect_repair_issues WHERE workplace_ref IN (${wpSubsql})`,
     );
     deleteRange(
       db, 'factory_cell_final_acceptances',

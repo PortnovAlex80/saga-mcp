@@ -51,7 +51,10 @@ import { canonicalProductsToContribution } from '../production-source-adapters.j
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
-import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
+import {
+  buildAcceptanceEffectRepairIssue,
+  computeAcceptanceDigest,
+} from '../post-acceptance-effects.js';
 import type { SubmissionValidationReceiptProjection } from '../submission-validation-receipt-authority.js';
 import type { WorkplaceParkReason } from '../../../infrastructure/workplace/workplace-park-reasons.js';
 import type { GateDecision } from '../../domain/workplace/gate.js';
@@ -191,12 +194,6 @@ export interface ProductionCellProjectionPersistence {
     findings: readonly string[];
     checkReceiptRefs: readonly string[];
   } | null;
-  /**
-   * Fix-2 — latest failed/blocked external effect action for an accepted
-   * CandidateSet, as `effect-recovery:<action-id>`. Used to tag the
-   * acceptance-effect repair transition for operator traceability.
-   */
-  readLatestFailedEffectActionRef?(candidateSetRef: string): string | null;
   /**
    * Fix-3 companion (QA-E16 bound) — failed/blocked post-acceptance effect
    * actions of this Workplace. Each certifies one completed worker attempt
@@ -842,26 +839,31 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         productSchema,
         productContractRef: productContract,
       });
+      const authority = {
+        workplaceRef: workplace.ref,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        productionRevisionRef: acceptedCandidate.productionRevisionRef,
+        acceptedProductRefs,
+        productSchema,
+        gateDecisionKey,
+        productContractRef: productContract,
+        acceptanceDigest,
+      } as const;
+      const effect = this.opts.postAcceptanceEffects.identity(effectId);
       const result = this.opts.postAcceptanceEffects.run(effectId, {
-        authority: {
-          workplaceRef: workplace.ref,
-          candidateSetRef: acceptedCandidate.candidateSetRef,
-          productionRevisionRef: acceptedCandidate.productionRevisionRef,
-          acceptedProductRefs,
-          productSchema,
-          gateDecisionKey,
-          productContractRef: productContract,
-          acceptanceDigest,
-        },
+        authority,
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {
-        // Fix-2 — tag the repair transition with the failed ledger action so
-        // the effect-recovery cause stays traceable before the next role
-        // projection binds the decoded feedback.
-        this.opts.coordinator.requireAcceptanceEffectRepair(workplace.ref, {
-          activeRecoveryCaseRef: this.opts.persistence
-            .readLatestFailedEffectActionRef?.(acceptedCandidate.candidateSetRef) ?? null,
+        const issue = buildAcceptanceEffectRepairIssue({ effect, authority, result });
+        this.opts.coordinator.requireAcceptanceEffectRepair(workplace.ref, transition => {
+          const receipt = this.opts.finalAcceptance.recordEffectRepairIssue({
+            authority,
+            effect,
+            issue,
+            ...transition,
+          });
+          return receipt.effectRepairRef;
         });
         this.opts.persistence.projectWorkplace(workplace.ref);
         return pendingOutcome(acceptedCandidate.candidateSetRef);
@@ -873,11 +875,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           parkReason: {
             code: 'ACCEPTANCE_EFFECT_BLOCKED',
             message: `Post-acceptance effect '${effectId}' blocked: ${result.reason}`,
-            evidenceRefs: [
-              ...(this.opts.persistence
-                .readLatestFailedEffectActionRef?.(acceptedCandidate.candidateSetRef)
-                ?? []),
-            ],
+            evidenceRefs: [gateDecisionKey, acceptedCandidate.candidateSetRef],
           },
         });
         this.opts.persistence.projectWorkplace(workplace.ref);

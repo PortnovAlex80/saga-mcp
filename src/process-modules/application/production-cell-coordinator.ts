@@ -304,19 +304,47 @@ export class ProductionCellCoordinator {
     return this.applyEvent(ref, { kind: 'acceptance-effect-succeeded' });
   }
 
-  /**
-   * Fix-2 — the failed post-acceptance effect's action ref
-   * (`effect-recovery:<action-id>`) may be attached to the transition so
-   * operators can trace the repair_wait back to the exact ledger entry even
-   * before the next role projection binds the decoded feedback.
-   */
+  /** Persist exact repair evidence and the Workplace CAS in one transaction. */
   requireAcceptanceEffectRepair(
     ref: WorkplaceRef,
-    actors?: { activeRecoveryCaseRef?: string | null },
+    recordRepairEvidence?: (transition: {
+      expectedWorkplaceRevision: number;
+      resultingWorkplaceRevision: number;
+    }) => string | null,
   ): StepResult {
-    return this.applyEvent(ref, { kind: 'acceptance-effect-repair-required' }, {
-      activeRecoveryCaseRef: actors?.activeRecoveryCaseRef ?? null,
+    if (!recordRepairEvidence) {
+      return this.applyEvent(ref, { kind: 'acceptance-effect-repair-required' });
+    }
+    const current = this.deps.workplaceRepo.read(ref);
+    if (!current) {
+      throw new Error(
+        `ProductionCellCoordinator: workplace ${serializeWorkplaceRef(ref)} not materialized`,
+      );
+    }
+    const target = reduceWorkplaceEvent(current, {
+      kind: 'acceptance-effect-repair-required',
     });
+    const serialized = serializeWorkplaceRef(ref);
+    const result = this.deps.db.transaction(() => {
+      const activeRecoveryCaseRef = recordRepairEvidence({
+        expectedWorkplaceRevision: current.revision,
+        resultingWorkplaceRevision: current.revision + 1,
+      });
+      const transitioned = this.deps.workplaceRepo.applyTransitionInTx({
+        workplaceRef: ref,
+        expectedRevision: current.revision,
+        kanbanPhase: target.kanbanPhase,
+        loopState: target.loopState,
+        nextRole: target.nextRole,
+        terminalReason: target.terminalReason,
+        activeRecoveryCaseRef,
+      }, serialized);
+      if (!transitioned.applied) {
+        throw new Error('CELL_EFFECT_REPAIR_WORKPLACE_CAS_MISMATCH');
+      }
+      return transitioned;
+    }).immediate();
+    return { applied: true, state: result.state, revision: result.revision };
   }
 
   // -----------------------------------------------------------------------

@@ -49,7 +49,7 @@ test('run-effects cannot complete while the exact GateDecision has no durable re
     const handoff = obligation({ subjectRef: workplaceRef });
     assert.deepEqual(readTransitionHandoffPostcondition(db, handoff), {
       satisfied: false,
-      reason: 'exact GateDecision has neither an effect receipt nor a FinalAcceptance yet',
+      reason: 'exact GateDecision has neither an effect receipt, routed repair issue, nor FinalAcceptance yet',
     });
 
     db.prepare(
@@ -79,6 +79,56 @@ test('run-effects does not complete merely because the Workplace left effect_pen
     );
     assert.equal(result.satisfied, false);
     assert.match(result.reason, /exact GateDecision/);
+  } finally {
+    db.close();
+  }
+});
+
+test('run-effects completes from the exact routed effect-repair receipt, not repair state alone', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(SCHEMA_SQL);
+    db.pragma('foreign_keys=OFF');
+    const workplaceRef = 'workplace/6/module@1/cell/item';
+    insertWorkplace(db, workplaceRef, 6, 'repair_wait');
+    db.prepare(
+      `INSERT INTO factory_cell_effect_repair_issues
+        (effect_repair_ref,workplace_ref,effect_id,effect_version,effect_digest,candidate_set_ref,
+         production_revision_ref,gate_decision_key,gate_decision_digest,
+         acceptance_digest,
+         expected_workplace_revision,resulting_workplace_revision,
+         issue_snapshot,issue_digest,receipt_digest)
+       VALUES ('repair:1',?,'git-integration','1.0.0',?,'candidate:1','revision:1',
+               'decision:1',?,?,7,8,'{}',?,?)`,
+    ).run(
+      workplaceRef,
+      'e'.repeat(64),
+      'd'.repeat(64),
+      'a'.repeat(64),
+      'b'.repeat(64),
+      'c'.repeat(64),
+    );
+    const handoff = obligation({ subjectRef: workplaceRef });
+    assert.equal(
+      readTransitionHandoffPostcondition(db, handoff).satisfied,
+      false,
+      'a detached receipt cannot satisfy the handoff without author repair state',
+    );
+    db.prepare(`UPDATE factory_workplaces SET next_role='author',revision=8 WHERE workplace_ref=?`)
+      .run(workplaceRef);
+    assert.equal(readTransitionHandoffPostcondition(db, handoff).satisfied, true);
+    db.prepare(`UPDATE factory_workplaces SET loop_state='running',revision=9 WHERE workplace_ref=?`)
+      .run(workplaceRef);
+    assert.equal(
+      readTransitionHandoffPostcondition(db, handoff).satisfied,
+      true,
+      'later lawful Workplace progress cannot erase the completed repair transition',
+    );
+    assert.equal(
+      readTransitionHandoffPostcondition(db, { ...handoff, sourceRef: 'decision:other' }).satisfied,
+      false,
+      'the receipt is bound to the exact GateDecision source',
+    );
   } finally {
     db.close();
   }

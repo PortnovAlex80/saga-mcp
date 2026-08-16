@@ -141,6 +141,16 @@ function buildFixture() {
        provider_receipt_ref,provider_receipt_digest,receipt_digest)
      VALUES ('er-dev-1',?,'some-effect','cset-dev-author-1','gd-dev-1','prr','prd','rd')`,
   ).run(devWp);
+  db.prepare(
+    `INSERT INTO factory_cell_effect_repair_issues
+      (effect_repair_ref,workplace_ref,effect_id,effect_version,effect_digest,candidate_set_ref,
+       production_revision_ref,gate_decision_key,gate_decision_digest,
+       acceptance_digest,
+       expected_workplace_revision,resulting_workplace_revision,
+       issue_snapshot,issue_digest,receipt_digest)
+     VALUES ('repair-dev-1',?,'some-effect','1.0.0','ed','cset-dev-author-1','rev-dev-1',
+       'gd-dev-1','dd','ad',4,5,'{}','rid','rrd')`,
+  ).run(devWp);
   // Accepted-authority head (current accepted-author pointer).
   db.prepare(
     `INSERT INTO factory_accepted_authority_head
@@ -212,6 +222,7 @@ test('resetStageRun resets the stage (counter 0, idle) and preserves other stage
     assert.equal(count(db, `SELECT count(*) n FROM factory_gate_decisions WHERE ${devWpCond}`), 0);
     assert.equal(count(db, `SELECT count(*) n FROM factory_cell_final_acceptances WHERE ${devWpCond}`), 0);
     assert.equal(count(db, `SELECT count(*) n FROM factory_cell_effect_receipts WHERE ${devWpCond}`), 0);
+    assert.equal(count(db, `SELECT count(*) n FROM factory_cell_effect_repair_issues WHERE ${devWpCond}`), 0);
     assert.equal(count(db, `SELECT count(*) n FROM factory_accepted_authority_head WHERE ${devWpCond}`), 0);
     assert.equal(count(db, `SELECT count(*) n FROM factory_workplace_production_revisions WHERE ${devWpCond}`), 0);
     assert.equal(count(db, `SELECT count(*) n FROM factory_node_runs WHERE process_run_id=10`), 0, 'node runs cleared so the stage re-runs from entry');
@@ -246,6 +257,7 @@ test('resetStageRun resets the stage (counter 0, idle) and preserves other stage
     // ── Immutability triggers are restored and still block DELETE ───────
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_factory_gate_decisions_no_delete'").get(), 'gate_decisions trigger recreated');
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_factory_cell_final_acceptances_no_delete'").get(), 'final_acceptances trigger recreated');
+    assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_factory_cell_effect_repair_issues_no_delete'").get(), 'effect repair trigger recreated');
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_factory_managed_node_submissions_no_delete'").get(), 'managed_node_submissions trigger intact');
   } finally {
     db.close();

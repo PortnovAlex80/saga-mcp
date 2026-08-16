@@ -4,6 +4,11 @@ import type { ProductionCellProjectionPersistence } from '../../process-modules/
 import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/workplace/index.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
+import {
+  assertRecoveryIssue,
+  type RecoveryIssue,
+} from '../../process-modules/domain/recovery.js';
+import { cellEffectRepairReceiptBody } from './sqlite-cell-final-acceptance.js';
 
 /**
  * Factory-wide SQLite projection adapter for Production Cells.
@@ -552,6 +557,7 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
 
 interface GateDecisionRow {
   decision_key: string;
+  decision_digest: string;
   gate_run_ref: string;
   gate_ref: string;
   gate_phase: 'author' | 'final';
@@ -592,7 +598,7 @@ function readCurrentProductionCellRecoveryFeedback(
   // on the desk. If a later decision accepted the work, stale feedback is
   // cleared even if older repair decisions still exist in the audit log.
   const decision = db.prepare(
-    `SELECT gd.decision_key,gd.gate_run_ref,gd.gate_ref,gd.gate_phase,
+    `SELECT gd.decision_key,gd.decision_digest,gd.gate_run_ref,gd.gate_ref,gd.gate_phase,
             gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs,
             gd.check_plan_ref,gd.check_plan_digest,gd.check_receipt_refs,gd.verdict,
             gd.repair_target_role,gd.recovery_issue_ref
@@ -613,7 +619,7 @@ function readCurrentProductionCellRecoveryFeedback(
     // stopwatch case: an accepted candidate parked after
     // PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH with zero feedback).
     if (decision.verdict === 'accepted' && role === 'author') {
-      return readAcceptanceEffectRepairFeedback(db, taskId, metadata, workplaceRef, decision);
+      return readAcceptanceEffectRecoveryFeedback(db, taskId, metadata, workplaceRef, decision);
     }
     return null;
   }
@@ -782,102 +788,98 @@ function parseStringArray(raw: string): string[] {
   }
 }
 
-/**
- * Fix-2 — build the repair feedback for a FAILED POST-ACCEPTANCE EFFECT.
- *
- * Preconditions at the call site: the gate-decision head is `accepted` (the
- * material passed every check) and the author role is being re-bound — i.e.
- * the workplace is in effect-repair. The typed cause is denormalized from the
- * append-only `factory_external_effect_actions` ledger (latest failed/blocked
- * action for the accepted CandidateSet), so the replacement worker reads the
- * exact integration failure instead of a wiped desk.
- *
- * Returns null when no failed action carries a readable cause (nothing to
- * feed back — keep the historical null semantics).
- *
- * WHY no `assertValidTargetRecoveryIssue`: REG-19's evidence field is for
- * failing CHECK receipts; here the single evidence pointer is the effect
- * action ref. All structural requirements (refs non-empty, findings non-empty,
- * 64-hex digest) still hold by construction.
- */
-function readAcceptanceEffectRepairFeedback(
+interface EffectRepairIssueRow {
+  effect_repair_ref: string;
+  effect_id: string;
+  effect_version: string;
+  effect_digest: string;
+  candidate_set_ref: string;
+  production_revision_ref: string;
+  gate_decision_key: string;
+  gate_decision_digest: string;
+  acceptance_digest: string;
+  expected_workplace_revision: number;
+  resulting_workplace_revision: number;
+  issue_snapshot: string;
+  issue_digest: string;
+  receipt_digest: string;
+}
+
+/** Resolve the exact immutable effect-repair issue bound to the Gate head. */
+function readAcceptanceEffectRecoveryFeedback(
   db: Database.Database,
   taskId: number,
   metadata: Record<string, unknown>,
   workplaceRef: string,
   decision: GateDecisionRow,
 ): Record<string, unknown> | null {
-  if (!externalEffectLedgerAvailable(db)) return null;
-  const action = db.prepare(
-    `SELECT id,provider_namespace,last_error
-       FROM factory_external_effect_actions
-      WHERE state IN ('failed','blocked')
-        AND json_extract(request_snapshot,'$.candidateSetRef')=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(decision.subject_candidate_set_ref) as {
-    id: number;
-    provider_namespace: string;
-    last_error: string | null;
-  } | undefined;
-  if (!action || !(action.last_error ?? '').trim()) return null;
-
-  const candidate = db.prepare(
-    `SELECT candidate_set_digest,role,subject_candidate_set_ref
-       FROM factory_candidate_sets WHERE candidate_set_ref=?`,
-  ).get(decision.subject_candidate_set_ref) as
-    | {
-      candidate_set_digest: string;
-      role: string;
-      subject_candidate_set_ref: string | null;
-    }
-    | undefined;
-  if (!candidate) {
+  const rows = db.prepare(
+    `SELECT effect_repair_ref,effect_id,effect_version,effect_digest,candidate_set_ref,
+            production_revision_ref,gate_decision_key,gate_decision_digest,acceptance_digest,
+            expected_workplace_revision,resulting_workplace_revision,
+            issue_snapshot,issue_digest,receipt_digest
+       FROM factory_cell_effect_repair_issues
+      WHERE workplace_ref=? AND gate_decision_key=?`,
+  ).all(workplaceRef, decision.decision_key) as EffectRepairIssueRow[];
+  if (rows.length === 0) return null;
+  if (rows.length !== 1) {
     throw new Error(
-      `PRODUCTION_CELL_RECOVERY_CANDIDATE_MISSING: ${decision.subject_candidate_set_ref}`,
+      `PRODUCTION_CELL_EFFECT_REPAIR_AUTHORITY_AMBIGUOUS: ${decision.decision_key}`,
     );
   }
-  const productRefs = db.prepare(
-    `SELECT product_schema,product_ref,product_digest
-       FROM factory_candidate_set_members
-      WHERE candidate_set_ref=? ORDER BY ordinal`,
-  ).all(decision.subject_candidate_set_ref) as Array<{
-    product_schema: string;
-    product_ref: string;
-    product_digest: string;
-  }>;
-
-  const lastError = action.last_error!;
-  // Typed failures carry a CAPS code prefix («PRODUCTION_CELL_…: detail»).
-  const typedCode = /^([A-Z][A-Z0-9_]+):/.exec(lastError)?.[1] ?? null;
-  const actionRef = `external-effect-action:${action.id}`;
-  const issueBody = {
-    rejectedGateDecisionRef: decision.decision_key,
-    subjectCandidateSetRef: decision.subject_candidate_set_ref,
-    failingCheckReceiptRefs: [actionRef],
-    repairTargetRole: 'author',
-    reasonCode: 'acceptance-effect-repair-required',
-    summary: `Post-acceptance effect '${action.provider_namespace}' failed for the `
-      + `accepted CandidateSet '${decision.subject_candidate_set_ref}'. The accepted `
-      + `material is not the defect — the integration did not land; fix the reported `
-      + `condition and re-submit.`,
-    findings: [{
-      code: typedCode ? `effect:${typedCode}` : `${action.provider_namespace}:failed`,
-      severity: 'error' as const,
-      message: lastError.slice(0, 500),
-      subjectRef: decision.subject_candidate_set_ref,
-      evidenceRefs: [actionRef],
-    }],
-    requiredAcceptance: [
-      `Effect ${action.provider_namespace} must succeed for the re-submitted CandidateSet.`,
-    ],
-    allowedChanges: productRefs.map(product =>
-      `${product.product_schema}:${product.product_ref}@${product.product_digest}`),
-  };
-  const issue = {
-    recoveryIssueRef: `effect-recovery:${action.id}`,
-    recoveryIssueDigest: sha256Hex(issueBody),
-    ...issueBody,
-  };
+  const row = rows[0]!;
+  if (
+    row.candidate_set_ref !== decision.subject_candidate_set_ref
+    || row.gate_decision_digest !== decision.decision_digest
+  ) {
+    throw new Error(`PRODUCTION_CELL_EFFECT_REPAIR_CANDIDATE_MISMATCH: ${row.effect_repair_ref}`);
+  }
+  let issue: RecoveryIssue;
+  try {
+    issue = JSON.parse(row.issue_snapshot) as RecoveryIssue;
+  } catch {
+    throw new Error(`PRODUCTION_CELL_EFFECT_REPAIR_ISSUE_INVALID: ${row.effect_repair_ref}`);
+  }
+  assertRecoveryIssue(issue);
+  if (sha256Hex(issue) !== row.issue_digest) {
+    throw new Error(`PRODUCTION_CELL_EFFECT_REPAIR_ISSUE_DIGEST_MISMATCH: ${row.effect_repair_ref}`);
+  }
+  const receiptBody = cellEffectRepairReceiptBody({
+    workplaceRef,
+    effect: {
+      effectId: row.effect_id,
+      version: row.effect_version,
+      effectDigest: row.effect_digest,
+    },
+    candidateSetRef: row.candidate_set_ref,
+    productionRevisionRef: row.production_revision_ref,
+    gateDecisionKey: row.gate_decision_key,
+    gateDecisionDigest: row.gate_decision_digest,
+    acceptanceDigest: row.acceptance_digest,
+    expectedWorkplaceRevision: row.expected_workplace_revision,
+    resultingWorkplaceRevision: row.resulting_workplace_revision,
+    issue,
+  });
+  if (
+    sha256Hex(receiptBody) !== row.receipt_digest
+    || row.effect_repair_ref !== `cell-effect-repair:${row.receipt_digest}`
+  ) {
+    throw new Error(`PRODUCTION_CELL_EFFECT_REPAIR_RECEIPT_MISMATCH: ${row.effect_repair_ref}`);
+  }
+  const context = issue.context ?? {};
+  if (
+    context.source !== 'acceptance-effect'
+    || context.effectId !== row.effect_id
+    || context.effectVersion !== row.effect_version
+    || context.effectDigest !== row.effect_digest
+    || context.workplaceRef !== workplaceRef
+    || context.candidateSetRef !== row.candidate_set_ref
+    || context.productionRevisionRef !== row.production_revision_ref
+    || context.gateDecisionKey !== row.gate_decision_key
+    || context.acceptanceDigest !== row.acceptance_digest
+  ) {
+    throw new Error(`PRODUCTION_CELL_EFFECT_REPAIR_SUBJECT_MISMATCH: ${row.effect_repair_ref}`);
+  }
 
   const intentId = Number(metadata.work_intent_id ?? 0);
   const retry = Number.isSafeInteger(intentId) && intentId > 0
@@ -887,43 +889,38 @@ function readAcceptanceEffectRepairFeedback(
     : undefined;
   const attemptRow = db.prepare(
     `SELECT COUNT(*) AS n
-       FROM factory_gate_decisions
-      WHERE workplace_ref=? AND gate_ref=? AND verdict='repair_required'
-        AND repair_target_role='author'`,
-  ).get(workplaceRef, decision.gate_ref) as { n: number };
+       FROM factory_cell_effect_repair_issues
+      WHERE workplace_ref=? AND effect_id=?`,
+  ).get(workplaceRef, row.effect_id) as { n: number };
 
   return {
-    schemaVersion: 'factory.production-cell-recovery-feedback.v1',
-    recoveryCaseRef: `production-cell-effect-recovery:${sha256Hex({
-      workplaceRef,
-      actionId: action.id,
-    })}`,
+    schemaVersion: 'factory.acceptance-effect-recovery-feedback.v1',
+    recoveryCaseRef: row.effect_repair_ref,
     workplaceRef,
     taskId,
     repairTargetRole: 'author',
     attempt: attemptRow.n,
     maxAttempts: retry?.retry_budget ?? null,
-    gateDecision: {
-      decisionRef: decision.decision_key,
-      gateRunRef: decision.gate_run_ref,
-      gateRef: decision.gate_ref,
-      gatePhase: decision.gate_phase,
-      checkPlanRef: decision.check_plan_ref,
-      checkPlanDigest: decision.check_plan_digest,
-      checkReceiptRefs: parseStringArray(decision.check_receipt_refs),
+    source: {
+      kind: 'acceptance-effect',
+      effectId: row.effect_id,
+      effectVersion: row.effect_version,
+      effectDigest: row.effect_digest,
+      repairReceiptRef: row.effect_repair_ref,
+      repairReceiptDigest: row.receipt_digest,
+      expectedWorkplaceRevision: row.expected_workplace_revision,
+      resultingWorkplaceRevision: row.resulting_workplace_revision,
     },
+    acceptedAuthority: {
+      candidateSetRef: row.candidate_set_ref,
+      productionRevisionRef: row.production_revision_ref,
+      gateDecisionKey: row.gate_decision_key,
+      gateDecisionDigest: row.gate_decision_digest,
+      acceptanceDigest: row.acceptance_digest,
+    },
+    issueRef: row.effect_repair_ref,
+    issueHash: row.issue_digest,
     issue,
-    rejectedCandidateSet: {
-      candidateSetRef: decision.subject_candidate_set_ref,
-      candidateSetDigest: candidate.candidate_set_digest,
-      role: candidate.role,
-      subjectCandidateSetRef: candidate.subject_candidate_set_ref,
-      productRefs: productRefs.map(product => ({
-        schemaId: product.product_schema,
-        ref: product.product_ref,
-        digest: product.product_digest,
-      })),
-    },
   };
 }
 
@@ -1015,7 +1012,7 @@ export function countGateRejectedCandidateSets(
 }
 
 /**
- * Fix-1 — decoded findings of the LAST repair_required decision for a role,
+ * Fix-1 — decoded findings of the exact current repair GateDecision head,
  * used as the RECOVERY_BUDGET_EXHAUSTED park reason.
  */
 export function readLastRepairRequiredDiagnosis(
@@ -1029,11 +1026,11 @@ export function readLastRepairRequiredDiagnosis(
   checkReceiptRefs: readonly string[];
 } | null {
   const decision = db.prepare(
-    `SELECT decision_key,gate_ref,check_receipt_refs
-       FROM factory_gate_decisions
-      WHERE workplace_ref=? AND verdict='repair_required'
-        AND repair_target_role=?
-      ORDER BY decided_at DESC, rowid DESC LIMIT 1`,
+    `SELECT gd.decision_key,gd.gate_ref,gd.check_receipt_refs
+       FROM factory_workplace_gate_decision_heads h
+       JOIN factory_gate_decisions gd ON gd.decision_key=h.decision_key
+      WHERE h.workplace_ref=? AND gd.verdict='repair_required'
+        AND gd.repair_target_role=?`,
   ).get(workplaceRef, role) as {
     decision_key: string;
     gate_ref: string;
@@ -1053,26 +1050,8 @@ export function readLastRepairRequiredDiagnosis(
 }
 
 /**
- * Fix-2 — latest failed/blocked external effect action for an accepted
- * CandidateSet, as `effect-recovery:<action-id>`.
- */
-export function readLatestFailedEffectActionRef(
-  db: Database.Database,
-  candidateSetRef: string,
-): string | null {
-  if (!externalEffectLedgerAvailable(db)) return null;
-  const row = db.prepare(
-    `SELECT id FROM factory_external_effect_actions
-      WHERE state IN ('failed','blocked')
-        AND json_extract(request_snapshot,'$.candidateSetRef')=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(candidateSetRef) as { id: number } | undefined;
-  return row ? `effect-recovery:${row.id}` : null;
-}
-
-/**
  * Fix-3 companion (QA-E16 bound) — count failed/blocked post-acceptance
- * effect actions whose candidate belongs to this Workplace. Since accepted
+ * effect repair issues whose candidate belongs to this Workplace. Since accepted
  * attempts stopped consuming recovery budget, the accept → effect-fail →
  * repair cycle needs its own durable bound: every failed action certifies one
  * completed worker attempt whose integration did not land.
@@ -1081,26 +1060,10 @@ export function countFailedAcceptanceEffectRepairs(
   db: Database.Database,
   workplaceRef: string,
 ): number {
-  if (!externalEffectLedgerAvailable(db)) return 0;
   const row = db.prepare(
     `SELECT COUNT(*) AS n
-       FROM factory_external_effect_actions a
-      WHERE a.state IN ('failed','blocked')
-        AND json_extract(a.request_snapshot,'$.candidateSetRef') IN (
-          SELECT candidate_set_ref FROM factory_candidate_sets WHERE workplace_ref=?
-        )`,
+       FROM factory_cell_effect_repair_issues
+      WHERE workplace_ref=?`,
   ).get(workplaceRef) as { n: number };
   return row.n;
-}
-
-/**
- * The external-effect ledger owns its own table creation (it is NOT part of
- * SCHEMA_SQL). Projections may run against DBs where the ledger was never
- * composed (tests, minimal compositions); effect-repair feedback is then
- * simply absent — never a hard failure of the projection path.
- */
-function externalEffectLedgerAvailable(db: Database.Database): boolean {
-  return db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_external_effect_actions'",
-  ).get() !== undefined;
 }

@@ -111,7 +111,7 @@ test('getDb refuses to stamp an unknown future schema version as current', () =>
       encoding: 'utf8',
     });
     assert.equal(child.status, 23, child.stderr);
-    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->10/);
+    assert.match(child.stderr, /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 99->11/);
 
     const reopened = new Database(dbPath, { readonly: true });
     assert.equal(reopened.pragma('user_version', { simple: true }), 99);
@@ -142,7 +142,7 @@ test('v8 migrates through current schema and preserves immutable workshop bindin
     });
     assert.equal(child.status, 0, child.stderr);
     const result = JSON.parse(child.stdout);
-    assert.equal(result.version, 10);
+    assert.equal(result.version, 11);
     assert.match(result.sql, /binding_digest/);
     const reopened = new Database(dbPath);
     assert.throws(

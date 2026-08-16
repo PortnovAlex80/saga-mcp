@@ -82,6 +82,39 @@ export interface RecoveryIssue {
   context?: Readonly<Record<string, unknown>>;
 }
 
+/** Validate the shared, module-agnostic RecoveryIssue envelope. */
+export function assertRecoveryIssue(issue: RecoveryIssue): void {
+  if (
+    issue.schemaVersion !== RECOVERY_ISSUE_SCHEMA
+    || typeof issue.policyId !== 'string'
+    || issue.policyId.trim() === ''
+    || typeof issue.reasonCode !== 'string'
+    || issue.reasonCode.trim() === ''
+    || typeof issue.summary !== 'string'
+    || issue.summary.trim() === ''
+    || !['repair', 'retry', 'human', 'fatal'].includes(issue.disposition)
+    || !Array.isArray(issue.findings)
+    || issue.findings.length === 0
+    || !Array.isArray(issue.subjectRefs)
+    || issue.subjectRefs.length === 0
+    || !Array.isArray(issue.acceptanceCriteria)
+    || issue.acceptanceCriteria.length === 0
+    || !Array.isArray(issue.allowedChanges)
+    || (issue.requiredTools !== undefined && !Array.isArray(issue.requiredTools))
+  ) {
+    throw new Error('RECOVERY_ISSUE_INVALID');
+  }
+  for (const finding of issue.findings) {
+    if (
+      typeof finding.code !== 'string' || finding.code.trim() === ''
+      || typeof finding.message !== 'string' || finding.message.trim() === ''
+      || !['info', 'warning', 'error', 'fatal'].includes(finding.severity)
+    ) {
+      throw new Error('RECOVERY_ISSUE_FINDING_INVALID');
+    }
+  }
+}
+
 /**
  * Structural snapshot of the production that entered the failing verifier.
  *

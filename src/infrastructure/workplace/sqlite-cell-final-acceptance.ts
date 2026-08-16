@@ -3,11 +3,51 @@ import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type { WorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import type { PostAcceptanceEffectResult } from '../../process-modules/application/post-acceptance-effects.js';
+import {
+  assertAuthorityBound,
+  type AcceptedCandidateAuthority,
+  type PostAcceptanceEffectIdentity,
+} from '../../process-modules/application/post-acceptance-effects.js';
+import { assertRecoveryIssue, type RecoveryIssue } from '../../process-modules/domain/recovery.js';
+import { assertPersistedAcceptedCandidateAuthority } from './sqlite-accepted-candidate-authority.js';
 
 export interface CellEffectReceipt {
   readonly effectReceiptRef: string;
   readonly receiptDigest: string;
   readonly gateDecisionKey: string;
+}
+
+export interface CellEffectRepairIssueReceipt {
+  readonly effectRepairRef: string;
+  readonly receiptDigest: string;
+  readonly issueDigest: string;
+}
+
+export function cellEffectRepairReceiptBody(input: {
+  readonly workplaceRef: string;
+  readonly effect: PostAcceptanceEffectIdentity;
+  readonly candidateSetRef: string;
+  readonly productionRevisionRef: string;
+  readonly gateDecisionKey: string;
+  readonly gateDecisionDigest: string;
+  readonly acceptanceDigest: string;
+  readonly expectedWorkplaceRevision: number;
+  readonly resultingWorkplaceRevision: number;
+  readonly issue: RecoveryIssue;
+}): Readonly<Record<string, unknown>> {
+  return {
+    schema: 'factory.cell-effect-repair-issue.v1',
+    workplaceRef: input.workplaceRef,
+    effect: input.effect,
+    candidateSetRef: input.candidateSetRef,
+    productionRevisionRef: input.productionRevisionRef,
+    gateDecisionKey: input.gateDecisionKey,
+    gateDecisionDigest: input.gateDecisionDigest,
+    acceptanceDigest: input.acceptanceDigest,
+    expectedWorkplaceRevision: input.expectedWorkplaceRevision,
+    resultingWorkplaceRevision: input.resultingWorkplaceRevision,
+    issue: input.issue,
+  };
 }
 
 export class SqliteCellFinalAcceptance {
@@ -87,6 +127,95 @@ export class SqliteCellFinalAcceptance {
       receiptDigest,
     );
     return { effectReceiptRef, receiptDigest, gateDecisionKey: decision.decision_key };
+  }
+
+  recordEffectRepairIssue(input: {
+    readonly authority: AcceptedCandidateAuthority;
+    readonly effect: PostAcceptanceEffectIdentity;
+    readonly issue: RecoveryIssue;
+    readonly expectedWorkplaceRevision: number;
+    readonly resultingWorkplaceRevision: number;
+  }): CellEffectRepairIssueReceipt {
+    assertAuthorityBound({ authority: input.authority });
+    assertPersistedAcceptedCandidateAuthority(this.db, input.authority);
+    assertRecoveryIssue(input.issue);
+    const workplaceRef = serializeWorkplaceRef(input.authority.workplaceRef);
+    const decision = this.db.prepare(
+      `SELECT decision_digest FROM factory_gate_decisions WHERE decision_key=?`,
+    ).get(input.authority.gateDecisionKey) as { decision_digest: string } | undefined;
+    if (!decision?.decision_digest) {
+      throw new Error('CELL_EFFECT_REPAIR_GATE_DECISION_DIGEST_MISSING');
+    }
+    const issueDigest = sha256Hex(input.issue);
+    const body = cellEffectRepairReceiptBody({
+      workplaceRef,
+      effect: input.effect,
+      candidateSetRef: input.authority.candidateSetRef,
+      productionRevisionRef: input.authority.productionRevisionRef,
+      gateDecisionKey: input.authority.gateDecisionKey,
+      gateDecisionDigest: decision.decision_digest,
+      acceptanceDigest: input.authority.acceptanceDigest,
+      expectedWorkplaceRevision: input.expectedWorkplaceRevision,
+      resultingWorkplaceRevision: input.resultingWorkplaceRevision,
+      issue: input.issue,
+    });
+    const receiptDigest = sha256Hex(body);
+    const effectRepairRef = `cell-effect-repair:${receiptDigest}`;
+    const existing = this.db.prepare(
+      `SELECT effect_repair_ref,receipt_digest,issue_digest
+         FROM factory_cell_effect_repair_issues
+        WHERE workplace_ref=? AND effect_id=? AND gate_decision_key=?`,
+    ).get(workplaceRef, input.effect.effectId, input.authority.gateDecisionKey) as {
+      effect_repair_ref: string;
+      receipt_digest: string;
+      issue_digest: string;
+    } | undefined;
+    if (existing) {
+      if (existing.receipt_digest !== receiptDigest || existing.issue_digest !== issueDigest) {
+        throw new Error('CELL_EFFECT_REPAIR_REPLAY_MISMATCH');
+      }
+      return {
+        effectRepairRef: existing.effect_repair_ref,
+        receiptDigest: existing.receipt_digest,
+        issueDigest: existing.issue_digest,
+      };
+    }
+    const workplace = this.db.prepare(
+      `SELECT loop_state,revision FROM factory_workplaces WHERE workplace_ref=?`,
+    ).get(workplaceRef) as { loop_state: string; revision: number } | undefined;
+    if (
+      !workplace
+      || workplace.loop_state !== 'effect_pending'
+      || workplace.revision !== input.expectedWorkplaceRevision
+      || input.resultingWorkplaceRevision !== input.expectedWorkplaceRevision + 1
+    ) {
+      throw new Error('CELL_EFFECT_REPAIR_WORKPLACE_AUTHORITY_MISMATCH');
+    }
+    this.db.prepare(
+      `INSERT INTO factory_cell_effect_repair_issues
+        (effect_repair_ref,workplace_ref,effect_id,effect_version,effect_digest,candidate_set_ref,
+         production_revision_ref,gate_decision_key,gate_decision_digest,acceptance_digest,
+         expected_workplace_revision,resulting_workplace_revision,
+         issue_snapshot,issue_digest,receipt_digest)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      effectRepairRef,
+      workplaceRef,
+      input.effect.effectId,
+      input.effect.version,
+      input.effect.effectDigest,
+      input.authority.candidateSetRef,
+      input.authority.productionRevisionRef,
+      input.authority.gateDecisionKey,
+      decision.decision_digest,
+      input.authority.acceptanceDigest,
+      input.expectedWorkplaceRevision,
+      input.resultingWorkplaceRevision,
+      canonicalJson(input.issue),
+      issueDigest,
+      receiptDigest,
+    );
+    return { effectRepairRef, receiptDigest, issueDigest };
   }
 
   recordFinalAcceptance(input: {

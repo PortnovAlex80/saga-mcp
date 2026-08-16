@@ -19,7 +19,6 @@ import {
   countFailedAcceptanceEffectRepairs,
   countGateRejectedCandidateSets,
   readLastRepairRequiredDiagnosis,
-  readLatestFailedEffectActionRef,
 } from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 
 const sha = sha256Hex;
@@ -138,6 +137,9 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined, r
     obligationIntegrator,
     persistence,
     postAcceptanceEffects: {
+      identity(effectId) {
+        return { effectId, version: '1.0.0', effectDigest: sha(`effect:${effectId}`) };
+      },
       run(effectId, input) {
         effectCalls.push({ effectId, input });
         if (effectId === 'replay-capture' && replayError) throw replayError;
@@ -421,7 +423,11 @@ test('required effect settles before final acceptance and replay certification',
 });
 
 test('effect conflict returns the same Workplace to author repair without certification', async () => {
-  const h = harness({ outcome: 'repair_required', reason: 'merge conflict' });
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'merge conflict',
+    evidence: { conflictingPath: 'src/app.ts', expectedBase: 'abc123' },
+  });
   const ctx = context(cell({ effect: true }));
   await h.executor.execute(ctx);
   const ref = workplaceRef('singleton-cell');
@@ -435,6 +441,26 @@ test('effect conflict returns the same Workplace to author repair without certif
   assert.deepEqual(h.effectCalls.map(call => call.effectId), ['test-effect']);
   assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_effect_receipts').get().n, 0);
   assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM factory_cell_final_acceptances').get().n, 0);
+  const repair = h.db.prepare(
+    `SELECT effect_id,effect_version,effect_digest,gate_decision_key,
+            issue_snapshot,issue_digest,receipt_digest
+       FROM factory_cell_effect_repair_issues`,
+  ).get();
+  assert.equal(repair.effect_id, 'test-effect');
+  assert.equal(repair.effect_version, '1.0.0');
+  assert.equal(repair.effect_digest, sha('effect:test-effect'));
+  assert.ok(repair.gate_decision_key);
+  const issue = JSON.parse(repair.issue_snapshot);
+  assert.equal(issue.schemaVersion, 'factory.recovery-issue.v1');
+  assert.equal(issue.disposition, 'repair');
+  assert.equal(issue.summary, 'merge conflict');
+  assert.equal(issue.context.evidence.conflictingPath, 'src/app.ts');
+  assert.equal(repair.issue_digest, sha(issue));
+  assert.equal(
+    h.db.prepare(`SELECT COUNT(*) AS n FROM factory_gate_decisions WHERE verdict='repair_required'`).get().n,
+    0,
+    'an effect repair must not fabricate or rewrite the accepted GateDecision',
+  );
   h.db.close();
 });
 
@@ -804,8 +830,6 @@ function wireRejectionAccounting(h) {
     countGateRejectedCandidateSets(h.db, serializeWorkplaceRef(ref), role);
   h.persistence.readLastRepairRequiredDiagnosis = (ref, role) =>
     readLastRepairRequiredDiagnosis(h.db, serializeWorkplaceRef(ref), role);
-  h.persistence.readLatestFailedEffectActionRef = (candidateSetRef) =>
-    readLatestFailedEffectActionRef(h.db, candidateSetRef);
 }
 
 function setAuthorCheckOutcome(h, outcome) {
@@ -864,17 +888,8 @@ test('QA-E16: a repeating accept→effect-fail cycle stays durably bounded', asy
   wireRejectionAccounting(h);
   h.persistence.countFailedAcceptanceEffectRepairs = (ref) =>
     countFailedAcceptanceEffectRepairs(h.db, serializeWorkplaceRef(ref));
-  // The ledger table is owned by the effect infrastructure, not SCHEMA_SQL —
-  // compose it the way a real deployment would.
-  h.db.exec(`CREATE TABLE IF NOT EXISTS factory_external_effect_actions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      state TEXT NOT NULL,
-      provider_namespace TEXT NOT NULL DEFAULT 'git-integration',
-      last_error TEXT,
-      request_snapshot TEXT NOT NULL
-    )`);
   const definition = cell({ effect: true });
-  definition.recovery = { maxAttempts: 2, onExhausted: 'pause' };
+  definition.recovery = { maxAttempts: 1, onExhausted: 'pause' };
   const ctx = context(definition);
   const ref = workplaceRef('singleton-cell');
   const serialized = serializeWorkplaceRef(ref);
@@ -889,28 +904,12 @@ test('QA-E16: a repeating accept→effect-fail cycle stays durably bounded', asy
   assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait',
     'the failed post-acceptance effect returns the author to repair');
 
-  // Two failed integrations of the accepted candidate set. With accepted
-  // attempts no longer consuming budget (Fix-3), this durable ledger count
-  // is the only bound on the accept → effect-fail → repair cycle.
-  const sets = h.db.prepare(
-    'SELECT candidate_set_ref AS ref FROM factory_candidate_sets WHERE workplace_ref=?',
-  ).all(serialized);
-  assert.ok(sets.length > 0, 'the accepted candidate set is sealed');
-  const insert = h.db.prepare(
-    `INSERT INTO factory_external_effect_actions (state,last_error,request_snapshot)
-     VALUES ('failed',?,?)`,
-  );
-  for (let i = 0; i < 2; i += 1) {
-    insert.run(
-      'PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: branch head moved',
-      JSON.stringify({ candidateSetRef: sets[0].ref }),
-    );
-  }
-
+  // One exact effect-repair issue is the durable bound. Accepted Gate attempts
+  // themselves remain free; only failed settlement consumes this budget.
   await h.executor.execute(ctx);
   const state = h.coordinator.readState(ref);
   assert.equal(state.loopState, 'paused',
-    'two failed integrations ≥ maxAttempts(2) must park, not requeue forever');
+    'one failed integration ≥ maxAttempts(1) must park, not requeue forever');
   const reason = h.db.prepare(
     'SELECT reason_code FROM factory_workplace_park_reasons WHERE workplace_ref=?',
   ).get(serialized);
@@ -958,7 +957,7 @@ test('Fix-1: exhausting the budget parks WITH an append-only reason and a live p
   h.db.close();
 });
 
-test('Fix-2: an effect-repair transition tags the failed ledger action on the workplace', async () => {
+test('Fix-2: an effect-repair transition points at the exact immutable repair issue', async () => {
   const h = harness({ outcome: 'repair_required', reason: 'integration blocked' });
   wireRejectionAccounting(h);
   const definition = cell({ effect: true });
@@ -970,38 +969,18 @@ test('Fix-2: an effect-repair transition tags the failed ledger action on the wo
   finishRole(h, ref, 'execution:effect-fail-author', {
     schemaId: 'factory.test-product.v1', ref: 'product:effect-fail', digest: sha('effect-fail'),
   });
-  // The real git-integration effect writes its ledger action BEFORE returning
-  // repair_required; model that exactly (the ledger owns its table creation,
-  // the harness DB has only SCHEMA_SQL).
-  h.db.exec(`
-    CREATE TABLE IF NOT EXISTS factory_external_effect_actions (
-      id INTEGER PRIMARY KEY,
-      provider_namespace TEXT NOT NULL,
-      request_snapshot TEXT NOT NULL,
-      state TEXT NOT NULL,
-      last_error TEXT
-    );
-  `);
-  h.executor['opts'].postAcceptanceEffects.run = (effectId, input) => {
-    h.db.prepare(
-      `INSERT INTO factory_external_effect_actions
-         (id,provider_namespace,request_snapshot,state,last_error)
-       VALUES (9,'factory.git-integration.v1',?,'failed','integration blocked')`,
-    ).run(JSON.stringify({
-      schema: 'factory.git-integration-request.v1',
-      workplaceRef: serialized,
-      candidateSetRef: input.authority.candidateSetRef,
-    }));
-    return { outcome: 'repair_required', reason: 'integration blocked' };
-  };
-
   await h.executor.execute(ctx);
   assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
 
   const workplace = h.db.prepare(
     'SELECT active_recovery_case_ref FROM factory_workplaces WHERE workplace_ref=?',
   ).get(serialized);
-  assert.equal(workplace.active_recovery_case_ref, 'effect-recovery:9',
-    'the effect-repair transition is traceable to the exact failed action');
+  assert.match(workplace.active_recovery_case_ref, /^cell-effect-repair:[a-f0-9]{64}$/,
+    'the effect-repair transition points to its exact immutable repair issue');
+  const issue = h.db.prepare(
+    'SELECT effect_repair_ref,issue_snapshot FROM factory_cell_effect_repair_issues WHERE workplace_ref=?',
+  ).get(serialized);
+  assert.equal(issue.effect_repair_ref, workplace.active_recovery_case_ref);
+  assert.equal(JSON.parse(issue.issue_snapshot).summary, 'integration blocked');
   h.db.close();
 });

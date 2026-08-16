@@ -30,9 +30,8 @@ import type {
 } from '../domain/process-module.js';
 import {
   RECOVERY_FEEDBACK_SCHEMA,
-  RECOVERY_ISSUE_SCHEMA,
+  assertRecoveryIssue,
   type RecoveryFeedback,
-  type RecoveryIssue,
 } from '../domain/recovery.js';
 import type {
   ProcessRunRepository,
@@ -1269,25 +1268,6 @@ function recoveryFeedbackProduction(
   };
 }
 
-function assertRecoveryIssue(issue: RecoveryIssue): void {
-  if (
-    issue.schemaVersion !== RECOVERY_ISSUE_SCHEMA
-    || typeof issue.policyId !== 'string'
-    || issue.policyId.trim() === ''
-    || typeof issue.reasonCode !== 'string'
-    || issue.reasonCode.trim() === ''
-    || typeof issue.summary !== 'string'
-    || issue.summary.trim() === ''
-    || !['repair', 'retry', 'human', 'fatal'].includes(issue.disposition)
-    || !Array.isArray(issue.findings)
-    || !Array.isArray(issue.subjectRefs)
-    || !Array.isArray(issue.acceptanceCriteria)
-    || !Array.isArray(issue.allowedChanges)
-    || (issue.requiredTools !== undefined && !Array.isArray(issue.requiredTools))
-  ) {
-    throw new Error('GenericFlowExecutor: malformed RecoveryIssue');
-  }
-}
 
 function assertRecoveryRoute(
   policy: FlowRecoveryDefinition,

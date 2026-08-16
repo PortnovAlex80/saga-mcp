@@ -1,6 +1,11 @@
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
 import type { ProductRef } from '../domain/spi/production-envelope.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+import {
+  RECOVERY_ISSUE_SCHEMA,
+  assertRecoveryIssue,
+  type RecoveryIssue,
+} from '../domain/recovery.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 /**
  * ADR-053 Phase 6 — the exact accepted-candidate authority an effect consumes.
@@ -142,12 +147,77 @@ export type PostAcceptanceEffectResult =
       readonly evidence?: Readonly<Record<string, unknown>>;
     };
 
+export function buildAcceptanceEffectRepairIssue(input: {
+  readonly effect: PostAcceptanceEffectIdentity;
+  readonly authority: AcceptedCandidateAuthority;
+  readonly result: Extract<PostAcceptanceEffectResult, { outcome: 'repair_required' }>;
+}): RecoveryIssue {
+  const reason = input.result.reason.trim();
+  if (!reason) throw new Error('ACCEPTANCE_EFFECT_REPAIR_REASON_REQUIRED');
+  // Canonicalization is both validation and the durable JSON boundary: effect
+  // evidence must be a serializable immutable snapshot, never a live object.
+  canonicalJson(input.result.evidence ?? {});
+  const productSubjects = input.authority.acceptedProductRefs.map(product => ({
+    kind: 'product',
+    ref: product.ref,
+    schema: product.schemaId,
+    contentHash: product.digest,
+  }));
+  const issue: RecoveryIssue = {
+    schemaVersion: RECOVERY_ISSUE_SCHEMA,
+    policyId: `acceptance-effect:${input.effect.effectId}`,
+    disposition: 'repair',
+    reasonCode: 'ACCEPTANCE_EFFECT_REPAIR_REQUIRED',
+    summary: reason,
+    findings: [{
+      code: `${input.effect.effectId}:repair-required`,
+      severity: 'error',
+      message: reason,
+      subjectRef: input.authority.candidateSetRef,
+      actual: input.result.evidence ?? {},
+      evidenceRefs: [
+        input.authority.gateDecisionKey,
+        input.authority.candidateSetRef,
+        input.authority.productionRevisionRef,
+      ],
+    }],
+    subjectRefs: [
+      { kind: 'candidate-set', ref: input.authority.candidateSetRef },
+      { kind: 'production-revision', ref: input.authority.productionRevisionRef },
+      ...productSubjects,
+    ],
+    acceptanceCriteria: [
+      `Post-acceptance effect '${input.effect.effectId}' must return succeeded for the repaired candidate.`,
+    ],
+    allowedChanges: input.authority.acceptedProductRefs.map(product =>
+      `${product.schemaId}:${product.ref}@${product.digest}`),
+    context: {
+      source: 'acceptance-effect',
+      effectId: input.effect.effectId,
+      effectVersion: input.effect.version,
+      effectDigest: input.effect.effectDigest,
+      workplaceRef: input.authority.workplaceRef,
+      candidateSetRef: input.authority.candidateSetRef,
+      productionRevisionRef: input.authority.productionRevisionRef,
+      gateDecisionKey: input.authority.gateDecisionKey,
+      acceptanceDigest: input.authority.acceptanceDigest,
+      evidence: input.result.evidence ?? {},
+    },
+  };
+  assertRecoveryIssue(issue);
+  return issue;
+}
+
 export interface PostAcceptanceEffect {
   readonly effectId: string;
   readonly version: string;
   readonly effectDigest: string;
   run(input: PostAcceptanceEffectInput): void | PostAcceptanceEffectResult;
 }
+
+export type PostAcceptanceEffectIdentity = Readonly<
+  Pick<PostAcceptanceEffect, 'effectId' | 'version' | 'effectDigest'>
+>;
 
 export class FactoryPostAcceptanceEffectRegistry {
   private readonly effects = new Map<string, PostAcceptanceEffect>();
@@ -191,6 +261,16 @@ export class FactoryPostAcceptanceEffectRegistry {
       outcome: 'succeeded',
       receiptRef,
       receiptDigest: receiptRef,
+    };
+  }
+
+  identity(effectId: string): PostAcceptanceEffectIdentity {
+    const effect = this.effects.get(effectId);
+    if (!effect) throw new Error(`POST_ACCEPTANCE_EFFECT_NOT_REGISTERED: ${effectId}`);
+    return {
+      effectId: effect.effectId,
+      version: effect.version,
+      effectDigest: effect.effectDigest,
     };
   }
 

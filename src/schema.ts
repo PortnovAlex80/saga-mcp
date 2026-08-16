@@ -1312,6 +1312,34 @@ CREATE TABLE IF NOT EXISTS factory_cell_effect_receipts (
   FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
 );
 
+-- A post-acceptance effect may prove that accepted material still requires a
+-- product repair. The Gate remains accepted; this immutable issue is the
+-- causal repair evidence and terminal postcondition of that RunEffects handoff.
+CREATE TABLE IF NOT EXISTS factory_cell_effect_repair_issues (
+  effect_repair_ref        TEXT PRIMARY KEY,
+  workplace_ref            TEXT NOT NULL,
+  effect_id                TEXT NOT NULL,
+  effect_version           TEXT NOT NULL,
+  effect_digest            TEXT NOT NULL,
+  candidate_set_ref        TEXT NOT NULL,
+  production_revision_ref  TEXT NOT NULL,
+  gate_decision_key        TEXT NOT NULL,
+  gate_decision_digest     TEXT NOT NULL,
+  acceptance_digest        TEXT NOT NULL,
+  expected_workplace_revision INTEGER NOT NULL,
+  resulting_workplace_revision INTEGER NOT NULL,
+  issue_snapshot           TEXT NOT NULL,
+  issue_digest             TEXT NOT NULL,
+  receipt_digest           TEXT NOT NULL UNIQUE,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (workplace_ref,effect_id,gate_decision_key),
+  CHECK (resulting_workplace_revision=expected_workplace_revision+1),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (candidate_set_ref) REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (production_revision_ref) REFERENCES factory_workplace_production_revisions(revision_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
   final_acceptance_ref     TEXT PRIMARY KEY,
   workplace_ref            TEXT NOT NULL UNIQUE,
@@ -1360,6 +1388,14 @@ CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_receipts_no_delete
 BEFORE DELETE ON factory_cell_effect_receipts BEGIN
   SELECT RAISE(ABORT, 'factory_cell_effect_receipts are immutable');
 END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_repair_issues_no_update
+BEFORE UPDATE ON factory_cell_effect_repair_issues BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_effect_repair_issues are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_cell_effect_repair_issues_no_delete
+BEFORE DELETE ON factory_cell_effect_repair_issues BEGIN
+  SELECT RAISE(ABORT, 'factory_cell_effect_repair_issues are immutable');
+END;
 CREATE TRIGGER IF NOT EXISTS trg_factory_cell_final_acceptances_no_update
 BEFORE UPDATE ON factory_cell_final_acceptances BEGIN
   SELECT RAISE(ABORT, 'factory_cell_final_acceptances are immutable');
@@ -1372,8 +1408,8 @@ END;
 -- ADR-053 Phase 2 — Durable transition obligations.
 --
 -- Every cross-aggregate transition (CandidateSetSealed -> RunGate,
--- GateAccepted -> RunEffects, EffectsSettled -> RecordFinalAcceptance,
--- FinalAcceptanceRecorded -> SettleProcess, ProcessSettled -> RouteLifecycle)
+-- GateAccepted -> RunEffects, EffectsSettled -> RecordFinalAcceptance, and
+-- ProcessSettled -> RouteLifecycle)
 -- is recorded as a durable obligation AT THE SAME TRANSACTION as its source
 -- fact. The obligation has one owner capability, one monotonic fence, one
 -- deterministic key (so the same source fact never creates two obligations),

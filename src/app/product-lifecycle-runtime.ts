@@ -116,7 +116,6 @@ import {
   countGateRejectedCandidateSets as countGateRejectedCandidateSetsSql,
   createSqliteProductionCellProjectionPersistence,
   readLastRepairRequiredDiagnosis as readLastRepairRequiredDiagnosisSql,
-  readLatestFailedEffectActionRef as readLatestFailedEffectActionRefSql,
 } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
@@ -553,10 +552,6 @@ export function createProductLifecycleRuntime(
           readLastRepairRequiredDiagnosisSql(
             db, serializeWorkplaceRef(workplaceRef), role,
           ),
-        // Fix-2 — traceability pointer from an effect-repair transition back
-        // to the exact failed ledger action.
-        readLatestFailedEffectActionRef: (candidateSetRef) =>
-          readLatestFailedEffectActionRefSql(db, candidateSetRef),
         // Fix-3 companion (QA-E16) — failed effect actions bound the
         // accept → effect-fail → repair cycle now that accepted attempts
         // no longer consume budget.
@@ -924,6 +919,21 @@ export function createProductLifecycleRuntime(
               commitmentRef: closed.commitment.commitmentRef,
               productRef: closed.commitment.productRef,
               productDigest: closed.commitment.productDigest,
+            }),
+          };
+        }
+        // A crash may happen after the handler durably applied its transition
+        // but before the obligation ledger recorded completion. Prove the
+        // exact postcondition before invoking the handler again; external
+        // post-acceptance effects must never be repeated merely to obtain an
+        // obligation receipt.
+        const existingPostcondition = readTransitionHandoffPostcondition(db, obligation);
+        if (existingPostcondition.satisfied) {
+          return {
+            completionReceipt: `transition-completion:${obligation.obligationKey}`,
+            resultDigest: sha256Hex({
+              obligationKey: obligation.obligationKey,
+              recoveredFromDurablePostcondition: true,
             }),
           };
         }

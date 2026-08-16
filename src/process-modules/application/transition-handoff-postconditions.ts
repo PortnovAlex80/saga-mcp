@@ -47,12 +47,20 @@ export function readTransitionHandoffPostcondition(
     }
     case 'run-effects': {
       // Exact effect receipt for this accepted GateDecision, or an exact
-      // FinalAcceptance for the same GateDecision in the no-effect path.
-      // A changed loop state alone is never a completion proof.
+      // immutable repair issue plus the matching repair Workplace state, or
+      // an exact FinalAcceptance for the same GateDecision in the no-effect
+      // path. A changed loop state alone is never a completion proof.
       const row = db.prepare(
         `SELECT 1
            FROM factory_cell_effect_receipts er
           WHERE er.workplace_ref=? AND er.gate_decision_key=?
+          UNION ALL
+         SELECT 1
+           FROM factory_cell_effect_repair_issues ri
+           JOIN factory_workplaces w ON w.workplace_ref=ri.workplace_ref
+          WHERE ri.workplace_ref=? AND ri.gate_decision_key=?
+            AND ri.gate_decision_digest=?
+            AND w.revision>=ri.resulting_workplace_revision
           UNION ALL
          SELECT 1
            FROM factory_cell_final_acceptances fa
@@ -63,10 +71,13 @@ export function readTransitionHandoffPostcondition(
         obligation.sourceRef,
         obligation.subjectRef,
         obligation.sourceRef,
+        obligation.sourceDigest,
+        obligation.subjectRef,
+        obligation.sourceRef,
       );
       return fact(
         row,
-        'exact GateDecision has neither an effect receipt nor a FinalAcceptance yet',
+        'exact GateDecision has neither an effect receipt, routed repair issue, nor FinalAcceptance yet',
       );
     }
     case 'record-final-acceptance': {
