@@ -15,9 +15,9 @@
 |---|---|---|---|---|---|---|
 | P01 | counter | XS | ✖ | ✖ | ⬚ | fail |
 | P02 | stopwatch | XS | ✖ | ✖ | ⬚ | fail |
-| P03 | tips | XS | ✖ | ✖ | ⬚ | fail |
+| P03 | tips | XS | ✖ | ✖ | ✅ | ПОЛНЫЙ ЦИКЛ completed (35/36 done, 1 cancelled; terminal development-blocked — нюанс терминальной проекции, материал) |
 | P04 | themes | XS | ✖ | ✖ | ⬚ | fail |
-| P05 | todo | S | ✖ | ✖ | ⬚ | fail |
+| P05 | todo | S | ✖ | ✖ | ✅ | ПОЛНЫЙ ЦИКЛ completed (51/52; терминальная проекция development-blocked — та же нюанс-карточка) |
 | P06 | units | S | ✅ | ✖ | ⬚ | fail |
 | P07 | snake | S | ✅ | ✖ | ⬚ | fail |
 | P08 | pomodoro | S | ✅ | ⬚ | ⬚ | граница dirty (1 карт.) |

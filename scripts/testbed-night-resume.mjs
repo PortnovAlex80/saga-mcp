@@ -46,8 +46,16 @@ for (const pid of pids) {
   if (!lr) { plan.push({ pid, slug, dbId: proj.id, verb: 'rerun' }); continue; }
   if (lr.terminal_status === 'completed') { line(`SKIP ${pid}: lifecycle ${lr.id} already completed`); continue; }
   if (lr.status === 'running') { line(`SKIP ${pid}: lifecycle ${lr.id} is running elsewhere`); continue; }
-  const verb = lr.status === 'failed' ? 'rerun' : 'resume';
-  plan.push({ pid, slug, dbId: proj.id, verb, lrid: lr.id, reason: `${lr.status}/${lr.terminal_status ?? '-'}` });
+  // Paused lifecycles here all predate the GB-8/GB-10 fixes (their cells
+  // hit the old defects and parked on repair budgets): a plain resume just
+  // re-hits the explicit-pause boundary. The correct re-drive is abandon +
+  // fresh rerun under the fixed profile.
+  const verb = 'rerun';
+  plan.push({
+    pid, slug, dbId: proj.id, verb, lrid: lr.id,
+    abandonFirst: lr.status !== 'failed',
+    reason: `${lr.status}/${lr.terminal_status ?? '-'}`,
+  });
 }
 ro.close();
 
@@ -89,6 +97,10 @@ for (const p of plan) {
       line(`RUN ${p.pid} END verb=resume ERROR ${e.message}`);
     }
     continue;
+  }
+  if (p.abandonFirst) {
+    const a = spawnSync('node', ['scripts/factory.mjs', 'abandon', DB, String(p.dbId), '--reason', 'night resume lane: parked pre-fix lifecycle'], { cwd: ROOT, encoding: 'utf8', timeout: 120_000, env: process.env });
+    line(`ABANDON ${p.pid} code=${a.status} ${((a.stderr || '') + (a.stdout || '')).trim().slice(-120)}`);
   }
   const r = spawnSync('node', [
     'scripts/factory.mjs', 'rerun', DB, String(p.dbId),
