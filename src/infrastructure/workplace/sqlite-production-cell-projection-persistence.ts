@@ -605,10 +605,18 @@ function readCurrentProductionCellRecoveryFeedback(
   // and must survive task re-projection. Once any later gate exists, gate truth
   // owns staleness/repair and the normal decision logic below may clear it.
   if (!decision) return submissionValidationFeedback;
-  if (
-    decision.verdict !== 'repair_required'
-    || decision.repair_target_role !== role
-  ) return null;
+  if (decision.verdict !== 'repair_required' || decision.repair_target_role !== role) {
+    // Fix-2 — an ACCEPTED head with the author back in repair means the
+    // POST-ACCEPTANCE EFFECT failed, not the gate. The typed cause lives in
+    // the append-only external-effect ledger; without this branch the desk
+    // feedback was wiped to null and the repair hire started blind (the
+    // stopwatch case: an accepted candidate parked after
+    // PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH with zero feedback).
+    if (decision.verdict === 'accepted' && role === 'author') {
+      return readAcceptanceEffectRepairFeedback(db, taskId, metadata, workplaceRef, decision);
+    }
+    return null;
+  }
   if (!decision.recovery_issue_ref) {
     throw new Error(
       `PRODUCTION_CELL_RECOVERY_ISSUE_REF_MISSING: decision ${decision.decision_key}`,
@@ -772,4 +780,327 @@ function parseStringArray(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Fix-2 — build the repair feedback for a FAILED POST-ACCEPTANCE EFFECT.
+ *
+ * Preconditions at the call site: the gate-decision head is `accepted` (the
+ * material passed every check) and the author role is being re-bound — i.e.
+ * the workplace is in effect-repair. The typed cause is denormalized from the
+ * append-only `factory_external_effect_actions` ledger (latest failed/blocked
+ * action for the accepted CandidateSet), so the replacement worker reads the
+ * exact integration failure instead of a wiped desk.
+ *
+ * Returns null when no failed action carries a readable cause (nothing to
+ * feed back — keep the historical null semantics).
+ *
+ * WHY no `assertValidTargetRecoveryIssue`: REG-19's evidence field is for
+ * failing CHECK receipts; here the single evidence pointer is the effect
+ * action ref. All structural requirements (refs non-empty, findings non-empty,
+ * 64-hex digest) still hold by construction.
+ */
+function readAcceptanceEffectRepairFeedback(
+  db: Database.Database,
+  taskId: number,
+  metadata: Record<string, unknown>,
+  workplaceRef: string,
+  decision: GateDecisionRow,
+): Record<string, unknown> | null {
+  if (!externalEffectLedgerAvailable(db)) return null;
+  const action = db.prepare(
+    `SELECT id,provider_namespace,last_error
+       FROM factory_external_effect_actions
+      WHERE state IN ('failed','blocked')
+        AND json_extract(request_snapshot,'$.candidateSetRef')=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(decision.subject_candidate_set_ref) as {
+    id: number;
+    provider_namespace: string;
+    last_error: string | null;
+  } | undefined;
+  if (!action || !(action.last_error ?? '').trim()) return null;
+
+  const candidate = db.prepare(
+    `SELECT candidate_set_digest,role,subject_candidate_set_ref
+       FROM factory_candidate_sets WHERE candidate_set_ref=?`,
+  ).get(decision.subject_candidate_set_ref) as
+    | {
+      candidate_set_digest: string;
+      role: string;
+      subject_candidate_set_ref: string | null;
+    }
+    | undefined;
+  if (!candidate) {
+    throw new Error(
+      `PRODUCTION_CELL_RECOVERY_CANDIDATE_MISSING: ${decision.subject_candidate_set_ref}`,
+    );
+  }
+  const productRefs = db.prepare(
+    `SELECT product_schema,product_ref,product_digest
+       FROM factory_candidate_set_members
+      WHERE candidate_set_ref=? ORDER BY ordinal`,
+  ).all(decision.subject_candidate_set_ref) as Array<{
+    product_schema: string;
+    product_ref: string;
+    product_digest: string;
+  }>;
+
+  const lastError = action.last_error!;
+  // Typed failures carry a CAPS code prefix («PRODUCTION_CELL_…: detail»).
+  const typedCode = /^([A-Z][A-Z0-9_]+):/.exec(lastError)?.[1] ?? null;
+  const actionRef = `external-effect-action:${action.id}`;
+  const issueBody = {
+    rejectedGateDecisionRef: decision.decision_key,
+    subjectCandidateSetRef: decision.subject_candidate_set_ref,
+    failingCheckReceiptRefs: [actionRef],
+    repairTargetRole: 'author',
+    reasonCode: 'acceptance-effect-repair-required',
+    summary: `Post-acceptance effect '${action.provider_namespace}' failed for the `
+      + `accepted CandidateSet '${decision.subject_candidate_set_ref}'. The accepted `
+      + `material is not the defect — the integration did not land; fix the reported `
+      + `condition and re-submit.`,
+    findings: [{
+      code: typedCode ? `effect:${typedCode}` : `${action.provider_namespace}:failed`,
+      severity: 'error' as const,
+      message: lastError.slice(0, 500),
+      subjectRef: decision.subject_candidate_set_ref,
+      evidenceRefs: [actionRef],
+    }],
+    requiredAcceptance: [
+      `Effect ${action.provider_namespace} must succeed for the re-submitted CandidateSet.`,
+    ],
+    allowedChanges: productRefs.map(product =>
+      `${product.product_schema}:${product.product_ref}@${product.product_digest}`),
+  };
+  const issue = {
+    recoveryIssueRef: `effect-recovery:${action.id}`,
+    recoveryIssueDigest: sha256Hex(issueBody),
+    ...issueBody,
+  };
+
+  const intentId = Number(metadata.work_intent_id ?? 0);
+  const retry = Number.isSafeInteger(intentId) && intentId > 0
+    ? db.prepare(
+        'SELECT retry_budget FROM factory_work_intents WHERE id=?',
+      ).get(intentId) as { retry_budget: number } | undefined
+    : undefined;
+  const attemptRow = db.prepare(
+    `SELECT COUNT(*) AS n
+       FROM factory_gate_decisions
+      WHERE workplace_ref=? AND gate_ref=? AND verdict='repair_required'
+        AND repair_target_role='author'`,
+  ).get(workplaceRef, decision.gate_ref) as { n: number };
+
+  return {
+    schemaVersion: 'factory.production-cell-recovery-feedback.v1',
+    recoveryCaseRef: `production-cell-effect-recovery:${sha256Hex({
+      workplaceRef,
+      actionId: action.id,
+    })}`,
+    workplaceRef,
+    taskId,
+    repairTargetRole: 'author',
+    attempt: attemptRow.n,
+    maxAttempts: retry?.retry_budget ?? null,
+    gateDecision: {
+      decisionRef: decision.decision_key,
+      gateRunRef: decision.gate_run_ref,
+      gateRef: decision.gate_ref,
+      gatePhase: decision.gate_phase,
+      checkPlanRef: decision.check_plan_ref,
+      checkPlanDigest: decision.check_plan_digest,
+      checkReceiptRefs: parseStringArray(decision.check_receipt_refs),
+    },
+    issue,
+    rejectedCandidateSet: {
+      candidateSetRef: decision.subject_candidate_set_ref,
+      candidateSetDigest: candidate.candidate_set_digest,
+      role: candidate.role,
+      subjectCandidateSetRef: candidate.subject_candidate_set_ref,
+      productRefs: productRefs.map(product => ({
+        schemaId: product.product_schema,
+        ref: product.product_ref,
+        digest: product.product_digest,
+      })),
+    },
+  };
+}
+
+/**
+ * Fix-1 — decoded finding messages of the FAILING (non-passed) check receipts
+ * of one decision. Shared by the recovery-feedback collector and the
+ * recovery-budget park reason so both speak the exact same decoded causes.
+ */
+export function decodeFailingCheckReceipts(
+  db: Database.Database,
+  receiptRefs: readonly string[],
+): Array<{
+  providerId: string;
+  providerVersion: string;
+  outcome: 'passed' | 'failed' | 'unknown' | 'error';
+  receiptRef: string;
+  messages: string[];
+}> {
+  if (receiptRefs.length === 0) return [];
+  const placeholders = receiptRefs.map(() => '?').join(',');
+  const receipts = db.prepare(
+    `SELECT check_receipt_ref,provider_id,provider_version,outcome,evidence_refs
+       FROM factory_check_receipts
+      WHERE check_receipt_ref IN (${placeholders})
+      ORDER BY check_run_ref`,
+  ).all(...receiptRefs) as Array<{
+    check_receipt_ref: string;
+    provider_id: string;
+    provider_version: string;
+    outcome: 'passed' | 'failed' | 'unknown' | 'error';
+    evidence_refs: string;
+  }>;
+  return receipts
+    .filter(receipt => receipt.outcome !== 'passed')
+    .map(receipt => {
+      const evidenceRefs = parseStringArray(receipt.evidence_refs);
+      const diagnostics = evidenceRefs
+        .map(decodeCheckDiagnostic)
+        .filter((value): value is NonNullable<typeof value> => value !== null);
+      const messages = diagnostics.length > 0
+        ? diagnostics.map(diagnostic => diagnostic.message)
+        : [`Check ${receipt.provider_id}@${receipt.provider_version} returned ${receipt.outcome}.`];
+      return {
+        providerId: receipt.provider_id,
+        providerVersion: receipt.provider_version,
+        outcome: receipt.outcome,
+        receiptRef: receipt.check_receipt_ref,
+        messages,
+      };
+    });
+}
+
+/**
+ * Fix-3 — count sealed CandidateSets of a role whose gate decision was
+ * REJECTED (repair_required targeting that role). An ACCEPTED attempt must not
+ * consume recovery budget. Author sets appear as the decision SUBJECT of an
+ * author-targeted repair; reviewer sets appear in the ASSESSMENT refs of a
+ * reviewer-targeted repair (invalid-output retry).
+ */
+export function countGateRejectedCandidateSets(
+  db: Database.Database,
+  workplaceRef: string,
+  role: 'author' | 'reviewer',
+): number {
+  const decisions = db.prepare(
+    `SELECT subject_candidate_set_ref AS subjectRef,
+            assessment_candidate_set_refs AS assessmentRefs
+       FROM factory_gate_decisions
+      WHERE workplace_ref=? AND verdict='repair_required'
+        AND repair_target_role=?`,
+  ).all(workplaceRef, role) as Array<{
+    subjectRef: string;
+    assessmentRefs: string;
+  }>;
+  const rejected = new Set<string>();
+  for (const decision of decisions) {
+    if (role === 'author') {
+      rejected.add(decision.subjectRef);
+    } else {
+      for (const ref of parseStringArray(decision.assessmentRefs)) {
+        rejected.add(ref);
+      }
+    }
+  }
+  const sets = db.prepare(
+    'SELECT candidate_set_ref AS ref FROM factory_candidate_sets WHERE workplace_ref=? AND role=?',
+  ).all(workplaceRef, role) as Array<{ ref: string }>;
+  return sets.filter(set => rejected.has(set.ref)).length;
+}
+
+/**
+ * Fix-1 — decoded findings of the LAST repair_required decision for a role,
+ * used as the RECOVERY_BUDGET_EXHAUSTED park reason.
+ */
+export function readLastRepairRequiredDiagnosis(
+  db: Database.Database,
+  workplaceRef: string,
+  role: 'author' | 'reviewer',
+): {
+  gateRef: string;
+  decisionKey: string;
+  findings: readonly string[];
+  checkReceiptRefs: readonly string[];
+} | null {
+  const decision = db.prepare(
+    `SELECT decision_key,gate_ref,check_receipt_refs
+       FROM factory_gate_decisions
+      WHERE workplace_ref=? AND verdict='repair_required'
+        AND repair_target_role=?
+      ORDER BY decided_at DESC, rowid DESC LIMIT 1`,
+  ).get(workplaceRef, role) as {
+    decision_key: string;
+    gate_ref: string;
+    check_receipt_refs: string;
+  } | undefined;
+  if (!decision) return null;
+  const failing = decodeFailingCheckReceipts(
+    db,
+    parseStringArray(decision.check_receipt_refs),
+  );
+  return {
+    gateRef: decision.gate_ref,
+    decisionKey: decision.decision_key,
+    findings: failing.flatMap(receipt => receipt.messages).slice(0, 20),
+    checkReceiptRefs: failing.map(receipt => receipt.receiptRef),
+  };
+}
+
+/**
+ * Fix-2 — latest failed/blocked external effect action for an accepted
+ * CandidateSet, as `effect-recovery:<action-id>`.
+ */
+export function readLatestFailedEffectActionRef(
+  db: Database.Database,
+  candidateSetRef: string,
+): string | null {
+  if (!externalEffectLedgerAvailable(db)) return null;
+  const row = db.prepare(
+    `SELECT id FROM factory_external_effect_actions
+      WHERE state IN ('failed','blocked')
+        AND json_extract(request_snapshot,'$.candidateSetRef')=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(candidateSetRef) as { id: number } | undefined;
+  return row ? `effect-recovery:${row.id}` : null;
+}
+
+/**
+ * Fix-3 companion (QA-E16 bound) — count failed/blocked post-acceptance
+ * effect actions whose candidate belongs to this Workplace. Since accepted
+ * attempts stopped consuming recovery budget, the accept → effect-fail →
+ * repair cycle needs its own durable bound: every failed action certifies one
+ * completed worker attempt whose integration did not land.
+ */
+export function countFailedAcceptanceEffectRepairs(
+  db: Database.Database,
+  workplaceRef: string,
+): number {
+  if (!externalEffectLedgerAvailable(db)) return 0;
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n
+       FROM factory_external_effect_actions a
+      WHERE a.state IN ('failed','blocked')
+        AND json_extract(a.request_snapshot,'$.candidateSetRef') IN (
+          SELECT candidate_set_ref FROM factory_candidate_sets WHERE workplace_ref=?
+        )`,
+  ).get(workplaceRef) as { n: number };
+  return row.n;
+}
+
+/**
+ * The external-effect ledger owns its own table creation (it is NOT part of
+ * SCHEMA_SQL). Projections may run against DBs where the ledger was never
+ * composed (tests, minimal compositions); effect-repair feedback is then
+ * simply absent — never a hard failure of the projection path.
+ */
+function externalEffectLedgerAvailable(db: Database.Database): boolean {
+  return db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_external_effect_actions'",
+  ).get() !== undefined;
 }

@@ -195,6 +195,15 @@ export function adoptTerminalExecutionsAtEngineStart(
         runtime.pauseForHuman({
           workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
           taskId: task.id,
+          // Fix-1 — the residue repair parks with its cause: the reservation
+          // holder provably never started (no pid, no started_at).
+          reason: {
+            code: 'WORKER_SPAWN_FAILED_RESIDUE',
+            message: `Spawn-failed residue repair on engine start: execution `
+              + `${row.execution_id} holds a '${row.loop_state}' workplace reservation `
+              + `but its process was never created (pid NULL, started_at NULL).`,
+            evidenceRefs: [row.execution_id],
+          },
         });
       } else {
         runtime.releaseExecution({

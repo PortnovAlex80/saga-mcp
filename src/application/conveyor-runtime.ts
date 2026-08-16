@@ -57,6 +57,10 @@ import {
   reverseProjectWorkplaceToTask,
 } from '../infrastructure/projections/workplace-projector.js';
 import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
+import {
+  recordWorkplaceParkReason,
+  type WorkplaceParkReason,
+} from '../infrastructure/workplace/workplace-park-reasons.js';
 
 /** The outcome of a use case: the workplace state and the resulting task status. */
 export interface UseCaseResult {
@@ -221,13 +225,24 @@ export class ConveyorRuntime {
   /**
    * PROC-13 — Pause the line for a human decision (human_required gate).
    *   * → blocked/paused. The resume target is the persisted nextRole.
+   *
+   * Fix-1 — `reason` (when supplied) is recorded as an append-only
+   * `factory_workplace_park_reasons` row in the SAME transaction as the pause,
+   * and `active_recovery_case_ref` on the workplace points at it. Every park
+   * site passes its decoded cause so the operator never sees a verdict-only
+   * park.
    */
-  pauseForHuman(input: { workplaceRef: WorkplaceRef; taskId: number }): UseCaseResult {
+  pauseForHuman(input: {
+    workplaceRef: WorkplaceRef;
+    taskId: number;
+    reason?: WorkplaceParkReason;
+  }): UseCaseResult {
     return this.atomically(input.workplaceRef, input.taskId, () => {
       return {
         event: { kind: 'human-required' } as ProductionCellEvent,
         directState: null,
         activeReservationRef: null,
+        parkReason: input.reason ?? null,
       };
     });
   }
@@ -269,6 +284,8 @@ export class ConveyorRuntime {
       event: ProductionCellEvent | null;
       directState: WorkplaceState | null;
       activeReservationRef: string | null;
+      /** Fix-1 — when set, the pause records this park reason atomically. */
+      parkReason?: WorkplaceParkReason | null;
     } | null,
   ): UseCaseResult {
     // better-sqlite3 `db.transaction()` uses SAVEPOINTs that nest fine, BUT
@@ -303,6 +320,17 @@ export class ConveyorRuntime {
         nextRole: target.nextRole,
         terminalReason: target.terminalReason,
         activeReservationRef: planned.activeReservationRef,
+        // Fix-1 — the park reason row commits with the pause transition; the
+        // ref on the workplace makes the cause queryable without decoding.
+        ...(planned.parkReason
+          ? {
+            activeRecoveryCaseRef: recordWorkplaceParkReason(
+              this.db,
+              serializeWorkplaceRef(workplaceRef),
+              planned.parkReason,
+            ),
+          }
+          : {}),
       });
       if (!result.applied) {
         // CAS miss — a concurrent writer advanced the revision. Surface as

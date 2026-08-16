@@ -459,7 +459,8 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
         ).get(submissionId, processRunId) as SubmissionRow | undefined;
         if (!row || row.schema_version !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
             || row.content_hash !== member.productRef.digest) {
-          return 'failed';
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The task graph proposal does not match the exact CandidateSet member submission and its desk receipt.');
         }
         const decoded = decodeDevelopmentTaskGraphProposal(
           JSON.parse(row.payload_snapshot),
@@ -652,17 +653,25 @@ export function createDevelopmentVerificationCheckProvider(input: {
         const candidate = input.candidateSets.read(subjectCandidateSetRef);
         if (!candidate || candidate.role !== 'author'
             || candidate.workplaceRef.processRunId !== processRunId
-            || candidate.members.length !== 1) return 'failed';
+            || candidate.members.length !== 1) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The verification evidence must be bound to exactly one author CandidateSet member of this workplace.');
+        }
         const member = candidate.members[0]!;
         if (member.productRef.schemaId
             !== DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA
             || !member.productRef.ref.startsWith('managed-node-submission:')) {
-          return 'failed';
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            `The verification submission must be a ${DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA} managed-node-submission,`
+            + ` got ${member.productRef.schemaId}:${member.productRef.ref}.`);
         }
         const submissionId = Number(
           member.productRef.ref.slice('managed-node-submission:'.length),
         );
-        if (!Number.isSafeInteger(submissionId) || submissionId < 1) return 'failed';
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            `The verification submission ref '${member.productRef.ref}' does not carry a numeric managed-node-submission id.`);
+        }
         // ADR-053 cutover: s.id + s.process_run_id pin one row; digest check
         // below is the authority binding. execution_id removed.
         const row = input.db.prepare(
@@ -679,11 +688,17 @@ export function createDevelopmentVerificationCheckProvider(input: {
           metadata: string;
           accepted_hash: string | null;
         } | undefined;
-        if (!row || row.content_hash !== member.productRef.digest) return 'failed';
+        if (!row || row.content_hash !== member.productRef.digest) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The verification submission does not match the exact CandidateSet member digest and its desk receipt.');
+        }
         const decoded = decodeDevelopmentVerificationProduct(
           JSON.parse(row.payload_snapshot),
         );
-        if (!decoded.ok) return 'failed';
+        if (!decoded.ok) {
+          return scopeFailure(subjectCandidateSetRef, 'verification-product-invalid',
+            `The verification evidence payload is invalid: ${decoded.errors.join('; ')}`);
+        }
         const metadata = JSON.parse(row.metadata) as {
           cell_input_item?: { key?: unknown; acceptanceCriterionIds?: unknown };
           process_node_input?: {
@@ -704,7 +719,12 @@ export function createDevelopmentVerificationCheckProvider(input: {
             !== row.verification_target_artifact_id
           || decoded.value.acceptedCriterionHash !== row.accepted_hash
           || decoded.value.candidateHash !== frozenHash
-        ) return 'failed';
+        ) {
+          return scopeFailure(subjectCandidateSetRef, 'verification-lineage-mismatch',
+            'The verification evidence does not match its frozen lineage: verificationItemKey must equal the work item key,'
+            + ' acceptanceCriterionId must equal the single cell-input criterion id and the AC artifact id,'
+            + ' acceptedCriterionHash must equal the accepted artifact hash, and candidateHash must equal the frozen upstream candidate hash.');
+        }
         // This provider proves only assessment shape and exact lineage. It does
         // not trust the LM-authored outcome. The independent local-runnability
         // provider in the same plan owns executable Product Build evidence.

@@ -111,7 +111,13 @@ import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
-import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import {
+  countFailedAcceptanceEffectRepairs as countFailedAcceptanceEffectRepairsSql,
+  countGateRejectedCandidateSets as countGateRejectedCandidateSetsSql,
+  createSqliteProductionCellProjectionPersistence,
+  readLastRepairRequiredDiagnosis as readLastRepairRequiredDiagnosisSql,
+  readLatestFailedEffectActionRef as readLatestFailedEffectActionRefSql,
+} from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import { createDevelopmentOutputPayloadResolver } from '../modules/development/application/development-installation.js';
@@ -536,6 +542,28 @@ export function createProductLifecycleRuntime(
           ).get(taskId) as { n: number } | undefined;
           return row?.n ?? 0;
         },
+        // Fix-3 — an ACCEPTED CandidateSet must not consume recovery budget.
+        countGateRejectedCandidateSets: (workplaceRef, role) =>
+          countGateRejectedCandidateSetsSql(
+            db, serializeWorkplaceRef(workplaceRef), role,
+          ),
+        // Fix-1 — decoded findings of the last repair_required decision, used
+        // as the RECOVERY_BUDGET_EXHAUSTED park reason.
+        readLastRepairRequiredDiagnosis: (workplaceRef, role) =>
+          readLastRepairRequiredDiagnosisSql(
+            db, serializeWorkplaceRef(workplaceRef), role,
+          ),
+        // Fix-2 — traceability pointer from an effect-repair transition back
+        // to the exact failed ledger action.
+        readLatestFailedEffectActionRef: (candidateSetRef) =>
+          readLatestFailedEffectActionRefSql(db, candidateSetRef),
+        // Fix-3 companion (QA-E16) — failed effect actions bound the
+        // accept → effect-fail → repair cycle now that accepted attempts
+        // no longer consume budget.
+        countFailedAcceptanceEffectRepairs: (workplaceRef) =>
+          countFailedAcceptanceEffectRepairsSql(
+            db, serializeWorkplaceRef(workplaceRef),
+          ),
       } as ProductionCellProjectionPersistence,
       productReader: {
         readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs }) => {

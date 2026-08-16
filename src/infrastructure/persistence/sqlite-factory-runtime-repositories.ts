@@ -351,6 +351,15 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
           conveyor.pauseForHuman({
             workplaceRef,
             taskId: binding.task_id,
+            // Fix-1 — the physical retry budget exhaustion is the park cause;
+            // without it the operator sees only the blocked verdict.
+            reason: {
+              code: 'WORKER_RETRY_BUDGET_EXHAUSTED',
+              message: `Physical worker retry budget exhausted: execution `
+                + `${projection.executionId} was ${projection.action} and the task was `
+                + `projected as blocked by the release path.`,
+              evidenceRefs: [projection.executionId],
+            },
           });
         }
       }

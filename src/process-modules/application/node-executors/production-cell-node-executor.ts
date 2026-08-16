@@ -53,6 +53,8 @@ import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastruct
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { computeAcceptanceDigest } from '../post-acceptance-effects.js';
 import type { SubmissionValidationReceiptProjection } from '../submission-validation-receipt-authority.js';
+import type { WorkplaceParkReason } from '../../../infrastructure/workplace/workplace-park-reasons.js';
+import type { GateDecision } from '../../domain/workplace/gate.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -165,6 +167,44 @@ export interface ProductionCellProjectionPersistence {
    * CandidateSet count.
    */
   countTerminalExecutionsForTask?(taskId: number): number;
+  /**
+   * Fix-3 — count sealed CandidateSets of the role whose gate decision was
+   * REJECTED (repair_required for that role). An ACCEPTED attempt must not
+   * consume recovery budget. Optional — when absent, attemptCount falls back
+   * to the legacy all-sealed-sets count.
+   */
+  countGateRejectedCandidateSets?(
+    workplaceRef: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): number;
+  /**
+   * Fix-1 — decoded findings of the LAST repair_required gate decision for a
+   * role, used as the park reason when the recovery budget is exhausted.
+   * Optional — the budget park falls back to a counts-only message.
+   */
+  readLastRepairRequiredDiagnosis?(
+    workplaceRef: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): {
+    gateRef: string;
+    decisionKey: string;
+    findings: readonly string[];
+    checkReceiptRefs: readonly string[];
+  } | null;
+  /**
+   * Fix-2 — latest failed/blocked external effect action for an accepted
+   * CandidateSet, as `effect-recovery:<action-id>`. Used to tag the
+   * acceptance-effect repair transition for operator traceability.
+   */
+  readLatestFailedEffectActionRef?(candidateSetRef: string): string | null;
+  /**
+   * Fix-3 companion (QA-E16 bound) — failed/blocked post-acceptance effect
+   * actions of this Workplace. Each certifies one completed worker attempt
+   * whose integration did not land, so the accept → effect-fail → repair
+   * cycle stays durably bounded now that accepted gate attempts no longer
+   * consume budget. Optional — absent ledgers contribute 0.
+   */
+  countFailedAcceptanceEffectRepairs?(workplaceRef: WorkplaceRef): number;
 }
 
 export interface ProductionCellProductReader {
@@ -467,6 +507,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         if (cell.recovery.onExhausted === 'pause') {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
             verdict: 'human_required', isFinal: true,
+            parkReason: this.recoveryBudgetParkReason(
+              workplace.ref, state.nextRole, attempts, cell.recovery.maxAttempts,
+            ),
           });
         } else {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
@@ -677,6 +720,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           isFinal: !cell.review,
           repairTargetRole: decision.repairTargetRole ?? undefined,
           gateDecisionKey: decision.decisionKey,
+          parkReason: this.gateHumanParkReason(decision),
         });
       }
     } else {
@@ -708,6 +752,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         repairTargetRole: decision.repairTargetRole ?? undefined,
         effectRequired: decision.verdict === 'accepted' && Boolean(cell.postAcceptanceEffect),
         gateDecisionKey: decision.decisionKey,
+        parkReason: this.gateHumanParkReason(decision),
       });
     }
     if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
@@ -811,7 +856,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {
-        this.opts.coordinator.requireAcceptanceEffectRepair(workplace.ref);
+        // Fix-2 — tag the repair transition with the failed ledger action so
+        // the effect-recovery cause stays traceable before the next role
+        // projection binds the decoded feedback.
+        this.opts.coordinator.requireAcceptanceEffectRepair(workplace.ref, {
+          activeRecoveryCaseRef: this.opts.persistence
+            .readLatestFailedEffectActionRef?.(acceptedCandidate.candidateSetRef) ?? null,
+        });
         this.opts.persistence.projectWorkplace(workplace.ref);
         return pendingOutcome(acceptedCandidate.candidateSetRef);
       }
@@ -819,6 +870,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: 'human_required',
           isFinal: true,
+          parkReason: {
+            code: 'ACCEPTANCE_EFFECT_BLOCKED',
+            message: `Post-acceptance effect '${effectId}' blocked: ${result.reason}`,
+            evidenceRefs: [
+              ...(this.opts.persistence
+                .readLatestFailedEffectActionRef?.(acceptedCandidate.candidateSetRef)
+                ?? []),
+            ],
+          },
         });
         this.opts.persistence.projectWorkplace(workplace.ref);
         return pausedOutcome(acceptedCandidate.candidateSetRef);
@@ -1533,32 +1593,81 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {
-    // Count sealed CandidateSets for this role as the primary attempt counter.
-    // Each CandidateSet represents one completed gate-evaluated attempt.
-    const sealedAttempts = this.opts.candidateSetRepo.listForWorkplace(ref)
-      .filter(set => set.role === role).length;
-    // CGAD P18 / crash recovery: a crashed execution that never sealed a
-    // CandidateSet still counts as an attempt. The Workplace's revision
-    // reflects the number of transitions, which includes crash → repair_wait
-    // cycles. This prevents infinite crash loops where the worker crashes
-    // before sealing, attemptCount stays at the sealed count, and maxAttempts
-    // is never reached.
-    //
-    // The crash-recovery fallback counts terminal (failed/lost) executions
-    // for this workplace's task. It MUST apply even when sealedAttempts > 0,
-    // because a crash can happen AFTER a sealed CandidateSet (e.g. during a
-    // repair cycle: candidate₁ sealed → repair requested → repair-worker
-    // crashes before candidate₂). In that case sealedAttempts=1 but the crash
-    // must still expend retry budget.
+    // Fix-3 — the budget measures REJECTED attempts, not every sealed set.
+    // An ACCEPTED CandidateSet must not consume recovery budget: after a
+    // successful gate the next failure class (typically a post-acceptance
+    // effect asking for repair) starts a fresh claim on the budget, otherwise
+    // 2 rejections + 1 acceptance is already "exhausted" (the stopwatch case).
+    // Crash accounting (CGAD P18) is unchanged: a terminal execution still
+    // spends budget even when nothing was sealed.
+    const rejected = this.opts.persistence.countGateRejectedCandidateSets?.(ref, role);
+    const spent = rejected === undefined
+      ? this.opts.candidateSetRepo.listForWorkplace(ref)
+        .filter(set => set.role === role).length
+      : rejected;
     const state = this.opts.coordinator.readState(ref);
     if (state && state.loopState === 'repair_wait') {
+      // Companion to Fix-3: an accepted-then-effect-failed attempt must
+      // still spend budget somewhere, or a worker that keeps "succeeding"
+      // under an identically failing integration mints unlimited repairs.
+      // Independent of the task projection — the effect ledger is the
+      // authority for its own failures.
+      const failedEffectRepairs
+        = this.opts.persistence.countFailedAcceptanceEffectRepairs?.(ref) ?? 0;
       const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
       if (taskRow) {
         const failedExecs = this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0;
-        return Math.max(sealedAttempts, failedExecs);
+        return Math.max(spent, failedExecs, failedEffectRepairs);
       }
+      return Math.max(spent, failedEffectRepairs);
     }
-    return sealedAttempts;
+    return spent;
+  }
+
+  /**
+   * Fix-1 — the budget park must explain itself: the counts AND the decoded
+   * findings of the last rejection, so the operator reads the actual defect
+   * instead of decoding check receipts by hand.
+   */
+  /**
+   * Fix-1 — a human_required gate verdict (indeterminate check outcomes or
+   * conflicting repair targets) parks the line; the park must name the gate
+   * and its receipts so the operator can resolve the ambiguity.
+   */
+  private gateHumanParkReason(
+    decision: Pick<GateDecision, 'verdict' | 'gateRef' | 'decisionKey' | 'checkReceiptRefs'>,
+  ): WorkplaceParkReason | undefined {
+    if (decision.verdict !== 'human_required') return undefined;
+    return {
+      code: 'GATE_HUMAN_REQUIRED',
+      message: `Gate '${decision.gateRef}' returned human_required: check outcomes are `
+        + `indeterminate or request conflicting repair targets, so the Factory will not `
+        + `guess. Resolve manually (decision ${decision.decisionKey}).`,
+      evidenceRefs: [decision.decisionKey, ...decision.checkReceiptRefs],
+    };
+  }
+
+  private recoveryBudgetParkReason(
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+    attempts: number,
+    maxAttempts: number,
+  ): WorkplaceParkReason {
+    const diagnosis = this.opts.persistence.readLastRepairRequiredDiagnosis?.(ref, role)
+      ?? null;
+    const message = `Recovery budget exhausted: ${attempts} unsuccessful attempt(s) for role '${role}'`
+      + ` (maxAttempts=${maxAttempts}); the line is parked for a human decision.`
+      + (diagnosis
+        ? ` Last rejection at gate '${diagnosis.gateRef}' (${diagnosis.decisionKey}): `
+          + `${diagnosis.findings.join(' | ')}`
+        : '');
+    return {
+      code: 'RECOVERY_BUDGET_EXHAUSTED',
+      message,
+      evidenceRefs: diagnosis
+        ? [diagnosis.decisionKey, ...diagnosis.checkReceiptRefs]
+        : [],
+    };
   }
 
   private readAuthorSemanticDigest(workplaceRef: WorkplaceRef): string | null {

@@ -76,6 +76,8 @@ function requestWorkplaceCrashRepair(
 function pauseSpawnFailure(
   db: Database.Database,
   taskId: number,
+  executionId: string,
+  reason: string,
 ): void {
   const task = db.prepare(
     'SELECT workplace_ref FROM tasks WHERE id=?',
@@ -84,6 +86,13 @@ function pauseSpawnFailure(
   new ConveyorRuntime(db).pauseForHuman({
     workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
     taskId,
+    // Fix-1 — the spawn-failure cause parks with the workplace.
+    reason: {
+      code: 'WORKER_SPAWN_FAILED',
+      message: `Worker process could not be spawned; retrying the same spawn `
+        + `would fail identically. ${reason}`,
+      evidenceRefs: [executionId],
+    },
   });
 }
 
@@ -157,7 +166,7 @@ export function finalizeManagedWorkerProcess(
       preserveTaskStatus: retryableProvisioningFailure,
     });
     if (release.taskReleased && !retryableProvisioningFailure) {
-      pauseSpawnFailure(db, input.taskId);
+      pauseSpawnFailure(db, input.taskId, input.executionId, input.reason);
     }
     return {
       semanticCompletion: false,

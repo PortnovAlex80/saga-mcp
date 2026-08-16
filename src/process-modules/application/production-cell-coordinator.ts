@@ -45,6 +45,10 @@ import {
 } from '../domain/workplace/index.js';
 import { SqliteWorkplaceRepository } from '../../infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
+import {
+  recordWorkplaceParkReason,
+  type WorkplaceParkReason,
+} from '../../infrastructure/workplace/workplace-park-reasons.js';
 
 /**
  * Dependencies the coordinator needs.
@@ -169,6 +173,13 @@ export class ProductionCellCoordinator {
        * site (the head records the C1 pointer but leaves task identity unbound).
        */
       acceptedAuthorTaskId?: string | null;
+      /**
+       * Fix-1 — REQUIRED for a `human_required` verdict: the park is recorded
+       * with this reason (append-only `factory_workplace_park_reasons`) and the
+       * workplace's `active_recovery_case_ref` points at it. Ignored for other
+       * verdicts.
+       */
+      parkReason?: WorkplaceParkReason;
     },
   ): StepResult {
     let event: ProductionCellEvent;
@@ -209,8 +220,8 @@ export class ProductionCellCoordinator {
       });
     }
     return decision.gateDecisionKey
-      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey)
-      : this.applyEvent(ref, event!);
+      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey, decision.parkReason)
+      : this.applyEvent(ref, event!, undefined, decision.parkReason);
   }
 
   /**
@@ -245,6 +256,8 @@ export class ProductionCellCoordinator {
       repairTargetRole?: NextRole;
       effectRequired?: boolean;
       gateDecisionKey?: string;
+      /** Fix-1 — reason recorded with a `human_required` park. */
+      parkReason?: WorkplaceParkReason;
     },
   ): StepResult {
     let event: ProductionCellEvent;
@@ -276,8 +289,8 @@ export class ProductionCellCoordinator {
         break;
     }
     const result = decision.gateDecisionKey
-      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey)
-      : this.applyEvent(ref, event!);
+      ? this.applyGateEvent(ref, event!, decision.gateDecisionKey, decision.parkReason)
+      : this.applyEvent(ref, event!, undefined, decision.parkReason);
     return result;
   }
 
@@ -291,8 +304,19 @@ export class ProductionCellCoordinator {
     return this.applyEvent(ref, { kind: 'acceptance-effect-succeeded' });
   }
 
-  requireAcceptanceEffectRepair(ref: WorkplaceRef): StepResult {
-    return this.applyEvent(ref, { kind: 'acceptance-effect-repair-required' });
+  /**
+   * Fix-2 — the failed post-acceptance effect's action ref
+   * (`effect-recovery:<action-id>`) may be attached to the transition so
+   * operators can trace the repair_wait back to the exact ledger entry even
+   * before the next role projection binds the decoded feedback.
+   */
+  requireAcceptanceEffectRepair(
+    ref: WorkplaceRef,
+    actors?: { activeRecoveryCaseRef?: string | null },
+  ): StepResult {
+    return this.applyEvent(ref, { kind: 'acceptance-effect-repair-required' }, {
+      activeRecoveryCaseRef: actors?.activeRecoveryCaseRef ?? null,
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -334,6 +358,7 @@ export class ProductionCellCoordinator {
       activeGateRef?: string | null;
       activeRecoveryCaseRef?: string | null;
     },
+    parkReason?: WorkplaceParkReason,
   ): StepResult {
     const current = this.deps.workplaceRepo.read(ref);
     if (!current) {
@@ -343,16 +368,42 @@ export class ProductionCellCoordinator {
     }
     // Compute the target state via the pure-domain reducer.
     const target = reduceWorkplaceEvent(current, event);
-    // Persist via CAS.
-    const result = this.deps.workplaceRepo.applyTransition({
-      workplaceRef: ref,
-      expectedRevision: current.revision,
-      kanbanPhase: target.kanbanPhase,
-      loopState: target.loopState,
-      nextRole: target.nextRole,
-      terminalReason: target.terminalReason,
-      ...actors,
-    });
+    if (!parkReason) {
+      // Persist via CAS.
+      const result = this.deps.workplaceRepo.applyTransition({
+        workplaceRef: ref,
+        expectedRevision: current.revision,
+        kanbanPhase: target.kanbanPhase,
+        loopState: target.loopState,
+        nextRole: target.nextRole,
+        terminalReason: target.terminalReason,
+        ...actors,
+      });
+      return {
+        applied: result.applied,
+        state: result.state,
+        revision: result.revision,
+      };
+    }
+    // Fix-1 — a park WITH a reason: the append-only reason row and the CAS
+    // transition must commit together, so a parked workplace can never exist
+    // without its reason (fail-closed).
+    const serialized = serializeWorkplaceRef(ref);
+    const result = this.deps.db.transaction(() => {
+      const parkReasonRef = recordWorkplaceParkReason(this.deps.db, serialized, parkReason);
+      return this.deps.workplaceRepo.applyTransitionInTx({
+        workplaceRef: ref,
+        expectedRevision: current.revision,
+        kanbanPhase: target.kanbanPhase,
+        loopState: target.loopState,
+        nextRole: target.nextRole,
+        terminalReason: target.terminalReason,
+        ...(actors?.activeReservationRef !== undefined
+          ? { activeReservationRef: actors.activeReservationRef }
+          : {}),
+        activeRecoveryCaseRef: parkReasonRef,
+      }, serialized);
+    }).immediate();
     return {
       applied: result.applied,
       state: result.state,
@@ -429,6 +480,7 @@ export class ProductionCellCoordinator {
     ref: WorkplaceRef,
     event: ProductionCellEvent,
     gateDecisionKey: string,
+    parkReason?: WorkplaceParkReason,
   ): StepResult {
     const current = this.deps.workplaceRepo.read(ref);
     if (!current) {
@@ -439,6 +491,12 @@ export class ProductionCellCoordinator {
     const target = reduceWorkplaceEvent(current, event);
     const serialized = serializeWorkplaceRef(ref);
     const result = this.deps.db.transaction(() => {
+      // Fix-1 — record the park reason INSIDE the same transaction as the
+      // head-recorded transition so the decision head, the reason row and the
+      // paused state are one atomic fact.
+      const parkReasonRef = parkReason
+        ? recordWorkplaceParkReason(this.deps.db, serialized, parkReason)
+        : null;
       const transitioned = this.deps.workplaceRepo.applyTransitionInTx({
         workplaceRef: ref,
         expectedRevision: current.revision,
@@ -446,6 +504,7 @@ export class ProductionCellCoordinator {
         loopState: target.loopState,
         nextRole: target.nextRole,
         terminalReason: target.terminalReason,
+        ...(parkReasonRef !== null ? { activeRecoveryCaseRef: parkReasonRef } : {}),
       }, serialized);
       if (transitioned.applied) {
         this.recordAppliedGateDecisionHead(serialized, gateDecisionKey, current.revision);

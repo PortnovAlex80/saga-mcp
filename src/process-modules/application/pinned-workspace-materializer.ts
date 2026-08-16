@@ -57,7 +57,17 @@ export interface WorkplaceDesk {
   readonly callFiles: readonly string[];
   readonly checklists: readonly string[];
 
-  readonly recoveryFeedback: { readonly present: boolean; readonly path: string | null };
+  readonly recoveryFeedback: {
+    readonly present: boolean;
+    readonly path: string | null;
+    /**
+     * Top decoded finding messages of the last rejection (≤3, ≤500 chars
+     * each). WHY: the prompt block inlines them so the worker sees the exact
+     * reasons even if it never opens recovery-feedback.json (the file is
+     * authoritative, the inline copy is the loud first line of defence).
+     */
+    readonly reasons: readonly string[];
+  };
   readonly reviewFeedback: { readonly present: boolean; readonly path: string | null };
   readonly agentAssistance: { readonly required: boolean; readonly path: string | null };
 
@@ -232,6 +242,29 @@ function workplacePathSegment(workplaceRef: string): string {
   return `workplace-${createHash('sha256').update(workplaceRef).digest('hex').slice(0, 24)}`;
 }
 
+/**
+ * Extract the top decoded finding messages from a recovery-feedback object
+ * (issue.findings[].message), capped at 3 messages / 500 chars each. Used for
+ * the inline prompt lines so the worker reads the exact rejection reasons
+ * before anything else. Tolerates unknown shapes — the FILE stays the
+ * authority; the inline copy is best-effort.
+ */
+function recoveryFeedbackReasonMessages(
+  feedback: Record<string, unknown>,
+): string[] {
+  const issue = feedback.issue;
+  if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return [];
+  const findings = (issue as Record<string, unknown>).findings;
+  if (!Array.isArray(findings)) return [];
+  return findings
+    .map(finding => (finding && typeof finding === 'object' && !Array.isArray(finding)
+      ? (finding as Record<string, unknown>).message
+      : null))
+    .filter((message): message is string => typeof message === 'string' && message.trim().length > 0)
+    .map(message => message.slice(0, 500))
+    .slice(0, 3);
+}
+
 function integerBinding(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value)) return value;
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
@@ -299,10 +332,12 @@ export function materializePinnedWorkspace(
   });
 
   let recoveryFeedbackPath: string | null = null;
+  let recoveryFeedbackReasons: string[] = [];
   const recoveryFeedback = recoveryFeedbackFromMetadata(metadata);
   if (recoveryFeedback) {
     recoveryFeedbackPath = path.join(executionDirectory, 'recovery-feedback.json');
     writeFileSync(recoveryFeedbackPath, `${JSON.stringify(recoveryFeedback, null, 2)}\n`);
+    recoveryFeedbackReasons = recoveryFeedbackReasonMessages(recoveryFeedback);
   }
 
   let reviewFeedbackPath: string | null = null;
@@ -499,6 +534,7 @@ export function materializePinnedWorkspace(
     recoveryFeedback: {
       present: recoveryFeedbackPath !== null,
       path: recoveryFeedbackRelative,
+      reasons: recoveryFeedbackReasons,
     },
     reviewFeedback: {
       present: reviewFeedbackPath !== null,

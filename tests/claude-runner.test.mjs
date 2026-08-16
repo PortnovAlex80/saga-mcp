@@ -182,3 +182,40 @@ test('runner starts a repository task in the exact Factory-provisioned desk', as
     assert.equal(h.spawns[0].options.cwd, desk);
   } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });
+
+// Worker feedback loop map, Fix-C: the REPAIR ATTEMPT prompt block must inline
+// the top decoded rejection reasons — not only point at recovery-feedback.json
+// (a file the model may never open; observed live in the P01 blind loop).
+test('repair-attempt prompt inlines the top rejection reasons verbatim', async () => {
+  const h = makeHarness();
+  try {
+    h.runner.prepareWorkspace = () => ({
+      profileId: 'author-profile',
+      moduleRef: 'test-module@1.0.0',
+      trackerPath: 'docs/development/tracker.md',
+      trackerAbsolutePath: path.join(h.root, 'docs/development/tracker.md'),
+      executionDirectory: 'docs/development/exec-1',
+      callFiles: [],
+      checklists: [],
+      workspaceFiles: [],
+      recoveryFeedback: {
+        present: true,
+        path: 'docs/development/exec-1/recovery-feedback.json',
+        reasons: [
+          "implementation items 'left' and 'right' overlap without a dependency order",
+          "repository 3 does not assign required change scope 'tests/'",
+        ],
+      },
+      reviewFeedback: { present: false, path: null },
+      agentAssistance: { required: false, path: null },
+    });
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    assert.equal(h.spawns.length, 1);
+    const prompt = h.spawns[0].child.prompt;
+    assert.match(prompt, /REPAIR ATTEMPT — YOUR PREVIOUS SUBMISSION WAS REJECTED/);
+    assert.match(prompt, /The top rejection reasons, quoted verbatim from that file:/);
+    assert.match(prompt, /1\. implementation items 'left' and 'right' overlap without a dependency order/);
+    assert.match(prompt, /2\. repository 3 does not assign required change scope 'tests\/'/);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
+});

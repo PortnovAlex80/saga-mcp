@@ -388,6 +388,14 @@ export function createPinnedClaudeWorkerExecutorFactory(
               new ConveyorRuntime(db).pauseForHuman({
                 workplaceRef: deserializeWorkplaceRef(task.workplace_ref),
                 taskId: command.taskId,
+                // Fix-1 — the spawn-failure reason is already in scope here;
+                // park it with the workplace instead of losing it.
+                reason: {
+                  code: 'WORKER_SPAWN_FAILED',
+                  message: `Worker process could not be spawned; retrying the same spawn `
+                    + `would fail identically. ${reason}`,
+                  evidenceRefs: [executionId],
+                },
               });
             }
             return released;

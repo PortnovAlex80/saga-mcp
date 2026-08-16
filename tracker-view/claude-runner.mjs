@@ -282,6 +282,14 @@ function buildPrompt({
                 `recovery_feedback=${processWorkspace.recoveryFeedback.path}`,
                 `READ ${processWorkspace.recoveryFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is machine-authored loop input.`,
                 'It carries issue.findings[]: the EXACT reasons the previous submission was rejected and the SPECIFIC remediation (which files to add/change, which assertions to satisfy, which AC is unmet).',
+                ...(processWorkspace.recoveryFeedback.reasons?.length
+                  ? [
+                      'The top rejection reasons, quoted verbatim from that file:',
+                      ...processWorkspace.recoveryFeedback.reasons.map(
+                        (message, index) => `   ${index + 1}. ${message}`,
+                      ),
+                    ]
+                  : []),
                 'Address EVERY finding in that file before resubmitting. Repeating the rejected content verbatim wastes a repair attempt and will be rejected again.',
                 'The findings are authoritative for WHAT to fix; the gate already proved the previous output deficient on exactly those points.',
                 '',

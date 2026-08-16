@@ -183,6 +183,58 @@ test('coverage policy rejects missing AC coverage, not task cardinality', () => 
   assert.equal(result.reasonCodes.includes('implementation-coverage-gap'), true);
 });
 
+// ---------------------------------------------------------------------------
+// Worker feedback loop map, Fix-A1: the coverage-gap messages must serialize
+// the computable missing/extra AC diff. A generic "does not equal the accepted
+// scope" forces the repair worker to re-derive the diff every attempt (the
+// P01/counter blind loop).
+// ---------------------------------------------------------------------------
+
+test('implementation-coverage-gap message serializes the missing/extra AC diff', () => {
+  const missingOnly = validate([11]);
+  assert.equal(missingOnly.valid, false);
+  const missingMessage = missingOnly.errors
+    .find(error => error.includes('required implementation coverage does not equal'));
+  assert.ok(missingMessage, 'the enriched coverage-gap message exists');
+  assert.match(missingMessage, /missing AC artifact ids: \[12\]/);
+  assert.match(missingMessage, /extra AC artifact ids: \[\]/);
+
+  // Covering a NON-accepted AC must be listed as extra.
+  const input = developmentCase();
+  const extraProposal = proposal([11, 12, 99]);
+  const graph = buildCanonicalDevelopmentTaskGraph(input, extraProposal, {
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    ref: 'planner-submission:extra-ac',
+    hash: 'b'.repeat(64),
+  });
+  const extra = new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
+  assert.equal(extra.valid, false);
+  const extraMessage = extra.errors
+    .find(error => error.includes('required implementation coverage does not equal'));
+  assert.ok(extraMessage);
+  assert.match(extraMessage, /missing AC artifact ids: \[\]/);
+  assert.match(extraMessage, /extra AC artifact ids: \[99\]/);
+});
+
+test('verification-plan-coverage-gap message serializes the missing AC diff', () => {
+  const input = developmentCase();
+  const proposalValue = proposal([11, 12]);
+  proposalValue.verificationItems = proposalValue.verificationItems.slice(0, 1);
+  const graph = buildCanonicalDevelopmentTaskGraph(input, proposalValue, {
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    ref: 'planner-submission:verification-gap',
+    hash: 'c'.repeat(64),
+  });
+  const result = new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
+  assert.equal(result.valid, false);
+  assert.equal(result.reasonCodes.includes('verification-plan-coverage-gap'), true);
+  const message = result.errors
+    .find(error => error.includes('verification work for every accepted AC'));
+  assert.ok(message, 'the enriched verification-gap message exists');
+  assert.match(message, /missing AC artifact ids: \[12\]/);
+  assert.match(message, /extra AC artifact ids: \[\]/);
+});
+
 test('directory and descendant file scopes overlap and require dependency order', () => {
   const unordered = validateScopes(['src/ui/pages/'], ['src/ui/pages/mission-planner.ts']);
   assert.equal(unordered.valid, false);

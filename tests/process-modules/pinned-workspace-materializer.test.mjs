@@ -110,8 +110,7 @@ function request(workspaceRoot, executionId) {
   };
 }
 
-test('pinned materializer uses verified blobs and isolates semantic checkpoints by execution', () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'saga-pinned-workspace-'));
+test('pinned materializer uses verified blobs and isolates semantic checkpoints by execution', () => {  const root = mkdtempSync(path.join(tmpdir(), 'saga-pinned-workspace-'));
   try {
     const first = materializePinnedWorkspace(request(root, 'exec-one'));
     // CGAD P18: the desk is keyed by the NODE (workplace), not the task.
@@ -144,6 +143,46 @@ test('pinned materializer uses verified blobs and isolates semantic checkpoints 
       /docs[\\/]formalization[\\/]projects[\\/]1[\\/]executions[\\/]node-author[\\/]exec-two/,
     );
     assert.match(assistance.events[0].blocks[2].content, /task_get/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Worker feedback loop map, Fix-C: the desk carries the top decoded rejection
+// reasons so the runner prompt can inline them (the file stays authoritative;
+// the inline copy is the loud first line of defence against a worker that
+// never opens recovery-feedback.json).
+test('desk carries the top decoded rejection reasons for the runner prompt', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'saga-pinned-feedback-'));
+  try {
+    const req = request(root, 'exec-feedback');
+    req.task.metadata = {
+      process_run_id: 10,
+      process_node_id: 'author',
+      recovery_feedback: {
+        schemaVersion: 'factory.production-cell-recovery-feedback.v1',
+        issue: {
+          reasonCode: 'gate-author-repair-required',
+          findings: [
+            { code: 'provider:first', message: 'reason one' },
+            { code: 'provider:second', message: 'reason two' },
+            { code: 'provider:third', message: 'reason three' },
+            { code: 'provider:fourth', message: 'reason four is beyond the top-3 cap' },
+          ],
+        },
+      },
+    };
+    const desk = materializePinnedWorkspace(req);
+    assert.equal(desk.recoveryFeedback.present, true);
+    assert.deepEqual(desk.recoveryFeedback.reasons, [
+      'reason one', 'reason two', 'reason three',
+    ], 'top-3 decoded finding messages, in order');
+    const written = JSON.parse(readFileSync(
+      path.join(root, desk.executionDirectory, 'recovery-feedback.json'),
+      'utf8',
+    ));
+    assert.equal(written.issue.findings.length, 4,
+      'the FILE keeps the full authority; only the inline copy is capped');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

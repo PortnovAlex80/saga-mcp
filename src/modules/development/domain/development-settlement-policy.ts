@@ -456,22 +456,37 @@ implements DevelopmentTaskGraphPolicyPort {
       [...implementationCovered].some(id => !acceptedCriterionIds.has(id))
       || ![...implementationRequired].every(id => implementationCovered.has(id))
     ) {
+      // The diff is computable at the source — serialize it into the message.
+      // A generic "coverage gap" forces the repair worker to re-derive the
+      // missing AC set from scratch on every attempt (observed: P01/counter).
+      const missingIds = [...implementationRequired]
+        .filter(id => !implementationCovered.has(id));
+      const extraIds = [...implementationCovered]
+        .filter(id => !acceptedCriterionIds.has(id));
       pushIssue(
         reasonCodes,
         errors,
         'implementation-coverage-gap',
-        'required implementation coverage does not equal the accepted AC scope',
+        'required implementation coverage does not equal the accepted AC scope'
+        + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
+        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`,
       );
     }
     if (
       [...verificationCovered].some(id => !acceptedCriterionIds.has(id))
       || !sameNumberSet(verificationCovered, acceptedCriterionIds)
     ) {
+      const missingIds = [...acceptedCriterionIds]
+        .filter(id => !verificationCovered.has(id));
+      const extraIds = [...verificationCovered]
+        .filter(id => !acceptedCriterionIds.has(id));
       pushIssue(
         reasonCodes,
         errors,
         'verification-plan-coverage-gap',
-        'the task graph must contain verification work for every accepted AC',
+        'the task graph must contain verification work for every accepted AC'
+        + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
+        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`,
       );
     }
 

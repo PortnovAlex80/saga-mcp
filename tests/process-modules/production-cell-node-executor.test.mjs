@@ -15,6 +15,12 @@ import { TransitionObligationIntegrator } from '../../dist/process-modules/appli
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
+import {
+  countFailedAcceptanceEffectRepairs,
+  countGateRejectedCandidateSets,
+  readLastRepairRequiredDiagnosis,
+  readLatestFailedEffectActionRef,
+} from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 
 const sha = sha256Hex;
 const PROVIDER = 'test.production-contract';
@@ -782,5 +788,220 @@ test('TB-12: a COMPLETED run-gate obligation falls through — the gate is re-dr
   assert.equal(result.runtimeEvent, 'completed', 'state machine proceeds past a completed handoff');
   assert.equal(h.coordinator.readState(ref).terminalReason, 'accepted');
   assert.ok(h.gateRepo.listDecisionsForWorkplace(ref).length >= 1, 'gate ran (replayed or fresh)');
+  h.db.close();
+});
+
+// ---------------------------------------------------------------------------
+// Worker feedback loop map — Fix-3 (budget) + Fix-1 (park reason) + Fix-2
+// (effect-repair marker). The stopwatch scenario: 1 rejected attempt, 1
+// ACCEPTED attempt, then the post-acceptance effect asks for repair. The
+// accepted attempt must NOT consume recovery budget (the old attemptCount
+// counted every sealed set → immediate park with no reason).
+// ---------------------------------------------------------------------------
+
+function wireRejectionAccounting(h) {
+  h.persistence.countGateRejectedCandidateSets = (ref, role) =>
+    countGateRejectedCandidateSets(h.db, serializeWorkplaceRef(ref), role);
+  h.persistence.readLastRepairRequiredDiagnosis = (ref, role) =>
+    readLastRepairRequiredDiagnosis(h.db, serializeWorkplaceRef(ref), role);
+  h.persistence.readLatestFailedEffectActionRef = (candidateSetRef) =>
+    readLatestFailedEffectActionRef(h.db, candidateSetRef);
+}
+
+function setAuthorCheckOutcome(h, outcome) {
+  h.executor['opts'].checkProviders.resolve = providerId =>
+    (providerId === PROVIDER
+      ? { providerId: PROVIDER, version: '1.0.0', providerDigest: PROVIDER_DIGEST, run: () => outcome }
+      : null);
+}
+
+test('Fix-3: an ACCEPTED attempt does not consume the recovery budget (stopwatch scenario)', async () => {
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task 187 submitted 86e28119 but branch is 793c0704',
+  });
+  wireRejectionAccounting(h);
+  const definition = cell({ effect: true });
+  definition.recovery = { maxAttempts: 2, onExhausted: 'pause' };
+  const ctx = context(definition);
+  const ref = workplaceRef('singleton-cell');
+
+  // Attempt 1: the gate rejects the candidate.
+  await h.executor.execute(ctx);
+  setAuthorCheckOutcome(h, 'failed');
+  finishRole(h, ref, 'execution:rejected-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:rejected', digest: sha('rejected'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+  await h.executor.execute(ctx); // requeue within budget
+  assert.equal(h.coordinator.readState(ref).loopState, 'queued');
+
+  // Attempt 2: the gate ACCEPTS; the post-acceptance effect fails.
+  setAuthorCheckOutcome(h, 'passed');
+  finishRole(h, ref, 'execution:accepted-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:accepted', digest: sha('accepted'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait',
+    'effect repair returns the workplace to the author');
+  assert.equal(h.coordinator.readState(ref).nextRole, 'author');
+
+  // The budget branch: rejected attempts = 1 (the accepted one is free),
+  // 1 < maxAttempts(2) → requeue instead of the stopwatch park.
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'queued',
+    'an accepted attempt must not exhaust the recovery budget');
+  assert.notEqual(h.coordinator.readState(ref).loopState, 'paused');
+  h.db.close();
+});
+
+test('QA-E16: a repeating accept→effect-fail cycle stays durably bounded', async () => {
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task 9 submitted aaa but branch is bbb',
+  });
+  wireRejectionAccounting(h);
+  h.persistence.countFailedAcceptanceEffectRepairs = (ref) =>
+    countFailedAcceptanceEffectRepairs(h.db, serializeWorkplaceRef(ref));
+  // The ledger table is owned by the effect infrastructure, not SCHEMA_SQL —
+  // compose it the way a real deployment would.
+  h.db.exec(`CREATE TABLE IF NOT EXISTS factory_external_effect_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      state TEXT NOT NULL,
+      provider_namespace TEXT NOT NULL DEFAULT 'git-integration',
+      last_error TEXT,
+      request_snapshot TEXT NOT NULL
+    )`);
+  const definition = cell({ effect: true });
+  definition.recovery = { maxAttempts: 2, onExhausted: 'pause' };
+  const ctx = context(definition);
+  const ref = workplaceRef('singleton-cell');
+  const serialized = serializeWorkplaceRef(ref);
+
+  // The gate accepts on the very first attempt: rejected attempts = 0.
+  await h.executor.execute(ctx); // hire the author
+  setAuthorCheckOutcome(h, 'passed');
+  finishRole(h, ref, 'execution:accepted-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:accepted', digest: sha('accepted'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait',
+    'the failed post-acceptance effect returns the author to repair');
+
+  // Two failed integrations of the accepted candidate set. With accepted
+  // attempts no longer consuming budget (Fix-3), this durable ledger count
+  // is the only bound on the accept → effect-fail → repair cycle.
+  const sets = h.db.prepare(
+    'SELECT candidate_set_ref AS ref FROM factory_candidate_sets WHERE workplace_ref=?',
+  ).all(serialized);
+  assert.ok(sets.length > 0, 'the accepted candidate set is sealed');
+  const insert = h.db.prepare(
+    `INSERT INTO factory_external_effect_actions (state,last_error,request_snapshot)
+     VALUES ('failed',?,?)`,
+  );
+  for (let i = 0; i < 2; i += 1) {
+    insert.run(
+      'PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: branch head moved',
+      JSON.stringify({ candidateSetRef: sets[0].ref }),
+    );
+  }
+
+  await h.executor.execute(ctx);
+  const state = h.coordinator.readState(ref);
+  assert.equal(state.loopState, 'paused',
+    'two failed integrations ≥ maxAttempts(2) must park, not requeue forever');
+  const reason = h.db.prepare(
+    'SELECT reason_code FROM factory_workplace_park_reasons WHERE workplace_ref=?',
+  ).get(serialized);
+  assert.equal(reason.reason_code, 'RECOVERY_BUDGET_EXHAUSTED');
+  h.db.close();
+});
+
+test('Fix-1: exhausting the budget parks WITH an append-only reason and a live pointer', async () => {
+  const h = harness();
+  wireRejectionAccounting(h);
+  const definition = cell();
+  definition.recovery = { maxAttempts: 1, onExhausted: 'pause' };
+  const ctx = context(definition);
+  const ref = workplaceRef('singleton-cell');
+
+  await h.executor.execute(ctx);
+  setAuthorCheckOutcome(h, 'failed');
+  finishRole(h, ref, 'execution:only-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:only', digest: sha('only'),
+  });
+  await h.executor.execute(ctx); // gate rejects → repair_wait
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+  // Next reconcile: 1 rejected attempt ≥ maxAttempts(1) → human park with a reason.
+  await h.executor.execute(ctx);
+  const state = h.coordinator.readState(ref);
+  assert.equal(state.loopState, 'paused');
+  assert.equal(state.kanbanPhase, 'blocked');
+
+  const serialized = serializeWorkplaceRef(ref);
+  const reasons = h.db.prepare(
+    'SELECT id,reason_code,message FROM factory_workplace_park_reasons WHERE workplace_ref=?',
+  ).all(serialized);
+  assert.equal(reasons.length, 1, 'exactly one park reason row (idempotent reconcile)');
+  assert.equal(reasons[0].reason_code, 'RECOVERY_BUDGET_EXHAUSTED');
+  assert.match(reasons[0].message, /1 unsuccessful attempt\(s\) for role 'author'/);
+  assert.match(reasons[0].message, /test\.production-contract/,
+    'the decoded findings of the last rejection ride along');
+
+  const workplace = h.db.prepare(
+    'SELECT active_recovery_case_ref FROM factory_workplaces WHERE workplace_ref=?',
+  ).get(serialized);
+  assert.equal(workplace.active_recovery_case_ref, `workplace-park-reason:${reasons[0].id}`,
+    'the parked workplace points at its reason');
+  h.db.close();
+});
+
+test('Fix-2: an effect-repair transition tags the failed ledger action on the workplace', async () => {
+  const h = harness({ outcome: 'repair_required', reason: 'integration blocked' });
+  wireRejectionAccounting(h);
+  const definition = cell({ effect: true });
+  const ctx = context(definition);
+  const ref = workplaceRef('singleton-cell');
+  const serialized = serializeWorkplaceRef(ref);
+
+  await h.executor.execute(ctx);
+  finishRole(h, ref, 'execution:effect-fail-author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:effect-fail', digest: sha('effect-fail'),
+  });
+  // The real git-integration effect writes its ledger action BEFORE returning
+  // repair_required; model that exactly (the ledger owns its table creation,
+  // the harness DB has only SCHEMA_SQL).
+  h.db.exec(`
+    CREATE TABLE IF NOT EXISTS factory_external_effect_actions (
+      id INTEGER PRIMARY KEY,
+      provider_namespace TEXT NOT NULL,
+      request_snapshot TEXT NOT NULL,
+      state TEXT NOT NULL,
+      last_error TEXT
+    );
+  `);
+  h.executor['opts'].postAcceptanceEffects.run = (effectId, input) => {
+    h.db.prepare(
+      `INSERT INTO factory_external_effect_actions
+         (id,provider_namespace,request_snapshot,state,last_error)
+       VALUES (9,'factory.git-integration.v1',?,'failed','integration blocked')`,
+    ).run(JSON.stringify({
+      schema: 'factory.git-integration-request.v1',
+      workplaceRef: serialized,
+      candidateSetRef: input.authority.candidateSetRef,
+    }));
+    return { outcome: 'repair_required', reason: 'integration blocked' };
+  };
+
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+  const workplace = h.db.prepare(
+    'SELECT active_recovery_case_ref FROM factory_workplaces WHERE workplace_ref=?',
+  ).get(serialized);
+  assert.equal(workplace.active_recovery_case_ref, 'effect-recovery:9',
+    'the effect-repair transition is traceable to the exact failed action');
   h.db.close();
 });

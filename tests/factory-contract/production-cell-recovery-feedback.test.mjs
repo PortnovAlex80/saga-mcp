@@ -65,6 +65,14 @@ function createDb() {
       product_digest TEXT NOT NULL,
       PRIMARY KEY(candidate_set_ref, ordinal)
     );
+    CREATE TABLE factory_external_effect_actions (
+      id INTEGER PRIMARY KEY,
+      provider_namespace TEXT NOT NULL,
+      request_snapshot TEXT NOT NULL,
+      state TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return db;
 }
@@ -223,6 +231,101 @@ test('later accepted GateDecision clears stale recovery feedback', () => {
   bind(createSqliteProductionCellProjectionPersistence(db));
   const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);
   assert.equal(stored.recovery_feedback, null);
+});
+
+// ---------------------------------------------------------------------------
+// Fix-2 (worker feedback loop map) — effect-repair closes the feedback loop.
+// The stopwatch case: the final gate ACCEPTED the candidate, then the
+// post-acceptance effect failed (PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH).
+// The head stays `accepted`, so the old collector wiped the desk to null and
+// the repair hire started blind. The feedback must now be rebuilt from the
+// failed external-effect action instead.
+// ---------------------------------------------------------------------------
+
+test('Fix-2: accepted head + failed post-acceptance effect projects ledger cause as recovery feedback', () => {
+  const db = createDb();
+  const meta = baseTaskMetadata('author');
+  db.prepare('INSERT INTO tasks(id,metadata,project_repository_id) VALUES (10,?,3)')
+    .run(JSON.stringify(meta));
+  db.prepare('INSERT INTO factory_work_intents(id,retry_budget) VALUES (41,3)').run();
+  insertCandidate(db, 'candidate-author-1', 'author');
+  // Accepted final gate whose subject is the accepted author set.
+  db.prepare(`INSERT INTO factory_gate_decisions
+    (decision_key,gate_run_ref,gate_ref,workplace_ref,gate_phase,
+     subject_candidate_set_ref,assessment_candidate_set_refs,
+     check_plan_ref,check_plan_digest,check_receipt_refs,verdict,
+     repair_target_role,recovery_issue_ref,decided_at)
+    VALUES ('decision-accepted','gate-run-2','formalization-acceptance-gate',?,'final',
+      'candidate-author-1','[]','formalization-acceptance-plan','plan-digest','[]',
+      'accepted',NULL,NULL,'2026-08-09T07:01:00.000Z')`)
+    .run(meta.workplace_ref);
+  db.prepare(`INSERT INTO factory_workplace_gate_decision_heads(workplace_ref,decision_key)
+    VALUES (?,?) ON CONFLICT(workplace_ref) DO UPDATE SET decision_key=excluded.decision_key`)
+    .run(meta.workplace_ref, 'decision-accepted');
+  // The failed git-integration action for the accepted candidate set.
+  db.prepare(`INSERT INTO factory_external_effect_actions
+    (id,provider_namespace,request_snapshot,state,last_error)
+    VALUES (2,'factory.git-integration.v1',?,'failed',?)`).run(
+    JSON.stringify({
+      schema: 'factory.git-integration-request.v1',
+      workplaceRef: meta.workplace_ref,
+      candidateSetRef: 'candidate-author-1',
+    }),
+    'PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task 187 submitted '
+      + '86e28119e0edcfbc8f80ab31798fe50a65806067 but branch is '
+      + '793c0704afe45e396426a756a84dbcdf95788b44',
+  );
+
+  bind(createSqliteProductionCellProjectionPersistence(db));
+  const feedback = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata)
+    .recovery_feedback;
+
+  assert.ok(feedback, 'effect-repair feedback is projected instead of being wiped to null');
+  assert.equal(feedback.schemaVersion, 'factory.production-cell-recovery-feedback.v1');
+  assert.equal(feedback.repairTargetRole, 'author');
+  assert.equal(feedback.issue.reasonCode, 'acceptance-effect-repair-required');
+  assert.equal(feedback.issue.findings[0].code, 'effect:PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH');
+  assert.match(feedback.issue.findings[0].message, /86e28119e0edcfbc8f80ab31798fe50a65806067/);
+  assert.match(feedback.issue.findings[0].message, /793c0704afe45e396426a756a84dbcdf95788b44/);
+  assert.deepEqual(feedback.issue.findings[0].evidenceRefs, ['external-effect-action:2']);
+  assert.equal(feedback.rejectedCandidateSet.candidateSetRef, 'candidate-author-1');
+  assert.equal(feedback.gateDecision.decisionRef, 'decision-accepted');
+});
+
+test('Fix-2: accepted head without a failed effect action still clears stale feedback', () => {
+  const db = createDb();
+  const meta = { ...baseTaskMetadata('author'), recovery_feedback: { stale: true } };
+  db.prepare('INSERT INTO tasks(id,metadata,project_repository_id) VALUES (10,?,3)')
+    .run(JSON.stringify(meta));
+  db.prepare('INSERT INTO factory_work_intents(id,retry_budget) VALUES (41,3)').run();
+  insertCandidate(db, 'candidate-author-1', 'author');
+  db.prepare(`INSERT INTO factory_gate_decisions
+    (decision_key,gate_run_ref,gate_ref,workplace_ref,gate_phase,
+     subject_candidate_set_ref,assessment_candidate_set_refs,
+     check_plan_ref,check_plan_digest,check_receipt_refs,verdict,
+     repair_target_role,recovery_issue_ref,decided_at)
+    VALUES ('decision-accepted','gate-run-2','formalization-acceptance-gate',?,'final',
+      'candidate-author-1','[]','formalization-acceptance-plan','plan-digest','[]',
+      'accepted',NULL,NULL,'2026-08-09T07:01:00.000Z')`)
+    .run(meta.workplace_ref);
+  db.prepare(`INSERT INTO factory_workplace_gate_decision_heads(workplace_ref,decision_key)
+    VALUES (?,?) ON CONFLICT(workplace_ref) DO UPDATE SET decision_key=excluded.decision_key`)
+    .run(meta.workplace_ref, 'decision-accepted');
+  // A SUCCEEDED action for the same set must not produce effect-repair feedback.
+  db.prepare(`INSERT INTO factory_external_effect_actions
+    (id,provider_namespace,request_snapshot,state,last_error)
+    VALUES (5,'factory.git-integration.v1',?,'succeeded',NULL)`).run(
+    JSON.stringify({
+      schema: 'factory.git-integration-request.v1',
+      workplaceRef: meta.workplace_ref,
+      candidateSetRef: 'candidate-author-1',
+    }),
+  );
+
+  bind(createSqliteProductionCellProjectionPersistence(db));
+  const stored = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=10').get().metadata);
+  assert.equal(stored.recovery_feedback, null,
+    'no failed effect action → the accepted head clears feedback as before');
 });
 
 test('submission-preflight rejection survives projection before any CandidateSet/GateDecision', () => {

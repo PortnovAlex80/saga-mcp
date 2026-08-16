@@ -1168,6 +1168,21 @@ CREATE INDEX IF NOT EXISTS idx_factory_workplaces_process_run ON factory_workpla
 CREATE INDEX IF NOT EXISTS idx_factory_workplaces_loop_state ON factory_workplaces(loop_state);
 CREATE INDEX IF NOT EXISTS idx_factory_workplaces_kanban_phase ON factory_workplaces(kanban_phase);
 
+-- Fix-1 (worker feedback loop map): a human park (blocked/paused) must always
+-- carry its reason. Append-only audit — one row per park event; the workplace
+-- points at the park via active_recovery_case_ref. Rows are never updated or
+-- deleted; a resume simply leaves them as history.
+CREATE TABLE IF NOT EXISTS factory_workplace_park_reasons (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  workplace_ref  TEXT NOT NULL REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  reason_code    TEXT NOT NULL,
+  message        TEXT NOT NULL,
+  evidence_refs  TEXT NOT NULL DEFAULT '[]',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_factory_workplace_park_reasons_ref
+  ON factory_workplace_park_reasons(workplace_ref);
+
 -- A fan-out Production Cell is one immutable dependency graph, not a set of
 -- task-status observations. task_dependencies is a rebuildable projection.
 CREATE TABLE IF NOT EXISTS factory_workplace_graphs (
