@@ -561,6 +561,30 @@ a.core-cell-kb-chip:hover { border-color: var(--cc-flow); color: var(--cc-flow);
 .core-cell-tl-reason-full li + li { margin-top: 5px; }
 .core-cell-tl-reason-full li::before { content: '↳ '; color: var(--cc-wait); }
 
+/* ---- эффекты наружу: компактная строка на эффект ---- */
+.core-cell-eff {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--cc-border);
+  border-radius: 5px;
+  font-size: 11px;
+}
+.core-cell-eff + .core-cell-eff { margin-top: 5px; }
+.core-cell-eff-kind {
+  color: var(--cc-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.core-cell-eff-state { color: var(--cc-muted); margin-left: auto; white-space: nowrap; }
+.core-cell-eff-att { color: var(--cc-muted); font-size: 10px; }
+.core-cell-eff-ok .core-cell-eff-state { color: var(--cc-ok); }
+.core-cell-eff-fail { border-color: color-mix(in srgb, var(--cc-fail) 50%, var(--cc-border)); }
+.core-cell-eff-fail .core-cell-eff-state { color: var(--cc-fail); }
+
 /* ------------------------ финал/recovery/эффекты ------------------------ */
 
 .core-cell-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }

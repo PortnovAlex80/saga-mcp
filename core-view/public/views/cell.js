@@ -932,8 +932,23 @@ function renderExtras(data) {
     '  <div class="core-cell-card-title">Эффекты наружу <span class="core-cell-card-note">'
     + (eff.length ? eff.length : 'пусто') + '</span></div>',
     eff.length
-      ? eff.map((e) => '<div class="core-cell-kv"><span>' + esc(String(e.kind || '—')) + '</span><code>'
-        + esc(String(e.state || '—')) + (e.receipt ? ' · receipt' : '') + '</code></div>').join('')
+      ? eff.map((e) => {
+        // имя: semantic kind, иначе короткий хеш ключа действия; полный ключ — в тултипе
+        const kindLabel = e.kind && !/^[0-9a-f]{16,}$/i.test(e.kind)
+          ? e.kind
+          : (e.actionKey ? 'action ' + trunc(e.actionKey, 10) : (e.kind ? trunc(e.kind, 14) : '—'));
+        const state = String(e.state || '—');
+        const stateCls = state === 'succeeded' || e.receipt ? 'core-cell-eff-ok'
+          : state === 'failed' ? 'core-cell-eff-fail' : '';
+        const tip = [e.ref, e.actionKey ? 'action: ' + e.actionKey : '',
+          e.attempts != null ? 'попыток: ' + e.attempts : '',
+          e.lastError ? 'ошибка: ' + e.lastError : ''].filter(Boolean).join('\n');
+        return '<div class="core-cell-eff ' + stateCls + '" title="' + esc(tip) + '">'
+          + '<span class="core-cell-eff-kind">' + esc(kindLabel) + '</span>'
+          + '<span class="core-cell-eff-state">' + esc(state) + (e.receipt ? ' · receipt' : '') + '</span>'
+          + (e.attempts != null && e.attempts > 1 ? '<span class="core-cell-eff-att">×' + esc(String(e.attempts)) + '</span>' : '')
+          + '</div>';
+      }).join('')
       : '<div class="core-cell-none">нет</div>',
     '</section>',
   ].join('');

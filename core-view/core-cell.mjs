@@ -140,7 +140,7 @@ export function buildCell(db, { workplaceRef } = {}) {
     });
   }
   const actionRows = db.prepare(
-    `SELECT id, action_key, state, created_at
+    `SELECT id, action_key, provider_namespace, state, execution_attempts, last_error, created_at
        FROM factory_external_effect_actions
       WHERE process_run_id = ? AND module_ref_key = ?
       ORDER BY created_at DESC LIMIT 50`,
@@ -148,7 +148,11 @@ export function buildCell(db, { workplaceRef } = {}) {
   for (const a of actionRows) {
     effects.push({
       ref: `effect-action:${a.id}`,
-      kind: a.action_key ?? null,
+      // action_key — хеш идемпотентности; человекочитаемое имя — namespace
+      kind: a.provider_namespace ?? null,
+      actionKey: a.action_key ?? null,
+      attempts: a.execution_attempts ?? null,
+      lastError: a.last_error ?? null,
       state: a.state ?? null,
       at: toIso(a.created_at),
       receipt: false,
