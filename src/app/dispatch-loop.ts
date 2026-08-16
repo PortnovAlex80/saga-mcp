@@ -19,6 +19,7 @@ import type {
 import type { IdGeneratorPort } from '../application/ports/conveyor-ports.js';
 import type { ConcurrencyAdmissionSnapshot } from '../application/ports/factory-runtime-persistence.js';
 import { asExecutionId } from '../lifecycle/domain/ids.js';
+import { engineLog } from '../runtime/engine-file-logger.js';
 
 /**
  * Typed outcome of ONE dispatch attempt (plan item 19, after
@@ -280,9 +281,9 @@ export async function distributeQueuedTasks(
         // Recoverable per-card failure: warn, poison this card for the drain,
         // continue with the next card. The engine keeps dispatching healthy
         // cards (granularity invariant of item 19).
-        process.stderr.write(
+        engineLog(
           `[dispatch] card_error task=${outcome.taskId ?? 'unknown'} `
-          + `retryable=${outcome.retryable}: ${outcome.reason}\n`,
+          + `retryable=${outcome.retryable}: ${outcome.reason}`,
         );
         if (outcome.taskId !== null) {
           poisonedTasks.add(outcome.taskId);
@@ -298,9 +299,9 @@ export async function distributeQueuedTasks(
         }
         continue;
       }
-      process.stdout.write(
+      engineLog(
         `[dispatch] assigned task=${outcome.assignment.taskId} `
-        + `execution=${outcome.assignment.workerExecutionId}\n`,
+        + `execution=${outcome.assignment.workerExecutionId}`,
       );
       const tracked: Promise<number> = outcome.completion
         .then((count) => {
@@ -313,11 +314,11 @@ export async function distributeQueuedTasks(
 
     if (active.size === 0) {
       if (kernelWorkPending) {
-        process.stdout.write('[dispatch] yielding to pending kernel verification\n');
+        engineLog('[dispatch] yielding to pending kernel verification');
         break;
       }
       if (capacityBlockedForNow) {
-        process.stdout.write('[dispatch] durable concurrency capacity reached\n');
+        engineLog('[dispatch] durable concurrency capacity reached');
         break;
       }
       if (queueExhaustedForNow) break;
@@ -328,8 +329,8 @@ export async function distributeQueuedTasks(
     await Promise.race(active);
   }
 
-  process.stdout.write(
-    `[dispatch] drain complete: ${terminalWorkers} worker execution(s) terminal\n`,
+  engineLog(
+    `[dispatch] drain complete: ${terminalWorkers} worker execution(s) terminal`,
   );
   return terminalWorkers;
 }
@@ -407,10 +408,10 @@ async function waitForAssignedWorker(input: {
 }
 
 function logTerminal(assignment: AssignedWork, snapshot: WorkerRunSnapshot): void {
-  process.stdout.write(
+  engineLog(
     `[dispatch] task=${assignment.taskId} run=${snapshot.status}: `
     + `${snapshot.completed} completed, ${snapshot.failed} failed`
-    + `${snapshot.last_error ? `; error=${snapshot.last_error}` : ''}\n`,
+    + `${snapshot.last_error ? `; error=${snapshot.last_error}` : ''}`,
   );
 }
 

@@ -30,6 +30,12 @@ import {
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
+import {
+  engineHeartbeatTouch,
+  engineLog,
+  enginePhaseMark,
+  initEngineMarkers,
+} from './runtime/engine-file-logger.js';
 import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
 import { runFactoryBootRevision } from './app/factory-boot-revision.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
@@ -98,11 +104,22 @@ function writeLifecycleStartReceipt(run: {
 async function main() {
   const { launchRef } = parseArgs(process.argv);
   if (!process.env.DB_PATH) {
+    engineLog('[orchestrate-cli] fatal: DB_PATH env var is required (path to the saga SQLite database).');
     process.stderr.write(
       'DB_PATH env var is required (path to the saga SQLite database).\n',
     );
     process.exit(2);
   }
+  // Antifreeze layer A+B1: engine stdout is a blocked-pipe hazard (the
+  // panel drains it from ITS event loop; a stalled panel fills the pipe and
+  // blocks this process's main thread forever on the next write). Every
+  // engine line below goes to $SAGA_ENGINE_LOG instead. The heartbeat file
+  // mtime advances every <=5s while the main thread is alive — a stale
+  // mtime with a live PID is the externally observable freeze signal.
+  initEngineMarkers();
+  enginePhaseMark('boot');
+  const engineHeartbeat = setInterval(() => engineHeartbeatTouch(), 5_000);
+  engineHeartbeat.unref();
   const claimToken = randomUUID();
   const ticket = acquireFactoryLaunchController(launchRef, claimToken);
   const controllerEpoch = ticket.controllerEpoch!;
@@ -160,21 +177,26 @@ async function main() {
   // handlers surface the cause (unhandled rejection, uncaught exception, or
   // explicit exit) so we can see WHY the dispatch loop doesn't resume.
   process.on('uncaughtException', (err) => {
+    engineLog(`[orchestrate-cli] UNCAUGHT_EXCEPTION: ${err.message}`);
+    if (err.stack) engineLog(err.stack);
     process.stderr.write(`[orchestrate-cli] UNCAUGHT_EXCEPTION: ${err.message}\n`);
     if (err.stack) process.stderr.write(err.stack + '\n');
   });
   process.on('unhandledRejection', (reason) => {
+    engineLog(`[orchestrate-cli] UNHANDLED_REJECTION: ${String(reason)}`);
     process.stderr.write(`[orchestrate-cli] UNHANDLED_REJECTION: ${String(reason)}\n`);
   });
   process.on('beforeExit', (code) => {
+    engineLog(`[orchestrate-cli] BEFORE_EXIT: code=${code}`);
     process.stderr.write(`[orchestrate-cli] BEFORE_EXIT: code=${code}\n`);
   });
   process.on('exit', (code) => {
+    engineLog(`[orchestrate-cli] EXIT: code=${code}`);
     process.stderr.write(`[orchestrate-cli] EXIT: code=${code}\n`);
   });
 
-  process.stdout.write(
-    `[orchestrate-cli] starting project=${projectId} epic=${epicId} concurrency=${concurrency}\n`,
+  engineLog(
+    `[orchestrate-cli] starting project=${projectId} epic=${epicId} concurrency=${concurrency}`,
   );
 
   let application: SagaApplication | null = null;
@@ -206,11 +228,11 @@ async function main() {
       bootRevision.swept.length > 0 || bootRevision.adoption.adopted > 0
       || bootRevision.burial.buried > 0 || bootRevision.burial.workplacesReleased > 0
     ) {
-      process.stderr.write(
+      engineLog(
         `[orchestrate-cli] boot revision: adoption=${bootRevision.adoption.adopted} `
         + `buried=${bootRevision.burial.buried} `
         + `released=${bootRevision.burial.workplacesReleased} `
-        + `swept=${bootRevision.swept.length}\n`,
+        + `swept=${bootRevision.swept.length}`,
       );
     }
 
@@ -233,9 +255,9 @@ async function main() {
       assertFactoryControllerFence(launchRef, claimToken, controllerEpoch);
       const recovery = reconcileAutomaticPreSpawnRecovery(getDb(), ticket.lifecycleRunId);
       if (recovery) {
-        process.stderr.write(
+        engineLog(
           `[orchestrate-cli] automatic pre-spawn recovery=${recovery.recoveryRef} `
-          + `execution=${recovery.executionId} replayed=${recovery.replayed}\n`,
+          + `execution=${recovery.executionId} replayed=${recovery.replayed}`,
         );
       }
     }
@@ -258,7 +280,8 @@ async function main() {
     while (true) {
       if (controllerFenceLost) throw controllerFenceLost;
       assertFactoryControllerFence(launchRef, claimToken, controllerEpoch);
-      process.stderr.write(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode\n`);
+      enginePhaseMark('runEpisode');
+      engineLog(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode`);
       const admission = episodeRuntime.readConcurrencyAdmission(epicId);
       const result = await application.runEpisode({
         projectId,
@@ -286,7 +309,7 @@ async function main() {
       // The route is resolved per-execution at claim time from the task's
       // (module, cell, role, executionProfile) key — no per-stage tracking is
       // needed anymore (the model==mock / currentStageRef machinery is gone).
-      process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
+      engineLog(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}`);
       // Optional online factory checkpoint. It snapshots SQLite through the
       // backup API and content-addresses referenced artifact bytes. A failed
       // capture never publishes COMPLETE and never stops the production run.
@@ -310,24 +333,21 @@ async function main() {
                 }
               : {}),
           });
-          process.stdout.write(
-            `[orchestrate-cli] checkpoint: ${checkpoint.payload.checkpointRef}\n`,
-          );
+          engineLog(`[orchestrate-cli] checkpoint: ${checkpoint.payload.checkpointRef}`);
+          enginePhaseMark('checkpoint');
         } catch (checkpointError) {
+          engineLog(
+            `[orchestrate-cli] checkpoint not published: `
+            + `${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`,
+          );
           process.stderr.write(
             `[orchestrate-cli] checkpoint not published: `
-              + `${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}\n`,
+            + `${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}\n`,
           );
         }
       }
       // Structured log — every cycle for debugging
-      try {
-        const { appendFileSync: apf } = await import('node:fs');
-        const { tmpdir: tmp } = await import('node:os');
-        const lp = process.env.SAGA_ENGINE_LOG ?? `${tmp()}/saga-engine-manual.log`;
-        const ts2 = new Date().toISOString();
-        apf(lp, `[${ts2}] CYCLE: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
-      } catch { /* logging is best-effort */ }
+      engineLog(`[${new Date().toISOString()}] CYCLE: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}`);
 
       // Terminal — lifecycle finished (completed/failed/stopped).
       if (result.reason !== 'paused') break;
@@ -337,6 +357,7 @@ async function main() {
       // the SAME WorkAssignmentPort that composition-root created — one spawn
       // point, one assignment authority, one route resolver. There is no second
       // factory and no second claudePath here.
+      enginePhaseMark('dispatch');
       const { distributeQueuedTasks } = await import('./app/dispatch-loop.js');
       const { loadSagaRuntimeConfig } = await import('./runtime/saga-runtime-config.js');
       const { getLastFactoryWorkAssignment, getLastFactoryWorkerExecutorFactory } = await import('./app/composition-root.js');
@@ -383,8 +404,11 @@ async function main() {
         ).get(epicId)),
         // Windows pipe-inheritance fail-safe: resolve the per-worker wait from
         // the durable execution state when the runner's run snapshot stalls.
-        pollDebug: (message: string) => process.stdout.write(`[wait-poll] ${message}
-`),
+        pollDebug: (message: string) => {
+          engineLog(`[wait-poll] ${message}`);
+          const task = /^task=\S+/.exec(message)?.[0];
+          if (task) enginePhaseMark(`wait-poll ${task}`);
+        },
         isExecutionDurableTerminal: (workerExecutionId: string) => Boolean(
           getDb().prepare(
             `SELECT 1 FROM worker_executions
@@ -429,14 +453,19 @@ async function main() {
         try {
           const sweep = supervisionHandle.reconcileOnce();
           if (sweep.reapedCount > 0) {
-            process.stdout.write(
-              `[orchestrate-cli] on-demand supervision reaped ${sweep.reapedCount} execution(s)\n`,
+            enginePhaseMark('supervision');
+            engineLog(
+              `[orchestrate-cli] on-demand supervision reaped ${sweep.reapedCount} execution(s)`,
             );
           }
         } catch (supervisionError) {
+          engineLog(
+            `[orchestrate-cli] on-demand supervision failed: `
+            + `${supervisionError instanceof Error ? supervisionError.message : String(supervisionError)}`,
+          );
           process.stderr.write(
             `[orchestrate-cli] on-demand supervision failed: `
-              + `${supervisionError instanceof Error ? supervisionError.message : String(supervisionError)}\n`,
+            + `${supervisionError instanceof Error ? supervisionError.message : String(supervisionError)}\n`,
           );
         }
 
@@ -451,8 +480,9 @@ async function main() {
           // host. They are not in this process's Promise set, so an empty
           // local dispatch queue does not mean the factory is idle.
           emptyDispatchStreak = 0;
-          process.stdout.write(
-            `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting\n`,
+          enginePhaseMark('wait-active');
+          engineLog(
+            `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting`,
           );
           await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
@@ -473,9 +503,10 @@ async function main() {
           // `paused` is the explicit onExhausted/human-required boundary. It is
           // intentionally invisible to normal dispatch and supervision. Do not
           // wait forever pretending this is automatic recovery.
-          process.stdout.write(
+          enginePhaseMark('stop-human-paused');
+          engineLog(
             `[orchestrate-cli] ${workplaceState.humanPausedCount} workplace(s) require explicit resume; `
-              + `automatic factory run is stopping in paused state\n`,
+            + `automatic factory run is stopping in paused state`,
           );
           break;
         }
@@ -486,9 +517,10 @@ async function main() {
           // not wait for the 30s worker-supervision timer. Resume the kernel
           // promptly and do not consume the empty-queue streak.
           emptyDispatchStreak = 0;
-          process.stdout.write(
+          enginePhaseMark('resume-kernel');
+          engineLog(
             `[orchestrate-cli] kernel-owned workplace progress pending `
-              + `${JSON.stringify(workplaceState.states)} — resuming lifecycle\n`,
+            + `${JSON.stringify(workplaceState.states)} — resuming lifecycle`,
           );
           await new Promise(resolve => setTimeout(resolve, 250));
           continue;
@@ -499,12 +531,14 @@ async function main() {
         // a bounded number of times. Persistent queued/dependency state then
         // stops instead of spinning forever.
         emptyDispatchStreak += 1;
-        process.stdout.write(
-          `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})\n`,
+        enginePhaseMark(`resume-empty streak=${emptyDispatchStreak}`);
+        engineLog(
+          `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})`,
         );
         if (emptyDispatchStreak >= MAX_EMPTY_DISPATCH_STREAK) {
-          process.stdout.write(
-            '[orchestrate-cli] empty-queue streak exhausted — stopping to avoid infinite loop\n',
+          enginePhaseMark('stop-empty-streak');
+          engineLog(
+            '[orchestrate-cli] empty-queue streak exhausted — stopping to avoid infinite loop',
           );
           break;
         }
@@ -514,16 +548,13 @@ async function main() {
       // Tasks were dispatched and drained — the lifecycle may have
       // advanced, so reset the streak and resume runEpisode.
       emptyDispatchStreak = 0;
-      process.stderr.write(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode\n`);
+      engineLog(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode`);
     }
     const result = lastResult!;
-    process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
+    enginePhaseMark('done');
+    engineLog(`[orchestrate-cli] done: ${JSON.stringify(result)}`);
     // Structured log — write pipeline result to engine log for debugging
-    const { appendFileSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const logPath = process.env.SAGA_ENGINE_LOG ?? `${tmpdir()}/saga-engine-manual.log`;
-    const ts = new Date().toISOString();
-    appendFileSync(logPath, `[${ts}] PIPELINE RESULT: ${JSON.stringify(result)}\n`);
+    engineLog(`[${new Date().toISOString()}] PIPELINE RESULT: ${JSON.stringify(result)}`);
     // Crash/reconciliation fallback: the direct post-terminal capture effect
     // (replay-capture) is the normal certification path, but if it was skipped
     // (process crash between transition and capture, or an effect error that
@@ -538,6 +569,10 @@ async function main() {
         );
         certifyAcceptedReplayCapsules(getDb(), projectId);
       } catch (certifyError) {
+        engineLog(
+          `[orchestrate-cli] replay certification sweep failed: `
+          + `${certifyError instanceof Error ? certifyError.message : String(certifyError)}`,
+        );
         process.stderr.write(
           `[orchestrate-cli] replay certification sweep failed: `
           + `${certifyError instanceof Error ? certifyError.message : String(certifyError)}\n`,
@@ -558,6 +593,9 @@ async function main() {
     // (distinct from 0=success and 1=failure).
     const isTerminal = result.reason !== 'paused';
     if (!isTerminal) {
+      engineLog(
+        `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}`,
+      );
       process.stderr.write(
         `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}\n`,
       );
@@ -576,8 +614,10 @@ async function main() {
     process.exit(isTerminal ? (result.reason === 'failed' ? 1 : 0) : 2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    engineLog(`[orchestrate-cli] fatal: ${msg}`);
     process.stderr.write(`[orchestrate-cli] fatal: ${msg}\n`);
     if (err instanceof Error && err.stack) {
+      engineLog(err.stack);
       process.stderr.write(err.stack + '\n');
     }
     try {
@@ -586,6 +626,7 @@ async function main() {
     process.exit(1);
   } finally {
     clearInterval(controllerHeartbeat);
+    clearInterval(engineHeartbeat);
     try { supervision?.stop(); } catch { /* best effort */ }
     try { application?.close(); } catch { /* best effort */ }
   }
@@ -705,6 +746,8 @@ async function loadCompositionOverrides(
 }
 
 main().catch(err => {
-  process.stderr.write(`[orchestrate-cli] unhandled: ${err instanceof Error ? err.stack : String(err)}\n`);
+  const detail = err instanceof Error ? err.stack : String(err);
+  engineLog(`[orchestrate-cli] unhandled: ${detail}`);
+  process.stderr.write(`[orchestrate-cli] unhandled: ${detail}\n`);
   process.exit(1);
 });

@@ -14,6 +14,7 @@ import { sha256Hex } from '../shared/canonical-json.js';import type {
   WorkerExecutorFactoryContext,
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
+import { engineLog } from '../runtime/engine-file-logger.js';
 import type { FactoryDiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/discovery-runtime-port.js';
 import { SqliteFactoryDiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-discovery-runtime.js';
 import {
@@ -844,9 +845,9 @@ export function createProductLifecycleRuntime(
         }) => {
           const record = packageInstallation.records.get(moduleRef.name);
           if (!record) {
-            process.stderr.write(
+            engineLog(
               `[factory] resolveModuleInstallation: no record for '${moduleRef.name}'. `
-              + `Available: ${[...packageInstallation.records.keys()].join(', ')}\n`,
+              + `Available: ${[...packageInstallation.records.keys()].join(', ')}`,
             );
             return null;
           }
@@ -858,8 +859,8 @@ export function createProductLifecycleRuntime(
       }
       : {
         resolveModuleInstallation: () => {
-          process.stderr.write(
-            '[factory] resolveModuleInstallation: packageInstallation is undefined/null\n',
+          engineLog(
+            '[factory] resolveModuleInstallation: packageInstallation is undefined/null',
           );
           return null;
         },
@@ -957,7 +958,7 @@ export function createProductLifecycleRuntime(
   // obligation is `in_progress` under this reconciler lease.
   const obligationReconciler = new TransitionObligationReconciler(
     obligationLedger,
-    (line: string) => console.log(`[obligation-reconciler] ${line}`),
+    (line: string) => engineLog(`[obligation-reconciler] ${line}`),
   );
   for (const handoffKind of [
     'close-presentation',
@@ -1046,7 +1047,7 @@ export function createProductLifecycleRuntime(
       const DEFER_STREAK_PERIOD = 60;
       if (sweep.completed > 0 || sweep.failed > 0) {
         deferOnlySweeps = 0;
-        console.log(
+        engineLog(
           `[obligation-reconciler] sweep dispatched=${sweep.dispatched} `
           + `completed=${sweep.completed} failed=${sweep.failed} `
           + `deferred=${sweep.deferred} skipped=${sweep.skipped}`,
@@ -1054,7 +1055,7 @@ export function createProductLifecycleRuntime(
       } else if (sweep.deferred > 0) {
         deferOnlySweeps += 1;
         if (deferOnlySweeps === 1 || deferOnlySweeps % DEFER_STREAK_PERIOD === 0) {
-          console.log(
+          engineLog(
             `[obligation-reconciler] defer-only streak=${deferOnlySweeps} `
             + `deferred=${sweep.deferred} — obligations are waiting on their `
             + `postconditions; see the DEFER lines above`,

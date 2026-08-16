@@ -132,14 +132,21 @@ export function createFactoryLaunchStarter(
       // change the environment already copied into the child process.
       const engineLog = `${tmpdir()}/saga-engine-${Date.now()}.log`;
       childEnv.SAGA_ENGINE_LOG = engineLog;
+      // Antifreeze layer A: the engine writes ALL of its own logging to
+      // SAGA_ENGINE_LOG via engine-file-logger. Its stdout MUST NOT be a
+      // pipe drained by this panel process — a stalled/dead panel leaves the
+      // pipe buffer full and the engine's next blocking stdout write freezes
+      // its main thread forever. stdout is therefore 'ignore'; stderr stays
+      // piped (crash diagnostics only, low volume) and lands in the same
+      // file. Startup success is proven by the receipt FILE, never by
+      // stdout (see waitForLifecycleStartReceipt).
       const child = spawnProcess('node', cliArgs, {
         detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['ignore', 'ignore', 'pipe'],
         env: childEnv,
       });
-      // Pipe engine stdout/stderr to a persistent log file for debugging.
+      // Pipe engine stderr to the persistent engine log for crash debugging.
       const logStream = createWriteStream(engineLog, { flags: 'a' });
-      child.stdout?.pipe(logStream);
       child.stderr?.pipe(logStream);
       child.unref();
       try {

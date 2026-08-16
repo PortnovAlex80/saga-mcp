@@ -9,6 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { engineLog } from '../../../runtime/engine-file-logger.js';
 
 import type {
   ExecutionProfileDefinition,
@@ -580,7 +581,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
               : 'the budget rolls over into a new recovery epoch (no human required)',
           );
           if (totalAttempts >= totalCap) {
-            console.log(
+            engineLog(
               `[recovery-budget] TOTAL-CAP cell=${cell.id} `
               + `workplace=${serializeWorkplaceRef(workplace.ref)} `
               + `role=${state.nextRole} attempts=${totalAttempts}/${totalCap} `
@@ -595,7 +596,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           }
           const nextEpoch = (baseline?.epoch ?? 0) + 1;
           const counters = this.rawAttemptCounters(workplace.ref, state.nextRole);
-          console.log(
+          engineLog(
             `[recovery-budget] ROLLOVER cell=${cell.id} `
             + `workplace=${serializeWorkplaceRef(workplace.ref)} `
             + `role=${state.nextRole} epoch=${nextEpoch} `
