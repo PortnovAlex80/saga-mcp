@@ -214,13 +214,25 @@ export function buildCell(db, { workplaceRef } = {}) {
 // HTTP-контракта).
 export { workerForWorkplace };
 
+// Коды диагностики чеков (base64-evidence) → человеческие фразы.
+const CHECK_CODE_PHRASES = {
+  'path-outside-authority': 'изменения вне разрешённых файлов задачи',
+  'implementation-coverage-gap': 'покрытие реализации не равно принятому объёму AC',
+  'verification-lineage-mismatch': 'линейка верификации не совпадает с предметом',
+  'review-finding-1': 'замечание ревью',
+};
+function checkPhrase(code) {
+  return CHECK_CODE_PHRASES[code] || (code ? 'чек: ' + code : 'провален чек');
+}
+
 /**
  * Причина возврата (repair_required) — прогрессивное раскрытие:
  *  1) findings ревью-вердикта из assessment-сета (человеческий текст);
- *  2) fallback — проваленные чеки гейт-рана (машинный уровень).
+ *  2) fallback — проваленные чеки гейт-рана: evidence-рефы несут base64
+ *     диагностику {code, message} — декодируем в читаемую причину.
  * decisionRow: строка factory_gate_decisions (нужны assessment_candidate_set_refs,
- * gate_run_ref). Возвращает { source, reviewVerdict?, findings?[], checksFailed?[] }
- * | null.
+ * gate_run_ref). Возвращает { source, summary?, reviewVerdict?, findings?[],
+ * checksFailed?[{provider,code,phrase,message}] } | null.
  */
 export function resolveRepairReason(db, decisionRow) {
   // 1) ревью-вердикт: assessment-сеты → члены → материал со схемой *review-verdict*
@@ -242,17 +254,41 @@ export function resolveRepairReason(db, decisionRow) {
         const j = JSON.parse(mat.payload_snapshot);
         const findings = Array.isArray(j.findings)
           ? j.findings.map(f => String(f)).slice(0, 8) : [];
-        return { source: 'review', reviewVerdict: j.verdict ?? null, findings };
+        return {
+          source: 'review',
+          reviewVerdict: j.verdict ?? null,
+          findings,
+          summary: findings.length ? findings[0].slice(0, 160)
+            : 'ревью: ' + (j.verdict || 'вердикт без текста'),
+        };
       } catch { /* повреждённый payload — идём к чекам */ }
     }
   }
-  // 2) проваленные чеки авторского гейта
+  // 2) проваленные чеки авторского гейта: evidence-рефы несут base64-диагностику
+  //    {code, message} — декодируем в читаемую причину.
   const failed = db.prepare(
-    `SELECT provider_id, outcome FROM factory_check_receipts
+    `SELECT provider_id, outcome, evidence_refs FROM factory_check_receipts
       WHERE check_run_ref = ? AND outcome IS NOT NULL AND outcome != 'passed'`,
-  ).all(decisionRow.gate_run_ref).slice(0, 6);
+  ).all(decisionRow.gate_run_ref).slice(0, 4);
   if (failed.length) {
-    return { source: 'checks', checksFailed: failed.map(f => `${f.provider_id}:${f.outcome}`) };
+    const checksFailed = failed.map(f => {
+      const item = { provider: f.provider_id, code: null, phrase: checkPhrase(null), message: null };
+      try {
+        const refs = JSON.parse(f.evidence_refs || '[]');
+        const b64 = String(refs[0] || '').split('/').pop();
+        const j = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+        item.code = j.code ?? null;
+        item.phrase = checkPhrase(j.code);
+        if (j.message) item.message = String(j.message).slice(0, 240);
+      } catch { /* evidence не декодируется — останется провайдер */ }
+      return item;
+    });
+    const first = checksFailed[0];
+    const summary = first
+      ? first.phrase + (first.message ? ': ' + first.message.slice(0, 140)
+          : ' (' + first.provider + ')')
+      : 'провалены чеки';
+    return { source: 'checks', checksFailed, summary };
   }
   return null;
 }
