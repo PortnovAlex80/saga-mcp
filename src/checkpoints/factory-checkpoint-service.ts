@@ -367,7 +367,8 @@ export class FactoryCheckpointService {
     }
   }
 
-  verify(manifestPath: string, hmacKey?: string): FactoryCheckpointManifest {    const resolved = path.resolve(manifestPath);
+  verify(manifestPath: string, hmacKey?: string): FactoryCheckpointManifest {
+    const resolved = path.resolve(manifestPath);
     if (!existsSync(`${resolved}.COMPLETE`)) {
       throw new Error('CHECKPOINT_INCOMPLETE: COMPLETE marker is missing');
     }
