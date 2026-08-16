@@ -315,7 +315,7 @@ function buildPrompt({
           'c. Use the listed materialized files; do not invent a call shape from memory.',
           'd. Before every consequential MCP write, read the listed checklist and the call file back.',
           modelMayUpdateTracker
-            ? 'e. Update the exact tracker after every completed step and before worker_done.'
+            ? 'e. Update the exact tracker after every completed step and before worker_done. The tracker and every file under docs/**/executions/** is factory-managed process bookkeeping, NOT product source: update them in place, but NEVER stage, commit, or git-add them — they stay uncommitted in the working tree.'
             : 'e. The tracker is runtime-owned for this read-only profile. Do not try to modify it; record findings in the typed product and worker_done receipt.',
           'Paths in this section are authoritative for this execution.',
           '--- END MACHINE-PROVISIONED PROCESS WORKSPACE ---',
@@ -359,10 +359,10 @@ function buildPrompt({
             'This worktree has already been prepared by the factory.',
             'Do NOT create or switch branches.',
             'Do NOT create another worktree.',
-            `All repository changes MUST be made under: ${processWorkspace.repositoryDesk.executionPath}`,
+            `All PRODUCT changes you author MUST be made under: ${processWorkspace.repositoryDesk.executionPath}. The factory-managed process files (the tracker, docs/**/executions/**, .saga-bootstrap.md) are the ONE sanctioned exception: update the tracker exactly where the workspace section above pins it, but NEVER stage or commit those files. Both rules hold at the same time.`,
             processWorkspace.repositoryDesk.git.detached
               ? 'This is a read-only review/verify desk. Do NOT commit or push.'
-              : 'Commit your work on the task branch already checked out for you.',
+              : 'Commit your work on the task branch already checked out for you. Stage explicitly (`git add <path>` per owned file); NEVER `git add -A` or `git add .` — a factory-managed file swept into the commit fails the changed-files check.',
             '--- END REPOSITORY DESK ---',
           ].join('\n')
         : '5. Use the existing task worktree/branch conventions from the skill.')

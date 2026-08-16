@@ -5,6 +5,14 @@ Before `product_submit`:
 - Frozen AC and repository ids, branches and base commits are unchanged.
 - `acceptanceCriterionIds` contains the exact integer atomic criterion ids from the
   machine-filled call; never substitute criterion hashes or document artifact ids.
+- On a resubmit, every verification item's ids were RESTORED VERBATIM from the
+  machine-prefilled call file — no hand-retyped, substituted, or foreign-project
+  ids (brief/PRD artifact ids are not criterion ids).
+- Every module declared in the accepted SRS decomposition still has its
+  implementation item; nothing was deleted, merged, or shrunk to make a check pass.
+- Every repair edit is a minimal targeted operation named by the findings:
+  restore/drop one id, add the missing dependency edge, or use the exact
+  required directory scope (`tests/`, not `tests/foo.test.js`).
 - Implementation work expresses coherent product increments, not AC cardinality.
 - Shared foundations precede dependent work through `dependsOnKeys`.
 - Every implementation item has one repository and non-empty AC coverage.

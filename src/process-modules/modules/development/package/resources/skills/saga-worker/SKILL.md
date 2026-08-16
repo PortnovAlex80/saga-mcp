@@ -105,6 +105,25 @@ or bootstrap configuration. Do not defend or retain unauthorized convenience
 files. If the product needs them, a graph item whose frozen scopes own them must
 create them later.
 
+## Staging & Commit Discipline
+
+- NEVER `git add -A` and NEVER `git add .`. Stage ONLY your in-scope paths,
+  explicitly, one `git add <path>` per file or directory inside this item's
+  frozen `changeScopes`.
+- NEVER stage or commit factory-managed files: the tracker, anything under
+  `docs/**/executions/**`, and `.saga-bootstrap.md`. Update the tracker exactly
+  as instructed, but LEAVE IT UNCOMMITTED — it is factory bookkeeping, not
+  product source, and it is outside your change authority even when it sits in
+  your working tree.
+- Before `worker_done`, recompute `git diff --name-only <base_commit>..<your-commit>`
+  and declare EXACTLY that path set in `snapshot.changedFiles`, minus the
+  factory-managed paths above. The gate compares your declaration against the
+  authoritative diff; a tracker or execution-doc path inside the diff is a
+  failed submission no matter how good the code is.
+- On a changed-files-mismatch repair: do not guess and do not retype the list
+  from memory. Recompute the diff, remove any factory-managed path from the
+  commit, and re-declare exactly what the corrected diff reports.
+
 ## Reviewer desk
 
 - The factory has provisioned a read-only detached checkout at the frozen

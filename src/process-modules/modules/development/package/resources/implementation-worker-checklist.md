@@ -5,6 +5,13 @@ Before `worker_done`:
 - The task was claimed through `worker_next`; you did not self-hire.
 - The change implements every AC listed in the task's `acceptanceCriterionIds`.
 - The branch is task-scoped; commits are reviewable and minimal.
+- No `git add -A` / `git add .` was used; every staged path was staged
+  explicitly and lies inside this item's frozen `changeScopes`.
+- The tracker and every factory-managed file (`docs/**/executions/**`,
+  `.saga-bootstrap.md`) is updated but NOT staged, NOT committed.
+- `snapshot.changedFiles` was recomputed from
+  `git diff --name-only <base_commit>..<your-commit>` and declares exactly
+  that path set, minus factory-managed paths.
 - Local checks that prove the bound AC(s) hold have been run.
 - Independent review approved the exact source commit (or a changes_requested loop completed).
 - The merge lock was acquired with `worker_merge_acquire`.
@@ -17,6 +24,10 @@ If review requested changes or the merge conflicted:
 - Do not invent ids, widen scope or bypass the merge gate.
 - Fix in place; the task branch/worktree survives the re-work loop.
 - Re-acquire the merge lock before re-merging.
+
+On a changed-files-mismatch repair: do not guess — recompute
+`git diff --name-only <base_commit>..<your-commit>`, correct the commit (drop
+any factory-managed path), and re-declare exactly that set.
 
 The settlement kernel reads the resulting tracker state to reconstruct the
 implementation workset; it does not trust worker-reported summaries.

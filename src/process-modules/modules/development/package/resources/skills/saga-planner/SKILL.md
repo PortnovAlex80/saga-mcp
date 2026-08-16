@@ -46,6 +46,11 @@ dependencies, change scopes and repository partitioning.
   least one implementation item for each repository. These are lifecycle-level
   bootstrap obligations (for Product Build: the package manifest and tests),
   even when the accepted SRS decomposition names only feature directories.
+- The plan must preserve every module the accepted SRS decomposition declares
+  (§2.2 module manifest: renderer, events, UI modules and their like are
+  product substance, not optional overhead). NEVER delete, merge, or shrink
+  implementation items to make an arithmetic or scope check pass — if a check
+  fails, fix the graph structure, not the module manifest.
 - Bind each implementation item to one frozen repository.
 - Required implementation keys must be partitioned exactly once across matching
   integration targets.
@@ -107,12 +112,29 @@ Read durable feedback, reuse the frozen DevelopmentCase, change only the rejecte
 plan fields, and submit a new immutable product. Never resubmit a different graph
 from the same execution or mutate an earlier CandidateSet.
 
+Repair means MINIMAL targeted operations derived from the findings — nothing
+else changes: restore a missing acceptance-criterion id, drop an extra id, add
+the missing dependency edge, use the directory scope exactly as required
+(`tests/`, not `tests/foo.test.js`). The module manifest survives every repair:
+deleting, merging, or shrinking implementation items to force a check green is
+a new defect, not a repair.
+
+The verification items were machine-prefilled with the correct
+acceptance-criterion ids from the frozen DevelopmentCase. On resubmit, RESTORE
+the prefilled list verbatim from the machine-filled call file — never
+hand-retype ids, never substitute an id because you do not recognize it. An id
+you cannot trace to the prefilled list is wrong (brief/PRD document artifact
+ids from this or any other project are NOT criterion ids): report it in your
+submission notes instead of substituting a guess.
+
 ## Never
 
 - submit more than one planner product;
 - create/move tasks or dependencies directly;
 - mutate Git/repository state;
 - equate §D2 row count with implementation task count;
+- delete, merge, or shrink implementation items to force a check to pass;
+- hand-retype or substitute acceptance-criterion ids;
 - use `worker_done` as graph acceptance authority;
 - invent ids/bases/skills;
 - spawn nested agents.
