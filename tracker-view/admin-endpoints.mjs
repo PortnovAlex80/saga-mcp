@@ -431,9 +431,32 @@ export function createAdminEndpointsApi({
 
   function handleFactoryStart(req, res) {
     parseRequest(req, async fields => {
+      // The board's engine panel speaks EPIC ids (the stop/concurrency
+      // endpoints are epic-scoped), while the factory-start contract accepts
+      // project_id/idea_url. Normalize epic_id → project_id here at the
+      // transport boundary instead of threading project ids through the
+      // epic-selecting panel.
+      let payload = { ...fields };
+      if (payload.epic_id !== undefined && payload.project_id === undefined) {
+        const epicId = Number(payload.epic_id);
+        if (!Number.isSafeInteger(epicId) || epicId < 1) {
+          return respondJson(res, 400, { ok:false, error:'epic_id must be a positive integer', code:'FACTORY_PROJECT_ID_INVALID' });
+        }
+        try {
+          const epic = withDbWrite(handle =>
+            handle.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
+          if (!epic) {
+            return respondJson(res, 404, { ok:false, error:`Эпик #${epicId} не найден`, code:'FACTORY_PROJECT_NOT_FOUND' });
+          }
+          payload.project_id = epic.project_id;
+          delete payload.epic_id;
+        } catch (error) {
+          return respondJson(res, 500, { ok:false, error:'db: ' + error.message });
+        }
+      }
       let command;
       try {
-        command = decodeFactoryStartCommand(fields);
+        command = decodeFactoryStartCommand(payload);
       } catch (error) {
         return respondJson(res, 400, { ok:false, error:error.message, code:error.code });
       }

@@ -960,7 +960,9 @@ export function createBoardRenderApi({
               const r = await fetch('/api/factory/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ project_id: projectId }),
+                // epic_id, not project_id: the engine panel is epic-scoped
+                // (same as the stop branch); the endpoint normalizes it.
+                body: JSON.stringify({ epic_id: epicId }),
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось запустить');

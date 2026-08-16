@@ -580,7 +580,7 @@ if (command === 'unpark') {
   if (input.projectId === null) die('unpark: --project <id> is required');
   const db = await openSoftStopDb(input.dbPath);
   try {
-    const { releaseOperatorHolds } = await import('../dist/app/operator-soft-stop.js');
+    const { releaseOperatorHolds, unparkWorkplaces } = await import('../dist/app/operator-soft-stop.js');
     const result = releaseOperatorHolds(db, {
       projectId: input.projectId,
       ...(input.workplaceRef !== null ? { workplaceRef: input.workplaceRef } : {}),
@@ -589,8 +589,21 @@ if (command === 'unpark') {
     for (const ref of result.holdRefs) {
       process.stdout.write(`[factory] unpark: released hold=${ref}\n`);
     }
+    // Budget-exhaustion parks (blocked/paused workplaces) get the reducer's
+    // canonical repair-requeued transition; released holds alone do not wake
+    // a parked line (verified live on P02 stopwatch).
+    const parks = unparkWorkplaces(db, {
+      projectId: input.projectId,
+      ...(input.workplaceRef !== null ? { workplaceRef: input.workplaceRef } : {}),
+      actorId: 'factory-cli unpark',
+      reason: 'operator unpark via factory CLI',
+    });
+    for (const park of parks.unparked) {
+      process.stdout.write(`[factory] unpark: requeued workplace=${park.workplaceRef} rev=${park.revision}\n`);
+    }
     process.stdout.write(
-      `[factory] unpark complete: ${result.released} hold(s) released — hiring resumes\n`,
+      `[factory] unpark complete: ${result.released} hold(s) released, `
+      + `${parks.unparked.length} parked workplace(s) requeued — hiring resumes\n`,
     );
   } finally {
     db.close();
