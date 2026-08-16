@@ -79,6 +79,12 @@ const RECOVERABLE_ERROR_PATTERNS: readonly RegExp[] = [
 function isRecoverableDispatchError(error: unknown): boolean {
   if (typeof error === 'object' && error !== null) {
     const code = (error as NodeJS.ErrnoException).code;
+    // Antifreeze B3: bounded busy-retry exhaustion on the claim (a BEGIN
+    // IMMEDIATE on the shared main connection) is TRANSIENT and card-agnostic
+    // — not a broken card and not an engine-fatal condition. Typed as a
+    // card_error the drain stops gracefully through the unresolved-error
+    // valve / emptyDispatchStreak instead of freezing on a busy-spin.
+    if (code === 'ENGINE_DB_BUSY') return true;
     if (typeof code === 'string' && RECOVERABLE_OS_ERROR_CODES.has(code)) {
       return true;
     }

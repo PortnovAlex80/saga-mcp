@@ -55,6 +55,7 @@ import { randomBytes } from 'node:crypto';
 import type { ExecutionRuntimeRepository } from '../../application/ports/factory-runtime-persistence.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
+import { EngineDbBusyError, withBusyRetry } from '../../runtime/busy-retry.js';
 
 export interface WorkerSupervisionOptions {
   executionRuntime: ExecutionRuntimeRepository;
@@ -175,9 +176,15 @@ function releaseSupervisionLease(
   holderId: string,
 ): void {
   try {
-    db.prepare(
-      `DELETE FROM supervision_locks WHERE scope_key=? AND holder_id=?`,
-    ).run(scopeKey, holderId);
+    // Antifreeze B3: bounded busy-retry on the DELETE (hot supervision write
+    // on the shared main connection); final failure is swallowed by the
+    // existing best-effort catch — expires_at is the reclaim safety net.
+    withBusyRetry(
+      () => db.prepare(
+        `DELETE FROM supervision_locks WHERE scope_key=? AND holder_id=?`,
+      ).run(scopeKey, holderId),
+      { db },
+    );
   } catch {
     // Best-effort; expires_at is the reclaim safety net.
   }
@@ -217,8 +224,17 @@ export function startWorkerSupervision(
     let leaseHeld = false;
     if (dbHandle !== null) {
       try {
-        leaseHeld = acquireSupervisionLease(
-          dbHandle, scopeKey, holderId, sweepLeaseMs, now(),
+        // Antifreeze B3: the CAS lease acquisition is a BEGIN IMMEDIATE
+        // transaction on the shared main connection — bounded busy-retry so
+        // contention with a checkpoint/worker write cannot busy-spin the main
+        // thread for the full busy_timeout. Final ENGINE_DB_BUSY degrades to
+        // the existing in-process-guard path (sweep skipped, next interval
+        // retries); reconcile idempotency remains the convergence guarantee.
+        leaseHeld = withBusyRetry(
+          () => acquireSupervisionLease(
+            dbHandle!, scopeKey, holderId, sweepLeaseMs, now(),
+          ),
+          { db: dbHandle },
         );
       } catch (err) {
         log(
@@ -244,19 +260,38 @@ export function startWorkerSupervision(
       // make decideStuckAction KEEP it indefinitely. Reconcile therefore sees
       // the PRE-SWEEP lease. Dead rows and alive rows whose foreman lease expired
       // are released/terminated before any heartbeat is extended.
-      const projections = options.executionRuntime.reconcile(
-        options.projectId,
-        options.epicId,
-      );
+      //
+      // Antifreeze B3: both repository writes run through bounded busy-retry
+      // (see SqliteExecutionRuntimeRepository). ENGINE_DB_BUSY means the sweep
+      // could not run in its budget — skip it; reconcile is idempotent, the
+      // lease/expire safety nets hold, and the next interval retries. A frozen
+      // sweep (the old behavior: a 5s+ main-thread busy-spin) is strictly worse.
+      let projections: ReturnType<ExecutionRuntimeRepository['reconcile']>;
+      let renewed: number;
+      try {
+        projections = options.executionRuntime.reconcile(
+          options.projectId,
+          options.epicId,
+        );
 
-      // Only executions that survived reconciliation remain active and eligible
-      // for liveness renewal. renewLeases touches lease_expires_at + heartbeat_at
-      // only; it must never touch progress/stuck clocks.
-      const renewed = options.executionRuntime.renewLeases(
-        options.projectId,
-        options.epicId,
-        options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
-      );
+        // Only executions that survived reconciliation remain active and eligible
+        // for liveness renewal. renewLeases touches lease_expires_at + heartbeat_at
+        // only; it must never touch progress/stuck clocks.
+        renewed = options.executionRuntime.renewLeases(
+          options.projectId,
+          options.epicId,
+          options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
+        );
+      } catch (busyError) {
+        if (busyError instanceof EngineDbBusyError) {
+          log(
+            `[supervision] sweep deferred (db busy) scope=${scopeKey}: `
+            + `${busyError.message} — retrying on the next interval`,
+          );
+          return EMPTY_RESULT;
+        }
+        throw busyError;
+      }
 
       let reapedCount = 0;
       let releasedCount = 0;

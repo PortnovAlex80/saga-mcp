@@ -36,6 +36,12 @@ import {
   enginePhaseMark,
   initEngineMarkers,
 } from './runtime/engine-file-logger.js';
+// Antifreeze layers B2+B3: the wait loop polls durable state through a
+// dedicated READONLY connection (never blocked by writers in WAL), and hot
+// engine writes get a bounded busy-retry window instead of a 5s main-thread
+// busy-spin (TB-2 freeze class).
+import { createDurableStateProbe, type DurableStateProbe } from './runtime/durable-state-probe.js';
+import { EngineDbBusyError, withBusyRetry } from './runtime/busy-retry.js';
 import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
 import { runFactoryBootRevision } from './app/factory-boot-revision.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
@@ -126,8 +132,24 @@ async function main() {
   let controllerFenceLost: Error | null = null;
   const controllerHeartbeat = setInterval(() => {
     try {
-      renewFactoryControllerLease(launchRef, claimToken, controllerEpoch);
+      // Antifreeze B3: the lease renewal is a hot engine write on the SHARED
+      // main connection — under contention it used to busy-spin the main
+      // thread for the full busy_timeout (5s) with all timers frozen. Bounded
+      // retry instead; ENGINE_DB_BUSY means the fence state is UNKNOWN (not
+      // lost) — defer to the next 10s heartbeat, the 30s lease TTL is the
+      // safety net, and the per-cycle assertFactoryControllerFence fails
+      // loudly if the lease genuinely expires.
+      withBusyRetry(
+        () => renewFactoryControllerLease(launchRef, claimToken, controllerEpoch),
+        { db: getDb() },
+      );
     } catch (error) {
+      if (error instanceof EngineDbBusyError) {
+        engineLog(
+          `[orchestrate-cli] controller lease renew deferred (db busy): ${error.message}`,
+        );
+        return;
+      }
       controllerFenceLost = error instanceof Error ? error : new Error(String(error));
     }
   }, 10_000);
@@ -201,6 +223,11 @@ async function main() {
 
   let application: SagaApplication | null = null;
   let supervision: { stop(): void } | null = null;
+  // Antifreeze B2: one readonly probe connection per engine. The wait loop's
+  // frequent reads (per-second worker polls, kernel checks, active counts)
+  // run here — a WAL reader never waits for the single writer slot, so the
+  // loop cannot busy-spin on the main connection. Closed in the finally below.
+  const durableStateProbe: DurableStateProbe = createDurableStateProbe(process.env.DB_PATH!);
   try {
     const overrides = await loadCompositionOverrides(projectId, epicId);
     // The lifecycle input may be supplied three ways. The preferred in-process
@@ -393,15 +420,9 @@ async function main() {
         projectId,
         epicId,
         readConcurrencyAdmission: () => episodeRuntime.readConcurrencyAdmission(epicId),
-        shouldYieldToKernel: () => Boolean(getDb().prepare(
-          `SELECT 1
-             FROM factory_workplaces w
-             JOIN factory_process_runs pr ON pr.id=w.process_run_id
-            WHERE pr.epic_id=?
-              AND pr.status IN ('running','paused')
-              AND w.loop_state IN ('repair_wait','verifying','effect_pending')
-            LIMIT 1`,
-        ).get(epicId)),
+        // Antifreeze B2: kernel-yield check runs per inner-loop iteration —
+        // route it through the readonly probe, not the shared main connection.
+        shouldYieldToKernel: () => durableStateProbe.isKernelWorkPending(epicId),
         // Windows pipe-inheritance fail-safe: resolve the per-worker wait from
         // the durable execution state when the runner's run snapshot stalls.
         pollDebug: (message: string) => {
@@ -409,13 +430,12 @@ async function main() {
           const task = /^task=\S+/.exec(message)?.[0];
           if (task) enginePhaseMark(`wait-poll ${task}`);
         },
-        isExecutionDurableTerminal: (workerExecutionId: string) => Boolean(
-          getDb().prepare(
-            `SELECT 1 FROM worker_executions
-              WHERE execution_id=?
-                AND state IN ('exited','lost','terminated','spawn_failed')
-              LIMIT 1`,
-          ).get(workerExecutionId),
+        // Antifreeze B2: this probe is polled every pollMs per worker (the
+        // hottest read of the engine). Readonly probe connection — never
+        // blocked by writers; errors fail closed to false and the next poll
+        // (1s) is the retry.
+        isExecutionDurableTerminal: (workerExecutionId: string) => (
+          durableStateProbe.isExecutionDurableTerminal(workerExecutionId)
         ),
         // Conveyor model: this application service owns dispatch and the
         // global concurrency budget. It atomically assigns each exact card
@@ -469,20 +489,20 @@ async function main() {
           );
         }
 
-        const activeExecutions = getDb().prepare(
-          `SELECT COUNT(*) AS n
-             FROM worker_executions
-            WHERE project_id=? AND epic_id=?
-              AND state IN ('reserved','running','cancel_requested')`,
-        ).get(projectId, epicId) as { n: number };
-        if (activeExecutions.n > 0) {
+        // Antifreeze B2: the paused-with-active-executions wait loop re-checks
+        // this count every 2s. Probe read; -1 (unknown) is treated as "still
+        // active" so a transient probe error can only extend the wait, never
+        // skip it.
+        const activeExecutions = durableStateProbe.countActiveExecutions(projectId, epicId);
+        if (activeExecutions !== 0) {
           // A resumed host may adopt executions launched by the previous
           // host. They are not in this process's Promise set, so an empty
           // local dispatch queue does not mean the factory is idle.
           emptyDispatchStreak = 0;
           enginePhaseMark('wait-active');
           engineLog(
-            `[orchestrate-cli] paused with ${activeExecutions.n} durable execution(s) still active — waiting`,
+            `[orchestrate-cli] paused with ${activeExecutions > 0 ? activeExecutions : '?'} `
+            + `durable execution(s) still active — waiting`,
           );
           await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
@@ -629,6 +649,7 @@ async function main() {
     clearInterval(engineHeartbeat);
     try { supervision?.stop(); } catch { /* best effort */ }
     try { application?.close(); } catch { /* best effort */ }
+    try { durableStateProbe.close(); } catch { /* best effort */ }
   }
 }
 

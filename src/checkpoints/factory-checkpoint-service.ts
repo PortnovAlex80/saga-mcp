@@ -22,6 +22,7 @@ import { canonicalJson, digestJson, sha256 } from './canonical-json.js';
 import { sha256Hex } from '../shared/canonical-json.js';
 import { readArtifactStorageKind } from '../modules/shared/artifact-storage-kind.js';
 import { SqliteResumeDirectiveRepository } from './sqlite-resume-directive-repository.js';
+import { withBusyRetry } from '../runtime/busy-retry.js';
 
 export interface CheckpointObject {
   readonly kind: 'database' | 'artifact' | 'worker_log';
@@ -129,11 +130,21 @@ export class FactoryCheckpointService {
 
     const db = new Database(dbPath);
     db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
-    db.exec(SCHEMA_SQL);
+    // Antifreeze B3: this connection is an IN-PROCESS contender of the
+    // engine's main connection (capture runs inside the engine cycle). The
+    // old busy_timeout=5000 meant every write collision busy-spun the shared
+    // main thread for up to 5s; with an async lock holder in the same process
+    // that spin is eternal (TB-2 class). Short window + bounded retry on
+    // every write below; a failed capture is already non-fatal upstream
+    // (orchestrate-cli logs "checkpoint not published" and continues).
+    db.pragma('busy_timeout = 250');
+    withBusyRetry(() => db.exec(SCHEMA_SQL), { db, attempts: 6, maxWaitMs: 5_000 });
     try {
       this.assertScope(db, options.projectId, options.epicId ?? null);
-      const sourceDbNamespace = this.ensureDatabaseIdentity(db);
+      const sourceDbNamespace = withBusyRetry(
+        () => this.ensureDatabaseIdentity(db),
+        { db, attempts: 6, maxWaitMs: 5_000 },
+      );
       const sequence = this.nextSequence(db, options.projectId, options.epicId ?? null);
       const parent = this.latestCheckpointRef(db, options.projectId, options.epicId ?? null);
       const checkpointRef = `checkpoint-${options.projectId}-${options.epicId ?? 'all'}-${sequence}-${randomUUID()}`;
@@ -255,7 +266,7 @@ export class FactoryCheckpointService {
       this.atomicWrite(manifestPath, `${canonicalJson(manifest)}\n`);
       this.atomicWrite(`${manifestPath}.COMPLETE`, `${digest}\n`);
 
-      db.prepare(
+      withBusyRetry(() => db.prepare(
         `INSERT INTO factory_checkpoints
           (checkpoint_ref, manifest_digest, project_id, epic_id,
            lifecycle_run_id, lifecycle_input_hash, parent_checkpoint_ref,
@@ -265,7 +276,7 @@ export class FactoryCheckpointService {
         checkpointRef, digest, options.projectId, options.epicId ?? null,
         payload.scope.lifecycleRunId, payload.scope.lifecycleInputHash, parent,
         sequence, storageRoot, canonicalJson(manifest), options.createdBy,
-      );
+      ), { db, attempts: 6, maxWaitMs: 5_000 });
       this.atomicWrite(
         path.join(storageRoot, `latest-${options.projectId}-${options.epicId ?? 'all'}`),
         `${checkpointRef}\n`,
@@ -279,8 +290,11 @@ export class FactoryCheckpointService {
       // across ALL remaining manifests in the store. Failure to prune is
       // logged and non-fatal — capture must never fail on housekeeping.
       try {
-        this.pruneRetentionPolicy(
-          db, storageRoot, options.projectId, options.epicId ?? null,
+        withBusyRetry(
+          () => this.pruneRetentionPolicy(
+            db, storageRoot, options.projectId, options.epicId ?? null,
+          ),
+          { db, attempts: 6, maxWaitMs: 5_000 },
         );
       } catch (error) {
         console.warn(

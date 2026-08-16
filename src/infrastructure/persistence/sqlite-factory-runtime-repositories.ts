@@ -12,6 +12,7 @@ import type {
 import type { WorkerModelRoute } from '../../application/ports/worker-executor.js';
 import os from 'node:os';
 import { getDb } from '../../db.js';
+import { withBusyRetry } from '../../runtime/busy-retry.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
 import { reconcileWorkerExecutions, type ProcessProbe } from '../../worker-executions.js';
@@ -365,7 +366,13 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
       }
       return projections;
     });
-    return run.immediate();
+    // Antifreeze B3: the supervision reconcile is one big BEGIN IMMEDIATE on
+    // the shared main connection — under write contention it used to
+    // busy-spin the engine's main thread for the full busy_timeout (5s), and
+    // an in-process async lock holder made that spin eternal (TB-2). Bounded
+    // busy-retry; the caller (worker-supervision-service) skips the sweep on
+    // ENGINE_DB_BUSY and retries on the next interval.
+    return withBusyRetry(() => run.immediate(), { db, attempts: 4, maxWaitMs: 3_000 });
   }
 
   renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number {
@@ -388,12 +395,14 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
     const db = getDb();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + leaseTtlMs).toISOString();
-    const info = db.prepare(
+    // Antifreeze B3: liveness renewal is a hot supervision write on the
+    // shared main connection — bounded busy-retry instead of a 5s busy-spin.
+    const info = withBusyRetry(() => db.prepare(
       `UPDATE worker_executions
           SET lease_expires_at=?, heartbeat_at=?
         WHERE project_id=? AND epic_id=? AND machine_id=?
           AND state IN ('reserved','running','cancel_requested')`,
-    ).run(expiresAt, now.toISOString(), projectId, epicId, os.hostname());
+    ).run(expiresAt, now.toISOString(), projectId, epicId, os.hostname()), { db, attempts: 4, maxWaitMs: 3_000 });
     return info.changes;
   }
 

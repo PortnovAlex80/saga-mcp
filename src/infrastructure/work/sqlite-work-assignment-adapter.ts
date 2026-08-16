@@ -23,6 +23,7 @@ import {
 } from '../../lifecycle/work-assignment-core.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import { bindReplayToClaim } from '../replay/replay-claim-binder.js';
+import { withBusyRetry } from '../../runtime/busy-retry.js';
 
 export type RouteResolverFn = (key: {
   module: string | null;
@@ -43,43 +44,53 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
       runId: input.runId,
       machineId: input.machineId,
     };
-    const task = withImmediateTransaction(this.db, () => {
-      const claimed = findNextClaimable(
-        this.db,
-        input.workerId,
-        input.projectId,
-        undefined,
-        0,
-        input.role,
-        input.epicId,
-        reservation,
-        input.taskIds,
-        this.routeResolver,
-        input.excludeTaskIds,
-      );
-      if (claimed) {
-        reserveTaskExecution(this.db, {
-          taskId: claimed.id,
-          epicId: claimed.epic_id,
-          projectId: input.projectId,
-          taskKind: claimed.task_kind,
-          metadata: claimed.metadata,
-          executionId: input.workerExecutionId,
-          preClaimStatus: claimed.status === 'in_progress' ? 'todo' : 'review',
-        });
-      }
-      return claimed;
-    });
+    // Antifreeze B3: the claim is a BEGIN IMMEDIATE on the shared main
+    // connection and runs per card in the dispatch drain — the hottest engine
+    // write. Bounded busy-retry; a final ENGINE_DB_BUSY is classified
+    // recoverable by the dispatch loop (card_error valve) instead of
+    // busy-spinning the main thread for the full busy_timeout (TB-2 class).
+    const task = withBusyRetry(
+      () => withImmediateTransaction(this.db, () => {
+        const claimed = findNextClaimable(
+          this.db,
+          input.workerId,
+          input.projectId,
+          undefined,
+          0,
+          input.role,
+          input.epicId,
+          reservation,
+          input.taskIds,
+          this.routeResolver,
+          input.excludeTaskIds,
+        );
+        if (claimed) {
+          reserveTaskExecution(this.db, {
+            taskId: claimed.id,
+            epicId: claimed.epic_id,
+            projectId: input.projectId,
+            taskKind: claimed.task_kind,
+            metadata: claimed.metadata,
+            executionId: input.workerExecutionId,
+            preClaimStatus: claimed.status === 'in_progress' ? 'todo' : 'review',
+          });
+        }
+        return claimed;
+      }),
+      { db: this.db },
+    );
     if (!task) return null;
 
     try {
       // Replay-first is a property of every normal factory assignment, not a
       // test mode. Missing capsule = ordinary selected-model execution.
-      bindReplayToClaim(this.db, {
+      // Antifreeze B3: the capsule schema-ensure + certification are writes on
+      // the same shared connection — same bounded busy-retry window.
+      withBusyRetry(() => bindReplayToClaim(this.db, {
         task,
         executionId: input.workerExecutionId,
         role: task.status === 'review_in_progress' ? 'reviewer' : 'author',
-      });
+      }), { db: this.db });
 
       return buildAssignedWorkFromClaim({
         db: this.db,
