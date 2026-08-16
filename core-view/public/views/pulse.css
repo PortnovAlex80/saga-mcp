@@ -1,0 +1,242 @@
+/* Factory Core View — L0 «Пульс завода» (pulse.css, исполнитель C).
+   Нейтмспейс .core-pulse-*; цвета через var(--core-*, fallback), чтобы вид
+   работал и до подключения core.css исполнителя B. */
+
+.core-pulse {
+  --cp-bg: var(--core-bg, #0d1117);
+  --cp-surface: var(--core-surface, #161b22);
+  --cp-surface2: var(--core-surface2, #21262d);
+  --cp-border: var(--core-border, #30363d);
+  --cp-text: var(--core-text, #e6edf3);
+  --cp-muted: var(--core-muted, #8b949e);
+  --cp-flow: var(--core-flow, #22d3ee);
+  --cp-ok: var(--core-ok, #3fb950);
+  --cp-scan: var(--core-scan, #58a6ff);
+  --cp-wait: var(--core-wait, #f39c12);
+  --cp-fail: var(--core-fail, #f85149);
+  --cp-replay: var(--core-replay, #a371f7);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  color: var(--cp-text);
+  font-size: 13px;
+}
+
+/* ----------------------------- верхняя полоса --------------------------- */
+
+.core-pulse-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 8px;
+}
+
+.core-pulse-counters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.core-pulse-counter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--cp-muted);
+  background: var(--cp-bg);
+}
+.core-pulse-counter b {
+  font-size: 13px;
+  color: var(--cp-text);
+  font-variant-numeric: tabular-nums;
+}
+.core-pulse-counter--ok { border-color: var(--cp-ok); color: var(--cp-ok); }
+.core-pulse-counter--ok b { color: var(--cp-ok); }
+.core-pulse-counter--replay { border-color: var(--cp-replay); color: var(--cp-replay); }
+.core-pulse-counter--replay b { color: var(--cp-replay); }
+.core-pulse-counter--none { border-style: dashed; }
+
+/* спарклайн активности */
+.core-pulse-sparkbox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+}
+
+.core-pulse-spark {
+  display: block;
+  width: 100%;
+  height: 32px;
+  background: var(--cp-bg);
+  border: 1px solid var(--cp-border);
+  border-radius: 4px;
+}
+
+.core-pulse-spark-line {
+  fill: none;
+  stroke: var(--cp-flow);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.core-pulse-spark-area {
+  fill: var(--cp-flow);
+  fill-opacity: .12;
+}
+
+.core-pulse-spark-label {
+  font-size: 10px;
+  color: var(--cp-muted);
+  text-align: right;
+}
+
+.core-pulse-spark-rate { color: var(--cp-text); font-weight: 600; }
+
+/* ------------------------------ ошибки ---------------------------------- */
+
+.core-pulse-err {
+  display: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--cp-fail);
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-fail);
+  border-radius: 8px;
+}
+.core-pulse-err.is-on { display: block; }
+
+/* ------------------------------ сетка реакторов ------------------------- */
+
+.core-pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  align-content: start;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.core-pulse-empty {
+  grid-column: 1 / -1;
+  padding: 40px 16px;
+  text-align: center;
+  background: var(--cp-surface);
+  border: 1px dashed var(--cp-border);
+  border-radius: 8px;
+}
+.core-pulse-empty-big { color: var(--cp-muted); font-weight: 600; }
+
+.core-pulse-reactor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px 10px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease;
+  user-select: none;
+}
+.core-pulse-reactor:hover,
+.core-pulse-reactor:focus-visible {
+  border-color: var(--cp-flow);
+  outline: none;
+  transform: translateY(-1px);
+}
+.core-pulse-reactor.is-active {
+  border-color: var(--cp-scan);
+  box-shadow: 0 0 0 1px var(--cp-scan) inset;
+}
+
+/* лампа статуса */
+.core-pulse-lamp {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cp-muted);
+}
+.core-pulse-lamp--running {
+  background: var(--cp-flow);
+  animation: core-pulse-lamp-run 1.6s ease-in-out infinite;
+}
+.core-pulse-lamp--completed { background: var(--cp-ok); }
+.core-pulse-lamp--failed { background: var(--cp-fail); }
+.core-pulse-lamp--idle { background: var(--cp-muted); opacity: .45; }
+
+@keyframes core-pulse-lamp-run {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, .55); opacity: 1; }
+  50% { box-shadow: 0 0 8px 2px rgba(34, 211, 238, .55); opacity: .6; }
+}
+
+/* мини-реактор (svg): ядро + кольцо прогресса */
+.core-pulse-rsvg { width: 64px; height: 64px; }
+
+.core-pulse-rtrack {
+  fill: none;
+  stroke: var(--cp-surface2);
+  stroke-width: 4;
+}
+
+.core-pulse-rarc {
+  fill: none;
+  stroke: var(--cp-scan);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.core-pulse-rsvgcore { fill: var(--cp-muted); }
+.core-pulse-rsvgcore.core-pulse-lamp--running { fill: var(--cp-flow); }
+.core-pulse-rsvgcore.core-pulse-lamp--completed { fill: var(--cp-ok); }
+.core-pulse-rsvgcore.core-pulse-lamp--failed { fill: var(--cp-fail); }
+.core-pulse-rsvgcore.core-pulse-lamp--idle { fill: var(--cp-muted); opacity: .55; }
+
+.core-pulse-rname {
+  max-width: 100%;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.core-pulse-rstage {
+  font: 11px ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  color: var(--cp-flow);
+  letter-spacing: .03em;
+}
+
+.core-pulse-rprogress {
+  font-size: 11px;
+  color: var(--cp-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.core-pulse-fresh { font-size: 10px; color: var(--cp-muted); }
+.core-pulse-fresh--live { color: var(--cp-ok); }
+.core-pulse-fresh--stale { opacity: .55; }
+.core-pulse-fresh--none { opacity: .55; }
+
+/* --------------------------- reduced motion ----------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .core-pulse-lamp--running { animation: none !important; }
+  .core-pulse-reactor { transition: none; }
+}

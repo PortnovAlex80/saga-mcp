@@ -1,0 +1,358 @@
+/* Factory Core View — базовый шелл (исполнитель B).
+   Неймспейс строго .core-* (виды имеют свои .chain-* / .tape-* / .cell-* / .pulse-*).
+   Токены — в точности из SPEC (GitHub-dark + неоны). Никаких внешних шрифтов:
+   системные + моноширинный для терминалов и чисел. */
+
+:root {
+  --core-bg: #0d1117;
+  --core-surface: #161b22;
+  --core-surface2: #21262d;
+  --core-border: #30363d;
+  --core-text: #e6edf3;
+  --core-muted: #8b949e;
+  --core-flow: #22d3ee;   /* поток материала */
+  --core-ok: #3fb950;     /* принято, QC passed */
+  --core-scan: #58a6ff;   /* гейт-скан */
+  --core-wait: #f39c12;   /* ожидание / repair */
+  --core-fail: #f85149;   /* отказ */
+  --core-replay: #a371f7; /* replay-капсула */
+
+  --core-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  --core-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas,
+               "Liberation Mono", Menlo, monospace;
+
+  --core-radius: 10px;
+  --core-header-h: 52px;
+}
+
+/* ---------- базовая раскладка ---------- */
+
+html, body { height: 100%; }
+
+.core-body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 500px at 20% -10%, rgba(34, 211, 238, .06), transparent 60%),
+    radial-gradient(900px 420px at 90% 0%, rgba(163, 113, 247, .05), transparent 55%),
+    var(--core-bg);
+  color: var(--core-text);
+  font-family: var(--core-font);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.core-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 900px; /* инструмент оператора: широкая сцена */
+}
+
+/* при потере связи снапшот замирает и приглушается, но не исчезает */
+.core-app.core-degraded .core-main {
+  opacity: .55;
+  filter: saturate(.55);
+}
+
+/* ---------- шапка ---------- */
+
+.core-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto;
+  min-height: var(--core-header-h);
+  padding: 8px 16px;
+  background: linear-gradient(180deg, rgba(34, 211, 238, .05), transparent 70%), var(--core-surface);
+  border-bottom: 1px solid var(--core-border);
+}
+
+.core-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+}
+
+/* мини-реактор в логотипе: ядро + орбита */
+.core-brand-reactor {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(34, 211, 238, .55);
+  border-radius: 50%;
+}
+.core-brand-reactor::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--core-flow);
+  box-shadow: 0 0 8px rgba(34, 211, 238, .8);
+  animation: core-reactor-breathe 2.4s ease-in-out infinite;
+}
+.core-brand-reactor::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border-top: 1px solid var(--core-replay);
+  animation: core-reactor-spin 6s linear infinite;
+}
+@keyframes core-reactor-breathe {
+  0%, 100% { box-shadow: 0 0 4px rgba(34, 211, 238, .5); }
+  50%      { box-shadow: 0 0 12px rgba(34, 211, 238, .95); }
+}
+@keyframes core-reactor-spin { to { transform: rotate(360deg); } }
+
+.core-brand-name {
+  font-family: var(--core-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--core-text);
+}
+.core-brand-sub {
+  font-size: 11px;
+  color: var(--core-muted);
+  letter-spacing: .4px;
+}
+
+/* ---------- селектор проекта ---------- */
+
+.core-project {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.core-project-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--core-muted);
+}
+.core-project-select {
+  max-width: 330px;
+  padding: 4px 8px;
+  font-family: var(--core-mono);
+  font-size: 12px;
+  color: var(--core-text);
+  background: var(--core-surface2);
+  border: 1px solid var(--core-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.core-project-select:focus {
+  outline: none;
+  border-color: var(--core-flow);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, .2);
+}
+
+/* ---------- табы ---------- */
+
+.core-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+.core-tab {
+  padding: 6px 14px;
+  font-family: var(--core-font);
+  font-size: 13px;
+  color: var(--core-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color .15s, background-color .15s;
+}
+.core-tab:hover { color: var(--core-text); background: var(--core-surface2); }
+.core-tab.core-tab-active {
+  color: var(--core-flow);
+  background: rgba(34, 211, 238, .08);
+  border-color: rgba(34, 211, 238, .4);
+  text-shadow: 0 0 8px rgba(34, 211, 238, .45);
+}
+
+/* ---------- правая часть шапки: пульс, часы, плаха ---------- */
+
+.core-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.core-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--core-muted);
+  box-shadow: 0 0 4px rgba(139, 148, 158, .6);
+}
+.core-pulse-dot.p-live {
+  background: var(--core-flow);
+  box-shadow: 0 0 10px rgba(34, 211, 238, .9);
+  animation: core-pulse-beat 1.6s ease-in-out infinite;
+}
+.core-pulse-dot.p-warm {
+  background: var(--core-wait);
+  box-shadow: 0 0 8px rgba(243, 158, 18, .8);
+}
+.core-pulse-dot.p-stale { background: var(--core-muted); box-shadow: none; }
+.core-pulse-dot.p-err {
+  background: var(--core-fail);
+  box-shadow: 0 0 10px rgba(248, 81, 73, .9);
+  animation: core-blink 1s steps(2, start) infinite;
+}
+@keyframes core-pulse-beat {
+  0%, 100% { transform: scale(1);   box-shadow: 0 0 5px rgba(34, 211, 238, .6); }
+  50%      { transform: scale(1.25); box-shadow: 0 0 14px rgba(34, 211, 238, 1); }
+}
+@keyframes core-blink { 50% { opacity: .25; } }
+
+.core-clock {
+  font-family: var(--core-mono);
+  font-size: 12px;
+  color: var(--core-muted);
+}
+
+/* плаха честности: проекция не авторизует переходы */
+.core-banner {
+  padding: 3px 10px;
+  font-family: var(--core-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--core-replay);
+  border: 1px dashed rgba(163, 113, 247, .55);
+  border-radius: 6px;
+  background: rgba(163, 113, 247, .07);
+}
+
+/* ---------- статусная строка ---------- */
+
+.core-statusline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 4px 16px;
+  font-family: var(--core-mono);
+  font-size: 11px;
+  color: var(--core-muted);
+  background: var(--core-bg);
+  border-bottom: 1px solid var(--core-border);
+}
+.core-statusline-sep { opacity: .5; }
+.core-statusline-spacer { flex: 1; }
+
+.core-conn { font-weight: 600; }
+.core-conn.conn-live  { color: var(--core-ok); }
+.core-conn.conn-boot  { color: var(--core-scan); }
+.core-conn.conn-dead  {
+  color: var(--core-fail);
+  animation: core-blink 1.2s steps(2, start) infinite;
+}
+
+.core-project-name { color: var(--core-text); }
+.core-facts { color: var(--core-muted); }
+
+.core-flash {
+  color: var(--core-scan);
+  opacity: 0;
+  transition: opacity .25s;
+}
+.core-flash.core-flash-on { opacity: 1; }
+
+/* ---------- сцена видов ---------- */
+
+.core-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.core-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.core-view[hidden] { display: none; }
+
+/* ---------- заглушка «вид в разработке» ---------- */
+
+.core-stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--core-muted);
+  text-align: center;
+  padding: 40px;
+}
+.core-stub-glyph {
+  font-size: 44px;
+  color: var(--core-border);
+  line-height: 1;
+}
+.core-stub-title { font-size: 16px; color: var(--core-text); }
+.core-stub-note {
+  font-family: var(--core-mono);
+  font-size: 11px;
+  max-width: 480px;
+  color: var(--core-muted);
+}
+.core-stub-hint {
+  font-size: 11px;
+  color: var(--core-muted);
+  border-top: 1px solid var(--core-border);
+  padding-top: 10px;
+}
+
+/* ---------- подвал ---------- */
+
+.core-footer {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 4px 16px;
+  font-family: var(--core-mono);
+  font-size: 10px;
+  color: var(--core-muted);
+  background: var(--core-surface);
+  border-top: 1px solid var(--core-border);
+}
+
+/* ---------- скроллбары в стиле темы ---------- */
+
+.core-view::-webkit-scrollbar,
+.core-statusline ::-webkit-scrollbar { width: 10px; height: 10px; }
+.core-view::-webkit-scrollbar-thumb {
+  background: var(--core-surface2);
+  border-radius: 5px;
+  border: 2px solid var(--core-bg);
+}
+.core-view::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- доступность: движение только по желанию системы ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .core-app .core-brand-reactor::before,
+  .core-app .core-brand-reactor::after,
+  .core-app .core-pulse-dot,
+  .core-app .core-conn.conn-dead {
+    animation: none !important;
+  }
+  .core-app * {
+    transition-duration: .01ms !important;
+  }
+}

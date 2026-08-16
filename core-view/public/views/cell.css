@@ -1,0 +1,453 @@
+/* Factory Core View — L2 «Ячейка под микроскопом» (cell.css, исполнитель C).
+   Нейтмспейс .core-cell-*; цвета через var(--core-*, fallback), чтобы вид
+   работал и до подключения core.css исполнителя B. */
+
+.core-cell {
+  --cc-bg: var(--core-bg, #0d1117);
+  --cc-surface: var(--core-surface, #161b22);
+  --cc-surface2: var(--core-surface2, #21262d);
+  --cc-border: var(--core-border, #30363d);
+  --cc-text: var(--core-text, #e6edf3);
+  --cc-muted: var(--core-muted, #8b949e);
+  --cc-flow: var(--core-flow, #22d3ee);
+  --cc-ok: var(--core-ok, #3fb950);
+  --cc-scan: var(--core-scan, #58a6ff);
+  --cc-wait: var(--core-wait, #f39c12);
+  --cc-fail: var(--core-fail, #f85149);
+  --cc-replay: var(--core-replay, #a371f7);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  color: var(--cc-text);
+  font-size: 13px;
+}
+
+/* ------------------------------ тулбар --------------------------------- */
+
+.core-cell-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+}
+
+.core-cell-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.core-cell-title-name { font-weight: 600; letter-spacing: .02em; }
+
+.core-cell-title-sub {
+  font-size: 11px;
+  color: var(--cc-muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.core-cell-search { display: flex; gap: 6px; }
+
+.core-cell-search-input {
+  width: 280px;
+  max-width: 46vw;
+  padding: 4px 8px;
+  font: 12px ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  color: var(--cc-text);
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+  outline: none;
+}
+.core-cell-search-input:focus { border-color: var(--cc-flow); }
+
+.core-cell-search-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--cc-text);
+  background: var(--cc-surface2);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.core-cell-search-btn:hover { border-color: var(--cc-flow); color: var(--cc-flow); }
+
+.core-cell-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--cc-muted);
+  white-space: nowrap;
+}
+
+.core-cell-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cc-muted);
+}
+.core-cell-status-dot--ok { background: var(--cc-ok); }
+.core-cell-status-dot--err { background: var(--cc-fail); }
+.core-cell-status-dot--idle { background: var(--cc-wait); }
+
+/* ---------------------------- пустые состояния -------------------------- */
+
+.core-cell-empty {
+  padding: 48px 16px;
+  text-align: center;
+  background: var(--cc-surface);
+  border: 1px dashed var(--cc-border);
+  border-radius: 8px;
+}
+.core-cell-empty-big { font-size: 15px; font-weight: 600; color: var(--cc-muted); }
+.core-cell-empty-hint { margin-top: 8px; font-size: 12px; color: var(--cc-muted); }
+
+/* ------------------------------ шапка станции --------------------------- */
+
+.core-cell-wpbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+}
+
+.core-cell-wpref {
+  font: 12px ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  color: var(--cc-flow);
+  word-break: break-all;
+}
+
+.core-cell-wpchips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.core-cell-chip {
+  display: inline-flex;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--cc-muted);
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+}
+.core-cell-chip b { color: var(--cc-text); font-weight: 600; }
+.core-cell-chip--fail { color: var(--cc-fail); border-color: var(--cc-fail); }
+
+/* -------------------------------- сетка --------------------------------- */
+
+.core-cell-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) minmax(300px, 4fr);
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .core-cell-grid { grid-template-columns: 1fr; }
+}
+
+.core-cell-cyclecard {
+  padding: 10px;
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+}
+
+.core-cell-svg { display: block; width: 100%; max-width: 480px; margin: 0 auto; height: auto; }
+
+/* тона (используются и в svg через class) */
+.core-cell-t-flow  { color: var(--cc-flow); }
+.core-cell-t-ok    { color: var(--cc-ok); }
+.core-cell-t-scan  { color: var(--cc-scan); }
+.core-cell-t-wait  { color: var(--cc-wait); }
+.core-cell-t-fail  { color: var(--cc-fail); }
+.core-cell-t-muted { color: var(--cc-muted); }
+.core-cell-t-replay { color: var(--cc-replay); }
+
+/* сегменты цикла */
+.core-cell-seg {
+  fill: none;
+  stroke: var(--cc-surface2);
+  stroke-width: 16;
+  stroke-linecap: round;
+  transition: stroke .3s ease;
+}
+.core-cell-seg--on.core-cell-t-flow  { stroke: var(--cc-flow); }
+.core-cell-seg--on.core-cell-t-ok    { stroke: var(--cc-ok); }
+.core-cell-seg--on.core-cell-t-scan  { stroke: var(--cc-scan); }
+.core-cell-seg--on.core-cell-t-wait  { stroke: var(--cc-wait); }
+.core-cell-seg--on.core-cell-t-fail  { stroke: var(--cc-fail); }
+.core-cell-seg--on.core-cell-t-muted { stroke: var(--cc-muted); }
+
+.core-cell-seg--on {
+  stroke-width: 18;
+  animation: core-cell-seg-pulse 1.8s ease-in-out infinite;
+}
+.core-cell-seg--done { stroke: var(--cc-ok); stroke-opacity: .55; }
+
+@keyframes core-cell-seg-pulse {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: .55; }
+}
+
+/* свечение активного сегмента */
+svg .core-cell-seg--on {
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* подписи сегментов */
+.core-cell-seglbl {
+  fill: var(--cc-muted);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+.core-cell-seglbl--on { font-weight: 600; fill: currentColor; }
+
+/* кольца ревизий (попытки) */
+.core-cell-revring {
+  fill: none;
+  stroke: var(--cc-border);
+  stroke-width: 1;
+  stroke-opacity: .5;
+}
+.core-cell-revring--latest { stroke: var(--cc-muted); stroke-opacity: .9; }
+
+/* терминальное свечение */
+.core-cell-halo {
+  fill: none;
+  stroke-width: 2;
+  stroke-opacity: .6;
+}
+.core-cell-halo--ok   { stroke: var(--cc-ok); animation: core-cell-halo-breathe 2.4s ease-in-out infinite; }
+.core-cell-halo--fail { stroke: var(--cc-fail); stroke-dasharray: 4 6; }
+
+@keyframes core-cell-halo-breathe {
+  0%, 100% { stroke-opacity: .65; stroke-width: 2; }
+  50% { stroke-opacity: .2; stroke-width: 5; }
+}
+
+/* ремонтная дуга назад */
+.core-cell-repair {
+  fill: none;
+  stroke: var(--cc-wait);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  stroke-opacity: .45;
+}
+.core-cell-repair--on {
+  stroke-opacity: 1;
+  stroke-width: 3;
+  animation: core-cell-repair-dash 1.2s linear infinite;
+}
+.core-cell-arrowhead { fill: var(--cc-wait); }
+
+@keyframes core-cell-repair-dash {
+  to { stroke-dashoffset: -20; }
+}
+
+/* ядро */
+.core-cell-core {
+  fill: var(--cc-bg);
+  stroke: var(--cc-border);
+  stroke-width: 1;
+}
+.core-cell-coreline {
+  fill: var(--cc-muted);
+  font-size: 10px;
+}
+.core-cell-coreline--name { fill: var(--cc-text); font-size: 11px; font-weight: 600; }
+.core-cell-coreline--state { fill: currentColor; font-weight: 600; }
+.core-cell-coreline--dim { fill: var(--cc-muted); font-size: 9.5px; }
+
+/* легенда под кругом */
+.core-cell-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--cc-muted);
+}
+.core-cell-lg { display: inline-flex; align-items: center; gap: 5px; }
+.core-cell-lgdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.core-cell-lg--dim { opacity: .7; }
+
+/* ------------------------------ правая колонка -------------------------- */
+
+.core-cell-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.core-cell-counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.core-cell-counter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--cc-muted);
+}
+.core-cell-counter b { font-size: 13px; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.core-cell-counter--wait { border-color: var(--cc-wait); }
+
+.core-cell-card {
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.core-cell-card--ok { border-color: var(--cc-ok); }
+.core-cell-card--term { padding-bottom: 6px; }
+
+.core-cell-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  margin-bottom: 6px;
+  color: var(--cc-text);
+}
+
+.core-cell-card-note {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--cc-muted);
+}
+
+.core-cell-none { padding: 6px 2px; font-size: 12px; color: var(--cc-muted); }
+
+/* ------------------------------ хронология ------------------------------ */
+
+.core-cell-timeline {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.core-cell-tl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  min-width: 0;
+}
+.core-cell-tl-row:hover { background: var(--cc-bg); }
+
+.core-cell-tl-time {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: var(--cc-muted);
+  flex: 0 0 auto;
+}
+
+.core-cell-tl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.core-cell-tl-dot--live { animation: core-cell-dot-live 1.4s ease-in-out infinite; }
+
+@keyframes core-cell-dot-live {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 6px 1px currentColor; opacity: .6; }
+}
+
+.core-cell-tl-text {
+  color: var(--cc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.core-cell-tl-text b { color: inherit; }
+
+.core-cell-replaybadge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--cc-replay);
+  border: 1px solid var(--cc-replay);
+  border-radius: 8px;
+}
+
+/* -------------------------------- терминал ------------------------------ */
+
+.core-cell-terminal {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+}
+
+.core-cell-logline { display: flex; gap: 10px; }
+.core-cell-logts { color: var(--cc-muted); flex: 0 0 auto; }
+.core-cell-logtext {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--cc-text);
+}
+.core-cell-logline.lv-warn .core-cell-logtext { color: var(--cc-wait); }
+.core-cell-logline.lv-error .core-cell-logtext { color: var(--cc-fail); }
+.core-cell-logline.lv-info .core-cell-logtext { color: var(--cc-text); }
+
+/* ------------------------ финал/recovery/эффекты ------------------------ */
+
+.core-cell-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+
+.core-cell-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 11px;
+  min-width: 0;
+}
+.core-cell-kv span { color: var(--cc-muted); flex: 0 0 auto; }
+.core-cell-kv code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  color: var(--cc-text);
+  word-break: break-all;
+}
+
+/* --------------------------- reduced motion ----------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .core-cell-seg--on,
+  .core-cell-halo--ok,
+  .core-cell-repair--on,
+  .core-cell-tl-dot--live {
+    animation: none !important;
+  }
+  .core-cell-seg { transition: none; }
+}
