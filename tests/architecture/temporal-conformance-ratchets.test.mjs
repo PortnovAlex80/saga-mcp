@@ -566,11 +566,22 @@ test('Ratchet: liveness-explainer progress obligation is non-empty — at least 
 });
 
 test('Ratchet: production and temporal dispatch yield for every kernel-driven Workplace state', () => {
+  // B2 (antifreeze): the engine's shouldYieldToKernel predicate moved from an
+  // inline getDb() query in orchestrate-cli.ts to the dedicated readonly
+  // durable-state probe (WAL readers never block on writers). The contract is
+  // unchanged: the COMPLETE kernel-state set must gate dispatch, and the
+  // production loop must route its yield check through the probe.
   const production = readContent(path.join(REPO_ROOT, 'src', 'orchestrate-cli.ts'));
+  const probe = readContent(path.join(REPO_ROOT, 'src', 'runtime', 'durable-state-probe.ts'));
   const temporalDriver = readContent(path.join(TEMPORAL_LIB_DIR, 'temporal-driver.mjs'));
   const completeKernelSet = /loop_state IN \('repair_wait','verifying','effect_pending'\)/;
-  assert.match(production, completeKernelSet);
+  assert.match(probe, completeKernelSet);
   assert.match(temporalDriver, completeKernelSet);
+  assert.match(
+    production,
+    /isKernelWorkPending/,
+    'orchestrate-cli must route shouldYieldToKernel through the readonly durable-state probe',
+  );
 });
 
 // ---------------------------------------------------------------------------
