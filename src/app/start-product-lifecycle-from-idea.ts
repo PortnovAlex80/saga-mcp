@@ -12,6 +12,8 @@
 
 import type Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { getDb } from '../db.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
@@ -22,6 +24,10 @@ import {
 import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
 import type { DevelopmentPolicySnapshot } from '../modules/development/domain/development-schemas.js';
 import { hashDevelopmentPolicy } from '../modules/development/domain/development-settlement-policy.js';
+import {
+  DEFAULT_REQUIRED_CHANGE_SCOPES,
+  deriveRequiredChangeScopesFromSrs,
+} from '../modules/development/domain/srs-derived-change-scopes.js';
 import {
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
   type DeliveryDeferredProfile,
@@ -49,15 +55,30 @@ export function buildDeferredDeliveryProfile(): DeliveryDeferredProfile {
  * Build a deterministic ReferenceDevelopmentPolicy snapshot. The development
  * policy has only three fields; its hash is computed by the canonical hashing
  * and is therefore reproducible across processes, not invented.
+ *
+ * `requiredChangeScopes` is derived from the accepted SRS file surface when
+ * its content is supplied (see `deriveRequiredChangeScopesFromSrs`). Without
+ * derivable SRS content the historical defaults are kept — fail-safe, never
+ * a rejection loop (workshop P07/todo: a hardcoded `package.json` scope
+ * pushed the plan away from the SRS's single-`index.html` delivery shape).
  */
-export function buildReferenceDevelopmentPolicy(): DevelopmentPolicySnapshot {
+export function buildReferenceDevelopmentPolicy(
+  srsContent?: string | null,
+): DevelopmentPolicySnapshot {
+  const derivedScopes = deriveRequiredChangeScopesFromSrs(srsContent);
+  if (derivedScopes === null) {
+    console.warn(
+      '[start-from-idea] no SRS file declarations available — '
+      + `requiredChangeScopes fall back to defaults [${DEFAULT_REQUIRED_CHANGE_SCOPES.join(', ')}]`,
+    );
+  }
   // `hashDevelopmentPolicy` deletes `contentHash` before hashing, so the
   // placeholder value does not affect the result; it only satisfies the type.
   const snapshot: DevelopmentPolicySnapshot = {
     id: 'reference-development-policy',
     version: '1.1.0',
     contentHash: '',
-    requiredChangeScopes: ['package.json', 'tests/'],
+    requiredChangeScopes: derivedScopes ?? DEFAULT_REQUIRED_CHANGE_SCOPES,
   };
   return { ...snapshot, contentHash: hashDevelopmentPolicy(snapshot) };
 }
@@ -136,6 +157,100 @@ function resolveHeadCommit(localPath: string): string | null {
   }
 }
 
+interface AcceptedSrsArtifactRow {
+  id: number;
+  path: string;
+  storage_kind: string;
+  metadata: string;
+}
+
+/**
+ * Read the content of the project's most recent ACCEPTED SRS artifact.
+ *
+ * Access path (evidence): the `artifacts` table stores the accepted SRS of a
+ * previous formalization (`type='SRS'`, `status='accepted'`) with either
+ * `storage_kind='file_backed'` — a real file at `path` under the bound
+ * repository's `local_path` — or `storage_kind='db_native'` with the
+ * canonical content in `metadata.content`. Both are reachable from the
+ * assembler's own inputs (the same `db` + the repository binding resolved by
+ * `resolveActiveRepositoryWithHead`), so the policy can be SRS-derived at
+ * lifecycle-start time without new ports or schema changes.
+ *
+ * Fail-safe by construction: any missing row, unreadable file or malformed
+ * metadata returns null and the caller keeps the default scopes.
+ */
+function readAcceptedSrsContent(
+  db: Database.Database,
+  projectId: number,
+  repository: {
+    projectRepositoryId: number;
+    localPath: string | null;
+  },
+): string | null {
+  let row: AcceptedSrsArtifactRow | undefined;
+  try {
+    row = db.prepare(
+      `SELECT id, path, storage_kind, metadata
+         FROM artifacts
+        WHERE project_id = ?
+          AND type = 'SRS'
+          AND status = 'accepted'
+          AND (project_repository_id IS NULL OR project_repository_id = ?)
+        ORDER BY CASE WHEN project_repository_id = ? THEN 0 ELSE 1 END, id DESC
+        LIMIT 1`,
+    ).get(
+      projectId,
+      repository.projectRepositoryId,
+      repository.projectRepositoryId,
+    ) as AcceptedSrsArtifactRow | undefined;
+  } catch {
+    return null;
+  }
+  return row === undefined ? null : decodeAcceptedSrsRow(row, repository);
+}
+
+function decodeAcceptedSrsRow(
+  row: AcceptedSrsArtifactRow,
+  repository: { localPath: string | null },
+): string | null {
+  if (row.storage_kind === 'db_native') {
+    try {
+      const metadata = JSON.parse(row.metadata) as { content?: unknown };
+      return typeof metadata.content === 'string'
+        && metadata.content.trim().length > 0
+        ? metadata.content
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  if (row.storage_kind !== 'file_backed' || !repository.localPath) {
+    return null;
+  }
+  const artifactPath = row.path.replace(/\\/g, '/').replace(/^\.\//, '');
+  const segments = artifactPath.split('/');
+  if (
+    artifactPath.length === 0
+    || path.isAbsolute(artifactPath)
+    || segments.some(segment =>
+      segment.length === 0 || segment === '.' || segment === '..')
+    || segments[0]?.toLocaleLowerCase('en-US') === '.git'
+  ) {
+    return null;
+  }
+  try {
+    const repoRoot = path.resolve(repository.localPath);
+    const artifactFile = path.resolve(repoRoot, artifactPath);
+    if (artifactFile !== repoRoot && !artifactFile.startsWith(repoRoot + path.sep)) {
+      return null;
+    }
+    const content = readFileSync(artifactFile, 'utf8');
+    return content.trim().length > 0 ? content : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Assemble the validated, portable ProductDeliveryLifecycleInput from a bare
  * idea. This is the pure assembly half of the use case (no LifecycleRun side
@@ -164,7 +279,12 @@ export function assembleProductLifecycleInput(params: {
     expectedBaseCommit: repository.headCommitSha,
   };
 
-  const developmentPolicy = buildReferenceDevelopmentPolicy();
+  const srsContent = readAcceptedSrsContent(
+    db,
+    params.projectId,
+    repository,
+  );
+  const developmentPolicy = buildReferenceDevelopmentPolicy(srsContent);
   const deferredProfile = buildDeferredDeliveryProfile();
 
   const input: ProductDeliveryLifecycleInput = {
