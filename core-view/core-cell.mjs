@@ -193,6 +193,31 @@ export function buildCell(db, { workplaceRef } = {}) {
     if (p) { projectId = p.id; projectName = p.name ?? null; }
   }
 
+  // --- отказы на сдаче (submission validation): продукт отвергнут ДО гейта ---
+  const rejectionRows = db.prepare(
+    `SELECT rejection_ref, rejection_code, gaps_json, rejected_at
+       FROM factory_submission_validation_rejections
+      WHERE workplace_ref = ? ORDER BY rejected_at DESC LIMIT 10`,
+  ).all(workplaceRef);
+  const submissionRejections = rejectionRows.map(r => {
+    let gaps = [];
+    try {
+      gaps = (JSON.parse(r.gaps_json || '[]') || []).slice(0, 6).map(g => {
+        const what = [g.artifactType, g.artifactCode].filter(Boolean).join(' ');
+        const miss = g.missing ? `${g.missing.relation} ≥${g.missing.minimum}` : '';
+        const msg = g.message ? String(g.message).slice(0, 120) : '';
+        return [what, miss, msg].filter(Boolean).join(' — ');
+      }).filter(Boolean);
+    } catch { /* gaps не читаются */ }
+    return {
+      ref: r.rejection_ref,
+      code: r.rejection_code ?? null,
+      phrase: rejectionPhrase(r.rejection_code),
+      gaps,
+      at: toIso(r.rejected_at),
+    };
+  });
+
   return {
     ok: true,
     now,
@@ -207,6 +232,7 @@ export function buildCell(db, { workplaceRef } = {}) {
     cards,
     projectId,
     projectName,
+    submissionRejections,
   };
 }
 
@@ -214,17 +240,32 @@ export function buildCell(db, { workplaceRef } = {}) {
 // HTTP-контракта).
 export { workerForWorkplace };
 
-// Коды диагностики чеков (base64-evidence) → человеческие фразы.
+// Полный каталог причин отказов (аудит всего тестбеда 2026-08-16:
+// 29 failed-чеков, 100% декодируются; 17 отказов сдачи).
 const CHECK_CODE_PHRASES = {
   'path-outside-authority': 'изменения вне разрешённых файлов задачи',
-  'local-runnability': 'локальная запускопригодность не подтверждена',
-  'implementation-coverage-gap': 'покрытие реализации не равно принятому объёму AC',
   'implementation-scope-overlap': 'области реализации пересекаются без порядка зависимостей',
-  'verification-lineage-mismatch': 'линейка верификации не совпадает с предметом',
-  'review-finding-1': 'замечание ревью',
+  'implementation-coverage-gap': 'покрытие реализации не равно принятому объёму AC',
+  'task-graph-required-scope-missing': 'граф задач не назначил обязательные скоупы (напр. tests/)',
+  'changed-files-mismatch': 'сданный список файлов не совпадает с манифестом изменений',
+  'verification-plan-coverage-gap': 'в плане задач нет верификации для части критериев',
+  'verification-lineage-mismatch': 'доказательства верификации не из замороженной линейки',
+  'local-runnability': 'локальная запускопригодность не подтверждена',
+};
+const REJECTION_CODE_PHRASES = {
+  MANAGED_PRODUCTION_REQUIRED: 'продукт не зарегистрирован через управляемое производство',
+  FORMALIZATION_SRS_INCOMPLETE: 'SRS неполон — не хватает обязательных разделов/связей',
+  FORMALIZATION_ACCEPTANCE_INCOMPLETE: 'критерий приёмки без требуемых связей (derived_from)',
+  FORMALIZATION_CONTRACT_INCOMPLETE: 'контракт формализации неполон',
 };
 function checkPhrase(code) {
-  return CHECK_CODE_PHRASES[code] || (code ? 'чек: ' + code : 'провален чек');
+  if (!code) return 'провален чек';
+  if (CHECK_CODE_PHRASES[code]) return CHECK_CODE_PHRASES[code];
+  if (/^review-finding-\d+$/.test(code)) return 'замечание ревью';
+  return 'чек: ' + code;
+}
+function rejectionPhrase(code) {
+  return REJECTION_CODE_PHRASES[code] || (code ? 'отказ: ' + code : 'отказ сдачи');
 }
 
 /**
@@ -254,8 +295,12 @@ export function resolveRepairReason(db, decisionRow) {
       if (!mat) continue;
       try {
         const j = JSON.parse(mat.payload_snapshot);
+        // findings бывают строками И объектами {message|text, ...} — нормализуем
+        const norm = (f) => typeof f === 'string' ? f
+          : f && (f.message || f.text) ? String(f.message || f.text)
+          : f != null ? JSON.stringify(f) : '';
         const findings = Array.isArray(j.findings)
-          ? j.findings.map(f => String(f)).slice(0, 8) : [];
+          ? j.findings.map(norm).filter(Boolean).slice(0, 8) : [];
         return {
           source: 'review',
           reviewVerdict: j.verdict ?? null,
@@ -274,21 +319,30 @@ export function resolveRepairReason(db, decisionRow) {
   ).all(decisionRow.gate_run_ref).slice(0, 4);
   if (failed.length) {
     const checksFailed = failed.map(f => {
-      const item = { provider: f.provider_id, code: null, phrase: checkPhrase(null), message: null };
+      const item = {
+        provider: f.provider_id, code: null, phrase: checkPhrase(null), message: null,
+      };
       try {
         const refs = JSON.parse(f.evidence_refs || '[]');
         // среди рефов бывают не-диагностики (например «local-readiness:<hash>») —
-        // перебираем все и берём первый, чей хвост декодируется в JSON-объект
+        // собираем ВСЕ base64-JSON диагностики, не только первую
+        const diags = [];
         for (const ref of refs) {
           const last = String(ref).split('/').pop();
           try {
             const j = JSON.parse(Buffer.from(last, 'base64').toString('utf8'));
-            if (!j || typeof j !== 'object') continue;
-            item.code = j.code ?? null;
-            item.phrase = checkPhrase(j.code);
-            if (j.message) item.message = String(j.message).slice(0, 240);
-            break;
+            if (!j || typeof j !== 'object' || !j.code) continue;
+            diags.push(j);
           } catch { /* не base64-JSON — следующий реф */ }
+        }
+        if (diags.length) {
+          item.code = diags[0].code ?? null;
+          item.phrase = checkPhrase(item.code);
+          item.message = diags[0].message ? String(diags[0].message).slice(0, 240) : null;
+          if (diags.length > 1) {
+            item.more = diags.slice(1, 9).map(d =>
+              checkPhrase(d.code) + (d.message ? ': ' + String(d.message).slice(0, 160) : ''));
+          }
         }
       } catch { /* evidence не читается — останется провайдер */ }
       return item;

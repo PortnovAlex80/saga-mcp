@@ -655,6 +655,13 @@ function renderTimeline(data) {
       replay: replayHint(e.meta),
     });
   }
+  // отказы на сдаче — продукт отвергнут ещё ДО гейта (третий вид событий)
+  for (const r of data.submissionRejections || []) {
+    items.push({
+      at: parseTs(r.at), ts: r.at, kind: 'reject',
+      ref: r.ref, phrase: r.phrase, code: r.code, gaps: r.gaps || [],
+    });
+  }
   items.sort((a, b) => (b.at || 0) - (a.at || 0)); // новые сверху
 
   const rows = items.map((it) => {
@@ -672,8 +679,9 @@ function renderTimeline(data) {
         const all = it.reason.source === 'review'
           ? (it.reason.findings && it.reason.findings.length
               ? it.reason.findings : ['ревью: ' + (it.reason.reviewVerdict || 'без текста')])
-          : (it.reason.checksFailed || []).map(cf =>
-              cf.phrase + (cf.message ? ': ' + cf.message : ' (' + cf.provider + ')'));
+          : (it.reason.checksFailed || []).flatMap(cf =>
+              [cf.phrase + (cf.message ? ': ' + cf.message : ' (' + cf.provider + ')')]
+                .concat(cf.more || []));
         const expanded = expandedReasons.has(it.ref);
         if (expanded) {
           reasonHtml = '<div class="core-cell-tl-reason is-open" data-ref="' + esc(it.ref) + '">'
@@ -693,6 +701,30 @@ function renderTimeline(data) {
         + '<i class="core-cell-tl-dot core-cell-t-' + tone + '"></i>'
         + '<span class="core-cell-tl-text">гейт <b>' + esc(it.gatePhase || '—') + '</b> → '
         + esc(it.verdict || '—') + '</span>'
+        + reasonHtml
+        + '</div>';
+    }
+    if (it.kind === 'reject') {
+      // сдача отклонена до гейта: фраза-превью + раскрытие пробелов (gaps)
+      const expanded = expandedReasons.has(it.ref);
+      const all = [it.phrase + (it.code ? ' (' + it.code + ')' : '')].concat(it.gaps || []);
+      let reasonHtml;
+      if (expanded) {
+        reasonHtml = '<div class="core-cell-tl-reason is-open" data-ref="' + esc(it.ref) + '">'
+          + '<span class="core-cell-tl-reason-line">↳ детали отказа <span class="core-cell-tl-reason-toggle">[свернуть]</span></span>'
+          + '<ul class="core-cell-tl-reason-full">'
+          + all.map((f) => '<li>' + esc(f) + '</li>').join('')
+          + '</ul></div>';
+      } else {
+        reasonHtml = '<div class="core-cell-tl-reason" data-ref="' + esc(it.ref) + '">'
+          + '<span class="core-cell-tl-reason-line">↳ ' + esc(trunc(all[0], 96))
+          + (all.length > 1 ? ' <span class="core-cell-tl-reason-toggle">[' + all.length + ' — раскрыть]</span>' : '')
+          + '</span></div>';
+      }
+      return '<div class="core-cell-tl-row">'
+        + '<span class="core-cell-tl-time">' + esc(t) + '</span>'
+        + '<i class="core-cell-tl-dot core-cell-t-fail"></i>'
+        + '<span class="core-cell-tl-text">сдача <b>отклонена</b></span>'
         + reasonHtml
         + '</div>';
     }
