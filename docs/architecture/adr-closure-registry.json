@@ -1,0 +1,739 @@
+{
+  "schemaVersion": 1,
+  "protocol": "ADR-076",
+  "program": "saga-core-renewal",
+  "evidenceBaseline": {
+    "commit": "eb0ace827baf4f774f0e2b86c5bf0c5058eda26a",
+    "capturedAt": "2026-08-17",
+    "note": "Registry reconciled against this exact saga4 commit; later releases update entries with their closure evidence."
+  },
+  "decisions": [
+    {
+      "adr": "024",
+      "file": "024-factory-checkpoint-resume-and-adoption.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K5",
+        "K18"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Exact package rehydrate, compatibility matrix, checkpoint stress",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "025",
+      "file": "025-single-factory-start-gateway.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "One gateway call graph; start/resume parity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "028",
+      "file": "028-atomic-work-intent-workplace-settlement.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Atomic AuthorityCommit; exact obligation postconditions",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "029",
+      "file": "029-production-cell-runtime-cutover.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "Canonical gateway then physical legacy runtime deletion",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "030",
+      "file": "030-workplace-native-production-cell-execution.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "All module families via Workplace/Cell execution only",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "031",
+      "file": "031-target-only-factory-runtime.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K16",
+        "K17"
+      ],
+      "evidenceOwner": "K16",
+      "principalProof": "Zero runtime, schema, API, CLI legacy surface",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "032",
+      "file": "032-development-integrated-candidate.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Workplace revision CandidateSet; Gate-proven acceptance",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "033",
+      "file": "033-durable-submission-preflight-recovery.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K5"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Pinned package rehydrate; explicit incompatibility",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "034",
+      "file": "034-rehydrate-nonterminal-package-pins.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K5"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Persisted fingerprint used before current install",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "035",
+      "file": "035-replay-sealed-candidate-after-provider-plan-failure.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact capsule identity; crash-safe regeneration",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "036",
+      "file": "036-durable-live-concurrency-admission.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified outcomes; controller fencing; persistence stress",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "037",
+      "file": "037-recover-terminal-development-in-place.md",
+      "decisionStatus": "superseded",
+      "closureState": "superseded",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical continuation/recovery vocabulary; terminal monotonicity",
+      "successor": "038",
+      "notes": null
+    },
+    {
+      "adr": "038",
+      "file": "038-continue-from-accepted-stage-prefix.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact accepted prefix; repeated lifecycle theorem",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "039",
+      "file": "039-model-produces-text-factory-owns-git.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Authority-only Git effect; exact ProductRefs",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "040",
+      "file": "040-ship-recovery-as-one-authority-complete-vertical.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "One Gate-proven commit; exact effects/final acceptance",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "041",
+      "file": "041-carry-author-production-across-terminal-continuations.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9",
+        "K10"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact replay + Workplace-only material identity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "042",
+      "file": "042-provider-led-candidate-verification.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Exact candidate, CheckReceipts, Gate proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "043",
+      "file": "043-verification-only-continuation.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact capsule/accepted-prefix behavior under continuation",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "044",
+      "file": "044-append-only-local-release-continuation.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Append-only invalidation/regeneration; immutable history",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "045",
+      "file": "045-product-revisions-change-requests-and-devops-split.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Product authority separated from effects and release",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "046",
+      "file": "046-empty-queue-streak-vs-workplace-recovery.md",
+      "decisionStatus": "unspecified",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "One dispatch and wait vocabulary",
+      "successor": null,
+      "notes": "File carries no Status header; recorded as unspecified until normalized."
+    },
+    {
+      "adr": "047",
+      "file": "047-workplace-recovery-driver-and-pause-boundary.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical pause/requeue/fail ownership",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "048",
+      "file": "048-temporal-conformance-over-canonical-composition.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K9",
+        "K20"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Third-lifecycle and full crash matrix on canonical composition",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "049",
+      "file": "049-production-wired-temporal-and-dual-cycle-model.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K9",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Exact replay; removal of dual runtime cycles",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "050",
+      "file": "050-bind-review-products-to-exact-candidate-authority.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Gate proof addresses exact CandidateSet and revision",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "051",
+      "file": "051-enforce-source-scope-before-review.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact source refs; negative mismatch tests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "052",
+      "file": "052-freeze-atomic-acceptance-criteria.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Frozen CheckPlan and receipt identity in AuthorityCommit",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "053",
+      "file": "053-workplace-production-revision-as-accepted-material-authority.md",
+      "decisionStatus": "proposed",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K6",
+        "K7",
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K6",
+      "principalProof": "Exact reads, replay, ownership, effects, Gate commit, accepted head",
+      "successor": null,
+      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits)."
+    },
+    {
+      "adr": "054",
+      "file": "054-epoch-fenced-factory-controller-terms.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified controller/epoch state; persistence stress",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "055",
+      "file": "055-execution-scoped-author-repository-desks.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Execution out of material authority; provenance remains",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "056",
+      "file": "056-controller-bootstrap-pre-spawn-recovery.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical bootstrap/watchdog; contention tests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "057",
+      "file": "057-reviewer-subject-boundary.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact Gate/Candidate subject proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "058",
+      "file": "058-local-runnability-before-human-acceptance.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11",
+        "K19"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Factory-owned effects; readiness certification receipts",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "059",
+      "file": "059-current-repair-production-must-be-explicit.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Typed recovery issue/action; no implicit current repair",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "060",
+      "file": "060-lifecycle-handoffs-conserve-semantic-products.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact replay, Workplace revision, accepted head continuity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "061",
+      "file": "061-exact-worker-completion-dominates-process-drain.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Obligation-aware quiescence; stress proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "062",
+      "file": "062-scope-aware-increment-review.md",
+      "decisionStatus": "unspecified",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact subject/scope receipts; Gate proof",
+      "successor": null,
+      "notes": "File carries no Status header; recorded as unspecified until normalized."
+    },
+    {
+      "adr": "063",
+      "file": "063-bounded-planner-repair-must-cover-complete-graph.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified bounded recovery; honest terminal",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "064",
+      "file": "064-cell-and-profile-repair-ceilings-must-agree.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Single recovery policy model",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "065",
+      "file": "065-shift-left-planning-contract-and-atomic-criterion-identity.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Frozen check-plan member identity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "066",
+      "file": "066-freeze-canaries-until-contract-state-and-cutover-conformance.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K20"
+      ],
+      "evidenceOwner": "K20",
+      "principalProof": "Tier 4 proof before GA canary",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "067",
+      "file": "067-single-productref-ingress-before-revision.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Workplace revision; one authority commit path",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "068",
+      "file": "068-isolate-python-readiness-with-ephemeral-venv.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Reproducible isolated readiness environment",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "069",
+      "file": "069-readiness-profile-is-an-implementation-submission-contract.md",
+      "decisionStatus": "superseded",
+      "closureState": "superseded",
+      "owningReleases": [
+        "K4",
+        "K19"
+      ],
+      "evidenceOwner": "K4",
+      "principalProof": "Package fingerprint + readiness evidence",
+      "successor": "070",
+      "notes": null
+    },
+    {
+      "adr": "070",
+      "file": "070-post-integration-readiness-certification-cell.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Canonical Production Cell; CheckReceipts",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "071",
+      "file": "071-readiness-prepares-one-oci-environment.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Exact environment image and dependency digests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "072",
+      "file": "072-durable-final-presentation-commitment.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact FinalAcceptance row identity; durable commitment",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "073",
+      "file": "073-finish-adr-053-with-an-exact-presentation-cutover.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K6",
+        "K7",
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K6",
+      "principalProof": "Complete exact read, replay, effect, acceptance, head cutover",
+      "successor": null,
+      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit."
+    },
+    {
+      "adr": "074",
+      "file": "074-post-acceptance-effect-repair-feedback.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Authority-only effect; exact repair receipt; exact obligation settlement",
+      "successor": null,
+      "notes": "Post-acceptance effect repair feedback landed (ADR-074/075 series); authority-only effect inputs not yet enforced."
+    },
+    {
+      "adr": "075",
+      "file": "075-no-human-quality-loop-recovery-epochs.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K15",
+        "K18",
+        "K20"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified vocabulary; bounded epochs; endurance proof",
+      "successor": null,
+      "notes": "Recovery epochs for the no-human quality loop landed; unified dispatch/recovery vocabulary across controllers not yet complete."
+    },
+    {
+      "adr": "076",
+      "file": "076-implementation-closure-protocol-and-legacy-zero-certification.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K0"
+      ],
+      "evidenceOwner": "K0",
+      "principalProof": "Closure registry complete and enforced by architecture tests",
+      "successor": null,
+      "notes": "Protocol itself; flips to closed when the architecture test enforces it (K0 commit 4)."
+    }
+  ]
+}
