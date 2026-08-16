@@ -53,6 +53,7 @@ for (const pid of ids) {
   if (!resp.ok) { log(pid, 'START FAILED — следующий проект'); continue; }
 
   const started = Date.now();
+  let futileResumes = 0;
   for (;;) {
     await new Promise(r => setTimeout(r, 60_000));
     lr = lifecycleOf(pid);
@@ -62,19 +63,26 @@ for (const pid of ids) {
     log(pid, `${mins}m lc=${lr?.id} ${lr?.status}/${lr?.terminal_status ?? '-'} stage=${lr?.current_stage_id ?? '-'} tasks=${t.done}/${t.total} hb=${hb ?? '-'}`);
     if (lr?.terminal_status) { log(pid, `TERMINAL ${lr.terminal_status} — проект завершён`); break; }
     if (mins > 480) { log(pid, 'TIMEOUT 480m'); break; }
-    // stall-проба: hb протух >10м И движок мёртв И воркеров нет → resume
-    if (hb) {
-      const ageMs = Date.now() - Date.parse(hb);
-      if (ageMs > 10 * 60_000) {
-        const engine = Number(sh('powershell -NoProfile -Command "@(Get-CimInstance Win32_Process -Filter \'Name=\'\'node.exe\'\'\' | Where-Object { $_.CommandLine -match \'orchestrate\' }).Count"') || '0');
-        const claude = Number(sh('powershell -NoProfile -Command "@(Get-CimInstance Win32_Process -Filter \'Name=\'\'claude.exe\'\'\' | Where-Object { $_.CommandLine -match \'--bare\' }).Count"') || '0');
-        if (engine === 0 && claude === 0) {
-          log(pid, `движок мёртв (hb ${Math.round(ageMs / 60000)}m) — resume`);
-          const r2 = await postJson(`${TRACKER}/api/factory/start`, { project_id: pid });
-          log(pid, `resume -> ${JSON.stringify(r2).slice(0, 120)}`);
-        }
-      }
+    if (hb && Date.now() - Date.parse(hb) < 2 * 60_000) { futileResumes = 0; continue; }
+    // hb протух: жив ли вообще движок?
+    const engine = Number(sh('powershell -NoProfile -Command "@(Get-CimInstance Win32_Process -Filter \'Name=\'\'node.exe\'\'\' | Where-Object { $_.CommandLine -match \'orchestrate\' }).Count"') || '0');
+    const claude = Number(sh('powershell -NoProfile -Command "@(Get-CimInstance Win32_Process -Filter \'Name=\'\'claude.exe\'\'\' | Where-Object { $_.CommandLine -match \'--bare\' }).Count"') || '0');
+    if (engine > 0 || claude > 0) continue; // движок жив, работает kernel-фаза — не трогаем
+    // движок мёртв: human-gate (blocked/paused workplace) или разовый краш
+    const humanGated = db.prepare(
+      `SELECT COUNT(*) n FROM factory_workplaces w
+        WHERE w.process_run_id IN (SELECT process_run_id FROM factory_stage_runs WHERE lifecycle_run_id=?)
+          AND w.loop_state='paused'`,
+    ).get(lr?.id ?? 0).n;
+    if (humanGated > 0 && futileResumes >= 1) {
+      log(pid, `BLOCKED(human-gate): ${humanGated} workplace(s) требуют человека — пропуск проекта, драйвер идёт дальше`);
+      break;
     }
+    if (futileResumes >= 3) { log(pid, 'BLOCKED: 3 безрезультатных resume — пропуск проекта'); break; }
+    futileResumes += 1;
+    log(pid, `движок мёртв (hb протух) — resume #${futileResumes}`);
+    const r2 = await postJson(`${TRACKER}/api/factory/start`, { project_id: pid });
+    log(pid, `resume -> ${JSON.stringify(r2).slice(0, 120)}`);
   }
   await postJson(`${TRACKER}/api/factory/stop`, { epic_id: epic });
   log(pid, 'движок остановлен, следующий проект');
