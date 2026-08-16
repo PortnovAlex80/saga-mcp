@@ -47,10 +47,11 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     id: 'glm-5.3',
     label: 'GLM 5.3',
     provider: 'zai',
-    effort: 'high',
+    effort: 'max',
     limit: 6,
     tier: 'flagship',
-    note: 'Operator-requested 2026-08-16 for the TrackPlan run (plan concurrency ceiling 6)',
+    note: 'Operator-requested 2026-08-16 for the TrackPlan run (plan concurrency ceiling 6; '
+      + 'effort=max per operator decision — maximum reasoning, accepts the token cost)',
   }),
 ]);
 
