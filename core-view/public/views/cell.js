@@ -701,18 +701,22 @@ function renderTerminal(logTail) {
       if (lastRow && lastRow.lv === lv && lastRow.text === text) { lastRow.n += 1; continue; }
       rows.push({ lv, text, ts: (l && l.ts) || '', n: 1 });
     }
-    inner = rows.map((r) => {
+    // Консольный режим: строки однострочные (полный текст — в подсказке),
+    // самые свежие сверху, окно фиксированной высоты (~10 строк).
+    inner = rows.slice().reverse().map((r) => {
       const cls = r.lv.startsWith('warn') ? 'lv-warn'
         : r.lv.startsWith('err') ? 'lv-error'
         : r.lv.startsWith('think') ? 'lv-think'
+        : r.lv.startsWith('tool') ? 'lv-tool'
         : r.lv.startsWith('sys') ? 'lv-sys'
         : 'lv-info';
       const t = parseTs(r.ts);
       const ts = Number.isNaN(t) ? trunc(String(r.ts || ''), 12) : fmtTime(t);
-      return '<div class="core-cell-logline ' + cls + '">'
+      const full = r.text + (r.n > 1 ? '  (×' + r.n + ')' : '');
+      return '<div class="core-cell-logline ' + cls + '" title="' + esc(full) + '">'
         + '<span class="core-cell-logts">' + esc(ts) + '</span>'
         + '<span class="core-cell-logtext">' + esc(r.text) + '</span>'
-        + (r.n > 1 ? '<span class="core-cell-logrepeat" title="повтор подряд: ' + r.n + '">×' + r.n + '</span>' : '')
+        + (r.n > 1 ? '<span class="core-cell-logrepeat">×' + r.n + '</span>' : '')
         + '</div>';
     }).join('');
   }

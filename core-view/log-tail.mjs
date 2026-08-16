@@ -138,7 +138,7 @@ function jsonlLineToEntries(raw) {
       if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim()) {
         out.push({ ts, level: 'thinking', text: truncate(block.thinking, 200) });
       } else if (block.type === 'tool_use') {
-        out.push({ ts, level: 'info', text: truncate(`tool ${block.name} ${JSON.stringify(block.input || {})}`, 160) });
+        out.push({ ts, level: 'tool', text: truncate(`tool ${block.name} ${JSON.stringify(block.input || {})}`, 160) });
       } else if (block.type === 'text' && typeof block.text === 'string') {
         out.push({ ts, level: 'info', text: truncate(block.text, 160) });
       }
