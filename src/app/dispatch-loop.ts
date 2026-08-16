@@ -141,6 +141,20 @@ export interface DispatchLoopInput {
   machineId: string;
   /** Polling interval for one assigned worker. Default 1000ms. */
   pollMs?: number;
+  /**
+   * FIX 2 (2026-08-16 incident): hard bound on the per-worker completion wait,
+   * in polls. Default DEFAULT_WAIT_POLL_MAX_POLLS (60); env override
+   * SAGA_WAIT_POLL_MAX_POLLS. Only consulted when isExecutionDurableTerminal
+   * is provided (the bound escalates TO the durable authority — a pure
+   * in-memory drain has nothing to defer to).
+   */
+  waitPollMaxPolls?: number;
+  /**
+   * FIX 2: hard bound on the per-worker completion wait, in wall-clock ms.
+   * Default DEFAULT_WAIT_POLL_MAX_MS (15 minutes); env override
+   * SAGA_WAIT_POLL_MAX_MS. Whichever bound (polls / ms) is hit FIRST wins.
+   */
+  waitPollMaxMs?: number;
   /** Diagnostics sink for the per-worker wait (throttled). */
   pollDebug?: (message: string) => void;
   factoryContext: {
@@ -159,6 +173,94 @@ export interface DispatchLoopInput {
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'stopped', 'failed']);
 
+// ---------------------------------------------------------------------------
+// FIX 2 (2026-08-16 incident, project 4) — bounded wait-poll.
+//
+// A worker died silently; its durable row stayed state='running'; the engine
+// spin-waited on the per-worker completion poll ([wait-poll] task=187
+// polls=230 durable=false) and ONE stuck task froze the whole engine until an
+// operator manually soft-stopped it. The wait is now hard-bounded: after
+// maxPolls polls OR maxMs wall time — WHICHEVER COMES FIRST — the wait stops
+// and defers to the supervision sweep + the normal engine cycle.
+//
+// Bounds are configurable via env (fail-closed: an unset/invalid value falls
+// back to the defaults — never an unbounded wait):
+//   SAGA_WAIT_POLL_MAX_POLLS  (default 60)
+//   SAGA_WAIT_POLL_MAX_MS     (default 900000 = 15 minutes)
+//
+// ESCALATION SEMANTICS — this bound never declares a worker dead. Reaching it
+// only means "this host stops hosting the wait". durable=false for the whole
+// window on a LIVE worker with a fresh heartbeat is LEGITIMATE (one big LLM
+// call), so escalation merely:
+//   * returns 0 (no lifecycle failure, no terminal count — the worker keeps
+//     running and its in-process runner keeps observing it, so the natural
+//     exit receipt still lands when the worker eventually exits);
+//   * leaves the executor UNDISPOSED (dispose() would kill runner children);
+//   * lets the engine's next cycle re-evaluate via the durable admission view
+//     and the supervision sweep (which — FIX 1 — now resolves dead workers by
+//     PID liveness, while live-but-slow workers simply keep occupying their
+//     durable slot until they finish).
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_WAIT_POLL_MAX_POLLS = 60;
+export const DEFAULT_WAIT_POLL_MAX_MS = 15 * 60 * 1000;
+
+function resolvePositiveIntEnv(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  // Fail-closed: an invalid override must never become an unbounded/zero wait.
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export interface WaitPollBounds {
+  maxPolls: number;
+  maxMs: number;
+}
+
+/** Resolve the wait-poll bounds from env, failing closed to the defaults. */
+export function resolveWaitPollBounds(env: NodeJS.ProcessEnv = process.env): WaitPollBounds {
+  return {
+    maxPolls: resolvePositiveIntEnv(env, 'SAGA_WAIT_POLL_MAX_POLLS', DEFAULT_WAIT_POLL_MAX_POLLS),
+    maxMs: resolvePositiveIntEnv(env, 'SAGA_WAIT_POLL_MAX_MS', DEFAULT_WAIT_POLL_MAX_MS),
+  };
+}
+
+export type WaitPollAction = 'wait' | 'escalate';
+
+/** Pure input to {@link decideWaitPollAction}. */
+export interface WaitPollDecisionInput {
+  /** Polls performed so far for this worker. */
+  polls: number;
+  /** Wall-clock ms elapsed since the wait started. */
+  elapsedMs: number;
+  maxPolls: number;
+  maxMs: number;
+  /**
+   * Whether the worker's durable heartbeat is fresh. DELIBERATELY does not
+   * gate the decision: escalation is not a death declaration, so a fresh
+   * heartbeat must not suppress it (supervision performs the real liveness
+   * check). The field exists so tests can pin that anti-spurious contract —
+   * a healthy long task escalates safely and keeps running.
+   */
+  workerHeartbeatFresh?: boolean;
+}
+
+/**
+ * Pure bound decision for the per-worker wait-poll: 'wait' while under BOTH
+ * bounds, 'escalate' once EITHER bound is reached (whichever comes first).
+ * Pure on purpose — tested without sleeping real minutes.
+ */
+export function decideWaitPollAction(input: WaitPollDecisionInput): WaitPollAction {
+  if (input.polls >= input.maxPolls) return 'escalate';
+  if (input.elapsedMs >= input.maxMs) return 'escalate';
+  return 'wait';
+}
+
 /**
  * Drain all currently assignable cards with one application-owned concurrency
  * budget. A slot is acquired only after assignTask succeeds. When one worker
@@ -175,6 +277,8 @@ export async function distributeQueuedTasks(
   input: DispatchLoopInput,
 ): Promise<number> {
   const pollMs = input.pollMs ?? 1000;
+  // FIX 2: resolved once per drain; per-worker waits share the same bounds.
+  const defaultBounds = resolveWaitPollBounds();
   const dispatchRunId = input.idGenerator.newTypedId('dispatch-run');
   const active = new Set<Promise<number>>();
   let terminalWorkers = 0;
@@ -260,6 +364,12 @@ export async function distributeQueuedTasks(
       pollMs,
       isExecutionDurableTerminal: input.isExecutionDurableTerminal,
       pollDebug: input.pollDebug,
+      waitPollBounds: input.isExecutionDurableTerminal
+        ? {
+            maxPolls: input.waitPollMaxPolls ?? defaultBounds.maxPolls,
+            maxMs: input.waitPollMaxMs ?? defaultBounds.maxMs,
+          }
+        : undefined,
     });
     return { kind: 'assigned', assignment, completion };
   };
@@ -348,7 +458,19 @@ async function waitForAssignedWorker(input: {
   pollMs: number;
   isExecutionDurableTerminal?: (workerExecutionId: string) => boolean;
   pollDebug?: (message: string) => void;
+  /**
+   * FIX 2: hard wait bounds. Undefined when no durable terminal probe was
+   * provided — the bound exists to hand a stalled DURABLE wait back to
+   * supervision, and an in-memory-only drain has no durable authority to
+   * defer to (and no supervision sweep behind it).
+   */
+  waitPollBounds?: WaitPollBounds;
 }): Promise<number> {
+  const waitStartedAtMs = Date.now();
+  // FIX 2: set when the wait exits via the bound. The finally block then does
+  // NOT dispose the executor: dispose() stops the runner and KILLS its child
+  // processes, and an escalated worker may well be alive (big LLM call).
+  let deferredToSupervision = false;
   try {
     let polls = 0;
     while (true) {
@@ -407,9 +529,39 @@ async function waitForAssignedWorker(input: {
           ? snapshot.completed + snapshot.failed
           : 1;
       }
+      // FIX 2 — bounded wait-poll (checked LAST so a worker that reaches a
+      // terminal state exactly at the bound still resolves normally).
+      // Escalation only STOPS this host's wait: it does not fail the
+      // lifecycle, does not kill the worker, and does not claim a terminal
+      // count. The durable row + supervision sweep re-evaluate on the next
+      // engine cycle; a live-but-slow worker keeps running and keeps its
+      // durable slot until it finishes.
+      if (
+        input.waitPollBounds !== undefined
+        && decideWaitPollAction({
+          polls,
+          elapsedMs: Date.now() - waitStartedAtMs,
+          maxPolls: input.waitPollBounds.maxPolls,
+          maxMs: input.waitPollBounds.maxMs,
+        }) === 'escalate'
+      ) {
+        input.pollDebug?.(
+          `EXHAUSTED task=${input.assignment.taskId} polls=${polls} — deferring to supervision`,
+        );
+        deferredToSupervision = true;
+        return 0;
+      }
     }
   } finally {
-    input.executor.dispose();
+    if (!deferredToSupervision) {
+      input.executor.dispose();
+    }
+    // Escalated: intentionally NOT disposing. dispose() stops the in-process
+    // runner and kills its children — an escalated worker is presumed ALIVE
+    // (durable=false with a fresh heartbeat is a legitimate long LLM call).
+    // The abandoned runner keeps observing the child and still writes the
+    // natural exit receipt when the worker eventually exits; supervision
+    // (FIX 1) resolves the row sooner if the process is actually dead.
   }
 }
 

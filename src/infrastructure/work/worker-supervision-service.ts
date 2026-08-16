@@ -48,6 +48,13 @@
  * birth-token verification (inside reconcileWorkerExecutions) and the atomic
  * release primitive. Human override (AdminOverrideLifecycle) remains a
  * separate, non-automated path.
+ *
+ * FIX 1 (2026-08-16 incident): the sweep additionally guards every execution
+ * it would KEEP/RENEW with a dead-or-foreign-PID check (read-only: existence
+ * probe + birth-token/command-line identity). Such rows lose their lease
+ * renewal first (heartbeat ages), then — once the heartbeat is stale past
+ * PID_GUARD_HEARTBEAT_STALE_MS — are released through the EXISTING lost-worker
+ * path. Uncertainty (tooling error) keeps the OLD keep+renew behavior.
  */
 
 import os from 'node:os';
@@ -101,6 +108,12 @@ export interface SupervisionReconcileResult {
   remoteCount: number;
   /** Number of active local leases renewed on this sweep (liveness heartbeat). */
   leasesRenewed: number;
+  /**
+   * FIX 1 (2026-08-16 incident): executions this sweep classified 'lost'
+   * because their PID was dead or reused by a foreign process. Surfaces as
+   * lost_dead_pid=N on the sweep result line.
+   */
+  lostDeadPidCount: number;
 }
 
 const DEFAULT_INTERVAL_MS = 30_000;
@@ -128,6 +141,7 @@ const EMPTY_RESULT: SupervisionReconcileResult = {
   keptCount: 0,
   remoteCount: 0,
   leasesRenewed: 0,
+  lostDeadPidCount: 0,
 };
 
 /** Build the single-flight scope key for a (projectId, epicId) supervision run. */
@@ -277,10 +291,21 @@ export function startWorkerSupervision(
         // Only executions that survived reconciliation remain active and eligible
         // for liveness renewal. renewLeases touches lease_expires_at + heartbeat_at
         // only; it must never touch progress/stuck clocks.
+        //
+        // FIX 1 (2026-08-16 incident): executions whose reconcile projection
+        // carries withholdRenewal (PID alive-but-foreign — reuse suspected) are
+        // EXCLUDED from renewal. Their heartbeat_at must age toward the stale
+        // gate; refreshing it forever is exactly how one dead worker froze the
+        // engine for ~3 hours (kept=1 leases_renewed=1 every sweep).
+        const renewalExclusions = projections
+          .filter(p => p.withholdRenewal === true)
+          .map(p => p.executionId);
+
         renewed = options.executionRuntime.renewLeases(
           options.projectId,
           options.epicId,
           options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
+          renewalExclusions,
         );
       } catch (busyError) {
         if (busyError instanceof EngineDbBusyError) {
@@ -297,10 +322,12 @@ export function startWorkerSupervision(
       let releasedCount = 0;
       let keptCount = 0;
       let remoteCount = 0;
+      let lostDeadPidCount = 0;
       for (const p of projections) {
         if (p.action === 'lost' || p.action === 'terminated') {
           reapedCount++;
           if (p.released) releasedCount++;
+          if (p.lostViaDeadPid === true) lostDeadPidCount++;
           log(
             `[supervision] REAPED execution=${p.executionId} task=${p.taskId} `
             + `action=${p.action} released=${p.released} reason=${p.reason} at=${new Date(now()).toISOString()}`,
@@ -309,15 +336,31 @@ export function startWorkerSupervision(
           remoteCount++;
         } else {
           keptCount++;
+          if (p.withholdRenewal === true) {
+            log(
+              `[supervision] renewal withheld execution=${p.executionId} task=${p.taskId} `
+              + '— PID alive but foreign (reuse suspected); heartbeat aging toward lost classification',
+            );
+          }
+          if (p.pidIdentityUnverifiable === true) {
+            log(
+              `[supervision] pid identity unverifiable execution=${p.executionId} task=${p.taskId} `
+              + '— kept and renewed per conservative fallback (tooling error; NOT classified lost)',
+            );
+          }
         }
       }
-      if (reapedCount > 0 || renewed > 0) {
+      if (reapedCount > 0 || renewed > 0 || lostDeadPidCount > 0) {
         log(
           `[supervision] sweep at=${new Date(now()).toISOString()} reaped=${reapedCount} `
-          + `released=${releasedCount} kept=${keptCount} remote=${remoteCount} leases_renewed=${renewed}`,
+          + `released=${releasedCount} kept=${keptCount} remote=${remoteCount} `
+          + `leases_renewed=${renewed} lost_dead_pid=${lostDeadPidCount}`,
         );
       }
-      return { reapedCount, releasedCount, keptCount, remoteCount, leasesRenewed: renewed };
+      return {
+        reapedCount, releasedCount, keptCount, remoteCount,
+        leasesRenewed: renewed, lostDeadPidCount,
+      };
     } finally {
       if (dbHandle !== null && leaseHeld) {
         releaseSupervisionLease(dbHandle, scopeKey, holderId);
