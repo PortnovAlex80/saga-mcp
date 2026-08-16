@@ -351,9 +351,13 @@ function updateChip(rec, w) {
     'c' + (st.candidateSets ?? 0) +
     ' g' + (st.gateDecisions ?? 0) +
     ' r' + (st.repairs ?? 0);
+  const lr = w.lastRepair;
   rec.stats.title = 'candidateSets: ' + (st.candidateSets ?? 0) +
     '\ngateDecisions: ' + (st.gateDecisions ?? 0) +
-    '\nrepairs: ' + (st.repairs ?? 0);
+    '\nrepairs: ' + (st.repairs ?? 0) +
+    (lr ? '\nпоследний возврат: ' + (lr.at || '?') +
+      '\nпричина: ' + (lr.reason || '—') +
+      '\n(полный разбор — вид «Ячейка», хронология попыток)' : '');
 }
 
 // ---- полоса стадий lifecycle --------------------------------------------------

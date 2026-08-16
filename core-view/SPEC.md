@@ -74,6 +74,7 @@ worker_executions.heartbeat_at / activity). Главные данные для L
     "obligation": {"kind":"transition","state":"pending","leaseOwner":null,"attempt":2,"lastError":null} | null,
     "worker": {"executionId":"...","state":"running","phase":"...","pid":123,"heartbeatAt":"...","heartbeatAgeMs":4200,"alive":true} | null,
     "lastGate": {"gatePhase":"final","verdict":"repair_required","decidedAt":"..."} | null,
+    "lastRepair": {"at":"...","reason":"первая строка причины (тултип чипа)"} | null,
     "stats": {"candidateSets":3,"gateDecisions":5,"repairs":2} } ],
   "dependencies": [ {"from":"<workplaceRef>","to":"<workplaceRef>"} ],
   "workers": [ {"executionId":"...","projectId":3,"taskId":71,"state":"running","phase":"...","pid":20276,
@@ -119,13 +120,19 @@ worker_executions.heartbeat_at / activity). Главные данные для L
 { "ok": true, "now": "...",
   "workplace": { ...те же поля, что в snapshot.workplaces[]... },
   "candidates": [ {"candidateSetRef":"...","role":"author","digest":"...","sealedAt":"...","members":2} ],
-  "gates": [ {"gateRunRef":"...","gatePhase":"final","verdict":"accepted","repairTargetRole":null,"decidedAt":"..."} ],
+  "gates": [ {"gateRunRef":"...","gatePhase":"final","verdict":"accepted","repairTargetRole":null,"decidedAt":"...",
+              "reason":{"source":"review","reviewVerdict":"changes_requested","findings":["..."]} | {"source":"checks","checksFailed":["provider:failed"]} | null} ],
   "executions": [ {"executionId":"...","state":"exited","workerId":"...","pid":123,"startedAt":"...","finishedAt":"...","logPath":"...","meta":{...пarsed metadata|...}} ],
   "recovery": [ {"caseRef":"...","createdAt":"...","issueRef":"..."} ],
   "effects": [ {"ref":"...","kind":"git","state":"...","at":"...","receipt":true} ],
   "finalAcceptance": {"ref":"...","subjectCandidateSetRef":"..."} | null,
-  "logTail": {"lines":[{"ts":"...","level":"info","text":"..."}]} | null }
+  "cards": [ {"taskId":271,"title":"development-implementation/reviewer: ...","status":"review_in_progress","role":"reviewer|author|null"} ],
+  "projectId": 8 | null, "projectName": "units" | null,
+  "logTail": {"lines":[{"ts":"...","level":"info|thinking|tool|system|result","text":"..."}]} | null }
 ```
+`cards` — канбан-канал (§19): карточки станции на доске :4321 (обычно
+авторская + ревьюерская), `status` = колонка доски. Агентский цикл станции —
+это `workplace.loopState/nextRole` (круг L2), отдельный канал от карточек.
 Пустые массивы — норма (таблицы recovery/effects в тестбеде пустые).
 `logTail` — последние ~40 строк JSONL лога живого/последнего execution:
 `JSON.parse` с fallback на сырую строку. `recovery` из

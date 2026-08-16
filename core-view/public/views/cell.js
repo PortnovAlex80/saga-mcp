@@ -50,6 +50,10 @@ let snapshot = null; // последний snapshot от main.js (может б�
 let cellData = null; // последний ответ /api/core/cell (ok)
 let selectedRef = null;
 
+// Раскрытые причины возвратов в хронологии (gateRunRef → раскрыто).
+// Модульный уровень: состояние переживает re-render и mount/destroy.
+const expandedReasons = new Set();
+
 let pollTimer = 0;
 let inflight = false;
 let abortCtl = null;
@@ -129,6 +133,18 @@ export function mount(container, viewCtx) {
     }
   });
   renderFollowBtn();
+
+  // Раскрытие/сворачивание причины возврата в хронологии (делегирование:
+  // innerHTML перерисовывается каждый poll, отдельные листенеры не выживут).
+  root.addEventListener('click', (ev) => {
+    const box = ev.target && ev.target.closest && ev.target.closest('.core-cell-tl-reason');
+    if (!box) return;
+    const ref = box.getAttribute('data-ref');
+    if (!ref) return;
+    if (expandedReasons.has(ref)) expandedReasons.delete(ref);
+    else expandedReasons.add(ref);
+    render();
+  });
 
   // В закреплённом режиме восстанавливаем последний выбор (событие могло
   // прийти до mount). В режиме слежения выбор подберёт update() из снапшота.
@@ -346,6 +362,7 @@ function render() {
 
   body.innerHTML = [
     renderWorkplaceBar(w),
+    renderKanbanStrip(cellData),
     '<div class="core-cell-grid">',
     '  <section class="core-cell-cyclecard">',
     buildCycleSvg(w, cellData),
@@ -628,6 +645,7 @@ function renderTimeline(data) {
     items.push({
       at: parseTs(g.decidedAt), ts: g.decidedAt, kind: 'gate',
       verdict: String(g.verdict || ''), gatePhase: g.gatePhase, ref: g.gateRunRef,
+      reason: g.reason || null,
     });
   }
   for (const e of data.executions || []) {
@@ -646,11 +664,35 @@ function renderTimeline(data) {
       const tone = v === 'accepted' ? 'ok'
         : v.includes('repair') ? 'wait'
           : v.includes('reject') || v.includes('fail') ? 'fail' : 'scan';
-      return '<div class="core-cell-tl-row">'
+      // причина возврата: строка-превью + разворачиваемый список всех замечаний.
+      // Состояние раскрытия живёт в expandedReasons (по gateRunRef) —
+      // переживает ежесекундный re-render.
+      let reasonHtml = '';
+      if (v.includes('repair') && it.reason && it.ref) {
+        const all = it.reason.source === 'review'
+          ? (it.reason.findings && it.reason.findings.length
+              ? it.reason.findings : ['ревью: ' + (it.reason.reviewVerdict || 'без текста')])
+          : ['провалены чеки: ' + (it.reason.checksFailed || []).join(', ')];
+        const expanded = expandedReasons.has(it.ref);
+        if (expanded) {
+          reasonHtml = '<div class="core-cell-tl-reason is-open" data-ref="' + esc(it.ref) + '">'
+            + '<span class="core-cell-tl-reason-line">↳ причина возврата <span class="core-cell-tl-reason-toggle">[свернуть]</span></span>'
+            + '<ul class="core-cell-tl-reason-full">'
+            + all.map((f) => '<li>' + esc(f) + '</li>').join('')
+            + '</ul></div>';
+        } else {
+          reasonHtml = '<div class="core-cell-tl-reason" data-ref="' + esc(it.ref) + '">'
+            + '<span class="core-cell-tl-reason-line">↳ причина возврата: ' + esc(trunc(all[0], 96))
+            + ' <span class="core-cell-tl-reason-toggle">[' + all.length + ' — раскрыть]</span></span>'
+            + '</div>';
+        }
+      }
+      return '<div class="core-cell-tl-row core-cell-tl-row--gate">'
         + '<span class="core-cell-tl-time">' + esc(t) + '</span>'
         + '<i class="core-cell-tl-dot core-cell-t-' + tone + '"></i>'
         + '<span class="core-cell-tl-text">гейт <b>' + esc(it.gatePhase || '—') + '</b> → '
         + esc(it.verdict || '—') + '</span>'
+        + reasonHtml
         + '</div>';
     }
     const s = it.state.toLowerCase();
@@ -690,21 +732,137 @@ function renderTerminal(logTail) {
   if (!logTail || !Array.isArray(logTail.lines) || logTail.lines.length === 0) {
     inner = '<div class="core-cell-none">лог недоступен</div>';
   } else {
-    inner = logTail.lines.map((l) => {
+    // Подряд идущие одинаковые строки схлопываем: одна строка + счётчик ×N
+    // (как повторы в консоли браузера) — иначе system/thinking_tokens
+    // заливают терминал.
+    const rows = [];
+    for (const l of logTail.lines) {
       const lv = String((l && l.level) || 'info').toLowerCase();
-      const cls = lv.startsWith('warn') ? 'lv-warn' : lv.startsWith('err') ? 'lv-error' : 'lv-info';
-      const t = parseTs(l && l.ts);
-      const ts = Number.isNaN(t) ? trunc(String((l && l.ts) || ''), 12) : fmtTime(t);
-      return '<div class="core-cell-logline ' + cls + '">'
+      const text = String((l && l.text) || '');
+      const lastRow = rows[rows.length - 1];
+      if (lastRow && lastRow.lv === lv && lastRow.text === text) { lastRow.n += 1; continue; }
+      rows.push({ lv, text, ts: (l && l.ts) || '', n: 1 });
+    }
+    // Консольный режим: строки однострочные (полный текст — в подсказке),
+    // самые свежие сверху, окно фиксированной высоты (~10 строк).
+    inner = rows.slice().reverse().map((r) => {
+      const cls = r.lv.startsWith('warn') ? 'lv-warn'
+        : r.lv.startsWith('err') ? 'lv-error'
+        : r.lv.startsWith('think') ? 'lv-think'
+        : r.lv.startsWith('tool') ? 'lv-tool'
+        : r.lv.startsWith('sys') ? 'lv-sys'
+        : 'lv-info';
+      const t = parseTs(r.ts);
+      const ts = Number.isNaN(t) ? trunc(String(r.ts || ''), 12) : fmtTime(t);
+      const full = r.text + (r.n > 1 ? '  (×' + r.n + ')' : '');
+      return '<div class="core-cell-logline ' + cls + '" title="' + esc(full) + '">'
         + '<span class="core-cell-logts">' + esc(ts) + '</span>'
-        + '<span class="core-cell-logtext">' + esc(String((l && l.text) || '')) + '</span>'
+        + '<span class="core-cell-logtext">' + esc(r.text) + '</span>'
+        + (r.n > 1 ? '<span class="core-cell-logrepeat">×' + r.n + '</span>' : '')
         + '</div>';
     }).join('');
   }
   return [
     '<section class="core-cell-card core-cell-card--term">',
-    '  <div class="core-cell-card-title">Терминал <span class="core-cell-card-note">logTail</span></div>',
+    '  <div class="core-cell-card-title">Терминал <span class="core-cell-card-note">logTail · фиолетовое — мысли модели</span></div>',
     '  <div class="core-cell-terminal">', inner, '</div>',
+    '</section>',
+  ].join('');
+}
+
+/* ---------------- канбан: два канала состояния (§19) ------------------- */
+
+// Полоса «где карточка на доске». Два независимых канала:
+//  1) канбан-канал: карточки станции (tasks.status) + позиция самой станции
+//     (workplace.kanbanPhase) в колонках доски :4321;
+//  2) агентский цикл: loopState/nextRole станции — это круг слева, НЕ колонки.
+const KB_COLS = [
+  { id: 'todo', label: 'TODO' },
+  { id: 'in_progress', label: 'В РАБОТЕ' },
+  { id: 'review', label: 'РЕВЬЮ' },
+  { id: 'blocked', label: 'БЛОК' },
+  { id: 'done', label: 'ГОТОВО' },
+];
+const STATUS_TO_COL = {
+  todo: 'todo',
+  in_progress: 'in_progress',
+  review: 'review',
+  review_in_progress: 'review',
+  review_in_wait: 'review',
+  blocked: 'blocked',
+  done: 'done',
+  verified: 'done',
+  integrated: 'done',
+  accepted: 'done',
+};
+const PHASE_TO_COL = {
+  todo: 'todo',
+  in_progress: 'in_progress',
+  review: 'review',
+  review_in_progress: 'review',
+  blocked: 'blocked',
+  done: 'done',
+};
+
+function boardUrl(query) {
+  const host = (typeof location !== 'undefined' && location.hostname) || '127.0.0.1';
+  return 'http://' + host + ':4321/' + (query || '');
+}
+
+function renderKanbanStrip(data) {
+  const cards = (data && data.cards) || [];
+  const w = (data && data.workplace) || {};
+  const boardLink = data && Number.isInteger(data.projectId)
+    ? '<a class="core-cell-kb-board" href="' + esc(boardUrl('?project=' + data.projectId))
+      + '" target="_blank" rel="noopener">доска ↗</a>'
+    : '';
+
+  const cols = KB_COLS.map((c) => ({ ...c, chips: [] }));
+  const colById = Object.fromEntries(cols.map((c) => [c.id, c]));
+  const extraCols = [];
+  for (const card of cards) {
+    const colId = STATUS_TO_COL[String(card.status || '').toLowerCase()];
+    const chip = {
+      html: '<a class="core-cell-kb-chip core-cell-kb-chip--' + (card.role || 'task') + '"'
+        + ' href="' + esc(boardUrl('?task=' + card.taskId)) + '" target="_blank" rel="noopener"'
+        + ' title="' + esc(String(card.title || '')) + '">'
+        + '#' + esc(String(card.taskId)) + (card.role ? ' · ' + (card.role === 'author' ? 'автор' : 'ревьюер') : '')
+        + '</a>',
+    };
+    if (colId && colById[colId]) colById[colId].chips.push(chip);
+    else extraCols.push({ id: 'raw:' + card.status, label: String(card.status || '?'), chips: [chip] });
+  }
+  // маркер позиции самой станции в канбан-канале (⟳ — цикл станции, не карточка)
+  const stCol = PHASE_TO_COL[String(w.kanbanPhase || '').toLowerCase()];
+  if (stCol && colById[stCol]) {
+    colById[stCol].chips.push({
+      html: '<span class="core-cell-kb-chip core-cell-kb-chip--station" title="позиция станции (workplace.kanbanPhase) в канбан-канале">⟳ станция</span>',
+    });
+  }
+
+  const allCols = cols.concat(extraCols);
+  const colsHtml = allCols.map((c) => [
+    '<div class="core-cell-kb-col">',
+    '  <div class="core-cell-kb-col-label">' + esc(c.label) + '</div>',
+    '  <div class="core-cell-kb-col-chips">' + c.chips.map((ch) => ch.html).join('') + '</div>',
+    '</div>',
+  ].join('')).join('');
+
+  const loopLine = [
+    '<div class="core-cell-kb-loop">',
+    '  <span class="core-cell-kb-loop-title">агентский цикл:</span>',
+    '  <b>' + esc(w.loopState || '—') + '</b>',
+    '  · next: <b>' + esc(w.nextRole || '—') + '</b>',
+    '  · терминал: <b>' + esc(w.terminalReason || 'нет') + '</b>',
+    '  <span class="core-cell-kb-loop-note">два независимых канала (§19): колонки — канбан-проекция, цикл — состояние Production Cell (круг слева)</span>',
+    '</div>',
+  ].join('');
+
+  return [
+    '<section class="core-cell-card core-cell-kanban">',
+    '  <div class="core-cell-card-title">Канбан <span class="core-cell-card-note">где карточки этой станции на доске :4321</span>' + boardLink + '</div>',
+    '  <div class="core-cell-kb-cols">' + colsHtml + '</div>',
+    loopLine,
     '</section>',
   ].join('');
 }

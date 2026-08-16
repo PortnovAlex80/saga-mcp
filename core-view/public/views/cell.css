@@ -421,7 +421,7 @@ svg .core-cell-seg--on {
 /* -------------------------------- терминал ------------------------------ */
 
 .core-cell-terminal {
-  max-height: 280px;
+  height: 248px; /* ~10 моноширинных строк + отступы */
   overflow-y: auto;
   padding: 8px;
   background: var(--cc-bg);
@@ -430,16 +430,136 @@ svg .core-cell-seg--on {
   font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
 }
 
-.core-cell-logline { display: flex; gap: 10px; }
+.core-cell-logline { display: flex; gap: 10px; align-items: baseline; }
 .core-cell-logts { color: var(--cc-muted); flex: 0 0 auto; }
 .core-cell-logtext {
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
   color: var(--cc-text);
 }
 .core-cell-logline.lv-warn .core-cell-logtext { color: var(--cc-wait); }
 .core-cell-logline.lv-error .core-cell-logtext { color: var(--cc-fail); }
 .core-cell-logline.lv-info .core-cell-logtext { color: var(--cc-text); }
+/* вызовы инструментов — жёлтым (amber) */
+.core-cell-logline.lv-tool .core-cell-logtext { color: var(--cc-wait); }
+/* мысли модели — фиолетовые курсивом (цвет replay-капсул) */
+.core-cell-logline.lv-think .core-cell-logtext {
+  color: var(--cc-replay);
+  font-style: italic;
+  opacity: .92;
+}
+/* системные тики (thinking_tokens и т.п.) — приглушены */
+.core-cell-logline.lv-sys .core-cell-logtext { color: var(--cc-muted); opacity: .7; }
+/* повтор подряд — счётчик */
+.core-cell-logrepeat {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--cc-muted);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* ---- полоса «Канбан»: два канала состояния (§19) ---- */
+.core-cell-kanban { margin: 10px 0 0; }
+.core-cell-kb-board {
+  margin-left: auto;
+  color: var(--cc-flow);
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.core-cell-kb-board:hover { text-decoration: underline; }
+.core-cell-kb-cols {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.core-cell-kb-col {
+  min-height: 44px;
+  padding: 6px;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+}
+.core-cell-kb-col-label {
+  font-size: 9px;
+  letter-spacing: .08em;
+  color: var(--cc-muted);
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.core-cell-kb-col-chips { display: flex; flex-direction: column; gap: 4px; }
+.core-cell-kb-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 5px;
+  border: 1px solid var(--cc-border);
+  color: var(--cc-text);
+  background: var(--cc-surface2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.core-cell-kb-chip:hover { border-color: var(--cc-flow); color: var(--cc-flow); }
+.core-cell-kb-chip--author { border-color: color-mix(in srgb, var(--cc-flow) 55%, var(--cc-border)); }
+.core-cell-kb-chip--reviewer { border-color: color-mix(in srgb, var(--cc-scan) 55%, var(--cc-border)); }
+.core-cell-kb-chip--station {
+  color: var(--cc-replay);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--cc-replay) 55%, var(--cc-border));
+  background: transparent;
+  cursor: default;
+}
+.core-cell-kb-loop {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--cc-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+.core-cell-kb-loop b { color: var(--cc-text); font-weight: 600; }
+.core-cell-kb-loop-title { color: var(--cc-replay); }
+.core-cell-kb-loop-note { margin-left: auto; font-size: 10px; opacity: .75; }
+
+/* ---- причины возврата в хронологии попыток ---- */
+.core-cell-tl-reason { margin: 3px 0 4px 22px; cursor: pointer; }
+.core-cell-tl-reason-line {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--cc-wait);
+  opacity: .92;
+}
+.core-cell-tl-reason-toggle { color: var(--cc-muted); font-size: 10px; white-space: nowrap; }
+.core-cell-tl-reason:hover .core-cell-tl-reason-toggle { color: var(--cc-flow); }
+.core-cell-tl-reason-full {
+  margin: 4px 0 0;
+  padding: 6px 8px 6px 20px;
+  list-style: none;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-left: 2px solid var(--cc-wait);
+  border-radius: 5px;
+}
+.core-cell-tl-reason-full li {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--cc-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.core-cell-tl-reason-full li + li { margin-top: 5px; }
+.core-cell-tl-reason-full li::before { content: '↳ '; color: var(--cc-wait); }
 
 /* ------------------------ финал/recovery/эффекты ------------------------ */
 

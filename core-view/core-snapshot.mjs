@@ -22,6 +22,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { resolveRepairReason } from './core-cell.mjs';
 
 import { isProcessAlive, statLog, computeTokPerSec } from './log-tail.mjs';
 
@@ -269,16 +270,17 @@ export function decorateWorkplaces(db, workplaceRows) {
 
   // Гейты: агрегаты + последнее решение (max decided_at; при равенстве — rowid)
   const gateRows = db.prepare(
-    `SELECT rowid, workplace_ref, gate_phase, verdict, decided_at
+    `SELECT rowid, workplace_ref, gate_phase, verdict, decided_at,
+            gate_run_ref, assessment_candidate_set_refs
        FROM factory_gate_decisions
       WHERE workplace_ref IN (${inRefs})
       ORDER BY decided_at, rowid`,
   ).all(...refs);
   const gateAgg = new Map(); // ref → { n, repairs, last }
   for (const g of gateRows) {
-    const agg = gateAgg.get(g.workplace_ref) || { n: 0, repairs: 0, last: null };
+    const agg = gateAgg.get(g.workplace_ref) || { n: 0, repairs: 0, last: null, lastRepair: null };
     agg.n += 1;
-    if (g.verdict === 'repair_required') agg.repairs += 1;
+    if (g.verdict === 'repair_required') { agg.repairs += 1; agg.lastRepair = g; }
     agg.last = g;
     gateAgg.set(g.workplace_ref, agg);
   }
@@ -336,6 +338,10 @@ export function decorateWorkplaces(db, workplaceRows) {
         lastError: obligationRow.last_error ?? null,
       } : null,
       worker: workerForWorkplace(workerRow, nowMs),
+      lastRepair: gates && gates.lastRepair ? {
+        at: toIso(gates.lastRepair.decided_at),
+        reason: repairReasonShort(resolveRepairReason(db, gates.lastRepair)),
+      } : null,
       lastGate: lastGateRow ? {
         gatePhase: lastGateRow.gate_phase ?? null,
         verdict: lastGateRow.verdict ?? null,
@@ -500,4 +506,17 @@ export function buildSnapshot(db, { projectId } = {}) {
       activityPerMin,
     },
   };
+}
+
+// Короткая причина возврата для тултипов (одна строка).
+function repairReasonShort(r) {
+  if (!r) return null;
+  if (r.source === 'review') {
+    if (r.findings && r.findings.length) return r.findings[0].slice(0, 160);
+    return 'ревью: ' + (r.reviewVerdict || 'вердикт без текста');
+  }
+  if (r.source === 'checks' && r.checksFailed) {
+    return 'провалены чеки: ' + r.checksFailed.join(', ').slice(0, 160);
+  }
+  return null;
 }

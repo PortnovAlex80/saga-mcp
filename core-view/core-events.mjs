@@ -8,6 +8,7 @@
 // Оверлап +5s к since; клиент дедуплицирует по key.
 
 import { parseTs, toIso } from './core-snapshot.mjs';
+import { resolveRepairReason } from './core-cell.mjs';
 
 const OVERLAP_MS = 5_000;
 const DEFAULT_LIMIT = 200;
@@ -57,17 +58,28 @@ export function buildEvents(db, { since, limit } = {}) {
 
   // 2) gate decisions — решения QC
   const gates = db.prepare(
-    `SELECT decision_key, workplace_ref, gate_phase, verdict, decided_at
+    `SELECT decision_key, workplace_ref, gate_phase, verdict, decided_at,
+            gate_run_ref, assessment_candidate_set_refs
        FROM factory_gate_decisions ORDER BY decided_at DESC, rowid DESC LIMIT ?`,
   ).all(fetch);
   for (const g of gates) {
+    // у возврата — короткая причина первой строкой findings/чеков
+    let detail = cap(g.workplace_ref);
+    if (g.verdict === 'repair_required') {
+      const r = resolveRepairReason(db, g);
+      if (r && r.source === 'review' && r.findings && r.findings.length) {
+        detail += ' — ' + String(r.findings[0]).slice(0, 90);
+      } else if (r && r.source === 'checks' && r.checksFailed && r.checksFailed.length) {
+        detail += ' — провалены чеки: ' + r.checksFailed.slice(0, 3).join(', ');
+      }
+    }
     events.push({
       key: `gate:${g.decision_key}`,
       atMs: parseTs(g.decided_at),
       at: toIso(g.decided_at),
       kind: 'gate',
       title: `gate:${g.gate_phase ?? '?'}:${g.verdict ?? '?'}`,
-      detail: cap(g.workplace_ref),
+      detail,
       entityType: 'Workplace',
       entityId: g.workplace_ref ?? null,
     });

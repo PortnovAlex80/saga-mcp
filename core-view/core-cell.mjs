@@ -66,7 +66,8 @@ export function buildCell(db, { workplaceRef } = {}) {
 
   // --- gates ---
   const gateRows = db.prepare(
-    `SELECT gate_run_ref, gate_phase, verdict, repair_target_role, decided_at
+    `SELECT gate_run_ref, gate_phase, verdict, repair_target_role, decided_at,
+            assessment_candidate_set_refs
        FROM factory_gate_decisions
       WHERE workplace_ref = ? ORDER BY decided_at DESC, rowid DESC LIMIT ${MAX_GATES}`,
   ).all(workplaceRef);
@@ -76,6 +77,7 @@ export function buildCell(db, { workplaceRef } = {}) {
     verdict: g.verdict ?? null,
     repairTargetRole: g.repair_target_role ?? null,
     decidedAt: toIso(g.decided_at),
+    reason: g.verdict === 'repair_required' ? resolveRepairReason(db, g) : null,
   }));
 
   // --- executions (по task_id ячейки: tasks.workplace_ref + graph fallback) ---
@@ -166,7 +168,30 @@ export function buildCell(db, { workplaceRef } = {}) {
 
   // --- logTail: хвост JSONL живого/последнего execution ---
   let logTail = null;
-  if (lastLogPath) logTail = tailJsonl(lastLogPath, 40);
+  if (lastLogPath) logTail = tailJsonl(lastLogPath, 120);
+
+  // --- kanban: карточки этой станции (авторская + ревьюерская) с их колонками ---
+  // Колонка доски (:4321) — это tasks.status; ячейка обычно представлена
+  // двумя карточками: /author: и /reviewer:.
+  const cardRows = db.prepare(
+    'SELECT id, title, status, epic_id FROM tasks WHERE workplace_ref = ? ORDER BY id',
+  ).all(workplaceRef);
+  const cards = cardRows.map(t => ({
+    taskId: t.id,
+    title: t.title ?? null,
+    status: t.status ?? null,
+    role: /\/reviewer:/.test(String(t.title || '')) ? 'reviewer'
+      : /\/author:/.test(String(t.title || '')) ? 'author' : null,
+  }));
+  let projectId = null;
+  let projectName = null;
+  if (cardRows.length) {
+    const p = db.prepare(
+      `SELECT p.id AS id, p.name AS name FROM projects p
+         JOIN epics e ON e.project_id = p.id WHERE e.id = ? LIMIT 1`,
+    ).get(cardRows[0].epic_id);
+    if (p) { projectId = p.id; projectName = p.name ?? null; }
+  }
 
   return {
     ok: true,
@@ -179,9 +204,55 @@ export function buildCell(db, { workplaceRef } = {}) {
     effects,
     finalAcceptance,
     logTail,
+    cards,
+    projectId,
+    projectName,
   };
 }
 
 // workerForWorkplace реэкспортируется для симметрии импорта сервера (не часть
 // HTTP-контракта).
 export { workerForWorkplace };
+
+/**
+ * Причина возврата (repair_required) — прогрессивное раскрытие:
+ *  1) findings ревью-вердикта из assessment-сета (человеческий текст);
+ *  2) fallback — проваленные чеки гейт-рана (машинный уровень).
+ * decisionRow: строка factory_gate_decisions (нужны assessment_candidate_set_refs,
+ * gate_run_ref). Возвращает { source, reviewVerdict?, findings?[], checksFailed?[] }
+ * | null.
+ */
+export function resolveRepairReason(db, decisionRow) {
+  // 1) ревью-вердикт: assessment-сеты → члены → материал со схемой *review-verdict*
+  const assessRaw = decisionRow.assessment_candidate_set_refs;
+  const assess = (() => { try { return JSON.parse(assessRaw || '[]'); } catch { return []; } })();
+  if (Array.isArray(assess) && assess.length) {
+    const ph = assess.map(() => '?').join(',');
+    const members = db.prepare(
+      `SELECT product_digest FROM factory_candidate_set_members
+        WHERE candidate_set_ref IN (${ph})`,
+    ).all(...assess);
+    for (const m of members) {
+      const mat = db.prepare(
+        `SELECT schema_id, payload_snapshot FROM factory_sealed_product_materials
+          WHERE content_digest = ? AND schema_id LIKE '%review-verdict%'`,
+      ).get(m.product_digest);
+      if (!mat) continue;
+      try {
+        const j = JSON.parse(mat.payload_snapshot);
+        const findings = Array.isArray(j.findings)
+          ? j.findings.map(f => String(f)).slice(0, 8) : [];
+        return { source: 'review', reviewVerdict: j.verdict ?? null, findings };
+      } catch { /* повреждённый payload — идём к чекам */ }
+    }
+  }
+  // 2) проваленные чеки авторского гейта
+  const failed = db.prepare(
+    `SELECT provider_id, outcome FROM factory_check_receipts
+      WHERE check_run_ref = ? AND outcome IS NOT NULL AND outcome != 'passed'`,
+  ).all(decisionRow.gate_run_ref).slice(0, 6);
+  if (failed.length) {
+    return { source: 'checks', checksFailed: failed.map(f => `${f.provider_id}:${f.outcome}`) };
+  }
+  return null;
+}
