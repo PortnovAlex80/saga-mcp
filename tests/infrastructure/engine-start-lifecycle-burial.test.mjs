@@ -134,7 +134,7 @@ test('buried: dead lifecycle open obligations (workplace, candidate-set, process
   }
 });
 
-test('released: dead lifecycle kernel-owned workplaces go terminal; worker-owned and paused workplaces untouched', () => {
+test('released: ALL non-terminal workplaces of a dead lifecycle go terminal', () => {
   const db = fresh();
   try {
     seedProject(db, 1);
@@ -155,32 +155,46 @@ test('released: dead lifecycle kernel-owned workplaces go terminal; worker-owned
       reservation: 'worker-execution:worker-owned',
     });
     seedWorkplace(db, { ref: 'workplace/4/m@1/cell/paused', processRunId: 4, loopState: 'paused' });
+    seedWorkplace(db, { ref: 'workplace/4/m@1/cell/queued', processRunId: 4, loopState: 'queued' });
+    seedWorkplace(db, { ref: 'workplace/4/m@1/cell/idle', processRunId: 4, loopState: 'idle' });
 
     const result = buryDeadLifecycleObligations(db);
-    assert.equal(result.workplacesReleased, 2);
+    // ALL non-terminal workplaces of a dead lifecycle are orphans: the lifecycle
+    // will never produce another runEpisode, so nobody — not the reaper, not
+    // the executor, not the repair path, not the human — will ever drive the
+    // next transition. An orphaned repair_wait or queued also starves the
+    // dispatcher's shouldYieldToKernel for the entire epic.
+    assert.equal(result.workplacesReleased, 6);
 
     const effect = workplace(db, 'workplace/4/m@1/cell/effect');
-    // REG-28: failed|terminal is the legal pair — the kanban channel must move
-    // together with the loop, or every pair validator flags the row.
     assert.equal(effect.kanban_phase, 'failed');
     assert.equal(effect.loop_state, 'terminal');
-    // terminal_reason is 'failed' (not a synthetic value): the
-    // factory_workplaces CHECK allows only accepted/failed/cancelled and the
-    // owning lifecycle's terminal fact IS a failure.
     assert.equal(effect.terminal_reason, 'failed');
     assert.equal(effect.active_reservation_ref, null);
 
     const verify = workplace(db, 'workplace/4/m@1/cell/verify');
     assert.equal(verify.kanban_phase, 'failed');
     assert.equal(verify.loop_state, 'terminal');
-    assert.equal(verify.terminal_reason, 'failed');
 
-    // Worker-owned and paused states belong to the reaper/repair paths, not
-    // to the kernel-owned death cascade.
     const repair = workplace(db, 'workplace/4/m@1/cell/repair');
-    assert.equal(repair.loop_state, 'repair_wait');
-    assert.equal(repair.active_reservation_ref, 'worker-execution:worker-owned');
-    assert.equal(workplace(db, 'workplace/4/m@1/cell/paused').loop_state, 'paused');
+    assert.equal(repair.loop_state, 'terminal');
+    assert.equal(repair.terminal_reason, 'failed');
+    assert.equal(repair.active_reservation_ref, null);
+
+    // paused of a DEAD lifecycle is terminal too — the human decision will
+    // never be consumed by a lifecycle that is already terminally failed.
+    const paused = workplace(db, 'workplace/4/m@1/cell/paused');
+    assert.equal(paused.loop_state, 'terminal');
+    assert.equal(paused.terminal_reason, 'failed');
+
+    // queued and idle — nobody will ever hire or admit for a dead lifecycle
+    const queued = workplace(db, 'workplace/4/m@1/cell/queued');
+    assert.equal(queued.loop_state, 'terminal');
+    assert.equal(queued.terminal_reason, 'failed');
+
+    const idleWp = workplace(db, 'workplace/4/m@1/cell/idle');
+    assert.equal(idleWp.loop_state, 'terminal');
+    assert.equal(idleWp.terminal_reason, 'failed');
   } finally {
     db.close();
   }

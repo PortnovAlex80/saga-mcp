@@ -45,8 +45,16 @@ import { SqliteTransitionObligationLedger } from
 export const ENGINE_START_LIFECYCLE_BURIAL_POLICY_REF =
   'factory.engine-start-lifecycle-burial.v1';
 
-/** Kernel-owned loop states whose transition does not need a live worker. */
-const KERNEL_OWNED_LOOP_STATES = "('verifying','effect_pending')";
+/**
+ * ALL non-terminal loop states of a DEAD lifecycle are orphans: the lifecycle
+ * will never produce another runEpisode, so nobody — not the reaper, not the
+ * executor, not the repair path, not the human — will ever drive the next
+ * transition. The previous version only released kernel-owned states
+ * (verifying/effect_pending) plus repair_wait, leaving queued/leased/running/
+ * idle/paused workplaces of dead lifecycles as permanent phantoms that also
+ * starved the dispatcher's shouldYieldToKernel check for the entire epic.
+ */
+const RELEASED_LOOP_STATES = "('idle','queued','leased','running','verifying','effect_pending','repair_wait','paused')";
 
 export interface EngineStartLifecycleBurialResult {
   readonly lifecycleRuns: readonly number[];
@@ -140,7 +148,7 @@ export function buryDeadLifecycleObligations(
     `SELECT workplace_ref, loop_state
        FROM factory_workplaces
       WHERE process_run_id IN (SELECT value FROM json_each(@deadPids))
-        AND loop_state IN ${KERNEL_OWNED_LOOP_STATES}
+        AND loop_state IN ${RELEASED_LOOP_STATES}
       ORDER BY workplace_ref`,
   ).all({ deadPids }) as { workplace_ref: string; loop_state: string }[];
 
@@ -187,7 +195,7 @@ export function buryDeadLifecycleObligations(
               revision=revision+1,
               updated_at=datetime('now')
         WHERE process_run_id IN (SELECT value FROM json_each(@deadPids))
-          AND loop_state IN ${KERNEL_OWNED_LOOP_STATES}`,
+          AND loop_state IN ${RELEASED_LOOP_STATES}`,
     );
     release.run({ deadPids });
     for (const workplace of frozenWorkplaces) {
