@@ -5,8 +5,7 @@ import type {
   KernelHandlerContext,
   KernelHandlerResult,
 } from '../../../process-modules/application/kernel-handler-registry.js';
-// The withKernelRecoveryIssue import was removed along with the wrapper —
-// see the comment at the resolveTaskGraph handler below.
+import { withKernelRecoveryIssue } from '../../../process-modules/application/kernel-recovery-issue.js';
 import type {
   NodeExecutionReceipt,
   NodeExecutionResult,
@@ -78,17 +77,37 @@ export function createDevelopmentKernelHandlers(
   moduleRef: ProcessModuleReference = DEVELOPMENT_PROCESS_MODULE_REF,
 ): Record<string, KernelHandler> {
   return {
-    // The withKernelRecoveryIssue wrapper for resolveTaskGraph was REMOVED:
-    // it referenced policyId 'repair-development-task-graph' which no module
-    // ever declared in flow.recovery — a dormant mine that would crash the
-    // executor on the first 'clarification-required' verdict. The wrapper
-    // was dead code (never triggered in production because the policy was
-    // undeclared), and declaring it (adding flow recovery + transitions)
-    // changed the flow topology in ways that broke the golden-path E2E.
-    // 'clarification-required' from resolve-task-graph remains a legitimate
-    // terminal outcome routed to settle-development → complete-clarification-required.
     [DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph]:
-      createTaskGraphResolver(deps),
+      withKernelRecoveryIssue(
+        createTaskGraphResolver(deps),
+        {
+          policyId: 'repair-development-task-graph',
+          subject: 'development task graph proposal',
+          triggerEvents: ['clarification-required'],
+          reasonBindings: [
+            'errors',
+            'reasonCodes',
+            'resolutionStatus',
+          ],
+          actualBindings: [
+            'errors',
+            'reasonCodes',
+            'resolutionStatus',
+            'proposalSchema',
+            'plannerSubmissionRef',
+            'plannerSubmissionHash',
+          ],
+          acceptanceCriteria: [
+            'The planner submits the declared task-graph proposal schema.',
+            'The graph covers the accepted decomposition and remains acyclic.',
+            'Every task, repository and dependency preserves exact input lineage.',
+          ],
+          allowedChanges: [
+            'development task graph proposal',
+            'task definitions, dependencies and repository bindings in that proposal',
+          ],
+        },
+      ),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate]:
       createIntegratedCandidateFreezeHandler(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.bindRunnableCandidate]:

@@ -79,6 +79,12 @@ export interface AssignTaskInput {
   /** Scope restrict to one specific card (the dispatcher preselected it).
    *  When unset, any claimable card in the project/epic may be assigned. */
   taskIds?: number[];
+  /** Poison exclusion (plan item 19): cards that already failed with a
+   *  recoverable dispatch error in the current drain. The claim must skip
+   *  them — the deterministic priority order would otherwise re-serve the
+   *  same broken card and livelock the drain. Optional; no behavior change
+   *  for callers that do not set it. */
+  excludeTaskIds?: number[];
   /** Tag filter (requirements project: role:product / role:analyst / …). */
   role?: string;
 }

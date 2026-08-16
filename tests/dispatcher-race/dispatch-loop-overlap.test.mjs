@@ -378,30 +378,66 @@ test('dispatch-loop: lowering 3 to 2 is reread before the third assignment', asy
 });
 
 // ---------------------------------------------------------------------------
-// TEST 4 — start failure releases the assignment (no fence leak).
+// TEST 4 — start failure releases the assignment and downgrades to card_error.
 //
-// Wave 4 §4: "карточка уже assigned, а launcher упал до появления живого
-// процесса." distributeQueuedTasks catches a start() throw, calls
-// releaseAssignment, re-throws. We verify the card was released and the error
-// propagates so the loop cannot strand an assigned-but-unlaunched card.
+// Plan item 19 (typed dispatch outcomes): a recoverable spawn failure (real
+// child_process errors carry Node errno codes like EAGAIN/ENOENT) must NOT
+// kill the dispatch loop. distributeQueuedTasks catches it, calls
+// releaseAssignment, poisons the card for the rest of the drain and returns
+// a normal result — the engine keeps dispatching other cards. The card is
+// released and excluded from subsequent assignTask calls, so no assigned-but-
+// unlaunched fence can leak and no livelock is possible.
 // ---------------------------------------------------------------------------
 
-test('dispatch-loop: executor.start() failure releases the assignment and rethrows', async () => {
+test('dispatch-loop: recoverable executor.start() failure releases the assignment without killing the drain', async () => {
   const idGen = makeIdGenerator();
-  const workAssignment = makeWorkAssignment(1);
-  const released = workAssignment._released;
+  const assignCalls = [];
+  const queue = [1000];
+  const released = [];
 
-  // A factory whose executor.start() always throws (simulates spawn failure
-  // before a live process exists).
+  // A factory whose executor.start() always throws a realistic Node spawn
+  // error (errno code attached).
   function failingFactory() {
     return {
-      start() { throw new Error('spawn EAGAIN'); },
+      start() {
+        const error = new Error('spawn worker EAGAIN');
+        error.code = 'EAGAIN';
+        throw error;
+      },
       stop() {},
       status: () => null,
       setConcurrency() {},
       dispose() {},
     };
   }
+
+  const workAssignment = {
+    assignTask(input) {
+      assignCalls.push(input);
+      const exclude = new Set(input.excludeTaskIds ?? []);
+      const next = queue.find((id) => !exclude.has(id));
+      if (next === undefined) return null;
+      queue.splice(queue.indexOf(next), 1);
+      return {
+        taskId: next,
+        epicId: 7,
+        projectId: 42,
+        status: 'in_progress',
+        skill: 'saga-worker',
+        workerExecutionId: input.workerExecutionId,
+        fenceToken: input.workerExecutionId,
+        runId: input.runId,
+        workerId: input.workerId,
+        machineId: input.machineId,
+        repository: null,
+        executionContext: null,
+      };
+    },
+    countClaimable: () => queue.length,
+    releaseAssignment: ({ taskId, reason }) => {
+      released.push({ taskId, reason });
+    },
+  };
 
   const dispatchInput = {
     projectId: 42,
@@ -429,17 +465,25 @@ test('dispatch-loop: executor.start() failure releases the assignment and rethro
     },
   };
 
-  await assert.rejects(
-    () => distributeQueuedTasks(dispatchInput),
-    /spawn EAGAIN/,
-    'start failure must propagate',
-  );
+  // The drain must RESOLVE (typed outcome), not reject: one broken card is
+  // not an engine death anymore.
+  const dispatched = await distributeQueuedTasks(dispatchInput);
+  assert.equal(dispatched, 0, 'no terminal workers — the only card failed to start');
   assert.equal(
     released.length,
     1,
     `expected the assigned card to be released on start failure, got ${released.length} release(s)`,
   );
   assert.equal(released[0].taskId, 1000, 'the first card should have been released');
+  // The loop retried assignment after the failure and excluded the poisoned
+  // card — the livelock guard of the typed-outcome drain.
+  assert.ok(assignCalls.length >= 2, 'assignTask must be retried after a card_error');
+  const retryCall = assignCalls[assignCalls.length - 1];
+  assert.deepEqual(
+    retryCall.excludeTaskIds,
+    [1000],
+    'the retry must exclude the poisoned card',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -455,7 +499,11 @@ test('dispatch-loop: start-failure release carries an audit reason', async () =>
 
   function failingFactory() {
     return {
-      start() { throw new Error('ENOENT claude binary'); },
+      start() {
+        const error = new Error('spawn claude ENOENT claude binary');
+        error.code = 'ENOENT';
+        throw error;
+      },
       stop() {},
       status: () => null,
       setConcurrency() {},
@@ -489,7 +537,8 @@ test('dispatch-loop: start-failure release carries an audit reason', async () =>
     },
   };
 
-  await assert.rejects(() => distributeQueuedTasks(dispatchInput), /ENOENT/);
+  const dispatched = await distributeQueuedTasks(dispatchInput);
+  assert.equal(dispatched, 0, 'recoverable start failure resolves with 0 terminal workers');
   assert.ok(released.length >= 1, 'at least one release must be recorded');
   const reason = released[0].reason;
   assert.ok(

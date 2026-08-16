@@ -394,10 +394,20 @@ export function findNextClaimable(
     role: 'author' | 'reviewer' | null;
     executionProfile: string | null;
   }) => import('../application/routing/worker-execution-route.js').WorkerExecutionRoute,
+  /**
+   * Poison exclusion (plan item 19, typed dispatch outcomes): cards that
+   * already failed with a recoverable error in the current drain. The claim
+   * skips them so the dispatch loop cannot livelock on the deterministic
+   * priority order. Optional — callers that omit it behave exactly as before.
+   */
+  excludeTaskIds?: number[],
 ): Task | null {
   if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
 
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
+  const excludeIdsClause = excludeTaskIds && excludeTaskIds.length > 0
+    ? `AND t.id NOT IN (${excludeTaskIds.map(() => '?').join(',')})`
+    : '';
   const roleClause = role
     ? `AND EXISTS (
          SELECT 1 FROM json_each(t.tags)
@@ -418,6 +428,7 @@ export function findNextClaimable(
        ${epicClause}
        ${taskIdsClause}
        ${excludeClause}
+       ${excludeIdsClause}
        ${roleClause}
        AND json_extract(t.metadata, '$.process_run_id') IS NOT NULL
        AND EXISTS (
@@ -497,6 +508,7 @@ export function findNextClaimable(
   if (epicId !== undefined) params.push(epicId);
   if (taskIds && taskIds.length > 0) params.push(...taskIds);
   if (excludeTaskId !== undefined) params.push(excludeTaskId);
+  if (excludeTaskIds && excludeTaskIds.length > 0) params.push(...excludeTaskIds);
   if (role) params.push(`role:${role}`);
 
   const task = db.prepare(selectSql).get(...params) as Task | undefined;
@@ -529,6 +541,7 @@ export function findNextClaimable(
       reservation,
       taskIds,
       routeResolver,
+      excludeTaskIds,
     );
   }
 

@@ -55,6 +55,7 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
         reservation,
         input.taskIds,
         this.routeResolver,
+        input.excludeTaskIds,
       );
       if (claimed) {
         reserveTaskExecution(this.db, {
@@ -98,6 +99,15 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
         });
       } catch {
         // Best effort. The original error remains the actionable one.
+      }
+      // Attach the card identity so the dispatch loop can poison exactly this
+      // card for the rest of the drain (typed dispatch outcomes, plan item
+      // 19). Best effort — non-annotatable throwables simply carry no taskId
+      // and fall back to the drain-level unresolved-error valve.
+      if (typeof buildError === 'object' && buildError !== null) {
+        try {
+          (buildError as { taskId?: number }).taskId = task.id;
+        } catch { /* frozen/read-only throwable */ }
       }
       throw buildError;
     }

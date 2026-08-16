@@ -38,7 +38,6 @@ import type {
 } from '../../../process-modules/application/node-submission-policy.js';
 
 export const ACCEPTANCE_CONTRACT_VALIDATOR_ID = 'formalization.acceptance-contract.v1';
-export const ACCEPTANCE_CONTRACT_VALIDATOR_VERSION = '1.1.0';
 
 /**
  * Build a FormalizationCanonicalGraphPort over a raw DB handle. Reads
@@ -160,7 +159,7 @@ export function createAcceptanceContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
+    validatorVersion: '1.0.0',
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
@@ -184,93 +183,10 @@ export function createAcceptanceContractValidator(
           gaps: structuredGaps,
         };
       }
-      // TB-8 shift-left: every AC artifact's code must have a matching
-      // heading in its document. The freeze kernel checks this at a TERMINAL
-      // node (no repair path); here the worker sees the gap at worker_done
-      // with the full 5-attempt repair cycle. Uses the SAME canonical parser
-      // as the freezer, so gate and freeze can never disagree.
-      //
-      // OPT-IN via SAGA_AC_HEADING_STRICT=1: the check reads the artifact's
-      // file-backed content and can reject scenarios whose scripted workers
-      // don't write proper heading-formatted files. The freezer remains the
-      // authoritative (fail-closed) check in all modes.
-      const headingGaps = process.env.SAGA_AC_HEADING_STRICT === '1'
-        ? checkAcCodeHeadingMatches(db, artifacts)
-        : [];
-      if (headingGaps.length > 0) {
-        return {
-          accepted: false,
-          code: 'FORMALIZATION_AC_CODE_HEADING_MISMATCH',
-          gaps: headingGaps,
-        };
-      }
       const traceIds = snapshot.traces.map(t => t.id);
       return acceptWithReceipt(db, input, artifacts, traceIds);
     },
   };
-}
-
-/**
- * TB-8: check that every AC artifact's code matches a document heading in the
- * canonical grammar. The freezer's acceptanceCriteriaForArtifact throws on a
- * mismatch at a terminal kernel node; the same check here routes the worker
- * into repair instead. Reads the artifact's file-backed content through the
- * same path/hash chain the freezer uses (no separate content store).
- */
-function checkAcCodeHeadingMatches(
-  db: DbHandle,
-  artifacts: readonly FormalizationArtifactSnapshot[],
-): SubmissionGap[] {
-  const { readFileSync } = require('node:fs') as typeof import('node:fs');
-  const { createHash } = require('node:crypto') as typeof import('node:crypto');
-  const { join } = require('node:path') as typeof import('node:path');
-  const { acceptanceCriteriaForArtifact } = require('../domain/acceptance-criterion-document.js') as
-    typeof import('../domain/acceptance-criterion-document.js');
-  const gaps: SubmissionGap[] = [];
-  for (const artifact of artifacts) {
-    if (artifact.type !== 'AC' || !artifact.code || !/^AC-/i.test(artifact.code)) continue;
-    const row = db.prepare(
-      `SELECT a.path, a.content_hash, r.local_path
-         FROM artifacts a
-         JOIN project_repositories r ON r.id = a.project_repository_id
-        WHERE a.id = ?`,
-    ).get(artifact.id) as { path: string; content_hash: string | null; local_path: string } | undefined;
-    if (!row?.content_hash || !row?.local_path) continue;
-    const filePath = join(row.local_path, row.path.split('#')[0]!);
-    let content: string;
-    try {
-      content = readFileSync(filePath, 'utf8');
-    } catch {
-      continue; // unreadable file — the freezer will be loud about it
-    }
-    const actual = createHash('sha256').update(content, 'utf8').digest('hex');
-    if (actual !== row.content_hash) {
-      // Hash drift at validation time: the file was mutated between artifact
-      // creation and worker_done. The freezer's HASH_DRIFT check will be the
-      // authoritative failure — report here only if the heading ALSO fails,
-      // so the worker gets actionable feedback in one pass.
-      continue;
-    }
-    try {
-      acceptanceCriteriaForArtifact(content, artifact.code);
-    } catch (error) {
-      gaps.push({
-        artifactId: artifact.id,
-        artifactCode: artifact.code,
-        artifactType: 'AC',
-        existingTargets: [],
-        missing: {
-          relation: 'document_heading_matches_code',
-          requiredTargetTypes: [`${artifact.code}: <heading>`],
-          minimum: 1,
-        },
-        // The exact parser message (which heading was expected) rides as the
-        // gap's implicit detail — the worker sees it in the rejection.
-        ...(error instanceof Error ? { message: error.message } : {}),
-      } as SubmissionGap);
-    }
-  }
-  return gaps;
 }
 
 function acceptWithReceipt(

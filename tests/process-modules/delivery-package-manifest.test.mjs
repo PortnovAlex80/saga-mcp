@@ -18,9 +18,10 @@
 //     digest is the documented pending placeholder, every path is relative +
 //     traversal-safe.
 //   - handlerRefs: every logicalId matches a handler/adapter declared in the
-//     delivery definition (kernel handlers + external + human adapters),
-//     unique by logicalId, and covers every `handler:`/`adapter:`/
-//     `interactionContract:` field on the flow nodes.
+//     delivery definition (kernel handlers + human adapters), unique by
+//     logicalId, covers every `handler:`/`interactionContract:` field on the
+//     flow nodes, and every digest is the real sha256 of the compiled handler
+//     installation module (ADR-066 item 3 / plan item 15 — no placeholder).
 //   - contractRefs: schemaId matches the wrapped definition's input/output
 //     contracts.
 //   - The manifest round-trips through canonical JSON (pure data, plan §3.5).
@@ -33,7 +34,8 @@
 // dist/process-modules/modules/delivery/package/).
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -229,10 +231,27 @@ test('handlerRefs cover every handler/adapter/interaction field on the flow node
   }
 });
 
-test('every handler version is non-empty and digest is the pending placeholder', () => {
+test('every handler digest is the real sha256 of the handler installation module (ADR-066 item 3)', () => {
+  // Plan item 15: handlerRefs are content-addressed at manifest load. The
+  // digest must be the sha256 of the SAME compiled module the composition
+  // root imports to register these handlers/adapters — never a placeholder.
+  // Recompute it here from the module bytes so the WIRING itself is under
+  // test: if the manifest ever hashes the wrong file (or regresses to
+  // 'pending@wave-2'), this fails. Raw-bytes sha256 via crypto (matches
+  // computeResourceDigest; NOT canonical-json sha256Hex). Covers BOTH the
+  // kernel handlers (createDeliveryKernelHandlers) and the human approval
+  // adapter (createDeliveryHumanInteractions) — they share one installation
+  // module, hence one digest.
+  const implPath = path.join(
+    REPO_ROOT,
+    'dist/modules/delivery/application/delivery-installation.js',
+  );
+  const expected = createHash('sha256').update(readFileSync(implPath)).digest('hex');
   for (const h of DELIVERY_HANDLER_REFS) {
     assert.ok(h.version.length > 0, h.logicalId);
-    assert.equal(h.digest, 'pending@wave-2', h.logicalId);
+    assert.match(h.digest, /^[0-9a-f]{64}$/, h.logicalId);
+    assert.notEqual(h.digest, 'pending@wave-2', h.logicalId);
+    assert.equal(h.digest, expected, h.logicalId);
   }
 });
 

@@ -16,9 +16,6 @@ export function processRunResultSnapshot(
     certificateRef: result.certificate?.certificateRef ?? null,
     certificateHash: result.certificate?.certificateHash ?? null,
     certificateSchema: result.certificate?.schema ?? null,
-    // TB-8: the deterministic failure reason rides in the snapshot so the
-    // stage/lifecycle error columns can be populated from it (not NULL).
-    error: result.error ?? null,
   };
 }
 

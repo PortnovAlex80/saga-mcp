@@ -14,7 +14,9 @@
 //     a real resource on disk, every kind is a known ResourceKind, every
 //     digest is the documented pending placeholder.
 //   - handlerRefs: every logicalId matches a handler declared in the formalization
-//     definition (FORMALIZATION_HANDLER_IDS), unique by logicalId.
+//     definition (FORMALIZATION_HANDLER_IDS), unique by logicalId, and every
+//     digest is the real sha256 of the compiled handler installation module
+//     (ADR-066 item 3 / plan item 15 — no placeholder).
 //   - contractRefs: schemaId matches the wrapped definition's input/output
 //     contracts.
 //   - The manifest round-trips through canonical JSON (pure data, plan §3.5).
@@ -26,7 +28,8 @@
 // dist/process-modules/modules/formalization/package/).
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -205,10 +208,24 @@ test('handlerRefs cover every handler declared in the formalization definition',
   }
 });
 
-test('every handler version is non-empty and digest is the pending placeholder', () => {
+test('every handler digest is the real sha256 of the handler installation module (ADR-066 item 3)', () => {
+  // Plan item 15: handlerRefs are content-addressed at manifest load. The
+  // digest must be the sha256 of the SAME compiled module the composition
+  // root imports to register these handlers — never a placeholder. Recompute
+  // it here from the module bytes so the WIRING itself is under test: if the
+  // manifest ever hashes the wrong file (or regresses to 'pending@wave-2'),
+  // this fails. Raw-bytes sha256 via crypto (matches computeResourceDigest;
+  // NOT canonical-json sha256Hex).
+  const implPath = path.join(
+    REPO_ROOT,
+    'dist/modules/formalization/application/formalization-production-cell-installation.js',
+  );
+  const expected = createHash('sha256').update(readFileSync(implPath)).digest('hex');
   for (const h of FORMALIZATION_HANDLER_REFS) {
     assert.ok(h.version.length > 0, h.logicalId);
-    assert.equal(h.digest, 'pending@wave-2', h.logicalId);
+    assert.match(h.digest, /^[0-9a-f]{64}$/, h.logicalId);
+    assert.notEqual(h.digest, 'pending@wave-2', h.logicalId);
+    assert.equal(h.digest, expected, h.logicalId);
   }
 });
 

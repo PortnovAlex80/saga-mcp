@@ -39,12 +39,19 @@
  * manifest is validated by `validateProcessModuleManifest` (W1-A2) at module
  * load; a structural regression throws synchronously and fails the build.
  *
- * Digest placeholder: every resource + handler digest uses the documented
- * `'pending@wave-2'` sentinel. The content-addressed package store (Wave 2)
- * replaces each placeholder with `sha256Hex` of the resource's real bytes at
- * install time. Until then the manifest is structurally complete and
- * serializable, but not yet content-addressed — exactly the Wave 8 contract.
+ * Digests: resource entries keep the documented `'pending@wave-2'` sentinel —
+ * the content-addressed package store (Wave 2) stamps each with `sha256Hex`
+ * of the resource's real bytes at install time. Handler refs are
+ * content-addressed at module load (ADR-066 item 3 / plan item 15): each
+ * `digest` is the real sha256 of the compiled handler installation module,
+ * so editing handler code changes the manifest identity and a run can prove
+ * which handler bytes it executed.
  */
+
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type {
   HandlerRef,
@@ -258,22 +265,65 @@ export const FORMALIZATION_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
 // ---------------------------------------------------------------------------
 // Handler refs.
 //
-// Stable, content-addressed references to the seven kernel handlers the
-// formalization flow wires up in `formalization-installation.ts`. Handlers are
-// NOT shipped in the manifest — only stable references. The Wave 2+ adapter
-// registry resolves each `logicalId` to the concrete `KernelHandler` by name.
-// `digest` is the documented placeholder until the handler registry
-// content-addresses handler implementations.
+// Stable, content-addressed references to the kernel handlers the
+// formalization flow wires up in the Production Cell installation module.
+// Handlers are NOT shipped in the manifest — only stable references. The
+// adapter registry resolves each `logicalId` to the concrete `KernelHandler`
+// by name.
+//
+// ADR-066 item 3 (plan item 15): every `digest` is the REAL sha256 of the
+// handler installation module, computed at manifest load (the same pattern as
+// `modules-ext/external-seo/manifest.mjs`). A placeholder here made
+// composition unprovable — binding receipts compared a constant, so a handler
+// edit during a live run was invisible. Now editing the installation module
+// changes every handlerRef digest → changes the packageDigest → forces an
+// explicit resume-compatibility decision instead of a trivially-passing
+// placeholder comparison.
 // ---------------------------------------------------------------------------
 
-/** Shared placeholder handler version (matches the module version's minor). */
+/** Shared handler version (matches the module version's minor). */
 const HANDLER_VERSION = '1.0.0';
+
+/** Directory of THIS manifest module (mirrored by tsc into dist/). */
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * sha256 of a handler implementation module's raw bytes (same formula as
+ * `computeResourceDigest` in package-store.ts — raw bytes via crypto, NOT
+ * canonical-json `sha256Hex`). `relImportSpecifier` uses the same relative
+ * `.js` specifier the import of `FORMALIZATION_KERNEL_HANDLER_IDS` above
+ * uses, so the digest covers the EXACT module the runtime imports and
+ * executes. A missing file fails module load — the manifest must never load
+ * un-provably (same fail-closed contract as `validateProcessModuleManifest`
+ * throwing at load).
+ */
+function handlerImplementationDigest(relImportSpecifier: string): string {
+  const implPath = path.join(HERE, relImportSpecifier);
+  try {
+    return createHash('sha256').update(readFileSync(implPath)).digest('hex');
+  } catch (e) {
+    throw new Error(
+      `cannot content-address formalization handler implementation `
+      + `'${relImportSpecifier}' (resolved: ${implPath}): ${(e as Error).message}`,
+    );
+  }
+}
+
+/**
+ * Content address of `createFormalizationProductionCellKernelHandlers` — the
+ * module the composition root calls to register every handler pinned below.
+ * Both handlers are created by this single installation module, so they share
+ * its digest; editing EITHER of them changes it.
+ */
+const FORMALIZATION_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
+  '../../../../modules/formalization/application/formalization-production-cell-installation.js',
+);
 
 function formalizationHandlerRef(logicalId: string): HandlerRef {
   return {
     logicalId,
     version: HANDLER_VERSION,
-    digest: PENDING_DIGEST,
+    digest: FORMALIZATION_HANDLER_IMPLEMENTATION_DIGEST,
   };
 }
 

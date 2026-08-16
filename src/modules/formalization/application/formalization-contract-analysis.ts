@@ -73,6 +73,7 @@ export function findContractGap(
     product?: boolean;
     useCases?: boolean;
     acceptance?: boolean;
+    reconciliation?: boolean;
     architecture?: boolean;
   },
 ): string | null {
@@ -131,11 +132,18 @@ export function findContractGap(
         gaps.push(`FR-derived AC ${ac.id} has no derived_from → exact UC trace`);
       }
     }
+  }
+  if (required.reconciliation) {
     // KI-5 reverse coverage: every FR/NFR must have at least one incoming
     // covers or derived_from edge from a UC/AC. Without this, a requirement
     // that no use case covers and no acceptance criterion validates slips
     // through every one-directional gate (live proof: units FR-3 accepted
     // with zero consumers).
+    //
+    // Checked ONLY in the reconciliation phase (the final catch-all), not in
+    // the individual phase gates: during the acceptance phase, the UC set
+    // may not yet be complete for all FRs (workers author sequentially).
+    // By reconciliation, all artifacts exist and the reverse check is valid.
     const acIds = new Set(idsOf(categories.acs));
     for (const fr of [...categories.frs, ...categories.nfrs]) {
       const coveredByUc = snapshot.traces.some(trace =>

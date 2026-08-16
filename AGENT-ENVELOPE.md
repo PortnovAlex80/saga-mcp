@@ -636,3 +636,70 @@ state=unknown → observe-путь не активировался → орке�
 (effect_pending-стол). Структурный фикс в очереди: unknown обязан
 разрешаться (retry → failed → repair routing), а не висеть вечно.
 
+
+### 2026-08-16 — ZCode / инженер-реализатор плана п.19 (typed dispatch outcomes) — оператору
+
+1. **ADR-053 прочитан** (целиком, до начала правок; также W2-анализ §1–2 и
+   CONVEYOR-MENTAL-MODEL §22 как образец для типизированных исходов).
+
+2. **Что сделал (п.19):** фаталы диспетчеризации преобразованы в типизированные
+   исходы. `dispatch-loop.ts` теперь возвращает из `startOne()` `DispatchOutcome`
+   (`assigned | card_error | queue_empty | capacity_blocked`); recoverable-ошибки
+   (REPLAY_*, FROZEN_*, спавн-errno EAGAIN/ENOENT/…, per-card repo projection)
+   логируются в stderr как `card_error`, карточка освобождается и «отравляется»
+   на остаток drain'а (`excludeTaskIds` проброшен в порт → адаптер →
+   `findNextClaimable`, анти-livelock: без этого детерминированный приоритет
+   очереди бесконечно перевыдавал бы ту же сломанную карточку). FATAL
+   (AUTHORITY_BINDING_INVALID, EXECUTION_ROUTES_INVALID, SQLITE_*, неизвестные —
+   fail-closed default) по-прежнему бросаются и корректельно убивают движок.
+   Одна сломанная карточка больше не убивает завод; все сломаны →
+   `dispatched=0` → emptyDispatchStreak → штатный exit 2 (paused). Тесты:
+   `tests/infrastructure/dispatch-typed-outcomes.test.mjs` (5 сценариев, зелёные)
+   + обновлены TEST 4/5 в dispatch-loop-overlap под новый контракт.
+
+3. **Следующая граница без cutover (ответ на вопрос 3):** execution-scoped
+   material lookup в effect-цепочке. Мой п.19 лечит смерть ВЛАДЕЛЬЦА на
+   диспетчеризации, но дальше по конвейеру W2 уже показал воспроизводимую
+   границу: третий lifecycle-ран на том же Workplace → newest-wins биндер
+   выберет капсулу рана N-2 против baseline, замороженного по рану N-1 →
+   `FINAL_PRESENTATION_FENCE_MISMATCH`-класс, и settlement-гейт, читающий
+   задачи мёртвых ранов (`formalization-inconsistent: tasks-not-ready #73,#74,#75`).
+   Обе границы — прямые следствия того, что material authority живёт в
+   execution/ране, а не в sealed WorkplaceProductionRevision. Рекомендую
+   cutover по ADR-053, а не следующие точечные фиксы.
+
+### 2026-08-16 — ZCode / инженер-реализатор плана п.15 (реальные sha256 в handlerRefs) — оператору
+
+1. **ADR-053 прочитан** до начала правок (диагноз, Run 011, классификация
+   багов, шаги 1–7, раздел «какие тесты нужны»).
+
+2. **Что сделал (п.15):** placeholder-дайджесты `pending@wave-2` в handlerRefs
+   всех четырёх production-манифестов (discovery/formalization/development/
+   delivery) заменены на реальные sha256 от скомпилированного
+   handler-installation-модуля (raw bytes через crypto — та же формула, что
+   `computeResourceDigest`; паттерн external-seo). Дайджест вычисляется при
+   загрузке манифеста, fail-closed: нет файла → манифест не грузится. Правка
+   кода хендлера теперь меняет handlerRef-дайджесты → packageDigest →
+   resume-совместимость решается явно, а не тривиально-проходит по
+   плейсхолдеру. Живому заводу ничего не ломаю: production-install ставит с
+   `replaceOnDigestChange: true`, поверхность контракта (logicalId) не
+   меняется → `compatible` → retire+reinstall; закреплённые ProcessRun'ы
+   читают свои исторические снапшоты через `readPinnedProcessPackages`.
+   Коммита не делал (не просили); правки в рабочем дереве рядом с правками
+   п.19.
+
+3. **Мой ответ на «точечные фиксы или cutover»:** п.15 — это укрепление
+   границы доказуемости композиции, а не новый fallback; но дальше по плану
+   рекомендую cutover по ADR-053, как и коллега из п.19.
+
+4. **Следующая граница без cutover (по моему участку):** `classifyResumeCompatibility`
+   сравнивает только `handlerLogicalIds`, НЕ implementation-дайджесты —
+   полностью переписанный settlement-хендлер между ран'ами классифицируется
+   как `compatible`, старый Workplace ресюмится с новой семантикой сеттлмента.
+   П.15 сделал этот дрейф ВИДИМЫМ (packageDigest меняется), но вердикт
+   по-прежнему `compatible`. Следующий шаг на этой границе — включить
+   implementation-дайджесты хендлеров в контрактную поверхность
+   resume-политики. Плюс уже названная коллегой граница newest-wins
+   капсульного биндера на третьем lifecycle-ране — прямое следствие
+   execution-scoped material authority.
+
