@@ -2,7 +2,13 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
-import { assertExecutionFence, updateExecutionPhase, isProcessAlive, ACTIVE_EXECUTION_STATES } from '../worker-executions.js';
+import {
+  assertExecutionFence,
+  assertExecutionNotVoided,
+  updateExecutionPhase,
+  isProcessAlive,
+  ACTIVE_EXECUTION_STATES,
+} from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
@@ -280,6 +286,10 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // findNextClaimable, so no claim SQL executes for a fenced execution.
   const fenceExecutionId = args.execution_id as string | undefined;
   if (typeof fenceExecutionId === 'string' && fenceExecutionId !== '') {
+    // Operator SOFT-STOP tool fence: a voided execution was recalled by the
+    // operator and its hire rewound. It must not claim NEW work either —
+    // refuse with the typed error before the queue is read.
+    assertExecutionNotVoided(db, fenceExecutionId);
     const placeholders = ACTIVE_EXECUTION_STATES.map(() => '?').join(',');
     const holdsActiveExecution = db.prepare(
       `SELECT 1 FROM worker_executions
@@ -519,6 +529,12 @@ function handleWorkerDone(
   }
 
   const completeTask = (): WorkerDoneTransactionResult => {
+    // Operator SOFT-STOP tool fence (schema v13): FIRST check, before the
+    // receipt replay short-circuits. A voided execution's accepted receipts
+    // are audit history (its hire was rewound); a retry must surface the typed
+    // refusal, not the stored reply. Runs inside this BEGIN IMMEDIATE so the
+    // refusal and any write commit atomically.
+    assertExecutionNotVoided(db, args.execution_id);
     // A typed product_submit may already have committed and closed this exact
     // presentation through ADR-072. An LM that follows the legacy hint and
     // calls worker_done afterwards receives the durable close reply; it does
@@ -1068,6 +1084,10 @@ function handleWorkerAskNeed(args: Record<string, unknown>): {
       throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
     }
     assertExecutionFence(db, task, args.execution_id);
+    // Operator SOFT-STOP tool fence: a voided execution cannot park its task
+    // for a human — the hire was rewound and the card already returned to its
+    // queue. Same transaction as the writes below.
+    assertExecutionNotVoided(db, args.execution_id ?? task.current_execution_id);
 
     // Compute resume_phase from the current task status. in_progress →
     // implementation, review_in_progress → review, done+pending → integration.
@@ -1330,6 +1350,9 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
       );
     }
     assertExecutionFence(db, task, args.execution_id);
+    // Operator SOFT-STOP tool fence: a voided execution cannot take merge
+    // locks. Same BEGIN IMMEDIATE as the lock write below.
+    assertExecutionNotVoided(db, args.execution_id ?? task.current_execution_id);
 
     const projectIdRow = db
       .prepare('SELECT project_id FROM epics e JOIN tasks t ON t.epic_id=e.id WHERE t.id=?')
@@ -1428,6 +1451,9 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
       | undefined;
     if (!task) throw new Error(`Task ${taskId} not found`);
     assertExecutionFence(db, task, args.execution_id);
+    // Operator SOFT-STOP tool fence: a voided execution cannot record merge
+    // outcomes. Same BEGIN IMMEDIATE as the writes below.
+    assertExecutionNotVoided(db, args.execution_id ?? task.current_execution_id);
 
     const projectIdRow = db
       .prepare('SELECT project_id FROM epics e JOIN tasks t ON t.epic_id=e.id WHERE t.id=?')

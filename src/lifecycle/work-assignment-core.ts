@@ -408,6 +408,11 @@ export function findNextClaimable(
   const excludeIdsClause = excludeTaskIds && excludeTaskIds.length > 0
     ? `AND t.id NOT IN (${excludeTaskIds.map(() => '?').join(',')})`
     : '';
+  // Operator SOFT-STOP holds (schema v13): an active (unreleased)
+  // factory_operator_holds row — workplace-scoped or project-scoped — blocks
+  // hiring for its subject. Same fail-closed shape as the excludeTaskIds
+  // poison mechanism: the card is skipped before the claim UPDATE, and a
+  // released hold (released_at IS NOT NULL) hires again.
   const roleClause = role
     ? `AND EXISTS (
          SELECT 1 FROM json_each(t.tags)
@@ -469,6 +474,17 @@ export function findNextClaimable(
        AND NOT EXISTS (
          SELECT 1 FROM human_requests hr
           WHERE hr.task_id=t.id AND hr.state='open'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM factory_operator_holds h
+          WHERE h.released_at IS NULL
+            AND (
+              (h.subject_kind='workplace' AND h.subject_ref=t.workplace_ref)
+              OR (h.subject_kind='project' AND EXISTS (
+                    SELECT 1 FROM epics he
+                     WHERE he.id=t.epic_id
+                       AND h.subject_ref=CAST(he.project_id AS TEXT))))
        )
        AND NOT EXISTS (
          SELECT 1

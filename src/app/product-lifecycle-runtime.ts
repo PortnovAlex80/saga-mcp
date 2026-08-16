@@ -8,8 +8,7 @@
 
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import { sha256Hex } from '../shared/canonical-json.js';
-import type {
+import { sha256Hex } from '../shared/canonical-json.js';import type {
   WorkAssignmentPort,
   WorkerExecutorFactory,
   WorkerExecutorFactoryContext,
@@ -169,6 +168,24 @@ export interface ProductLifecycleRuntimeOptions {
   onLifecycleStarted?: (
     run: import('../process-modules/persistence/lifecycle-run.js').LifecycleRunRecord,
   ) => Promise<void> | void;
+}
+
+/**
+ * Recovery-budget fairness (operator SOFT-STOP, schema v13): count the
+ * terminal executions that spend recovery budget for a task. A VOIDED
+ * execution (voided_at IS NOT NULL — an operator recall) is NOT a model
+ * failure and must not burn recovery budget or epochs.
+ */
+export function countTerminalExecutionsForTask(
+  db: Database.Database,
+  taskId: number,
+): number {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n FROM worker_executions
+      WHERE task_id=? AND state IN ('lost','terminated','spawn_failed')
+        AND voided_at IS NULL`,
+  ).get(taskId) as { n: number } | undefined;
+  return row?.n ?? 0;
 }
 
 export function createProductLifecycleRuntime(
@@ -535,13 +552,7 @@ export function createProductLifecycleRuntime(
           ).get(serialized) as { taskId: number } | undefined;
           return row ?? null;
         },
-        countTerminalExecutionsForTask: (taskId) => {
-          const row = db.prepare(
-            `SELECT COUNT(*) AS n FROM worker_executions
-              WHERE task_id=? AND state IN ('lost','terminated','spawn_failed')`,
-          ).get(taskId) as { n: number } | undefined;
-          return row?.n ?? 0;
-        },
+        countTerminalExecutionsForTask: (taskId) => countTerminalExecutionsForTask(db, taskId),
         // Fix-3 — an ACCEPTED CandidateSet must not consume recovery budget.
         countGateRejectedCandidateSets: (workplaceRef, role) =>
           countGateRejectedCandidateSetsSql(

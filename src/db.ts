@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureCellEffectRepairIssueColumns, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureCellEffectRepairIssueColumns, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, ensureWorkerExecutionSoftStopColumns, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -68,6 +68,12 @@ let db: Database.Database | null = null;
  *       factory_workplace_recovery_epochs table for recovery.onExhausted=
  *       'requeue' cells — each budget rollover snapshots the attempt-counter
  *       baselines; attempt counters themselves stay all-time and immutable.
+ *  13 = Operator SOFT-STOP protocol: factory_worker_stops (per-execution typed
+ *       stop audit with phase progression) + factory_operator_holds (unpark
+ *       surface blocking re-hire until released) + additive worker_executions
+ *       columns stop_fence/voided_at. The void state is audit-only
+ *       (voided_at IS NOT NULL on a terminal state value); no existing CHECK
+ *       constraint is widened.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -75,7 +81,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -100,7 +106,7 @@ export function getDb(): Database.Database {
   // traces, tasks, evidence). Deleting it is never the right answer.
   // When the schema changes, versioned migrations must handle the upgrade.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
-  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, SCHEMA_VERSION]);
+  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, SCHEMA_VERSION]);
   if (!supportedVersions.has(existingVersion)) {
     db.close();
     db = null;
@@ -157,6 +163,10 @@ export function getDb(): Database.Database {
   // of the existing `fence` column — pre-migration obligations read with
   // lease_fence = NULL until they are next leased.
   ensureTransitionObligationLeaseFenceColumn(db);
+  // Additive migration (schema v13, operator SOFT-STOP): worker_executions
+  // gains stop_fence/voided_at. Fresh DBs get both from CREATE TABLE; pre-v13
+  // DBs get them here. No existing CHECK constraint is touched.
+  ensureWorkerExecutionSoftStopColumns(db);
   // Additive migration (ADR-074): repair-issue exact-identity columns for DBs
   // whose factory_cell_effect_repair_issues predates the final feedback fix.
   ensureCellEffectRepairIssueColumns(db);
@@ -217,6 +227,7 @@ export function getDb(): Database.Database {
     || migratedVersion === 9
     || migratedVersion === 10
     || migratedVersion === 11
+    || migratedVersion === 12
   ) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {

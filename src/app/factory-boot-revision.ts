@@ -47,6 +47,7 @@ import { buryDeadLifecycleObligations } from './engine-start-lifecycle-burial.js
 import { reconcileWorkerExecutions } from '../worker-executions.js';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
+import { reapInterruptedWorkerStops, type ReapedStop } from './operator-soft-stop.js';
 import type { ReconcileResult } from '../worker-executions.js';
 
 export interface FactoryBootRevisionResult {
@@ -61,6 +62,8 @@ export interface FactoryBootRevisionResult {
     readonly reason: string;
   }[];
   readonly scopesChecked: number;
+  /** Operator SOFT-STOP convergence: interrupted stop protocols completed. */
+  readonly workerStopReap: readonly ReapedStop[];
 }
 
 export function runFactoryBootRevision(
@@ -72,6 +75,14 @@ export function runFactoryBootRevision(
 
   // Phase 2: dead lifecycles. Already global, already idempotent.
   const burial = buryDeadLifecycleObligations(db);
+
+  // Phase 2.5: operator SOFT-STOP convergence. A worker stop interrupted by
+  // a crash (stop row not yet killed/reaped, persisted PID possibly still
+  // alive) is completed here: fence re-driven idempotently, guarded kill
+  // re-verified. Runs BEFORE the stale-worker sweep so the sweep never fights
+  // an in-flight stop protocol (voided executions are terminal and outside
+  // the sweep's active-state scope).
+  const workerStopReap = reapInterruptedWorkerStops(db);
 
   // Phase 3: stale-worker sweep. Mirrors the chain inside
   // SqliteExecutionRuntimeRepository.reconcile but with an injected DB:
@@ -177,5 +188,5 @@ export function runFactoryBootRevision(
     }
   }
 
-  return { adoption, burial, swept, scopesChecked: scopes.length };
+  return { adoption, burial, swept, scopesChecked: scopes.length, workerStopReap };
 }

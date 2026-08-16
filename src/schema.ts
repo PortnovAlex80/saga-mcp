@@ -230,7 +230,20 @@ CREATE TABLE IF NOT EXISTS worker_executions (
   suspected_stuck_at TEXT,
   cancel_requested_at TEXT,
   stuck_state       TEXT NOT NULL DEFAULT 'active'
-                     CHECK (stuck_state IN ('active','suspected_stuck','cancel_requested'))
+                     CHECK (stuck_state IN ('active','suspected_stuck','cancel_requested')),
+  -- Operator SOFT-STOP protocol (schema v13). The void state is AUDIT-ONLY and
+  -- additive: instead of widening the state CHECK above with a 'voided'
+  -- literal (which would force a table rebuild), a voided execution keeps a
+  -- terminal state value ('terminated') and is marked by voided_at IS NOT
+  -- NULL. Every fence consumer (tool handlers, adoption, budget counters,
+  -- reaper) tests the marker, never the state name.
+  --   * voided_at   — when the operator soft-stop fenced this execution. NULL
+  --                    means the execution was never recalled.
+  --   * stop_fence  — per-execution monotonic stop generation. Bumped exactly
+  --                    once inside the fence+rewind transaction so a stale
+  --                    in-flight tool call can observe it change.
+  stop_fence       INTEGER NOT NULL DEFAULT 0,
+  voided_at        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS subtasks (
@@ -1182,6 +1195,55 @@ CREATE TABLE IF NOT EXISTS factory_workplace_park_reasons (
 );
 CREATE INDEX IF NOT EXISTS idx_factory_workplace_park_reasons_ref
   ON factory_workplace_park_reasons(workplace_ref);
+
+-- ---------------------------------------------------------------------------
+-- Operator SOFT-STOP protocol (schema v13).
+--
+-- Stopping a worker is a TYPED DURABLE protocol, never an inference from
+-- process exit codes: (1) brake the engine, (2) fence + rewind the hire in one
+-- transaction, (3) runner stop hook + guarded tree-kill, (4) checkpoint. The
+-- two tables below are the durable audit trail of that protocol.
+--
+-- factory_worker_stops: one row per stopped worker execution (the hire being
+-- recalled). The phase column is the protocol's progress marker; the boot
+-- reaper uses it to converge crash windows (a stop row not yet killed/reaped
+-- with a live persisted PID is completed on next boot).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS factory_worker_stops (
+  stop_ref             TEXT PRIMARY KEY,
+  worker_execution_ref TEXT NOT NULL REFERENCES worker_executions(execution_id) ON DELETE RESTRICT,
+  workplace_ref        TEXT,
+  project_id           INTEGER NOT NULL,
+  reason               TEXT NOT NULL,
+  phase                TEXT NOT NULL
+                         CHECK (phase IN ('planned','engine_braked','fenced','detached',
+                                          'hook_sent','killed','reaped','checkpointed','abandoned')),
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_worker_stops_execution
+  ON factory_worker_stops(worker_execution_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_worker_stops_project
+  ON factory_worker_stops(project_id);
+CREATE INDEX IF NOT EXISTS idx_factory_worker_stops_phase
+  ON factory_worker_stops(phase);
+
+-- factory_operator_holds: the unpark surface. Every fence+rewind inserts one
+-- hold for the rewound workplace (and the stop may insert one project-scope
+-- hold). While a hold is active (released_at IS NULL) the claim SQL refuses to
+-- hire that workplace/project — the operator, not the queue, owns the next
+-- move. The unpark verb stamps released_at; hiring resumes.
+CREATE TABLE IF NOT EXISTS factory_operator_holds (
+  hold_ref     TEXT PRIMARY KEY,
+  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('workplace','project')),
+  subject_ref  TEXT NOT NULL,
+  reason       TEXT NOT NULL,
+  created_by   TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  released_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_factory_operator_holds_subject
+  ON factory_operator_holds(subject_kind, subject_ref, released_at);
 
 -- A fan-out Production Cell is one immutable dependency graph, not a set of
 -- task-status observations. task_dependencies is a rebuildable projection.
@@ -2645,6 +2707,33 @@ export function ensureArtifactStorageKindColumn(db: {
     `ALTER TABLE artifacts ADD COLUMN storage_kind TEXT NOT NULL DEFAULT 'file_backed'
        CHECK (storage_kind IN ('file_backed','db_native','external_ref'))`,
   );
+}
+
+/**
+ * Additive migration (schema v13, operator SOFT-STOP): worker_executions gains
+ * the soft-stop columns — `stop_fence INTEGER NOT NULL DEFAULT 0` (per-execution
+ * stop generation) and `voided_at TEXT NULL` (the audit-only VOID marker).
+ *
+ * Fresh databases get both from SCHEMA_SQL's CREATE TABLE; pre-v13 databases
+ * land here. The existing `state` CHECK is deliberately NOT touched: widening a
+ * CHECK requires a table rebuild, and the void state is represented additively
+ * by `voided_at IS NOT NULL` on top of a terminal state value. Idempotent via a
+ * PRAGMA table_info probe — matches the {@link ensureArtifactStorageKindColumn}
+ * idiom.
+ */
+export function ensureWorkerExecutionSoftStopColumns(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(worker_executions)').all();
+  if (!columns.some((c) => c.name === 'voided_at')) {
+    db.exec('ALTER TABLE worker_executions ADD COLUMN voided_at TEXT');
+  }
+  if (!columns.some((c) => c.name === 'stop_fence')) {
+    db.exec(
+      'ALTER TABLE worker_executions ADD COLUMN stop_fence INTEGER NOT NULL DEFAULT 0',
+    );
+  }
 }
 
 /**

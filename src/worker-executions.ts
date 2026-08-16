@@ -167,6 +167,35 @@ export function assertExecutionFence(
   if (!active) throw new Error(`Execution ${executionId} is no longer active for task ${task.id}`);
 }
 
+/**
+ * Operator SOFT-STOP tool fence (schema v13). A voided execution was recalled
+ * by an operator stop: its hire was rewound and every mutating tool call from
+ * it must fail closed with a TYPED refusal — never an exit-code inference and
+ * never a generic fence error. Call this INSIDE the same transaction as the
+ * tool's write so the check and the write commit (or refuse) atomically.
+ *
+ * No-ops when the caller carries no execution identity (older unfenced paths)
+ * or the execution row does not exist — the ordinary ownership/fence checks
+ * own those refusals. Only a durable void marker (voided_at IS NOT NULL)
+ * triggers the typed error.
+ */
+export function assertExecutionNotVoided(
+  db: Database.Database,
+  executionId: unknown,
+): void {
+  if (typeof executionId !== 'string' || executionId === '') return;
+  const row = db.prepare(
+    'SELECT voided_at, stop_fence FROM worker_executions WHERE execution_id=?',
+  ).get(executionId) as { voided_at: string | null; stop_fence: number } | undefined;
+  if (!row || row.voided_at === null) return;
+  throw new Error(
+    `WORKER_EXECUTION_VOIDED: execution '${executionId}' was recalled by an `
+    + `operator soft-stop at ${row.voided_at} (stop fence ${row.stop_fence}). `
+    + 'The hire was rewound; this execution can no longer mutate factory '
+    + 'material. Stop immediately — a replacement worker will be hired.',
+  );
+}
+
 export function markExecutionRunning(
   dbPath: string,
   executionId: string,

@@ -26,6 +26,10 @@ import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/wor
  * transition. Without the receipt the reservation is left alone: that case
  * never legitimately reaches verifying (releaseExecution('completed') is the
  * only entry) and must fail loudly instead of being silently rewritten.
+ *
+ * Operator SOFT-STOP (schema v13): a VOIDED execution (voided_at IS NOT NULL)
+ * is terminal-with-audit and is NEVER resurrected or repaired here — its hire
+ * was rewound by the operator; a replacement worker owns the next attempt.
  */
 
 export const ENGINE_START_ADOPTION_POLICY_REF = 'factory.engine-start-adoption.v1';
@@ -34,7 +38,6 @@ export const ENGINE_START_ADOPTION_POLICY_REF = 'factory.engine-start-adoption.v
 const KERNEL_OWNED_LOOP_STATES = "('verifying','effect_pending')";
 /** Terminal execution states: the OS process fact is already recorded. */
 const TERMINAL_EXECUTION_STATES = "('exited','failed','terminated','lost')";
-
 export interface EngineStartAdoptionResult {
   readonly adopted: number;
   readonly repaired: readonly {
@@ -77,6 +80,7 @@ export function adoptTerminalExecutionsAtEngineStart(
         AND w.loop_state IN ${KERNEL_OWNED_LOOP_STATES}
       WHERE we.state IN ${TERMINAL_EXECUTION_STATES}
         AND we.stuck_state = 'active'
+        AND we.voided_at IS NULL
       ORDER BY we.finished_at`,
   ).all() as { execution_id: string; workplace_ref: string; loop_state: string }[];
 

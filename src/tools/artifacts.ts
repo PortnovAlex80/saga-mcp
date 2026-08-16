@@ -11,6 +11,7 @@ import {
   resolveManagedExecutionProvenance,
   type ManagedExecutionProvenance,
 } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
+import { assertExecutionNotVoided } from '../worker-executions.js';
 import { writeProduct } from './universal-desk-helper.js';
 import { ARTIFACT_REF_SCHEMA } from '../modules/formalization/domain/artifact-ref-bridge.js';
 
@@ -156,6 +157,10 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (managedExecution && !db.inTransaction) {
     return db.transaction(() => handleArtifactCreate(args)).immediate();
   }
+  // Operator SOFT-STOP tool fence (schema v13): inside the same immediate
+  // transaction as the artifact write below. A voided execution cannot mutate
+  // requirements material — its hire was rewound.
+  if (managedExecution) assertExecutionNotVoided(db, managedExecution.executionId);
   const projectId = args.project_id as number;
   const epicId = args.epic_id as number;
   const type = args.type as typeof ARTIFACT_TYPES[number];
@@ -469,6 +474,8 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   if (managedExecution && !db.inTransaction) {
     return db.transaction(() => handleArtifactUpdate(args)).immediate();
   }
+  // Operator SOFT-STOP tool fence: same immediate transaction as the UPDATE.
+  if (managedExecution) assertExecutionNotVoided(db, managedExecution.executionId);
   const id = args.id as number;
   const existing = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
   if (!existing) throw new Error(`Artifact ${id} not found`);
@@ -604,6 +611,9 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   if (managedExecution && !db.inTransaction) {
     return db.transaction(() => handleTraceAdd(args)).immediate();
   }
+  // Operator SOFT-STOP tool fence: same immediate transaction as the trace
+  // INSERT + managed-ledger write at the bottom.
+  if (managedExecution) assertExecutionNotVoided(db, managedExecution.executionId);
   const sourceId = args.source_id as number;
   const targetType = args.target_type as 'artifact' | 'task';
   const targetId = args.target_id as number;
@@ -697,6 +707,8 @@ function handleTraceDelete(args: Record<string, unknown>): { deleted: boolean } 
   if (managedExecution && !db.inTransaction) {
     return db.transaction(() => handleTraceDelete(args)).immediate();
   }
+  // Operator SOFT-STOP tool fence: same immediate transaction as the DELETE.
+  if (managedExecution) assertExecutionNotVoided(db, managedExecution.executionId);
   const sourceId = args.source_id as number;
   const targetType = args.target_type as 'artifact' | 'task';
   const targetId = args.target_id as number;

@@ -12,6 +12,7 @@ import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-br
 import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 import { materializeManagedSourceChange } from '../infrastructure/source-change/managed-source-change-candidate.js';
 import { withImmediateTransaction } from '../lifecycle/work-assignment-core.js';
+import { assertExecutionNotVoided } from '../worker-executions.js';
 import { recordFinalPresentationCommitment } from '../infrastructure/workplace/sqlite-final-presentation-commitment.js';
 import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
 
@@ -53,6 +54,10 @@ const productSubmit: ToolHandler = args => {
   }
   content = materializeManagedSourceChange(getDb(), schema, content);
   const committed = withImmediateTransaction(getDb(), () => {
+    // Operator SOFT-STOP tool fence (schema v13): inside the same transaction
+    // as the submission write. A voided execution's typed product would sit
+    // inside a hire the operator already rewound — refuse with the typed error.
+    assertExecutionNotVoided(getDb(), process.env.SAGA_EXECUTION_ID);
     const result = submissionRepo().submitForCurrentExecution({ schema, payload: content });
     const universalRef = writeProduct(getDb(), {
       schemaRef: schema,

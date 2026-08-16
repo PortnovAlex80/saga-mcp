@@ -86,13 +86,15 @@ function parseStartArguments(rawArgs) {
   };
 }
 
-if (command !== 'start' && command !== 'resume' && command !== 'continue' && command !== 'abandon' && command !== 'rerun') {
-  die(`usage: node scripts/factory.mjs <start|resume|continue|abandon|rerun> <db-path> [options]\n`
+if (command !== 'start' && command !== 'resume' && command !== 'continue' && command !== 'abandon' && command !== 'rerun' && command !== 'stop' && command !== 'unpark') {
+  die(`usage: node scripts/factory.mjs <start|resume|continue|abandon|rerun|stop|unpark> <db-path> [options]\n`
     + `  start   <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
     + `  resume  <db-path> [--requeue-paused|--recover-failed-gate]\n`
     + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]\n`
     + `  abandon <db-path> <project-id> [--reason <text>]   — drop a poisoned run (fail-closed)\n`
-    + `  rerun   <db-path> <project-id> [--model <name>] [--reason <text>]   — abandon-if-poisoned + new_start`);
+    + `  rerun   <db-path> <project-id> [--model <name>] [--reason <text>]   — abandon-if-poisoned + new_start\n`
+    + `  stop    <db-path> [--project N | --all] [--dry-run] [--reason <text>]   — operator SOFT-STOP of running workers\n`
+    + `  unpark  <db-path> --project N [--workplace <ref>] [--reason <text>]    — release operator holds so hiring resumes`);
 }
 
 function resolveFactoryComposition() {
@@ -446,6 +448,154 @@ async function ensurePausedRecoveryFeedback(db, lifecycleRunId) {
     contractRef: policy.contractRef,
     inputSnapshotHash: metadata.process_node_input_hash ?? metadata.process_input_hash ?? '',
   }))();
+}
+
+// ─── stop / unpark: operator SOFT-STOP of running workers ──────────────────
+function parseSoftStopArguments(rawArgs) {
+  const result = {
+    dbPath: rawArgs[1],
+    projectId: null,
+    all: false,
+    dryRun: false,
+    workplaceRef: null,
+    reason: 'operator soft-stop',
+  };
+  for (let index = 2; index < rawArgs.length; index += 1) {
+    const option = rawArgs[index];
+    if (option === '--dry-run') {
+      result.dryRun = true;
+      continue;
+    }
+    if (option === '--all') {
+      result.all = true;
+      continue;
+    }
+    if (option === '--project' || option === '--reason' || option === '--workplace') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) die(`stop/unpark: ${option} requires a value`);
+      if (option === '--project') {
+        const pid = Number(value);
+        if (!Number.isSafeInteger(pid) || pid < 1) die('stop/unpark: --project must be a positive integer');
+        result.projectId = pid;
+      } else if (option === '--reason') {
+        result.reason = value;
+      } else {
+        result.workplaceRef = value;
+      }
+      index += 1;
+      continue;
+    }
+    die(`stop/unpark: unsupported option '${option}'`);
+  }
+  if (!result.dbPath) die('stop/unpark: db-path argument is required');
+  if (!existsSync(resolve(result.dbPath))) die(`stop/unpark: DB not found: ${resolve(result.dbPath)}`);
+  return result;
+}
+
+async function openSoftStopDb(dbPath) {
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+  db.pragma('foreign_keys = ON');
+  const { SCHEMA_SQL, ensureWorkerExecutionSoftStopColumns } = await import('../dist/schema.js');
+  db.exec(SCHEMA_SQL);
+  ensureWorkerExecutionSoftStopColumns(db);
+  // releaseOperatorHolds joins factory_process_runs (lazily created by the
+  // process-run repository) — ensure it exists even on a DB where no engine
+  // has ever run. Same pattern as runAbandon's lifecycle-table ensure.
+  const { ensureFactoryProcessRunSchema } = await import(
+    '../dist/process-modules/persistence/sqlite-process-run-repository.js'
+  );
+  ensureFactoryProcessRunSchema(db);
+  return db;
+}
+
+if (command === 'stop') {
+  const input = parseSoftStopArguments(args);
+  const hasProjectScope = input.projectId !== null;
+  if (hasProjectScope === input.all) {
+    die('stop: exactly one scope is required: --project <id> or --all');
+  }
+  if (input.workplaceRef !== null) die('stop: --workplace is an unpark option, not a stop option');
+  const db = await openSoftStopDb(input.dbPath);
+  try {
+    const { planWorkerStops, executeWorkerStops } = await import('../dist/app/operator-soft-stop.js');
+    const scope = input.all ? {} : { projectId: input.projectId };
+    if (input.dryRun) {
+      const planned = planWorkerStops(db, scope);
+      for (const item of planned) {
+        process.stdout.write(
+          `[factory] stop(dry-run) execution=${item.executionId} task=${item.taskId} `
+          + `workplace=${item.workplaceRef ?? 'none'} loop=${item.workplaceLoopState ?? '-'} `
+          + `kanban=${item.workplaceKanbanPhase ?? '-'} pid=${item.pid ?? 'none'} `
+          + `machine=${item.machineId} action=${item.action}\n`,
+        );
+      }
+      process.stdout.write(`[factory] stop(dry-run): ${planned.length} execution(s) in scope\n`);
+      process.exit(0);
+    }
+    const checkpointStore = process.env.SAGA_FACTORY_CHECKPOINT_STORE?.trim();
+    const projectIds = [...new Set(planWorkerStops(db, scope).map(item => item.projectId))];
+    const result = await executeWorkerStops({
+      db,
+      ...scope,
+      reason: input.reason,
+      createdBy: 'factory-cli stop',
+      captureCheckpoint: checkpointStore
+        ? async () => {
+          const { FactoryCheckpointService } = await import('../dist/checkpoints/factory-checkpoint-service.js');
+          for (const projectId of projectIds) {
+            await new FactoryCheckpointService().capture({
+              dbPath: input.dbPath,
+              storageRoot: checkpointStore,
+              projectId,
+              createdBy: 'factory-cli stop',
+            });
+          }
+        }
+        : undefined,
+      log: message => process.stdout.write(`[factory] stop: ${message}\n`),
+    });
+    if (!checkpointStore) {
+      process.stdout.write('[factory] stop: checkpoint skipped (SAGA_FACTORY_CHECKPOINT_STORE not set)\n');
+    }
+    const unparkHint = result.stops.length > 0
+      ? `node scripts/factory.mjs unpark ${input.dbPath} --project ${projectIds[0]}`
+      : '(nothing was stopped)';
+    process.stdout.write(
+      `[factory] stop complete: ${result.stops.length} execution(s) stopped, `
+      + `${result.engineBrakes.length} engine brake(s), checkpoint=${result.checkpoint.captured ? 'ok' : result.checkpoint.detail}\n`
+      + `[factory] unpark with: ${unparkHint}\n`,
+    );
+  } finally {
+    db.close();
+  }
+  process.exit(0);
+}
+
+if (command === 'unpark') {
+  const input = parseSoftStopArguments(args);
+  if (input.all) die('unpark: --all is a stop option; unpark requires --project <id>');
+  if (input.dryRun) die('unpark: --dry-run is a stop option');
+  if (input.projectId === null) die('unpark: --project <id> is required');
+  const db = await openSoftStopDb(input.dbPath);
+  try {
+    const { releaseOperatorHolds } = await import('../dist/app/operator-soft-stop.js');
+    const result = releaseOperatorHolds(db, {
+      projectId: input.projectId,
+      ...(input.workplaceRef !== null ? { workplaceRef: input.workplaceRef } : {}),
+      releasedBy: 'factory-cli unpark',
+    });
+    for (const ref of result.holdRefs) {
+      process.stdout.write(`[factory] unpark: released hold=${ref}\n`);
+    }
+    process.stdout.write(
+      `[factory] unpark complete: ${result.released} hold(s) released — hiring resumes\n`,
+    );
+  } finally {
+    db.close();
+  }
+  process.exit(0);
 }
 
 // ─── abandon / rerun: drop a poisoned run, optionally restart the project ──
