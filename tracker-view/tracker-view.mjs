@@ -34,6 +34,7 @@ import {
 } from './shared.mjs';
 import { createModelManagementApi } from './model-management.mjs';
 import { createAdminEndpointsApi } from './admin-endpoints.mjs';
+import { createEngineSupervisor } from './engine-supervisor.mjs';
 import { createLifecycleEndpointsApi } from './lifecycle-endpoints.mjs';
 import { createArtifactRenderApi } from './artifact-render.mjs';
 import { createBoardRenderApi } from './board-render.mjs';
@@ -251,6 +252,17 @@ const modelApi = createModelManagementApi({
 });
 boardApi.setModelApi(modelApi);
 
+// Engine supervisor (antifreeze layer C): periodic stale-heartbeat watchdog
+// + single-engine sweep at every spawn gate. Constructed BEFORE adminApi (the
+// factory-start gateway calls sweepBeforeSpawn before each engine spawn) and
+// started immediately — SAGA_ENGINE_SUPERVISOR=0 disables it entirely.
+const engineSupervisor = createEngineSupervisor({
+  withDb,
+  withDbWrite,
+  sagaApplication,
+});
+engineSupervisor.start();
+
 // Admin endpoints API (T10 step 4): /admin HTML page + /api/project/create,
 // /api/project/archive, /api/project/delete, /api/admin/purge-all-projects,
 // /api/epic/create, and the sole /api/factory/start gateway. Injected with the same
@@ -262,6 +274,7 @@ const adminApi = createAdminEndpointsApi({
   dbPath: DB_PATH,
   page: boardApi.page,
   sagaApplication,
+  engineSupervisor,
 });
 
 // Operational control and observability endpoints.

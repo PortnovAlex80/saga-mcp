@@ -632,6 +632,23 @@ export function createLifecycleEndpointsApi({
           WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
           ORDER BY l.rowid DESC LIMIT 1`,
       ).get(state.epicId));
+      // Antifreeze layer C: the raw engine_state (incl. 'failed_watchdog'),
+      // its last_error, and the newest watchdog verdict — so the board shows
+      // WHY a factory went silent after the supervisor exhausted its budget.
+      // Guarded: an unmigrated DB has no watchdog table / last_error column.
+      let control = null;
+      let watchdog = null;
+      try {
+        control = withDb(db => db.prepare(
+          `SELECT engine_state, last_error FROM lifecycle_execution_controls WHERE epic_id=?`,
+        ).get(state.epicId));
+        watchdog = withDb(db => db.prepare(
+          `SELECT kind, reason, engine_pid, heartbeat_age_ms, created_at
+             FROM factory_engine_watchdog_events
+            WHERE epic_id=?
+            ORDER BY rowid DESC LIMIT 1`,
+        ).get(state.epicId));
+      } catch { /* schema not migrated yet — stay with the legacy fields */ }
       respondJson(res, 200, {
         ok: true,
         epic_id: state.epicId,
@@ -640,6 +657,9 @@ export function createLifecycleEndpointsApi({
         concurrency: state.concurrency,
         started_at: state.startedAt,
         alive: state.alive,
+        engine_state: control?.engine_state ?? null,
+        engine_error: control?.last_error ?? null,
+        watchdog: watchdog ?? null,
         model: route?.model ?? null,
         provider: route?.provider ?? null,
         model_limit: route?.model_limit ?? null,

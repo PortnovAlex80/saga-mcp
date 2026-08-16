@@ -1087,7 +1087,7 @@ CREATE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_status
 CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   engine_state         TEXT NOT NULL DEFAULT 'stopped'
-                         CHECK (engine_state IN ('running','stopped','unknown')),
+                         CHECK (engine_state IN ('running','stopped','unknown','failed_watchdog')),
   engine_pid           INTEGER,
   concurrency          INTEGER,
   started_at           TEXT,
@@ -1097,6 +1097,11 @@ CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
   model_name           TEXT,
   model_effort         TEXT,
   model_concurrency_limit INTEGER,
+  -- Antifreeze layer C (schema v14): the human-readable WHY for a
+  -- non-'running' engine_state. Written by the panel engine supervisor when
+  -- the restart budget is exhausted (engine_state='failed_watchdog'), cleared
+  -- on the next successful operator/manual start.
+  last_error           TEXT,
   updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_lifecycle_execution_controls_state
@@ -2251,6 +2256,14 @@ CREATE TABLE IF NOT EXISTS factory_launch_requests (
   claim_token          TEXT,
   claimed_at           TEXT,
   error                TEXT,
+  -- Antifreeze layer C (schema v14): durable binding of the OS engine host to
+  -- this launch. The spawner computes $SAGA_ENGINE_LOG before spawn and records
+  -- it here together with the child pid, so the panel-side engine supervisor can
+  -- watch the heartbeat/log markers for THIS launch without guessing paths or
+  -- pids (the path previously existed only inside the child's environment).
+  engine_log_path      TEXT,
+  engine_pid           INTEGER,
+  engine_spawned_at    TEXT,
   created_at           TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at         TEXT
 );
@@ -2303,6 +2316,33 @@ CREATE TABLE IF NOT EXISTS factory_launch_controller_leases (
   heartbeat_at         TEXT NOT NULL,
   expires_at           TEXT NOT NULL
 );
+
+-- Antifreeze layer C (schema v14): panel-side engine-supervisor audit trail —
+-- the receipt table for watchdog verdicts and treatments (by the
+-- factory_worker_stops receipt idiom). Every freeze detection, guarded engine
+-- brake, watchdog restart and budget exhaustion is one append-only row; the
+-- backoff policy (restart cadence + budget) is derived from THIS table, so
+-- the policy survives panel restarts.
+CREATE TABLE IF NOT EXISTS factory_engine_watchdog_events (
+  event_ref            TEXT PRIMARY KEY,
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  epic_id              INTEGER,
+  launch_ref           TEXT,
+  kind                 TEXT NOT NULL CHECK (kind IN (
+                         'freeze_detected','engine_dead','brake_failed',
+                         'restart_attempted','restart_succeeded','restart_failed',
+                         'attempts_exhausted','sweep_killed_frozen','sweep_blocked_live')),
+  reason               TEXT NOT NULL,
+  engine_pid           INTEGER,
+  heartbeat_age_ms     INTEGER,
+  log_age_ms           INTEGER,
+  detail               TEXT,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_factory_engine_watchdog_events_project
+  ON factory_engine_watchdog_events(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_factory_engine_watchdog_events_launch
+  ON factory_engine_watchdog_events(launch_ref);
 
 CREATE TABLE IF NOT EXISTS factory_checkpoints (
   checkpoint_ref       TEXT PRIMARY KEY,
@@ -2733,6 +2773,136 @@ export function ensureWorkerExecutionSoftStopColumns(db: {
     db.exec(
       'ALTER TABLE worker_executions ADD COLUMN stop_fence INTEGER NOT NULL DEFAULT 0',
     );
+  }
+}
+
+/**
+ * Additive migration (schema v14, antifreeze layer C): factory_launch_requests
+ * gains the durable engine-host binding columns — `engine_log_path TEXT`
+ * ($SAGA_ENGINE_LOG handed to the child), `engine_pid INTEGER` (the spawned
+ * engine OS pid) and `engine_spawned_at TEXT`.
+ *
+ * Fresh databases get all three from SCHEMA_SQL's CREATE TABLE; pre-v14
+ * databases land here. The path/pid previously lived ONLY in the child's
+ * environment / the spawner's memory, so an external observer could not find
+ * the heartbeat markers after a freeze. Idempotent via a PRAGMA table_info
+ * probe — matches the {@link ensureWorkerExecutionSoftStopColumns} idiom.
+ */
+export function ensureFactoryLaunchEngineMarkerColumns(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(factory_launch_requests)').all();
+  if (columns.length === 0) return; // table not created yet — SCHEMA_SQL owns it
+  if (!columns.some((c) => c.name === 'engine_log_path')) {
+    db.exec('ALTER TABLE factory_launch_requests ADD COLUMN engine_log_path TEXT');
+  }
+  if (!columns.some((c) => c.name === 'engine_pid')) {
+    db.exec('ALTER TABLE factory_launch_requests ADD COLUMN engine_pid INTEGER');
+  }
+  if (!columns.some((c) => c.name === 'engine_spawned_at')) {
+    db.exec('ALTER TABLE factory_launch_requests ADD COLUMN engine_spawned_at TEXT');
+  }
+}
+
+/**
+ * Widen `lifecycle_execution_controls.engine_state` to accept `'failed_watchdog'`
+ * (schema v14, antifreeze layer C). The supervisor's restart-budget exhaustion
+ * must NOT be silent: the epic's engine control row carries the watchdog
+ * failure state so the board/status surface shows WHY the factory went silent.
+ * SQLite cannot widen an inline CHECK via ALTER; this is the safe table-rebuild
+ * idiom (see {@link relaxFactoryLaunchStateForPaused}): copy with the widened
+ * CHECK, preserve every row, drop, rename.
+ *
+ * Detection: sqlite_master still shows the OLD CHECK signature (which omits
+ * `'failed_watchdog'`). On a fresh DB (created from the updated SCHEMA_SQL) the
+ * table already accepts the state and this helper is a no-op. Idempotent.
+ */
+export function widenLifecycleControlsEngineStateForWatchdog(db: {
+  exec(sql: string): void;
+  pragma(sql: string, options?: { simple?: boolean }): unknown;
+  prepare(sql: string): { get(...params: unknown[]): { sql?: string } | undefined };
+}): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='lifecycle_execution_controls'",
+  ).get();
+  const sql = row?.sql ?? '';
+  if (!sql) return; // table not created yet — SCHEMA_SQL owns it
+  if (sql.includes("'failed_watchdog'")) return;
+  // Only rebuild the known v13-and-earlier shape; anything else fails closed.
+  if (!/engine_state\s+IN\s*\(\s*'running',\s*'stopped',\s*'unknown'\s*\)/i.test(sql)) {
+    throw new Error(
+      'FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: lifecycle_execution_controls.engine_state '
+      + 'CHECK has an unrecognized shape; refusing to rebuild',
+    );
+  }
+  const fkEnabled = db.pragma('foreign_keys', { simple: true });
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE lifecycle_execution_controls__new (
+        epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+        engine_state         TEXT NOT NULL DEFAULT 'stopped'
+                               CHECK (engine_state IN ('running','stopped','unknown','failed_watchdog')),
+        engine_pid           INTEGER,
+        concurrency          INTEGER,
+        started_at           TEXT,
+        stopped_at           TEXT,
+        concurrency_changed_at TEXT,
+        model_provider       TEXT,
+        model_name           TEXT,
+        model_effort         TEXT,
+        model_concurrency_limit INTEGER,
+        updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO lifecycle_execution_controls__new
+        (epic_id, engine_state, engine_pid, concurrency, started_at, stopped_at,
+         concurrency_changed_at, model_provider, model_name, model_effort,
+         model_concurrency_limit, updated_at)
+      SELECT epic_id, engine_state, engine_pid, concurrency, started_at, stopped_at,
+             concurrency_changed_at, model_provider, model_name, model_effort,
+             model_concurrency_limit, updated_at
+        FROM lifecycle_execution_controls;
+      DROP TABLE lifecycle_execution_controls;
+      ALTER TABLE lifecycle_execution_controls__new RENAME TO lifecycle_execution_controls;
+      CREATE INDEX IF NOT EXISTS idx_lifecycle_execution_controls_state
+        ON lifecycle_execution_controls(engine_state);
+    `);
+    const fkErrors = db.pragma('foreign_key_check') as unknown[];
+    if (fkErrors.length > 0) {
+      throw new Error(`FACTORY_MIGRATION_FK_VIOLATION: ${JSON.stringify(fkErrors)}`);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* best-effort */ }
+    throw error;
+  } finally {
+    db.exec(`PRAGMA foreign_keys=${fkEnabled ? 'ON' : 'OFF'}`);
+  }
+}
+
+/**
+ * Additive migration (schema v14, antifreeze layer C): the nullable
+ * `last_error` column on `lifecycle_execution_controls` — the human-readable
+ * WHY for a non-'running' engine_state (written when the supervisor exhausts
+ * the restart budget and stamps `'failed_watchdog'`).
+ *
+ * Runs AFTER {@link widenLifecycleControlsEngineStateForWatchdog}: the rebuild
+ * only ever fires on the pre-v14 table shape (which never carried this
+ * column), so the ADD COLUMN here is the single source of the column for
+ * every pre-v14 database; fresh databases get it from SCHEMA_SQL. Idempotent
+ * via a PRAGMA table_info probe — matches the
+ * {@link ensureFactoryLaunchEngineMarkerColumns} idiom.
+ */
+export function ensureLifecycleControlsLastErrorColumn(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(lifecycle_execution_controls)').all();
+  if (columns.length === 0) return; // table not created yet — SCHEMA_SQL owns it
+  if (!columns.some((c) => c.name === 'last_error')) {
+    db.exec('ALTER TABLE lifecycle_execution_controls ADD COLUMN last_error TEXT');
   }
 }
 

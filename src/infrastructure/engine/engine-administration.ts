@@ -147,26 +147,39 @@ export class EngineProcessAdministration implements EngineAdministration {
       const composition
         = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION?.trim()
         ?? this.resolveDefaultComposition();
+      // Antifreeze layer A (this spawn path): the engine logs to its own file
+      // via $SAGA_ENGINE_LOG (engine-file-logger) and its stdout must NOT be a
+      // pipe drained by this panel — a stalled panel fills the pipe buffer and
+      // the engine's next blocking stdout write freezes its main thread
+      // forever. stdout is 'ignore'; stderr stays piped (crash diagnostics,
+      // low volume) into the same file. The engine's heartbeat/phase markers
+      // ($SAGA_ENGINE_LOG.heartbeat / .phase) make a frozen engine externally
+      // observable — required by the layer-C supervisor that restarts engines
+      // through THIS method.
+      const engineLog = `${tmpdir()}/saga-engine-${command.epicId}-${Date.now()}.log`;
       const child = this.spawnProcess(
         'node',
         cliArgs,
         {
           detached: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: ['ignore', 'ignore', 'pipe'],
           env: {
             ...this.baseEnv,
             DB_PATH: this.config.dbPath,
             SAGA_ORCHESTRATION_MODE: this.config.orchestrationMode,
             SAGA_PRODUCT_LIFECYCLE_COMPOSITION: composition,
+            SAGA_ENGINE_LOG: engineLog,
           },
         },
       );
-      // Pipe engine output to a persistent log file for debugging.
-      const engineLog = `${tmpdir()}/saga-engine-${command.epicId}-${Date.now()}.log`;
+      // Pipe engine stderr to the persistent engine log for crash debugging.
       const logStream = createWriteStream(engineLog, { flags: 'a' });
-      child.stdout?.pipe(logStream);
       child.stderr?.pipe(logStream);
       child.unref();
+      // Antifreeze layer C: durably bind the engine host (pid + marker paths)
+      // to the launch row, exactly like the factory-launch starter does, so
+      // the panel supervisor can watch THIS engine's heartbeat.
+      this.bindLaunchEngineMarkers(launchRef, engineLog, child.pid ?? null);
       const startedAt = this.timestamp();
       this.upsertControl(command.epicId, {
         engine_state: 'running',
@@ -332,7 +345,9 @@ export class EngineProcessAdministration implements EngineAdministration {
    * Targeted upsert into lifecycle_execution_controls (the saga4 home for engine
    * workflows table.
    * Each caller writes only the concrete columns it owns; engine_state must be a
-   * valid CHECK constraint value ('running' | 'stopped' | 'unknown') — never 0/1.
+   * valid CHECK constraint value ('running' | 'stopped' | 'unknown' |
+   * 'failed_watchdog' — the latter is stamped by the panel engine supervisor
+   * when its restart budget is exhausted) — never 0/1.
    */
   private upsertControl(epicId: number, patch: Partial<{
     engine_state: string; engine_pid: number | null; concurrency: number;
@@ -347,6 +362,30 @@ export class EngineProcessAdministration implements EngineAdministration {
          ON CONFLICT(epic_id) DO UPDATE SET ${sets.join(', ')}, updated_at=datetime('now')`,
       ).run(params);
     }, false);
+  }
+
+  /**
+   * Antifreeze layer C: persist the engine-host binding (log path + pid) on
+   * the launch row so the panel-side supervisor can find the heartbeat/log
+   * markers for this launch. Best-effort: a missing binding must not fail the
+   * resume — the supervisor simply treats the launch as LEGACY (unobservable).
+   */
+  private bindLaunchEngineMarkers(
+    launchRef: string,
+    engineLog: string,
+    pid: number | null,
+  ): void {
+    try {
+      this.withDb(db => {
+        db.prepare(
+          `UPDATE factory_launch_requests
+              SET engine_log_path=?, engine_pid=?, engine_spawned_at=datetime('now')
+            WHERE launch_ref=?`,
+        ).run(engineLog, pid, launchRef);
+      }, false);
+    } catch {
+      /* best-effort by design */
+    }
   }
 
   private killEngineTree(projectId: number, epicId: number): void {

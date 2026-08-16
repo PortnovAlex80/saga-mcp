@@ -90,6 +90,7 @@ export function createAdminEndpointsApi({
   page,
   sagaApplication,
   captureIdeaSource = captureProductIdeaUrl,
+  engineSupervisor = null,
 }) {
   function renderAdmin(projects, flash) {
     const projectOptions = projects
@@ -463,6 +464,26 @@ export function createAdminEndpointsApi({
       if (command.kind === 'resume') {
         try {
           const target = withDbWrite(db => resolveFactoryResumeTarget(db, command.projectId));
+          // Antifreeze layer C: single-engine sweep before the spawn. A live
+          // engine with a FRESH heartbeat means the resume button was pressed
+          // while the factory already runs — do not spawn a duplicate. A live
+          // engine with a STALE heartbeat is a frozen corpse: killed here,
+          // then the resume below spawns a fresh engine.
+          const sweep = engineSupervisor
+            ? engineSupervisor.sweepBeforeSpawn({ projectId: target.projectId, epicId: target.epicId })
+            : { action: 'none', ok: 'spawn' };
+          if (sweep.action === 'already_running') {
+            return respondJson(res, 200, {
+              ok:true,
+              mode:'resume',
+              already_running:true,
+              project_id:target.projectId,
+              epic_id:target.epicId,
+              lifecycle_run_id:target.lifecycleRunId,
+              engine_pid:sweep.engine_pid,
+              running:true,
+            });
+          }
           const state = sagaApplication.startEngine({ epicId:target.epicId });
           return respondJson(res, 200, {
             ok:true,
@@ -472,6 +493,7 @@ export function createAdminEndpointsApi({
             lifecycle_run_id:target.lifecycleRunId,
             engine_pid:state.pid,
             running:state.running,
+            killed_frozen_engine:sweep.action === 'killed_frozen',
           });
         } catch (error) {
           const status = error?.code === 'FACTORY_PROJECT_NOT_FOUND' ? 404 : 409;
@@ -510,6 +532,28 @@ export function createAdminEndpointsApi({
             ).run(orderRef, command.projectId, epicId);
             return { projectId: command.projectId, epicId, orderRef };
           });
+          // Antifreeze layer C: single-engine sweep before the spawn — a
+          // healthy engine still running this epic must not get a duplicate,
+          // a frozen one is killed so the new run does not race a corpse.
+          const sweep = engineSupervisor
+            ? engineSupervisor.sweepBeforeSpawn({ projectId: result.projectId, epicId: result.epicId })
+            : { action: 'none', ok: 'spawn' };
+          if (sweep.action === 'already_running') {
+            return respondJson(res, 409, {
+              ok:false,
+              error:`Движок эпика #${result.epicId} уже работает (pid ${sweep.engine_pid}); остановите его перед новым запуском`,
+              code:'FACTORY_ENGINE_ALREADY_RUNNING',
+              engine_pid:sweep.engine_pid,
+            });
+          }
+          if (sweep.action === 'kill_failed') {
+            return respondJson(res, 409, {
+              ok:false,
+              error:`Замёрзший движок (pid ${sweep.engine_pid}) пережил guarded-kill; запуск отменён`,
+              code:'FACTORY_ENGINE_KILL_FAILED',
+              engine_pid:sweep.engine_pid,
+            });
+          }
           // Start the lifecycle with the SAME idea (initiative subject) as the
           // original — projects.description holds it. Same idea + same repo +
           // same package => same semantic replay keys => Run B capsule HITs.
@@ -664,6 +708,12 @@ export function createAdminEndpointsApi({
               `UPDATE factory_orders SET state='starting', last_error=NULL,
                       updated_at=datetime('now') WHERE order_ref=?`,
             ).run(result.orderRef));
+            // Antifreeze layer C: single-engine sweep before EVERY spawn. The
+            // idea path creates a fresh epic so this is normally a no-op, but
+            // the sweep keeps the one-engine-per-epic invariant centralized.
+            if (engineSupervisor) {
+              engineSupervisor.sweepBeforeSpawn({ projectId: result.projectId, epicId: result.epicId });
+            }
             const starter = createFactoryLaunchStarter({
               dbPath,
               // Keep model selection scoped to this engine. Every worker also

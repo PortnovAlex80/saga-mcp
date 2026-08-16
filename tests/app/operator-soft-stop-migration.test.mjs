@@ -95,13 +95,16 @@ test('v12 DB gains the soft-stop columns, tables and version stamp via getDb()',
      VALUES ('s1','exec-legacy',NULL,1,'r','nonsense-phase')`,
   ).run());
 
-  // Version stamped to 13.
-  assert.equal(db.pragma('user_version', { simple: true }), 13);
+  // Version stamped to the CURRENT schema. The chain moved on: a v12 DB now
+  // crosses straight to 14 (antifreeze layer C — the v13→v14 leg is covered
+  // by engine-watchdog-migration.test.mjs); the soft-stop columns/tables this
+  // test pins are unchanged.
+  assert.equal(db.pragma('user_version', { simple: true }), 14);
 
-  // Idempotent: closing and reopening a now-v13 DB is a clean no-op.
+  // Idempotent: closing and reopening a now-current DB is a clean no-op.
   closeDb();
   const reopened = getDb();
-  assert.equal(reopened.pragma('user_version', { simple: true }), 13);
+  assert.equal(reopened.pragma('user_version', { simple: true }), 14);
   const columnsAfter = reopened.prepare('PRAGMA table_info(worker_executions)').all().map(column => column.name);
   assert.ok(columnsAfter.includes('stop_fence') && columnsAfter.includes('voided_at'));
 });

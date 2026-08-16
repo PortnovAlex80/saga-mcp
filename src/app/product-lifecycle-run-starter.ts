@@ -149,6 +149,26 @@ export function createFactoryLaunchStarter(
       const logStream = createWriteStream(engineLog, { flags: 'a' });
       child.stderr?.pipe(logStream);
       child.unref();
+      // Antifreeze layer C: durably bind the spawned engine host to this
+      // launch BEFORE waiting for the start receipt. The engine log path (and
+      // therefore the heartbeat/phase marker files) previously existed only in
+      // the child's environment; an external supervisor could not find the
+      // markers after a freeze. Best-effort: a missing marker binding must not
+      // fail the start (the receipt below remains the success contract).
+      try {
+        const markerDb = new Database(options.dbPath);
+        try {
+          markerDb.prepare(
+            `UPDATE factory_launch_requests
+                SET engine_log_path=?, engine_pid=?, engine_spawned_at=datetime('now')
+              WHERE launch_ref=?`,
+          ).run(engineLog, child.pid ?? null, launchRef);
+        } finally {
+          markerDb.close();
+        }
+      } catch {
+        /* best-effort by design — see comment above */
+      }
       try {
         return await waitForLifecycleStartReceipt({
           child,
