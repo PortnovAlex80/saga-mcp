@@ -80,3 +80,19 @@ repair_required → repair_required → **accepted**; git-эффект для э
 диффить две выборки; затем изолировать по obligations/production_envelope карточки.
 **Статус:** open. Recovery-путь: factory.mjs continue (explicit resume) — проверю на P02
 финальным проходом, если движок не разберётся сам.
+
+## GB-10 — REPLAY_CAPTURE_TRACE_NOT_FOUND на завершении формализации (open)
+
+**Симптом (P04 themes, L31, 01:07):** lifecycle terminally failed
+`REPLAY_CAPTURE_TRACE_NOT_FOUND: expected 1, resolved 0` при завершении формализации
+(этап дошел до конца, упало на replay-capture сinchронизации капсулы).
+
+**Проверено (не источник):** все trace_ids квитанций валидации (receipts 43/44) живы;
+все 18 managed-trace productions эпика живы в artifact_traces.
+
+**Гипотеза:** набор traceIds капсулы берётся из snapshot ячейки (workplace production
+snapshot traces[]) и ссылается на трейс, созданный в ОТРАВЛЕННОМ lifecycle до abandon
+(каскад abandon удалил трейс, snapshot обновления — путь: acceptance/srs ячейка трейсится
+к артефакту прошлого цикла). Проверить: сравнить traceIds последней запечатанной
+ревизии L31 против artifact_traces с учётом времени abandon.
+**Статус:** open — если повторится на P05+, поднять приоритет и доделать изоляцию.
