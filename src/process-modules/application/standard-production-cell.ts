@@ -17,7 +17,8 @@ export interface SingletonProductionCellOptions {
     readonly contractDigest: string;
   };
   readonly maxAttempts: number;
-  readonly onExhausted: 'fail' | 'pause';
+  readonly onExhausted: 'fail' | 'pause' | 'requeue';
+  readonly totalAttempts?: number;
   readonly checkPlan?: CheckPlan;
   readonly postAcceptanceEffect?: string;
   readonly review?: {
@@ -81,6 +82,9 @@ export function singletonProductionCell(
     recovery: {
       maxAttempts: options.maxAttempts,
       onExhausted: options.onExhausted,
+      ...(options.totalAttempts !== undefined
+        ? { totalAttempts: options.totalAttempts }
+        : {}),
     },
     ...(options.postAcceptanceEffect
       ? { postAcceptanceEffect: options.postAcceptanceEffect }

@@ -104,7 +104,9 @@ test('Formalization keeps recovery bounded but allows multiple author/reviewer r
   assert.ok(cells.length >= 4);
   for (const cell of cells) {
     assert.equal(cell.recovery.maxAttempts, 5, cell.id);
-    assert.equal(cell.recovery.onExhausted, 'pause', cell.id);
+    // ADR-075 (no-human quality loop): quality cells roll over into recovery
+    // epochs instead of parking for a human.
+    assert.equal(cell.recovery.onExhausted, 'requeue', cell.id);
   }
 
   for (const profile of formalizationProcessModule.executionProfiles) {

@@ -107,6 +107,7 @@ import {
   deserializeWorkplaceRef,
   serializeWorkplaceRef,
 } from '../process-modules/domain/workplace/workplace-ref.js';
+import { recoveryEpochBackoffMs } from '../process-modules/domain/workplace/production-cell-definition.js';
 import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
@@ -559,6 +560,58 @@ export function createProductLifecycleRuntime(
           countFailedAcceptanceEffectRepairsSql(
             db, serializeWorkplaceRef(workplaceRef),
           ),
+        // ADR-075 — latest recovery-epoch rollover for the (workplace, role):
+        // counter baselines plus the inter-epoch backoff deadline derived from
+        // the immutable row's created_at (SQLite datetime('now') is UTC) and
+        // the epoch's exponential delay.
+        readRecoveryEpochBaseline: (workplaceRef, role) => {
+          const row = db.prepare(
+            `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
+                    baseline_effect_repairs, created_at
+               FROM factory_workplace_recovery_epochs
+              WHERE workplace_ref=? AND role=?
+              ORDER BY epoch DESC LIMIT 1`,
+          ).get(serializeWorkplaceRef(workplaceRef), role) as {
+            epoch: number;
+            baseline_rejected_sets: number;
+            baseline_terminal_executions: number;
+            baseline_effect_repairs: number;
+            created_at: string;
+          } | undefined;
+          if (!row) return null;
+          return {
+            epoch: row.epoch,
+            baselineRejectedSets: row.baseline_rejected_sets,
+            baselineTerminalExecutions: row.baseline_terminal_executions,
+            baselineEffectRepairs: row.baseline_effect_repairs,
+            rolledBackoffUntilMs:
+              Date.parse(`${row.created_at.replace(' ', 'T')}Z`)
+              + recoveryEpochBackoffMs(row.epoch),
+          };
+        },
+        // ADR-075 — append one immutable rollover row; idempotent by the
+        // UNIQUE (workplace_ref, role, epoch) constraint.
+        recordRecoveryEpoch: (input) => {
+          db.prepare(
+            `INSERT OR IGNORE INTO factory_workplace_recovery_epochs
+               (workplace_ref, role, epoch,
+                baseline_rejected_sets, baseline_terminal_executions,
+                baseline_effect_repairs, exhausted_attempts,
+                max_attempts, total_attempts_cap, last_diagnosis)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            serializeWorkplaceRef(input.workplaceRef),
+            input.role,
+            input.epoch,
+            input.baselineRejectedSets,
+            input.baselineTerminalExecutions,
+            input.baselineEffectRepairs,
+            input.exhaustedAttempts,
+            input.maxAttempts,
+            input.totalAttemptsCap,
+            input.lastDiagnosis,
+          );
+        },
       } as ProductionCellProjectionPersistence,
       productReader: {
         readContributionProducts: ({ processRunId, moduleRef, nodeId, contributorRef, expectedSchemaRefs }) => {

@@ -5,6 +5,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -269,6 +270,25 @@ export class FactoryCheckpointService {
         path.join(storageRoot, `latest-${options.projectId}-${options.epicId ?? 'all'}`),
         `${checkpointRef}\n`,
       );
+      // ADR-075 housekeeping — checkpoint retention. Every engine cycle writes
+      // a FULL database backup object; content addressing never deduplicates
+      // them (the DB digest changes every cycle), so an unattended run with
+      // autonomous recovery retries would fill the disk in hours. Keep the
+      // newest MANIFESTS_TO_KEEP manifests per (project, epic) and delete the
+      // older manifest files plus any object files that become unreferenced
+      // across ALL remaining manifests in the store. Failure to prune is
+      // logged and non-fatal — capture must never fail on housekeeping.
+      try {
+        this.pruneRetentionPolicy(
+          db, storageRoot, options.projectId, options.epicId ?? null,
+        );
+      } catch (error) {
+        console.warn(
+          `[checkpoint] retention prune skipped: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       return manifest;
       } finally {
         // Close the snapshot readonly handle and remove the backup file only
@@ -282,8 +302,72 @@ export class FactoryCheckpointService {
     }
   }
 
-  verify(manifestPath: string, hmacKey?: string): FactoryCheckpointManifest {
-    const resolved = path.resolve(manifestPath);
+  /** Newest manifests kept per (project, epic) scope by pruneRetentionPolicy. */
+  private static readonly MANIFESTS_TO_KEEP = 10;
+
+  /**
+   * ADR-075 housekeeping — checkpoint retention. Every engine cycle captures a
+   * FULL database backup object; content addressing never deduplicates them
+   * (the DB digest changes every cycle), so an unattended run with autonomous
+   * recovery retries would fill the disk in hours. Keep the newest
+   * MANIFESTS_TO_KEEP manifests of the scope, delete the older manifest files
+   * (the DB rows stay — audit history is not storage), and garbage-collect
+   * object files that no remaining manifest in the store references. Best
+   * effort: any failure is logged by the caller and never fails capture.
+   */
+  private pruneRetentionPolicy(
+    db: Database.Database,
+    storageRoot: string,
+    projectId: number,
+    epicId: number | null,
+  ): void {
+    const stale = db.prepare(
+      `SELECT checkpoint_ref FROM factory_checkpoints
+         WHERE project_id=? AND epic_id IS ?
+         ORDER BY id DESC LIMIT -1 OFFSET ?`,
+    ).all(
+      projectId,
+      epicId,
+      FactoryCheckpointService.MANIFESTS_TO_KEEP,
+    ) as Array<{ checkpoint_ref: string }>;
+    if (stale.length === 0) return;
+    const manifestsDir = path.join(storageRoot, 'manifests');
+    for (const row of stale) {
+      const manifestPath = path.join(manifestsDir, `${row.checkpoint_ref}.json`);
+      rmSync(manifestPath, { force: true });
+      rmSync(`${manifestPath}.COMPLETE`, { force: true });
+    }
+    // Garbage-collect unreferenced objects across ALL remaining manifests.
+    const referenced = new Set<string>();
+    let remaining = 0;
+    for (const entry of readdirSync(manifestsDir)) {
+      if (!entry.endsWith('.json')) continue;
+      remaining += 1;
+      try {
+        const manifest = JSON.parse(
+          readFileSync(path.join(manifestsDir, entry), 'utf8'),
+        ) as FactoryCheckpointManifest;
+        for (const object of manifest.payload.objects) {
+          referenced.add(object.digest);
+        }
+      } catch {
+        // An unreadable manifest keeps its objects alive — safe side.
+      }
+    }
+    if (remaining === 0) return;
+    const objectsRoot = path.join(storageRoot, 'objects', 'sha256');
+    for (const prefix of existsSync(objectsRoot) ? readdirSync(objectsRoot) : []) {
+      const prefixDir = path.join(objectsRoot, prefix);
+      if (!statSync(prefixDir).isDirectory()) continue;
+      for (const digest of readdirSync(prefixDir)) {
+        if (!referenced.has(digest)) {
+          rmSync(path.join(prefixDir, digest), { force: true });
+        }
+      }
+    }
+  }
+
+  verify(manifestPath: string, hmacKey?: string): FactoryCheckpointManifest {    const resolved = path.resolve(manifestPath);
     if (!existsSync(`${resolved}.COMPLETE`)) {
       throw new Error('CHECKPOINT_INCOMPLETE: COMPLETE marker is missing');
     }

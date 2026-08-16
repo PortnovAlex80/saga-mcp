@@ -60,7 +60,42 @@ export interface CellReview {
 
 export interface CellRecoveryPolicy {
   readonly maxAttempts: number;
-  readonly onExhausted: 'fail' | 'pause';
+  /**
+   * ADR-075 (no-human quality loop):
+   * - 'fail'    — budget exhaustion terminally fails the Workplace;
+   * - 'pause'   — parks the line for a human (Delivery/infra boundaries ONLY;
+   *               quality cells must not declare it);
+   * - 'requeue' — autonomous continuation: on exhaustion the budget rolls over
+   *               into a new immutable recovery epoch and the role is requeued
+   *               (with backoff) until `totalAttempts` is reached, after which
+   *               the line fails terminally with the last diagnosis recorded.
+   *               The rollover is a durable audit fact
+   *               (factory_workplace_recovery_epochs), never a deletion.
+   */
+  readonly onExhausted: 'fail' | 'pause' | 'requeue';
+  /**
+   * Total rejected-attempt ceiling across ALL epochs for 'requeue' cells.
+   * Defaults to DEFAULT_RECOVERY_TOTAL_ATTEMPTS when omitted. This is the
+   * non-human circuit breaker: unbounded anonymous retry loops are forbidden
+   * by the normative model, so autonomy is bounded by an honest terminal
+   * outcome instead of a human park.
+   */
+  readonly totalAttempts?: number;
+}
+
+export const DEFAULT_RECOVERY_TOTAL_ATTEMPTS = 30;
+
+/**
+ * ADR-075 — inter-epoch backoff: exponential (1min, 2min, 4min, 8min…)
+ * capped at 15 minutes, measured from the epoch rollover timestamp stored in
+ * the immutable epoch row. The window delays the first requeue of each new
+ * epoch, damping identical-failure attractors and spawn storms without a
+ * human gate. Kept in the domain so the persistence reader (which derives
+ * `rolledBackoffUntilMs`) and the executor log lines agree by construction.
+ */
+export function recoveryEpochBackoffMs(epoch: number): number {
+  const capped = Math.min(60_000 * 2 ** Math.max(0, epoch - 1), 15 * 60_000);
+  return capped;
 }
 
 export interface ProductionCellDefinition {
@@ -175,10 +210,25 @@ export function assertValidProductionCellDefinition(
       `ProductionCellDefinition '${cell.id}': recovery.maxAttempts must be a positive integer`,
     );
   }
-  if (cell.recovery.onExhausted !== 'fail' && cell.recovery.onExhausted !== 'pause') {
+  if (
+    cell.recovery.onExhausted !== 'fail'
+    && cell.recovery.onExhausted !== 'pause'
+    && cell.recovery.onExhausted !== 'requeue'
+  ) {
     throw new Error(
-      `ProductionCellDefinition '${cell.id}': recovery.onExhausted must be 'fail' or 'pause'`,
+      `ProductionCellDefinition '${cell.id}': recovery.onExhausted must be 'fail', 'pause' or 'requeue'`,
     );
+  }
+  if (cell.recovery.totalAttempts !== undefined) {
+    if (
+      !Number.isInteger(cell.recovery.totalAttempts)
+      || cell.recovery.totalAttempts < cell.recovery.maxAttempts
+    ) {
+      throw new Error(
+        `ProductionCellDefinition '${cell.id}': recovery.totalAttempts must be an integer `
+        + `>= maxAttempts (${cell.recovery.maxAttempts})`,
+      );
+    }
   }
   if (cell.postAcceptanceEffect !== undefined) {
     requireNonEmpty(cell.postAcceptanceEffect, 'postAcceptanceEffect');

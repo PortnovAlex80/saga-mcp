@@ -64,6 +64,10 @@ let db: Database.Database | null = null;
  *       WorkerExecution metadata changes cannot rewrite Gate authority.
  *  11 = immutable post-acceptance effect repair issues bind exact accepted
  *       authority to feedback projected onto the replacement author desk.
+ *  12 = ADR-075 (no-human quality loop): append-only
+ *       factory_workplace_recovery_epochs table for recovery.onExhausted=
+ *       'requeue' cells — each budget rollover snapshots the attempt-counter
+ *       baselines; attempt counters themselves stay all-time and immutable.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -71,7 +75,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -96,7 +100,7 @@ export function getDb(): Database.Database {
   // traces, tasks, evidence). Deleting it is never the right answer.
   // When the schema changes, versioned migrations must handle the upgrade.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
-  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, SCHEMA_VERSION]);
+  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, SCHEMA_VERSION]);
   if (!supportedVersions.has(existingVersion)) {
     db.close();
     db = null;
@@ -212,6 +216,7 @@ export function getDb(): Database.Database {
     || migratedVersion === 8
     || migratedVersion === 9
     || migratedVersion === 10
+    || migratedVersion === 11
   ) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {

@@ -14,6 +14,7 @@ import { ProductionCellNodeExecutor } from '../../dist/process-modules/applicati
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
+import { recoveryEpochBackoffMs } from '../../dist/process-modules/domain/workplace/production-cell-definition.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 import {
   countFailedAcceptanceEffectRepairs,
@@ -982,5 +983,123 @@ test('Fix-2: an effect-repair transition points at the exact immutable repair is
   ).get(serialized);
   assert.equal(issue.effect_repair_ref, workplace.active_recovery_case_ref);
   assert.equal(JSON.parse(issue.issue_snapshot).summary, 'integration blocked');
+  h.db.close();
+});
+
+// ---------------------------------------------------------------------------
+// ADR-075 — no-human quality loop: recovery.onExhausted='requeue'.
+// ---------------------------------------------------------------------------
+function wireEpochAccounting(h) {
+  h.persistence.readRecoveryEpochBaseline = (ref, role) => {
+    const row = h.db.prepare(
+      `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
+              baseline_effect_repairs, created_at
+         FROM factory_workplace_recovery_epochs
+        WHERE workplace_ref=? AND role=?
+        ORDER BY epoch DESC LIMIT 1`,
+    ).get(serializeWorkplaceRef(ref), role);
+    if (!row) return null;
+    return {
+      epoch: row.epoch,
+      baselineRejectedSets: row.baseline_rejected_sets,
+      baselineTerminalExecutions: row.baseline_terminal_executions,
+      baselineEffectRepairs: row.baseline_effect_repairs,
+      rolledBackoffUntilMs: h.epochBackoffOverride ?? (
+        Date.parse(`${row.created_at.replace(' ', 'T')}Z`)
+        + recoveryEpochBackoffMs(row.epoch)
+      ),
+    };
+  };
+  h.persistence.recordRecoveryEpoch = (input) => {
+    h.db.prepare(
+      `INSERT OR IGNORE INTO factory_workplace_recovery_epochs
+         (workplace_ref, role, epoch,
+          baseline_rejected_sets, baseline_terminal_executions,
+          baseline_effect_repairs, exhausted_attempts,
+          max_attempts, total_attempts_cap, last_diagnosis)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      serializeWorkplaceRef(input.workplaceRef),
+      input.role,
+      input.epoch,
+      input.baselineRejectedSets,
+      input.baselineTerminalExecutions,
+      input.baselineEffectRepairs,
+      input.exhaustedAttempts,
+      input.maxAttempts,
+      input.totalAttemptsCap,
+      input.lastDiagnosis,
+    );
+  };
+}
+
+test("ADR-075: onExhausted='requeue' rolls the budget into immutable recovery epochs, never parks", async () => {
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'AC-9 Violation: lap capture while paused',
+  });
+  wireRejectionAccounting(h);
+  wireEpochAccounting(h);
+  h.epochBackoffOverride = undefined;
+  const definition = cell();
+  definition.recovery = { maxAttempts: 1, onExhausted: 'requeue', totalAttempts: 2 };
+  const ctx = context(definition);
+  const ref = workplaceRef('singleton-cell');
+  const serialized = serializeWorkplaceRef(ref);
+
+  // Attempt 1: rejected → repair_wait.
+  await h.executor.execute(ctx);
+  setAuthorCheckOutcome(h, 'failed');
+  finishRole(h, ref, 'execution:rejected-1', {
+    schemaId: 'factory.test-product.v1', ref: 'product:r1', digest: sha('r1'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+  // Exhaustion of epoch 0 → ROLLOVER: one immutable epoch row is appended and
+  // the workplace STAYS in repair_wait (no park, no human).
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait',
+    'a requeue cell never parks at budget exhaustion');
+  const epochRow = h.db.prepare(
+    'SELECT epoch, baseline_rejected_sets, exhausted_attempts, total_attempts_cap '
+    + 'FROM factory_workplace_recovery_epochs WHERE workplace_ref=? ORDER BY epoch DESC',
+  ).get(serialized);
+  assert.equal(epochRow.epoch, 1);
+  assert.equal(epochRow.baseline_rejected_sets, 1, 'the baseline freezes the all-time counter');
+  assert.equal(epochRow.exhausted_attempts, 1);
+  assert.equal(epochRow.total_attempts_cap, 2);
+
+  // The inter-epoch backoff window holds the line in repair_wait.
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait',
+    'backoff window keeps the workplace waiting before the fresh epoch starts');
+
+  // After the backoff expires, the epoch-relative budget is empty → requeue.
+  h.epochBackoffOverride = 0;
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'queued',
+    'after backoff the fresh epoch requeues the role');
+
+  // Attempt 2 rejected again: total (2) ≥ totalAttempts cap → honest terminal
+  // failed — the non-human circuit breaker, never an anonymous infinite loop.
+  setAuthorCheckOutcome(h, 'failed');
+  finishRole(h, ref, 'execution:rejected-2', {
+    schemaId: 'factory.test-product.v1', ref: 'product:r2', digest: sha('r2'),
+  });
+  await h.executor.execute(ctx);
+  assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+  await h.executor.execute(ctx);
+  const finalState = h.coordinator.readState(ref);
+  assert.equal(finalState.loopState, 'terminal');
+  assert.equal(finalState.terminalReason, 'failed',
+    'the total cap converts a persistent failure into a terminal outcome');
+  assert.equal(
+    h.db.prepare(
+      'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+    ).get(serialized).n,
+    1,
+    'the cap fires before a second rollover row is written',
+  );
   h.db.close();
 });

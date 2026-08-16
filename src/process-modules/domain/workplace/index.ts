@@ -106,6 +106,8 @@ export type {
 // REG-04 — ProductionCellDefinition (declarative Production Cell).
 export {
   assertValidProductionCellDefinition,
+  DEFAULT_RECOVERY_TOTAL_ATTEMPTS,
+  recoveryEpochBackoffMs,
 } from './production-cell-definition.js';
 export type {
   ProductionCellDefinition,

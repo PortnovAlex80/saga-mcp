@@ -100,7 +100,7 @@ function reviewedCell(input: {
     outputSchemaRef: input.outputSchema,
     cardinality: '1',
     maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS,
-    onExhausted: 'pause',
+    onExhausted: 'requeue',
     checkPlan: authorPlan(input.id, input.check),
     postAcceptanceEffect: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     review: {

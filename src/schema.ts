@@ -1256,6 +1256,41 @@ BEFORE DELETE ON factory_workplace_dependencies BEGIN
   SELECT RAISE(ABORT, 'factory_workplace_dependencies are immutable');
 END;
 
+-- ADR-075 (no-human quality loop): durable recovery-epoch rollover for
+-- production cells with recovery.onExhausted='requeue'. The three attempt
+-- counters (rejected CandidateSets, terminal worker executions, failed
+-- acceptance-effect repairs) are all-time and immutable, so a budget reset
+-- can never be a deletion. Instead, each rollover appends one row snapshotting
+-- the counter baselines at exhaustion; attempts-in-epoch = counter - baseline.
+-- The table is append-only audit: one row per (workplace, role, epoch).
+CREATE TABLE IF NOT EXISTS factory_workplace_recovery_epochs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workplace_ref              TEXT NOT NULL,
+  role                       TEXT NOT NULL CHECK (role IN ('author','reviewer')),
+  epoch                      INTEGER NOT NULL,
+  baseline_rejected_sets     INTEGER NOT NULL CHECK (baseline_rejected_sets >= 0),
+  baseline_terminal_executions INTEGER NOT NULL CHECK (baseline_terminal_executions >= 0),
+  baseline_effect_repairs    INTEGER NOT NULL CHECK (baseline_effect_repairs >= 0),
+  exhausted_attempts         INTEGER NOT NULL CHECK (exhausted_attempts >= 0),
+  max_attempts               INTEGER NOT NULL CHECK (max_attempts >= 1),
+  total_attempts_cap         INTEGER NOT NULL CHECK (total_attempts_cap >= 1),
+  last_diagnosis             TEXT,
+  created_at                 TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (workplace_ref, role, epoch),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_workplace_recovery_epochs_workplace
+  ON factory_workplace_recovery_epochs(workplace_ref, role, epoch DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_workplace_recovery_epochs_no_update
+BEFORE UPDATE ON factory_workplace_recovery_epochs BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_recovery_epochs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_workplace_recovery_epochs_no_delete
+BEFORE DELETE ON factory_workplace_recovery_epochs BEGIN
+  SELECT RAISE(ABORT, 'factory_workplace_recovery_epochs are immutable');
+END;
+
 -- The stage input's expectedBaseCommit is a lineage anchor, not the base for
 -- every fan-out author. Before an author is spawned the Factory freezes the
 -- effective repository base for that exact execution. A root item may use

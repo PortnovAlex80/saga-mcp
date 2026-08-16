@@ -51,6 +51,6 @@ test('implementation author has a bounded third repair attempt for progressive s
   assert.ok(node);
   assert.deepEqual(node.cellDefinition.recovery, {
     maxAttempts: 3,
-    onExhausted: 'pause',
+    onExhausted: 'requeue', // ADR-075: no-human quality loop
   });
 });

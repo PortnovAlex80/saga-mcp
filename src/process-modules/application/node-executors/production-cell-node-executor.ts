@@ -19,6 +19,8 @@ import {
   assertValidProductionCellDefinition,
   asWorkplaceRef,
   candidateSetDigestForRevision,
+  DEFAULT_RECOVERY_TOTAL_ATTEMPTS,
+  recoveryEpochBackoffMs,
   serializeWorkplaceRef,
   type CandidateMember,
   type CandidateSet,
@@ -202,6 +204,41 @@ export interface ProductionCellProjectionPersistence {
    * consume budget. Optional — absent ledgers contribute 0.
    */
   countFailedAcceptanceEffectRepairs?(workplaceRef: WorkplaceRef): number;
+  /**
+   * ADR-075 — the latest recovery-epoch rollover row for a (workplace, role):
+   * the attempt-counter baselines frozen at the last exhaustion plus the
+   * rollover timestamp (for the inter-epoch backoff window). Optional — when
+   * absent, 'requeue' cells behave epoch-less (all-time counters drive the
+   * budget, exhaustion still honors the total cap).
+   */
+  readRecoveryEpochBaseline?(
+    workplaceRef: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): {
+    epoch: number;
+    baselineRejectedSets: number;
+    baselineTerminalExecutions: number;
+    baselineEffectRepairs: number;
+    rolledBackoffUntilMs: number;
+  } | null;
+  /**
+   * ADR-075 — append one immutable recovery-epoch rollover row. Idempotent by
+   * the UNIQUE (workplace_ref, role, epoch) constraint: a crash between the
+   * INSERT and the later requeue re-derives the same rollover instead of
+   * double-rolling.
+   */
+  recordRecoveryEpoch?(input: {
+    workplaceRef: WorkplaceRef;
+    role: 'author' | 'reviewer';
+    epoch: number;
+    baselineRejectedSets: number;
+    baselineTerminalExecutions: number;
+    baselineEffectRepairs: number;
+    exhaustedAttempts: number;
+    maxAttempts: number;
+    totalAttemptsCap: number;
+    lastDiagnosis: string | null;
+  }): void;
 }
 
 export interface ProductionCellProductReader {
@@ -499,15 +536,89 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
 
     if (state.loopState === 'repair_wait') {
-      const attempts = this.attemptCount(workplace.ref, state.nextRole);
-      if (attempts >= cell.recovery.maxAttempts) {
+      // ADR-075 — the budget is measured per recovery epoch: all-time counters
+      // minus the baselines frozen at the last rollover. `totalAttempts`
+      // stays all-time and drives the non-human circuit breaker.
+      const totalAttempts = this.attemptCount(workplace.ref, state.nextRole);
+      const baseline = this.opts.persistence.readRecoveryEpochBaseline?.(
+        workplace.ref,
+        state.nextRole,
+      ) ?? null;
+      if (baseline !== null && Date.now() < baseline.rolledBackoffUntilMs) {
+        // Inter-epoch backoff window: hold the line in repair_wait (reads
+        // only) so a fresh epoch does not spawn immediately after a rejection
+        // storm. The engine's kernel-progress loop keeps the run alive.
+        return pendingOutcome();
+      }
+      const attemptsInEpoch = baseline === null
+        ? totalAttempts
+        : this.attemptCount(workplace.ref, state.nextRole, {
+          rejectedSets: baseline.baselineRejectedSets,
+          terminalExecutions: baseline.baselineTerminalExecutions,
+          effectRepairs: baseline.baselineEffectRepairs,
+        });
+      if (attemptsInEpoch >= cell.recovery.maxAttempts) {
         if (cell.recovery.onExhausted === 'pause') {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
             verdict: 'human_required', isFinal: true,
             parkReason: this.recoveryBudgetParkReason(
-              workplace.ref, state.nextRole, attempts, cell.recovery.maxAttempts,
+              workplace.ref, state.nextRole, totalAttempts, cell.recovery.maxAttempts,
             ),
           });
+        } else if (cell.recovery.onExhausted === 'requeue') {
+          // ADR-075 (no-human quality loop): autonomous rollover instead of a
+          // human park. The total cap converts a persistent failure into an
+          // honest terminal outcome — never an anonymous infinite loop.
+          const totalCap = cell.recovery.totalAttempts ?? DEFAULT_RECOVERY_TOTAL_ATTEMPTS;
+          const diagnosis = this.recoveryBudgetParkReason(
+            workplace.ref,
+            state.nextRole,
+            totalAttempts,
+            cell.recovery.maxAttempts,
+            totalAttempts >= totalCap
+              ? 'the total-attempt cap is reached — the line fails terminally (no human required)'
+              : 'the budget rolls over into a new recovery epoch (no human required)',
+          );
+          if (totalAttempts >= totalCap) {
+            console.log(
+              `[recovery-budget] TOTAL-CAP cell=${cell.id} `
+              + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+              + `role=${state.nextRole} attempts=${totalAttempts}/${totalCap} `
+              + `— terminal failed :: ${diagnosis.message.slice(0, 400)}`,
+            );
+            this.opts.coordinator.applyGateDecision(workplace.ref, {
+              verdict: 'failed', isFinal: true,
+            });
+            this.opts.persistence.projectWorkplace(workplace.ref);
+            state = this.requireState(workplace.ref);
+            return this.terminalOutcome(workplace.ref, state);
+          }
+          const nextEpoch = (baseline?.epoch ?? 0) + 1;
+          const counters = this.rawAttemptCounters(workplace.ref, state.nextRole);
+          console.log(
+            `[recovery-budget] ROLLOVER cell=${cell.id} `
+            + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+            + `role=${state.nextRole} epoch=${nextEpoch} `
+            + `epochAttempts=${attemptsInEpoch}/${cell.recovery.maxAttempts} `
+            + `total=${totalAttempts}/${totalCap} `
+            + `backoffMs=${recoveryEpochBackoffMs(nextEpoch)} `
+            + `:: ${diagnosis.message.slice(0, 400)}`,
+          );
+          this.opts.persistence.recordRecoveryEpoch?.({
+            workplaceRef: workplace.ref,
+            role: state.nextRole,
+            epoch: nextEpoch,
+            baselineRejectedSets: counters.rejectedSets,
+            baselineTerminalExecutions: counters.terminalExecutions,
+            baselineEffectRepairs: counters.effectRepairs,
+            exhaustedAttempts: attemptsInEpoch,
+            maxAttempts: cell.recovery.maxAttempts,
+            totalAttemptsCap: totalCap,
+            lastDiagnosis: diagnosis.message,
+          });
+          // Stay in repair_wait through the backoff window; the pass after it
+          // expires falls through to the below-budget requeue branch.
+          return pendingOutcome();
         } else {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
             verdict: 'failed', isFinal: true,
@@ -1590,7 +1701,33 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     return csRef ? this.opts.candidateSetRepo.read(csRef) : null;
   }
 
-  private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {
+  /**
+   * The three raw all-time attempt counters behind the recovery budget, before
+   * any epoch-baseline subtraction. ADR-075 rollovers snapshot exactly these
+   * values as the new epoch's baselines.
+   */
+  private rawAttemptCounters(
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): { rejectedSets: number; terminalExecutions: number; effectRepairs: number } {
+    const rejected = this.opts.persistence.countGateRejectedCandidateSets?.(ref, role);
+    const rejectedSets = rejected === undefined
+      ? this.opts.candidateSetRepo.listForWorkplace(ref)
+        .filter(set => set.role === role).length
+      : rejected;
+    const effectRepairs = this.opts.persistence.countFailedAcceptanceEffectRepairs?.(ref) ?? 0;
+    const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
+    const terminalExecutions = taskRow
+      ? this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0
+      : 0;
+    return { rejectedSets, terminalExecutions, effectRepairs };
+  }
+
+  private attemptCount(
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+    baseline?: { rejectedSets: number; terminalExecutions: number; effectRepairs: number },
+  ): number {
     // Fix-3 — the budget measures REJECTED attempts, not every sealed set.
     // An ACCEPTED CandidateSet must not consume recovery budget: after a
     // successful gate the next failure class (typically a post-acceptance
@@ -1598,11 +1735,16 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // 2 rejections + 1 acceptance is already "exhausted" (the stopwatch case).
     // Crash accounting (CGAD P18) is unchanged: a terminal execution still
     // spends budget even when nothing was sealed.
-    const rejected = this.opts.persistence.countGateRejectedCandidateSets?.(ref, role);
-    const spent = rejected === undefined
-      ? this.opts.candidateSetRepo.listForWorkplace(ref)
-        .filter(set => set.role === role).length
-      : rejected;
+    //
+    // ADR-075 — with a `baseline` (the immutable epoch-row snapshot), each
+    // counter is epoch-relative: counter − baseline, floored at 0. Without
+    // one, the all-time counters drive the budget as before.
+    const raw = this.rawAttemptCounters(ref, role);
+    const clamp = (value: number, offset: number) => Math.max(0, value - offset);
+    const spent = clamp(
+      raw.rejectedSets,
+      baseline?.rejectedSets ?? 0,
+    );
     const state = this.opts.coordinator.readState(ref);
     if (state && state.loopState === 'repair_wait') {
       // Companion to Fix-3: an accepted-then-effect-failed attempt must
@@ -1610,11 +1752,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // under an identically failing integration mints unlimited repairs.
       // Independent of the task projection — the effect ledger is the
       // authority for its own failures.
-      const failedEffectRepairs
-        = this.opts.persistence.countFailedAcceptanceEffectRepairs?.(ref) ?? 0;
-      const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
-      if (taskRow) {
-        const failedExecs = this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0;
+      const failedEffectRepairs = clamp(
+        raw.effectRepairs,
+        baseline?.effectRepairs ?? 0,
+      );
+      if (raw.terminalExecutions > 0 || (baseline?.terminalExecutions ?? 0) > 0) {
+        const failedExecs = clamp(
+          raw.terminalExecutions,
+          baseline?.terminalExecutions ?? 0,
+        );
         return Math.max(spent, failedExecs, failedEffectRepairs);
       }
       return Math.max(spent, failedEffectRepairs);
@@ -1650,11 +1796,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     role: 'author' | 'reviewer',
     attempts: number,
     maxAttempts: number,
+    disposition = 'the line is parked for a human decision',
   ): WorkplaceParkReason {
     const diagnosis = this.opts.persistence.readLastRepairRequiredDiagnosis?.(ref, role)
       ?? null;
     const message = `Recovery budget exhausted: ${attempts} unsuccessful attempt(s) for role '${role}'`
-      + ` (maxAttempts=${maxAttempts}); the line is parked for a human decision.`
+      + ` (maxAttempts=${maxAttempts}); ${disposition}.`
       + (diagnosis
         ? ` Last rejection at gate '${diagnosis.gateRef}' (${diagnosis.decisionKey}): `
           + `${diagnosis.findings.join(' | ')}`

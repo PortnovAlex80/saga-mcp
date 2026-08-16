@@ -101,12 +101,18 @@ test('AC-28/T10: crash recovery — worker exits without worker_done, Factory re
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', () => {});
 
-    const exitCode = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        try { child.kill('SIGTERM'); } catch {}
-        reject(new Error(`TIMEOUT (stderr tail: ${stderr.slice(-500)})`));
-      }, 150000);
-      child.once('close', (code) => { clearTimeout(timer); resolve(code); });
+    // ADR-075 (no-human quality loop): discovery cells now declare
+    // onExhausted='requeue', so a persistently crashing scenario rolls the
+    // budget into immutable recovery epochs and keeps driving autonomously —
+    // the engine no longer exits at the old park boundary. The test therefore
+    // time-boxes the run: it lets the crash → lost → repair_wait → rollover
+    // sequence happen, then stops the engine and asserts the NEW contract
+    // (epoch rows exist, no park, no stranded executions).
+    await new Promise(resolve => setTimeout(resolve, 45_000));
+    try { child.kill('SIGTERM'); } catch {}
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 20_000);
+      child.once('close', () => { clearTimeout(timer); resolve(); });
     });
 
     // The Factory should have handled the crash recovery. Discovery runs first
@@ -116,17 +122,25 @@ test('AC-28/T10: crash recovery — worker exits without worker_done, Factory re
 
     // Check the discovery-proposal workplace went through crash recovery
     const wps = resultDb.prepare(
-      'SELECT production_cell_id, kanban_phase, loop_state, terminal_reason, revision FROM factory_workplaces ORDER BY rowid',
+      'SELECT production_cell_id, kanban_phase, loop_state, terminal_reason, revision, workplace_ref FROM factory_workplaces ORDER BY rowid',
     ).all();
     const proposalWp = wps.find(w => w.production_cell_id === 'discovery-proposal');
     assert.ok(proposalWp, 'discovery-proposal workplace exists');
-
-    // The crash scenario crashes on attempt 1, retries on attempt 2 (which also
-    // fails because typed-submission can't be re-submitted), then exhausts
-    // maxAttempts (2) and pauses. The workplace should be in repair_wait or
-    // blocked/paused — NOT in running (which would indicate a stuck execution).
     assert.notEqual(proposalWp.loop_state, 'running',
       `discovery-proposal is not stuck in running (crash recovery advanced the loop). loop=${proposalWp.loop_state}`);
+    assert.notEqual(proposalWp.loop_state, 'paused',
+      'ADR-075: a quality cell never parks for a human after budget exhaustion');
+
+    // ADR-075: the exhausted budget rolled over into immutable recovery
+    // epochs (the no-human circuit breaker journal) instead of a park.
+    const epochs = resultDb.prepare(
+      'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+    ).get(proposalWp.workplace_ref);
+    assert.ok(epochs.n >= 1, `at least one recovery-epoch rollover. count=${epochs.n}`);
+    const parkReasons = resultDb.prepare(
+      'SELECT COUNT(*) AS n FROM factory_workplace_park_reasons WHERE workplace_ref=?',
+    ).get(proposalWp.workplace_ref);
+    assert.equal(parkReasons.n, 0, 'no human park reason for a requeue cell');
 
     // Verify no stranded executions
     const activeExecs = resultDb.prepare(
