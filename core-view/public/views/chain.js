@@ -60,6 +60,7 @@ let emptyEl = null;
 let chipMap = new Map();   // workplaceRef -> { el, revBadge, ring, key, cell, loop, role, lamp, worker, gate, stats, lastRevision }
 let depPred = new Map();   // workplaceRef -> Set(workplaceRef)
 let depSucc = new Map();
+let workplacesByRef = new Map(); // workplaceRef -> workplace (для лампы зависимостей)
 let hoveredRef = null;
 let lastOrderKey = '';
 let flashTimers = new Set();
@@ -113,6 +114,43 @@ function obligationLamp(w) {
           cls: 'ob-live',
           label: 'live owner',
           tip: 'живой WorkerExecution держит работу (lease/fence)\nobligation: нет — переходной долг ещё не создан',
+        };
+      }
+      // Долга нет и живого владельца нет — но это может быть законное ожидание
+      // фанаута: не admitted, пока предшественники не приняты (§18), либо
+      // очередь диспетчера (§22/§23 — typed wait). Красный STALLED оставляем
+      // только для настоящего «никто ничего не должен и никто не работает».
+      const preds = depPred.get(w.workplaceRef);
+      if (preds && preds.size) {
+        const shortKey = (pw) => pw.workKey || String(pw.workplaceRef).split('/').pop();
+        const failed = [];
+        const pending = [];
+        for (const p of preds) {
+          const pw = workplacesByRef.get(p);
+          if (!pw) continue;
+          if (pw.terminalReason != null && pw.terminalReason !== 'accepted') failed.push(shortKey(pw));
+          else if (pw.terminalReason == null) pending.push(shortKey(pw));
+        }
+        if (failed.length) {
+          return {
+            cls: 'ob-contradiction',
+            label: 'зависимость не принята',
+            tip: 'предшественник завершился не-accepted: ' + failed.join(', '),
+          };
+        }
+        if (pending.length) {
+          return {
+            cls: 'ob-wait',
+            label: 'ждёт зависимость',
+            tip: 'не admitted: предшественники ещё не приняты (§18 fan-out)\nждёт: ' + pending.join(', '),
+          };
+        }
+      }
+      if (String(w.kanbanPhase || '') === 'todo') {
+        return {
+          cls: 'ob-wait',
+          label: 'в очереди',
+          tip: 'todo в очереди диспетчера — ждёт слот/приём (typed wait, §22)',
         };
       }
       return {
@@ -566,7 +604,7 @@ function buildSkeleton() {
     '<span class="chain-lg"><i class="lg-ph ph-blocked"></i>blocked</span>' +
     '<span class="chain-lg-sep"></span>' +
     '<span class="chain-lg"><i class="lg-ob ob-live"></i>live owner</span>' +
-    '<span class="chain-lg"><i class="lg-ob ob-wait"></i>typed wait</span>' +
+    '<span class="chain-lg"><i class="lg-ob ob-wait"></i>typed wait — ожидание (зависимость/очередь)</span>' +
     '<span class="chain-lg"><i class="lg-ob ob-due"></i>transition due</span>' +
     '<span class="chain-lg"><i class="lg-ob ob-stalled"></i>STALLED</span>' +
     '<span class="chain-lg"><i class="lg-ob ob-contradiction"></i>противоречие</span>' +
@@ -628,6 +666,7 @@ export function update(snapshot) {
   emptyEl.hidden = snapshot.workplaces.length > 0;
   renderStages(snapshot.lifecycle);
   buildDepMaps(snapshot.workplaces, snapshot.dependencies);
+  workplacesByRef = new Map(snapshot.workplaces.map((w) => [w.workplaceRef, w]));
   reconcileChips(snapshot.workplaces);
   renderDispatcher(snapshot);
 }
@@ -641,6 +680,7 @@ export function destroy() {
   chipMap.clear();
   depPred.clear();
   depSucc.clear();
+  workplacesByRef.clear();
   hoveredRef = null;
   lastOrderKey = '';
   if (root && root.parentNode) root.parentNode.removeChild(root);
