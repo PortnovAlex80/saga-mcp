@@ -970,3 +970,74 @@ export function releaseOperatorHolds(
     return { released: holdRows.length, holdRefs: holdRows.map(row => row.hold_ref) };
   });
 }
+
+export interface UnparkWorkplaceInput {
+  readonly projectId?: number;
+  readonly workplaceRef?: string;
+  readonly actorId: string;
+  readonly reason: string;
+}
+
+export interface UnparkedWorkplace {
+  readonly workplaceRef: string;
+  readonly revision: number;
+}
+
+/**
+ * Operator override for budget-exhaustion parks: perform the reducer's own
+ * canonical `repair-requeued` transition (production-cell-reducer —
+ * "paused → queued (after a human-required block is resumed)") on every
+ * blocked/paused workplace in scope. Kanban phase returns to the role's
+ * active phase (REG-28-AC-02: the phase is never rolled back to todo). The
+ * CAS on (blocked, paused, revision) makes the operation idempotent: a
+ * workplace that already left the park is skipped, not double-applied.
+ */
+export function unparkWorkplaces(
+  db: Database.Database,
+  input: UnparkWorkplaceInput,
+): { unparked: readonly UnparkedWorkplace[] } {
+  if (input.projectId === undefined && input.workplaceRef === undefined) {
+    throw new Error('OPERATOR_UNPARK_SCOPE_REQUIRED: pass projectId or workplaceRef');
+  }
+  return withImmediateTransaction(db, () => {
+    const rows = input.workplaceRef !== undefined
+      ? db.prepare(
+        `SELECT workplace_ref, revision, next_role FROM factory_workplaces
+          WHERE workplace_ref=? AND kanban_phase='blocked' AND loop_state='paused'`,
+      ).all(input.workplaceRef) as Array<{
+        workplace_ref: string; revision: number; next_role: string | null;
+      }>
+      : db.prepare(
+        `SELECT w.workplace_ref, w.revision, w.next_role
+           FROM factory_workplaces w
+          WHERE w.kanban_phase='blocked' AND w.loop_state='paused'
+            AND w.process_run_id IN (
+              SELECT pr.id FROM factory_process_runs pr WHERE pr.project_id=?
+            )`,
+      ).all(input.projectId) as Array<{
+        workplace_ref: string; revision: number; next_role: string | null;
+      }>;
+    const unparked: UnparkedWorkplace[] = [];
+    for (const row of rows) {
+      const role = row.next_role === 'reviewer' ? 'reviewer' : 'author';
+      const targetPhase = role === 'reviewer' ? 'review_in_progress' : 'in_progress';
+      const applied = db.prepare(
+        `UPDATE factory_workplaces
+            SET kanban_phase=?, loop_state='queued', next_role=?,
+                revision=revision+1, updated_at=datetime('now')
+          WHERE workplace_ref=? AND kanban_phase='blocked' AND loop_state='paused'
+            AND revision=?`,
+      ).run(targetPhase, role, row.workplace_ref, row.revision);
+      if (applied.changes !== 1) continue;
+      db.prepare(
+        `INSERT INTO activity_log (entity_type, entity_id, action, summary)
+         VALUES ('workplace', ?, 'operator-unpark', ?)`,
+      ).run(
+        input.workplaceRef !== undefined ? input.workplaceRef : String(input.projectId),
+        `operator unpark (repair-requeued) by ${input.actorId}: ${row.workplace_ref} paused/blocked→queued ${role} — ${input.reason}`,
+      );
+      unparked.push({ workplaceRef: row.workplace_ref, revision: row.revision + 1 });
+    }
+    return { unparked };
+  });
+}
