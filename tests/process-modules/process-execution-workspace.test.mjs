@@ -372,6 +372,7 @@ test('materializePinnedWorkspace: recovery_feedback surfaces as a present feedba
 
 test('assertDeskInvariants: throws WORKPLACE_DESK_TRACKER_NOT_NODE_STABLE when tracker filename is not node-stable (I1)', () => {
   const desk = {
+    workplaceRef: null,
     nodeId: 'n1',
     trackerAbsolutePath: '/x/project-1-stage-task-99.md', // wrong suffix
     executionDirectory: 'docs/s/executions/node-n1/exec-1',
@@ -387,6 +388,7 @@ test('assertDeskInvariants: throws WORKPLACE_DESK_TRACKER_NOT_NODE_STABLE when t
 
 test('assertDeskInvariants: throws WORKPLACE_DESK_DIR_NOT_NODE_KEYED when executionDirectory is not keyed by node (I2)', () => {
   const desk = {
+    workplaceRef: null,
     nodeId: 'n1',
     trackerAbsolutePath: '/x/node-n1.md',
     executionDirectory: 'docs/s/executions/task-99', // wrong segment
@@ -402,6 +404,7 @@ test('assertDeskInvariants: throws WORKPLACE_DESK_DIR_NOT_NODE_KEYED when execut
 
 test('assertDeskInvariants: throws WORKPLACE_DESK_ASSISTANCE_REQUIRED_BUT_MISSING when required but path null (I3)', () => {
   const desk = {
+    workplaceRef: null,
     nodeId: 'n1',
     trackerAbsolutePath: '/x/node-n1.md',
     executionDirectory: 'docs/s/executions/node-n1/exec-1',
@@ -417,6 +420,7 @@ test('assertDeskInvariants: throws WORKPLACE_DESK_ASSISTANCE_REQUIRED_BUT_MISSIN
 
 test('assertDeskInvariants: throws WORKPLACE_DESK_RECOVERY_PRESENT_BUT_NO_PATH (I4) and REVIEW_PRESENT_BUT_NO_PATH (I5)', () => {
   const base = {
+    workplaceRef: null,
     nodeId: 'n1',
     trackerAbsolutePath: '/x/node-n1.md',
     executionDirectory: 'docs/s/executions/node-n1/exec-1',
@@ -442,6 +446,7 @@ test('assertDeskInvariants: throws WORKPLACE_DESK_RECOVERY_PRESENT_BUT_NO_PATH (
 
 test('assertDeskInvariants: passes a well-formed desk (all invariants satisfied)', () => {
   const desk = {
+    workplaceRef: null,
     nodeId: 'n1',
     trackerAbsolutePath: '/x/project-1-stage-node-n1.md',
     executionDirectory: 'docs/s/executions/node-n1/exec-1',

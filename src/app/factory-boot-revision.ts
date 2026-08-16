@@ -1,5 +1,5 @@
 /**
- * Factory boot revision — stale-worker sweep at tracker startup.
+ * Factory boot revision — controller-owned stale-worker reconciliation.
  *
  * The operator pain: when the factory engine is killed, its per-epic reaper
  * dies with it. Workplaces in `leased|running` with dead worker processes
@@ -8,7 +8,7 @@
  * executor sees `running` and returns pending (it doesn't check execution
  * liveness), so the phantom persists even after restart.
  *
- * This pass runs ONCE at tracker boot (before server.listen), across ALL
+ * This pass runs once under the orchestration controller fence, across ALL
  * projects and epics — not scoped to any single engine's epic:
  *
  *   1. TB-9 adoption (kernel-owned: verifying/effect_pending with terminal

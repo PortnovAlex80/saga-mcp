@@ -746,15 +746,15 @@ export class SqliteDevelopmentModuleStore implements
       try {
         const refs = JSON.parse(row.evidence_refs) as unknown;
         return Array.isArray(refs)
-          && refs.length > 0
           && refs.every(ref => typeof ref === 'string' && ref.length > 0);
       } catch {
         return false;
       }
     });
-    // The LM-authored verification product and its product-contract receipt
-    // establish shape and lineage only. Settlement authority is the exact
-    // factory-owned local-runnability receipt plus its immutable evidence.
+    // The LM-authored verification product is not authority for its own
+    // outcome. The exact immutable CheckReceipt from the trusted executable
+    // lineage provider is the evidence coordinate; evidenceRefs are optional
+    // auxiliary diagnostics and therefore may lawfully be empty on success.
     // v2 workset has one provider binding per AC. Multiple executable
     // authorities need an explicit aggregation receipt rather than an
     // arbitrary winner.

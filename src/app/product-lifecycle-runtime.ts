@@ -32,7 +32,6 @@ import {
   registerWorkshopPostAcceptanceEffect,
 } from '../process-modules/application/workshop-capability-manifest.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
-import { decodeProductRevisionMemberKey } from '../process-modules/domain/workplace/workplace-production-revision.js';
 import { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
 import {
   TransitionObligationReconciler,
@@ -421,50 +420,6 @@ export function createProductLifecycleRuntime(
           } catch {
             return null;
           }
-        },
-        readDurableContributionAuthor: ({
-          serializedWorkplaceRef,
-          expectedSchemaRefs,
-        }): string | null => {
-          const schemas = [...new Set(expectedSchemaRefs.filter(s => s && s.trim()))];
-          if (schemas.length === 0) return null;
-          // Primary: completion products are frozen atomically with the
-          // ACCEPTED worker_done — their execution_id is the contribution
-          // author by construction. Latest row wins across repair cycles.
-          const placeholders = schemas.map(() => '?').join(',');
-          const completion = db.prepare(
-            `SELECT execution_id FROM factory_execution_completion_products
-              WHERE workplace_ref=? AND schema_id IN (${placeholders})
-              ORDER BY rowid DESC LIMIT 1`,
-          ).get(serializedWorkplaceRef, ...schemas) as
-            | { execution_id: string }
-            | undefined;
-          if (completion) return completion.execution_id;
-          // Secondary: presenter of the latest sealed revision whose product
-          // members match the role's schemas. Carry-forward presenters are
-          // excluded — they have no worker receipt and no completion row, so
-          // resolving to one would fail the carry guard downstream anyway.
-          const revisions = db.prepare(
-            `SELECT members, presenter_ref FROM factory_workplace_production_revisions
-              WHERE workplace_ref=? ORDER BY sealed_at DESC, rowid DESC LIMIT 5`,
-          ).all(serializedWorkplaceRef) as
-            { members: string; presenter_ref: string }[];
-          for (const revision of revisions) {
-            if (revision.presenter_ref.startsWith('factory-carry-forward-presenter:')) {
-              continue;
-            }
-            try {
-              const members = JSON.parse(revision.members) as Array<{ memberKey: string }>;
-              const matches = members.some(member => {
-                const decoded = decodeProductRevisionMemberKey(member.memberKey);
-                return decoded !== null && schemas.includes(decoded.schemaId);
-              });
-              if (matches) return revision.presenter_ref;
-            } catch {
-              // malformed members snapshot — try the next older revision
-            }
-          }
-          return null;
         },
         activateRoleTask: ({
           taskId,
@@ -919,7 +874,6 @@ export function createProductLifecycleRuntime(
     'run-gate',
     'run-effects',
     'record-final-acceptance',
-    'settle-process',
     'route-lifecycle',
   ] as const) {
     const ownerCapability = handoffKind === 'close-presentation'

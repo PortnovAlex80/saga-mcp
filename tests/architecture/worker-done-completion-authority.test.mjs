@@ -3,7 +3,6 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 
 import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';
-import { receiptAwareLmPersistence } from '../../dist/process-modules/application/node-executors/receipt-aware-lm-persistence.js';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 
 function executionFixture({ withAcceptedReceipt }) {
@@ -81,7 +80,6 @@ test('accepted worker_done closes the execution fence without requeueing the ver
   assert.deepEqual(execution, { state: 'exited', exit_code: 0 });
   db.close();
 });
-
 test('an execution without worker_done evidence retains crash recovery mapping', () => {
   const { db, taskId } = executionFixture({ withAcceptedReceipt: false });
 
@@ -100,49 +98,5 @@ test('an execution without worker_done evidence retains crash recovery mapping',
     assigned_to: null,
     current_execution_id: null,
   });
-  db.close();
-});
-
-test('LM poll-loop sees exact worker_done completion instead of the later verifying projection', () => {
-  const db = new Database(':memory:');
-  db.exec(`
-    CREATE TABLE command_receipts (
-      command_id TEXT PRIMARY KEY,
-      command_kind TEXT NOT NULL,
-      execution_id TEXT,
-      task_id INTEGER,
-      accepted INTEGER NOT NULL,
-      reply_json TEXT NOT NULL,
-      accepted_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-  db.prepare(
-    `INSERT INTO command_receipts
-       (command_id, command_kind, execution_id, task_id, accepted, reply_json)
-     VALUES ('exec-9:worker-done:approved', 'worker_done', 'exec-9', 17, 1, ?)`,
-  ).run(JSON.stringify({ completed_new_status: 'done' }));
-
-  const base = {
-    readCurrentExecutionId(taskId) {
-      assert.equal(taskId, 17);
-      return 'exec-9';
-    },
-    readLatestExecutionId() {
-      return 'exec-9';
-    },
-    readTaskState() {
-      return 'in_progress';
-    },
-    readExecutionLiveness() {
-      return { pid: 12516, state: 'running' };
-    },
-  };
-
-  const persistence = receiptAwareLmPersistence(base, db);
-  assert.equal(persistence.readTaskState(17), 'done');
-  assert.deepEqual(
-    persistence.readExecutionLiveness('exec-9'),
-    { pid: null, state: 'exited' },
-  );
   db.close();
 });

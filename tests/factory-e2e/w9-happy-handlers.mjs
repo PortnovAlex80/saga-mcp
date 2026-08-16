@@ -573,6 +573,32 @@ function developmentVerify({ handlers, assignment, meta, db }) {
   return { kind: 'worker-done-accepted' };
 }
 
+function developmentReadinessCertification({ handlers, assignment, meta }) {
+  const sourceCandidate = findObject(
+    meta.process_node_input,
+    value => value.schema === 'factory.integrated-source-candidate.v1'
+      && typeof value.ref === 'string'
+      && typeof value.hash === 'string',
+  );
+  if (!sourceCandidate) {
+    throw new Error('Exact integrated-source ProductRef is missing from readiness input');
+  }
+  handlers.product_submit({
+    schema: 'factory.development-readiness-manifest.v1',
+    content: {
+      schemaVersion: 'factory.development-readiness-manifest.v1',
+      sourceCandidate: {
+        schema: sourceCandidate.schema,
+        ref: sourceCandidate.ref,
+        hash: sourceCandidate.hash,
+      },
+      targets: [{ key: 'primary', readiness: RUNNABLE_STATIC_READINESS }],
+    },
+  });
+  done(handlers, assignment, 'certified exact integrated source readiness');
+  return { kind: 'worker-done-accepted' };
+}
+
 function done(handlers, assignment, result) {
   handlers.worker_done({
     task_id: Number(assignment.taskId),
@@ -610,5 +636,6 @@ export const W9_HAPPY_HANDLERS = Object.freeze({
   [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
   [`${DEV}/implement-work-items/author/*`]: developmentImplement,
   [`${DEV}/implement-work-items/reviewer/*`]: developmentReview,
+  [`${DEV}/certify-product-readiness/author/singleton`]: developmentReadinessCertification,
   [`${DEV}/verify-acceptance/author/*`]: developmentVerify,
 });

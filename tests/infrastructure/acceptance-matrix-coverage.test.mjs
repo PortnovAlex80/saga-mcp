@@ -107,7 +107,6 @@ test('G3: known flaky / pre-existing-red files are quarantined', () => {
     'tests/factory-contract/golden-path.test.mjs',
     'tests/factory-contract/parallel-git-desk.test.mjs',
     'tests/process-modules/development-task-graph-diagnostics.test.mjs',
-    'tests/architecture/worker-done-completion-authority.test.mjs',
     'tests/architecture/submission-validator-diagnostics.test.mjs',
   ];
   for (const f of required) {

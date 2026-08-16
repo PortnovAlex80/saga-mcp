@@ -55,32 +55,16 @@ test('Phase 8: effects-settled preserves the exact persisted EffectReceipt ident
   assert.equal(ready[0].subjectRef, 'workplace/1/module@1/cell/item');
 });
 
-test('Phase 8: FinalAcceptance legacy source alias is preserved until executor call-site cutover', () => {
-  const { ledger } = makeLedger();
-  const integrator = new TransitionObligationIntegrator({ ledger });
-  const legacyRef = 'final-acceptance:workplace/1/module@1/cell/item:cs-1';
-  integrator.onFinalAcceptanceRecorded({
-    finalAcceptanceRef: legacyRef,
-    acceptanceDigest: 'b'.repeat(64),
-    workplaceRef: 'workplace/1/module@1/cell/item',
-  });
-  const ready = ledger.findReady();
-  assert.equal(ready.length, 1);
-  assert.equal(ready[0].sourceRef, legacyRef);
-  assert.equal(ready[0].sourceDigest, 'b'.repeat(64));
-});
-
-test('Phase 8: all six source facts create their corresponding obligations', () => {
+test('Phase 8: all asynchronous source facts create their corresponding obligations', () => {
   const { ledger } = makeLedger();
   const integrator = new TransitionObligationIntegrator({ ledger });
   integrator.onFinalPresentationCommitted({ commitmentRef: 'pc-1', commitmentDigest: 'd0', workplaceRef: 'w1' });
   integrator.onCandidateSetSealed({ candidateSetRef: 'cs-1', candidateSetDigest: 'd1', workplaceRef: 'w1' });
   integrator.onGateAccepted({ gateDecisionKey: 'gd-1', gateDecisionDigest: 'd2', workplaceRef: 'w1' });
   integrator.onEffectsSettled({ workplaceRef: 'w1', effectReceiptDigest: 'd3' });
-  integrator.onFinalAcceptanceRecorded({ finalAcceptanceRef: 'fa-1', acceptanceDigest: 'd4', workplaceRef: 'w1' });
   integrator.onProcessSettled({ processRunId: 1, settlementDigest: 'd5', subjectRef: 'process-run:1' });
   const ready = ledger.findReady();
-  assert.equal(ready.length, 6);
+  assert.equal(ready.length, 5);
   const handoffs = ready.map(o => o.handoffKind).sort();
   assert.deepEqual(handoffs, [
     'close-presentation',
@@ -88,7 +72,6 @@ test('Phase 8: all six source facts create their corresponding obligations', () 
     'route-lifecycle',
     'run-effects',
     'run-gate',
-    'settle-process',
   ]);
 });
 
@@ -97,7 +80,6 @@ test('Phase 8: persisted handoff owners match canonical runtime owners', () => {
   assert.equal(HANDOFF_OWNERS['run-gate'], 'gate-run-driver');
   assert.equal(HANDOFF_OWNERS['run-effects'], 'production-cell-node-executor');
   assert.equal(HANDOFF_OWNERS['record-final-acceptance'], 'production-cell-node-executor');
-  assert.equal(HANDOFF_OWNERS['settle-process'], 'production-cell-node-executor');
   assert.equal(HANDOFF_OWNERS['route-lifecycle'], 'lifecycle-orchestrator');
 });
 
@@ -156,11 +138,10 @@ test('Phase 8: crash recovery — obligation is redriven after failure', async (
   assert.equal(calls, 2);
 });
 
-test('Phase 8: SOURCE_TO_HANDOFF maps all six source kinds', () => {
+test('Phase 8: SOURCE_TO_HANDOFF maps all asynchronous source kinds', () => {
   assert.equal(SOURCE_TO_HANDOFF['final-presentation-committed'], 'close-presentation');
   assert.equal(SOURCE_TO_HANDOFF['candidate-set-sealed'], 'run-gate');
   assert.equal(SOURCE_TO_HANDOFF['gate-accepted'], 'run-effects');
   assert.equal(SOURCE_TO_HANDOFF['effects-settled'], 'record-final-acceptance');
-  assert.equal(SOURCE_TO_HANDOFF['final-acceptance-recorded'], 'settle-process');
   assert.equal(SOURCE_TO_HANDOFF['process-settled'], 'route-lifecycle');
 });

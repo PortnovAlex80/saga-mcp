@@ -155,7 +155,6 @@ test('Gate 8 [met]: durable reconciler owns all five production handoffs', () =>
   assert.ok(src.includes('onCandidateSetSealed'));
   assert.ok(src.includes('onGateAccepted'));
   assert.ok(src.includes('onEffectsSettled'));
-  assert.ok(src.includes('onFinalAcceptanceRecorded'));
   assert.ok(src.includes('onProcessSettled'));
   // Integrator is instantiated and passed in the production composition root.
   const runtime = readSrc('src/app/product-lifecycle-runtime.ts');
@@ -163,17 +162,19 @@ test('Gate 8 [met]: durable reconciler owns all five production handoffs', () =>
   assert.ok(runtime.includes('new TransitionObligationReconciler'), 'reconciler instantiated');
   assert.ok(runtime.includes('obligationReconciler.reconcile'), 'reconciler runs in production engine');
   assert.ok(runtime.includes('obligationIntegrator'), 'passed to executor');
-  // 4 call sites exist in the executor.
+  // Cell handoffs exist in the executor; process settlement is owned by the
+  // GenericFlowExecutor and routing by the lifecycle orchestrator.
   const exec = readSrc('src/process-modules/application/node-executors/production-cell-node-executor.ts');
   const lifecycle = readSrc('src/process-modules/application/lifecycle-orchestrator.ts');
   assert.ok(lifecycle.includes('onProcessSettled'), 'handoff 5 is wired');
   assert.ok(lifecycle.includes("routeObligation.state !== 'in_progress'"), 'route requires a reconciler lease');
-  assert.ok(exec.includes("runGateObligation.state !== 'in_progress'"), 'gate requires a reconciler lease');
+  assert.ok(exec.includes("runGateObligation.state === 'pending'"), 'pending gate handoff parks');
+  assert.ok(exec.includes("runGateObligation.state === 'failed'"), 'failed gate handoff fails closed');
   assert.ok(exec.includes("finalAcceptanceObligation.state !== 'in_progress'"), 'acceptance requires a reconciler lease');
   assert.ok(exec.includes('onCandidateSetSealed'), 'handoff 1: candidate-set-sealed → run-gate');
   assert.ok(exec.includes('onGateAccepted'), 'handoff 2: gate-accepted → run-effects');
   assert.ok(exec.includes('onEffectsSettled'), 'handoff 3: effects-settled → record-final-acceptance');
-  assert.ok(exec.includes('onFinalAcceptanceRecorded'), 'handoff 4: final-acceptance-recorded → settle-process');
+  assert.ok(!exec.includes('onFinalAcceptanceRecorded'), 'cell acceptance never settles the whole process early');
 });
 
 // Gate 9: Invariant suites pass.

@@ -83,19 +83,6 @@ export function readTransitionHandoffPostcondition(
       ).get(obligation.subjectRef, obligation.sourceRef);
       return fact(row, 'FinalAcceptance for the exact EffectReceipt is not durable yet');
     }
-    case 'settle-process': {
-      // The current ProductionCellNodeExecutor still emits a legacy
-      // final-acceptance source alias rather than the persisted row ref. Until
-      // that call site is cut over, the strongest safe proof here is the exact
-      // next process-settled obligation for this Workplace's ProcessRun.
-      const processRunId = processRunIdFromSubject(obligation.subjectRef);
-      const row = db.prepare(
-        `SELECT 1 FROM factory_transition_obligations
-          WHERE source_kind='process-settled' AND source_ref=?
-            AND handoff_kind='route-lifecycle' LIMIT 1`,
-      ).get(`process-run:${processRunId}`);
-      return fact(row, 'Process settlement obligation is not durable yet');
-    }
     case 'route-lifecycle': {
       const processRunId = processRunIdFromSource(obligation.sourceRef);
       const row = db.prepare(
@@ -130,12 +117,6 @@ function fact(row: unknown, missingReason: string): TransitionHandoffPostconditi
   return row
     ? { satisfied: true, reason: 'durable exact postcondition exists' }
     : { satisfied: false, reason: missingReason };
-}
-
-function processRunIdFromSubject(subjectRef: string): number {
-  const match = /^workplace\/(\d+)\//.exec(subjectRef);
-  if (!match) throw new Error(`TRANSITION_OBLIGATION_SUBJECT_INVALID: ${subjectRef}`);
-  return Number(match[1]);
 }
 
 function processRunIdFromSource(sourceRef: string): number {

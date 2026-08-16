@@ -21,7 +21,6 @@ export const TRANSITION_SOURCE_KINDS = [
   'candidate-set-sealed',
   'gate-accepted',
   'effects-settled',
-  'final-acceptance-recorded',
   'process-settled',
 ] as const;
 export type TransitionSourceKind = (typeof TRANSITION_SOURCE_KINDS)[number];
@@ -31,7 +30,6 @@ export const TRANSITION_HANDOFF_KINDS = [
   'run-gate',
   'run-effects',
   'record-final-acceptance',
-  'settle-process',
   'route-lifecycle',
 ] as const;
 export type TransitionHandoffKind = (typeof TRANSITION_HANDOFF_KINDS)[number];

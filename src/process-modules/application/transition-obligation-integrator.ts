@@ -1,6 +1,6 @@
 // src/process-modules/application/transition-obligation-integrator.ts
 //
-// ADR-053 Phase 8 / ADR-072 — wire the six conveyor handoffs onto the durable
+// ADR-053 Phase 8 / ADR-072 — wire the five asynchronous conveyor handoffs onto the durable
 // transition-obligation substrate (Phase 2).
 //
 // Each source fact appends a durable obligation in the SAME logical step. The
@@ -91,34 +91,6 @@ export class TransitionObligationIntegrator {
     });
   }
 
-  /**
-   * Final acceptance recorded → process must settle.
-   *
-   * NOTE: the current ProductionCellNodeExecutor still passes a legacy alias
-   * (`final-acceptance:<workplace>:<candidate>`) rather than the persisted
-   * `cell-final-acceptance:<rowDigest>` ref. Do not fabricate a conversion here:
-   * the semantic acceptance digest passed by that caller is intentionally not
-   * the row digest used by SqliteCellFinalAcceptance. Exact-ref cutover must be
-   * performed at the caller that receives recordFinalAcceptance()'s return.
-   */
-  onFinalAcceptanceRecorded(input: {
-    finalAcceptanceRef: string;
-    acceptanceDigest: string;
-    workplaceRef: string;
-  }): TransitionObligation {
-    return this.appendFenced({
-      sourceKind: 'final-acceptance-recorded',
-      sourceRef: input.finalAcceptanceRef,
-      sourceDigest: input.acceptanceDigest,
-      subjectRef: input.workplaceRef,
-      handoffKind: 'settle-process',
-      // Runtime registration executes settlement through the Production Cell
-      // node executor. Persist the same owner identity the executable manifest
-      // enforces instead of the historical `process-settlement` alias.
-      ownerCapability: 'production-cell-node-executor',
-    });
-  }
-
   onProcessSettled(input: {
     processRunId: number;
     settlementDigest: string;
@@ -160,7 +132,6 @@ export const HANDOFF_OWNERS: Readonly<Record<TransitionHandoffKind, string>> = O
   'run-gate': 'gate-run-driver',
   'run-effects': 'production-cell-node-executor',
   'record-final-acceptance': 'production-cell-node-executor',
-  'settle-process': 'production-cell-node-executor',
   'route-lifecycle': 'lifecycle-orchestrator',
 });
 
@@ -169,6 +140,5 @@ export const SOURCE_TO_HANDOFF: Readonly<Record<TransitionSourceKind, Transition
   'candidate-set-sealed': 'run-gate',
   'gate-accepted': 'run-effects',
   'effects-settled': 'record-final-acceptance',
-  'final-acceptance-recorded': 'settle-process',
   'process-settled': 'route-lifecycle',
 });

@@ -58,7 +58,6 @@ the flaky orchestrate-cli / replay-driven suites.**
 | `tests/factory-contract/parallel-git-desk.test.mjs` | FLAKY | drives orchestrate-cli (concurrency=2 worktree isolation); same `REPLAY_CAPSULE_CONTEXT_INVALID`. **W9 replaces it.** |
 | `tests/factory-temporal/*.test.mjs` (7 files) | FLAKY | the whole suite churns run-to-run (temporal / orchestrate-cli driven). **W9 replaces it.** |
 | `tests/process-modules/development-task-graph-diagnostics.test.mjs` | PRE-EXISTING-RED | stale `producerExecutionRef` mock; fails identically on the baseline. |
-| `tests/architecture/worker-done-completion-authority.test.mjs` | PRE-EXISTING-RED | imports deleted module `dist/process-modules/application/node-executors/receipt-aware-lm-persistence.js` (removed in refactor `5530965` — "make production cell the sole factory runtime"). |
 | `tests/architecture/submission-validator-diagnostics.test.mjs` | PRE-EXISTING-RED | assertion drift: `outcome` expected `"failed"`, got `undefined` on a clean checkout. |
 | `tests/dispatcher-race/worktree-isolation.mjs` *(plain .mjs)* | PRE-EXISTING-RED | broken by the C5 accepted-authority-head cutover: `worker_next` returns `null` because the test seeds tasks the pre-C5 way (the file's own comment flags the "saga4 authority gate"). Excluded from the dispatcher-race step directly. **W9 replaces it.** |
 

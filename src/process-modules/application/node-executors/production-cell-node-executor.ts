@@ -99,21 +99,6 @@ export interface ProductionCellProjectionPersistence {
     projectRepositoryId?: number | null;
   }): void;
   readAuthorSemanticDigestForWorkplace?(serializedWorkplaceRef: string): string | null;
-  /**
-   * TB-10 fallback: resolve the contribution author (execution ref) from the
-   * DURABLE envelope when the live reservation pointer is gone. Sources, in
-   * order: factory_execution_completion_products (written atomically with the
-   * accepted worker_done — its execution_id IS the author), then the presenter
-   * of the latest sealed revision whose product members match the role's
-   * expected schemas. Schema-filtered so a reviewer gate can never resolve an
-   * author row and vice versa; carry-forward presenters are excluded (they
-   * have no worker receipt and no completion row). Returns null when no
-   * durable author exists — the caller then fails loudly.
-   */
-  readDurableContributionAuthor?(input: {
-    serializedWorkplaceRef: string;
-    expectedSchemaRefs: readonly string[];
-  }): string | null;
   readTaskProjectRepositoryId(taskId: number): number | null;
   readProcessInputHash(processRunId: number): string;
   readTrustedProviders?(projectId: number): readonly {
@@ -544,37 +529,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const expectedSchemaRefs = role === 'reviewer'
       ? [cell.review?.verdictSchemaRef ?? '']
       : cell.productContracts.map(contract => contract.schemaRef);
-    let executionRef = actors?.activeReservationRef ?? null;
+    const executionRef = actors?.activeReservationRef ?? null;
     if (!executionRef) {
-      // TB-10: the live reservation pointer can be lost AFTER the material
-      // was already durably sealed (the verified live failure: engine-start
-      // machinery cleared it on terminal executions in kernel-owned states).
-      // The envelope is the authority — resolve the contributor from
-      // completion products / the sealed revision presenter instead of
-      // terminally failing the run. readContributionProducts below re-verifies
-      // the exact schema set against that contributor, so a wrong resolution
-      // fails closed (MANAGED_COMPLETION_PRODUCT_SET_MISMATCH), never seals
-      // mismatched material. A carry-forward desk always carries its presenter
-      // reservation from the queued→verifying transition, so a missing
-      // reservation is never a carry case (the guard below still runs).
-      executionRef = this.opts.persistence.readDurableContributionAuthor?.({
-        serializedWorkplaceRef: serializeWorkplaceRef(workplace.ref),
-        expectedSchemaRefs,
-      }) ?? null;
-      if (!executionRef) {
-        throw new NodeExecutionError(
-          this.kind,
-          node.id,
-          'verifying Workplace has no producer reservation and no durable '
-          + 'contribution author (completion products and revision presenter '
-          + 'were checked for schemas '
-          + `[${[...new Set(expectedSchemaRefs.filter(Boolean))].join(', ')}])`,
-        );
-      }
-      process.stderr.write(
-        `[production-cell] reservation pointer lost — recovered contributor `
-        + `${executionRef} from the durable envelope for `
-        + `${serializeWorkplaceRef(workplace.ref)}\n`,
+      // A verifying Workplace must retain the exact presentation coordinate
+      // established by its fenced transition. Historical execution/completion
+      // rows are audit provenance and may never be searched by recency to
+      // manufacture missing authority.
+      throw new NodeExecutionError(
+        this.kind,
+        node.id,
+        'PRESENTATION_AUTHORITY_MISSING: verifying Workplace '
+        + `${serializeWorkplaceRef(workplace.ref)} has no exact active presentation; `
+        + 'recency-based execution/revision recovery is forbidden',
       );
     }
     const carryDirective = role === 'author' && this.opts.authorCandidateCarryForward
@@ -640,6 +606,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       this.opts.persistence.projectWorkplace(workplace.ref);
       return pendingOutcome(candidate.candidateSetRef);
     }
+    if (runGateObligation.state === 'failed') {
+      throw new NodeExecutionError(
+        this.kind,
+        node.id,
+        `RUN_GATE_OBLIGATION_FAILED: ${runGateObligation.obligationKey}`,
+      );
+    }
     if (carryDirective) {
       this.opts.authorCandidateCarryForward!.consume({
         authorizationRef: carryDirective.authorizationRef,
@@ -662,6 +635,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef, [],
         this.readGateUpstreamBinding(ctx, cell), executionRef,
         !cell.review ? this.primaryOutputBindings(cell, candidate) : [],
+        !cell.review,
       );
       if (decision.verdict === 'accepted') {
         if (!cell.review) postAcceptanceCandidate = candidate;
@@ -690,7 +664,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // the precise accepted decision instead of guessing one by recency.
         // TB-12: a COMPLETED handoff is ready too — the effects are already
         // durable and the post-gate state machine below must proceed.
-        nextHandoffReady = decision.transitionObligation?.state === 'in_progress'
+        // An accepted author Gate with a reviewer has already performed its
+        // factual transition by moving the Workplace to the reviewer desk. It
+        // intentionally has no post-acceptance-effects obligation, so absence
+        // of that obligation must not park reviewer materialization.
+        nextHandoffReady = Boolean(cell.review)
+          || decision.transitionObligation?.state === 'in_progress'
           || decision.transitionObligation?.state === 'completed';
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
@@ -713,6 +692,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         this.readGateUpstreamBinding(ctx, cell),
         executionRef,
         this.primaryOutputBindings(cell, subjectAuthorSet),
+        true,
       );
       if (decision.verdict === 'accepted') {
         postAcceptanceCandidate = subjectAuthorSet;
@@ -886,8 +866,8 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // ADR-053 B-9/C6/C17 — resolve the EXACT accepted GateDecision key ONCE
     // (fail closed — no '' placeholder) and compute the real acceptance digest
     // once. The same (finalGateDecisionKey, acceptanceDigest) pair is shared by
-    // the settle-process obligation, the replay-capture effect authority and the
-    // receipt, so they provably consume the same exact acceptance rather than
+    // replay-capture effect authority and the receipt, so they provably consume
+    // the same exact acceptance rather than
     // re-deriving it from candidate-set digest or decided_at recency.
     const finalGateDecisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
       serializeWorkplaceRef(workplaceRef), acceptedCandidate.candidateSetRef,
@@ -925,20 +905,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // absent, so terminal recovery redrives this exact idempotent effect. A
     // false-success receipt can therefore never settle an uncaptured product.
     this.opts.postAcceptanceEffects.run('replay-capture', effectInput);
-    const settlementObligation = this.opts.finalAcceptance.transaction(() => {
+    this.opts.finalAcceptance.transaction(() => {
       this.opts.finalAcceptance.recordFinalAcceptance({
         workplaceRef,
         candidateSetRef: acceptedCandidate.candidateSetRef,
         effectReceiptRefs,
         acceptedAt: (this.opts.now ?? (() => new Date()))().toISOString(),
       });
-      return this.opts.obligationIntegrator.onFinalAcceptanceRecorded({
-        finalAcceptanceRef: `final-acceptance:${serializeWorkplaceRef(workplaceRef)}:${acceptedCandidate.candidateSetRef}`,
-        acceptanceDigest,
-        workplaceRef: serializeWorkplaceRef(workplaceRef),
-      });
     });
-    if (settlementObligation.state !== 'in_progress') return false;
+    // FinalAcceptance closes one Production Cell, not the whole ProcessRun.
+    // GenericFlowExecutor owns flow traversal and atomically records the
+    // terminal ProcessRun plus its process-settled obligation when (and only
+    // when) the module terminal node is reached. Creating a settle-process
+    // obligation per accepted cell produced impossible early obligations for
+    // fan-out and intermediate cells.
     return true;
   }
 
@@ -1405,6 +1385,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     upstreamProductBinding: Readonly<Record<string, unknown>>,
     presentationRef: string,
     acceptedOutputBindings: readonly import('../../domain/workplace/gate.js').AcceptedOutputBinding[],
+    emitAcceptanceObligation: boolean,
   ) {
     return this.opts.gateRepo.transaction(() => {
       const decision = driveGateRun(this.opts.gateRepo, this.opts.checkProviders, {
@@ -1429,7 +1410,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         presentationRef,
         acceptedOutputBindings,
       }).decision;
-      const transitionObligation = decision.verdict === 'accepted'
+      const transitionObligation = decision.verdict === 'accepted' && emitAcceptanceObligation
         ? this.opts.obligationIntegrator.onGateAccepted({
             gateDecisionKey: decision.decisionKey,
             gateDecisionDigest: decision.decisionDigest,

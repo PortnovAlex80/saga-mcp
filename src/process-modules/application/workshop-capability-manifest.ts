@@ -214,7 +214,6 @@ export const WORKSHOP_EXECUTABLE_CAPABILITIES: readonly ExecutableCapabilityMani
     ['run-gate', 'gate-run-driver'],
     ['run-effects', 'production-cell-node-executor'],
     ['record-final-acceptance', 'production-cell-node-executor'],
-    ['settle-process', 'production-cell-node-executor'],
     ['route-lifecycle', 'lifecycle-orchestrator'],
   ].map(([logicalId, owner]) => ({
     kind: 'transition-handler' as const,

@@ -31,8 +31,7 @@ import {
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
 import { reconcileAutomaticPreSpawnRecovery } from './app/automatic-pre-spawn-recovery.js';
-import { adoptTerminalExecutionsAtEngineStart } from './app/engine-start-adoption.js';
-import { buryDeadLifecycleObligations } from './app/engine-start-lifecycle-burial.js';
+import { runFactoryBootRevision } from './app/factory-boot-revision.js';
 import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
   installProductionModules,
@@ -198,6 +197,23 @@ async function main() {
       );
     }
 
+    // Recovery is a controller-owned mutation. It must complete under the
+    // launch fence before supervision or dispatch can claim work; observers
+    // such as tracker-view never run this command.
+    assertFactoryControllerFence(launchRef, claimToken, controllerEpoch);
+    const bootRevision = runFactoryBootRevision(getDb());
+    if (
+      bootRevision.swept.length > 0 || bootRevision.adoption.adopted > 0
+      || bootRevision.burial.buried > 0 || bootRevision.burial.workplacesReleased > 0
+    ) {
+      process.stderr.write(
+        `[orchestrate-cli] boot revision: adoption=${bootRevision.adoption.adopted} `
+        + `buried=${bootRevision.burial.buried} `
+        + `released=${bootRevision.burial.workplacesReleased} `
+        + `swept=${bootRevision.swept.length}\n`,
+      );
+    }
+
     // CONVEYOR Wave 5 — start the watchman. The supervision service reconciles
     // durable worker executions on startup (catching orphans from a prior
     // runtime crash) and periodically while the conveyor is alive, returning
@@ -221,76 +237,6 @@ async function main() {
           `[orchestrate-cli] automatic pre-spawn recovery=${recovery.recoveryRef} `
           + `execution=${recovery.executionId} replayed=${recovery.replayed}\n`,
         );
-      }
-    }
-
-    // TB-9: adopt terminal executions abandoned by a previous engine. A
-    // terminal execution holding a kernel-owned workplace reservation is a
-    // stale fence by definition; with a durable worker_done receipt the
-    // idempotent kernel verifying re-drive finishes the transition. Without
-    // the receipt nothing is rewritten — that case must stay loud.
-    {
-      const adoption = adoptTerminalExecutionsAtEngineStart(getDb());
-      if (
-        adoption.adopted > 0 || adoption.skippedNoReceipt > 0
-        || adoption.spawnFailedRepaired.length > 0
-      ) {
-        process.stderr.write(
-          `[orchestrate-cli] engine-start adoption: adopted=${adoption.adopted} `
-          + `skipped_no_receipt=${adoption.skippedNoReceipt} `
-          + `spawn_failed_repaired=${adoption.spawnFailedRepaired.length}\n`,
-        );
-        for (const detail of adoption.details) {
-          process.stderr.write(
-            `[orchestrate-cli] adopted terminal execution=${detail.executionId} `
-            + `workplace=${detail.workplaceRef} state=${detail.loopState}\n`,
-          );
-        }
-        for (const detail of adoption.spawnFailedRepaired) {
-          process.stderr.write(
-            `[orchestrate-cli] repaired spawn-failed reservation execution=${detail.executionId} `
-            + `workplace=${detail.workplaceRef} state=${detail.loopState}\n`,
-          );
-        }
-      }
-    }
-
-    // TB-11: bury the death cascade of terminally failed lifecycles. Their
-    // open transition obligations would be re-leased by the reconciler
-    // forever (the obligation's owner — the lifecycle — is dead, so no lease
-    // holder can ever complete it), and the kernel-owned workplaces of the
-    // dead process runs stay frozen in verifying/effect_pending, later
-    // poisoning the settlement gate of a NEW lifecycle that reuses the same
-    // workplaces. Abandon the obligations and release the workplaces.
-    {
-      const burial = buryDeadLifecycleObligations(getDb());
-      if (
-        burial.buried > 0 || burial.workplacesReleased > 0
-        || burial.tasksCancelled > 0
-      ) {
-        process.stderr.write(
-          `[orchestrate-cli] engine-start lifecycle burial: buried=${burial.buried} `
-          + `workplaces_released=${burial.workplacesReleased} `
-          + `tasks_cancelled=${burial.tasksCancelled}\n`,
-        );
-        for (const detail of burial.details) {
-          process.stderr.write(
-            `[orchestrate-cli] abandoned obligation=${detail.obligationKey} `
-            + `prior_state=${detail.priorState} lifecycle_run=${detail.lifecycleRunId}\n`,
-          );
-        }
-        for (const workplace of burial.releasedWorkplaces) {
-          process.stderr.write(
-            `[orchestrate-cli] released workplace=${workplace.workplaceRef} `
-            + `loop_state=${workplace.loopState} reason=lifecycle_terminal\n`,
-          );
-        }
-        for (const task of burial.cancelledTasks) {
-          process.stderr.write(
-            `[orchestrate-cli] cancelled task #${task.taskId} `
-            + `prior_status=${task.priorStatus} lifecycle_run=${task.lifecycleRunId}\n`,
-          );
-        }
       }
     }
 

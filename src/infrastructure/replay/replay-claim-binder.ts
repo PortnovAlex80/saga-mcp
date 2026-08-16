@@ -18,6 +18,7 @@ import {
   readWorkplaceRefForTask,
   resolveReplayKeyMaterial,
 } from './replay-key-material.js';
+import { selectReplayCapsule } from './replay-capsule-selection.js';
 
 export { resolveReplayKeyMaterial };
 
@@ -197,30 +198,14 @@ export function bindReplayToClaim(
 
   const replayKey = computeReplayKey(keyMaterial);
   const capsules = db.prepare(
-    `SELECT capsule_ref,payload_hash,created_at
+    `SELECT capsule_ref,payload_hash
        FROM factory_replay_capsules
-      WHERE project_id=? AND replay_key=?
-      ORDER BY created_at DESC, capsule_ref DESC`,
+      WHERE project_id=? AND replay_key=?`,
   ).all(keyMaterial.projectId, replayKey) as Array<{
     capsule_ref: string;
     payload_hash: string;
-    created_at: string;
   }>;
-  if (capsules.length > 1) {
-    // Multiple accepted executions captured a capsule for the same semantic
-    // replay key — the normal aftermath of a failed lifecycle followed by
-    // new_start (each run re-does the same semantic work and gets accepted).
-    // The LATEST capture is the current material authority (the most recent
-    // accepted revision of the same WHAT); failing closed here would block
-    // every re-run after a failure, which is exactly the recovery scenario
-    // replay exists for. Deterministic ORDER BY created_at/capsule_ref above.
-    process.stderr.write(
-      `[replay-claim-binder] ${capsules.length} capsules share replay_key `
-      + `${replayKey.slice(0, 16)}… — binding newest (created_at `
-      + `${capsules[0].created_at})\n`,
-    );
-  }
-  const capsule = capsules[0];
+  const capsule = selectReplayCapsule(replayKey, capsules);
 
   const workplaceRef = readWorkplaceRefForTask(db, input.task);
   const effectiveCapsule = capsule && workplaceRef

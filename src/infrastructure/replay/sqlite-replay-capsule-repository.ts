@@ -19,6 +19,7 @@ import {
 import { resolveReplayKeyMaterial } from './replay-key-material.js';
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
+import { selectReplayCapsule } from './replay-capsule-selection.js';
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -350,19 +351,12 @@ export class SqliteReplayCapsuleRepository {
     const capsules = this.db.prepare(
       `SELECT capsule_ref,payload_hash
          FROM factory_replay_capsules
-        WHERE project_id=? AND replay_key=?
-        ORDER BY created_at DESC, capsule_ref DESC`,
+        WHERE project_id=? AND replay_key=?`,
     ).all(keyMaterial.projectId, replayKey) as Array<{
       capsule_ref: string;
       payload_hash: string;
     }>;
-    // More than one capsule per semantic replay key is the normal aftermath
-    // of a failed lifecycle followed by new_start (each accepted run captures
-    // the same semantic work). The LATEST capture is the current material
-    // authority — see bindReplayToClaim for the full rationale; this
-    // resolver shares that newest-wins selection so claim resolution and
-    // binding can never disagree.
-    const capsule = capsules[0];
+    const capsule = selectReplayCapsule(replayKey, capsules);
     return {
       replayKey,
       capsuleRef: capsule?.capsule_ref ?? null,

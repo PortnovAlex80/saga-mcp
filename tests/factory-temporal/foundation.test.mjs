@@ -214,7 +214,6 @@ test('Foundation: full product-build lifecycle traverses from idea to terminal v
         'run-gate',
         'run-effects',
         'record-final-acceptance',
-        'settle-process',
         'route-lifecycle',
       ]), 'canonical E2E traverses every ADR-053 durable handoff');
 
