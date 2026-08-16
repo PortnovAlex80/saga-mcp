@@ -108,6 +108,13 @@ function obligationLamp(w) {
   const ob = w.obligation;
   if (!ob) {
     if (!terminal) {
+      if (w.worker && w.worker.alive) {
+        return {
+          cls: 'ob-live',
+          label: 'live owner',
+          tip: 'живой WorkerExecution держит работу (lease/fence)\nobligation: нет — переходной долг ещё не создан',
+        };
+      }
       return {
         cls: 'ob-stalled',
         label: 'STALLED — обязательства нет, цикл не терминальный',
