@@ -624,13 +624,14 @@ export function createBoardRenderApi({
           row.classList.toggle('is-recovery', w.task_kind === 'recovery.heal');
           row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
           row.querySelector('.wr-age').textContent = ageMin + 'm';
-          // Worker subtitle: show token speed (tok/s) if available, else worker_id.
-          // tok/s = total thinking_tokens / elapsed_seconds — a live throughput
-          // indicator. Helps spot slow models vs fast ones at a glance.
+          // Worker subtitle: show output token speed + cumulative output tokens.
+          // tok/s = output_tokens / elapsed_seconds — the model's live
+          // production rate from the API-reported cumulative usage.
           const tps = w.tokens_per_sec;
           const tt = w.total_tokens;
           if (tps != null && tt != null) {
-            row.querySelector('.wr-sub').textContent = tps + ' tok/s · ' + (tt > 1000 ? (tt / 1000).toFixed(1) + 'k' : tt) + ' total';
+            const fmt = n => n > 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+            row.querySelector('.wr-sub').textContent = tps + ' tok/s · ' + fmt(tt) + ' out';
           } else {
             row.querySelector('.wr-sub').textContent = w.worker_id;
           }

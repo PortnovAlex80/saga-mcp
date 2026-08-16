@@ -466,52 +466,72 @@ export function createLifecycleEndpointsApi({
         const QUIET_AFTER_MS = 30 * 1000;
         const is_quiet = log_mtime_ms != null && (Date.now() - log_mtime_ms) > QUIET_AFTER_MS;
 
-        // Token speed: scan the last ~32KB of JSONL for thinking_tokens events
-        // (stream-json emits them per-token with estimated_tokens_delta). Count
-        // deltas within the last 10 seconds of log mtime → tokens/sec.
-        // This is a live throughput indicator — how fast the model is producing.
+        // Token display: the authoritative source is the API-reported usage
+        // in assistant/result events — these are CUMULATIVE counters, not
+        // per-event deltas. thinking_tokens events carry small per-batch
+        // deltas (26, 28, 33...) which are NOT totals; summing them from a
+        // 128KB tail would miss most of the session. Instead we scan for
+        // the LAST assistant/result event with a non-zero usage field.
         let tokens_per_sec = null;
         let total_tokens = null;
         if (logPath) {
           try {
             const fs2 = require('node:fs');
             const st2 = fs2.statSync(logPath);
-            const tailBytes2 = Math.min(st2.size, 128 * 1024);
+            // Read up to 2MB tail — enough to find the last assistant event
+            // even in long sessions with heavy tool_use logging
+            const tailBytes2 = Math.min(st2.size, 2 * 1024 * 1024);
             const fd2 = fs2.openSync(logPath, 'r');
             const buf2 = Buffer.alloc(tailBytes2);
             fs2.readSync(fd2, buf2, 0, tailBytes2, Math.max(0, st2.size - tailBytes2));
             fs2.closeSync(fd2);
             const lines = buf2.toString('utf8').split('\n').filter(Boolean);
-            // Try thinking_tokens first (smart models stream real token counts).
-            // If they're all 1 (z.ai proxy for flash models), fall back to
-            // counting assistant output characters as a throughput proxy.
-            let lastTotal = 0;
-            let totalChars = 0;
-            let assistantBlocks = 0;
+
+            // Priority: result.usage (definitive) > last assistant.message.usage
+            // (cumulative from API) > thinking_tokens sum (rough estimate)
+            let resultOutput = null;
+            let resultInput = null;
+            let lastAssistantOutput = null;
+            let lastAssistantInput = null;
+            let thinkingSum = 0;
+
             for (const line of lines) {
               try {
                 const evt = JSON.parse(line);
-                if (evt.type === 'system' && evt.subtype === 'thinking_tokens') {
-                  lastTotal = Math.max(lastTotal, evt.estimated_tokens || 0);
+                // result event: definitive usage at worker completion
+                if (evt.type === 'result' && evt.usage) {
+                  resultOutput = evt.usage.output_tokens ?? resultOutput;
+                  resultInput = (evt.usage.input_tokens || 0)
+                    + (evt.usage.cache_read_input_tokens || 0);
                 }
-                if (evt.type === 'assistant' && evt.message?.content) {
-                  for (const b of evt.message.content) {
-                    if (b.type === 'text' && b.text) { totalChars += b.text.length; assistantBlocks++; }
-                    if (b.type === 'tool_use') { totalChars += JSON.stringify(b.input || {}).length; assistantBlocks++; }
+                // assistant message: cumulative usage per API turn
+                if (evt.type === 'assistant' && evt.message?.usage) {
+                  const u = evt.message.usage;
+                  if (u.output_tokens != null && u.output_tokens > 0) {
+                    lastAssistantOutput = u.output_tokens;
+                    lastAssistantInput = (u.input_tokens || 0)
+                      + (u.cache_read_input_tokens || 0);
                   }
+                }
+                // thinking_tokens: per-event deltas, sum as fallback
+                if (evt.type === 'system' && evt.subtype === 'thinking_tokens') {
+                  thinkingSum += (evt.estimated_tokens || 0);
                 }
               } catch { /* non-JSON */ }
             }
-            // Use thinking_tokens if they're real (> 1). Otherwise use assistant
-            // output chars / 4 as rough token estimate (~4 chars per token).
-            if (lastTotal > 1) {
-              total_tokens = lastTotal;
-            } else if (totalChars > 0) {
-              total_tokens = Math.round(totalChars / 4);
+
+            // Pick the best available total (output tokens = what the model produced)
+            const outputTokens = resultOutput ?? lastAssistantOutput
+              ?? (thinkingSum > 0 ? thinkingSum : null);
+            const inputTokens = resultInput ?? lastAssistantInput;
+
+            if (outputTokens != null && outputTokens > 0) {
+              total_tokens = outputTokens;
             } else {
               total_tokens = null;
             }
-            // tokens_per_sec: divide total tokens by the worker's running time.
+
+            // tokens_per_sec: output tokens / elapsed time
             const startMs = startedRaw ? new Date(startedIso).getTime() : null;
             if (startMs && total_tokens != null && total_tokens > 0) {
               const elapsedSec = Math.max(1, (Date.now() - startMs) / 1000);
