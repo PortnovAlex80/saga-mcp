@@ -159,7 +159,9 @@ worker_executions.heartbeat_at / activity). Главные данные для L
 - Кросс-видовой протокол — CustomEvent на `window`:
   - `core:select-workplace` `{detail:{workplaceRef}}` — любая карточка станции
     кликабельна, main.js переключает на вид «Ячейка»;
-  - `core:select-project` `{detail:{projectId}}` — смена проекта снапшота.
+  - `core:select-project` `{detail:{projectId, view?}}` — смена проекта снапшота;
+    `view` (опционально) — сразу показать вид (так клик по проекту в «Пульсе»
+    открывает его «Цепочку»).
 - Интерфейс модуля вида (все четыре обязательны к экспорту):
   `export const viewId; export function mount(container, ctx); export function update(snapshot); export function destroy();`
   `ctx = {api:{snapshotUrl, projectsUrl, eventsUrl, cellUrl}, selectWorkplace(ref), selectProject(id)}`.

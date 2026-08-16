@@ -61,8 +61,10 @@ const viewCtx = {
   selectWorkplace(ref) {
     window.dispatchEvent(new CustomEvent('core:select-workplace', { detail: { workplaceRef: ref } }));
   },
-  selectProject(id) {
-    window.dispatchEvent(new CustomEvent('core:select-project', { detail: { projectId: id } }));
+  selectProject(id, opts) {
+    window.dispatchEvent(new CustomEvent('core:select-project', {
+      detail: { projectId: id, view: opts && opts.view },
+    }));
   },
 };
 
@@ -430,6 +432,9 @@ function onSelectProject(ev) {
     }
   }
   flash('проект: ' + (state.projectId == null ? 'авто' : state.projectId));
+  // опционально: сразу показать вид (например, «Цепочку» из «Пульса»)
+  const wantView = ev.detail && ev.detail.view;
+  if (wantView && VIEW_IDS.includes(wantView)) showView(wantView);
   tickSnapshot(); // мгновенный пинок, не ждём следующего тика
 }
 

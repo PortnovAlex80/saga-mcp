@@ -351,10 +351,11 @@ function bindCardClicks(grid) {
   });
 }
 
+// Клик по проекту в «Пульсе» — переход в его «Цепочку» (предложение оператора).
 function selectProject(rawId) {
   const id = Number(rawId);
   if (!Number.isFinite(id)) return;
-  if (ctx && typeof ctx.selectProject === 'function') ctx.selectProject(id);
+  if (ctx && typeof ctx.selectProject === 'function') ctx.selectProject(id, { view: 'chain' });
 }
 
 /* ------------------------------ спарклайн ------------------------------ */
