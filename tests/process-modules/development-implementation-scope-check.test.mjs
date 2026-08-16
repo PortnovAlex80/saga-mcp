@@ -53,6 +53,11 @@ function fixture({
     },
     git: {
       read: (_repo, args) => {
+        // Ancestry discipline: merge-base(base, commit) answers the base when
+        // the commit descends from it; merge-base(commit, branch) answers the
+        // commit when the branch head still reaches it.
+        if (args[0] === 'merge-base' && args[1] === receiptBase) return receiptBase;
+        if (args[0] === 'merge-base') return args[1];
         assert.deepEqual(args, [
           'diff', '--name-only', '--diff-filter=ACDMRTUXB',
           `${receiptBase}..commit-2`,

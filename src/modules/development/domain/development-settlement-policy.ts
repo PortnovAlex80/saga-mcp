@@ -469,7 +469,33 @@ implements DevelopmentTaskGraphPolicyPort {
         'implementation-coverage-gap',
         'required implementation coverage does not equal the accepted AC scope'
         + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
-        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`,
+        + acCodeLegend(developmentCase, missingIds)
+        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`
+        + acCodeLegend(developmentCase, extraIds),
+      );
+    }
+    // Workshop fix: close the non-required blind spot. Coverage arithmetic
+    // above filters by item.required BEFORE the extra-id membership check, so
+    // a NON-required item carrying a foreign/invalid AC id passed the gate
+    // and only exploded later at kernel materialization
+    // (PRODUCTION_CELL_SOURCE_ARTIFACT_INVALID) — violating the cell's own
+    // invariant that graph semantics are settled in-cell. ALL implementation
+    // items must carry only accepted-case AC ids; the required-coverage
+    // arithmetic itself is unchanged.
+    const implementationDeclared = new Set(
+      graph.implementationItems.flatMap(item => item.acceptanceCriterionIds),
+    );
+    const declaredExtraIds = [...implementationDeclared]
+      .filter(id => !acceptedCriterionIds.has(id))
+      .sort((left, right) => left - right);
+    if (declaredExtraIds.length > 0) {
+      pushIssue(
+        reasonCodes,
+        errors,
+        'implementation-coverage-gap',
+        'every implementation item (required or not) must carry only accepted-case AC ids'
+        + `; extra AC artifact ids: [${declaredExtraIds.join(', ')}]`
+        + acCodeLegend(developmentCase, declaredExtraIds),
       );
     }
     if (
@@ -486,7 +512,9 @@ implements DevelopmentTaskGraphPolicyPort {
         'verification-plan-coverage-gap',
         'the task graph must contain verification work for every accepted AC'
         + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
-        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`,
+        + acCodeLegend(developmentCase, missingIds)
+        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`
+        + acCodeLegend(developmentCase, extraIds),
       );
     }
 
@@ -571,6 +599,26 @@ function dependsTransitivelyOn(
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every(value => right.has(value));
+}
+
+/**
+ * Render AC codes (AC-18) alongside raw artifact ids in coverage findings so
+ * the repair worker reads the same identifiers the SRS/§D2 documents use.
+ * Ids without a known code (foreign/invalid ids, exactly the ones a repair
+ * targets) are simply absent from the legend; the raw id list stays complete.
+ */
+function acCodeLegend(
+  developmentCase: DevelopmentCase,
+  ids: readonly number[],
+): string {
+  const codes = ids
+    .map(id => developmentCase.acceptanceCriteria.find(criterion =>
+      acceptanceCriterionIdentity(criterion) === id))
+    .filter((criterion): criterion is NonNullable<typeof criterion> =>
+      criterion !== undefined && typeof criterion.code === 'string'
+      && criterion.code.trim() !== '')
+    .map(criterion => criterion.code);
+  return codes.length === 0 ? '' : ` (codes: ${codes.join(', ')})`;
 }
 
 function invalidCase(developmentCase: DevelopmentCase): boolean {

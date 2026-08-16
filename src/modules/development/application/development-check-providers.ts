@@ -35,10 +35,20 @@ import {
 } from '../domain/development-settlement-policy.js';
 import type { GitPort } from '../domain/development-kernel-ports.js';
 import { encodeCheckDiagnostic } from '../../../process-modules/domain/workplace/check-diagnostic.js';
+import {
+  evaluateSrsModuleManifestCoverage,
+  parseSrsModuleManifest,
+  type SrsModuleManifest,
+} from '../domain/srs-module-manifest.js';
+import {
+  readDevelopmentCaseSrsContent,
+  type DevelopmentSrsContentResult,
+} from './development-srs-artifact-content.js';
+import { partitionFactoryManagedPaths } from '../domain/factory-managed-repository-paths.js';
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
-export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.1.0';
+export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.2.0';
 
 export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID =
   'development.task-graph-proposal-payload.v1';
@@ -318,7 +328,11 @@ export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID =
   'development.implementation-scope.v1';
-export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION = '1.0.0';
+// v2.0.0 — workshop fixes: (a) factory-managed path carve-out
+// (docs/**/executions/** and .saga-bootstrap.md) from BOTH sides of the
+// equality; (b) ancestry + task-branch discipline checks; (c) repair recipe
+// on changed-files-mismatch.
+export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION = '2.0.0';
 export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
   version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
@@ -424,8 +438,18 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
   db: SqlDatabasePort;
   candidateSets: CandidateSetReaderPort;
   taskGraphPolicy?: DevelopmentTaskGraphPolicyPort;
+  /**
+   * Optional override for reading the case's SRS artifact content. Defaults
+   * to the exact-artifact reader (db + product repository checkout). Exists
+   * so tests can pin manifest content without materializing artifacts.
+   */
+  readSrsContent?: (
+    db: SqlDatabasePort,
+    srs: { schema: string; ref: string; hash: string },
+  ) => DevelopmentSrsContentResult;
 }): CheckProvider {
   const policy = input.taskGraphPolicy ?? new ReferenceDevelopmentTaskGraphPolicy();
+  const readSrsContent = input.readSrsContent ?? readDevelopmentCaseSrsContent;
   return {
     providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
@@ -492,17 +516,32 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
           },
         );
         const validation = policy.validate(developmentCase, graph);
-        if (validation.valid) {
-          return 'passed';
+        // SRS §2.2 module-manifest coverage: nothing previously compared the
+        // accepted plan back to the SRS's declared modules, so a planner
+        // under rejection pressure could drop whole SRS modules (todo lost
+        // renderer/events/index.html) while passing every id-coverage gate.
+        // Fail-open ONLY for an absent/unreadable manifest (legacy SRS);
+        // enforced when the manifest declares files.
+        const manifestAssessment = assessSrsModuleManifestCoverage(
+          subjectCandidateSetRef,
+          () => readSrsContent(input.db, developmentCase.srs),
+          graph.implementationItems.map(item => ({ changeScopes: item.changeScopes })),
+        );
+        if (validation.valid && manifestAssessment.failure === null) {
+          return manifestAssessment.note === null
+            ? 'passed'
+            : {
+              outcome: 'passed',
+              evidenceRefs: [manifestAssessment.note],
+            };
         }
-        return {
-          outcome: 'failed',
-          evidenceRefs: validation.errors.map((message, index) => encodeCheckDiagnostic({
-            code: validation.reasonCodes[index] ?? validation.reasonCodes[0] ?? 'task-graph-invalid',
-            message,
-            subjectRef: subjectCandidateSetRef,
-          })),
-        };
+        const evidenceRefs = validation.errors.map((message, index) => encodeCheckDiagnostic({
+          code: validation.reasonCodes[index] ?? validation.reasonCodes[0] ?? 'task-graph-invalid',
+          message,
+          subjectRef: subjectCandidateSetRef,
+        }));
+        if (manifestAssessment.failure !== null) evidenceRefs.push(manifestAssessment.failure);
+        return { outcome: 'failed', evidenceRefs };
       } catch (err) {
         return 'error';
       }
@@ -567,6 +606,7 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         const payload = JSON.parse(row.payload_snapshot) as {
           repository?: { baseCommit?: unknown };
           snapshot?: { commitSha?: unknown; changedFiles?: unknown };
+          source?: { branch?: unknown };
         };
         const metadata = JSON.parse(row.metadata) as {
           cell_input_item?: { changeScopes?: unknown };
@@ -583,26 +623,93 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
           return scopeFailure(subjectCandidateSetRef, 'scope-input-invalid',
             'Implementation scope evidence is incomplete or its submitted base differs from the frozen effective desk base.');
         }
+        // Ancestry discipline: the submitted commit MUST descend from the
+        // frozen effective base. Without this, a worker that reset its branch
+        // onto unrelated history passed silently and rejected commits could
+        // leak onto the integration branch and be frozen as the next base.
+        // merge-base(base, commit) === base ⟺ base is an ancestor of commit;
+        // an unreadable result (null) is an indeterminate ancestry check and
+        // fails closed with the same typed error, never skips.
+        const mergeBase = input.git.read(row.local_path, [
+          'merge-base', row.effective_base_commit, commit,
+        ]);
+        if (mergeBase !== row.effective_base_commit) {
+          return scopeFailure(subjectCandidateSetRef, 'commit-not-descended-from-base',
+            mergeBase === null
+              ? `Ancestry of commit ${commit} relative to the frozen effective base `
+              + `${row.effective_base_commit} could not be determined (git merge-base failed); failing closed.`
+              : `Commit ${commit} does not descend from the frozen effective base `
+              + `${row.effective_base_commit} (merge-base ${mergeBase}). Rebuild the work on the `
+              + `provisioned base (git rebase ${row.effective_base_commit} or reset onto it and re-apply) and resubmit.`);
+        }
+        // Branch discipline: when the worker declared its provisioned task
+        // branch, the commit must also be reachable from that branch head
+        // (merge-base(commit, branch) === commit). Absent declaration stays
+        // unchecked (older payloads) — ancestry above is the hard floor.
+        const declaredBranch = payload.source?.branch;
+        if (typeof declaredBranch === 'string' && declaredBranch.trim() !== '') {
+          const branchMergeBase = input.git.read(row.local_path, [
+            'merge-base', commit, declaredBranch,
+          ]);
+          if (branchMergeBase !== commit) {
+            return scopeFailure(subjectCandidateSetRef, 'commit-not-on-task-branch',
+              `Commit ${commit} is not reachable from the declared task branch `
+              + `'${declaredBranch}' (merge-base ${branchMergeBase ?? 'undetermined'}). `
+              + 'Commit the work on the provisioned task branch and resubmit.');
+          }
+        }
         const diff = input.git.read(row.local_path, [
           'diff', '--name-only', '--diff-filter=ACDMRTUXB',
           `${row.effective_base_commit}..${commit}`,
         ]);
         if (diff === null) return 'error';
-        const actual = diff.split(/\r?\n/).filter(Boolean).map(normalizeRepoPath).sort();
-        const claimed = submitted.map(readSubmittedChangedPath).map(normalizeRepoPath).sort();
+        // Factory-managed carve-out: the Factory itself writes desk/execution
+        // docs (docs/<...>/executions/**) and .saga-bootstrap.md into the
+        // product repo. Both sides of the equality are filtered through the
+        // SAME predicate so committing or declaring them no longer breaks
+        // the exact-set check (killed projects 9 and 6).
+        const actualPartition = partitionFactoryManagedPaths(
+          diff.split(/\r?\n/).filter(Boolean).map(normalizeRepoPath));
+        const claimedPartition = partitionFactoryManagedPaths(
+          submitted.map(readSubmittedChangedPath).map(normalizeRepoPath));
+        const actual = actualPartition.productPaths.sort();
+        const claimed = claimedPartition.productPaths.sort();
+        const filteredNote = [...new Set([
+          ...actualPartition.factoryManagedPaths,
+          ...claimedPartition.factoryManagedPaths,
+        ])].sort();
+        const filteredSuffix = filteredNote.length === 0
+          ? ''
+          : ` Factory-managed paths excluded from this comparison: [${filteredNote.join(', ')}].`;
         if (new Set(actual).size !== actual.length
             || new Set(claimed).size !== claimed.length
             || JSON.stringify(actual) !== JSON.stringify(claimed)) {
           return scopeFailure(subjectCandidateSetRef, 'changed-files-mismatch',
-            `Submitted changedFiles [${claimed.join(', ')}] do not match the authoritative Git diff [${actual.join(', ')}].`);
+            `Submitted changedFiles [${claimed.join(', ')}] do not match the authoritative Git diff [${actual.join(', ')}].`
+            + ` Repair: recompute with \`git diff --name-only ${row.effective_base_commit}..${commit}\``
+            + ' and declare exactly that set (factory-managed docs/**/executions/**'
+            + ' and .saga-bootstrap.md are excluded automatically).'
+            + filteredSuffix);
         }
         const normalizedScopes = scopes.map(parseRepositoryScope);
         const offending = actual.filter(path =>
           !normalizedScopes.some(scope => repositoryScopeContainsPath(scope, path)));
-        return offending.length === 0
+        if (offending.length > 0) {
+          return scopeFailure(subjectCandidateSetRef, 'path-outside-authority',
+            `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${scopes.join(', ')}].`);
+        }
+        // Non-fatal operator note when factory-managed paths were filtered:
+        // the pass stays a pass, but the exclusion stays visible.
+        return filteredSuffix === ''
           ? 'passed'
-          : scopeFailure(subjectCandidateSetRef, 'path-outside-authority',
-              `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${scopes.join(', ')}].`);
+          : {
+            outcome: 'passed',
+            evidenceRefs: [encodeCheckDiagnostic({
+              code: 'factory-managed-paths-excluded',
+              message: `Implementation scope passed after excluding factory-managed paths:${filteredSuffix}`,
+              subjectRef: subjectCandidateSetRef,
+            })],
+          };
       } catch {
         return 'error';
       }
@@ -618,6 +725,72 @@ function scopeFailure(
   return {
     outcome: 'failed',
     evidenceRefs: [encodeCheckDiagnostic({ code, message, subjectRef })],
+  };
+}
+
+/**
+ * Assess the SRS §2.2 module-manifest coverage for one task-graph gate run.
+ * Returns a typed failure diagnostic (fail closed), an informational note
+ * (fail open, legacy SRS), or neither (enforced and covered).
+ */
+function assessSrsModuleManifestCoverage(
+  subjectRef: string,
+  readContent: () => DevelopmentSrsContentResult,
+  implementationItems: readonly { changeScopes: readonly string[] }[],
+): { failure: string | null; note: string | null } {
+  const srs = readContent();
+  if (srs.status === 'drifted') {
+    return {
+      failure: encodeCheckDiagnostic({
+        code: 'srs-artifact-drifted',
+        message: `The SRS artifact file ${srs.path} no longer matches its registered content hash `
+          + `${srs.expectedHash}; the module manifest cannot be trusted for coverage decisions.`,
+        subjectRef,
+      }),
+      note: null,
+    };
+  }
+  if (srs.status === 'unavailable') {
+    return {
+      failure: null,
+      note: encodeCheckDiagnostic({
+        code: 'srs-module-manifest-skip',
+        message: `SRS module-manifest coverage check skipped: ${srs.reason}.`,
+        subjectRef,
+      }),
+    };
+  }
+  const manifest: SrsModuleManifest = parseSrsModuleManifest(srs.content);
+  if (manifest.status !== 'present') {
+    return {
+      failure: null,
+      note: encodeCheckDiagnostic({
+        code: 'srs-module-manifest-skip',
+        message: manifest.status === 'absent'
+          ? 'SRS module-manifest coverage check skipped: the SRS has no §2.2 Module Manifest section (legacy SRS tolerance).'
+          : 'SRS module-manifest coverage check skipped: the §2.2 Module Manifest declares no machine-readable files (legacy SRS tolerance).',
+        subjectRef,
+      }),
+    };
+  }
+  const coverage = evaluateSrsModuleManifestCoverage(manifest, implementationItems);
+  if (coverage.outcome === 'covered') {
+    return { failure: null, note: null };
+  }
+  const declaredScopes = [...new Set(
+    implementationItems.flatMap(item => item.changeScopes),
+  )].sort();
+  return {
+    failure: encodeCheckDiagnostic({
+      code: 'srs-module-uncovered',
+      message: coverage.gaps.map(gap =>
+        `SRS §2.2 module '${gap.module}' declares file(s) [${gap.files.join(', ')}]`
+        + ' that no implementation item\'s changeScopes cover').join('; ')
+        + `; declared changeScopes [${declaredScopes.join(', ')}]`
+        + '. Every SRS §2.2 module file must lie inside at least one implementation item\'s changeScopes.',
+      subjectRef,
+    }),
+    note: null,
   };
 }
 
