@@ -83,3 +83,69 @@ W2 Formalization: 6 pass / 5 fail / 1 paused / 8 не начаты (на 15:06 U
 
 W2 pass rate до фиксов: 6/12 = 50%. После фиксов TB-9/TB-10/TB-12 + rerun:
 все 5 упавших должны проходить (инфраструктурные причины устранены).
+
+---
+
+## 🔄 КАК ПРОДОЛЖИТЬ В НОВОЙ СЕССИИ (read this first)
+
+### Немедленное действие: починить golden-path E2E
+
+```bash
+# 1. Проверить что красный
+cd /d/Разработка/saga-mcp
+npm run build
+SAGA_SCENARIOS="./tests/factory-contract/transition-conformance-scenarios.mjs" \
+  node --test tests/factory-contract/golden-path.test.mjs
+
+# 2. Бисекция (если не починилось в 11d3c30d)
+git bisect start
+git bisect bad HEAD          # 11d3c30d (или 0b8ca173)
+git bisect good 9ec914b6     # последний зелёный
+# → протестируй каждый шаг: build + golden-path
+```
+
+**Кандидаты для изолированного тестирования (в порядке вероятности):**
+
+1. **`8b66b6c2`** (error propagation) — добавил `error` поле в `ProcessModuleRunResult`.
+   Это поле попадает в `processRunResultSnapshot` → `processSettlementDigest`.
+   Если settlement digest изменился, obligations могут не матчиться.
+   **Тест:** `git checkout 8b66b6c2 -- src/ && build && golden-path`
+
+2. **`b8c667eb`** (hash refresh ledger) — `refreshArtifactHash` теперь пишет
+   в `factory_managed_artifact_productions` при ИЗМЕНЕНИИ хэша. Если сценарий
+   читает артефакты (что вызывает refresh), и файлы меняются между чтениями,
+   появляются НЕОЖИДАННЫЕ ledger-строки → submission validation видит
+   лишние artifacts в `readContractArtifacts` (запрос по process_run_id).
+   **Тест:** `git checkout b8c667eb -- src/helpers/artifact-file.ts && build && golden-path`
+
+3. **Комбинация** — если оба по отдельности проходят, конфликт во взаимодействии.
+
+### После починки golden-path: оставшиеся пункты плана (по приоритету)
+
+| Приоритет | Пункт | Что делать |
+|---|---|---|
+| P0 | Golden-path → зелёный | Бисекция + фикс (см. выше) |
+| P1 | п.15: дайджесты | handlerRefs в 4 манифестах: pending@wave-2 → реальные sha256 при install |
+| P2 | п.19: dispatch fatals | REPLAY_CAPSULE_AUTHORITY_AMBIGUOUS → typed outcome (ineligible → модель) |
+| P3 | п.22: checkpoint perf | Только при смене состояния (сейчас каждый цикл = 5.57с) |
+| P4 | п.23: дисциплина | Один движок на эпик (процедура, не код) |
+| P5 | п.18: W3 dry run | Операционный (оператор), ждёт зелёного golden-path |
+
+### Ключевые файлы (для быстрой ориентации)
+
+- План: `docs/REFACTORING-PLAN-AND-STATUS.md` (этот файл)
+- Баг-реестр: `docs/testing/WORKSHOP-BUGS.md`
+- Компас: `docs/architecture/CONVEYOR-MENTAL-MODEL.md`
+- Диагноз ADR-053: `docs/architecture/decisions/053-*.md`
+- Конверт оператора: `AGENT-ENVELOPE.md`
+
+### Контекст для субагентов (если нужно делегировать)
+
+- **Golden-path debugger:** дай промпт «почини tests/factory-contract/golden-path.test.mjs,
+  бисекция от 9ec914b6 до HEAD, прочитай docs/REFACTORING-PLAN-AND-STATUS.md
+  секцию "Golden-path E2E — КРАСНЫЙ"»
+- **Handler digests:** дай промпт «реализуй п.15 из docs/REFACTORING-PLAN-AND-STATUS.md:
+  handlerRefs pending@wave-2 → реальные sha256, файлы manifest.ts в 4 модулях»
+- **Dispatch fatals:** дай промпт «реализуй п.19: REPLAY_CAPSULE_AUTHORITY_AMBIGUOUS
+  → typed ineligible outcome вместо смерти движка, файлы replay-claim-binder.ts
+  и dispatch-loop.ts»
