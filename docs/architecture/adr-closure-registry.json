@@ -726,14 +726,20 @@
       "adr": "076",
       "file": "076-implementation-closure-protocol-and-legacy-zero-certification.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K0"
       ],
       "evidenceOwner": "K0",
       "principalProof": "Closure registry complete and enforced by architecture tests",
       "successor": null,
-      "notes": "Protocol itself; flips to closed when the architecture test enforces it (K0 commit 4)."
+      "notes": "Closed by K0: the protocol is enforced by the architecture suite on every commit.",
+      "evidence": [
+        "Decision: docs/architecture/decisions/076-implementation-closure-protocol-and-legacy-zero-certification.md",
+        "Implementation: K0 commit train (protocol ADR, validator + 16 unit tests, populated registry, architecture test)",
+        "Negative ratchet: tests/architecture/adr-closure-registry.test.mjs — an unowned Accepted ADR or incomplete registry fails the suite",
+        "Docs: ADR-076 sections 1-6 and registry evidenceBaseline"
+      ]
     }
   ]
 }
