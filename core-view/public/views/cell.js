@@ -672,7 +672,8 @@ function renderTimeline(data) {
         const all = it.reason.source === 'review'
           ? (it.reason.findings && it.reason.findings.length
               ? it.reason.findings : ['ревью: ' + (it.reason.reviewVerdict || 'без текста')])
-          : ['провалены чеки: ' + (it.reason.checksFailed || []).join(', ')];
+          : (it.reason.checksFailed || []).map(cf =>
+              cf.phrase + (cf.message ? ': ' + cf.message : ' (' + cf.provider + ')'));
         const expanded = expandedReasons.has(it.ref);
         if (expanded) {
           reasonHtml = '<div class="core-cell-tl-reason is-open" data-ref="' + esc(it.ref) + '">'

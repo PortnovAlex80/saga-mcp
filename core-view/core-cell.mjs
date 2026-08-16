@@ -218,6 +218,7 @@ export { workerForWorkplace };
 const CHECK_CODE_PHRASES = {
   'path-outside-authority': 'изменения вне разрешённых файлов задачи',
   'implementation-coverage-gap': 'покрытие реализации не равно принятому объёму AC',
+  'implementation-scope-overlap': 'области реализации пересекаются без порядка зависимостей',
   'verification-lineage-mismatch': 'линейка верификации не совпадает с предметом',
   'review-finding-1': 'замечание ревью',
 };

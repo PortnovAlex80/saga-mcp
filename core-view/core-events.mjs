@@ -63,15 +63,11 @@ export function buildEvents(db, { since, limit } = {}) {
        FROM factory_gate_decisions ORDER BY decided_at DESC, rowid DESC LIMIT ?`,
   ).all(fetch);
   for (const g of gates) {
-    // у возврата — короткая причина первой строкой findings/чеков
+    // у возврата — короткая причина (готовый summary из resolveRepairReason)
     let detail = cap(g.workplace_ref);
     if (g.verdict === 'repair_required') {
       const r = resolveRepairReason(db, g);
-      if (r && r.source === 'review' && r.findings && r.findings.length) {
-        detail += ' — ' + String(r.findings[0]).slice(0, 90);
-      } else if (r && r.source === 'checks' && r.checksFailed && r.checksFailed.length) {
-        detail += ' — провалены чеки: ' + r.checksFailed.slice(0, 3).join(', ');
-      }
+      if (r && r.summary) detail += ' — ' + String(r.summary).slice(0, 110);
     }
     events.push({
       key: `gate:${g.decision_key}`,

@@ -511,12 +511,10 @@ export function buildSnapshot(db, { projectId } = {}) {
 // Короткая причина возврата для тултипов (одна строка).
 function repairReasonShort(r) {
   if (!r) return null;
-  if (r.source === 'review') {
-    if (r.findings && r.findings.length) return r.findings[0].slice(0, 160);
-    return 'ревью: ' + (r.reviewVerdict || 'вердикт без текста');
-  }
+  if (r.summary) return String(r.summary).slice(0, 160);
+  if (r.source === 'review') return 'ревью: ' + (r.reviewVerdict || 'без текста');
   if (r.source === 'checks' && r.checksFailed) {
-    return 'провалены чеки: ' + r.checksFailed.join(', ').slice(0, 160);
+    return 'провален чек: ' + r.checksFailed.map(c => c.phrase || c.provider).join(', ').slice(0, 160);
   }
   return null;
 }
