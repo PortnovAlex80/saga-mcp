@@ -891,7 +891,10 @@ export function createProductLifecycleRuntime(
   // idempotent lifecycle episode for the exact ProcessRun that produced the
   // source fact. The node/lifecycle guards admit the transition only while the
   // obligation is `in_progress` under this reconciler lease.
-  const obligationReconciler = new TransitionObligationReconciler(obligationLedger);
+  const obligationReconciler = new TransitionObligationReconciler(
+    obligationLedger,
+    (line: string) => console.log(`[obligation-reconciler] ${line}`),
+  );
   for (const handoffKind of [
     'close-presentation',
     'run-gate',
@@ -961,9 +964,14 @@ export function createProductLifecycleRuntime(
     role: 'orchestrator',
     processIdentity: `orchestrator:${process.pid}`,
   });
+  // Sweep observability: any sweep that completes or fails obligations is
+  // logged in full; a defer-only sweep is logged once per DEFER_STREAK_PERIOD
+  // sweeps so a livelocking obligation stays visible without flooding the
+  // engine log once per second.
+  let deferOnlySweeps = 0;
   const engine: OrchestrationEngine = {
     async run(command: RunEpisodeCommand) {
-      await obligationReconciler.reconcile({
+      const sweep = await obligationReconciler.reconcile({
         leaseOwner: `product-lifecycle:${process.pid}:${randomUUID()}`,
         // One sweep must cover EVERY ready obligation: the engine loop gives
         // up after a bounded number of empty cycles, so an obligation left
@@ -971,6 +979,24 @@ export function createProductLifecycleRuntime(
         // lifecycle in TRANSITION_OBLIGATION_PENDING until a manual restart.
         batchSize: 256,
       });
+      const DEFER_STREAK_PERIOD = 60;
+      if (sweep.completed > 0 || sweep.failed > 0) {
+        deferOnlySweeps = 0;
+        console.log(
+          `[obligation-reconciler] sweep dispatched=${sweep.dispatched} `
+          + `completed=${sweep.completed} failed=${sweep.failed} `
+          + `deferred=${sweep.deferred} skipped=${sweep.skipped}`,
+        );
+      } else if (sweep.deferred > 0) {
+        deferOnlySweeps += 1;
+        if (deferOnlySweeps === 1 || deferOnlySweeps % DEFER_STREAK_PERIOD === 0) {
+          console.log(
+            `[obligation-reconciler] defer-only streak=${deferOnlySweeps} `
+            + `deferred=${sweep.deferred} — obligations are waiting on their `
+            + `postconditions; see the DEFER lines above`,
+          );
+        }
+      }
       return baseEngine.run(command);
     },
   };

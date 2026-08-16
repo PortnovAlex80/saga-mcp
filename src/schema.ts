@@ -2727,6 +2727,41 @@ export function ensureTransitionObligationLeaseFenceColumn(db: {
 }
 
 /**
+ * Additive migration (ADR-074): `factory_cell_effect_repair_issues` gained
+ * five exact-identity columns (`effect_version`, `effect_digest`,
+ * `gate_decision_digest`, `expected_workplace_revision`,
+ * `resulting_workplace_revision`). A database created by the immediately
+ * preceding build holds the table WITHOUT them, and because the table is
+ * created via CREATE TABLE IF NOT EXISTS the new columns never landed there —
+ * every run-effects postcondition read and every repair-issue INSERT then
+ * failed with `no such column` while the obligation ledger kept retrying the
+ * failure as if it were transient (observed live: 1300+ attempts, no engine
+ * log line). The table is append-only (immutable by trigger) and was empty
+ * when this migration shipped, so ADD COLUMN with type-safe defaults is
+ * lossless. Fresh databases already carry the columns from CREATE TABLE.
+ */
+export function ensureCellEffectRepairIssueColumns(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(factory_cell_effect_repair_issues)').all();
+  if (columns.length === 0) return; // table not created yet — SCHEMA_SQL owns it
+  const present = new Set(columns.map((column) => column.name));
+  const additions: ReadonlyArray<readonly [string, string]> = [
+    ['effect_version', "TEXT NOT NULL DEFAULT ''"],
+    ['effect_digest', "TEXT NOT NULL DEFAULT ''"],
+    ['gate_decision_digest', "TEXT NOT NULL DEFAULT ''"],
+    ['expected_workplace_revision', 'INTEGER NOT NULL DEFAULT 0'],
+    ['resulting_workplace_revision', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [name, declaration] of additions) {
+    if (!present.has(name)) {
+      db.exec(`ALTER TABLE factory_cell_effect_repair_issues ADD COLUMN ${name} ${declaration}`);
+    }
+  }
+}
+
+/**
  * One-shot repair: migrate synthetic auto-provisioned brief artifacts to
  * `storage_kind='db_native'` with their canonical content stamped into
  * `metadata.content`.

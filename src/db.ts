@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureCellEffectRepairIssueColumns, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -153,6 +153,9 @@ export function getDb(): Database.Database {
   // of the existing `fence` column — pre-migration obligations read with
   // lease_fence = NULL until they are next leased.
   ensureTransitionObligationLeaseFenceColumn(db);
+  // Additive migration (ADR-074): repair-issue exact-identity columns for DBs
+  // whose factory_cell_effect_repair_issues predates the final feedback fix.
+  ensureCellEffectRepairIssueColumns(db);
   // One-shot repair: promote synthetic auto-provisioned briefs (no physical
   // file, hash from canonical JSON) to db_native with content persisted in
   // metadata. Verified against the stored content_hash — never guesses.

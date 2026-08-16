@@ -96,8 +96,45 @@ export interface ReconcileResult {
 
 export class TransitionObligationReconciler {
   private readonly handlers = new Map<TransitionHandoffKind, TransitionObligationHandler>();
+  /**
+   * Per-obligation log throttle state (keyed by obligation key): the last
+   * FAIL/DEFER message emitted and the attempt number it was emitted at. A
+   * livelocking obligation MUST stay visible in the engine log — first
+   * occurrence, every change of the underlying message, and a periodic
+   * heartbeat every LOG_PERIOD attempts — without flooding the log once per
+   * second. Observed live: a permanent `no such column` SQL error retried
+   * 1300+ times with zero engine log lines because fail/defer reasons were
+   * only persisted to the ledger's last_error column.
+   */
+  private readonly logState = new Map<string, { message: string; attempt: number }>();
+  private static readonly LOG_PERIOD = 50;
 
-  constructor(private readonly ledger: SqliteTransitionObligationLedger) {}
+  constructor(
+    private readonly ledger: SqliteTransitionObligationLedger,
+    private readonly log?: (line: string) => void,
+  ) {}
+
+  private throttledLog(
+    obligation: TransitionObligation,
+    kind: 'FAIL' | 'DEFER',
+    message: string,
+  ): void {
+    if (!this.log) return;
+    const state = this.logState.get(obligation.obligationKey);
+    const changed = state === undefined || state.message !== message;
+    const periodic = state !== undefined
+      && obligation.attempt - state.attempt >= TransitionObligationReconciler.LOG_PERIOD;
+    if (!changed && !periodic) return;
+    this.logState.set(obligation.obligationKey, {
+      message,
+      attempt: obligation.attempt,
+    });
+    this.log(
+      `${kind} attempt=${obligation.attempt} handoff=${obligation.handoffKind} `
+      + `key=${obligation.obligationKey} :: ${message.slice(0, 240)}`
+      + (changed ? '' : ` (unchanged since attempt ${state?.attempt ?? 0} — ${kind === 'FAIL' ? 'permanent error is being retried' : 'postcondition still not durable'})`),
+    );
+  }
 
   registerHandler(handler: TransitionObligationHandler): void {
     if (this.handlers.has(handler.handoffKind)) {
@@ -189,6 +226,7 @@ export class TransitionObligationReconciler {
       try {
         const result = await handler.execute(leasedObligation);
         if (result.outcome === 'deferred') {
+          this.throttledLog(leasedObligation, 'DEFER', result.reason);
           this.ledger.defer({
             obligationKey: obligation.obligationKey,
             reason: result.reason,
@@ -215,6 +253,7 @@ export class TransitionObligationReconciler {
         completed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        this.throttledLog(leasedObligation, 'FAIL', message);
         // ADR-053 C7-05 — failure is fenced by the lease token this sweep just
         // acquired: the owner that holds the lease and the SAME fence the lease
         // was taken under (symmetric with the complete() call above). If the
