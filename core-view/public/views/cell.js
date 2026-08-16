@@ -38,6 +38,10 @@ const SEG_GAP = 6; // градусов между сегментами
 // Пойманный из события выбор станции; живёт между mount/destroy.
 let lastWorkplaceRef = null;
 
+// Режим «следить за живым»: вид сам переходит к станции с живым воркером,
+// когда завод уходит к следующей работе. Ручной выбор (клик/поиск) закрепляет.
+let followLive = true;
+
 let root = null; // контейнер вида (.core-cell), null = вид не смонтирован
 let ctx = null;
 let apiCell = '/api/core/cell';
@@ -60,6 +64,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
     const ref = ev && ev.detail && ev.detail.workplaceRef;
     if (typeof ref === 'string' && ref) {
       lastWorkplaceRef = ref;
+      followLive = false; // явный выбор пользователя — закрепляем
+      renderFollowBtn();
       if (root) applySelection(ref);
     }
   });
@@ -87,6 +93,7 @@ export function mount(container, viewCtx) {
     '           placeholder="workplaceRef / workKey / cellId…" spellcheck="false">',
     '    <button class="core-cell-search-btn" type="submit">Показать</button>',
     '  </form>',
+    '  <button class="core-cell-follow" type="button" title="Автопереход к станции с живым воркером">следить за живым</button>',
     '  <div class="core-cell-status">',
     '    <span class="core-cell-status-dot"></span>',
     '    <span class="core-cell-status-text">монтирован</span>',
@@ -103,12 +110,29 @@ export function mount(container, viewCtx) {
     const v = (input && input.value || '').trim();
     if (!v) return;
     const ref = resolveWorkplace(v);
-    if (ref) applySelection(ref);
+    if (ref) {
+      followLive = false; // ручной поиск — закрепляем
+      renderFollowBtn();
+      applySelection(ref);
+    }
     else setStatus('err', `станция не найдена: ${v}`);
   });
 
-  // Восстанавливаем последний известный выбор (событие могло прийти до mount).
-  if (lastWorkplaceRef) applySelection(lastWorkplaceRef);
+  const followBtn = root.querySelector('.core-cell-follow');
+  followBtn.addEventListener('click', () => {
+    followLive = !followLive;
+    renderFollowBtn();
+    if (followLive) {
+      // сразу перепрыгнуть к живой станции, не дожидаясь следующего тика
+      const hot = hottestAliveWorkplace((snapshot && snapshot.workplaces) || []);
+      if (hot && hot !== selectedRef) applySelection(hot);
+    }
+  });
+  renderFollowBtn();
+
+  // В закреплённом режиме восстанавливаем последний выбор (событие могло
+  // прийти до mount). В режиме слежения выбор подберёт update() из снапшота.
+  if (!followLive && lastWorkplaceRef) applySelection(lastWorkplaceRef);
 
   pollTimer = setInterval(tick, POLL_MS);
   render();
@@ -117,10 +141,18 @@ export function mount(container, viewCtx) {
 export function update(snap) {
   snapshot = snap && snap.ok !== false ? snap : null;
   if (!root) return;
+  const ws = (snapshot && snapshot.workplaces) || [];
   if (!selectedRef) {
-    const ref = lastWorkplaceRef || autoPickWorkplace(snapshot && snapshot.workplaces);
+    const ref = (!followLive && lastWorkplaceRef) || autoPickWorkplace(ws);
     if (ref) {
       applySelection(ref);
+      return;
+    }
+  } else if (followLive) {
+    // Слежение: завод ушёл к другой работе — переходим за живым воркером.
+    const hot = hottestAliveWorkplace(ws);
+    if (hot && hot !== selectedRef) {
+      applySelection(hot);
       return;
     }
   }
@@ -237,6 +269,34 @@ function autoPickWorkplace(ws) {
   return best ? best.workplaceRef : null;
 }
 
+// Станция с живым воркером и самым свежим пульсом — цель режима слежения.
+// Если живых нет, возвращаем null (остаёмся на текущей станции).
+function hottestAliveWorkplace(ws) {
+  if (!Array.isArray(ws)) return null;
+  let best = null;
+  let bestAge = Infinity;
+  for (const w of ws) {
+    if (!w || !w.workplaceRef || !(w.worker && w.worker.alive)) continue;
+    const age = Number.isFinite(w.worker.heartbeatAgeMs) ? w.worker.heartbeatAgeMs : Infinity;
+    if (age < bestAge) { bestAge = age; best = w; }
+  }
+  return best ? best.workplaceRef : null;
+}
+
+function renderFollowBtn() {
+  if (!root) return;
+  const btn = root.querySelector('.core-cell-follow');
+  if (!btn) return;
+  btn.classList.toggle('is-on', followLive);
+  btn.textContent = followLive ? '◉ следит за живым' : '◎ закреплено — следить за живым';
+}
+
+// «только что» без «назад», остальное — с «назад».
+function agoText(t, now) {
+  const s = relTime(t, now);
+  return s === 'только что' || s === '—' ? s : s + ' назад';
+}
+
 function setStatus(kind, text) {
   if (!root) return;
   const dot = root.querySelector('.core-cell-status-dot');
@@ -282,7 +342,7 @@ function render() {
   }
 
   const w = cellData.workplace || {};
-  setStatus('ok', 'обновлено ' + relTime(lastOkAt, Date.now()) + ' назад');
+  setStatus('ok', 'обновлено ' + agoText(lastOkAt, Date.now()));
 
   body.innerHTML = [
     renderWorkplaceBar(w),
@@ -314,7 +374,7 @@ function renderWorkplaceBar(w) {
   push('rev', w.revision);
   push('task', w.taskId);
   push('терминал', w.terminalReason, 'fail');
-  push('обновлено', relTime(parseTs(w.updatedAt), Date.now()) + ' назад');
+  push('обновлено', agoText(parseTs(w.updatedAt), Date.now()));
   return [
     '<div class="core-cell-wpbar">',
     '  <div class="core-cell-wpref" title="', esc(w.workplaceRef || ''), '">', esc(w.workplaceRef || '—'), '</div>',
