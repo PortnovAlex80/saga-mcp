@@ -124,8 +124,13 @@ worker_executions.heartbeat_at / activity). Главные данные для L
   "recovery": [ {"caseRef":"...","createdAt":"...","issueRef":"..."} ],
   "effects": [ {"ref":"...","kind":"git","state":"...","at":"...","receipt":true} ],
   "finalAcceptance": {"ref":"...","subjectCandidateSetRef":"..."} | null,
-  "logTail": {"lines":[{"ts":"...","level":"info","text":"..."}]} | null }
+  "cards": [ {"taskId":271,"title":"development-implementation/reviewer: ...","status":"review_in_progress","role":"reviewer|author|null"} ],
+  "projectId": 8 | null, "projectName": "units" | null,
+  "logTail": {"lines":[{"ts":"...","level":"info|thinking|tool|system|result","text":"..."}]} | null }
 ```
+`cards` — канбан-канал (§19): карточки станции на доске :4321 (обычно
+авторская + ревьюерская), `status` = колонка доски. Агентский цикл станции —
+это `workplace.loopState/nextRole` (круг L2), отдельный канал от карточек.
 Пустые массивы — норма (таблицы recovery/effects в тестбеде пустые).
 `logTail` — последние ~40 строк JSONL лога живого/последнего execution:
 `JSON.parse` с fallback на сырую строку. `recovery` из

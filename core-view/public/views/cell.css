@@ -452,6 +452,7 @@ svg .core-cell-seg--on {
 }
 /* системные тики (thinking_tokens и т.п.) — приглушены */
 .core-cell-logline.lv-sys .core-cell-logtext { color: var(--cc-muted); opacity: .7; }
+/* повтор подряд — счётчик */
 .core-cell-logrepeat {
   flex: 0 0 auto;
   margin-left: 8px;
@@ -463,6 +464,73 @@ svg .core-cell-seg--on {
   border-radius: 8px;
   white-space: nowrap;
 }
+
+/* ---- полоса «Канбан»: два канала состояния (§19) ---- */
+.core-cell-kanban { margin: 10px 0 0; }
+.core-cell-kb-board {
+  margin-left: auto;
+  color: var(--cc-flow);
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.core-cell-kb-board:hover { text-decoration: underline; }
+.core-cell-kb-cols {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.core-cell-kb-col {
+  min-height: 44px;
+  padding: 6px;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+}
+.core-cell-kb-col-label {
+  font-size: 9px;
+  letter-spacing: .08em;
+  color: var(--cc-muted);
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.core-cell-kb-col-chips { display: flex; flex-direction: column; gap: 4px; }
+.core-cell-kb-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 5px;
+  border: 1px solid var(--cc-border);
+  color: var(--cc-text);
+  background: var(--cc-surface2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.core-cell-kb-chip:hover { border-color: var(--cc-flow); color: var(--cc-flow); }
+.core-cell-kb-chip--author { border-color: color-mix(in srgb, var(--cc-flow) 55%, var(--cc-border)); }
+.core-cell-kb-chip--reviewer { border-color: color-mix(in srgb, var(--cc-scan) 55%, var(--cc-border)); }
+.core-cell-kb-chip--station {
+  color: var(--cc-replay);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--cc-replay) 55%, var(--cc-border));
+  background: transparent;
+  cursor: default;
+}
+.core-cell-kb-loop {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--cc-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+.core-cell-kb-loop b { color: var(--cc-text); font-weight: 600; }
+.core-cell-kb-loop-title { color: var(--cc-replay); }
+.core-cell-kb-loop-note { margin-left: auto; font-size: 10px; opacity: .75; }
 
 /* ------------------------ финал/recovery/эффекты ------------------------ */
 

@@ -168,6 +168,29 @@ export function buildCell(db, { workplaceRef } = {}) {
   let logTail = null;
   if (lastLogPath) logTail = tailJsonl(lastLogPath, 120);
 
+  // --- kanban: карточки этой станции (авторская + ревьюерская) с их колонками ---
+  // Колонка доски (:4321) — это tasks.status; ячейка обычно представлена
+  // двумя карточками: /author: и /reviewer:.
+  const cardRows = db.prepare(
+    'SELECT id, title, status, epic_id FROM tasks WHERE workplace_ref = ? ORDER BY id',
+  ).all(workplaceRef);
+  const cards = cardRows.map(t => ({
+    taskId: t.id,
+    title: t.title ?? null,
+    status: t.status ?? null,
+    role: /\/reviewer:/.test(String(t.title || '')) ? 'reviewer'
+      : /\/author:/.test(String(t.title || '')) ? 'author' : null,
+  }));
+  let projectId = null;
+  let projectName = null;
+  if (cardRows.length) {
+    const p = db.prepare(
+      `SELECT p.id AS id, p.name AS name FROM projects p
+         JOIN epics e ON e.project_id = p.id WHERE e.id = ? LIMIT 1`,
+    ).get(cardRows[0].epic_id);
+    if (p) { projectId = p.id; projectName = p.name ?? null; }
+  }
+
   return {
     ok: true,
     now,
@@ -179,6 +202,9 @@ export function buildCell(db, { workplaceRef } = {}) {
     effects,
     finalAcceptance,
     logTail,
+    cards,
+    projectId,
+    projectName,
   };
 }
 
