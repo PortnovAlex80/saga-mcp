@@ -5,6 +5,10 @@ plain-language interpretation of the formal CGAD invariants and must be used to
 review runtime, persistence, module, testing, replay, recovery and delivery
 changes.
 
+Current implementation-vs-model state after the antifreeze series and
+ADR-074/075: see the dated section «Статус конформности (2026-08-16)» at the
+end of this document. The model below remains normative and unchanged.
+
 The governing rule is:
 
 > **one production interface, one material, one desk, one factory runtime**
@@ -1454,3 +1458,49 @@ artifact container. Gates, reviewers, and downstream planning consume that same
 member set. This prevents a locally valid state machine from entering an
 unsatisfiable repair cycle because machine and semantic authorities disagree on
 the subject's cardinality.
+
+---
+
+## Статус конформности (2026-08-16)
+
+Аудит сверки модели с кодом после антифриз-серии (`681ca660` слой A+B1,
+`3b177ac3` слой C supervisor, `6bfb0ecf` слои B2+B3, `9d5b51da` слой B4,
+`9ff3b760` supervision PID-guard) и ADR-074/075. Сама модель не
+переписывается — этот раздел фиксирует, какие её требования теперь выдержаны
+реализацией, а какие ещё расходятся. Формат: требование (раздел модели) →
+что его закрыло → где свидетельство в коде/схеме.
+
+### Выдержано полностью
+
+| Требование модели | Чем закрыто | Свидетельство |
+|---|---|---|
+| §23 «never an infinite anonymous pause» в цикле качества | ADR-075: recovery-эпохи + суммарный потолок попыток (без человека в цикле качества) | `onExhausted='requeue'` → append-only `factory_workplace_recovery_epochs` (базовая линия счётчиков + экспоненциальный беккофф 1–15 мин), `totalAttempts` (по умолчанию 30) → честный `terminal failed`; строки `[recovery-budget] ROLLOVER / TOTAL-CAP` в `production-cell-node-executor.ts`. Delivery/инфраструктурные human-границы остаются explicit `human_required`-парками — truthful typed wait, не анонимная пауза |
+| §23 bounded escalation при исчезновении/фризе движка-хоста | Слой C: engine supervisor в панели (`tracker-view/engine-supervisor.mjs`, schema v14) | heartbeat-маркеры ≤5 с (`$SAGA_ENGINE_LOG.heartbeat`, `.phase`); sweep 30 с; фриз = живой pid + heartbeat старше 120 с; durable-события `freeze_detected`/`restart_attempted` в `factory_engine_watchdog_events` пишутся ДО остановки; лечение — операторский soft-stop тормоз + рестарт штатным resume-кодом; backoff 1→5→15 мин, бюджет 5/2 ч; исчерпание → `engine_state='failed_watchdog'` + `last_error`, видно в `/api/factory/status` (поля `engine_state`/`engine_error`/`watchdog`) — никогда не тихий стоп; дубли движков блокируются `sweepBeforeSpawn` |
+| §22/§23 типизированные исходы диспетчеризации и типизированные ожидания | План п.19 (`DispatchOutcome`) + слой B3 (`withBusyRetry`) | `startOne()` возвращает `assigned \| card_error \| queue_empty \| capacity_blocked`; per-card клапан `card_error` для provably-card-local семейств (REPLAY_*/FROZEN_*/spawn-errno) — одна сломанная карточка не убивает движок; типизированная `ENGINE_DB_BUSY` (3 попытки / окно 250 мс / backoff 50–100 мс / бюджет) → card_error-клапан или defer sweep, а не вечный busy-spin; `[obligation-reconciler] DEFER/FAIL/sweep/defer-only streak` — типизированные durable-ожидания переходов в логе движка |
+| §23 наблюдаемость хода (liveness conditional, диагностика) | Слой A+B1 + B2 | движок пишет лог ТОЛЬКО в `$SAGA_ENGINE_LOG` (stdout-пайп устранён как класс фризов stdout-backpressure; stdio `['ignore','ignore','pipe']`, stderr → тот же файл); B2: readonly durable-state probe (одно readonly-соединение, 250 мс) для цикла ожидания — wait-poll/shouldYieldToKernel не спорят с главным соединением; ошибки probe fail-closed (false/−1), никогда throw |
+| §17 checkpoint ≠ worker-производство; чекпойнт не блокирует цикл | Слой B4 + ретенция | захват чекпойнта вынесен в одноразовый дочерний процесс (watchdog 120 с, `SAGA_CHECKPOINT_CHILD=0` — старый путь; stdio без труб): same-process взаимоблокировка соединений структурно невозможна; ретенция 10 новейших манифестов на (project, epic) — автономные recovery-ретраи ADR-075 не переполняют диск |
+| §14 модель-выбор ортогонален; §22 concurrency = min(оператор, квота модели), fail-closed | Единый модельный каталог | `FACTORY_CLOUD_MODELS` (`glm-4.7` limit 2 / `glm-5-turbo` 5 / `glm-5.2` 10 / `glm-5.3` effort=max limit 6; effort low..max); `effectiveFactoryConcurrency = min(requested, modelLimit)`, некорректная политика падает fail-closed; replay-ключ идентичность модели не включает; смена модели действует с момента claim — работающие воркеры доигрывают |
+| §20 typed effect-repair feedback (конфликт Git-интеграции — типизированный исход, не стёртое accepted-свидетельство) | ADR-074 | immutable effect-repair `RecoveryIssue`, привязанный к exact `AcceptedCandidateAuthority` и точному переходу ревизии; Gate head выбирает его без chronology; финальный GateDecision честно остаётся `accepted` |
+
+### Всё ещё расходится
+
+| Расхождение | Где в коде | Какое требование модели нарушается |
+|---|---|---|
+| ADR-053 cutover не завершён (ADR-073 принят, швы остались): выбор материала по накоплению/recency | `readAcceptedArtifacts` / baseline / traceability формализационного сэттлмента — epic-scoped, не lifecycle-scoped (TB-11 закрыл только `areTasksReady(epicId, lifecycleRunId)`); эпик-накопление принятого материала сертифицирует baseline нового рана, замешанный на материале мёртвых ранов | §2 «exact refs, never latest»; §5 warning box (ADR-053); §7 continuation «never hides the parent failure or silently repoints authority» |
+| Newest-wins капсульный биндер | диспетчеризация replay-капсул: на третьем lifecycle-ране того же Workplace биндер может выбрать капсулу рана N−2 против baseline, замороженного по рану N−1 → `FINAL_PRESENTATION_FENCE_MISMATCH`-класс паркинга без пути invalidate/Regenerate | §9 replay identity (семантический ключ, не «новейшая капсула»); §15 «rejected replay cannot loop forever» (здесь — обратная грань: неверно выбранная капсула без выхода) |
+| `classifyResumeCompatibility` сравнивает только `handlerLogicalIds` | `resume-compatibility-policy.ts`: contract surface = identity + input/output schemas + `handlerLogicalIds`; implementation-дайджесты хендлеров (реальные sha256 после плана п.15) в вердикте не участвуют → полностью переписанный settlement-хендлер между ранами классифицируется `compatible` | §7 Resume: rehydrate exact persisted package/check-plan snapshots; «must not silently replace them with whichever package version happens to be installed now» |
+| Delivery human-границы — вне scope ADR-075 | approval релиза, заблокированные post-acceptance эффекты (например git-integration), поломка спавна воркеров | Не нарушение, а остаточная человеческая зависимость: §23 прямо допускает explicit human wait. Оператору важно знать, что это ЕДИНСТВЕННЫЕ оставшиеся места, где завод ждёт человека |
+| Остаточные точки busy-риска (TB-2 residue) | `worker-executions.ts` открывает отдельное соединение на каждый вызов (`openRuntimeDb`-per-call, busy_timeout 5000); одиночные записи runEpisode-цикла (boot revision, certify sweep, markFactoryLaunchRunning) остаются на 5-с окне `getDb()` | §23 cycle budget: B2/B3/B4 закрыли цикл ожидания, checkpoint и supervision-записи, но не каждую точку; watchdog слоя C делает остаточные фризы наблюдаемыми и лечимыми (fallback — B5, если фриз повторится с живым heartbeat) |
+
+### Вердикт
+
+Модель выдержана **не полностью**. Liveness-ядро §23 — «нет вечных анонимных
+пауз», bounded escalation, типизированные ожидания, наблюдаемость — после
+антифриз-серии и ADR-074/075 фактически закрыто на уровне движка, диспетчера
+и цикла качества. Главное оставшееся расхождение — материальный авторитет
+(ADR-053/073): сэттлментные швы формализации всё ещё выбирают материал по
+эпик-накоплению, а не по точной ревизии текущего рана; newest-wins капсульный
+биндер и resume-совместимость без implementation-дайджестов — прямые
+следствия того же дефекта. Следующая ожидаемая граница слома без cutover —
+ третий lifecycle-ран на одном эпике (биндер/baseline) и любой
+post-acceptance эффект, читающий накопленный материал эпика.
