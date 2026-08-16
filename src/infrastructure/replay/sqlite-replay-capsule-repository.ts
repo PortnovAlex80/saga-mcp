@@ -220,21 +220,43 @@ function artifactSelector(row: {
   };
 }
 
-function readArtifactBytes(
+export function readArtifactBytes(
   db: Database.Database,
-  artifact: { path: string; project_repository_id: number | null },
+  artifact: {
+    path: string;
+    project_id?: number;
+    project_repository_id: number | null;
+  },
 ): { encoding: 'base64'; bytes: string } | null {
   const rawPath = artifact.path.split('#')[0]!;
   let resolved = rawPath;
-  if (!path.isAbsolute(rawPath) && artifact.project_repository_id !== null) {
-    const repository = db.prepare(
-      `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
-         FROM project_repositories pr
-         LEFT JOIN repository_checkouts rc
-           ON rc.project_repository_id=pr.id AND rc.status='active'
-        WHERE pr.id=?`,
-    ).get(artifact.project_repository_id) as { local_path: string | null } | undefined;
-    if (repository?.local_path) resolved = path.resolve(repository.local_path, rawPath);
+  if (!path.isAbsolute(rawPath)) {
+    // Resolve the artifact's own repository binding when it has one. Some
+    // worker-authored artifacts (formulation documents) are created without a
+    // per-artifact repository binding; for those, fall back to the project's
+    // active CONTROL repository — the durable home of docs/ requirements
+    // files. Without this fallback the relative path resolves against the
+    // engine's cwd, the bytes read as null, and every replay certification of
+    // that capsule fails with REPLAY_CAPTURE_FILE_BYTES_MISSING even though
+    // the file exists in the project repository.
+    const repositoryId = artifact.project_repository_id
+      ?? (artifact.project_id !== undefined
+        ? (db.prepare(
+            `SELECT id FROM project_repositories
+              WHERE project_id=? AND role='control' AND status='active'
+              ORDER BY id LIMIT 1`,
+          ).get(artifact.project_id) as { id: number } | undefined)?.id ?? null
+        : null);
+    if (repositoryId !== null) {
+      const repository = db.prepare(
+        `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
+           FROM project_repositories pr
+           LEFT JOIN repository_checkouts rc
+             ON rc.project_repository_id=pr.id AND rc.status='active'
+          WHERE pr.id=?`,
+      ).get(repositoryId) as { local_path: string | null } | undefined;
+      if (repository?.local_path) resolved = path.resolve(repository.local_path, rawPath);
+    }
   }
   if (!existsSync(resolved)) return null;
   return { encoding: 'base64', bytes: readFileSync(resolved).toString('base64') };
@@ -470,11 +492,11 @@ export class SqliteReplayCapsuleRepository {
     }
 
     const artifactRows = [...artifactIds].map(id => this.db.prepare(
-      `SELECT id,project_repository_id,type,title,path,code,status,parent_artifact_id,
+      `SELECT id,project_id,project_repository_id,type,title,path,code,status,parent_artifact_id,
               tags,metadata,content_hash
          FROM artifacts WHERE id=?`,
     ).get(id) as {
-      id: number; project_repository_id: number | null; type: string; title: string;
+      id: number; project_id: number; project_repository_id: number | null; type: string; title: string;
       path: string; code: string | null; status: string; parent_artifact_id: number | null;
       tags: string; metadata: string; content_hash: string | null;
     } | undefined).filter((row): row is NonNullable<typeof row> => row !== undefined);
