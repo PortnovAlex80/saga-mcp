@@ -2,7 +2,8 @@ export interface FactoryModelProfile {
   readonly id: string;
   readonly label: string;
   readonly provider: 'zai';
-  readonly effort: 'high';
+  /** claude CLI --effort levels (verified against claude --help 2.1.215). */
+  readonly effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   readonly limit: number;
   readonly tier: 'flagship' | 'sonnet';
   readonly note: string;
