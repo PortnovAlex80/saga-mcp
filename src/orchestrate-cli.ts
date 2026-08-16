@@ -340,13 +340,21 @@ async function main() {
       // Optional online factory checkpoint. It snapshots SQLite through the
       // backup API and content-addresses referenced artifact bytes. A failed
       // capture never publishes COMPLETE and never stops the production run.
+      // Antifreeze B4: the capture connection moved to a ONE-SHOT CHILD
+      // process (capture-spawn.ts). In-process, that connection and the
+      // engine's main connection contended on THIS event loop — under a
+      // write-lock collision both spins starve each other forever (TB-2
+      // same-process deadlock class; layer B3 only bounded each slice). The
+      // child is killed after a hard timeout; a lost capture stays a log
+      // line, never a freeze. SAGA_CHECKPOINT_CHILD=0 restores the legacy
+      // in-process path for tests/debugging.
       const checkpointStore = process.env.SAGA_FACTORY_CHECKPOINT_STORE?.trim();
       if (checkpointStore) {
         try {
-          const { FactoryCheckpointService } = await import(
-            './checkpoints/factory-checkpoint-service.js'
+          const { captureCheckpointIsolated } = await import(
+            './checkpoints/capture-spawn.js'
           );
-          const checkpoint = await new FactoryCheckpointService().capture({
+          const captured = await captureCheckpointIsolated({
             dbPath: process.env.DB_PATH!,
             storageRoot: checkpointStore,
             projectId,
@@ -360,7 +368,9 @@ async function main() {
                 }
               : {}),
           });
-          engineLog(`[orchestrate-cli] checkpoint: ${checkpoint.payload.checkpointRef}`);
+          engineLog(
+            `[orchestrate-cli] checkpoint: ${captured.checkpointRef} (${captured.mode})`,
+          );
           enginePhaseMark('checkpoint');
         } catch (checkpointError) {
           engineLog(
