@@ -342,3 +342,175 @@ test('task_batch_update: throws clear error when priority missing', () => {
     /only `priority`/i,
   );
 });
+
+// ---------------------------------------------------------------------------
+// 6. ADR-013 Phase 1.1 — atomicity + CAS guard.
+//
+// The pre-1.1 implementation performed comment insert, human_requests insert,
+// atomic release, and tag update as four separate writes with no transaction
+// wrapper. A crash between any two left inconsistent state. These tests
+// verify the post-1.1 contract: the handler commits atomically, and
+// concurrent worker_ask_done calls cannot both return state='answered'.
+// ---------------------------------------------------------------------------
+
+test('ASK(1.1): worker_ask_need opens human_requests BEFORE releasing execution', () => {
+  // Direct invariant: after a successful worker_ask_need, BOTH the
+  // human_requests row AND the released execution exist. The pre-1.1 order
+  // (release before request-open) would also satisfy this when it succeeds,
+  // but the next test covers the crash-window that order opened.
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  claimAndSpawn(t.id, 'w-ord', 'exec-ord');
+
+  dispatcher.worker_ask_need({
+    task_id: t.id, worker_id: 'w-ord',
+    reason: 'why?', execution_id: 'exec-ord',
+  });
+
+  const req = openRequest(t.id);
+  assert.ok(req, 'human_requests row opened');
+  assert.equal(req.state, 'open');
+  const exec = getDb().prepare('SELECT state FROM worker_executions WHERE execution_id=?')
+    .get('exec-ord');
+  assert.equal(exec.state, 'exited', 'execution terminalized in the same tx');
+});
+
+test('ASK(1.1): needs-human tag is NOT set before human_requests — no tag-without-request state', () => {
+  // The audit crash-window: needs-human tag set, but no human_requests row.
+  // Pre-1.1 this was possible if the process crashed after tag UPDATE but
+  // before INSERT human_requests. Post-1.1 the tag is set in the same tx as
+  // the request-open, so the invariant "tag implies request" always holds
+  // for worker_ask_need's own writes.
+  //
+  // We verify the invariant by scanning all tasks in the DB: every task with
+  // the needs-human tag MUST have a matching open human_requests row.
+  const db = getDb();
+  const tagged = db.prepare(
+    `SELECT t.id FROM tasks t
+      WHERE t.tags LIKE '%"needs-human"%'`,
+  ).all();
+  for (const { id } of tagged) {
+    const openReq = db.prepare(
+      `SELECT 1 FROM human_requests WHERE task_id=? AND state='open' LIMIT 1`,
+    ).get(id);
+    assert.ok(openReq, `task ${id} carries needs-human but has no open human_request`);
+  }
+});
+
+test('ASK(1.1): if human_requests insert succeeds, execution MUST be terminalized atomically', () => {
+  // The reverse invariant: a successful worker_ask_need cannot leave the
+  // execution row still active. This is the "released task with active
+  // execution" crash-window closed by the tx wrap.
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  claimAndSpawn(t.id, 'w-inv', 'exec-inv');
+
+  dispatcher.worker_ask_need({
+    task_id: t.id, worker_id: 'w-inv',
+    reason: 'q', execution_id: 'exec-inv',
+  });
+
+  const req = openRequest(t.id);
+  assert.ok(req, 'request opened');
+  const exec = getDb().prepare('SELECT state FROM worker_executions WHERE execution_id=?')
+    .get('exec-inv');
+  assert.notEqual(exec.state, 'running', 'execution no longer running');
+  assert.notEqual(exec.state, 'reserved', 'execution no longer reserved');
+});
+
+test('ASK(1.1): worker_ask_done is a CAS — second concurrent answer does not win', () => {
+  // Simulate the race outcome: between two concurrent callers A and B, only
+  // one can flip state open→answered. We model this by pre-setting state to
+  // 'answered' (as if caller A won just before B's UPDATE) and verifying
+  // caller B observes info.changes === 0 and returns state='already_answered'
+  // WITHOUT touching the task tags.
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  claimAndSpawn(t.id, 'w-cas', 'exec-cas');
+  dispatcher.worker_ask_need({
+    task_id: t.id, worker_id: 'w-cas',
+    reason: 'q', execution_id: 'exec-cas',
+  });
+  const req = openRequest(t.id);
+  assert.ok(req, 'request opened');
+
+  // Caller A wins: flip the row to 'answered' out-of-band (simulating a
+  // concurrent tx that committed just before B's UPDATE).
+  const db = getDb();
+  db.prepare(
+    `UPDATE human_requests SET state='answered', answer='A won',
+        answered_by='A', answered_at=datetime('now'),
+        updated_at=datetime('now')
+      WHERE request_id=? AND state='open'`,
+  ).run(req.request_id);
+  // Capture the tag snapshot A's answer left behind.
+  db.prepare(
+    `UPDATE tasks SET tags=?, updated_at=datetime('now') WHERE id=?`,
+  ).run(JSON.stringify([]), t.id);
+
+  // Caller B arrives with its own answer. CAS should fail; state reflects
+  // that someone else already answered; tags must NOT be touched.
+  const result = dispatcher.worker_ask_done({
+    task_id: t.id, worker_id: 'B', answer: 'B tried',
+  });
+  assert.equal(result.state, 'already_answered', 'B loses the CAS');
+  assert.equal(result.request_id, req.request_id, 'B still sees which request it was');
+
+  // B must not have overwritten A's answer.
+  const reqAfter = getDb().prepare(
+    'SELECT answer, answered_by FROM human_requests WHERE request_id=?',
+  ).get(req.request_id);
+  assert.equal(reqAfter.answer, 'A won', 'A answer preserved');
+  assert.equal(reqAfter.answered_by, 'A', 'A identity preserved');
+});
+
+test('ASK(1.1): worker_ask_done with no open request still clears stale tag (no regression)', () => {
+  // Regression guard: the no_open_request branch must still clear a stale
+  // needs-human tag, and must run inside the tx so a concurrent answer
+  // cannot observe a half-cleared state.
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  const db = getDb();
+  db.prepare(
+    `UPDATE tasks SET tags=?, updated_at=datetime('now') WHERE id=?`,
+  ).run(JSON.stringify(['needs-human']), t.id);
+
+  const result = dispatcher.worker_ask_done({
+    task_id: t.id, worker_id: 'h', answer: 'x',
+  });
+  assert.equal(result.state, 'no_open_request');
+
+  const task = taskRow(t.id);
+  assert.ok(
+    !JSON.parse(task.tags).includes('needs-human'),
+    'stale tag cleared inside the tx',
+  );
+});
+
+test('ASK(1.1): worker_ask_need rejects a task not assigned to the caller (tx rolls back cleanly)', () => {
+  // The "my task" check happens inside the tx now. A failed claim must not
+  // leave any side effect — no comment, no request row, no tag, no release.
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  claimAndSpawn(t.id, 'w-owner', 'exec-rej');
+
+  assert.throws(
+    () => dispatcher.worker_ask_need({
+      task_id: t.id, worker_id: 'w-not-owner',
+      reason: 'q', execution_id: 'exec-rej',
+    }),
+    /not assigned/,
+  );
+
+  // Nothing should have been written.
+  const req = openRequest(t.id);
+  assert.equal(req, undefined, 'no human_request opened on failed ask');
+  const comments = getDb().prepare('SELECT COUNT(*) c FROM comments WHERE task_id=?').get(t.id);
+  assert.equal(comments.c, 0, 'no comment inserted on failed ask');
+  const exec = getDb().prepare('SELECT state FROM worker_executions WHERE execution_id=?')
+    .get('exec-rej');
+  assert.equal(exec.state, 'running', 'execution not terminalized on failed ask');
+  const task = taskRow(t.id);
+  assert.equal(task.assigned_to, 'w-owner', 'task still owned by original worker');
+  assert.ok(!JSON.parse(task.tags).includes('needs-human'), 'tag not set on failed ask');
+});
