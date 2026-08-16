@@ -217,6 +217,7 @@ export { workerForWorkplace };
 // Коды диагностики чеков (base64-evidence) → человеческие фразы.
 const CHECK_CODE_PHRASES = {
   'path-outside-authority': 'изменения вне разрешённых файлов задачи',
+  'local-runnability': 'локальная запускопригодность не подтверждена',
   'implementation-coverage-gap': 'покрытие реализации не равно принятому объёму AC',
   'implementation-scope-overlap': 'области реализации пересекаются без порядка зависимостей',
   'verification-lineage-mismatch': 'линейка верификации не совпадает с предметом',
@@ -276,12 +277,20 @@ export function resolveRepairReason(db, decisionRow) {
       const item = { provider: f.provider_id, code: null, phrase: checkPhrase(null), message: null };
       try {
         const refs = JSON.parse(f.evidence_refs || '[]');
-        const b64 = String(refs[0] || '').split('/').pop();
-        const j = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-        item.code = j.code ?? null;
-        item.phrase = checkPhrase(j.code);
-        if (j.message) item.message = String(j.message).slice(0, 240);
-      } catch { /* evidence не декодируется — останется провайдер */ }
+        // среди рефов бывают не-диагностики (например «local-readiness:<hash>») —
+        // перебираем все и берём первый, чей хвост декодируется в JSON-объект
+        for (const ref of refs) {
+          const last = String(ref).split('/').pop();
+          try {
+            const j = JSON.parse(Buffer.from(last, 'base64').toString('utf8'));
+            if (!j || typeof j !== 'object') continue;
+            item.code = j.code ?? null;
+            item.phrase = checkPhrase(j.code);
+            if (j.message) item.message = String(j.message).slice(0, 240);
+            break;
+          } catch { /* не base64-JSON — следующий реф */ }
+        }
+      } catch { /* evidence не читается — останется провайдер */ }
       return item;
     });
     const first = checksFailed[0];
