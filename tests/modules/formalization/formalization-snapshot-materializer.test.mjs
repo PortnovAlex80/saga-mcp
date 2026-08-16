@@ -70,6 +70,14 @@ test('materializeFormalizationSnapshot: wrap, idempotence, pass-through, empty f
   assert.ok(sha256Hex(wrapped).length === 64);
 
   assert.equal(materializeFormalizationSnapshot(db, 'factory.formalization-product-bundle.v1', wrapped, env), wrapped);
+  // GB-10: a worker-rolled snapshot-shaped payload WITHOUT canonical trace identity
+  // must NOT pass through — it is rebuilt from the ledger.
+  const handRolled = { ...wrapped, traces: wrapped.traces.map(({ traceId, traceHash, ...rest }) => rest) };
+  const rebuilt = materializeFormalizationSnapshot(db, 'factory.formalization-product-bundle.v1', handRolled, env);
+  assert.ok(Array.isArray(rebuilt.traces));
+  assert.ok(rebuilt.traces.every(tr => Number.isSafeInteger(tr.traceId))); // fixture ledger has no traces → []
+  assert.ok(rebuilt.schemaVersion === 'factory.workplace-production-snapshot.v3');
+
   assert.equal(materializeFormalizationSnapshot(db, 'factory.discovery-proposal.v1', raw, env), raw);
   assert.equal(materializeFormalizationSnapshot(db, 'factory.formalization-product-bundle.v1', raw, {}), raw);
 

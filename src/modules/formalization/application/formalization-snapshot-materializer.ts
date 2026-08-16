@@ -7,6 +7,7 @@ import {
   buildWorkplaceProductionSnapshot,
   isWorkplaceProductionSnapshot,
 } from '../../../process-modules/shared/workplace-production-snapshot.js';
+import type { WorkplaceProductionSnapshot } from '../../../process-modules/shared/workplace-production-snapshot.js';
 import {
   FORMALIZATION_PRODUCT_BUNDLE_SCHEMA,
   FORMALIZATION_USE_CASE_BUNDLE_SCHEMA,
@@ -43,7 +44,12 @@ export function materializeFormalizationSnapshot(
   env: NodeJS.ProcessEnv = process.env,
 ): unknown {
   if (!SNAPSHOT_WRAPPED_SCHEMAS.has(schema)) return content;
-  if (isWorkplaceProductionSnapshot(content)) return content;
+  // GB-10: a worker may hand-roll a snapshot-SHAPED payload (the contract
+  // documents the shape). Only a fully canonical snapshot — every trace with
+  // a numeric traceId/traceHash, every artifact with artifactId/contentHash —
+  // passes through; anything less is rebuilt from the managed ledger, the
+  // single authority for production identity.
+  if (isCanonicalWorkplaceSnapshot(content)) return content;
   const provenance = resolveManagedExecutionProvenance(db, env);
   if (provenance === null) return content;
   const task = db
@@ -65,4 +71,13 @@ export function materializeFormalizationSnapshot(
     artifacts: material.artifacts,
     traces: material.traces,
   });
+}
+
+function isCanonicalWorkplaceSnapshot(value: unknown): value is WorkplaceProductionSnapshot {
+  if (!isWorkplaceProductionSnapshot(value)) return false;
+  return value.artifacts.every(a =>
+    Number.isSafeInteger(a.artifactId) && typeof a.contentHash === 'string' && a.contentHash !== '',
+  ) && value.traces.every(t =>
+    Number.isSafeInteger(t.traceId) && typeof t.traceHash === 'string' && t.traceHash !== '',
+  );
 }
