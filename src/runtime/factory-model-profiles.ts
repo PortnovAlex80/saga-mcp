@@ -43,6 +43,15 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     tier: 'flagship',
     note: 'Opus-level, x3 peak rate — operator-approved ceiling 10 (A/B vs turbo on RTK-Dual)',
   }),
+  Object.freeze({
+    id: 'glm-5.3',
+    label: 'GLM 5.3',
+    provider: 'zai',
+    effort: 'high',
+    limit: 6,
+    tier: 'flagship',
+    note: 'Operator-requested 2026-08-16 for the TrackPlan run (plan concurrency ceiling 6)',
+  }),
 ]);
 
 export const DEFAULT_FACTORY_MODEL = 'glm-4.7';
