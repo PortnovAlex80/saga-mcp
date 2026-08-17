@@ -86,7 +86,7 @@ const CLASSIFICATION = Object.freeze({
   },
   'src/process-modules/persistence/sqlite-node-run-repository.ts': {
     release: 'K8',
-    verdict: 'K8 cut the assembler readLatest emulated probe to readByExactCursor; readLatest(V2) deletion follows in K8 commit 5; readLastCompleted is the linear-chain resume cursor (legal frontier)',
+    verdict: 'K8 cut the assembler readLatest emulated probe to readByExactCursor and DELETED readLatest/readLatestV2 (interfaces + SQL, zero callers); readLastCompleted(V2) is the linear-chain resume cursor (legal frontier)',
   },
   'src/process-modules/persistence/sqlite-protocol-run-repository.ts': {
     release: 'K8',

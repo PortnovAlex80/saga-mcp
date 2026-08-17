@@ -162,8 +162,8 @@ export interface CompleteNodeRunV2Input {
 /**
  * NodeRun v2 repository port — ADDITIVE over `NodeRunRepository`.
  *
- * `complete` / `fail` / `readLatest` / `readLastCompleted` / `list` methods
- * remain the primary surface for pre-Wave-3 callers; `startV2` / `completeV2` /
+ * `complete` / `fail` / `readLastCompleted` / `list` methods remain the
+ * primary surface for pre-Wave-3 callers; `startV2` / `completeV2` /
  * `readByExactCursor` are the Wave-3 surface.
  *
  * `readByExactCursor(processRunId, nodeId, attempt)` is the resume primitive
@@ -171,6 +171,10 @@ export interface CompleteNodeRunV2Input {
  * triple, or null if no such row exists. This replaces the
  * `readLastCompleted(processRunId)` + mutable-frame reconstruction pattern,
  * which could silently pick up the wrong attempt or the wrong node.
+ *
+ * K8 (ADR-079) deleted `readLatestV2` — the newest-wins (process_run, node)
+ * fetch. Identity resolution is the exact cursor above; the linear-chain
+ * resume cursor is `readLastCompletedV2`.
  */
 export interface NodeRunRepositoryV2 {
   /**
@@ -194,11 +198,6 @@ export interface NodeRunRepositoryV2 {
     nodeId: string,
     attempt: number,
   ): NodeRunRecordV2 | null;
-
-  /**
-   * Read the most recent NodeRun (v2 shape) for a (processRunId, nodeId) pair,
-   */
-  readLatestV2(processRunId: number, nodeId: string): NodeRunRecordV2 | null;
 
   /**
    * Read the most recent COMPLETED NodeRun (v2 shape) anywhere in the run.
