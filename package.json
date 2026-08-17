@@ -33,6 +33,8 @@
     "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
     "adr-closure:validate": "node tools/adr-closure-registry.mjs",
     "adr-closure:test": "node --test tools/adr-closure-registry.test.mjs",
+    "verify:manifest": "node tools/verification-manifest.mjs --run",
+    "verify:check": "node tools/verification-manifest.mjs --check",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
     "test": "tsc && node --test",
