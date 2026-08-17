@@ -799,6 +799,19 @@
       "principalProof": "N/N-1/N-2 capsule matrix on the exact semantic key; newest-wins defects (paused protocol run, recovery case, outcome certificate, guarded readLatest) cut to fail-closed/exact reads; model-choice orthogonality",
       "successor": null,
       "notes": "K8 closed at boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). Closure theorems, all deterministic: (1) N/N-1/N-2 semantic-key matrix (replay-semantic-key-theorem.test.mjs) - alias multiplicity is schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref), reviewer subjects isolate per lifecycle, divergent payloads fail closed, zero is a typed miss; (2) newest-wins hardening (newest-wins-hardening.test.mjs) - paused/active protocol picks, recovery-case picks, and outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers); (3) dispatch routing typed (replay-dispatch-routing.test.mjs) - ineligibility is durable-evidence-derived and workplace-scoped, binder failures release + poison one card; (4) model-choice orthogonality (replay-model-orthogonality.test.mjs) - the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin. Classification map updated: K8-owned recency files carry per-file cut/frontier verdicts; legacy freeze OK."
+    },
+    {
+      "adr": "080",
+      "file": "080-capsule-invalidation-and-regeneration-grammar.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K9"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Third-lifecycle theorem: N/N+1/N+2 converge exactly-once under crash injection at bind/invalidate/regenerate/seal, from clean and upgraded DBs, no recency selector, no manual repair; invalidation is append-only exact evidence; regeneration creates new authority",
+      "successor": null,
+      "notes": "K9 commit 1: grammar decided. Invalidity is derived evidence (no status column), closed reason set (payload-conflict, package-changed, acceptance-superseded, restart-required, refused), states valid/invalidated/regenerating/regenerated/refused, regeneration only through the normal production path, anonymous park banned."
     }
   ]
 }
