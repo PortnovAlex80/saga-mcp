@@ -12,7 +12,7 @@
       "adr": "024",
       "file": "024-factory-checkpoint-resume-and-adoption.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K5",
         "K18"
@@ -20,7 +20,13 @@
       "evidenceOwner": "K5",
       "principalProof": "Exact package rehydrate, compatibility matrix, checkpoint stress",
       "successor": null,
-      "notes": "K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests."
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
     },
     {
       "adr": "025",
@@ -113,27 +119,39 @@
       "adr": "033",
       "file": "033-durable-submission-preflight-recovery.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K5"
       ],
       "evidenceOwner": "K5",
       "principalProof": "Pinned package rehydrate; explicit incompatibility",
       "successor": null,
-      "notes": null
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
     },
     {
       "adr": "034",
       "file": "034-rehydrate-nonterminal-package-pins.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K5"
       ],
       "evidenceOwner": "K5",
       "principalProof": "Persisted fingerprint used before current install",
       "successor": null,
-      "notes": "K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests."
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
     },
     {
       "adr": "035",
@@ -147,7 +165,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact capsule identity; crash-safe regeneration",
       "successor": null,
-      "notes": null
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
     },
     {
       "adr": "036",
@@ -188,7 +206,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact accepted prefix; repeated lifecycle theorem",
       "successor": null,
-      "notes": null
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
     },
     {
       "adr": "039",
@@ -329,7 +347,7 @@
       "evidenceOwner": "K9",
       "principalProof": "Third-lifecycle and full crash matrix on canonical composition",
       "successor": null,
-      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall). K1.1 evidence: canonical boundary family now deterministically green on one SHA (temporal worker-boundary 1-4, crash-recovery T10/T10b; manifest 9750531b) after the retry-path productKey repair. K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests."
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall). K1.1 evidence: canonical boundary family now deterministically green on one SHA (temporal worker-boundary 1-4, crash-recovery T10/T10b; manifest 9750531b) after the retry-path productKey repair. K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests. K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
     },
     {
       "adr": "049",
@@ -344,7 +362,7 @@
       "evidenceOwner": "K9",
       "principalProof": "Exact replay; removal of dual runtime cycles",
       "successor": null,
-      "notes": null
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
     },
     {
       "adr": "050",
