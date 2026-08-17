@@ -745,7 +745,7 @@
       "adr": "077",
       "file": "077-canonical-runtime-package-fingerprint-and-resume-compatibility.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "implemented",
       "owningReleases": [
         "K4",
         "K5"
@@ -753,7 +753,7 @@
       "evidenceOwner": "K4",
       "principalProof": "Named canonical RuntimePackageFingerprint (frozen formula), persisted at lifecycle start, rehydrated on resume; one compatibility surface via classifyResumeCompatibility",
       "successor": null,
-      "notes": "K4 ADR. Freeze decision; implementation commits follow in K4."
+      "notes": "K4 implemented: RuntimePackageFingerprint typed entity + runtimeFingerprintOf(record) rehydration (ADR-77 s3) + single-surface architecture ratchet (s4) + full mutation-matrix proofs. Closure gate (all compatibility paths consume the fingerprint) completes at K5."
     }
   ]
 }
