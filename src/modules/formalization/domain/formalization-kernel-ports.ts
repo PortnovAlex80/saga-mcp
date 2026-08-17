@@ -155,6 +155,15 @@ export interface FormalizationArtifactGraphPort {
    * aggregated-string return shape. The two are NOT duplicates — see the
    * DUPLICATE NOTICE in findContractGap's docblock for the full comparison.
    */
+  /**
+   * ADR-78 (K7): lifecycle-scoped traceability gap check. Same rules and
+   * return shape as findFirstTraceabilityGap; source artifacts scoped to the
+   * CURRENT lifecycle run (targets may reference other lifecycles' briefs).
+   */
+  findFirstTraceabilityGapForLifecycle(
+    epicId: number,
+    lifecycleRunId: number,
+  ): { artifactType: string; artifactId: number; missingEdge: string; description: string } | null;
   findFirstTraceabilityGap(epicId: number): {
     artifactType: string;
     artifactId: number;

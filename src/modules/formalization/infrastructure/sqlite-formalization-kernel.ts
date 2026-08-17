@@ -203,6 +203,92 @@ export class SqliteFormalizationArtifactGraph implements
   // header comment of findContractGap for the three load-bearing differences
   // (root-edge breadth, scope, return shape). When the canonical RULES edge
   // set changes, BOTH must be updated together.
+  /**
+   * ADR-78 (K7): lifecycle-scoped traceability gap check - the same edge
+   * rules as {@link findFirstTraceabilityGap}, but the source artifacts
+   * (PRD/SRS/UC/AC) are scoped to the CURRENT lifecycle run through the
+   * managed production ledger + stage-run ownership chain. Trace TARGETS may
+   * still live outside the lifecycle (e.g. a brief) - targets are references,
+   * not settlement input.
+   */
+  findFirstTraceabilityGapForLifecycle(epicId: number, lifecycleRunId: number) {
+    const scopedIds = (type: string): number[] => {
+      const rows = this.db.prepare(
+        `SELECT a.id AS id
+           FROM artifacts a
+           JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+           JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+          WHERE a.epic_id=? AND a.type=? AND sr.lifecycle_run_id=?
+          GROUP BY a.id
+          ORDER BY a.id`,
+      ).all(epicId, type, lifecycleRunId) as Array<{ id: number }>;
+      return rows.map(r => r.id);
+    };
+
+    const hasEdgeToType = (
+      srcId: number,
+      linkType: 'derived_from' | 'covers',
+      targetType: 'brief' | 'PRD' | 'UC' | 'FR' | 'NFR',
+    ): boolean => !!this.db.prepare(
+      `SELECT 1 FROM artifact_traces at
+        JOIN artifacts t ON t.id = at.target_id
+       WHERE at.source_id=? AND at.link_type=? AND t.type=?
+       LIMIT 1`,
+    ).get(srcId, linkType, targetType);
+
+    const prd = scopedIds('PRD')[0];
+    if (prd !== undefined && !hasEdgeToType(prd, 'derived_from', 'brief')) {
+      return {
+        artifactType: 'PRD', artifactId: prd,
+        missingEdge: 'derived_from → brief',
+        description: `PRD #${prd} has no 'derived_from' trace to a brief artifact.`,
+      };
+    }
+    const srs = scopedIds('SRS')[0];
+    if (srs !== undefined && !hasEdgeToType(srs, 'derived_from', 'PRD')) {
+      return {
+        artifactType: 'SRS', artifactId: srs,
+        missingEdge: 'derived_from → PRD',
+        description: `SRS #${srs} has no 'derived_from' trace to PRD.`,
+      };
+    }
+    for (const uc of scopedIds('UC')) {
+      if (!hasEdgeToType(uc, 'derived_from', 'PRD')) {
+        return {
+          artifactType: 'UC', artifactId: uc,
+          missingEdge: 'derived_from → PRD',
+          description: `UC #${uc} has no 'derived_from' trace to PRD.`,
+        };
+      }
+      if (!hasEdgeToType(uc, 'covers', 'FR')) {
+        return {
+          artifactType: 'UC', artifactId: uc,
+          missingEdge: 'covers → FR',
+          description: `UC #${uc} has no 'covers' trace to any FR.`,
+        };
+      }
+    }
+    for (const ac of scopedIds('AC')) {
+      const hasFr = hasEdgeToType(ac, 'derived_from', 'FR');
+      const hasNfr = hasEdgeToType(ac, 'derived_from', 'NFR');
+      if (!hasFr && !hasNfr) {
+        return {
+          artifactType: 'AC', artifactId: ac,
+          missingEdge: 'derived_from → FR/NFR',
+          description: `AC #${ac} has no 'derived_from' trace to any FR or NFR.`,
+        };
+      }
+      if (hasFr && !hasEdgeToType(ac, 'derived_from', 'UC')) {
+        return {
+          artifactType: 'AC', artifactId: ac,
+          missingEdge: 'derived_from → UC',
+          description: `FR-derived AC #${ac} has no 'derived_from' trace to a UC.`,
+        };
+      }
+    }
+    return null;
+  }
+
   findFirstTraceabilityGap(epicId: number) {
     const db = this.db;
     // hasEdge checks for an outgoing edge of given link_type to ANY artifact
@@ -458,7 +544,9 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
     }
 
     // Traceability: the canonical edges must all exist.
-    const gap = graph.findFirstTraceabilityGap(epicId);
+    // ADR-78 (K7): lifecycle-scoped gap check - dead-run artifacts
+    // cannot poison this settlement's traceability verdict.
+    const gap = graph.findFirstTraceabilityGapForLifecycle(epicId, lifecycleRunId);
     if (gap) {
       return fail(inputHash, ['traceability-gap'],
         `Traceability gap: ${gap.description}`);

@@ -70,6 +70,7 @@ function fakeGraph(overrides = {}) {
       };
     },
     findFirstTraceabilityGap(_epicId) { return state.traceGap; },
+    findFirstTraceabilityGapForLifecycle(_epicId, _lifecycleRunId) { return state.scopedTraceGap ?? state.traceGap; },
     areTasksReady(epicId, lifecycleRunId) {
       state.areTasksReadyCalls.push([epicId, lifecycleRunId]);
       return { ready: state.tasksReady, blockingTaskIds: state.blockingTaskIds };
