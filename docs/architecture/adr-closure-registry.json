@@ -740,6 +740,20 @@
         "Negative ratchet: tests/architecture/adr-closure-registry.test.mjs — an unowned Accepted ADR or incomplete registry fails the suite",
         "Docs: ADR-076 sections 1-6 and registry evidenceBaseline"
       ]
+    },
+    {
+      "adr": "077",
+      "file": "077-canonical-runtime-package-fingerprint-and-resume-compatibility.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K4",
+        "K5"
+      ],
+      "evidenceOwner": "K4",
+      "principalProof": "Named canonical RuntimePackageFingerprint (frozen formula), persisted at lifecycle start, rehydrated on resume; one compatibility surface via classifyResumeCompatibility",
+      "successor": null,
+      "notes": "K4 ADR. Freeze decision; implementation commits follow in K4."
     }
   ]
 }
