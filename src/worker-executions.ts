@@ -549,7 +549,7 @@ export function classifyWorkerProcessIdentity(
 export interface ReconcileResult {
   executionId: string;
   taskId: number;
-  action: 'kept' | 'lost' | 'terminated' | 'remote_unknown';
+  action: 'kept' | 'lost' | 'terminated' | 'exited' | 'remote_unknown';
   released: boolean;
   reason: string;
   /**
@@ -673,8 +673,13 @@ export function reconcileWorkerExecutions(
             lastError: reason,
           });
           results.push({
-            executionId: row.execution_id, taskId: row.task_id, action: 'lost',
-            released: outcome.taskReleased, reason, lostViaDeadPid: true,
+            executionId: row.execution_id, taskId: row.task_id,
+            // Receipt-backed rows converge to 'exited' inside the atomic
+            // release (the dead PID may belong to a worker that already
+            // completed worker_done before the PID was recycled).
+            action: outcome.effectiveTerminal === 'exited' ? 'exited' : 'lost',
+            released: outcome.taskReleased, reason,
+            lostViaDeadPid: outcome.effectiveTerminal !== 'exited',
           });
           continue;
         }
@@ -781,7 +786,10 @@ export function reconcileWorkerExecutions(
           lastError: action.reason,
         });
         results.push({
-          executionId: row.execution_id, taskId: row.task_id, action: 'terminated',
+          executionId: row.execution_id, taskId: row.task_id,
+          // Receipt-backed rows converge to 'exited' inside the atomic
+          // release even when the kill was legitimate (stale closer).
+          action: outcome.effectiveTerminal === 'exited' ? 'exited' : 'terminated',
           released: outcome.taskReleased, reason: action.reason,
         });
         break;
@@ -791,17 +799,20 @@ export function reconcileWorkerExecutions(
           executionId: row.execution_id,
           terminalState: action.terminal,
           reason: action.reason,
-          lastError: action.reason,
+          // A receipt-backed 'exited' convergence is not an error; the atomic
+          // release drops last_error for reclassified terminals anyway.
+          ...(action.terminal === 'exited' ? {} : { lastError: action.reason }),
         });
-        // Remote-lease-expired, dead-local, and reserved-boot-timeout releases
-        // all report action 'lost' in the result enum (the result action tracks
-        // the outcome class, not the terminal-state name).
-        // FIX 1: a non-reserved release driven by a dead OS process counts
-        // toward the sweep's lost_dead_pid observability field.
+        // Report the CONVERGED terminal from the atomic release, not the
+        // classification this sweep asked for: receipt-backed reclassification
+        // (dead foreign-PID guard, remote lease expiry, PID-reuse escalation)
+        // settles on 'exited' inside the release transaction.
+        const cleanExit = outcome.effectiveTerminal === 'exited';
         results.push({
-          executionId: row.execution_id, taskId: row.task_id, action: 'lost',
+          executionId: row.execution_id, taskId: row.task_id,
+          action: cleanExit ? 'exited' : 'lost',
           released: outcome.taskReleased, reason: action.reason,
-          lostViaDeadPid: row.state !== 'reserved' && !isAlive,
+          lostViaDeadPid: !cleanExit && row.state !== 'reserved' && !isAlive,
         });
         break;
       }

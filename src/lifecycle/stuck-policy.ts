@@ -26,6 +26,17 @@
  * tests/lifecycle/stuck-policy.test.mjs cover the corners the DB harness cannot
  * reach cheaply.
  *
+ * SANCTIONED DIVERGENCES (2026-08-17 false-lost defect — see
+ * docs/architecture/proposals/worker-exit-consistency-protocol.md):
+ *   1. A LOCAL dead process holding an accepted worker_done receipt now
+ *      releases with terminal 'exited' (was 'lost') — semantic completion
+ *      dominates the physical death classification.
+ *   2. An ALIVE receipt-backed finishing/integrating process is kept for
+ *      RECEIPT_CLOSE_GRACE_MS from the phase transition (was killed at
+ *      FINISH_GRACE_MS when no longer fence-legitimate).
+ * Golden tests that pinned the old 'lost' classification or the 30s
+ * post-done kill were updated with these divergences in mind.
+ *
  * ADR-022 retired the global ClockPort; this module reintroduces a NARROW LOCAL
  * {@link SupervisionClock} for the reaper only — never registered globally,
  * never injected across the architecture. The mechanism accepts an optional
@@ -93,6 +104,23 @@ export const PID_REUSE_GRACE_MS = 10 * 60 * 1000;
  */
 export const PID_GUARD_HEARTBEAT_STALE_MS = 2 * 60 * 1000;
 
+/**
+ * Receipt-backed close grace (2026-08-17 false-lost incident). An ALIVE process
+ * that already delivered an accepted worker_done receipt may legitimately
+ * outlive the 30s finishing grace while it flushes workspace capture and
+ * merges; terminating it at the phase-staleness boundary killed successful
+ * closers (4 of 5 observed 'terminated' rows were live receipt-backed
+ * finishers killed 32-36s after worker_done). While the finishing/integrating
+ * PHASE transition is younger than this window the row is KEPT — the task
+ * fence is already released by worker_done, so there is no double-assignment
+ * risk. Deliberately keyed to phase_updated_at ONLY: post-completion progress
+ * output MUST NOT extend the deadline (the original zombie-freeze incident
+ * this bound exists for). Past the window the ordinary kill path proceeds,
+ * and the atomic release reclassifies the terminal to 'exited' because the
+ * receipt stands, so even the kill burns no retry budget.
+ */
+export const RECEIPT_CLOSE_GRACE_MS = 10 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // The policy decision surface.
 // ---------------------------------------------------------------------------
@@ -131,12 +159,15 @@ export const PID_GUARD_HEARTBEAT_STALE_MS = 2 * 60 * 1000;
  *                                  forever.
  *   - RELEASE                    → releaseExecutionAtomically with the named
  *                                  terminal state ('lost' | 'spawn_failed' |
- *                                  'terminated'). No kill (the process is
- *                                  either already gone, never spawned, was
- *                                  verified-dead by an upstream TERMINATE, OR
- *                                  the PID-reuse grace was exhausted and the
- *                                  card is being returned to prevent a
- *                                  permanent stall).
+ *                                  'terminated' | 'exited'). No kill (the
+ *                                  process is either already gone, never
+ *                                  spawned, was verified-dead by an upstream
+ *                                  TERMINATE, the PID-reuse grace was
+ *                                  exhausted and the card is being returned
+ *                                  to prevent a permanent stall, OR the
+ *                                  process died holding an accepted
+ *                                  worker_done receipt — the converged
+ *                                  close-callback terminal 'exited').
  */
 export type StuckAction =
   | { readonly kind: 'KEEP'; readonly reason: string }
@@ -146,7 +177,7 @@ export type StuckAction =
   | { readonly kind: 'TERMINATE_BUT_PID_REUSE'; readonly reason: string }
   | {
       readonly kind: 'RELEASE';
-      readonly terminal: 'lost' | 'spawn_failed' | 'terminated';
+      readonly terminal: 'lost' | 'spawn_failed' | 'terminated' | 'exited';
       readonly reason: string;
     };
 
@@ -288,6 +319,26 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   const reservedLeaseExpired = input.state === 'reserved' && leaseExpired;
 
   if (notAlive || reservedExpired || reservedLeaseExpired) {
+    // Defect 2026-08-17 (false-lost): an accepted worker_done receipt is the
+    // durable semantic-completion authority, committed BEFORE the process
+    // died. A dead process holding a receipt is the NORMAL post-worker_done
+    // close: the runner's close callback (which writes terminal 'exited') can
+    // lag this sweep by seconds (Windows stdio teardown, the 5s exit
+    // fallback, write-lock contention) or never arrive at all after a host
+    // restart. Releasing such a row as 'lost' misclassified every cleanly
+    // finished worker: exit_code stayed NULL, the cell's physical retry
+    // budget counted a phantom failed attempt, and the sweep's lost_dead_pid
+    // metric inflated. Reserved rows never carry a receipt (worker_done
+    // requires a running execution), so spawn_failed classification is
+    // untouched. The atomic release re-verifies the receipt inside its own
+    // transaction — this branch only makes the policy's decision honest.
+    if (notAlive && input.semanticCompletionAccepted === true) {
+      return {
+        kind: 'RELEASE',
+        terminal: 'exited',
+        reason: 'OS process is not alive but an accepted worker_done receipt proves semantic completion (converged with the close-callback terminal)',
+      };
+    }
     const terminal = input.state === 'reserved' ? 'spawn_failed' : 'lost';
     const reason = reservedExpired
       ? 'spawn reservation timed out'
@@ -320,6 +371,31 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
     return {
       kind: 'KEEP',
       reason: 'execution still owns an allowed lifecycle phase (worker_done finishing activity grace)',
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // (2b) Receipt-close grace — alive post-worker_done closer. A receipt-backed
+  // finishing/integrating process is doing bounded teardown I/O (workspace
+  // capture, merge, stdio flush) that can outlive FINISH_GRACE_MS without
+  // touching phase_updated_at. Keep it while the PHASE transition is younger
+  // than RECEIPT_CLOSE_GRACE_MS. This preempts the lease-expiry TERMINATE
+  // below: the fence was already released by worker_done, so a second worker
+  // cannot claim the card and lease renewal resumes for the kept row.
+  // Progress output deliberately does NOT extend this window (zombie-freeze
+  // bound); past it the kill proceeds and the atomic release reclassifies the
+  // terminal to 'exited' (receipt stands, retry budget untouched).
+  // -------------------------------------------------------------------------
+  if (
+    input.isAlive
+    && input.semanticCompletionAccepted === true
+    && (input.phase === 'finishing' || input.phase === 'integrating')
+    && input.phaseUpdatedAtMs !== 0
+    && input.nowMs - input.phaseUpdatedAtMs < RECEIPT_CLOSE_GRACE_MS
+  ) {
+    return {
+      kind: 'KEEP',
+      reason: 'accepted worker_done receipt: post-done process closing within the receipt-close grace (fence already released; progress cannot extend it)',
     };
   }
 

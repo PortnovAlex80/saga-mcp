@@ -33,6 +33,13 @@ export interface ReleaseOutcome {
   readonly restoredStatus: string | null;
   readonly blockedReason: string;
   readonly taskId: number | null;
+  /**
+   * The terminal state that actually took effect (or the standing terminal for
+   * no-op calls). Receipt-backed reclassification from 'lost'/'terminated' to
+   * 'exited' is visible here so callers report the converged outcome instead
+   * of the classification they asked for.
+   */
+  readonly effectiveTerminal: string | null;
 }
 
 /** Terminalize an execution and release its task in one transaction. */
@@ -52,6 +59,32 @@ export function releaseExecutionAtomically(
 
   if (!exec) return noRelease('execution not found', null);
 
+  // Central receipt-first terminal classification (2026-08-17 false-lost
+  // defect). 'lost'/'terminated' assert the worker died WITHOUT completing the
+  // execution protocol; an accepted worker_done/presentation_close receipt
+  // proves semantic completion durable BEFORE the process died. Every release
+  // writer (reaper policy, the FIX-1 dead/foreign-PID guard, remote
+  // lease-expiry, the verified-kill path, the boot sweep) funnels through this
+  // one function, so the invariant is enforced once, here: a receipt-backed
+  // release converges on the SAME terminal the close callback writes —
+  // 'exited' — and never burns the production cell's physical retry budget
+  // (physicalRetryExhausted counts lost/spawn_failed/terminated only). The
+  // receipt is re-verified inside THIS call, never trusted from the caller's
+  // row snapshot, so a worker_done committed while a sweep was mid-probe is
+  // still honored at write time.
+  const terminalInput: ReleaseInput =
+    (input.terminalState === 'lost' || input.terminalState === 'terminated')
+      && hasAcceptedWorkerDoneReceipt(db, input.executionId)
+      ? {
+        ...input,
+        terminalState: 'exited',
+        reason: `${input.reason} [receipt-backed: reclassified from ${input.terminalState}]`,
+        // A receipt-backed clean exit is not an error; the close-callback
+        // 'exited' path stamps no last_error either.
+        lastError: null,
+      }
+      : input;
+
   const task = db
     .prepare(
       `SELECT id, status, assigned_to, current_execution_id, integration_state, tags
@@ -70,13 +103,14 @@ export function releaseExecutionAtomically(
 
   if (!task) {
     if (ACTIVE_EXECUTION_STATES.has(exec.state)) {
-      db.transaction(() => writeExecutionTerminal(db, input))();
+      db.transaction(() => writeExecutionTerminal(db, terminalInput))();
       return {
         terminalized: true,
         taskReleased: false,
         restoredStatus: null,
         blockedReason: 'task no longer exists',
         taskId: exec.task_id,
+        effectiveTerminal: terminalInput.terminalState,
       };
     }
     return noRelease(`execution already in terminal state ${exec.state}`, exec.task_id);
@@ -92,6 +126,11 @@ export function releaseExecutionAtomically(
    * through this path.
    */
   if (!ACTIVE_EXECUTION_STATES.has(exec.state)) {
+    // A late physical-close observation may arrive after another writer won the
+    // release race (e.g. the close callback lands after the sweep already
+    // terminalized the row). The standing terminal is authoritative, but the
+    // exit code it carries must not be lost: backfill it idempotently.
+    backfillExitObservation(db, input);
     if (
       TERMINAL_EXECUTION_STATES.has(exec.state)
       && task.current_execution_id === input.executionId
@@ -114,34 +153,39 @@ export function releaseExecutionAtomically(
         restoredStatus: taskReleased ? task.status : null,
         blockedReason: taskReleased ? '' : 'fence CAS failed while reconciling terminal execution',
         taskId: task.id,
+        effectiveTerminal: exec.state,
       };
     }
     return noRelease(`execution already in terminal state ${exec.state}`, exec.task_id);
   }
 
   if (task.current_execution_id !== input.executionId) {
-    db.transaction(() => writeExecutionTerminal(db, input))();
+    db.transaction(() => writeExecutionTerminal(db, terminalInput))();
     return {
       terminalized: true,
       taskReleased: false,
       restoredStatus: null,
       blockedReason: `task fenced by different execution ${task.current_execution_id}`,
       taskId: task.id,
+      effectiveTerminal: terminalInput.terminalState,
     };
   }
 
   if (hasNeedsHumanTag(task.tags)) {
-    db.transaction(() => writeExecutionTerminal(db, input))();
+    db.transaction(() => writeExecutionTerminal(db, terminalInput))();
     return {
       terminalized: true,
       taskReleased: false,
       restoredStatus: null,
       blockedReason: 'needs-human tag blocks release (Slice 3 makes ASK terminal)',
       taskId: task.id,
+      effectiveTerminal: terminalInput.terminalState,
     };
   }
 
-  const preserveTaskStatus = input.preserveTaskStatus
+  // The receipt re-verification above already ran for this call; reuse the
+  // same authority for the projection decision.
+  const preserveTaskStatus = terminalInput.preserveTaskStatus
     ?? hasAcceptedWorkerDoneReceipt(db, input.executionId);
   const restoredStatus = preserveTaskStatus
     ? task.status
@@ -151,13 +195,13 @@ export function releaseExecutionAtomically(
 
   let taskReleased = false;
   db.transaction(() => {
-    writeExecutionTerminal(db, input);
+    writeExecutionTerminal(db, terminalInput);
     taskReleased = clearTaskFence(
       db,
       task.id,
       input.executionId,
       restoredStatus,
-      input.reason,
+      terminalInput.reason,
       preserveTaskStatus,
     );
   })();
@@ -168,6 +212,7 @@ export function releaseExecutionAtomically(
     restoredStatus: taskReleased ? restoredStatus : null,
     blockedReason: taskReleased ? '' : 'fence CAS failed (task reassigned mid-release)',
     taskId: task.id,
+    effectiveTerminal: terminalInput.terminalState,
   };
 }
 
@@ -231,7 +276,24 @@ function noRelease(blockedReason: string, taskId: number | null): ReleaseOutcome
     restoredStatus: null,
     blockedReason,
     taskId,
+    effectiveTerminal: null,
   };
+}
+
+/**
+ * Backfill a late physical exit observation onto an already-terminal row.
+ * The winning writer's terminal stands; only the exit code (and finished_at,
+ * if somehow still NULL) is completed. Idempotent: a non-NULL exit_code is
+ * never overwritten.
+ */
+function backfillExitObservation(db: Database, input: ReleaseInput): void {
+  if (input.exitCode === undefined || input.exitCode === null) return;
+  db.prepare(
+    `UPDATE worker_executions
+        SET exit_code = ?,
+            finished_at = COALESCE(finished_at, datetime('now'))
+      WHERE execution_id = ? AND exit_code IS NULL`,
+  ).run(input.exitCode, input.executionId);
 }
 
 function hasNeedsHumanTag(raw: string | null): boolean {
@@ -301,7 +363,12 @@ function appendReleaseEvent(
   preservedProjection: boolean,
 ): void {
   try {
-    const commandId = `release:${executionId}:${Date.now()}`;
+    // Deterministic idempotency key: one release event per
+    // (execution, outcome) pair. A wall-clock suffix made the key unique per
+    // call, so a retry of the SAME release (reconciliation after a restart, a
+    // repeated sweep) inserted a duplicate audit receipt + lifecycle event.
+    const releaseHash = hashRelease(executionId, restoredStatus, preservedProjection);
+    const commandId = `release:${executionId}:${releaseHash}`;
     const result = {
       acknowledged: true,
       restoredStatus,
@@ -317,7 +384,7 @@ function appendReleaseEvent(
       commandId,
       executionId,
       taskId,
-      hashRelease(executionId, restoredStatus, preservedProjection),
+      releaseHash,
       JSON.stringify(result),
       JSON.stringify(result),
     );

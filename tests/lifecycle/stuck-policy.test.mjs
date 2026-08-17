@@ -32,6 +32,7 @@ import {
   RESERVED_BOOT_TIMEOUT_MS,
   FINISH_GRACE_MS,
   PID_REUSE_GRACE_MS,
+  RECEIPT_CLOSE_GRACE_MS,
 } from '../../dist/lifecycle/stuck-policy.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ test('stuck-policy thresholds are the documented values (drift guard)', () => {
   assert.equal(RESERVED_BOOT_TIMEOUT_MS, 60_000);
   assert.equal(FINISH_GRACE_MS, 30_000);
   assert.equal(PID_REUSE_GRACE_MS, 10 * 60 * 1000);
+  assert.equal(RECEIPT_CLOSE_GRACE_MS, 10 * 60 * 1000);
 });
 
 // ---------------------------------------------------------------------------
@@ -291,6 +293,47 @@ test('stuck-policy: dead local process (non-reserved) → RELEASE(lost) reason c
   assert.match(action.reason, /OS process is not alive/);
 });
 
+test('false-lost defect: dead local process WITH accepted worker_done receipt → RELEASE(exited)', () => {
+  // SANCTIONED DIVERGENCE (2026-08-17): the receipt is the durable semantic-
+  // completion authority, committed before the process died. A dead process
+  // holding it is the NORMAL post-worker_done close; the terminal converges
+  // with what the close callback would have written ('exited'), never 'lost'.
+  const action = decideStuckAction(input({
+    state: 'running',
+    isAlive: false,
+    semanticCompletionAccepted: true,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'RELEASE');
+  assert.equal(action.terminal, 'exited');
+  assert.match(action.reason, /accepted worker_done receipt proves semantic completion/);
+});
+
+test('false-lost defect: dead cancel_requested WITH receipt → RELEASE(exited) (receipt dominates stuck stage)', () => {
+  const action = decideStuckAction(input({
+    state: 'cancel_requested',
+    isAlive: false,
+    semanticCompletionAccepted: true,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'RELEASE');
+  assert.equal(action.terminal, 'exited');
+});
+
+test('false-lost defect: reserved row never takes the receipt branch → spawn_failed stands', () => {
+  // Reserved rows cannot hold a receipt (worker_done requires a running
+  // execution); the boot/lease classification is untouched.
+  const action = decideStuckAction(input({
+    state: 'reserved',
+    reservedAtMs: NOW - (RESERVED_BOOT_TIMEOUT_MS + 1_000),
+    isAlive: false,
+    semanticCompletionAccepted: true,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'RELEASE');
+  assert.equal(action.terminal, 'spawn_failed');
+});
+
 test('stuck-policy: reserved + lease expired (boot not timed out) → RELEASE(spawn_failed) lease reason', () => {
   // Reserved row whose lease expired before the 60s boot timeout: the lease
   // gate fires first and the terminal is still spawn_failed (reserved state),
@@ -310,6 +353,8 @@ test('stuck-policy: reserved + lease expired (boot not timed out) → RELEASE(sp
 test('stuck-policy: finishing phase past FINISH_GRACE → TERMINATE (no longer legit)', () => {
   // A finishing execution whose phase and progress ages exceeded
   // FINISH_GRACE_MS is no longer legitimate → alive-illegit TERMINATE.
+  // NOTE: without a worker_done receipt the receipt-close grace does not
+  // apply — this is a plain (never-completed) finishing row.
   const stale = NOW - (FINISH_GRACE_MS + 5_000);
   const action = decideStuckAction(input({
     phase: 'finishing',
@@ -321,29 +366,65 @@ test('stuck-policy: finishing phase past FINISH_GRACE → TERMINATE (no longer l
   assert.equal(action.kind, 'TERMINATE');
 });
 
-test('incident: post-completion output cannot extend the bounded finishing deadline', () => {
+test('false-lost defect: receipt-backed finisher at 34s phase age → KEEP (receipt-close grace)', () => {
+  // SANCTIONED DIVERGENCE (2026-08-17): 4 of 5 observed 'terminated' rows were
+  // LIVE receipt-backed finishers killed 32-36s after worker_done, mid teardown
+  // I/O that does not touch phase_updated_at. The receipt-close grace keeps
+  // them while the PHASE transition is under RECEIPT_CLOSE_GRACE_MS.
   const action = decideStuckAction(input({
     phase: 'finishing',
     semanticCompletionAccepted: true,
     phaseUpdatedAtMs: NOW - 34_000,
     progressAtMs: NOW - 3_000,
+    legitimateFinishing: false,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'KEEP');
+  assert.match(action.reason, /receipt-close grace/);
+});
+
+test('incident bound: post-completion output cannot extend the receipt-close deadline', () => {
+  // The zombie-freeze bound survives in its new form: progress output does NOT
+  // extend the deadline. Past RECEIPT_CLOSE_GRACE_MS from the phase transition
+  // the closer is terminated (and the atomic release reclassifies the terminal
+  // to 'exited' because the receipt stands — budget-safe kill).
+  const action = decideStuckAction(input({
+    phase: 'finishing',
+    semanticCompletionAccepted: true,
+    phaseUpdatedAtMs: NOW - (RECEIPT_CLOSE_GRACE_MS + 5_000),
+    progressAtMs: NOW - 3_000, // FRESH progress — must not save it
     legitimateFinishing: false,
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'TERMINATE');
 });
 
-test('incident: expired completion deadline cannot be renewed by progress or lease state', () => {
-  const action = decideStuckAction(input({
-    phase: 'finishing',
+test('incident bound: expired lease cannot cut the receipt-close grace short either', () => {
+  // The grace also preempts the Wave 8 HIGH 5A lease-expiry TERMINATE for
+  // receipt-backed closers: worker_done already released the task fence, so a
+  // second worker cannot claim the card and lease renewal resumes for the
+  // kept row. But once the grace is exhausted, the expired lease terminates.
+  const within = decideStuckAction(input({
+    phase: 'integrating',
     semanticCompletionAccepted: true,
     phaseUpdatedAtMs: NOW - 34_000,
-    progressAtMs: NOW - 3_000,
-    legitimateFinishing: false,
-    ownsActiveTask: false,
+    progressAtMs: NOW - 34_000,
     leaseExpiresAtMs: NOW - 1_000,
+    legitimateIntegration: false,
+    ownsActiveTask: false,
   }));
-  assert.equal(action.kind, 'TERMINATE');
+  assert.equal(within.kind, 'KEEP');
+
+  const past = decideStuckAction(input({
+    phase: 'integrating',
+    semanticCompletionAccepted: true,
+    phaseUpdatedAtMs: NOW - (RECEIPT_CLOSE_GRACE_MS + 5_000),
+    progressAtMs: NOW - 3_000,
+    leaseExpiresAtMs: NOW - 1_000,
+    legitimateIntegration: false,
+    ownsActiveTask: false,
+  }));
+  assert.equal(past.kind, 'TERMINATE');
 });
 
 test('incident: accepted worker_done keeps legacy integrating process during bounded drain', () => {

@@ -88,8 +88,17 @@ test('supervision preserves verifying when accepted worker_done races physical c
   assert.equal(
     db.prepare('SELECT state FROM worker_executions WHERE execution_id=?')
       .get(zombie.executionId).state,
-    'lost',
+    'exited',
   );
+  // SANCTIONED DIVERGENCE (2026-08-17 false-lost): the dead process held an
+  // accepted worker_done receipt, so the release converges on the close-
+  // callback terminal 'exited' — NOT 'lost'. A receipt-backed exit is not an
+  // error and carries no exit code from the sweep side.
+  const settled = db.prepare(
+    'SELECT last_error, exit_code FROM worker_executions WHERE execution_id=?',
+  ).get(zombie.executionId);
+  assert.equal(settled.last_error, null);
+  assert.equal(settled.exit_code, null);
   assert.equal(
     db.prepare('SELECT loop_state FROM factory_workplaces WHERE workplace_ref=?')
       .get(workplace.workplace_ref).loop_state,
@@ -99,6 +108,23 @@ test('supervision preserves verifying when accepted worker_done races physical c
     db.prepare('SELECT current_execution_id FROM tasks WHERE id=?')
       .get(zombie.taskId).current_execution_id,
     null,
+  );
+  // Idempotency: a second sweep over the already-terminal row changes nothing
+  // and emits exactly one TaskReleased for the (execution, outcome) pair.
+  const eventsBefore = db.prepare(
+    "SELECT COUNT(*) AS n FROM lifecycle_events WHERE event_kind='TaskReleased' AND task_id=?",
+  ).get(zombie.taskId).n;
+  handle.reconcileOnce();
+  assert.equal(
+    db.prepare('SELECT state FROM worker_executions WHERE execution_id=?')
+      .get(zombie.executionId).state,
+    'exited',
+  );
+  assert.equal(
+    db.prepare(
+      "SELECT COUNT(*) AS n FROM lifecycle_events WHERE event_kind='TaskReleased' AND task_id=?",
+    ).get(zombie.taskId).n,
+    eventsBefore,
   );
   handle.stop();
 });

@@ -34,7 +34,7 @@ export interface RecoveryTaskCreate {
 export interface ExecutionReconcileProjection {
   executionId: string;
   taskId: number;
-  action: 'kept' | 'lost' | 'terminated' | 'remote_unknown';
+  action: 'kept' | 'lost' | 'terminated' | 'exited' | 'remote_unknown';
   released: boolean;
   reason: string;
   /**
