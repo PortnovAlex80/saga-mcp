@@ -424,7 +424,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Exact reads, replay, ownership, effects, Gate commit, accepted head",
       "successor": null,
-      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: ADR-78 exact lifecycle-scoped accepted reads cut into the full settlement vertical (freezer + handler + policy internals); epic-scoped settlement readers DELETED (not retained); contamination theorem + fail-closed negatives + TB-11 e2e over exact reads; contract 84/84."
+      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: ADR-78 exact lifecycle-scoped accepted reads cut into the full settlement vertical (freezer + handler + policy internals); epic-scoped settlement readers DELETED (not retained); contamination theorem + fail-closed negatives + TB-11 e2e over exact reads; contract 84/84. K7 evidence: traceability consumer on lifecycle scope with the epic-scoped reader deleted; effect invocation verified already exact-ref end-to-end and pinned by effect-input-exact-refs.test.mjs (authority-only input, digest fail-closed before invocation, zero direct SQL in the invoker); recency surface classified - findLatestForModule deleted, readProjectedRoleTask fail-closed unique, boundary traversals reclassified with exact verification (K8 owns the remaining run-history selectors)."
     },
     {
       "adr": "054",
@@ -708,7 +708,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Complete exact read, replay, effect, acceptance, head cutover",
       "successor": null,
-      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: first exact-read vertical of the presentation cutover landed (ADR-78)."
+      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: first exact-read vertical of the presentation cutover landed (ADR-78). K7 evidence: second vertical of the exact presentation cutover (traceability) landed; effects proven exact-ref and ratchet-pinned; remaining seams are K8-K11 scope (replay binder, ownership, authority-only effects)."
     },
     {
       "adr": "074",
@@ -777,15 +777,15 @@
       "adr": "078",
       "file": "078-lifecycle-scoped-accepted-material-query.md",
       "decisionStatus": "accepted",
-      "closureState": "implemented",
+      "closureState": "closed",
       "owningReleases": [
         "K6",
         "K7"
       ],
-      "evidenceOwner": "K6",
+      "evidenceOwner": "K7",
       "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
       "successor": null,
-      "notes": "K6 implemented: exact queries live across the settlement vertical; K7 owns the traceability gap read (findFirstTraceabilityGap remains epic-scoped by scope note)."
+      "notes": "K6 implemented: exact queries live across the settlement vertical. K7 closed: the second vertical (traceability gap read) migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2). Closure theorem is deterministic on both axes: (1) reintroducing an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the legacy freeze category epic-scoped-material-read (set enforced by legacy-expansion-freeze.test.mjs); (2) reintroducing cross-run contamination fails the self-flipping contamination theorem (tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle). Remaining epic-scoped reads in the baseline (brief-provisioning-ports, formalization-package-adapters) are classified lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (LEGACY-INVENTORY.md) - outside this ADR's settlement/traceability authority scope."
     }
   ]
 }

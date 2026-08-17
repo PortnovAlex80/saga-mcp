@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K7 commit 4/6 (SHA `13e00cb2`)
+- **Updated:** 2026-08-17, after K7 CLOSE (boundary manifest 8/8 at `dc1dcf39`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -23,33 +23,47 @@
 | K3 (real handler digests; caught 5 pending refs in continuation manifests) + K4 (ADR-077 fingerprint) | `942bfabf` / `f03fc82c` |
 | K5 (M1: restart-required verdicts; ADR-024/033/034 closed) | `bca805a2` |
 | K6 (ADR-078: settlement vertical on exact lifecycle reads; epic readers deleted) | `ae5c7bc5` |
-| K7 commits 1,2,4 (inventory category; trace-gap lifecycle-scoped; epic variant deleted) | boundary pending after 5-6 |
+| K7 (trace-gap cutover; effects ratchet; recency classified 9→7; ADR-078 CLOSED) | `dc1dcf39` |
 
-48 program commits total. ADR registry: 4 closed, 2 implemented, 41 planned.
+53 program commits total. ADR registry: 5 closed (024/033/034/076/078),
+1 implemented (077), 4 in-progress.
 
-## Next concrete steps (K7 remainder)
+## K7 close summary (evidence map)
 
-1. **K7 commit 3** — `refactor(effects): migrate accepted-material read
-   before effect invocation`: audit effect inputs for task/node/latest
-   re-queries; pass exact refs forward (ADR-053 Step 3 direction; full
-   authority-only effects are K11 — K7 only removes material RE-SELECTION
-   reads if any exist on live paths; if none, record that finding).
-2. **K7 commit 5** — `test(architecture): ban authority ORDER BY time/latest`:
-   classify the 9 recency-selector files from
-   `docs/architecture/legacy-allowlist.json` (category
-   `recency-selector-authority-persistence`): K7-owned subset
-   (carry-forward, projection-persistence, verification-adoption,
-   process-module-installation-repo) gets cut to exact refs or reclassified
-   as explicit observability with rationale; brief reads
-   (brief-provisioning-ports, formalization-package-adapters) are
-   lifecycle-independent INPUT provisioning — classify + document, likely
-   legal-with-rationale. Then the ratchet: chronology legal ONLY in
-   allowlisted observability files.
-3. **K7 commit 6** — registry annotations (053/073/078) + full boundary
-   manifest + closing commit (`verify:check` must pass: docs-only diff rule).
-4. Then **K8** (exact replay binder; the 4 K8-owned recency files:
-   lifecycle-continuation, node-run, protocol-run, recovery-case repos) →
-   **K9** (invalidation grammar + third-lifecycle theorem, M2).
+- Commit 1 `d1d853e5`: freeze category epic-scoped-material-read (inventory).
+- Commit 2 `7ca8a130`: traceability consumer → lifecycle scope.
+- Commit 4 `13e00cb2`: epic-scoped trace-gap reader DELETED.
+- Commit 3 `acd073f1`: effects audit — exact-refs migration ALREADY complete
+  (ADR-053 Phase 6/7); pinned by `effect-input-exact-refs.test.mjs`
+  (authority-only input; digest fail-closed before invocation; zero direct
+  SQL in the invoker).
+- Commit 5 `dc1dcf39`: recency classification — `findLatestForModule` DELETED
+  (zero callers), `readProjectedRoleTask` fail-closed unique, carry-forward +
+  verification-adoption reclassified (run-history boundary traversal,
+  exact-verified), 5 files K8-owned; ratchet =
+  `authority-recency-classification.test.mjs` (set equality scan ↔ map ↔
+  allowlist). Epic pair (brief provisioning) classified legal INPUT
+  provisioning.
+- Commit 6 (this): registry 078 → closed (053/073 annotated), this status doc.
+
+## Next concrete steps (K8 — Exact Replay Capsule Binder)
+
+Entry map (scouted at K7 close):
+- Newest-wins sites live in node-run-repo `readLatest`/`readLatestV2`/
+  `readLastCompleted`(/V2) (ORDER BY id DESC LIMIT 1); an exact
+  `(processRunId, nodeId, attempt)` reader already exists beside them.
+- ~16 DESC-LIMIT-1 sites across lifecycle-continuation / node-run /
+  protocol-run / recovery-case repos (managed-node-submission matched by the
+  freeze regex only via multi-line SQL).
+- The replay capsule repository itself is already exact-key
+  (gate-decision subject); the K8 binder work is in dispatch routing +
+  run-history repos.
+- Commit train per plan §5 K8: ADR (semantic key: package fingerprint
+  ADR-077 + check plan + product contract + baseline + source authority) →
+  failing theorem (N-2 newest-wins selection) → exact key lookup → dispatch
+  routing → delete newest-wins SQL (same release) → model-choice
+  orthogonality proof.
+- Then **K9** (invalidation grammar + third-lifecycle theorem, M2).
 
 ## Resumption protocol for a fresh context
 
