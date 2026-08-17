@@ -277,7 +277,32 @@ export class FilesystemModulePackageStore implements ModulePackageStore {
 
       // Ensure the parent of finalDir exists, then rename atomically.
       await fs.mkdir(path.dirname(finalDir), { recursive: true });
-      await fs.rename(tmpDir, finalDir);
+      try {
+        await fs.rename(tmpDir, finalDir);
+      } catch (e) {
+        // Concurrent same-digest writers are IDEMPOTENT in a content-addressed
+        // store: a peer process may hold the target (Windows rename-over-open
+        // yields EPERM/EEXIST/ENOTEMPTY) while writing the SAME bytes to the
+        // SAME digest. If the final package exists after a brief retry, the
+        // peer won the race — proceed; our temp dir is redundant.
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code === 'EPERM' || code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EACCES') {
+          await new Promise(resolve => setTimeout(resolve, 120));
+          const finalExists = await fs.stat(finalDir).then(
+            () => true,
+            () => false,
+          );
+          if (finalExists) {
+            try {
+              await fs.rm(tmpDir, { recursive: true, force: true });
+            } catch {
+              /* swallow cleanup errors */
+            }
+            return this.read(packageDigest);
+          }
+        }
+        throw e;
+      }
     } catch (e) {
       // Best-effort cleanup of the temp dir on any failure.
       try {
