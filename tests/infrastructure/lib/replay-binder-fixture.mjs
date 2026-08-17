@@ -88,6 +88,13 @@ export function freshDb() {
       workplace_ref TEXT,
       metadata TEXT
     );
+    CREATE TABLE IF NOT EXISTS factory_stage_runs (
+      id INTEGER PRIMARY KEY,
+      lifecycle_run_id INTEGER,
+      process_run_id INTEGER,
+      stage_id TEXT,
+      status TEXT
+    );
   `);
   return db;
 }

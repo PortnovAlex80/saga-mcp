@@ -65,13 +65,27 @@ function metadataObject(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
   if (typeof raw !== 'string') return {};
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
       : {};
   } catch {
     return {};
   }
+}
+
+/**
+ * ADR-080 — best-effort lifecycle attribution for invalidation evidence:
+ * the claim's process run maps to its owning lifecycle run through the
+ * authoritative ownership chain (factory_stage_runs).
+ */
+function keyLifecycleRunId(db: Database.Database, task: Task): number | null {
+  const processRunId = Number(metadataObject(task.metadata).process_run_id);
+  if (!Number.isSafeInteger(processRunId) || processRunId <= 0) return null;
+  const row = db.prepare(
+    'SELECT lifecycle_run_id FROM factory_stage_runs WHERE process_run_id=? LIMIT 1',
+  ).get(processRunId) as { lifecycle_run_id: number | null } | undefined;
+  return row?.lifecycle_run_id ?? null;
 }
 
 // resolveReplayKeyMaterial is re-exported from the shared
@@ -191,6 +205,7 @@ export function bindReplayToClaim(
   },
 ): ReplayClaimSelection | null {
   ensureReplayCapsuleSchema(db);
+  const repo = new SqliteReplayCapsuleRepository(db);
   const keyMaterial = resolveReplayKeyMaterial(db, input.task, input.role);
   if (!keyMaterial) return null;
 
@@ -205,13 +220,44 @@ export function bindReplayToClaim(
     capsule_ref: string;
     payload_hash: string;
   }>;
-  const capsule = selectReplayCapsule(replayKey, capsules);
+  let capsule: { capsule_ref: string; payload_hash: string } | undefined;
+  try {
+    capsule = selectReplayCapsule(replayKey, capsules);
+  } catch (error) {
+    // ADR-080 §2 payload-conflict: the fail-closed invariant violation
+    // remains an alarm, but the evidence is PERSISTED first — one
+    // append-only row per conflicting capsule, binding both divergent
+    // payload hashes, the observing claim, and (when derivable) the
+    // lifecycle that observed it.
+    if (error instanceof Error && error.message.startsWith('REPLAY_KEY_PAYLOAD_CONFLICT')) {
+      for (const candidate of capsules) {
+        const other = capsules.find(row => row.capsule_ref !== candidate.capsule_ref);
+        repo.recordInvalidation({
+          capsuleRef: candidate.capsule_ref,
+          reason: 'payload-conflict',
+          observedDigest: candidate.payload_hash,
+          expectedDigest: other?.payload_hash ?? null,
+          lifecycleRunId: keyLifecycleRunId(db, input.task),
+          authorityRef: `replay-claim:${input.executionId}`,
+        });
+      }
+    }
+    throw error;
+  }
+  // ADR-080 §1 — derived invalidity: ANY evidence row for the exact
+  // capsule makes it ineligible; the claim degrades to a typed miss (the
+  // next execution takes its normal selected route — regeneration is a
+  // dispatch decision, not a data mutation).
+  const invalidated = capsule ? repo.hasInvalidation(capsule.capsule_ref) : false;
 
   const workplaceRef = readWorkplaceRefForTask(db, input.task);
-  const effectiveCapsule = capsule && workplaceRef
-    && isCapsuleIneligibleInWorkplace(db, workplaceRef, capsule.capsule_ref)
-      ? undefined
-      : capsule;
+  const effectiveCapsule = capsule && !invalidated
+    ? (
+        workplaceRef && isCapsuleIneligibleInWorkplace(db, workplaceRef, capsule.capsule_ref)
+          ? undefined
+          : capsule
+      )
+    : undefined;
 
   const execution = db.prepare(
     'SELECT metadata FROM worker_executions WHERE execution_id=?',
