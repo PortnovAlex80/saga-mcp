@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAtSha": "980ce8381f4e",
+  "capturedAtSha": "7291bdcb68ed",
   "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.",
   "categories": {
     "escalate-vocabulary": {
@@ -13,6 +13,14 @@
         "src/process-modules/domain/process-module.ts",
         "src/process-modules/domain/spi/recovery-definitions.ts",
         "src/process-modules/modules/formalization/package/nodes/architecture/architecture-recovery-node-protocol.ts"
+      ]
+    },
+    "epic-scoped-material-read": {
+      "owningRelease": "K7",
+      "files": [
+        "src/infrastructure/process-modules/brief-provisioning-ports.ts",
+        "src/modules/formalization/infrastructure/sqlite-formalization-kernel.ts",
+        "src/modules/formalization/infrastructure/sqlite-formalization-package-adapters.ts"
       ]
     },
     "recency-selector-authority-persistence": {

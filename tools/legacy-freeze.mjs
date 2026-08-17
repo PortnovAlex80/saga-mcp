@@ -51,6 +51,17 @@ export function scanTree() {
   const matches = (re) => files.filter(f => re.test(content.get(f)));
 
   const escalate = matches(/\bescalate\b/i);
+  // K7: epic-scoped material reads (ADR-78 family) — SQL filtering artifacts
+  // or traces by epic_id alone. Authority paths get lifecycle-scoped cutovers;
+  // observability-only readers (operator tools) are excluded below and stay
+  // legal per the K7 ratchet rule.
+  const OBSERVABILITY_READERS = new Set([
+    'src/tools/artifacts.ts',
+    'src/tools/dashboard.ts',
+    'src/tools/search.ts',
+  ]);
+  const epicMaterial = matches(/FROM artifacts[\s\S]{0,120}epic_id=\?|epic_id=\?[\s\S]{0,60}FROM artifacts|FROM artifact_traces[\s\S]{0,120}epic_id=\?/i)
+    .filter(f => !OBSERVABILITY_READERS.has(f));
   const recency = matches(/ORDER BY[^;]*DESC[^;]*LIMIT 1/i)
     .filter(f => RECENCY_DIRS.some(d => f.startsWith(d)));
   const execLookup = matches(/listArtifactsForExecution|listTracesForExecution/);
@@ -71,6 +82,7 @@ export function scanTree() {
   return {
     categories: {
       'escalate-vocabulary': escalate,
+      'epic-scoped-material-read': epicMaterial,
       'recency-selector-authority-persistence': recency,
       'execution-scoped-lookup': execLookup,
     },
@@ -144,6 +156,7 @@ function snapshot() {
     note: 'Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.',
     categories: {
       'escalate-vocabulary': { owningRelease: 'K15', files: scan.categories['escalate-vocabulary'] },
+      'epic-scoped-material-read': { owningRelease: 'K7', files: scan.categories['epic-scoped-material-read'] },
       'recency-selector-authority-persistence': { owningRelease: 'K7-K8', files: scan.categories['recency-selector-authority-persistence'] },
       'execution-scoped-lookup': { owningRelease: 'K6-K7,K10', files: scan.categories['execution-scoped-lookup'] },
       'latest-candidate-code-refs': { owningRelease: 'K7', maxCount: scan.latestCandidateRefs },
