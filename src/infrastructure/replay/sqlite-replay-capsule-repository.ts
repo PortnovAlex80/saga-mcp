@@ -119,6 +119,43 @@ function rowToInvalidation(row: CapsuleInvalidationRow): CapsuleInvalidationReco
   };
 }
 
+/**
+ * ADR-080 §2 package-changed bridge (K9 commit 3): when a module's handler
+ * implementations changed under stable logicalIds (the K5 restart-required
+ * verdict), every capsule sealed under the OLD package stops certifying
+ * anything. Append evidence for each; regeneration then flows through the
+ * normal production path (the next claim resolves a miss). The authority
+ * binds the exact attempted digest so successive changes append distinct
+ * evidence rather than collide on idempotency.
+ */
+export function recordPackageChangedInvalidations(
+  db: Database.Database,
+  input: {
+    readonly moduleName: string;
+    readonly moduleVersion: string;
+    readonly oldPackageDigest: string;
+    readonly attemptedPackageDigest: string | null;
+  },
+): number {
+  ensureReplayCapsuleSchema(db);
+  const repo = new SqliteReplayCapsuleRepository(db);
+  const stale = db.prepare(
+    `SELECT capsule_ref FROM factory_replay_capsules
+      WHERE json_extract(payload_snapshot,'$.key.packageDigest')=?`,
+  ).all(input.oldPackageDigest) as Array<{ capsule_ref: string }>;
+  for (const row of stale) {
+    repo.recordInvalidation({
+      capsuleRef: row.capsule_ref,
+      reason: 'package-changed',
+      observedDigest: input.attemptedPackageDigest,
+      expectedDigest: input.oldPackageDigest,
+      lifecycleRunId: null,
+      authorityRef: `module-installation:${input.moduleName}@${input.moduleVersion}:${String(input.attemptedPackageDigest)}`,
+    });
+  }
+  return stale.length;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>

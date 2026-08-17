@@ -46,6 +46,7 @@ import {
   type StoredModulePackage,
 } from './index.js';
 import { asModuleInstallationId } from './domain/installation.js';
+import { recordPackageChangedInvalidations } from '../../infrastructure/replay/sqlite-replay-capsule-repository.js';
 import {
   PackageInstallerError,
   MODULE_INSTALLATION_RESTART_REQUIRED,
@@ -223,6 +224,7 @@ export async function installModulePackages(
       ) {
         const oldDigest = (error.detail as { existing?: { packageDigest?: string } })?.existing
           ?.packageDigest;
+        const attemptedDigest = (error.detail as { attempted?: string })?.attempted ?? null;
         const processRunsTable = db.prepare(
           `SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_process_runs'`,
         ).get();
@@ -232,6 +234,21 @@ export async function installModulePackages(
                 WHERE package_digest=? AND status NOT IN ('completed','failed','cancelled')`,
             ).get(oldDigest) as { n: number }
           : { n: 0 };
+        // ADR-080 §2 package-changed: capsules sealed under the OLD package
+        // stop certifying anything once the implementation moved — record
+        // append-only evidence (authority binds the exact attempted digest,
+        // so successive changes append rather than collide). Regeneration
+        // then flows through the NORMAL production path: the next claim for
+        // the work resolves a miss and takes the selected route; the old
+        // capsule and its acceptance history are never mutated.
+        if (oldDigest) {
+          recordPackageChangedInvalidations(db, {
+            moduleName: name,
+            moduleVersion: manifest.definition.identity.version,
+            oldPackageDigest: oldDigest,
+            attemptedPackageDigest: attemptedDigest,
+          });
+        }
         throw new Error(
           `PRODUCTION_RESUME_RESTART_REQUIRED: ${name} handler implementations `
           + `changed under stable logicalIds (pinned package ${String(oldDigest ?? '?').slice(0, 12)}…, `
