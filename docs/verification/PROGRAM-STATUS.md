@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K10 CLOSE (manifest 8/8 at `93d68d40`)
+- **Updated:** 2026-08-17, after K11 CLOSE (manifest 8/8 at `95c0377c`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -26,8 +26,9 @@
 | K7 (trace-gap cutover; effects ratchet; recency classified 9→7; ADR-078 closed) | `dc1dcf39` |
 | K8 (ADR-079: exact replay binder; 4 newest-wins cut; readLatest deleted) | `c9903c64` |
 
-71 program commits total. ADR registry: 7 closed (024/033/034/076/078/079/080),
-1 implemented (077), 4 in-progress (ADR-053 carries K10 evidence).
+74 program commits total. ADR registry: 7 closed, 1 implemented, 4
+in-progress (ADR-053 carries K10+K11 evidence). 12 of 21 releases done;
+K12-K13 remain for M3.
 
 ## K8 close summary (evidence map)
 
@@ -89,15 +90,25 @@
   seal_receipt_ref write-only provenance. Negative-verified.
 - Closing commit (this): ADR-053 annotated with K10 evidence; this doc.
 
-## Next concrete steps (K11 — Authority-Only Post-Acceptance Effects)
+## K11 close summary
 
-Per plan §5 K11: every post-acceptance effect consumes exact
-accepted-material authority only; full authority-only effect cutover
-(the K7 commit-3 ratchet already pins the input surface — K11 owns the
-REMAINING effect-side consumers and the deletion of any non-authority
-effect inputs). Read the K11 train in
-docs/vision/SAGA-CORE-RENEWAL-PLAN.md §5 before starting. Then K12
-(gate-proven acceptance) and K13 (M3 close).
+- Commit `0a16db95`: negative theorem — operational decoys (newer
+  same-task, other-node same-schema, equal-content rows) cannot change
+  the effect subject; drifted subject → typed repair, never decoy
+  substitution; typed reports are a no-op subject.
+- Commit `95c0377c`: ban ratchet — no SQL by task/node/execution/epic
+  identity, no ORDER BY/recency/LIMIT 1 in effect files
+  (negative-verified); authority assertion precedes all action in every
+  effect; registry fail-close order re-pinned. Audit: input surface and
+  all three effect implementations were already authority-only.
+- Closing commit (this): ADR-053 annotated; this doc.
+
+## Next concrete steps (K12 — Gate-Proven Atomic Acceptance Commit)
+
+Per plan §5 K12: a provable acceptance commit — the gate decision, the
+authority head, and the acceptance effects settle as one proof-carrying
+unit. Read the K12 train (plan §5, line ~600) before starting. Then K13
+(accepted head + exact settlement, M3 close).
 
 ## Resumption protocol for a fresh context
 
