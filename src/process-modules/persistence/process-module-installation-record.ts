@@ -69,15 +69,14 @@ export interface ProcessModuleInstallationRepository {
   read(id: number): ProcessModuleInstallationRecord | null;
 
   /**
-   * Find the LATEST installation for a module ref. "Latest" = highest id, which
-   * corresponds to most recent install. Used by `process_run_start` when the
-   * caller does not pin a specific installation_id (the common path).
-   */
-  findLatestForModule(moduleRef: ProcessModuleReference): ProcessModuleInstallationRecord | null;
-
-  /**
    * Find an installation matching an exact package_digest. Used during replay:
    * a ProcessRun pinned to installation_id=N must resolve to the same package.
+   *
+   * K7 deleted `findLatestForModule` (newest install by highest id): it had no
+   * live callers, and "latest install wins" is exactly the newest-wins
+   * selection the accepted-read cutover forbids. A caller that does not pin
+   * an installation must resolve identity semantically (ADR-077 package
+   * fingerprint), never by row recency.
    */
   findByPackageDigest(
     moduleRef: ProcessModuleReference,
