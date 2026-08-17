@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K9 commits 1-3 (ADR-080 grammar, evidence, bridge)
+- **Updated:** 2026-08-17, after K9 CLOSE — M2 achieved (manifest 8/8 at `3878e51c`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -26,8 +26,8 @@
 | K7 (trace-gap cutover; effects ratchet; recency classified 9→7; ADR-078 closed) | `dc1dcf39` |
 | K8 (ADR-079: exact replay binder; 4 newest-wins cut; readLatest deleted) | `c9903c64` |
 
-62 program commits total. ADR registry: 6 closed (024/033/034/076/078/079),
-1 implemented (077), 4 in-progress. ADR-080 registered (planned, K9).
+68 program commits total. ADR registry: 7 closed (024/033/034/076/078/079/080),
+1 implemented (077), 4 in-progress.
 
 ## K8 close summary (evidence map)
 
@@ -52,7 +52,7 @@
   nine ADR-79 coordinates; negative-verified interface pin.
 - Closing commit (this): registry 079 → closed; this status doc.
 
-## K9 progress (M2 in flight)
+## K9 close summary (M2 achieved; evidence map)
 
 - Commit 1 `d734f1c1`: ADR-080 — grammar (closed reason set; states
   valid/invalidated/regenerating/regenerated/refused; regeneration only
@@ -64,30 +64,25 @@
 - Commit 3 `7a837dca`: package-changed bridge — production-install's
   restart-required branch records evidence for old-package capsules
   (json_extract on frozen key material) before refusing; regeneration has
-  no capsule lane. Tests: evidence 4/4, bridge 3/3, replay regression
-  14/14, factory-contract 84/84.
+  no capsule lane.
+- Commit 4 `07ac7ac1`: crash convergence at bind/invalidate/regenerate/
+  seal — exactly-once under fault injection; conflict alarm stays stable.
+- Commit 6 `a1e59936`: anonymous-park ban — handler-map set equality, no
+  park writes in mismatch handlers, binder write purity
+  (negative-verified).
+- Commit 5 `3878e51c`: canonical third-lifecycle scenario — N/N+1/N+2
+  from CLEAN and UPGRADED databases (exit gate); old capsule
+  byte-identical; successor bound; no recency selector; no manual repair.
+- Closing commit (this): registry ADR-080 → closed; this status doc.
 
-## Next concrete steps (K9 remainder, then close)
+## Next concrete steps (Wave 3 — K10: Remove Execution-Scoped Material
+Ownership, then K11-K13, M3)
 
-4. `test(temporal): inject crashes at bind, invalidate, regenerate, seal` —
-   exactly-once convergence. Entry points: the evidence write is inside
-   bindReplayToClaim (conflict path) and recordPackageChangedInvalidations;
-   crash-injection harness patterns live in
-   tests/factory-contract/crash-recovery.test.mjs and the temporal suite's
-   scenario-dispatcher infrastructure. Theorem: after a crash at any of the
-   four points, re-dispatch converges without duplicate evidence rows
-   (idempotency), without capsule mutation, and the lifecycle terminates
-   typed (regenerated / refused / terminal) — never an anonymous park.
-5. `test(factory-contract): canonical third-lifecycle scenario` —
-   N, N+1, N+2 on one epic/workplace family: cold run, replay hit,
-   package-changed invalidation + regeneration, from clean AND upgraded
-   DBs, no recency selector, no manual repair (exit gate).
-6. `test(architecture): ban mismatch-to-anonymous-park` — replay-mismatch
-   handling must route to repair_required / regenerate / refuse /
-   lifecycle-terminal; parking with an anonymous escalate reason is
-   forbidden (ratchet over the mismatch handling paths).
-Then: full boundary manifest, registry ADR-080 → closed, PROGRAM-STATUS
-advance to Wave 3 (K10 — partition-invariance theorem).
+K10 entry per plan §5: `test(authority): freeze partition-invariance
+theorem` — A(X+Y) partition invariance of settlement acceptance;
+WorkplaceProductionRevision becomes the only material owner; producer
+execution identity leaves CandidateSet authority. Read the K10 train in
+docs/vision/SAGA-CORE-RENEWAL-PLAN.md §5 before starting.
 
 ## Resumption protocol for a fresh context
 

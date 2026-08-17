@@ -804,14 +804,14 @@
       "adr": "080",
       "file": "080-capsule-invalidation-and-regeneration-grammar.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K9"
       ],
       "evidenceOwner": "K9",
       "principalProof": "Third-lifecycle theorem: N/N+1/N+2 converge exactly-once under crash injection at bind/invalidate/regenerate/seal, from clean and upgraded DBs, no recency selector, no manual repair; invalidation is append-only exact evidence; regeneration creates new authority",
       "successor": null,
-      "notes": "K9 commit 1: grammar decided. Invalidity is derived evidence (no status column), closed reason set (payload-conflict, package-changed, acceptance-superseded, restart-required, refused), states valid/invalidated/regenerating/regenerated/refused, regeneration only through the normal production path, anonymous park banned."
+      "notes": "K9 closed at boundary manifest 3878e51c (8/8 suites green: architecture 251/251, factory-contract 86/86 including the canonical third-lifecycle scenario, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). M2 achieved. Closure theorems, all deterministic: (1) evidence 4/4 - append-only invalidation, idempotent per authority, drift fail-closed, single-shot successor; (2) bridge 3/3 - package-changed evidence recorded before the restart-required refusal, regeneration only through normal production; (3) crash convergence 4/4 - exactly-once at bind/invalidate/regenerate/seal under fault injection; (4) third-lifecycle scenario 2/2 - N/N+1/N+2 converges from clean AND upgraded databases, old capsule byte-identical, successor bound, no recency selector, no manual repair (exit gate); (5) anonymous-park ban 3/3 - handler map set equality, no park writes in mismatch handlers, binder write purity (negative-verified)."
     }
   ]
 }
