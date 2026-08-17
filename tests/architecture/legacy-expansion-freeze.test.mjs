@@ -48,3 +48,15 @@ test('execution-scoped lookup helpers stay at ZERO code references', () => {
 test('latestCandidate stays at ZERO code references', () => {
   assert.equal(scan.latestCandidateRefs, 0, 'latestCandidate reappeared in code');
 });
+
+test('clean schema matches the recorded snapshot — no silent schema change', () => {
+  const snapshot = allowlist.schemaSnapshot;
+  assert.equal(
+    scan.schema.digest,
+    snapshot.digest,
+    `schema drifted (tables ${scan.schema.tableCount} vs snapshot ${snapshot.tableCount}). `
+    + 'Schema changes must update legacy-allowlist.json in the SAME commit, deliberately; '
+    + 'K17 owns the legacy-object deletion set.',
+  );
+  assert.equal(scan.schema.tableCount, snapshot.tableCount);
+});

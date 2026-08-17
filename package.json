@@ -35,6 +35,7 @@
     "adr-closure:test": "node --test tools/adr-closure-registry.test.mjs",
     "verify:manifest": "node tools/verification-manifest.mjs --run",
     "verify:check": "node tools/verification-manifest.mjs --check",
+    "legacy:report": "node tools/legacy-freeze.mjs --report",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
     "test": "tsc && node --test",
