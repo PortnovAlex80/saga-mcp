@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K11 CLOSE (manifest 8/8 at `95c0377c`)
+- **Updated:** 2026-08-17, after K12 CLOSE (manifest 8/8 at `e90ba491`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -26,9 +26,15 @@
 | K7 (trace-gap cutover; effects ratchet; recency classified 9→7; ADR-078 closed) | `dc1dcf39` |
 | K8 (ADR-079: exact replay binder; 4 newest-wins cut; readLatest deleted) | `c9903c64` |
 
-74 program commits total. ADR registry: 7 closed, 1 implemented, 4
-in-progress (ADR-053 carries K10+K11 evidence). 12 of 21 releases done;
-K12-K13 remain for M3.
+78 program commits total. ADR registry: 8 closed (024/033/034/076/078/
+079/080/081), 1 implemented, 4 in-progress. 13 of 21 releases done; K13
+remains for M3.
+
+OPERATOR NOTE (2026-08-17 evening): saga4 mainline gained three FIX
+commits after this branch's base eb0ace82 (mis-keyed workItemKey;
+serialized workplaceRef in repair-issue context; regression test).
+They are merged into this branch after the K12 close, with a fresh
+boundary manifest over the merged tree.
 
 ## K8 close summary (evidence map)
 
@@ -103,12 +109,32 @@ K12-K13 remain for M3.
   all three effect implementations were already authority-only.
 - Closing commit (this): ADR-053 annotated; this doc.
 
-## Next concrete steps (K12 — Gate-Proven Atomic Acceptance Commit)
+## K12 close summary
 
-Per plan §5 K12: a provable acceptance commit — the gate decision, the
-authority head, and the acceptance effects settle as one proof-carrying
-unit. Read the K12 train (plan §5, line ~600) before starting. Then K13
-(accepted head + exact settlement, M3 close).
+- Commit `21dc7065`: ADR-081 — the AuthorityCommit proof contract.
+- Commit `5f33bb40`: RED negatives — five unguarded proof dimensions
+  (wrong candidate, non-accepted verdict, non-terminal run, receiptless
+  run, unfrozen plan) sailed through; forged-key was already partially
+  guarded (GATE_DECISION_HEAD_AUTHORITY_MISMATCH).
+- Commit `0f84dcbf`: the CommitAcceptedCandidate service — verifies the
+  full persisted proof (decision/verdict/phase/subject/terminality/
+  receipts/plan/CAS) then ONE transaction; the coordinator's public
+  accepted-truth branch removed (GATE_PROOF_VERIFICATION_REQUIRED);
+  executor + all test callers migrated. Phase semantics discovered: a
+  no-review cell's author gate is phase FINAL. Drive-by: fixed a
+  pre-existing red in factory-cycle (custom check-plan digest missed
+  the canonical policy/unknownError fields).
+- Commit `e90ba491`: crash cover (zero-or-one commits; typed stale
+  retry) + exit-gate ratchet (ONE mutation service; the truth field
+  appears only in the rejection declaration + condition).
+- Closing commit (this): ADR-081 closed; this doc.
+
+## Next concrete steps
+
+1. Merge the saga4 fixes (see OPERATOR NOTE) + fresh boundary manifest
+   over the merged tree.
+2. K13 — Exact Accepted Head and Obligation Settlement (M3 close):
+   read the K13 train (plan §5) before starting.
 
 ## Resumption protocol for a fresh context
 

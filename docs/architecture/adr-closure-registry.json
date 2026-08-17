@@ -817,14 +817,14 @@
       "adr": "081",
       "file": "081-authority-commit-proof-contract.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12"
       ],
       "evidenceOwner": "K12",
       "principalProof": "Forged/mismatched proof negatives fail closed with zero mutation (wrong candidate, non-accepted decision, non-terminal run, receiptless run, unfrozen plan, stale revision); ONE acceptance mutation service in a code search; atomic idempotent commit under crash/retry",
       "successor": null,
-      "notes": "K12 commit 1: proof contract decided. The commit site (coordinator accepted branch) currently trusts caller-supplied refs; the service verifies persisted facts (decision accepted+final, subject match, terminal run with receipts, frozen check plan, CAS revision) then mutates in one transaction."
+      "notes": "K12 closed at boundary manifest e90ba491 (8/8 suites green; third manifest attempt - two earlier attempts hit unrelated load flakes in single suites, each green standalone). Closure theorems, all deterministic: (1) negatives matrix 9/9 - wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation; (2) capability removal - the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned; (3) crash idempotency - zero-or-one acceptance commits, retry after commit is typed stale no-op; (4) exit-gate ratchet - applyVerifiedAcceptance called ONLY by the service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used. Phase semantics discovered and encoded: a no-review cell's author gate is phase final; with-review author acceptance is phase author; reviewer final verdicts keep applyReviewerVerdict (no caller material truth)."
     }
   ]
 }
