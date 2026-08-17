@@ -329,7 +329,7 @@
       "evidenceOwner": "K9",
       "principalProof": "Third-lifecycle and full crash matrix on canonical composition",
       "successor": null,
-      "notes": null
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall)."
     },
     {
       "adr": "049",
@@ -587,7 +587,7 @@
       "evidenceOwner": "K20",
       "principalProof": "Tier 4 proof before GA canary",
       "successor": null,
-      "notes": null
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall)."
     },
     {
       "adr": "067",
