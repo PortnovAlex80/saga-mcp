@@ -120,4 +120,27 @@ test('runtimeFingerprintOf rehydrates byte-identically from the persisted record
 
   assert.equal(rehydrated.digest, atInstall.digest, 'digest rehydrates from the pinned record');
   assert.deepEqual(rehydrated.components, atInstall.components, 'components rehydrate byte-identically');
+
+  // Persistence round trip: the snapshot survives JSON serialization
+  // (repository storage form) and the fingerprint still rehydrates equal.
+  const reserialized = runtimeFingerprintOf(JSON.parse(JSON.stringify(persistedRecord)));
+  assert.deepEqual(reserialized, rehydrated);
+});
+
+test('definition mutation matrix: every definition-level change moves the digest', () => {
+  const { manifest, resources } = buildFixture();
+  const base = computeRuntimePackageFingerprint(manifest, resources).digest;
+  const clone = () => JSON.parse(JSON.stringify(manifest));
+
+  const description = clone();
+  description.definition.identity.description = description.definition.identity.description + ' (edited)';
+  assert.notEqual(base, computeRuntimePackageFingerprint(description, resources).digest, 'identity description');
+
+  const runtimeRange = clone();
+  runtimeRange.runtimeCompatibilityRange = '^4.0.0';
+  assert.notEqual(base, computeRuntimePackageFingerprint(runtimeRange, resources).digest, 'runtime compatibility range');
+
+  const contractRef = clone();
+  contractRef.outputContractRef = { ...contractRef.outputContractRef, digest: '0'.repeat(64) };
+  assert.notEqual(base, computeRuntimePackageFingerprint(contractRef, resources).digest, 'output contract ref');
 });
