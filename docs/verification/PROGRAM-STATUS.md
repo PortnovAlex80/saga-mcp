@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K9 CLOSE — M2 achieved (manifest 8/8 at `3878e51c`)
+- **Updated:** 2026-08-17, after K10 CLOSE (manifest 8/8 at `93d68d40`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -26,8 +26,8 @@
 | K7 (trace-gap cutover; effects ratchet; recency classified 9→7; ADR-078 closed) | `dc1dcf39` |
 | K8 (ADR-079: exact replay binder; 4 newest-wins cut; readLatest deleted) | `c9903c64` |
 
-68 program commits total. ADR registry: 7 closed (024/033/034/076/078/079/080),
-1 implemented (077), 4 in-progress.
+71 program commits total. ADR registry: 7 closed (024/033/034/076/078/079/080),
+1 implemented (077), 4 in-progress (ADR-053 carries K10 evidence).
 
 ## K8 close summary (evidence map)
 
@@ -75,14 +75,29 @@
   byte-identical; successor bound; no recency selector; no manual repair.
 - Closing commit (this): registry ADR-080 → closed; this status doc.
 
-## Next concrete steps (Wave 3 — K10: Remove Execution-Scoped Material
-Ownership, then K11-K13, M3)
+## K10 close summary (Wave 3 opened)
 
-K10 entry per plan §5: `test(authority): freeze partition-invariance
-theorem` — A(X+Y) partition invariance of settlement acceptance;
-WorkplaceProductionRevision becomes the only material owner; producer
-execution identity leaves CandidateSet authority. Read the K10 train in
-docs/vision/SAGA-CORE-RENEWAL-PLAN.md §5 before starting.
+- Commit `9615455d`: partition-invariance theorem at REVISION level —
+  A(X+Y), chained A(X)→B(Y), co-presented A(X)+C(Y) converge to the
+  IDENTICAL revisionRef; ProductRef aliasing does not fork; the
+  revision-seal/candidate-seal crash window cannot fork; formula pinned.
+- Commit `93d68d40`: execution-free identity ban (audit found the train's
+  refactor/drop work already delivered by ADR-053 Phase 3-7 — no
+  producer_execution_ref column ever existed). Pins: digest/ref functions
+  read only material coordinates; interface field sets exact (execution
+  only as documented provenance); factory_candidate_sets execution-free;
+  seal_receipt_ref write-only provenance. Negative-verified.
+- Closing commit (this): ADR-053 annotated with K10 evidence; this doc.
+
+## Next concrete steps (K11 — Authority-Only Post-Acceptance Effects)
+
+Per plan §5 K11: every post-acceptance effect consumes exact
+accepted-material authority only; full authority-only effect cutover
+(the K7 commit-3 ratchet already pins the input surface — K11 owns the
+REMAINING effect-side consumers and the deletion of any non-authority
+effect inputs). Read the K11 train in
+docs/vision/SAGA-CORE-RENEWAL-PLAN.md §5 before starting. Then K12
+(gate-proven acceptance) and K13 (M3 close).
 
 ## Resumption protocol for a fresh context
 

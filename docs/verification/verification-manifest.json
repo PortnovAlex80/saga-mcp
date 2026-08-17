@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
   "kind": "saga-core-renewal-green-baseline",
-  "sha": "3878e51c49fb9aa6f1027e0f547d8dd89cddcc16",
+  "sha": "93d68d401cfa0759d3572774508c0aab90c67609",
   "node": "v24.13.1",
   "platform": "win32/x64",
-  "recordedAt": "2026-08-17T12:20:06.336Z",
+  "recordedAt": "2026-08-17T13:36:08.106Z",
   "suites": [
     {
       "id": "build",
       "command": "npm run build",
       "exitCode": 0,
-      "durationMs": 9061
+      "durationMs": 7877
     },
     {
       "id": "factory-ratchet",
       "command": "npm run test:factory:ratchet",
       "exitCode": 0,
-      "durationMs": 793,
+      "durationMs": 550,
       "tests": {
         "tests": 2,
         "pass": 2,
@@ -27,10 +27,10 @@
       "id": "architecture",
       "command": "npm run test:architecture",
       "exitCode": 0,
-      "durationMs": 30068,
+      "durationMs": 24764,
       "tests": {
-        "tests": 251,
-        "pass": 251,
+        "tests": 265,
+        "pass": 265,
         "fail": 0
       }
     },
@@ -38,7 +38,7 @@
       "id": "factory-contract",
       "command": "npm run test:factory-contract",
       "exitCode": 0,
-      "durationMs": 115788,
+      "durationMs": 117039,
       "tests": {
         "tests": 86,
         "pass": 86,
@@ -49,7 +49,7 @@
       "id": "golden-path",
       "command": "npm run test:golden-path",
       "exitCode": 0,
-      "durationMs": 67099,
+      "durationMs": 67350,
       "tests": {
         "tests": 1,
         "pass": 1,
@@ -60,7 +60,7 @@
       "id": "factory-temporal",
       "command": "npm run test:factory-temporal",
       "exitCode": 0,
-      "durationMs": 1361855,
+      "durationMs": 1345003,
       "tests": {
         "tests": 31,
         "pass": 31,
@@ -71,7 +71,7 @@
       "id": "factory-model",
       "command": "npm run test:factory-model",
       "exitCode": 0,
-      "durationMs": 8709,
+      "durationMs": 7506,
       "tests": {
         "tests": 3,
         "pass": 3,
@@ -82,7 +82,7 @@
       "id": "migration-smoke",
       "command": "node --test tests/app/engine-watchdog-migration.test.mjs tests/app/operator-soft-stop-migration.test.mjs tests/architecture/v4-target-conformance-ratchet.test.mjs",
       "exitCode": 0,
-      "durationMs": 517,
+      "durationMs": 1236,
       "tests": {
         "tests": 18,
         "pass": 18,
