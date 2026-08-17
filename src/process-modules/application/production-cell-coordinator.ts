@@ -208,16 +208,19 @@ export class ProductionCellCoordinator {
     // reviewer projection and crash recovery — never `sets[0]` by hash order.
     // ADR-053 C5-02 — the head ALSO carries the current workplace task identity
     // (acceptedAuthorTaskId), the carry-forward-safe task binding.
+    // ADR-081 (K12) — the accepted-with-head transition is NO LONGER a public
+    // capability: callers cannot supply accepted material truth. Route through
+    // the CommitAcceptedCandidate service (applyVerifiedAcceptance below),
+    // which verifies the persisted proof before mutating.
     if (
       decision.verdict === 'accepted'
-      && decision.acceptedCandidateSetRef
-      && decision.gateDecisionKey
+      && (decision.acceptedCandidateSetRef || decision.gateDecisionKey)
     ) {
-      return this.applyAcceptanceEvent(ref, event!, {
-        acceptedAuthorCandidateSetRef: decision.acceptedCandidateSetRef,
-        acceptedAuthorGateDecisionKey: decision.gateDecisionKey,
-        acceptedAuthorTaskId: decision.acceptedAuthorTaskId ?? null,
-      });
+      throw new Error(
+        'GATE_PROOF_VERIFICATION_REQUIRED: the accepted transition is committed '
+        + 'only by CommitAcceptedCandidate (ADR-081) — pass the gate decision '
+        + 'key to the service, not accepted truth to the coordinator',
+      );
     }
     return decision.gateDecisionKey
       ? this.applyGateEvent(ref, event!, decision.gateDecisionKey, decision.parkReason)
@@ -451,19 +454,34 @@ export class ProductionCellCoordinator {
    * (`acceptedAuthorTaskId`) alongside the C1 pointer, so the head is the
    * carry-forward-safe task authority (neither submission.task_id nor recency).
    */
-  private applyAcceptanceEvent(
+  /**
+   * ADR-081 (K12) — the ONLY accepted-with-head mutation, reachable solely
+   * through the CommitAcceptedCandidate service (which verified the
+   * persisted proof). One transaction: accepted CAS transition + authority
+   * head + applied-decision head link.
+   */
+  applyVerifiedAcceptance(
     ref: WorkplaceRef,
-    event: ProductionCellEvent,
+    acceptance: { isFinal: boolean; effectRequired: boolean },
     authority: {
       acceptedAuthorCandidateSetRef: string;
       acceptedAuthorGateDecisionKey: string;
       acceptedAuthorTaskId: string | null;
     },
+    expectedRevision: number,
   ): StepResult {
+    const event: ProductionCellEvent = acceptance.isFinal
+      ? { kind: 'gate-author-accepted-final', effectRequired: acceptance.effectRequired }
+      : { kind: 'gate-author-accepted-with-review' };
     const current = this.deps.workplaceRepo.read(ref);
     if (!current) {
       throw new Error(
         `ProductionCellCoordinator: workplace ${serializeWorkplaceRef(ref)} not materialized`,
+      );
+    }
+    if (current.revision !== expectedRevision) {
+      throw new Error(
+        `AUTHORITY_COMMIT_REVISION_STALE: expected ${expectedRevision}, workplace is at ${current.revision}`,
       );
     }
     const target = reduceWorkplaceEvent(current, event);

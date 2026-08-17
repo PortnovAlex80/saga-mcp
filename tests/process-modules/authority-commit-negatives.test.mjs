@@ -30,6 +30,8 @@ import {
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
+import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
+import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 
 const HEX64 = 'a'.repeat(64);
 const ref = asWorkplaceRef({
@@ -83,7 +85,10 @@ function fixture() {
   });
   assert.equal(started.applied, true);
   coordinator.sealCandidateSet(ref);
-  return { db, workplaceRepo, authorityHeadRepo, coordinator };
+  const gateRepo = new SqliteGateRepository(db);
+  const authorityCommit = new CommitAcceptedCandidate({ gateRepo, coordinator });
+  activeDb = db;
+  return { db, workplaceRepo, authorityHeadRepo, coordinator, gateRepo, authorityCommit };
 }
 
 function snapshot(db) {
@@ -161,15 +166,24 @@ function seedProofAtRevision(db, expectedWorkplaceRevision, {
   }
 }
 
-function attemptAccept(coordinator, { gateDecisionKey, candidateSetRef }) {
-  return coordinator.applyGateDecision(ref, {
-    verdict: 'accepted',
+function attemptAccept(authorityCommit, { gateDecisionKey, candidateSetRef }) {
+  return authorityCommit.commit({
+    workplaceRef: ref,
+    gateDecisionKey,
+    acceptedCandidateSetRef: candidateSetRef,
+    acceptedAuthorTaskId: '41',
+    expectedRevision: currentRevision(),
     isFinal: true,
     effectRequired: false,
-    acceptedCandidateSetRef: candidateSetRef,
-    gateDecisionKey,
-    acceptedAuthorTaskId: '41',
   });
+}
+
+let activeDb = null;
+function currentRevision() {
+  const row = activeDb.prepare(
+    'SELECT revision FROM factory_workplaces WHERE workplace_ref=?',
+  ).get(workplaceKey);
+  return row.revision;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,39 +198,39 @@ const NEGATIVES = [
   },
   {
     name: 'decision for ANOTHER CandidateSet',
-    seed: (db, repo) => seedProof(db, { subject: 'candidate-set:OTHER' }),
+    seed: (db, repo) => seedProof(db, { subject: 'candidate-set:OTHER' }, repo),
     command: () => ({ gateDecisionKey: 'decision:proof', candidateSetRef: 'candidate-set:subject' }),
   },
   {
     name: 'non-accepted decision verdict',
-    seed: (db, repo) => seedProof(db, { verdict: 'repair_required' }),
+    seed: (db, repo) => seedProof(db, { verdict: 'repair_required' }, repo),
     command: () => ({ gateDecisionKey: 'decision:proof', candidateSetRef: 'candidate-set:subject' }),
   },
   {
     name: 'non-terminal gate run (decided without terminal receipts)',
-    seed: (db, repo) => seedProof(db, { runState: 'decided', withReceipt: false }),
+    seed: (db, repo) => seedProof(db, { runState: 'decided', withReceipt: false }, repo),
     command: () => ({ gateDecisionKey: 'decision:proof', candidateSetRef: 'candidate-set:subject' }),
   },
   {
     name: 'terminal run with ZERO check receipts',
-    seed: (db, repo) => seedProof(db, { withReceipt: false }),
+    seed: (db, repo) => seedProof(db, { withReceipt: false }, repo),
     command: () => ({ gateDecisionKey: 'decision:proof', candidateSetRef: 'candidate-set:subject' }),
   },
   {
     name: 'unfrozen check plan (empty plan digest)',
-    seed: (db, repo) => seedProof(db, { planDigest: '' }),
+    seed: (db, repo) => seedProof(db, { planDigest: '' }, repo),
     command: () => ({ gateDecisionKey: 'decision:proof', candidateSetRef: 'candidate-set:subject' }),
   },
 ];
 
 for (const negative of NEGATIVES) {
   test(`K12/negative (RED until the service lands): ${negative.name} fails closed with zero mutation`, () => {
-    const { db, coordinator, workplaceRepo } = fixture();
+    const { db, authorityCommit, workplaceRepo } = fixture();
     negative.seed(db, workplaceRepo);
     const before = snapshot(db);
 
     assert.throws(
-      () => attemptAccept(coordinator, negative.command()),
+      () => attemptAccept(authorityCommit, negative.command()),
       /AUTHORITY_COMMIT_|GATE_PROOF|GATE_DECISION_HEAD_AUTHORITY_MISMATCH/u,
       'the acceptance commit site must verify the persisted proof',
     );
@@ -232,9 +246,9 @@ for (const negative of NEGATIVES) {
 // ---------------------------------------------------------------------------
 
 test('K12/positive control: a valid persisted proof commits the acceptance', () => {
-  const { db, coordinator, workplaceRepo } = fixture();
+  const { db, authorityCommit, workplaceRepo } = fixture();
   seedProof(db, {}, workplaceRepo);
-  const result = attemptAccept(coordinator, {
+  const result = attemptAccept(authorityCommit, {
     gateDecisionKey: 'decision:proof',
     candidateSetRef: 'candidate-set:subject',
   });
@@ -248,4 +262,52 @@ test('K12/positive control: a valid persisted proof commits the acceptance', () 
   ).get(workplaceKey);
   assert.equal(state.loop_state, 'terminal');
   assert.equal(state.terminal_reason, 'accepted');
+});
+
+
+test('K12/capability removal: the coordinator rejects direct accepted-truth commits', () => {
+  const { coordinator, workplaceRepo, db } = fixture();
+  seedProof(db, {}, workplaceRepo);
+  assert.throws(
+    () => coordinator.applyGateDecision(ref, {
+      verdict: 'accepted',
+      isFinal: true,
+      acceptedCandidateSetRef: 'candidate-set:subject',
+      gateDecisionKey: 'decision:proof',
+      acceptedAuthorTaskId: '41',
+    }),
+    /GATE_PROOF_VERIFICATION_REQUIRED/u,
+    'ADR-081: callers cannot supply accepted material truth directly',
+  );
+});
+
+
+test('K12/negative: an author-phase decision cannot authorize a FINAL acceptance commit', () => {
+  const { db, authorityCommit } = fixture();
+  // Author-phase proof (the with-review handoff shape) presented for a
+  // no-review FINAL acceptance - the phase must match the acceptance kind.
+  db.prepare(
+    `INSERT INTO factory_gate_decisions
+       (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,
+        subject_candidate_set_ref,assessment_candidate_set_refs,verdict,
+        check_plan_ref,check_plan_digest,decision_policy_ref,decision_policy_digest,
+        check_receipt_refs,installation_digest,accepted_output_bindings,decision_digest)
+     VALUES ('decision:author-phase',?,?,?,'author',?,
+             'candidate-set:subject','[]','accepted','plan',?,'policy',?,'[]',?,'[]',?)`,
+  ).run(
+    workplaceKey, 'gate:author-phase', 'gate-run:author-phase', 'transition:author-phase',
+    HEX64, HEX64, HEX64, 'digest:author-phase',
+  );
+  const before = snapshot(db);
+  assert.throws(
+    () => authorityCommit.commit({
+      workplaceRef: ref,
+      gateDecisionKey: 'decision:author-phase',
+      acceptedCandidateSetRef: 'candidate-set:subject',
+      expectedRevision: currentRevision(),
+      isFinal: true,
+    }),
+    /AUTHORITY_COMMIT_DECISION_PHASE_MISMATCH/u,
+  );
+  assert.equal(snapshot(db), before);
 });

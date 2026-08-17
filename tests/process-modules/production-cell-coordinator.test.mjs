@@ -11,6 +11,7 @@ import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/s
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
+import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
 
 const REF = asWorkplaceRef({
   processRunId: 1,
@@ -24,7 +25,8 @@ function harness() {
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const gateRepo = new SqliteGateRepository(db);
   const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, authorityHeadRepo: new SqliteAcceptedAuthorityHeadRepository(db), now: () => new Date() });
-  return { db, workplaceRepo, gateRepo, coordinator };
+  const authorityCommit = new CommitAcceptedCandidate({ gateRepo, coordinator });
+  return { db, workplaceRepo, gateRepo, coordinator, authorityCommit };
 }
 
 /** Simulate the canonical dispatcher's projected lease/start events. */
@@ -228,6 +230,20 @@ function recordAcceptedAuthorDecision(h, candidateSetRef, suffix) {
     ...body,
     decisionDigest: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
   });
+  // ADR-081 (K12): the acceptance commit now requires the FULL proof —
+  // a terminal run with at least one recorded receipt.
+  h.gateRepo.setGateRunState(gateRunRef, 'terminal');
+  h.gateRepo.recordCheckReceipt({
+    checkReceiptRef: `receipt/${suffix}`,
+    checkRunRef: gateRunRef,
+    subjectCandidateSetRef: candidateSetRef,
+    assessmentCandidateSetRefs: [],
+    check: { providerId: 'check.x', version: '1.0.0', providerDigest: 'c'.repeat(64) },
+    environmentRef: null,
+    outcome: 'passed',
+    evidenceRefs: [],
+    receiptDigest: 'r'.repeat(64),
+  });
   return decisionKey;
 }
 
@@ -251,11 +267,13 @@ test('ADR-053 C5-02: author acceptance writes the current workplace task id onto
   const h = runningHarness();
   h.coordinator.sealCandidateSet(REF);
   const decisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-1', 'author/accepted/rev-1');
-  h.coordinator.applyGateDecision(REF, {
-    verdict: 'accepted', isFinal: false,
-    acceptedCandidateSetRef: 'candidate-set/attempt-1',
+  h.authorityCommit.commit({
+    workplaceRef: REF,
     gateDecisionKey: decisionKey,
+    acceptedCandidateSetRef: 'candidate-set/attempt-1',
     acceptedAuthorTaskId: 'task-42',
+    expectedRevision: h.workplaceRepo.read(REF).revision,
+    isFinal: false,
   });
   const head = headRow(h.db);
   assert.ok(head, 'C5-02: authority head must be recorded on author acceptance');
@@ -271,11 +289,13 @@ test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identit
   h.coordinator.sealCandidateSet(REF);
   const firstDecisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-1', 'author/accepted/rev-1');
   // First author acceptance (with-review): head records the first task.
-  h.coordinator.applyGateDecision(REF, {
-    verdict: 'accepted', isFinal: false,
-    acceptedCandidateSetRef: 'candidate-set/attempt-1',
+  h.authorityCommit.commit({
+    workplaceRef: REF,
     gateDecisionKey: firstDecisionKey,
+    acceptedCandidateSetRef: 'candidate-set/attempt-1',
     acceptedAuthorTaskId: 'task-A',
+    expectedRevision: h.workplaceRepo.read(REF).revision,
+    isFinal: false,
   });
   let head = headRow(h.db);
   assert.equal(head.cs, 'candidate-set/attempt-1');
@@ -286,11 +306,13 @@ test('ADR-053 C5-02: a repair-cycle re-acceptance re-binds the head task identit
   // is accepted. The head must re-bind to the now-current task — not stay stale.
   forceAuthorVerifying(h.workplaceRepo, REF, 'execution:repair-2');
   const secondDecisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/attempt-2', 'author/accepted/rev-3');
-  h.coordinator.applyGateDecision(REF, {
-    verdict: 'accepted', isFinal: false,
-    acceptedCandidateSetRef: 'candidate-set/attempt-2',
+  h.authorityCommit.commit({
+    workplaceRef: REF,
     gateDecisionKey: secondDecisionKey,
+    acceptedCandidateSetRef: 'candidate-set/attempt-2',
     acceptedAuthorTaskId: 'task-B',
+    expectedRevision: h.workplaceRepo.read(REF).revision,
+    isFinal: false,
   });
   head = headRow(h.db);
   assert.equal(head.cs, 'candidate-set/attempt-2', 'C1 pointer re-binds to the new accepted set');
@@ -304,11 +326,13 @@ test('ADR-053 C5-02: acceptance without a resolvable task leaves the head task i
   const h = runningHarness();
   h.coordinator.sealCandidateSet(REF);
   const decisionKey = recordAcceptedAuthorDecision(h, 'candidate-set/1', '1');
-  h.coordinator.applyGateDecision(REF, {
-    verdict: 'accepted', isFinal: false,
-    acceptedCandidateSetRef: 'candidate-set/1',
+  h.authorityCommit.commit({
+    workplaceRef: REF,
     gateDecisionKey: decisionKey,
+    acceptedCandidateSetRef: 'candidate-set/1',
     // acceptedAuthorTaskId omitted: the acceptance site could not resolve a task.
+    expectedRevision: h.workplaceRepo.read(REF).revision,
+    isFinal: false,
   });
   const head = headRow(h.db);
   assert.ok(head);
@@ -336,13 +360,14 @@ test('ADR-053 B-6: stale GateDecision rolls back the Workplace CAS and never adv
   const before = h.workplaceRepo.read(REF);
 
   assert.throws(
-    () => h.coordinator.applyGateDecision(REF, {
-      verdict: 'accepted',
-      isFinal: false,
-      acceptedCandidateSetRef: 'candidate-set/stale',
+    () => h.authorityCommit.commit({
+      workplaceRef: REF,
       gateDecisionKey: decisionKey,
+      acceptedCandidateSetRef: 'candidate-set/stale',
+      expectedRevision: before.revision,
+      isFinal: false,
     }),
-    /GATE_DECISION_HEAD_AUTHORITY_MISMATCH/,
+    /AUTHORITY_COMMIT_REVISION_STALE|GATE_DECISION_HEAD_AUTHORITY_MISMATCH/,
   );
   assert.deepEqual(h.workplaceRepo.read(REF), before, 'failed authority check rolls back CAS');
   assert.equal(

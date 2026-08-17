@@ -45,6 +45,7 @@ import {
   type NodeExecutor,
 } from '../node-executor.js';
 import { ProductionCellCoordinator } from '../production-cell-coordinator.js';
+import type { CommitAcceptedCandidate } from '../../application/commit-accepted-candidate.js';
 import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
@@ -257,6 +258,8 @@ export interface ProductionCellProductReader {
 
 export interface ProductionCellNodeExecutorOptions {
   readonly coordinator: ProductionCellCoordinator;
+  /** ADR-081 (K12) — the proof-backed acceptance mutation service. */
+  readonly authorityCommit: CommitAcceptedCandidate;
   readonly candidateSetRepo: SqliteCandidateSetRepository;
   readonly gateRepo: SqliteGateRepository;
   readonly checkProviders: CheckProviderRegistry;
@@ -791,23 +794,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
       if (decision.verdict === 'accepted') {
         if (!cell.review) postAcceptanceCandidate = candidate;
-        this.opts.coordinator.applyGateDecision(workplace.ref, {
-          verdict: 'accepted', isFinal: !cell.review,
-          effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
-          // ADR-053 C1 — record the accepted-author authority pointer atomically
-          // with the CAS transition so acceptedAuthorCandidate reads the EXACT
-          // accepted set, never sets[0] by hash order.
-          acceptedCandidateSetRef: candidate.candidateSetRef,
+        // ADR-081 (K12) — the acceptance commit is PROOF-BACKED: the service
+        // loads the persisted decision/run/receipts/plan and verifies the full
+        // contract (subject, verdict, phase, terminality, receipts, frozen
+        // plan, CAS revision) before the one-transaction mutation. The C1
+        // authority pointer and the C5-02 task binding are written by the
+        // same transaction as before — now behind the verified entry.
+        this.opts.authorityCommit.commit({
+          workplaceRef: workplace.ref,
           gateDecisionKey: decision.decisionKey,
-          // ADR-053 C5-02 — bind the CURRENT workplace task at acceptance. The
-          // authoritative source is the worker-execution→task binding
-          // (readExecutionReceipt): the exact task the accepted execution was
-          // launched for. This is carry-forward-safe — NOT submission.task_id
-          // (the ORIGIN process's task, wrong after carry-forward) and NOT
-          // ORDER BY t.id DESC (recency, wrong in repair cycles). A carry-forward
-          // presenter has no worker receipt; it falls back to the durable
-          // author-task projection for this workplace.
+          acceptedCandidateSetRef: candidate.candidateSetRef,
           acceptedAuthorTaskId: this.resolveAcceptedAuthorTaskId(executionRef, workplace.ref),
+          expectedRevision: this.requireState(workplace.ref).revision,
+          isFinal: !cell.review,
+          effectRequired: !cell.review && Boolean(cell.postAcceptanceEffect),
         });
         // ADR-053 B-8/C6 — gate accepted → effects must run (mandatory
         // obligation). The obligation carries the EXACT accepted GateDecision

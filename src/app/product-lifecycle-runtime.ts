@@ -86,7 +86,8 @@ import {
   createGitIntegrationEffect,
 } from '../infrastructure/workplace/git-integration-effect.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
-import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
+import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';import { CommitAcceptedCandidate } from '../process-modules/application/commit-accepted-candidate.js';
+
 import {
   ProductionCellNodeExecutor,
   type ProductionCellProductReader,
@@ -413,11 +414,18 @@ export function createProductLifecycleRuntime(
   const obligationLedger = new SqliteTransitionObligationLedger(db);
   const obligationIntegrator = new TransitionObligationIntegrator({ ledger: obligationLedger });
 
+  // ADR-081 (K12) — the ONE proof-backed acceptance mutation service.
+  const authorityCommit = new CommitAcceptedCandidate({
+    gateRepo,
+    coordinator: productionCellCoordinator,
+  });
+
   const nodeExecutors = new Map<string, NodeExecutor>([
     ['kernel', new KernelNodeExecutor(kernelHandlers)],
     ['human', new HumanNodeExecutor(humanInteractions)],
     ['production-cell', new ProductionCellNodeExecutor({
       coordinator: productionCellCoordinator,
+      authorityCommit,
       candidateSetRepo,
       gateRepo,
       checkProviders: createStandardCheckProviderRegistry(),
