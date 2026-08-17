@@ -140,24 +140,8 @@ export interface FormalizationArtifactGraphPort {
     clean: boolean;
     dirty: readonly number[];
   };
-  readAcceptedArtifacts(epicId: number): {
-    prd: number | null;
-    frs: readonly number[];
-    nfrs: readonly number[];
-    rules: readonly number[];
-    ucs: readonly number[];
-    acs: readonly number[];
-    srs: number | null;
-  };
 
   /** Compute the acceptance baseline hash from accepted AC artifacts. */
-  readAcceptanceBaselineHash(epicId: number): {
-    hash: string;
-    /** True if every AC is accepted+clean (no drift); false otherwise. */
-    clean: boolean;
-    /** AC ids that failed the clean check (empty when clean=true). */
-    dirty: readonly number[];
-  };
 
   /**
    * Verify the canonical traceability edges for one episode:

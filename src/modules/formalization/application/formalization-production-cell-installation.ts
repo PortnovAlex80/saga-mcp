@@ -278,7 +278,7 @@ function createSettlementHandler(
 
 function buildBundle(
   epicId: number,
-  accepted: ReturnType<FormalizationArtifactGraphPort['readAcceptedArtifacts']>,
+  accepted: ReturnType<FormalizationArtifactGraphPort['readAcceptedArtifactsForLifecycle']>,
   baselineHash: string,
 ): SolutionContractBundle {
   const body = {

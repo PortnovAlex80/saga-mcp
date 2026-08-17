@@ -96,22 +96,15 @@ test('K6 theorem: settlement of lifecycle 2 must NOT read lifecycle 1 material (
     ? graph.readAcceptedArtifactsForLifecycle(EPIC, 2)
     : null;
 
-  if (exact !== null) {
-    // Flipped state: the exact reader exists and MUST exclude the dead run.
-    assert.equal(exact.prd, idOf('PRD-NEW'), 'PRD comes from lifecycle 2');
-    assert.deepEqual(exact.acs.sort((a, b) => a - b), [idOf('AC-NEW1'), idOf('AC-NEW2')].sort((a, b) => a - b));
-    assert.equal(exact.srs, idOf('SRS-NEW'));
-    assert.ok(!JSON.stringify(exact).includes(String(idOf('PRD-OLD'))), 'dead-run material absent');
-    assert.ok(!JSON.stringify(exact).includes(String(idOf('AC-OLD'))), 'dead-run AC absent');
-  } else {
-    // Current state: prove the contamination exists — the epic-scoped reader
-    // mixes both lifecycles' material into one settlement input.
-    const mixed = graph.readAcceptedArtifacts(EPIC);
-    const sawOld = String(mixed.prd) === String(idOf('PRD-OLD'))
-      || (mixed.acs ?? []).includes(idOf('AC-OLD'));
-    assert.ok(sawOld,
-      `contamination reproduced: epic-scoped read mixes dead-run material (prd=${mixed.prd}, acs=${JSON.stringify(mixed.acs)})`);
-  }
+  // The exact reader exists (K6) and MUST exclude the dead run. The old
+  // epic-scoped reader is DELETED (ADR-78 deletion rule) — this branch is
+  // the permanent post-cutover state.
+  assert.notEqual(exact, null, 'the exact lifecycle-scoped reader must exist');
+  assert.equal(exact.prd, idOf('PRD-NEW'), 'PRD comes from lifecycle 2');
+  assert.deepEqual(exact.acs.sort((a, b) => a - b), [idOf('AC-NEW1'), idOf('AC-NEW2')].sort((a, b) => a - b));
+  assert.equal(exact.srs, idOf('SRS-NEW'));
+  assert.ok(!JSON.stringify(exact).includes(String(idOf('PRD-OLD'))), 'dead-run material absent');
+  assert.ok(!JSON.stringify(exact).includes(String(idOf('AC-OLD'))), 'dead-run AC absent');
 });
 
 test.after(() => {

@@ -118,29 +118,6 @@ export class SqliteFormalizationArtifactGraph implements
     return rows.map(traceRowToSnapshot);
   }
 
-  readAcceptedArtifacts(epicId: number) {
-    const rows = this.db.prepare(
-      `SELECT id, type FROM artifacts
-        WHERE epic_id=? AND status='accepted'
-        ORDER BY id`,
-    ).all(epicId) as Array<{ id: number; type: string }>;
-    const byType = new Map<string, number[]>();
-    for (const r of rows) {
-      const list = byType.get(r.type) ?? [];
-      list.push(r.id);
-      byType.set(r.type, list);
-    }
-    return {
-      prd: (byType.get('PRD') ?? [])[0] ?? null,
-      frs: byType.get('FR') ?? [],
-      nfrs: byType.get('NFR') ?? [],
-      rules: byType.get('RULE') ?? [],
-      ucs: byType.get('UC') ?? [],
-      acs: byType.get('AC') ?? [],
-      srs: (byType.get('SRS') ?? [])[0] ?? null,
-    };
-  }
-
   /**
    * ADR-078 (K6): the EXACT accepted-material read — scoped to the CURRENT
    * lifecycle run through the authoritative ownership chain (artifact ->
@@ -194,21 +171,6 @@ export class SqliteFormalizationArtifactGraph implements
         GROUP BY a.id
         ORDER BY a.id`,
     ).all(epicId, lifecycleRunId) as Array<{
-      id: number; status: string; accepted_hash: string | null;
-      content_hash: string | null; drift_state: string;
-    }>;
-    return this.evaluateBaselineRows(rows);
-  }
-
-  readAcceptanceBaselineHash(epicId: number) {
-    // Same logic as lifecycle.ts:acceptedBaseline — refresh hashes, then check
-    // status=accepted AND accepted_hash=content_hash AND drift_state=clean.
-    const rows = this.db.prepare(
-      `SELECT id, status, accepted_hash, content_hash, drift_state
-        FROM artifacts
-        WHERE epic_id=? AND type='AC'
-        ORDER BY id`,
-    ).all(epicId) as Array<{
       id: number; status: string; accepted_hash: string | null;
       content_hash: string | null; drift_state: string;
     }>;
@@ -433,7 +395,9 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
         `settlement input schema mismatch: expected ${FORMALIZATION_SETTLEMENT_INPUT_SCHEMA}, got ${input.schemaVersion}`);
     }
 
-    const artifacts = graph.readAcceptedArtifacts(epicId);
+    // ADR-078 (K6): exact lifecycle-scoped read — dead-run material
+    // cannot enter the settlement validation input.
+    const artifacts = graph.readAcceptedArtifactsForLifecycle(epicId, lifecycleRunId);
     const bundle = input.bundle;
     const expectedBundleHash = createHash('sha256')
       .update(canonicalJson({
@@ -477,7 +441,7 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
     }
 
     // Baseline must be frozen and clean.
-    const baseline = graph.readAcceptanceBaselineHash(epicId);
+    const baseline = graph.readAcceptanceBaselineHashForLifecycle(epicId, lifecycleRunId);
     if (!baseline.clean) {
       return fail(inputHash, ['baseline-missing'],
         `Acceptance baseline is dirty: AC ids ${baseline.dirty.join(', ')} are not accepted+clean.`);

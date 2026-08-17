@@ -424,7 +424,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Exact reads, replay, ownership, effects, Gate commit, accepted head",
       "successor": null,
-      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
+      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: ADR-78 exact lifecycle-scoped accepted reads cut into the full settlement vertical (freezer + handler + policy internals); epic-scoped settlement readers DELETED (not retained); contamination theorem + fail-closed negatives + TB-11 e2e over exact reads; contract 84/84."
     },
     {
       "adr": "054",
@@ -708,7 +708,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Complete exact read, replay, effect, acceptance, head cutover",
       "successor": null,
-      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
+      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: first exact-read vertical of the presentation cutover landed (ADR-78)."
     },
     {
       "adr": "074",
@@ -777,7 +777,7 @@
       "adr": "078",
       "file": "078-lifecycle-scoped-accepted-material-query.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "implemented",
       "owningReleases": [
         "K6",
         "K7"
@@ -785,7 +785,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
       "successor": null,
-      "notes": "K6 decision. Freeze contract; theorem + repository + cutover commits follow."
+      "notes": "K6 implemented: exact queries live across the settlement vertical; K7 owns the traceability gap read (findFirstTraceabilityGap remains epic-scoped by scope note)."
     }
   ]
 }
