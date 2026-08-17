@@ -1,6 +1,6 @@
 # Saga Core Renewal — Program Status & Resumption Guide
 
-- **Updated:** 2026-08-17, after K12 CLOSE (manifest 8/8 at `e90ba491`)
+- **Updated:** 2026-08-17 late evening, after the saga4-fix merge (merged-tree manifest 8/8 at `a4f79518`)
 - **Worktree:** `D:\Development\saga-mcp-kernel`, branch `k0-adr-closure-registry`, base `eb0ace82`
 - **Program plan:** `docs/vision/SAGA-CORE-RENEWAL-PLAN.md` (this branch now carries it)
 - **Companion plan:** `docs/vision/CONTROLLED-CHANGE-PLANE-PLAN.md` (runs AFTER Core 3.0 GA)
@@ -30,11 +30,12 @@
 079/080/081), 1 implemented, 4 in-progress. 13 of 21 releases done; K13
 remains for M3.
 
-OPERATOR NOTE (2026-08-17 evening): saga4 mainline gained three FIX
-commits after this branch's base eb0ace82 (mis-keyed workItemKey;
-serialized workplaceRef in repair-issue context; regression test).
-They are merged into this branch after the K12 close, with a fresh
-boundary manifest over the merged tree.
+RESOLVED: the saga4 mainline fixes (mis-keyed workItemKey — kernel-
+authority matching; serialized workplaceRef in the repair-issue
+context; regression tests) are MERGED (3dfc07a8) and the merged tree
+is boundary-proven: manifest 8/8 at a4f79518 (which also carries the
+golden-path de-flake — lease-recovery attempts are durable, not
+forbidden; three same-root flakes documented there).
 
 ## K8 close summary (evidence map)
 
