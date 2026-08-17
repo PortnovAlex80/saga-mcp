@@ -180,6 +180,22 @@ function unique<T>(values: readonly T[]): boolean {
   return new Set(values).size === values.length;
 }
 
+/**
+ * The synthetic placeholder the implementation workset builder emits when an
+ * item has no matching accepted cell product (status 'blocked', taskId 0,
+ * reasonCodes ['accepted-cell-product-missing']). It is a settlement INPUT
+ * gap — an honest blocked / implementation-incomplete verdict — never a
+ * malformed-workset failure (units epic-8 cert#37, tips epic-5 cert#40 died
+ * on `item.taskId <= 0` firing against exactly this placeholder).
+ */
+function isMissingProductPlaceholder(item: {
+  status: string;
+  reasonCodes: readonly string[];
+}): boolean {
+  return item.status === 'blocked'
+    && item.reasonCodes.includes('accepted-cell-product-missing');
+}
+
 function validRef(reference: ContentAddressedReference): boolean {
   return reference.schema.trim().length > 0
     && reference.ref.trim().length > 0
@@ -785,7 +801,11 @@ implements DevelopmentSettlementPolicyPort {
       !unique(implementation.results.map(item => item.key))
       || implementation.results.some(item =>
         !declaredImplementationKeys.has(item.key)
-        || item.taskId <= 0
+        // taskId:0 is legal ONLY on the synthetic placeholder the workset
+        // builder emits when no accepted product matched the item. That
+        // placeholder is a settlement INPUT gap (implementation-incomplete),
+        // not a malformed workset — see isMissingProductPlaceholder.
+        || (item.taskId <= 0 && !isMissingProductPlaceholder(item))
         || !['succeeded', 'failed', 'blocked'].includes(item.status)
         || !unique(item.reasonCodes))
       || !unique(implementation.blockingItemKeys)
@@ -809,8 +829,13 @@ implements DevelopmentSettlementPolicyPort {
         inputHash,
       );
     }
-    const blockedImplementation = [...requiredImplementationKeys].filter(key =>
-      implementationByKey.get(key)?.status === 'blocked');
+    const blockedImplementation = [...requiredImplementationKeys].filter(key => {
+      const item = implementationByKey.get(key);
+      // The missing-product placeholder is NOT a worker "blocked" verdict:
+      // route it to implementation-incomplete below so the verdict names the
+      // real cause (an accepted cell product failed to bind to the item).
+      return item?.status === 'blocked' && !isMissingProductPlaceholder(item);
+    });
     if (blockedImplementation.length > 0) {
       return result(
         'blocked',
@@ -847,7 +872,7 @@ implements DevelopmentSettlementPolicyPort {
       return result(
         'blocked',
         ['implementation-incomplete'],
-        'Required implementation/review work is incomplete.',
+        `Required implementation/review work is incomplete: ${incompleteImplementation.join(', ')}.`,
         inputHash,
       );
     }

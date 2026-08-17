@@ -332,7 +332,13 @@ export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID =
 // (docs/**/executions/** and .saga-bootstrap.md) from BOTH sides of the
 // equality; (b) ancestry + task-branch discipline checks; (c) repair recipe
 // on changed-files-mismatch.
-export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION = '2.0.0';
+// v2.1.0 — mis-keyed product root fix: payload.workItemKey must equal the
+// kernel-authoritative cell_input_item.key of the accepted author task. A
+// re-hired worker stamping the workplace work_key (24-hex) passed the
+// "non-empty string" payload contract, dropped out of the settlement
+// workset matcher and killed the run downstream (units epic-8 cert#37,
+// tips epic-5 cert#40). Fail closed with a repair recipe.
+export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION = '2.1.0';
 export const DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
   version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
@@ -604,12 +610,13 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
             'The implementation submission does not match the exact CandidateSet member and desk receipt.');
         }
         const payload = JSON.parse(row.payload_snapshot) as {
+          workItemKey?: unknown;
           repository?: { baseCommit?: unknown };
           snapshot?: { commitSha?: unknown; changedFiles?: unknown };
           source?: { branch?: unknown };
         };
         const metadata = JSON.parse(row.metadata) as {
-          cell_input_item?: { changeScopes?: unknown };
+          cell_input_item?: { key?: unknown; changeScopes?: unknown };
         };
         const scopes = metadata.cell_input_item?.changeScopes;
         const submitted = payload.snapshot?.changedFiles;
@@ -622,6 +629,20 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
             || typeof commit !== 'string' || !commit) {
           return scopeFailure(subjectCandidateSetRef, 'scope-input-invalid',
             'Implementation scope evidence is incomplete or its submitted base differs from the frozen effective desk base.');
+        }
+        // v2.1.0 mis-keyed product root fix (units epic-8 cert#37, tips epic-5
+        // cert#40): workItemKey is LM-authored and previously only had to be a
+        // non-empty string, so a re-hired worker stamping the 24-hex workplace
+        // work_key passed here and died at settlement workset matching. The
+        // kernel-authoritative key is the cell_input_item the Factory projected
+        // into this author task's metadata — fail closed on any divergence.
+        const itemKey = metadata.cell_input_item?.key;
+        if (payload.workItemKey !== itemKey) {
+          return scopeFailure(subjectCandidateSetRef, 'work-item-key-mismatch',
+            `Submitted workItemKey '${String(payload.workItemKey)}' does not equal the kernel-authoritative `
+            + `item key '${String(itemKey)}'. workItemKey must equal cell_input_item.key — the task-graph `
+            + 'item key of this work item, NOT the workplace work_key: resubmit the implementation '
+            + 'result with the exact cell_input_item.key value.');
         }
         // Ancestry discipline: the submitted commit MUST descend from the
         // frozen effective base. Without this, a worker that reset its branch

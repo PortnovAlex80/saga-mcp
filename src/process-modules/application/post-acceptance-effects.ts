@@ -1,4 +1,5 @@
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
+import { serializeWorkplaceRef } from '../domain/workplace/workplace-ref.js';
 import type { ProductRef } from '../domain/spi/production-envelope.js';
 import {
   RECOVERY_ISSUE_SCHEMA,
@@ -196,7 +197,13 @@ export function buildAcceptanceEffectRepairIssue(input: {
       effectId: input.effect.effectId,
       effectVersion: input.effect.version,
       effectDigest: input.effect.effectDigest,
-      workplaceRef: input.authority.workplaceRef,
+      // Serialize the WorkplaceRef: the projection read compares this field
+      // against the STRING workplace_ref column (PRODUCTION_CELL_EFFECT_
+      // REPAIR_SUBJECT_MISMATCH). The authority carries the structured ref —
+      // storing it raw stringifies to "[object Object]" and kills the run
+      // on the first strict projection read (observed live: lifecycle 5 of
+      // TrackPlan failed terminally on exactly this).
+      workplaceRef: serializeWorkplaceRef(input.authority.workplaceRef),
       candidateSetRef: input.authority.candidateSetRef,
       productionRevisionRef: input.authority.productionRevisionRef,
       gateDecisionKey: input.authority.gateDecisionKey,

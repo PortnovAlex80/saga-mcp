@@ -61,12 +61,15 @@ function makeProvider(repoPath, row) {
 function makeRow(repoPath, { base, commit, changedFiles, branch }) {
   return {
     payload_snapshot: JSON.stringify({
+      // Since provider v2.1.0 the payload key must equal the author task's
+      // kernel-authoritative cell_input_item.key.
+      workItemKey: 'item/core',
       repository: { baseCommit: base },
       snapshot: { commitSha: commit, changedFiles },
       ...(branch === undefined ? {} : { source: { branch } }),
     }),
     content_hash: DIGEST,
-    metadata: JSON.stringify({ cell_input_item: { changeScopes: ['src/', 'docs/'] } }),
+    metadata: JSON.stringify({ cell_input_item: { key: 'item/core', changeScopes: ['src/', 'docs/'] } }),
     local_path: repoPath,
     effective_base_commit: base,
   };
