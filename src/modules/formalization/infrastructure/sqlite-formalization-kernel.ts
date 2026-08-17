@@ -194,22 +194,13 @@ export class SqliteFormalizationArtifactGraph implements
     return { hash, clean: dirty.length === 0, dirty };
   }
 
-  // AUTHORITATIVE for the settlement certificate gate (RULE-012). This is the
-  // epic-wide traceability check the formalization settlement policy calls
-  // (see ReferenceFormalizationSettlementPolicy.settle → line ~374). A SECOND,
-  // deliberately different implementation — `findContractGap` in
-  // formalization-installation.ts — runs at the per-node exact-set gate. They
-  // are NOT duplicates and must not be merged; see the comparison table in the
-  // header comment of findContractGap for the three load-bearing differences
-  // (root-edge breadth, scope, return shape). When the canonical RULES edge
-  // set changes, BOTH must be updated together.
   /**
-   * ADR-78 (K7): lifecycle-scoped traceability gap check - the same edge
-   * rules as {@link findFirstTraceabilityGap}, but the source artifacts
-   * (PRD/SRS/UC/AC) are scoped to the CURRENT lifecycle run through the
-   * managed production ledger + stage-run ownership chain. Trace TARGETS may
-   * still live outside the lifecycle (e.g. a brief) - targets are references,
-   * not settlement input.
+   * ADR-78 (K7): lifecycle-scoped traceability gap check — the canonical edge
+   * rules (PRD→brief, SRS→PRD, UC→PRD/FR, AC→FR/NFR/UC) evaluated over source
+   * artifacts scoped to the CURRENT lifecycle run through the production
+   * ledger + stage-run ownership chain. Trace TARGETS may still reference
+   * material outside the lifecycle (e.g. a brief) — targets are references,
+   * not settlement input. The epic-scoped variant is DELETED (K7 cleanup).
    */
   findFirstTraceabilityGapForLifecycle(epicId: number, lifecycleRunId: number) {
     const scopedIds = (type: string): number[] => {
@@ -283,89 +274,6 @@ export class SqliteFormalizationArtifactGraph implements
           artifactType: 'AC', artifactId: ac,
           missingEdge: 'derived_from → UC',
           description: `FR-derived AC #${ac} has no 'derived_from' trace to a UC.`,
-        };
-      }
-    }
-    return null;
-  }
-
-  findFirstTraceabilityGap(epicId: number) {
-    const db = this.db;
-    // hasEdge checks for an outgoing edge of given link_type to ANY artifact
-    // of the target type. The epicId constrains the SOURCE artifact's epic;
-    // the TARGET may live in a different epic (e.g. a PRD in formalization
-    // lifecycle gate had the same cross-epic semantics for brief.
-    const hasEdgeToType = (
-      srcId: number,
-      linkType: 'derived_from' | 'covers',
-      targetType: 'brief' | 'PRD' | 'UC' | 'FR' | 'NFR',
-    ): boolean => !!db.prepare(
-      `SELECT 1 FROM artifact_traces at
-        JOIN artifacts t ON t.id = at.target_id
-       WHERE at.source_id=? AND at.link_type=? AND t.type=?
-       LIMIT 1`,
-    ).get(srcId, linkType, targetType);
-
-    const prd = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1`,
-    ).get(epicId) as { id: number } | undefined;
-    if (prd && !hasEdgeToType(prd.id, 'derived_from', 'brief')) {
-      return {
-        artifactType: 'PRD', artifactId: prd.id,
-        missingEdge: 'derived_from → brief',
-        description: `PRD #${prd.id} has no 'derived_from' trace to a brief artifact.`,
-      };
-    }
-
-    const srs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='SRS' ORDER BY id LIMIT 1`,
-    ).get(epicId) as { id: number } | undefined;
-    if (srs && !hasEdgeToType(srs.id, 'derived_from', 'PRD')) {
-      return {
-        artifactType: 'SRS', artifactId: srs.id,
-        missingEdge: 'derived_from → PRD',
-        description: `SRS #${srs.id} has no 'derived_from' trace to PRD.`,
-      };
-    }
-
-    const ucs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='UC' ORDER BY id`,
-    ).all(epicId) as Array<{ id: number }>;
-    for (const uc of ucs) {
-      if (!hasEdgeToType(uc.id, 'derived_from', 'PRD')) {
-        return {
-          artifactType: 'UC', artifactId: uc.id,
-          missingEdge: 'derived_from → PRD',
-          description: `UC #${uc.id} has no 'derived_from' trace to PRD.`,
-        };
-      }
-      if (!hasEdgeToType(uc.id, 'covers', 'FR')) {
-        return {
-          artifactType: 'UC', artifactId: uc.id,
-          missingEdge: 'covers → FR',
-          description: `UC #${uc.id} has no 'covers' trace to any FR.`,
-        };
-      }
-    }
-
-    const acs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='AC' ORDER BY id`,
-    ).all(epicId) as Array<{ id: number }>;
-    for (const ac of acs) {
-      const hasFr = hasEdgeToType(ac.id, 'derived_from', 'FR');
-      const hasNfr = hasEdgeToType(ac.id, 'derived_from', 'NFR');
-      if (!hasFr && !hasNfr) {
-        return {
-          artifactType: 'AC', artifactId: ac.id,
-          missingEdge: 'derived_from → FR/NFR',
-          description: `AC #${ac.id} has no 'derived_from' trace to any FR or NFR.`,
-        };
-      }
-      if (hasFr && !hasEdgeToType(ac.id, 'derived_from', 'UC')) {
-        return {
-          artifactType: 'AC', artifactId: ac.id,
-          missingEdge: 'derived_from → UC',
-          description: `FR-derived AC #${ac.id} has no 'derived_from' trace to a UC.`,
         };
       }
     }

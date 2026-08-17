@@ -69,7 +69,6 @@ function fakeGraph(overrides = {}) {
         dirty: state.scopedBaselineDirty ?? state.baselineDirty,
       };
     },
-    findFirstTraceabilityGap(_epicId) { return state.traceGap; },
     findFirstTraceabilityGapForLifecycle(_epicId, _lifecycleRunId) { return state.scopedTraceGap ?? state.traceGap; },
     areTasksReady(epicId, lifecycleRunId) {
       state.areTasksReadyCalls.push([epicId, lifecycleRunId]);
