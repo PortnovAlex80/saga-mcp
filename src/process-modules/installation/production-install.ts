@@ -46,6 +46,10 @@ import {
   type StoredModulePackage,
 } from './index.js';
 import { asModuleInstallationId } from './domain/installation.js';
+import {
+  PackageInstallerError,
+  MODULE_INSTALLATION_RESTART_REQUIRED,
+} from './domain/installer.js';
 
 /**
  * Read the resources declared in a manifest's `resourceIndex` from disk and
@@ -201,10 +205,44 @@ export async function installModulePackages(
     // changed since the last run, retire the old slot and reinstall (CGAD P18:
     // resume is about the work on the card, not the toolset version — the
     // workplace's artifacts/submissions/tasks in the DB are unchanged).
-    const record = await installPackage(
-      manifest, resources, { store, repo: repository },
-      { replaceOnDigestChange: true },
-    );
+    let record;
+    try {
+      record = await installPackage(
+        manifest, resources, { store, repo: repository },
+        { replaceOnDigestChange: true },
+      );
+    } catch (error) {
+      // K5 (Saga Core Renewal): handler implementations were rewritten under
+      // stable logicalIds. Route EXPLICITLY instead of a raw host crash: the
+      // refusal names the non-terminal ProcessRuns that still pin the old
+      // package - each needs an explicit new lifecycle (or an operator
+      // decision); terminal/accepted history is never mutated.
+      if (
+        error instanceof PackageInstallerError
+        && error.code === MODULE_INSTALLATION_RESTART_REQUIRED
+      ) {
+        const oldDigest = (error.detail as { existing?: { packageDigest?: string } })?.existing
+          ?.packageDigest;
+        const processRunsTable = db.prepare(
+          `SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_process_runs'`,
+        ).get();
+        const pinnedRuns = oldDigest && processRunsTable
+          ? db.prepare(
+              `SELECT COUNT(*) AS n FROM factory_process_runs
+                WHERE package_digest=? AND status NOT IN ('completed','failed','cancelled')`,
+            ).get(oldDigest) as { n: number }
+          : { n: 0 };
+        throw new Error(
+          `PRODUCTION_RESUME_RESTART_REQUIRED: ${name} handler implementations `
+          + `changed under stable logicalIds (pinned package ${String(oldDigest ?? '?').slice(0, 12)}…, `
+          + `${pinnedRuns.n} non-terminal ProcessRun(s) pin it). Resume is refused: `
+          + 'start an explicit new lifecycle for each pinned run; '
+          + 'terminal and accepted work stays immutable.',
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     records.set(name, record);
     packages.set(record.packageDigest, await store.read(record.packageDigest));
   }
