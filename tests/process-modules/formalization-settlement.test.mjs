@@ -60,8 +60,23 @@ function fakeGraph(overrides = {}) {
         ucs: state.ucs, acs: state.acs, srs: state.srs,
       };
     },
+    readAcceptedArtifactsForLifecycle(_epicId, _lifecycleRunId) {
+      // ADR-078 (K6): the fake surfaces lifecycle-scoped state so tests can
+      // simulate dead-run exclusion; defaults mirror the epic-scoped view.
+      return {
+        prd: state.prd, frs: state.frs, nfrs: state.nfrs, rules: state.rules,
+        ucs: state.ucs, acs: state.scopedAcs ?? state.acs, srs: state.srs,
+      };
+    },
     readAcceptanceBaselineHash(_epicId) {
       return { hash: state.baselineHash, clean: state.baselineClean, dirty: state.baselineDirty };
+    },
+    readAcceptanceBaselineHashForLifecycle(_epicId, _lifecycleRunId) {
+      return {
+        hash: state.scopedBaselineHash ?? state.baselineHash,
+        clean: state.scopedBaselineClean ?? state.baselineClean,
+        dirty: state.scopedBaselineDirty ?? state.baselineDirty,
+      };
     },
     findFirstTraceabilityGap(_epicId) { return state.traceGap; },
     areTasksReady(epicId, lifecycleRunId) {

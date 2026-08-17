@@ -116,6 +116,30 @@ export type FormalizationManagedProductionLedger = ManagedProductionLedger;
  */
 export interface FormalizationArtifactGraphPort {
   /** Load the accepted PRD/FR/NFR/RULE/UC/AC/SRS artifact ids for an epic. */
+  /**
+   * ADR-078 (K6): the EXACT accepted-material read, scoped to the CURRENT
+   * lifecycle run through the ownership chain. Same shape as
+   * {@link readAcceptedArtifacts}; material of other lifecycle runs under
+   * the same epic drops out entirely.
+   */
+  readAcceptedArtifactsForLifecycle(epicId: number, lifecycleRunId: number): {
+    prd: number | null;
+    frs: readonly number[];
+    nfrs: readonly number[];
+    rules: readonly number[];
+    ucs: readonly number[];
+    acs: readonly number[];
+    srs: number | null;
+  };
+  /**
+   * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash. Same shape as
+   * {@link readAcceptanceBaselineHash}.
+   */
+  readAcceptanceBaselineHashForLifecycle(epicId: number, lifecycleRunId: number): {
+    hash: string;
+    clean: boolean;
+    dirty: readonly number[];
+  };
   readAcceptedArtifacts(epicId: number): {
     prd: number | null;
     frs: readonly number[];
