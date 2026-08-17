@@ -118,3 +118,31 @@ test.after(() => {
   closeDb();
   rmSync(path.dirname(dbPath), { recursive: true, force: true });
 });
+
+test('K6 negative: a lifecycle with NO scoped material returns EMPTY, not epic fallback', () => {
+  const graph = new SqliteFormalizationArtifactGraph(db);
+  const lifecycleThree = 999; // no stage runs, no ledger rows
+  const result = graph.readAcceptedArtifactsForLifecycle(EPIC, lifecycleThree);
+  assert.equal(result.prd, null);
+  assert.deepEqual(result.acs, []);
+  assert.deepEqual(result.frs, []);
+  assert.equal(result.srs, null);
+  const baseline = graph.readAcceptanceBaselineHashForLifecycle(EPIC, lifecycleThree);
+  // Empty AC set hashes to a well-defined value and reports clean=true with
+  // dirty=[] — the POLICY layer owns failing closed on emptiness.
+  assert.deepEqual(baseline.dirty, []);
+});
+
+test('K6 negative: material produced ONLY in another lifecycle is invisible', () => {
+  const { idOf } = { idOf: null };
+  const graph = new SqliteFormalizationArtifactGraph(db);
+  // Lifecycle 1 owns PRD-OLD/AC-OLD ONLY. Asking for lifecycle 1 must NOT
+  // surface lifecycle 2's richer material (the pre-K6 behavior mixed them).
+  const onlyL1 = graph.readAcceptedArtifactsForLifecycle(EPIC, 1);
+  const rows = db.prepare(`SELECT id, code FROM artifacts WHERE code IN ('PRD-OLD','AC-OLD','PRD-NEW')`).all();
+  const oldPrd = rows.find(r => r.code === 'PRD-OLD').id;
+  const newPrd = rows.find(r => r.code === 'PRD-NEW').id;
+  assert.equal(onlyL1.prd, oldPrd);
+  assert.notEqual(onlyL1.prd, newPrd);
+  assert.equal(onlyL1.acs.length, 1, `lifecycle 1 sees exactly its own AC, got ${JSON.stringify(onlyL1.acs)}`);
+});
