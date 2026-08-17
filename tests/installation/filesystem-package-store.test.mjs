@@ -74,7 +74,9 @@ function makeValidManifest() {
       },
     ],
     handlerRefs: [
-      { logicalId: 'draft-handler', version: '1.0.0', digest: PENDING },
+      // K3: handlers pin real implementation digests; PENDING is
+      // resources-only.
+      { logicalId: 'draft-handler', version: '1.0.0', digest: 'a'.repeat(64) },
     ],
     inputContractRef: makeContractRef('synthetic.marketing.input.v1'),
     outputContractRef: makeContractRef('synthetic.marketing.output.v1'),

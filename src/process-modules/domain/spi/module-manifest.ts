@@ -69,8 +69,10 @@ export type { ResourceIndexEntry, ResourceKind };
  *
  * @property logicalId  Module-namespaced handler identifier.
  * @property version    Handler implementation version (semver-ish).
- * @property digest     `sha256Hex` of the handler's canonical bytes, OR the
- *                      documented placeholder `'pending@wave-2'`.
+ * @property digest     `sha256` of the handler implementation's bytes. A
+ *                      placeholder is NOT accepted for handlers (K3): the
+ *                      runtime workshop manifests stamp the real digest of
+ *                      the installation module that registers the handlers.
  */
 export interface HandlerRef {
   readonly logicalId: string;
@@ -353,6 +355,17 @@ export function validateProcessModuleManifest(
       }
       if (!isNonEmptyString(entry.digest)) {
         errors.push(err('HANDLER_DIGEST_INVALID', `${path}.digest`, 'digest must be a non-empty string'));
+      } else if (entry.digest === PENDING_DIGEST) {
+        // K3 (Saga Core Renewal): resources may carry the authoring-time
+        // placeholder (the installer stamps real bytes at install, Step 3.5),
+        // but a handler reference IS the pin of the executable implementation
+        // — a placeholder here means the package cannot prove which code it
+        // executes, and nothing may install it.
+        errors.push(err(
+          'HANDLER_DIGEST_PENDING',
+          `${path}.digest`,
+          `handler digest must be a real implementation digest; '${PENDING_DIGEST}' is not accepted for handlers (resources only)`,
+        ));
       }
     });
     for (const dup of duplicateLogicalIds(m.handlerRefs as { logicalId: unknown }[])) {

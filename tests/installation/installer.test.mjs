@@ -349,7 +349,9 @@ function buildMarketingManifest({ withResources = true, withHandlers = true } = 
         {
           logicalId: 'draft-campaign-handler',
           version: '0.1.0',
-          digest: PENDING_LOCK_DIGEST,
+          // K3: handlers must pin real implementation digests — the
+          // placeholder is resources-only (the installer stamps those).
+          digest: digestBytes(new TextEncoder().encode('lm-marketing handler implementation')),
         },
       ]
     : [];
@@ -418,7 +420,12 @@ test('computeDependencyLock: drift in a referenced digest changes lockDigest', (
 
 test('computeDependencyLock: accepts placeholder pending digests by default', () => {
   const manifest = buildMarketingManifest();
-  // All digests are PENDING_LOCK_DIGEST; default flagPendingDigests=true keeps them.
+  // K3: pending digests are a RESOURCE-only authoring placeholder (handlers
+  // must be real); keep the lock's placeholder tolerance exercised through a
+  // resource entry.
+  manifest.resourceIndex = manifest.resourceIndex.map((r, i) =>
+    i === 0 ? { ...r, digest: PENDING_LOCK_DIGEST } : r,
+  );
   const lock = computeDependencyLock(manifest);
   const pending = lock.entries.filter((e) => e.digest === PENDING_LOCK_DIGEST);
   assert.ok(pending.length > 0, 'expected pending entries to be retained');
@@ -426,6 +433,9 @@ test('computeDependencyLock: accepts placeholder pending digests by default', ()
 
 test('computeDependencyLock: flagPendingDigests=false rejects placeholder digests', () => {
   const manifest = buildMarketingManifest();
+  manifest.resourceIndex = manifest.resourceIndex.map((r, i) =>
+    i === 0 ? { ...r, digest: PENDING_LOCK_DIGEST } : r,
+  );
   assert.throws(
     () => computeDependencyLock(manifest, { flagPendingDigests: false }),
     (err) => err.name === 'PendingDigestError' && err.entries.length > 0,
