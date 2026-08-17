@@ -736,3 +736,50 @@ test('fixture: buildMarketingManifest passes validateProcessModuleManifest', () 
   const result = validateProcessModuleManifest(manifest);
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
 });
+
+// ---------------------------------------------------------------------------
+// K5 (Saga Core Renewal): rewritten handler under a stable logicalId must
+// fail the drift path with the TYPED restart-required error — even with
+// replaceOnDigestChange: true (the previously-silent substitution path).
+// ---------------------------------------------------------------------------
+
+test('K5: rewritten handler drift fails closed even with replaceOnDigestChange', async () => {
+  const { MODULE_INSTALLATION_RESTART_REQUIRED } = await import(
+    '../../dist/process-modules/installation/domain/installer.js'
+  );
+  const store = createFakeStore();
+  const repo = createFakeRepo();
+  const installer = new PackageInstaller();
+
+  const handlerV1 = digestBytes(new TextEncoder().encode('handler impl v1'));
+  const handlerV2 = digestBytes(new TextEncoder().encode('handler impl v2 (REWRITTEN)'));
+  const manifestV1 = buildMarketingManifest();
+  manifestV1.handlerRefs = [
+    { logicalId: 'draft-campaign-handler', version: '0.1.0', digest: handlerV1 },
+  ];
+  const resources = buildMarketingResources();
+
+  const first = await installer.installPackage(manifestV1, resources, { store, repo });
+  assert.equal(first.status, 'active');
+
+  const manifestV2 = JSON.parse(JSON.stringify(manifestV1));
+  manifestV2.handlerRefs[0].digest = handlerV2;
+
+  // Resource bytes identical; ONLY the handler implementation digest moved.
+  await assert.rejects(
+    () => installer.installPackage(manifestV2, resources, {
+      store, repo, replaceOnDigestChange: true,
+    }),
+    (err) => err.code === MODULE_INSTALLATION_RESTART_REQUIRED
+      && err.message.includes('draft-campaign-handler'),
+    'the previously-silent retire-and-resume path must fail closed',
+  );
+
+  // The active slot was NOT retired or replaced: the pinned record survives.
+  const stillActive = await repo.getActiveByNameVersion(
+    manifestV1.definition.identity.name,
+    manifestV1.definition.identity.version,
+  );
+  assert.ok(stillActive, 'existing active installation untouched');
+  assert.equal(stillActive.packageDigest, first.packageDigest);
+});
