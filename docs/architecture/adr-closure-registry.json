@@ -786,6 +786,19 @@
       "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
       "successor": null,
       "notes": "K6 implemented: exact queries live across the settlement vertical. K7 closed: the second vertical (traceability gap read) migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2). Closure theorem is deterministic on both axes: (1) reintroducing an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the legacy freeze category epic-scoped-material-read (set enforced by legacy-expansion-freeze.test.mjs); (2) reintroducing cross-run contamination fails the self-flipping contamination theorem (tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle). Remaining epic-scoped reads in the baseline (brief-provisioning-ports, formalization-package-adapters) are classified lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (LEGACY-INVENTORY.md) - outside this ADR's settlement/traceability authority scope."
+    },
+    {
+      "adr": "079",
+      "file": "079-exact-replay-capsule-semantic-key.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "N/N-1/N-2 capsule matrix on the exact semantic key; newest-wins defects (paused protocol run, recovery case, outcome certificate, guarded readLatest) cut to fail-closed/exact reads; model-choice orthogonality",
+      "successor": null,
+      "notes": "K8 commit 1: decision recorded. Claim binding audited already exact-semantic (Phase 7); ADR formalizes key sufficiency transitivity (packageDigest freezes check plan/contract/handlers; semanticInputDigest embeds upstream identities; subjectProductionDigest binds reviewer subject via authority head)."
     }
   ]
 }
