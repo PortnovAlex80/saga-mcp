@@ -49,10 +49,10 @@
  * which handler bytes it executed.
  */
 
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { handlerImplementationDigest } from '../../shared/handler-implementation-digest.js';
 
 import type {
   HandlerRef,
@@ -351,34 +351,16 @@ const HANDLER_VERSION = '1.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * sha256 of a handler implementation module's raw bytes (same formula as
- * `computeResourceDigest` in package-store.ts — raw bytes via crypto, NOT
- * canonical-json `sha256Hex`). `relImportSpecifier` uses the same relative
- * `.js` specifier a sibling import of the handler module would use, so the
- * digest covers the EXACT module the runtime imports and executes. A missing
- * file fails module load — the manifest must never load un-provably (same
- * fail-closed contract as `validateProcessModuleManifest` throwing at load).
- */
-function handlerImplementationDigest(relImportSpecifier: string): string {
-  const implPath = path.join(HERE, relImportSpecifier);
-  try {
-    return createHash('sha256').update(readFileSync(implPath)).digest('hex');
-  } catch (e) {
-    throw new Error(
-      `cannot content-address discovery handler implementation `
-      + `'${relImportSpecifier}' (resolved: ${implPath}): ${(e as Error).message}`,
-    );
-  }
-}
-
-/**
  * Content address of `createDiscoveryKernelHandlers` — the module the
  * composition root calls to register every handler pinned below. All six
  * handlers are created by this single installation module, so they share its
- * digest; editing ANY of them changes it.
+ * digest; editing ANY of them changes it. Computed by the canonical shared
+ * digester (K3): sha256 over the module's raw bytes, resolved from HERE.
  */
 const DISCOVERY_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
+  HERE,
   '../../../../modules/discovery/application/discovery-installation.js',
+  'discovery',
 );
 
 function discoveryHandlerRef(logicalId: string): HandlerRef {
