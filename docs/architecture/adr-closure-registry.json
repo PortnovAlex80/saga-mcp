@@ -62,7 +62,7 @@
       "evidenceOwner": "K14",
       "principalProof": "Canonical gateway then physical legacy runtime deletion",
       "successor": null,
-      "notes": null
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
     },
     {
       "adr": "030",
@@ -77,7 +77,7 @@
       "evidenceOwner": "K14",
       "principalProof": "All module families via Workplace/Cell execution only",
       "successor": null,
-      "notes": null
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
     },
     {
       "adr": "031",
@@ -91,7 +91,7 @@
       "evidenceOwner": "K16",
       "principalProof": "Zero runtime, schema, API, CLI legacy surface",
       "successor": null,
-      "notes": null
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
     },
     {
       "adr": "032",
@@ -406,7 +406,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Exact reads, replay, ownership, effects, Gate commit, accepted head",
       "successor": null,
-      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits)."
+      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
     },
     {
       "adr": "054",
@@ -690,7 +690,7 @@
       "evidenceOwner": "K6",
       "principalProof": "Complete exact read, replay, effect, acceptance, head cutover",
       "successor": null,
-      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit."
+      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
     },
     {
       "adr": "074",
