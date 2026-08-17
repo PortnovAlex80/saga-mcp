@@ -772,6 +772,20 @@
       "principalProof": "Named canonical RuntimePackageFingerprint (frozen formula), persisted at lifecycle start, rehydrated on resume; one compatibility surface via classifyResumeCompatibility",
       "successor": null,
       "notes": "K4 implemented: RuntimePackageFingerprint typed entity + runtimeFingerprintOf(record) rehydration (ADR-77 s3) + single-surface architecture ratchet (s4) + full mutation-matrix proofs. Closure gate (all compatibility paths consume the fingerprint) completes at K5."
+    },
+    {
+      "adr": "078",
+      "file": "078-lifecycle-scoped-accepted-material-query.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K6",
+        "K7"
+      ],
+      "evidenceOwner": "K6",
+      "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
+      "successor": null,
+      "notes": "K6 decision. Freeze contract; theorem + repository + cutover commits follow."
     }
   ]
 }
