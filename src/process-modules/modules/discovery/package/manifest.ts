@@ -52,7 +52,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { handlerImplementationDigest } from '../../shared/handler-implementation-digest.js';
+import { handlerImplementationDigest } from '../../../installation/domain/handler-implementation-digest.js';
 
 import type {
   HandlerRef,

@@ -5,7 +5,7 @@ import {
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../../modules/development/domain/development-kernel-ports.js';
 import { developmentVerificationContinuationProcessModule } from '../development-verification-continuation-process-module.js';
 import { developmentPackageManifest } from './manifest.js';
-import { handlerImplementationDigest } from '../../shared/handler-implementation-digest.js';
+import { handlerImplementationDigest } from '../../../installation/domain/handler-implementation-digest.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

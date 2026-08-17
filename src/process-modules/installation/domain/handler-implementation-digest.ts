@@ -1,4 +1,4 @@
-// src/process-modules/modules/shared/handler-implementation-digest.ts
+// src/process-modules/installation/domain/handler-implementation-digest.ts
 //
 // K3 (Saga Core Renewal) — the ONE canonical handler-implementation digester.
 //

@@ -18,7 +18,7 @@ import test from 'node:test';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { handlerImplementationDigest } from '../../dist/process-modules/modules/shared/handler-implementation-digest.js';
+import { handlerImplementationDigest } from '../../dist/process-modules/installation/domain/handler-implementation-digest.js';
 
 function fixtureDir(root, name, content) {
   const dir = path.join(root, name);
