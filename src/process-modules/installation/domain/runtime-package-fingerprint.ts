@@ -23,6 +23,7 @@
 import { computePackageDigest } from './package-store.js';
 import type { ResourceBlob } from './package-store.js';
 import type { ProcessModuleManifest } from '../../domain/spi/module-manifest.js';
+import type { ModuleInstallationRecord } from './installation.js';
 
 /**
  * The named, canonical package identity (ADR-077).
@@ -66,6 +67,34 @@ export function computeRuntimePackageFingerprint(
     components: {
       manifestFormatVersion: manifest.manifestFormatVersion,
       moduleRef: `${manifest.definition.identity.name}@${manifest.definition.identity.version}`,
+      handlerDigests,
+      resourceDigests,
+    },
+  };
+}
+
+/**
+ * Rehydrate the fingerprint of a PERSISTED installation record (ADR-077 §3).
+ *
+ * The reconstruction reads ONLY the record's persisted snapshot (manifest
+ * snapshot, pinned handler refs, stamped resource index, package digest) —
+ * never the currently installed package. The currently installed package is
+ * a CANDIDATE compared against this rehydrated pin by the compatibility
+ * policy (K5). Because every fingerprint input is persisted, the rehydrated
+ * fingerprint is byte-identical to the one computed at install time.
+ */
+export function runtimeFingerprintOf(record: ModuleInstallationRecord): RuntimePackageFingerprint {
+  const handlerDigests = [...record.handlerRefs]
+    .map(ref => ({ logicalId: ref.logicalId, digest: ref.digest }))
+    .sort((a, b) => (a.logicalId < b.logicalId ? -1 : a.logicalId > b.logicalId ? 1 : 0));
+  const resourceDigests = [...record.resourceIndex]
+    .map(entry => ({ logicalId: entry.logicalId, digest: entry.digest }))
+    .sort((a, b) => (a.logicalId < b.logicalId ? -1 : a.logicalId > b.logicalId ? 1 : 0));
+  return {
+    digest: record.packageDigest,
+    components: {
+      manifestFormatVersion: record.manifestSnapshot.manifestFormatVersion,
+      moduleRef: `${record.name}@${record.version}`,
       handlerDigests,
       resourceDigests,
     },

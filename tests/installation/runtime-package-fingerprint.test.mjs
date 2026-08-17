@@ -19,7 +19,7 @@ const { default: lmMarketingModule } = await import(
 const { computePackageDigest } = await import(
   '../../dist/process-modules/installation/domain/package-store.js'
 );
-const { computeRuntimePackageFingerprint } = await import(
+const { computeRuntimePackageFingerprint, runtimeFingerprintOf } = await import(
   '../../dist/process-modules/installation/domain/runtime-package-fingerprint.js'
 );
 
@@ -95,4 +95,29 @@ test('any input change changes the digest (definition, handlers, resources)', ()
     [...resources, { logicalId: 'res-c', kind: 'skill', bytes: new TextEncoder().encode('c'), digest: 'c'.repeat(64) }],
   ).digest;
   assert.notEqual(base, resourceChanged);
+});
+
+test('runtimeFingerprintOf rehydrates byte-identically from the persisted record (ADR-77 §3)', () => {
+  const { manifest, resources } = buildFixture();
+  const atInstall = computeRuntimePackageFingerprint(manifest, resources);
+
+  // A record as it comes back from the installation repository: every
+  // fingerprint input persisted in the snapshot.
+  const persistedRecord = {
+    id: 1,
+    name: manifest.definition.identity.name,
+    version: manifest.definition.identity.version,
+    packageDigest: atInstall.digest,
+    manifestSnapshot: JSON.parse(JSON.stringify(manifest)),
+    storeLocation: '/store/x',
+    resourceIndex: JSON.parse(JSON.stringify(manifest.resourceIndex)),
+    handlerRefs: JSON.parse(JSON.stringify(manifest.handlerRefs)),
+    dependencyLock: null,
+    status: 'active',
+    installedAt: '2026-08-17T00:00:00Z',
+  };
+  const rehydrated = runtimeFingerprintOf(persistedRecord);
+
+  assert.equal(rehydrated.digest, atInstall.digest, 'digest rehydrates from the pinned record');
+  assert.deepEqual(rehydrated.components, atInstall.components, 'components rehydrate byte-identically');
 });
