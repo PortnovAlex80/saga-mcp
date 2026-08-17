@@ -568,7 +568,14 @@ export class SqliteDevelopmentModuleStore implements
       'development-implementation',
       [DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA, SOURCE_CHANGE_CANDIDATE_SCHEMA],
     );
-    const byKey = new Map(products.map(product => [product.payload.workItemKey, product]));
+    // Match by the kernel-authoritative item key, not the LM-authored payload
+    // field (see implementationProductItemKey): a re-hired worker once stamped
+    // the 24-hex workplace work_key into payload.workItemKey and this matcher
+    // silently dropped the item (units epic-8 cert#37, tips epic-5 cert#40).
+    const byKey = new Map(products.map(product => [
+      implementationProductItemKey(product),
+      product,
+    ]));
     const results = taskGraph.implementationItems.map(item => {
       const product = byKey.get(item.key);
       if (!product) {
@@ -1156,6 +1163,32 @@ function parseMetadata(raw: string): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Kernel-authoritative key for one accepted implementation product.
+ *
+ * payload.workItemKey is LM-authored and NOT authority: a re-hired worker
+ * stamped the 24-hex workplace work_key there, the strict byKey matcher then
+ * dropped the item, and settlement died on the synthetic placeholder
+ * (taskId:0) — units epic-8 cert#37, tips epic-5 cert#40. The authority is
+ * the cell_input_item the Factory projected into the ACCEPTED author task's
+ * metadata (the same current_task row the products SQL already joins via
+ * h.accepted_author_task_id). Legacy products whose author task carries no
+ * readable cell_input_item.key fall back to the payload key (old data only).
+ */
+function implementationProductItemKey(product: {
+  taskMetadata: unknown;
+  payload: { workItemKey: string };
+}): string {
+  const item = isRecord(product.taskMetadata)
+    ? product.taskMetadata.cell_input_item
+    : undefined;
+  if (isRecord(item)) {
+    const key = item.key;
+    if (typeof key === 'string' && key.trim() !== '') return key;
+  }
+  return product.payload.workItemKey;
 }
 
 function stringValue(value: unknown): string {
