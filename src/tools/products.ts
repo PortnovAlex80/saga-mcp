@@ -81,6 +81,13 @@ const productSubmit: ToolHandler = args => {
             contentHash: discoveryProjection.contentHash,
           },
           executionRef: result.record.executionId,
+          // Instance key: each accepted projection row is its own product.
+          // Without it the key collapses to the kind singleton and a retry
+          // from a NEW execution (whose projection legitimately produces a
+          // new proposalId) violates UNIQUE(process_run_id, product_kind,
+          // product_key) — the artifact-ref bridge uses the same
+          // `artifact:<id>` convention for exactly this reason.
+          productKey: `proposal:${discoveryProjection.proposalId}`,
         });
       }
     }
