@@ -76,3 +76,52 @@ test('resources may still carry the documented placeholder (installer stamps the
   const validation = validateProcessModuleManifest(manifest);
   assert.equal(validation.ok, true, JSON.stringify(validation.errors?.map(e => `${e.code}:${e.message}`)));
 });
+
+// ---------------------------------------------------------------------------
+// K5: rewritten handler under a stable logicalId must fail the install
+// drift path with the typed restart-required error — never a silent retire.
+// ---------------------------------------------------------------------------
+
+test('K5: installer-classified rewritten handler drift surfaces as restart-required', async () => {
+  const { classifyResumeCompatibility } = await import(
+    '../../dist/process-modules/installation/domain/resume-compatibility-policy.js'
+  );
+  const digestA = 'a'.repeat(64);
+  const digestB = 'b'.repeat(64);
+  const record = {
+    id: 1,
+    name: 'solution-development',
+    version: '1.0.0',
+    packageDigest: 'old-pkg',
+    manifestSnapshot: {
+      manifestFormatVersion: '1.0.0',
+      definition: { identity: { name: 'solution-development', version: '1.0.0', displayName: 'D', description: 'd' } },
+      inputContractRef: { schemaId: 'in.v1', version: '1', digest: 'i'.repeat(64) },
+      outputContractRef: { schemaId: 'out.v1', version: '1', digest: 'o'.repeat(64) },
+      handlerRefs: [
+        { logicalId: 'dev-kernel-1', version: '1.0.0', digest: digestA },
+        { logicalId: 'dev-kernel-2', version: '1.0.0', digest: 'c'.repeat(64) },
+      ],
+      resourceIndex: [],
+      nodeProtocols: [],
+    },
+    status: 'active',
+    installedAt: '2026-08-01T00:00:00Z',
+    storeLocation: '/tmp/pkg',
+    resourceIndex: [],
+    handlerRefs: [
+      { logicalId: 'dev-kernel-1', version: '1.0.0', digest: digestA },
+      { logicalId: 'dev-kernel-2', version: '1.0.0', digest: 'c'.repeat(64) },
+    ],
+    dependencyLock: { entries: [], lockDigest: 'lock' },
+  };
+  const attempted = JSON.parse(JSON.stringify(record.manifestSnapshot));
+  attempted.handlerRefs[0].digest = digestB;
+
+  const verdict = classifyResumeCompatibility(record, 'new-pkg', attempted);
+  assert.equal(verdict.outcome, 'restart-required');
+  assert.deepEqual(verdict.changedHandlerImplementations, [
+    'dev-kernel-1: aaaaaaaaaaaa… → bbbbbbbbbbbb…',
+  ]);
+  assert.ok(verdict.reason.includes('rewritten'), `reason should name the rewrite: ${verdict.reason}`);
+});

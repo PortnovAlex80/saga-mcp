@@ -81,6 +81,13 @@ export const MODULE_INSTALLATION_UNDECLARED_RESOURCE = 'MODULE_INSTALLATION_UNDE
 /** `validateProcessModuleManifest` returned `{ ok: false }`. */
 export const MODULE_INSTALLATION_MANIFEST_INVALID = 'MODULE_INSTALLATION_MANIFEST_INVALID';
 /**
+ * K5 (Saga Core Renewal): the attempted package rewrites handler
+ * implementations under stable logicalIds. Resume is not automatic — no
+ * silent slot replacement; route to an explicit new lifecycle or refusal.
+ */
+export const MODULE_INSTALLATION_RESTART_REQUIRED = 'MODULE_INSTALLATION_RESTART_REQUIRED';
+
+/**
  * CONVEYOR Wave 8 — the package digest drifted AND the module contract changed
  * (identity version, input/output schema, or handler surface). A resumed
  * workplace would see a different contract; the runtime must pause without
@@ -366,6 +373,22 @@ export class PackageInstaller {
             `${moduleName}@${moduleVersion}: package digest drifted AND the module contract changed `
             + `(${compatibility.changedFields.join('; ')}). A resumed workplace would see a different `
             + `contract — pause without mutating existing work (CONVEYOR Wave 8).`,
+            { existing: existingActive, attempted: attemptedPackageDigest, compatibility },
+          );
+        }
+        if (compatibility.outcome === 'restart-required') {
+          // K5 (Saga Core Renewal): handler implementations were REWRITTEN
+          // under stable logicalIds. Retiring the old slot and resuming would
+          // execute rewritten code under the same pin — the exact silent
+          // incompatibility the audit flagged. Fail closed: no silent
+          // replacement; the runtime routes to an explicit new lifecycle or
+          // a refusal (ADR-077 s3).
+          throw new PackageInstallerError(
+            MODULE_INSTALLATION_RESTART_REQUIRED,
+            `${moduleName}@${moduleVersion}: handler implementation(s) changed under stable `
+            + `logicalIds (${compatibility.changedHandlerImplementations.join('; ')}). `
+            + 'Resume is not automatic — start an explicit new lifecycle or refuse; '
+            + 'existing terminal and accepted work stays immutable.',
             { existing: existingActive, attempted: attemptedPackageDigest, compatibility },
           );
         }
