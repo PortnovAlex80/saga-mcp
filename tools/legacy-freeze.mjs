@@ -154,10 +154,13 @@ function snapshot() {
   process.stdout.write(`snapshot written: ${Object.entries(scan.categories).map(([k, v]) => `${k}=${v.length}`).join(' ')} latestCandidate=${scan.latestCandidateRefs} tables=${scan.schema.tableCount}\n`);
 }
 
-const mode = process.argv[2];
-if (mode === '--report' || mode === '--check') report();
-else if (mode === '--snapshot') snapshot();
-else {
-  process.stderr.write('usage: node tools/legacy-freeze.mjs --report | --check | --snapshot\n');
-  process.exitCode = 2;
+// CLI guard: run only when executed directly, not when imported by tests.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const mode = process.argv[2];
+  if (mode === '--report' || mode === '--check') report();
+  else if (mode === '--snapshot') snapshot();
+  else {
+    process.stderr.write('usage: node tools/legacy-freeze.mjs --report | --check | --snapshot\n');
+    process.exitCode = 2;
+  }
 }
