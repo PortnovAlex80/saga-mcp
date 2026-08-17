@@ -27,15 +27,27 @@ export const CLOSURE_STATES = [
 
 const DECISION_FILE_RE = /^\d{3}-[a-z0-9][a-z0-9-]*\.md$/;
 
-/** Parse the leading token of the `**Status:**` header (case-normalized). */
+/**
+ * Parse the leading token of the Status header (case-normalized).
+ *
+ * The corpus mixes `- **Status:** Accepted`, `**Status:** Accepted`,
+ * plain `Status: accepted`, and `Superseded by NNN` forms; a small number
+ * of early files carry no status line at all (recorded in the registry as
+ * `unspecified` rather than guessed).
+ */
 export function parseDecisionStatus(content) {
-  const m = content.match(/\*\*\s*Status\s*:\s*\*\*\s*\**\s*([A-Za-z]+)/);
-  return m ? m[1].toLowerCase() : null;
+  for (const rawLine of content.split(/\r?\n/)) {
+    if (!/^\s*-?\s*\**\s*Status\b/i.test(rawLine)) continue;
+    const line = rawLine.replace(/[*_]/g, '');
+    const m = line.match(/\bStatus\s*:\s*([A-Za-z]+)/i);
+    if (m) return m[1].toLowerCase();
+  }
+  return null;
 }
 
-/** Parse the title from the `# ADR-NNN: Title` heading. */
+/** Parse the title from the `# ADR-NNN: Title` / `# NNN. Title` heading. */
 export function parseDecisionTitle(content) {
-  const m = content.match(/^#\s+ADR-\d+:\s+(.+)$/m);
+  const m = content.match(/^#\s+(?:ADR-)?\d{3}[.:—-]?\s+(.+)$/m);
   return m ? m[1].trim() : null;
 }
 
@@ -144,17 +156,17 @@ export function validateRegistry({ decisionsDir, registryPath }) {
       });
       continue;
     }
-    if (fileStatus === null) {
-      violations.push({
-        code: 'FILE_STATUS_UNPARSEABLE',
-        adr,
-        detail: `${fileName} has no parseable **Status:** header`,
-      });
-    }
     const registryStatus = typeof entry.decisionStatus === 'string'
       ? entry.decisionStatus.toLowerCase()
       : null;
-    if (fileStatus !== null && registryStatus !== fileStatus) {
+    if (fileStatus === null && registryStatus !== 'unspecified') {
+      violations.push({
+        code: 'FILE_STATUS_UNPARSEABLE',
+        adr,
+        detail: `${fileName} has no parseable Status header and the registry does not record "unspecified"`,
+      });
+    }
+    if (fileStatus !== null && registryStatus !== null && registryStatus !== 'unspecified' && registryStatus !== fileStatus) {
       violations.push({
         code: 'STATUS_MISMATCH',
         adr,

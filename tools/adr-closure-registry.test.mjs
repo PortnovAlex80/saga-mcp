@@ -66,6 +66,8 @@ function codes(result) {
 test('parseDecisionStatus extracts the leading token and lowercases it', () => {
   assert.equal(parseDecisionStatus('- **Status:** Accepted (operator decision)'), 'accepted');
   assert.equal(parseDecisionStatus('**Status:** Proposed'), 'proposed');
+  assert.equal(parseDecisionStatus('Status: accepted'), 'accepted');
+  assert.equal(parseDecisionStatus('- **Status:** Superseded by 038'), 'superseded');
   assert.equal(parseDecisionStatus('no status header at all'), null);
 });
 
