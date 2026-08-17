@@ -791,14 +791,14 @@
       "adr": "079",
       "file": "079-exact-replay-capsule-semantic-key.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K8"
       ],
       "evidenceOwner": "K8",
       "principalProof": "N/N-1/N-2 capsule matrix on the exact semantic key; newest-wins defects (paused protocol run, recovery case, outcome certificate, guarded readLatest) cut to fail-closed/exact reads; model-choice orthogonality",
       "successor": null,
-      "notes": "K8 commit 1: decision recorded. Claim binding audited already exact-semantic (Phase 7); ADR formalizes key sufficiency transitivity (packageDigest freezes check plan/contract/handlers; semanticInputDigest embeds upstream identities; subjectProductionDigest binds reviewer subject via authority head)."
+      "notes": "K8 closed at boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). Closure theorems, all deterministic: (1) N/N-1/N-2 semantic-key matrix (replay-semantic-key-theorem.test.mjs) - alias multiplicity is schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref), reviewer subjects isolate per lifecycle, divergent payloads fail closed, zero is a typed miss; (2) newest-wins hardening (newest-wins-hardening.test.mjs) - paused/active protocol picks, recovery-case picks, and outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers); (3) dispatch routing typed (replay-dispatch-routing.test.mjs) - ineligibility is durable-evidence-derived and workplace-scoped, binder failures release + poison one card; (4) model-choice orthogonality (replay-model-orthogonality.test.mjs) - the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin. Classification map updated: K8-owned recency files carry per-file cut/frontier verdicts; legacy freeze OK."
     }
   ]
 }
