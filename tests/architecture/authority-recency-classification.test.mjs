@@ -78,23 +78,23 @@ const CLASSIFICATION = Object.freeze({
   },
   'src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts': {
     release: 'K8',
-    verdict: 'owned by K8 exact replay binder',
+    verdict: 'K8 cut the outcome-certificate picks to readSingleOutcomeReasonCodes (fail-closed, write-time UNIQUE(process_run_id)); remaining: order-leaf ordinal DESC + boundary attempt DESC frontier traversals',
   },
   'src/process-modules/persistence/sqlite-managed-node-submission-repository.ts': {
     release: 'K8',
-    verdict: 'owned by K8 exact replay binder',
+    verdict: 'kept: CGAD P18 node-scope submission frontier (designed product frontier, UNIQUE(run,node,execution)); readExact tiebreak is uniqueness-enforced',
   },
   'src/process-modules/persistence/sqlite-node-run-repository.ts': {
     release: 'K8',
-    verdict: 'owned by K8 exact replay binder',
+    verdict: 'K8 cut the assembler readLatest emulated probe to readByExactCursor; readLatest(V2) deletion follows in K8 commit 5; readLastCompleted is the linear-chain resume cursor (legal frontier)',
   },
   'src/process-modules/persistence/sqlite-protocol-run-repository.ts': {
     release: 'K8',
-    verdict: 'owned by K8 exact replay binder',
+    verdict: 'K8 cut active/paused picks to readSingleProtocolRun (fail-closed; active also write-time UNIQUE partial index); remaining: open-step attempt frontier (max open attempt, UNIQUE(protocol_run,step,attempt))',
   },
   'src/process-modules/persistence/sqlite-recovery-case-repository.ts': {
     release: 'K8',
-    verdict: 'owned by K8 exact replay binder',
+    verdict: 'K8 cut active/exhausted/non-terminal picks to readSingleRecoveryCase + fail-closed resolveActive; remaining: readLastAttemptForCase (max attempt within exact case — structural frontier)',
   },
 });
 

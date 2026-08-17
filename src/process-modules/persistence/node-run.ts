@@ -97,6 +97,16 @@ export interface NodeRunRepository {
   /** The most recent NodeRun for a (process_run, node), regardless of status. */
   readLatest(processRunId: number, nodeId: string): NodeRunRecord | null;
 
+  /**
+   * ADR-079 — exact (process_run, node, attempt) probe. Backed by the
+   * UNIQUE cursor index; an equality probe, never a row-order choice.
+   */
+  readByExactCursor(
+    processRunId: number,
+    nodeId: string,
+    attempt: number,
+  ): NodeRunRecord | null;
+
   /** The most recent COMPLETED NodeRun anywhere in the run (resume point). */
   readLastCompleted(processRunId: number): NodeRunRecord | null;
 

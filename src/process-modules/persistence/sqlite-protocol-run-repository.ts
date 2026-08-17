@@ -129,6 +129,30 @@ function rowToProtocolRun(row: ProtocolRunRow): ProtocolRunRecord {
   };
 }
 
+/**
+ * ADR-079 — the (process_run, node_protocol, status) reader. 'active' is
+ * uniqueness-enforced by the partial unique index, but 'paused' is NOT; a
+ * duplicate row under either predicate is an invariant violation and must
+ * fail closed — never silently resolve to the newest row.
+ */
+function readSingleProtocolRun(
+  db: Database.Database,
+  processRunId: number,
+  nodeProtocolId: string,
+  status: 'active' | 'paused',
+): ProtocolRunRow | null {
+  const rows = db.prepare(
+    `SELECT * FROM factory_protocol_runs
+      WHERE process_run_id=? AND node_protocol_id=? AND status=?`,
+  ).all(processRunId, nodeProtocolId, status) as ProtocolRunRow[];
+  if (rows.length > 1) {
+    throw new Error(
+      `PROTOCOL_RUN_PREDICATE_NOT_UNIQUE: ${processRunId}/${nodeProtocolId}/${status} has ${rows.length} rows`,
+    );
+  }
+  return rows[0] ?? null;
+}
+
 function rowToStepRun(row: ProtocolStepRunRow): ProtocolStepRunRecord {
   return {
     id: row.id,
@@ -435,11 +459,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
   ): ProtocolRunRecord | null {
     assertPositiveInt(processRunId, 'processRunId');
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
-    const row = this.db.prepare(
-      `SELECT * FROM factory_protocol_runs
-        WHERE process_run_id=? AND node_protocol_id=? AND status='active'
-        ORDER BY id DESC LIMIT 1`,
-    ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
+    const row = readSingleProtocolRun(this.db, processRunId, nodeProtocolId, 'active');
     return row ? rowToProtocolRun(row) : null;
   }
 
@@ -466,11 +486,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertPositiveInt(processRunId, 'processRunId');
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
     const run = (): ProtocolRunRecord | null => {
-      const active = this.db.prepare(
-        `SELECT * FROM factory_protocol_runs
-          WHERE process_run_id=? AND node_protocol_id=? AND status='active'
-          ORDER BY id DESC LIMIT 1`,
-      ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
+      const active = readSingleProtocolRun(this.db, processRunId, nodeProtocolId, 'active');
       if (!active) return null;
       const info = this.db.prepare(
         `UPDATE factory_protocol_runs
@@ -501,11 +517,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertPositiveInt(processRunId, 'processRunId');
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
     const run = (): ProtocolRunRecord | null => {
-      const paused = this.db.prepare(
-        `SELECT * FROM factory_protocol_runs
-          WHERE process_run_id=? AND node_protocol_id=? AND status='paused'
-          ORDER BY id DESC LIMIT 1`,
-      ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
+      const paused = readSingleProtocolRun(this.db, processRunId, nodeProtocolId, 'paused');
       if (!paused) return null;
       const info = this.db.prepare(
         `UPDATE factory_protocol_runs
