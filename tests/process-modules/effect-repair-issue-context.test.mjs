@@ -12,10 +12,13 @@ import assert from 'node:assert/strict';
 import {
   buildAcceptanceEffectRepairIssue,
 } from '../../dist/process-modules/application/post-acceptance-effects.js';
-import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
+import {
+  asWorkplaceRef,
+  deserializeWorkplaceRef,
+} from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 
 const authority = () => ({
-  workplaceRef: asWorkplaceRef('workplace/14/dev@1.4.3/implementation/abc123'),
+  workplaceRef: deserializeWorkplaceRef('workplace/14/dev@1.4.3/implementation/abc123'),
   candidateSetRef: 'candidate-set/14/dev/1.4.3/abc/author',
   productionRevisionRef: 'revision-xyz',
   acceptedProductRefs: [],
