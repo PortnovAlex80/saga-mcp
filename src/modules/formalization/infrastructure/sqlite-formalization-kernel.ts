@@ -141,6 +141,65 @@ export class SqliteFormalizationArtifactGraph implements
     };
   }
 
+  /**
+   * ADR-078 (K6): the EXACT accepted-material read — scoped to the CURRENT
+   * lifecycle run through the authoritative ownership chain (artifact ->
+   * managed production ledger -> process_run -> factory_stage_runs).
+   * Material of other lifecycle runs under the same epic is simply not part
+   * of this settlement's input. Zero lifecycle-scoped material fails closed
+   * at the policy layer (empty result here), never a fallback to epic scope.
+   */
+  readAcceptedArtifactsForLifecycle(epicId: number, lifecycleRunId: number) {
+    const rows = this.db.prepare(
+      `SELECT a.id AS id, a.type AS type
+         FROM artifacts a
+         JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+         JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+        WHERE a.epic_id=? AND a.status='accepted' AND sr.lifecycle_run_id=?
+        GROUP BY a.id
+        ORDER BY a.id`,
+    ).all(epicId, lifecycleRunId) as Array<{ id: number; type: string }>;
+    const byType = new Map<string, number[]>();
+    for (const r of rows) {
+      const list = byType.get(r.type) ?? [];
+      list.push(r.id);
+      byType.set(r.type, list);
+    }
+    return {
+      prd: (byType.get('PRD') ?? [])[0] ?? null,
+      frs: byType.get('FR') ?? [],
+      nfrs: byType.get('NFR') ?? [],
+      rules: byType.get('RULE') ?? [],
+      ucs: byType.get('UC') ?? [],
+      acs: byType.get('AC') ?? [],
+      srs: (byType.get('SRS') ?? [])[0] ?? null,
+    };
+  }
+
+  /**
+   * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash — same ownership
+   * chain as {@link readAcceptedArtifactsForLifecycle}, restricted to AC
+   * artifacts of the CURRENT lifecycle run.
+   */
+  readAcceptanceBaselineHashForLifecycle(epicId: number, lifecycleRunId: number) {
+    const rows = this.db.prepare(
+      `SELECT a.id AS id, a.status AS status,
+              a.accepted_hash AS accepted_hash,
+              a.content_hash AS content_hash,
+              a.drift_state AS drift_state
+         FROM artifacts a
+         JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+         JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+        WHERE a.epic_id=? AND a.type='AC' AND sr.lifecycle_run_id=?
+        GROUP BY a.id
+        ORDER BY a.id`,
+    ).all(epicId, lifecycleRunId) as Array<{
+      id: number; status: string; accepted_hash: string | null;
+      content_hash: string | null; drift_state: string;
+    }>;
+    return this.evaluateBaselineRows(rows);
+  }
+
   readAcceptanceBaselineHash(epicId: number) {
     // Same logic as lifecycle.ts:acceptedBaseline — refresh hashes, then check
     // status=accepted AND accepted_hash=content_hash AND drift_state=clean.
@@ -153,6 +212,13 @@ export class SqliteFormalizationArtifactGraph implements
       id: number; status: string; accepted_hash: string | null;
       content_hash: string | null; drift_state: string;
     }>;
+    return this.evaluateBaselineRows(rows);
+  }
+
+  private evaluateBaselineRows(rows: ReadonlyArray<{
+    id: number; status: string; accepted_hash: string | null;
+    content_hash: string | null; drift_state: string;
+  }>): { hash: string; clean: boolean; dirty: number[] } {
     const dirty = rows
       .filter(r => r.status !== 'accepted'
         || r.accepted_hash === null
