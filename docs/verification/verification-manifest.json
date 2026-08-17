@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
   "kind": "saga-core-renewal-green-baseline",
-  "sha": "bca805a2bf076cdca96f08ab50bf0b8fc88b0668",
+  "sha": "ae5c7bc58bcb26e3c40b7774b6b710ff66ead043",
   "node": "v24.13.1",
   "platform": "win32/x64",
-  "recordedAt": "2026-08-17T06:00:50.103Z",
+  "recordedAt": "2026-08-17T07:09:52.426Z",
   "suites": [
     {
       "id": "build",
       "command": "npm run build",
       "exitCode": 0,
-      "durationMs": 7647
+      "durationMs": 6113
     },
     {
       "id": "factory-ratchet",
       "command": "npm run test:factory:ratchet",
       "exitCode": 0,
-      "durationMs": 513,
+      "durationMs": 453,
       "tests": {
         "tests": 2,
         "pass": 2,
@@ -27,7 +27,7 @@
       "id": "architecture",
       "command": "npm run test:architecture",
       "exitCode": 0,
-      "durationMs": 22726,
+      "durationMs": 20447,
       "tests": {
         "tests": 234,
         "pass": 234,
@@ -38,7 +38,7 @@
       "id": "factory-contract",
       "command": "npm run test:factory-contract",
       "exitCode": 0,
-      "durationMs": 110195,
+      "durationMs": 111208,
       "tests": {
         "tests": 84,
         "pass": 84,
@@ -49,7 +49,7 @@
       "id": "golden-path",
       "command": "npm run test:golden-path",
       "exitCode": 0,
-      "durationMs": 64488,
+      "durationMs": 65230,
       "tests": {
         "tests": 1,
         "pass": 1,
@@ -60,7 +60,7 @@
       "id": "factory-temporal",
       "command": "npm run test:factory-temporal",
       "exitCode": 0,
-      "durationMs": 1353608,
+      "durationMs": 1344672,
       "tests": {
         "tests": 31,
         "pass": 31,
@@ -71,7 +71,7 @@
       "id": "factory-model",
       "command": "npm run test:factory-model",
       "exitCode": 0,
-      "durationMs": 9110,
+      "durationMs": 6776,
       "tests": {
         "tests": 3,
         "pass": 3,
@@ -82,7 +82,7 @@
       "id": "migration-smoke",
       "command": "node --test tests/app/engine-watchdog-migration.test.mjs tests/app/operator-soft-stop-migration.test.mjs tests/architecture/v4-target-conformance-ratchet.test.mjs",
       "exitCode": 0,
-      "durationMs": 609,
+      "durationMs": 668,
       "tests": {
         "tests": 18,
         "pass": 18,
