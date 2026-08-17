@@ -86,10 +86,31 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
 // Import formalization scenarios from golden-path
 const { goldenPathScenarios } = await import('./golden-path-scenarios.mjs');
 
+// Persistent-crash variant for ADR-075 epoch coverage: EVERY attempt
+// submits the typed product and exits without worker_done. The cell's
+// recovery budget must exhaust and roll over into immutable recovery
+// epochs — never a human park. (The one-shot `discoveryProposalCrash`
+// above cannot produce epochs anymore: a healthy retry path converges
+// without ever exhausting the budget.)
+const discoveryProposalPersistentCrash = async ({ client }) => {
+  try {
+    await actions.submitProduct(client, 'factory.discovery-proposal.v1', proposalContent);
+  } catch (e) {
+    if (!e.message.includes('already exists')) throw e;
+  }
+  // No worker_done on ANY attempt — persistent crash simulation.
+};
+
 export const scenarios = {
   // Spread golden-path first, then override with crash-specific handlers.
   // This ensures the crash handler for produce-proposal takes precedence.
   ...goldenPathScenarios,
   [`${DISC}/produce-proposal/author/singleton`]: discoveryProposalCrash,
+  [`${DISC}/assess-readiness/author/singleton`]: discoveryReadiness,
+};
+
+export const persistentCrashScenarios = {
+  ...goldenPathScenarios,
+  [`${DISC}/produce-proposal/author/singleton`]: discoveryProposalPersistentCrash,
   [`${DISC}/assess-readiness/author/singleton`]: discoveryReadiness,
 };
