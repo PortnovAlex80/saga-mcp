@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "kind": "saga-core-renewal-green-baseline",
+  "sha": "9750531b88ef1b1a9d0f6de1d3ff3d40efdf4286",
+  "node": "v24.13.1",
+  "platform": "win32/x64",
+  "recordedAt": "2026-08-17T02:36:05.241Z",
+  "suites": [
+    {
+      "id": "build",
+      "command": "npm run build",
+      "exitCode": 0,
+      "durationMs": 7098
+    },
+    {
+      "id": "factory-ratchet",
+      "command": "npm run test:factory:ratchet",
+      "exitCode": 0,
+      "durationMs": 461,
+      "tests": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0
+      }
+    },
+    {
+      "id": "architecture",
+      "command": "npm run test:architecture",
+      "exitCode": 0,
+      "durationMs": 22673,
+      "tests": {
+        "tests": 218,
+        "pass": 218,
+        "fail": 0
+      }
+    },
+    {
+      "id": "factory-contract",
+      "command": "npm run test:factory-contract",
+      "exitCode": 0,
+      "durationMs": 115864,
+      "tests": {
+        "tests": 84,
+        "pass": 84,
+        "fail": 0
+      }
+    },
+    {
+      "id": "golden-path",
+      "command": "npm run test:golden-path",
+      "exitCode": 0,
+      "durationMs": 62307,
+      "tests": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    {
+      "id": "factory-temporal",
+      "command": "npm run test:factory-temporal",
+      "exitCode": 0,
+      "durationMs": 1324365,
+      "tests": {
+        "tests": 31,
+        "pass": 31,
+        "fail": 0
+      }
+    },
+    {
+      "id": "factory-model",
+      "command": "npm run test:factory-model",
+      "exitCode": 0,
+      "durationMs": 7297,
+      "tests": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0
+      }
+    },
+    {
+      "id": "migration-smoke",
+      "command": "node --test tests/app/engine-watchdog-migration.test.mjs tests/app/operator-soft-stop-migration.test.mjs tests/architecture/v4-target-conformance-ratchet.test.mjs",
+      "exitCode": 0,
+      "durationMs": 777,
+      "tests": {
+        "tests": 18,
+        "pass": 18,
+        "fail": 0
+      }
+    }
+  ],
+  "allGreen": true
+}

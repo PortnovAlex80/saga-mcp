@@ -329,7 +329,7 @@
       "evidenceOwner": "K9",
       "principalProof": "Third-lifecycle and full crash matrix on canonical composition",
       "successor": null,
-      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall)."
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall). K1.1 evidence: canonical boundary family now deterministically green on one SHA (temporal worker-boundary 1-4, crash-recovery T10/T10b; manifest 9750531b) after the retry-path productKey repair."
     },
     {
       "adr": "049",

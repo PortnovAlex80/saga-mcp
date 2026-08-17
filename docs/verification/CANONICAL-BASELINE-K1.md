@@ -66,3 +66,37 @@ all eight suites. It will be generated on the first tip where
 **factory-temporal is fully green** — expected at the end of K1.1. Until
 then this document, not a manifest, is the canonical status record.
 `--check` is the release-gate command from K1.1 onward.
+
+---
+
+## K1.1 addendum — the green baseline exists
+
+**Status: ALL GREEN.** `verification-manifest.json` records SHA `9750531b`
+with every canonical suite passing: build, factory-ratchet 2/2,
+architecture 218/218, factory-contract 84/84, golden-path 1/1,
+factory-temporal 31/31, factory-model 3/3, migration-smoke 18/18.
+
+Root cause repaired (see `fix(products)` commit): the discovery
+proposal-ref product write omitted its instance `productKey`, so any retry
+from a new execution with the same content violated
+`UNIQUE(process_run_id, product_kind, product_key)` on
+`factory_process_products` and rolled back the entire typed submission —
+the worker then failed `worker_done` with `PRODUCTION_CELL_PRODUCT_REQUIRED`
+and the recovery loop never converged. `productKey: 'proposal:<id>'`
+(the documented `artifact:<id>` convention) restores per-instance identity;
+content-identical replay still resolves as `replayed: true`.
+
+Test-side consequences, both healed in the same release:
+
+- `worker-boundary 2` (temporal) now converges: attempt 2 re-submits from
+  its own execution and completes.
+- `crash-recovery T10` (contract) had been passing **because of the bug** —
+  its epoch-rollover assertion was satisfied by the non-converging crash
+  loop. T10 now asserts the healthy contract (converges, exit 0, zero
+  epochs) and its fixture gains the missing integration branch `dev`
+  (invisible while the test never reached the development phase). New
+  `T10b` (persistent crash) owns the ADR-075 epoch coverage.
+
+The production factory running in the main checkout was not touched: all
+runs executed in the `saga-mcp-kernel` worktree against per-run temp
+databases.
