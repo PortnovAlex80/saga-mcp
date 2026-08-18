@@ -35,7 +35,7 @@ function git(cwd, ...args) {
 
 const DISC = 'product-discovery@3.0.2';
 const FRM = 'solution-formalization@1.0.0';
-const DEV = 'solution-development@1.4.3';
+const DEV = 'solution-development@1.4.4';
 
 function done(handlers, assignment, result) {
   handlers.worker_done({
