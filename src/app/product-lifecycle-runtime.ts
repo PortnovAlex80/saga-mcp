@@ -38,10 +38,14 @@ import {
   type TransitionObligationHandler,
 } from '../process-modules/application/transition-obligation-reconciler.js';
 import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
-import { readTransitionHandoffPostcondition } from '../process-modules/application/transition-handoff-postconditions.js';
+import {
+  readExactCompletionReceipt,
+  readTransitionHandoffPostcondition,
+} from '../process-modules/application/transition-handoff-postconditions.js';
 import { findStalledScopes } from '../application/progress/sqlite-progress-reader.js';
 import type { ProgressExplanation } from '../application/progress/progress-classification.js';
 import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
+import type { TransitionObligation } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import type {
   OrchestrationEngine,
   RunEpisodeCommand,
@@ -970,6 +974,24 @@ export function createProductLifecycleRuntime(
     obligationLedger,
     (line: string) => engineLog(`[obligation-reconciler] ${line}`),
   );
+  // K13 (card commit 3) — the completion receipt cites the EXACT durable row
+  // identity where one exists. Today that is the FinalAcceptance row digest
+  // (`cell-final-acceptance:<sha256>`) for the record-final-acceptance
+  // handoff — the card's replacement of the fabricated alias. The remaining
+  // kinds still carry the `transition-completion:<key>` alias; that residue
+  // is the same defect class and is reported, not silently generalized
+  // (stage-9 escalation rule).
+  const exactCompletionReceipt = (obligation: TransitionObligation): string => {
+    const exact = readExactCompletionReceipt(db, obligation);
+    if (obligation.handoffKind === 'record-final-acceptance' && exact === null) {
+      throw new Error(
+        `FINAL_ACCEPTANCE_RECEIPT_UNRESOLVED: ${obligation.obligationKey} — the `
+        + 'postcondition is satisfied yet no FinalAcceptance row matches the '
+        + 'exact effect receipt',
+      );
+    }
+    return exact ?? `transition-completion:${obligation.obligationKey}`;
+  };
   for (const handoffKind of [
     'close-presentation',
     'run-gate',
@@ -1008,7 +1030,7 @@ export function createProductLifecycleRuntime(
         const existingPostcondition = readTransitionHandoffPostcondition(db, obligation);
         if (existingPostcondition.satisfied) {
           return {
-            completionReceipt: `transition-completion:${obligation.obligationKey}`,
+            completionReceipt: exactCompletionReceipt(obligation),
             resultDigest: sha256Hex({
               obligationKey: obligation.obligationKey,
               recoveredFromDurablePostcondition: true,
@@ -1022,7 +1044,7 @@ export function createProductLifecycleRuntime(
           return { outcome: 'deferred', reason: postcondition.reason };
         }
         return {
-          completionReceipt: `transition-completion:${obligation.obligationKey}`,
+          completionReceipt: exactCompletionReceipt(obligation),
           resultDigest: sha256Hex({
             obligationKey: obligation.obligationKey,
             lifecycleRunId: result.lifecycleRun?.id ?? null,

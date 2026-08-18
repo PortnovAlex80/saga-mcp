@@ -130,6 +130,38 @@ function fact(row: unknown, missingReason: string): TransitionHandoffPostconditi
     : { satisfied: false, reason: missingReason };
 }
 
+/**
+ * K13 (card commit 3) — the EXACT durable completion receipt for an
+ * obligation: the persisted row's own identity, never a fabricated alias.
+ *
+ * Scoped to `record-final-acceptance` by the card: the receipt IS the
+ * cell-final-acceptance row digest (`cell-final-acceptance:<sha256>`). The
+ * other handoff kinds still fabricate `transition-completion:<key>` aliases
+ * — the same defect class, reported to the architect (stage-9 escalation
+ * rule: report, do not generalize a fix) — and return null here.
+ */
+export function readExactCompletionReceipt(
+  db: Database.Database,
+  obligation: TransitionObligation,
+): string | null {
+  if (obligation.handoffKind !== 'record-final-acceptance') {
+    return null;
+  }
+  const row = db.prepare(
+    `SELECT final_acceptance_ref
+       FROM factory_cell_final_acceptances fa
+      WHERE fa.workplace_ref=?
+        AND EXISTS (
+          SELECT 1 FROM json_each(fa.effect_receipt_refs) er
+           WHERE er.value=?
+        )
+      LIMIT 1`,
+  ).get(obligation.subjectRef, obligation.sourceRef) as
+    | { final_acceptance_ref: string }
+    | undefined;
+  return row?.final_acceptance_ref ?? null;
+}
+
 function processRunIdFromSource(sourceRef: string): number {
   const match = /^process-run:(\d+)$/.exec(sourceRef);
   if (!match) throw new Error(`TRANSITION_OBLIGATION_SOURCE_INVALID: ${sourceRef}`);
