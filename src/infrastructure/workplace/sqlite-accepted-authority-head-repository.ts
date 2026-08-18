@@ -49,6 +49,46 @@ export class SqliteAcceptedAuthorityHeadRepository {
     readonly acceptedAuthorTaskId?: string | null;
     readonly now?: () => Date;
   }): void {
+    // K13 (ADR-053 C1 hardening) — the head is a MONOTONIC authority
+    // pointer: it only moves forward, and a revision number is never
+    // reused for different accepted identity. A stale concurrent writer
+    // fails closed instead of rolling accepted authority back; a
+    // crash-recovery replay of the SAME identity at the SAME revision is
+    // idempotent.
+    const existing = this.db.prepare(
+      `SELECT accepted_author_candidate_set_ref, accepted_author_gate_decision_key,
+              accepted_author_task_id, revision
+         FROM factory_accepted_authority_head WHERE workplace_ref=?`,
+    ).get(input.workplaceRef) as {
+      accepted_author_candidate_set_ref: string;
+      accepted_author_gate_decision_key: string;
+      accepted_author_task_id: string | null;
+      revision: number;
+    } | undefined;
+    if (existing) {
+      if (input.revision < existing.revision) {
+        throw new Error(
+          `AUTHORITY_HEAD_REGRESSION: ${input.workplaceRef} is at revision `
+          + `${existing.revision}, refusing ${input.revision}`,
+        );
+      }
+      if (input.revision === existing.revision) {
+        const sameIdentity = existing.accepted_author_candidate_set_ref === input.acceptedAuthorCandidateSetRef
+          && existing.accepted_author_gate_decision_key === input.acceptedAuthorGateDecisionKey
+          && existing.accepted_author_task_id === (input.acceptedAuthorTaskId ?? null);
+        if (!sameIdentity) {
+          throw new Error(
+            `AUTHORITY_HEAD_IDENTITY_CONFLICT: ${input.workplaceRef} revision ${input.revision} `
+            + 'cannot be reused with a different accepted identity '
+            + `(head has (${existing.accepted_author_candidate_set_ref}, `
+            + `${existing.accepted_author_gate_decision_key}, ${existing.accepted_author_task_id}); `
+            + `refusing (${input.acceptedAuthorCandidateSetRef}, `
+            + `${input.acceptedAuthorGateDecisionKey}, ${input.acceptedAuthorTaskId ?? null}))`,
+          );
+        }
+        return;
+      }
+    }
     this.db.prepare(
       `INSERT INTO factory_accepted_authority_head
          (workplace_ref, accepted_author_candidate_set_ref,
@@ -62,7 +102,8 @@ export class SqliteAcceptedAuthorityHeadRepository {
          accepted_author_gate_decision_key = excluded.accepted_author_gate_decision_key,
          revision = excluded.revision,
          recorded_at = excluded.recorded_at,
-         accepted_author_task_id = excluded.accepted_author_task_id`,
+         accepted_author_task_id = excluded.accepted_author_task_id
+       WHERE excluded.revision > factory_accepted_authority_head.revision`,
     ).run({
       workplaceRef: input.workplaceRef,
       acceptedAuthorCandidateSetRef: input.acceptedAuthorCandidateSetRef,
