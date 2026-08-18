@@ -13,7 +13,10 @@
 //   3. execution_id is rendered into every rule that mentions it;
 //   4. pinned skills come from the installation's resolver, never from a
 //      global skill root;
-//   5. the merge instruction exists ONLY for git_change review tasks.
+//   5. NO merge instruction for ANY execution mode — the factory owns
+//      integration (stage-8, defect A: the merge grant was removed; the old
+//      git_change-review rule-7 variant instructed a tool workers no longer
+//      hold).
 //
 // Plus rule 6a (worker-done-call.json is not a tool call) — the instruction
 // the G2.3 disobedience scenario leans on.
@@ -121,8 +124,12 @@ test('G1.3 — execution_id is rendered into every rule that mentions it', () =>
   try {
     assert.ok(prompt.includes('execution_id=exec-g1-0001'), 'the header must render execution_id');
     assert.ok(prompt.includes(
-      '8a. Include execution_id="exec-g1-0001" in worker_done, verification_record, worker_ask_need, worker_ask_done, worker_merge_acquire, and worker_merge_release.',
-    ), 'rule 8a must render the value and name all six tools');
+      '8a. Include execution_id="exec-g1-0001" in worker_done, verification_record, worker_ask_need, and worker_ask_done.',
+    ), 'rule 8a must render the value and name the four granted protocol tools');
+    // Stage-8 (defect A): the merge tools left the worker protocol — rule 8a
+    // must no longer name them, and the prompt must not instruct any merge.
+    assert.ok(!prompt.includes('worker_merge_acquire') && !prompt.includes('worker_merge_release'),
+      'the prompt must not name the fenced merge tools (stage-8 defect A removal)');
     assert.ok(prompt.includes('worker_done exactly once with a truthful result and execution_id="exec-g1-0001"'),
       'rule 6 (non-review) must append the rendered execution_id');
     const review = makeFixture({ task: { status: 'review' } });
@@ -179,38 +186,28 @@ test('G1.4 — skills resolve from the pinned installation, never a global skill
   }
 });
 
-test('G1.5 — the merge instruction exists only for git_change review tasks', () => {
+test('G1.5 — NO merge instruction for ANY execution mode; the factory owns integration', () => {
+  // INVERTED in stage-8 (defect A, G3 §9): the merge grant was removed, so
+  // the prompt must never instruct a merge or name the merge tools. The old
+  // assertion pinned the git_change-review merge variant; it now pins its
+  // ABSENCE for every mode.
   const MERGE_INSTRUCTION = 'first acquire the repository merge lock, merge into the assigned integration branch, call worker_merge_release';
-  const NO_MERGE = '7. After worker_done returns stop:true, do not claim another task; finish any required terminal protocol, then return a concise summary and exit.';
+  const FACTORY_OWNS = '7. After worker_done returns stop:true, do not claim another task; the factory owns integration (merge/push are fenced Factory effects — never do them yourself); finish any required terminal protocol, then return a concise summary and exit.';
 
-  const gitReview = makeFixture({ task: { status: 'review', execution_mode: 'git_change' } });
-  try {
-    assert.ok(gitReview.prompt.includes(MERGE_INSTRUCTION),
-      'a git_change review task must receive the merge instruction (rule 7)');
-    assert.ok(!gitReview.prompt.includes(NO_MERGE), 'not both rule-7 variants at once');
-  } finally {
-    rmSync(gitReview.skillDir, { recursive: true, force: true });
-  }
-
-  for (const mode of ['tracker_only', 'read_only_evidence', 'artifact_change']) {
-    const fixture = makeFixture({ task: { status: 'review', execution_mode: mode } });
-    try {
-      assert.ok(!fixture.prompt.includes(MERGE_INSTRUCTION),
-        `execution_mode=${mode} must NOT receive the merge instruction`);
-      assert.ok(fixture.prompt.includes(NO_MERGE),
-        `execution_mode=${mode} must receive the plain exit instruction instead`);
-    } finally {
-      rmSync(fixture.skillDir, { recursive: true, force: true });
+  for (const mode of ['git_change', 'tracker_only', 'read_only_evidence', 'artifact_change']) {
+    for (const status of ['review', 'in_progress']) {
+      const fixture = makeFixture({ task: { status, execution_mode: mode } });
+      try {
+        assert.ok(!fixture.prompt.includes(MERGE_INSTRUCTION),
+          `execution_mode=${mode}/${status} must NOT receive the merge instruction`);
+        assert.ok(!fixture.prompt.includes('worker_merge_acquire') && !fixture.prompt.includes('worker_merge_release'),
+          `execution_mode=${mode}/${status} must not name the fenced merge tools`);
+        assert.ok(fixture.prompt.includes(FACTORY_OWNS),
+          `execution_mode=${mode}/${status} must receive the factory-owns-integration rule 7`);
+      } finally {
+        rmSync(fixture.skillDir, { recursive: true, force: true });
+      }
     }
-  }
-
-  // Non-review git_change workers do not merge either (reviewers do).
-  const gitAuthor = makeFixture({ task: { status: 'in_progress', execution_mode: 'git_change' } });
-  try {
-    assert.ok(!gitAuthor.prompt.includes(MERGE_INSTRUCTION),
-      'a non-review git_change task must NOT receive the merge instruction');
-  } finally {
-    rmSync(gitAuthor.skillDir, { recursive: true, force: true });
   }
 });
 

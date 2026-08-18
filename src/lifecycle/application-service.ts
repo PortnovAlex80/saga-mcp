@@ -73,9 +73,7 @@ export type LifecycleCommand =
   | { readonly kind: 'WorkerNext'; readonly workerId: string; readonly projectId: number; readonly epicId?: number; readonly executionId?: string; readonly machineId?: string; readonly role?: string }
   | { readonly kind: 'WorkerDone'; readonly taskId: number; readonly workerId: string; readonly result: string; readonly verdict?: 'approved' | 'changes_requested'; readonly executionId?: string }
   | { readonly kind: 'WorkerAskNeed'; readonly taskId: number; readonly workerId: string; readonly reason?: string; readonly executionId?: string }
-  | { readonly kind: 'WorkerAskDone'; readonly taskId: number; readonly workerId: string; readonly answer?: string }
-  | { readonly kind: 'WorkerMergeAcquire'; readonly taskId: number; readonly workerId: string; readonly executionId?: string }
-  | { readonly kind: 'WorkerMergeRelease'; readonly taskId: number; readonly workerId: string; readonly result: 'merged' | 'conflict'; readonly commitSha?: string; readonly executionId?: string };
+  | { readonly kind: 'WorkerAskDone'; readonly taskId: number; readonly workerId: string; readonly answer?: string };
 
 /**
  * Structured result. Today this is `unknown` because each handler returns a
@@ -129,10 +127,6 @@ export function commandIdFor(cmd: LifecycleCommand): string {
       return `WorkerAskNeed:${cmd.taskId}:${cmd.executionId ?? cmd.workerId}`;
     case 'WorkerAskDone':
       return `WorkerAskDone:${cmd.taskId}:${cmd.workerId}`;
-    case 'WorkerMergeAcquire':
-      return `WorkerMergeAcquire:${cmd.taskId}:${cmd.executionId ?? cmd.workerId}`;
-    case 'WorkerMergeRelease':
-      return `WorkerMergeRelease:${cmd.taskId}:${cmd.executionId ?? cmd.workerId}:${cmd.result}`;
     default: {
       // Exhaustiveness check — if a new command kind is added to the union
       // without a case here, TypeScript flags it at compile time.
@@ -228,8 +222,6 @@ function handlerNameForCommand(kind: LifecycleCommand['kind']): string {
     case 'WorkerDone': return 'worker_done';
     case 'WorkerAskNeed': return 'worker_ask_need';
     case 'WorkerAskDone': return 'worker_ask_done';
-    case 'WorkerMergeAcquire': return 'worker_merge_acquire';
-    case 'WorkerMergeRelease': return 'worker_merge_release';
     default: {
       const _exhaustive: never = kind;
       void _exhaustive;
@@ -269,20 +261,6 @@ function commandToHandlerArgs(cmd: LifecycleCommand): Record<string, unknown> {
         task_id: cmd.taskId,
         worker_id: cmd.workerId,
         answer: cmd.answer,
-      };
-    case 'WorkerMergeAcquire':
-      return {
-        task_id: cmd.taskId,
-        worker_id: cmd.workerId,
-        execution_id: cmd.executionId,
-      };
-    case 'WorkerMergeRelease':
-      return {
-        task_id: cmd.taskId,
-        worker_id: cmd.workerId,
-        result: cmd.result,
-        commit_sha: cmd.commitSha,
-        execution_id: cmd.executionId,
       };
     default: {
       const _exhaustive: never = cmd;

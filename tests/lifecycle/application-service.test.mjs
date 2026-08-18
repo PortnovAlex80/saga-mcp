@@ -93,8 +93,6 @@ test('appsvc: commandIdFor covers all command kinds without throwing', () => {
     { kind: 'WorkerDone', taskId: 1, workerId: 'w', result: 'r' },
     { kind: 'WorkerAskNeed', taskId: 1, workerId: 'w' },
     { kind: 'WorkerAskDone', taskId: 1, workerId: 'w' },
-    { kind: 'WorkerMergeAcquire', taskId: 1, workerId: 'w' },
-    { kind: 'WorkerMergeRelease', taskId: 1, workerId: 'w', result: 'merged' },
   ];
   for (const cmd of samples) {
     const id = commandIdFor(cmd);

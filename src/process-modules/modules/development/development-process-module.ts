@@ -77,10 +77,13 @@ const COMMON_READ_TOOLS = [
   'task_get', 'task_list', 'artifact_list', 'artifact_get', 'trace_list', 'repository_list',
   'repository_checkout_list', 'candidate_read', 'product_read', 'Read', 'Glob', 'Grep',
 ] as const;
+// Stage-8 (defect A, G3 dossier §9): no worker-selected merge authority —
+// ADR-039 / K11 commit 4; CONVEYOR §18:847-848. The merge tools were removed
+// from every profile; the fenced git-integration post-acceptance effect owns
+// integration. Enforced by tests/architecture/no-worker-fenced-effect-grants.test.mjs.
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
   'worker_done',
-  'worker_merge_acquire', 'worker_merge_release',
   'verification_record',
   'product_submit',
   'Write', 'Edit', 'Bash',

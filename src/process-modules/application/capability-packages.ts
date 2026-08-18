@@ -35,9 +35,10 @@
  *   - `platform.repository`          → repository_register/list/get/update,
  *                                       repository_checkout_*
  *   - `platform.worker-completion`   → worker_done/ask_need/ask_done,
- *                                       worker_merge_acquire/release, worker_health
- *                                       (worker_next EXCLUDED: one launch = one
- *                                       card)
+ *                                       worker_health (worker_next EXCLUDED:
+ *                                       one launch = one card; merge tools
+ *                                       EXCLUDED — integration is a fenced
+ *                                       Factory effect, stage-8 defect A)
  *   - `platform.protocol-checkpoint` → runtime.protocol.step_complete
  *
  * Each tool's `idempotency` / `sideEffect` classification is derived from the
@@ -421,16 +422,6 @@ function buildWorkerCompletionPackage(): CapabilityPackage {
       IDEMPOTENT_WRITE, // answer records + reopens; fenced
     ),
     platformTool(
-      'platform.worker-completion.worker_merge_acquire',
-      `${WORKER_SCHEMA_STEM}.worker_merge_acquire`,
-      IDEMPOTENT_WRITE, // merge-lock acquire: idempotent per lock holder
-    ),
-    platformTool(
-      'platform.worker-completion.worker_merge_release',
-      `${WORKER_SCHEMA_STEM}.worker_merge_release`,
-      WRITE, // release records outcome; distinct outcomes are distinct calls
-    ),
-    platformTool(
       'platform.worker-completion.worker_health',
       `${WORKER_SCHEMA_STEM}.worker_health`,
       READ,
@@ -444,8 +435,10 @@ function buildWorkerCompletionPackage(): CapabilityPackage {
     tools: Object.freeze([...tools]),
     description:
       'Platform worker-completion capability: the assigned-worker completion '
-      + 'fence (worker_done/ask_need/ask_done) plus the merge-lock protocol '
-      + '(worker_merge_acquire/release) and worker_health. worker_next is '
+      + 'fence (worker_done/ask_need/ask_done) and worker_health. The merge '
+      + 'tools are intentionally EXCLUDED (stage-8, defect A): integration is '
+      + 'a fenced Factory effect (git-integration), never a worker surface '
+      + '(ADR-039 / K11; CONVEYOR §18:847-848). worker_next is also '
       + 'intentionally EXCLUDED — one launch = one card; an assigned worker '
       + 'must not re-enter the dispatch queue. The dispatcher surface '
       + 'invokes worker_next as a raw MCP tool, not through this package.',
@@ -509,8 +502,11 @@ export const PLATFORM_REPOSITORY_PACKAGE: CapabilityPackage =
 
 /**
  * The `platform.worker-completion` capability package. Surfaced tools:
- * worker_done/ask_need/ask_done, worker_merge_acquire/release, worker_health.
- * `worker_next` is intentionally EXCLUDED: an assigned worker that already
+ * worker_done/ask_need/ask_done, worker_health. The merge tools are
+ * intentionally EXCLUDED (stage-8, defect A): no worker-selected merge
+ * authority — integration is the fenced git-integration Factory effect
+ * (ADR-039 / K11 commit 4; CONVEYOR §18:847-848). `worker_next` is
+ * intentionally EXCLUDED: an assigned worker that already
  * holds a card must not re-enter the dispatch queue — one launch = one card.
  * The dispatcher invokes worker_next as a raw MCP tool, not via this package.
  */
