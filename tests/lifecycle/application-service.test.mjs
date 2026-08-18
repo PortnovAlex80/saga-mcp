@@ -28,6 +28,7 @@ import { handlers as projects } from '../../dist/tools/projects.js';
 import { handlers as epics } from '../../dist/tools/epics.js';
 import { handlers as tasks } from '../../dist/tools/tasks.js';
 import { handlers as repositories } from '../../dist/tools/repositories.js';
+import { seedUnboundExecution } from './fixtures/managed-execution.mjs';
 import {
   handleLifecycleCommand,
   commandIdFor,
@@ -107,7 +108,7 @@ test('appsvc: commandIdFor covers all command kinds without throwing', () => {
 // ---------------------------------------------------------------------------
 
 test('appsvc: handleLifecycleCommand delegates to handler and writes audit row', () => {
-  const { epic } = makeProject();
+  const { product, epic } = makeProject();
   const t = tasks.task_create({
     epic_id: epic.id, title: 'T', task_kind: 'development.code',
     execution_mode: 'tracker_only', priority: 'high',
@@ -117,6 +118,13 @@ test('appsvc: handleLifecycleCommand delegates to handler and writes audit row',
     `UPDATE tasks SET status='review_in_progress', assigned_to='reviewer',
                        updated_at=datetime('now') WHERE id=?`,
   ).run(t.id);
+  // The fence must name a DURABLE execution whose frozen context is
+  // hash-verified; production ingress fails closed otherwise.
+  seedUnboundExecution(db, {
+    executionId: 'worker-execution:appsvc-delegation',
+    projectId: product.id, epicId: epic.id, taskId: t.id, workerId: 'reviewer',
+    phase: 'reviewing',
+  });
 
   const result = handleLifecycleCommand(db, {
     kind: 'WorkerDone',
@@ -124,6 +132,11 @@ test('appsvc: handleLifecycleCommand delegates to handler and writes audit row',
     workerId: 'reviewer',
     result: 'PRD approved',
     verdict: 'approved',
+    // The execution fence is mandatory (§22: managed tools validate execution
+    // authority fail-closed). worker_done derives its idempotency command id
+    // from the CALLER-SUPPLIED execution_id precisely because the task's own
+    // fence is already cleared by the time a retry arrives.
+    executionId: 'worker-execution:appsvc-delegation',
   });
 
   assert.equal(result.commandKind, 'WorkerDone');
@@ -167,6 +180,7 @@ test('appsvc: failed command propagates error and writes failure audit row', () 
     workerId: 'someone-who-does-not-own-this',
     result: 'r',
     verdict: 'approved',
+    executionId: 'worker-execution:appsvc-not-owner',
   };
   assert.throws(
     () => handleLifecycleCommand(db, cmd),

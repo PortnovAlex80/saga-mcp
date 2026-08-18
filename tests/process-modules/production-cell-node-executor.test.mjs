@@ -11,6 +11,7 @@ import { SqliteCellFinalAcceptance } from '../../dist/infrastructure/workplace/s
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { ProductionCellNodeExecutor } from '../../dist/process-modules/application/node-executors/production-cell-node-executor.js';
+import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
@@ -131,6 +132,10 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined, r
   };
   const executor = new ProductionCellNodeExecutor({
     coordinator,
+    // ADR-081 (K12) — the ONE proof-backed acceptance mutation service. Wired
+    // exactly as production does; the executor has no other way to commit an
+    // accepted candidate.
+    authorityCommit: new CommitAcceptedCandidate({ gateRepo, coordinator }),
     candidateSetRepo,
     gateRepo,
     revisionRepo: new SqliteWorkplaceProductionRevisionRepository(db),

@@ -161,6 +161,17 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     // writer — the single-writer invariant evolves so tasks.status is owned by
     // the projection, not by hand-written claim/release SQL.
     'src/infrastructure/projections/workplace-projector.ts',
+    // Operator/recovery writers. Both are deliberate, CAS-guarded reconciliation
+    // paths of the same class as unfenced-assignment-recovery and engine
+    // recovery: they do not decide quality or advance a Flow, they release or
+    // cancel a projection whose owning execution is provably gone.
+    //   - operator-soft-stop: the operator brake releases a card (clears
+    //     assignment, fence and worker pid) so a stopped worker cannot keep a
+    //     task hostage.
+    //   - engine-start-lifecycle-burial: burying a dead LifecycleRun cancels its
+    //     still-nonterminal cards, guarded by `AND status IN (...)`.
+    'src/app/operator-soft-stop.ts',
+    'src/app/engine-start-lifecycle-burial.ts',
   ]);
 
   const FORBIDDEN_PATTERNS = [

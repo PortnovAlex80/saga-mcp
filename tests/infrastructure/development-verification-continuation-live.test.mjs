@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -8,9 +8,18 @@ import Database from 'better-sqlite3';
 import { prepareDevelopmentContinuation } from '../../dist/app/factory-continuation.js';
 import { SCHEMA_SQL, migrateFactorySchemaV3ToV4 } from '../../dist/schema.js';
 
+// Live-shaped: this replays a continuation against a REAL historical factory
+// database captured in an ephemeral sandbox. `.factory-sandboxes` is scratch
+// space, so on a machine that never produced that run the source simply is not
+// there and the test fails for an unrelated reason. The theorem needs the exact
+// database, so the precondition is declared rather than discovered as a crash.
 const sourcePath = '.factory-sandboxes/meaning-run-20260809/factory.sqlite';
+const missingSource = existsSync(sourcePath)
+  ? undefined
+  : `live source database is unavailable (${sourcePath})`;
 
-test('live-shaped verification continuation adopts warehouse product without worker production', async () => {
+test('live-shaped verification continuation adopts warehouse product without worker production',
+  { skip: missingSource }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'saga-verification-continuation-'));
   const target = join(root, 'factory.sqlite');
   const source = new Database(sourcePath, { readonly: true });

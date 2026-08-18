@@ -34,6 +34,7 @@ import { handlers as tasks } from '../../dist/tools/tasks.js';
 import { handlers as repositories } from '../../dist/tools/repositories.js';
 import { handlers as dispatcher } from '../../dist/tools/dispatcher.js';
 import { reevaluateDownstream } from '../../dist/tools/tasks.js';
+import { seedRunningProcessRun } from './fixtures/managed-execution.mjs';
 
 const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-dep-'));
 process.env.DB_PATH = path.join(temp, 'dep.db');
@@ -202,6 +203,9 @@ test('claimability: worker_next and a count query use the same predicate', () =>
   // cutover: a task is claimable ONLY if bound to an active Process Module node).
   const claimable = makeTask(epic.id);
   const blockedByHumanRequest = makeTask(epic.id);
+  // The predicate requires the ProcessRun to EXIST and be running — stamping
+  // the id alone leaves both tasks unclaimable and hides what this test asserts.
+  seedRunningProcessRun(getDb(), { id: 999, projectId: product.id });
   const stampProcessRun = (taskId) => getDb().prepare(
     `UPDATE tasks SET metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999) WHERE id=?`,
   ).run(taskId);

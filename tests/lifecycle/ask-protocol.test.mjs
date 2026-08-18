@@ -34,6 +34,7 @@ import { handlers as tasks } from '../../dist/tools/tasks.js';
 import { handlers as repositories } from '../../dist/tools/repositories.js';
 import { handlers as dispatcher } from '../../dist/tools/dispatcher.js';
 import { handlers as activity } from '../../dist/tools/activity.js';
+import { seedRunningProcessRun } from './fixtures/managed-execution.mjs';
 
 const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-ask-'));
 process.env.DB_PATH = path.join(temp, 'ask.db');
@@ -70,10 +71,14 @@ function claimAndSpawn(taskId, workerId, executionId) {
   // Claim the task and inject an active execution row (simulating what the
   // runner does after worker_next).
   // saga4 Phase 4 cutover: a task is only claimable via worker_next if
-  // tasks.metadata.process_run_id IS NOT NULL. A task the runner spawns here
-  // would carry that stamp, so stamp it for any task that flows through this
-  // helper (otherwise later worker_next claims in these tests return null).
+  // tasks.metadata.process_run_id IS NOT NULL *and that ProcessRun is running*.
+  // A task the runner spawns here would carry both, so seed both — stamping the
+  // id alone makes every later claim return an empty queue.
   const db = getDb();
+  const projectId = db.prepare(
+    'SELECT e.project_id AS pid FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
+  ).get(taskId).pid;
+  seedRunningProcessRun(db, { id: 999, projectId });
   db.prepare(
     `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?,
                        metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999),
