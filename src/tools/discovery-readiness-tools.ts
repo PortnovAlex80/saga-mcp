@@ -167,7 +167,6 @@ export function createDiscoveryReadinessHandlers(
     const allowedSourceRefs = collectAllowedSourceRefs(proposal, payload);
     return {
       control_intent_id: controlIntentId,
-      proposal_id: proposal.id,
       proposal_content_hash: proposal.content_hash,
       proposal_payload: payload,
       allowed_source_refs: allowedSourceRefs,
@@ -277,7 +276,6 @@ export function createDiscoveryReadinessHandlers(
       // Deterministic validation — no LM. This IS the kernel acceptance gate.
       const validation = validateReadinessAssessment(
         payload,
-        proposal.id,
         proposal.content_hash,
         allowedSourceRefs,
       );
@@ -302,9 +300,9 @@ export function createDiscoveryReadinessHandlers(
 
       const typed = payload as ReadinessAssessmentPayload;
       // Defence in depth: the validator already enforced the identity, but a
-      // replay must not cross targets.
-      if (typed.proposal_id !== binding.control.proposal_id
-          || typed.proposal_content_hash !== binding.control.proposal_content_hash) {
+      // replay must not cross targets. The binding is content-addressed (the
+      // ControlIntent already owns the physical proposal_id).
+      if (typed.proposal_content_hash !== binding.control.proposal_content_hash) {
         const crossTargetErrors = ['assessment targets a different Proposal version than the ControlIntent'];
         markReadinessRejected(db, inserted.record.id, crossTargetErrors);
         return {
@@ -352,7 +350,7 @@ export function createDiscoveryReadinessHandlers(
     definitions: [
       {
         name: 'readiness_get',
-        description: 'Read the immutable canonical discovery Proposal and the exact source references a shadow readiness advisor may cite, plus the assessment output schema. Call shape: readiness_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id> }) — returns proposal_id, proposal_content_hash, proposal_payload, allowed_source_refs, output_schema, rule. Echo the returned proposal_id and proposal_content_hash verbatim in the subsequent readiness_submit payload.',
+        description: 'Read the immutable canonical discovery Proposal and the exact source references a shadow readiness advisor may cite, plus the assessment output schema. Call shape: readiness_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id> }) — returns proposal_content_hash, proposal_payload, allowed_source_refs, output_schema, rule. Echo the returned proposal_content_hash verbatim in the subsequent readiness_submit payload. Do NOT put any physical proposal id into the payload: the assessment binds to the Proposal by content hash only.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -365,7 +363,7 @@ export function createDiscoveryReadinessHandlers(
       },
       {
         name: 'readiness_submit',
-        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome. Call shape: readiness_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "factory.discovery-readiness-assessment.v1", payload: { proposal_id: <int from readiness_get, echo verbatim>, proposal_content_hash: "<64-char hex from readiness_get, echo verbatim>", overall_readiness: "ready|conditionally_ready|not_ready|inconclusive", dimension_assessments: { problem_clarity: { status: "sufficient|partial|insufficient|unknown", rationale: <string>, source_refs: <string[] from allowed_source_refs> }, scope_boundedness: {...}, stakeholder_coverage: {...}, assumption_visibility: {...}, unknowns_manageability: {...}, risk_visibility: {...}, evidence_grounding: {...} }, blocking_gaps: [ { code: <string>, description: <string>, source_refs: <string[]> } ], non_blocking_gaps: [ { code, description, source_refs[] } ], recommended_next_action: "proceed_to_settlement|request_clarification|repeat_discovery|defer|reject|manual_review", confidence: <number 0..1>, rationale: <string> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; all source_refs must come from the allowed_source_refs list returned by readiness_get.',
+        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome. Call shape: readiness_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "factory.discovery-readiness-assessment.v2", payload: { proposal_content_hash: "<64-char hex from readiness_get, echo verbatim>", overall_readiness: "ready|conditionally_ready|not_ready|inconclusive", dimension_assessments: { problem_clarity: { status: "sufficient|partial|insufficient|unknown", rationale: <string>, source_refs: <string[] from allowed_source_refs> }, scope_boundedness: {...}, stakeholder_coverage: {...}, assumption_visibility: {...}, unknowns_manageability: {...}, risk_visibility: {...}, evidence_grounding: {...} }, blocking_gaps: [ { code: <string>, description: <string>, source_refs: <string[]> } ], non_blocking_gaps: [ { code, description, source_refs[] } ], recommended_next_action: "proceed_to_settlement|request_clarification|repeat_discovery|defer|reject|manual_review", confidence: <number 0..1>, rationale: <string> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; the payload must NOT contain any physical proposal id — bind via proposal_content_hash only; all source_refs must come from the allowed_source_refs list returned by readiness_get.',
         inputSchema: {
           type: 'object',
           properties: {

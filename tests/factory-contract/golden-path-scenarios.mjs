@@ -77,8 +77,7 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
   });
   const proposalId = proposal.submission_id ?? 0;
 
-  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v1', {
-    proposal_id: proposalId,
+  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v2', {
     proposal_content_hash: proposalDigest,
     overall_readiness: 'ready',
     dimension_assessments: {

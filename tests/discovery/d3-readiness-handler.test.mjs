@@ -60,7 +60,6 @@ function validAssessmentPayload(proposalId = 50, proposalHash = PRODUCT_PROPOSAL
     dims[d] = { status: 'sufficient', rationale: 'grounded', source_refs: ['$.problem_statement'] };
   }
   return {
-    proposal_id: proposalId,
     proposal_content_hash: proposalHash,
     overall_readiness: 'ready',
     dimension_assessments: dims,
@@ -307,7 +306,6 @@ test('D3 handler: readiness_get returns allowed_source_refs (anti-invent-evidenc
     const out = handlers.readiness_get({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
     });
-    assert.equal(out.proposal_id, 50);
     assert.equal(out.proposal_content_hash, PRODUCT_PROPOSAL_HASH);
     // Must include the evidence literal + the proposal field paths + lineage id.
     assert.ok(out.allowed_source_refs.includes('artifact:req-1'));

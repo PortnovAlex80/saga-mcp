@@ -170,8 +170,7 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
   const proposal = await client.callJson('product_read', {
     schema_id: proposalSchema, ref: proposalRef, digest: proposalDigest,
   });
-  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v1', {
-    proposal_id: proposal.submission_id ?? 0,
+  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v2', {
     proposal_content_hash: proposalDigest,
     overall_readiness: 'ready',
     dimension_assessments: {

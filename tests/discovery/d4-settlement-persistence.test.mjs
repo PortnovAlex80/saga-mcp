@@ -121,7 +121,6 @@ function validAssessmentPayload(proposalId, proposalHash, overrides = {}) {
     dims[d] = { status: 'sufficient', rationale: 'grounded', source_refs: ['$.problem_statement'] };
   }
   return {
-    proposal_id: proposalId,
     proposal_content_hash: proposalHash,
     overall_readiness: 'ready',
     dimension_assessments: dims,

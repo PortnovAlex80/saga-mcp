@@ -92,11 +92,11 @@ export const DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT: ContractRef = contractRef(
 /**
  * Output contract of the `prepare-readiness` / `resolve-readiness` node pair:
  * the canonical readiness assessment. Matches
- * `factory.discovery-readiness-assessment.v1`.
+ * `factory.discovery-readiness-assessment.v2`.
  */
 export const DISCOVERY_READINESS_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'factory.discovery-readiness-assessment.v1',
-  '1.0.0',
+  'factory.discovery-readiness-assessment.v2',
+  '2.0.0',
 );
 
 /**

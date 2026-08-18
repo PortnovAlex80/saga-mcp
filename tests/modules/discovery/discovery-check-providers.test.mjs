@@ -146,7 +146,7 @@ test('readiness provider: malformed binding fields carry decoded diagnostics', (
     id: 2,
     nodeId: 'assess-readiness',
     schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
-    payload: { proposal_id: 'not-a-number' },
+    payload: {},
   });
   const provider = createDiscoveryReadinessCheckProvider({
     db,
@@ -158,7 +158,7 @@ test('readiness provider: malformed binding fields carry decoded diagnostics', (
   }));
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0].code, 'readiness-contract-invalid');
-  assert.match(diagnostics[0].message, /proposal_id/);
+  assert.match(diagnostics[0].message, /proposal_content_hash/);
 });
 
 test('readiness provider: validator errors are decoded, not discarded', () => {
@@ -183,7 +183,6 @@ test('readiness provider: validator errors are decoded, not discarded', () => {
     nodeId: 'assess-readiness',
     schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
     payload: {
-      proposal_id: 3,
       proposal_content_hash: proposalSubmission.digest,
       // Missing dimensions/gaps/confidence — validateReadinessAssessment
       // computes the exact field errors; the provider must forward them.

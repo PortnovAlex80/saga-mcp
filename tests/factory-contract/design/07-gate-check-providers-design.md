@@ -797,7 +797,7 @@ invariant:  'readiness-binds-exact-accepted-proposal-and-cites-only-allowed-sour
 ```
 
 Validates against
-`DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'factory.discovery-readiness-assessment.v1'`
+`DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'factory.discovery-readiness-assessment.v2'`
 and `validateReadinessAssessment` (lines 156-322 of
 `discovery-readiness-assessment.ts`).
 
@@ -1169,7 +1169,7 @@ The hardest. The shift-left validator and the gate-run provider share rules.
 
 | Requirement | How to satisfy |
 |---|---|
-| Typed submission with `schema_version === 'factory.discovery-readiness-assessment.v1'` | Submit via `product_submit`. |
+| Typed submission with `schema_version === 'factory.discovery-readiness-assessment.v2'` | Submit via `product_submit`. |
 | `proposal_id` and `proposal_content_hash` bind to the EXACT accepted proposal | Use the row ID and content_hash of the accepted `factory_managed_node_submissions` row for `produce-proposal`. |
 | `overall_readiness` enum | One of `ready, conditionally_ready, not_ready, inconclusive`. |
 | `recommended_next_action` enum | One of `proceed_to_settlement, request_clarification, repeat_discovery, defer, reject, manual_review`. |

@@ -109,7 +109,7 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     const { handlers } = createDiscoveryReadinessHandlers({ db: () => migDb });
     const dims = {};
     for (const d of READINESS_DIMENSIONS) dims[d] = { status: 'sufficient', rationale: 'g', source_refs: ['$.problem_statement'] };
-    const payload = { proposal_id: 50, proposal_content_hash: REAL_HASH, overall_readiness: 'ready', dimension_assessments: dims, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action: 'proceed_to_settlement', confidence: 0.8, rationale: 'ok' };
+    const payload = { proposal_content_hash: REAL_HASH, overall_readiness: 'ready', dimension_assessments: dims, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action: 'proceed_to_settlement', confidence: 0.8, rationale: 'ok' };
 
     const first = handlers.readiness_submit({ control_intent_id: 1, execution_id: 'migr-exec-a', schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload });
     assert.equal(first.status, 'accepted_by_kernel');

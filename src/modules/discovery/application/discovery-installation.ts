@@ -692,7 +692,7 @@ function createResolveReadinessHandler(
       return {
         event: 'accepted',
         production: {
-          schema: 'factory.discovery-readiness-assessment.v1',
+          schema: 'factory.discovery-readiness-assessment.v2',
           artifactRef: `readiness-assessment:${assessment.id}`,
           contentHash: assessment.content_hash,
           bindings: {

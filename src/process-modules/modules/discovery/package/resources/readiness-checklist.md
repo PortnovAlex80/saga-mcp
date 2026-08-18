@@ -5,8 +5,8 @@ Before `product_submit`, verify the exact accepted Proposal ProductRef from
 `schema_id/ref/digest`, and then check every item below.
 
 ## Product envelope
-- [ ] `schema` is exactly `factory.discovery-readiness-assessment.v1`.
-- [ ] `content.proposal_id` equals `product_read.submission_id` for the accepted Proposal.
+- [ ] `schema` is exactly `factory.discovery-readiness-assessment.v2`.
+- [ ] `content` contains NO physical id (no `proposal_id`, no submission id) — the assessment binds by content hash only.
 - [ ] `content.proposal_content_hash` equals the Proposal ProductRef `digest` exactly.
 
 ## Decision fields

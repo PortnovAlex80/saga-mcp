@@ -109,7 +109,7 @@ export const FACTORY_TOOL_CALL_SHAPES = {
   readiness_get:
     'readiness_get({ control_intent_id: <int from task metadata>, execution_id: <string> })',
   readiness_submit:
-    'readiness_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "factory.discovery-readiness-assessment.v1", payload: { proposal_id, proposal_content_hash, overall_readiness, dimension_assessments: { problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding }, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action, confidence, rationale } })',
+    'readiness_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "factory.discovery-readiness-assessment.v2", payload: { proposal_content_hash, overall_readiness, dimension_assessments: { problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding }, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action, confidence, rationale } })',
   normalization_get:
     'normalization_get({ control_intent_id: <int>, source_submission_id: <int>, execution_id: <string> })',
   normalization_submit:
@@ -132,14 +132,13 @@ export const FACTORY_ARG_SOURCES = {
  * `payload` arg) to where the worker should source their correct values. This
  * extends FACTORY_ARG_SOURCES (which covers envelope args) to the payload body.
  *
- * Identity-echo fields (proposal_id, certificate_id, hashes) point the worker to
+ * Identity-echo fields (certificate_id, hashes) point the worker to
  * the read-only `_get` tool that already returned them. source_refs failures
  * point to the `allowed_source_refs` list the `_get` tool returned. Fields that
  * are the worker's own analysis (rationale, description, summary) get no hint.
  */
 const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
   readiness_submit: {
-    proposal_id: 'readiness_get → proposal_id (echo the value readiness_get returned; must be an integer)',
     proposal_content_hash: 'readiness_get → proposal_content_hash (echo the 64-char hex readiness_get returned)',
     source_refs: 'use ONLY refs from the allowed_source_refs list returned by readiness_get',
     overall_readiness: 'one of: ready, conditionally_ready, not_ready, inconclusive',

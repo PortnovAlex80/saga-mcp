@@ -229,7 +229,7 @@ test('W9-A2 output contracts: node output contracts cover proposal/normalization
   const ids = DISCOVERY_NODE_OUTPUT_CONTRACTS.map((c) => c.schemaId);
   assert.ok(ids.includes('factory.discovery-proposal.v1'));
   assert.ok(ids.includes('factory.discovery-normalization-proposal.v1'));
-  assert.ok(ids.includes('factory.discovery-readiness-assessment.v1'));
+  assert.ok(ids.includes('factory.discovery-readiness-assessment.v2'));
   assert.ok(ids.includes('factory.discovery-diagnosis.v1'));
   assert.ok(ids.includes('factory.discovery-brief.v1'));
 });

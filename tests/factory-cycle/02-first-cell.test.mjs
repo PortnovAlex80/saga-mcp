@@ -33,6 +33,7 @@ import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
+import { computeCheckPlanDigest } from '../../dist/process-modules/domain/workplace/gate.js';
 import { assembleRevision, buildContribution, productRevisionMemberKey } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import {
@@ -473,13 +474,16 @@ function buildCheckPlanCustom(checkPlanId, checks) {
     parameters: c.parameters ?? {},
     environmentRef: null,
   }));
-  return {
+  // Дайджест считаем ТОЙ ЖЕ продакшн-функцией, что и драйвер (computeCheckPlanDigest),
+  // а не ручной формулой — иначе тест дрейфует от канонизации ядра (ADR-053 C10/C13
+  // добавили decisionPolicy* и unknownErrorPolicy в дайджест).
+  const plan = {
     checkPlanId,
     version: '1.0.0',
-    checkPlanDigest: sha256Hex({ checkPlanId, version: '1.0.0', entries }),
     entries,
     decisionPolicyRef: 'factory.fail-closed.v1',
     decisionPolicyDigest: sha256Hex({ ref: 'factory.fail-closed.v1' }),
     unknownErrorPolicy: 'fail-closed',
   };
+  return { ...plan, checkPlanDigest: computeCheckPlanDigest(plan) };
 }

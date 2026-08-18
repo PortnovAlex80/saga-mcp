@@ -23,9 +23,10 @@
 /** Schema version for the discovery proposal payload. */
 export const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 
-/** Schema version for the readiness assessment payload. */
+/** Schema version for the readiness assessment payload.
+ * v2: content-hash-only proposal binding (no physical proposal_id). */
 export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA =
-  'factory.discovery-readiness-assessment.v1';
+  'factory.discovery-readiness-assessment.v2';
 
 /** Schema version for the diagnosis report payload (D5). */
 export const DISCOVERY_DIAGNOSIS_REPORT_SCHEMA = 'factory.discovery-diagnosis.v1';

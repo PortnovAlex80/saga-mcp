@@ -278,7 +278,6 @@ export function parseAndVerifyStoredSnapshotShared(
     );
     const readinessValidation = validateReadinessAssessment(
       snap.readiness.payload,
-      snap.proposal.id,
       snap.proposal.content_hash,
       allowedRefs,
     );
@@ -753,7 +752,6 @@ export function verifyDiscoveryCertificateBundle(
     );
     const readinessValidation = validateReadinessAssessment(
       assessment.payload,
-      proposal.id,
       proposalHash,
       allowedRefs,
     );

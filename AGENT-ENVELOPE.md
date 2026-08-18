@@ -738,3 +738,204 @@ state=unknown → observe-путь не активировался → орке�
    коллегами: `classifyResumeCompatibility` сравнивает только
    handlerLogicalIds → переписанный хендлер между ран'ами резюмится как
    `compatible`, и newest-wins капсульный биндер на третьем lifecycle-ране.
+
+### 2026-08-15 — ZCode / инженер saga-mcp (антифриз-план, слой C — SUPERVISOR) — оператору
+
+1. **ADR-053 прочитан** (диагноз + итоговый вердикт) до коммита. Коммит
+   `3b177ac3 feat(operator): engine supervisor (layer C)` — продолжение
+   антифриз-плана (орбита инфраструктуры движка, не заводская цепочка
+   стабилизации): ни одной границы перекодирования материала из диагноза
+   не тронул.
+
+2. **Что сделал (слой C, принят частичный дифф погибшего агента целиком —
+   он был корректен):** схема v14 (аддитивно + один расширенный CHECK):
+   `factory_launch_requests.engine_log_path/engine_pid/engine_spawned_at`
+   (durable-привязка хоста движка к launch; спавнеры — run-starter и
+   EngineProcessAdministration.start — пишут её при спавне),
+   append-only `factory_engine_watchdog_events`, engine_state принимает
+   `'failed_watchdog'` + аддитивный `last_error`. Панель:
+   `tracker-view/engine-supervisor.mjs` — sweep каждые 30с
+   (SAGA_ENGINE_SUPERVISOR=0 — выключить; порог stale 120с; LEGACY-фолбэк
+   mtime самого лога): мёртвый pid → одна durable-пометка engine_dead;
+   живой pid + протухший heartbeat → ФРИЗ → durable freeze_detected/
+   restart_attempted ДО остановки (бюджёт не теряется при смерти панели),
+   остановка через soft-stop engine brake (brakeEnginesForProject,
+   pid+cmdline-guard, не убивает чужой pid и не трогает движки эпиков-соседей)
+   с guarded-kill конкретного pid как фолбэком, рестарт прямым вызовом
+   `sagaApplication.startEngine` (тот же код, что POST /api/factory/start,
+   без HTTP); backoff 1→5→15 мин, бюджет 5 попыток/2ч, исчерпание →
+   engine_state='failed_watchdog'+last_error, видно в /api/factory/status
+   (поля engine_state/engine_error/watchdog). Single-engine sweep перед
+   КАЖДЫМ спавном панели (resume/new_start/idea): живой+свежий →
+   ok:'already-running' (дубль не спавнится), живой+протухший → труп убит,
+   потом спавн. Тесты: +11 (freeze/healthy/legacy/dead/backoff/exhausted/
+   sweep×4 + миграция v13→v14), затронутые наборы зелёные, tsc/eslint
+   чисто. worker-boundary 2 (timeout 180с) и engine-auto-resume
+   (idempotency-key) падали и ДО меня — проверил на чистом HEAD-worktree,
+   byte-identical. Завод не трогал, панель/движок не перезапускал, не пушено.
+
+3. **Следующая граница без cutover:** по моей орбите — слой C пока не
+   видит фриз, если движок умер вместе с tmp-логами (markers missing →
+   LEGACY-skip): следующий шаг антифриза B2/B3 (readonly-пробы внешним
+   наблюдателем + чекпойнт в чилде) и переезд логов из os.tmpdir() в
+   персистентный корень. По заводской линии — присоединяюсь к коллегам:
+   `classifyResumeCompatibility` (сравнивает только handlerLogicalIds →
+   переписанный хендлер резюмится как compatible) и newest-wins капсульный
+   биндер на третьем ране; мой вердикт тот же — cutover по ADR-053 вместо
+   точечных fix(formalization).
+
+### 2026-08-15 — ZCode / инженер saga-mcp (антифриз-план, слои B2+B3) — оператору
+
+1. **ADR-053 прочитан** (диагноз целиком + «Итоговый вердикт») до коммита.
+   Мой коммит — слои B2+B3 антифриз-плана (гипотеза (б) фризов, класс
+   TB-2 generalized): инфраструктурная орбита движка, ни одной границы
+   перекодирования материала из диагноза не тронул.
+
+2. **Что сделал (B2+B3, поверх 681ca660+3b177ac3):** B2 — новый модуль
+   `src/runtime/durable-state-probe.ts`: одно readonly-соединение
+   (timeout 250мс) на движок; горячие чтения цикла ожидания ушли с общего
+   getDb() на probe: isExecutionDurableTerminal (wait-poll каждую секунду),
+   shouldYieldToKernel (каждая итерация внутреннего цикла), COUNT активных
+   исполнений в paused-ожидании (неизвестно → -1 → «ждать дальше»). Ошибки
+   probe fail-closed (false/-1, никогда throw), соединение само-лечится
+   reopen'ом на следующем poll. B3 — новый `src/runtime/busy-retry.ts`:
+   обобщение паттерна 9a41748f (sleepSync через Atomics.wait + ретраи
+   SQLITE_BUSY/BUSY_SNAPSHOT, по умолчанию 3 попытки / окно 250мс /
+   backoff 50–100мс / бюджет maxWaitMs); при исчерпании — типизированная
+   ENGINE_DB_BUSY. Обёрнуты горячие записи: supervision lease acquire/
+   release + reconcile/renewLeases (бюджет 4×250мс, ENGINE_DB_BUSY →
+   sweep пропускается, следующий интервал повторит), dispatch claim
+   (assignTask: BEGIN IMMEDIATE + bindReplayToClaim; ENGINE_DB_BUSY
+   классифицирована recoverable в dispatch-loop → card_error-клапан вместо
+   фатала), checkpoint-захват (своё соединение переведено с busy_timeout
+   5000 на 250 + обёрнуты exec(SCHEMA_SQL)/ensureDatabaseIdentity/INSERT
+   factory_checkpoints/prune), controller-lease heartbeat (busy → дефер,
+   не «фенс потерян»; TTL 30с — сетка безопасности). getDb() остаётся с
+   busy_timeout 5000 — обёрнутые пути временно снижают его на окно ретраев
+   и восстанавливают. Тесты: +9 (probe: WAL-видимость коммитов чужим
+   соединением, <300мс под внешним BEGIN IMMEDIATE, fail-closed под
+   EXCLUSIVE-локом, позитивный isKernelWorkPending; busy-retry: короткий
+   внешний лок → ретрай успевает + busy_timeout восстанавливается,
+   длинный → ENGINE_DB_BUSY за бюджет с attempts=3, счётчик попыток,
+   cap maxWaitMs, не-busy ошибки проходят насквозь; лок держит РЕАЛЬНЫЙ
+   child-процесс). Затронутые наборы зелёные (supervision, dispatch,
+   checkpoints, recovery boundary, race). Преф-существующие падения
+   (не мои, пути не тронуты): engine-auto-resume idempotency-key —
+   byte-identical с падением до слоя C (зафиксировано в конверте
+   коллегой); lifecycle-рачет «no direct lifecycle UPDATE» ругается на
+   engine-start-lifecycle-burial/operator-soft-stop из старых коммитов.
+   Завод не трогал, панель/движок не перезапускал, не пушено, один
+   локальный коммит.
+
+3. **Следующая граница без cutover:** по моей орбите — слой B2 покрывает
+   цикл ожидания, но одиночные записи runEpisode-цикла (boot revision,
+   certify sweep, markFactoryLaunchRunning) остаются на 5с-окне getDb():
+   если фриз повторится с живым heartbeat — это следующий кандидат
+   (наблюдаемо через phase-маркер слоя A+B1 + watchdog слоя C). По
+   заводской линии — мой вердикт тот же, что у коллег: cutover по
+   ADR-053 (sealed Workplace production revision как единственный
+   accepted-material authority); следующие конкретные места слома
+   Mars/Venus без cutover — classifyResumeCompatibility (сравнивает
+   только handlerLogicalIds) и newest-wins капсульный биндер на третьем
+   lifecycle-ране, плюс любой post-acceptance effect, всё ещё ищущий
+   материал по producerExecutionRef.
+
+### 2026-08-15 — ZCode / инженер saga-mcp (антифриз-план, слой B4 — checkpoint-захват в дочернем процессе) — оператору
+
+1. **ADR-053 прочитан целиком** (плюс контекст конвейера из сообщений
+   коллег ниже). Мой слой — runtime-инфраструктура антифриза, он НЕ
+   трогает материальную авторитетную цепочку (Workplace/execution/
+   CandidateSet) и не добавляет execution-scoped материальных lookup-ов,
+   поэтому с диагнозом ADR-053 не конфликтует и его не откладывает.
+
+2. **Что сделал — слой B4:** same-process взаимоблокировка соединений
+   при checkpoint-захвате (класс TB-2: соединение захвата + главное
+   соединение движка на ОДНОМ event loop; B3 только ограничил срезы
+   спина) сделана структурно невозможной: захват вынесен в ОДНОРАЗОВЫЙ
+   дочерний процесс.
+   - `src/checkpoints/capture-cli.ts` — одноразовый раннер: тот же
+     FactoryCheckpointService.capture; успех → одна stdout-строка с
+     digest манифеста + exit 0; ошибка → stderr + exit 1; watchdog
+     (120с, SAGA_CHECKPOINT_CHILD_TIMEOUT_MS) → exit 3; db закрываются
+     в finally сервиса, явные process.exit — зависаний нет.
+   - `src/checkpoints/capture-spawn.ts` — родительский путь:
+     spawn(process.execPath, dist/checkpoints/capture-cli.js), env
+     наследуется (SAGA_*), stdio 'ignore' (ни одной трубы — урок слоя A),
+     таймаут 120с → SIGKILL → результат = ошибка; успех читается из
+     указателя `latest-<project>-<epic>` стора, без парсинга stdout;
+     HMAC-ключ идёт через env (SAGA_CAPTURE_HMAC_KEY), не через argv.
+     SAGA_CHECKPOINT_CHILD=0 → старый in-process путь через ту же точку
+     входа (тесты/отладка).
+   - `src/orchestrate-cli.ts` (единственный прод-колл-сайт захвата,
+     остальные прод-вызовы checkpoint-cli.ts уже сами по себе отдельные
+     процессы) — теперь зовёт captureCheckpointIsolated; не-фатальность
+     сохранена (фейл захвата = строка engineLog, цикл живёт дальше).
+   - Контракт CLI покрывает ВСЕ поля CaptureCheckpointOptions, реально
+     передаваемые продом: db/store/project/epic/created-by/include-logs/
+     hmac-key/signature-key-id (+--reason, сворачивается в createdBy).
+   - Тесты `tests/checkpoints/capture-child.test.mjs` (8): реальный спавн
+     на временной БД → манифест+COMPLETE+объекты+подпись; без --epic →
+     latest-<p>-all; битая БД → exit 1 и типизированный reject родителя;
+     fake-медленный ребёнок → SIGKILL за таймаутом, родитель не ждёт
+     вечно; SAGA_CHECKPOINT_CHILD=0 → in-process путь работает; дефолт →
+     child-путь. Затронутые наборы: checkpoints 28/29, engine-supervisor
+     + crash-recovery + orchestration-recovery-boundary 15/15,
+     orchestrate-global-budget + ratchet-архитектура 10/10,
+     operator-soft-stop 18/18, tsc чисто, eslint моих файлов чист.
+     Преф-существующие падения (проверил на чистом HEAD в отдельном
+     worktree, byte-identical, не мои): engine-auto-resume
+     idempotency-key (уже зафиксировано коллегой) и 4 теста в
+     tests/execution/hardening-execution-crash.test.mjs
+     (SqliteManagedNodeSubmissionRepository.submitForCurrentExecution).
+   Дальше по антифризу планов нет — слой B закрыт (A+B1 логи/heartbeat,
+   B2 probe, B3 busy-retry, B4 изоляция захвата), C supervisor работает.
+   Cutover по ADR-053 — решение оператора/архитектора, я «за»: моя
+   правка его не отменяет и не маскирует.
+
+3. **Следующая граница без cutover:** присоединяюсь к вердикту коллег —
+   любой post-acceptance effect после recovery/ретрая воркера (эффект
+   перепроецирует материал последнего execution → класс prd-missing),
+   classifyResumeCompatibility (только handlerLogicalIds) и newest-wins
+   капсульный биндер. По фризам: одиночные записи runEpisode-цикла (boot
+   revision, certify sweep, markFactoryLaunchRunning) остаются на 5с
+   окне getDb() — если фриз повторится с живым heartbeat, это следующий
+   кандидат (B5, если понадобится).
+
+   Завод не трогал, панель/движок не перезапускал, не пушено, один
+   локальный коммит (build — инкрементальный tsc поверх dist, без
+   rmSync+rebuilt, чтобы не оставить движок без dist на время сборки).
+
+### 2026-08-16 — ZCode / технический писец-инженер (доки: операторский гайд + аудит конформности) — оператору
+
+1. **ADR-053 прочитан** (целиком, вместе с CONVEYOR-MENTAL-MODEL v5.2,
+   TRANSITION-DIAGNOSTICS/CHECKLIST). Моя задача сегодня была документационная
+   (ЗАВОД-ЗАПУСК + аудит конформности модели) — границы перекодирования
+   материала не трогал вообще, завод не трогал (только чтение).
+
+2. **Сделано:** (а) ЗАВОД-ЗАПУСК.md дополнен операционными секциями —
+   модельный каталог (FACTORY_CLOUD_MODELS, effort, лимиты, min(concurrency,
+   limit)), POST /api/model/set (воркеры доигрывают на старой), core-view
+   :4323 как read-only наблюдатель, §8 «Пауза и остановка» (soft-stop
+   протокол, что живёт после смерти панели/движка, watchdog: что делает
+   supervisor сам и когда нужен человек — failed_watchdog), §9 (heartbeat/
+   phase маркеры, /api/factory/status watchdog-поля, [recovery-budget] и
+   [obligation-reconciler] строки), §11 (heartbeat тикает, supervisor жив,
+   user_version=14), плюс предупреждение о двойном package-store root
+   (factory.mjs задаёт <db>/package-store, панель — дефолт repo/.saga) с
+   рекомендацией пускать движки через панель; (б) в конец CONVEYOR-MENTAL-
+   MODEL.md добавлен раздел «Статус конформности (2026-08-16)» — модель не
+   переписана. Один локальный коммит только доков, не пушено.
+
+3. **Главный вывод аудита:** модель выдержана НЕ полностью. Liveness-ядро §23
+   (нет вечных анонимных пауз, bounded escalation, typed waits, наблюдаемость)
+   после антифриз-серии + ADR-074/075 фактически закрыто: recovery-эпохи с
+   TOTAL-CAP, engine supervisor с backoff 1/5/15 и бюджетом 5/2ч →
+   failed_watchdog, DispatchOutcome/ENGINE_DB_BUSY, heartbeat/phase-маркеры.
+   Оставшиеся расхождения — всё тот же материальный авторитет ADR-053/073:
+   readAcceptedArtifacts/baseline/traceability формализации epic-scoped, а не
+   lifecycle-scoped (TB-11 закрыл только areTasksReady); newest-wins капсульный
+   биндер на 3-м lifecycle-ране; classifyResumeCompatibility сравнивает только
+   handlerLogicalIds (переписанный хендлер = compatible). Следующая граница
+   слома без cutover — третий lifecycle-ран на одном эпике и любой
+   post-acceptance эффект, читающий накопленный материал эпика. Мой вердикт
+   совпадает с коллегами: cutover по ADR-053/073, а не новые точечные фиксы.

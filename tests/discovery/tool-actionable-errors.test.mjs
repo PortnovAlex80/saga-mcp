@@ -144,13 +144,17 @@ test('regression (gemma E2E): intent_id nested in payload triggers actionable er
 
 // ---- enrichPayloadErrors: payload-validator errors get Source hints --------
 
-test('enrichPayloadErrors: readiness proposal_id error gets readiness_get source', () => {
-  const raw = ["field 'proposal_id' must be an integer", "field 'proposal_content_hash' must be a lowercase SHA-256 hex string"];
+test('enrichPayloadErrors: readiness hash error gets readiness_get source; forbidden proposal_id gets none', () => {
+  const raw = [
+    "field 'proposal_id' must not appear in the payload: bind to the proposal via 'proposal_content_hash' only (physical ids are kernel provenance, not semantic content)",
+    "field 'proposal_content_hash' must be a lowercase SHA-256 hex string",
+  ];
   const enriched = enrichPayloadErrors('readiness_submit', raw);
-  // Raw phrase preserved.
-  assert.match(enriched[0], /field 'proposal_id' must be an integer/);
-  // Source hint appended.
-  assert.match(enriched[0], /Source: readiness_get → proposal_id/);
+  // Forbidden-field error: raw phrase preserved, NO source hint (the field has
+  // no valid source anymore).
+  assert.match(enriched[0], /field 'proposal_id' must not appear/);
+  assert.doesNotMatch(enriched[0], /Source: readiness_get → proposal_id/);
+  // Hash error keeps its source hint.
   assert.match(enriched[1], /Source: readiness_get → proposal_content_hash/);
   // Expected shape appended once at end.
   assert.match(enriched[enriched.length - 1], /\[Expected readiness_submit shape:/);

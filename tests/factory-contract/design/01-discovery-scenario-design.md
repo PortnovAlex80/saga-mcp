@@ -237,7 +237,7 @@ The worker records `product_ref` in the tracker (step 8 in
 - `allowedTools`: `task_get`, `product_read`, `product_submit`,
   `worker_done`, `Read`, `Edit`  (NOTE: much smaller tool surface — no Write,
   no Bash, no artifact APIs)
-- `outputSchema: { id: 'factory.discovery-readiness-assessment.v1' }`
+- `outputSchema: { id: 'factory.discovery-readiness-assessment.v2' }`
 - `retryPolicy: { maxAttempts: 2, retryOn: ['gate-repair'], backoff: 'none' }`
 
 **Workspace templates**: `readiness-call-template.json`,
@@ -255,7 +255,7 @@ one readiness assessment.
 |---|------|-----------|---------|
 | 1 | `task_get` | `{ id: <task_id> }` | Read task. Done by engine. |
 | 2 | `product_read` | `{ schema_id: 'factory.discovery-proposal.v1', ref: <proposalRef>, digest: <proposalDigest> }` | Read the exact accepted Proposal. The triple is extracted from `task.metadata.process_node_input.bindings.items[].products[]` (see §2.2.1). |
-| 3 | `product_submit` | `{ schema: 'factory.discovery-readiness-assessment.v1', content: { proposal_id, proposal_content_hash, overall_readiness, dimension_assessments{7 dims}, blocking_gaps, non_blocking_gaps, recommended_next_action, confidence, rationale } }` | Submit the readiness assessment. |
+| 3 | `product_submit` | `{ schema: 'factory.discovery-readiness-assessment.v2', content: { proposal_content_hash, overall_readiness, dimension_assessments{7 dims}, blocking_gaps, non_blocking_gaps, recommended_next_action, confidence, rationale } }` | Submit the readiness assessment. |
 | 4 | `worker_done` | `{ task_id, worker_id, execution_id, result: 'produced readiness assessment: ready' }` | Complete physical execution. |
 
 **2.2.1 Finding the Proposal ProductRef** (`golden-path-scenarios.mjs:66-77`):
@@ -438,7 +438,7 @@ in the task metadata. After 2 failed attempts the workplace pauses
 
 **What the check does** (`discovery-check-providers.ts:63-110`):
 1. Resolves the readiness producer submission from the CandidateSet.
-2. Validates `schema_version === 'factory.discovery-readiness-assessment.v1'`
+2. Validates `schema_version === 'factory.discovery-readiness-assessment.v2'`
    AND `Number.isSafeInteger(parameters.processRunId)` AND `processRunId >= 1`
    (else `'failed'`).
 3. Loads the accepted Proposal by:
@@ -540,7 +540,7 @@ if none match, `CLARIFY_POLICY_FALLBACK`.
 | Product | Schema id | Node | Authority |
 |---------|-----------|------|-----------|
 | `DiscoveryProposal` | `factory.discovery-proposal.v1` | `produce-proposal` | worker (`product_submit`) |
-| `DiscoveryReadinessAssessment` | `factory.discovery-readiness-assessment.v1` | `assess-readiness` | advisor (`product_submit`) |
+| `DiscoveryReadinessAssessment` | `factory.discovery-readiness-assessment.v2` | `assess-readiness` | advisor (`product_submit`) |
 | `DiscoveryOutcomeCertificate` | `factory.discovery-outcome-certificate.v1` | `settle` | kernel (`certificates.issue`) |
 
 Additionally, the proposal is projected into `factory_proposals` by
@@ -554,7 +554,7 @@ D3/D4/D5 spine can read it. The projection creates a row with
 artifacts: [
   { type: 'discovery-case',                    schema: factory.discovery-case.v1,                       authority: 'kernel'  },
   { type: 'discovery-proposal',                schema: factory.discovery-proposal.v1,                   authority: 'worker'  },
-  { type: 'discovery-readiness-assessment',    schema: factory.discovery-readiness-assessment.v1,       authority: 'advisor' },
+  { type: 'discovery-readiness-assessment',    schema: factory.discovery-readiness-assessment.v2,       authority: 'advisor' },
   { type: 'discovery-outcome-certificate',     schema: factory.discovery-outcome-certificate.v1,        authority: 'kernel'  },
 ]
 ```
@@ -694,7 +694,7 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
   });
   const proposalId = proposal.submission_id ?? 0;
 
-  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v1', {
+  await actions.submitProduct(client, 'factory.discovery-readiness-assessment.v2', {
     proposal_id: proposalId,
     proposal_content_hash: proposalDigest,
     overall_readiness: 'ready',

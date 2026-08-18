@@ -26,11 +26,12 @@ export const DISCOVERY_PROPOSAL_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const DISCOVERY_READINESS_CHECK_PROVIDER_ID =
   'discovery.readiness-contract.v1';
-export const DISCOVERY_READINESS_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DISCOVERY_READINESS_CHECK_PROVIDER_VERSION = '1.1.0';
 export const DISCOVERY_READINESS_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: DISCOVERY_READINESS_CHECK_PROVIDER_ID,
   version: DISCOVERY_READINESS_CHECK_PROVIDER_VERSION,
-  invariant: 'readiness-binds-exact-accepted-proposal-and-cites-only-allowed-sources',
+  invariant:
+    'readiness-binds-accepted-proposal-by-content-hash-and-cites-only-allowed-sources',
 });
 
 interface SubmissionRow {
@@ -108,25 +109,24 @@ export function createDiscoveryReadinessCheckProvider(input: {
           ]);
         }
         const assessment = JSON.parse(readiness.payload_snapshot) as Record<string, unknown>;
-        const proposalId = assessment.proposal_id;
         const proposalHash = assessment.proposal_content_hash;
-        if (
-          !Number.isSafeInteger(proposalId)
-          || Number(proposalId) < 1
-          || typeof proposalHash !== 'string'
-        ) {
+        if (typeof proposalHash !== 'string' || proposalHash === '') {
           return contractFailure('readiness-contract-invalid', subjectCandidateSetRef, [
-            'field \'proposal_id\' must be a positive integer and '
-              + '\'proposal_content_hash\' must be a string binding the readiness '
+            'field \'proposal_content_hash\' must be a string binding the readiness '
               + 'assessment to the exact accepted proposal version',
           ]);
         }
+        // Resolve the assessed Proposal by CONTENT HASH within the run — never
+        // by row id. Physical ids are lifecycle-local: two runs of the same
+        // lifecycle re-mint the same semantic Proposal under different ids, and
+        // a capsule payload must stay a function of the material, not of its
+        // registration (REPLAY_KEY_PAYLOAD_CONFLICT, TrackPlan lc8).
         const proposal = input.db.prepare(
           `SELECT id,content_hash,payload_snapshot
              FROM factory_managed_node_submissions
-            WHERE id=? AND process_run_id=? AND node_id='produce-proposal'
+            WHERE process_run_id=? AND node_id='produce-proposal'
               AND schema_version=? AND content_hash=?`,
-        ).get(proposalId, processRunId, DISCOVERY_PROPOSAL_SCHEMA, proposalHash) as {
+        ).get(processRunId, DISCOVERY_PROPOSAL_SCHEMA, proposalHash) as {
           id: number;
           content_hash: string;
           payload_snapshot: string;
@@ -136,7 +136,6 @@ export function createDiscoveryReadinessCheckProvider(input: {
         const allowedRefs = allowedProposalSourceRefs(proposalPayload);
         const validation = validateReadinessAssessment(
           assessment,
-          proposal.id,
           proposal.content_hash,
           allowedRefs,
         );

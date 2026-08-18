@@ -41,7 +41,6 @@ function readyAssessment(overrides = {}) {
   const dimension_assessments = {};
   for (const d of READINESS_DIMENSIONS) dimension_assessments[d] = dim('sufficient');
   return {
-    proposal_id: 1,
     proposal_content_hash: 'a'.repeat(64),
     overall_readiness: 'ready',
     dimension_assessments,

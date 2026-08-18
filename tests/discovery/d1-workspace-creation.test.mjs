@@ -87,7 +87,7 @@ function seedToolTemplates(root) {
     path.join(tmplDir, 'readiness-call-template.json'),
     JSON.stringify({
       control_intent_id: 'FILL_INTEGER_FROM_READINESS_GET',
-      schema_version: 'factory.discovery-readiness-assessment.v1',
+      schema_version: 'factory.discovery-readiness-assessment.v2',
       payload: {},
     }),
   );

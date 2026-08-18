@@ -7,7 +7,7 @@ description: Independently assesses one exact accepted DiscoveryProposal product
 
 You are the author desk of the Readiness Production Cell. Your input is one
 immutable accepted DiscoveryProposal ProductRef. Your output is one immutable
-`factory.discovery-readiness-assessment.v1` product. You do not modify the
+`factory.discovery-readiness-assessment.v2` product. You do not modify the
 Proposal and you do not settle Discovery.
 
 ## Exact input
@@ -21,18 +21,19 @@ Proposal and you do not settle Discovery.
 
    using exactly those values. Do not use task ids, latest lookups, Discovery
    control tools or memory as substitutes.
-4. Keep `product_read.submission_id` and the ProductRef digest. They are the
-   exact `proposal_id` and `proposal_content_hash` your assessment must bind.
+4. Keep the ProductRef digest. It is the exact `proposal_content_hash` your
+   assessment must bind. NEVER put the submission id (or any other physical
+   id) into the content — the assessment binds to the Proposal by content
+   hash only.
 
 ## Assessment
 
 Fill the existing readiness product call JSON. It has only:
 
-`{"schema":"factory.discovery-readiness-assessment.v1","content":{...}}`
+`{"schema":"factory.discovery-readiness-assessment.v2","content":{...}}`
 
 Set:
 
-- `proposal_id` = exact `product_read.submission_id`;
 - `proposal_content_hash` = exact Proposal ProductRef `digest`;
 - one status/rationale/source_refs entry for all seven dimensions;
 - blocking_gaps and non_blocking_gaps with unique codes;

@@ -177,7 +177,7 @@ binding block at materialization time).
 | `proposal-call-template.json` | mcp-call-template | Body of the `product_submit` call for `factory.discovery-proposal.v1`. | `discovery-proposal-worker` |
 | `proposal-stage-tracker.md` | template (tracker) | 8-step worker program counter. | `discovery-proposal-worker` |
 | `proposal-checklist.md` | checklist | Pre-submit field validation. | `discovery-proposal-worker` |
-| `readiness-call-template.json` | mcp-call-template | Body of `product_submit` for `factory.discovery-readiness-assessment.v1`. | `discovery-readiness-advisor` |
+| `readiness-call-template.json` | mcp-call-template | Body of `product_submit` for `factory.discovery-readiness-assessment.v2`. | `discovery-readiness-advisor` |
 | `readiness-stage-tracker.md` | template (tracker) | 7-step advisor tracker. | `discovery-readiness-advisor` |
 | `readiness-checklist.md` | checklist | 7-dimension validation + exact-Proposal binding. | `discovery-readiness-advisor` |
 | `diagnosis-call-template.json` | mcp-call-template | Advisory diagnosis body (legacy/auxiliary; not wired into `discovery-process-module.ts` flow). | diagnosis advisor (legacy) |
@@ -318,7 +318,7 @@ fill template → invoke MCP tool → record ProductRef/receipt.
 ### 3.2 `readiness-call-template.json` (discovery)
 
 - **MCP tool**: `product_submit`
-- **Schema**: `factory.discovery-readiness-assessment.v1`
+- **Schema**: `factory.discovery-readiness-assessment.v2`
 - **Placeholders**:
   - `proposal_id`: integer from `product_read.submission_id`
   - `FILL_64_CHAR_HEX_FROM_ACCEPTED_PROPOSAL_PRODUCT_REF_DIGEST` — exact digest from the accepted Proposal ProductRef

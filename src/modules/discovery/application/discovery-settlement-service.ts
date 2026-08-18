@@ -281,7 +281,6 @@ export class FactoryDiscoverySettlementService implements DiscoverySettlementSer
       );
       const readinessValidation = validateReadinessAssessment(
         assessment.payload,
-        request.proposalId,
         recomputedProposalHash,
         allowedRefs,
       );

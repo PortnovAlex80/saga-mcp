@@ -23,8 +23,14 @@
  * Schema version for the readiness assessment payload. readiness_submit
  * rejects a submission whose schema_version does not match this exactly — the
  * kernel, not the advisor, owns the contract version.
+ *
+ * v2 (REPLAY_KEY_PAYLOAD_CONFLICT fix, 2026-08-18): the payload binds to the
+ * Proposal by content hash ONLY. v1 carried `proposal_id` — the physical DB
+ * row id of the assessed proposal — which made re-runs of the same lifecycle
+ * mint byte-different capsules under one replay key. Physical ids are
+ * provenance, never semantic content.
  */
-export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'factory.discovery-readiness-assessment.v1';
+export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'factory.discovery-readiness-assessment.v2';
 
 /**
  * Top-level readiness classification of the whole Proposal. These are
@@ -104,9 +110,14 @@ export const RECOMMENDED_NEXT_ACTION_VALUES: readonly RecommendedNextAction[] = 
   'defer', 'reject', 'manual_review',
 ];
 
-/** Typed readiness assessment payload (roadmap D3). */
+/**
+ * Typed readiness assessment payload (roadmap D3). The assessment binds to
+ * the immutable Proposal version by `proposal_content_hash` alone — a
+ * content-addressed reference. Physical row ids (proposal_id) are kernel
+ * provenance and must NOT appear here: canonical content is a function of
+ * the material, not of its registration.
+ */
 export interface ReadinessAssessmentPayload {
-  proposal_id: number;
   proposal_content_hash: string;
   overall_readiness: OverallReadiness;
   dimension_assessments: Record<ReadinessDimension, DimensionAssessment>;
@@ -149,13 +160,15 @@ function isAllowedSourceRef(ref: string, allowed: ReadonlySet<string>): boolean 
  * any explicitly supplied discovery-context snapshot identifiers) — anything
  * outside it is treated as invented evidence and rejected.
  *
- * `expectedProposalId` and `expectedProposalHash` bind the assessment to one
- * immutable Proposal version: a changed content hash is a new assessment
- * target and must not reuse an assessment created for another hash.
+ * `expectedProposalHash` binds the assessment to one immutable Proposal
+ * version: a changed content hash is a new assessment target and must not
+ * reuse an assessment created for another hash. The binding is
+ * content-addressed only — `proposal_id` (a lifecycle-local DB row id) is
+ * forbidden in the payload so that re-runs mint byte-identical capsules
+ * under one replay key.
  */
 export function validateReadinessAssessment(
   payload: unknown,
-  expectedProposalId: number,
   expectedProposalHash: string,
   allowedSourceRefs: readonly string[],
 ): ReadinessAssessmentValidation {
@@ -164,11 +177,13 @@ export function validateReadinessAssessment(
     return { valid: false, errors: ['assessment must be a JSON object'] };
   }
 
-  // Identity binding to the immutable Proposal version.
-  if (!Number.isInteger(payload.proposal_id)) {
-    errors.push('field \'proposal_id\' must be an integer');
-  } else if (payload.proposal_id !== expectedProposalId) {
-    errors.push(`field 'proposal_id' must be ${expectedProposalId}, got ${payload.proposal_id}`);
+  // Identity binding to the immutable Proposal version (content-addressed).
+  if ('proposal_id' in payload) {
+    errors.push(
+      'field \'proposal_id\' must not appear in the payload: bind to the '
+      + 'proposal via \'proposal_content_hash\' only (physical ids are '
+      + 'kernel provenance, not semantic content)',
+    );
   }
   if (typeof payload.proposal_content_hash !== 'string'
       || !/^[0-9a-f]{64}$/.test(payload.proposal_content_hash)) {

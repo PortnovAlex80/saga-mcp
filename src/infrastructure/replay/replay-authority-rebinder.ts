@@ -1,10 +1,5 @@
 import type Database from 'better-sqlite3';
 
-const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
-const DISCOVERY_READINESS_NODE = 'assess-readiness';
-const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
-const DISCOVERY_READINESS_SCHEMA = 'factory.discovery-readiness-assessment.v1';
-
 const DEVELOPMENT_MODULE_REFS = new Set([
   'solution-development@1.1.0',
   'solution-development@1.2.0',
@@ -36,15 +31,6 @@ export function rebindReplayAuthorityReferences(
 
   if (taskMetadata.role === 'reviewer') {
     rebound = rebindReviewerCandidateSet(db, taskMetadata, rebound);
-  }
-
-  if (
-    taskMetadata.process_module_ref === DISCOVERY_MODULE_REF
-    && taskMetadata.process_node_id === DISCOVERY_READINESS_NODE
-    && taskMetadata.role === 'author'
-    && schemaId === DISCOVERY_READINESS_SCHEMA
-  ) {
-    rebound = rebindDiscoveryProposal(taskMetadata, rebound);
   }
 
   if (
@@ -109,40 +95,11 @@ function rebindReviewerCandidateSet(
   return visit(value);
 }
 
-function rebindDiscoveryProposal(
-  taskMetadata: Readonly<Record<string, unknown>>,
-  value: unknown,
-): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('CAPSULE_REPLAY_DISCOVERY_PRODUCT_INVALID: readiness assessment must be an object');
-  }
-
-  const currentInput = taskMetadata.process_node_input ?? taskMetadata.cell_input_item;
-  const proposalRef = findExactProductRef(currentInput, DISCOVERY_PROPOSAL_SCHEMA);
-  if (!proposalRef) {
-    throw new Error(
-      'CAPSULE_REPLAY_DISCOVERY_SOURCE_MISSING: current readiness input has no exact discovery proposal ProductRef',
-    );
-  }
-  const prefix = 'managed-node-submission:';
-  if (!proposalRef.ref.startsWith(prefix)) {
-    throw new Error(
-      `CAPSULE_REPLAY_DISCOVERY_SOURCE_INVALID: unsupported proposal ref '${proposalRef.ref}'`,
-    );
-  }
-  const proposalId = Number(proposalRef.ref.slice(prefix.length));
-  if (!Number.isSafeInteger(proposalId) || proposalId < 1) {
-    throw new Error(
-      `CAPSULE_REPLAY_DISCOVERY_SOURCE_INVALID: malformed proposal ref '${proposalRef.ref}'`,
-    );
-  }
-
-  return {
-    ...(value as Record<string, unknown>),
-    proposal_id: proposalId,
-    proposal_content_hash: proposalRef.digest,
-  };
-}
+// NOTE: the discovery readiness rebind (proposal_id → current run's proposal
+// row id) was REMOVED with the readiness schema v2 cutover: the payload no
+// longer carries any physical proposal id, so there is nothing lifecycle-local
+// to rebind. The assessment binds to the proposal by content hash, which is
+// stable across runs by construction.
 
 function rebindDevelopmentVerificationCandidate(
   taskMetadata: Readonly<Record<string, unknown>>,
@@ -182,28 +139,6 @@ function findObject(
   }
   for (const child of Array.isArray(value) ? value : Object.values(value)) {
     const found = findObject(child, predicate);
-    if (found) return found;
-  }
-  return null;
-}
-
-function findExactProductRef(
-  value: unknown,
-  schemaId: string,
-): { ref: string; digest: string } | null {
-  if (!value || typeof value !== 'object') return null;
-  if (!Array.isArray(value)) {
-    const row = value as Record<string, unknown>;
-    if (
-      row.schemaId === schemaId
-      && typeof row.ref === 'string'
-      && typeof row.digest === 'string'
-    ) {
-      return { ref: row.ref, digest: row.digest };
-    }
-  }
-  for (const child of Array.isArray(value) ? value : Object.values(value)) {
-    const found = findExactProductRef(child, schemaId);
     if (found) return found;
   }
   return null;

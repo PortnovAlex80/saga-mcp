@@ -7,7 +7,7 @@
  * Что делает:
  *   1. Парсит argv/stdin
  *   2. Поднимает MCP-child
- *   3. product_submit(schema='factory.discovery-readiness-assessment.v1',
+ *   3. product_submit(schema='factory.discovery-readiness-assessment.v2',
  *      content=<валидный assessment — все 7 dimensions, overall_readiness=ready,
  *      confidence=0.85, recommended_next_action=proceed_to_settlement>)
  *   4. worker_done
@@ -106,9 +106,8 @@ class McpClient {
 // --- Продукт: валидный readiness assessment ---
 // proposal_id и proposal_content_hash будут подставлены раннером через stdin
 // (prompt содержит их в metadata). Здесь — шаблон.
-function buildAssessment(proposalId, proposalHash) {
+function buildAssessment(proposalHash) {
   return {
-    proposal_id: proposalId,
     proposal_content_hash: proposalHash,
     overall_readiness: 'ready',
     dimension_assessments: {
@@ -212,11 +211,11 @@ async function main() {
     process.stderr.write(`[readiness-advisor] proposal_id=${proposalId} hash=${proposalHash.slice(0, 12)}\n`);
 
     // Строим assessment с exact proposal_id и proposal_content_hash.
-    const assessment = buildAssessment(proposalId, proposalHash);
+    const assessment = buildAssessment(proposalHash);
 
     emit('assistant', { message: { content: [{ type: 'text', text: '[mock] product_submit: readiness-assessment' }] } });
     const ps = await client.call('product_submit', {
-      schema: 'factory.discovery-readiness-assessment.v1',
+      schema: 'factory.discovery-readiness-assessment.v2',
       content: assessment,
     });
     process.stderr.write(`[readiness-advisor] product_submit → ${ps[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);

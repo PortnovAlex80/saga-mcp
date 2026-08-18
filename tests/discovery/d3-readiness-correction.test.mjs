@@ -70,7 +70,7 @@ function validAssessment(proposalId = 50, hash = PROPOSAL_HASH, overrides = {}) 
     dims[d] = { status: 'sufficient', rationale: 'grounded', source_refs: ['$.problem_statement'] };
   }
   return {
-    proposal_id: proposalId, proposal_content_hash: hash,
+    proposal_content_hash: hash,
     overall_readiness: 'ready', dimension_assessments: dims,
     blocking_gaps: [], non_blocking_gaps: [],
     recommended_next_action: 'proceed_to_settlement', confidence: 0.8,

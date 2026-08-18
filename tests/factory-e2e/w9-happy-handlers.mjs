@@ -151,9 +151,8 @@ function discoveryReadiness({ handlers, assignment, db, meta }) {
   }
 
   handlers.product_submit({
-    schema: 'factory.discovery-readiness-assessment.v1',
+    schema: 'factory.discovery-readiness-assessment.v2',
     content: {
-      proposal_id: proposalId,
       proposal_content_hash: proposalDigest,
       overall_readiness: 'ready',
       dimension_assessments: {
