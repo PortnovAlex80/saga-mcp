@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
- * Универсальный formalization reviewer — всегда одобряет.
+ * Универсальный formalization reviewer — подаёт вердикт из golden-корпуса.
  *
- * Реальный ревьюер читает author CandidateSet, проверяет контракты,
- * выносит вердикт. Этот скрипт — всегда approved (для scripted pipeline).
- *
- * product_submit(schema='factory.review-verdict.v1', content={verdict:'approved', findings:[], subject_candidate_set_ref: <from task metadata>})
+ * Семантика вердикта (verdict + findings) — материал, который реальный
+ * ревьюер произвёл и реальный гейт принял в захваченном ране, по node_id
+ * текущей задачи. Единственное перепривязывание: subject_candidate_set_ref
+ * указывает на CandidateSet ТЕКУЩЕГО рана (корпусной рефлексией быть не может
+ * по определению — это run-специфичная привязка).
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { loadCorpus } from '../../corpus.mjs';
 
 function parseArgv(argv) {
   const args = argv.slice(2);
@@ -107,14 +109,19 @@ async function main() {
   try {
     await client.init();
 
-    // Читаем task чтобы получить workplace_ref
+    // Читаем task чтобы получить workplace_ref и node_id
     const taskResult = await client.call('task_get', { id: Number(prompt.task_id) });
     const taskData = JSON.parse(taskResult[0]?.text ?? '{}');
     const meta = typeof taskData.metadata === 'string'
       ? JSON.parse(taskData.metadata || '{}')
       : (taskData.metadata || {});
     const workplaceRef = meta.workplace_ref || '';
-    process.stderr.write(`[reviewer] workplace_ref=${workplaceRef}\n`);
+    const nodeId = meta.process_node_id || '';
+    process.stderr.write(`[reviewer] workplace_ref=${workplaceRef} node=${nodeId}\n`);
+
+    // Вердикт из корпуса по узлу (fail-closed: нет захвата — нет вердикта).
+    const corpus = loadCorpus();
+    const captured = corpus.product(nodeId, 'factory.review-verdict.v1');
 
     // subject_candidate_set_ref = author CandidateSet ref for this workplace.
     // Read it via candidate_read(workplace_ref, role='author') → candidateSetRef.
@@ -130,22 +137,18 @@ async function main() {
     }
     process.stderr.write(`[reviewer] subject_candidate_set_ref=${subjectCandidateSetRef}\n`);
 
-    // product_submit — review verdict approved
-    emit('assistant', { message: { content: [{ type: 'text', text: '[mock] review verdict: approved' }] } });
+    // product_submit — captured verdict, subject rebound to THIS run's set
+    emit('assistant', { message: { content: [{ type: 'text', text: `[mock] review verdict: ${captured.verdict}` }] } });
     const ps = await client.call('product_submit', {
       schema: 'factory.review-verdict.v1',
-      content: {
-        verdict: 'approved',
-        findings: [],
-        subject_candidate_set_ref: subjectCandidateSetRef,
-      },
+      content: { ...captured, subject_candidate_set_ref: subjectCandidateSetRef },
     });
     process.stderr.write(`[reviewer] product_submit → ${ps[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);
 
     const wd = await client.call('worker_done', {
       task_id: Number(prompt.task_id),
       worker_id: prompt.worker_id,
-      result: 'review verdict: approved — no findings',
+      result: `review verdict: ${captured.verdict} — ${captured.findings?.length ?? 0} findings (corpus)`,
       execution_id: prompt.execution_id,
     });
     process.stderr.write(`[reviewer] worker_done → ${wd[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);

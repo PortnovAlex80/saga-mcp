@@ -13,11 +13,17 @@
  *   4. worker_done
  *   5. exit 0
  *
- * Assessment — валидный по доменному контракту (7 dimensions, source_refs пустые
- * т.к. нет реальных артефактов-источников в тесте, confidence выше GO_MIN_CONFIDENCE=0.70).
+ * Assessment — семантика из golden-корпуса (материал, который реальный
+ * advisory-воркер произвёл и реальный гейт принял в захваченном ране),
+ * адаптированная под ДЕЙСТВУЮЩИЙ контракт v2:
+ *   - v2 запрещает поле proposal_id (физический id строки — провенанс ядра,
+ *     не семантика; см. discovery-readiness-assessment.ts) — удаляем;
+ *   - proposal_content_hash перепривязывается к proposal ТЕКУЩЕГО рана.
+ * Имитатор не сочиняет оценку — он подаёт захваченную.
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { loadCorpus } from '../../corpus.mjs';
 
 function parseArgv(argv) {
   const args = argv.slice(2);
@@ -103,30 +109,17 @@ class McpClient {
   close() { try { this.child.stdin.end(); } catch {} try { this.child.kill(); } catch {} }
 }
 
-// --- Продукт: валидный readiness assessment ---
-// proposal_id и proposal_content_hash будут подставлены раннером через stdin
-// (prompt содержит их в metadata). Здесь — шаблон.
+// --- Продукт: readiness assessment из golden-корпуса, перепривязанный к текущему рану ---
+// Корпус хранит payload схемы v1 (захваченный ран); действующий контракт — v2.
+// Разница ровно одна: v2 убрал proposal_id (контент-адресация вместо
+// физического id). Семантику несёт корпус, конвертацию конверта — имитатор.
+const CORPUS_ASSESSMENT = loadCorpus().product(
+  'assess-readiness', 'factory.discovery-readiness-assessment.v1',
+);
+
 function buildAssessment(proposalHash) {
-  return {
-    proposal_content_hash: proposalHash,
-    overall_readiness: 'ready',
-    dimension_assessments: {
-      problem_clarity: { status: 'sufficient', rationale: 'Problem is clearly stated.', source_refs: ['$.problem_statement'] },
-      scope_boundedness: { status: 'sufficient', rationale: 'Scope is bounded to one module.', source_refs: ['$.candidate_scope'] },
-      stakeholder_coverage: { status: 'sufficient', rationale: 'Three stakeholders identified.', source_refs: ['$.stakeholders_or_actors'] },
-      assumption_visibility: { status: 'sufficient', rationale: 'Two assumptions are explicit.', source_refs: ['$.assumptions'] },
-      unknowns_manageability: { status: 'partial', rationale: 'One unknown, manageable.', source_refs: ['$.unknowns'] },
-      risk_visibility: { status: 'sufficient', rationale: 'One risk, mitigated.', source_refs: ['$.risks'] },
-      evidence_grounding: { status: 'sufficient', rationale: 'Grounded in existing test gaps and architectural invariants.', source_refs: ['$.evidence_refs'] },
-    },
-    blocking_gaps: [],
-    non_blocking_gaps: [
-      { code: 'NG-001', description: 'Fixture drift risk is noted but acceptable.', source_refs: ['$.risks'] },
-    ],
-    recommended_next_action: 'proceed_to_settlement',
-    confidence: 0.85,
-    rationale: 'The proposal is grounded, scope is bounded, and the approach is proven. Confidence is high.',
-  };
+  const { proposal_id: _droppedProvenanceId, ...semantic } = CORPUS_ASSESSMENT;
+  return { ...semantic, proposal_content_hash: proposalHash };
 }
 
 async function main() {
@@ -223,7 +216,7 @@ async function main() {
     const wd = await client.call('worker_done', {
       task_id: Number(prompt.task_id),
       worker_id: prompt.worker_id,
-      result: 'produced readiness assessment: overall=ready, confidence=0.85, action=proceed_to_settlement',
+      result: `produced readiness assessment: overall=${CORPUS_ASSESSMENT.overall_readiness}, confidence=${CORPUS_ASSESSMENT.confidence}, action=${CORPUS_ASSESSMENT.recommended_next_action}`,
       execution_id: prompt.execution_id,
     });
     process.stderr.write(`[readiness-advisor] worker_done → ${wd[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);

@@ -2,21 +2,23 @@
 /**
  * Универсальный formalization author — создаёт артефакты + трассы по node_id.
  *
- * formalization authors создают артефакты через artifact_create и связывают их
- * трассами через trace_add. Каждый node требует свой набор:
+ * Материал — golden-корпус (tests/fixtures/golden-corpus): документы, которые
+ * реальная модель произвела и реальные гейты приняли в захваченном ране.
+ * Имитатор воспроизводит захваченную структуру производства узла:
+ *   - какие артефакты создаёт узел (порядок и типы — из бандла узла),
+ *   - тела документов (байты корпуса, content_hash = sha256 этих байтов),
+ *   - топологию трасс (рёбра из бандла, перепривязанные на id текущего рана).
+ * Run-специфичное (id артефактов, projectId/epicId, путь репо) разрешается
+ * в рантайме; сочинять текст имитатору больше нечего — loadCorpus fail-closed.
  *
- *   define-product-contract: brief, PRD(→brief), FR, NFR, RULE
- *   model-use-cases:         UC(→PRD derived_from, →FR covers)
- *   define-acceptance-contract: AC(→FR/NFR derived_from, →UC derived_from)
- *   reconcile-what:          product_submit (reconciliation report)
- *   define-architecture-contract: SRS(→PRD derived_from)
- *
- * Артефакты пишутся в factory_managed_artifact_productions автоматически через
- * provenance env (SAGA_EXECUTION_ID etc.). Gate validator читает их оттуда.
+ * Формализация использует kernel-gate artifact acceptance: артефакты
+ * создаются со статусом 'draft', гейт/эффект приёмки помечает их accepted.
  */
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { loadCorpus } from '../../corpus.mjs';
 
 function parseArgv(argv) {
   const args = argv.slice(2);
@@ -102,22 +104,55 @@ class McpClient {
   close() { try { this.child.stdin.end(); } catch {} try { this.child.kill(); } catch {} }
 }
 
+// --- Corpus access (fail-closed: absence of material is an error, not prose) ---
+
+const corpus = loadCorpus();
+
+// manifest.artifacts упорядочен по id захваченного рана; бандлы узлов
+// ссылаются на те же id. Join id↔code проверяется при первом обращении.
+const CORPUS_ARTIFACTS = corpus.manifest.artifacts;
+const corpusRowByCode = new Map(CORPUS_ARTIFACTS.map(row => [row.code, row]));
+const corpusCodeById = new Map(CORPUS_ARTIFACTS.map((row, index) => [index + 1, row.code]));
+
+const NODE_BUNDLE_SCHEMA = {
+  'define-product-contract': 'factory.formalization-product-bundle.v1',
+  'model-use-cases': 'factory.formalization-use-case-bundle.v1',
+  'define-acceptance-contract': 'factory.formalization-acceptance-bundle.v1',
+  'define-architecture-contract': 'factory.formalization-architecture-bundle.v1',
+};
+
+function corpusCode(artifactId) {
+  const code = corpusCodeById.get(artifactId);
+  if (!code) {
+    throw new Error(`GOLDEN_CORPUS_JOIN_FAILED: bundle references artifact id ${artifactId}, `
+      + `corpus index has ${CORPUS_ARTIFACTS.length} artifacts (codes: ${[...corpusCodeById.values()].join(', ')})`);
+  }
+  return code;
+}
+
+// Тело документа узла: якорь '#AC-1' отрезается — несколько артефактов
+// (например FR-1..FR-4) законно делят один файл корпуса.
+function corpusDocumentBytes(row) {
+  return corpus.document(row.path.split('#')[0].split('/').pop());
+}
+
 // --- Artifact + trace creation helpers ---
 
-async function createArtifact(client, { projectId, epicId, type, code, title, path }) {
-  // Deterministic content_hash from artifact identity (no real file on disk).
-  const contentHash = createHash('sha256')
-    .update(`${type}:${code}:${title}`)
-    .digest('hex');
+async function createArtifact(client, {
+  projectId, epicId, type, code, title, artifactPath, contentHash,
+  metadata = undefined, projectRepositoryId = undefined,
+}) {
   const result = await client.call('artifact_create', {
     project_id: projectId,
     epic_id: epicId,
     type,
     code,
     title,
-    path,
+    path: artifactPath,
     status: 'draft',
     content_hash: contentHash,
+    ...(metadata !== undefined ? { metadata } : {}),
+    ...(projectRepositoryId !== undefined ? { project_repository_id: projectRepositoryId } : {}),
   });
   const data = JSON.parse(result[0]?.text ?? '{}');
   process.stderr.write(`[formalization-author] artifact_create ${type} ${code} → id=${data.id}\n`);
@@ -134,200 +169,120 @@ async function addTrace(client, sourceId, targetId, linkType) {
   process.stderr.write(`[formalization-author] trace ${sourceId} --${linkType}--> ${targetId}\n`);
 }
 
-// --- Per-node production logic ---
+async function findArtifactIdsByCodes(client, epicId, codes) {
+  // Разрешение корпусных id → id текущего рана для артефактов, созданных
+  // РАНЕЕ работавшими узлами (например UC → PRD). Код уникален в рамках
+  // (epic, type) — статусы не фильтруем:kernel-gate принимает асинхронно.
+  const wanted = new Set(codes);
+  const idByCode = new Map();
+  for (const code of wanted) {
+    const row = corpusRowByCode.get(code);
+    if (!row) throw new Error(`GOLDEN_CORPUS_ARTIFACT_ABSENT: ${code}`);
+    const result = await client.call('artifact_list', { epic_id: epicId, type: row.type });
+    const parsed = JSON.parse(result[0]?.text ?? '{"artifacts":[]}');
+    const artifacts = parsed.artifacts || parsed || [];
+    const match = artifacts.find(a => a.code === code);
+    if (!match) {
+      throw new Error(`artifact '${code}' (type ${row.type}) not found in epic ${epicId} — `
+        + `earlier formalization node did not run or did not produce it`);
+    }
+    idByCode.set(code, match.id);
+  }
+  return idByCode;
+}
 
-async function produceProductContract(client, { projectId, epicId }) {
-  // brief (root ancestor) → PRD → FR, NFR, RULE
-  // The formalization kernel specifically checks PRD → brief (not just any root).
-  // brief artifact requires metadata.brief_payload validated by validateBrief.
-  const briefPayload = {
+// brief_payload: структурные значения парсятся из Complexity Profile документа
+// корпуса (complexity.tshirt / topology_hint / shared_mutation_risk / Discovery
+// Outcome). classification/completeness — структурные константы контракта.
+function briefPayloadFromDocument(bytes, projectId) {
+  const line = (re) => {
+    const m = re.exec(bytes);
+    if (!m) throw new Error(`GOLDEN_CORPUS_BRIEF_PROFILE_MISSING: ${re}`);
+    return m[1].trim();
+  };
+  return {
     classification: 'product',
-    complexity: { tshirt: 'M', risk_triggers: [] },
-    decision: 'go',
-    reasoning: 'The deterministic test harness is feasible and bounded.',
+    complexity: { tshirt: line(/- \*\*complexity\.tshirt:\*\* (\S+)/), risk_triggers: [] },
+    decision: line(/\*\*Discovery Outcome:\*\* (\S+)/),
+    reasoning: line(/- \*\*rationale:\*\* (.+)/),
     affected_projects: [projectId],
-    topology_hint: 'sequence',
+    topology_hint: line(/- \*\*topology_hint:\*\* (\S+)/),
     scaffold_artifacts: [],
-    shared_mutation_risk: false,
+    shared_mutation_risk: line(/- \*\*shared_mutation_risk:\*\* (\S+)/) === 'true',
     completeness: 'high',
     degraded: false,
   };
-  const briefHash = createHash('sha256').update(`brief:BRIEF-1`).digest('hex');
-  const briefResult = await client.call('artifact_create', {
-    project_id: projectId, epic_id: epicId,
-    type: 'brief', code: 'BRIEF-1',
-    title: 'Product Brief',
-    path: `docs/formalization/BRIEF-1.md`,
-    status: 'accepted',
-    content_hash: briefHash,
-    metadata: { brief_payload: briefPayload },
-  });
-  const brief = JSON.parse(briefResult[0]?.text ?? '{}');
-  process.stderr.write(`[formalization-author] artifact_create brief BRIEF-1 → id=${brief.id}\n`);
-
-  const prd = await createArtifact(client, {
-    projectId, epicId, type: 'PRD', code: 'PRD',
-    title: 'Product Requirements Document',
-    path: `docs/formalization/PRD.md`,
-  });
-  const fr = await createArtifact(client, {
-    projectId, epicId, type: 'FR', code: 'FR-1',
-    title: 'Functional Requirement 1',
-    path: `docs/formalization/FR-1.md`,
-  });
-  const nfr = await createArtifact(client, {
-    projectId, epicId, type: 'NFR', code: 'NFR-1',
-    title: 'Non-Functional Requirement 1',
-    path: `docs/formalization/NFR-1.md`,
-  });
-  const rule = await createArtifact(client, {
-    projectId, epicId, type: 'RULE', code: 'RULE-1',
-    title: 'Business Rule 1',
-    path: `docs/formalization/RULE-1.md`,
-  });
-  // PRD --derived_from--> brief (root lineage)
-  await addTrace(client, prd.id, brief.id, 'derived_from');
-  return { brief, prd, fr, nfr, rule };
 }
 
-async function produceUseCases(client, { projectId, epicId, prdId, frIds }) {
-  // UC --derived_from--> PRD, UC --covers--> FR
-  const uc = await createArtifact(client, {
-    projectId, epicId, type: 'UC', code: 'UC-1',
-    title: 'Use Case 1: Run Pipeline',
-    path: `docs/formalization/UC-1.md`,
-  });
-  await addTrace(client, uc.id, prdId, 'derived_from');
-  for (const frId of frIds) {
-    await addTrace(client, uc.id, frId, 'covers');
+// --- Per-node production logic (корпус: бандл узла = план производства) ---
+
+function writeDocumentFile(repoPath, artifactPath, bytes) {
+  const file = artifactPath.split('#')[0];
+  const fullPath = path.join(repoPath, file);
+  mkdirSync(path.dirname(fullPath), { recursive: true });
+  writeFileSync(fullPath, bytes, 'utf8');
+}
+
+/**
+ * Воспроизвести производство узла по его бандлу из корпуса:
+ * артефакты в порядке захвата, затем трассы бандла (цели из предыдущих
+ * узлов разрешаются через artifact_list по коду).
+ */
+async function produceFromCorpusBundle(client, { projectId, epicId, nodeId, repoPath }) {
+  const schemaId = NODE_BUNDLE_SCHEMA[nodeId];
+  if (!schemaId) throw new Error(`Unknown formalization node: ${nodeId}`);
+  const bundle = corpus.product(nodeId, schemaId);
+
+  const createdIdByCorpusId = new Map();
+  for (const entry of bundle.artifacts) {
+    const code = corpusCode(entry.artifactId);
+    const row = corpusRowByCode.get(code);
+    if (row.type !== entry.artifactType) {
+      throw new Error(`GOLDEN_CORPUS_JOIN_FAILED: bundle says id ${entry.artifactId} is `
+        + `${entry.artifactType}, corpus index says ${row.type}`);
+    }
+    const bytes = corpusDocumentBytes(row);
+    writeDocumentFile(repoPath, row.path, bytes);
+    const created = await createArtifact(client, {
+      projectId, epicId,
+      type: entry.artifactType,
+      code,
+      title: row.title,
+      artifactPath: row.path,
+      contentHash: createHash('sha256').update(bytes, 'utf8').digest('hex'),
+      metadata: entry.artifactType === 'brief'
+        ? { brief_payload: briefPayloadFromDocument(bytes, projectId) }
+        : undefined,
+      projectRepositoryId: entry.artifactType === 'SRS' ? 1 : undefined,
+    });
+    createdIdByCorpusId.set(entry.artifactId, created.id);
   }
-  return { ucs: [uc] };
-}
 
-async function produceAcceptance(client, { projectId, epicId, frIds, nfrIds, ucIds }) {
-  // AC --derived_from--> FR (or NFR), AC --derived_from--> UC (if FR-derived)
-  const ac1 = await createArtifact(client, {
-    projectId, epicId, type: 'AC', code: 'AC-1',
-    title: 'AC-1: Pipeline Completes',
-    path: `docs/formalization/AC-1.md`,
-  });
-  // FR-derived AC: must trace to FR AND UC
-  if (frIds.length > 0) await addTrace(client, ac1.id, frIds[0], 'derived_from');
-  if (ucIds.length > 0) await addTrace(client, ac1.id, ucIds[0], 'derived_from');
-
-  const ac2 = await createArtifact(client, {
-    projectId, epicId, type: 'AC', code: 'AC-2',
-    title: 'AC-2: NFR Compliance',
-    path: `docs/formalization/AC-2.md`,
-  });
-  // NFR-derived AC: only needs NFR trace
-  if (nfrIds.length > 0) await addTrace(client, ac2.id, nfrIds[0], 'derived_from');
-
-  return { acs: [ac1, ac2] };
+  // Трассы бандла: источники — только что созданные артефакты узла; цели могут
+  // быть из предыдущих узлов (разрешение по коду через текущий epic).
+  const externalTargetCodes = [...new Set(
+    bundle.traces
+      .filter(trace => !createdIdByCorpusId.has(trace.targetId))
+      .map(trace => corpusCode(trace.targetId)),
+  )];
+  const externalIdByCode = await findArtifactIdsByCodes(client, epicId, externalTargetCodes);
+  for (const trace of bundle.traces) {
+    const targetId = createdIdByCorpusId.has(trace.targetId)
+      ? createdIdByCorpusId.get(trace.targetId)
+      : externalIdByCode.get(corpusCode(trace.targetId));
+    await addTrace(client, createdIdByCorpusId.get(trace.sourceId), targetId, trace.linkType);
+  }
 }
 
 async function produceReconciliation(client) {
-  // reconcile-what uses typed-submission (product_submit), not artifacts
-  const ps = await client.call('product_submit', {
+  // reconcile-what использует typed-submission (product_submit), не артефакты.
+  // Отчёт примирения — тоже захваченный материал корпуса.
+  const report = corpus.product('reconcile-what', 'factory.formalization-reconciliation-report.v1');
+  await client.call('product_submit', {
     schema: 'factory.formalization-reconciliation-report.v1',
-    content: {
-      status: 'reconciled',
-      rationale: 'All artifacts trace correctly. No gaps remaining.',
-      remaining_gaps: [],
-      repairs: [],
-    },
+    content: report,
   });
-  process.stderr.write(`[formalization-author] reconciliation submitted\n`);
-}
-
-async function produceArchitecture(client, { projectId, epicId, prdId, repoPath }) {
-  // The SRS validator checks: file exists on disk, file hash matches content_hash,
-  // §12 Decision Log with 6-column table, §D2 stanzas with all required fields.
-  const srsContent = `# SRS — Software Requirements Specification
-
-## §1 Introduction
-
-This SRS covers the deterministic test harness factory.
-
-## §D Decomposition
-
-### §D2 Acceptance Criteria Decomposition
-
-\`\`\`yaml
-- ac: AC-1
-  title: Pipeline Completes
-  module: tests/mock-claude/button.mjs
-  files:
-    - tests/mock-claude/button.mjs
-  invariants:
-    - "Factory reaches terminal status"
-  test_layers:
-    - e2e
-  pattern: A
-  depends_on: []
-  ac_kind: implementation
-  criticality: blocker
-- ac: AC-2
-  title: NFR Compliance
-  module: tests/mock-claude/scripted-executor.mjs
-  files:
-    - tests/mock-claude/scripted-executor.mjs
-  invariants:
-    - "Scripted workers substitute LLM"
-  test_layers:
-    - contract
-  pattern: B
-  depends_on: []
-  ac_kind: implementation
-  criticality: degradable
-\`\`\`
-
-## §12 Decision Log
-
-| # | Decision | Source/profile | Alternatives considered | Rationale | Date |
-|---|----------|---------------|------------------------|-----------|------|
-| 1 | Use scripted workers | CONVEYOR v4.3 §16 | Real LLM, fixture replay | Deterministic, fast, contract-faithful | 2026-08-08 |
-`;
-
-  // Write file to disk so the SRS validator can read it
-  const srsPath = 'docs/formalization/SRS.md';
-  const fullPath = `${repoPath}/${srsPath}`;
-  const { writeFileSync, mkdirSync } = await import('node:fs');
-  const path = await import('node:path');
-  mkdirSync(path.dirname(fullPath), { recursive: true });
-  writeFileSync(fullPath, srsContent, 'utf8');
-  process.stderr.write(`[formalization-author] wrote SRS file: ${fullPath}\n`);
-
-  // Compute content_hash from the actual file bytes (validator will verify)
-  const fileHash = createHash('sha256').update(srsContent, 'utf8').digest('hex');
-  const srsResult = await client.call('artifact_create', {
-    project_id: projectId, epic_id: epicId,
-    type: 'SRS', code: 'SRS',
-    title: 'Software Requirements Specification',
-    path: srsPath,
-    status: 'draft',
-    content_hash: fileHash,
-    project_repository_id: 1,
-  });
-  const srs = JSON.parse(srsResult[0]?.text ?? '{}');
-  process.stderr.write(`[formalization-author] artifact_create SRS → id=${srs.id}\n`);
-  // SRS --derived_from--> PRD
-  await addTrace(client, srs.id, prdId, 'derived_from');
-  return { srs };
-}
-
-// --- Find previously-accepted artifacts in this epic (from earlier cells) ---
-
-async function findAcceptedArtifacts(client, epicId, type) {
-  const result = await client.call('artifact_list', {
-    epic_id: epicId,
-    type,
-    status: 'accepted',
-  });
-  const parsed = JSON.parse(result[0]?.text ?? '{"artifacts":[]}');
-  const artifacts = parsed.artifacts || parsed || [];
-  process.stderr.write(`[formalization-author] found ${artifacts.length} accepted ${type}\n`);
-  return artifacts;
+  process.stderr.write(`[formalization-author] reconciliation submitted (corpus)\n`);
 }
 
 // --- main ---
@@ -360,54 +315,19 @@ async function main() {
 
     emit('assistant', { message: { content: [{ type: 'text', text: `[mock] producing artifacts for ${nodeId}` }] } });
 
+    // План производства каждого узла — бандл узла из корпуса; для SRS-узла
+    // файл пишется в репо, привязанное к задаче (SAGA_BUTTON_REPO_PATH).
+    const repoPath = process.env.SAGA_BUTTON_REPO_PATH || '.';
     switch (nodeId) {
-      case 'define-product-contract': {
-        await produceProductContract(client, { projectId, epicId });
-        break;
-      }
-      case 'model-use-cases': {
-        // Find accepted PRD + FR from the product-contract cell
-        const prds = await findAcceptedArtifacts(client, epicId, 'PRD');
-        const frs = await findAcceptedArtifacts(client, epicId, 'FR');
-        if (prds.length === 0 || frs.length === 0) {
-          throw new Error(`model-use-cases: no accepted PRD/FR found (prd=${prds.length} fr=${frs.length})`);
-        }
-        await produceUseCases(client, {
-          projectId, epicId,
-          prdId: prds[0].id,
-          frIds: frs.map(f => f.id),
-        });
-        break;
-      }
-      case 'define-acceptance-contract': {
-        const frs = await findAcceptedArtifacts(client, epicId, 'FR');
-        const nfrs = await findAcceptedArtifacts(client, epicId, 'NFR');
-        const ucs = await findAcceptedArtifacts(client, epicId, 'UC');
-        if (frs.length === 0) throw new Error('define-acceptance-contract: no accepted FR');
-        await produceAcceptance(client, {
-          projectId, epicId,
-          frIds: frs.map(f => f.id),
-          nfrIds: nfrs.map(n => n.id),
-          ucIds: ucs.map(u => u.id),
-        });
+      case 'define-product-contract':
+      case 'model-use-cases':
+      case 'define-acceptance-contract':
+      case 'define-architecture-contract': {
+        await produceFromCorpusBundle(client, { projectId, epicId, nodeId, repoPath });
         break;
       }
       case 'reconcile-what': {
         await produceReconciliation(client);
-        break;
-      }
-      case 'define-architecture-contract': {
-        const prds = await findAcceptedArtifacts(client, epicId, 'PRD');
-        if (prds.length === 0) throw new Error('define-architecture-contract: no accepted PRD');
-        // The SRS validator reads file from project_repositories.local_path + srs.path.
-        // button.mjs sets SAGA_BUTTON_REPO_PATH to the exact temp repo dir it created.
-        const repoPath = process.env.SAGA_BUTTON_REPO_PATH || '.';
-        process.stderr.write(`[formalization-author] repoPath=${repoPath}\n`);
-        await produceArchitecture(client, {
-          projectId, epicId,
-          prdId: prds[0].id,
-          repoPath,
-        });
         break;
       }
       default:

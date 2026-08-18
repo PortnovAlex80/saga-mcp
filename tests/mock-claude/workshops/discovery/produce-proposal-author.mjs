@@ -11,11 +11,14 @@
  *   4. Вызывает worker_done(result='...')
  *   5. Exit 0 (увольняется)
  *
- * Продукт — валидный Discovery proposal с recommended_outcome='go'.
- * Текст — литерал в этом скрипте, не внешний JSON.
+ * Продукт — Discovery proposal, рекомендованный исход берётся из захваченного
+ * golden-рана (см. tests/fixtures/golden-corpus). Текст — материал, который
+ * произвела реальная модель и приняли реальные гейты; имитатор его только
+ * подаёт, ничего не сочиняя (loadCorpus fail-closed на отсутствующий материал).
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { loadCorpus } from '../../corpus.mjs';
 
 // --- Парсинг argv (тот же контракт что claude CLI) ---
 function parseArgv(argv) {
@@ -110,30 +113,10 @@ class McpClient {
   close() { try { this.child.stdin.end(); } catch {} try { this.child.kill(); } catch {} }
 }
 
-// --- Продукт: валидный Discovery proposal ---
-const PROPOSAL_CONTENT = {
-  problem_statement: 'The current pipeline lacks automated end-to-end validation. Each module change risks integration regressions that are only caught by expensive manual runs.',
-  observed_context: 'Unit tests cover pure domain logic. Architecture ratchets enforce dependency direction. But no test drives the full factory from start through Discovery to terminal certificate. The test:e2e script references a non-existent file.',
-  stakeholders_or_actors: [
-    'Platform team maintaining the factory runtime',
-    'Module authors across Discovery, Formalization, Development, Delivery',
-    'CI gate reviewers',
-  ],
-  assumptions: [
-    'The factory physics (reducer, CAS, CandidateSet, Gate) is correct in isolation.',
-    'A deterministic mock worker can substitute for a real LLM without losing contract fidelity.',
-  ],
-  unknowns: [
-    'Whether the MCP-config builder produces valid stdio-child config under saga4.',
-  ],
-  risks: [
-    'Fixtures may drift from real module contracts if schemas change without updating tests.',
-  ],
-  candidate_scope: 'Build a mock-claude worker that plays scripted products through the real MCP protocol. Cover the Discovery module end-to-end as the first full-cell proof.',
-  evidence_refs: ['test:e2e-pipeline.test.mjs (missing — references non-existent file)', 'CONVEYOR-MENTAL-MODEL.md §16 (replay-first canonical two-pass proof)'],
-  recommended_outcome: 'go',
-  rationale: 'Concrete gap (no e2e coverage), proven approach (deterministic mock), bounded scope (one module). Risks are manageable.',
-};
+// --- Продукт: discovery proposal из golden-корпуса (захваченный accepted материал) ---
+const PROPOSAL_CONTENT = loadCorpus().product(
+  'produce-proposal', 'factory.discovery-proposal.v1',
+);
 
 // --- main ---
 async function main() {
@@ -161,7 +144,7 @@ async function main() {
     const wd = await client.call('worker_done', {
       task_id: Number(prompt.task_id),
       worker_id: prompt.worker_id,
-      result: 'produced discovery proposal with recommended_outcome=go',
+      result: `produced discovery proposal with recommended_outcome=${PROPOSAL_CONTENT.recommended_outcome}`,
       execution_id: prompt.execution_id,
     });
     process.stderr.write(`[proposal-author] worker_done → ${wd[0]?.text?.slice(0, 80) ?? '(empty)'}\n`);
