@@ -6,11 +6,12 @@ export interface ReplayCapsuleAlias {
 /**
  * Typed outcome of resolving one semantic replay key.
  *
- * `conflict` is NOT an error and NOT a stop: it states that one semantic key
- * carries divergent payloads, so no capsule can be presented as authority.
- * The caller records invalidation evidence (ADR-080 §2) and degrades to a
- * normal miss — the execution then takes its ordinary selected route and
- * regenerates the material (ADR-080 §§3-4).
+ * `conflict` states that one semantic key carries divergent payloads, so no
+ * capsule can be presented as authority. The caller records invalidation
+ * evidence (ADR-080 §2) and then fails closed: CONVEYOR §15 forbids silently
+ * calling a paid model inside the same execution after a corrupt hit. The
+ * evidence makes those capsules ineligible, so the NEXT execution resolves as
+ * an ordinary miss and regenerates the material (ADR-080 §§3-4).
  */
 export type ReplayCapsuleSelection<T extends ReplayCapsuleAlias> =
   | { readonly outcome: 'miss' }
@@ -37,9 +38,10 @@ export type ReplayCapsuleSelection<T extends ReplayCapsuleAlias> =
  *     does not depend on insertion order (ordered by capsule_ref, never by
  *     rowid/recency);
  *   - divergent payloads on one key are an ambiguity → `conflict`, which the
- *     caller turns into persisted evidence + a typed MISS. The run continues
- *     on the normally selected model instead of stopping, and no capsule is
- *     ever promoted to authority by being newer.
+ *     caller turns into persisted evidence and a fail-closed typed alarm. The
+ *     evidence makes the capsules ineligible, so the next execution proceeds on
+ *     its normally selected route instead of stopping the order — and no
+ *     capsule is ever promoted to authority merely by being newer.
  *
  * Divergence itself is a symptom of run-local identity leaking into a capsule
  * payload (observed: proposal_id 84 vs 119, otherwise byte-equal). Excluding

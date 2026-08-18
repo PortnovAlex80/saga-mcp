@@ -223,9 +223,16 @@ export function bindReplayToClaim(
   // ADR-080 §2 payload-conflict: divergent payloads under one semantic key are
   // PERSISTED as evidence first — one append-only row per conflicting capsule,
   // binding both divergent payload hashes, the observing claim, and (when
-  // derivable) the lifecycle that observed it. The claim then degrades to a
-  // typed MISS (§§3-4: invalidation bridges to ordinary regeneration) instead
-  // of stopping the card or promoting the newest capsule to authority.
+  // derivable) the lifecycle that observed it.
+  //
+  // Then it FAILS CLOSED. CONVEYOR §15 is explicit that a corrupt hit "does not
+  // silently call a paid model inside the same execution; recovery creates a
+  // new execution and resolves again". Degrading to a miss right here would do
+  // exactly the forbidden thing. The persisted evidence makes both capsules
+  // ineligible, so the NEXT execution resolves to an ordinary miss and takes
+  // its normally selected route — invalidation bridging to regeneration
+  // (§§3-4) across executions, not inside one. The dispatcher's per-card
+  // REPLAY_* valve turns this into a typed card_error, never engine death.
   const selection = selectReplayCapsule(replayKey, capsules);
   if (selection.outcome === 'conflict') {
     for (const candidate of selection.capsules) {
@@ -239,6 +246,12 @@ export function bindReplayToClaim(
         authorityRef: `replay-claim:${input.executionId}`,
       });
     }
+    throw new Error(
+      `REPLAY_KEY_PAYLOAD_CONFLICT: replay key ${replayKey} carries `
+      + `${selection.capsules.length} divergent payloads `
+      + `(${selection.capsules.map(row => row.capsule_ref).join(', ')}); `
+      + 'invalidation evidence recorded — the next execution resolves as a miss',
+    );
   }
   const capsule = selection.outcome === 'hit' ? selection.capsule : undefined;
   // ADR-080 §1 — derived invalidity: ANY evidence row for the exact
