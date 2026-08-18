@@ -95,30 +95,39 @@ export function readTransitionHandoffPostcondition(
       return fact(row, 'FinalAcceptance for the exact EffectReceipt is not durable yet');
     }
     case 'route-lifecycle': {
+      // K13 (card commit 4) — exact source: routing is durable iff the
+      // lifecycle moved PAST EVERY stage run of the settled ProcessRun, or
+      // the lifecycle itself reached a terminal state. The pre-K13 check
+      // sampled ONE arbitrary joined row (.get()) — with two stage runs it
+      // could read "routed" off the first while the lifecycle was still
+      // pinned on the second. `paused` is explicitly NOT a routing receipt:
+      // the lifecycle may be paused on this exact StageRun because routing
+      // is still pending.
       const processRunId = processRunIdFromSource(obligation.sourceRef);
-      const row = db.prepare(
-        `SELECT sr.status AS stage_status,lr.status AS lifecycle_status,
-                lr.current_stage_run_id,sr.id AS stage_run_id
+      const rows = db.prepare(
+        `SELECT sr.id AS stage_run_id, lr.current_stage_run_id, lr.status AS lifecycle_status
            FROM factory_stage_runs sr
-           JOIN factory_lifecycle_runs lr ON lr.id=sr.lifecycle_run_id
+           JOIN factory_lifecycle_runs lr ON lr.id = sr.lifecycle_run_id
           WHERE sr.process_run_id=?`,
-      ).get(processRunId) as {
-        stage_status: string;
-        lifecycle_status: string;
-        current_stage_run_id: number | null;
+      ).all(processRunId) as Array<{
         stage_run_id: number;
-      } | undefined;
-      // `paused` is explicitly NOT a routing receipt: the lifecycle may be
-      // paused on this exact StageRun because routing is still pending.
-      const routed = row !== undefined && (
-        row.current_stage_run_id !== row.stage_run_id
-        || ['completed', 'failed', 'cancelled'].includes(row.lifecycle_status)
-      );
+        current_stage_run_id: number | null;
+        lifecycle_status: string;
+      }>;
+      if (rows.length === 0) {
+        return {
+          satisfied: false,
+          reason: 'Lifecycle has no stage runs for the settled ProcessRun yet',
+        };
+      }
+      const terminal = rows.every(row => ['completed', 'failed', 'cancelled'].includes(row.lifecycle_status));
+      const routedPast = rows.every(row => row.current_stage_run_id !== row.stage_run_id);
+      const satisfied = terminal || routedPast;
       return {
-        satisfied: routed,
-        reason: routed
-          ? 'Lifecycle routing is durable for the settled ProcessRun'
-          : 'Lifecycle has not routed the settled ProcessRun yet',
+        satisfied,
+        reason: satisfied
+          ? 'Lifecycle routing is durable for every stage run of the settled ProcessRun'
+          : 'Lifecycle has not routed past every stage run of the settled ProcessRun yet',
       };
     }
   }
