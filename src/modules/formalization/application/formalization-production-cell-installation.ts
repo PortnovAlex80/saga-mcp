@@ -81,11 +81,15 @@ function createBaselineFreezer(
   return ctx => {
     try {
       const epicId = requireEpicId(ctx);
-      const accepted = deps.graph.readAcceptedArtifacts(epicId);
+      // ADR-078 (K6): the baseline freeze is scoped to the CURRENT lifecycle
+      // run — the same TB-11 recovery the settlement gate uses. A dead run's
+      // ACs must not freeze into this run's baseline.
+      const lifecycleRunId = requireLifecycleRunId(deps.graph, ctx.processRunId);
+      const accepted = deps.graph.readAcceptedArtifactsForLifecycle(epicId, lifecycleRunId);
       if (accepted.acs.length === 0) {
         return baselineFailure(ctx, 'acceptance baseline requires at least one accepted AC');
       }
-      const baseline = deps.graph.readAcceptanceBaselineHash(epicId);
+      const baseline = deps.graph.readAcceptanceBaselineHashForLifecycle(epicId, lifecycleRunId);
       if (!baseline.clean) {
         return {
           event: 'drift-detected',
@@ -177,7 +181,8 @@ function createSettlementHandler(
       }
       const baseline = deps.baselineRepository.readByProcessRun(ctx.processRunId);
       if (!baseline) throw new Error('formalization acceptance baseline is missing');
-      const accepted = deps.graph.readAcceptedArtifacts(epicId);
+      // ADR-078 (K6): exact lifecycle-scoped accepted material.
+      const accepted = deps.graph.readAcceptedArtifactsForLifecycle(epicId, lifecycleRunId);
       const bundle = buildBundle(epicId, accepted, baseline.baselineHash);
       const settlementInput: FormalizationSettlementInput = {
         schemaVersion: FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
@@ -273,7 +278,7 @@ function createSettlementHandler(
 
 function buildBundle(
   epicId: number,
-  accepted: ReturnType<FormalizationArtifactGraphPort['readAcceptedArtifacts']>,
+  accepted: ReturnType<FormalizationArtifactGraphPort['readAcceptedArtifactsForLifecycle']>,
   baselineHash: string,
 ): SolutionContractBundle {
   const body = {

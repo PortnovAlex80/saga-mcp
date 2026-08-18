@@ -32,14 +32,15 @@ import { SqliteCandidateSetRepository } from '../../dist/infrastructure/workplac
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
+import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
 import { driveGateRun } from '../../dist/process-modules/application/gate-run-driver.js';
-import { computeCheckPlanDigest } from '../../dist/process-modules/domain/workplace/gate.js';
 import { assembleRevision, buildContribution, productRevisionMemberKey } from '../../dist/process-modules/domain/workplace/workplace-production-revision.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import {
   createStandardCheckProviderRegistry,
   buildProductContractCheckPlan,
 } from '../../dist/process-modules/application/standard-check-providers.js';
+import { computeCheckPlanDigest } from '../../dist/process-modules/domain/workplace/gate.js';
 import {
   asWorkplaceRef,
   serializeWorkplaceRef,
@@ -191,7 +192,9 @@ test('цех: полный цикл todo/idle → done/terminal(accepted)', () =
     subjectCandidateSetRef: candidate.candidateSetRef,
     assessmentCandidateSetRefs: [],
     checkPlan,
-    gatePhase: 'author',
+    // ADR-081: a no-review cell's author gate IS the final gate (phase
+    // 'final' per production-cell-definition) - the proof must match.
+    gatePhase: 'final',
     expectedWorkplaceRevision: s.revision,
     gateLeaseRef: `gate-lease:${candidate.candidateSetRef}`,
     installationDigest: 'pkg-digest-test',
@@ -201,8 +204,15 @@ test('цех: полный цикл todo/idle → done/terminal(accepted)', () =
   });
   assert.equal(decision.verdict, 'accepted');
 
-  // Apply → terminal(accepted). ЭТО ПРИЁМКА.
-  coordinator.applyGateDecision(ref, { verdict: 'accepted', isFinal: true });
+  // Apply → terminal(accepted). ЭТО ПРИЁМКА — now through the ADR-081
+  // proof-backed service (the driver's persisted decision is the proof).
+  new CommitAcceptedCandidate({ gateRepo, coordinator }).commit({
+    workplaceRef: ref,
+    gateDecisionKey: decision.decisionKey,
+    acceptedCandidateSetRef: candidate.candidateSetRef,
+    expectedRevision: workplaceRepo.read(ref).revision,
+    isFinal: true,
+  });
   s = workplaceRepo.read(ref);
   assert.equal(s.loopState, 'terminal');
   assert.equal(s.terminalReason, 'accepted');

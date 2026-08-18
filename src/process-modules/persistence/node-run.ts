@@ -94,8 +94,17 @@ export interface NodeRunRepository {
   /** Mark a NodeRun failed with an error message. */
   fail(input: FailNodeRunInput): NodeRunRecord;
 
-  /** The most recent NodeRun for a (process_run, node), regardless of status. */
-  readLatest(processRunId: number, nodeId: string): NodeRunRecord | null;
+  /**
+   * ADR-079 — exact (process_run, node, attempt) probe. Backed by the
+   * UNIQUE cursor index; an equality probe, never a row-order choice.
+   * (K8 deleted `readLatest` — the newest-wins fetch the assembler used to
+   * emulate this probe with an attempt guard.)
+   */
+  readByExactCursor(
+    processRunId: number,
+    nodeId: string,
+    attempt: number,
+  ): NodeRunRecord | null;
 
   /** The most recent COMPLETED NodeRun anywhere in the run (resume point). */
   readLastCompleted(processRunId: number): NodeRunRecord | null;

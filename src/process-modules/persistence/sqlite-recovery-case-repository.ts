@@ -220,8 +220,32 @@ function readLastAttemptForCase(
     `SELECT * FROM factory_recovery_attempts
       WHERE recovery_case_id=?
       ORDER BY attempt DESC LIMIT 1`,
-  ).get(caseId) as RecoveryAttemptRow | undefined;
+  ).get(caseId) as RecoveryAttemptRow | null;
   return row ?? null;
+}
+
+/**
+ * ADR-079 — the (process_run, policy, status) reader. The single-non-terminal-
+ * case-per-policy invariant is not index-enforced; a duplicate row is an
+ * invariant violation and must fail closed — never silently resolve to the
+ * newest row.
+ */
+function readSingleRecoveryCase(
+  db: Database.Database,
+  processRunId: number,
+  policyId: string,
+  status: 'active' | 'exhausted',
+): RecoveryCaseRow | null {
+  const rows = db.prepare(
+    `SELECT * FROM factory_recovery_cases
+      WHERE process_run_id=? AND policy_id=? AND status=?`,
+  ).all(processRunId, policyId, status) as RecoveryCaseRow[];
+  if (rows.length > 1) {
+    throw new Error(
+      `RECOVERY_CASE_PREDICATE_NOT_UNIQUE: ${processRunId}/${policyId}/${status} has ${rows.length} rows`,
+    );
+  }
+  return rows[0] ?? null;
 }
 
 function assertIssueInput(input: RecordRecoveryIssueInput): void {
@@ -353,11 +377,9 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
       };
     }
 
-    let caseRow = this.db.prepare(
-      `SELECT * FROM factory_recovery_cases
-        WHERE process_run_id=? AND policy_id=? AND status='active'
-        ORDER BY id DESC LIMIT 1`,
-    ).get(input.processRunId, input.issue.policyId) as RecoveryCaseRow | undefined;
+    let caseRow: RecoveryCaseRow | null = readSingleRecoveryCase(
+      this.db, input.processRunId, input.issue.policyId, 'active',
+    );
 
     if (caseRow) {
       assertActiveCaseMatches(caseRow, input, moduleRefKey);
@@ -367,11 +389,9 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
       // executor is allowed to re-run the verifier as a probe after external
       // or human repair. If that probe rejects again, return the same terminal
       // case and its last durable feedback without creating a new attempt.
-      const exhaustedCase = this.db.prepare(
-        `SELECT * FROM factory_recovery_cases
-          WHERE process_run_id=? AND policy_id=? AND status='exhausted'
-          ORDER BY id DESC LIMIT 1`,
-      ).get(input.processRunId, input.issue.policyId) as RecoveryCaseRow | undefined;
+      const exhaustedCase = readSingleRecoveryCase(
+        this.db, input.processRunId, input.issue.policyId, 'exhausted',
+      );
       if (exhaustedCase) {
         assertActiveCaseMatches(exhaustedCase, input, moduleRefKey);
         const lastAttempt = readLastAttemptForCase(this.db, exhaustedCase.id);
@@ -413,7 +433,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
         issueHash,
         input.issue.reasonCode,
       );
-      caseRow = readCaseRow(this.db, Number(info.lastInsertRowid)) ?? undefined;
+      caseRow = readCaseRow(this.db, Number(info.lastInsertRowid));
       if (!caseRow) {
         throw new Error('RECOVERY_CASE_CREATE_FAILED: row vanished after insert');
       }
@@ -505,12 +525,20 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     resolvedByNodeRunId: number,
   ): RecoveryCaseRecord | null {
     const resolve = (): RecoveryCaseRecord | null => {
-      const active = this.db.prepare(
+      // ADR-079 — one (run, policy) carries at most one non-terminal case;
+      // a duplicate under this predicate is an invariant violation, never a
+      // newest-wins choice.
+      const candidates = this.db.prepare(
         `SELECT * FROM factory_recovery_cases
           WHERE process_run_id=? AND policy_id=?
-            AND status IN ('active','exhausted')
-          ORDER BY id DESC LIMIT 1`,
-      ).get(processRunId, policyId) as RecoveryCaseRow | undefined;
+            AND status IN ('active','exhausted')`,
+      ).all(processRunId, policyId) as RecoveryCaseRow[];
+      if (candidates.length > 1) {
+        throw new Error(
+          `RECOVERY_CASE_PREDICATE_NOT_UNIQUE: ${processRunId}/${policyId} has ${candidates.length} non-terminal cases`,
+        );
+      }
+      const active = candidates[0];
       if (!active) return null;
 
       // GenericFlowExecutor rechecks an exhausted verifier on explicit resume.

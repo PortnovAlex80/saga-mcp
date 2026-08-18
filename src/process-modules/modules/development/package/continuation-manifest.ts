@@ -6,9 +6,27 @@ import {
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../../modules/development/domain/development-kernel-ports.js';
 import { developmentContinuationProcessModule } from '../development-continuation-process-module.js';
 import { developmentPackageManifest } from './manifest.js';
+import { handlerImplementationDigest } from '../../../installation/domain/handler-implementation-digest.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ROOT =
   'src/process-modules/modules/development/package/resources/managed-source';
+
+/**
+ * Content address of the development continuation installation module — the
+ * module that creates the continuation-specific handlers pinned below (the
+ * versioned freeze/settle handlers come from the main development
+ * installation, whose digest the main manifest pins). Computed by the
+ * canonical shared digester (K3): sha256 over the module's raw bytes,
+ * resolved from THIS manifest's directory. K4's RuntimePackageFingerprint
+ * will supersede per-package pins with the full executable-contract digest.
+ */
+const CONTINUATION_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../modules/development/infrastructure/development-continuation-installation.js',
+  'development-continuation',
+);
 
 export const developmentContinuationPackageManifest: ProcessModuleManifest = (() => {
   const manifest: ProcessModuleManifest = {
@@ -57,17 +75,17 @@ export const developmentContinuationPackageManifest: ProcessModuleManifest = (()
       {
         logicalId: DEVELOPMENT_KERNEL_HANDLER_IDS.resolveContinuationTaskGraph,
         version: '1.0.0',
-        digest: PENDING_DIGEST,
+        digest: CONTINUATION_HANDLER_IMPLEMENTATION_DIGEST,
       },
       {
         logicalId: DEVELOPMENT_KERNEL_HANDLER_IDS.freezeContinuationCandidate,
         version: '1.0.0',
-        digest: PENDING_DIGEST,
+        digest: CONTINUATION_HANDLER_IMPLEMENTATION_DIGEST,
       },
       {
         logicalId: DEVELOPMENT_KERNEL_HANDLER_IDS.settleContinuation,
         version: '1.0.0',
-        digest: PENDING_DIGEST,
+        digest: CONTINUATION_HANDLER_IMPLEMENTATION_DIGEST,
       },
     ],
   };

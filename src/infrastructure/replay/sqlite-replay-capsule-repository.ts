@@ -48,7 +48,112 @@ export function ensureReplayCapsuleSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_factory_replay_capsules_lookup
       ON factory_replay_capsules(project_id, replay_key, id DESC);
+
+    -- ADR-080: invalidity is DERIVED EVIDENCE, not a flag. Append-only rows
+    -- bind a mismatch to the exact capsule, typed reason, compared digests,
+    -- lifecycle, and observing authority. The capsule table stays immutable.
+    CREATE TABLE IF NOT EXISTS factory_replay_capsule_invalidations (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      capsule_ref        TEXT NOT NULL
+                         REFERENCES factory_replay_capsules(capsule_ref) ON DELETE RESTRICT,
+      reason             TEXT NOT NULL CHECK (reason IN (
+                           'payload-conflict','package-changed',
+                           'acceptance-superseded','restart-required','refused')),
+      observed_digest    TEXT,
+      expected_digest    TEXT,
+      lifecycle_run_id   INTEGER,
+      authority_ref      TEXT NOT NULL,
+      successor_capsule_ref TEXT,
+      recorded_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (capsule_ref, reason, authority_ref)
+    );
+    CREATE INDEX IF NOT EXISTS idx_factory_replay_capsule_invalidations_ref
+      ON factory_replay_capsule_invalidations(capsule_ref);
   `);
+}
+
+/**
+ * ADR-080 §2 — the closed set of typed invalidation reasons. Adding a
+ * reason requires an ADR.
+ */
+export type CapsuleInvalidationReason =
+  | 'payload-conflict'
+  | 'package-changed'
+  | 'acceptance-superseded'
+  | 'restart-required'
+  | 'refused';
+
+/** One append-only invalidation evidence row (ADR-080 §1). */
+export interface CapsuleInvalidationRecord {
+  readonly capsuleRef: string;
+  readonly reason: CapsuleInvalidationReason;
+  readonly observedDigest: string | null;
+  readonly expectedDigest: string | null;
+  readonly lifecycleRunId: number | null;
+  readonly authorityRef: string;
+  readonly successorCapsuleRef: string | null;
+  readonly recordedAt: string;
+}
+
+interface CapsuleInvalidationRow {
+  capsule_ref: string;
+  reason: CapsuleInvalidationReason;
+  observed_digest: string | null;
+  expected_digest: string | null;
+  lifecycle_run_id: number | null;
+  authority_ref: string;
+  successor_capsule_ref: string | null;
+  recorded_at: string;
+}
+
+function rowToInvalidation(row: CapsuleInvalidationRow): CapsuleInvalidationRecord {
+  return {
+    capsuleRef: row.capsule_ref,
+    reason: row.reason,
+    observedDigest: row.observed_digest,
+    expectedDigest: row.expected_digest,
+    lifecycleRunId: row.lifecycle_run_id,
+    authorityRef: row.authority_ref,
+    successorCapsuleRef: row.successor_capsule_ref,
+    recordedAt: row.recorded_at,
+  };
+}
+
+/**
+ * ADR-080 §2 package-changed bridge (K9 commit 3): when a module's handler
+ * implementations changed under stable logicalIds (the K5 restart-required
+ * verdict), every capsule sealed under the OLD package stops certifying
+ * anything. Append evidence for each; regeneration then flows through the
+ * normal production path (the next claim resolves a miss). The authority
+ * binds the exact attempted digest so successive changes append distinct
+ * evidence rather than collide on idempotency.
+ */
+export function recordPackageChangedInvalidations(
+  db: Database.Database,
+  input: {
+    readonly moduleName: string;
+    readonly moduleVersion: string;
+    readonly oldPackageDigest: string;
+    readonly attemptedPackageDigest: string | null;
+  },
+): number {
+  ensureReplayCapsuleSchema(db);
+  const repo = new SqliteReplayCapsuleRepository(db);
+  const stale = db.prepare(
+    `SELECT capsule_ref FROM factory_replay_capsules
+      WHERE json_extract(payload_snapshot,'$.key.packageDigest')=?`,
+  ).all(input.oldPackageDigest) as Array<{ capsule_ref: string }>;
+  for (const row of stale) {
+    repo.recordInvalidation({
+      capsuleRef: row.capsule_ref,
+      reason: 'package-changed',
+      observedDigest: input.attemptedPackageDigest,
+      expectedDigest: input.oldPackageDigest,
+      lifecycleRunId: null,
+      authorityRef: `module-installation:${input.moduleName}@${input.moduleVersion}:${String(input.attemptedPackageDigest)}`,
+    });
+  }
+  return stale.length;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -380,10 +485,14 @@ export class SqliteReplayCapsuleRepository {
       payload_hash: string;
     }>;
     const capsule = selectReplayCapsule(replayKey, capsules);
+    // ADR-080 §1 — derived invalidity: evidenced capsules do not resolve.
+    const effective = capsule && !this.hasInvalidation(capsule.capsule_ref)
+      ? capsule
+      : undefined;
     return {
       replayKey,
-      capsuleRef: capsule?.capsule_ref ?? null,
-      capsulePayloadHash: capsule?.payload_hash ?? null,
+      capsuleRef: effective?.capsule_ref ?? null,
+      capsulePayloadHash: effective?.payload_hash ?? null,
     };
   }
 
@@ -397,8 +506,7 @@ export class SqliteReplayCapsuleRepository {
       source_execution_ref: string; source_candidate_set_ref: string;
       payload_hash: string; payload_snapshot: string; created_at: string;
     } | undefined;
-    if (!row) return null;
-    return {
+    if (!row) return null;    return {
       capsuleRef: row.capsule_ref,
       replayKey: row.replay_key,
       projectId: row.project_id,
@@ -596,5 +704,89 @@ export class SqliteReplayCapsuleRepository {
     const record = this.read(capsuleRef);
     if (!record) throw new Error(`REPLAY_CAPSULE_PERSIST_FAILED: ${capsuleRef}`);
     return record;
+  }
+
+  // -------------------------------------------------------------------------
+  // ADR-080 — invalidation evidence (append-only, derived invalidity)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Persist immutable invalidation evidence for an exact capsule. Idempotent
+   * on (capsule_ref, reason, authority_ref): re-observing the same mismatch
+   * by the same authority records once; a different authority appends its own
+   * audit row. Never mutates the capsule itself.
+   */
+  recordInvalidation(input: {
+    readonly capsuleRef: string;
+    readonly reason: CapsuleInvalidationReason;
+    readonly observedDigest?: string | null;
+    readonly expectedDigest?: string | null;
+    readonly lifecycleRunId?: number | null;
+    readonly authorityRef: string;
+  }): void {
+    const prior = this.readInvalidationsForCapsule(input.capsuleRef)
+      .find(row => row.reason === input.reason && row.authorityRef === input.authorityRef);
+    if (prior) {
+      if ((prior.observedDigest ?? null) !== (input.observedDigest ?? null)
+        || (prior.expectedDigest ?? null) !== (input.expectedDigest ?? null)) {
+        throw new Error(
+          `CAPSULE_INVALIDATION_EVIDENCE_MISMATCH: ${input.capsuleRef}/${input.reason}/${input.authorityRef}`,
+        );
+      }
+      return;
+    }
+    const info = this.db.prepare(
+      `INSERT INTO factory_replay_capsule_invalidations
+         (capsule_ref, reason, observed_digest, expected_digest,
+          lifecycle_run_id, authority_ref)
+       VALUES (?,?,?,?,?,?)`,
+    ).run(
+      input.capsuleRef,
+      input.reason,
+      input.observedDigest ?? null,
+      input.expectedDigest ?? null,
+      input.lifecycleRunId ?? null,
+      input.authorityRef,
+    );
+    if (info.changes !== 1) {
+      throw new Error(`CAPSULE_INVALIDATION_PERSIST_FAILED: ${input.capsuleRef}`);
+    }
+  }
+
+  /** Bind a regenerated successor to the invalidation evidence (ADR-080 §3). */
+  recordSuccessor(input: {
+    readonly capsuleRef: string;
+    readonly successorCapsuleRef: string;
+    readonly authorityRef: string;
+  }): void {
+    const info = this.db.prepare(
+      `UPDATE factory_replay_capsule_invalidations
+          SET successor_capsule_ref=?
+        WHERE capsule_ref=? AND authority_ref=?
+          AND successor_capsule_ref IS NULL`,
+    ).run(input.successorCapsuleRef, input.capsuleRef, input.authorityRef);
+    if (info.changes !== 1) {
+      throw new Error(
+        `CAPSULE_INVALIDATION_SUCCESSOR_BIND_FAILED: ${input.capsuleRef} -> ${input.successorCapsuleRef}`,
+      );
+    }
+  }
+
+  readInvalidationsForCapsule(capsuleRef: string): readonly CapsuleInvalidationRecord[] {
+    const rows = this.db.prepare(
+      `SELECT capsule_ref, reason, observed_digest, expected_digest,
+              lifecycle_run_id, authority_ref, successor_capsule_ref, recorded_at
+         FROM factory_replay_capsule_invalidations
+        WHERE capsule_ref=?
+        ORDER BY id ASC`,
+    ).all(capsuleRef) as CapsuleInvalidationRow[];
+    return rows.map(rowToInvalidation);
+  }
+
+  /** Derived invalidity: ANY evidence row makes the capsule ineligible. */
+  hasInvalidation(capsuleRef: string): boolean {
+    return this.db.prepare(
+      `SELECT 1 FROM factory_replay_capsule_invalidations WHERE capsule_ref=? LIMIT 1`,
+    ).get(capsuleRef) !== undefined;
   }
 }

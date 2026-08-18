@@ -212,6 +212,7 @@ test('Foundation: full product-build lifecycle traverses from idea to terminal v
       ).all().map(row => row.handoff_kind));
       assert.deepEqual(observedHandoffs, new Set([
         'run-gate',
+        'close-presentation',
         'run-effects',
         'record-final-acceptance',
         'route-lifecycle',

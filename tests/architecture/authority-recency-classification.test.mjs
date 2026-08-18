@@ -1,0 +1,178 @@
+// tests/architecture/authority-recency-classification.test.mjs
+//
+// K7 commit 5 — authority ORDER BY time/latest ban.
+//
+// THEOREM: chronology never selects a material subject in K7-owned authority
+// persistence. Every remaining `ORDER BY ... DESC ... LIMIT 1` site in the
+// RECENCY_DIRS scan scope is CLASSIFIED below, and the classified set is
+// exactly the allowlist set — so the moment any file gains a newest-wins
+// selector it fails (growth), and the moment a classified file is cleaned the
+// allowlist must shrink in the same commit (staleness).
+//
+// K7 CLASSIFICATION OUTCOME (2026-08-17):
+//
+//   CUT IN K7 (removed from the baseline this commit):
+//     - sqlite-process-module-installation-repository.ts —
+//       findLatestForModule (ORDER BY id DESC LIMIT 1, newest install wins)
+//       DELETED: zero live callers; identity resolves by read(id) /
+//       findByPackageDigest (ADR-077 package fingerprint), never recency.
+//     - sqlite-production-cell-projection-persistence.ts —
+//       readProjectedRoleTask hardened from `ORDER BY id DESC LIMIT 1` to
+//       fail-closed uniqueness (PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_
+//       UNIQUE): the role-task projection is unique by generationKey, and the
+//       reader feeds the accepted-authority head (C5-02) — a silent
+//       latest-wins tiebreak could bind the head to the wrong task.
+//
+//   RECLASSIFIED — legal run-history traversal with exact verification
+//   (NOT material selection; the material subject is resolved through the
+//   accepted-authority head JOIN / exact product refs, and the boundary row
+//   is fail-closed against the exact recorded error/outcome):
+//     - sqlite-author-candidate-carry-forward.ts —
+//       `ORDER BY attempt DESC,id DESC LIMIT 1` selects the terminal FAILED
+//       STAGE/NODE RUN boundary of a parent lifecycle (attempt is a repair-
+//       cycle ordinal, not wall-clock). Every subsequent read is exact:
+//       the source CandidateSet resolves via factory_accepted_authority_head
+//       with uniqueness enforced; gate decisions, submissions, lineage and
+//       git identity are all matched by exact key before authorization.
+//     - sqlite-modules/development/.../sqlite-development-verification-
+//       adoption.ts — same boundary-traversal shape; the boundary row must
+//       satisfy DEVELOPMENT_VERIFICATION_ADOPTION_BOUNDARY_INVALID checks
+//       (exact status/local_outcome) and material flows through
+//       buildSettlementInput exact product references.
+//
+//   K8-OWNED (exact replay binder replaces newest-wins run-history selection
+//   in K8; frozen here so the set cannot grow meanwhile):
+//     - sqlite-lifecycle-continuation-repository.ts
+//     - sqlite-managed-node-submission-repository.ts
+//     - sqlite-node-run-repository.ts
+//     - sqlite-protocol-run-repository.ts
+//     - sqlite-recovery-case-repository.ts
+//
+// The epic-scoped-material-read pair (brief-provisioning-ports,
+// sqlite-formalization-package-adapters) is INPUT provisioning of the
+// pre-lifecycle brief singleton (legacy artifacts table, discovery output
+// document) — lifecycle-independent by nature, classified in
+// LEGACY-INVENTORY.md, not an accepted-material authority read.
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { scanTree } from '../../tools/legacy-freeze.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+
+// file → classification. Every scanned recency file MUST appear here, and
+// every entry MUST be a currently-scanned file (no stale classifications).
+const CLASSIFICATION = Object.freeze({
+  'src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts': {
+    release: 'K7',
+    verdict: 'reclassified: run-history boundary traversal, exact-verified (material via authority-head JOIN)',
+  },
+  'src/modules/development/infrastructure/sqlite-development-verification-adoption.ts': {
+    release: 'K7',
+    verdict: 'reclassified: run-history boundary traversal, exact-verified (material via settlement product refs)',
+  },
+  'src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts': {
+    release: 'K8',
+    verdict: 'K8 cut the outcome-certificate picks to readSingleOutcomeReasonCodes (fail-closed, write-time UNIQUE(process_run_id)); remaining: order-leaf ordinal DESC + boundary attempt DESC frontier traversals',
+  },
+  'src/process-modules/persistence/sqlite-managed-node-submission-repository.ts': {
+    release: 'K8',
+    verdict: 'kept: CGAD P18 node-scope submission frontier (designed product frontier, UNIQUE(run,node,execution)); readExact tiebreak is uniqueness-enforced',
+  },
+  'src/process-modules/persistence/sqlite-node-run-repository.ts': {
+    release: 'K8',
+    verdict: 'K8 cut the assembler readLatest emulated probe to readByExactCursor and DELETED readLatest/readLatestV2 (interfaces + SQL, zero callers); readLastCompleted(V2) is the linear-chain resume cursor (legal frontier)',
+  },
+  'src/process-modules/persistence/sqlite-protocol-run-repository.ts': {
+    release: 'K8',
+    verdict: 'K8 cut active/paused picks to readSingleProtocolRun (fail-closed; active also write-time UNIQUE partial index); remaining: open-step attempt frontier (max open attempt, UNIQUE(protocol_run,step,attempt))',
+  },
+  'src/process-modules/persistence/sqlite-recovery-case-repository.ts': {
+    release: 'K8',
+    verdict: 'K8 cut active/exhausted/non-terminal picks to readSingleRecoveryCase + fail-closed resolveActive; remaining: readLastAttemptForCase (max attempt within exact case — structural frontier)',
+  },
+});
+
+const allowlist = JSON.parse(
+  readFileSync(path.join(REPO_ROOT, 'docs', 'architecture', 'legacy-allowlist.json'), 'utf8'),
+);
+const scan = scanTree();
+
+test('K7: every newest-wins selector in authority persistence is classified, and exactly the allowlisted set', () => {
+  const scanned = [...scan.categories['recency-selector-authority-persistence']].sort();
+  const classified = Object.keys(CLASSIFICATION).sort();
+  const allowed = [...allowlist.categories['recency-selector-authority-persistence'].files].sort();
+
+  assert.deepEqual(
+    scanned,
+    classified,
+    'every file carrying `ORDER BY ... DESC ... LIMIT 1` in the authority '
+    + 'persistence scan scope must have a classification entry in '
+    + 'tests/architecture/authority-recency-classification.test.mjs (and no '
+    + 'stale entries). Chronology may not select a material subject; a new '
+    + 'newest-wins selector must either be cut to an exact ref or consciously '
+    + 'classified here with rationale and an owning release.',
+  );
+  assert.deepEqual(
+    scanned,
+    allowed,
+    'the scanned recency set must EXACTLY equal the legacy-allowlist.json '
+    + 'baseline (both growth and staleness fail). If you removed a selector, '
+    + 're-run `node tools/legacy-freeze.mjs --snapshot` in the same commit.',
+  );
+});
+
+test('K7: no K7-owned file remains unclassified as authority-latest-wins', () => {
+  for (const [file, entry] of Object.entries(CLASSIFICATION)) {
+    if (entry.release !== 'K7') continue;
+    assert.match(
+      entry.verdict,
+      /reclassified|deleted|cut/i,
+      `${file}: a K7-owned entry must record a K7 disposition (cut / reclassified with rationale)`,
+    );
+  }
+});
+
+test('K7: the K7-reclassified boundary traversals keep their fail-closed exact verification', () => {
+  // The reclassification verdict rests on the exact-verification that follows
+  // each boundary selection. Pin the load-bearing error codes so the
+  // traversal cannot silently degrade into a plain latest-wins read.
+  const carryForward = readFileSync(
+    path.join(REPO_ROOT, 'src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts'),
+    'utf8',
+  );
+  assert.match(carryForward, /AUTHOR_CARRY_FORWARD_FAILED_STAGE_NOT_EXACT/u);
+  assert.match(carryForward, /AUTHOR_CARRY_FORWARD_SOURCE_SET_NOT_EXACT/u);
+  assert.match(carryForward, /factory_accepted_authority_head/u);
+
+  const adoption = readFileSync(
+    path.join(REPO_ROOT, 'src/modules/development/infrastructure/sqlite-development-verification-adoption.ts'),
+    'utf8',
+  );
+  assert.match(adoption, /DEVELOPMENT_VERIFICATION_ADOPTION_BOUNDARY_INVALID/u);
+});
+
+test('K7: the deleted latest-wins readers stay deleted', () => {
+  // Comment-stripped: the deletion theorem concerns CODE. Explanatory
+  // comments documenting the deletion legitimately name the dead method.
+  const stripComments = (src) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\r?\n)[ \t]*\/\/[^\r\n]*/g, '$1');
+
+  const installationRepo = stripComments(readFileSync(
+    path.join(REPO_ROOT, 'src/process-modules/persistence/sqlite-process-module-installation-repository.ts'),
+    'utf8',
+  ));
+  assert.doesNotMatch(installationRepo, /findLatestForModule/u);
+
+  const projection = stripComments(readFileSync(
+    path.join(REPO_ROOT, 'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts'),
+    'utf8',
+  ));
+  assert.match(projection, /PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE/u);
+  assert.doesNotMatch(projection, /order by id desc limit 1/iu);
+});

@@ -63,6 +63,8 @@ import { SqliteProductionCellIntegration } from '../../dist/infrastructure/workp
 import { SqliteSealedProductMaterialRepository } from '../../dist/infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteManagedNodeSubmissionRepository } from '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
+import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
+import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -308,8 +310,18 @@ function acceptAuthor(db, coordinator, ref, { candidateSetRef, gateDecisionKey, 
        (gate_run_ref,workplace_ref,gate_phase,subject_candidate_set_ref,
         assessment_candidate_set_refs,check_plan_ref,check_plan_digest,
         expected_workplace_revision,gate_lease_ref,state)
-     VALUES (?,?, 'author',?,'[]','plan',?,?,?,'decided')`,
+     VALUES (?,?, 'author',?,'[]','plan',?,?,?,'terminal')`,
   ).run(gateRunRef, serializeWorkplaceRef(ref), candidateSetRef, HEX64, expectedRevision, `lease:${gateDecisionKey}`);
+  // ADR-081 (K12): the acceptance commit requires the FULL proof — a
+  // terminal run with at least one recorded receipt.
+  db.prepare(
+    `INSERT INTO factory_check_receipts
+       (check_receipt_ref,check_run_ref,subject_candidate_set_ref,
+        assessment_candidate_set_refs,provider_id,provider_version,
+        provider_digest,environment_ref,outcome,evidence_refs,
+        receipt_digest,created_at)
+     VALUES (?,?,?, '[]', 'check.x', '1.0.0', ?, NULL, 'passed', '[]', ?, datetime('now'))`,
+  ).run(`receipt:${gateDecisionKey}`, gateRunRef, candidateSetRef, HEX64, `rd:${gateDecisionKey}`);
   db.prepare(
     `INSERT INTO factory_gate_decisions
        (decision_key,workplace_ref,gate_ref,gate_run_ref,gate_phase,transition_ref,
@@ -321,12 +333,16 @@ function acceptAuthor(db, coordinator, ref, { candidateSetRef, gateDecisionKey, 
     gateDecisionKey, serializeWorkplaceRef(ref), `gate:${gateDecisionKey}`, gateRunRef,
     `transition:${gateDecisionKey}`, candidateSetRef, HEX64, HEX64, HEX64, sha(gateDecisionKey),
   );
-  coordinator.applyGateDecision(ref, {
-    verdict: 'accepted',
-    isFinal: false,
-    acceptedCandidateSetRef: candidateSetRef,
+  new CommitAcceptedCandidate({
+    gateRepo: new SqliteGateRepository(db),
+    coordinator,
+  }).commit({
+    workplaceRef: ref,
     gateDecisionKey,
+    acceptedCandidateSetRef: candidateSetRef,
     acceptedAuthorTaskId: authorTaskId,
+    expectedRevision,
+    isFinal: false,
   });
 }
 

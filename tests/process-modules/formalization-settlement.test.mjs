@@ -54,16 +54,22 @@ function fakeGraph(overrides = {}) {
   state.areTasksReadyCalls = [];
   return {
     _state: state,
-    readAcceptedArtifacts(_epicId) {
+    readAcceptedArtifactsForLifecycle(_epicId, _lifecycleRunId) {
+      // ADR-078 (K6): the fake surfaces lifecycle-scoped state so tests can
+      // simulate dead-run exclusion; defaults mirror the epic-scoped view.
       return {
         prd: state.prd, frs: state.frs, nfrs: state.nfrs, rules: state.rules,
-        ucs: state.ucs, acs: state.acs, srs: state.srs,
+        ucs: state.ucs, acs: state.scopedAcs ?? state.acs, srs: state.srs,
       };
     },
-    readAcceptanceBaselineHash(_epicId) {
-      return { hash: state.baselineHash, clean: state.baselineClean, dirty: state.baselineDirty };
+    readAcceptanceBaselineHashForLifecycle(_epicId, _lifecycleRunId) {
+      return {
+        hash: state.scopedBaselineHash ?? state.baselineHash,
+        clean: state.scopedBaselineClean ?? state.baselineClean,
+        dirty: state.scopedBaselineDirty ?? state.baselineDirty,
+      };
     },
-    findFirstTraceabilityGap(_epicId) { return state.traceGap; },
+    findFirstTraceabilityGapForLifecycle(_epicId, _lifecycleRunId) { return state.scopedTraceGap ?? state.traceGap; },
     areTasksReady(epicId, lifecycleRunId) {
       state.areTasksReadyCalls.push([epicId, lifecycleRunId]);
       return { ready: state.tasksReady, blockingTaskIds: state.blockingTaskIds };
@@ -405,7 +411,7 @@ test('TB-11: gate blocks when the CURRENT lifecycle run workplace is non-termina
 });
 
 test('TB-11: current run without formalization tasks fails closed with no blockers', () => {
-  const { fixture } = twoLifecycleRunsFixture();
+  const { fixture, liveProcessRunId } = twoLifecycleRunsFixture();
   try {
     fixture.db.prepare(`DELETE FROM tasks WHERE epic_id=100`).run();
     const graph = new SqliteFormalizationArtifactGraph(fixture.db);
@@ -430,7 +436,7 @@ test('TB-11: readOwningLifecycleRunId resolves the exact lifecycle run of a proc
 });
 
 test('TB-11: end-to-end — settlement over the live run is formalized despite the dead-run poison', () => {
-  const { fixture } = twoLifecycleRunsFixture();
+  const { fixture, liveProcessRunId } = twoLifecycleRunsFixture();
   try {
     const graph = new SqliteFormalizationArtifactGraph(fixture.db);
     // Minimal accepted contract on the epic so the policy reaches the task gate.
@@ -462,8 +468,28 @@ test('TB-11: end-to-end — settlement over the live run is formalized despite t
     trace(30, 10, 'derived_from');       // AC → FR
     trace(30, 20, 'derived_from');       // AC → UC
     trace(31, 12, 'derived_from');       // AC → NFR
+    // ADR-78 (K6): accepted material joins the lifecycle through the managed
+    // production ledger. Stand-in table (real one is lazily created by the
+    // production ledger repository); rows bind the contract artifacts to the
+    // LIVE run's process run, so the exact reads see them and dead-run
+    // material drops out by construction.
+    fixture.db.exec(`CREATE TABLE IF NOT EXISTS factory_managed_artifact_productions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      process_run_id INTEGER NOT NULL,
+      node_id TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      artifact_id INTEGER NOT NULL,
+      operation TEXT NOT NULL,
+      artifact_status TEXT NOT NULL,
+      content_hash TEXT)`);
+    const ledger = (artifactId) => fixture.db.prepare(
+      `INSERT INTO factory_managed_artifact_productions
+         (process_run_id, node_id, execution_id, artifact_id, operation, artifact_status, content_hash)
+       VALUES (?, 'author', ?, ?, 'create', 'accepted', '${'a'.repeat(64)}')`,
+    ).run(liveProcessRunId, `exec-${artifactId}`, artifactId);
+    for (const id of [1, 10, 11, 12, 20, 30, 31, 40]) ledger(id);
 
-    const baselineHash = graph.readAcceptanceBaselineHash(100).hash;
+    const baselineHash = graph.readAcceptanceBaselineHashForLifecycle(100, 25).hash;
     const bundleBody = {
       schemaVersion: 'factory.solution-contract-certificate.v1',
       formalizationEpicId: 100,

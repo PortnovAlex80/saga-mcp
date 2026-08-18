@@ -147,3 +147,58 @@ test('diffContractSurface: identical surfaces → empty diff (compatible)', () =
   const s = extractContractSurface(makeManifest());
   assert.equal(diffContractSurface(s, s).length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// K5 (Saga Core Renewal) — the missing high-risk negative theorem.
+//
+// The 2026-08-16 audit: "Resume compatibility uses handler logical IDs
+// without implementation digests. A rewritten handler can be silently
+// treated as compatible." K3 made handler digests real; this theorem pins
+// the resume side: same logical ID + CHANGED implementation digest must
+// never classify as 'compatible' (a resumed workplace would execute
+// REWRITTEN code under the same pin).
+// ---------------------------------------------------------------------------
+
+test('K5 theorem: same logical ID with CHANGED implementation digest is NOT compatible', () => {
+  const digestA = 'a'.repeat(64);
+  const digestB = 'b'.repeat(64);
+  const stable = 'c'.repeat(64);
+  const existing = makeRecord({
+    packageDigest: 'old-pkg',
+    handlerRefs: [
+      { logicalId: 'dev-kernel-1', version: '1.0.0', digest: digestA },
+      { logicalId: 'dev-kernel-2', version: '1.0.0', digest: stable },
+    ],
+  });
+  const attempted = makeManifest({
+    handlerRefs: [
+      { logicalId: 'dev-kernel-1', version: '1.0.0', digest: digestB }, // REWRITTEN implementation
+      { logicalId: 'dev-kernel-2', version: '1.0.0', digest: stable },
+    ],
+  });
+  const verdict = classifyResumeCompatibility(existing, 'new-pkg', attempted);
+  assert.notEqual(
+    verdict.outcome,
+    'compatible',
+    `a rewritten handler implementation must never be silently compatible (got: ${verdict.outcome})`,
+  );
+});
+
+test('K5 control: resource-only drift with IDENTICAL handler digests stays compatible', () => {
+  const stable = 'c'.repeat(64);
+  const existing = makeRecord({
+    packageDigest: 'old-pkg',
+    handlerRefs: [
+      { logicalId: 'dev-kernel-1', version: '1.0.0', digest: stable },
+      { logicalId: 'dev-kernel-2', version: '1.0.0', digest: stable },
+    ],
+  });
+  const attempted = makeManifest({
+    handlerRefs: [
+      { logicalId: 'dev-kernel-1', version: '1.0.0', digest: stable },
+      { logicalId: 'dev-kernel-2', version: '1.0.0', digest: stable },
+    ],
+  });
+  const verdict = classifyResumeCompatibility(existing, 'new-pkg', attempted);
+  assert.equal(verdict.outcome, 'compatible');
+});

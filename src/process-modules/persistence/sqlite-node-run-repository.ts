@@ -422,14 +422,10 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     return rowToRecord(row);
   }
 
-  readLatest(processRunId: number, nodeId: string): NodeRunRecord | null {
-    const row = this.db.prepare(
-      `SELECT * FROM factory_node_runs
-        WHERE process_run_id=? AND node_id=?
-        ORDER BY id DESC LIMIT 1`,
-    ).get(processRunId, nodeId) as NodeRunRow | undefined;
-    return row ? rowToRecord(row) : null;
-  }
+  // K8 (ADR-079): readLatest — the newest-wins (process_run, node) fetch —
+  // was DELETED with its interface declarations. The assembler now probes
+  // readByExactCursor (run, node, attempt); identity resolution never
+  // chooses by row order.
 
   readLastCompleted(processRunId: number): NodeRunRecord | null {
     const row = this.db.prepare(
@@ -553,15 +549,6 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
         WHERE process_run_id=? AND node_id=? AND attempt=?
         LIMIT 1`,
     ).get(processRunId, nodeId, attempt) as NodeRunRow | undefined;
-    return row ? rowToRecordV2(row) : null;
-  }
-
-  readLatestV2(processRunId: number, nodeId: string): NodeRunRecordV2 | null {
-    const row = this.db.prepare(
-      `SELECT * FROM factory_node_runs
-        WHERE process_run_id=? AND node_id=?
-        ORDER BY id DESC LIMIT 1`,
-    ).get(processRunId, nodeId) as NodeRunRow | undefined;
     return row ? rowToRecordV2(row) : null;
   }
 

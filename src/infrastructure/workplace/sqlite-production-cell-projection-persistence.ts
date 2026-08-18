@@ -174,12 +174,22 @@ export function createSqliteProductionCellProjectionPersistence(
 
     readProjectedRoleTask(workplaceRef, role) {
       const serialized = serializeWorkplaceRef(workplaceRef);
-      const row = db.prepare(
+      // K7 — the role-task projection is unique by construction (generationKey
+      // `${workplaceRef}:${role}`); a duplicate would mean a broken
+      // idempotence fence. Fail closed instead of silently picking the newest
+      // row: this reader feeds the accepted-authority head (C5-02) and a
+      // latest-wins tiebreak could bind the head to the WRONG task in a
+      // repair cycle.
+      const rows = db.prepare(
         `SELECT id AS taskId FROM tasks
-          WHERE workplace_ref=? AND json_extract(metadata,'$.role')=?
-          ORDER BY id DESC LIMIT 1`,
-      ).get(serialized, role) as { taskId: number } | undefined;
-      return row ?? null;
+          WHERE workplace_ref=? AND json_extract(metadata,'$.role')=?`,
+      ).all(serialized, role) as Array<{ taskId: number }>;
+      if (rows.length > 1) {
+        throw new Error(
+          `PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE: ${serialized}/${role} has ${rows.length} rows`,
+        );
+      }
+      return rows[0] ?? null;
     },
 
     sealWorkplaceGraph(input) {

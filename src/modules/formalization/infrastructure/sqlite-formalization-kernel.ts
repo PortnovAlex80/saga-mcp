@@ -118,12 +118,24 @@ export class SqliteFormalizationArtifactGraph implements
     return rows.map(traceRowToSnapshot);
   }
 
-  readAcceptedArtifacts(epicId: number) {
+  /**
+   * ADR-078 (K6): the EXACT accepted-material read — scoped to the CURRENT
+   * lifecycle run through the authoritative ownership chain (artifact ->
+   * managed production ledger -> process_run -> factory_stage_runs).
+   * Material of other lifecycle runs under the same epic is simply not part
+   * of this settlement's input. Zero lifecycle-scoped material fails closed
+   * at the policy layer (empty result here), never a fallback to epic scope.
+   */
+  readAcceptedArtifactsForLifecycle(epicId: number, lifecycleRunId: number) {
     const rows = this.db.prepare(
-      `SELECT id, type FROM artifacts
-        WHERE epic_id=? AND status='accepted'
-        ORDER BY id`,
-    ).all(epicId) as Array<{ id: number; type: string }>;
+      `SELECT a.id AS id, a.type AS type
+         FROM artifacts a
+         JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+         JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+        WHERE a.epic_id=? AND a.status='accepted' AND sr.lifecycle_run_id=?
+        GROUP BY a.id
+        ORDER BY a.id`,
+    ).all(epicId, lifecycleRunId) as Array<{ id: number; type: string }>;
     const byType = new Map<string, number[]>();
     for (const r of rows) {
       const list = byType.get(r.type) ?? [];
@@ -141,18 +153,34 @@ export class SqliteFormalizationArtifactGraph implements
     };
   }
 
-  readAcceptanceBaselineHash(epicId: number) {
-    // Same logic as lifecycle.ts:acceptedBaseline — refresh hashes, then check
-    // status=accepted AND accepted_hash=content_hash AND drift_state=clean.
+  /**
+   * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash — same ownership
+   * chain as {@link readAcceptedArtifactsForLifecycle}, restricted to AC
+   * artifacts of the CURRENT lifecycle run.
+   */
+  readAcceptanceBaselineHashForLifecycle(epicId: number, lifecycleRunId: number) {
     const rows = this.db.prepare(
-      `SELECT id, status, accepted_hash, content_hash, drift_state
-        FROM artifacts
-        WHERE epic_id=? AND type='AC'
-        ORDER BY id`,
-    ).all(epicId) as Array<{
+      `SELECT a.id AS id, a.status AS status,
+              a.accepted_hash AS accepted_hash,
+              a.content_hash AS content_hash,
+              a.drift_state AS drift_state
+         FROM artifacts a
+         JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+         JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+        WHERE a.epic_id=? AND a.type='AC' AND sr.lifecycle_run_id=?
+        GROUP BY a.id
+        ORDER BY a.id`,
+    ).all(epicId, lifecycleRunId) as Array<{
       id: number; status: string; accepted_hash: string | null;
       content_hash: string | null; drift_state: string;
     }>;
+    return this.evaluateBaselineRows(rows);
+  }
+
+  private evaluateBaselineRows(rows: ReadonlyArray<{
+    id: number; status: string; accepted_hash: string | null;
+    content_hash: string | null; drift_state: string;
+  }>): { hash: string; clean: boolean; dirty: number[] } {
     const dirty = rows
       .filter(r => r.status !== 'accepted'
         || r.accepted_hash === null
@@ -166,92 +194,86 @@ export class SqliteFormalizationArtifactGraph implements
     return { hash, clean: dirty.length === 0, dirty };
   }
 
-  // AUTHORITATIVE for the settlement certificate gate (RULE-012). This is the
-  // epic-wide traceability check the formalization settlement policy calls
-  // (see ReferenceFormalizationSettlementPolicy.settle → line ~374). A SECOND,
-  // deliberately different implementation — `findContractGap` in
-  // formalization-installation.ts — runs at the per-node exact-set gate. They
-  // are NOT duplicates and must not be merged; see the comparison table in the
-  // header comment of findContractGap for the three load-bearing differences
-  // (root-edge breadth, scope, return shape). When the canonical RULES edge
-  // set changes, BOTH must be updated together.
-  findFirstTraceabilityGap(epicId: number) {
-    const db = this.db;
-    // hasEdge checks for an outgoing edge of given link_type to ANY artifact
-    // of the target type. The epicId constrains the SOURCE artifact's epic;
-    // the TARGET may live in a different epic (e.g. a PRD in formalization
-    // lifecycle gate had the same cross-epic semantics for brief.
+  /**
+   * ADR-78 (K7): lifecycle-scoped traceability gap check — the canonical edge
+   * rules (PRD→brief, SRS→PRD, UC→PRD/FR, AC→FR/NFR/UC) evaluated over source
+   * artifacts scoped to the CURRENT lifecycle run through the production
+   * ledger + stage-run ownership chain. Trace TARGETS may still reference
+   * material outside the lifecycle (e.g. a brief) — targets are references,
+   * not settlement input. The epic-scoped variant is DELETED (K7 cleanup).
+   */
+  findFirstTraceabilityGapForLifecycle(epicId: number, lifecycleRunId: number) {
+    const scopedIds = (type: string): number[] => {
+      const rows = this.db.prepare(
+        `SELECT a.id AS id
+           FROM artifacts a
+           JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+           JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+          WHERE a.epic_id=? AND a.type=? AND sr.lifecycle_run_id=?
+          GROUP BY a.id
+          ORDER BY a.id`,
+      ).all(epicId, type, lifecycleRunId) as Array<{ id: number }>;
+      return rows.map(r => r.id);
+    };
+
     const hasEdgeToType = (
       srcId: number,
       linkType: 'derived_from' | 'covers',
       targetType: 'brief' | 'PRD' | 'UC' | 'FR' | 'NFR',
-    ): boolean => !!db.prepare(
+    ): boolean => !!this.db.prepare(
       `SELECT 1 FROM artifact_traces at
         JOIN artifacts t ON t.id = at.target_id
        WHERE at.source_id=? AND at.link_type=? AND t.type=?
        LIMIT 1`,
     ).get(srcId, linkType, targetType);
 
-    const prd = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1`,
-    ).get(epicId) as { id: number } | undefined;
-    if (prd && !hasEdgeToType(prd.id, 'derived_from', 'brief')) {
+    const prd = scopedIds('PRD')[0];
+    if (prd !== undefined && !hasEdgeToType(prd, 'derived_from', 'brief')) {
       return {
-        artifactType: 'PRD', artifactId: prd.id,
+        artifactType: 'PRD', artifactId: prd,
         missingEdge: 'derived_from → brief',
-        description: `PRD #${prd.id} has no 'derived_from' trace to a brief artifact.`,
+        description: `PRD #${prd} has no 'derived_from' trace to a brief artifact.`,
       };
     }
-
-    const srs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='SRS' ORDER BY id LIMIT 1`,
-    ).get(epicId) as { id: number } | undefined;
-    if (srs && !hasEdgeToType(srs.id, 'derived_from', 'PRD')) {
+    const srs = scopedIds('SRS')[0];
+    if (srs !== undefined && !hasEdgeToType(srs, 'derived_from', 'PRD')) {
       return {
-        artifactType: 'SRS', artifactId: srs.id,
+        artifactType: 'SRS', artifactId: srs,
         missingEdge: 'derived_from → PRD',
-        description: `SRS #${srs.id} has no 'derived_from' trace to PRD.`,
+        description: `SRS #${srs} has no 'derived_from' trace to PRD.`,
       };
     }
-
-    const ucs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='UC' ORDER BY id`,
-    ).all(epicId) as Array<{ id: number }>;
-    for (const uc of ucs) {
-      if (!hasEdgeToType(uc.id, 'derived_from', 'PRD')) {
+    for (const uc of scopedIds('UC')) {
+      if (!hasEdgeToType(uc, 'derived_from', 'PRD')) {
         return {
-          artifactType: 'UC', artifactId: uc.id,
+          artifactType: 'UC', artifactId: uc,
           missingEdge: 'derived_from → PRD',
-          description: `UC #${uc.id} has no 'derived_from' trace to PRD.`,
+          description: `UC #${uc} has no 'derived_from' trace to PRD.`,
         };
       }
-      if (!hasEdgeToType(uc.id, 'covers', 'FR')) {
+      if (!hasEdgeToType(uc, 'covers', 'FR')) {
         return {
-          artifactType: 'UC', artifactId: uc.id,
+          artifactType: 'UC', artifactId: uc,
           missingEdge: 'covers → FR',
-          description: `UC #${uc.id} has no 'covers' trace to any FR.`,
+          description: `UC #${uc} has no 'covers' trace to any FR.`,
         };
       }
     }
-
-    const acs = db.prepare(
-      `SELECT id FROM artifacts WHERE epic_id=? AND type='AC' ORDER BY id`,
-    ).all(epicId) as Array<{ id: number }>;
-    for (const ac of acs) {
-      const hasFr = hasEdgeToType(ac.id, 'derived_from', 'FR');
-      const hasNfr = hasEdgeToType(ac.id, 'derived_from', 'NFR');
+    for (const ac of scopedIds('AC')) {
+      const hasFr = hasEdgeToType(ac, 'derived_from', 'FR');
+      const hasNfr = hasEdgeToType(ac, 'derived_from', 'NFR');
       if (!hasFr && !hasNfr) {
         return {
-          artifactType: 'AC', artifactId: ac.id,
+          artifactType: 'AC', artifactId: ac,
           missingEdge: 'derived_from → FR/NFR',
-          description: `AC #${ac.id} has no 'derived_from' trace to any FR or NFR.`,
+          description: `AC #${ac} has no 'derived_from' trace to any FR or NFR.`,
         };
       }
-      if (hasFr && !hasEdgeToType(ac.id, 'derived_from', 'UC')) {
+      if (hasFr && !hasEdgeToType(ac, 'derived_from', 'UC')) {
         return {
-          artifactType: 'AC', artifactId: ac.id,
+          artifactType: 'AC', artifactId: ac,
           missingEdge: 'derived_from → UC',
-          description: `FR-derived AC #${ac.id} has no 'derived_from' trace to a UC.`,
+          description: `FR-derived AC #${ac} has no 'derived_from' trace to a UC.`,
         };
       }
     }
@@ -367,7 +389,9 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
         `settlement input schema mismatch: expected ${FORMALIZATION_SETTLEMENT_INPUT_SCHEMA}, got ${input.schemaVersion}`);
     }
 
-    const artifacts = graph.readAcceptedArtifacts(epicId);
+    // ADR-078 (K6): exact lifecycle-scoped read — dead-run material
+    // cannot enter the settlement validation input.
+    const artifacts = graph.readAcceptedArtifactsForLifecycle(epicId, lifecycleRunId);
     const bundle = input.bundle;
     const expectedBundleHash = createHash('sha256')
       .update(canonicalJson({
@@ -411,7 +435,7 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
     }
 
     // Baseline must be frozen and clean.
-    const baseline = graph.readAcceptanceBaselineHash(epicId);
+    const baseline = graph.readAcceptanceBaselineHashForLifecycle(epicId, lifecycleRunId);
     if (!baseline.clean) {
       return fail(inputHash, ['baseline-missing'],
         `Acceptance baseline is dirty: AC ids ${baseline.dirty.join(', ')} are not accepted+clean.`);
@@ -428,7 +452,9 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
     }
 
     // Traceability: the canonical edges must all exist.
-    const gap = graph.findFirstTraceabilityGap(epicId);
+    // ADR-78 (K7): lifecycle-scoped gap check - dead-run artifacts
+    // cannot poison this settlement's traceability verdict.
+    const gap = graph.findFirstTraceabilityGapForLifecycle(epicId, lifecycleRunId);
     if (gap) {
       return fail(inputHash, ['traceability-gap'],
         `Traceability gap: ${gap.description}`);

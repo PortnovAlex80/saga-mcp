@@ -45,6 +45,13 @@ export interface ModuleContractSurface {
   readonly inputContractSchemaId: string;
   readonly outputContractSchemaId: string;
   readonly handlerLogicalIds: readonly string[];
+  /**
+   * K5 (Saga Core Renewal): sorted `logicalId:implementationDigest` pairs.
+   * A changed implementation digest under the SAME logicalId is the exact
+   * "rewritten handler" case the 2026-08-16 audit flagged — it must classify
+   * as restart-required, never as a silently compatible toolset update.
+   */
+  readonly handlerDigests: readonly string[];
 }
 
 /**
@@ -61,6 +68,9 @@ export function extractContractSurface(
     outputContractSchemaId: manifest.outputContractRef.schemaId,
     handlerLogicalIds: (manifest.handlerRefs ?? [])
       .map((h) => h.logicalId)
+      .sort(),
+    handlerDigests: (manifest.handlerRefs ?? [])
+      .map((h) => `${h.logicalId}:${h.digest ?? ''}`)
       .sort(),
   };
 }
@@ -81,6 +91,9 @@ export function extractContractSurfaceFromRecord(
     outputContractSchemaId: snap.outputContractRef.schemaId,
     handlerLogicalIds: (snap.handlerRefs ?? [])
       .map((h) => h.logicalId)
+      .sort(),
+    handlerDigests: (snap.handlerRefs ?? [])
+      .map((h) => `${h.logicalId}:${h.digest ?? ''}`)
       .sort(),
   };
 }
@@ -105,11 +118,48 @@ export type ResumeCompatibilityVerdict =
       readonly changedFields: readonly string[];
     }
   | {
+      /**
+       * K5 (Saga Core Renewal): handler IMPLEMENTATION digests changed under
+       * stable logicalIds — the rewritten-handler case. Resume is NOT
+       * automatic: the runtime must start an explicit new lifecycle or refuse.
+       * Never silently compatible (audit 2026-08-16), never mutates existing
+       * terminal/accepted work.
+       */
+      readonly outcome: 'restart-required';
+      readonly reason: string;
+      readonly oldInstallationId: number;
+      readonly oldPackageDigest: string;
+      readonly newPackageDigest: string;
+      readonly changedHandlerImplementations: readonly string[];
+    }
+  | {
       readonly outcome: 'unchanged';
       readonly reason: string;
       readonly installationId: number;
       readonly packageDigest: string;
     };
+
+/**
+ * K5: list the per-handler implementation digest changes as
+ * `logicalId: old → new` strings (diagnostic projection of the
+ * handlerImplementationDigests surface diff).
+ */
+function diffHandlerImplementationDigests(
+  oldDigests: readonly string[],
+  newDigests: readonly string[],
+): readonly string[] {
+  const oldMap = new Map(oldDigests.map((pair) => [pair.slice(0, pair.indexOf(':')), pair.slice(pair.indexOf(':') + 1)]));
+  const newMap = new Map(newDigests.map((pair) => [pair.slice(0, pair.indexOf(':')), pair.slice(pair.indexOf(':') + 1)]));
+  const changes: string[] = [];
+  for (const logicalId of new Map([...oldMap, ...newMap]).keys()) {
+    const before = oldMap.get(logicalId) ?? '(absent)';
+    const after = newMap.get(logicalId) ?? '(absent)';
+    if (before !== after) {
+      changes.push(`${logicalId}: ${before.slice(0, 12)}… → ${after.slice(0, 12)}…`);
+    }
+  }
+  return changes.sort();
+}
 
 /**
  * Compare an existing active installation against a freshly-attempted install
@@ -119,9 +169,12 @@ export type ResumeCompatibilityVerdict =
  *   1. If the digests are EQUAL → `unchanged` (no drift; resume trivially).
  *   2. If the digests differ BUT the contract surface is identical →
  *      `compatible` (toolset bytes changed; contract stable; resume safe).
- *   3. If the digests differ AND the contract surface changed →
- *      `incompatible` (the resumed workplace would see a different contract;
- *      pause for operator action).
+ *   3. K5: if ONLY handler implementation digests changed (same logicalIds,
+ *      same schemas, same identity) → `restart-required` — a resumed
+ *      workplace would execute REWRITTEN code; resume needs an explicit new
+ *      lifecycle or a refusal, never a silent toolset swap.
+ *   4. Anything else changed → `incompatible` (the resumed workplace would
+ *      see a different contract; pause for operator action).
  *
  * This is the explicit policy the doc requires in place of raw digest
  * equality. A `compatible` verdict lets the runtime retire the old slot and
@@ -153,11 +206,35 @@ export function classifyResumeCompatibility(
       outcome: 'compatible',
       reason:
         'package bytes changed but module contract is stable '
-        + '(identity + input/output schemas + handler surface unchanged) — '
+        + '(identity + input/output schemas + handler implementation digests unchanged) — '
         + 'CGAD P18: resume continues against the existing work',
       oldInstallationId: existing.id,
       oldPackageDigest: oldDigest,
       newPackageDigest: newDigest,
+    };
+  }
+
+  // K5: the ONLY drift is handler implementation digests under stable
+  // logicalIds — the rewritten-handler case. Restart, never silent resume.
+  const onlyHandlerImplementations = changedFields.every(
+    (f) => f.startsWith('handlerImplementationDigests:'),
+  );
+  if (onlyHandlerImplementations) {
+    const changedHandlerImplementations = diffHandlerImplementationDigests(
+      oldSurface.handlerDigests,
+      newSurface.handlerDigests,
+    );
+    return {
+      outcome: 'restart-required',
+      reason:
+        `handler implementation(s) changed under stable logicalIds `
+        + `(${changedHandlerImplementations.join('; ')}) — a resumed workplace `
+        + 'would execute rewritten code; start an explicit new lifecycle or '
+        + 'refuse (K5 / ADR-077); existing terminal and accepted work stays immutable',
+      oldInstallationId: existing.id,
+      oldPackageDigest: oldDigest,
+      newPackageDigest: newDigest,
+      changedHandlerImplementations,
     };
   }
 
@@ -200,6 +277,11 @@ export function diffContractSurface(
   const newHandlers = newSurface.handlerLogicalIds.join(',');
   if (oldHandlers !== newHandlers) {
     changed.push(`handlerLogicalIds: [${oldHandlers}] → [${newHandlers}]`);
+  }
+  const oldDigests = oldSurface.handlerDigests.join(',');
+  const newDigests = newSurface.handlerDigests.join(',');
+  if (oldDigests !== newDigests) {
+    changed.push(`handlerImplementationDigests: [${oldDigests}] → [${newDigests}]`);
   }
   return changed;
 }

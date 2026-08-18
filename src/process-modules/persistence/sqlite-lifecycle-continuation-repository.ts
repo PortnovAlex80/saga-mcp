@@ -383,10 +383,7 @@ implements LifecycleContinuationRepository {
       boundary.stage_outcome === 'approval-required'
       && boundary.process_outcome === 'approval-required'
     ) {
-      const certificate = this.db.prepare(
-        `SELECT reason_codes FROM factory_process_outcome_certificates
-          WHERE process_run_id=? ORDER BY id DESC LIMIT 1`,
-      ).get(boundary.process_run_id) as { reason_codes: string } | undefined;
+      const certificate = readSingleOutcomeReasonCodes(this.db, boundary.process_run_id);
       if (!certificate) return false;
       try {
         const reasonCodes = JSON.parse(certificate.reason_codes) as unknown;
@@ -401,10 +398,7 @@ implements LifecycleContinuationRepository {
       boundary.stage_outcome !== 'failed'
       || boundary.process_outcome !== 'failed'
     ) return false;
-    const certificate = this.db.prepare(
-      `SELECT reason_codes FROM factory_process_outcome_certificates
-        WHERE process_run_id=? ORDER BY id DESC LIMIT 1`,
-    ).get(boundary.process_run_id) as { reason_codes: string } | undefined;
+    const certificate = readSingleOutcomeReasonCodes(this.db, boundary.process_run_id);
     if (!certificate) return false;
     try {
       const reasonCodes = JSON.parse(certificate.reason_codes) as unknown;
@@ -690,4 +684,27 @@ function parsePrefixEvidence(snapshot: string): PrefixEvidence {
     }
   }
   return parsed as PrefixEvidence;
+}
+
+/**
+ * ADR-079 — the outcome-certificate reader for a process run. A terminal
+ * ProcessRun owns exactly one outcome certificate; the table enforces
+ * uniqueness by certificate_hash (content) but NOT by process_run_id, so a
+ * duplicate run-scoped row is an invariant violation that must fail closed —
+ * never silently resolve to the newest row.
+ */
+export function readSingleOutcomeReasonCodes(
+  db: Database.Database,
+  processRunId: number,
+): { reason_codes: string } | null {
+  const rows = db.prepare(
+    `SELECT reason_codes FROM factory_process_outcome_certificates
+      WHERE process_run_id=?`,
+  ).all(processRunId) as Array<{ reason_codes: string }>;
+  if (rows.length > 1) {
+    throw new Error(
+      `OUTCOME_CERTIFICATE_NOT_UNIQUE: process run ${processRunId} has ${rows.length} certificates`,
+    );
+  }
+  return rows[0] ?? null;
 }

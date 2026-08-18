@@ -56,10 +56,10 @@
  * another module. It does NOT cut over the composition root (Wave 11) or
  */
 
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { handlerImplementationDigest } from '../../../installation/domain/handler-implementation-digest.js';
 
 import type {
   HandlerRef,
@@ -239,34 +239,17 @@ const HANDLER_VERSION = '1.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * sha256 of a handler implementation module's raw bytes (same formula as
- * `computeResourceDigest` in package-store.ts — raw bytes via crypto, NOT
- * canonical-json `sha256Hex`). `relImportSpecifier` uses a relative `.js`
- * specifier resolved against the compiled output, so the digest covers the
- * EXACT module the runtime imports and executes. A missing file fails module
- * load — the manifest must never load un-provably (same fail-closed contract
- * as `validateProcessModuleManifest` throwing at load).
- */
-function handlerImplementationDigest(relImportSpecifier: string): string {
-  const implPath = path.join(HERE, relImportSpecifier);
-  try {
-    return createHash('sha256').update(readFileSync(implPath)).digest('hex');
-  } catch (e) {
-    throw new Error(
-      `cannot content-address delivery handler implementation `
-      + `'${relImportSpecifier}' (resolved: ${implPath}): ${(e as Error).message}`,
-    );
-  }
-}
-
-/**
  * Content address of `createDeliveryKernelHandlers` +
  * `createDeliveryHumanInteractions` — the single module the composition root
  * calls to register every kernel handler AND human adapter pinned below, so
- * they all share its digest; editing ANY of them changes it.
+ * they all share its digest; editing ANY of them changes it. Computed by the
+ * canonical shared digester (K3): sha256 over the module's raw bytes,
+ * resolved from HERE.
  */
 const DELIVERY_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
+  HERE,
   '../../../../modules/delivery/application/delivery-installation.js',
+  'delivery',
 );
 
 function deliveryHandlerRef(logicalId: string): HandlerRef {

@@ -344,13 +344,11 @@ export async function assembleExecutionContext(
   //    (processRun, node, attempt) row is what crash-resume resumes from.
   //    If the row is not started yet (the executor is assembling the envelope
   //    BEFORE starting the NodeRun), nodeRunId is null on the envelope — the
-  //    caller passes 0 and the executor fills it after startV2(). We surface
-  //    the latest row if present so the envelope is well-formed for the
-  //    common resume path.
-  const latestNodeRun = deps.nodeRunRepo.readLatest(processRunId, nodeId);
-  const nodeRunId = latestNodeRun && latestNodeRun.attempt === attempt
-    ? latestNodeRun.id
-    : 0;
+  //    caller passes 0 and the executor fills it after startV2().
+  //    ADR-079: exact-cursor probe (UNIQUE index equality), not a
+  //    newest-wins fetch with an attempt guard.
+  const exactNodeRun = deps.nodeRunRepo.readByExactCursor(processRunId, nodeId, attempt);
+  const nodeRunId = exactNodeRun ? exactNodeRun.id : 0;
 
   // 4. Resolve packageRef + nodeRef.
   const packageRef = resolvePackageRef(

@@ -1,0 +1,830 @@
+{
+  "schemaVersion": 1,
+  "protocol": "ADR-076",
+  "program": "saga-core-renewal",
+  "evidenceBaseline": {
+    "commit": "eb0ace827baf4f774f0e2b86c5bf0c5058eda26a",
+    "capturedAt": "2026-08-17",
+    "note": "Registry reconciled against this exact saga4 commit; later releases update entries with their closure evidence."
+  },
+  "decisions": [
+    {
+      "adr": "024",
+      "file": "024-factory-checkpoint-resume-and-adoption.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K5",
+        "K18"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Exact package rehydrate, compatibility matrix, checkpoint stress",
+      "successor": null,
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
+    },
+    {
+      "adr": "025",
+      "file": "025-single-factory-start-gateway.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "One gateway call graph; start/resume parity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "028",
+      "file": "028-atomic-work-intent-workplace-settlement.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Atomic AuthorityCommit; exact obligation postconditions",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "029",
+      "file": "029-production-cell-runtime-cutover.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "Canonical gateway then physical legacy runtime deletion",
+      "successor": null,
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
+    },
+    {
+      "adr": "030",
+      "file": "030-workplace-native-production-cell-execution.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "All module families via Workplace/Cell execution only",
+      "successor": null,
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
+    },
+    {
+      "adr": "031",
+      "file": "031-target-only-factory-runtime.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K16",
+        "K17"
+      ],
+      "evidenceOwner": "K16",
+      "principalProof": "Zero runtime, schema, API, CLI legacy surface",
+      "successor": null,
+      "notes": "K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned)."
+    },
+    {
+      "adr": "032",
+      "file": "032-development-integrated-candidate.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Workplace revision CandidateSet; Gate-proven acceptance",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "033",
+      "file": "033-durable-submission-preflight-recovery.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K5"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Pinned package rehydrate; explicit incompatibility",
+      "successor": null,
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
+    },
+    {
+      "adr": "034",
+      "file": "034-rehydrate-nonterminal-package-pins.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K5"
+      ],
+      "evidenceOwner": "K5",
+      "principalProof": "Persisted fingerprint used before current install",
+      "successor": null,
+      "notes": "Closed by K5 (M1): resume compatibility consumes exact implementation digests; typed outcomes unchanged/compatible/restart-required/incompatible; terminal/accepted history immutable.",
+      "evidence": [
+        "K5 negative theorems: same logicalId + changed implementation digest is NEVER compatible (resume suite); silent retire-and-resume under replaceOnDigestChange fails closed with MODULE_INSTALLATION_RESTART_REQUIRED and the pinned record survives (installer 17/17)",
+        "K5 routing: production boot path surfaces PRODUCTION_RESUME_RESTART_REQUIRED naming pinned non-terminal runs (production-restart-routing 2/2)",
+        "Anti-regression ratchets: handlerDigests in the contract surface + restart-required verdict pinned (single-surface suite 5/5)",
+        "Substrate: K3 real handler digests + K4 RuntimePackageFingerprint (ADR-077), manifest-boundary suites green"
+      ]
+    },
+    {
+      "adr": "035",
+      "file": "035-replay-sealed-candidate-after-provider-plan-failure.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact capsule identity; crash-safe regeneration",
+      "successor": null,
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+    },
+    {
+      "adr": "036",
+      "file": "036-durable-live-concurrency-admission.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified outcomes; controller fencing; persistence stress",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "037",
+      "file": "037-recover-terminal-development-in-place.md",
+      "decisionStatus": "superseded",
+      "closureState": "superseded",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical continuation/recovery vocabulary; terminal monotonicity",
+      "successor": "038",
+      "notes": null
+    },
+    {
+      "adr": "038",
+      "file": "038-continue-from-accepted-stage-prefix.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact accepted prefix; repeated lifecycle theorem",
+      "successor": null,
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+    },
+    {
+      "adr": "039",
+      "file": "039-model-produces-text-factory-owns-git.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Authority-only Git effect; exact ProductRefs",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "040",
+      "file": "040-ship-recovery-as-one-authority-complete-vertical.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "One Gate-proven commit; exact effects/final acceptance",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "041",
+      "file": "041-carry-author-production-across-terminal-continuations.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9",
+        "K10"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact replay + Workplace-only material identity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "042",
+      "file": "042-provider-led-candidate-verification.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Exact candidate, CheckReceipts, Gate proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "043",
+      "file": "043-verification-only-continuation.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact capsule/accepted-prefix behavior under continuation",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "044",
+      "file": "044-append-only-local-release-continuation.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Append-only invalidation/regeneration; immutable history",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "045",
+      "file": "045-product-revisions-change-requests-and-devops-split.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Product authority separated from effects and release",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "046",
+      "file": "046-empty-queue-streak-vs-workplace-recovery.md",
+      "decisionStatus": "unspecified",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "One dispatch and wait vocabulary",
+      "successor": null,
+      "notes": "File carries no Status header; recorded as unspecified until normalized."
+    },
+    {
+      "adr": "047",
+      "file": "047-workplace-recovery-driver-and-pause-boundary.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical pause/requeue/fail ownership",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "048",
+      "file": "048-temporal-conformance-over-canonical-composition.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K9",
+        "K20"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Third-lifecycle and full crash matrix on canonical composition",
+      "successor": null,
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall). K1.1 evidence: canonical boundary family now deterministically green on one SHA (temporal worker-boundary 1-4, crash-recovery T10/T10b; manifest 9750531b) after the retry-path productKey repair. K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests. K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+    },
+    {
+      "adr": "049",
+      "file": "049-production-wired-temporal-and-dual-cycle-model.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K9",
+        "K15",
+        "K16"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Exact replay; removal of dual runtime cycles",
+      "successor": null,
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+    },
+    {
+      "adr": "050",
+      "file": "050-bind-review-products-to-exact-candidate-authority.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Gate proof addresses exact CandidateSet and revision",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "051",
+      "file": "051-enforce-source-scope-before-review.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact source refs; negative mismatch tests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "052",
+      "file": "052-freeze-atomic-acceptance-criteria.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Frozen CheckPlan and receipt identity in AuthorityCommit",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "053",
+      "file": "053-workplace-production-revision-as-accepted-material-authority.md",
+      "decisionStatus": "proposed",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K6",
+        "K7",
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K6",
+      "principalProof": "Exact reads, replay, ownership, effects, Gate commit, accepted head",
+      "successor": null,
+      "notes": "Cutover phases landed through Phase 7 (adr-053-material-authority-ratchet.test.mjs); epic-scoped settlement readers, newest-wins capsule binder, and resume without implementation digests remain (2026-08-16 audits). K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: ADR-78 exact lifecycle-scoped accepted reads cut into the full settlement vertical (freezer + handler + policy internals); epic-scoped settlement readers DELETED (not retained); contamination theorem + fail-closed negatives + TB-11 e2e over exact reads; contract 84/84. K7 evidence: traceability consumer on lifecycle scope with the epic-scoped reader deleted; effect invocation verified already exact-ref end-to-end and pinned by effect-input-exact-refs.test.mjs (authority-only input, digest fail-closed before invocation, zero direct SQL in the invoker); recency surface classified - findLatestForModule deleted, readProjectedRoleTask fail-closed unique, boundary traversals reclassified with exact verification (K8 owns the remaining run-history selectors). K10 evidence: partition-invariance frozen at REVISION level (partition-invariance-theorem.test.mjs - A(X+Y), chained A(X)->B(Y), and co-presented A(X)+C(Y) converge to the IDENTICAL revisionRef; ProductRef aliasing does not fork identity; revision-seal/candidate-seal crash window cannot fork; formula pinned). Execution-free identity ban (material-identity-execution-free.test.mjs - digest/ref functions read only material coordinates; interface field sets exact; factory_candidate_sets execution-free; seal_receipt_ref write-only provenance; negative-verified). Audit: the train's refactor/drop work was already delivered by Phase 3-7; the producer_execution_ref authority column never existed. Boundary manifest 8/8 at 93d68d40. K11 evidence: authority-only effects certified. Negative theorem (authority-only-effects-theorem.test.mjs): operational decoys (newer same-task row, other-node same-schema row, equal-content row) cannot change the effect subject - only the snapshot-listed artifact id at its sealed hash transitions; a drifted subject yields typed repair_required, never decoy substitution. Ban ratchet (effects-no-material-reselection.test.mjs): no SQL by task/node/execution/epic identity, no ORDER BY/recency/LIMIT 1 in any effect file (negative-verified); authority assertion precedes all DB/ledger/integration use in every effect; registry fail-close order re-pinned. Audit: input surface + all three effect implementations already authority-only (Phase 6/7 + K7 pins). Boundary manifest 8/8 at 95c0377c."
+    },
+    {
+      "adr": "054",
+      "file": "054-epoch-fenced-factory-controller-terms.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified controller/epoch state; persistence stress",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "055",
+      "file": "055-execution-scoped-author-repository-desks.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Execution out of material authority; provenance remains",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "056",
+      "file": "056-controller-bootstrap-pre-spawn-recovery.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Canonical bootstrap/watchdog; contention tests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "057",
+      "file": "057-reviewer-subject-boundary.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact Gate/Candidate subject proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "058",
+      "file": "058-local-runnability-before-human-acceptance.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K11",
+        "K19"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Factory-owned effects; readiness certification receipts",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "059",
+      "file": "059-current-repair-production-must-be-explicit.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Typed recovery issue/action; no implicit current repair",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "060",
+      "file": "060-lifecycle-handoffs-conserve-semantic-products.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "Exact replay, Workplace revision, accepted head continuity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "061",
+      "file": "061-exact-worker-completion-dominates-process-drain.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15",
+        "K18"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Obligation-aware quiescence; stress proof",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "062",
+      "file": "062-scope-aware-increment-review.md",
+      "decisionStatus": "unspecified",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact subject/scope receipts; Gate proof",
+      "successor": null,
+      "notes": "File carries no Status header; recorded as unspecified until normalized."
+    },
+    {
+      "adr": "063",
+      "file": "063-bounded-planner-repair-must-cover-complete-graph.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified bounded recovery; honest terminal",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "064",
+      "file": "064-cell-and-profile-repair-ceilings-must-agree.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Single recovery policy model",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "065",
+      "file": "065-shift-left-planning-contract-and-atomic-criterion-identity.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Frozen check-plan member identity",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "066",
+      "file": "066-freeze-canaries-until-contract-state-and-cutover-conformance.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K20"
+      ],
+      "evidenceOwner": "K20",
+      "principalProof": "Tier 4 proof before GA canary",
+      "successor": null,
+      "notes": "K1 evidence: executable foundation re-verified (architecture/contract/golden green); temporal foundation vocabulary repaired; full green baseline pending K1.1 (worker-boundary 2 stall)."
+    },
+    {
+      "adr": "067",
+      "file": "067-single-productref-ingress-before-revision.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K10",
+      "principalProof": "Workplace revision; one authority commit path",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "068",
+      "file": "068-isolate-python-readiness-with-ephemeral-venv.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Reproducible isolated readiness environment",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "069",
+      "file": "069-readiness-profile-is-an-implementation-submission-contract.md",
+      "decisionStatus": "superseded",
+      "closureState": "superseded",
+      "owningReleases": [
+        "K4",
+        "K19"
+      ],
+      "evidenceOwner": "K4",
+      "principalProof": "Package fingerprint + readiness evidence",
+      "successor": "070",
+      "notes": "K3 evidence: handler implementation digests enforced real (HANDLER_DIGEST_PENDING rejection theorem), centralized digester with reproducibility/sensitivity fixtures, runtime-consistency architecture proof (pinned digest == sha256 of executed dist bytes) on all four workshop manifests."
+    },
+    {
+      "adr": "070",
+      "file": "070-post-integration-readiness-certification-cell.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Canonical Production Cell; CheckReceipts",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "071",
+      "file": "071-readiness-prepares-one-oci-environment.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "Exact environment image and dependency digests",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "072",
+      "file": "072-durable-final-presentation-commitment.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Exact FinalAcceptance row identity; durable commitment",
+      "successor": null,
+      "notes": null
+    },
+    {
+      "adr": "073",
+      "file": "073-finish-adr-053-with-an-exact-presentation-cutover.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K6",
+        "K7",
+        "K8",
+        "K9",
+        "K10",
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K6",
+      "principalProof": "Complete exact read, replay, effect, acceptance, head cutover",
+      "successor": null,
+      "notes": "Exact presentation cutover partially landed; settlement seams remain per 2026-08-16 conformance audit. K2 evidence: legacy expansion freeze active (LEGACY-INVENTORY.md + legacy-allowlist.json + architecture ratchet; schema snapshot digest pinned). K6 evidence: first exact-read vertical of the presentation cutover landed (ADR-78). K7 evidence: second vertical of the exact presentation cutover (traceability) landed; effects proven exact-ref and ratchet-pinned; remaining seams are K8-K11 scope (replay binder, ownership, authority-only effects)."
+    },
+    {
+      "adr": "074",
+      "file": "074-post-acceptance-effect-repair-feedback.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K11",
+        "K12",
+        "K13"
+      ],
+      "evidenceOwner": "K11",
+      "principalProof": "Authority-only effect; exact repair receipt; exact obligation settlement",
+      "successor": null,
+      "notes": "Post-acceptance effect repair feedback landed (ADR-074/075 series); authority-only effect inputs not yet enforced."
+    },
+    {
+      "adr": "075",
+      "file": "075-no-human-quality-loop-recovery-epochs.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K15",
+        "K18",
+        "K20"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Unified vocabulary; bounded epochs; endurance proof",
+      "successor": null,
+      "notes": "Recovery epochs for the no-human quality loop landed; unified dispatch/recovery vocabulary across controllers not yet complete."
+    },
+    {
+      "adr": "076",
+      "file": "076-implementation-closure-protocol-and-legacy-zero-certification.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K0"
+      ],
+      "evidenceOwner": "K0",
+      "principalProof": "Closure registry complete and enforced by architecture tests",
+      "successor": null,
+      "notes": "Closed by K0: the protocol is enforced by the architecture suite on every commit.",
+      "evidence": [
+        "Decision: docs/architecture/decisions/076-implementation-closure-protocol-and-legacy-zero-certification.md",
+        "Implementation: K0 commit train (protocol ADR, validator + 16 unit tests, populated registry, architecture test)",
+        "Negative ratchet: tests/architecture/adr-closure-registry.test.mjs — an unowned Accepted ADR or incomplete registry fails the suite",
+        "Docs: ADR-076 sections 1-6 and registry evidenceBaseline"
+      ]
+    },
+    {
+      "adr": "077",
+      "file": "077-canonical-runtime-package-fingerprint-and-resume-compatibility.md",
+      "decisionStatus": "accepted",
+      "closureState": "implemented",
+      "owningReleases": [
+        "K4",
+        "K5"
+      ],
+      "evidenceOwner": "K4",
+      "principalProof": "Named canonical RuntimePackageFingerprint (frozen formula), persisted at lifecycle start, rehydrated on resume; one compatibility surface via classifyResumeCompatibility",
+      "successor": null,
+      "notes": "K4 implemented: RuntimePackageFingerprint typed entity + runtimeFingerprintOf(record) rehydration (ADR-77 s3) + single-surface architecture ratchet (s4) + full mutation-matrix proofs. Closure gate (all compatibility paths consume the fingerprint) completes at K5."
+    },
+    {
+      "adr": "078",
+      "file": "078-lifecycle-scoped-accepted-material-query.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K6",
+        "K7"
+      ],
+      "evidenceOwner": "K7",
+      "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
+      "successor": null,
+      "notes": "K6 implemented: exact queries live across the settlement vertical. K7 closed: the second vertical (traceability gap read) migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2). Closure theorem is deterministic on both axes: (1) reintroducing an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the legacy freeze category epic-scoped-material-read (set enforced by legacy-expansion-freeze.test.mjs); (2) reintroducing cross-run contamination fails the self-flipping contamination theorem (tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle). Remaining epic-scoped reads in the baseline (brief-provisioning-ports, formalization-package-adapters) are classified lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (LEGACY-INVENTORY.md) - outside this ADR's settlement/traceability authority scope."
+    },
+    {
+      "adr": "079",
+      "file": "079-exact-replay-capsule-semantic-key.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K8"
+      ],
+      "evidenceOwner": "K8",
+      "principalProof": "N/N-1/N-2 capsule matrix on the exact semantic key; newest-wins defects (paused protocol run, recovery case, outcome certificate, guarded readLatest) cut to fail-closed/exact reads; model-choice orthogonality",
+      "successor": null,
+      "notes": "K8 closed at boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). Closure theorems, all deterministic: (1) N/N-1/N-2 semantic-key matrix (replay-semantic-key-theorem.test.mjs) - alias multiplicity is schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref), reviewer subjects isolate per lifecycle, divergent payloads fail closed, zero is a typed miss; (2) newest-wins hardening (newest-wins-hardening.test.mjs) - paused/active protocol picks, recovery-case picks, and outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers); (3) dispatch routing typed (replay-dispatch-routing.test.mjs) - ineligibility is durable-evidence-derived and workplace-scoped, binder failures release + poison one card; (4) model-choice orthogonality (replay-model-orthogonality.test.mjs) - the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin. Classification map updated: K8-owned recency files carry per-file cut/frontier verdicts; legacy freeze OK."
+    },
+    {
+      "adr": "080",
+      "file": "080-capsule-invalidation-and-regeneration-grammar.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K9"
+      ],
+      "evidenceOwner": "K9",
+      "principalProof": "Third-lifecycle theorem: N/N+1/N+2 converge exactly-once under crash injection at bind/invalidate/regenerate/seal, from clean and upgraded DBs, no recency selector, no manual repair; invalidation is append-only exact evidence; regeneration creates new authority",
+      "successor": null,
+      "notes": "K9 closed at boundary manifest 3878e51c (8/8 suites green: architecture 251/251, factory-contract 86/86 including the canonical third-lifecycle scenario, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). M2 achieved. Closure theorems, all deterministic: (1) evidence 4/4 - append-only invalidation, idempotent per authority, drift fail-closed, single-shot successor; (2) bridge 3/3 - package-changed evidence recorded before the restart-required refusal, regeneration only through normal production; (3) crash convergence 4/4 - exactly-once at bind/invalidate/regenerate/seal under fault injection; (4) third-lifecycle scenario 2/2 - N/N+1/N+2 converges from clean AND upgraded databases, old capsule byte-identical, successor bound, no recency selector, no manual repair (exit gate); (5) anonymous-park ban 3/3 - handler map set equality, no park writes in mismatch handlers, binder write purity (negative-verified)."
+    },
+    {
+      "adr": "081",
+      "file": "081-authority-commit-proof-contract.md",
+      "decisionStatus": "accepted",
+      "closureState": "closed",
+      "owningReleases": [
+        "K12"
+      ],
+      "evidenceOwner": "K12",
+      "principalProof": "Forged/mismatched proof negatives fail closed with zero mutation (wrong candidate, non-accepted decision, non-terminal run, receiptless run, unfrozen plan, stale revision); ONE acceptance mutation service in a code search; atomic idempotent commit under crash/retry",
+      "successor": null,
+      "notes": "K12 closed at boundary manifest e90ba491 (8/8 suites green; third manifest attempt - two earlier attempts hit unrelated load flakes in single suites, each green standalone). Closure theorems, all deterministic: (1) negatives matrix 9/9 - wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation; (2) capability removal - the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned; (3) crash idempotency - zero-or-one acceptance commits, retry after commit is typed stale no-op; (4) exit-gate ratchet - applyVerifiedAcceptance called ONLY by the service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used. Phase semantics discovered and encoded: a no-review cell's author gate is phase final; with-review author acceptance is phase author; reviewer final verdicts keep applyReviewerVerdict (no caller material truth)."
+    }
+  ]
+}

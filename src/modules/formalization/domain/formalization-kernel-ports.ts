@@ -116,7 +116,13 @@ export type FormalizationManagedProductionLedger = ManagedProductionLedger;
  */
 export interface FormalizationArtifactGraphPort {
   /** Load the accepted PRD/FR/NFR/RULE/UC/AC/SRS artifact ids for an epic. */
-  readAcceptedArtifacts(epicId: number): {
+  /**
+   * ADR-078 (K6): the EXACT accepted-material read, scoped to the CURRENT
+   * lifecycle run through the ownership chain. Same shape as
+   * {@link readAcceptedArtifacts}; material of other lifecycle runs under
+   * the same epic drops out entirely.
+   */
+  readAcceptedArtifactsForLifecycle(epicId: number, lifecycleRunId: number): {
     prd: number | null;
     frs: readonly number[];
     nfrs: readonly number[];
@@ -125,15 +131,17 @@ export interface FormalizationArtifactGraphPort {
     acs: readonly number[];
     srs: number | null;
   };
-
-  /** Compute the acceptance baseline hash from accepted AC artifacts. */
-  readAcceptanceBaselineHash(epicId: number): {
+  /**
+   * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash. Same shape as
+   * {@link readAcceptanceBaselineHash}.
+   */
+  readAcceptanceBaselineHashForLifecycle(epicId: number, lifecycleRunId: number): {
     hash: string;
-    /** True if every AC is accepted+clean (no drift); false otherwise. */
     clean: boolean;
-    /** AC ids that failed the clean check (empty when clean=true). */
     dirty: readonly number[];
   };
+
+  /** Compute the acceptance baseline hash from accepted AC artifacts. */
 
   /**
    * Verify the canonical traceability edges for one episode:
@@ -147,24 +155,25 @@ export interface FormalizationArtifactGraphPort {
    * aggregated-string return shape. The two are NOT duplicates — see the
    * DUPLICATE NOTICE in findContractGap's docblock for the full comparison.
    */
-  findFirstTraceabilityGap(epicId: number): {
-    artifactType: string;
-    artifactId: number;
-    missingEdge: string;
-    description: string;
-  } | null;
+  /**
+   * ADR-78 (K7): lifecycle-scoped traceability gap check — the canonical
+   * RULES edge set evaluated over source artifacts of the CURRENT lifecycle
+   * run (production ledger + stage-run ownership chain). Trace targets may
+   * reference material outside the lifecycle (e.g. a brief). The epic-scoped
+   * variant is DELETED (K7 cleanup) — settlement never reads by epic alone.
+   */
+  findFirstTraceabilityGapForLifecycle(
+    epicId: number,
+    lifecycleRunId: number,
+  ): { artifactType: string; artifactId: number; missingEdge: string; description: string } | null;
 
   /**
    * True if all formalization tasks of the epic that belong to the CURRENT
    * lifecycle run are done+integrated (workplace loop_state='terminal', plus
    * integration_state='merged' for git_change tasks).
    *
-   * TB-11 (gate poisoning): readiness MUST be scoped to `lifecycleRunId`.
-   * Tasks join their workplace by workplace_ref, and one epic accumulates
-   * workplace rows across ALL of its lifecycle runs; a workplace frozen by a
-   * DEAD previous run must not poison the settlement of a new run. Tasks whose
-   * workplace belongs to an older lifecycle run are not gateable at all — they
-   * belong to the dead run, not to this settlement.
+   * TB-11 (gate poisoning): readiness is scoped to `lifecycleRunId` — tasks
+   * of older/dead lifecycle runs are not gateable for this settlement.
    */
   areTasksReady(epicId: number, lifecycleRunId: number): {
     ready: boolean;

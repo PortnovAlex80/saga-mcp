@@ -146,14 +146,10 @@ export class SqliteProcessModuleInstallationRepository
     return row ? rowToRecord(row) : null;
   }
 
-  findLatestForModule(moduleRef: ProcessModuleReference): ProcessModuleInstallationRecord | null {
-    const row = this.db.prepare(
-      `SELECT * FROM factory_process_module_installations
-        WHERE module_name=? AND module_version=?
-        ORDER BY id DESC LIMIT 1`,
-    ).get(moduleRef.name, moduleRef.version) as InstallationRow | undefined;
-    return row ? rowToRecord(row) : null;
-  }
+  // K7: findLatestForModule (ORDER BY id DESC LIMIT 1 — newest install wins)
+  // was deleted with its interface declaration: zero live callers, and the
+  // accepted-read cutover forbids selecting an authority row by recency.
+  // Exact identity is read(id) above / findByPackageDigest below.
 
   findByPackageDigest(
     moduleRef: ProcessModuleReference,

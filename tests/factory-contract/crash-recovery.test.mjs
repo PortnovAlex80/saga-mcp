@@ -61,12 +61,16 @@ async function setupFreshDb(repoPath, baseCommit) {
   return { dbPath, launchRef, dir };
 }
 
-test('AC-28/T10: crash recovery — worker exits without worker_done, Factory requeues', { timeout: 180000 }, async () => {
+test('AC-28/T10: crash recovery — worker exits without worker_done, Factory requeues', { timeout: 300000 }, async () => {
   const repoDir = mkdtempSync(path.join(os.tmpdir(), 'saga-crash-repo-'));
   const repoPath = path.join(repoDir, 'repo');
   mkdirSync(repoPath, { recursive: true });
   writeFileSync(path.join(repoPath, 'README.md'), '# Crash\n');
   execSync('git init && git config user.email t@t && git config user.name t && git add -A && git commit -m init', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
+  // The development phase desks off the integration branch; the converged
+  // run reaches it, so the fixture must provide it (the pre-K1.1 test never
+  // got past the discovery crash loop and the gap was invisible).
+  execSync('git branch dev', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
   const baseCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf8', windowsHide: true }).trim();
 
   const invocationLogPath = path.join(repoDir, 'invocations.json');
@@ -101,19 +105,19 @@ test('AC-28/T10: crash recovery — worker exits without worker_done, Factory re
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', () => {});
 
-    // ADR-075 (no-human quality loop): discovery cells now declare
-    // onExhausted='requeue', so a persistently crashing scenario rolls the
-    // budget into immutable recovery epochs and keeps driving autonomously —
-    // the engine no longer exits at the old park boundary. The test therefore
-    // time-boxes the run: it lets the crash → lost → repair_wait → rollover
-    // sequence happen, then stops the engine and asserts the NEW contract
-    // (epoch rows exist, no park, no stranded executions).
-    await new Promise(resolve => setTimeout(resolve, 45_000));
-    try { child.kill('SIGTERM'); } catch {}
-    await new Promise(resolve => {
-      const timer = setTimeout(resolve, 20_000);
-      child.once('close', () => { clearTimeout(timer); resolve(); });
+    // ADR-048/ADR-053 retry semantics: with the one-shot crash scenario the
+    // retry attempt re-submits the typed product from ITS OWN execution and
+    // completes, so the whole lifecycle converges and the engine exits 0.
+    // A healthy retry must NOT exhaust the recovery budget — zero epoch
+    // rollovers. (Epoch coverage moved to T10b: persistent crash.)
+    const exitCode = await new Promise(resolve => {
+      const timer = setTimeout(() => {
+        try { child.kill('SIGTERM'); } catch {}
+        resolve('timeout');
+      }, 240_000);
+      child.once('close', code => { clearTimeout(timer); resolve(code); });
     });
+    assert.equal(exitCode, 0, `orchestrate-cli converged after crash recovery (exit=${exitCode})\n${stderr.slice(-4000)}`);
 
     // The Factory should have handled the crash recovery. Discovery runs first
     // (with the crash scenario), so the discovery-proposal workplace should
@@ -130,13 +134,14 @@ test('AC-28/T10: crash recovery — worker exits without worker_done, Factory re
       `discovery-proposal is not stuck in running (crash recovery advanced the loop). loop=${proposalWp.loop_state}`);
     assert.notEqual(proposalWp.loop_state, 'paused',
       'ADR-075: a quality cell never parks for a human after budget exhaustion');
+    assert.equal(proposalWp.loop_state, 'terminal',
+      `one-shot crash recovers to terminal acceptance. loop=${proposalWp.loop_state}`);
 
-    // ADR-075: the exhausted budget rolled over into immutable recovery
-    // epochs (the no-human circuit breaker journal) instead of a park.
+    // Healthy retry: the budget was never exhausted — no epoch rollover.
     const epochs = resultDb.prepare(
       'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
     ).get(proposalWp.workplace_ref);
-    assert.ok(epochs.n >= 1, `at least one recovery-epoch rollover. count=${epochs.n}`);
+    assert.equal(epochs.n, 0, `healthy retry must not roll recovery epochs. count=${epochs.n}`);
     const parkReasons = resultDb.prepare(
       'SELECT COUNT(*) AS n FROM factory_workplace_park_reasons WHERE workplace_ref=?',
     ).get(proposalWp.workplace_ref);
@@ -153,6 +158,100 @@ test('AC-28/T10: crash recovery — worker exits without worker_done, Factory re
       `SELECT COUNT(*) AS n FROM worker_executions WHERE state='lost'`,
     ).get();
     assert.ok(lostExecs.n > 0, `At least 1 'lost' execution from crash recovery. count=${lostExecs.n}`);
+
+    resultDb.close();
+  } finally {
+    try { rmSync(dbDir, { recursive: true, force: true }); } catch {}
+    try { rmSync(repoDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+test('AC-28/T10b: persistent crash — budget rolls into recovery epochs, never parks (ADR-075)', { timeout: 180000 }, async () => {
+  const repoDir = mkdtempSync(path.join(os.tmpdir(), 'saga-crashb-repo-'));
+  const repoPath = path.join(repoDir, 'repo');
+  mkdirSync(repoPath, { recursive: true });
+  writeFileSync(repoPath + '/README.md', '# CrashB\n');
+  execSync('git init && git config user.email t@t && git config user.name t && git add -A && git commit -m init', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
+  execSync('git branch dev', { cwd: repoPath, windowsHide: true, stdio: 'pipe' });
+  const baseCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf8', windowsHide: true }).trim();
+
+  const invocationLogPath = path.join(repoDir, 'invocations.json');
+  writeFileSync(invocationLogPath, '[]');
+
+  // Shim selecting the persistent-crash scenario map.
+  const scenariosModule = pathToFileURL(path.join(REPO_ROOT, 'tests', 'factory-contract', 'crash-scenarios.mjs')).href;
+  const scenariosPath = path.join(repoDir, 'scenarios-persistent.mjs');
+  writeFileSync(scenariosPath, [
+    `import { persistentCrashScenarios as scenarios } from ${JSON.stringify(scenariosModule)};`,
+    'export { scenarios };',
+    'export default scenarios;',
+    '',
+  ].join('\n'), 'utf8');
+
+  const { dbPath, launchRef, dir: dbDir } = await setupFreshDb(repoPath, baseCommit);
+  try {
+    const child = spawn('node', [
+      path.join(REPO_ROOT, 'dist', 'orchestrate-cli.js'),
+      `--launch-ref=${launchRef}`,
+    ], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        DB_PATH: dbPath,
+        SAGA_REPO_ROOT: REPO_ROOT,
+        SAGA_BUTTON_REPO_PATH: repoPath,
+        SAGA_PRODUCT_LIFECYCLE_COMPOSITION: path.join(REPO_ROOT, 'tests', 'factory-contract', 'scenario-composition.mjs'),
+        SAGA_SCENARIOS: scenariosPath,
+        SAGA_INVOCATION_LOG: invocationLogPath,
+        SAGA_CONCURRENCY: '1',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', c => { stderr += c; });
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', () => {});
+
+    // Time-boxed: let the crash → lost → repair_wait → budget-exhaustion →
+    // epoch-rollover sequence run, then stop the engine and assert the
+    // ADR-075 no-human contract.
+    await new Promise(resolve => setTimeout(resolve, 45_000));
+    try { child.kill('SIGTERM'); } catch {}
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 20_000);
+      child.once('close', () => { clearTimeout(timer); resolve(); });
+    });
+
+    const resultDb = new Database(dbPath, { readonly: true });
+    const wps = resultDb.prepare(
+      'SELECT production_cell_id, loop_state, workplace_ref FROM factory_workplaces ORDER BY rowid',
+    ).all();
+    const proposalWp = wps.find(w => w.production_cell_id === 'discovery-proposal');
+    assert.ok(proposalWp, 'discovery-proposal workplace exists');
+    assert.notEqual(proposalWp.loop_state, 'running',
+      `persistent crash never leaves the workplace in running. loop=${proposalWp.loop_state}`);
+    assert.notEqual(proposalWp.loop_state, 'paused',
+      `ADR-075: persistent crash never parks for a human. loop=${proposalWp.loop_state}\n${stderr.slice(-2000)}`);
+
+    const epochs = resultDb.prepare(
+      'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+    ).get(proposalWp.workplace_ref);
+    assert.ok(epochs.n >= 1, `exhausted budget rolls into recovery epochs. count=${epochs.n}`);
+    const parkReasons = resultDb.prepare(
+      'SELECT COUNT(*) AS n FROM factory_workplace_park_reasons WHERE workplace_ref=?',
+    ).get(proposalWp.workplace_ref);
+    assert.equal(parkReasons.n, 0, 'no human park reason for a requeue cell');
+
+    const activeExecs = resultDb.prepare(
+      `SELECT COUNT(*) AS n FROM worker_executions WHERE state IN ('reserved','running','cancel_requested')`,
+    ).get();
+    assert.equal(activeExecs.n, 0, 'No stranded executions after stop');
+    const lostExecs = resultDb.prepare(
+      `SELECT COUNT(*) AS n FROM worker_executions WHERE state='lost'`,
+    ).get();
+    assert.ok(lostExecs.n >= 2, `persistent crash loses every attempt. count=${lostExecs.n}`);
 
     resultDb.close();
   } finally {
