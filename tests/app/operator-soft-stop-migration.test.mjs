@@ -1,13 +1,13 @@
 // tests/app/operator-soft-stop-migration.test.mjs
 //
-// Schema v12 → v13 migration (operator SOFT-STOP) on a temp database:
-//
-//   1. A DB stamped user_version=12 whose worker_executions table predates the
-//      soft-stop columns opens through getDb() and receives the additive
-//      columns (stop_fence INTEGER NOT NULL DEFAULT 0, voided_at TEXT NULL).
-//   2. The two new audit tables (factory_worker_stops, factory_operator_holds)
-//      exist with their CHECK constraints.
-//   3. The DB is stamped user_version=13 and reopens cleanly (idempotent).
+// POST-PURGE migration contract (the ladder was removed in the
+// pre-production purge; K15-era schema history): a database is either
+// FRESH (user_version 0 -> schema applied -> stamped current) or EXACTLY
+// CURRENT. A DB stamped v12 fails closed at getDb() with the typed
+// FACTORY_SCHEMA_MIGRATION_UNSUPPORTED error — never a partial in-place
+// upgrade. The v12 legacy worker_executions SHAPE below is preserved as a
+// fixture of record; the assertions pin the refusal, the released
+// connection cache, and that the file is left untouched (stamped 12).
 //
 // Runs in its own test file: getDb() caches one connection per process.
 
@@ -24,11 +24,11 @@ const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-softstop-mig-'));
 const dbPath = path.join(temp, 'v12.db');
 
 test.after(() => {
-  closeDb();
+  try { closeDb(); } catch { /* never opened successfully */ }
   rmSync(temp, { recursive: true, force: true });
 });
 
-test('v12 DB gains the soft-stop columns, tables and version stamp via getDb()', () => {
+test('a v12 DB fails closed at open — no ladder, no partial upgrade, no mutation', () => {
   // Build a pre-v13 database: the OLD worker_executions shape (no stop_fence,
   // no voided_at) plus the v12 version stamp.
   const raw = new Database(dbPath);
@@ -66,45 +66,34 @@ test('v12 DB gains the soft-stop columns, tables and version stamp via getDb()',
   raw.pragma('user_version = 12');
   raw.close();
 
-  // getDb() must migrate additively: SCHEMA_SQL for the new tables, the
-  // ensure-column helper for worker_executions, and the v13 stamp.
+  // The post-purge contract: refuse, typed, naming both versions.
   process.env.DB_PATH = dbPath;
-  const db = getDb();
+  assert.throws(
+    () => getDb(),
+    /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 12->\d+\./u,
+    'a pre-purge database fails closed at open — no ladder runs',
+  );
 
-  const columns = db.prepare('PRAGMA table_info(worker_executions)').all().map(column => column.name);
-  assert.ok(columns.includes('stop_fence'), 'stop_fence column added');
-  assert.ok(columns.includes('voided_at'), 'voided_at column added');
-
-  const legacy = db.prepare('SELECT stop_fence, voided_at, state FROM worker_executions WHERE execution_id=?')
-    .get('exec-legacy');
-  assert.equal(legacy.stop_fence, 0, 'stop_fence defaults to 0 — no row reset');
-  assert.equal(legacy.voided_at, null, 'voided_at defaults to NULL — no row reset');
-  assert.equal(legacy.state, 'running', 'existing state CHECK untouched');
-
-  assert.ok(db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_worker_stops'",
-  ).get());
-  assert.ok(db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_operator_holds'",
-  ).get());
-
-  // CHECK constraints live: an illegal phase cannot persist.
-  assert.throws(() => db.prepare(
-    `INSERT INTO factory_worker_stops
-       (stop_ref, worker_execution_ref, workplace_ref, project_id, reason, phase)
-     VALUES ('s1','exec-legacy',NULL,1,'r','nonsense-phase')`,
-  ).run());
-
-  // Version stamped to the CURRENT schema. The chain moved on: a v12 DB now
-  // crosses straight to 14 (antifreeze layer C — the v13→v14 leg is covered
-  // by engine-watchdog-migration.test.mjs); the soft-stop columns/tables this
-  // test pins are unchanged.
-  assert.equal(db.pragma('user_version', { simple: true }), 14);
-
-  // Idempotent: closing and reopening a now-current DB is a clean no-op.
+  // The refused open must not poison the cached connection: a FRESH
+  // database afterwards opens cleanly and stamps the current version.
+  const freshPath = path.join(temp, 'fresh.db');
+  process.env.DB_PATH = freshPath;
+  const fresh = getDb();
+  const stamped = fresh.pragma('user_version', { simple: true });
+  assert.ok(stamped > 12, `a fresh DB stamps the current schema version (got ${stamped})`);
   closeDb();
-  const reopened = getDb();
-  assert.equal(reopened.pragma('user_version', { simple: true }), 14);
-  const columnsAfter = reopened.prepare('PRAGMA table_info(worker_executions)').all().map(column => column.name);
-  assert.ok(columnsAfter.includes('stop_fence') && columnsAfter.includes('voided_at'));
+
+  // The refused v12 file is untouched: still stamped 12, legacy shape intact.
+  const verify = new Database(dbPath);
+  assert.equal(verify.pragma('user_version', { simple: true }), 12,
+    'the refused database was not mutated, re-stamped, or half-upgraded');
+  const columns = verify.prepare('PRAGMA table_info(worker_executions)').all().map(column => column.name);
+  assert.ok(!columns.includes('stop_fence') && !columns.includes('voided_at'),
+    'no partial upgrade leaked into the refused legacy DB');
+  assert.equal(
+    verify.prepare('SELECT state FROM worker_executions WHERE execution_id=?').get('exec-legacy').state,
+    'running',
+    'legacy row preserved verbatim',
+  );
+  verify.close();
 });

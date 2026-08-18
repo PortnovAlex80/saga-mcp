@@ -1,14 +1,17 @@
 // tests/app/engine-watchdog-migration.test.mjs
 //
-// Schema v13 → v14 migration (antifreeze layer C) on a temp database:
+// POST-PURGE migration contract (the ladder was removed in the
+// pre-production purge; K15-era schema history): a database is either
+// FRESH (user_version 0 -> schema applied -> stamped current) or EXACTLY
+// CURRENT. A DB stamped with an OLDER schema version fails closed at
+// getDb() with the typed FACTORY_SCHEMA_MIGRATION_UNSUPPORTED error —
+// never a partial in-place upgrade, never a silent reopen.
 //
-//   1. A DB stamped user_version=13 whose lifecycle_execution_controls carries
-//      the OLD engine_state CHECK (no 'failed_watchdog', no last_error) and
-//      whose factory_launch_requests predates the engine marker columns opens
-//      through getDb() and receives the additive columns + the widened CHECK
-//      with every existing row preserved.
-//   2. The factory_engine_watchdog_events audit table exists with its CHECK.
-//   3. The DB is stamped user_version=14 and reopens cleanly (idempotent).
+// This file preserves the v13 legacy SHAPE below as a fixture of record
+// (the pre-v14 lifecycle_execution_controls / factory_launch_requests)
+// and pins the fail-closed behavior against it: the open is refused, the
+// connection is released (getDb's cache is not poisoned), and the file is
+// left exactly as it was — stamped 13, un-mutated.
 //
 // Runs in its own test file: getDb() caches one connection per process
 // (same isolation pattern as operator-soft-stop-migration.test.mjs).
@@ -26,11 +29,11 @@ const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-watchdog-mig-'));
 const dbPath = path.join(temp, 'v13.db');
 
 test.after(() => {
-  closeDb();
+  try { closeDb(); } catch { /* never opened successfully */ }
   rmSync(temp, { recursive: true, force: true });
 });
 
-test('v13 DB gains engine marker columns, watchdog table, widened CHECK and version 14', () => {
+test('a v13 DB fails closed at open — no ladder, no partial upgrade, no mutation', () => {
   // Build a pre-v14 database: the OLD lifecycle_execution_controls shape
   // (engine_state CHECK without 'failed_watchdog', no last_error) and a
   // factory_launch_requests without the engine host binding columns.
@@ -110,61 +113,35 @@ test('v13 DB gains engine marker columns, watchdog table, widened CHECK and vers
   raw.close();
 
   process.env.DB_PATH = dbPath;
-  const db = getDb();
-
-  // Additive: launch marker columns present, legacy row intact (no reset).
-  const launchColumns = db.prepare('PRAGMA table_info(factory_launch_requests)').all()
-    .map(column => column.name);
-  assert.ok(launchColumns.includes('engine_log_path'), 'engine_log_path added');
-  assert.ok(launchColumns.includes('engine_pid'), 'engine_pid added');
-  assert.ok(launchColumns.includes('engine_spawned_at'), 'engine_spawned_at added');
-  const legacyLaunch = db.prepare(
-    'SELECT state, engine_log_path, engine_pid FROM factory_launch_requests WHERE launch_ref=?',
-  ).get('launch-legacy');
-  assert.equal(legacyLaunch.state, 'running', 'existing launch row untouched');
-  assert.equal(legacyLaunch.engine_log_path, null, 'pre-v14 launch stays LEGACY (NULL markers)');
-  assert.equal(legacyLaunch.engine_pid, null);
-
-  // Additive: last_error column present, legacy control row preserved.
-  const controlColumns = db.prepare('PRAGMA table_info(lifecycle_execution_controls)').all()
-    .map(column => column.name);
-  assert.ok(controlColumns.includes('last_error'), 'last_error added');
-  const legacyControl = db.prepare(
-    'SELECT engine_state, engine_pid, concurrency, last_error FROM lifecycle_execution_controls WHERE epic_id=1',
-  ).get();
-  assert.equal(legacyControl.engine_state, 'running', 'control row preserved through rebuild');
-  assert.equal(legacyControl.engine_pid, 4242);
-  assert.equal(legacyControl.concurrency, 4);
-  assert.equal(legacyControl.last_error, null);
-
-  // Widened CHECK is live: 'failed_watchdog' persists, the old value space too.
-  db.prepare(
-    "UPDATE lifecycle_execution_controls SET engine_state='failed_watchdog', last_error=? WHERE epic_id=1",
-  ).run('engine watchdog: restart budget exhausted (5 attempts / 2h)');
-  assert.equal(
-    db.prepare('SELECT engine_state FROM lifecycle_execution_controls WHERE epic_id=1').get().engine_state,
-    'failed_watchdog',
+  // The post-purge contract: refuse, typed, naming both versions and the
+  // operator's two remedies.
+  assert.throws(
+    () => getDb(),
+    /FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: 13->\d+\./u,
+    'a pre-purge database fails closed at open — no ladder runs',
   );
 
-  // Audit table exists with its CHECK constraint live.
-  assert.ok(db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_engine_watchdog_events'",
-  ).get());
-  assert.throws(() => db.prepare(
-    `INSERT INTO factory_engine_watchdog_events
-       (event_ref, project_id, epic_id, launch_ref, kind, reason)
-     VALUES ('w1', 1, 1, 'launch-legacy', 'nonsense-kind', 'r')`,
-  ).run());
-
-  // Version stamped to 14.
-  assert.equal(db.pragma('user_version', { simple: true }), 14);
-
-  // Idempotent: closing and reopening a now-v14 DB is a clean no-op.
+  // The refused open must not poison the cached connection: pointing
+  // DB_PATH at a FRESH database afterwards opens cleanly and stamps current.
+  const freshPath = path.join(temp, 'fresh.db');
+  process.env.DB_PATH = freshPath;
+  const fresh = getDb();
+  const stamped = fresh.pragma('user_version', { simple: true });
+  assert.ok(stamped > 13, `a fresh DB stamps the current schema version (got ${stamped})`);
   closeDb();
-  const reopened = getDb();
-  assert.equal(reopened.pragma('user_version', { simple: true }), 14);
-  const reopenedControl = reopened.prepare(
-    'SELECT engine_state, last_error FROM lifecycle_execution_controls WHERE epic_id=1',
-  ).get();
-  assert.equal(reopenedControl.engine_state, 'failed_watchdog', 'v14 state survives reopen');
+
+  // The refused v13 file is untouched: still stamped 13, still its legacy shape.
+  const verify = new Database(dbPath);
+  assert.equal(verify.pragma('user_version', { simple: true }), 13,
+    'the refused database was not mutated, re-stamped, or half-upgraded');
+  const controlColumns = verify.prepare('PRAGMA table_info(lifecycle_execution_controls)').all()
+    .map(column => column.name);
+  assert.ok(!controlColumns.includes('last_error'),
+    'no partial upgrade leaked into the refused legacy DB');
+  assert.equal(
+    verify.prepare('SELECT engine_state FROM lifecycle_execution_controls WHERE epic_id=1').get().engine_state,
+    'running',
+    'legacy row preserved verbatim',
+  );
+  verify.close();
 });
