@@ -32,6 +32,16 @@ export function createModelManagementApi({
   // ceiling saga uses; NOT the prompt quota (tracked by z.ai, 80/400/1600 per 5h).
   const ZAI_MODELS = FACTORY_CLOUD_MODELS;
 
+  // When factory workers run through the agent-proxy shim (opencode backend),
+  // ~/.claude/settings.json is NOT part of the worker route — it belongs to the
+  // operator's interactive claude (native Anthropic auth in .credentials.json).
+  // Rewriting it on every /api/model/set would hijack the interactive channel
+  // (the "4.5 grid" incident, 2026-08-18). Model routing for the opencode
+  // backend lives in lifecycle_execution_controls + the shim's model map.
+  const claudeSettingsSwitchDisabled = () =>
+    process.env.SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS === '1'
+    || /agent-proxy/.test(process.env.SAGA_REAL_CLAUDE_PATH || process.env.SAGA_CLAUDE_PATH || '');
+
   // LM Studio local models (no subscription, runs on this machine). Populated
   // lazily from GET <LMSTUDIO_URL>/models (Anthropic+OpenAI-compatible server
   // built into LM Studio on port 1234). Empty until first probe — the UI shows
@@ -319,23 +329,26 @@ export function createModelManagementApi({
         // slots get EXACTLY modelId. If modelId is somehow empty we already 400'd
         // above, so here it is guaranteed non-empty. This closes the bug where
         // lmstudio template kept stale gemma-4-26b after the user picked qwen3.6.
-        payload.env = payload.env || {};
-        payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
-        payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
-        payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
-        payload.env.CLAUDE_CODE_SUBAGENT_MODEL = modelId;
-        // Persist the LM Studio template so the chosen model survives a tracker-
-        // view restart. cloud template is already frozen separately and must not
-        // be touched here.
-        if (provider === 'lmstudio') {
-          try {
-            fs.writeFileSync(CLAUDE_SETTINGS_LMSTUDIO_TPL, JSON.stringify(payload, null, 2), 'utf8');
-          } catch (e) {
-            console.error('[model/set] lmstudio template persist failed:', e.message);
+        // Skipped entirely on the opencode backend (see claudeSettingsSwitchDisabled).
+        if (!claudeSettingsSwitchDisabled()) {
+          payload.env = payload.env || {};
+          payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+          payload.env.CLAUDE_CODE_SUBAGENT_MODEL = modelId;
+          // Persist the LM Studio template so the chosen model survives a tracker-
+          // view restart. cloud template is already frozen separately and must not
+          // be touched here.
+          if (provider === 'lmstudio') {
+            try {
+              fs.writeFileSync(CLAUDE_SETTINGS_LMSTUDIO_TPL, JSON.stringify(payload, null, 2), 'utf8');
+            } catch (e) {
+              console.error('[model/set] lmstudio template persist failed:', e.message);
+            }
           }
+          // Block until durable + verified. Throws on torn write → 500 to caller.
+          atomicSettingsWrite(payload);
         }
-        // Block until durable + verified. Throws on torn write → 500 to caller.
-        atomicSettingsWrite(payload);
       } catch (e) {
         return respondJson(res, 500, { ok:false, error:'settings.json switch failed: ' + e.message });
       }
@@ -370,7 +383,9 @@ export function createModelManagementApi({
         }
       }
 
-      const note = provider === 'lmstudio'
+      const note = claudeSettingsSwitchDisabled()
+        ? 'opencode worker backend: lifecycle controls updated; ~/.claude/settings.json left untouched (interactive claude keeps its own provider).'
+        : provider === 'lmstudio'
         ? `LM Studio (${LMSTUDIO_URL}). settings.json switched to the LM Studio template (atomic + fsync). Cloud config frozen in settings.cloud.json. The whole machine routes to LM Studio until you switch back to a cloud model.`
         : 'settings.json switched to the cloud template (atomic + fsync). New workers will use this model. Active workers keep the old one.';
       respondJson(res, 200, { ok: true, model: modelId, provider, limit: model.limit, note });
