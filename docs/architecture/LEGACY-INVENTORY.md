@@ -85,8 +85,10 @@ zero.
 
 ## Schema surface (owner: K17 deletes; snapshot from K2)
 
-The clean schema snapshot digests 96 tables (table + sorted column names,
-SHA-256; see `legacy-allowlist.json` → `schemaSnapshot`). Any schema change
+The clean schema snapshot digests 97 tables (table + sorted column names,
+SHA-256; see `legacy-allowlist.json` → `schemaSnapshot`; re-baselined
+96→97 when `factory_effect_attempts` was added post-K2 — commit `adbed860`,
+snapshot updated in the same commit per the rule below). Any schema change
 — addition, removal, or column edit — changes the digest and fails the
 suite until the snapshot is updated in the SAME commit, deliberately. The
 K17 legacy-object deletion list grows out of this snapshot as cutover
