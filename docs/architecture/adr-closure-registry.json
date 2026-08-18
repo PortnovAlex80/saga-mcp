@@ -825,6 +825,19 @@
       "principalProof": "Forged/mismatched proof negatives fail closed with zero mutation (wrong candidate, non-accepted decision, non-terminal run, receiptless run, unfrozen plan, stale revision); ONE acceptance mutation service in a code search; atomic idempotent commit under crash/retry",
       "successor": null,
       "notes": "K12 closed at boundary manifest e90ba491 (8/8 suites green; third manifest attempt - two earlier attempts hit unrelated load flakes in single suites, each green standalone). Closure theorems, all deterministic: (1) negatives matrix 9/9 - wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation; (2) capability removal - the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned; (3) crash idempotency - zero-or-one acceptance commits, retry after commit is typed stale no-op; (4) exit-gate ratchet - applyVerifiedAcceptance called ONLY by the service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used. Phase semantics discovered and encoded: a no-review cell's author gate is phase final; with-review author acceptance is phase author; reviewer final verdicts keep applyReviewerVerdict (no caller material truth)."
+    },
+    {
+      "adr": "082",
+      "file": "082-kernel-admission-boundary.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K14"
+      ],
+      "evidenceOwner": "K14",
+      "principalProof": "Exact-count ratchet over the four manual admission surfaces plus a single-allowlisted-branch proof; a new admission point cannot appear without a deliberate count change in the same commit",
+      "successor": null,
+      "notes": "Names the seven atom classes and adopts admission distance (Tier 1 text = 0 kernel edits, Tier 2 qualified providers = 1-2, Tier 3 code = 3-4) as the metric, replacing workshop size and kernel-node count, both of which measured the wrong workshop in the 2026-08-18 audit. Decides NOT to extract a generic abstraction from the three development-private handlers (resolve/freeze/bind) at N=1 per the Controlled Change Plane 8.1 budget rule, and NOT to fix the single behavioural stage-name branch (linkType in sqlite-production-cell-projection-persistence), which is owned by K15/C5. K14 owns the in-core mechanism (its commit train already carries \"compile module definitions into Production Cells\"); the EXTERNAL opening of the boundary is owned by Controlled Change Plane release C12 (Semantic Adapter SDK), whose exit gate already demands a minimal second fixture pack outside the kernel repository. Evidence: docs/research/2026-08-18-kernel-surface-evidence-development-chain.md and docs/research/2026-08-18-ees-admission-judgment.md."
     }
   ]
 }

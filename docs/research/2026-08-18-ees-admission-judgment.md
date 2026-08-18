@@ -1,8 +1,14 @@
 # Judgment (ultra-mode): factory atoms, the admission boundary, and the Engineering Execution System frame
 
 - **Date:** 2026-08-18
-- **Input:** `ideas/2026-08-18-kernel-surface-evidence-development-chain.md` (the evidence package)
+- **Input:** `2026-08-18-kernel-surface-evidence-development-chain.md` (the evidence package, same directory)
 - **Status:** a judgment for discussion. Not a normative document; not a replacement for an ADR.
+- **Codified as:** ADR-082 (`docs/architecture/decisions/082-kernel-admission-boundary.md`,
+  Accepted) — the seven atom classes, admission distance as the metric, the
+  N=1 no-abstraction rule, and the C12 ownership of opening the boundary.
+  Enforced by `tests/architecture/kernel-admission-distance.test.mjs`.
+- **Work order:** `docs/handoff/STAGE-4-AGENT-BRIEF.md` (TASK 2 promoted this
+  file and the evidence package out of `ideas/`).
 
 ---
 

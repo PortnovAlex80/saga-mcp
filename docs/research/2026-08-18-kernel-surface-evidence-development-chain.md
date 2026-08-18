@@ -4,10 +4,24 @@
 - **Base:** branch `saga4`, HEAD `3f7ff5d0` (the working tree contains uncommitted discovery-domain edits — they do not affect the findings; only discovery files are touched)
 - **Purpose:** input package for ultra-mode (phase 2). Facts only, with code pointers; no design, no recommendations.
 - **Question under test:** is the "produce code → fan-out → git candidate → check runnability" chain a set of generic kernel atoms any workshop can declare — or private Development machinery?
+- **Companion documents:** the judgment drawn from this evidence is
+  `2026-08-18-ees-admission-judgment.md` (same directory); its normative form is
+  ADR-082 (`docs/architecture/decisions/082-kernel-admission-boundary.md`); the
+  work order that promoted these files out of `ideas/` is
+  `docs/handoff/STAGE-4-AGENT-BRIEF.md` (TASK 2).
 
 ---
 
 ## 1. Corrections to the original signal (measurement → fact)
+
+> **Supersession note (2026-08-18).** The corrections in this section were
+> accepted by the companion judgment and codified in ADR-082: the
+> "development is asymmetric" reading of the kernel-node count is retired —
+> `delivery` has the same four-kernel-node "prepare → act → observe → settle"
+> shape while producing no code, and the adopted metric is **admission
+> distance**, not size or kernel-node count. The measurements below are left
+> exactly as taken; the record of how the wrong signal was corrected is worth
+> more than a tidy document.
 
 | Measurement (original signal) | Fact per the code |
 |---|---|
