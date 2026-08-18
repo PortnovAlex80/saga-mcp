@@ -14,16 +14,14 @@ Before `worker_done`:
   that path set, minus factory-managed paths.
 - Local checks that prove the bound AC(s) hold have been run.
 - Independent review approved the exact source commit (or a changes_requested loop completed).
-- The merge lock was acquired with `worker_merge_acquire`.
-- The reviewed source commit was merged into the task graph's integration branch.
-- `worker_merge_release(result="merged", commit_sha=<exact merge sha>)` was called.
+- The reviewed source commit is committed on the task branch and left for the factory's git-integration effect to merge — no worker-side merge was performed (stage-8: the merge tools are not granted to workers).
 - `worker_done` is called exactly once, then the process exits.
 
-If review requested changes or the merge conflicted:
+If review requested changes or the integration conflicted:
 
-- Do not invent ids, widen scope or bypass the merge gate.
+- Do not invent ids, widen scope or bypass the gates.
 - Fix in place; the task branch/worktree survives the re-work loop.
-- Re-acquire the merge lock before re-merging.
+- A factory-integration conflict arrives as repair feedback — fix the source; the factory re-integrates.
 
 On a changed-files-mismatch repair: do not guess — recompute
 `git diff --name-only <base_commit>..<your-commit>`, correct the commit (drop

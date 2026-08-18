@@ -61,7 +61,7 @@ test('implementation readiness is optional item evidence but malformed evidence 
 test('standard implementation cell pins the readiness-enforcing payload contract', () => {
   const node = developmentProcessModule.flow.nodes.find(candidate =>
     candidate.id === 'implement-work-items');
-  assert.equal(developmentProcessModule.identity.version, '1.4.3');
+  assert.equal(developmentProcessModule.identity.version, '1.4.4');
   assert.deepEqual(node.cellDefinition.productContracts[0].payloadContract, {
     contractId: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
     version: DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,

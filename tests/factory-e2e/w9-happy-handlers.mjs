@@ -27,7 +27,7 @@ import path from 'node:path';
 
 const DISC = 'product-discovery@3.0.2';
 const FRM = 'solution-formalization@1.0.0';
-const DEV = 'solution-development@1.4.3';
+const DEV = 'solution-development@1.4.4';
 
 function sha256(content) {
   return createHash('sha256').update(content, 'utf8').digest('hex');
