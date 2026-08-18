@@ -220,30 +220,27 @@ export function bindReplayToClaim(
     capsule_ref: string;
     payload_hash: string;
   }>;
-  let capsule: { capsule_ref: string; payload_hash: string } | undefined;
-  try {
-    capsule = selectReplayCapsule(replayKey, capsules);
-  } catch (error) {
-    // ADR-080 §2 payload-conflict: the fail-closed invariant violation
-    // remains an alarm, but the evidence is PERSISTED first — one
-    // append-only row per conflicting capsule, binding both divergent
-    // payload hashes, the observing claim, and (when derivable) the
-    // lifecycle that observed it.
-    if (error instanceof Error && error.message.startsWith('REPLAY_KEY_PAYLOAD_CONFLICT')) {
-      for (const candidate of capsules) {
-        const other = capsules.find(row => row.capsule_ref !== candidate.capsule_ref);
-        repo.recordInvalidation({
-          capsuleRef: candidate.capsule_ref,
-          reason: 'payload-conflict',
-          observedDigest: candidate.payload_hash,
-          expectedDigest: other?.payload_hash ?? null,
-          lifecycleRunId: keyLifecycleRunId(db, input.task),
-          authorityRef: `replay-claim:${input.executionId}`,
-        });
-      }
+  // ADR-080 §2 payload-conflict: divergent payloads under one semantic key are
+  // PERSISTED as evidence first — one append-only row per conflicting capsule,
+  // binding both divergent payload hashes, the observing claim, and (when
+  // derivable) the lifecycle that observed it. The claim then degrades to a
+  // typed MISS (§§3-4: invalidation bridges to ordinary regeneration) instead
+  // of stopping the card or promoting the newest capsule to authority.
+  const selection = selectReplayCapsule(replayKey, capsules);
+  if (selection.outcome === 'conflict') {
+    for (const candidate of selection.capsules) {
+      const other = selection.capsules.find(row => row.capsule_ref !== candidate.capsule_ref);
+      repo.recordInvalidation({
+        capsuleRef: candidate.capsule_ref,
+        reason: 'payload-conflict',
+        observedDigest: candidate.payload_hash,
+        expectedDigest: other?.payload_hash ?? null,
+        lifecycleRunId: keyLifecycleRunId(db, input.task),
+        authorityRef: `replay-claim:${input.executionId}`,
+      });
     }
-    throw error;
   }
+  const capsule = selection.outcome === 'hit' ? selection.capsule : undefined;
   // ADR-080 §1 — derived invalidity: ANY evidence row for the exact
   // capsule makes it ineligible; the claim degrades to a typed miss (the
   // next execution takes its normal selected route — regeneration is a

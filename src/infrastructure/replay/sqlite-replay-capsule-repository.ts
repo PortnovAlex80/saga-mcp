@@ -484,7 +484,11 @@ export class SqliteReplayCapsuleRepository {
       capsule_ref: string;
       payload_hash: string;
     }>;
-    const capsule = selectReplayCapsule(replayKey, capsules);
+    // A `conflict` resolves as a miss on this read path; the authoritative
+    // claim path (replay-claim-binder) is what persists ADR-080 §2 evidence,
+    // so this stays a pure read.
+    const selection = selectReplayCapsule(replayKey, capsules);
+    const capsule = selection.outcome === 'hit' ? selection.capsule : undefined;
     // ADR-080 §1 — derived invalidity: evidenced capsules do not resolve.
     const effective = capsule && !this.hasInvalidation(capsule.capsule_ref)
       ? capsule

@@ -39,6 +39,8 @@ import {
 } from '../process-modules/application/transition-obligation-reconciler.js';
 import { closeCommittedTypedPresentation } from '../application/final-presentation-closure.js';
 import { readTransitionHandoffPostcondition } from '../process-modules/application/transition-handoff-postconditions.js';
+import { findStalledScopes } from '../application/progress/sqlite-progress-reader.js';
+import type { ProgressExplanation } from '../application/progress/progress-classification.js';
 import { SqliteTransitionObligationLedger } from '../process-modules/persistence/sqlite-transition-obligation-ledger.js';
 import type {
   OrchestrationEngine,
@@ -1042,8 +1044,53 @@ export function createProductLifecycleRuntime(
   // sweeps so a livelocking obligation stays visible without flooding the
   // engine log once per second.
   let deferOnlySweeps = 0;
+  // CONVEYOR §23 progress-obligation invariant. A defer-only streak proves an
+  // obligation is waiting; it says NOTHING about a scope that has no obligation
+  // at all. That is the dangerous case: the Workplace holds a nonterminal loop
+  // state, nothing owns its next mutation, and the node simply re-enters
+  // forever (observed: 9004 runtime.paused NodeRuns, zero pending obligations).
+  // Every PROGRESS_SWEEP_PERIOD episodes we classify each nonterminal scope and
+  // surface the ones that cannot prove they will still move. Reported once per
+  // scope per classification change, so a persistent stall stays visible
+  // without flooding the log.
+  const PROGRESS_SWEEP_PERIOD = 30;
+  let episodesSinceProgressSweep = 0;
+  const reportedProgress = new Map<string, string>();
+  const sweepProgressInvariant = (): void => {
+    episodesSinceProgressSweep += 1;
+    if (episodesSinceProgressSweep < PROGRESS_SWEEP_PERIOD) return;
+    episodesSinceProgressSweep = 0;
+    let unhealthy: readonly ProgressExplanation[];
+    try {
+      unhealthy = findStalledScopes(db);
+    } catch (error) {
+      // Diagnostics must never break the engine loop.
+      engineLog(
+        `[progress-invariant] classification failed: `
+        + `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+    const live = new Set<string>();
+    for (const scope of unhealthy) {
+      live.add(scope.scopeRef);
+      if (reportedProgress.get(scope.scopeRef) === scope.classification) continue;
+      reportedProgress.set(scope.scopeRef, scope.classification);
+      engineLog(
+        `[progress-invariant] ${scope.classification.toUpperCase()} `
+        + `${scope.scopeKind}=${scope.scopeRef} :: ${scope.reason}`
+        + (scope.evidence.length ? ` [evidence: ${scope.evidence.join(', ')}]` : ''),
+      );
+    }
+    for (const scopeRef of [...reportedProgress.keys()]) {
+      if (live.has(scopeRef)) continue;
+      reportedProgress.delete(scopeRef);
+      engineLog(`[progress-invariant] RECOVERED workplace=${scopeRef}`);
+    }
+  };
   const engine: OrchestrationEngine = {
     async run(command: RunEpisodeCommand) {
+      sweepProgressInvariant();
       const sweep = await obligationReconciler.reconcile({
         leaseOwner: `product-lifecycle:${process.pid}:${randomUUID()}`,
         // One sweep must cover EVERY ready obligation: the engine loop gives

@@ -371,15 +371,29 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       ));
     }
 
+    // Both branches yield the same flow-control literal, but they are opposite
+    // facts (CONVEYOR §23): a human park has no machine wake source, while
+    // pending production is owned by a fenced worker/gate and will move on its
+    // own. `pause.kind` preserves that distinction for diagnostics and the
+    // progress-obligation classifier.
     if (outcomes.some(outcome => outcome.paused)) {
       return {
         runtimeEvent: 'paused',
+        pause: {
+          kind: 'human_required',
+          reason: `cell '${cell.id}' parked awaiting a human decision`,
+        },
         production: this.manifestProduction(cell, workplaces, outcomes, false),
       };
     }
     if (outcomes.some(outcome => outcome.pending)) {
       return {
         runtimeEvent: 'paused',
+        pause: {
+          kind: 'worker_active',
+          reason: `cell '${cell.id}' has production in flight `
+            + `(${outcomes.filter(outcome => outcome.pending).length}/${outcomes.length} items)`,
+        },
         production: this.manifestProduction(cell, workplaces, outcomes, false),
       };
     }
@@ -964,6 +978,22 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const effect = this.opts.postAcceptanceEffects.identity(effectId);
       const result = this.opts.postAcceptanceEffects.run(effectId, {
         authority,
+      });
+      // CONVEYOR §20 — every invocation appends one immutable EffectAttempt
+      // carrying its typed outcome, INCLUDING the outcomes that produce no
+      // receipt. Without this the `pending` branch below returns to the queue
+      // leaving nothing durable behind, and an effect that never settles is
+      // indistinguishable from one that was never attempted.
+      this.opts.finalAcceptance.recordEffectAttempt({
+        workplaceRef: workplace.ref,
+        effect,
+        candidateSetRef: acceptedCandidate.candidateSetRef,
+        gateDecisionKey,
+        idempotencyKey: acceptanceDigest,
+        outcome: result.outcome,
+        reason: result.outcome === 'succeeded' ? null : result.reason,
+        providerReceiptRef: result.outcome === 'succeeded' ? result.receiptRef : null,
+        evidence: result.outcome === 'pending' ? {} : result.evidence ?? {},
       });
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {

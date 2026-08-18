@@ -46,11 +46,16 @@ const MISMATCH_CODES = [
 ];
 
 // file → the typed handler its code performs for the mismatch.
+//
+// NOTE (payload-conflict): replay-capsule-selection.ts and replay-claim-binder.ts
+// no longer appear here because they stopped expressing a payload conflict as an
+// ERROR CODE at all. Selection now returns a typed `conflict` outcome and the
+// binder records append-only evidence and degrades to a normal miss. That is
+// strictly stronger than what this ratchet demands — there is no alarm string
+// left to classify, and no throw that could become an anonymous park. The
+// binder remains guarded by the third theorem below, which pins exactly which
+// tables it may write.
 const HANDLER_MAP = Object.freeze({
-  'src/infrastructure/replay/replay-capsule-selection.ts':
-    'source of the fail-closed conflict alarm (pure function, no I/O)',
-  'src/infrastructure/replay/replay-claim-binder.ts':
-    'persists append-only evidence, then RETHROWS the typed alarm; no status writes',
   'src/infrastructure/replay/sqlite-replay-capsule-repository.ts':
     'evidence persistence + derived invalidity → typed miss on claim paths',
   'src/process-modules/installation/production-install.ts':

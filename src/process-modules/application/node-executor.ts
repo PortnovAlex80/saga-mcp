@@ -143,8 +143,34 @@ export interface ManagedTraceWriteSummary {
  * Для terminal outcome-emitter'а outcome код берётся из `node.emitsOutcome`
  * (это уже так) — domainEvent = `outcome:<code>`, runtimeEvent = 'completed'.
  */
+/**
+ * Why a node yielded without completing.
+ *
+ * `runtimeEvent: 'paused'` is one flow-control signal for two OPPOSITE facts:
+ * "a worker owns this work right now, come back next cycle" and "no machine can
+ * proceed until a human decides". CONVEYOR §23 classifies those differently —
+ * `live owner` versus `typed wait` — and §19 requires an operator view to show
+ * the first as active factory work. Collapsing them into one literal destroys
+ * that distinction at the seam, which is why a stalled cell was historically
+ * indistinguishable from a busy one.
+ *
+ * The literal stays (NodeRun event filters and transition matching depend on
+ * it); this field carries the fact the literal cannot.
+ */
+export type NodePauseKind =
+  /** Production is genuinely in flight: a fenced worker or gate owns the next mutation. */
+  | 'worker_active'
+  /** Progress requires an explicit human decision; no machine wake source exists. */
+  | 'human_required';
+
 export interface NodeExecutionResult {
   runtimeEvent: 'completed' | 'failed' | 'paused';
+  /**
+   * REQUIRED whenever `runtimeEvent === 'paused'`: which of the two opposite
+   * waits this is. Optional in the type only so pre-existing non-cell executors
+   * keep compiling; the Production Cell always sets it.
+   */
+  pause?: { readonly kind: NodePauseKind; readonly reason?: string };
   domainEvent?: string;
   /**
    * Physical execution evidence. LM/external/human executors return a receipt;

@@ -58,6 +58,7 @@ import type {
   NodeExecutionReceipt,
   NodeExecutor,
   NodeExecutionResult,
+  NodePauseKind,
   NodeProducts,
   NodeProduction,
 } from './node-executor.js';
@@ -213,8 +214,17 @@ export class ProcessRunPausedError extends Error {
     readonly processRunId: number,
     readonly nodeId: string,
     readonly recoveryCaseId: number | null = null,
+    /**
+     * Which wait this is (CONVEYOR §23): production in flight under a fenced
+     * owner, or an explicit human-required park. Without it the message reads
+     * identically for a healthy busy factory and for one waiting on a person.
+     */
+    readonly pauseKind: NodePauseKind | null = null,
   ) {
-    super(`ProcessRun ${processRunId} paused at node '${nodeId}' and can be resumed`);
+    super(
+      `ProcessRun ${processRunId} paused at node '${nodeId}' and can be resumed`
+      + (pauseKind ? ` (${pauseKind})` : ''),
+    );
     this.name = 'ProcessRunPausedError';
   }
 }
@@ -845,7 +855,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       })();
 
       if (result.runtimeEvent === 'paused') {
-        throw new ProcessRunPausedError(context.processRunId, node.id);
+        throw new ProcessRunPausedError(
+          context.processRunId, node.id, null, result.pause?.kind ?? null,
+        );
       }
 
       if (result.production) frame.productions[node.id] = result.production;

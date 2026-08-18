@@ -1397,6 +1397,57 @@ BEFORE DELETE ON factory_effective_desk_base_receipts BEGIN
   SELECT RAISE(ABORT, 'factory_effective_desk_base_receipts are immutable');
 END;
 
+-- CONVEYOR §20 — the durable EffectAttempt.
+--
+-- An EffectReceipt records only that an authorized external change SUCCEEDED:
+-- it has no outcome column, so "a receipt exists" IS the success. That makes
+-- every NON-successful effect invisible. Before this table, an effect that
+-- returned 'pending' left no durable trace at all: the Workplace stayed in
+-- effect_pending, the run-effects obligation could complete on an unrelated
+-- postcondition branch, and the node re-entered forever with nothing owning
+-- the next mutation (observed live: 9004 consecutive runtime.paused NodeRuns
+-- on one implement-work-items node, zero pending obligations).
+--
+-- Every invocation of a post-acceptance effect therefore appends one immutable
+-- attempt carrying the model's four-valued outcome. idempotency_key is the
+-- exact desired-state identity (the acceptance digest), so attempts for one
+-- accepted material are countable and a never-settling effect is detectable
+-- and boundable instead of silent.
+CREATE TABLE IF NOT EXISTS factory_effect_attempts (
+  attempt_ref              TEXT PRIMARY KEY,
+  workplace_ref            TEXT NOT NULL,
+  effect_id                TEXT NOT NULL,
+  effect_version           TEXT NOT NULL,
+  effect_digest            TEXT NOT NULL,
+  candidate_set_ref        TEXT NOT NULL,
+  gate_decision_key        TEXT NOT NULL,
+  idempotency_key          TEXT NOT NULL,
+  attempt_no               INTEGER NOT NULL,
+  outcome                  TEXT NOT NULL
+    CHECK (outcome IN ('succeeded','pending','repair_required','human_required','policy_terminal')),
+  reason                   TEXT,
+  provider_receipt_ref     TEXT,
+  evidence_snapshot        TEXT NOT NULL DEFAULT '{}',
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (workplace_ref,effect_id,idempotency_key,attempt_no),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (candidate_set_ref) REFERENCES factory_candidate_sets(candidate_set_ref) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_effect_attempts_subject
+  ON factory_effect_attempts(workplace_ref,effect_id,idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_factory_effect_attempts_outcome
+  ON factory_effect_attempts(outcome,workplace_ref);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_effect_attempts_no_update
+BEFORE UPDATE ON factory_effect_attempts BEGIN
+  SELECT RAISE(ABORT, 'factory_effect_attempts are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_effect_attempts_no_delete
+BEFORE DELETE ON factory_effect_attempts BEGIN
+  SELECT RAISE(ABORT, 'factory_effect_attempts are immutable');
+END;
+
 CREATE TABLE IF NOT EXISTS factory_cell_effect_receipts (
   effect_receipt_ref       TEXT PRIMARY KEY,
   workplace_ref            TEXT NOT NULL,

@@ -447,6 +447,50 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
   // ── Wave 3 v2 methods (W3-A6 §9 — single SQL owner) ──────────────────────
 
   startV2(input: StartNodeRunV2Input): NodeRunRecordV2 {
+    // A pause is the SAME attempt continuing, not a new one.
+    //
+    // A Production Cell node yields `runtime.paused` on every engine cycle for
+    // as long as its workers are in flight, and the flow re-enters it next
+    // cycle. Minting a fresh row each time made the attempt counter measure
+    // engine cycles instead of executions: observed live, ONE
+    // implement-work-items node accumulated 9004 rows, all runtime.paused. That
+    // is unbounded growth, it makes every per-cycle scan of this table (frame
+    // rehydration, resume cursor) O(cycles), and it buries the real attempts in
+    // diagnostics.
+    //
+    // Re-entering a node whose latest row is a completed pause therefore
+    // REUSES that row: status returns to 'running' and the attempt number is
+    // preserved, so resume cursors, the unique (run,node,attempt) index and the
+    // v2 envelope identity all stay stable. A row is still minted for every
+    // genuine execution attempt — only idle re-entries coalesce.
+    const resumable = this.db.prepare(
+      `SELECT id FROM factory_node_runs
+        WHERE process_run_id=? AND node_id=?
+          AND status='completed' AND event='runtime.paused'
+        ORDER BY attempt DESC
+        LIMIT 1`,
+    ).get(input.processRunId, input.nodeId) as { id: number } | undefined;
+    const latest = this.db.prepare(
+      `SELECT id FROM factory_node_runs
+        WHERE process_run_id=? AND node_id=?
+        ORDER BY attempt DESC
+        LIMIT 1`,
+    ).get(input.processRunId, input.nodeId) as { id: number } | undefined;
+    if (resumable && latest && resumable.id === latest.id) {
+      this.db.prepare(
+        `UPDATE factory_node_runs
+            SET status='running', event=NULL, completed_at=NULL,
+                predecessor_node_run_ids=COALESCE(?,predecessor_node_run_ids)
+          WHERE id=?`,
+      ).run(
+        input.predecessorNodeRunIds ? JSON.stringify(input.predecessorNodeRunIds) : null,
+        resumable.id,
+      );
+      const reused = this.db.prepare(
+        'SELECT * FROM factory_node_runs WHERE id=?',
+      ).get(resumable.id) as NodeRunRow;
+      return rowToRecordV2(reused);
+    }
     const count = this.db.prepare(
       'SELECT COUNT(*) AS n FROM factory_node_runs WHERE process_run_id=? AND node_id=?',
     ).get(input.processRunId, input.nodeId) as { n: number };

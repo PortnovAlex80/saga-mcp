@@ -78,6 +78,89 @@ export class SqliteCellFinalAcceptance {
     } : null;
   }
 
+  /**
+   * CONVEYOR §20 — append one immutable EffectAttempt for an effect invocation.
+   *
+   * A receipt proves success and nothing else; an attempt records what actually
+   * happened, including the outcomes that produce NO receipt (`pending`,
+   * `repair_required`, `human_required`, `policy_terminal`). Without this row a
+   * `pending` effect is indistinguishable from an effect that was never run,
+   * which is precisely how a Workplace can sit in `effect_pending` forever with
+   * no live owner and no typed wait.
+   *
+   * Attempts are numbered per exact desired state (`idempotencyKey` = the
+   * acceptance digest), so the progress classifier can count them and a
+   * never-settling effect becomes a typed incident instead of silence.
+   */
+  recordEffectAttempt(input: {
+    readonly workplaceRef: WorkplaceRef;
+    readonly effect: PostAcceptanceEffectIdentity;
+    readonly candidateSetRef: string;
+    readonly gateDecisionKey: string;
+    readonly idempotencyKey: string;
+    readonly outcome: PostAcceptanceEffectResult['outcome'] | 'policy_terminal';
+    readonly reason?: string | null;
+    readonly providerReceiptRef?: string | null;
+    readonly evidence?: Readonly<Record<string, unknown>>;
+  }): { readonly attemptRef: string; readonly attemptNo: number } {
+    const workplace = serializeWorkplaceRef(input.workplaceRef);
+    const previous = this.db.prepare(
+      `SELECT COALESCE(MAX(attempt_no),0) AS n
+         FROM factory_effect_attempts
+        WHERE workplace_ref=? AND effect_id=? AND idempotency_key=?`,
+    ).get(workplace, input.effect.effectId, input.idempotencyKey) as { n: number };
+    const attemptNo = previous.n + 1;
+    const attemptRef = `effect-attempt:${sha256Hex({
+      workplace,
+      effectId: input.effect.effectId,
+      idempotencyKey: input.idempotencyKey,
+      attemptNo,
+    })}`;
+    this.db.prepare(
+      `INSERT INTO factory_effect_attempts
+        (attempt_ref,workplace_ref,effect_id,effect_version,effect_digest,
+         candidate_set_ref,gate_decision_key,idempotency_key,attempt_no,
+         outcome,reason,provider_receipt_ref,evidence_snapshot)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      attemptRef,
+      workplace,
+      input.effect.effectId,
+      input.effect.version,
+      input.effect.effectDigest,
+      input.candidateSetRef,
+      input.gateDecisionKey,
+      input.idempotencyKey,
+      attemptNo,
+      input.outcome,
+      input.reason ?? null,
+      input.providerReceiptRef ?? null,
+      canonicalJson(input.evidence ?? {}),
+    );
+    return { attemptRef, attemptNo };
+  }
+
+  /** Attempts recorded for one exact desired state, oldest first. */
+  readEffectAttempts(
+    workplaceRef: WorkplaceRef,
+    effectId: string,
+    idempotencyKey: string,
+  ): readonly { readonly attemptNo: number; readonly outcome: string; readonly reason: string | null }[] {
+    const rows = this.db.prepare(
+      `SELECT attempt_no,outcome,reason
+         FROM factory_effect_attempts
+        WHERE workplace_ref=? AND effect_id=? AND idempotency_key=?
+        ORDER BY attempt_no ASC`,
+    ).all(serializeWorkplaceRef(workplaceRef), effectId, idempotencyKey) as Array<{
+      attempt_no: number; outcome: string; reason: string | null;
+    }>;
+    return rows.map(row => ({
+      attemptNo: row.attempt_no,
+      outcome: row.outcome,
+      reason: row.reason,
+    }));
+  }
+
   recordEffectReceipt(input: {
     readonly workplaceRef: WorkplaceRef;
     readonly effectId: string;
