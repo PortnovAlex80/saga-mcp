@@ -96,7 +96,11 @@ function pickLaunchSpecSkillName(launchSpec, isReview) {
   return null;
 }
 
-function buildPrompt({
+// Exported for tests/worker-prompt-assembly.test.mjs (stage-6 G1): a pure
+// function of its inputs — no spawn, no DB, no filesystem mutation. The only
+// permitted modification to this module per the stage-6 brief is what a test
+// explicitly requires; exposing the builder is that requirement.
+export function buildPrompt({
   assignment,
   project,
   workerId,
