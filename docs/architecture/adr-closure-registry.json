@@ -120,16 +120,16 @@
       ]
     },
     "K11": {
-      "state": "reopened",
+      "state": "closed",
       "closedAt": "2026-08-17",
       "boundaryManifest": "95c0377c",
       "evidence": [
         "Close commit a096ac21 'K11 close - effects certified authority-only' 2026-08-17",
         "docs/verification/PROGRAM-STATUS.md K11 close summary",
-        "ADR-053 entry notes: 'Boundary manifest 8/8 at 95c0377c.'"
+        "ADR-053 entry notes: 'Boundary manifest 8/8 at 95c0377c.'",
+        "Re-closed 2026-08-18 after the reopen: the named gate violation is gone. Defect B (stage-7, 5eb0d4a1) — the effect proves the merge by isAncestor against the repository; the integration_state disjunct that let a dirtied column skip the proof is deleted, with the reasoning pinned at the site. Defect A (stage-8, b988f713..1b23c275) — worker_merge_acquire/release removed from COMMON_WRITE_TOOLS (continuation modules inherit via structuredClone), the platform capability package and all four lifecycle mapping blocks; prompt rules 7/8a and the pinned 1.4.4 resources no longer instruct the merge. The CONVEYOR §27:1305-1306 ratchet now exists (tests/architecture/no-worker-fenced-effect-grants.test.mjs, 20 profiles across 7 modules from imported definitions, negatively validated) — its absence is why the grant survived the first closure. Verified independently by the architect: architecture 314/314, the short-circuit absent by grep, the grant absent from all three declaration sites. ADR-039 accepted in the same act. ADR-039 stays planned on items (3) graph-fitness provider and (4) the 30-day ex-ante worker-path test — neither is a gate violation."
       ],
-      "reopenedAt": "2026-08-18",
-      "reopenReason": "Architect decision on the G3 dossier (docs/testing/G3-MERGE-GRANT-CONFLICT.md section 9). K11's own exit gate reads: 'no post-acceptance effect reads material through process, task, node, schema, latest submission, or execution identity.' The git-integration effect reads task.integration_state — a task-identity-scoped column — and treats it as proof that a merge occurred: sqlite-production-cell-integration.ts:293 short-circuits on integration_state==='merged' BEFORE the ancestry test, then stamps integrated_commit with the observed branch head and returns a valid factory receipt. worker_merge_release (src/tools/dispatcher.ts:1499-1507) writes that column verbatim from a tool argument with zero git verification. The two compose into a manufactured integration receipt over a merge that never happened — precisely the failure class ADR-039 is named after. This is defect B; it is NOT in the ADR-039 reconciliation note, which correctly identified only defect A (the surviving worker_merge_* grant). Stage 7 (docs/handoff/STAGE-7-AGENT-BRIEF.md) closes B; A follows separately with the section 27 ratchet."
+      "reclosedAt": "2026-08-18"
     },
     "K12": {
       "state": "closed",
@@ -404,7 +404,7 @@
     {
       "adr": "039",
       "file": "039-model-produces-text-factory-owns-git.md",
-      "decisionStatus": "proposed",
+      "decisionStatus": "accepted",
       "closureState": "planned",
       "owningReleases": [
         "K11"
@@ -412,7 +412,7 @@
       "evidenceOwner": "K11",
       "principalProof": "Authority-only Git effect; exact ProductRefs",
       "successor": null,
-      "notes": "Reconciled 2026-08-18 against the releases block (K11 closed) — LEFT PLANNED. Delivered and tested: the Option-B core (tests/infrastructure/managed-source-change-candidate.test.mjs 3/3 — Factory materializes a TextSet candidate without moving canonical dev, exact base receipt, replay-identical commitSha; path-escape and undeclared-scope negatives) and authority-only effects (tests/process-modules/authority-only-effects-theorem.test.mjs 3/3 — operational decoys cannot change the effect subject; tests/architecture/effects-no-material-reselection.test.mjs 3/3 — no effect selects material by operational identity or chronology, authority asserted before action). Missing evidence: (1) the decision itself is still 'proposed' — no acceptance record to close against; (2) DELIVERED in stage-8 (defect A): worker_merge_acquire/release removed from COMMON_WRITE_TOOLS, the platform capability package and the lifecycle command surface; prompt rule 7/8a and the pinned 1.4.4 resources no longer instruct the merge; CONVEYOR §27:1305-1306 ratchet installed (tests/architecture/no-worker-fenced-effect-grants.test.mjs) — the MCP handlers remain for operator/admin paths per the stage-8 brief; (3) the 'deterministic graph-fitness provider' has no source module or test under that name; (4) no worker-path test asserts the 30-day ex-ante expectation 'canonical refs do not change before an exact Factory effect'."
+      "notes": "Reconciled 2026-08-18 against the releases block (K11 closed) — LEFT PLANNED. Delivered and tested: the Option-B core (tests/infrastructure/managed-source-change-candidate.test.mjs 3/3 — Factory materializes a TextSet candidate without moving canonical dev, exact base receipt, replay-identical commitSha; path-escape and undeclared-scope negatives) and authority-only effects (tests/process-modules/authority-only-effects-theorem.test.mjs 3/3 — operational decoys cannot change the effect subject; tests/architecture/effects-no-material-reselection.test.mjs 3/3 — no effect selects material by operational identity or chronology, authority asserted before action). Missing evidence: (1) RESOLVED 2026-08-18: the ADR was accepted by the architect (it had sat unsigned since 2026-08-09 while K11 was built and closed against it); (2) DELIVERED in stage-8 (defect A): worker_merge_acquire/release removed from COMMON_WRITE_TOOLS, the platform capability package and the lifecycle command surface; prompt rule 7/8a and the pinned 1.4.4 resources no longer instruct the merge; CONVEYOR §27:1305-1306 ratchet installed (tests/architecture/no-worker-fenced-effect-grants.test.mjs) — the MCP handlers remain for operator/admin paths per the stage-8 brief; (3) the 'deterministic graph-fitness provider' has no source module or test under that name; (4) no worker-path test asserts the 30-day ex-ante expectation 'canonical refs do not change before an exact Factory effect'."
     },
     {
       "adr": "040",

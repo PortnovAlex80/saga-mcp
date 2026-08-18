@@ -1,10 +1,11 @@
 # ADR-039: Model produces text; Factory owns canonical Git
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-09
 - **Supersedes:** —
 - **Superseded by:** —
-- **Decision-maker:** autonomous-decision skill
+- **Decision-maker:** autonomous-decision skill (proposed); accepted by the architect 2026-08-18
+- **Accepted:** 2026-08-18 — see docs/testing/G3-MERGE-GRANT-CONFLICT.md §9. The decision sat as an unsigned proposal from 2026-08-09 while K11 was built and closed against it, and the failure class it names went live on the main path (a worker-attested integration_state laundered into a factory receipt). Closed by stage-7 (the effect proves ancestry, not a column) and stage-8 (no profile grants worker_merge_*, enforced by the CONVEYOR §27 ratchet).
 
 ## Context
 

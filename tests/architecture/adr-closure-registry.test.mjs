@@ -70,7 +70,7 @@ test('ADR-076 closure evidence: this suite enforces the protocol', () => {
   );
 });
 
-test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12 minus the reopened K11', () => {
+test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12', () => {
   const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/architecture/adr-closure-registry.json'), 'utf8'));
   const keys = Object.keys(registry.releases).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   assert.deepEqual(
@@ -79,21 +79,15 @@ test('stage 5: the releases block records all 21 K-releases; the closed set is K
     'the releases block must cover K0-K20 — removing a release from the record is a deliberate act',
   );
   const closed = keys.filter((k) => registry.releases[k].state === 'closed');
-  // K11 was REOPENED on 2026-08-18 by architect decision on the G3 dossier: the
-  // git-integration effect reads task.integration_state as proof that a merge
-  // happened, which its own exit gate forbids ("no post-acceptance effect reads
-  // material through ... task ... identity"). See releases.K11.reopenReason.
-  // This pin therefore records 12 closed, not 13 — and reopening a release is
-  // exactly the deliberate act this assertion exists to make visible.
+  // K11 was reopened 2026-08-18 (the effect read task.integration_state as proof
+  // of a merge, which its own exit gate forbids) and RE-CLOSED the same day once
+  // stage-7 made ancestry the sole proof and stage-8 removed the grant plus
+  // installed the §27 ratchet. The round trip is recorded in releases.K11.evidence
+  // — a release that reopens and re-closes must leave both halves visible.
   assert.deepEqual(
     closed,
-    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K12'],
+    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K11', 'K12'],
     `closed set drifted: got ${closed.join(',')}`,
-  );
-  assert.equal(
-    registry.releases.K11.state,
-    'reopened',
-    'K11 stays reopened until the forged-receipt path is closed and its exit gate re-signed',
   );
   assert.equal(registry.releases.K13.state, 'open', 'K13 closure is the architect\'s exit gate to sign, never a bookkeeping edit');
   for (const key of keys) {
