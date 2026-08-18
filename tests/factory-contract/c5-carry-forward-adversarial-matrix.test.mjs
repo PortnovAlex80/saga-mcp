@@ -305,6 +305,30 @@ function insertAcceptanceChain(db, opts) {
 function acceptAuthor(db, coordinator, ref, { candidateSetRef, gateDecisionKey, authorTaskId }) {
   const expectedRevision = coordinator.readState(ref).revision;
   const gateRunRef = `gate-run:${gateDecisionKey}`;
+  // K13 — the head's byte-identity resolves through the subject CandidateSet
+  // chain (decision subject -> set -> ordered members). Ensure it exists,
+  // idempotently: insertAcceptanceChain may already have created a richer
+  // version of the same set (OR IGNORE keeps that one).
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_workplace_production_revisions
+       (revision_ref,workplace_ref,parent_revision_ref,members,
+        contributing_execution_refs,presenter_ref,material_digest,
+        semantic_digest,sealed_at)
+     VALUES (?,?,NULL,'[]','[]',?,?,?,datetime('now'))`,
+  ).run(`revision:${candidateSetRef}`, serializeWorkplaceRef(ref), `presenter:${candidateSetRef}`,
+    sha(`material:${candidateSetRef}`), sha(`semantic:${candidateSetRef}`));
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_sets
+       (candidate_set_ref,workplace_ref,production_revision_ref,role,
+        subject_candidate_set_ref,candidate_set_digest,seal_receipt_ref,sealed_at)
+     VALUES (?,?,?,'author',NULL,?,'seal:k13',datetime('now'))`,
+  ).run(candidateSetRef, serializeWorkplaceRef(ref), `revision:${candidateSetRef}`, HEX64);
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_set_members
+       (candidate_set_ref,ordinal,product_schema,product_ref,product_digest,
+        origin,source_candidate_set_ref)
+     VALUES (?,0,'factory.acceptance.v1',?,?,'produced',NULL)`,
+  ).run(candidateSetRef, `product:${candidateSetRef}`, HEX64);
   db.prepare(
     `INSERT INTO factory_gate_runs
        (gate_run_ref,workplace_ref,gate_phase,subject_candidate_set_ref,

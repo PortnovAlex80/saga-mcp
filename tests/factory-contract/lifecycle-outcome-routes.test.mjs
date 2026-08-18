@@ -7,6 +7,11 @@
 //
 // AC-31: lifecycle outcome routes are deterministically tested through the
 // real lifecycle definition.
+//
+// Vocabulary updated for 3f7ff5d0 (delete the dead outcome vocabulary,
+// fail-closed on both sides): 'defer', 'inconclusive',
+// 'clarification-required', 'infeasible', and 'rework-required' no longer
+// exist anywhere. The pinned lists below are the LIVE contract.
 
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -33,7 +38,7 @@ test('Discovery outcome routes: ALL outcomes forward to formalization (permissiv
   assert.ok(disc.outcomeRoutes);
   // Discovery is an idea-STRENGTH gate, not a build gate. Every outcome
   // forwards to Formalization, which is the real go/no-go gate.
-  for (const code of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const code of ['go', 'clarify', 'reject', 'failed']) {
     assert.ok(disc.outcomeRoutes[code], `Discovery route for '${code}' exists`);
     assert.equal(disc.outcomeRoutes[code].type, 'stage', `${code} forwards to formalization`);
     assert.equal(disc.outcomeRoutes[code].stageId, 'solution-formalization');
@@ -43,7 +48,7 @@ test('Discovery outcome routes: ALL outcomes forward to formalization (permissiv
 // Discovery module declares matching outcomes
 test('Discovery module declares all outcome codes the lifecycle routes', () => {
   const moduleOutcomes = new Set(discoveryProcessModule.outcomes.map(o => o.code));
-  for (const code of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const code of ['go', 'clarify', 'reject', 'failed']) {
     assert.ok(moduleOutcomes.has(code), `Discovery module declares outcome '${code}'`);
   }
 });
@@ -53,7 +58,7 @@ test('Formalization outcome routes: formalized → development, others terminal'
   const frm = stages.get('solution-formalization');
   assert.equal(frm.outcomeRoutes.formalized?.type, 'stage');
   assert.equal(frm.outcomeRoutes.formalized?.stageId, 'solution-development');
-  for (const code of ['clarification-required', 'inconsistent', 'infeasible', 'failed']) {
+  for (const code of ['inconsistent', 'failed']) {
     assert.ok(frm.outcomeRoutes[code], `Formalization route for '${code}' exists`);
     assert.equal(frm.outcomeRoutes[code].type, 'terminal');
   }
@@ -61,7 +66,7 @@ test('Formalization outcome routes: formalized → development, others terminal'
 
 test('Formalization module declares all outcome codes the lifecycle routes', () => {
   const moduleOutcomes = new Set(formalizationProcessModule.outcomes.map(o => o.code));
-  for (const code of ['formalized', 'clarification-required', 'inconsistent', 'infeasible', 'failed']) {
+  for (const code of ['formalized', 'inconsistent', 'failed']) {
     assert.ok(moduleOutcomes.has(code), `Formalization module declares outcome '${code}'`);
   }
 });
@@ -71,7 +76,7 @@ test('Development outcome routes: verified → delivery, others terminal', () =>
   const dev = stages.get('solution-development');
   assert.equal(dev.outcomeRoutes.verified?.type, 'stage');
   assert.equal(dev.outcomeRoutes.verified?.stageId, 'delivery-release');
-  for (const code of ['rework-required', 'clarification-required', 'blocked', 'failed']) {
+  for (const code of ['blocked', 'failed']) {
     assert.ok(dev.outcomeRoutes[code], `Development route for '${code}' exists`);
     assert.equal(dev.outcomeRoutes[code].type, 'terminal');
   }
@@ -79,7 +84,7 @@ test('Development outcome routes: verified → delivery, others terminal', () =>
 
 test('Development module declares all outcome codes the lifecycle routes', () => {
   const moduleOutcomes = new Set(developmentProcessModule.outcomes.map(o => o.code));
-  for (const code of ['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']) {
+  for (const code of ['verified', 'blocked', 'failed']) {
     assert.ok(moduleOutcomes.has(code), `Development module declares outcome '${code}'`);
   }
 });
