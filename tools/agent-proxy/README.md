@@ -33,7 +33,7 @@ unset SAGA_REAL_CLAUDE_PATH
 | glm-4.7        | zai-coding-plan/glm-4.7        |
 | glm-5-turbo    | zai-coding-plan/glm-5-turbo    |
 | glm-5.2        | zai-coding-plan/glm-5.2        |
-| glm-5.3        | zai-coding-plan/glm-5.2 (fallback — 5.3 нет в реестре opencode) |
+| glm-5.3        | zai-coding-plan/glm-5.3 — через задокументированный паттерн «добавить модель к встроенному провайдеру» (opencode docs /providers): шимка генерирует `provider.zai-coding-plan.models["glm-5.3"]` с лимитами 1M/64K; auth остаётся в auth.json. Нужен вход `opencode auth login` → Z.AI Coding Plan, иначе fallback на glm-5.2 |
 | opus/sonnet    | через ANTHROPIC_DEFAULT_OPUS_MODEL, иначе дефолт glm-4.7 |
 
 `--effort` игнорируется (в этом провайдере reasoning выбирается моделью).
@@ -56,8 +56,11 @@ unset SAGA_REAL_CLAUDE_PATH
 
 ## Известные ограничения
 
-- glm-5.3 отсутствует в реестре провайдера opencode → автоматический fallback
-  на glm-5.2 (тот же план/квота), с пометкой в stderr.
+- glm-5.3 отсутствует в штатном реестре провайдера opencode (1.18.18) → шимка
+  добавляет его конфигом к встроенному провайдеру (документированный паттерн);
+  когда opencode включит 5.3 в реестр сам, конфиг станет безвредным дубликатом.
+- `--effort` игнорируется (в этом провайдере reasoning выбирается моделью);
+  профиль завода glm-5.3 с effort=max отработает как max на стороне модели.
 - Инъекция хук-контекста идёт через `session.prompt noReply` — приходит в
   очередь сессии, а не в тело результата инструмента (у opencode нет прямого
   аналога `additionalContext`).

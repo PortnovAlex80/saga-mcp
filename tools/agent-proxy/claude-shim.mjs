@@ -72,19 +72,39 @@ const MODEL_MAP = new Map([
 ]);
 const DEFAULT_MODEL = process.env.SAGA_PROXY_DEFAULT_MODEL || 'zai-coding-plan/glm-4.7';
 
+// glm-5.3 is not yet in opencode's built-in zai-coding-plan registry
+// (checked 2026-08-18, opencode 1.18.18) but IS served by the same official
+// coding endpoint and covered by the plan (Z.ai FAQ: GLM-5.3 / GLM-5-Turbo /
+// GLM-4.7). Per the documented "add models to a built-in provider" pattern
+// (opencode docs /providers: OpenRouter/Cloudflare examples), the generated
+// config extends the built-in provider with a glm-5.3 entry — auth stays in
+// opencode's auth.json, no key duplication.
+const MODEL_53 = 'zai-coding-plan/glm-5.3';
+
+function hasCodingPlanAuth() {
+  try {
+    const authPath = path.join(os.homedir(), '.local', 'share', 'opencode', 'auth.json');
+    const auth = JSON.parse(readFileSync(authPath, 'utf8'));
+    return typeof auth?.['zai-coding-plan']?.key === 'string' && auth['zai-coding-plan'].key.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function resolveModel(claudeModel) {
   if (!claudeModel) return DEFAULT_MODEL;
   const m = String(claudeModel).toLowerCase();
-  if (MODEL_MAP.has(m)) {
-    if (m === 'glm-5.3') {
-      process.stderr.write('[agent-proxy] glm-5.3 is not in the opencode registry yet — falling back to glm-5.2 (same plan)\n');
-    }
-    return MODEL_MAP.get(m);
+  if (m === 'glm-5.3') {
+    if (hasCodingPlanAuth()) return MODEL_53;
+    process.stderr.write('[agent-proxy] glm-5.3 requested but no zai-coding-plan key in opencode auth.json — falling back to glm-5.2\n');
+    return 'zai-coding-plan/glm-5.2';
   }
+  if (MODEL_MAP.has(m)) return MODEL_MAP.get(m);
   // claude aliases (opus/sonnet/haiku) resolve through the runner's
   // ANTHROPIC_DEFAULT_OPUS_MODEL when the factory set it.
   if (m === 'opus' || m === 'sonnet' || m === 'haiku') {
     const via = String(process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || '').toLowerCase();
+    if (via === 'glm-5.3') return resolveModel('glm-5.3');
     if (MODEL_MAP.has(via)) return MODEL_MAP.get(via);
     return DEFAULT_MODEL;
   }
@@ -161,6 +181,20 @@ function writeBridgeInstructions(cfgDir) {
 function buildOpenCodeConfig(mcpConfigPath, resolvedModel, instructionsFile) {
   const cfg = { $schema: 'https://opencode.ai/config.json' };
   if (instructionsFile) cfg.instructions = [instructionsFile];
+  if (resolvedModel === MODEL_53) {
+    // Documented extension pattern: add glm-5.3 to the BUILT-IN provider.
+    // Auth comes from auth.json (opencode auth login) — no key here.
+    cfg.provider = {
+      'zai-coding-plan': {
+        models: {
+          'glm-5.3': {
+            name: 'GLM 5.3',
+            limit: { context: 1048576, output: 65536 },
+          },
+        },
+      },
+    };
+  }
   if (mcpConfigPath) {
     const raw = JSON.parse(readFileSync(mcpConfigPath, 'utf8'));
     const servers = raw && typeof raw === 'object' ? raw.mcpServers || {} : {};
