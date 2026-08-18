@@ -3,8 +3,15 @@
 - **Date:** 2026-08-18. Branch `saga4`.
 - **Task:** stage-6 G3 (`docs/handoff/STAGE-6-AGENT-BRIEF.md`). READ-ONLY evidence
   gathering; no code was modified.
-- **Purpose:** the architect decides. This dossier prepares the five inputs the
+- **Purpose:** the architect decides. This dossier prepares the inputs the
   decision needs. It does not recommend.
+- **Deep dive (2026-08-18, operator-requested):** sections 6–8 deepen the base
+  dossier (§1–5) from three orthogonal perspectives — the normative audit
+  (what the governing documents require, in their own words), the runtime
+  physics (what actually happens in every interleaving, per the code), and the
+  surgery map (exactly what a removal touches, and what keeping the grant
+  costs). Every load-bearing claim was independently spot-checked in source
+  before inclusion.
 
 ---
 
@@ -197,6 +204,165 @@ Framing facts, without recommendation:
 5. Keeping it with an updated contract would need: what the merge lock is FOR
    once the effect owns integration (serialization between concurrent worker
    merges that no longer exist on the production-cell path?), and which
-   legacy direct-dispatch consumers still rely on it
-   (`tests/dispatcher-race/worktree-isolation.mjs` proves the handler pair
-   works, but no production caller was found).
+  legacy direct-dispatch consumers still rely on it
+  (`tests/dispatcher-race/worktree-isolation.mjs` proves the handler pair
+  works, but no production caller was found).
+
+---
+
+## 6. Deep dive I — the normative audit (what the governing documents require, in their own words)
+
+Per-document verdicts, each with the deciding quote:
+
+| Document | Verdict | Deciding quote |
+|---|---|---|
+| CONVEYOR-MENTAL-MODEL.md | **requires removal** | §18 :847-848: "Only a fenced Factory effect may create/update canonical refs, merge, push or issue an integration receipt."; §27 :1305-1306: "CI should mechanically reject at least: … LM profiles that can mutate canonical Git refs, merge or issue integration authority" — a demanded CI ratchet that does not exist today |
+| ADR-053 | **silent** on merge authority | B-4 constrains effect INPUTS (material selection), not effect exclusivity or tool grants; the word "merge" appears once, as incident history (:146) |
+| ADR-039 | **requires removal, by name** — but Status: Proposed | :257-258: "remove `worker_merge_*` from LM profiles…"; the merge-lock tools appear exactly once — inside the REJECTED Option D (:87-92); the blessed serialization is the Factory CAS queue (:122-123, :215-217) |
+| SAGA-CORE-RENEWAL-PLAN.md | **requires removal** (K11 commit 4 :575-577: "no worker-selected merge authority"); §3.3 :123-128 prohibits "Dual writes" during migration | but the top risk "Hidden dual authority" as DEFINED (:1138) is a read-selector problem — the grant fits §3.3's dual-write prohibition better than the risk-table definition |
+| LEGACY-INVENTORY.md | **silent — unclassified legacy** | ADR-039 itself labels the tools "legacy" (:19-20), yet no legacy category and no K-release deletion list names them |
+| FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md | **partial** | REG-23 :610 puts merge in the effect-only class ("commit/merge/tag/push/publish/deploy — effects"), but REG-08's worker prohibition (:312-315) covers only НЕЗАЯВЛЕННЫЙ (undeclared) effects — worker_merge is a declared preset, lawful under the registry's letter |
+| ADR-040 / ADR-032 | **require removal** | ADR-040 :127-128: "Effect correctness and exclusive canonical Git authority are hard release gates"; :188-189 six-month expectation: no profile regains model-owned merge authority. ADR-032 :78-79: "provider-owned CAS merges with monotonic fence tokens and immutable integration receipts" |
+| CONVEYOR-TRANSITION-DIAGNOSTICS / -CHECKLIST | silent on integration authority | generic effect-only rules apply |
+
+**The strongest sentence FOR removal** (normative weight + mechanical demand):
+
+> "Only a fenced Factory effect may create/update canonical refs, merge, push or
+> issue an integration receipt." — CONVEYOR-MENTAL-MODEL.md:847-848, reinforced
+> by §27's demand that CI mechanically reject such profiles (:1305-1306).
+
+**The strongest sentence AGAINST removal** (the letter of the domain registry):
+
+> "Инструменты протокола: … плюс centrally authorized capability preset. —
+> НЕ ИМЕЕТ ПРАВА: … выполнять **незаявленный** внешний effect…" —
+> FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md REG-08 :312-315: the only worker-side
+> external-action prohibition covers UNDECLARED effects; worker_merge is a
+> declared, centrally mapped preset.
+
+**Named contradictions between documents:**
+
+1. **PROGRAM-STATUS vs the closure registry.** K11 is recorded closed
+   (PROGRAM-STATUS.md:100-108: "input surface and all three effect
+   implementations were already authority-only") on an exit gate that covers
+   effect READS only (plan :595-596) — while the registry's ADR-039 entry
+   (reconciled 2026-08-18 against K11-closed) records the named
+   "remove worker_merge_* from LM profiles" follow-up as OUTSTANDING. The
+   closure claim and the planned state rest on different criteria.
+2. **Registry vs mental model.** A declared merge preset is lawful under
+   REG-08's letter and unlawful under CONVEYOR-MENTAL-MODEL §18/§27.
+3. **LEGACY-INVENTORY vs ADR-039.** The tools are labeled legacy by the ADR
+   that owns them, but appear in no legacy category — outside the only-shrink
+   ledger every K-release deletion list is built from.
+
+## 7. Deep dive II — runtime physics: the interleavings (per the code)
+
+Cross-authority isolation is total: the effect has ZERO merge_lock awareness
+(grep in sqlite-production-cell-integration.ts and
+production-cell-node-executor.ts: no hits), and the release handler never
+invokes git at all — `commit_sha` is read as a raw argument (dispatcher.ts:1439)
+and written verbatim into `tasks.integrated_commit` (:1503-1508). Neither side
+re-validates the other's write. Both facts spot-checked in source.
+
+| Interleaving | Reachable? | Outcome (winning write on integrated_commit) |
+|---|---|---|
+| **A worker-only** (author done → acquire → Bash merge → release) | YES — the `pending` flip fires at the AUTHOR's own worker_done on the production cell (dispatcher.ts:873-891; live branch, not legacy-only); the window opens BEFORE the factory effect's authority begins and nothing ever closes it (the effect never takes the lock) | worker string, verbatim, zero validation; downstream unblocked on it (claim gating reads only integration_state, work-assignment-core.ts:495-500) |
+| **B worker-then-effect** | yes | the effect's short-circuit (integration.ts:293) takes `integration_state==='merged'` ON FAITH — left disjunct before the ancestry check — and OVERWRITES integrated_commit with the OBSERVED head (:294-308), returning succeeded/alreadyApplied with a full receipt; no second merge commit |
+| **C effect-then-worker** | yes — acquire needs only status=done + free lock | release overwrites the factory sha UNCONDITIONALLY; no guard compares; drift surfaces only downstream (carry-forward AUTHOR_CARRY_FORWARD_FINAL_EFFECT_DRIFT :309-314; desk-base assertAncestor :272-274) |
+| **D concurrent** | yes | git's ref lock serializes; a worker merge mid-effect makes the CAS throw PRODUCTION_CELL_INTEGRATION_TARGET_ADVANCED → ledger unknown → pending → later observation re-stamps the observed head; a worker merge landing between the effect's rev-parse (:354) and CAS (:397) yields a redundant semantically-empty merge commit; on the task row the LAST SQLite writer wins, verbatim |
+| **E forgery** — release('merged', 'deadbeef'), no merge | **YES — mechanically possible today** (spot-checked) | 'deadbeef' persists; dependents' desk-base fails hard (EFFECTIVE_DESK_BASE_DEPENDENCY_NOT_IN_HEAD); then the effect LAUNDERS it: the :293 state-check short-circuit writes integrated_commit=<un-advanced branch head> and returns succeeded with a valid durable factory receipt — over a merge that never happened. The source commit is never verified as contained. This is ADR-039's "manufacture an integration receipt", live |
+| **F routing check** | reviewer card is tracker_only → `not_required` (dispatcher.ts:892-895); the pending branch belongs to the author's git_change card — the two-writer window is on the LIVE lifecycle | requireProductionCellSubmission is ingress-only (:2098-2101) |
+
+Two further facts frame the decision: `worker_done(approved)` and
+`promoteTaskToDone` (work-assignment-core.ts:676-697) are themselves two
+independent writers of `integration_state='pending'`; and the only thing
+standing between a granted worker and interleaving A/E today is prompt
+compliance — the exact dependence stage 6 exists to remove.
+
+## 8. Deep dive III — the removal surgery map, and the cost of keeping
+
+### 8.1 Same-commit work order (removal; groups ordered by coherence)
+
+**Group A — the minimal coherent cut (ungrant, no handler deletion):**
+
+1. development-process-module.ts:83 — delete the two entries from
+   COMMON_WRITE_TOOLS (the only live grant; effective tools are the
+   profile × authority × driver intersection, capability-enforcement.ts:235-266;
+   no test pins the list's contents).
+2. capability-packages.ts:424-432 — delete both platform contributions; rewrite
+   the three doc strings (:38, :445-451, :511-515).
+   **PINS (same commit): tests/process-modules/capability-packages.test.mjs:194-209**
+   (deepEqual of the 6 platform tool ids).
+3. claude-runner.mjs:378-382 — collapse rule 7 to the plain exit variant; drop
+   the two names from rule 8a.
+   **PINS (same commit): tests/worker-prompt-assembly.test.mjs:124 (rule-8a
+   string) and :182-215 (G1.5 merge-instruction branch)** — that suite exists
+   to stop exactly this drift.
+
+**Group B — pinned resources + version (content-addressed, atomic):**
+
+4-5. implementation-task-tracker.md:36,52 and
+   implementation-worker-checklist.md:17,19 — delete/reword the merge steps
+   (and the stale merge-conflict.json note — the file has no producer in src).
+6. product-delivery-module-contracts.ts:42 — bump solution-development
+   1.4.3 → 1.4.4.
+7. Same commit: add 'solution-development@1.4.4' to the three historical
+   literal ladders — composition-root.ts:415-424 (workspace template
+   preparers), replay-authority-rebinder.ts:5-12,
+   wire-submission-validation.ts:30-37.
+
+**Group C — descriptor/comment hygiene** (dispatcher descriptions/comments,
+activity.ts, ids.ts, worker-executor.ts, manifest.json:92-93, MOCK-CLAUDE.md).
+
+**Group D — the deeper cut (handler deletion, only if chosen over ungrant):**
+dispatcher.ts handlers/descriptors/map (:1326-1542, :1762-1803, :2124-2125)
+and application-service.ts command kinds (:77-78, :132-135, :231-232,
+:273-286; no production caller).
+**PINS: tests/characterization/mcp-catalog-authority-errors.test.mjs:239-240,
+tests/dispatcher-race/worktree-isolation.mjs:109-136,
+tests/lifecycle/application-service.test.mjs:96-97.**
+
+**Group E — skills/docs coherence:** agents/saga-worker.md, skills/saga-tracker,
+saga-dispatch, saga-explorer (reword to "the factory merges"); saga-code-reviewer
+already forbids — keep; mark the ADR-039 follow-up delivered + registry entry.
+
+Not touched by any of this: the 23 frozen capabilities of the
+kernel-admission-distance ratchet (platform tool packages are not executable
+capabilities — verified against workshop-capability-manifest.ts:196-225); the
+development-managed-continuation module already EXCLUDES the tools and is
+negative-pinned for it (development-managed-continuation.test.mjs:25-29).
+
+### 8.2 Replay / content-addressing ripple
+
+With the Group B version bump: new installation row under
+solution-development@1.4.4; old 1.4.3 installs and capsules resolve against
+their pinned immutable bytes; handler digests untouched (resource files are
+not handler modules) → **no restart-required storm, no capsule invalidations**
+(resume-compatibility-policy.ts:183-239: resource-byte drift with identical
+contract surface is `compatible`; only handler-digest drift is
+`restart-required`). Golden fixtures are static recorded snapshots — nothing
+recomputes their digests, nothing breaks.
+
+### 8.3 Data residue
+
+`merge_lock` lives only in project/project_repositories JSON, read/written only
+by the two handlers — inert after ungrant/deletion, no migration needed.
+`integration_state='pending'` written by worker_done on the direct-dispatch
+path is resolved by the factory effect on the production-cell path. Existing
+operator DBs and content-addressed stores keep their historical merge text —
+a faithful record, not breakage.
+
+### 8.4 The keep cost (if the grant stays)
+
+1. The in-package contradiction must STILL be fixed with the same
+   content-addressed version bump (tracker step 8 + prompt rule 7 vs the
+   pinned saga-worker skill :98-100) — the keep path does not avoid Group B.
+2. The question "what does the lock serialize once the effect owns
+   integration?" has no current answer — the effect ignores the lock entirely.
+3. The sync surface (capability advertisement, lifecycle mapping, MCP
+   descriptors, manifest.json, rule-8a pin) must be kept coherent forever.
+4. A cheap fence short of removal — `git rev-parse --verify <sha>^{commit}`
+   inside the release transaction — proves the sha EXISTS, not that the worker
+   merged the reviewed content. The effect's accepted-candidate binding
+   (authority-only coordinates, exact source commit) is the real anti-forgery
+   property; §7-E shows the current state check actively launders a forgery.
+   That asymmetry is the strongest single mechanical argument for removal.
