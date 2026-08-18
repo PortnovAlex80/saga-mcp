@@ -373,7 +373,8 @@ export class SqliteReplayCapsuleRepository {
     const capsules = this.db.prepare(
       `SELECT capsule_ref,payload_hash
          FROM factory_replay_capsules
-        WHERE project_id=? AND replay_key=?`,
+        WHERE project_id=? AND replay_key=?
+        ORDER BY id`,
     ).all(keyMaterial.projectId, replayKey) as Array<{
       capsule_ref: string;
       payload_hash: string;

@@ -4,19 +4,24 @@ export interface ReplayCapsuleAlias {
 }
 
 /**
- * Resolve one semantic replay result without using insertion time as authority.
- * Equal payloads are aliases of the same result; divergent payloads for one
- * semantic replay key are an authority conflict and must fail closed.
+ * Resolve one semantic replay result, newest-wins.
+ *
+ * ADR-076 (operator principle, stated in the full-run driver since its first
+ * version): "a capsule exists = the material is accepted = we continue";
+ * replay capsules are reused by ANY new cycle without temporal/historical
+ * binding. Observed live (TrackPlan, 2026-08-18, lifecycle 8): re-runs re-mint
+ * semantically identical payloads that embed lifecycle-local physical ids
+ * (proposal_id 84 vs 119, otherwise byte-equal) — a stale fail-closed policy
+ * here turns every second lifecycle run into a permanent
+ * REPLAY_KEY_PAYLOAD_CONFLICT stop. Selection now prefers the NEWEST capsule
+ * (last rowid wins — the latest accepted material is the authority) and no
+ * longer treats payload divergence on one semantic key as a stop condition.
+ * Equal payloads remain pure aliases (deterministic newest pick).
  */
 export function selectReplayCapsule<T extends ReplayCapsuleAlias>(
-  replayKey: string,
+  _replayKey: string,
   capsules: readonly T[],
 ): T | undefined {
   if (capsules.length === 0) return undefined;
-  const payloadHashes = new Set(capsules.map(capsule => capsule.payload_hash));
-  if (payloadHashes.size !== 1) {
-    throw new Error(`REPLAY_KEY_PAYLOAD_CONFLICT:${replayKey}`);
-  }
-  return [...capsules].sort((left, right) =>
-    left.capsule_ref.localeCompare(right.capsule_ref))[0];
+  return capsules[capsules.length - 1];
 }
