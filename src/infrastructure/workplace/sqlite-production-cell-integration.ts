@@ -290,7 +290,16 @@ export class SqliteProductionCellIntegration {
     if (!targetHead) {
       throw new Error(`PRODUCTION_CELL_INTEGRATION_TARGET_MISSING: ${task.integration_branch}`);
     }
-    if (task.integration_state === 'merged' || isAncestor(task.local_path, sourceCommit, targetHead)) {
+    // The repository is the authority on whether a merge happened — not a
+    // persisted column. isAncestor is the COMPLETE idempotency proof: if the
+    // reviewed source is reachable from the integration head, the merge is
+    // applied; if it is not, it is not. integration_state carries no
+    // information the git test lacks — only permission to skip it. Do NOT
+    // "restore" a state disjunct here as an optimisation: a dirtied column
+    // (any writer: worker tool, migration, admin override, restored
+    // checkpoint) would again manufacture a factory receipt over a merge
+    // that never happened (G3 dossier §7-E; stage-7 defect B).
+    if (isAncestor(task.local_path, sourceCommit, targetHead)) {
       this.db.prepare(
         `UPDATE tasks
             SET integration_state='merged',integrated_at=COALESCE(integrated_at,datetime('now')),
