@@ -145,8 +145,10 @@
       "state": "open",
       "milestone": "M3",
       "evidence": [
-        "docs/verification/PROGRAM-STATUS.md:30-31 — '13 of 21 releases done; K13 remains for M3'; :137 'K13 — Exact Accepted Head and Obligation Settlement (M3 close)'",
-        "Train started (commits 5bb9ec7f, 09687df7, 2026-08-18) but no closure record exists: no 'K13 close' commit, no registry annotation, no boundary manifest — the highest recorded closure in the repository is K12"
+        "Train (card order, red-first): 81048a2b commit 1 failing theorem (1 pass / 6 fail at f3abae43); 5ca7279e commit 2 head extension (schema v15, one family, DDL pin 6->12 columns); 16b001e1 commit 3 persisted final-acceptance receipts; 99558b12 commit 4 exact-source obligations; 519fe2c0 commit 5 ADR-074 re-certification + real crash injection; 5fb12824 commit 6 one-writer ratchet (negative-validated: rogue INSERT -> RED by file, second mutator -> RED by name)",
+        "Invariant suite counts: exact-identity 7/7, monotonicity 3/3, parity-and-race 3/3 (two connections), final-acceptance-completion-receipt 4/4, route-lifecycle-exact-source 4/4, acceptance-effect-exactly-once 4/4, crash-after-accepted-head 1/1, authority-closure 4/4, one-accepted-head-writer 3/3 (488 compiled files)",
+        "Typed fail-closed errors installed: AUTHORITY_HEAD_IDENTITY_CONFLICT (drift dimension named), AUTHORITY_HEAD_REGRESSION, AUTHORITY_HEAD_IDENTITY_INCOMPLETE, AUTHORITY_COMMIT_IDENTITY_UNRESOLVED, AUTHORITY_HEAD_INVARIANT_VIOLATED, FINAL_ACCEPTANCE_RECEIPT_UNRESOLVED",
+        "K13 remains OPEN: signing the exit gate is the architect act (adr-closure-registry.test.mjs pins the closed set to K0-K12 and the state to open); this entry records the evidence bundle only"
       ]
     },
     "K14": {
@@ -233,7 +235,7 @@
       "adr": "028",
       "file": "028-atomic-work-intent-workplace-settlement.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -241,7 +243,12 @@
       "evidenceOwner": "K12",
       "principalProof": "Atomic AuthorityCommit; exact obligation postconditions",
       "successor": null,
-      "notes": null
+      "notes": "Closed by K13 (M3): the head carries the byte-identical accepted identity (card commit 2), so AuthorityCommit atomicity now covers identity, not just pointers.",
+      "evidence": [
+        "K13 negative theorems: same-revision drift in ANY identity dimension (check-plan digest, package fingerprint, production revision, ProductRefs incl. order, CAS baseline) fails closed with AUTHORITY_HEAD_IDENTITY_CONFLICT naming what drifted (accepted-head-exact-identity 7/7; monotonicity 3/3)",
+        "Atomicity: the acceptance is ONE immediate transaction (CAS transition + applied-decision head + identity-bearing authority head); crash-before mutates nothing, crash-after is a typed stale no-op (authority-commit-crash-idempotency 4/4)",
+        "Exact obligation postconditions: settlement requires lease+owner+exact receipt (ledger pin) and the run-effects/route-lifecycle postconditions bind exact sources; a bare Workplace status write settles nothing (route-lifecycle-exact-source 4/4, acceptance-effect-exactly-once 4/4)"
+      ]
     },
     {
       "adr": "029",
@@ -418,7 +425,7 @@
       "adr": "040",
       "file": "040-ship-recovery-as-one-authority-complete-vertical.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -426,7 +433,12 @@
       "evidenceOwner": "K12",
       "principalProof": "One Gate-proven commit; exact effects/final acceptance",
       "successor": null,
-      "notes": null
+      "notes": "Closed by K13 (M3): one Gate-proven commit + exact effects + exact FinalAcceptance survive a real engine death.",
+      "evidence": [
+        "K13 crash cover: the engine is SIGKILLED mid-provider after the accepted head; recovery waits out both durable leases (controller 30s, lifecycle execution 120s), relaunches, converges exit 0 with observation-authorized retry only (k13-crash-after-accepted-head 1/1, ~176s)",
+        "Exactly-once lineage: every execution.claimed after the first originates from retry-authorized with an observation claim in between; one effect receipt, one FinalAcceptance, zero stranded executions",
+        "The receipt-side ordering (readEffectReceipt before provider invoke) pinned in the authority-closure suite (4/4)"
+      ]
     },
     {
       "adr": "041",
@@ -447,7 +459,7 @@
       "adr": "042",
       "file": "042-provider-led-candidate-verification.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K10",
         "K11",
@@ -457,7 +469,11 @@
       "evidenceOwner": "K10",
       "principalProof": "Exact candidate, CheckReceipts, Gate proof",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K10-K13: provider-verified candidates reach acceptance only through the proof-verified commit service.",
+      "evidence": [
+        "CommitAcceptedCandidate verifies from PERSISTED facts only: decision exists+accepted, phase matches, subject === claimed set, frozen check plan (ref+digest), terminal GateRun, >=1 CheckReceipt — a rejected proof mutates nothing (authority-commit-negatives 9/9)",
+        "The head now records the verified chain identity (check-plan digest + installation digest) loaded inside the transaction (AUTHORITY_COMMIT_IDENTITY_UNRESOLVED when the chain is missing)"
+      ]
     },
     {
       "adr": "043",
@@ -491,7 +507,7 @@
       "adr": "045",
       "file": "045-product-revisions-change-requests-and-devops-split.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K11",
         "K12",
@@ -500,7 +516,11 @@
       "evidenceOwner": "K11",
       "principalProof": "Product authority separated from effects and release",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K11-K13: product authority, effect settlement, and release are three distinct durable identities.",
+      "evidence": [
+        "Authority/effects/release separation: the accepted head (authority) is written by exactly one repository called from one verified path (one-accepted-head-writer ratchet 3/3, 488 compiled files)",
+        "Effects settle by exact receipts (cell-effect-receipt/repair), never by status; obligation completion receipts cite persisted row digests for final acceptance (final-acceptance-completion-receipt 4/4)"
+      ]
     },
     {
       "adr": "046",
@@ -561,7 +581,7 @@
       "adr": "050",
       "file": "050-bind-review-products-to-exact-candidate-authority.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -569,13 +589,17 @@
       "evidenceOwner": "K12",
       "principalProof": "Gate proof addresses exact CandidateSet and revision",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K12-K13: review products bind the exact accepted candidate authority through the head, not recency.",
+      "evidence": [
+        "run-gate postcondition binds the EXACT candidate set ref + digest to a terminal GateRun (transition-handoff-postconditions, pinned since K7; re-pinned in the K13 closure suite)",
+        "The accepted head binds the same subject chain: decision key -> subject candidate set -> members in ordinal order (K13 card commit 2)"
+      ]
     },
     {
       "adr": "051",
       "file": "051-enforce-source-scope-before-review.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -583,13 +607,17 @@
       "evidenceOwner": "K12",
       "principalProof": "Exact source refs; negative mismatch tests",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K12-K13.",
+      "evidence": [
+        "Negative mismatch: a repair receipt with a drifted decision key or digest never satisfies a newer acceptance run-effects obligation (acceptance-effect-exactly-once, staleness theorem)",
+        "run-gate postcondition: another candidate terminal run does not satisfy this obligation (exact ref+digest binding)"
+      ]
     },
     {
       "adr": "052",
       "file": "052-freeze-atomic-acceptance-criteria.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -597,7 +625,11 @@
       "evidenceOwner": "K12",
       "principalProof": "Frozen CheckPlan and receipt identity in AuthorityCommit",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K12-K13: the frozen plan is now part of the accepted identity itself.",
+      "evidence": [
+        "The frozen check plan is required by the commit service (AUTHORITY_COMMIT_CHECK_PLAN_UNFROZEN) AND persisted on the head (check_plan_digest column, byte-identity enforced)",
+        "Receipt identity in the commit: CheckReceipt refs ship in the immutable decision row; the decision digest is UNIQUE (schema)"
+      ]
     },
     {
       "adr": "053",
@@ -669,7 +701,7 @@
       "adr": "057",
       "file": "057-reviewer-subject-boundary.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -677,7 +709,11 @@
       "evidenceOwner": "K12",
       "principalProof": "Exact Gate/Candidate subject proof",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K12-K13.",
+      "evidence": [
+        "Subject proof: the decision subject must equal the claimed set (AUTHORITY_COMMIT_SUBJECT_MISMATCH); the coordinator resolves the identity chain from the DECISION subject, never from caller truth",
+        "Reviewer/author phases are distinct proof kinds (AUTHORITY_COMMIT_DECISION_PHASE_MISMATCH) — reviewer verdicts flow through a different mutation path with no caller-supplied truth"
+      ]
     },
     {
       "adr": "058",
@@ -710,7 +746,7 @@
       "adr": "060",
       "file": "060-lifecycle-handoffs-conserve-semantic-products.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K8",
         "K9",
@@ -722,7 +758,11 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact replay, Workplace revision, accepted head continuity",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K8-K13.",
+      "evidence": [
+        "Accepted-head continuity across engine death: the head, its identity, and the obligation survive SIGKILL; recovery converges and records the FinalAcceptance (k13-crash-after-accepted-head 1/1)",
+        "Workplace revision monotonicity: AUTHORITY_HEAD_REGRESSION + AUTHORITY_COMMIT_REVISION_STALE fence every re-acceptance; replay converges (accepted-head-parity-and-race 3/3, two connections)"
+      ]
     },
     {
       "adr": "061",
@@ -750,7 +790,7 @@
       "evidenceOwner": "K12",
       "principalProof": "Exact subject/scope receipts; Gate proof",
       "successor": null,
-      "notes": "File carries no Status header; recorded as unspecified until normalized."
+      "notes": "Missing evidence: no behavioural suite pins the scope-aware increment review boundary itself (which scope increments require re-review vs carry-forward); K13 pinned the underlying subject/digest binding, not the review-scope policy. Owner: a review-scope release after M3."
     },
     {
       "adr": "063",
@@ -790,7 +830,7 @@
       "evidenceOwner": "K12",
       "principalProof": "Frozen check-plan member identity",
       "successor": null,
-      "notes": null
+      "notes": "Missing evidence: frozen CHECK-PLAN MEMBER identity (per-member digests inside the frozen CheckPlan) is verified only as a non-empty plan digest; no suite pins member-level identity drift. K13 carries the plan digest on the head; member-level freezing remains unproven."
     },
     {
       "adr": "066",
@@ -809,7 +849,7 @@
       "adr": "067",
       "file": "067-single-productref-ingress-before-revision.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K10",
         "K11",
@@ -819,7 +859,11 @@
       "evidenceOwner": "K10",
       "principalProof": "Workplace revision; one authority commit path",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K10-K13.",
+      "evidence": [
+        "One authority commit path: mechanically enforced across the compiled tree — one writer module, one frozen prototype surface, one permitted caller (one-accepted-head-writer 3/3, negative-validated both fences)",
+        "Workplace revision + ProductRefs: the head carries production_revision_ref and the ordered member ProductRefs as part of the byte-identical identity"
+      ]
     },
     {
       "adr": "068",
@@ -878,7 +922,7 @@
       "adr": "072",
       "file": "072-durable-final-presentation-commitment.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K12",
         "K13"
@@ -886,7 +930,11 @@
       "evidenceOwner": "K12",
       "principalProof": "Exact FinalAcceptance row identity; durable commitment",
       "successor": null,
-      "notes": null
+      "notes": "Closed across K12-K13.",
+      "evidence": [
+        "FinalAcceptance row identity: the ref IS the content address over the exact body; drifted replay fails CELL_FINAL_ACCEPTANCE_REPLAY_MISMATCH (final-acceptance-identity 1/1)",
+        "Durable commitment: the record-final-acceptance obligation completion receipt IS the row digest (card commit 3); a satisfied postcondition with no citable row fails closed typed FINAL_ACCEPTANCE_RECEIPT_UNRESOLVED (final-acceptance-completion-receipt 4/4)"
+      ]
     },
     {
       "adr": "073",
