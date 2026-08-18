@@ -7,6 +7,192 @@
     "capturedAt": "2026-08-17",
     "note": "Registry reconciled against this exact saga4 commit; later releases update entries with their closure evidence."
   },
+  "releases": {
+    "K0": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "9750531b",
+      "evidence": [
+        "Close commit 94cbefc6 '(K0 completion)' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:22 — Position row 'K0 (ADR registry) + K1 + K1.1 + K2 (M0, legacy freeze) | 9750531b' (the manifest covers the row)",
+        "ADR-076 entry notes: 'Closed by K0: the protocol is enforced by the architecture suite on every commit.'"
+      ]
+    },
+    "K1": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "9750531b",
+      "evidence": [
+        "docs/verification/PROGRAM-STATUS.md:22 — Position row 'K0 + K1 + K1.1 + K2 (M0, legacy freeze) | 9750531b'; the registry itself never states 'K1 closed' — the closure is recorded only here and in the K1/K1.1 docs (commits 0e1e1e32, 980ce838)",
+        "ADR-048 entry notes: 'K1.1 evidence: ... manifest 9750531b'"
+      ]
+    },
+    "K2": {
+      "state": "closed",
+      "milestone": "M0",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "9750531b",
+      "evidence": [
+        "Close commit dd4232db 'publish legacy burn-down baseline - K2 close (M0)' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:22 (Position row, manifest 9750531b)",
+        "docs/verification/LEGACY-BURNDOWN-K2.md; registry notes at entries 029/030/073: 'K2 evidence: legacy expansion freeze active'"
+      ]
+    },
+    "K3": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "942bfabf",
+      "evidence": [
+        "Close commit a2e5c6d4 'record package identity evidence - K3 close' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:23 — 'K3 (real handler digests) + K4 (ADR-077 fingerprint) | 942bfabf / f03fc82c'"
+      ]
+    },
+    "K4": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "f03fc82c",
+      "evidence": [
+        "Close commit bc603e16 'K4 close - package identity evidence and single-surface ratchet' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:23",
+        "ADR-077 entry: closureState 'implemented' with 'Closure gate ... completes at K5' — the release close is recorded by the commit and PROGRAM-STATUS; the ADR's own gate completing at K5 is covered by K5 below"
+      ]
+    },
+    "K5": {
+      "state": "closed",
+      "milestone": "M1",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "bca805a2",
+      "evidence": [
+        "Close commit e5f501d5 'K5 close - M1 Deterministic Resume proven' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:24 — 'K5 (M1: restart-required verdicts; ADR-024/033/034 closed) | bca805a2'",
+        "Registry ADR-024/033/034 notes: 'Closed by K5 (M1)'"
+      ]
+    },
+    "K6": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "ae5c7bc5",
+      "evidence": [
+        "Close commit 7291bdcb 'K6 close - first exact accepted-read vertical live' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:25 — 'K6 (ADR-078: settlement vertical on exact lifecycle reads) | ae5c7bc5'",
+        "ADR-078 entry notes: 'K6 implemented: exact queries live across the settlement vertical' (its closure is attributed to K7, which closed after it)"
+      ]
+    },
+    "K7": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "dc1dcf39",
+      "evidence": [
+        "Close commit cb6d7079 'K7 close - accepted-read cutover evidence and registry annotations' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:26 — 'K7 (trace-gap cutover; effects ratchet; recency classified 9->7; ADR-078 closed) | dc1dcf39'",
+        "ADR-078 entry notes: 'K7 closed: the second vertical ... migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2)'"
+      ]
+    },
+    "K8": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "c9903c64",
+      "evidence": [
+        "Close commit 58c57e29 'K8 close - exact replay binder evidence and ADR-079 closed' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md:27 and K8 close summary (evidence map of six commits)",
+        "ADR-079 entry notes: 'K8 closed at boundary manifest c9903c64 (8/8 suites green ...)'"
+      ]
+    },
+    "K9": {
+      "state": "closed",
+      "milestone": "M2",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "3878e51c",
+      "evidence": [
+        "Close commit ee96ce7e 'K9 close - M2 achieved, ADR-080 closed, third-lifecycle certified' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md K9 close summary (M2 achieved; evidence map)",
+        "ADR-080 entry notes: 'K9 closed at boundary manifest 3878e51c (8/8 suites green ...). M2 achieved.'"
+      ]
+    },
+    "K10": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "93d68d40",
+      "evidence": [
+        "Close commit b8c70d83 'K10 close - material identity certified execution-free' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md K10 close summary ('Closing commit ... ADR-053 annotated with K10 evidence')",
+        "ADR-053 entry notes: 'Boundary manifest 8/8 at 93d68d40.'"
+      ]
+    },
+    "K11": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "95c0377c",
+      "evidence": [
+        "Close commit a096ac21 'K11 close - effects certified authority-only' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md K11 close summary",
+        "ADR-053 entry notes: 'Boundary manifest 8/8 at 95c0377c.'"
+      ]
+    },
+    "K12": {
+      "state": "closed",
+      "closedAt": "2026-08-17",
+      "boundaryManifest": "e90ba491",
+      "evidence": [
+        "Close commit 0bcb1b65 'K12 close - the acceptance commit is proof-backed and atomic' 2026-08-17",
+        "docs/verification/PROGRAM-STATUS.md K12 close summary (evidence map of five commits)",
+        "ADR-081 entry notes: 'K12 closed at boundary manifest e90ba491 (8/8 suites green ...)'"
+      ]
+    },
+    "K13": {
+      "state": "open",
+      "milestone": "M3",
+      "evidence": [
+        "docs/verification/PROGRAM-STATUS.md:30-31 — '13 of 21 releases done; K13 remains for M3'; :137 'K13 — Exact Accepted Head and Obligation Settlement (M3 close)'",
+        "Train started (commits 5bb9ec7f, 09687df7, 2026-08-18) but no closure record exists: no 'K13 close' commit, no registry annotation, no boundary manifest — the highest recorded closure in the repository is K12"
+      ]
+    },
+    "K14": {
+      "state": "open",
+      "evidence": [
+        "No closure record: no close commit (git log --grep 'K14' empty), no registry closure note; ADR-082 entry planned with evidenceOwner K14"
+      ]
+    },
+    "K15": {
+      "state": "open",
+      "evidence": [
+        "No closure record: no close commit, no registry closure note; ADR-075 (K15,K18,K20) in-progress; legacy-allowlist category escalate-vocabulary owned by K15"
+      ]
+    },
+    "K16": {
+      "state": "open",
+      "milestone": "M4",
+      "evidence": [
+        "No closure record: no close commit, no registry closure note, no M4 statement anywhere in the repository"
+      ]
+    },
+    "K17": {
+      "state": "open",
+      "evidence": [
+        "No closure record (LEGACY-BURNDOWN-K2.md mentions K17 only in future tense: 'K17 lowers it by the deletion set')"
+      ]
+    },
+    "K18": {
+      "state": "open",
+      "evidence": [
+        "No closure record; appears as second owner of already-closed ADR-024 (K5, K18) whose notes mention only K5 — the K18 re-certification remains outstanding"
+      ]
+    },
+    "K19": {
+      "state": "open",
+      "milestone": "M5",
+      "evidence": [
+        "No closure record; owners of ADR-068/070/071 all planned"
+      ]
+    },
+    "K20": {
+      "state": "open",
+      "milestone": "M6",
+      "evidence": [
+        "No closure record; ADR-066 (K20) planned with principalProof 'Tier 4 proof before GA canary'; M6/Core 3.0 GA not achieved"
+      ]
+    }
+  },
   "decisions": [
     {
       "adr": "024",
