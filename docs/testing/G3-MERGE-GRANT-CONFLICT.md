@@ -366,3 +366,95 @@ a faithful record, not breakage.
    (authority-only coordinates, exact source commit) is the real anti-forgery
    property; §7-E shows the current state check actively launders a forgery.
    That asymmetry is the strongest single mechanical argument for removal.
+
+---
+
+## 9. Architect's decision (2026-08-18)
+
+Both load-bearing claims re-verified independently against the source before
+deciding: the short-circuit at
+`src/infrastructure/workplace/sqlite-production-cell-integration.ts:293`, and the
+zero-git-verification write in `worker_merge_release`
+(`src/tools/dispatcher.ts:1499-1507`), which stamps
+`integration_state='merged', integrated_commit=?` from the tool argument with no
+`rev-parse`, no ancestry test, and no proof the sha exists.
+
+### The dossier frames one defect. There are two.
+
+The question was posed as "remove the grant, or keep it with an updated
+contract". That frame merges the *exploit* with the *laundering machine*. They
+are independent and must be decided separately.
+
+**Defect A — the capability grant.** `worker_merge_acquire` /
+`worker_merge_release` in `COMMON_WRITE_TOOLS`
+(`development-process-module.ts:76-87`). ADR-039 and K11 commit 4 ("no
+worker-selected merge authority") are unambiguous, and §18:847-848 states only a
+fenced Factory effect may merge or issue an integration receipt. **Remove.**
+
+**Defect B — the state short-circuit.** `task.integration_state === 'merged' ||`
+makes a *persisted column* stand as proof of a *physical git fact*, and
+short-circuits past the only real proof. **Remove independently.**
+
+### Why B is the load-bearing fix, not A
+
+Fixing only A closes today's exploit and leaves the laundering machine armed.
+Any future writer of that column — a migration, an admin override, a repair
+path, a restored checkpoint, a operator hotfix — reopens the identical hole
+without touching the grant. The receipt would again be manufactured over a merge
+that never happened, and `freeze-integrated-candidate` consumes exactly that
+receipt.
+
+That is the "fix the symptom, not the cause" failure this whole audit exists to
+end. The grant is how the hole is reachable *today*; the short-circuit is why the
+hole exists *at all*.
+
+### The replacement semantics
+
+`isAncestor(sourceCommit, targetHead)` is already the correct and complete
+idempotency proof: if the reviewed source is an ancestor of the integration
+head, the merge is applied; if it is not, it is not. The state disjunct carries
+no information the git test lacks — it carries only permission to skip the test.
+
+**The repository is the authority on whether a merge happened. Not a column.**
+
+Delete the left disjunct. Keep ancestry as the sole gate. `alreadyApplied: true`
+then means what it says.
+
+### Order of work
+
+**B first, then A.** B is one line and makes the invariant mechanical. A is a
+capability removal carrying a package version bump (1.4.3 → 1.4.4), three
+historical ladders, and a ripple through pinned skills and the G1 prompt tests
+(rule 8a, rule 7) — all enumerated in §8.
+
+With B landed, A stops being urgent: a worker holding the tool can still dirty a
+column, but it can no longer cause a fraudulent factory receipt. That converts A
+from an incident fix into ordinary scheduled work under its owning release.
+
+### Add the missing ratchet
+
+§27:1305-1306 requires a CI ratchet rejecting execution profiles that grant
+fenced-effect tools. It does not exist — which is why the grant survived K11.
+Removing the grant without the ratchet means it can return in the next module
+someone writes. **The ratchet is part of A, not a follow-up.**
+
+### Flagged, explicitly NOT decided here
+
+The success path writes `integrated_commit = targetHead` — the branch head
+observed at effect time, not the merge commit that carried the reviewed source.
+Under §9 material identity that may be the wrong coordinate to persist. It needs
+the replay/identity lens and its own evidence. **Do not fold it into this
+change**; a second question inside an authority fix is how authority fixes go
+wrong.
+
+### Program consequence
+
+This reopens K11's exit gate: "no post-acceptance effect reads material through
+… execution identity" is not satisfied while the effect accepts a worker-written
+state column as merge proof. PROGRAM-STATUS records K11 closed; the registry
+records its ADR-039 as `planned`. **The registry is right and the status is
+wrong.** K11 cannot be closed while the failure class its own ADR is named after
+is live and reachable on the main path.
+
+This is a direct input to the STAGE-5 reconciliation, and it is the first
+concrete case proving that reconciliation was necessary rather than tidy-up.
