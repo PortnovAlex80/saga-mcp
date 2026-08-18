@@ -16,7 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureAcceptedAuthorityHeadTaskIdColumn } from '../../dist/schema.js';
+import { SCHEMA_SQL } from '../../dist/schema.js';
 import { SqliteAcceptedAuthorityHeadRepository } from
   '../../dist/infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 
@@ -146,51 +146,3 @@ test('C5: read returns null when no acceptance has been recorded for the workpla
   db.close();
 });
 
-test('C5 additive migration: ensureAcceptedAuthorityHeadTaskIdColumn adds the column to a pre-v6 head table', () => {
-  // Simulate a pre-v6 database: the head table exists WITHOUT the
-  // accepted_author_task_id column (the shape before this card).
-  const db = new Database(':memory:');
-  db.exec(`
-    CREATE TABLE factory_accepted_authority_head (
-      workplace_ref                     TEXT PRIMARY KEY,
-      accepted_author_candidate_set_ref TEXT NOT NULL,
-      accepted_author_gate_decision_key TEXT NOT NULL,
-      revision                          INTEGER NOT NULL,
-      recorded_at                       TEXT NOT NULL
-    );
-    INSERT INTO factory_accepted_authority_head
-      (workplace_ref, accepted_author_candidate_set_ref,
-       accepted_author_gate_decision_key, revision, recorded_at)
-    VALUES ('${WORKPLACE_REF}','cs-1','gd-1',1,'2026-08-12T00:00:00.000Z');
-  `);
-  const colsBefore = db.prepare('PRAGMA table_info(factory_accepted_authority_head)').all().map(c => c.name);
-  assert.ok(!colsBefore.includes('accepted_author_task_id'));
-
-  // Non-destructive: existing row is preserved; column added as NULL.
-  ensureAcceptedAuthorityHeadTaskIdColumn(db);
-
-  const colsAfter = db.prepare('PRAGMA table_info(factory_accepted_authority_head)').all().map(c => c.name);
-  assert.ok(colsAfter.includes('accepted_author_task_id'));
-  const existing = db.prepare(
-    'SELECT accepted_author_task_id FROM factory_accepted_authority_head WHERE workplace_ref = ?',
-  ).get(WORKPLACE_REF);
-  assert.equal(existing.accepted_author_task_id, null);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_accepted_authority_head').get().n, 1);
-
-  // Idempotent: a second run is a no-op.
-  ensureAcceptedAuthorityHeadTaskIdColumn(db);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_accepted_authority_head').get().n, 1);
-
-  // After migration the repository can write AND recall task identity on the
-  // pre-existing row (proves non-destructive upgrade is functionally complete).
-  const repo = new SqliteAcceptedAuthorityHeadRepository(db);
-  repo.record({
-    workplaceRef: WORKPLACE_REF,
-    acceptedAuthorCandidateSetRef: 'cs-1',
-    acceptedAuthorGateDecisionKey: 'gd-1',
-    revision: 2,
-    acceptedAuthorTaskId: 'task-upgraded',
-  });
-  assert.equal(repo.readAuthorTaskId(WORKPLACE_REF), 'task-upgraded');
-  db.close();
-});

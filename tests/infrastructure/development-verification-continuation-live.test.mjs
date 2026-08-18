@@ -6,7 +6,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 
 import { prepareDevelopmentContinuation } from '../../dist/app/factory-continuation.js';
-import { SCHEMA_SQL, migrateFactorySchemaV3ToV4 } from '../../dist/schema.js';
+import { SCHEMA_SQL } from '../../dist/schema.js';
 
 // Live-shaped: this replays a continuation against a REAL historical factory
 // database captured in an ephemeral sandbox. `.factory-sandboxes` is scratch
@@ -29,7 +29,6 @@ test('live-shaped verification continuation adopts warehouse product without wor
   try {
     db.pragma('foreign_keys=ON');
     db.exec(SCHEMA_SQL);
-    migrateFactorySchemaV3ToV4(db);
     const before = snapshotCounts(db);
     const order = db.prepare(
       `SELECT order_ref FROM factory_order_runs WHERE lifecycle_run_id=6`,

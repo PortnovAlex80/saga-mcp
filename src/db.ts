@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureArtifactStorageKindColumn, ensureAcceptedAuthorityHeadTaskIdColumn, ensureCellEffectRepairIssueColumns, ensureGatePresentationReplayBindingColumns, ensureTransitionObligationLeaseFenceColumn, ensureWorkerExecutionSoftStopColumns, ensureFactoryLaunchEngineMarkerColumns, widenLifecycleControlsEngineStateForWatchdog, ensureLifecycleControlsLastErrorColumn, migrateSyntheticBriefsToDbNative, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex, migrateFactorySchemaV3ToV4, relaxFactoryLaunchStateForPaused } from './schema.js';
+import { SCHEMA_SQL } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -115,96 +115,24 @@ export function getDb(): Database.Database {
   // saga is a governance platform, the database IS the product (artifacts,
   // traces, tasks, evidence). Deleting it is never the right answer.
   // When the schema changes, versioned migrations must handle the upgrade.
+  // TASK C (legacy purge): the migration ladder is gone. A database is either
+  // fresh (user_version 0, schema applied below) or exactly current. Anything
+  // else fails closed with an actionable message — the operator opens the old
+  // DB once with pre-purge code to migrate it to current, or starts a new DB.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
-  const supportedVersions = new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, SCHEMA_VERSION]);
-  if (!supportedVersions.has(existingVersion)) {
+  if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
     db.close();
     db = null;
     throw new Error(
-      `FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${existingVersion}->${SCHEMA_VERSION}`,
-    );
-  }
-  if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
-    console.warn(
-      `[saga] DB at ${dbPath} has user_version=${existingVersion}, ` +
-        `current schema is ${SCHEMA_VERSION}. ` +
-        'The database will be opened as-is. If errors occur, a versioned ' +
-        'migration is needed — do NOT delete the database.',
+      `FACTORY_SCHEMA_MIGRATION_UNSUPPORTED: ${existingVersion}->${SCHEMA_VERSION}. `
+        + 'The legacy migration ladder was removed (pre-production purge). '
+        + 'Open this database once with a pre-purge build to migrate it, or '
+        + 'point DB_PATH at a fresh database.',
     );
   }
 
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
-  migrateFactorySchemaV3ToV4(db);
-  // Replay-first cardinality (v3): rebuild factory_orders without the legacy
-  // lifetime-UNIQUE on project_id/epic_id so one Project may own many
-  // historical Factory Runs. No-op on fresh DBs (SCHEMA_SQL already correct).
-  rebuildFactoryOrdersWithoutColumnUniques(db);
-  // CONVEYOR v4.3 PART 8: durable start-command idempotency. Rebuild the
-  // launch_requests idempotency index from partial-UNIQUE (active states only)
-  // to full-UNIQUE (all states). No-op on fresh DBs.
-  rebuildLaunchIdempotencyIndex(db);
-  // Relax factory_launch_requests.state to accept 'paused' as a terminal-for-
-  // this-launch state (the lifecycle suspended without converging — a typed
-  // wait or genuine stall). Table-rebuild idiom; no-op on fresh DBs.
-  relaxFactoryLaunchStateForPaused(db);
-  // Additive migration: artifacts.storage_kind (file_backed | db_native |
-  // external_ref). Fresh DBs get the column from CREATE TABLE; pre-existing
-  // DBs created before this column get it added here with the safe default
-  // 'file_backed'. The synthetic brief is repaired to db_native separately.
-  ensureArtifactStorageKindColumn(db);
-  // Additive migration (ADR-053 C5): factory_accepted_authority_head gains the
-  // nullable accepted_author_task_id column carrying the workplace task whose
-  // material the head accepted. Fresh DBs get it from CREATE TABLE; pre-v6 DBs
-  // get it added here as NULL. No row reset.
-  ensureAcceptedAuthorityHeadTaskIdColumn(db);
-  // Version 10 freezes replay coordinates at Gate presentation time. Run the
-  // legacy evidence migration exactly once while crossing into v10. Re-running
-  // it on an already-v10 database would temporarily remove immutability
-  // triggers and could reinterpret an intentionally empty binding from mutable
-  // WorkerExecution metadata on a later process start.
-  if (existingVersion > 0 && existingVersion < 10) {
-    ensureGatePresentationReplayBindingColumns(db);
-  }
-  // Additive migration (ADR-053 C7-02): factory_transition_obligations gains a
-  // DISTINCT durable home for the monotonic lease fence (nullable `lease_fence`),
-  // separate from the causal source revision on `fence`. Fresh DBs get it from
-  // CREATE TABLE; pre-v7 DBs get it added here as NULL. No row reset, no rewrite
-  // of the existing `fence` column — pre-migration obligations read with
-  // lease_fence = NULL until they are next leased.
-  ensureTransitionObligationLeaseFenceColumn(db);
-  // Additive migration (schema v13, operator SOFT-STOP): worker_executions
-  // gains stop_fence/voided_at. Fresh DBs get both from CREATE TABLE; pre-v13
-  // DBs get them here. No existing CHECK constraint is touched.
-  ensureWorkerExecutionSoftStopColumns(db);
-  // Additive migration (schema v14, antifreeze layer C): the durable
-  // engine-host binding on factory_launch_requests. Fresh DBs get the columns
-  // from CREATE TABLE; pre-v14 DBs get them here as NULL (no row reset —
-  // launches spawned before this schema simply carry no observable markers and
-  // the supervisor skips them as LEGACY).
-  ensureFactoryLaunchEngineMarkerColumns(db);
-  // Table-rebuild migration (schema v14): widen the engine_state CHECK to
-  // accept 'failed_watchdog' so supervisor budget-exhaustion is a durable,
-  // visible state instead of a silent stop. Fresh DBs are already correct.
-  widenLifecycleControlsEngineStateForWatchdog(db);
-  // Additive migration (schema v14): lifecycle_execution_controls.last_error —
-  // the human-readable WHY surfaced with engine_state='failed_watchdog'. Runs
-  // AFTER the widen rebuild (which only fires on pre-v14 shapes that never
-  // carried this column). Fresh DBs get it from CREATE TABLE.
-  ensureLifecycleControlsLastErrorColumn(db);
-  // Additive migration (ADR-074): repair-issue exact-identity columns for DBs
-  // whose factory_cell_effect_repair_issues predates the final feedback fix.
-  ensureCellEffectRepairIssueColumns(db);
-  // One-shot repair: promote synthetic auto-provisioned briefs (no physical
-  // file, hash from canonical JSON) to db_native with content persisted in
-  // metadata. Verified against the stored content_hash — never guesses.
-  const briefMigration = migrateSyntheticBriefsToDbNative(db);
-  if (briefMigration.migrated > 0) {
-    console.warn(
-      `[factory] migrated ${briefMigration.migrated} synthetic brief(s) to db_native `
-        + `(inspected ${briefMigration.inspected}, skipped ${briefMigration.skipped})`,
-    );
-  }
 
   // Mandatory node submission validation: register policy declarations +
   // validators for every LM-node. worker_done reads these to enforce the
@@ -238,23 +166,10 @@ export function getDb(): Database.Database {
   ensureFactoryProtocolRunSchema(db);
   ensureFactoryCallInstanceSchema(db);
 
-  // Stamp only a fresh database or the exact predecessor produced/accepted by
-  // the migrations above. Never stamp an unknown/future version as current:
-  // doing so would launder an unexecuted migration into apparent success.
+  // A fresh database (user_version 0 before exec) is stamped current. Any
+  // other value was either already current (accepted above) or rejected.
   const migratedVersion = db.pragma('user_version', { simple: true }) as number;
-  if (
-    migratedVersion === 0
-    || migratedVersion === 4
-    || migratedVersion === 5
-    || migratedVersion === 6
-    || migratedVersion === 7
-    || migratedVersion === 8
-    || migratedVersion === 9
-    || migratedVersion === 10
-    || migratedVersion === 11
-    || migratedVersion === 12
-    || migratedVersion === 13
-  ) {
+  if (migratedVersion === 0) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   } else if (migratedVersion !== SCHEMA_VERSION) {
     throw new Error(

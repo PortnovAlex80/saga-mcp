@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { SCHEMA_SQL, rebuildLaunchIdempotencyIndex } from '../../dist/schema.js';
+import { SCHEMA_SQL } from '../../dist/schema.js';
 import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';
 import { isRetryableFactoryProvisioningFailure } from '../../dist/infrastructure/workers/pre-spawn-failure-policy.js';
 
@@ -21,7 +21,6 @@ function makeDb() {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA_SQL);
-  rebuildLaunchIdempotencyIndex(db);
   return db;
 }
 

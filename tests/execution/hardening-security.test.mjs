@@ -463,7 +463,8 @@ function runtimeAuthoritySnapshot(allowed = ALLOWED_TOOLS, workIntentId = 7, ove
   };
   authority.authority_hash = authorityHash(authority);
   const execution_context = {
-    policy_version: 'factory.execution.v1',
+    policy_version: 'factory.execution.v2',
+    executor_kind: 'claude-cli',
     work_intent_id: workIntentId,
     authority,
     model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },

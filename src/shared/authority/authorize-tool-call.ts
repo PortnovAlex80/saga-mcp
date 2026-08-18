@@ -21,7 +21,6 @@ import { computeReplayKey, type ReplayKeyMaterial } from '../../replay/replay-ca
 
 const ACCEPTED_POLICY_VERSIONS = new Set<string>([
   EXECUTION_CONTEXT_POLICY_VERSION,
-  'factory.execution.v1',
 ]);
 
 export type AuthorizationDecision =
@@ -95,10 +94,7 @@ function isHex64(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
-function parseExecutorKind(raw: unknown, policyVersion: string): ExecutionContextExecutorKind | null {
-  if (policyVersion === 'factory.execution.v1') {
-    return raw === undefined || raw === 'claude-cli' ? 'claude-cli' : null;
-  }
+function parseExecutorKind(raw: unknown): ExecutionContextExecutorKind | null {
   // CONVEYOR v4.3 PART 1,3,12: only the real CLI executor is supported.
   // Replay is an internal production source, NOT an executor kind.
   return raw === 'claude-cli' ? 'claude-cli' : null;
@@ -141,15 +137,13 @@ function parseReplayKeyMaterial(raw: unknown): ReplayKeyMaterial | null {
     if (typeof raw[key] !== 'string' || (raw[key] as string).trim() === '') return null;
   }
   // semanticInputDigest is the cross-run-stable replay input identity (§8).
-  // Accept the legacy nodeInputHash field name too for in-flight executions
-  // frozen before the v4.3 rename, so a rolling deploy does not reject claims.
   const semanticInputDigest = typeof raw.semanticInputDigest === 'string'
     ? raw.semanticInputDigest
-    : (typeof raw.nodeInputHash === 'string' ? raw.nodeInputHash : '');
+    : '';
   if (semanticInputDigest.trim() === '') return null;
   const subjectProductionDigest = typeof raw.subjectProductionDigest === 'string'
     ? raw.subjectProductionDigest
-    : (typeof raw.subjectCandidateDigest === 'string' ? raw.subjectCandidateDigest : null);
+    : null;
   if (!(subjectProductionDigest === null || subjectProductionDigest.length > 0)) return null;
   return {
     projectId,
@@ -239,7 +233,6 @@ export function readExecutionContextStrict(
   if (typeof raw.policy_version !== 'string' || !ACCEPTED_POLICY_VERSIONS.has(raw.policy_version)) {
     return { ok: false, reason: `unsupported policy_version '${String(raw.policy_version)}'` };
   }
-  const policyVersion = raw.policy_version;
   const workIntentId = raw.work_intent_id === null
     ? null
     : Number.isInteger(raw.work_intent_id) ? raw.work_intent_id as number : undefined;
@@ -247,8 +240,8 @@ export function readExecutionContextStrict(
   if (typeof raw.captured_at !== 'string' || raw.captured_at.trim() === '') {
     return { ok: false, reason: 'captured_at missing or malformed' };
   }
-  const executorKind = parseExecutorKind(raw.executor_kind, policyVersion);
-  if (!executorKind) return { ok: false, reason: 'executor_kind missing, malformed, or incompatible with policy_version' };
+  const executorKind = parseExecutorKind(raw.executor_kind);
+  if (!executorKind) return { ok: false, reason: 'executor_kind missing or malformed' };
   const modelRoute = parseModelRoute(raw.model_route, executorKind);
   if (!modelRoute) return { ok: false, reason: 'model_route missing, malformed, or incompatible with executor_kind' };
   const authority = parseAuthority(raw.authority, workIntentId);

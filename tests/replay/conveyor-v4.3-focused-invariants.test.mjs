@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, rebuildLaunchIdempotencyIndex } from '../../dist/schema.js';
+import { SCHEMA_SQL } from '../../dist/schema.js';
 import {
   createExecutionRouteResolver,
 } from '../../dist/application/routing/execution-route-resolver.js';
@@ -32,7 +32,6 @@ function makeDb() {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA_SQL);
-  rebuildLaunchIdempotencyIndex(db);
   return db;
 }
 

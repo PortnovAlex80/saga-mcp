@@ -42,11 +42,6 @@ import type { RepositoryDesk } from '../../process-modules/application/repositor
 import { RepositoryDeskProvisioner } from './repository-desk-provisioner.js';
 import { resolveEffectiveDeskBase } from './effective-desk-base.js';
 import { isRetryableFactoryProvisioningFailure } from './pre-spawn-failure-policy.js';
-import {
-  applyTestWarmStart,
-  captureTestWarmStart,
-  type TestWarmStartCaptureOutcome,
-} from '../testing/test-warm-start.js';
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 import type { StoredModulePackage } from '../../process-modules/installation/index.js';
 import type { WorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
@@ -88,7 +83,7 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
   captureWorkspace?: (input: {
     workspaceRoot: string;
     processWorkspace: WorkplaceDesk | null;
-    outcome: TestWarmStartCaptureOutcome;
+    outcome: 'completed' | 'changes_requested' | 'failed';
   }) => void;
 };
 
@@ -535,25 +530,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
         });
 
         const metadata: Record<string, unknown> = { ...taskMetadata };
-        const processNodeId = typeof metadata.process_node_id === 'string'
-          ? metadata.process_node_id
-          : null;
-        if (processNodeId) {
-          resolvedWorkspace = applyTestWarmStart({
-            env: process.env,
-            workspaceRoot: input.workspaceRoot,
-            epicId,
-            moduleRef: resolvedWorkspace.moduleRef,
-            nodeId: processNodeId,
-            packageDigest: pinned.projection.packageDigest,
-            inputHash: typeof metadata.process_node_input_hash === 'string'
-              ? metadata.process_node_input_hash
-              : typeof metadata.process_input_hash === 'string'
-                ? metadata.process_input_hash
-                : null,
-            processWorkspace: resolvedWorkspace,
-          });
-        }
         metadata.process_workspace = {
           profile_id: resolvedWorkspace.profileId,
           module_ref: resolvedWorkspace.moduleRef,
@@ -566,7 +542,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
           workspace_files: [...resolvedWorkspace.workspaceFiles],
           call_files: [...resolvedWorkspace.callFiles],
           checklists: [...resolvedWorkspace.checklists],
-          test_warm_start: resolvedWorkspace.testWarmStart ?? null,
         };
         getDb().prepare(
           `UPDATE tasks
@@ -643,12 +618,8 @@ export function createPinnedClaudeWorkerExecutorFactory(
         }
         return resolvedWorkspace;
       },
-      captureWorkspace: input => {
-        captureTestWarmStart(
-          input.workspaceRoot,
-          input.processWorkspace,
-          input.outcome,
-        );
+      captureWorkspace: () => {
+        // Retired test-warm-start sidecar; the hook stays for the runner contract.
       },
     };
 

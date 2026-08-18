@@ -10,12 +10,10 @@ import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
-  CompleteNodeRunInput,
   FailNodeRunInput,
   NodeRunRecord,
   NodeRunRepository,
   NodeRunStatus,
-  StartNodeRunInput,
 } from './node-run.js';
 import type {
   CompleteNodeRunV2Input,
@@ -25,6 +23,9 @@ import type {
 } from './node-run-v2.js';
 
 export function ensureFactoryNodeRunSchema(db: Database.Database): void {
+  // TASK C (legacy purge): the embedded ALTER ladder that backfilled these
+  // columns onto pre-existing DBs is gone — old DBs now fail closed at db.ts.
+  // The CREATE TABLE carries every column (v2 shape) for fresh databases.
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_node_runs (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,96 +45,22 @@ export function ensureFactoryNodeRunSchema(db: Database.Database): void {
       recovery_issue TEXT,
       error_message  TEXT,
       started_at     TEXT NOT NULL DEFAULT (datetime('now')),
-      completed_at   TEXT
+      completed_at   TEXT,
+      input_envelope_hash      TEXT,
+      node_ref                 TEXT,
+      package_ref              TEXT,
+      predecessor_node_run_ids TEXT,
+      definition_digest        TEXT,
+      transition_cursor        TEXT,
+      production_envelope      TEXT,
+      completion               TEXT,
+      completion_hash          TEXT,
+      semantic_digest          TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_factory_node_runs_process
       ON factory_node_runs(process_run_id, node_id);
     CREATE INDEX IF NOT EXISTS idx_factory_node_runs_status
       ON factory_node_runs(process_run_id, status, id);
-  `);
-  // Д8 migration: older DBs created factory_node_runs without output_bindings.
-  // SQLite ALTER TABLE ADD COLUMN is safe (no CHECK to rebuild).
-  const cols = db.prepare("PRAGMA table_info(factory_node_runs)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === 'output_bindings')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN output_bindings TEXT');
-  }
-  if (!cols.some((c) => c.name === 'execution_receipt')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN execution_receipt TEXT');
-  }
-  if (!cols.some((c) => c.name === 'output_schema')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN output_schema TEXT');
-  }
-  if (!cols.some((c) => c.name === 'recovery_issue')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN recovery_issue TEXT');
-  }
-  if (!cols.some((c) => c.name === 'acceptance_receipt')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN acceptance_receipt TEXT');
-  }
-
-  // ── Wave 3 (W3-A6 §9, single SQL owner for factory_node_runs this wave) ──────
-  // Seven ADDITIVE NULLABLE columns. Idempotent — guarded by PRAGMA
-  // table_info check, mirroring the Wave 2 dual-placement pattern. NO NOT NULL
-  // in src/db.ts (the upgrade path for pre-existing DBs) AND here (the path
-  // that reliably runs when the table springs into existence via the
-  // constructor). The columns are:
-  //   input_envelope_hash       TEXT  — ExecutionContextEnvelope hash (Wave 1 §7.7)
-  //   node_ref                  TEXT  — JSON NodeRef (Wave 1 §7.7.1)
-  //   package_ref               TEXT  — JSON PackageRef (Wave 1 §7.7.1)
-  //   predecessor_node_run_ids  TEXT  — JSON array of upstream NodeRun ids
-  //   definition_digest         TEXT  — NodeProtocolDefinition digest (W1-A4)
-  //   transition_cursor         TEXT  — opaque kernel transition cursor
-  //   production_envelope       TEXT  — JSON NodeProductionEnvelope (Wave 1 §7.6)
-  if (!cols.some((c) => c.name === 'input_envelope_hash')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN input_envelope_hash TEXT');
-  }
-  if (!cols.some((c) => c.name === 'node_ref')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN node_ref TEXT');
-  }
-  if (!cols.some((c) => c.name === 'package_ref')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN package_ref TEXT');
-  }
-  if (!cols.some((c) => c.name === 'predecessor_node_run_ids')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN predecessor_node_run_ids TEXT');
-  }
-  if (!cols.some((c) => c.name === 'definition_digest')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN definition_digest TEXT');
-  }
-  if (!cols.some((c) => c.name === 'transition_cursor')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN transition_cursor TEXT');
-  }
-  if (!cols.some((c) => c.name === 'production_envelope')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN production_envelope TEXT');
-  }
-  // FU-A Wave 3 (W3-A1 spec §3/§4): 8th additive nullable column. The explicit
-  // `ModuleCompletion` envelope a terminal node emitted — persisted so crash-
-  // resume can rebuild the NodeExecutionResult.completion without which
-  // settlement cannot read the explicit certificate ref (and would silently
-  // fall back to magic bindings, losing the certificate on restart). Additive:
-  // it. Idempotent ALTER guarded by PRAGMA table_info, mirroring the 7 v2 cols.
-  if (!cols.some((c) => c.name === 'completion')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion TEXT');
-  }
-  // WAVE 8 HIGH 4: 9th additive nullable column. SHA-256 over the canonical
-  // JSON of `completion` (computed when `completion` is non-null). Persisted
-  // alongside the JSON so reads can VERIFY integrity — corrupted/malformed JSON
-  // or a hash mismatch becomes a LOUD error (COMPLETION_CORRUPT /
-  // COMPLETION_HASH_MISMATCH), not the silent null the audit flagged. Null when
-  // same dual-placement pattern as the 8 columns above.
-  if (!cols.some((c) => c.name === 'completion_hash')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion_hash TEXT');
-  }
-  // Cross-run-stable semantic digest (CONVEYOR v4.3 §5-6): 10th additive
-  // nullable column. Authored by the producer from known semantic material;
-  // downstream WorkKey derivation and ReplayKey semanticInputDigest use it.
-  // Null for producers that have not authored one (legacy/non-cell). The
-  // audit contentHash remains in output_hash.
-  if (!cols.some((c) => c.name === 'semantic_digest')) {
-    db.exec('ALTER TABLE factory_node_runs ADD COLUMN semantic_digest TEXT');
-  }
-  // Resume index: exact-cursor lookup by (process_run_id, node_id, attempt).
-  // The attempt column is 1-based and unique per (run, node), so this index
-  // makes readByExactCursor an equality probe (§9.11).
-  db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_node_runs_exact_cursor
       ON factory_node_runs(process_run_id, node_id, attempt);
   `);
@@ -365,51 +292,6 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     ensureFactoryNodeRunSchema(this.db);
   }
 
-  start(input: StartNodeRunInput): NodeRunRecord {
-    const count = this.db.prepare(
-      'SELECT COUNT(*) AS n FROM factory_node_runs WHERE process_run_id=? AND node_id=?',
-    ).get(input.processRunId, input.nodeId) as { n: number };
-    const attempt = count.n + 1;
-    const info = this.db.prepare(
-      `INSERT INTO factory_node_runs (process_run_id, node_id, node_kind, attempt, status)
-       VALUES (?, ?, ?, ?, 'running')`,
-    ).run(input.processRunId, input.nodeId, input.nodeKind, attempt);
-    const row = this.db.prepare(
-      'SELECT * FROM factory_node_runs WHERE id=?',
-    ).get(Number(info.lastInsertRowid)) as NodeRunRow;
-    return rowToRecord(row);
-  }
-
-  complete(input: CompleteNodeRunInput): NodeRunRecord {
-    const bindingsText = input.outputBindings ? JSON.stringify(input.outputBindings) : null;
-    const receiptText = input.executionReceipt ? JSON.stringify(input.executionReceipt) : null;
-    const acceptanceReceiptText = input.acceptanceReceipt
-      ? JSON.stringify(input.acceptanceReceipt)
-      : null;
-    const recoveryIssueText = input.recoveryIssue ? JSON.stringify(input.recoveryIssue) : null;
-    this.db.prepare(
-      `UPDATE factory_node_runs
-          SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
-              execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
-              completed_at=datetime('now')
-        WHERE id=?`,
-    ).run(
-      input.event,
-      input.outputRef,
-      input.outputSchema ?? null,
-      input.outputHash,
-      bindingsText,
-      receiptText,
-      acceptanceReceiptText,
-      recoveryIssueText,
-      input.id,
-    );
-    const row = this.db.prepare(
-      'SELECT * FROM factory_node_runs WHERE id=?',
-    ).get(input.id) as NodeRunRow;
-    return rowToRecord(row);
-  }
-
   fail(input: FailNodeRunInput): NodeRunRecord {
     this.db.prepare(
       `UPDATE factory_node_runs
@@ -426,23 +308,6 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
   // was DELETED with its interface declarations. The assembler now probes
   // readByExactCursor (run, node, attempt); identity resolution never
   // chooses by row order.
-
-  readLastCompleted(processRunId: number): NodeRunRecord | null {
-    const row = this.db.prepare(
-      `SELECT * FROM factory_node_runs
-        WHERE process_run_id=? AND status='completed'
-          AND (event IS NULL OR event<>'runtime.paused')
-        ORDER BY id DESC LIMIT 1`,
-    ).get(processRunId) as NodeRunRow | undefined;
-    return row ? rowToRecord(row) : null;
-  }
-
-  list(processRunId: number): readonly NodeRunRecord[] {
-    const rows = this.db.prepare(
-      'SELECT * FROM factory_node_runs WHERE process_run_id=? ORDER BY id ASC',
-    ).all(processRunId) as NodeRunRow[];
-    return rows.map(rowToRecord);
-  }
 
   // ── Wave 3 v2 methods (W3-A6 §9 — single SQL owner) ──────────────────────
 

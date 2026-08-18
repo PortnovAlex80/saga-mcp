@@ -20,7 +20,8 @@
  *   external_ref — content referenced by an external durable ref (reserved;
  *                  no current producer emits this kind).
  *
- * migrated by {@link ensureArtifactStorageKindColumn} default to file_backed.
+ * (the migration ladder that backfilled this column was removed with the
+ * pre-production legacy purge; fresh DBs carry the column from CREATE TABLE).
  */
 export type ArtifactStorageKind = 'file_backed' | 'db_native' | 'external_ref';
 

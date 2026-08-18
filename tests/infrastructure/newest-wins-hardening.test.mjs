@@ -165,7 +165,7 @@ test('K8/harden: zero/one outcome certificates read as null/exact', () => {
 test('K8/harden: readByExactCursor is an equality probe (zero/one), including across attempts', () => {
   const db = freshDb(ensureFactoryNodeRunSchema);
   const repo = new SqliteNodeRunRepository(db);
-  const first = repo.start({ processRunId: 800, nodeId: 'node-a', nodeKind: 'task' });
+  const first = repo.startV2({ processRunId: 800, nodeId: 'node-a', nodeKind: 'task' });
   assert.equal(first.attempt, 1);
 
   const exactHit = repo.readByExactCursor(800, 'node-a', 1);
@@ -178,7 +178,7 @@ test('K8/harden: readByExactCursor is an equality probe (zero/one), including ac
     'a different node reads as zero');
 
   // A second attempt exists → the exact probe still returns only its own row.
-  const second = repo.start({ processRunId: 800, nodeId: 'node-a', nodeKind: 'task' });
+  const second = repo.startV2({ processRunId: 800, nodeId: 'node-a', nodeKind: 'task' });
   assert.equal(second.attempt, 2);
   assert.equal(repo.readByExactCursor(800, 'node-a', 1)?.id, first.id);
   assert.equal(repo.readByExactCursor(800, 'node-a', 2)?.id, second.id);

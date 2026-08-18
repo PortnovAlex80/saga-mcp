@@ -73,26 +73,6 @@ export interface WorkplaceDesk {
 
   readonly workspaceFiles: readonly string[];
   readonly agentAssistanceAbsolutePath?: string;
-  readonly testWarmStart?: {
-    readonly fixtureId: string;
-    readonly mode: 'verify-and-submit-existing-draft';
-    readonly nodeId: string;
-    readonly draftFiles: readonly string[];
-    readonly coldStartFiles: readonly string[];
-    readonly forceRewriteSlots: readonly string[];
-    readonly instruction: string;
-    readonly receiptPath: string;
-    readonly cacheRoot: string;
-    readonly cacheEntries: readonly {
-      readonly slot: string;
-      readonly policy: 'learn' | 'locked';
-      readonly targetPath: string;
-      readonly cachePath: string | null;
-      readonly metadataPath: string | null;
-      readonly packageDigest: string | null;
-      readonly inputHash: string | null;
-    }[];
-  };
 
   readonly repositoryDesk?: RepositoryDesk;
 }

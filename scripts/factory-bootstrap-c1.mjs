@@ -47,15 +47,13 @@ git(['checkout', '-b', 'dev']);
 const baseCommit = git(['rev-parse', 'HEAD']);
 
 // Schema from dist
-const { SCHEMA_SQL, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex } = await import('../dist/schema.js');
+const { SCHEMA_SQL } = await import('../dist/schema.js');
 const { sha256Hex } = await import('../dist/shared/canonical-json.js');
 
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(SCHEMA_SQL);
-rebuildFactoryOrdersWithoutColumnUniques(db);
-rebuildLaunchIdempotencyIndex(db);
 
 const repoName = `${sandboxName}-repo`;
 db.prepare("INSERT INTO projects (id,name,description,status) VALUES (1,?,'idea run','active')").run(sandboxName);

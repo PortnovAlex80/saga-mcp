@@ -85,7 +85,8 @@ function runtimeSnapshot(allowed = ALLOWED, workIntentId = 7, overrides = {}) {
   };
   authority.authority_hash = authorityHash(authority);
   const execution_context = {
-    policy_version: 'factory.execution.v1',
+    policy_version: 'factory.execution.v2',
+    executor_kind: 'claude-cli',
     work_intent_id: workIntentId,
     authority,
     model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },
@@ -147,7 +148,7 @@ test('runtime: disallowed task_create is denied with AUTHORITY_DENIED', () => {
     assert.equal(d.details.requested_tool, 'task_create');
     assert.deepEqual(d.details.allowed_tools, ALLOWED);
     assert.match(d.details.recovery, /new WorkIntent/);
-    assert.equal(d.details.policy_version, 'factory.execution.v1');
+    assert.equal(d.details.policy_version, 'factory.execution.v2');
   } finally { cleanup(temp); }
 });
 

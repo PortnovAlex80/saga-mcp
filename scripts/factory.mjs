@@ -276,9 +276,8 @@ if (command === 'continue') {
     const db = new Database(workingDbPath);
     continuationDb = db;
     db.pragma('foreign_keys=ON');
-    const { SCHEMA_SQL, migrateFactorySchemaV3ToV4 } = await import('../dist/schema.js');
+    const { SCHEMA_SQL } = await import('../dist/schema.js');
     db.exec(SCHEMA_SQL);
-    migrateFactorySchemaV3ToV4(db);
     // Resolve the order the way resume does: prefer the chain row, fall back
     // to the root factory_orders row (the canonical start path writes only the
     // root). Without the fallback every fresh-run continuation dies with
@@ -497,9 +496,8 @@ async function openSoftStopDb(dbPath) {
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
-  const { SCHEMA_SQL, ensureWorkerExecutionSoftStopColumns } = await import('../dist/schema.js');
+  const { SCHEMA_SQL } = await import('../dist/schema.js');
   db.exec(SCHEMA_SQL);
-  ensureWorkerExecutionSoftStopColumns(db);
   // releaseOperatorHolds joins factory_process_runs (lazily created by the
   // process-run repository) — ensure it exists even on a DB where no engine
   // has ever run. Same pattern as runAbandon's lifecycle-table ensure.
@@ -920,7 +918,7 @@ if (command === 'start') {
   // Otherwise, assume the DB already has project/epic/repo rows and only
   // the factory order + launch need to be created (the DB-path-only mode
   // for existing sandboxes that need a fresh start).
-  const { SCHEMA_SQL, rebuildFactoryOrdersWithoutColumnUniques, rebuildLaunchIdempotencyIndex } = await import('../dist/schema.js');
+  const { SCHEMA_SQL } = await import('../dist/schema.js');
   const { sha256Hex } = await import('../dist/shared/canonical-json.js');
   const { requestFactoryLaunch } = await import('../dist/infrastructure/factory/sqlite-factory-launch-repository.js');
 
@@ -948,8 +946,6 @@ if (command === 'start') {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.exec(SCHEMA_SQL);
-    rebuildFactoryOrdersWithoutColumnUniques(db);
-    rebuildLaunchIdempotencyIndex(db);
 
     const repoName = `${sandboxName}-repo`;
     db.prepare("INSERT INTO projects (id,name,description,status) VALUES (1,?,'idea run','active')").run(sandboxName);

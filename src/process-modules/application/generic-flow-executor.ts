@@ -480,12 +480,11 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // Resume support: if the last completed NodeRun exists, start from the
     // transition out of it. Otherwise start at entry. The v2-shaped read
     // surfaces the persisted `completion` column (explicit ModuleCompletion)
-    // so restoreNodeResult sees it — without it, crash-resume after a
-    // (readLastCompleted) covers a row written before the v2 cutover; a v2
-    // row is a superset of NodeRunRecord.
-    const lastCompleted: NodeRunRecord | NodeRunRecordV2 | null =
-      v2.repo.readLastCompletedV2(context.processRunId)
-      ?? nodeRunRepo.readLastCompleted(context.processRunId);
+    // so restoreNodeResult sees it. The v1 readLastCompleted fallback was
+    // removed: its SQL was byte-identical to the v2 read, so it could never
+    // return a row the v2 read missed (TASK C pre-verification, C6).
+    const lastCompleted: NodeRunRecordV2 | null =
+      v2.repo.readLastCompletedV2(context.processRunId);
     let currentNodeId: string;
     let resumedRecoveryInput: NodeProduction | null = null;
     let pausedVerifierInput: unknown;
@@ -660,8 +659,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain =
-      v2.repo.readLastCompletedV2(context.processRunId)
-      ?? nodeRunRepo.readLastCompleted(context.processRunId);
+      v2.repo.readLastCompletedV2(context.processRunId);
     let upstreamProductNodeId: string | null = lastCompletedForChain?.nodeId ?? null;
     if (reexecutePausedNode) {
       chainInput = pausedVerifierInput;

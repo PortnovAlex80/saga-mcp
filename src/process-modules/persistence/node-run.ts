@@ -57,40 +57,12 @@ export interface NodeRunRecord {
   completedAt: string | null;
 }
 
-export interface StartNodeRunInput {
-  processRunId: number;
-  nodeId: string;
-  nodeKind: string;
-}
-
-export interface CompleteNodeRunInput {
-  id: number;
-  event: string;
-  outputRef: string | null;
-  outputSchema?: string | null;
-  outputHash: string | null;
-  /** Д8: durable bindings to persist for restart recovery. */
-  outputBindings?: Record<string, unknown> | null;
-  executionReceipt?: Record<string, unknown> | null;
-  acceptanceReceipt?: Record<string, unknown> | null;
-  recoveryIssue?: RecoveryIssue | null;
-}
-
 export interface FailNodeRunInput {
   id: number;
   errorMessage: string;
 }
 
 export interface NodeRunRepository {
-  /**
-   * Insert a running NodeRun row with attempt = (count of existing rows for
-   * this (process_run, node) + 1). Returns the new record.
-   */
-  start(input: StartNodeRunInput): NodeRunRecord;
-
-  /** Mark a NodeRun completed with its emitted event + output. */
-  complete(input: CompleteNodeRunInput): NodeRunRecord;
-
   /** Mark a NodeRun failed with an error message. */
   fail(input: FailNodeRunInput): NodeRunRecord;
 
@@ -106,9 +78,4 @@ export interface NodeRunRepository {
     attempt: number,
   ): NodeRunRecord | null;
 
-  /** The most recent COMPLETED NodeRun anywhere in the run (resume point). */
-  readLastCompleted(processRunId: number): NodeRunRecord | null;
-
-  /** All NodeRuns for a process run, ordered by id ASC (execution order). */
-  list(processRunId: number): readonly NodeRunRecord[];
 }

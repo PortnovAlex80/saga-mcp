@@ -62,23 +62,11 @@ export interface FactoryCheckpointPayload {
   readonly repositories: readonly RepositoryState[];
   readonly objects: readonly CheckpointObject[];
   readonly reusableNodeResults: readonly CapturedNodeResult[];
-  readonly warmStartNodes: readonly WarmStartNode[];
   readonly security: {
     logsIncluded: boolean;
     credentialsIncluded: false;
     signatureKeyId: string | null;
   };
-}
-
-export interface WarmStartNode {
-  readonly moduleRef: string;
-  readonly nodeId: string;
-  readonly drafts: readonly {
-    slot: string;
-    path: string;
-    policy: 'locked';
-    sha256: string;
-  }[];
 }
 
 export interface FactoryCheckpointManifest {
@@ -248,9 +236,6 @@ export class FactoryCheckpointService {
           reusableNodeResults: this.readReusableNodeResults(
             snapshotDb, options.projectId, options.epicId ?? null,
           ),
-          warmStartNodes: this.readWarmStartNodes(
-            snapshotDb, options.projectId, options.epicId ?? null, objects,
-          ),
           security: {
           logsIncluded: options.includeLogs === true,
           credentialsIncluded: false,
@@ -406,24 +391,6 @@ export class FactoryCheckpointService {
     if (!dbObject) throw new Error('CHECKPOINT_DATABASE_OBJECT_MISSING');
     this.verifyDatabase(this.objectAbsolutePath(storageRoot, dbObject));
     return manifest;
-  }
-
-  createWarmStartFixture(manifest: FactoryCheckpointManifest): unknown {
-    if (manifest.payload.scope.epicId === null) {
-      throw new Error('CHECKPOINT_WARM_START_REQUIRES_EPIC_SCOPE');
-    }
-    return {
-      schemaVersion: 'factory.test-warm-start-fixture.v1',
-      fixtureId: `checkpoint:${manifest.payload.checkpointRef}`,
-      epicId: manifest.payload.scope.epicId,
-      nodes: manifest.payload.warmStartNodes.map(node => ({
-        moduleRef: node.moduleRef,
-        nodeId: node.nodeId,
-        mode: 'verify-and-submit-existing-draft',
-        drafts: node.drafts,
-        instruction: 'Verify the supplied checkpoint drafts against the current node input and recovery feedback. Use the normal allowed MCP tools to register products; do not claim acceptance yourself.',
-      })),
-    };
   }
 
   restoreClone(params: {
@@ -827,57 +794,6 @@ export class FactoryCheckpointService {
     ));
   }
 
-  private readWarmStartNodes(
-    db: Database.Database,
-    projectId: number,
-    epicId: number | null,
-    objects: readonly CheckpointObject[],
-  ): WarmStartNode[] {
-    if (!this.tableExists(db, 'factory_managed_artifact_productions')) return [];
-    const rows = db.prepare(
-      `SELECT mp.module_ref, mp.node_id, mp.artifact_id, a.path,
-              a.project_repository_id
-         FROM factory_managed_artifact_productions mp
-         JOIN factory_process_runs pr ON pr.id=mp.process_run_id
-         JOIN artifacts a ON a.id=mp.artifact_id
-        WHERE pr.project_id=? AND (? IS NULL OR pr.epic_id=?)
-        ORDER BY mp.id`,
-    ).all(projectId, epicId, epicId) as Array<{
-      module_ref: string; node_id: string; artifact_id: number;
-      path: string; project_repository_id: number | null;
-    }>;
-    const groups = new Map<string, {
-      moduleRef: string; nodeId: string;
-      drafts: Map<string, WarmStartNode['drafts'][number]>;
-    }>();
-    for (const row of rows) {
-      const relative = row.path.split('#', 1)[0]!.replaceAll('\\', '/');
-      const object = objects.find(candidate =>
-        candidate.kind === 'artifact'
-        && candidate.bindingId === row.project_repository_id
-        && candidate.relativePath === relative,
-      );
-      if (!object) continue;
-      const key = `${row.module_ref}\0${row.node_id}`;
-      const group = groups.get(key) ?? {
-        moduleRef: row.module_ref,
-        nodeId: row.node_id,
-        drafts: new Map<string, WarmStartNode['drafts'][number]>(),
-      };
-      group.drafts.set(relative, {
-        slot: path.posix.basename(relative),
-        path: relative,
-        policy: 'locked',
-        sha256: object.digest,
-      });
-      groups.set(key, group);
-    }
-    return [...groups.values()].map(group => ({
-      moduleRef: group.moduleRef,
-      nodeId: group.nodeId,
-      drafts: [...group.drafts.values()],
-    }));
-  }
 
   private putObject(
     storageRoot: string,

@@ -255,12 +255,12 @@ async function recordIssueForModule({
   });
   const processRunId = started.record.id;
 
-  const nodeRunStarted = nodeRunRepo.start({
+  const nodeRunStarted = nodeRunRepo.startV2({
     processRunId,
     nodeId: producerNodeId,
     nodeKind: module.flow.nodes[0].kind,
   });
-  const nodeRun = nodeRunRepo.complete({
+  const nodeRun = nodeRunRepo.completeV2({
     id: nodeRunStarted.id,
     event: 'runtime.completed',
   });
@@ -533,12 +533,12 @@ test('§3.7 exhaustion: LM module case flips to exhausted after maxAttempts (per
     // repo's `start` auto-derives the attempt number; we then `complete` it so
     // it is a valid source for the recovery verifier.
     function freshNodeRun() {
-      const started = nodeRunRepo.start({
+      const started = nodeRunRepo.startV2({
         processRunId,
         nodeId: 'draft-campaign',
         nodeKind: 'lm',
       });
-      const completed = nodeRunRepo.complete({
+      const completed = nodeRunRepo.completeV2({
         id: started.id,
         event: 'runtime.completed',
       });
@@ -660,12 +660,12 @@ test('§3.7 exhaustion: External module case flips to exhausted after maxAttempt
       reasonCode: 'RANKING_FETCH_STALE',
     });
     function freshNodeRun() {
-      const started = nodeRunRepo.start({
+      const started = nodeRunRepo.startV2({
         processRunId,
         nodeId: 'fetch-ranking',
         nodeKind: 'external',
       });
-      const completed = nodeRunRepo.complete({
+      const completed = nodeRunRepo.completeV2({
         id: started.id,
         event: 'runtime.completed',
       });
@@ -768,12 +768,12 @@ test('§3.7 restart: LM module re-emitting same issue for same NodeRun is idempo
     });
     const sourceProduction = buildSourceProduction({ module: lmMarketingModule });
 
-    const nrStarted = nodeRunRepo.start({
+    const nrStarted = nodeRunRepo.startV2({
       processRunId,
       nodeId: 'draft-campaign',
       nodeKind: 'lm',
     });
-    const nr = nodeRunRepo.complete({
+    const nr = nodeRunRepo.completeV2({
       id: nrStarted.id,
       event: 'runtime.completed',
     });
@@ -880,12 +880,12 @@ test('§3.7 restart: External module re-emitting same issue for same NodeRun is 
     });
     const sourceProduction = buildSourceProduction({ module: externalSeoModule });
 
-    const nrStarted = nodeRunRepo.start({
+    const nrStarted = nodeRunRepo.startV2({
       processRunId,
       nodeId: 'fetch-ranking',
       nodeKind: 'external',
     });
-    const nr = nodeRunRepo.complete({
+    const nr = nodeRunRepo.completeV2({
       id: nrStarted.id,
       event: 'runtime.completed',
     });

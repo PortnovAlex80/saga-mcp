@@ -83,7 +83,7 @@ function makeHarness(overrides = {}) {
     workerId: 'worker-101', machineId: 'test-host',
     repository: { name: 'product', local_path: root },
     executionContext: {
-      policy_version: 'factory.execution.v1', authority: { enforcement: 'strict', allowed_saga_tools: ['task_get', 'worker_done'] },
+      policy_version: 'factory.execution.v2', authority: { enforcement: 'strict', allowed_saga_tools: ['task_get', 'worker_done'] },
       model_route: { provider: 'zai', model: null, effort: 'high' }, captured_at: new Date().toISOString(),
     },
   };

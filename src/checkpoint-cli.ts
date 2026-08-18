@@ -39,7 +39,6 @@ function printHelp(): void {
   process.stdout.write(`Usage:
   saga-checkpoint capture --db=... --store=... --project=ID [--epic=ID] [--actor=NAME] [--include-logs]
   saga-checkpoint verify --manifest=... [--hmac-key=...]
-  saga-checkpoint warm-start-fixture --manifest=... [--hmac-key=...]
   saga-checkpoint restore-clone --manifest=... --target-db=... --target-workspace=...
   saga-checkpoint adopt --db=... --manifest=... --project=ID --epic=ID --process-run=ID --node=ID --source-node-run=ID --actor=NAME --reason=TEXT [--trust-local] [--profile=full|test_replay]
 
@@ -67,11 +66,6 @@ async function main(): Promise<void> {
   if (command === 'verify') {
     const manifest = service.verify(path.resolve(required(flags, 'manifest')), hmacKey);
     process.stdout.write(`${JSON.stringify({ ok: true, checkpoint: manifest.payload.checkpointRef, digest: manifest.digest })}\n`);
-    return;
-  }
-  if (command === 'warm-start-fixture') {
-    const manifest = service.verify(path.resolve(required(flags, 'manifest')), hmacKey);
-    process.stdout.write(`${JSON.stringify(service.createWarmStartFixture(manifest), null, 2)}\n`);
     return;
   }
   if (command === 'restore-clone') {
