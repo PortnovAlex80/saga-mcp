@@ -1,0 +1,41 @@
+{
+  "buildProducts": {
+    "duration": "5.772s",
+    "testFramework": "jest",
+    "testSuites": 5,
+    "testsFailed": 0,
+    "testsPassed": 177,
+    "testsRun": 177
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "c99aaacbf859587eeb0cd4e8c113721976315433",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/production-run-001-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "js/accessibility-manager.js",
+        "size": 16502,
+        "status": "added"
+      },
+      {
+        "path": "test/integration.test.js",
+        "size": 44848,
+        "status": "modified"
+      }
+    ],
+    "commitSha": "fc2299c4448bdf91440926f58bcb3a954d8cffc3",
+    "treeSha": "fc2299c4448bdf91440926f58bcb3a954d8cffc3"
+  },
+  "source": {
+    "branch": "saga/task/14/execution/0859a4084e727fcb6993",
+    "commitSha": "fc2299c4448bdf91440926f58bcb3a954d8cffc3",
+    "workItemKey": "accessibility-manager-implementation"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "accessibility-manager-implementation"
+}

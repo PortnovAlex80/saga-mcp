@@ -1,0 +1,361 @@
+{
+  "implementationItems": [
+    {
+      "acceptanceCriterionIds": [],
+      "changeScopes": [
+        "package.json",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [],
+      "description": "Initialize package.json with test dependencies and test framework configuration. Establishes the testing infrastructure required for all implementation work.",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "infrastructure-setup",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.foundation",
+      "title": "Project Infrastructure and Test Framework Setup"
+    },
+    {
+      "acceptanceCriterionIds": [
+        17,
+        19
+      ],
+      "changeScopes": [
+        "js/counter-core.js",
+        "test/counter-core.test.js",
+        "test/property.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "infrastructure-setup"
+      ],
+      "description": "Implement M1 counter-core module with increment/decrement operations, state management, and integer constraints. Covers AC-3 (Increment Value Correctness) and AC-5 (Decrement Value Correctness).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "counter-core-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature",
+      "title": "Counter Core Module Implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21,
+        22
+      ],
+      "changeScopes": [
+        "js/storage-adapter.js",
+        "test/storage-adapter.test.js",
+        "test/integration.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "infrastructure-setup",
+        "counter-core-implementation"
+      ],
+      "description": "Implement M2 storage-adapter module with localStorage abstraction, error handling, and graceful degradation to in-memory storage. Covers AC-7 (Value Persistence) and AC-8 (Graceful Degradation).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "storage-adapter-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature",
+      "title": "Storage Adapter Module Implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        15,
+        16
+      ],
+      "changeScopes": [
+        "js/ui-renderer.js",
+        "css/styles.css",
+        "test/ui-renderer.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "description": "Implement M3 ui-renderer module with counter display, WCAG AA compliant styling, and 100ms update performance. Covers AC-1 (Counter Display Visibility) and AC-2 (Display Updates Immediately).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "ui-renderer-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature",
+      "title": "UI Renderer Module Implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        18,
+        20
+      ],
+      "changeScopes": [
+        "js/interaction-handler.js",
+        "test/integration.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation",
+        "storage-adapter-implementation"
+      ],
+      "description": "Implement M4 interaction-handler module with button click events, keyboard activation, and assistive technology support. Covers AC-4 (Increment Button Accessibility) and AC-6 (Decrement Button Accessibility).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "interaction-handler-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature",
+      "title": "Interaction Handler Module Implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        18,
+        20,
+        23
+      ],
+      "changeScopes": [
+        "js/accessibility-manager.js",
+        "test/integration.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "ui-renderer-implementation",
+        "interaction-handler-implementation",
+        "storage-adapter-implementation"
+      ],
+      "description": "Implement M5 accessibility-manager module with ARIA attributes, keyboard navigation, and focus management. Covers AC-4, AC-6, and AC-9 (No Keyboard Traps).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "accessibility-manager-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature",
+      "title": "Accessibility Manager Module Implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21,
+        24
+      ],
+      "changeScopes": [
+        "js/application-bootstrap.js",
+        "index.html"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation",
+        "storage-adapter-implementation",
+        "ui-renderer-implementation",
+        "interaction-handler-implementation",
+        "accessibility-manager-implementation"
+      ],
+      "description": "Implement M6 application-bootstrap module with module initialization, lifecycle management, and value restoration. Creates self-contained index.html. Covers AC-7 (Value Persistence) and AC-10 (Local Execution Without External Dependencies).",
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "application-bootstrap-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.integration",
+      "title": "Application Bootstrap and Integration"
+    }
+  ],
+  "integrationTargets": [
+    {
+      "expectedBaseCommit": "f83eb10771b59fdf25f628db77b4217044534a86",
+      "projectRepositoryId": 1,
+      "sourceWorkItemKeys": [
+        "infrastructure-setup",
+        "counter-core-implementation",
+        "storage-adapter-implementation",
+        "ui-renderer-implementation",
+        "interaction-handler-implementation",
+        "accessibility-manager-implementation",
+        "application-bootstrap-implementation"
+      ],
+      "targetBranch": "dev"
+    }
+  ],
+  "schemaVersion": "factory.development-task-graph-proposal.v1",
+  "verificationItems": [
+    {
+      "acceptanceCriterionIds": [
+        15
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-1",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        16
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-2",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        17
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-3",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        18
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-4",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        19
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-5",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        20
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-6",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "application-bootstrap-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-7",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        22
+      ],
+      "changeScopes": [],
+      "criticality": "degradable",
+      "dependsOnKeys": [
+        "storage-adapter-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-8",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        23
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-9",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        24
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "application-bootstrap-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-10",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    }
+  ]
+}

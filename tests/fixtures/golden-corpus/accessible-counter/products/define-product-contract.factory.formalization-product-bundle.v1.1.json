@@ -1,0 +1,174 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 1,
+      "artifactStatus": "draft",
+      "artifactType": "brief",
+      "contentHash": "8673673fb0361b8347db42bdbf3febfe1ed62857c11a1a7e135710ae27d9adf7",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 2,
+      "artifactStatus": "draft",
+      "artifactType": "PRD",
+      "contentHash": "f3be7a9e27e47da4c7d28b7044690e869e9f9e9c1e9af5e6945bc01ed77ac57b",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 3,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "70cc94f5852fd419c5b791223cf90c96e1f8fb4ddc019bf9478b5373e488692c",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 4,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "70cc94f5852fd419c5b791223cf90c96e1f8fb4ddc019bf9478b5373e488692c",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 5,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "70cc94f5852fd419c5b791223cf90c96e1f8fb4ddc019bf9478b5373e488692c",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 6,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "70cc94f5852fd419c5b791223cf90c96e1f8fb4ddc019bf9478b5373e488692c",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 7,
+      "artifactStatus": "draft",
+      "artifactType": "NFR",
+      "contentHash": "fd4b7e52c009ecc2a995c1371fc9f8df93832277e2e14a4eef6a9e6ed6865e8e",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 8,
+      "artifactStatus": "draft",
+      "artifactType": "NFR",
+      "contentHash": "fd4b7e52c009ecc2a995c1371fc9f8df93832277e2e14a4eef6a9e6ed6865e8e",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 9,
+      "artifactStatus": "draft",
+      "artifactType": "RULE",
+      "contentHash": "62f3b0c90892ee4ed369be48bf5742005356b4258611368c05db362fc585d82a",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    },
+    {
+      "artifactId": 10,
+      "artifactStatus": "draft",
+      "artifactType": "RULE",
+      "contentHash": "62f3b0c90892ee4ed369be48bf5742005356b4258611368c05db362fc585d82a",
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "operation": "create"
+    }
+  ],
+  "contributingExecutionRefs": [
+    "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284"
+  ],
+  "expectedSchemaRef": "factory.formalization-product-bundle.v1",
+  "presenterExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+  "schemaVersion": "factory.workplace-production-snapshot.v1",
+  "traces": [
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 2,
+      "targetId": 1,
+      "targetType": "artifact",
+      "traceHash": "bce412de0dc2e649b9951a637ea087f47fc9d3b394389e15382bdeea6cdde384",
+      "traceId": 1
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 3,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "19224bf102236d0a0427dcf70ec3ede7faeba934c2010d427a5204502e4c23bb",
+      "traceId": 2
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 4,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "fb68f488a9fd2661299791ee790293ab1ea10a3a59db429debc494b2faf0f621",
+      "traceId": 3
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 5,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "dd4914f09a59ce61aa7c2146ec7b105cbd138235474f54ec784093355b560bc8",
+      "traceId": 4
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 6,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "281a1a0bfe48c13d999b9d4ae516ed32b5456557749c8307fde679ea60cc9346",
+      "traceId": 5
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 7,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "cb7f78cfb54da4ccb2c3e9dcbb302c2a12be1c67ac800ecdfaa36e99ffd33bf8",
+      "traceId": 6
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 8,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "56fea060e69e3c63f01ff6f9846306e4479b9bf7d2c949b922d7e5dfc87fa5bd",
+      "traceId": 7
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "70c3d6822e52facd02fde277fc65a51518ff1fa84553856f79b9ce5645434844",
+      "traceId": 8
+    },
+    {
+      "lastProducerExecutionRef": "worker-execution:22f8e772-bd71-4c0d-915d-890b04bce284",
+      "linkType": "derived_from",
+      "sourceId": 10,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "79203df2ae8ec32e40c7b664caf6665f0ac41342c1b229aad9d7e986490a92e1",
+      "traceId": 9
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+}

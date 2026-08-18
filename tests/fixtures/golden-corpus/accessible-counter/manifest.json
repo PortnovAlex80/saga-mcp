@@ -1,0 +1,789 @@
+{
+  "schema": "saga.golden-corpus.v1",
+  "source": {
+    "run": "tests/golden-runs/production-run-001-20260812",
+    "harvestedBy": "tools/harvest-golden-corpus.mjs"
+  },
+  "counts": {
+    "products": 54,
+    "documents": 8,
+    "artifacts": 25
+  },
+  "products": [
+    {
+      "nodeId": null,
+      "schemaId": "factory.development-task-graph.v1",
+      "productKind": "development.task-graph",
+      "productKey": "development.task-graph",
+      "ordinal": 1,
+      "file": "products/unknown.factory.development-task-graph.v1.1.json",
+      "sourcePayloadHash": "467db8f19d448cf1addcb0a879c7bbb01d3696bdfcbc3c59789c0572813e9731",
+      "bytes": 7123
+    },
+    {
+      "nodeId": "assess-readiness",
+      "schemaId": "factory.discovery-readiness-assessment.v1",
+      "productKind": "factory.discovery-readiness-assessment.v1",
+      "productKey": "content:b4fe4a274ed824ec7fe68e81d85fe8251ffafb9a7fdd80917cb745495ae1459c",
+      "ordinal": 1,
+      "file": "products/assess-readiness.factory.discovery-readiness-assessment.v1.1.json",
+      "sourcePayloadHash": "b4fe4a274ed824ec7fe68e81d85fe8251ffafb9a7fdd80917cb745495ae1459c",
+      "bytes": 3869
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:15",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "25133eb542bffa593f5942ebb914e06c4fb78c29ac5e97d776ce012ef10b7e31",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:16",
+      "ordinal": 2,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.2.json",
+      "sourcePayloadHash": "cd81ec6854dbf03f82c594c4561a7fef72369d75bf594fb0ea17d1f65a6dc212",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:17",
+      "ordinal": 3,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.3.json",
+      "sourcePayloadHash": "89f34d47554981c7cf0e90555faf82fdd24d58b2346287a711d4da9d84da65af",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:18",
+      "ordinal": 4,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.4.json",
+      "sourcePayloadHash": "be1c51f8021f8cd8941a65f69346ec8a9e04ac2c190d36054f938d52371bea0f",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:19",
+      "ordinal": 5,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.5.json",
+      "sourcePayloadHash": "f46ffb7beb9055ae752b8af60fb44566aca0dd1fe735dbae394ddd9f1b895c3e",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:20",
+      "ordinal": 6,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.6.json",
+      "sourcePayloadHash": "26008ff43a770b14d5827b769cb4e7aed853c4171ce58697ba101dc092315f36",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:21",
+      "ordinal": 7,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.7.json",
+      "sourcePayloadHash": "dd6501a085f79c5b90457c22cec3e1d6b5aabf2ad5c597b1fb823d260d3f8bb1",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:22",
+      "ordinal": 8,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.8.json",
+      "sourcePayloadHash": "5118cf4db75860e7611f6d7ce43d9a1f52e9806c4c716a8d0e90bdf4d29bc601",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:23",
+      "ordinal": 9,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.9.json",
+      "sourcePayloadHash": "69969ddacba749417e70284baecec5fb992c71f21a7e88e24502ef17626d3ee2",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:24",
+      "ordinal": 10,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.10.json",
+      "sourcePayloadHash": "169595ad1e7353efe9ab435a6d307af3aebc66dfe8a8db9390a0458abfe70145",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.formalization-acceptance-bundle.v1",
+      "productKind": "factory.formalization-acceptance-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-acceptance-contract:e403d05f0e436958cd3c5bb6a81f6cc17df1f3168e88ebce5bfdbd9506615a46",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.formalization-acceptance-bundle.v1.1.json",
+      "sourcePayloadHash": "e403d05f0e436958cd3c5bb6a81f6cc17df1f3168e88ebce5bfdbd9506615a46",
+      "bytes": 10022
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:c1e95fd05b4193155be93759dc4f5b1953a8465cf79ecd35560013791e5d3f1b",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "c1e95fd05b4193155be93759dc4f5b1953a8465cf79ecd35560013791e5d3f1b",
+      "bytes": 227
+    },
+    {
+      "nodeId": "define-architecture-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:25",
+      "ordinal": 1,
+      "file": "products/define-architecture-contract.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "c28ea83eb7124ac22665b0ff48f69928c0270d95f93d7a7fe013bba03c5648f8",
+      "bytes": 111
+    },
+    {
+      "nodeId": "define-architecture-contract",
+      "schemaId": "factory.formalization-architecture-bundle.v1",
+      "productKind": "factory.formalization-architecture-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-architecture-contract:72f208fed1754776a409bfe4c6e79dfa6955c05834b0e0d7ad6366d5f93a98c5",
+      "ordinal": 1,
+      "file": "products/define-architecture-contract.factory.formalization-architecture-bundle.v1.1.json",
+      "sourcePayloadHash": "72f208fed1754776a409bfe4c6e79dfa6955c05834b0e0d7ad6366d5f93a98c5",
+      "bytes": 925
+    },
+    {
+      "nodeId": "define-architecture-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:772ee5f018ebd425c69a064d19ec601799cde62727791d7786d59082c413b610",
+      "ordinal": 1,
+      "file": "products/define-architecture-contract.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "772ee5f018ebd425c69a064d19ec601799cde62727791d7786d59082c413b610",
+      "bytes": 229
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:1",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "dcf0ff7b2683cd9de1db46efba63e73dd66a431d87520fc645ae8b4e7d7549c9",
+      "bytes": 112
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:2",
+      "ordinal": 2,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.2.json",
+      "sourcePayloadHash": "d16684e7f5a88c8dc30365452f2fbd6abea6c573ccddd10987812855a3185ea3",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:3",
+      "ordinal": 3,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.3.json",
+      "sourcePayloadHash": "b850217ecc410ea48797d62459e30f132e2ca17db5aca07eb5178e2f6d6c2282",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:4",
+      "ordinal": 4,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.4.json",
+      "sourcePayloadHash": "fa17f99ad0708f8153d141d11d0636c124d2cb9359ccd2aa9f8fefa652ec2e91",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:5",
+      "ordinal": 5,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.5.json",
+      "sourcePayloadHash": "d6cafecc6bc0bf711d08dd811b26ec10ddff09bd4ebf20db2224f106d48c989c",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:6",
+      "ordinal": 6,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.6.json",
+      "sourcePayloadHash": "a744da5f50e53838cd21433f42e158c9ef5b6cc59457be6d57e1ebab54b7bfa0",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:7",
+      "ordinal": 7,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.7.json",
+      "sourcePayloadHash": "61ba5793eedf53c95df66d16cc3b00d238459a190d269a373b7803fe5ca53e6b",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:8",
+      "ordinal": 8,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.8.json",
+      "sourcePayloadHash": "239b3b812e632f5c155bbfd9c581d59341933fb659005bb44758ef96788f671c",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:9",
+      "ordinal": 9,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.9.json",
+      "sourcePayloadHash": "f7a6a3448d2f341b05a16ea4e9dd55dff45515f3372adf93b08faf3de21e1a4d",
+      "bytes": 111
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:10",
+      "ordinal": 10,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.10.json",
+      "sourcePayloadHash": "c888435c05b761df72b680cd09c73f054131c75521820444601f3ef51f88028d",
+      "bytes": 112
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.formalization-product-bundle.v1",
+      "productKind": "factory.formalization-product-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-product-contract:c90dc0f7990bcd6c30c07784437660252ffcc5f89131cada2365bfd23035a678",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.formalization-product-bundle.v1.1.json",
+      "sourcePayloadHash": "c90dc0f7990bcd6c30c07784437660252ffcc5f89131cada2365bfd23035a678",
+      "bytes": 5162
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:a999f1b7958e5e2b6c516e4f9dd5c12383361b6e2a00467aefbb1e52219339f9",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "a999f1b7958e5e2b6c516e4f9dd5c12383361b6e2a00467aefbb1e52219339f9",
+      "bytes": 224
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:83f49412c299950456866bb733cc38c959c222dfedc76821607b917478678d04",
+      "ordinal": 1,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.1.json",
+      "sourcePayloadHash": "83f49412c299950456866bb733cc38c959c222dfedc76821607b917478678d04",
+      "bytes": 1031
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:ad9b8dae4cf692f845ef08f1d36827ac2699d508c8232b09e5aae07e30de4a4e",
+      "ordinal": 2,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.2.json",
+      "sourcePayloadHash": "ad9b8dae4cf692f845ef08f1d36827ac2699d508c8232b09e5aae07e30de4a4e",
+      "bytes": 2101
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:d3944aee942e4e5d07cbff0ca8f21647b9b25af5f4bc46f7a2316d26bfbc2914",
+      "ordinal": 3,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.3.json",
+      "sourcePayloadHash": "d3944aee942e4e5d07cbff0ca8f21647b9b25af5f4bc46f7a2316d26bfbc2914",
+      "bytes": 1743
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:26d05f35f1b28441bbc1fc07c87fa58b9ab373db481572e186f6b3fa072231b2",
+      "ordinal": 4,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.4.json",
+      "sourcePayloadHash": "69d73d2c282ad3410f2fb2f9527a5aba5d9e2888ee48caab539646bea665bbac",
+      "bytes": 2359
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:a5dc3bdde1716e1c4e725e08ad3a890db387880fac4101082046782c744673ad",
+      "ordinal": 5,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.5.json",
+      "sourcePayloadHash": "a5dc3bdde1716e1c4e725e08ad3a890db387880fac4101082046782c744673ad",
+      "bytes": 2117
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:c99f273a26e6f72674ea147729fe98a4ad8d7ce87d0cf10296b84c541971a079",
+      "ordinal": 6,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.6.json",
+      "sourcePayloadHash": "c99f273a26e6f72674ea147729fe98a4ad8d7ce87d0cf10296b84c541971a079",
+      "bytes": 998
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-implementation-result.v1",
+      "productKind": "factory.development-implementation-result.v1",
+      "productKey": "content:a2ba5325c5f4cce4304d2dadf88c39e0975057ad3228d673af6959122b1211b0",
+      "ordinal": 7,
+      "file": "products/implement-work-items.factory.development-implementation-result.v1.7.json",
+      "sourcePayloadHash": "a2ba5325c5f4cce4304d2dadf88c39e0975057ad3228d673af6959122b1211b0",
+      "bytes": 910
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:a744ee7aefa6ef326aae40a0293b612e374a839bcfcbd42423dad113c0f82578",
+      "ordinal": 1,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.1.json",
+      "sourcePayloadHash": "a744ee7aefa6ef326aae40a0293b612e374a839bcfcbd42423dad113c0f82578",
+      "bytes": 2229
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:9abfeb2d089dedf24dc7ce8a8c6d3e1bd2a0178bbbb4d0d7c13d15f5b2547294",
+      "ordinal": 2,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.2.json",
+      "sourcePayloadHash": "9abfeb2d089dedf24dc7ce8a8c6d3e1bd2a0178bbbb4d0d7c13d15f5b2547294",
+      "bytes": 3469
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:eca196bb467210c2354a6ab38f8107d6f314fdf94d7c46a1a559478a2c860a98",
+      "ordinal": 3,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.3.json",
+      "sourcePayloadHash": "eca196bb467210c2354a6ab38f8107d6f314fdf94d7c46a1a559478a2c860a98",
+      "bytes": 2887
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:c8726f382e3139e3f49dce0278a85ebac50f46f0dfb583e4f706598b9fde5475",
+      "ordinal": 4,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.4.json",
+      "sourcePayloadHash": "c8726f382e3139e3f49dce0278a85ebac50f46f0dfb583e4f706598b9fde5475",
+      "bytes": 3635
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:2cc656fa8e6bab0ebbf73c756c082edf58386711ea51a121dabb576f6d3dcad3",
+      "ordinal": 5,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.5.json",
+      "sourcePayloadHash": "2cc656fa8e6bab0ebbf73c756c082edf58386711ea51a121dabb576f6d3dcad3",
+      "bytes": 1910
+    },
+    {
+      "nodeId": "implement-work-items",
+      "schemaId": "factory.development-review-verdict.v1",
+      "productKind": "factory.development-review-verdict.v1",
+      "productKey": "content:a4736b63e47e9c7822121b286c17a82cdec71b53ad59e05caa1671a0a157772e",
+      "ordinal": 6,
+      "file": "products/implement-work-items.factory.development-review-verdict.v1.6.json",
+      "sourcePayloadHash": "a4736b63e47e9c7822121b286c17a82cdec71b53ad59e05caa1671a0a157772e",
+      "bytes": 1027
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:11",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "19076850c9e8b9227809cd5bc1788f170365a30c39af6bcd2e5d4aeb3c15d0e7",
+      "bytes": 110
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:12",
+      "ordinal": 2,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.2.json",
+      "sourcePayloadHash": "417454ffb79077c0d2d645806774a66f15617332f6b9f16ed74126e9a1b08039",
+      "bytes": 110
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:13",
+      "ordinal": 3,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.3.json",
+      "sourcePayloadHash": "0351b3a327f512303a1431c0f9a26493fceacdcb5da3c976c7daccf593fef6a3",
+      "bytes": 110
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:14",
+      "ordinal": 4,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.4.json",
+      "sourcePayloadHash": "0e5da83b064ec100144f699482fdfc459f0223f7214841cc205da343ae931486",
+      "bytes": 110
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.formalization-use-case-bundle.v1",
+      "productKind": "factory.formalization-use-case-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:model-use-cases:6e4ebd7295691a64372eaa48ee74b62ec0b5d32842618525fb18c42d13e00af9",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.formalization-use-case-bundle.v1.1.json",
+      "sourcePayloadHash": "6e4ebd7295691a64372eaa48ee74b62ec0b5d32842618525fb18c42d13e00af9",
+      "bytes": 4150
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:74a289e5490ce260041350bfc2a9d01c3a6b27ab096ff0dec902c25645f3c5de",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "74a289e5490ce260041350bfc2a9d01c3a6b27ab096ff0dec902c25645f3c5de",
+      "bytes": 217
+    },
+    {
+      "nodeId": "plan-task-graph",
+      "schemaId": "factory.development-task-graph-proposal.v1",
+      "productKind": "factory.development-task-graph-proposal.v1",
+      "productKey": "content:3f8f427c8d7769475ef756f60303a6be5a012edc7e4b9d189d049d724448dfec",
+      "ordinal": 1,
+      "file": "products/plan-task-graph.factory.development-task-graph-proposal.v1.1.json",
+      "sourcePayloadHash": "3f8f427c8d7769475ef756f60303a6be5a012edc7e4b9d189d049d724448dfec",
+      "bytes": 8241
+    },
+    {
+      "nodeId": "plan-task-graph",
+      "schemaId": "factory.development-task-graph-proposal.v1",
+      "productKind": "factory.development-task-graph-proposal.v1",
+      "productKey": "content:73f46adcf1a3d4c2c13e80bc880299c16c0897da63ebbec41c7e0e8f832e8f5a",
+      "ordinal": 2,
+      "file": "products/plan-task-graph.factory.development-task-graph-proposal.v1.2.json",
+      "sourcePayloadHash": "73f46adcf1a3d4c2c13e80bc880299c16c0897da63ebbec41c7e0e8f832e8f5a",
+      "bytes": 8307
+    },
+    {
+      "nodeId": "produce-proposal",
+      "schemaId": "factory.discovery-proposal-ref.v1",
+      "productKind": "factory.discovery-proposal-ref.v1",
+      "productKey": "factory.discovery-proposal-ref.v1",
+      "ordinal": 1,
+      "file": "products/produce-proposal.factory.discovery-proposal-ref.v1.1.json",
+      "sourcePayloadHash": "7d03bc8e7cb89f933c9ca1f90457a207bf19f937a300fbb8dcf97175581e22bd",
+      "bytes": 97
+    },
+    {
+      "nodeId": "produce-proposal",
+      "schemaId": "factory.discovery-proposal.v1",
+      "productKind": "factory.discovery-proposal.v1",
+      "productKey": "content:99d7ffe0fb37d60f92315f978a743ac34dc4ad1839ed3e53bf025ce06610c65c",
+      "ordinal": 1,
+      "file": "products/produce-proposal.factory.discovery-proposal.v1.1.json",
+      "sourcePayloadHash": "99d7ffe0fb37d60f92315f978a743ac34dc4ad1839ed3e53bf025ce06610c65c",
+      "bytes": 4263
+    },
+    {
+      "nodeId": "reconcile-what",
+      "schemaId": "factory.formalization-reconciliation-report.v1",
+      "productKind": "factory.formalization-reconciliation-report.v1",
+      "productKey": "content:f7d136941088381c7788ce734e59444af4fe6335a2ba22175999d699eb790178",
+      "ordinal": 1,
+      "file": "products/reconcile-what.factory.formalization-reconciliation-report.v1.1.json",
+      "sourcePayloadHash": "f7d136941088381c7788ce734e59444af4fe6335a2ba22175999d699eb790178",
+      "bytes": 574
+    },
+    {
+      "nodeId": "reconcile-what",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:1023b384a92d4367c1e58616fe949ea103b7f32ca0ebac17c998bde81d347fed",
+      "ordinal": 1,
+      "file": "products/reconcile-what.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "1023b384a92d4367c1e58616fe949ea103b7f32ca0ebac17c998bde81d347fed",
+      "bytes": 222
+    }
+  ],
+  "documents": [
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/00-brief.md",
+      "file": "documents/REQ-001-accessible-counter_00-brief.md",
+      "contentHash": "8673673fb0361b8347db42bdbf3febfe1ed62857c11a1a7e135710ae27d9adf7",
+      "lines": 124,
+      "bytes": 6671
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/01-PRD.md",
+      "file": "documents/REQ-001-accessible-counter_01-PRD.md",
+      "contentHash": "f3be7a9e27e47da4c7d28b7044690e869e9f9e9c1e9af5e6945bc01ed77ac57b",
+      "lines": 225,
+      "bytes": 10433
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/02-functional-requirements.md",
+      "file": "documents/REQ-001-accessible-counter_02-functional-requirements.md",
+      "contentHash": "70cc94f5852fd419c5b791223cf90c96e1f8fb4ddc019bf9478b5373e488692c",
+      "lines": 70,
+      "bytes": 2930
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/02-use-cases.md",
+      "file": "documents/REQ-001-accessible-counter_02-use-cases.md",
+      "contentHash": "593895c832e57fb1a9d074f98ae7919080e5aab3545a6c50f5f79a35c79a1da7",
+      "lines": 149,
+      "bytes": 5393
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md",
+      "file": "documents/REQ-001-accessible-counter_03-acceptance-criteria.md",
+      "contentHash": "c5a0e2c8ff5b41ab9c485c9130c801c1485436f7a9a0cb65b6345b15f2808229",
+      "lines": 286,
+      "bytes": 10767
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/03-non-functional-requirements.md",
+      "file": "documents/REQ-001-accessible-counter_03-non-functional-requirements.md",
+      "contentHash": "fd4b7e52c009ecc2a995c1371fc9f8df93832277e2e14a4eef6a9e6ed6865e8e",
+      "lines": 33,
+      "bytes": 1637
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/04-business-rules.md",
+      "file": "documents/REQ-001-accessible-counter_04-business-rules.md",
+      "contentHash": "62f3b0c90892ee4ed369be48bf5742005356b4258611368c05db362fc585d82a",
+      "lines": 31,
+      "bytes": 1742
+    },
+    {
+      "source": "artifacts/requirements/REQ-001-accessible-counter/05-SRS.md",
+      "file": "documents/REQ-001-accessible-counter_05-SRS.md",
+      "contentHash": "790458527f970f61fafa3556a9eb3ca71742d369e1a91cc4cdb7bc09022837b3",
+      "lines": 699,
+      "bytes": 23841
+    }
+  ],
+  "artifacts": [
+    {
+      "type": "brief",
+      "code": "brief",
+      "title": "Accessible Counter Web Application - Product Brief",
+      "path": "docs/requirements/REQ-001-accessible-counter/00-brief.md",
+      "status": "accepted"
+    },
+    {
+      "type": "PRD",
+      "code": "PRD",
+      "title": "Accessible Counter Web Application - Product Requirements Document",
+      "path": "docs/requirements/REQ-001-accessible-counter/01-PRD.md",
+      "status": "accepted"
+    },
+    {
+      "type": "FR",
+      "code": "FR-1",
+      "title": "Counter Display",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-functional-requirements.md#FR-1",
+      "status": "accepted"
+    },
+    {
+      "type": "FR",
+      "code": "FR-2",
+      "title": "Increment Control",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-functional-requirements.md#FR-2",
+      "status": "accepted"
+    },
+    {
+      "type": "FR",
+      "code": "FR-3",
+      "title": "Decrement Control",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-functional-requirements.md#FR-3",
+      "status": "accepted"
+    },
+    {
+      "type": "FR",
+      "code": "FR-4",
+      "title": "Local Persistence",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-functional-requirements.md#FR-4",
+      "status": "accepted"
+    },
+    {
+      "type": "NFR",
+      "code": "NFR-1",
+      "title": "Accessibility Compliance",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-non-functional-requirements.md#NFR-1",
+      "status": "accepted"
+    },
+    {
+      "type": "NFR",
+      "code": "NFR-2",
+      "title": "Local Execution",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-non-functional-requirements.md#NFR-2",
+      "status": "accepted"
+    },
+    {
+      "type": "RULE",
+      "code": "RULE-1",
+      "title": "Counter Value Range",
+      "path": "docs/requirements/REQ-001-accessible-counter/04-business-rules.md#RULE-1",
+      "status": "accepted"
+    },
+    {
+      "type": "RULE",
+      "code": "RULE-2",
+      "title": "Storage Graceful Degradation",
+      "path": "docs/requirements/REQ-001-accessible-counter/04-business-rules.md#RULE-2",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-1",
+      "title": "View Counter Display",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-use-cases.md#UC-1",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-2",
+      "title": "Increment Counter",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-use-cases.md#UC-2",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-3",
+      "title": "Decrement Counter",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-use-cases.md#UC-3",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-4",
+      "title": "Restore Counter State",
+      "path": "docs/requirements/REQ-001-accessible-counter/02-use-cases.md#UC-4",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-1",
+      "title": "Counter Display Visibility",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-1",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-2",
+      "title": "Counter Display Updates Immediately",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-2",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-3",
+      "title": "Increment Value Correctness",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-3",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-4",
+      "title": "Increment Button Accessibility",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-4",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-5",
+      "title": "Decrement Value Correctness",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-5",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-6",
+      "title": "Decrement Button Accessibility",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-6",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-7",
+      "title": "Value Persistence Across Sessions",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-7",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-8",
+      "title": "Graceful Degradation When Storage Unavailable",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-8",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-9",
+      "title": "No Keyboard Traps",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-9",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC-10",
+      "title": "Local Execution Without External Dependencies",
+      "path": "docs/requirements/REQ-001-accessible-counter/03-acceptance-criteria.md#AC-10",
+      "status": "accepted"
+    },
+    {
+      "type": "SRS",
+      "code": "SRS",
+      "title": "Accessible Counter Web Application - Software Requirements Specification",
+      "path": "docs/requirements/REQ-001-accessible-counter/05-SRS.md",
+      "status": "accepted"
+    }
+  ]
+}

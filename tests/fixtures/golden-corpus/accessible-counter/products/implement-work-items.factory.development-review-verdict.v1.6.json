@@ -1,0 +1,28 @@
+{
+  "acceptanceCriterionIds": [
+    18,
+    20,
+    23
+  ],
+  "authorExecutionRef": "worker-execution:9fa5928e-2ac9-4af2-82cd-feac562d48af",
+  "executionId": "worker-execution:4b9d0b26-4c70-4a28-8d58-dae05b0f2bc8",
+  "findings": [],
+  "moduleRef": "solution-development@1.2.0",
+  "nodeId": "implement-work-items",
+  "processRunId": 3,
+  "reviewedAt": "2026-08-12T07:21:23Z",
+  "reviewedSource": {
+    "branch": "saga/task/14/execution/0859a4084e727fcb6993",
+    "commitSha": "fc2299c4448bdf91440926f58bcb3a954d8cffc3",
+    "projectRepositoryId": 1,
+    "repositoryName": ".factory-sandboxes/production-run-001-repo",
+    "treeSha": "fc2299c4448bdf91440926f58bcb3a954d8cffc3"
+  },
+  "reviewerExecutionId": "worker-execution:4b9d0b26-4c70-4a28-8d58-dae05b0f2bc8",
+  "schemaVersion": "factory.development-review-verdict.v1",
+  "subject_candidate_set_ref": "candidate-set/3/solution-development@1.2.0/development-implementation/9cd0817af43a028a1b152e30/930c36db251316a27f6aeda57b2ead4fb3718cc2ab736f13ecab086f42605800/author",
+  "submissionId": 26,
+  "taskId": 26,
+  "verdict": "approved",
+  "workItemKey": "accessibility-manager-implementation"
+}

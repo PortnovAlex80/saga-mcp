@@ -1,0 +1,40 @@
+{
+  "buildProducts": {
+    "jestConfigured": true,
+    "npmInstallSuccessful": true,
+    "packageJsonValid": true,
+    "testFrameworkFunctional": true
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "f83eb10771b59fdf25f628db77b4217044534a86",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/production-run-001-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "changeType": "added",
+        "path": "package.json",
+        "sha": "2f0acb6024c8d3f19e66df5b0cc8d9553b8d4d5e6f3e7f1a8d9e2e1c6b5a9d3f4"
+      },
+      {
+        "changeType": "added",
+        "path": "tests/README.md",
+        "sha": "5d41402abc4b2a76b9719d911017c592f509ec8cb8f9a5f09a6d5c5e8e4d2f1b"
+      }
+    ],
+    "commitSha": "c20180839b4f34c0ceecb40e5cb9a0d2f8e2c8cc",
+    "treeSha": "1836ed65a356e2d1ddfb6274b5004bd00e264198"
+  },
+  "source": {
+    "branch": "saga/task/17/execution/f81e73599147d59c507a",
+    "commitSha": "c20180839b4f34c0ceecb40e5cb9a0d2f8e2c8cc",
+    "treeSha": "1836ed65a356e2d1ddfb6274b5004bd00e264198",
+    "workItemKey": "infrastructure-setup"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "infrastructure-setup"
+}

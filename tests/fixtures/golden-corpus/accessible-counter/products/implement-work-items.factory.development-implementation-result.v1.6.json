@@ -1,0 +1,50 @@
+{
+  "buildProducts": {
+    "testResults": {
+      "coverage": {
+        "branches": "87.5",
+        "functions": "100",
+        "lines": "95.5",
+        "statements": "95.5"
+      },
+      "failedTests": 0,
+      "passedTests": 37,
+      "testExecutionTimeMs": 1309,
+      "testSuite": "integration.test.js",
+      "totalTests": 37
+    }
+  },
+  "reasonCodes": [
+    "AC-4_IMPLEMENTED",
+    "AC-6_IMPLEMENTED"
+  ],
+  "repository": {
+    "baseCommit": "d86e0b7fa87d286b19ed756fec3151426a0d8f5d",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/production-run-001-repo",
+    "projectRepositoryId": 1
+  },
+  "snapshot": {
+    "changedFiles": [
+      {
+        "changeType": "added",
+        "path": "js/interaction-handler.js",
+        "sizeBytes": 8432
+      },
+      {
+        "changeType": "modified",
+        "path": "test/integration.test.js",
+        "sizeBytes": 46231
+      }
+    ],
+    "commitSha": "6d1a9db3aef62f171ec85710c747fca2d5251be1",
+    "treeSha": "d0161d8a22dd89805cfd6da172d6584556281fcd"
+  },
+  "source": {
+    "branch": "saga/task/18/execution/ae4ef0af30af6bd49543",
+    "commitSha": "6d1a9db3aef62f171ec85710c747fca2d5251be1",
+    "workItemKey": "interaction-handler-implementation"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "interaction-handler-implementation"
+}

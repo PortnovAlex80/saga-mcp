@@ -1,0 +1,358 @@
+{
+  "acceptanceBaselineHash": "cd604a484d39069e36c82785491c120fb8f9ac8b126e191690ddaad04a380ce6",
+  "epicId": 1,
+  "formalizationCertificateHash": "165fdf91628c73f2a33c4ebc7c368724a454c854547b99642c6e0cd739c6883d",
+  "graphHash": "11a933052984736849454d7a0b1a7c52ce24ab586c2265c3151588d4f3f02176",
+  "implementationItems": [
+    {
+      "acceptanceCriterionIds": [
+        18,
+        20,
+        23
+      ],
+      "changeScopes": [
+        "js/accessibility-manager.js",
+        "test/integration.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "interaction-handler-implementation",
+        "storage-adapter-implementation",
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "accessibility-manager-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21,
+        24
+      ],
+      "changeScopes": [
+        "index.html",
+        "js/application-bootstrap.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation",
+        "counter-core-implementation",
+        "interaction-handler-implementation",
+        "storage-adapter-implementation",
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "application-bootstrap-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.integration"
+    },
+    {
+      "acceptanceCriterionIds": [
+        17,
+        19
+      ],
+      "changeScopes": [
+        "js/counter-core.js",
+        "test/counter-core.test.js",
+        "test/property.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "infrastructure-setup"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "counter-core-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature"
+    },
+    {
+      "acceptanceCriterionIds": [],
+      "changeScopes": [
+        "package.json",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "infrastructure-setup",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.foundation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        18,
+        20
+      ],
+      "changeScopes": [
+        "js/interaction-handler.js",
+        "test/integration.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation",
+        "storage-adapter-implementation"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "interaction-handler-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21,
+        22
+      ],
+      "changeScopes": [
+        "js/storage-adapter.js",
+        "test/integration.test.js",
+        "test/storage-adapter.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation",
+        "infrastructure-setup"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "storage-adapter-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature"
+    },
+    {
+      "acceptanceCriterionIds": [
+        15,
+        16
+      ],
+      "changeScopes": [
+        "css/styles.css",
+        "js/ui-renderer.js",
+        "test/ui-renderer.test.js"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-implementer",
+      "key": "ui-renderer-implementation",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation.feature"
+    }
+  ],
+  "integrationTargets": [
+    {
+      "expectedBaseCommit": "f83eb10771b59fdf25f628db77b4217044534a86",
+      "projectRepositoryId": 1,
+      "sourceWorkItemKeys": [
+        "accessibility-manager-implementation",
+        "application-bootstrap-implementation",
+        "counter-core-implementation",
+        "infrastructure-setup",
+        "interaction-handler-implementation",
+        "storage-adapter-implementation",
+        "ui-renderer-implementation"
+      ],
+      "targetBranch": "dev"
+    }
+  ],
+  "plannerSubmission": {
+    "hash": "73f46adcf1a3d4c2c13e80bc880299c16c0897da63ebbec41c7e0e8f832e8f5a",
+    "ref": "managed-node-submission:10",
+    "schema": "factory.development-task-graph-proposal.v1"
+  },
+  "schemaVersion": "factory.development-task-graph.v1",
+  "solutionContractHash": "417e02c26375c45a1db531ff6b2dba66c78e4d1b3a062b43c15f5ff85cbea990",
+  "srsHash": "790458527f970f61fafa3556a9eb3ca71742d369e1a91cc4cdb7bc09022837b3",
+  "verificationItems": [
+    {
+      "acceptanceCriterionIds": [
+        15
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-1",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        24
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "application-bootstrap-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-10",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        16
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "ui-renderer-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-2",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        17
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-3",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        18
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-4",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        19
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "counter-core-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-5",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        20
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-6",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        21
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "application-bootstrap-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-7",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        22
+      ],
+      "changeScopes": [],
+      "criticality": "degradable",
+      "dependsOnKeys": [
+        "storage-adapter-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-8",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        23
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "accessibility-manager-implementation"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-9",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    }
+  ]
+}
