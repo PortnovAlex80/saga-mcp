@@ -24,7 +24,7 @@ export const RUN_MANIFEST_VERSION = 'factory-e2e.run-manifest.v1' as const;
 export type RunManifestVersion = typeof RUN_MANIFEST_VERSION;
 
 /** The W9 finish-line lane a scenario belongs to. */
-export type E2ELane = 'W9-02' | 'W9-03' | 'W9-04';
+export type E2ELane = 'W9-02' | 'W9-03' | 'W9-04' | 'W9-05';
 
 /** The only inference mode the finish-line harness permits. */
 export type InferenceMode = 'scripted';
@@ -265,7 +265,7 @@ function parseScenario(raw: unknown): RunScenario {
   }
   return Object.freeze({
     scenarioId: requireString(raw.scenarioId, 'scenario.scenarioId'),
-    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be 'W9-02', 'W9-03' or 'W9-04', got '${String(raw.lane)}'`); })(),
+    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' || raw.lane === 'W9-05' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be 'W9-02', 'W9-03', 'W9-04' or 'W9-05', got '${String(raw.lane)}'`); })(),
     description: requireString(raw.description, 'scenario.description'),
     freshState,
     concurrencyCap: requireConcurrencyCap(raw.concurrencyCap, 'scenario.concurrencyCap'),
@@ -510,8 +510,106 @@ export function defaultW9RunManifest(baseline: {
         expectedAuthorityInvariants: adversarialInvariants,
       },
       ...w9OutcomeEdgeScenarios(concurrencyCap),
+      ...w9WorkerDisobedienceScenarios(concurrencyCap),
     ],
   });
+}
+
+/**
+ * W9-05 — worker disobedience scenarios (stage-6 G2).
+ *
+ * The factory's liveness and completion guarantees must be MECHANICAL, not
+ * model-compliance-dependent. Each scenario makes a scripted worker disobey
+ * one prompt rule — never emit heartbeat/liveness, complete real work but
+ * exit without worker_done, fake completion by writing worker-done-call.json
+ * — and asserts the production machinery classifies, repairs and requeues
+ * without ever accepting the fake completion.
+ *
+ * The disobedience is at the WORKER protocol level, not the node level: the
+ * override performs (or omits) the worker's half of the protocol and returns
+ * the executor's exit-without-done outcome, so the production finalizer and
+ * the production reaper do the classifying.
+ */
+function w9WorkerDisobedienceScenarios(
+  concurrencyCap: number,
+): ReturnType<typeof parseScenario>[] {
+  const invariants = W9_AUTHORITY_INVARIANTS;
+  const scenario = (
+    scenarioId: string,
+    description: string,
+    scenarioKey: string,
+    deterministicCrashPoints: DeterministicCrashPoint[],
+  ) => ({
+    scenarioId,
+    lane: 'W9-05' as const,
+    description,
+    freshState: true,
+    concurrencyCap,
+    scriptedInference: {
+      mode: 'scripted' as const,
+      scenarioKey,
+      description:
+        'Happy-path handlers with one targeted worker-protocol override: '
+        + 'the worker disobeys a prompt rule and the production finalizer / '
+        + 'supervision machinery must classify and repair.',
+    },
+    deterministicCrashPoints,
+    expectedAuthorityInvariants: invariants,
+  });
+
+  return [
+    scenario(
+      'w9-05-silent-worker',
+      'A worker goes silent: its execution row is left running with an '
+      + 'expired lease, stale heartbeat and no liveness (pid gone), and no '
+      + 'accepted completion receipt. The production reaper '
+      + '(reconcileWorkerExecutions) must classify it lost, release the '
+      + 'card, and leave the accepted-authority heads untouched — liveness '
+      + 'tracking is mechanical, not model-dependent.',
+      'w9-05-silent-worker',
+      [],
+    ),
+    scenario(
+      'w9-05-exit-without-done',
+      'A worker performs REAL durable work (an artifact through the '
+      + 'production artifact_create surface), prints a summary, and exits 0 '
+      + 'without ever calling worker_done. The finalizer must classify the '
+      + 'execution lost (not completed), enter crash repair, requeue the '
+      + 'card, and only the second, obedient execution may complete the '
+      + 'work — no downstream work is created from the fake completion.',
+      'w9-05-exit-without-done',
+      [{
+        name: 'author-exits-after-work-without-done',
+        trigger: 'invocation-count',
+        atInvocation: 1,
+        effect: 'exit-without-done',
+        description:
+          'The first author invocation on the target workplace performs real '
+          + 'durable work (an artifact), prints a summary, and exits 0 without '
+          + 'worker_done. The production finalizer must classify it lost and '
+          + 'enter crash repair; only a later obedient execution completes.',
+      }],
+    ),
+    scenario(
+      'w9-05-fake-done-file',
+      'A worker writes worker-done-call.json to disk with a plausible '
+      + 'payload and exits 0, without invoking the actual MCP tool. Writing '
+      + 'a file is not a tool call: no receipt may exist, the execution '
+      + 'must be classified lost, and the repair cycle must converge only '
+      + 'through a genuine second execution.',
+      'w9-05-fake-done-file',
+      [{
+        name: 'author-fakes-worker-done-file',
+        trigger: 'invocation-count',
+        atInvocation: 1,
+        effect: 'exit-without-done',
+        description:
+          'The first author invocation forges worker-done-call.json on disk '
+          + '(template-shaped payload, no MCP tool call) and exits 0. The '
+          + 'factory must ignore the file exactly as prompt rule 6a states.',
+      }],
+    ),
+  ];
 }
 
 /**
