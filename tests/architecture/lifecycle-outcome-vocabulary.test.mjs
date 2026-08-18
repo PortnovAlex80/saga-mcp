@@ -21,11 +21,15 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { productBuildLifecycle } from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 import { discoveryProcessModule } from '../../dist/process-modules/modules/discovery/discovery-process-module.js';
 import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
 import { developmentProcessModule } from '../../dist/process-modules/modules/development/development-process-module.js';
+import { deliveryProcessModule } from '../../dist/process-modules/modules/delivery/delivery-process-module.js';
 import { DISCOVERY_OUTCOMES } from '../../dist/modules/discovery/domain/discovery-proposal.js';
 
 const MODULE_BY_STAGE = new Map([
@@ -88,4 +92,74 @@ test('the worker recommendation grammar cannot exceed the emittable outcomes', (
       'failed is a runtime-only outcome: no worker may recommend it',
     );
   }
+});
+
+
+// ---------------------------------------------------------------------------
+// Instruction side: the package resources the model literally reads.
+//
+// The enforcement side rejecting a word does not stop it from costing money if
+// the checklist still teaches it (the stage-3 addendum: two discovery
+// checklists offered defer/inconclusive for ~30 paid gate rejections per run).
+// This scan keeps the taught vocabulary inside the module's emittable set.
+//
+// Scope is OUTCOME vocabulary only: lines that OFFER an outcome enumeration
+// (recommended_outcome / "outcome ... one of"). Provider and observation
+// states that merely reuse an English word — preflight-check-inconclusive,
+// observation-inconclusive, the advisor's overall_readiness rating — do not
+// offer lifecycle outcomes and are deliberately not flagged.
+// ---------------------------------------------------------------------------
+
+const ALL_MODULES = [
+  ['discovery', discoveryProcessModule],
+  ['formalization', formalizationProcessModule],
+  ['development', developmentProcessModule],
+  ['delivery', deliveryProcessModule],
+];
+
+/** Every word that ever was an outcome code: emittable ∪ deleted. */
+const OUTCOME_WORD_UNIVERSE = new Set([
+  ...ALL_MODULES.flatMap(([, module]) => moduleOutcomeCodes(module)),
+  // deleted with the stage-3 purge — must never be offered again
+  'defer', 'inconclusive', 'infeasible', 'rework-required', 'clarification-required',
+]);
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const offersOutcomeEnumeration = (line) =>
+  /recommended_outcome/.test(line) || /outcome[^.]{0,80}one of/i.test(line);
+
+test('no package resource offers an outcome word outside its module emittable set', () => {
+  const violations = [];
+  for (const [moduleName, module] of ALL_MODULES) {
+    const emittable = new Set(moduleOutcomeCodes(module));
+    const resourcesDir = path.join(
+      repoRoot, 'src/process-modules/modules', moduleName, 'package/resources',
+    );
+    let files;
+    try {
+      files = readdirSync(resourcesDir).filter(f => f.endsWith('.md'));
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      const lines = readFileSync(path.join(resourcesDir, file), 'utf8').split('\n');
+      lines.forEach((line, index) => {
+        if (!offersOutcomeEnumeration(line)) return;
+        for (const word of OUTCOME_WORD_UNIVERSE) {
+          if (new RegExp(`\\b${word}\\b`).test(line) && !emittable.has(word)) {
+            violations.push(
+              `${moduleName}/package/resources/${file}:${index + 1} offers '${word}' `
+              + `(emittable: ${[...emittable].join(', ')}) — ${line.trim()}`,
+            );
+          }
+        }
+      });
+    }
+  }
+  assert.deepEqual(
+    violations, [],
+    'a resource teaching an outcome the module cannot emit is a cost defect: '
+    + 'the worker pays for the attempt, the gate rejects it. '
+    + `Violations: ${JSON.stringify(violations)}`,
+  );
 });

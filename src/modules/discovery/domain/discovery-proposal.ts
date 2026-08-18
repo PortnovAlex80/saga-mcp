@@ -13,18 +13,17 @@
  */
 
 /**
- * The six discovery outcomes. These are BUSINESS verdicts about the idea, not
- * process states. The provisional outcome the engine records in D1 is taken
- * directly from a valid proposal's recommended_outcome; D4 settlement makes it
- * authoritative.
+ * The WORKER-RECOMMENDATION vocabulary for discovery — a business verdict
+ * about the idea, not a process state. 'failed' is a runtime-only outcome
+ * (kernel-seam process failure) and deliberately absent: no worker may
+ * recommend it. 'defer' and 'inconclusive' were deleted with their routes
+ * (no runtime producer — W9-04-UNREACHABLE-EDGE-EVIDENCE, RESOLVED); a
+ * submission carrying them is invalid input, never translated.
  */
 export type DiscoveryOutcome =
   | 'go'
   | 'clarify'
-  | 'reject'
-  | 'defer'
-  | 'inconclusive'
-  | 'failed';
+  | 'reject';
 
 export const DISCOVERY_OUTCOMES: readonly DiscoveryOutcome[] = [
   'go', 'clarify', 'reject',

@@ -11,7 +11,7 @@ Before `product_submit`, verify the exact accepted Proposal ProductRef from
 
 ## Decision fields
 - [ ] `overall_readiness` is one of: ready, conditionally_ready, not_ready, inconclusive.
-- [ ] `recommended_next_action` is one of: proceed_to_settlement, request_clarification, repeat_discovery, defer, reject, manual_review.
+- [ ] `recommended_next_action` is one of: proceed_to_settlement, request_clarification, repeat_discovery, reject, manual_review.
 - [ ] `confidence` is finite and in [0,1].
 - [ ] `rationale` is non-empty and grounded in the Proposal.
 

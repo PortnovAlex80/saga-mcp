@@ -11,7 +11,7 @@ Before `product_submit`, read the exact proposal call file and verify every item
 - [ ] `content.risks` is a JSON array of strings.
 - [ ] `content.candidate_scope` is a non-empty string.
 - [ ] `content.evidence_refs` is a JSON array of strings and contains no invented evidence.
-- [ ] `content.recommended_outcome` is one of: go, clarify, reject, defer, inconclusive, failed.
+- [ ] `content.recommended_outcome` is one of: go, clarify, reject. These are the only outcomes the factory can emit from a recommendation; anything else is rejected as invalid input.
 - [ ] `content.rationale` is a non-empty string grounded in the inspected context.
 - [ ] No `FILL_` placeholder remains.
 

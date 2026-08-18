@@ -101,7 +101,6 @@ export type RecommendedNextAction =
   | 'proceed_to_settlement'
   | 'request_clarification'
   | 'repeat_discovery'
-  | 'defer'
   | 'reject'
   | 'manual_review';
 

@@ -12,7 +12,7 @@ Read normalization-call-{EPIC_ID}.json and verify EVERY item:
   - [ ] problem_statement, observed_context, candidate_scope, rationale — non-empty strings
   - [ ] stakeholders_or_actors, assumptions, unknowns, risks — non-empty arrays
   - [ ] evidence_refs — array; every ref from allowed_source_refs
-  - [ ] recommended_outcome — one of: go, clarify, reject, defer, inconclusive, failed
+  - [ ] recommended_outcome — one of: go, clarify, reject (the only outcomes the factory can emit from a recommendation; anything else is invalid input)
 - [ ] payload.source_field_map: every canonical proposal field has an entry
 - [ ] every source_field_map path is a REAL top-level path in the source payload (no invention)
 - [ ] payload.notes is an array (may be empty)
@@ -21,5 +21,7 @@ Read normalization-call-{EPIC_ID}.json and verify EVERY item:
 
 ## Decision-specific rules
 - The normalized_payload.recommended_outcome must be DERIVED from the source
-  payload (do NOT invent a new recommendation). If the source does not state
-  one, default to "inconclusive" and note it in payload.notes.
+  payload (do NOT invent a new recommendation). If the source states no
+  recommendation — or states one outside go / clarify / reject — that is
+  INVALID INPUT: fail closed and report the gap in payload.notes. Do not
+  default, translate or invent a recommendation.

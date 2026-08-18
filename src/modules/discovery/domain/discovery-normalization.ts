@@ -66,7 +66,6 @@ const OUTCOME_ALIASES: Readonly<Record<string, DiscoveryOutcome>> = {
   clarification_required: 'clarify',
   unsupported: 'reject',
   not_supported: 'reject',
-  error: 'failed',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
