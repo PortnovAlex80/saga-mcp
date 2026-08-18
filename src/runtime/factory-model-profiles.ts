@@ -18,6 +18,35 @@ export interface FactoryModelProfile {
  */
 export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freeze([
   Object.freeze({
+    id: 'glm-4.5',
+    label: 'GLM 4.5 — legacy budget',
+    provider: 'zai',
+    effort: 'high',
+    limit: 2,
+    tier: 'sonnet',
+    note: 'Served by the coding-plan endpoint (verified 2026-08-18 via /models). '
+      + 'Legacy tier for cheap experiments.',
+  }),
+  Object.freeze({
+    id: 'glm-4.5-air',
+    label: 'GLM 4.5 Air — lightest',
+    provider: 'zai',
+    effort: 'high',
+    limit: 2,
+    tier: 'sonnet',
+    note: 'Air variant — fastest/cheapest endpoint model; drafts and routine nodes.',
+  }),
+  Object.freeze({
+    id: 'glm-4.6',
+    label: 'GLM 4.6 — legacy budget',
+    provider: 'zai',
+    effort: 'high',
+    limit: 2,
+    tier: 'sonnet',
+    note: 'Served by the coding-plan endpoint (verified 2026-08-18 via /models). '
+      + 'Sonnet-level fallback for cheap dev loops.',
+  }),
+  Object.freeze({
     id: 'glm-4.7',
     label: 'GLM 4.7 — recommended default',
     provider: 'zai',
@@ -27,6 +56,15 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     note: 'Sonnet-level, x1 rate — recommended default',
   }),
   Object.freeze({
+    id: 'glm-5',
+    label: 'GLM 5',
+    provider: 'zai',
+    effort: 'high',
+    limit: 3,
+    tier: 'flagship',
+    note: 'Previous flagship generation, x1 rate.',
+  }),
+  Object.freeze({
     id: 'glm-5-turbo',
     label: 'GLM 5 Turbo',
     provider: 'zai',
@@ -34,6 +72,15 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     limit: 5,
     tier: 'flagship',
     note: 'Opus-level, x1 rate',
+  }),
+  Object.freeze({
+    id: 'glm-5.1',
+    label: 'GLM 5.1',
+    provider: 'zai',
+    effort: 'high',
+    limit: 3,
+    tier: 'flagship',
+    note: 'Mid-generation flagship, x1 rate.',
   }),
   Object.freeze({
     id: 'glm-5.2',

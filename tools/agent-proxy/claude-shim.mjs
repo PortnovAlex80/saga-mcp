@@ -64,11 +64,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 const MODEL_MAP = new Map([
+  ['glm-4.5', 'zai-coding-plan/glm-4.5'],
+  ['glm-4.5-air', 'zai-coding-plan/glm-4.5-air'],
+  ['glm-4.6', 'zai-coding-plan/glm-4.6'],
   ['glm-4.7', 'zai-coding-plan/glm-4.7'],
+  ['glm-5', 'zai-coding-plan/glm-5'],
   ['glm-5-turbo', 'zai-coding-plan/glm-5-turbo'],
+  ['glm-5.1', 'zai-coding-plan/glm-5.1'],
   ['glm-5.2', 'zai-coding-plan/glm-5.2'],
   ['glm-5.2-highspeed', 'zai-coding-plan/glm-5.2-highspeed'],
-  ['glm-5.3', 'zai-coding-plan/glm-5.2'],
+  ['glm-5.3', 'zai-coding-plan/glm-5.3'],
 ]);
 const DEFAULT_MODEL = process.env.SAGA_PROXY_DEFAULT_MODEL || 'zai-coding-plan/glm-4.7';
 
@@ -79,6 +84,21 @@ const DEFAULT_MODEL = process.env.SAGA_PROXY_DEFAULT_MODEL || 'zai-coding-plan/g
 // (opencode docs /providers: OpenRouter/Cloudflare examples), the generated
 // config extends the built-in provider with a glm-5.3 entry — auth stays in
 // opencode's auth.json, no key duplication.
+// Models the official coding endpoint serves (GET .../coding/paas/v4/models,
+// checked 2026-08-18: 9 ids incl. glm-4.5/4.5-air/4.6/5/5.1) but opencode's
+// built-in zai-coding-plan registry lacks (1.18.18). The shim adds these to
+// the built-in provider via the documented config pattern; auth stays in
+// opencode's auth.json. When opencode ships them natively, these entries
+// become harmless duplicates.
+const REGISTRY_GAP_MODELS = {
+  'glm-4.5': { name: 'GLM 4.5', limit: { context: 128000, output: 32768 } },
+  'glm-4.5-air': { name: 'GLM 4.5 Air', limit: { context: 128000, output: 32768 } },
+  'glm-4.6': { name: 'GLM 4.6', limit: { context: 200000, output: 65536 } },
+  'glm-5': { name: 'GLM 5', limit: { context: 200000, output: 65536 } },
+  'glm-5.1': { name: 'GLM 5.1', limit: { context: 200000, output: 65536 } },
+  'glm-5.3': { name: 'GLM 5.3', limit: { context: 1048576, output: 65536 } },
+};
+
 const MODEL_53 = 'zai-coding-plan/glm-5.3';
 
 function hasCodingPlanAuth() {
@@ -181,17 +201,14 @@ function writeBridgeInstructions(cfgDir) {
 function buildOpenCodeConfig(mcpConfigPath, resolvedModel, instructionsFile) {
   const cfg = { $schema: 'https://opencode.ai/config.json' };
   if (instructionsFile) cfg.instructions = [instructionsFile];
-  if (resolvedModel === MODEL_53) {
-    // Documented extension pattern: add glm-5.3 to the BUILT-IN provider.
+  const gapModel = Object.entries(REGISTRY_GAP_MODELS)
+    .find(([id]) => resolvedModel === `zai-coding-plan/${id}`);
+  if (gapModel) {
+    // Documented extension pattern: add the model to the BUILT-IN provider.
     // Auth comes from auth.json (opencode auth login) — no key here.
     cfg.provider = {
       'zai-coding-plan': {
-        models: {
-          'glm-5.3': {
-            name: 'GLM 5.3',
-            limit: { context: 1048576, output: 65536 },
-          },
-        },
+        models: { [gapModel[0]]: gapModel[1] },
       },
     };
   }

@@ -26,15 +26,27 @@ unset SAGA_REAL_CLAUDE_PATH
 `zai-coding-plan` (ключ Coding Plan, тот же что у claude-канала; эндройнт
 `https://api.z.ai/api/coding/paas/v4`).
 
-## Маппинг моделей (проверен по `opencode models` 2026-08-18)
+## Маппинг моделей
 
-| claude / завод | opencode                       |
-|----------------|--------------------------------|
-| glm-4.7        | zai-coding-plan/glm-4.7        |
-| glm-5-turbo    | zai-coding-plan/glm-5-turbo    |
-| glm-5.2        | zai-coding-plan/glm-5.2        |
-| glm-5.3        | zai-coding-plan/glm-5.3 — через задокументированный паттерн «добавить модель к встроенному провайдеру» (opencode docs /providers): шимка генерирует `provider.zai-coding-plan.models["glm-5.3"]` с лимитами 1M/64K; auth остаётся в auth.json. Нужен вход `opencode auth login` → Z.AI Coding Plan, иначе fallback на glm-5.2 |
-| opus/sonnet    | через ANTHROPIC_DEFAULT_OPUS_MODEL, иначе дефолт glm-4.7 |
+Coding-эндпоинт плана обслуживает 9 моделей (проверено `GET .../coding/paas/v4/models`
+18.08.2026); в штатном реестре opencode (1.18.18) есть только 4 из них —
+остальные шимка добавляет задокументированным паттерном «модель к встроенному
+провайдеру» (`provider.zai-coding-plan.models[...]`, доки opencode /providers).
+Каталог завода (`FACTORY_CLOUD_MODELS`) содержит все 9. Каждая проверена живым
+вызовом через шимку 18.08.2026.
+
+| claude / завод | opencode                        | в реестре opencode |
+|----------------|---------------------------------|--------------------|
+| glm-4.5        | zai-coding-plan/glm-4.5        | нет → конфиг-надстройка (128K) |
+| glm-4.5-air    | zai-coding-plan/glm-4.5-air    | нет → конфиг-надстройка (128K) |
+| glm-4.6        | zai-coding-plan/glm-4.6        | нет → конфиг-надстройка (200K) |
+| glm-4.7        | zai-coding-plan/glm-4.7        | да |
+| glm-5          | zai-coding-plan/glm-5          | нет → конфиг-надстройка (200K) |
+| glm-5-turbo    | zai-coding-plan/glm-5-turbo    | да |
+| glm-5.1        | zai-coding-plan/glm-5.1        | нет → конфиг-надстройка (200K) |
+| glm-5.2        | zai-coding-plan/glm-5.2        | да |
+| glm-5.3        | zai-coding-plan/glm-5.3        | нет → конфиг-надстройка (1M) |
+| opus/sonnet    | через ANTHROPIC_DEFAULT_OPUS_MODEL, иначе дефолт glm-4.7 | — |
 
 `--effort` игнорируется (в этом провайдере reasoning выбирается моделью).
 Дефолт-модель прокси: `SAGA_PROXY_DEFAULT_MODEL`.
@@ -56,9 +68,9 @@ unset SAGA_REAL_CLAUDE_PATH
 
 ## Известные ограничения
 
-- glm-5.3 отсутствует в штатном реестре провайдера opencode (1.18.18) → шимка
-  добавляет его конфигом к встроенному провайдеру (документированный паттерн);
-  когда opencode включит 5.3 в реестр сам, конфиг станет безвредным дубликатом.
+- 5 из 9 моделей плана отсутствуют в реестре opencode (1.18.18) → шимка
+  добавляет их конфигом к встроенному провайдеру (документированный паттерн);
+  когда opencode включит их сам, записи станут безвредными дубликатами.
 - `--effort` игнорируется (в этом провайдере reasoning выбирается моделью);
   профиль завода glm-5.3 с effort=max отработает как max на стороне модели.
 - Инъекция хук-контекста идёт через `session.prompt noReply` — приходит в
