@@ -120,14 +120,16 @@
       ]
     },
     "K11": {
-      "state": "closed",
+      "state": "reopened",
       "closedAt": "2026-08-17",
       "boundaryManifest": "95c0377c",
       "evidence": [
         "Close commit a096ac21 'K11 close - effects certified authority-only' 2026-08-17",
         "docs/verification/PROGRAM-STATUS.md K11 close summary",
         "ADR-053 entry notes: 'Boundary manifest 8/8 at 95c0377c.'"
-      ]
+      ],
+      "reopenedAt": "2026-08-18",
+      "reopenReason": "Architect decision on the G3 dossier (docs/testing/G3-MERGE-GRANT-CONFLICT.md section 9). K11's own exit gate reads: 'no post-acceptance effect reads material through process, task, node, schema, latest submission, or execution identity.' The git-integration effect reads task.integration_state — a task-identity-scoped column — and treats it as proof that a merge occurred: sqlite-production-cell-integration.ts:293 short-circuits on integration_state==='merged' BEFORE the ancestry test, then stamps integrated_commit with the observed branch head and returns a valid factory receipt. worker_merge_release (src/tools/dispatcher.ts:1499-1507) writes that column verbatim from a tool argument with zero git verification. The two compose into a manufactured integration receipt over a merge that never happened — precisely the failure class ADR-039 is named after. This is defect B; it is NOT in the ADR-039 reconciliation note, which correctly identified only defect A (the surviving worker_merge_* grant). Stage 7 (docs/handoff/STAGE-7-AGENT-BRIEF.md) closes B; A follows separately with the section 27 ratchet."
     },
     "K12": {
       "state": "closed",

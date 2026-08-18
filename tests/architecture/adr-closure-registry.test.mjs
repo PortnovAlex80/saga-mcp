@@ -70,7 +70,7 @@ test('ADR-076 closure evidence: this suite enforces the protocol', () => {
   );
 });
 
-test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12', () => {
+test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12 minus the reopened K11', () => {
   const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/architecture/adr-closure-registry.json'), 'utf8'));
   const keys = Object.keys(registry.releases).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   assert.deepEqual(
@@ -79,15 +79,30 @@ test('stage 5: the releases block records all 21 K-releases; the closed set is K
     'the releases block must cover K0-K20 — removing a release from the record is a deliberate act',
   );
   const closed = keys.filter((k) => registry.releases[k].state === 'closed');
+  // K11 was REOPENED on 2026-08-18 by architect decision on the G3 dossier: the
+  // git-integration effect reads task.integration_state as proof that a merge
+  // happened, which its own exit gate forbids ("no post-acceptance effect reads
+  // material through ... task ... identity"). See releases.K11.reopenReason.
+  // This pin therefore records 12 closed, not 13 — and reopening a release is
+  // exactly the deliberate act this assertion exists to make visible.
   assert.deepEqual(
     closed,
-    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K11', 'K12'],
-    `closed set drifted from the recorded "13 of 21 releases done" (docs/verification/PROGRAM-STATUS.md:30): got ${closed.join(',')}`,
+    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K12'],
+    `closed set drifted: got ${closed.join(',')}`,
+  );
+  assert.equal(
+    registry.releases.K11.state,
+    'reopened',
+    'K11 stays reopened until the forged-receipt path is closed and its exit gate re-signed',
   );
   assert.equal(registry.releases.K13.state, 'open', 'K13 closure is the architect\'s exit gate to sign, never a bookkeeping edit');
   for (const key of keys) {
     const rel = registry.releases[key];
-    assert.ok(['closed', 'open', 'unknown'].includes(rel.state), `${key}.state must be closed|open|unknown`);
+    assert.ok(['closed', 'open', 'unknown', 'reopened'].includes(rel.state), `${key}.state must be closed|open|unknown|reopened`);
+    if (rel.state === 'reopened') {
+      assert.ok(typeof rel.reopenReason === 'string' && rel.reopenReason.length > 0,
+        `${key} is reopened without stating what evidence broke the closure`);
+    }
     if (rel.state === 'closed') {
       assert.ok(Array.isArray(rel.evidence) && rel.evidence.length > 0,
         `${key} is closed without citing where the closure came from`);
