@@ -865,9 +865,11 @@ function handleWorkerDone(
     // 5. Разблокировка downstream ТОЛЬКО при done (нативная механика saga).
     if (newStatus === 'done') {
       // Worktree-интеграция: APPROVED → задача done, НО код ещё не слит в dev.
-      // Ставим merged_into:"pending" — значит «принят, ждёт интеграции». Воркер
-      // затем берёт merge-lock, мержит, и worker_merge_release резолвит pending→dev
-      // (или →conflict). worker_health отличит «done но не слито» по этому полю.
+      // Ставим merged_into:"pending" — значит «принят, ждёт интеграции».
+      // Интеграцию выполняет огороженный эффект git-integration фабрики
+      // (stage-8: воркерам больше не выдаются merge-инструменты) — он мержит
+      // точный reviewed source commit и резолвит pending→merged (или
+      // →conflict). worker_health отличит «done но не слито» по этому полю.
       // Для изменений цикла CHANGES_REQUESTED (review→in_progress) НЕ трогаем —
       // worktree живёт, метка не нужна.
       if (task.task_kind && task.execution_mode === 'git_change') {
@@ -1677,7 +1679,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Author completion enters review; approved repository work remains gated until worker_merge_release(result="merged"). A changes_requested verdict returns the card to the author queue with review feedback. The response carries stop:true and never assigns another card.',
+      'Complete the held task and free its assignment. Author completion enters review; approved repository work is integrated afterwards by the factory\'s git-integration effect — never by the worker (the merge tools are not granted to workers). A changes_requested verdict returns the card to the author queue with review feedback. The response carries stop:true and never assigns another card.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,

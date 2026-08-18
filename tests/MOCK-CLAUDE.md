@@ -59,9 +59,9 @@ Per spawn (one task lifecycle):
 6. **Drive the saga DB** via direct handler imports:
    - `verification.ac` → `verification_record(passed)` for the canonical AC
      target stored on `tasks.verification_target_artifact_id`.
-   - `git_change` review task → `worker_done(approved)` → `worker_merge_acquire`
-     → empty git commit on `task/<id>` branch → `git merge` →
-     `worker_merge_release(merged|conflict)`.
+   - `git_change` review task → `worker_done(approved)` — the factory's
+     git-integration post-acceptance effect merges the reviewed source
+     (stage-8: merge tools are not granted to workers).
    - Anything else → `worker_done(approved)`.
 7. **Heartbeat** — writes `CLAIMED` and `MOCK_DONE` (or `MOCK_PARTIAL`) lines
    to `~/.zcode/cli/worker-heartbeat.log`, same format as real workers.
