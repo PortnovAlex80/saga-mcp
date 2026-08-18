@@ -343,7 +343,7 @@
       "adr": "035",
       "file": "035-replay-sealed-candidate-after-provider-plan-failure.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K8",
         "K9"
@@ -351,7 +351,12 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact capsule identity; crash-safe regeneration",
       "successor": null,
-      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure. Reconciled 2026-08-18 against the releases block (K8+K9 closed): proof found, entry closed.",
+      "evidence": [
+        "Implementation: src/app/factory-start.ts recoverFailedGateRun — the single-use immutable authorization/consumption pair (factory_failed_gate_recovery_authorizations / factory_failed_gate_recovery_consumptions, src/schema.ts:2710-2749, four no-update/no-delete triggers)",
+        "Behavior: tests/checkpoints/factory-failed-gate-recovery.test.mjs 3/3 — recovery preserves the sealed CandidateSet and reopens ONLY runtime envelopes (LifecycleRun/StageRun/ProcessRun to paused, workplace loop_state verifying; the old GateRun stays checking, the failed NodeRun stays failed); exactly one authorization row; the second call replays idempotently on the same authorizationRef",
+        "Negatives: same suite — a replacement plan retaining the legacy digest is refused ('not the canonical successor') with zero authorization rows and the lifecycle stays failed; recovery follows the active completion, not revision presenter audit metadata"
+      ]
     },
     {
       "adr": "036",
@@ -392,7 +397,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact accepted prefix; repeated lifecycle theorem",
       "successor": null,
-      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure."
+      "notes": "K5 evidence: exact package-digest deltas now classifiable (handlerImplementationDigests); resume-side foundation for the K8-K9 replay/continuation closure. Reconciled 2026-08-18 against the releases block (K8+K9 closed) — LEFT PLANNED. Delivered and tested: the core mechanism, tests/process-modules/lifecycle-continuation.test.mjs 5/5 (continuation identity stable across chains; one immutable child suffix inheriting the prefix without child StageRuns, idempotent consume, order-run chain of 2; fail-closed CONTINUATION_PARENT_DRIFT and CONTINUATION_ROUTE_REENTERS_PREFIX; corrected suffix after an exact terminal blocked stage; chaining from the failed active leaf). Missing evidence: (1) the decision itself is still 'proposed' — no acceptance record to close against; (2) the ADR follow-up 'remove or quarantine the obsolete destructive tools/saga-reset-stage.mjs' is outstanding (the file is still present); (3) the principalProof phrase 'repeated lifecycle theorem' names no test of that name."
     },
     {
       "adr": "039",
@@ -405,7 +410,7 @@
       "evidenceOwner": "K11",
       "principalProof": "Authority-only Git effect; exact ProductRefs",
       "successor": null,
-      "notes": null
+      "notes": "Reconciled 2026-08-18 against the releases block (K11 closed) — LEFT PLANNED. Delivered and tested: the Option-B core (tests/infrastructure/managed-source-change-candidate.test.mjs 3/3 — Factory materializes a TextSet candidate without moving canonical dev, exact base receipt, replay-identical commitSha; path-escape and undeclared-scope negatives) and authority-only effects (tests/process-modules/authority-only-effects-theorem.test.mjs 3/3 — operational decoys cannot change the effect subject; tests/architecture/effects-no-material-reselection.test.mjs 3/3 — no effect selects material by operational identity or chronology, authority asserted before action). Missing evidence: (1) the decision itself is still 'proposed' — no acceptance record to close against; (2) the follow-up 'remove worker_merge_* from LM profiles' is outstanding (worker_merge_acquire/release still declared in src/process-modules/application/capability-packages.ts:423-432 and mapped in src/lifecycle/application-service.ts:231-232, with no test banning them from author profiles); (3) the 'deterministic graph-fitness provider' has no source module or test under that name; (4) no worker-path test asserts the 30-day ex-ante expectation 'canonical refs do not change before an exact Factory effect'."
     },
     {
       "adr": "040",
@@ -434,7 +439,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact replay + Workplace-only material identity",
       "successor": null,
-      "notes": null
+      "notes": "Reconciled 2026-08-18 against the releases block (K8+K9+K10 closed) — LEFT PLANNED. Delivered: the implementation and persistence — authorizeEligibleAuthorCandidateCarryForward in src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts (resolve/consume port; the eligibility error names the exact review-verdict schema 'factory.development-review-verdict.v1'), the single-use immutable authorization/consumption pair in src/schema.ts:2168-2252 with UPDATE/DELETE triggers, wired into prepareDevelopmentContinuation (src/app/factory-continuation.ts:7,197); structurally pinned by tests/architecture/adr-053-cutover-gates.test.mjs Gate B3 (the authorization path never queries presenter_ref provenance). Missing evidence: no behavioral test exercises the carry-forward mechanism — nothing tests that the bounded predicate admits exactly the post-author/pre-final reviewer-schema-mismatch class and falls back to a fresh author otherwise; that the child seals a new CandidateSet with member origin carried-forward naming the source set; that a fresh reviewer + current final gate are required with no old decision copied; or the single-use consumption idempotency/crash behavior of this authorization pair. (Naming trap verified: tests/factory-contract/c5-carry-forward-adversarial-matrix.test.mjs is ADR-053 C5-04, not this ADR.)"
     },
     {
       "adr": "042",
@@ -464,7 +469,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Exact capsule/accepted-prefix behavior under continuation",
       "successor": null,
-      "notes": null
+      "notes": "Reconciled 2026-08-18 against the releases block (K8+K9 closed) — LEFT PLANNED, partial proof only. Delivered: the verification-continuation module and its topology theorem, tests/architecture/development-verification-continuation.test.mjs 2/2 (entry adopt-verification-baseline; contains verify-acceptance + settle-development; forbids plan-task-graph/resolve-task-graph/implement-work-items/freeze-integrated-candidate; single execution profile development-verification-worker; no git-integration cell; no route back into production), plus the machine-local live proof tests/infrastructure/development-verification-continuation-live.test.mjs (skipped unless the sandbox DB exists; adopts warehouse product without worker production, pins the exact candidate hash and method-plan equality). Missing evidence: deterministic coverage of the ADR's remaining fitness items — byte-identical runs 1-6 outside the sandbox, adoption drift negatives, exclusion of old verification CandidateSets from child gates, method-plan coverage blocking, crash/replay idempotency at the authorization/consumption/receipt boundaries, the browser/storage/DOM fixture, and end-to-end Delivery-route consumption of the new certificate."
     },
     {
       "adr": "044",
@@ -478,7 +483,7 @@
       "evidenceOwner": "K8",
       "principalProof": "Append-only invalidation/regeneration; immutable history",
       "successor": null,
-      "notes": null
+      "notes": "Reconciled 2026-08-18 against the releases block (K8+K9 closed) — LEFT PLANNED. Missing evidence: no behavioral test exists for the mechanism — prepareLocalReleaseContinuation (src/app/factory-release-continuation.ts) has zero importers in src/ and tests/, and the local git tag provider (src/infrastructure/delivery/local-git-tag-delivery-provider.ts) has no test exercising tag creation, compare-and-set/no-force, or observe-before/after. What exists is contract-level only: tests/process-modules/delivery-package-contributions.test.mjs pins the release-record schema and adapter invariants; tests/factory-contract/lifecycle-outcome-routes.test.mjs enumerates outcome codes. Unpinned: the child executes only Delivery with zero upstream StageRuns/tasks/worker executions; tag CAS without force; idempotent settle after crash; release-record emission only after authoritative observation."
     },
     {
       "adr": "045",
@@ -630,14 +635,19 @@
       "adr": "055",
       "file": "055-execution-scoped-author-repository-desks.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "closed",
       "owningReleases": [
         "K10"
       ],
       "evidenceOwner": "K10",
       "principalProof": "Execution out of material authority; provenance remains",
       "successor": null,
-      "notes": null
+      "notes": "Reconciled 2026-08-18 against the releases block (K10 closed): proof found, entry closed.",
+      "evidence": [
+        "Implementation: src/infrastructure/workers/repository-desk-provisioner.ts — desk key sha256(taskId, executionRef, effectiveBaseReceiptDigest) truncated to a fixed-length prefix; branch saga/task/<taskId>/execution/<deskKey>; desks in a Factory-owned sibling administration directory, never below the canonical checkout",
+        "Behavior: tests/infrastructure/effective-desk-base.test.mjs 'missing integration blocks a dependent and a new execution never reuses a stale author desk' — DEPENDENCY_NOT_INTEGRATED fail-closed; a repair execution gets a DIFFERENT branch and executionPath on the advanced base; the first attempt's branch still resolves to its original base (the old ref is never moved); replaying the same execution returns the identical branch and path",
+        "Supporting: tests/infrastructure/effective-desk-base.test.mjs 'dependent author freezes the actual post-dependency integration head'; tests/factory-contract/parallel-git-desk.test.mjs (concurrency=2 worktree isolation); the scripted scenario executor provisions desks through the same provisioner (tests/factory-contract/scenario-scripted-executor.mjs:178)"
+      ]
     },
     {
       "adr": "056",
@@ -957,7 +967,7 @@
       "evidenceOwner": "K4",
       "principalProof": "Named canonical RuntimePackageFingerprint (frozen formula), persisted at lifecycle start, rehydrated on resume; one compatibility surface via classifyResumeCompatibility",
       "successor": null,
-      "notes": "K4 implemented: RuntimePackageFingerprint typed entity + runtimeFingerprintOf(record) rehydration (ADR-77 s3) + single-surface architecture ratchet (s4) + full mutation-matrix proofs. Closure gate (all compatibility paths consume the fingerprint) completes at K5."
+      "notes": "K4 implemented: RuntimePackageFingerprint typed entity + runtimeFingerprintOf(record) rehydration (ADR-77 s3) + single-surface architecture ratchet (s4) + full mutation-matrix proofs. Closure gate (all compatibility paths consume the fingerprint) completes at K5. Reconciled 2026-08-18 against the releases block (K4+K5 closed) — LEFT 'implemented', NOT closed. The single-surface suite is tests/architecture/package-identity-single-surface.test.mjs 5/5 (one digest formula definer; fingerprint machinery confined to the installation domain; classifyResumeCompatibility single definer; contract surface carries handler implementation digests; restart-required verdict), the behavioral matrices are tests/architecture/resume-compatibility.test.mjs 9/9 and tests/installation/runtime-package-fingerprint.test.mjs 6/6, and grep shows exactly one production call site of classifyResumeCompatibility (src/process-modules/installation/domain/installer.ts:365). Missing evidence for 'closed': the 'ALL compatibility paths consume the fingerprint' completeness property is not itself ratcheted — no test enumerates compatibility-decision call sites or fails on an identity-subset comparison that avoids the three pinned function names; the completeness claim rests on the import ban plus the observed single call site."
     },
     {
       "adr": "078",
@@ -971,7 +981,13 @@
       "evidenceOwner": "K7",
       "principalProof": "Two-lifecycle contamination theorem: settlement of run N sees ONLY run N material; epic-scoped settlement readers deleted, not retained as fallback",
       "successor": null,
-      "notes": "K6 implemented: exact queries live across the settlement vertical. K7 closed: the second vertical (traceability gap read) migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2). Closure theorem is deterministic on both axes: (1) reintroducing an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the legacy freeze category epic-scoped-material-read (set enforced by legacy-expansion-freeze.test.mjs); (2) reintroducing cross-run contamination fails the self-flipping contamination theorem (tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle). Remaining epic-scoped reads in the baseline (brief-provisioning-ports, formalization-package-adapters) are classified lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (LEGACY-INVENTORY.md) - outside this ADR's settlement/traceability authority scope."
+      "notes": "K6 implemented: exact queries live across the settlement vertical. K7 closed: the second vertical (traceability gap read) migrated to lifecycle scope and the epic-scoped reader DELETED (commits 7ca8a130, 13e00cb2). Closure theorem is deterministic on both axes: (1) reintroducing an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the legacy freeze category epic-scoped-material-read (set enforced by legacy-expansion-freeze.test.mjs); (2) reintroducing cross-run contamination fails the self-flipping contamination theorem (tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle). Remaining epic-scoped reads in the baseline (brief-provisioning-ports, formalization-package-adapters) are classified lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (LEGACY-INVENTORY.md) - outside this ADR's settlement/traceability authority scope.",
+      "evidence": [
+        "Boundary: K7 close per docs/verification/PROGRAM-STATUS.md:26 (manifest dc1dcf39); the epic-scoped reader deletion in commits 7ca8a130, 13e00cb2",
+        "Theorem 1 — legacy freeze category epic-scoped-material-read, enforced by tests/architecture/legacy-expansion-freeze.test.mjs: an epic-scoped accepted-material read outside the two classified brief-provisioning files fails the suite",
+        "Theorem 2 — tests/process-modules/lifecycle-scoped-accepted-material.test.mjs: settlement of run N sees ONLY run N material, fail-closed on empty scope and wrong lifecycle",
+        "Classified remainder: brief-provisioning-ports + formalization-package-adapters are lifecycle-independent INPUT provisioning of the pre-lifecycle brief singleton (docs/architecture/LEGACY-INVENTORY.md)"
+      ]
     },
     {
       "adr": "079",
@@ -984,7 +1000,14 @@
       "evidenceOwner": "K8",
       "principalProof": "N/N-1/N-2 capsule matrix on the exact semantic key; newest-wins defects (paused protocol run, recovery case, outcome certificate, guarded readLatest) cut to fail-closed/exact reads; model-choice orthogonality",
       "successor": null,
-      "notes": "K8 closed at boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). Closure theorems, all deterministic: (1) N/N-1/N-2 semantic-key matrix (replay-semantic-key-theorem.test.mjs) - alias multiplicity is schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref), reviewer subjects isolate per lifecycle, divergent payloads fail closed, zero is a typed miss; (2) newest-wins hardening (newest-wins-hardening.test.mjs) - paused/active protocol picks, recovery-case picks, and outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers); (3) dispatch routing typed (replay-dispatch-routing.test.mjs) - ineligibility is durable-evidence-derived and workplace-scoped, binder failures release + poison one card; (4) model-choice orthogonality (replay-model-orthogonality.test.mjs) - the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin. Classification map updated: K8-owned recency files carry per-file cut/frontier verdicts; legacy freeze OK."
+      "notes": "K8 closed at boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). Closure theorems, all deterministic: (1) N/N-1/N-2 semantic-key matrix (replay-semantic-key-theorem.test.mjs) - alias multiplicity is schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref), reviewer subjects isolate per lifecycle, divergent payloads fail closed, zero is a typed miss; (2) newest-wins hardening (newest-wins-hardening.test.mjs) - paused/active protocol picks, recovery-case picks, and outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers); (3) dispatch routing typed (replay-dispatch-routing.test.mjs) - ineligibility is durable-evidence-derived and workplace-scoped, binder failures release + poison one card; (4) model-choice orthogonality (replay-model-orthogonality.test.mjs) - the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin. Classification map updated: K8-owned recency files carry per-file cut/frontier verdicts; legacy freeze OK.",
+      "evidence": [
+        "Boundary: K8 close commit 58c57e29 + boundary manifest c9903c64 (8/8 suites green: architecture 248/248, factory-contract 84/84, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18)",
+        "Theorem 1 — tests/replay/replay-semantic-key-theorem.test.mjs: N/N-1/N-2 semantic-key matrix; alias multiplicity schema-impossible (UNIQUE(replay_key,payload_hash), key-derived capsule_ref); reviewer subjects isolate per lifecycle; divergent payloads fail closed; zero is a typed miss",
+        "Theorem 2 — tests/replay/newest-wins-hardening.test.mjs: paused/active protocol picks, recovery-case picks, outcome-certificate reads are zero/one/invariant-violation; the assembler probes readByExactCursor; readLatest/readLatestV2 DELETED (interfaces + SQL, zero callers)",
+        "Theorem 3 — tests/replay/replay-dispatch-routing.test.mjs: ineligibility is durable-evidence-derived and workplace-scoped; binder failures release + poison one card",
+        "Theorem 4 — tests/replay/replay-model-orthogonality.test.mjs: the key material is exactly the nine ADR-79 coordinates; a planted modelRoute coordinate fails the pin"
+      ]
     },
     {
       "adr": "080",
@@ -997,7 +1020,15 @@
       "evidenceOwner": "K9",
       "principalProof": "Third-lifecycle theorem: N/N+1/N+2 converge exactly-once under crash injection at bind/invalidate/regenerate/seal, from clean and upgraded DBs, no recency selector, no manual repair; invalidation is append-only exact evidence; regeneration creates new authority",
       "successor": null,
-      "notes": "K9 closed at boundary manifest 3878e51c (8/8 suites green: architecture 251/251, factory-contract 86/86 including the canonical third-lifecycle scenario, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). M2 achieved. Closure theorems, all deterministic: (1) evidence 4/4 - append-only invalidation, idempotent per authority, drift fail-closed, single-shot successor; (2) bridge 3/3 - package-changed evidence recorded before the restart-required refusal, regeneration only through normal production; (3) crash convergence 4/4 - exactly-once at bind/invalidate/regenerate/seal under fault injection; (4) third-lifecycle scenario 2/2 - N/N+1/N+2 converges from clean AND upgraded databases, old capsule byte-identical, successor bound, no recency selector, no manual repair (exit gate); (5) anonymous-park ban 3/3 - handler map set equality, no park writes in mismatch handlers, binder write purity (negative-verified)."
+      "notes": "K9 closed at boundary manifest 3878e51c (8/8 suites green: architecture 251/251, factory-contract 86/86 including the canonical third-lifecycle scenario, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18). M2 achieved. Closure theorems, all deterministic: (1) evidence 4/4 - append-only invalidation, idempotent per authority, drift fail-closed, single-shot successor; (2) bridge 3/3 - package-changed evidence recorded before the restart-required refusal, regeneration only through normal production; (3) crash convergence 4/4 - exactly-once at bind/invalidate/regenerate/seal under fault injection; (4) third-lifecycle scenario 2/2 - N/N+1/N+2 converges from clean AND upgraded databases, old capsule byte-identical, successor bound, no recency selector, no manual repair (exit gate); (5) anonymous-park ban 3/3 - handler map set equality, no park writes in mismatch handlers, binder write purity (negative-verified).",
+      "evidence": [
+        "Boundary: K9 close commit ee96ce7e + boundary manifest 3878e51c (8/8 suites green: architecture 251/251, factory-contract 86/86 including the canonical third-lifecycle scenario, factory-temporal 31/31 crash-injected, golden-path, factory-model, migration-smoke 18/18); M2 achieved",
+        "Theorem 1 — invalidation evidence 4/4: append-only invalidation, idempotent per authority, drift fail-closed, single-shot successor binding",
+        "Theorem 2 — package-changed bridge 3/3: evidence recorded before the restart-required refusal; regeneration only through normal production",
+        "Theorem 3 — crash convergence 4/4: exactly-once at bind/invalidate/regenerate/seal under fault injection",
+        "Theorem 4 — third-lifecycle scenario 2/2 (the K9 exit gate): N/N+1/N+2 converges from clean AND upgraded databases, old capsule byte-identical, successor bound, no recency selector, no manual repair",
+        "Theorem 5 — anonymous-park ban 3/3: handler map set equality, no park writes in mismatch handlers, binder write purity (negative-verified)"
+      ]
     },
     {
       "adr": "081",
@@ -1010,7 +1041,14 @@
       "evidenceOwner": "K12",
       "principalProof": "Forged/mismatched proof negatives fail closed with zero mutation (wrong candidate, non-accepted decision, non-terminal run, receiptless run, unfrozen plan, stale revision); ONE acceptance mutation service in a code search; atomic idempotent commit under crash/retry",
       "successor": null,
-      "notes": "K12 closed at boundary manifest e90ba491 (8/8 suites green; third manifest attempt - two earlier attempts hit unrelated load flakes in single suites, each green standalone). Closure theorems, all deterministic: (1) negatives matrix 9/9 - wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation; (2) capability removal - the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned; (3) crash idempotency - zero-or-one acceptance commits, retry after commit is typed stale no-op; (4) exit-gate ratchet - applyVerifiedAcceptance called ONLY by the service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used. Phase semantics discovered and encoded: a no-review cell's author gate is phase final; with-review author acceptance is phase author; reviewer final verdicts keep applyReviewerVerdict (no caller material truth)."
+      "notes": "K12 closed at boundary manifest e90ba491 (8/8 suites green; third manifest attempt - two earlier attempts hit unrelated load flakes in single suites, each green standalone). Closure theorems, all deterministic: (1) negatives matrix 9/9 - wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation; (2) capability removal - the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned; (3) crash idempotency - zero-or-one acceptance commits, retry after commit is typed stale no-op; (4) exit-gate ratchet - applyVerifiedAcceptance called ONLY by the service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used. Phase semantics discovered and encoded: a no-review cell's author gate is phase final; with-review author acceptance is phase author; reviewer final verdicts keep applyReviewerVerdict (no caller material truth).",
+      "evidence": [
+        "Boundary: K12 close commit 0bcb1b65 + boundary manifest e90ba491 (8/8 suites green)",
+        "Theorem 1 — negatives matrix 9/9: wrong candidate, non-accepted verdict, wrong phase (incl. author-phase-on-final), non-terminal run, receiptless run, unfrozen plan, forged key all fail closed with ZERO mutation",
+        "Theorem 2 — capability removal: the coordinator accepted-with-head branch throws GATE_PROOF_VERIFICATION_REQUIRED, pinned",
+        "Theorem 3 — crash idempotency: zero-or-one acceptance commits; retry after commit is a typed stale no-op",
+        "Theorem 4 — exit-gate ratchet: applyVerifiedAcceptance called ONLY by the CommitAcceptedCandidate service; the acceptedCandidateSetRef truth field appears in exactly two places (rejection declaration + condition), never used"
+      ]
     },
     {
       "adr": "082",
