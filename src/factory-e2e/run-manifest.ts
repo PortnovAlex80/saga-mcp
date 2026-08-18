@@ -584,6 +584,14 @@ function w9OutcomeEdgeScenarios(
       + 'invalidated instead of silently reused.',
       'w9-04-dev-blocked',
     ),
+    scenario(
+      'w9-04-disc-deleted-word-rejected',
+      'A discovery proposal recommends the DELETED outcome word defer. The '
+      + 'proposal contract enum is closed to the producible vocabulary, so '
+      + 'the submission is rejected as invalid input and the cell cannot '
+      + 'complete — the factory never rewrites a deleted word into clarify.',
+      'w9-04-disc-deleted-word-rejected',
+    ),
     ...(['clarify', 'reject'] as const).map(
       code => scenario(
         `w9-04-disc-${code}`,

@@ -219,16 +219,6 @@ export const DISCOVERY_DECLARED_OUTCOMES: readonly DiscoveryDeclaredOutcome[] = 
     description: 'The subject should not continue under the current evidence and policy.',
   },
   {
-    outcome: 'defer',
-    terminal: true,
-    description: 'The subject is valid but should be reconsidered later.',
-  },
-  {
-    outcome: 'inconclusive',
-    terminal: true,
-    description: 'Discovery completed without enough basis for another decision.',
-  },
-  {
     outcome: 'failed',
     terminal: true,
     description: 'Discovery infrastructure could not produce an authoritative result.',

@@ -538,10 +538,14 @@ export interface DevelopmentSettlementInput {
   localReadinessReceipt: LocalReadinessReceipt | null;
 }
 
+/**
+ * The closed decision union IS the mechanical unreachability proof.
+ * 'rework-required' and 'clarification-required' were deleted with their
+ * routes (declared, never produced — see
+ * docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md).
+ */
 export type DevelopmentDecision =
   | 'verified'
-  | 'rework-required'
-  | 'clarification-required'
   | 'blocked'
   | 'failed';
 

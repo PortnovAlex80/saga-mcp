@@ -121,36 +121,39 @@ test('policy returns formalized when the contract graph is complete', () => {
   assert.match(result.inputHash, /^[0-9a-f]{64}$/);
 });
 
-test('policy returns clarification-required when PRD is missing', () => {
+// 'clarification-required' was deleted (declared, never produced): the
+// missing-material reasons now classify 'failed' — if one ever fires, the
+// per-node gates lied about presence, which is an infrastructure failure.
+test('policy returns failed (deleted clarification-required class) when PRD is missing', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
   const result = policy.settle(
     fakeGraph({ prd: null }),
     makeInput({ bundle: { prdArtifactId: null } }),
     LIFECYCLE_RUN_ID,
   );
-  assert.equal(result.decision, 'clarification-required');
+  assert.equal(result.decision, 'failed');
   assert.ok(result.reasonCodes.includes('prd-missing'));
 });
 
-test('policy returns clarification-required when no AC artifacts exist', () => {
+test('policy returns failed (deleted clarification-required class) when no AC artifacts exist', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
   const result = policy.settle(
     fakeGraph({ acs: [] }),
     makeInput({ bundle: { acArtifactIds: [] } }),
     LIFECYCLE_RUN_ID,
   );
-  assert.equal(result.decision, 'clarification-required');
+  assert.equal(result.decision, 'failed');
   assert.ok(result.reasonCodes.includes('acceptance-empty'));
 });
 
-test('policy returns clarification-required when SRS is missing', () => {
+test('policy returns failed (deleted clarification-required class) when SRS is missing', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
   const result = policy.settle(
     fakeGraph({ srs: null }),
     makeInput({ bundle: { srsArtifactId: null } }),
     LIFECYCLE_RUN_ID,
   );
-  assert.equal(result.decision, 'clarification-required');
+  assert.equal(result.decision, 'failed');
   assert.ok(result.reasonCodes.includes('srs-missing'));
 });
 

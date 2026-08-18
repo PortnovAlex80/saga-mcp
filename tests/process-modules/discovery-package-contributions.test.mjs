@@ -235,7 +235,8 @@ test('W9-A2 output contracts: node output contracts cover proposal/normalization
 });
 
 test('W9-A2 output contracts: declared outcomes are all terminal and match the discovery flow', () => {
-  const expected = ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed'];
+  // 'defer' and 'inconclusive' deleted (no runtime producer).
+  const expected = ['go', 'clarify', 'reject', 'failed'];
   assert.deepEqual([...DISCOVERY_OUTCOME_CODES].sort(), [...expected].sort());
   for (const o of DISCOVERY_DECLARED_OUTCOMES) {
     assert.equal(o.terminal, true, `${o.outcome} must be terminal`);

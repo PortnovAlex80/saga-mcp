@@ -77,7 +77,7 @@ test('Discovery forwards every outcome to Formalization (permissive gate; risks 
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery);
-  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
     const route = routeProcessOutcome(discovery, outcome);
     assert.deepEqual(
       route.target,
@@ -118,7 +118,7 @@ test('declarative routing is invariant: same stage+outcome always yields the sam
   );
   // saga4: every Discovery outcome routes forward to Formalization (permissive
   // gate — risks are carried by the discovery certificate, not by blocking).
-  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
     assert.deepEqual(
       routeProcessOutcome(discovery, outcome).target,
       { type: 'stage', stageId: 'solution-formalization' },

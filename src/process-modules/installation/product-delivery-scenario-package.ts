@@ -168,8 +168,6 @@ const DISCOVERY_OUTCOMES = [
   'go',
   'clarify',
   'reject',
-  'defer',
-  'inconclusive',
   'failed',
 ] as const;
 
@@ -182,8 +180,6 @@ const DISCOVERY_OUTCOMES = [
 const STRICT_DISCOVERY_GATE_TERMINALS: Readonly<Record<string, string>> = {
   clarify: 'clarification-required',
   reject: 'rejected',
-  defer: 'deferred',
-  inconclusive: 'inconclusive',
   failed: 'failed',
 };
 

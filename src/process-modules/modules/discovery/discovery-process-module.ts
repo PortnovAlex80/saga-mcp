@@ -60,8 +60,6 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
     { code: 'go', description: 'The subject is sufficiently grounded to continue.', terminal: true },
     { code: 'clarify', description: 'Material information is missing or contradictory.', terminal: true },
     { code: 'reject', description: 'The subject should not continue under current evidence and policy.', terminal: true },
-    { code: 'defer', description: 'The subject is valid but should be reconsidered later.', terminal: true },
-    { code: 'inconclusive', description: 'Discovery completed without enough basis for another decision.', terminal: true },
     { code: 'failed', description: 'Discovery infrastructure could not produce an authoritative result.', terminal: true },
   ],
   flow: {
@@ -118,7 +116,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         inputSchema: { id: 'factory.discovery-settlement-input.v1' },
         outputSchema: { id: 'factory.discovery-outcome-certificate.v1' },
       },
-      ...['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']
+      ...['go', 'clarify', 'reject', 'failed']
         .map(code => ({
           id: `complete-${code}`,
           label: `Complete: ${code}`,
@@ -136,13 +134,10 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       { from: 'settle', to: 'complete-go', on: 'domain.go' },
       { from: 'settle', to: 'complete-clarify', on: 'domain.clarify' },
       { from: 'settle', to: 'complete-reject', on: 'domain.reject' },
-      { from: 'settle', to: 'complete-defer', on: 'domain.defer' },
-      { from: 'settle', to: 'complete-inconclusive', on: 'domain.inconclusive' },
       { from: 'settle', to: 'complete-failed', on: 'domain.failed' },
     ],
     terminalNodeIds: [
-      'complete-go', 'complete-clarify', 'complete-reject',
-      'complete-defer', 'complete-inconclusive', 'complete-failed',
+      'complete-go', 'complete-clarify', 'complete-reject', 'complete-failed',
     ],
   },
   artifacts: [

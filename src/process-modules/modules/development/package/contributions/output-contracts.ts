@@ -218,18 +218,6 @@ export const DEVELOPMENT_DECLARED_OUTCOMES: readonly DevelopmentDeclaredOutcome[
       'All required implementation and acceptance evidence binds to the unchanged frozen candidate.',
   },
   {
-    outcome: 'rework-required',
-    terminal: true,
-    description:
-      'Implementation, review or acceptance evidence found a product defect that requires a new work cycle.',
-  },
-  {
-    outcome: 'clarification-required',
-    terminal: true,
-    description:
-      'The accepted decomposition cannot be converted into a complete, deterministic task graph.',
-  },
-  {
     outcome: 'blocked',
     terminal: true,
     description:

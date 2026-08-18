@@ -1,5 +1,15 @@
 # W9-04 — Unreachable lifecycle outcome edges: evidence dossier
 
+> **RESOLVED — acted on in the stage-3 commit that added this header.**
+> The architect's decision: delete the dead outcomes on BOTH sides (route
+> table AND worker-facing grammar; deleted words are now invalid input at the
+> gate, never translated to clarify), keep the three `failed` routes (runtime
+> producers exist at the kernel-failure seams), and replace this prose with
+> the mechanical ratchet `tests/architecture/lifecycle-outcome-vocabulary.test.mjs`.
+> The claims below are the historical record of HOW the gap was found; the
+> surviving vocabulary is go / clarify / reject / formalized / inconsistent /
+> verified / blocked / failed.
+
 Date: 2026-08-18. Method: read-only source audit of `src/` at current HEAD.
 Consumer: architect escalation per `tests/architecture/lifecycle-outcome-edge-coverage.test.mjs`
 (PENDING entries, lines 53-62: five terminal edges with no runtime trace).

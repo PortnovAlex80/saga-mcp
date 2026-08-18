@@ -107,7 +107,7 @@ export type RecommendedNextAction =
 
 export const RECOMMENDED_NEXT_ACTION_VALUES: readonly RecommendedNextAction[] = [
   'proceed_to_settlement', 'request_clarification', 'repeat_discovery',
-  'defer', 'reject', 'manual_review',
+  'reject', 'manual_review',
 ];
 
 /**

@@ -5,7 +5,6 @@ import type {
   KernelHandlerContext,
   KernelHandlerResult,
 } from '../../../process-modules/application/kernel-handler-registry.js';
-import { withKernelRecoveryIssue } from '../../../process-modules/application/kernel-recovery-issue.js';
 import type {
   NodeExecutionReceipt,
   NodeExecutionResult,
@@ -77,37 +76,12 @@ export function createDevelopmentKernelHandlers(
   moduleRef: ProcessModuleReference = DEVELOPMENT_PROCESS_MODULE_REF,
 ): Record<string, KernelHandler> {
   return {
+    // The kernel recovery-issue wrapper was deleted with
+    // 'clarification-required': its only trigger event was that outcome, and
+    // the planner cell (whose gate is a superset of the resolver's
+    // validation) already owns repair for everything the resolver re-checks.
     [DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph]:
-      withKernelRecoveryIssue(
-        createTaskGraphResolver(deps),
-        {
-          policyId: 'repair-development-task-graph',
-          subject: 'development task graph proposal',
-          triggerEvents: ['clarification-required'],
-          reasonBindings: [
-            'errors',
-            'reasonCodes',
-            'resolutionStatus',
-          ],
-          actualBindings: [
-            'errors',
-            'reasonCodes',
-            'resolutionStatus',
-            'proposalSchema',
-            'plannerSubmissionRef',
-            'plannerSubmissionHash',
-          ],
-          acceptanceCriteria: [
-            'The planner submits the declared task-graph proposal schema.',
-            'The graph covers the accepted decomposition and remains acyclic.',
-            'Every task, repository and dependency preserves exact input lineage.',
-          ],
-          allowedChanges: [
-            'development task graph proposal',
-            'task definitions, dependencies and repository bindings in that proposal',
-          ],
-        },
-      ),
+      createTaskGraphResolver(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.freezeIntegratedCandidate]:
       createIntegratedCandidateFreezeHandler(deps),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.bindRunnableCandidate]:
@@ -293,7 +267,7 @@ function createTaskGraphResolver(
       if (receipt.executionId === null) {
         return taskGraphResolutionManifest(
           ctx,
-          'clarification-required',
+          'failed',
           'missing',
           {
             plannerIntentId: receipt.intentId,
@@ -307,7 +281,7 @@ function createTaskGraphResolver(
       if (submission === null) {
         return taskGraphResolutionManifest(
           ctx,
-          'clarification-required',
+          'failed',
           'missing',
           {
             plannerIntentId: receipt.intentId,
@@ -319,7 +293,7 @@ function createTaskGraphResolver(
       if (submission.schema !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA) {
         return taskGraphResolutionManifest(
           ctx,
-          'clarification-required',
+          'failed',
           'schema-rejected',
           {
             plannerSubmissionRef: submission.artifactRef,
@@ -332,7 +306,7 @@ function createTaskGraphResolver(
       if (!decoded.ok) {
         return taskGraphResolutionManifest(
           ctx,
-          'clarification-required',
+          'failed',
           'schema-rejected',
           {
             plannerSubmissionRef: submission.artifactRef,
@@ -354,16 +328,13 @@ function createTaskGraphResolver(
         developmentCase,
         graph,
       );
-      const integrityFailure = validation.reasonCodes.some(reason =>
-        reason === 'invalid-input-contract'
-        || reason === 'task-graph-hash-invalid'
-        || reason === 'task-graph-lineage-mismatch');
       if (!validation.valid) {
-        const rejectedEvent: 'failed' | 'clarification-required' =
-          integrityFailure ? 'failed' : 'clarification-required';
+        // 'clarification-required' was deleted: the planner cell gate is a
+        // strict superset of this validation, so any rejection here means the
+        // cell accepted what its own check would refuse — failed.
         return taskGraphResolutionManifest(
           ctx,
-          rejectedEvent,
+          'failed',
           'rejected',
           {
             plannerSubmissionRef: submission.artifactRef,
@@ -500,7 +471,7 @@ function createDevelopmentSettlementHandler(
  * settlement kernel emits alongside its (still-present) magic-bindings writes.
  *
  * `outcome` is the development decision the kernel just settled (verified /
- * rework-required / clarification-required / blocked / failed). `certificateRef`
+ * blocked / failed). `certificateRef`
  * is the content-addressed pointer to the certificate the kernel just issued.
  *
  * The output envelope is minimal-but-conformant: it carries the outcome, an

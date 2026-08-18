@@ -102,13 +102,8 @@ export function prepareDevelopmentContinuation(
           && blockedBoundary.process_outcome === 'blocked'
         || blockedBoundary.stage_outcome === 'failed'
           && exactRecoverableInfrastructureFailure
-        // 'rework-required' is the upstream-defect escalation boundary: the
-        // verification cell deterministically refuted the FROZEN integrated
-        // candidate (failureOwnership:'upstream'), so the product needs a new
-        // work cycle — exactly what this continuation provisions (the
-        // 'continuation-integrated-repair' development.code task).
-        || blockedBoundary.stage_outcome === 'rework-required'
-          && blockedBoundary.process_outcome === 'rework-required'
+        // The 'rework-required' boundary was deleted with the outcome: no
+        // runtime producer exists for it (W9-04-UNREACHABLE-EDGE-EVIDENCE).
       );
   if (
     !parent

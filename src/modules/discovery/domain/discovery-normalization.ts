@@ -66,10 +66,6 @@ const OUTCOME_ALIASES: Readonly<Record<string, DiscoveryOutcome>> = {
   clarification_required: 'clarify',
   unsupported: 'reject',
   not_supported: 'reject',
-  postpone: 'defer',
-  deferred: 'defer',
-  uncertain: 'inconclusive',
-  unknown: 'inconclusive',
   error: 'failed',
 };
 

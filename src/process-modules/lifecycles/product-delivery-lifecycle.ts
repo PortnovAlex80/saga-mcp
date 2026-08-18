@@ -314,8 +314,8 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
       outcomeRoutes: {
         // Discovery is an idea-STRENGTH gate, not a build gate: an operator who
         // starts the lifecycle has already decided to see the product built
-        // (commit 2af9709). The strength of the idea (go / clarify / reject /
-        // defer / inconclusive / failed) is recorded in the discovery
+        // (commit 2af9709). The strength of the idea (go / clarify / reject —
+        // the producible worker vocabulary) is recorded in the discovery
         // certificate and carried forward, NOT used to block the conveyor.
         // Every Discovery outcome therefore forwards to Formalization, which
         // then reasons about the contract on its own merits and is itself the
@@ -326,8 +326,6 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         go: { type: 'stage', stageId: 'solution-formalization' },
         clarify: { type: 'stage', stageId: 'solution-formalization' },
         reject: { type: 'stage', stageId: 'solution-formalization' },
-        defer: { type: 'stage', stageId: 'solution-formalization' },
-        inconclusive: { type: 'stage', stageId: 'solution-formalization' },
         failed: { type: 'stage', stageId: 'solution-formalization' },
       },
       entryConditions: ['initiative.subject exists'],
@@ -363,9 +361,7 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
       },
       outcomeRoutes: {
         formalized: { type: 'stage', stageId: 'solution-development' },
-        'clarification-required': { type: 'terminal', status: 'clarification-required' },
         inconsistent: { type: 'terminal', status: 'formalization-inconsistent' },
-        infeasible: { type: 'terminal', status: 'infeasible' },
         failed: { type: 'terminal', status: 'failed' },
       },
       entryConditions: ['Discovery certificate ref and hash exist'],
@@ -414,8 +410,6 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
       },
       outcomeRoutes: {
         verified: { type: 'stage', stageId: 'delivery-release' },
-        'rework-required': { type: 'terminal', status: 'development-rework-required' },
-        'clarification-required': { type: 'terminal', status: 'clarification-required' },
         blocked: { type: 'terminal', status: 'development-blocked' },
         failed: { type: 'terminal', status: 'failed' },
       },

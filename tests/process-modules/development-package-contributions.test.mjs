@@ -240,7 +240,8 @@ test('W9-A4 output contracts: node output contracts cover proposal/graph/workset
 });
 
 test('W9-A4 output contracts: declared outcomes are all terminal and match the development flow', () => {
-  const expected = ['verified', 'rework-required', 'clarification-required', 'blocked', 'failed'];
+  // 'rework-required' and 'clarification-required' deleted (no runtime producer).
+  const expected = ['verified', 'blocked', 'failed'];
   assert.deepEqual([...DEVELOPMENT_OUTCOME_CODES].sort(), [...expected].sort());
   for (const o of DEVELOPMENT_DECLARED_OUTCOMES) {
     assert.equal(o.terminal, true, `${o.outcome} must be terminal`);

@@ -224,17 +224,12 @@ test('invalid LM graph is rejected before any task materialization', async () =>
   const result = await handlers[
     DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
   ](resolverContext(runInput, proposal));
-  assert.equal(result.event, 'repair-required');
+  // 'clarification-required' (and its kernel recovery-issue repair layer) was
+  // deleted: the planner cell gate is a strict superset of this validation, so
+  // a rejection here means the cell accepted what its own check would refuse —
+  // the resolver now fails closed instead of minting a second repair loop.
+  assert.equal(result.event, 'failed');
   assert.equal(result.production.bindings.resolutionStatus, 'rejected');
-  assert.equal(
-    result.recoveryIssue.policyId,
-    'repair-development-task-graph',
-  );
-  assert.equal(result.recoveryIssue.disposition, 'repair');
-  assert.match(
-    result.recoveryIssue.summary,
-    /verification work for every accepted AC/,
-  );
   assert.equal(materializationCalls, 0);
 });
 
@@ -257,8 +252,10 @@ test('verification work without an exact frozen repository is rejected', async (
   const result = await handlers[
     DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
   ](resolverContext(runInput, proposal));
-  assert.equal(result.event, 'repair-required');
-  assert.match(result.recoveryIssue.summary, /projectRepositoryId must be an integer/);
+  // Same deletion as above: 'clarification-required' repair layer removed.
+  // A repository-free verification item fails schema decoding ('schema-rejected').
+  assert.equal(result.event, 'failed');
+  assert.equal(result.production.bindings.resolutionStatus, 'schema-rejected');
   assert.equal(materializationCalls, 0);
 });
 

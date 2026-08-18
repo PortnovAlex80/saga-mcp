@@ -157,6 +157,34 @@ export function buildDiscoveryStrengthCodeHandlers(code) {
 }
 
 // ---------------------------------------------------------------------------
+// Deleted outcome word — fail-closed, never translated
+//
+// 'defer' was deleted from the worker-facing grammar (no runtime producer).
+// A worker recommending it must be REJECTED as invalid input: the proposal
+// contract enum is closed, so product_submit fails and the cell cannot
+// complete. The factory must NOT quietly settle it as 'clarify' — a
+// rejection is honest, a rewrite is not (STAGE-3 brief, Task 2 step 2).
+// ---------------------------------------------------------------------------
+
+export function buildDeletedOutcomeWordHandlers() {
+  function proposalRecommendingDeletedWord({ handlers, assignment }) {
+    const proposal = loadCorpus().product(
+      'produce-proposal', 'factory.discovery-proposal.v1',
+    );
+    handlers.product_submit({
+      schema: 'factory.discovery-proposal.v1',
+      content: { ...proposal, recommended_outcome: 'defer' },
+    });
+    done(handlers, assignment, 'produced proposal recommending the deleted word defer');
+    return { kind: 'worker-done-accepted' };
+  }
+  return {
+    ...W9_HAPPY_HANDLERS,
+    [`${DISC}/produce-proposal/author/singleton`]: proposalRecommendingDeletedWord,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Formalization → inconsistent
 //
 // The architecture author creates an EXTRA acceptance criterion while

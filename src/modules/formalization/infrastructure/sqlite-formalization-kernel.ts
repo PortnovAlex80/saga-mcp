@@ -358,17 +358,11 @@ export class SqliteFormalizationArtifactGraph implements
  * inputs (graph port + settlement input). It NEVER writes; it returns a
  * decision + payload that the pump persists.
  *
- * Decision matrix:
- *   - infrastructure-error → 'failed'
- *   - missing PRD/AC/SRS/baseline → 'clarification-required'
+ * Decision matrix (vocabulary narrowed — see W9-04-UNREACHABLE-EDGE-EVIDENCE):
+ *   - infrastructure-error or missing PRD/AC/SRS/baseline → 'failed'
  *   - traceability gap or dirty baseline → 'inconsistent'
  *   - tasks not ready → 'inconsistent' (the graph claims done but work remains)
  *   - otherwise → 'formalized'
- *
- * 'infeasible' is reserved for cases where the SRS exists but declares a
- * constraint that cannot be met — this requires reading the SRS content, which
- * is module-specific and out of scope for the generic policy. The pump may
- * emit 'infeasible' from the architect node directly (it knows the SRS).
  */
 export class ReferenceFormalizationSettlementPolicy implements FormalizationSettlementPolicyPort {
   settle(
@@ -490,9 +484,15 @@ function fail(
 function mapReasonsToDecision(
   reasonCodes: FormalizationSettlementResult['reasonCodes'],
 ): FormalizationSettlementResult['decision'] {
+  // 'clarification-required' was deleted (declared, never produced): the
+  // missing-material reasons it classified are unreachable through normal
+  // production — the per-node gates enforce PRD/AC/SRS presence and the
+  // accept effect re-accepts every sealed artifact. If one ever fires anyway,
+  // the pipeline lied about its guarantees: that is an infrastructure
+  // failure, classified 'failed' — never silently rewritten.
   if (reasonCodes.includes('infrastructure-error')) return 'failed';
   if (reasonCodes.some(r => r === 'prd-missing' || r === 'acceptance-empty' || r === 'srs-missing')) {
-    return 'clarification-required';
+    return 'failed';
   }
   // baseline-missing, traceability-gap, tasks-not-ready, invariant-violation
   return 'inconsistent';

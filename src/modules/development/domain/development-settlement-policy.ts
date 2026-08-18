@@ -715,8 +715,11 @@ implements DevelopmentSettlementPolicyPort {
     }
 
     if (input.taskGraph === null) {
+      // 'clarification-required' was deleted: this state is unreachable through
+      // normal production (the resolver materializes the graph before settle
+      // runs); if it fires anyway the pipeline lied — failed, never rewritten.
       return result(
-        'clarification-required',
+        'failed',
         ['task-graph-missing'],
         'No canonical task graph was materialized from the accepted SRS decomposition.',
         inputHash,
@@ -727,11 +730,11 @@ implements DevelopmentSettlementPolicyPort {
       input.taskGraph,
     );
     if (!graphValidation.valid) {
-      const integrityFailure = graphValidation.reasonCodes.some(code =>
-        code === 'task-graph-hash-invalid'
-        || code === 'task-graph-lineage-mismatch');
+      // 'clarification-required' was deleted: a non-integrity rejection here
+      // means the planner cell accepted a graph its own (stricter) check
+      // would have rejected — an infrastructure lie, classified failed.
       return result(
-        integrityFailure ? 'failed' : 'clarification-required',
+        'failed',
         graphValidation.reasonCodes,
         graphValidation.errors.join('; '),
         inputHash,
@@ -819,16 +822,9 @@ implements DevelopmentSettlementPolicyPort {
         inputHash,
       );
     }
-    const failedImplementation = [...requiredImplementationKeys].filter(key =>
-      implementationByKey.get(key)?.status === 'failed');
-    if (failedImplementation.length > 0) {
-      return result(
-        'rework-required',
-        ['implementation-failed'],
-        `Implementation/review failed for: ${failedImplementation.join(', ')}.`,
-        inputHash,
-      );
-    }
+    // 'rework-required' [implementation-failed] was deleted: the integration
+    // effect hard-requires terminalStatus='complete', so a failed workset item
+    // cannot pass its own cell (W9-04-UNREACHABLE-EDGE-EVIDENCE, CLAIM 3).
     const blockedImplementation = [...requiredImplementationKeys].filter(key => {
       const item = implementationByKey.get(key);
       // The missing-product placeholder is NOT a worker "blocked" verdict:
@@ -1092,14 +1088,10 @@ implements DevelopmentSettlementPolicyPort {
           inputHash,
         );
       }
-      if (evidence.outcome === 'failed') {
-        return result(
-          'rework-required',
-          ['verification-failed'],
-          `Acceptance verification failed for AC ${evidence.acceptanceCriterionId}.`,
-          inputHash,
-        );
-      }
+      // 'rework-required' [verification-failed] was deleted: the settlement
+      // evidence outcome comes from the trusted receipt reader, which admits
+      // passed receipts only — a failed verdict terminalizes the verification
+      // CELL instead (W9-04-UNREACHABLE-EDGE-EVIDENCE, CLAIM 3).
       if (evidence.outcome === 'unknown' || evidence.outcome === 'error') {
         return result(
           'blocked',

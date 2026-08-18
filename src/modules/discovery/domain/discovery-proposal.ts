@@ -27,7 +27,7 @@ export type DiscoveryOutcome =
   | 'failed';
 
 export const DISCOVERY_OUTCOMES: readonly DiscoveryOutcome[] = [
-  'go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed',
+  'go', 'clarify', 'reject',
 ];
 
 /**

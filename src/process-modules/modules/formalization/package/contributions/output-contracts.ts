@@ -213,19 +213,9 @@ export const FORMALIZATION_DECLARED_OUTCOMES: readonly FormalizationDeclaredOutc
     description: 'A complete frozen solution contract is ready for downstream work.',
   },
   {
-    outcome: 'clarification-required',
-    terminal: true,
-    description: 'Required product or acceptance information is missing.',
-  },
-  {
     outcome: 'inconsistent',
     terminal: true,
     description: 'The contract graph contains unresolved contradictions or traceability gaps.',
-  },
-  {
-    outcome: 'infeasible',
-    terminal: true,
-    description: 'The requested solution cannot be implemented under the accepted constraints.',
   },
   {
     outcome: 'failed',

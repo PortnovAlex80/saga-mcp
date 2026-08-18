@@ -745,7 +745,7 @@ test('product lifecycle forwards every Discovery outcome to Formalization (permi
   );
   assert.ok(discovery, 'initial-discovery stage must exist');
   // Every outcome carries the idea forward to Formalization.
-  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
     const route = discovery.outcomeRoutes[outcome];
     assert.ok(route, `Discovery must declare a route for outcome '${outcome}'`);
     assert.equal(

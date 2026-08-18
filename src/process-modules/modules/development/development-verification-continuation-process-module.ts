@@ -84,7 +84,7 @@ ProcessModuleDefinition = (() => {
         // verification verdict routes through settlement for an explicit
         // completion and a continuation-acceptable terminal outcome.
         { from: verificationNode.id, to: settlement.id, on: 'domain.failed' },
-        ...['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']
+        ...['verified', 'blocked', 'failed']
           .map(code => ({
             from: settlement.id,
             to: `complete-${code}`,

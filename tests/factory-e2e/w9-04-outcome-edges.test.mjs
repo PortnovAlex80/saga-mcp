@@ -75,6 +75,17 @@ test('outcome edge solution-development:blocked — repository drifts after cand
   assert.equal(evidence.strandedActiveExecutions, 0);
 });
 
+test('deleted outcome word — a defer recommendation is rejected, never translated to clarify', () => {
+  const evidence = runEdgeDrive('disc-deleted-word');
+  assert.ok((evidence.deletedWordProposalGateRejections ?? 0) >= 1,
+    'the proposal gate must reject the deleted word as invalid input (failed check receipts)');
+  assert.equal(evidence.deletedWordDiscoveryCertificates, 0,
+    'no discovery certificate may launder a deleted word into clarify');
+  assert.notEqual(evidence.lifecycleTerminalStatus, 'runnable-local',
+    'the lifecycle must not complete: a rejection is honest, a rewrite is not');
+  assert.equal(evidence.strandedActiveExecutions, 0);
+});
+
 // Discovery strength codes: every code routes FORWARD to Formalization and is
 // recorded in the discovery certificate — the trace asserts the CERTIFICATE
 // code plus the forward routing, not a different terminal.

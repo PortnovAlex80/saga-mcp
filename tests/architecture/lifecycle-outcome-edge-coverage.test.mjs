@@ -9,15 +9,17 @@
  * the table and still never be produced by any run, so the first time the
  * factory emits it in production is the first time that path executes at all.
  *
- * This registry closes that gap in the only way that stays honest while the
- * scripted corpus grows: every edge is classified as either TRACED (a named
- * scenario drives it end to end) or PENDING (nobody drives it yet, with the
- * reason). Set equality against the installed lifecycle means a NEW edge cannot
- * be added without being classified here in the same commit, and an edge cannot
- * quietly regress from traced to untested.
+ * This registry closes that gap: every edge is either TRACED (a named
+ * scenario drives it end to end) or PENDING (a proven runtime producer
+ * exists but no bounded scenario drives it). Set equality against the
+ * installed lifecycle means a NEW edge cannot be added without being
+ * classified here in the same commit, and an edge cannot quietly regress.
  *
- * PENDING is not a permanent excuse — it is the stage-2 worklist. Each entry
- * converts to TRACED when a corpus-fed scenario drives it.
+ * The dead vocabulary was DELETED (stage 3): eight declared routes had no
+ * runtime producer and were removed from BOTH the route table and the
+ * worker-facing grammar — see docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md
+ * (RESOLVED) and tests/architecture/lifecycle-outcome-vocabulary.test.mjs,
+ * the mechanical ratchet that keeps routes and producers in lockstep.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,43 +45,18 @@ const TRACED = Object.freeze({
 });
 
 /**
- * Edges no scenario drives yet. The value states WHY it matters, so the list
- * reads as a worklist rather than a suppression file. Edges marked
- * ESCALATED carry evidence they have no runtime producer through normal
- * production — the architect owns the decision (add a producer, or prove
- * unreachability mechanically); see
- * docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md.
+ * Edges with a PROVEN runtime producer that no bounded-time scenario drives
+ * yet. Per the stage-3 brief, `failed` edges are a different class from
+ * business outcomes: the runtime produces them on process/kernel failure, so
+ * the route stays even though no scripted scenario injects a kernel fault.
  */
 const PENDING = Object.freeze({
-  // Discovery is a permissive idea-STRENGTH gate: every code forwards to
-  // Formalization and is carried in the certificate. The ROUTE is identical
-  // to 'go', but the emitted code differs and is what downstream reasoning
-  // and the certificate record — so each still needs its own trace.
-  // (All five codes traced by W9-04 — entry kept here only if re-added.)
-
-  // ESCALATED — no runtime producer (evidence dossier):
-  // docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md
-  'solution-formalization:clarification-required':
-    'ESCALATED unreachable: the per-cell accept effect re-accepts every produced artifact, so prd/acs/srs-missing cannot survive to settlement; the declared humanRequired→complete-clarification-required cell transition has no flow edge',
-  'solution-formalization:infeasible':
-    'ESCALATED unreachable: the settlement policy never returns infeasible and no kernel handler emits domain.infeasible — a declared route with no producer',
-  'solution-development:rework-required':
-    'ESCALATED unreachable: the integration effect hard-requires terminalStatus=complete (honest failed items are repaired, never settled) and settlement verification evidence outcome is structurally passed-only',
-  'solution-development:clarification-required':
-    'ESCALATED unreachable: the planner cell check validates the same canonical graph as the kernel resolver plus extra manifest coverage — nothing passes the cell but fails the resolver',
-  'solution-development:failed':
-    'ESCALATED unreachable: no installed check plan declares failureOwnership=upstream (a failed local-runnability receipt repairs forever instead of terminalizing) and settlement failed-reasons are kernel-integrity only',
-
-  // Discovery: the settlement policy matrix emits only go/reject/clarify —
-  // a worker recommending defer/inconclusive/failed deterministically falls
-  // back to clarify (CLARIFY_POLICY_FALLBACK), so those declared routes have
-  // no producer (same dossier).
-  'initial-discovery:defer':
-    'ESCALATED unreachable: DiscoverySettlementPolicyV1 never emits defer — a defer recommendation falls back to clarify',
-  'initial-discovery:inconclusive':
-    'ESCALATED unreachable: DiscoverySettlementPolicyV1 never emits inconclusive — an inconclusive recommendation falls back to clarify',
   'initial-discovery:failed':
-    'ESCALATED unreachable: reserved for discovery process failure; the worker-facing grammar funnels failures into clarify and no fast terminal-failed producer exists in the installed flow',
+    'runtime producer exists (discovery settle-kernel catch → domain.failed → complete-failed); '
+    + 'drivable only by a fault injected at the kernel seam, which the scripted harness does not expose',
+  'solution-development:failed':
+    'runtime producer exists (freeze/binding/settle kernel failure paths → domain.failed → complete-failed); '
+    + 'drivable only by a fault injected at the kernel seam, which the scripted harness does not expose',
 });
 
 function installedEdges() {
@@ -137,7 +114,7 @@ test('every terminal outcome of the build lifecycle is accounted for', () => {
   }
 });
 
-test('coverage is reported so the stage-2 worklist stays visible', () => {
+test('coverage is reported and only runtime-only failed edges may stay pending', () => {
   const installed = installedEdges();
   const traced = Object.keys(TRACED).length;
   const ratio = `${traced}/${installed.length}`;
@@ -146,4 +123,8 @@ test('coverage is reported so the stage-2 worklist stays visible', () => {
   // so a reader sees the real state of the harness.
   process.stdout.write(`# lifecycle outcome-edge runtime coverage: ${ratio}\n`);
   assert.ok(traced >= 3, 'the happy path must stay traced');
+  assert.ok(
+    Object.keys(PENDING).every(edge => edge.endsWith(':failed')),
+    'every non-failed edge must be traced or deleted',
+  );
 });

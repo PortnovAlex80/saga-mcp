@@ -106,11 +106,15 @@ export interface FormalizationSettlementInput {
   bundle: SolutionContractBundle;
 }
 
+/**
+ * The closed decision union IS the mechanical unreachability proof: a value
+ * absent from this union cannot occur. 'clarification-required' and
+ * 'infeasible' were deleted with their routes (declared but never produced —
+ * see docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md).
+ */
 export type FormalizationDecision =
   | 'formalized'
-  | 'clarification-required'
   | 'inconsistent'
-  | 'infeasible'
   | 'failed';
 
 export type FormalizationReasonCode =

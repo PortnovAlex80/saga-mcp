@@ -114,7 +114,6 @@ function reviewedCell(input: {
       finalCheckPlan: reviewPlan(input.id),
     },
     acceptedTransition: input.acceptedTransition,
-    humanRequiredTransition: 'complete-clarification-required',
     failedTransition: 'complete-failed',
   });
 }
@@ -139,9 +138,7 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
   outputContract: { id: SOLUTION_CONTRACT_CERTIFICATE_SCHEMA },
   outcomes: [
     { code: 'formalized', description: 'A complete frozen solution contract is ready for downstream work.', terminal: true },
-    { code: 'clarification-required', description: 'Required product or acceptance information is missing.', terminal: true },
     { code: 'inconsistent', description: 'The contract graph contains unresolved contradictions or traceability gaps.', terminal: true },
-    { code: 'infeasible', description: 'The requested solution cannot be implemented under the accepted constraints.', terminal: true },
     { code: 'failed', description: 'Formalization infrastructure could not produce an authoritative result.', terminal: true },
   ],
   flow: {
@@ -246,7 +243,7 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
         inputSchema: { id: FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA },
         outputSchema: { id: SOLUTION_CONTRACT_CERTIFICATE_SCHEMA },
       },
-      ...['formalized', 'clarification-required', 'inconsistent', 'infeasible', 'failed']
+      ...['formalized', 'inconsistent', 'failed']
         .map(code => ({
           id: `complete-${code}`,
           label: `Complete: ${code}`,
@@ -271,14 +268,11 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       { from: 'define-architecture-contract', to: 'settle-formalization', on: 'domain.accepted' },
       { from: 'define-architecture-contract', to: 'complete-failed', on: 'domain.failed' },
       { from: 'settle-formalization', to: 'complete-formalized', on: 'domain.formalized' },
-      { from: 'settle-formalization', to: 'complete-clarification-required', on: 'domain.clarification-required' },
       { from: 'settle-formalization', to: 'complete-inconsistent', on: 'domain.inconsistent' },
-      { from: 'settle-formalization', to: 'complete-infeasible', on: 'domain.infeasible' },
       { from: 'settle-formalization', to: 'complete-failed', on: 'domain.failed' },
     ],
     terminalNodeIds: [
-      'complete-formalized', 'complete-clarification-required',
-      'complete-inconsistent', 'complete-infeasible', 'complete-failed',
+      'complete-formalized', 'complete-inconsistent', 'complete-failed',
     ],
   },
   artifacts: [

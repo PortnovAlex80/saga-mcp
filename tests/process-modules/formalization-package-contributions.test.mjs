@@ -180,7 +180,8 @@ test('W8-A7 output contracts: every node output contract has a valid saga3 schem
 });
 
 test('W8-A7 output contracts: declared outcomes are all terminal and match the formalization flow', () => {
-  const expected = ['formalized', 'clarification-required', 'inconsistent', 'infeasible', 'failed'];
+  // 'clarification-required' and 'infeasible' deleted (no runtime producer).
+  const expected = ['formalized', 'inconsistent', 'failed'];
   assert.deepEqual([...FORMALIZATION_OUTCOME_CODES].sort(), [...expected].sort());
   for (const o of FORMALIZATION_DECLARED_OUTCOMES) {
     assert.equal(o.terminal, true, `${o.outcome} must be terminal`);

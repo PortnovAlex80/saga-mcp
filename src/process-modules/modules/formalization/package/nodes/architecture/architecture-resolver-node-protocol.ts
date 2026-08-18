@@ -24,6 +24,10 @@
  * architecture lane owns the entire post-baseline WHAT→HOW cutover surface
  * (plan §0.11.6: "architecture and recovery node protocols").
  *
+ * The deleted outcomes ('infeasible', 'clarification-required') are gone from
+ * the event vocabulary — no runtime producer ever existed for them
+ * (W9-04-UNREACHABLE-EDGE-EVIDENCE).
+ *
  * PURE: data only. No behavior.
  */
 
@@ -95,7 +99,7 @@ export const ARCHITECTURE_BASELINE_FREEZER_NODE_PROTOCOL: NodeProtocolDefinition
  * module-verifier-receipt node-completion evidence proves the graph holds
  * before the Flow routes to `settle-formalization`.
  *
- * The resolver may emit any of the architecture domain events; the Flow's
+ * The resolver may emit any of the surviving architecture domain events; the Flow's
  * recovery twin (see `architecture-recovery-node-protocol.ts`) routes
  * `domain.repair-required` and `domain.acceptance-blocked` back to the
  * architecture authoring node.
@@ -134,7 +138,7 @@ export const ARCHITECTURE_RESOLVER_NODE_PROTOCOL: NodeProtocolDefinition = {
       instructions:
         'Verify the resolved SRS against the frozen acceptance baseline: the baseline has not drifted, the SRS traces ' +
         'to the exact PRD, and the required invariant registry is complete. Emit the architecture domain event ' +
-        '(completed / repair-required / acceptance-blocked / infeasible / clarification-required / inconsistent / failed).',
+        '(completed / repair-required / acceptance-blocked / inconsistent / failed).',
       resources: [
         ARCHITECTURE_RESOURCE_IDS.protocolSkill,
         ARCHITECTURE_RESOURCE_IDS.checklist,

@@ -66,6 +66,15 @@ const SCENARIO_MAP = {
   },
 
 
+  'disc-deleted-word': {
+    manifestId: 'w9-04-disc-deleted-word-rejected',
+    handlers: () => handlersMod.buildDeletedOutcomeWordHandlers(),
+    edgeKey: 'initial-discovery:deleted-word',
+    // Not an edge trace: this scenario proves fail-closed REJECTION of a
+    // deleted outcome word. The lifecycle must NOT complete discovery.
+    expectDeletedWordRejected: 'defer',
+    maxCycles: 60,
+  },
   ...Object.fromEntries(['clarify', 'reject'].map(code => [
     `disc-${code}`,
     {
@@ -146,6 +155,23 @@ try {
       ORDER BY id DESC LIMIT 1`,
   ).get(stageId === 'initial-discovery' ? '%discovery%' : `%${stageId.split('-')[1]}%`);
 
+  // Deleted-word scenario: the submission must be REJECTED, the discovery
+  // stage must never complete, and no discovery certificate may exist.
+  const proposalGateRejections = config.expectDeletedWordRejected
+    ? db.prepare(
+        `SELECT COUNT(*) AS n FROM factory_check_receipts cr
+           JOIN factory_gate_decisions gd
+             ON gd.gate_run_ref=cr.check_run_ref
+          WHERE cr.provider_id LIKE 'discovery.proposal%' AND cr.outcome='failed'`,
+      ).get().n
+    : null;
+  const anyDiscoveryCertificate = config.expectDeletedWordRejected
+    ? db.prepare(
+        `SELECT COUNT(*) AS n FROM factory_process_outcome_certificates
+          WHERE module_ref_key LIKE '%discovery%'`,
+      ).get().n
+    : null;
+
   // Discovery scenarios: the certificate must carry the emitted strength code
   // AND routing must have forwarded (a formalization stage run exists).
   const discoveryCertificate = stageId === 'initial-discovery'
@@ -176,6 +202,8 @@ try {
     certificateDecision: (discoveryCertificate ?? certificate)?.decision ?? null,
     certificateReasonCodes: certificate?.reason_codes ?? null,
     formalizationStageRunsAfterDiscovery: formalizationRan,
+    deletedWordProposalGateRejections: proposalGateRejections,
+    deletedWordDiscoveryCertificates: anyDiscoveryCertificate,
     developmentOutcome: developmentOutcome?.local_outcome ?? null,
     cycles: result.cycles,
     terminalReason: result.terminalReason,
@@ -267,6 +295,17 @@ try {
   const A = (await import('node:assert')).default;
   A.equal(result.strandedActiveExecutions, 0, `${label}: no stranded executions`);
   A.ok(result.effectiveConcurrency <= SCENARIO_CAP, `${label}: concurrency ≤ cap`);
+  if (config.expectDeletedWordRejected) {
+    // Not an edge trace: this scenario proves REJECTION. No stage outcome,
+    // no terminal, no certificate — see the dedicated assertions below.
+    A.ok((evidence.deletedWordProposalGateRejections ?? 0) >= 1,
+      `${label}: the proposal gate must REJECT the deleted word (failed check receipts)`);
+    A.equal(evidence.deletedWordDiscoveryCertificates, 0,
+      `${label}: no discovery certificate may exist`);
+    A.notEqual(evidence.lifecycleTerminalStatus, 'runnable-local',
+      `${label}: the lifecycle must not complete on a deleted word`);
+    A.equal(evidence.effectiveConcurrency, SCENARIO_CAP, `${label}: concurrency`);
+  } else {
   A.ok(evidence.stageOutcomeRecorded,
     `${label}: stage ${stageId} must record local_outcome='${outcomeCode}'`);
   A.equal(evidence.stageRunOutcome, outcomeCode, `${label}: stage outcome code`);
@@ -289,6 +328,7 @@ try {
   } else {
     A.equal(evidence.certificateDecision, null,
       `${label}: this edge fails before settlement — no module certificate may exist`);
+  }
   }
 
   process.stdout.write(JSON.stringify(evidence) + '\n');

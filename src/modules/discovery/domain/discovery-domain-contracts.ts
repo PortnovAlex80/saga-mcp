@@ -83,13 +83,16 @@ export type WorkIntentStatus =
 // Discovery proposal payload (mirrors saga3/domain/discovery-proposal.ts).
 // ---------------------------------------------------------------------------
 
+/**
+ * The outcomes a WORKER may recommend. The factory emits exactly these three
+ * from a recommendation ('failed' is a runtime-only process-failure outcome —
+ * no worker can recommend it; deleted words are invalid input, never
+ * translated). See docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md.
+ */
 export type DiscoveryOutcome =
   | 'go'
   | 'clarify'
-  | 'reject'
-  | 'defer'
-  | 'inconclusive'
-  | 'failed';
+  | 'reject';
 
 export interface DiscoveryProposalPayload {
   problem_statement: string;
@@ -118,7 +121,6 @@ export type RecommendedNextAction =
   | 'proceed_to_settlement'
   | 'request_clarification'
   | 'repeat_discovery'
-  | 'defer'
   | 'reject'
   | 'manual_review';
 

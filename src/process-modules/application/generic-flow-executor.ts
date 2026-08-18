@@ -347,7 +347,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // non-settled terminal nodes, certificate=null is legitimate (no
       // settlement ran, no certificate was issued). The throw is reserved for
       // settled outcomes where completion is genuinely missing (a kernel bug).
-      const isFailedOutcome = terminal.outcome === 'failed' || terminal.outcome === 'inconclusive';
+      const isFailedOutcome = terminal.outcome === 'failed';
       const explicitCompletion = terminal.result.completion;
       if (!explicitCompletion && !isFailedOutcome) {
         throw new Error(
@@ -392,7 +392,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
 
       // Drive settling → completed, writing terminal fields once.
-      // TB-8 silent-fail fix: a deterministic 'failed'/'inconclusive' outcome
+      // TB-8 silent-fail fix: a deterministic 'failed' outcome
       // is a LEGITIMATE settlement — but the REASON (baselineFailure,
       // settlementError) was only in production bindings, never in the error
       // column. Extract it from the terminal result so the operator sees WHY

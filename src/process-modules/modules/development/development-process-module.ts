@@ -162,8 +162,6 @@ export const developmentProcessModule: ProcessModuleDefinition = {
   outputContract: { id: VERIFIED_INTEGRATION_BUNDLE_SCHEMA },
   outcomes: [
     { code: 'verified', description: 'All required implementation and acceptance evidence binds to the unchanged frozen candidate.', terminal: true },
-    { code: 'rework-required', description: 'Implementation, review or acceptance evidence found a product defect that requires a new work cycle.', terminal: true },
-    { code: 'clarification-required', description: 'The accepted decomposition cannot be converted into a complete, deterministic task graph.', terminal: true },
     { code: 'blocked', description: 'Required work, trusted evidence, integration state or a human decision is unavailable.', terminal: true },
     { code: 'failed', description: 'Development infrastructure or immutable lineage validation failed.', terminal: true },
   ],
@@ -376,7 +374,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         inputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
         outputSchema: { id: DEVELOPMENT_CERTIFICATE_SCHEMA },
       },
-      ...['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']
+      ...['verified', 'blocked', 'failed']
         .map(code => ({
           id: `complete-${code}`,
           label: `Complete: ${code}`,
@@ -390,7 +388,6 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       { from: 'plan-task-graph', to: 'resolve-task-graph', on: 'domain.accepted' },
       { from: 'plan-task-graph', to: 'complete-failed', on: 'domain.failed' },
       { from: 'resolve-task-graph', to: 'implement-work-items', on: 'domain.valid' },
-      { from: 'resolve-task-graph', to: 'settle-development', on: 'domain.clarification-required' },
       { from: 'resolve-task-graph', to: 'settle-development', on: 'domain.failed' },
       { from: 'implement-work-items', to: 'freeze-integrated-candidate', on: 'domain.accepted' },
       { from: 'implement-work-items', to: 'complete-failed', on: 'domain.failed' },
@@ -409,7 +406,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       // continuation service accepts (blocked on missing verification
       // evidence, rework-required on failed evidence).
       { from: 'verify-acceptance', to: 'settle-development', on: 'domain.failed' },
-      ...['verified', 'rework-required', 'clarification-required', 'blocked', 'failed']
+      ...['verified', 'blocked', 'failed']
         .map(code => ({
           from: 'settle-development',
           to: `complete-${code}`,
@@ -417,8 +414,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         })),
     ],
     terminalNodeIds: [
-      'complete-verified', 'complete-rework-required',
-      'complete-clarification-required', 'complete-blocked', 'complete-failed',
+      'complete-verified', 'complete-blocked', 'complete-failed',
     ],
   },
   artifacts: [
