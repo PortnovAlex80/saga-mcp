@@ -64,6 +64,19 @@ function listDecisionFiles(decisionsDir) {
 }
 
 /**
+ * Stage-5 convention for a DOCUMENTED lag (the legal exception to
+ * CLOSURE_LAGS_RELEASES): the note must NAME the missing evidence, not
+ * merely exist. The mechanical floor is the phrase "missing evidence"
+ * (case-insensitive) followed by at least 20 more characters saying what
+ * is missing — a bare sticker note does not qualify.
+ */
+function explainsMissingEvidence(notes) {
+  if (typeof notes !== 'string') return false;
+  const m = notes.match(/missing evidence/i);
+  return m !== null && notes.slice(m.index + m[0].length).trim().length >= 20;
+}
+
+/**
  * Validate the registry against the decisions directory.
  *
  * @returns {{ok: boolean, violations: Array<{code: string, adr: string|null, detail: string}>, summary: object}}
@@ -112,6 +125,20 @@ export function validateRegistry({ decisionsDir, registryPath }) {
       code: 'REGISTRY_SHAPE_INVALID',
       adr: null,
       detail: 'registry.decisions must be an array',
+    });
+  }
+
+  // Stage 5 — the machine-readable K-release closure record every entry is
+  // reconciled against. Without this block the consistency codes below are
+  // vacuous, so its absence is itself a violation.
+  const releases = (registry && typeof registry.releases === 'object' && !Array.isArray(registry.releases))
+    ? registry.releases
+    : null;
+  if (!releases || Object.keys(releases).length === 0) {
+    violations.push({
+      code: 'RELEASES_BLOCK_MISSING',
+      adr: null,
+      detail: 'registry.releases is required: the machine-readable record of which K-releases are closed (stage-5 TASK 1)',
     });
   }
 
@@ -228,6 +255,49 @@ export function validateRegistry({ decisionsDir, registryPath }) {
         code: 'REJECTED_RATIONALE_MISSING',
         adr,
         detail: 'closureState=rejected requires an explicit rationale',
+      });
+    }
+
+    // Stage-5 consistency: entries are reconciled against the releases block.
+    if (releases) {
+      const owners = Array.isArray(entry.owningReleases) ? entry.owningReleases : [];
+      for (const release of owners) {
+        if (!releases[release]) {
+          violations.push({
+            code: 'RELEASE_UNKNOWN',
+            adr,
+            detail: `owning release ${release} is absent from the releases block`,
+          });
+        }
+      }
+      if (typeof entry.evidenceOwner === 'string' && entry.evidenceOwner && !releases[entry.evidenceOwner]) {
+        violations.push({
+          code: 'RELEASE_UNKNOWN',
+          adr,
+          detail: `evidenceOwner ${entry.evidenceOwner} is absent from the releases block`,
+        });
+      }
+      const allOwnersClosed = owners.length > 0
+        && owners.every((release) => releases[release]?.state === 'closed');
+      if (
+        entry.decisionStatus === 'accepted'
+        && entry.closureState === 'planned'
+        && allOwnersClosed
+        && !explainsMissingEvidence(entry.notes)
+      ) {
+        violations.push({
+          code: 'CLOSURE_LAGS_RELEASES',
+          adr,
+          detail: `all owning releases (${owners.join(',')}) are closed but the entry is still planned without a note naming the missing evidence`,
+        });
+      }
+    }
+    if (entry.closureState === 'closed'
+        && (!Array.isArray(entry.evidence) || entry.evidence.length === 0)) {
+      violations.push({
+        code: 'CLOSED_WITHOUT_EVIDENCE',
+        adr,
+        detail: 'closureState=closed requires a non-empty evidence[] (suite names and counts, boundary manifest, or ratchet names)',
       });
     }
   }

@@ -17,7 +17,8 @@
 // something" without an owned implementation path is a build failure.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -67,4 +68,97 @@ test('ADR-076 closure evidence: this suite enforces the protocol', () => {
     Array.isArray(entry.evidence) && entry.evidence.length > 0,
     'ADR-076 must cite its evidence bundle',
   );
+});
+
+test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12', () => {
+  const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/architecture/adr-closure-registry.json'), 'utf8'));
+  const keys = Object.keys(registry.releases).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  assert.deepEqual(
+    keys,
+    Array.from({ length: 21 }, (_, i) => `K${i}`),
+    'the releases block must cover K0-K20 — removing a release from the record is a deliberate act',
+  );
+  const closed = keys.filter((k) => registry.releases[k].state === 'closed');
+  assert.deepEqual(
+    closed,
+    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K11', 'K12'],
+    `closed set drifted from the recorded "13 of 21 releases done" (docs/verification/PROGRAM-STATUS.md:30): got ${closed.join(',')}`,
+  );
+  assert.equal(registry.releases.K13.state, 'open', 'K13 closure is the architect\'s exit gate to sign, never a bookkeeping edit');
+  for (const key of keys) {
+    const rel = registry.releases[key];
+    assert.ok(['closed', 'open', 'unknown'].includes(rel.state), `${key}.state must be closed|open|unknown`);
+    if (rel.state === 'closed') {
+      assert.ok(Array.isArray(rel.evidence) && rel.evidence.length > 0,
+        `${key} is closed without citing where the closure came from`);
+    }
+  }
+});
+
+test('stage 5: release-consistency codes fire on synthetic registries', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'adr-registry-stage5-'));
+  try {
+    const decisionsDir = join(dir, 'decisions');
+    mkdirSync(decisionsDir);
+    writeFileSync(join(decisionsDir, '900-alpha.md'), '# ADR-900: Alpha\n\n- **Status:** Accepted\n');
+    const base = {
+      adr: '900',
+      file: '900-alpha.md',
+      decisionStatus: 'accepted',
+      closureState: 'planned',
+      owningReleases: ['K9'],
+      evidenceOwner: 'K9',
+      principalProof: 'x',
+      successor: null,
+      notes: null,
+    };
+    const registryPath = join(dir, 'registry.json');
+    const run = (releases, decisions) => {
+      writeFileSync(registryPath, JSON.stringify({
+        schemaVersion: 1,
+        protocol: 'ADR-076',
+        program: 't',
+        evidenceBaseline: { commit: 'a'.repeat(40), capturedAt: '2026-08-18' },
+        releases,
+        decisions,
+      }));
+      return validateRegistry({ decisionsDir, registryPath }).violations.map((v) => v.code);
+    };
+
+    // RELEASES_BLOCK_MISSING — deleting the block must not silently disable
+    // the consistency checks.
+    assert.ok(run(undefined, [base]).includes('RELEASES_BLOCK_MISSING'));
+
+    // RELEASE_UNKNOWN — an entry naming a release the block does not record
+    // (owningReleases and evidenceOwner each).
+    const unknown = run({ K5: { state: 'closed' } }, [base]);
+    assert.equal(unknown.filter((c) => c === 'RELEASE_UNKNOWN').length, 2);
+
+    // CLOSURE_LAGS_RELEASES — all owners closed + accepted + planned + silent.
+    assert.ok(run({ K9: { state: 'closed' } }, [base]).includes('CLOSURE_LAGS_RELEASES'));
+
+    // The documented-lag exception must SAY something: a bare sticker note
+    // still violates; a note naming the missing evidence does not.
+    assert.ok(
+      run({ K9: { state: 'closed' } }, [{ ...base, notes: 'missing evidence' }]).includes('CLOSURE_LAGS_RELEASES'),
+      'a bare "missing evidence" sticker does not document a lag',
+    );
+    assert.ok(
+      !run({ K9: { state: 'closed' } }, [{ ...base, notes: 'Missing evidence: no behavioral test exercises the carry-forward predicate or its single-use consumption idempotency.' }]).includes('CLOSURE_LAGS_RELEASES'),
+      'a note naming the missing evidence documents the lag',
+    );
+
+    // An open owner suppresses the lag rule (the entry is waiting for work).
+    assert.ok(
+      !run({ K9: { state: 'closed' }, K13: { state: 'open' } }, [{ ...base, owningReleases: ['K9', 'K13'] }]).includes('CLOSURE_LAGS_RELEASES'),
+    );
+
+    // CLOSED_WITHOUT_EVIDENCE — closed requires a non-empty evidence[].
+    assert.ok(run({ K9: { state: 'closed' } }, [{ ...base, closureState: 'closed' }]).includes('CLOSED_WITHOUT_EVIDENCE'));
+    assert.ok(
+      !run({ K9: { state: 'closed' } }, [{ ...base, closureState: 'closed', evidence: ['suite 1/1'] }]).includes('CLOSED_WITHOUT_EVIDENCE'),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
