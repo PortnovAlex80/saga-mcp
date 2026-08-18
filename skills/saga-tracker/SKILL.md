@@ -80,8 +80,9 @@ is working. Detailed stage lives in a `stage:<name>` tag.
 **Workers share one repo but each task runs in its OWN git worktree**
 (branch `task/<id>`, path `.worktrees/task-<id>`), so concurrent agents don't
 race files. The dispatcher records the linkage in `task.metadata.worktree`;
-the merge back into the integration branch (`dev`) is gated behind review
-(APPROVED → `worker_merge_acquire` → merge → `worker_merge_release`). Every
+the merge back into the integration branch (`dev`) is owned by the fenced
+git-integration factory effect after acceptance — workers never merge
+(stage-8: the merge tools are not granted). Every
 `worker_next` / `worker_done` response also carries `active_tasks[]` so a
 worker can see what its siblings are doing. Full lifecycle in `saga-worker`.
 

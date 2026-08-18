@@ -106,8 +106,8 @@ A worker that holds a task and reaches a stopping point MUST call `worker_done`.
 That single call is the delegation's returned result. The call carries:
 
 - **`verdict=approved`** — review passed; for a typed `git_change` task this
-  records `integration_state=pending` (merge still gated by
-  `worker_merge_acquire`/`worker_merge_release`).
+  records `integration_state=pending` — the fenced git-integration factory
+  effect performs the merge (workers hold no merge tools; stage-8).
 - **`verdict=changes_requested`** — only valid on a task in `review_in_progress`;
   returns it to the unassigned `todo` queue for a fresh developer execution.
 - **`result` text** — recorded as a comment (author = `worker_id`).
@@ -121,9 +121,9 @@ another round runs.
 superpowers frames this as the implementer reporting DONE/DONE_WITH_CONCERNS
 with a commit list and test summary, then a separate task-reviewer verdict. We
 collapse both into the single `worker_done` call (verdict field) because in
-CGAD the worker IS the typed execution unit and `worker_merge_release` is the
-authoritative integration verdict — there is no parallel reviewer subagent the
-dispatcher spawns.
+CGAD the worker IS the typed execution unit and the git-integration factory
+effect is the authoritative integration verdict — there is no parallel
+reviewer subagent the dispatcher spawns.
 
 ### Terminal non-result (терминальный не-результат) — `worker_ask_need` / crash
 

@@ -650,8 +650,9 @@ should address the duplication and the M3 split.
   with note (idempotent safety).
 - If the task is not a code task → `approved` with `result='not a code task'`
   to release it without prejudice.
-- Never call `worker_merge_acquire` / `worker_merge_release` — that is the
-  Builder's job post-approval.
+- Never attempt repository integration — the fenced git-integration factory
+  effect merges the reviewed source after acceptance; workers hold no merge
+  tools (stage-8).
 - This skill is read-only on the artifact tree. Only `verification_record`
   and `worker_done` are writes (and only `worker_done` for the review
   verdict).

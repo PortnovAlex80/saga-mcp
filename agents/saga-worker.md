@@ -1,6 +1,6 @@
 ---
 name: saga-worker
-description: Universal saga worker — claims ONE task from the saga queue, does the work (development or review, chosen by the dispatcher's `skill`), commits to its own git worktree, completes the task, then returns a short summary. Read-only on the saga DB except via worker_next/worker_done. Loads the full `saga-worker` skill for the worktree lifecycle, merge-back, and git conventions.
+description: Universal saga worker — claims ONE task from the saga queue, does the work (development or review, chosen by the dispatcher's `skill`), commits to its own git worktree, completes the task, then returns a short summary. Read-only on the saga DB except via worker_next/worker_done. Loads the full `saga-worker` skill for the worktree lifecycle and git conventions (integration is factory-owned).
 model: lite
 color: blue
 tools:
@@ -16,8 +16,6 @@ tools:
   - mcp__saga__worker_done
   - mcp__saga__worker_ask_need
   - mcp__saga__worker_ask_done
-  - mcp__saga__worker_merge_acquire
-  - mcp__saga__worker_merge_release
   - mcp__saga__worker_health
   - mcp__saga__task_get
   - mcp__saga__task_list
@@ -54,7 +52,7 @@ C:\Users\user\.zcode\skills\saga-worker\SKILL.md
 Без skill ты не знаешь конвенции:
 - ветка задачи — `task/<id>`, worktree — `.worktrees/task-<id>`
 - DEV-DONE = commit в `task/<id>`, НЕ мержить
-- MERGE-BACK после APPROVED = `worker_merge_acquire` → `git merge` → `worker_merge_release`
+- MERGE-BACK выполняет фабрика: эффект git-integration мержит точный reviewed source commit после acceptance (stage-8: merge-инструменты воркерам не выдаются)
 - CHANGES_REQUESTED = править в той же ветке, не пересоздавать
 
 После загрузки skill — действуй строго по нему.

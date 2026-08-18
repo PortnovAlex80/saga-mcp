@@ -129,7 +129,7 @@ git fetch origin
 git worktree add -b task/<stuck_task_id>-hypo-<N> <repo>/../worktrees/task-<stuck_task_id>-hypo-<N> origin/dev
 ```
 
-Or, if your saga runner manages worktrees via `worker_merge_acquire`, follow
+Or, if your saga runner manages worktrees, follow
 the runner's contract. The branch name **must** be
 `task/<stuck_task_id>-hypo-<N>` so the synthesis worker can find it by convention.
 
@@ -476,8 +476,9 @@ Synthesis will route the bonus coverage appropriately.
 ### NEVER call
 
 - `worker_next` — you already hold a task; one task = one launch.
-- `worker_merge_acquire` / `worker_merge_release` — your worktree is **not**
-  destined for `dev`. Synthesis handles merging.
+- repository integration — your worktree is **not** destined for `dev`. The
+  fenced git-integration factory effect handles merging; workers hold no
+  merge tools (stage-8).
 - `episode_transition` — deleted in the saga4 cutover; the Lifecycle
   Orchestrator now owns stage advancement.
 - `task_update({status:...})` on the stuck task — you do not decide its fate.
