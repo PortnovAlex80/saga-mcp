@@ -211,8 +211,19 @@ Enumerated candidates (verify each before deleting):
 - `readFrozenProductionIngressIfBound` — the "explicitly unbound LEGACY
   execution" branch (`authority === null && work_intent_id === null`), plus the
   `seedUnboundExecution` fixture that exists only to satisfy it.
+  **REFUTED 2026-08-18 — DECIDED KEEP.** Not legacy: this branch is the lawful
+  fence for `tracker_only` tasks (any claim without a WorkIntent recreates it).
+  Deleting it breaks `worker_done` for plain tracker usage. Evidence and the
+  required design decision first:
+  `docs/testing/TASK-C-PREVERIFICATION.md`, CANDIDATE 2.
 - `FactoryPostAcceptanceEffectRegistry.run` — the "legacy idempotent adapters"
   branch that fabricates a successful receipt.
+  **REFUTED 2026-08-18 — DECIDED KEEP.** Load-bearing today: two live effects
+  (`formalization-accept-products`, `replay-capture`) return void and every
+  acceptance settles through the fabricated receipt. The correct purge is first
+  migrating both effects to explicit `succeeded` receipts, then removing the
+  fallback — a migration task, not a deletion.
+  `docs/testing/TASK-C-PREVERIFICATION.md`, CANDIDATE 3.
 - `'factory.execution.v1'` in `ACCEPTED_POLICY_VERSIONS`
   (`src/shared/authority/authorize-tool-call.ts`).
 - `src/db.ts`: `supportedVersions` `{0,3..13}` and the whole migration ladder
