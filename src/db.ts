@@ -74,7 +74,7 @@ let db: Database.Database | null = null;
  *       columns stop_fence/voided_at. The void state is audit-only
  *       (voided_at IS NOT NULL on a terminal state value); no existing CHECK
  *       constraint is widened.
- *  14 = Antifreeze layer C (engine supervisor): additive
+ * 14 = Antifreeze layer C (engine supervisor): additive
  *       factory_launch_requests columns engine_log_path/engine_pid/
  *       engine_spawned_at (durable binding of the spawned engine host to its
  *       launch — the heartbeat/log markers become findable), the append-only
@@ -84,6 +84,16 @@ let db: Database.Database | null = null;
  *       accepts 'failed_watchdog' (restart-budget exhaustion must be visible,
  *       never silent). Applied via ADD COLUMN / table-rebuild for existing
  *       DBs; no row reset.
+ *  15 = K13 (M3, card commit 2) — the accepted-authority head carries the
+ *       byte-identical accepted identity: additive nullable columns
+ *       acceptance_id / check_plan_digest / package_fingerprint /
+ *       production_revision_ref / product_refs / baseline_workplace_revision
+ *       on factory_accepted_authority_head (one schema migration family).
+ *       Same accepted revision ⇒ byte-identical identity is enforced on the
+ *       head row itself; a same-revision drift in ANY dimension fails closed
+ *       with AUTHORITY_HEAD_IDENTITY_CONFLICT. Applied via idempotent
+ *       PRAGMA-guarded ADD COLUMN in the owning repository (rows written
+ *       before the extension keep NULL — the documented legacy meaning).
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
@@ -91,7 +101,7 @@ let db: Database.Database | null = null;
  */
 
 /** Increment when the schema changes incompatibly. */
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 export function getDb(): Database.Database {
   if (db) return db;

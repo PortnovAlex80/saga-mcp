@@ -43,6 +43,14 @@ function recordAt(revision, identity = {}) {
     acceptedAuthorGateDecisionKey: identity.gateDecisionKey ?? 'decision/A',
     revision,
     acceptedAuthorTaskId: identity.taskId !== undefined ? identity.taskId : 'task-1',
+    // K13 card commit 2 — the full byte-identical identity is REQUIRED on
+    // every record; drift in THESE dimensions is pinned by
+    // accepted-head-exact-identity.test.mjs.
+    checkPlanDigest: 'sha256:check-plan/A',
+    packageFingerprint: 'sha256:installation/A',
+    productionRevisionRef: 'workplace-production-revision/A',
+    productRefs: ['product/alpha@1'],
+    baselineWorkplaceRevision: Math.max(revision - 1, 0),
     now: () => new Date('2026-08-18T00:00:00Z'),
   };
 }

@@ -1519,9 +1519,24 @@ CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
 -- is the carry-forward-safe task binding: neither submission.task_id (the
 -- ORIGIN process's task, wrong after carry-forward) nor ORDER BY t.id DESC
 -- (recency, wrong in repair cycles) is authority. The HEAD is the authority
--- carrying task identity, so downstream integration (C5-03) selects the task
--- from this exact pointer. Nullable: pre-C5-02 heads and heads recorded before
+-- carrying task identity, so downstream integration (C5-03) selects the
+-- task from this exact pointer. Nullable: pre-C5-02 heads and heads recorded before
 -- the coordinator wires the task id have NULL (additive column, no row reset).
+--
+-- K13 (M3, card commit 2 — one schema migration family) — the head carries
+-- the BYTE-IDENTICAL accepted identity, superseding the minimal-pointer
+-- audit decision of 09687df7 (the release card is the specification):
+--   acceptance_id              content address over the full identity body;
+--   check_plan_digest          the accepting decision's frozen check plan;
+--   package_fingerprint        the accepting decision's installation digest;
+--   production_revision_ref    the accepted CandidateSet's revision;
+--   product_refs               the CandidateSet members, ordinal order (JSON);
+--   baseline_workplace_revision  the CAS revision the commit was fenced on.
+-- Same accepted revision ⇒ byte-identical identity is now enforced ON the
+-- head row (AUTHORITY_HEAD_IDENTITY_CONFLICT names the drifted dimension).
+-- The columns are NULLable ONLY for rows written before this extension (the
+-- idempotent repository ensure upgrades a pre-K13 table in place, preserving
+-- rows); every K13-era record populates all of them.
 CREATE TABLE IF NOT EXISTS factory_accepted_authority_head (
   workplace_ref                        TEXT PRIMARY KEY,
   accepted_author_candidate_set_ref    TEXT NOT NULL,
@@ -1529,6 +1544,12 @@ CREATE TABLE IF NOT EXISTS factory_accepted_authority_head (
   revision                             INTEGER NOT NULL,
   recorded_at                          TEXT NOT NULL,
   accepted_author_task_id              TEXT,
+  acceptance_id                        TEXT,
+  check_plan_digest                    TEXT,
+  package_fingerprint                  TEXT,
+  production_revision_ref              TEXT,
+  product_refs                         TEXT,
+  baseline_workplace_revision          INTEGER,
   FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
 );
 

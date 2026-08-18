@@ -85,6 +85,23 @@ function fixture() {
   const gateRepo = new SqliteGateRepository(db);
   const authorityCommit = new CommitAcceptedCandidate({ gateRepo, coordinator });
 
+  // K13 — the subject CandidateSet chain the head's byte-identity resolves
+  // through (decision subject -> candidate set -> ordered members).
+  db.prepare(
+    `INSERT INTO factory_candidate_sets
+       (candidate_set_ref, workplace_ref, production_revision_ref, role,
+        subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
+     VALUES ('candidate-set:subject', ?, 'revision:proof', 'author', NULL, ?, 'seal:proof', ?)`,
+  ).run(workplaceKey, HEX64, '2026-08-18T00:00:00Z');
+  for (const [ordinal, productRef] of ['product:one@1', 'product:two@2'].entries()) {
+    db.prepare(
+      `INSERT INTO factory_candidate_set_members
+         (candidate_set_ref, ordinal, product_schema, product_ref,
+          product_digest, origin, source_candidate_set_ref)
+       VALUES ('candidate-set:subject', ?, 'factory.product.v1', ?, ?, 'produced', NULL)`,
+    ).run(ordinal, productRef, HEX64);
+  }
+
   // Seed the full valid proof via the REAL repository API.
   const revision = workplaceRepo.read(ref).revision;
   gateRepo.createGateRun({

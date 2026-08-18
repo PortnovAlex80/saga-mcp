@@ -195,6 +195,32 @@ function recordAcceptedAuthorDecision(h, candidateSetRef, suffix) {
   const expectedWorkplaceRevision = h.workplaceRepo.read(REF).revision;
   const gateRunRef = `gate-run/${suffix}`;
   const decisionKey = `gate-decision/${suffix}`;
+  // K13 — the subject CandidateSet chain the head's byte-identity resolves
+  // through (idempotent; one workplace per fixture). The production revision
+  // parent row satisfies the FK (this fixture keeps foreign_keys ON), and its
+  // material_digest is derived per ref — revisions are UNIQUE(workplace,
+  // material_digest), so a shared digest would silently swallow the second
+  // attempt's revision (INSERT OR IGNORE) and break the chain FK.
+  const chainDigest = createHash('sha256').update(candidateSetRef).digest('hex');
+  h.db.prepare(
+    `INSERT OR IGNORE INTO factory_workplace_production_revisions
+       (revision_ref, workplace_ref, parent_revision_ref, members,
+        contributing_execution_refs, presenter_ref, material_digest,
+        semantic_digest, sealed_at)
+     VALUES (?, (SELECT workplace_ref FROM factory_workplaces LIMIT 1), NULL, '[]', '[]', ?, ?, ?, ?)`,
+  ).run(`revision/${candidateSetRef}`, `presenter/${candidateSetRef}`, chainDigest, chainDigest, '2026-08-18T00:00:00Z');
+  h.db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_sets
+       (candidate_set_ref, workplace_ref, production_revision_ref, role,
+        subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
+     VALUES (?, (SELECT workplace_ref FROM factory_workplaces LIMIT 1), ?, 'author', NULL, ?, ?, ?)`,
+  ).run(candidateSetRef, `revision/${candidateSetRef}`, chainDigest, `seal/${candidateSetRef}`, '2026-08-18T00:00:00Z');
+  h.db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_set_members
+       (candidate_set_ref, ordinal, product_schema, product_ref,
+        product_digest, origin, source_candidate_set_ref)
+     VALUES (?, 0, 'factory.product.v1', ?, ?, 'produced', NULL)`,
+  ).run(candidateSetRef, `product/${candidateSetRef}`, 'c'.repeat(64));
   h.gateRepo.createGateRun({
     gateRunRef,
     workplaceRef: REF,

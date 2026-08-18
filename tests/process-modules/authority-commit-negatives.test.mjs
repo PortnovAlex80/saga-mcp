@@ -119,6 +119,21 @@ function seedProofAtRevision(db, expectedWorkplaceRevision, {
   planDigest = HEX64,
 } = {}) {
   const gateRunRef = `gate-run:${decisionKey}`;
+  // K13 — the subject CandidateSet chain the head's byte-identity resolves
+  // through (decision subject -> candidate set -> ordered members). The
+  // subject varies per proof; the chain rows are idempotent.
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_sets
+       (candidate_set_ref, workplace_ref, production_revision_ref, role,
+        subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
+     VALUES (?, ?, ?, 'author', NULL, ?, ?, ?)`,
+  ).run(subject, workplaceKey, `revision:${subject}`, HEX64, `seal:${subject}`, '2026-08-18T00:00:00Z');
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_candidate_set_members
+       (candidate_set_ref, ordinal, product_schema, product_ref,
+        product_digest, origin, source_candidate_set_ref)
+     VALUES (?, 0, 'factory.product.v1', ?, ?, 'produced', NULL)`,
+  ).run(subject, `product:${subject}`, HEX64);
   db.prepare(
     `INSERT INTO factory_gate_runs
        (gate_run_ref,workplace_ref,gate_phase,subject_candidate_set_ref,

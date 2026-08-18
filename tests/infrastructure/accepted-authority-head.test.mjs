@@ -22,6 +22,16 @@ import { SqliteAcceptedAuthorityHeadRepository } from
 
 const WORKPLACE_REF = 'workplace/1/cell/item';
 
+// K13 (card commit 2) — record() requires the full byte-identity; these C5
+// tests assert TASK plumbing only, so the identity is a per-test constant.
+const K13_IDENTITY = {
+  checkPlanDigest: 'sha256:check-plan/c5',
+  packageFingerprint: 'sha256:installation/c5',
+  productionRevisionRef: 'workplace-production-revision/c5',
+  productRefs: ['product/c5@1'],
+  baselineWorkplaceRevision: 0,
+};
+
 function makeDb() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
@@ -49,6 +59,7 @@ test('C5: record with acceptedAuthorTaskId persists and recalls the task identit
     revision: 1,
     acceptedAuthorTaskId: 'task-42',
     now: () => new Date('2026-08-12T20:00:00.000Z'),
+    ...K13_IDENTITY,
   });
 
   // The dedicated C5 read.
@@ -72,6 +83,7 @@ test('C5: a second author acceptance (repair cycle) re-binds task identity on th
     acceptedAuthorGateDecisionKey: 'gate-decision/author/accepted/rev-1',
     revision: 1,
     acceptedAuthorTaskId: 'task-42',
+    ...K13_IDENTITY,
   });
   // A repair cycle produces a NEW author CandidateSet and re-records the head.
   // The head must reflect the CURRENT acceptance's task identity exactly — no
@@ -82,6 +94,7 @@ test('C5: a second author acceptance (repair cycle) re-binds task identity on th
     acceptedAuthorGateDecisionKey: 'gate-decision/author/accepted/rev-3',
     revision: 3,
     acceptedAuthorTaskId: 'task-42',
+    ...K13_IDENTITY,
   });
 
   const head = repo.read(WORKPLACE_REF);
@@ -104,6 +117,7 @@ test('C5: task identity is nullable — a head recorded without it reads null (p
     acceptedAuthorCandidateSetRef: 'candidate-set/1',
     acceptedAuthorGateDecisionKey: 'gate-decision/1',
     revision: 1,
+    ...K13_IDENTITY,
   });
 
   assert.equal(repo.readAuthorTaskId(WORKPLACE_REF), null);
@@ -122,6 +136,7 @@ test('C5: task identity is updatable independently — a later acceptance can bi
     acceptedAuthorCandidateSetRef: 'candidate-set/1',
     acceptedAuthorGateDecisionKey: 'gate-decision/1',
     revision: 1,
+    ...K13_IDENTITY,
   });
   assert.equal(repo.readAuthorTaskId(WORKPLACE_REF), null);
 
@@ -132,6 +147,7 @@ test('C5: task identity is updatable independently — a later acceptance can bi
     acceptedAuthorGateDecisionKey: 'gate-decision/1',
     revision: 2,
     acceptedAuthorTaskId: 'task-7',
+    ...K13_IDENTITY,
   });
   assert.equal(repo.readAuthorTaskId(WORKPLACE_REF), 'task-7');
   db.close();

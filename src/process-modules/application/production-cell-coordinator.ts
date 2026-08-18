@@ -504,12 +504,29 @@ export class ProductionCellCoordinator {
           authority.acceptedAuthorGateDecisionKey,
           current.revision,
         );
+        // K13 (card commit 2) — the head records the BYTE-IDENTICAL accepted
+        // identity, loaded from the persisted chain INSIDE this transaction:
+        // the decision's frozen check plan + installation digest, the subject
+        // CandidateSet's production revision, and its members in ordinal
+        // order. The CAS baseline is the revision this commit was fenced on.
+        // The chain is resolved from the DECISION alone (its subject is the
+        // persisted truth; the claimed ref was already proven equal by the
+        // acceptance service — ADR-081).
+        const identity = this.readAcceptedIdentity(
+          serialized,
+          authority.acceptedAuthorGateDecisionKey,
+        );
         this.deps.authorityHeadRepo.record({
           workplaceRef: serialized,
           acceptedAuthorCandidateSetRef: authority.acceptedAuthorCandidateSetRef,
           acceptedAuthorGateDecisionKey: authority.acceptedAuthorGateDecisionKey,
           revision: r.revision,
           acceptedAuthorTaskId: authority.acceptedAuthorTaskId,
+          checkPlanDigest: identity.checkPlanDigest,
+          packageFingerprint: identity.packageFingerprint,
+          productionRevisionRef: identity.productionRevisionRef,
+          productRefs: identity.productRefs,
+          baselineWorkplaceRevision: current.revision,
           now: this.deps.now,
         });
       }
@@ -519,6 +536,61 @@ export class ProductionCellCoordinator {
       applied: result.applied,
       state: result.state,
       revision: result.revision,
+    };
+  }
+
+  /**
+   * K13 — load the exact accepted-material identity for the head from the
+   * persisted chain (GateDecision -> subject CandidateSet -> members). The
+   * chain is keyed by the persisted decision; no caller-supplied material
+   * truth participates. Fails closed when the chain is incomplete: a head
+   * may not be recorded with a fabricated identity dimension.
+   */
+  private readAcceptedIdentity(
+    workplaceRef: string,
+    gateDecisionKey: string,
+  ): {
+    readonly checkPlanDigest: string;
+    readonly packageFingerprint: string;
+    readonly productionRevisionRef: string;
+    readonly productRefs: readonly string[];
+  } {
+    const chain = this.deps.db.prepare(
+      `SELECT gd.check_plan_digest, gd.installation_digest,
+              gd.subject_candidate_set_ref, cs.production_revision_ref
+         FROM factory_gate_decisions gd
+         JOIN factory_candidate_sets cs
+           ON cs.candidate_set_ref = gd.subject_candidate_set_ref
+          AND cs.workplace_ref = gd.workplace_ref
+        WHERE gd.decision_key=? AND gd.workplace_ref=?`,
+    ).get(gateDecisionKey, workplaceRef) as {
+      check_plan_digest: string;
+      installation_digest: string;
+      subject_candidate_set_ref: string;
+      production_revision_ref: string;
+    } | undefined;
+    if (!chain || !chain.production_revision_ref) {
+      throw new Error(
+        `AUTHORITY_COMMIT_IDENTITY_UNRESOLVED: ${gateDecisionKey} does not resolve `
+        + `an accepted CandidateSet chain for ${workplaceRef}`,
+      );
+    }
+    const members = this.deps.db.prepare(
+      `SELECT product_ref
+         FROM factory_candidate_set_members
+        WHERE candidate_set_ref=?
+        ORDER BY ordinal`,
+    ).all(chain.subject_candidate_set_ref) as Array<{ product_ref: string }>;
+    if (members.length === 0) {
+      throw new Error(
+        `AUTHORITY_COMMIT_IDENTITY_UNRESOLVED: ${chain.subject_candidate_set_ref} has no members to bind ProductRefs`,
+      );
+    }
+    return {
+      checkPlanDigest: chain.check_plan_digest,
+      packageFingerprint: chain.installation_digest,
+      productionRevisionRef: chain.production_revision_ref,
+      productRefs: members.map(member => member.product_ref),
     };
   }
 

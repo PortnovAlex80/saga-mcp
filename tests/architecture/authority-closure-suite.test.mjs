@@ -1,19 +1,15 @@
 // tests/architecture/authority-closure-suite.test.mjs
 //
 // K13 — the authority-closure suite (M3): every accepted write is
-// attributable to ONE Gate-proven AuthorityCommit; the accepted head does
-// not denormalize; obligations settle by exact source; effect repair is
-// receipt-idempotent.
+// attributable to ONE Gate-proven AuthorityCommit; the accepted head carries
+// the pinned K13 byte-identity surface; obligations settle by exact source;
+// effect repair is receipt-idempotent.
 //
-// AUDIT DECISIONS RECORDED (the plan's commit 2 "extend
-// AcceptedAuthorityHead" was deliberately NOT implemented as denormalized
-// columns): K10 proved the full accepted identity is DERIVABLE through the
-// exact chain head -> GateDecision (check-plan digest) -> CandidateSet
-// (members/ProductRefs) -> WorkplaceProductionRevision (package/semantic
-// digests). Copying those fields onto the head would add drift surfaces
-// against the byte-identical-identity invariant (pinned by
-// accepted-head-monotonicity.test.mjs). The head stays the minimal
-// monotonic pointer; its DDL is pinned to exactly the six columns.
+// SUPERSEDED AUDIT DECISION: 09687df7 deliberately did NOT extend the head
+// ("minimal pointer"). The stage-9 brief supersedes it — the release card is
+// the specification, and §K13 commit 2 names the identity columns. The DDL
+// pin below moved WITH the release (card commit 2); same-revision drift in
+// any identity dimension fails closed (accepted-head-exact-identity.test.mjs).
 //
 // AUDIT (commit 4): obligations already settle by EXACT source — complete()
 // requires the lease fence, the owner, and a completionReceipt; a replay
@@ -77,19 +73,26 @@ test('K13/closure: ONE accepted-head writer — SQL only in the repository, reco
     + 'every accepted write is attributable to one Gate-proven AuthorityCommit');
 });
 
-test('K13/closure: the accepted head stays the minimal pointer (no denormalized identity drift)', () => {
+test('K13/closure: the head DDL is pinned to the exact K13 identity surface', () => {
   const schema = readFileSync(path.join(REPO_ROOT, 'src', 'schema.ts'), 'utf8');
   const match = /CREATE TABLE IF NOT EXISTS factory_accepted_authority_head \(([\s\S]*?)\n\);/.exec(schema);
   assert.ok(match, 'head DDL found');
   const columns = [...match[1].matchAll(/^\s+([a-z_]+)\s+/gm)].map(m => m[1]).sort();
   assert.deepEqual(
     columns,
-    ['accepted_author_candidate_set_ref', 'accepted_author_gate_decision_key',
-     'accepted_author_task_id', 'recorded_at', 'revision', 'workplace_ref'],
-    'the head is exactly the six-column monotonic pointer. Adding a '
-    + 'denormalized identity column (products/plan/package/baseline) creates '
-    + 'drift against the byte-identical-identity invariant — extend the '
-    + 'DERIVED chain instead (K10-proven), and update this pin via an ADR.',
+    ['acceptance_id', 'accepted_author_candidate_set_ref',
+     'accepted_author_gate_decision_key', 'accepted_author_task_id',
+     'baseline_workplace_revision', 'check_plan_digest',
+     'package_fingerprint', 'product_refs', 'production_revision_ref',
+     'recorded_at', 'revision', 'workplace_ref'],
+    'the head is the six-column pointer PLUS the K13 byte-identity columns '
+    + '(card §K13 commit 2: acceptance ID, check-plan digest, package '
+    + 'fingerprint, production revision, ProductRefs, CAS baseline — exactly '
+    + 'as the card names them). The 09687df7 minimal-pointer audit decision '
+    + 'is superseded by the stage-9 brief ("the release card is the '
+    + 'specification"). Adding or removing a column is a deliberate '
+    + 'architectural act — do it in the same commit as the decision, and '
+    + 'update this pin.',
   );
 });
 
