@@ -324,7 +324,7 @@ export function startWorkerSupervision(
       let remoteCount = 0;
       let lostDeadPidCount = 0;
       for (const p of projections) {
-        if (p.action === 'lost' || p.action === 'terminated') {
+        if (p.action === 'lost' || p.action === 'terminated' || p.action === 'exited') {
           reapedCount++;
           if (p.released) releasedCount++;
           if (p.lostViaDeadPid === true) lostDeadPidCount++;
