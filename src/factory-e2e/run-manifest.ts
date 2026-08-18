@@ -24,7 +24,7 @@ export const RUN_MANIFEST_VERSION = 'factory-e2e.run-manifest.v1' as const;
 export type RunManifestVersion = typeof RUN_MANIFEST_VERSION;
 
 /** The W9 finish-line lane a scenario belongs to. */
-export type E2ELane = 'W9-02' | 'W9-03';
+export type E2ELane = 'W9-02' | 'W9-03' | 'W9-04';
 
 /** The only inference mode the finish-line harness permits. */
 export type InferenceMode = 'scripted';
@@ -265,7 +265,7 @@ function parseScenario(raw: unknown): RunScenario {
   }
   return Object.freeze({
     scenarioId: requireString(raw.scenarioId, 'scenario.scenarioId'),
-    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be 'W9-02' or 'W9-03', got '${String(raw.lane)}'`); })(),
+    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be 'W9-02', 'W9-03' or 'W9-04', got '${String(raw.lane)}'`); })(),
     description: requireString(raw.description, 'scenario.description'),
     freshState,
     concurrencyCap: requireConcurrencyCap(raw.concurrencyCap, 'scenario.concurrencyCap'),
@@ -509,6 +509,92 @@ export function defaultW9RunManifest(baseline: {
         deterministicCrashPoints: [],
         expectedAuthorityInvariants: adversarialInvariants,
       },
+      ...w9OutcomeEdgeScenarios(concurrencyCap),
     ],
   });
+}
+
+/**
+ * W9-04 — lifecycle outcome-edge scenarios (CONVEYOR §23 L3 item 7).
+ *
+ * Each declared lifecycle outcome edge that no happy/adversarial run ever
+ * traversed gets one scenario that drives it END TO END through normal
+ * production: a scripted worker submits ordinary (bad or weak) material, the
+ * real gates/checks/settlement classify it, and the run terminates on the
+ * declared route. The handler override is ONE cell per scenario — every other
+ * cell stays on the happy path (the w9-03 pattern).
+ *
+ * Discovery is a permissive idea-STRENGTH gate: every code routes FORWARD to
+ * Formalization and is recorded in the discovery certificate, so those
+ * scenarios assert the certificate code, not a different terminal.
+ */
+function w9OutcomeEdgeScenarios(
+  concurrencyCap: number,
+): ReturnType<typeof parseScenario>[] {
+  const invariants = W9_AUTHORITY_INVARIANTS;
+  const scenario = (
+    scenarioId: string,
+    description: string,
+    scenarioKey: string,
+  ) => ({
+    scenarioId,
+    lane: 'W9-04' as const,
+    description,
+    freshState: true,
+    concurrencyCap,
+    scriptedInference: {
+      mode: 'scripted' as const,
+      scenarioKey,
+      description:
+        'Happy-path handlers with exactly one targeted worker override that '
+        + 'makes the workshop emit this outcome through its normal '
+        + 'product/gate/settlement path.',
+    },
+    deterministicCrashPoints: [],
+    expectedAuthorityInvariants: invariants,
+  });
+
+  return [
+        scenario(
+      'w9-04-frm-inconsistent',
+      'The product-contract author traces the PRD to a non-brief root '
+      + '(a decision artifact). The phase gates only require SOME non-product '
+      + 'root, so the lineage choice is gate-permitted — settlement\'s '
+      + 'canonical traceability check requires the exact PRD→brief edge and '
+      + 'terminates Formalization inconsistent.',
+      'w9-04-frm-inconsistent',
+    ),
+    scenario(
+      'w9-04-frm-failed',
+      'The acceptance-contract author writes an AC document whose atomic '
+      + 'headings contradict the artifact code (artifact AC-1, document '
+      + 'heading AC-9). The acceptance gate is structural and passes; the '
+      + 'baseline freeze parses atomic members and fails terminally — '
+      + 'Formalization terminates failed.',
+      'w9-04-frm-failed',
+    ),
+    scenario(
+      'w9-04-dev-blocked',
+      'The frozen integrated candidate drifts: between candidate freeze and '
+      + 'settlement an out-of-band change lands on the integration branch. '
+      + 'Every cell still accepts against the exact frozen candidate, but '
+      + 'settlement observes the current branch head, the observed hash no '
+      + 'longer equals the frozen candidateHash, and Development terminates '
+      + 'blocked (candidate-drifted-after-freeze) — prior evidence honestly '
+      + 'invalidated instead of silently reused.',
+      'w9-04-dev-blocked',
+    ),
+    ...(['clarify', 'reject'] as const).map(
+      code => scenario(
+        `w9-04-disc-${code}`,
+        `Discovery settles '${code}': the worker recommends it and (for the `
+        + 'reject verdict) the readiness advisor coherently agrees, exactly as '
+        + 'the settlement policy matrix defines. Discovery is a permissive '
+        + 'idea-strength gate: the certificate records the code and routing '
+        + 'still forwards to Formalization, which runs on its own merits and '
+        + 'completes the lifecycle.',
+        `w9-04-disc-${code}`,
+      ),
+    ),
+  ];
 }

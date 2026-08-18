@@ -21,6 +21,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { productBuildLifecycle } from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 
@@ -30,36 +31,55 @@ const TRACED = Object.freeze({
   'initial-discovery:go': 'factory-e2e/w9-02-happy-path',
   'solution-formalization:formalized': 'factory-e2e/w9-02-happy-path',
   'solution-development:verified': 'factory-e2e/w9-02-happy-path',
+
+  // Driven end-to-end by the W9-04 outcome-edge scenarios: one targeted
+  // scripted-worker override per edge, the factory classifies through its
+  // normal gates/checks/settlement (tests/factory-e2e/w9-04).
+  'solution-formalization:inconsistent': 'factory-e2e/w9-04-frm-inconsistent',
+  'solution-formalization:failed': 'factory-e2e/w9-04-frm-failed',
+  'solution-development:blocked': 'factory-e2e/w9-04-dev-blocked',
+  'initial-discovery:clarify': 'factory-e2e/w9-04-disc-clarify',
+  'initial-discovery:reject': 'factory-e2e/w9-04-disc-reject',
 });
 
 /**
  * Edges no scenario drives yet. The value states WHY it matters, so the list
- * reads as a worklist rather than a suppression file.
+ * reads as a worklist rather than a suppression file. Edges marked
+ * ESCALATED carry evidence they have no runtime producer through normal
+ * production — the architect owns the decision (add a producer, or prove
+ * unreachability mechanically); see
+ * docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md.
  */
 const PENDING = Object.freeze({
   // Discovery is a permissive idea-STRENGTH gate: every code forwards to
-  // Formalization and is carried in the certificate. The ROUTE is identical to
-  // 'go', but the emitted code differs and is what downstream reasoning and the
-  // certificate record — so each still needs its own trace.
-  'initial-discovery:clarify': 'strength code recorded in the discovery certificate',
-  'initial-discovery:reject': 'strength code recorded in the discovery certificate',
-  'initial-discovery:defer': 'strength code recorded in the discovery certificate',
-  'initial-discovery:inconclusive': 'strength code recorded in the discovery certificate',
-  'initial-discovery:failed': 'discovery process failure still forwards; certificate must say so',
+  // Formalization and is carried in the certificate. The ROUTE is identical
+  // to 'go', but the emitted code differs and is what downstream reasoning
+  // and the certificate record — so each still needs its own trace.
+  // (All five codes traced by W9-04 — entry kept here only if re-added.)
 
-  // Formalization is the real go/no-go gate: all of these TERMINATE the run.
-  // A terminal edge that no run has ever taken is exactly where settlement and
-  // order projection break the first time it fires.
-  'solution-formalization:clarification-required': 'terminal business outcome, never traversed',
-  'solution-formalization:inconsistent': 'terminal business outcome, never traversed',
-  'solution-formalization:infeasible': 'terminal business outcome, never traversed',
-  'solution-formalization:failed': 'terminal failure routing, never traversed',
+  // ESCALATED — no runtime producer (evidence dossier):
+  // docs/testing/W9-04-UNREACHABLE-EDGE-EVIDENCE.md
+  'solution-formalization:clarification-required':
+    'ESCALATED unreachable: the per-cell accept effect re-accepts every produced artifact, so prd/acs/srs-missing cannot survive to settlement; the declared humanRequired→complete-clarification-required cell transition has no flow edge',
+  'solution-formalization:infeasible':
+    'ESCALATED unreachable: the settlement policy never returns infeasible and no kernel handler emits domain.infeasible — a declared route with no producer',
+  'solution-development:rework-required':
+    'ESCALATED unreachable: the integration effect hard-requires terminalStatus=complete (honest failed items are repaired, never settled) and settlement verification evidence outcome is structurally passed-only',
+  'solution-development:clarification-required':
+    'ESCALATED unreachable: the planner cell check validates the same canonical graph as the kernel resolver plus extra manifest coverage — nothing passes the cell but fails the resolver',
+  'solution-development:failed':
+    'ESCALATED unreachable: no installed check plan declares failureOwnership=upstream (a failed local-runnability receipt repairs forever instead of terminalizing) and settlement failed-reasons are kernel-integrity only',
 
-  // Development terminals other than the runnable-local success.
-  'solution-development:rework-required': 'terminal business outcome, never traversed',
-  'solution-development:clarification-required': 'terminal business outcome, never traversed',
-  'solution-development:blocked': 'terminal business outcome, never traversed',
-  'solution-development:failed': 'terminal failure routing, never traversed',
+  // Discovery: the settlement policy matrix emits only go/reject/clarify —
+  // a worker recommending defer/inconclusive/failed deterministically falls
+  // back to clarify (CLARIFY_POLICY_FALLBACK), so those declared routes have
+  // no producer (same dossier).
+  'initial-discovery:defer':
+    'ESCALATED unreachable: DiscoverySettlementPolicyV1 never emits defer — a defer recommendation falls back to clarify',
+  'initial-discovery:inconclusive':
+    'ESCALATED unreachable: DiscoverySettlementPolicyV1 never emits inconclusive — an inconclusive recommendation falls back to clarify',
+  'initial-discovery:failed':
+    'ESCALATED unreachable: reserved for discovery process failure; the worker-facing grammar funnels failures into clarify and no fast terminal-failed producer exists in the installed flow',
 });
 
 function installedEdges() {
