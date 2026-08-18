@@ -33,6 +33,51 @@ not parallel work.
 
 ---
 
+## TASK 0 — build discipline (read before touching anything)
+
+**The factory executes `dist/`, not `src/`.** Tasks 1–3 edit `src/`. If you start
+the run without rebuilding, you will observe the *old* factory and file bugs
+against code that is not running. This has to be right or the whole stage is
+worthless.
+
+Four facts that are not obvious:
+
+1. **`npm run build` deletes `dist/` first** — the script is
+   `rm -rf dist && tsc`. There is a window where `dist/` does not exist.
+
+2. **Never rebuild while the factory is live.** The worker launcher spawns
+   `dist/index.js` as the `saga` stdio MCP child for *every* worker
+   (`resolveSagaMcpEntry`, `composition-root.ts`). A rebuild mid-run removes it
+   under running workers: they lose every `mcp__saga__*` tool and fail in a way
+   that looks like a factory defect. If you must rebuild, stop the factory,
+   snapshot, rebuild, restart — and say in the report that you did.
+
+3. **`tracker-view/*.mjs` is NOT compiled.** It is plain ESM loaded from source,
+   so changes to `claude-runner.mjs` (prompt assembly, spawn argv) take effect
+   with no build at all. The asymmetry cuts both ways: a `src/` edit without a
+   build is invisible, a `tracker-view/` edit without a build is *immediately*
+   live. Know which side of the line you are editing.
+
+4. **Package resources are digest-pinned.** If your observability work touches a
+   pinned package resource or a handler, the package digest moves and existing
+   installations become `restart-required`. Start the run on a **fresh database
+   and a fresh order** — which you should do anyway — and this stays a non-issue.
+   If you see `MODULE_INSTALLATION_RESTART_REQUIRED`, that is what happened.
+
+**Before the run, verify and paste:**
+
+```bash
+npm run build                      # exit 0
+node -e "const s=require('fs').statSync('dist/index.js');console.log('dist/index.js built', s.mtime.toISOString())"
+git rev-parse HEAD
+git status --short                 # must be clean, or name every dirty file
+```
+
+A run started from a dirty tree cannot be reproduced from a commit, and its
+snapshot is worth much less. The `MANIFEST.json` from task 2 must record the
+commit SHA and the `dist` build time, so a future reader knows exactly which
+binary produced the evidence.
+
 ## TASK 1 — run observability
 
 The factory already emits: the operator heartbeat log, per-worker logs, and
@@ -134,6 +179,8 @@ replaced by verifying the shim's model map and the DB route in
 `lifecycle_execution_controls`.
 
 Before starting, confirm and paste:
+- **task 0 done**: `npm run build` exit 0, `dist/index.js` mtime, HEAD SHA, clean
+  tree;
 - the resolved model route the first claim will freeze into `execution_context`;
 - `SAGA_FACTORY_CONCURRENCY` ≤ 2;
 - the guard env is set;
@@ -186,6 +233,8 @@ Report:
    enter.
 2. **Raising concurrency above 2**, or changing the model route mid-run.
 3. **Any manual database edit**, for any reason.
+3a. **Rebuilding while the factory is live** — stop, snapshot, rebuild, restart,
+   and report it. `npm run build` removes `dist/` under running workers.
 4. **Anything touching the operator's interactive Claude channel.**
 5. Closing K13, or any release.
 
