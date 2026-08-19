@@ -57,6 +57,7 @@ import { asWorkplaceRef, serializeWorkplaceRef } from '../../dist/process-module
 import { candidateSetDigestForRevision } from '../../dist/process-modules/domain/workplace/candidate-set.js';
 import {
   authorizeEligibleAuthorCandidateCarryForward,
+  REVIEW_SCHEMA_FAILURE_CODE,
   SqliteAuthorCandidateCarryForward,
 } from '../../dist/infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
@@ -394,6 +395,38 @@ function cleanup(w) {
   w.db.close();
   rmSync(w.repo.root, { recursive: true, force: true });
 }
+
+// ===========================================================================
+// BLINDSIGHT C3 — eligible_failure_code is loaded from the DB row and thrown
+// away in resolve(): the directive delivered the carried material but never
+// the REASON the parent died, so the continuation child could not know what
+// boundary failed. resolve() must deliver the typed code + the parent error.
+// ===========================================================================
+test('C3: resolve() delivers eligibleFailureCode and the parent failure error to the child', () => {
+  const w = makeWorld('c3-code');
+  try {
+    const authorized = w.authorize();
+    assert.ok(authorized);
+    consumeContinuation(w.db);
+    const { childRef } = insertChildTask(w);
+
+    const port = new SqliteAuthorCandidateCarryForward(w.db);
+    const directive = port.resolve({
+      processRunId: 9,
+      workplaceRef: childRef,
+      semanticInputDigest: sha(`child:${w.item.id}`),
+      itemSnapshotHash: sha(w.item),
+      expectedProductSchemas: [OUT_SCHEMA],
+    });
+    assert.ok(directive, 'fixture: the directive must resolve');
+    assert.equal(directive.eligibleFailureCode, REVIEW_SCHEMA_FAILURE_CODE,
+      'C3: the typed parent failure code must ride the directive');
+    assert.equal(directive.parentFailureError, PARENT_ERROR,
+      'C3: the exact parent error text must ride the directive');
+  } finally {
+    cleanup(w);
+  }
+});
 
 // ===========================================================================
 // SM1 — first authorization tolerates a sibling merge (no prior row).

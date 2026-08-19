@@ -50,8 +50,39 @@ export function cellEffectRepairReceiptBody(input: {
   };
 }
 
+/**
+ * BLINDSIGHT C2 — one row of the acceptance-bound rejection history: every
+ * NON-accepted GateDecision the workplace ever received, across ALL check
+ * plans. The finding-trajectory chain legitimately RESETS on a check-plan
+ * change (findings under a different plan are not comparable evidence, T7),
+ * but the ACCEPTANCE PROOF may not: «rejected 3 times under P1, accepted
+ * under P2» (plan-swap laundering) must stay visible in the digest-covered
+ * final acceptance body.
+ */
+export interface FinalAcceptanceRejectionEntry {
+  readonly decisionKey: string;
+  readonly gateRef: string;
+  readonly gatePhase: string;
+  readonly subjectCandidateSetRef: string;
+  readonly verdict: string;
+  readonly checkPlanDigest: string;
+  readonly decidedAt: string;
+}
+
 export class SqliteCellFinalAcceptance {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database.Database) {
+    // K13 lazy migration: converge a pre-column database in place (never
+    // resets rows). The base DDL in schema.ts carries the column for new DBs.
+    const columns = this.db.prepare(
+      'PRAGMA table_info(factory_cell_final_acceptances)',
+    ).all() as Array<{ name: string }>;
+    if (!columns.some(column => column.name === 'rejection_history')) {
+      this.db.exec(
+        `ALTER TABLE factory_cell_final_acceptances
+           ADD COLUMN rejection_history TEXT NOT NULL DEFAULT '[]'`,
+      );
+    }
+  }
 
   transaction<T>(operation: () => T): T {
     return this.db.transaction(operation)();
@@ -350,33 +381,58 @@ export class SqliteCellFinalAcceptance {
       ).get(receiptRef, workplace, input.candidateSetRef);
       if (!receipt) throw new Error(`CELL_FINAL_ACCEPTANCE_EFFECT_RECEIPT_MISSING: ${receiptRef}`);
     }
+    // BLINDSIGHT C2 — the FULL cross-plan rejection history of the workplace
+    // becomes part of the digest-covered acceptance body: an accepted-after-
+    // rejections workplace gets a DIFFERENT acceptance proof than a first-try
+    // acceptance, and the plan swap is visible in the stored column.
+    const rejectionHistory = this.readRejectionHistorySnapshot(workplace);
     const body = {
       schema: 'factory.cell-final-acceptance.v1',
       workplaceRef: workplace,
       candidateSetRef: input.candidateSetRef,
       gateDecisionKey: decision.decision_key,
       effectReceiptRefs,
+      rejectionHistory,
     } as const;
     const acceptanceDigest = sha256Hex(body);
     const finalAcceptanceRef = `cell-final-acceptance:${acceptanceDigest}`;
     const existing = this.db.prepare(
-      `SELECT final_acceptance_ref,acceptance_digest
+      `SELECT final_acceptance_ref,acceptance_digest,rejection_history
          FROM factory_cell_final_acceptances WHERE workplace_ref=?`,
     ).get(workplace) as {
       final_acceptance_ref: string;
       acceptance_digest: string;
+      rejection_history: string;
     } | undefined;
     if (existing) {
-      if (existing.acceptance_digest !== acceptanceDigest) {
-        throw new Error('CELL_FINAL_ACCEPTANCE_REPLAY_MISMATCH');
+      if (existing.acceptance_digest === acceptanceDigest) {
+        return existing.final_acceptance_ref;
       }
-      return existing.final_acceptance_ref;
+      // One-way legacy compat: a row recorded by pre-C2 code carries a digest
+      // over the body WITHOUT rejectionHistory and the empty column default.
+      // Replay it to its own ref instead of REPLAY_MISMATCH (an in-flight
+      // workplace crossing the upgrade boundary must not die); every other
+      // mismatch — including a drifted body — still fails closed.
+      const legacyDigest = sha256Hex({
+        schema: body.schema,
+        workplaceRef: body.workplaceRef,
+        candidateSetRef: body.candidateSetRef,
+        gateDecisionKey: body.gateDecisionKey,
+        effectReceiptRefs: body.effectReceiptRefs,
+      });
+      if (
+        existing.acceptance_digest === legacyDigest
+        && (existing.rejection_history ?? '[]') === '[]'
+      ) {
+        return existing.final_acceptance_ref;
+      }
+      throw new Error('CELL_FINAL_ACCEPTANCE_REPLAY_MISMATCH');
     }
     this.db.prepare(
       `INSERT INTO factory_cell_final_acceptances
-        (final_acceptance_ref,workplace_ref,candidate_set_ref,gate_decision_key,
-         effect_receipt_refs,acceptance_digest,accepted_at)
-       VALUES (?,?,?,?,?,?,?)`,
+         (final_acceptance_ref,workplace_ref,candidate_set_ref,gate_decision_key,
+          effect_receipt_refs,acceptance_digest,rejection_history,accepted_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
     ).run(
       finalAcceptanceRef,
       workplace,
@@ -384,10 +440,56 @@ export class SqliteCellFinalAcceptance {
       decision.decision_key,
       JSON.stringify(effectReceiptRefs),
       acceptanceDigest,
+      JSON.stringify(rejectionHistory),
       input.acceptedAt,
     );
     return finalAcceptanceRef;
   }
+
+  /** The stored, digest-covered rejection history of an accepted workplace. */
+  getRejectionHistory(workplaceRef: string): readonly FinalAcceptanceRejectionEntry[] {
+    const row = this.db.prepare(
+      'SELECT rejection_history FROM factory_cell_final_acceptances WHERE workplace_ref=?',
+    ).get(workplaceRef) as { rejection_history: string } | undefined;
+    if (!row) return [];
+    try {
+      const parsed = JSON.parse(row.rejection_history ?? '[]') as unknown;
+      return Array.isArray(parsed) ? parsed as FinalAcceptanceRejectionEntry[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Every NON-accepted GateDecision of the workplace, across all plans. */
+  private readRejectionHistorySnapshot(
+    workplace: string,
+  ): readonly FinalAcceptanceRejectionEntry[] {
+    const rows = this.db.prepare(
+      `SELECT decision_key,gate_ref,gate_phase,subject_candidate_set_ref,
+              verdict,check_plan_digest,decided_at
+         FROM factory_gate_decisions
+        WHERE workplace_ref=? AND verdict<>'accepted'
+        ORDER BY decided_at,decision_key`,
+    ).all(workplace) as Array<{
+      decision_key: string;
+      gate_ref: string;
+      gate_phase: string;
+      subject_candidate_set_ref: string;
+      verdict: string;
+      check_plan_digest: string;
+      decided_at: string;
+    }>;
+    return rows.map(row => ({
+      decisionKey: row.decision_key,
+      gateRef: row.gate_ref,
+      gatePhase: row.gate_phase,
+      subjectCandidateSetRef: row.subject_candidate_set_ref,
+      verdict: row.verdict,
+      checkPlanDigest: row.check_plan_digest,
+      decidedAt: row.decided_at,
+    }));
+  }
+
 
   /**
    * ADR-053 Phase 7 — read the accepted CandidateSet ref for a workplace by

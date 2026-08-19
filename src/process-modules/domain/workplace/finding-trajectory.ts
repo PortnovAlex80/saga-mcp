@@ -31,11 +31,17 @@
  *                                   path-outside-authority key sits in both
  *                                   sets (REPLAN-CYCLE-TZ §1 — re-plan
  *                                   mandate, not another attempt).
- *   - Review-path exclusion (design constraint): reviewer findings carry
+ *   - Review-path exclusion (design constraint): LEGACY review findings carry
  *     ORDINAL codes (`review-finding-N`, `deferred-out-of-scope-N`) over free
  *     prose — the same ordinal means a different finding on the next attempt,
  *     so those keys are unstable and are NEVER compared. Two attempts whose
  *     comparable sets are both empty are SPINNING (fail-safe charge).
+ *     BLINDSIGHT (f): current review findings carry STRUCTURAL codes
+ *     (`review-finding:<paths|unscoped>`) — file-scoped, index-stable — and
+ *     ARE compared; the exclusion matches only the legacy ordinal shape
+ *     already written into chains (transition note: a legacy-excluded
+ *     prev-set vs a structural next-set reads the structural keys as NEW →
+ *     churning — the fail-safe over-tax direction, for one round).
  */
 
 import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';

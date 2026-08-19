@@ -185,9 +185,18 @@ export function createReviewVerdictCheckProvider(input: {
             ? { message: entry.finding }
             : entry.finding;
           return encodeCheckDiagnostic({
+            // BLINDSIGHT (f) — the code is STRUCTURAL (file scope; the nature
+            // rides in the message and therefore in the finding key), never
+            // ordinal: `review-finding-N` renumbered on every round, so the
+            // same defect got a different key each attempt and trajectory
+            // comparison had to exclude review findings entirely. Legacy
+            // ordinal codes already written in chains stay excluded by
+            // isOrdinalReviewCode; new codes carry the finding's declared
+            // paths (sorted, deduped — 'unscoped' for pathless prose) and
+            // remain byte-stable across index shifts.
             code: deferredOut
-              ? `deferred-out-of-scope-${entry.index + 1}`
-              : `review-finding-${entry.index + 1}`,
+              ? `deferred-out-of-scope:${findingScopeKey(structured.paths)}`
+              : `review-finding:${findingScopeKey(structured.paths)}`,
             message: deferredOut
               ? `[DEFERRED — outside this item's frozen changeScopes; owned by another work item] ${structured.message}`
               : structured.message,
@@ -276,6 +285,21 @@ function readSubjectChangeScopes(
  * conservative pre-ADR-062 behaviour. */
 function isBlockingSeverity(severity: string | undefined): boolean {
   return severity === undefined || severity === 'error' || severity === 'blocker';
+}
+
+/**
+ * BLINDSIGHT (f) — the STRUCTURAL scope key of a reviewer finding: its
+ * declared repository paths, trimmed, deduplicated, sorted (order of
+ * declaration is not identity); 'unscoped' when the finding names no files.
+ * Combined with the message (which enters the finding key verbatim after
+ * normalization), this gives the finding a file+nature identity that is
+ * byte-stable across rounds regardless of list position.
+ */
+function findingScopeKey(paths: readonly string[] | undefined): string {
+  if (!paths || paths.length === 0) return 'unscoped';
+  const normalized = [...new Set(paths.map(path => path.trim()).filter(path => path !== ''))]
+    .sort();
+  return normalized.length === 0 ? 'unscoped' : normalized.join('|');
 }
 
 /** Path-containment identical to the deterministic scope gate: a scope is an

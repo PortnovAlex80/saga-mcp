@@ -5,10 +5,18 @@ import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/wor
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
 import {
+  isPathOutsideAuthorityKey,
+  trajectory as trajectoryBetween,
+} from '../../process-modules/domain/workplace/finding-trajectory.js';
+import {
   assertRecoveryIssue,
   type RecoveryIssue,
 } from '../../process-modules/domain/recovery.js';
 import { cellEffectRepairReceiptBody } from './sqlite-cell-final-acceptance.js';
+import {
+  decodeFindingsForDecision,
+  SqliteGateFindingSetChain,
+} from './sqlite-gate-finding-set-chain.js';
 
 /**
  * Factory-wide SQLite projection adapter for Production Cells.
@@ -584,72 +592,6 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
   throw new Error(`PRODUCTION_CELL_TASK_METADATA_INVALID: ${taskId}`);
 }
 
-/**
- * FINDING-TRAJECTORY BUDGET — the ONE decoder of a repair_required decision's
- * findings, extracted verbatim from the recovery-feedback writer so the
- * feedback sheet and the convergence budget CANNOT diverge (two private copies
- * of this mapping would drift apart exactly when a new finding shape lands).
- *
- * Each failing receipt contributes its decodable check diagnostics; a receipt
- * without diagnostics contributes one fallback finding (composed
- * provider:outcome code). outcome 'error' is fatal, everything else is error
- * severity — same semantics the feedback sheet always had.
- */
-export interface DecodedDecisionFinding {
-  readonly code: string;
-  readonly severity: 'fatal' | 'error';
-  readonly message: string;
-  readonly subjectRef: string;
-  readonly evidenceRefs: readonly string[];
-}
-
-export function decodeFindingsForDecision(
-  db: Database.Database,
-  checkReceiptRefs: readonly string[],
-  fallbackSubjectRef: string,
-): DecodedDecisionFinding[] {
-  const placeholders = checkReceiptRefs.map(() => '?').join(',');
-  const receipts = db.prepare(
-    `SELECT check_receipt_ref,check_run_ref,provider_id,provider_version,provider_digest,
-            outcome,evidence_refs
-       FROM factory_check_receipts
-      WHERE check_receipt_ref IN (${placeholders})
-      ORDER BY check_run_ref`,
-  ).all(...checkReceiptRefs) as Array<{
-    check_receipt_ref: string;
-    check_run_ref: string;
-    provider_id: string;
-    provider_version: string;
-    provider_digest: string;
-    outcome: 'passed' | 'failed' | 'unknown' | 'error';
-    evidence_refs: string;
-  }>;
-  const failing = receipts.filter(receipt => receipt.outcome !== 'passed');
-  if (checkReceiptRefs.length > 0 && failing.length === 0) return [];
-  return failing.flatMap(item => {
-    const evidenceRefs = parseStringArray(item.evidence_refs);
-    const diagnostics = evidenceRefs
-      .map(decodeCheckDiagnostic)
-      .filter((value): value is NonNullable<typeof value> => value !== null);
-    if (diagnostics.length > 0) {
-      return diagnostics.map(diagnostic => ({
-        code: `${item.provider_id}:${diagnostic.code}`,
-        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-        message: diagnostic.message,
-        subjectRef: diagnostic.subjectRef ?? fallbackSubjectRef,
-        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-      }));
-    }
-    return [{
-      code: `${item.provider_id}:${item.outcome}`,
-      severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-      message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
-      subjectRef: fallbackSubjectRef,
-      evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-    }];
-  });
-}
-
 interface GateDecisionRow {
   decision_key: string;
   decision_digest: string;
@@ -834,6 +776,12 @@ function readCurrentProductionCellRecoveryFeedback(
     repairTargetRole: role,
     attempt: attemptRow.n,
     maxAttempts: retry?.retry_budget ?? null,
+    // BLINDSIGHT C1a — the WHOLE same-scope finding-trajectory chain + a
+    // human trajectory label ride with the sheet: the author must understand
+    // the TRAJECTORY (converging/spinning/churning/scope-impossible), not
+    // only the latest rejection (CONVEYOR §15: the reason sequence is the
+    // signal, never the bare iteration count).
+    findingTrajectory: readFindingTrajectoryForSheet(db, workplaceRef, role),
     gateDecision: {
       decisionRef: decision.decision_key,
       gateRunRef: decision.gate_run_ref,
@@ -858,6 +806,88 @@ function readCurrentProductionCellRecoveryFeedback(
   };
 }
 
+// ---------------------------------------------------------------------------
+// BLINDSIGHT C6 — durable reviewer round history. The reviewer's prior
+// verdict submissions for one workplace, read from the append-only managed
+// submission ledger at PROJECTION time: the reviewer prompt must carry the
+// round number, the past verdicts and the rejected author candidates, so a
+// cosmetically patched resubmission is structurally visible to the only
+// actor who can call it out.
+// ---------------------------------------------------------------------------
+
+export interface ReviewerRoundHistory {
+  /** 1-based ordinal of the review being projected (prior verdicts + 1). */
+  readonly round: number;
+  readonly priorVerdicts: readonly {
+    readonly round: number;
+    readonly subjectCandidateSetRef: string;
+    readonly verdict: 'approved' | 'changes_requested' | 'unknown';
+    readonly findings: readonly string[];
+    readonly submittedAt: string;
+  }[];
+  /** Distinct subjects of prior changes_requested verdicts, in order. */
+  readonly rejectedCandidateSetRefs: readonly string[];
+}
+
+const REVIEWER_HISTORY_FINDING_CAP = 5;
+const REVIEWER_HISTORY_FINDING_LENGTH = 240;
+
+export function readReviewerRoundHistory(
+  db: Database.Database,
+  workplaceRef: string,
+): ReviewerRoundHistory {
+  const rows = db.prepare(
+    `SELECT s.payload_snapshot AS payload, s.created_at AS submitted_at
+       FROM factory_managed_node_submissions s
+       JOIN tasks t ON t.id=s.task_id
+      WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='reviewer'
+      ORDER BY s.id`,
+  ).all(workplaceRef) as Array<{ payload: string; submitted_at: string }>;
+  const priorVerdicts: ReviewerRoundHistory['priorVerdicts'][number][] = [];
+  const rejected: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    let payload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(row.payload) as unknown;
+      payload = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      payload = {};
+    }
+    const subject = typeof payload.subject_candidate_set_ref === 'string'
+      ? payload.subject_candidate_set_ref
+      : '(unbound subject)';
+    const verdict = payload.verdict === 'approved' || payload.verdict === 'changes_requested'
+      ? payload.verdict
+      : 'unknown';
+    const findings = (Array.isArray(payload.findings) ? payload.findings : [])
+      .map(finding => {
+        if (typeof finding === 'string') return finding;
+        if (finding && typeof finding === 'object' && typeof (finding as { message?: unknown }).message === 'string') {
+          return (finding as { message: string }).message;
+        }
+        return '';
+      })
+      .filter(message => message.trim() !== '')
+      .slice(0, REVIEWER_HISTORY_FINDING_CAP)
+      .map(message => message.slice(0, REVIEWER_HISTORY_FINDING_LENGTH));
+    priorVerdicts.push({
+      round: index + 1,
+      subjectCandidateSetRef: subject,
+      verdict,
+      findings,
+      submittedAt: row.submitted_at,
+    });
+    if (verdict === 'changes_requested' && !rejected.includes(subject)) rejected.push(subject);
+  }
+  return {
+    round: priorVerdicts.length + 1,
+    priorVerdicts,
+    rejectedCandidateSetRefs: rejected,
+  };
+}
+
 function parseStringArray(raw: string): string[] {
   try {
     const value = JSON.parse(raw) as unknown;
@@ -867,6 +897,101 @@ function parseStringArray(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT C1a — finding-trajectory delivery for the recovery-feedback
+// sheet. Reads the SAME append-only factory_gate_finding_set_chain the
+// convergence budget reads, with the SAME scope semantics (the latest row of
+// the (workplace, role) pair derives the gate + check-plan scope; the chain
+// RESETS on a check-plan change). Derived data only: excluded from the
+// recoveryIssueDigest by construction.
+// ---------------------------------------------------------------------------
+
+const SHEET_CHAIN_LIMIT = 20;
+
+export interface RecoverySheetTrajectory {
+  /** The check-plan digest of the chain scope (null when no chain rows). */
+  readonly scopeCheckPlanDigest: string | null;
+  /** Same-scope chain rows, OLDEST first. */
+  readonly chain: readonly {
+    readonly gateDecisionKey: string;
+    readonly digest: string;
+    readonly count: number;
+    readonly keys: readonly string[];
+    readonly fatalKeys: readonly string[];
+    readonly createdAt: string;
+  }[];
+  readonly label: 'first-rejection' | 'converging' | 'spinning' | 'churning' | 'scope-impossible';
+  /** Human explanation of what the label MEANS for the next repair attempt. */
+  readonly explanation: string;
+  readonly lastTransition: {
+    readonly removedKeys: readonly string[];
+    readonly addedKeys: readonly string[];
+  } | null;
+}
+
+function readFindingTrajectoryForSheet(
+  db: Database.Database,
+  workplaceRef: string,
+  role: 'author' | 'reviewer',
+): RecoverySheetTrajectory {
+  const empty: RecoverySheetTrajectory = {
+    scopeCheckPlanDigest: null,
+    chain: [],
+    label: 'first-rejection',
+    explanation: 'First recorded rejection under the current check plan — no trajectory yet. '
+      + 'Address every finding listed above.',
+    lastTransition: null,
+  };
+  // Single blessed owner of the chain recency selector (K7/K8 freeze): the
+  // scope semantics live in ONE module together with the convergence budget.
+  const scope = new SqliteGateFindingSetChain(db).readScopeRows(
+    workplaceRef, role, SHEET_CHAIN_LIMIT,
+  );
+  if (scope === null) return empty;
+  const chain = scope.rows.map(row => ({
+    gateDecisionKey: row.gateDecisionKey,
+    digest: row.set.digest,
+    count: row.set.count,
+    keys: row.set.keys,
+    fatalKeys: row.set.fatalKeys,
+    createdAt: row.createdAt,
+  }));
+  const base = {
+    scopeCheckPlanDigest: scope.checkPlanDigest,
+    chain,
+  };
+  if (chain.length < 2) {
+    return { ...base, ...empty, scopeCheckPlanDigest: scope.checkPlanDigest, chain };
+  }
+  const previous = chain[chain.length - 2]!;
+  const current = chain[chain.length - 1]!;
+  const removedKeys = previous.keys.filter(key => !current.keys.includes(key));
+  const addedKeys = current.keys.filter(key => !previous.keys.includes(key));
+  const survivingScopeKeys = current.keys
+    .filter(key => previous.keys.includes(key) && isPathOutsideAuthorityKey(key));
+  const label = trajectoryBetween(previous, current);
+  const explanations: Record<typeof label, string> = {
+    converging: `Converging: the previous rejection's finding set strictly contains this one `
+      + `(${removedKeys.length} key(s) removed, none new). The defect chain is shrinking — `
+      + `keep removing the remaining keys and do not reintroduce the fixed ones.`,
+    spinning: `Spinning: this rejection repeats the previous finding keys exactly `
+      + `(${current.keys.length} returning). Repeating the same repair will not pass — `
+      + `the CAUSE behind the returning keys must change, not the symptom.`,
+    churning: `Churning: ${addedKeys.length} new finding key(s) appeared and/or severity grew `
+      + `vs the previous rejection. The last repair introduced new defects — re-examine `
+      + `exactly what it touched.`,
+    'scope-impossible': `Scope-impossible: the same path-outside-authority finding(s) survived `
+      + `the repair (${survivingScopeKeys.length}). The defect lives in files this work item `
+      + `must not write — a re-plan (scope re-carve) is required, not another resubmission.`,
+  };
+  return {
+    ...base,
+    label,
+    explanation: explanations[label],
+    lastTransition: { removedKeys, addedKeys },
+  };
 }
 
 interface EffectRepairIssueRow {

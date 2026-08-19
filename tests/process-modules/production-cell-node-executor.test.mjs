@@ -1109,3 +1109,84 @@ test("ADR-075: onExhausted='requeue' rolls the budget into immutable recovery ep
   );
   h.db.close();
 });
+
+// ===========================================================================
+// BLINDSIGHT C6 — reviewer round visibility. The reviewer prompt must carry
+// the round number, prior verdicts and the rejected author candidates, so
+// «the author cosmetically patches and resubmits» becomes structurally
+// visible to the only actor who can call it out.
+// ===========================================================================
+test('reviewer objective carries round number, prior verdicts and rejected candidates', async () => {
+  const h = harness();
+  h.persistence.readReviewerRoundHistory = () => ({
+    round: 3,
+    priorVerdicts: [
+      { round: 1, subjectCandidateSetRef: 'candidate-set/a1', verdict: 'changes_requested', findings: ['widget broken'], submittedAt: '2026-08-01T00:00:00Z' },
+      { round: 2, subjectCandidateSetRef: 'candidate-set/a2', verdict: 'changes_requested', findings: ['widget still broken'], submittedAt: '2026-08-02T00:00:00Z' },
+    ],
+    rejectedCandidateSetRefs: ['candidate-set/a1', 'candidate-set/a2'],
+  });
+  const ctx = context(cell({ review: true }));
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:author', digest: sha('author'),
+  });
+  await h.executor.execute(ctx);
+  const reviewerPlan = h.plans.at(-1);
+  assert.equal(reviewerPlan.input.intent.outputSchema, 'factory.test-review-verdict.v1');
+  const objective = reviewerPlan.input.intent.objective;
+  assert.match(objective, /REVIEW HISTORY/, 'C6: the history block must be delivered');
+  assert.match(objective, /round 3/, 'the round number must be visible');
+  assert.match(objective, /widget still broken/, 'prior verdict findings must be visible');
+  assert.match(objective, /candidate-set\/a2/, 'rejected author candidates must be visible');
+  assert.match(objective, /cosmetic/i, 'the block must tell the reviewer what to watch for');
+  h.db.close();
+});
+
+test('round-1 reviewer objective has no REVIEW HISTORY block', async () => {
+  const h = harness();
+  h.persistence.readReviewerRoundHistory = () => ({
+    round: 1, priorVerdicts: [], rejectedCandidateSetRefs: [],
+  });
+  const ctx = context(cell({ review: true }));
+  await h.executor.execute(ctx);
+  const ref = workplaceRef('singleton-cell');
+  finishRole(h, ref, 'execution:author', {
+    schemaId: 'factory.test-product.v1', ref: 'product:author', digest: sha('author'),
+  });
+  await h.executor.execute(ctx);
+  const objective = h.plans.at(-1).input.intent.objective;
+  assert.doesNotMatch(objective, /REVIEW HISTORY/,
+    'a first review round carries no stale history');
+  h.db.close();
+});
+
+test('carry-forward failure context is delivered to the child author task (blindsight C3)', async () => {
+  const bound = [];
+  const directive = {
+    authorizationRef: 'author-carry-forward:c3',
+    presenterRef: 'factory-carry-forward-presenter:author-carry-forward:c3',
+    sourceCandidateSetRef: 'candidate-set:prior-author',
+    sourceCandidateSetDigest: sha('prior-author'),
+    eligibleFailureCode: 'review-output-schema-mismatch',
+    parentFailureError:
+      "review verdict contract expected exactly one 'factory.development-review-verdict.v1', received 0",
+    products: [{
+      schemaId: 'factory.test-product.v1', ref: 'managed-node-submission:prior', digest: sha('prior-product'),
+    }],
+  };
+  const carry = { resolve: () => directive, consume() {} };
+  const h = harness(null, carry);
+  h.persistence.readProjectedRoleTask = () => ({ taskId: 4242 });
+  h.persistence.bindCarryForwardFailureContext = input => bound.push(input);
+  const ctx = context(cell({ review: true }));
+  await h.executor.execute(ctx);
+  assert.equal(bound.length, 1,
+    'C3: the typed parent failure reason must be bound to the child author task');
+  assert.equal(bound[0].taskId, 4242);
+  assert.equal(bound[0].eligibleFailureCode, 'review-output-schema-mismatch');
+  assert.match(bound[0].parentError, /review verdict contract expected exactly one/);
+  assert.equal(bound[0].authorizationRef, 'author-carry-forward:c3');
+  h.db.close();
+});

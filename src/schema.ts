@@ -1530,6 +1530,9 @@ CREATE TABLE IF NOT EXISTS factory_cell_final_acceptances (
   gate_decision_key        TEXT NOT NULL,
   effect_receipt_refs      TEXT NOT NULL DEFAULT '[]',
   acceptance_digest        TEXT NOT NULL UNIQUE,
+  -- BLINDSIGHT C2 — the cross-plan rejection history bound into the
+  -- digest-covered acceptance body (plan-swap laundering must stay visible).
+  rejection_history        TEXT NOT NULL DEFAULT '[]',
   accepted_at              TEXT NOT NULL,
   created_at               TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,

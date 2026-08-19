@@ -34,6 +34,12 @@ import type { ProductRef } from '../../process-modules/domain/spi/index.js';
 import type { WorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { journalEvent } from '../../observability/run-journal.js';
+import type {
+  CheckProviderHistoryEntry,
+  GateCandidateHistoryContext,
+  TrajectoryTailSnapshot,
+} from '../../process-modules/application/gate-run-driver.js';
+import { SqliteGateFindingSetChain } from './sqlite-gate-finding-set-chain.js';
 
 export const GATE_DECISION_REPLAY_MISMATCH = 'GATE_DECISION_REPLAY_MISMATCH';
 
@@ -307,6 +313,65 @@ export class SqliteGateRepository {
   }
 
   // -----------------------------------------------------------------------
+  // BLINDSIGHT C1 — durable rejection history for the check providers
+  // (delivered read-only via candidateSnapshot; never enters identity).
+  // -----------------------------------------------------------------------
+
+  /**
+   * Read the workplace's rejection history: the finding-trajectory chain
+   * tails per repair-target role (same scope semantics as the convergence
+   * budget: latest row's gate + check-plan digest) and the prior receipts of
+   * one exact provider (newest first, capped at 16). The chain table is a K13
+   * lazy-ensure table — on a pre-table database the tails are null (no
+   * fabricated history), never an error.
+   */
+  readCandidateHistoryContext(input: {
+    readonly workplaceRef: WorkplaceRef;
+    readonly providerId: string;
+    readonly providerVersion: string;
+  }): GateCandidateHistoryContext | null {
+    const workplace = serializeWorkplaceRef(input.workplaceRef);
+    // Read the COMPLETE ordered receipt history of the provider on this
+    // workplace (ascending — no latest-wins recency selector; the K7/K8
+    // freeze owns those), then keep the newest bounded window in memory.
+    const allReceipts = this.db.prepare(
+      `SELECT cr.check_receipt_ref AS check_receipt_ref,
+              cr.check_run_ref AS check_run_ref,
+              cr.subject_candidate_set_ref AS subject_candidate_set_ref,
+              cr.outcome AS outcome,
+              cr.evidence_refs AS evidence_refs,
+              cr.created_at AS created_at
+         FROM factory_check_receipts cr
+         JOIN factory_gate_runs gr ON gr.gate_run_ref=cr.check_run_ref
+        WHERE gr.workplace_ref=? AND cr.provider_id=? AND cr.provider_version=?
+        ORDER BY cr.created_at ASC, cr.check_receipt_ref ASC`,
+    ).all(workplace, input.providerId, input.providerVersion) as Array<{
+      check_receipt_ref: string;
+      check_run_ref: string;
+      subject_candidate_set_ref: string;
+      outcome: 'passed' | 'failed' | 'unknown' | 'error';
+      evidence_refs: string;
+      created_at: string;
+    }>;
+    const receipts = allReceipts.slice(-PROVIDER_HISTORY_LIMIT).reverse();
+    const providerHistory: CheckProviderHistoryEntry[] = receipts.map(row => ({
+      checkReceiptRef: row.check_receipt_ref,
+      checkRunRef: row.check_run_ref,
+      subjectCandidateSetRef: row.subject_candidate_set_ref,
+      outcome: row.outcome,
+      evidenceRefs: parseJsonStringArray(row.evidence_refs),
+      createdAt: row.created_at,
+    }));
+    return {
+      findingTrajectoryTails: {
+        author: readTrajectoryTailSnapshot(this.db, workplace, 'author'),
+        reviewer: readTrajectoryTailSnapshot(this.db, workplace, 'reviewer'),
+      },
+      providerHistory,
+    };
+  }
+
+  // -----------------------------------------------------------------------
   // GateDecision (REG-18) — append-only.
   // -----------------------------------------------------------------------
 
@@ -499,4 +564,53 @@ function deserializeWorkplaceRef(serialized: string): WorkplaceRef {
     productionCellId: parts[3]!,
     workKey: parts.slice(4).join('/'),
   } as WorkplaceRef;
+}
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT C1 helpers — trajectory-tail snapshot read (mirror of
+// SqliteGateFindingSetChain.readTrajectoryTail scope semantics: the LATEST row
+// of the (workplace, role) pair derives the gate + check-plan scope; rows
+// under a different plan are intentionally invisible — the chain RESETS on a
+// check-plan change, so cross-plan keys are not comparable evidence).
+// ---------------------------------------------------------------------------
+
+const TRAJECTORY_TAIL_SET_LIMIT = 8;
+const PROVIDER_HISTORY_LIMIT = 16;
+
+/**
+ * The chain tail for the candidateSnapshot, read through the SINGLE blessed
+ * owner of the chain's recency selector (SqliteGateFindingSetChain — the
+ * legacy-freeze allowlisted module), so no second copy of the scope
+ * semantics can drift here.
+ */
+function readTrajectoryTailSnapshot(
+  db: Database.Database,
+  workplaceRef: string,
+  role: 'author' | 'reviewer',
+): TrajectoryTailSnapshot | null {
+  const scope = new SqliteGateFindingSetChain(db).readScopeRows(
+    workplaceRef, role, TRAJECTORY_TAIL_SET_LIMIT,
+  );
+  if (scope === null) return null;
+  return {
+    gateRef: scope.gateRef,
+    checkPlanDigest: scope.checkPlanDigest,
+    sets: scope.rows.slice(-TRAJECTORY_TAIL_SET_LIMIT).map(row => ({
+      digest: row.set.digest,
+      count: row.set.count,
+      keys: row.set.keys,
+      fatalKeys: row.set.fatalKeys,
+    })),
+  };
+}
+
+function parseJsonStringArray(raw: string): string[] {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
 }
