@@ -336,6 +336,13 @@ function validateReadinessProfile(value: unknown): string[] {
   return errors;
 }
 
+function sameStringSet(left: readonly unknown[], right: readonly string[]): boolean {
+  const leftIds = left.filter((id): id is string => typeof id === 'string');
+  return leftIds.length === left.length
+    && leftIds.length === right.length
+    && leftIds.every(id => right.includes(id));
+}
+
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID =
   'development.readiness-manifest-payload.v1';
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.1.0';
@@ -1004,7 +1011,11 @@ export function createDevelopmentVerificationCheckProvider(input: {
             `The verification evidence payload is invalid: ${decoded.errors.join('; ')}`);
         }
         const metadata = JSON.parse(row.metadata) as {
-          cell_input_item?: { key?: unknown; acceptanceCriterionIds?: unknown };
+          cell_input_item?: {
+            key?: unknown;
+            acceptanceCriterionIds?: unknown;
+            coveredConstraintIds?: unknown;
+          };
           process_node_input?: {
             upstream?: { bindings?: { candidate?: { candidateHash?: unknown } } };
           };
@@ -1014,6 +1025,14 @@ export function createDevelopmentVerificationCheckProvider(input: {
         const criterionIds = item?.acceptanceCriterionIds;
         const frozenHash = metadata.process_node_input?.upstream?.bindings
           ?.candidate?.candidateHash;
+        // AC-drift relay: when the verification card pins
+        // coveredConstraintIds, the evidence must echo the exact same set —
+        // lineage pins the constraint IDs together with criterionId. Cards
+        // without coverage (legacy / no register) keep the previous check.
+        const cardConstraintIds = item?.coveredConstraintIds;
+        const constraintLineageOk = !Array.isArray(cardConstraintIds)
+          || (Array.isArray(decoded.value.coveredConstraintIds)
+            && sameStringSet(cardConstraintIds, decoded.value.coveredConstraintIds));
         if (
           decoded.value.verificationItemKey !== item?.key
           || !Array.isArray(criterionIds)
@@ -1023,11 +1042,13 @@ export function createDevelopmentVerificationCheckProvider(input: {
             !== row.verification_target_artifact_id
           || decoded.value.acceptedCriterionHash !== row.accepted_hash
           || decoded.value.candidateHash !== frozenHash
+          || !constraintLineageOk
         ) {
           return scopeFailure(subjectCandidateSetRef, 'verification-lineage-mismatch',
             'The verification evidence does not match its frozen lineage: verificationItemKey must equal the work item key,'
             + ' acceptanceCriterionId must equal the single cell-input criterion id and the AC artifact id,'
-            + ' acceptedCriterionHash must equal the accepted artifact hash, and candidateHash must equal the frozen upstream candidate hash.');
+            + ' acceptedCriterionHash must equal the accepted artifact hash, candidateHash must equal the frozen upstream candidate hash,'
+            + ' and coveredConstraintIds must equal the card-pinned constraint set when the card pins one.');
         }
         // This provider proves only assessment shape and exact lineage. It does
         // not trust the LM-authored outcome. The independent local-runnability

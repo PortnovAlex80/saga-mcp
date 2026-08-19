@@ -148,6 +148,12 @@ export interface FormalizationSolutionContractPayload {
     criterionHash?: string;
     implementationRequired: boolean;
     criticality: AcceptanceCriticality;
+    /**
+     * AC-drift relay: the constraint-register IDs this criterion covers,
+     * carried from the SRS §D2 stanza (covered_constraint_ids). Absent when
+     * no register exists — Development then relays nothing (retro-compat).
+     */
+    coveredConstraintIds?: readonly string[];
   }[];
 }
 

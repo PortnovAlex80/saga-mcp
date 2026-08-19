@@ -27,6 +27,7 @@ export function decodeDevelopmentVerificationProduct(
     'acceptanceCriterionId',
     'acceptedCriterionHash',
     'candidateHash',
+    'coveredConstraintIds',
     'outcome',
     'evidence',
   ]);
@@ -46,6 +47,10 @@ export function decodeDevelopmentVerificationProduct(
   }
   if (!text(payload.candidateHash) || !HASH.test(String(payload.candidateHash))) {
     errors.push('candidateHash must be a lowercase SHA-256 hex digest');
+  }
+  if (payload.coveredConstraintIds !== undefined
+      && !stringArray(payload.coveredConstraintIds, true)) {
+    errors.push('coveredConstraintIds must be a string array when present');
   }
   if (typeof payload.outcome !== 'string'
       || !OUTCOMES.has(payload.outcome as VerificationOutcome)) {

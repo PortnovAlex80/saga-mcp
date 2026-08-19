@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
+import { ensureManagedNodeSubmissionSchema } from '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import {
   buildCanonicalDevelopmentTaskGraph,
 } from '../../dist/modules/development/domain/development-task-graph.js';
@@ -248,39 +249,58 @@ test('solution contract acceptanceCriteria carry §D2 covered_constraint_ids', (
 
 // ---- verification evidence lineage pins coveredConstraintIds ------------------
 
-function freshDb() {
+function lineageFixture({ cardConstraintIds, evidenceConstraintIds }) {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
+  ensureManagedNodeSubmissionSchema(db);
   db.prepare(`INSERT INTO projects (id, name) VALUES (1, 'p')`).run();
   db.prepare(`INSERT INTO epics (id, project_id, name) VALUES (1, 1, 'e')`).run();
+  db.prepare(
+    `INSERT INTO factory_process_runs
+       (id, project_id, module_name, module_version, module_ref_key,
+        idempotency_key, executor_kind, input_schema, input_snapshot,
+        input_hash, status)
+     VALUES (2, 1, 'sd', '1.4.4', 'sd@1.4.4', 'k', 'generic-flow', 's', '{}', 'h', 'running')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, state, phase)
+     VALUES ('exec-v', 'run-1', 1, 1, 7, 'w', 'm', 'running', 'executing')`,
+  ).run();
   const accepted = hash('criterion');
   db.prepare(
     `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
      VALUES (30, 1, 1, 'AC', 'AC-1', 'AC-1', 'ac.md', 'accepted', ?, ?, 'clean', 'db_native', '[]', '{}')`,
   ).run(accepted, accepted);
   const candidateHash = hash('candidate');
+  const card = {
+    key: 'verify-ac-1',
+    acceptanceCriterionIds: [30],
+    ...(cardConstraintIds === null ? {} : { coveredConstraintIds: cardConstraintIds }),
+  };
   db.prepare(
     `INSERT INTO tasks (id, epic_id, title, status, verification_target_artifact_id, metadata)
      VALUES (7, 1, 'verify ac-1', 'in_progress', 30, ?)`,
   ).run(JSON.stringify({
-    cell_input_item: {
-      key: 'verify-ac-1',
-      acceptanceCriterionIds: [30],
-      coveredConstraintIds: ['ord-c-001', 'ord-c-002'],
-    },
+    cell_input_item: card,
     process_node_input: { upstream: { bindings: { candidate: { candidateHash } } } },
   }));
+  const product = evidenceProduct(
+    evidenceConstraintIds === null
+      ? {}
+      : { coveredConstraintIds: evidenceConstraintIds },
+  );
   db.prepare(
     `INSERT INTO factory_managed_node_submissions
-       (id, process_run_id, node_id, intent_id, task_id, execution_id, schema_version, payload_snapshot, content_hash, submitted_at)
-     VALUES (11, 2, 'verify-acceptance', 6, 7, 'exec-v',
+       (id, process_run_id, module_ref, node_id, intent_id, task_id, execution_id, schema_version, payload_snapshot, content_hash, submitted_at)
+     VALUES (11, 2, 'sd@1.4.4', 'verify-acceptance', 6, 7, 'exec-v',
              'factory.candidate-verification-evidence-product.v2', ?, ?, ?)`,
   ).run(
-    JSON.stringify(evidenceProduct({ coveredConstraintIds: ['ord-c-001', 'ord-c-002'] })),
-    hash(JSON.stringify(evidenceProduct({ coveredConstraintIds: ['ord-c-001', 'ord-c-002'] }))),
+    JSON.stringify(product),
+    hash(JSON.stringify(product)),
     new Date().toISOString(),
   );
-  return db;
+  return { db, digest: hash(JSON.stringify(product)) };
 }
 
 function evidenceProduct(overrides = {}) {
@@ -309,114 +329,66 @@ function fakeCandidateSets() {
         productRef: {
           schemaId: 'factory.candidate-verification-evidence-product.v2',
           ref: 'managed-node-submission:11',
-          digest: hash(JSON.stringify(evidenceProduct({ coveredConstraintIds: ['ord-c-001', 'ord-c-002'] }))),
+          digest: hash(JSON.stringify(evidenceProduct())),
         },
       }],
     }),
   };
 }
 
-function provider(db) {
-  return createDevelopmentVerificationCheckProvider({
+function runProvider(db, digest) {
+  const outcome = createDevelopmentVerificationCheckProvider({
     db,
-    candidateSets: fakeCandidateSets(),
-  });
+    candidateSets: {
+      read: () => ({
+        role: 'author',
+        workplaceRef: { processRunId: 2 },
+        members: [{
+          productRef: {
+            schemaId: 'factory.candidate-verification-evidence-product.v2',
+            ref: 'managed-node-submission:11',
+            digest,
+          },
+        }],
+      }),
+    },
+  }).run({ subjectCandidateSetRef: 'cset:1', parameters: { processRunId: 2 } });
+  return typeof outcome === 'string' ? outcome : outcome.outcome;
 }
 
 test('evidence carrying the card coveredConstraintIds passes lineage', () => {
-  const db = freshDb();
-  const outcome = provider(db).run({
-    subjectCandidateSetRef: 'cset:1',
-    parameters: { processRunId: 2 },
+  const { db, digest } = lineageFixture({
+    cardConstraintIds: ['ord-c-001', 'ord-c-002'],
+    evidenceConstraintIds: ['ord-c-001', 'ord-c-002'],
   });
-  assert.equal(outcome, 'unknown'); // production provider never trusts LM outcome
+  assert.equal(runProvider(db, digest), 'passed'); // provider proves shape + exact lineage
   db.close();
 });
 
 test('evidence omitting coveredConstraintIds fails lineage when the card pins them', () => {
-  const db = freshDb();
-  const product = evidenceProduct(); // no coveredConstraintIds
-  const productHash = hash(JSON.stringify(product));
-  db.prepare(
-    `UPDATE factory_managed_node_submissions SET payload_snapshot=?, content_hash=? WHERE id=11`,
-  ).run(JSON.stringify(product), productHash);
-  const outcome = createDevelopmentVerificationCheckProvider({
-    db,
-    candidateSets: {
-      read: () => ({
-        role: 'author',
-        workplaceRef: { processRunId: 2 },
-        members: [{
-          productRef: {
-            schemaId: 'factory.candidate-verification-evidence-product.v2',
-            ref: 'managed-node-submission:11',
-            digest: productHash,
-          },
-        }],
-      }),
-    },
-  }).run({ subjectCandidateSetRef: 'cset:1', parameters: { processRunId: 2 } });
-  assert.equal(outcome, 'failed');
+  const { db, digest } = lineageFixture({
+    cardConstraintIds: ['ord-c-001', 'ord-c-002'],
+    evidenceConstraintIds: null,
+  });
+  assert.equal(runProvider(db, digest), 'failed');
   db.close();
 });
 
 test('evidence with divergent coveredConstraintIds fails lineage', () => {
-  const db = freshDb();
-  const product = evidenceProduct({ coveredConstraintIds: ['ord-c-001'] }); // missing ord-c-002
-  const productHash = hash(JSON.stringify(product));
-  db.prepare(
-    `UPDATE factory_managed_node_submissions SET payload_snapshot=?, content_hash=? WHERE id=11`,
-  ).run(JSON.stringify(product), productHash);
-  const outcome = createDevelopmentVerificationCheckProvider({
-    db,
-    candidateSets: {
-      read: () => ({
-        role: 'author',
-        workplaceRef: { processRunId: 2 },
-        members: [{
-          productRef: {
-            schemaId: 'factory.candidate-verification-evidence-product.v2',
-            ref: 'managed-node-submission:11',
-            digest: productHash,
-          },
-        }],
-      }),
-    },
-  }).run({ subjectCandidateSetRef: 'cset:1', parameters: { processRunId: 2 } });
-  assert.equal(outcome, 'failed');
+  const { db, digest } = lineageFixture({
+    cardConstraintIds: ['ord-c-001', 'ord-c-002'],
+    evidenceConstraintIds: ['ord-c-001'],
+  });
+  assert.equal(runProvider(db, digest), 'failed');
   db.close();
 });
 
 test('card without coveredConstraintIds keeps legacy lineage behavior (retro)', () => {
-  const db = freshDb();
-  db.prepare(
-    `UPDATE tasks SET metadata=? WHERE id=7`,
-  ).run(JSON.stringify({
-    cell_input_item: { key: 'verify-ac-1', acceptanceCriterionIds: [30] },
-    process_node_input: { upstream: { bindings: { candidate: { candidateHash: hash('candidate') } } } },
-  }));
-  const product = evidenceProduct(); // no coveredConstraintIds on either side
-  const productHash = hash(JSON.stringify(product));
-  db.prepare(
-    `UPDATE factory_managed_node_submissions SET payload_snapshot=?, content_hash=? WHERE id=11`,
-  ).run(JSON.stringify(product), productHash);
-  const outcome = createDevelopmentVerificationCheckProvider({
-    db,
-    candidateSets: {
-      read: () => ({
-        role: 'author',
-        workplaceRef: { processRunId: 2 },
-        members: [{
-          productRef: {
-            schemaId: 'factory.candidate-verification-evidence-product.v2',
-            ref: 'managed-node-submission:11',
-            digest: productHash,
-          },
-        }],
-      }),
-    },
-  }).run({ subjectCandidateSetRef: 'cset:1', parameters: { processRunId: 2 } });
-  assert.equal(outcome, 'unknown');
+  const { db, digest } = lineageFixture({
+    cardConstraintIds: null,
+    evidenceConstraintIds: null,
+  });
+  assert.equal(runProvider(db, digest), 'passed');
   db.close();
 });
 

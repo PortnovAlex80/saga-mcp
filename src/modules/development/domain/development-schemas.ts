@@ -94,6 +94,13 @@ export interface DevelopmentVerificationEvidenceProduct {
   acceptanceCriterionId: number;
   acceptedCriterionHash: string;
   candidateHash: string;
+  /**
+   * AC-drift relay: the constraint IDs pinned by the verification card.
+   * When the card (cell_input_item) carries coveredConstraintIds, the
+   * evidence must echo the exact same set — lineage pins them together
+   * with criterionId. Absent when the card pins none (retro-compat).
+   */
+  coveredConstraintIds?: readonly string[];
   outcome: VerificationOutcome;
   /** The enclosing immutable ProductRef is the evidence reference. */
   evidence: {
@@ -159,6 +166,12 @@ export interface AcceptanceCriterionBinding {
    * SRS did not carry a criticality value (conservative: treat as mandatory).
    */
   criticality: AcceptanceCriticality;
+  /**
+   * AC-drift relay: constraint-register IDs this criterion covers (from the
+   * SRS §D2 stanza). Absent when no register exists — cards then relay
+   * nothing and every legacy shape stays valid (retro-compat).
+   */
+  coveredConstraintIds?: readonly string[];
 }
 
 /**
@@ -219,6 +232,12 @@ export interface DevelopmentTaskGraphItem {
    * so the integration readiness gate can classify verification outcomes.
    */
   criticality: AcceptanceCriticality;
+  /**
+   * AC-drift relay: the KERNEL-computed union of coveredConstraintIds over
+   * the frozen criteria this item references (see canonicalItems). The
+   * planner cannot forge or drop it — it is inherited, not proposed.
+   */
+  coveredConstraintIds?: readonly string[];
 }
 
 export interface CandidateIntegrationTarget {

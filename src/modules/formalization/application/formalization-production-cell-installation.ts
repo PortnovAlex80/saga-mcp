@@ -48,6 +48,7 @@ import { acceptanceCriteriaForArtifact } from '../domain/acceptance-criterion-do
 import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
+  parseD2CoveredConstraintIdsByAc,
 } from './srs-d2-parser.js';
 import { acContentRequiresImplementation } from './formalization-contract-analysis.js';
 
@@ -372,6 +373,7 @@ export function buildSolutionContractPayload(
     extractD2Stanzas(srsContent).map(stanza => [stanza.ac, stanza]),
   );
   const criticalityByCode = parseD2CriticalityByAc(srsContent);
+  const coveredIdsByCode = parseD2CoveredConstraintIdsByAc(srsContent);
   const frozen = deps.baselineRepository.readByProcessRun(ctx.processRunId);
   if (!frozen) throw new Error('formalized contract has no frozen acceptance baseline');
   const criteria = frozen.payload.acceptanceCriteria ?? artifacts
@@ -427,6 +429,11 @@ export function buildSolutionContractPayload(
         implementationRequired: acKind === 'implementation'
           || acContentRequiresImplementation(artifact),
         criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
+        // AC-drift relay: carry the §D2 constraint coverage into the frozen
+        // Development handoff (absent when the stanza declares none).
+        ...(coveredIdsByCode.get(artifact.code)?.length
+          ? { coveredConstraintIds: coveredIdsByCode.get(artifact.code) }
+          : {}),
       };
     }),
   };
