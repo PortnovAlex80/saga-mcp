@@ -42,7 +42,7 @@ const resources = [
   bytes: encoder.encode(item.content),
 }));
 
-function baseRequest(workspaceRoot, executionId, taskMetadata) {
+function baseRequest(workspaceRoot, executionId, taskMetadata, feedbackHistory = null) {
   const allResources = resources.map(resource => ({
     logicalId: resource.logicalId,
     kind: resource.logicalId === 'checklist' ? 'checklist' : 'template',
@@ -102,6 +102,7 @@ function baseRequest(workspaceRoot, executionId, taskMetadata) {
     },
     executionId,
     workerId: 'worker-1',
+    feedbackHistory,
   };
 }
 
@@ -147,6 +148,98 @@ test('(a) no prior review rejection leaves the review feedback desk entry absent
     const desk = materializePinnedWorkspace(baseRequest(root, 'exec-fresh', {}));
     assert.equal(desk.reviewFeedback.present, false);
     assert.equal(desk.reviewFeedback.path, null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// (b) feedback-history.json — the FULL multi-round history materialized from
+// durable sources during repair-round provisioning. The per-round
+// review-feedback.json is regenerated every round; feedback-history.json must
+// accumulate ALL rounds so nothing is destroyed.
+// ---------------------------------------------------------------------------
+
+const durableHistory = {
+  schemaVersion: 'factory.feedback-history.v1',
+  taskId: 41,
+  generatedAt: '2026-08-18T00:00:00.000Z',
+  entries: [
+    {
+      kind: 'submission_rejection',
+      at: '2026-08-17 10:00:00',
+      executionId: 'exec-h1',
+      rejectionCode: 'SUBMISSION_TRACE_MISSING',
+      validatorId: 'dev-validator',
+      findingMessages: ['artifact-1: trace relation requires verification'],
+    },
+    {
+      kind: 'worker_result_comment',
+      at: '2026-08-17 10:30:00',
+      author: 'author-1',
+      content: 'Implemented merge guard; all local tests pass.',
+    },
+    {
+      kind: 'review_rejection',
+      at: '2026-08-17 11:00:00',
+      executionId: 'exec-h2',
+      reviewerWorkerId: 'reviewer-1',
+      feedback: 'Round 1 review: AC-2 step missing.',
+    },
+    {
+      kind: 'review_rejection',
+      at: '2026-08-17 12:00:00',
+      executionId: 'exec-h3',
+      reviewerWorkerId: 'reviewer-2',
+      feedback: 'Round 2 review: merge crash on null input still present.',
+    },
+  ],
+  reviewRejections: 2,
+  submissionRejections: 1,
+};
+
+test('(b) repair provisioning materializes the FULL feedback history file and typed desk metadata', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'saga-feedback-history-'));
+  try {
+    const desk = materializePinnedWorkspace(baseRequest(root, 'exec-r3', {
+      managed_review_rejections: 2,
+      managed_review_budget: 3,
+      managed_review_last_feedback: 'Round 2 review: merge crash on null input still present.',
+    }, durableHistory));
+    assert.equal(desk.feedbackHistory.present, true);
+    assert.ok(desk.feedbackHistory.path?.endsWith('feedback-history.json'),
+      'the history file must be materialized in the execution directory');
+    assert.equal(desk.feedbackHistory.rounds, 4, 'ALL rounds, not just the latest');
+    assert.equal(desk.feedbackHistory.reviewRejections, 2);
+    assert.equal(desk.feedbackHistory.submissionRejections, 1);
+
+    const file = JSON.parse(readFileSync(path.join(root, desk.feedbackHistory.path), 'utf8'));
+    assert.equal(file.schemaVersion, 'factory.feedback-history.v1');
+    assert.equal(file.entries.length, 4, 'no round may be dropped from the durable history');
+    assert.deepEqual(file.entries.map(entry => entry.kind), [
+      'submission_rejection',
+      'worker_result_comment',
+      'review_rejection',
+      'review_rejection',
+    ]);
+    assert.equal(file.entries[3].feedback, 'Round 2 review: merge crash on null input still present.');
+
+    assert.ok(
+      desk.workspaceFiles.includes(desk.feedbackHistory.path),
+      'the history file must be listed in workspace_files',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('(b) fresh provisioning with no durable feedback materializes no history file', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'saga-feedback-history-'));
+  try {
+    const desk = materializePinnedWorkspace(baseRequest(root, 'exec-fresh2', {}));
+    assert.equal(desk.feedbackHistory.present, false);
+    assert.equal(desk.feedbackHistory.path, null);
+    assert.equal(desk.feedbackHistory.rounds, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
