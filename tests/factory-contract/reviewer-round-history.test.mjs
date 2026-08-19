@@ -36,7 +36,7 @@ function createDb() {
       schema_version TEXT,
       payload_snapshot TEXT,
       content_hash TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      submitted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
   return db;

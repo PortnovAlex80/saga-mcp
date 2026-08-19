@@ -904,7 +904,7 @@ export function readReviewerRoundHistory(
   workplaceRef: string,
 ): ReviewerRoundHistory {
   const rows = db.prepare(
-    `SELECT s.payload_snapshot AS payload, s.created_at AS submitted_at
+    `SELECT s.payload_snapshot AS payload, s.submitted_at AS submitted_at
        FROM factory_managed_node_submissions s
        JOIN tasks t ON t.id=s.task_id
       WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='reviewer'

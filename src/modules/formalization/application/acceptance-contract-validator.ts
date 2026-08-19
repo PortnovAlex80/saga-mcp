@@ -43,6 +43,12 @@ import type {
 } from '../../../process-modules/application/node-submission-policy.js';
 
 export const ACCEPTANCE_CONTRACT_VALIDATOR_ID = 'formalization.acceptance-contract.v1';
+// 1.1.0 — AC-drift remedy: the coverage ratchet. The DECLARED version (what
+// the gate matches against) and the version STAMPED INTO SEALED RECEIPTS
+// must be this one constant — a dual literal here once produced member keys
+// the check could never find (receipts stamped 1.0.0 vs checks demanding
+// 1.1.0 → SUBMISSION_VALIDATION_RECEIPT_REQUIRED loop).
+export const ACCEPTANCE_CONTRACT_VALIDATOR_VERSION = '1.1.0';
 
 /**
  * Build a FormalizationCanonicalGraphPort over a raw DB handle. Reads
@@ -164,7 +170,7 @@ export function createAcceptanceContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.1.0',
+    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
@@ -239,7 +245,7 @@ function acceptWithReceipt(
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
     processRunId: input.processRunId,
     moduleRef: input.moduleRef,
     nodeId: input.nodeId,
