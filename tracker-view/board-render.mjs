@@ -881,15 +881,20 @@ export function createBoardRenderApi({
           } catch { /* workers probe unavailable — fall through to controls */ }
           const panelSeesEngine = state.running && state.alive;
           if (!panelSeesEngine && blindLive > 0) {
-            // Truthful affordance: the factory IS running, so the button is a
-            // real ⏸ — the soft-stop kills the workers cleanly (voided fences)
-            // and places operator holds that block re-hire. The ENGINE brake
-            // is a no-op on blind controls (E-A6): the engine process survives
-            // idle — say so in the status line instead of hiding the button.
-            engineToggle.disabled = false;
-            syncEngineToggleButton(true);
+            // Wiring truth (stop-mechanics audit): the panel endpoint is
+            // killEngineTree — on blind controls its matchers hit NOTHING
+            // (the legacy positional matcher never matches --launch-ref
+            // spawns; the orphan matcher wants 'project_id=' in argv but the
+            // prompt travels over stdin). Firing it would stamp 'stopped'
+            // while the factory keeps working: a lying no-op. Until ⏸ is
+            // wired to the real soft-stop (docs/architecture/PAUSE-DESIGN),
+            // the button stays visible but tells the operator the true path.
+            engineToggle.disabled = true;
+            engineToggle.textContent = '⏸';
+            engineToggle.classList.add('engine-running');
+            engineToggle.title = 'Панельный стоп не подключён к soft-stop и не видит этот движок. Настоящий стоп: node scripts/factory.mjs stop <db> --project N';
             runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
-              + ' · ⏸ остановит воркеров; движок останется жив (запущен вне панели)';
+              + ' · стоп только через CLI: factory.mjs stop (кнопка — пустышка для этого движка)';
           } else {
             engineToggle.disabled = false;
             syncEngineToggleButton(panelSeesEngine);
