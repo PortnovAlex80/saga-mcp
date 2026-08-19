@@ -652,6 +652,7 @@ function renderTimeline(data) {
     items.push({
       at: parseTs(e.startedAt), ts: e.startedAt, kind: 'exec',
       state: String(e.state || ''), ref: e.executionId, workerId: e.workerId,
+      displayName: e.displayName || null,
       replay: replayHint(e.meta),
     });
   }
@@ -734,7 +735,10 @@ function renderTimeline(data) {
     return '<div class="core-cell-tl-row">'
       + '<span class="core-cell-tl-time">' + esc(t) + '</span>'
       + '<i class="core-cell-tl-dot core-cell-t-' + tone + (s === 'running' ? ' core-cell-tl-dot--live' : '') + '"></i>'
-      + '<span class="core-cell-tl-text">воркер <b>' + esc(trunc(it.workerId || it.ref || '—', 18)) + '</b> · '
+      // WORKER-NAMES-DESIGN: сначала заводской callsign (Forge/Quill/…),
+      // легаси-строки без имени — усечённый workerId. UUID остаётся в title.
+      + '<span class="core-cell-tl-text" title="' + esc(it.workerId || it.ref || '') + '">воркер <b>'
+      + esc(it.displayName || trunc(it.workerId || it.ref || '—', 18)) + '</b> · '
       + esc(it.state || '—') + '</span>'
       + (it.replay ? '<span class="core-cell-replaybadge">replay</span>' : '')
       + '</div>';

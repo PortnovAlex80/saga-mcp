@@ -103,6 +103,9 @@ export function buildCell(db, { workplaceRef } = {}) {
         executionId: e.execution_id,
         state: e.state ?? null,
         workerId: e.worker_id ?? null,
+        // WORKER-NAMES-DESIGN: заводской callsign рядом с UUID (null на
+        // легаси-строках до колонки; вид рендерит fallback по workerId).
+        displayName: e.display_name ?? null,
         pid: e.pid ?? null,
         startedAt: toIso(e.started_at),
         finishedAt: toIso(e.finished_at),

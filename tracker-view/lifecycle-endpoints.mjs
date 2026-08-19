@@ -19,6 +19,10 @@ import {
 // (a fresh require call each time) without changing the code path.
 const require = createRequire(import.meta.url);
 
+// WORKER-NAMES-DESIGN: deterministic fallback for legacy worker rows (no
+// display_name column value) — COALESCE(display_name, hashName(worker_id)).
+import { hashName } from '../dist/worker-names.js';
+
 export function createLifecycleEndpointsApi({
   sagaApplication,
   repositoryHandlers,
@@ -407,8 +411,19 @@ export function createLifecycleEndpointsApi({
     const projectId = Number(url.searchParams.get('project_id'));
     if (!projectId) return respondJson(res, 400, { ok:false, error:'project_id required' });
     try {
+      // WORKER-NAMES-DESIGN: carry the claim-time callsign (display_name) on
+      // every worker object. Legacy rows (column NULL) read through the
+      // deterministic hashName(worker_id) fallback — COALESCE semantics. The
+      // SELECT is guarded for a pre-migration DB (column not yet ALTERed by
+      // any engine open): tracker-view runs read-only and must never 500 on
+      // an old schema; it simply reports no names until the engine migrates.
+      const nameColumn = withDb(db => db.prepare('PRAGMA table_info(worker_executions)')
+        .all().some(c => c.name === 'display_name'))
+        ? 'we.display_name'
+        : 'NULL AS display_name';
       const rows = withDb(db => db.prepare(
         `SELECT we.execution_id, we.task_id AS id, we.worker_id AS assigned_to,
+                ${nameColumn},
                 we.pid, we.machine_id, we.phase, we.started_at AS worker_started_at,
                 we.log_path, t.title, t.status, t.task_kind, t.updated_at,
                 e.name AS epic_name
@@ -418,7 +433,8 @@ export function createLifecycleEndpointsApi({
          WHERE we.project_id=? AND we.state IN ('running','cancel_requested')
          ORDER BY worker_started_at`,
       ).all(projectId))
-        .filter(r => r.machine_id === os.hostname() && isProcessAlive(r.pid));
+        .filter(r => r.machine_id === os.hostname() && isProcessAlive(r.pid))
+        .map(r => ({ ...r, display_name: r.display_name || hashName(r.assigned_to) }));
       // Resolve JSONL log path by scanning board-runs for a matching filename.
       // The newest matching file wins (workers reuse IDs across runs).
       const workers = rows.map(r => {
@@ -545,6 +561,7 @@ export function createLifecycleEndpointsApi({
           status: r.status,
           task_kind: r.task_kind,
           worker_id: r.assigned_to,
+          display_name: r.display_name,
           execution_id: r.execution_id,
           pid: r.pid,
           process_phase: r.phase,

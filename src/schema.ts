@@ -18,6 +18,27 @@ BEGIN
 END;
 `;
 
+import type Database from 'better-sqlite3';
+
+/**
+ * WORKER-NAMES-DESIGN: additive `display_name` column for existing databases.
+ *
+ * Fresh DBs get the column straight from SCHEMA_SQL below; live v15 factory
+ * databases (created before the column existed) get it through this
+ * idempotent PRAGMA-guarded ADD COLUMN, applied at DB-open time (db.ts —
+ * the single migration point, same pattern as the lazy ensureFactory* calls).
+ * Purely additive: no existing column changes, no row reset, therefore NO
+ * SCHEMA_VERSION bump (pre-release disposal policy, db.ts) — a live factory
+ * DB migrates cleanly with zero data loss.
+ */
+export function ensureWorkerExecutionsDisplayName(db: Database.Database): void {
+  const columns = db.prepare('PRAGMA table_info(worker_executions)').all() as Array<{ name: string }>;
+  if (!columns.some(column => column.name === 'display_name')) {
+    db.exec('ALTER TABLE worker_executions ADD COLUMN display_name TEXT');
+  }
+}
+
+
 export const SCHEMA_SQL = `
 -- Core hierarchy: projects > epics > tasks > subtasks
 
@@ -185,6 +206,16 @@ CREATE TABLE IF NOT EXISTS worker_executions (
   epic_id         INTEGER NOT NULL,
   task_id         INTEGER NOT NULL,
   worker_id       TEXT NOT NULL,
+  -- WORKER-NAMES-DESIGN: claim-time factory callsign (human visibility ONLY —
+  -- the UUID worker_id/execution_id above remain the authority identifiers
+  -- everywhere: joins, fences, receipts, journal correlation, file names).
+  -- Stamped inside the claim transaction from the workshop name pool
+  -- (src/worker-names.ts); unique among LIVE executions of one project; the
+  -- name stays on the row for audit after the worker dies. Legacy rows read
+  -- as COALESCE(display_name, hashName(worker_id)) — zero migration
+  -- (ensureWorkerExecutionsDisplayName applies the column to live DBs; no
+  -- SCHEMA_VERSION bump: additive-only, db.ts pre-release disposal policy).
+  display_name    TEXT,
   machine_id      TEXT NOT NULL,
   launcher        TEXT NOT NULL DEFAULT 'claude_cli',
   state           TEXT NOT NULL DEFAULT 'reserved'

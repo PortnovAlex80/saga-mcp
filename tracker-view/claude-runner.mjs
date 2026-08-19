@@ -14,6 +14,7 @@ import {
   markExecutionProgress,
   markExecutionRunning,
   markExecutionSpawnFailed,
+  readExecutionDisplayName,
   readProcessBirthToken,
 } from '../dist/worker-executions.js';
 
@@ -109,6 +110,7 @@ export function buildPrompt({
   assignment,
   project,
   workerId,
+  displayName = null,
   workspaceRoot,
   sagaSkillRoot,
   resolvedProfile,
@@ -241,12 +243,19 @@ export function buildPrompt({
     || profileAllowedTools.has('Edit');
 
   return [
-    'You are a single-use Saga CLI worker. Saga already atomically assigned exactly one task to this process.',
+    // WORKER-NAMES-DESIGN: the factory callsign opens the system part of the
+    // prompt — the worker KNOWS its own name (self-presentation in logs and
+    // commits). The authority identity lines below (worker_id/execution_id
+    // UUIDs) are untouched; displayName is display-only.
+    displayName
+      ? `You are ${displayName}, a single-use Saga CLI worker. Saga already atomically assigned exactly one task to this process.`
+      : 'You are a single-use Saga CLI worker. Saga already atomically assigned exactly one task to this process.',
     '',
     `project_id=${project.id}`,
     `project_name=${project.name}`,
     `task_id=${task.id}`,
     `worker_id=${workerId}`,
+    displayName ? `display_name=${displayName}` : null,
     `execution_id=${assignment.execution_id}`,
     `role=${role}`,
     `dispatcher_skill=${assignment.skill}`,
@@ -268,7 +277,7 @@ export function buildPrompt({
       ? '0. IMMEDIATELY on startup, before any other action, run this heartbeat command exactly once (it marks you as alive for the operator):'
       : '0. Runtime owns the operator heartbeat. Do not invoke Bash or another undeclared native tool for heartbeat.',
     modelOwnsHeartbeat
-      ? `   bash -c 'echo "$(date -u +%FT%TZ) pid=$$ worker=${workerId} project=${project.id} task=${task.id} CLAIMED started" >> ~/.zcode/cli/worker-heartbeat.log'`
+      ? `   bash -c 'echo "$(date -u +%FT%TZ) pid=$$ worker=${displayName ?? workerId} project=${project.id} task=${task.id} CLAIMED started" >> ~/.zcode/cli/worker-heartbeat.log'`
       : null,
     `1. Work only on task_id=${task.id}.`,
     '2. Never call worker_next; it is explicitly disabled for this process.',
@@ -517,14 +526,16 @@ export class ClaudeBoardRunner {
   }
 
   // Записать строку в heartbeat-лог. Формат:
-  //   <iso> pid=<pid> worker=<id> project=<id> [<name>] task=<id> <EVENT> <message>
+  //   <iso> pid=<pid> worker=<callsign> project=<id> [<name>] task=<id> <EVENT> <message>
+  // WORKER-NAMES-DESIGN: worker= несёт заводской callsign (Forge), не UUID —
+  // оператор видит в живом логе, КОГО ждёт; pid остаётся для корреляции.
   // Используется runner'ом при старте (STARTED) и завершении (CLOSED/FAILED).
   // Воркер пишет CLAIMED/STEP отдельно из скилла (см. saga-worker/SKILL.md).
   heartbeat(run, execution, event, message) {
     const line = [
       nowIso(),
       `pid=${execution?.child?.pid ?? '?'}`,
-      `worker=${execution?.workerId ?? '?'}`,
+      `worker=${execution?.displayName ?? execution?.workerId ?? '?'}`,
       `project=${run.projectId} [${run.projectName}]`,
       `task=${execution?.taskId ?? '?'}`,
       event,
@@ -930,10 +941,22 @@ export class ClaudeBoardRunner {
       }
     }
 
+    // WORKER-NAMES-DESIGN: resolve the factory callsign stamped at claim time
+    // (worker_executions.display_name; legacy rows fall back to hashName).
+    // Display-only — every spawn/journal/fence identity below stays UUID.
+    // Best-effort: a missing row or closed DB only degrades the name to null.
+    let displayName = null;
+    if (assignment.execution_id && this.dbPath) {
+      try {
+        displayName = readExecutionDisplayName(this.dbPath, assignment.execution_id);
+      } catch { /* name is cosmetic — never block the spawn */ }
+    }
+
     const prompt = buildPrompt({
       assignment,
       project: { id: run.projectId, name: run.projectName },
       workerId,
+      displayName,
       executionId: assignment.execution_id || null,
       workspaceRoot,
       sagaSkillRoot: this.sagaSkillRoot,
@@ -1161,6 +1184,9 @@ export class ClaudeBoardRunner {
       }, {
         task_id: task.id,
         worker_id: workerId,
+        // WORKER-NAMES-DESIGN: callsign in the data payload (display-only;
+        // execution_id stays the sole correlation key).
+        display_name: displayName ?? null,
         pid: child.pid ?? null,
         executor_path: executorSelection.claudePath,
         argv: args,
@@ -1223,6 +1249,10 @@ export class ClaudeBoardRunner {
       taskId: task.id,
       title: task.title,
       workerId,
+      // WORKER-NAMES-DESIGN: the callsign drives the heartbeat line and the
+      // status projection (this.status / /api endpoints); workerId stays the
+      // authority key for run.active and the fences.
+      displayName,
       executionId: assignment.execution_id || null,
       originalStatus: task.status,
       child,
@@ -1314,6 +1344,7 @@ export class ClaudeBoardRunner {
         }, {
           task_id: task.id,
           worker_id: workerId,
+          display_name: execution.displayName ?? null,
           exit_code: code ?? null,
           duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
           worker_done_received: true,
@@ -1329,6 +1360,7 @@ export class ClaudeBoardRunner {
         }, {
           task_id: task.id,
           worker_id: workerId,
+          display_name: execution.displayName ?? null,
           exit_code: code ?? null,
           duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
           worker_done_received: true,
@@ -1344,6 +1376,7 @@ export class ClaudeBoardRunner {
         }, {
           task_id: task.id,
           worker_id: workerId,
+          display_name: execution.displayName ?? null,
           exit_code: code ?? null,
           duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
           worker_done_received: true,
@@ -1360,6 +1393,7 @@ export class ClaudeBoardRunner {
         }, {
           task_id: task.id,
           worker_id: workerId,
+          display_name: execution.displayName ?? null,
           exit_code: code ?? null,
           duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
           worker_done_received: false,

@@ -10,6 +10,7 @@ import {
   REAL_SUPERVISION_CLOCK,
   type SupervisionClock,
 } from './lifecycle/stuck-policy.js';
+import { hashName } from './worker-names.js';
 
 export const ACTIVE_EXECUTION_STATES = ['reserved', 'running', 'cancel_requested'] as const;
 const ACTIVE_STATE_SQL = "'reserved','running','cancel_requested'";
@@ -75,6 +76,10 @@ export interface WorkerExecutionRow {
   epic_id: number;
   task_id: number;
   worker_id: string;
+  // WORKER-NAMES-DESIGN: claim-time factory callsign — display-only; the UUID
+  // identifiers remain the authority. Nullable on rows written before the
+  // column existed (read through the hashName fallback).
+  display_name: string | null;
   machine_id: string;
   state: string;
   phase: string;
@@ -161,6 +166,38 @@ function withBusyRetry<T>(run: () => T): T {
     }
   }
   throw lastError;
+}
+
+/**
+ * WORKER-NAMES-DESIGN: the human-readable callsign of one execution.
+ *
+ * `COALESCE(display_name, hashName(worker_id))` — rows claimed after the
+ * design landed carry their workshop callsign; legacy rows (pre-column, NULL)
+ * read through the deterministic hash fallback, so EVERY execution has a
+ * stable readable label with zero migration. Returns null only when the
+ * execution row itself does not exist.
+ *
+ * Deliberately does NOT use the cached runtimeDbCache: that cache exists to
+ * serialize this module's WRITES (TB-2); a display-only lookup takes a
+ * SHORT-LIVED read-only connection instead, so it never pins the database
+ * file open (spawn paths and tests clean up their trees). The .mjs runner
+ * (tracker-view/claude-runner.mjs) imports this from dist/ to name the
+ * worker in its prompt, heartbeat line and journal payloads.
+ */
+export function readExecutionDisplayName(
+  dbPath: string,
+  executionId: string,
+): string | null {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const row = db.prepare(
+      'SELECT display_name, worker_id FROM worker_executions WHERE execution_id=?',
+    ).get(executionId) as { display_name: string | null; worker_id: string } | undefined;
+    if (!row) return null;
+    return row.display_name ?? hashName(row.worker_id);
+  } finally {
+    db.close();
+  }
 }
 
 export function assertExecutionFence(
