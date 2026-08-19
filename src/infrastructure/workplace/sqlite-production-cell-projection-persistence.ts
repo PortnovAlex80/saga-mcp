@@ -453,7 +453,7 @@ function ensureProjectedTask(db: Database.Database, input: PlannedTask): number 
      VALUES (?, ?, ?, 'todo', 'high', ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
   ).run(
     input.epicId,
-    taskTitle(input.titlePrefix, input.objective),
+    taskTitle(db, input),
     JSON.stringify({ objective: input.objective, work_intent_id: input.intentId }),
     input.taskKind,
     input.workflowStage ?? null,
@@ -470,11 +470,30 @@ function ensureProjectedTask(db: Database.Database, input: PlannedTask): number 
   return taskId;
 }
 
-function taskTitle(titlePrefix: string | undefined, objective: string): string {
-  const prefix = titlePrefix ?? 'Production Cell: ';
-  const unprefixed = objective.startsWith(prefix)
-    ? objective.slice(prefix.length)
-    : objective;
+function taskTitle(db: Database.Database, input: PlannedTask): string {
+  // The objective is the worker-facing authority text and is equality-checked
+  // on replay (PRODUCTION_CELL_PLAN_BINDING_MISMATCH); the title is not. So the
+  // kanban card subject is derived here from display-only fields, never by
+  // editing the objective.
+  if (
+    input.taskKind === 'verification.ac'
+    && typeof input.verificationTargetArtifactId === 'number'
+  ) {
+    const artifact = db.prepare('SELECT title FROM artifacts WHERE id=?')
+      .get(input.verificationTargetArtifactId) as
+      | { title: string | null }
+      | undefined;
+    if (artifact?.title) {
+      return `verify ${artifact.title}`;
+    }
+  }
+  if (input.titleSubject) {
+    return input.titleSubject;
+  }
+  const prefix = input.titlePrefix ?? 'Production Cell: ';
+  const unprefixed = input.objective.startsWith(prefix)
+    ? input.objective.slice(prefix.length)
+    : input.objective;
   return `${prefix}${unprefixed.slice(0, 80)}`;
 }
 

@@ -95,6 +95,9 @@ export interface ProductionCellProjectionPersistence {
       workflowStage?: string;
       executionMode?: string;
       titlePrefix?: string;
+      /** Kanban card subject (e.g. "impl-physics-core (author)"). Display-only:
+       *  never participates in the replay equality checks the objective does. */
+      titleSubject?: string;
       metadata?: Record<string, unknown>;
       sourceArtifactIds?: readonly number[];
       verificationTargetArtifactId?: number | null;
@@ -1396,6 +1399,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         workflowStage: ctx.module.identity.kind,
         executionMode: profile.executionMode,
         titlePrefix: `${cell.id}/${role}: `,
+        titleSubject: cell.materialization.sourceBinding
+          ? `${workplace.itemId} (${role})`
+          : undefined,
         metadata: {
           process_run_id: ctx.processRunId,
           process_node_id: node.id,
