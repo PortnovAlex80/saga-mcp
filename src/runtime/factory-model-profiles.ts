@@ -122,3 +122,81 @@ export function effectiveFactoryConcurrency(
   }
   return Math.min(requested, modelLimit);
 }
+
+/**
+ * Bucket key for an active execution that carries no frozen model (pre-D1.1
+ * rows with empty metadata). Such executions never consume a catalog slot —
+ * they are still counted by the epic-wide live ceiling.
+ */
+export const UNFROZEN_MODEL_BUCKET = '(unfrozen)';
+
+export interface ModelAdmissionDecision {
+  /** FROZEN model id → active in-flight count (epic-scoped). */
+  activeByModel: Record<string, number>;
+  /**
+   * Catalog limit of the model the NEXT claim would freeze; null when the
+   * model is unknown to the catalog (fail-open, capped by the controls
+   * ceiling instead).
+   */
+  requestedModelLimit: number | null;
+  /**
+   * Would ONE more claim of `requestedModel` stay within the per-model
+   * aggregation? True when activeByModel[requestedModel] < catalog limit;
+   * for an unknown model, when it is below the epic's effective controls
+   * ceiling (fail-open on the catalog lookup but never above controls).
+   */
+  modelSlotsAvailable: boolean;
+}
+
+/**
+ * C-4 (stage-11 PREVENTIVE-HUNT Layer 6): enforce the FROZEN route limits of
+ * in-flight executions during admission.
+ *
+ * The live controls row is rewritten by /api/model/set mid-run; counting all
+ * actives against the LIVE ceiling alone lets a model switch stack spawns
+ * past a frozen model's own catalog limit (glm-5.2(10, 8 active) → glm-4.7(2)
+ * → back). This pure aggregation groups actives by their FROZEN model and
+ * decides whether ONE more claim of `requestedModel` fits BOTH the catalog
+ * limit of that model AND (for unknown models) the epic's effective controls
+ * ceiling. The epic-wide live ceiling is enforced separately by the caller
+ * (activeExecutions >= effectiveConcurrency).
+ */
+export function computeModelAdmission(input: {
+  /** The model the NEXT claim would freeze (live controls model_name). */
+  requestedModel: string | null;
+  /** FROZEN model of each active in-flight execution (null → unfrozen bucket). */
+  activeFrozenModels: ReadonlyArray<string | null>;
+  /** Effective live ceiling: min(operator concurrency, controls model limit). */
+  effectiveControlsCeiling: number;
+  /** Catalog limit lookup — overridable for tests. */
+  catalog?: (model: string) => number | null;
+}): ModelAdmissionDecision {
+  const catalog = input.catalog
+    ?? ((model: string) => factoryModelProfile(model)?.limit ?? null);
+  const activeByModel: Record<string, number> = {};
+  for (const frozen of input.activeFrozenModels) {
+    const key = frozen ?? UNFROZEN_MODEL_BUCKET;
+    activeByModel[key] = (activeByModel[key] ?? 0) + 1;
+  }
+  const requestedModelLimit = input.requestedModel !== null
+    ? catalog(input.requestedModel)
+    : null;
+  if (input.requestedModel === null) {
+    return { activeByModel, requestedModelLimit: null, modelSlotsAvailable: true };
+  }
+  const active = activeByModel[input.requestedModel] ?? 0;
+  if (requestedModelLimit !== null) {
+    return {
+      activeByModel,
+      requestedModelLimit,
+      modelSlotsAvailable: active < requestedModelLimit,
+    };
+  }
+  // Unknown model: fail-open on the catalog lookup, but never above the
+  // controls ceiling.
+  return {
+    activeByModel,
+    requestedModelLimit: null,
+    modelSlotsAvailable: active < input.effectiveControlsCeiling,
+  };
+}
