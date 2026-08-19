@@ -188,6 +188,16 @@ export class SqliteTransitionObligationLedger {
     });
     const obligation = this.getOrThrow(key);
     assertObligationReplayMatches(obligation, input);
+    journalEvent('obligation.created', {
+      workplace_ref: input.subjectRef,
+    }, {
+      obligation_key: key,
+      handoff_kind: input.handoffKind,
+      source_kind: input.sourceKind,
+      source_ref: input.sourceRef,
+      owner_capability: input.ownerCapability,
+      path: 'appendFenced',
+    });
     return obligation;
   }
 
@@ -267,7 +277,12 @@ export class SqliteTransitionObligationLedger {
       now,
     });
     if (result.changes === 1) {
-      journalEvent('obligation.claimed', {}, {
+      const subject = this.db.prepare(
+        'SELECT subject_ref FROM factory_transition_obligations WHERE obligation_key=?',
+      ).get(obligationKey) as { subject_ref: string } | undefined;
+      journalEvent('obligation.claimed', {
+        workplace_ref: subject?.subject_ref,
+      }, {
         obligation_key: obligationKey,
         lease_owner: leaseOwner,
         lease_fence: fence.value,
@@ -384,6 +399,15 @@ export class SqliteTransitionObligationLedger {
     if (result.changes !== 1) {
       throw new Error(`TRANSITION_OBLIGATION_DEFER_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`);
     }
+    // STAGE-11 TASK 5 — defer is the lease transition the stage-10 death
+    // actually took (the claimed obligation silently returned to pending with
+    // a DEFERRED last_error), and the only one without a journal line.
+    journalEvent('obligation.deferred', {}, {
+      obligation_key: input.obligationKey,
+      reason: input.reason,
+      lease_owner: input.owner,
+      returned_to: 'pending',
+    });
     return this.getOrThrow(input.obligationKey);
   }
 

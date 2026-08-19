@@ -54,6 +54,7 @@ import { developmentPackageManifest } from './process-modules/modules/developmen
 import { developmentContinuationPackageManifest } from './process-modules/modules/development/package/continuation-manifest.js';
 import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
+import { journalEvent } from './observability/run-journal.js';
 import {
   acquireFactoryLaunchController,
   assertFactoryControllerFence,
@@ -130,6 +131,9 @@ async function main() {
   const ticket = acquireFactoryLaunchController(launchRef, claimToken);
   const controllerEpoch = ticket.controllerEpoch!;
   let controllerFenceLost: Error | null = null;
+  // STAGE-11 TASK 5 — set by the exit sites, read by the exit hook for the
+  // one-shot engine.exit journal line ('boot' until the main flow decides).
+  let exitReason: string = 'boot';
   const controllerHeartbeat = setInterval(() => {
     try {
       // Antifreeze B3: the lease renewal is a hot engine write on the SHARED
@@ -215,6 +219,17 @@ async function main() {
   process.on('exit', (code) => {
     engineLog(`[orchestrate-cli] EXIT: code=${code}`);
     process.stderr.write(`[orchestrate-cli] EXIT: code=${code}\n`);
+    // STAGE-11 TASK 5 — exactly one terminal line per process: a reader must
+    // tell "the run ended" from "the journal stopped". Emitted ONLY here (the
+    // exit sites set exitReason; emitting there too would double-log).
+    // appendFileSync is synchronous and legal in an exit handler.
+    journalEvent('engine.exit', {
+      epic_id: epicId ?? undefined,
+      run_id: ticket.lifecycleRunId != null ? String(ticket.lifecycleRunId) : undefined,
+    }, {
+      code,
+      reason: exitReason,
+    });
   });
 
   engineLog(
@@ -641,6 +656,7 @@ async function main() {
         ? (result.reason === 'failed' ? 'start_failed' : 'completed')
         : 'paused',
     );
+    exitReason = isTerminal ? result.reason : 'paused';
     process.exit(isTerminal ? (result.reason === 'failed' ? 1 : 0) : 2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -653,6 +669,7 @@ async function main() {
     try {
       finishFactoryLaunch(launchRef, claimToken, 'failed', msg);
     } catch { /* preserve the original failure */ }
+    exitReason = 'fatal';
     process.exit(1);
   } finally {
     clearInterval(controllerHeartbeat);

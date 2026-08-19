@@ -44,12 +44,21 @@ const JOURNAL_MODULE = join(DIST_ROOT, 'observability', 'run-journal.js');
 const JOURNAL_MODULE_URL = pathToFileURL(JOURNAL_MODULE).href;
 const SRC_MODULE = join(repoRoot, 'src', 'observability', 'run-journal.ts');
 
-/** The sanctioned journal EMITTERS in compiled factory code (frozen set). */
+/** The sanctioned journal EMITTERS in compiled factory code (frozen set).
+ * STAGE-11 TASK 5 additions (failure events): the effect boundary
+ * (error.thrown), the engine-adapter result boundary (run.terminal), the CLI
+ * exit hook (engine.exit), and the supervision reap loop
+ * (supervision.reaped). The transition-obligation ledger was already wired
+ * (its defer/appendFenced/claimed events extend in place). */
 const FROZEN_COMPILED_IMPORTERS = [
   'app/product-lifecycle-runtime.js',
+  'infrastructure/work/worker-supervision-service.js',
   'infrastructure/workplace/sqlite-gate-repository.js',
   'lifecycle/work-assignment-core.js',
   'observability/run-journal.js', // the module itself (self-reference in header comments only)
+  'orchestrate-cli.js',
+  'process-modules/application/lifecycle-orchestration-engine-adapter.js',
+  'process-modules/application/post-acceptance-effects.js',
   'process-modules/persistence/sqlite-external-effect-ledger.js',
   'process-modules/persistence/sqlite-transition-obligation-ledger.js',
   'tools/dispatcher.js',

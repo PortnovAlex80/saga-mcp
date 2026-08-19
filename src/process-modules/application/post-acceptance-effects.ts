@@ -7,6 +7,7 @@ import {
   type RecoveryIssue,
 } from '../domain/recovery.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { journalEvent } from '../../observability/run-journal.js';
 
 /**
  * ADR-053 Phase 6 — the exact accepted-candidate authority an effect consumes.
@@ -258,7 +259,24 @@ export class FactoryPostAcceptanceEffectRegistry {
     // ADR-053 C17 — fail closed on incomplete / inconsistent accepted authority
     // BEFORE any external action. See assertAuthorityBound.
     assertAuthorityBound(input);
-    const result = effect.run(input);
+    let result: PostAcceptanceEffectResult | void;
+    try {
+      result = effect.run(input);
+    } catch (error) {
+      // STAGE-11 TASK 5 — the effect boundary is the deepest frame where the
+      // accepted-authority correlation keys are all in scope. The stage-10
+      // death crossed this boundary invisibly. Observation only: journal, then
+      // rethrow unchanged — the journal never feeds a decision.
+      journalEvent('error.thrown', {
+        workplace_ref: serializeWorkplaceRef(input.authority.workplaceRef),
+        candidate_set_ref: input.authority.candidateSetRef,
+      }, {
+        error_name: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+        source_site: `effect:${effectId}`,
+      });
+      throw error;
+    }
     if (result) return result;
     // Legacy idempotent adapters are represented as a successful provider
     // receipt until migrated to the external-effect ledger. The receipt is

@@ -63,6 +63,7 @@ import type { ExecutionRuntimeRepository } from '../../application/ports/factory
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
 import { EngineDbBusyError, withBusyRetry } from '../../runtime/busy-retry.js';
+import { journalEvent } from '../../observability/run-journal.js';
 
 export interface WorkerSupervisionOptions {
   executionRuntime: ExecutionRuntimeRepository;
@@ -328,6 +329,17 @@ export function startWorkerSupervision(
           reapedCount++;
           if (p.released) releasedCount++;
           if (p.lostViaDeadPid === true) lostDeadPidCount++;
+          // STAGE-11 TASK 5 — a reap is a worker-level fatal fact; it was
+          // visible only in the engine stdout. Per reaped projection, never
+          // per sweep. Observation only.
+          journalEvent('supervision.reaped', {
+            execution_id: p.executionId,
+          }, {
+            task_id: p.taskId,
+            action: p.action,
+            released: p.released,
+            reason: p.reason,
+          });
           log(
             `[supervision] REAPED execution=${p.executionId} task=${p.taskId} `
             + `action=${p.action} released=${p.released} reason=${p.reason} at=${new Date(now()).toISOString()}`,

@@ -5,6 +5,7 @@ import type {
 } from '../../application/ports/orchestration-engine.js';
 import type { LifecycleDefinition } from '../domain/lifecycle.js';
 import { lifecycleRefKey } from '../persistence/lifecycle-run.js';
+import { journalEvent } from '../../observability/run-journal.js';
 import type { LifecycleOrchestrator } from './lifecycle-orchestrator.js';
 
 export interface LifecycleEpisodeInput {
@@ -64,6 +65,25 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
           : result.status === 'cancelled'
             ? 'stopped'
             : 'failed';
+    // STAGE-11 TASK 5 — the terminal boundary: a reader must be able to tell
+    // "the run ended" from "the journal stopped". Emitted only for terminal
+    // results (paused resume cycles re-run this adapter; the guard keeps it
+    // exactly-once). After the orchestrator's commits — never inside a
+    // transaction a rollback could falsify. Observation only.
+    if (result.status !== 'paused' && result.status !== 'running') {
+      journalEvent('run.terminal', {
+        run_id: String(result.lifecycleRun.id),
+        epic_id: command.epicId,
+      }, {
+        outcome: reason,
+        status: result.status,
+        final_stage: result.lifecycleRun.currentStageId
+          ?? lastStage?.stageId
+          ?? definition.entryStageId,
+        error: result.lifecycleRun.error ?? null,
+        cycles: result.stageRuns.length,
+      });
+    }
     return {
       projectId: command.projectId,
       epicId: command.epicId,

@@ -28,7 +28,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 
 const dbDir = mkdtempSync(path.join(os.tmpdir(), 'saga-trace-revision-'));
 const dbPath = path.join(dbDir, 'factory.sqlite');
@@ -274,6 +274,80 @@ test('STAGE-11 TASK 1: capture survives trace revision — delete + re-add same 
   const tuples = new Set(traces.map((t) => JSON.stringify(t)));
   assert.equal(traces.length, 2, 'both trace identities resolved into the capsule');
   assert.equal(tuples.size, 2, 'the two identities are distinct by content');
+});
+
+test('STAGE-11 TASK 5 proof: the effect boundary journals error.thrown on a deliberate failure', async () => {
+  closeDb();
+  process.env.DB_PATH = path.join(dbDir, 'proof.sqlite');
+  const db = getDb();
+  seed(db);
+  // Deliberately induce the stage-10 corruption WITHOUT the re-add: the
+  // sealed traces are deleted and stay deleted — capture must throw, and the
+  // effect-boundary journal event must fire with the authority correlation
+  // keys BEFORE the rethrow.
+  const source = addArtifact('SRC-P');
+  const targetA = addArtifact('TGT-P');
+  const sourceId = source.artifact?.id ?? source.id;
+  const aId = targetA.artifact?.id ?? targetA.id;
+  handlers.trace_add({ source_id: sourceId, target_type: 'artifact', target_id: aId, link_type: 'derived_from' });
+  handlers.worker_done({
+    task_id: 1, worker_id: 'worker-1', execution_id: 'exec-1',
+    result: 'proof run for the journal failure events',
+  });
+  handlers.trace_delete({ source_id: sourceId, target_type: 'artifact', target_id: aId, link_type: 'derived_from' });
+  const live = db.prepare('SELECT COUNT(*) n FROM artifact_traces').get().n;
+  assert.equal(live, 0, 'the sealed trace is genuinely gone — no re-add');
+
+  const journalPath = path.join(dbDir, 'proof-journal.jsonl');
+  process.env.SAGA_RUN_JOURNAL = journalPath;
+
+  const { FactoryPostAcceptanceEffectRegistry, computeAcceptanceDigest } = await import(
+    '../../dist/process-modules/application/post-acceptance-effects.js'
+  );
+  const registry = new FactoryPostAcceptanceEffectRegistry();
+  registry.register({
+    effectId: 'replay-capture',
+    version: '1.0.0',
+    effectDigest: HEX64,
+    run() { throw new Error('REPLAY_CAPTURE_TRACE_NOT_FOUND: induced failure for the journal proof'); },
+  });
+  const productRefs = [{ schemaId: 'factory.workplace-production-snapshot.v3', ref: `product:${HEX64}`, digest: HEX64 }];
+  const authority = {
+    workplaceRef: { processRunId: 1, moduleRef: 'product-discovery@3.0.2', productionCellId: 'cell', workKey: 'item' },
+    productionRevisionRef: `revision:${HEX64}`,
+    candidateSetRef: `candidate-set:${HEX64}`,
+    gateDecisionKey: `decision:${HEX64}`,
+    acceptedProductRefs: productRefs,
+    acceptedAuthorTaskId: 1,
+    acceptedAuthorCandidateSetRef: null,
+    productSchema: 'factory.synthetic-bundle.v1',
+    productContractRef: null,
+  };
+  authority.acceptanceDigest = computeAcceptanceDigest({
+    candidateSetRef: authority.candidateSetRef,
+    productionRevisionRef: authority.productionRevisionRef,
+    acceptedProductRefs: authority.acceptedProductRefs,
+    gateDecisionKey: authority.gateDecisionKey,
+    productSchema: authority.productSchema,
+    productContractRef: authority.productContractRef,
+  });
+  assert.throws(
+    () => registry.run('replay-capture', { authority }),
+    /REPLAY_CAPTURE_TRACE_NOT_FOUND: induced failure/,
+    'the error still propagates unchanged — observation never swallows',
+  );
+
+  const lines = readFileSync(journalPath, 'utf8').trim().split('\n').filter(Boolean);
+  const events = lines.map((l) => JSON.parse(l));
+  const thrown = events.filter((e) => e.kind === 'error.thrown');
+  assert.equal(thrown.length, 1, 'exactly one error.thrown event');
+  assert.equal(thrown[0].data.source_site, 'effect:replay-capture');
+  assert.match(thrown[0].data.message, /REPLAY_CAPTURE_TRACE_NOT_FOUND/);
+  assert.ok(thrown[0].data.error_name, 'error_name carried');
+  assert.ok(thrown[0].ts, 'ts carried');
+  // The observation-only constraint holds: the journal was WRITTEN, never
+  // read back by the factory (this test is a sanctioned reader).
+  process.env.SAGA_RUN_JOURNAL = 'off';
 });
 
 test('STAGE-11 TASK 3 twin (SKIPPED — artifact side, latent exposure): capture after artifact deletion', {
