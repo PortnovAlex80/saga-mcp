@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "factory.product-delivery-lifecycle-input.v2",
+  "initiative": {
+    "subject": "---\n\nХочу потрогать самую сердцевину Elite — стыковку. Корабль, станция, подлёт,\nстыковочный узел. Управляю с клавиатуры, смотрю в браузере (Chrome).\n\nКорабль должен чувствоваться как тело: инерция, тяга, вращение — не\nтелепорт-камера. Станция вращается — ладно, пусть. Успех — когда я могу\nподлететь и пристыковаться, а могу промахнуться и врезаться. Обе развязки\nчестные: мягкий контакт у шлюза — причалил, удар об корпус — авария.\n\nХочу хотя бы один автотест, который сам загоняет корабль на стыковку и\nговорит, прошла она или нет.\n\nВсё поднимается одной командой `docker compose up` — я не хочу знать, как\nоно устроено внутри. Бэкенд — TypeScript. Фронт — на ваше усмотрение, лишь\nбы открывался в Chrome.\n\nНе делайте игру. Сделайте один честный кусочек: подлёт и стыковка.",
+    "context": {
+      "type": "web-app",
+      "complexity": "XS"
+    },
+    "evidence": {},
+    "constraints": {
+      "localRunRequired": true,
+      "deploymentExcluded": true,
+      "humanAcceptanceAfterLocalStart": true
+    }
+  },
+  "development": {
+    "repositories": [
+      {
+        "repositoryRef": {
+          "repositoryName": ".factory-sandboxes/stage11-repo",
+          "role": "component"
+        },
+        "integrationBranch": "dev",
+        "expectedBaseCommit": "807faf164525cc086507247512a04550864adccf"
+      }
+    ],
+    "policy": {
+      "id": "reference-development-policy",
+      "version": "1.1.0",
+      "contentHash": "d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438",
+      "requiredChangeScopes": [
+        "package.json",
+        "tests/"
+      ]
+    }
+  },
+  "delivery": {
+    "mode": "deferred",
+    "policy": null,
+    "operatorAuthorization": null,
+    "deferredProfile": {
+      "schemaVersion": "factory.delivery-deferred-profile.v1",
+      "reason": "authorization-required",
+      "source": "start-from-idea",
+      "profileHash": "96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8"
+    }
+  }
+}

@@ -1,0 +1,315 @@
+{
+  "acceptanceBaselineHash": "f0b54fb227aa3035d48e24d9c43e4547b20e8d32d2e56271115ece1272423e14",
+  "epicId": 1,
+  "formalizationCertificateHash": "d7bfa3902d378d0cdee7ba5baaa44307698b0c2f72a1bca2da676d4699105c37",
+  "graphHash": "60d6f9b9370ef333d0d15a29919c02e7c8eb76853cc440d48eeb6d37dbcfbb6d",
+  "implementationItems": [
+    {
+      "acceptanceCriterionIds": [
+        16
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/test/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-collision-detection",
+        "impl-game-loop",
+        "impl-input-handler",
+        "impl-physics-core",
+        "impl-renderer-2d",
+        "impl-simulation-state",
+        "impl-websocket-server"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-automated-test",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        14,
+        15
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/collision/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-physics-core",
+        "impl-simulation-state"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-collision-detection",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/game/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-collision-detection",
+        "impl-input-handler",
+        "impl-physics-core",
+        "impl-simulation-state"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-game-loop",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        12
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/input/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-physics-core"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-input-handler",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        12
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/physics/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-physics-core",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        12,
+        13
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/renderer/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-game-loop",
+        "impl-input-handler",
+        "impl-simulation-state"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-renderer-2d",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        13
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/state/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-input-handler",
+        "impl-physics-core"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-simulation-state",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    },
+    {
+      "acceptanceCriterionIds": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "changeScopes": [
+        "package.json",
+        "src/server/",
+        "tests/"
+      ],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-game-loop",
+        "impl-input-handler",
+        "impl-renderer-2d",
+        "impl-simulation-state"
+      ],
+      "executionMode": "git_change",
+      "executionSkill": "saga-developer",
+      "key": "impl-websocket-server",
+      "kind": "implementation",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "implementation"
+    }
+  ],
+  "integrationTargets": [
+    {
+      "expectedBaseCommit": "807faf164525cc086507247512a04550864adccf",
+      "projectRepositoryId": 1,
+      "sourceWorkItemKeys": [
+        "impl-automated-test",
+        "impl-collision-detection",
+        "impl-game-loop",
+        "impl-input-handler",
+        "impl-physics-core",
+        "impl-renderer-2d",
+        "impl-simulation-state",
+        "impl-websocket-server"
+      ],
+      "targetBranch": "dev"
+    }
+  ],
+  "plannerSubmission": {
+    "hash": "05e17b02bd7856b71aece08dace2e83b94b9848b9c0b36e38080f96e9ef45dc6",
+    "ref": "managed-node-submission:12",
+    "schema": "factory.development-task-graph-proposal.v1"
+  },
+  "schemaVersion": "factory.development-task-graph.v1",
+  "solutionContractHash": "e7a96d96bb40a8e99b1c3248570811a5d8788aa8c69045b9e9ebccdc021fb4bc",
+  "srsHash": "0310c154987f883d63af6f4067ec9152e1e67467a5c08d49d8d6adfc5b19babb",
+  "verificationItems": [
+    {
+      "acceptanceCriterionIds": [
+        12
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-game-loop",
+        "impl-input-handler"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-1",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        13
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-game-loop",
+        "impl-renderer-2d",
+        "impl-simulation-state"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-2",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        14
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-collision-detection",
+        "impl-game-loop"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-3",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        15
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-collision-detection",
+        "impl-game-loop"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-4",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    },
+    {
+      "acceptanceCriterionIds": [
+        16
+      ],
+      "changeScopes": [],
+      "criticality": "blocker",
+      "dependsOnKeys": [
+        "impl-automated-test"
+      ],
+      "executionMode": "read_only_evidence",
+      "executionSkill": "saga-verifier",
+      "key": "verify-ac-5",
+      "kind": "verification",
+      "projectRepositoryId": 1,
+      "required": true,
+      "taskKind": "verification.ac"
+    }
+  ]
+}

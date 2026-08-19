@@ -1,0 +1,127 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 1,
+      "artifactStatus": "draft",
+      "artifactType": "brief",
+      "contentHash": "56705d332e56b96c7fa7fa49a924707a2b08eac3e24ca05c888b350c2d1d544f"
+    },
+    {
+      "artifactId": 2,
+      "artifactStatus": "draft",
+      "artifactType": "PRD",
+      "contentHash": "6b3cbc4031daa430ac7fe9e80434e7f94712c7716d766c00411a57bd4b370a84"
+    },
+    {
+      "artifactId": 3,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "ed6c0a29b78cd2043a8dee4523e786a025cabd7cfa8427b1303977a2fba9c237"
+    },
+    {
+      "artifactId": 4,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "e6eeb83040bcff594da8a9f061cb54fcfc6e2cad4f9aba413c06e9f5ef202379"
+    },
+    {
+      "artifactId": 5,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "9fee69cf4315d962115e699b0b5c7ef52a3af79c88281b1e61e25187f9daa2d6"
+    },
+    {
+      "artifactId": 6,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "2500743c578f47e076450963f299caeace4c5a218825417f79ec9e35dc34dba0"
+    },
+    {
+      "artifactId": 7,
+      "artifactStatus": "draft",
+      "artifactType": "NFR",
+      "contentHash": "f0118649fe7f1a447c3fe8f6747a1c2beeb193937b33eb93a731c41709cb4bd4"
+    },
+    {
+      "artifactId": 8,
+      "artifactStatus": "draft",
+      "artifactType": "NFR",
+      "contentHash": "28e15797f5127a812d85221b8d0887674932f99a3bf61631754191ea93d385f5"
+    },
+    {
+      "artifactId": 9,
+      "artifactStatus": "draft",
+      "artifactType": "RULE",
+      "contentHash": "7d588cd944eeabc247622c76b5d104a823e8244d671ee0f97e39f001c85025d6"
+    }
+  ],
+  "expectedSchemaRef": "factory.formalization-product-bundle.v1",
+  "schemaVersion": "factory.workplace-production-snapshot.v3",
+  "traces": [
+    {
+      "linkType": "derived_from",
+      "sourceId": 2,
+      "targetId": 1,
+      "targetType": "artifact",
+      "traceHash": "bce412de0dc2e649b9951a637ea087f47fc9d3b394389e15382bdeea6cdde384",
+      "traceId": 1
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 3,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "19224bf102236d0a0427dcf70ec3ede7faeba934c2010d427a5204502e4c23bb",
+      "traceId": 2
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 4,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "fb68f488a9fd2661299791ee790293ab1ea10a3a59db429debc494b2faf0f621",
+      "traceId": 3
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 5,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "dd4914f09a59ce61aa7c2146ec7b105cbd138235474f54ec784093355b560bc8",
+      "traceId": 4
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 6,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "281a1a0bfe48c13d999b9d4ae516ed32b5456557749c8307fde679ea60cc9346",
+      "traceId": 5
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 7,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "cb7f78cfb54da4ccb2c3e9dcbb302c2a12be1c67ac800ecdfaa36e99ffd33bf8",
+      "traceId": 6
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 8,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "56fea060e69e3c63f01ff6f9846306e4479b9bf7d2c949b922d7e5dfc87fa5bd",
+      "traceId": 7
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "70c3d6822e52facd02fde277fc65a51518ff1fa84553856f79b9ce5645434844",
+      "traceId": 8
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+}
