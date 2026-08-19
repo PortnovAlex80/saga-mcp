@@ -197,3 +197,80 @@ Task 5: the migration note.
 
 State what you did not finish. The night is finite and an honest stop is worth
 more than a wave you pushed through red.
+
+---
+
+## TASK 6 — OPERATOR OVERRIDE (2026-08-20 ~00:30, night shift): a real run on GLM-4.6, then conditionally recycle
+
+The header of this brief says "Do not launch a factory run in this stage", and
+escalation item 5 forbids starting one. **The operator overrides both for
+tonight** (same override pattern as stage-11 TASK 6). The conditions below are
+binding; outside them the original prohibitions stand.
+
+### Standing directives issued with the override
+
+1. **OPENCODE ONLY.** Every worker runs through the agent-proxy shim
+   (`tools/agent-proxy/claude-shim.mjs`, provider `zai-coding-plan`). The
+   claude CLI is retired; `SAGA_REAL_CLAUDE_PATH` is always set to the shim.
+   See AGENTS.md.
+2. **`~/.claude/settings.json` is never touched** by us — not rewritten, not
+   restored, not re-pinned. Its sha256 is a tripwire only: any change during
+   the run is an ABORT condition — investigate, never edit it back. Baseline
+   recorded at launch in the night tracker (note: at override time it hashed
+   `1d0aac5e…`, not the stage-11 baseline `e03e7bbc…` — post-run state, not a
+   factory touch; the tripwire anchors to the launch-time value).
+3. **English only.** The operator sleeps through the night. All reasoning,
+   reports, commit messages, tracker entries and agent briefs are in English.
+4. **Self-tracking.** The night's authoritative state is
+   `docs/factory-run/stage12/NIGHT-TRACKER.md`. Any agent — including a fresh
+   session after context compression — reads it FIRST and updates it as
+   phases complete.
+
+### Order of operations
+
+The run launches ONLY after TASK 1 (all merge waves) and TASK 2 (anti-gaming
+steps 1–3; step 4 if reached) are green, plus `npm run build` on the final
+HEAD. Never launch from a dirty tree. Launch parameters:
+
+- fresh dirs: DB `.factory-sandboxes/stage12-db/factory.sqlite` (outside the
+  sandbox root), sandbox `.factory-sandboxes/stage12`, logs
+  `.factory-sandboxes/stage12-logs`;
+- `--model glm-4.6` (checked-in catalog: limit 2, effort high —
+  `src/runtime/factory-model-profiles.ts`; shim map verified);
+- `SAGA_FACTORY_CONCURRENCY=2`;
+- guard env: `SAGA_REAL_CLAUDE_PATH` → shim,
+  `SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1`, `SAGA_RUN_JOURNAL` +
+  `SAGA_ORCHESTRATION_LOG` pinned to the run dirs;
+- order text: the same docking slice as stage-10/11
+  (`docs/factory-run/stage10/ORDER.md`) — comparability is the point;
+- pre-flight pasted into the tracker before `factory.mjs start`: build exit 0,
+  `dist` mtime, HEAD SHA, clean tree, settings sha256 baseline.
+
+Monitoring (the operator's protocol): poll status; ABORT on — lifecycle
+terminal failed; the same refusal reason 3+ times on one node; no progress
+from an active worker >20 min with a live process; settings.json sha256 drift
+from the launch baseline. On abort: `node tools/capture-run-snapshot.mjs
+--db .factory-sandboxes/stage12-db/factory.sqlite --out
+factory-snapshots/stage12-<reason>` + a detailed English report in the
+tracker. Never repair mid-run, never touch processes beyond documented
+recovery, never edit the DB by hand.
+
+**Success definition for tonight (all three, else it is not "successful"):**
+1. `lifecycle_run.status=completed`, terminal `runnable-local`;
+2. certification honest: the step-1 coverage report shows the canonical set
+   fully run (no unexplained shrink), and the gaming replay stays RED;
+3. one-command product check: a subagent runs the product, fixes nothing,
+   reports verbatim what happens.
+
+### Conditional phase — the recycle (E9)
+
+**Only if the run is successful within the night.** Then: implement the
+recycle per `docs/architecture/RECYCLE-RUN-DESIGN.md` (front-door
+change-request hook, ChangeRequestAppendix, capsule MISS/HIT, SVN-style
+`factory_product_revisions`), one commit per mechanism, build + architecture
+suite green, and launch the recycle run against the fresh product's findings.
+The E9 reserve (`docs/architecture/E9-RESERVE.md`) is protected: named
+reserve code escalates, never deletes.
+
+If the night runs out before the recycle lands, STOP — record the durable
+handoff state in the tracker. An honest stop beats a pushed-through wave.
