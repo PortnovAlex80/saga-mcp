@@ -158,7 +158,10 @@ export class SqliteFormalizationArtifactGraph implements
    * the CURRENT lifecycle run — same ownership chain as
    * {@link readAcceptedArtifactsForLifecycle}, restricted to accepted briefs.
    * Returns the parsed metadata.constraint_dispositions object, or null when
-   * no accepted brief / no dispositions exist.
+   * no accepted brief / no dispositions exist. The brief is resolved by the
+   * SAME stable convention as the SRS in readAcceptedArtifactsForLifecycle
+   * (first accepted row by ascending id) — NEVER by recency (K7/K8 freeze:
+   * authority is content, not chronology).
    */
   readBriefConstraintDispositionsForLifecycle(
     epicId: number,
@@ -172,7 +175,7 @@ export class SqliteFormalizationArtifactGraph implements
         WHERE a.epic_id=? AND a.type='brief' AND a.status='accepted'
           AND sr.lifecycle_run_id=?
         GROUP BY a.id
-        ORDER BY a.id DESC
+        ORDER BY a.id ASC
         LIMIT 1`,
     ).get(epicId, lifecycleRunId) as { metadata: string | null } | undefined;
     if (!row || typeof row.metadata !== 'string') return null;

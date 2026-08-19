@@ -37,7 +37,7 @@ import {
 import {
   buildOrderConstraintRegister,
   type OrderConstraintRegister,
-} from '../domain/constraint-register.js';
+} from '../../../shared/constraint-register.js';
 import {
   DiscoverySettlementPolicyV1,
 } from '../domain/discovery-settlement-policy.js';

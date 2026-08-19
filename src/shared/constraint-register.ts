@@ -30,7 +30,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { canonicalJson } from '../../../shared/canonical-json.js';
+import { canonicalJson } from './canonical-json.js';
 
 /** Schema version of the serialized register. */
 export const ORDER_CONSTRAINT_REGISTER_SCHEMA = 'factory.order-constraint-register.v1';

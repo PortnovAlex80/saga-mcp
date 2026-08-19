@@ -18,7 +18,7 @@ import {
   ORDER_CONSTRAINT_CLASSES,
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
-} from '../../dist/modules/discovery/domain/constraint-register.js';
+} from '../../dist/shared/constraint-register.js';
 import {
   validateDiscoveryProposal,
 } from '../../dist/modules/discovery/domain/discovery-proposal.js';

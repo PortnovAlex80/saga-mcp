@@ -8,7 +8,7 @@ import {
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
   type OrderConstraintRegister,
-} from '../../discovery/domain/constraint-register.js';
+} from '../../../shared/constraint-register.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'factory.formalization-settlement-input.v1';
 export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'factory.formalization-product-bundle.v1';

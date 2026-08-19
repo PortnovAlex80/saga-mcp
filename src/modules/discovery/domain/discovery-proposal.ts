@@ -15,7 +15,7 @@
 import {
   ORDER_CONSTRAINT_CLASSES,
   type OrderConstraintDraft,
-} from './constraint-register.js';
+} from '../../../shared/constraint-register.js';
 
 /**
  * The WORKER-RECOMMENDATION vocabulary for discovery — a business verdict
