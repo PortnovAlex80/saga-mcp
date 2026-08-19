@@ -209,6 +209,30 @@ run exists to answer.
 If a run dies, that is a **result**, not a failure of the stage. Snapshot it,
 file the bugs, report.
 
+## Watch items carried from the K13 signature
+
+ADR-032 closed as disposition (b): delivered, with seven named untested
+sub-branches. None blocks M3 — they are untested negative and validation
+branches, not accepted writes outside `AuthorityCommit`. But **three of them are
+reachable by a real run**, and if the factory behaves strangely there, these are
+the first places to look rather than the last:
+
+- **(iii) freeze-kernel negatives** — `candidate-freeze-lineage-invalid` and
+  `implementation-integration-not-merged` have never been driven. If a freeze
+  fails, you are in untested code: capture the exact error before anything else.
+- **(vi) verification-lineage-mismatch** — never fired by a foreign hash. Same
+  rule: if verification rejects on lineage, snapshot immediately.
+- **(vii) the planner skill is not domain-neutral** — its text names "renderer,
+  events, UI modules" and gives a file-path example. **This one matters for this
+  specific order.** The product under test is a web game, so the skill's
+  accidental UI vocabulary may *fit* and hide the defect. Record what the planner
+  actually produces and judge whether the task graph reflects the order or the
+  skill's assumptions. A §3 LEGO violation that happens to look right is worse
+  than one that looks wrong.
+
+File anything you see against these in the bug database with the gap number, so
+the evidence lands where the decision already is.
+
 ## TASK 6 — harvest and report
 
 If the run produced accepted material, run `tools/harvest-golden-corpus.mjs`
