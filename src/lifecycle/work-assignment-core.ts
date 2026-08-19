@@ -16,6 +16,7 @@ import type { ExecutionContextExecutorKind, ExecutionModelRoute, ExecutionRouteP
 import { executionContextHash } from '../shared/authority/execution-context.js';
 import { routeToModelRoute, resolveFrozenRouteEndpoint } from '../application/routing/worker-execution-route.js';
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
+import { materializeTaskRecoveryMemory } from './task-recovery-memory.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { journalEvent } from '../observability/run-journal.js';
 
@@ -568,6 +569,31 @@ export function findNextClaimable(
     assigned_to: workerId,
     current_execution_id: reservation?.executionId ?? null,
   } as Task;
+
+  // BLINDSIGHT X2 bridge: materialize the durable recovery memory
+  // (previous_failures / attempt_history / absent-hint notice) onto the task
+  // row INSIDE the claim transaction, and deliver it in the returned Task —
+  // the object worker_next hands to the spawning worker. This is the read
+  // half of the episodic-memory contract the skills promise: the data must
+  // reach the decision point, not merely exist in the DB. Derived from
+  // append-only sources, so a re-claim never duplicates entries.
+  const recoveryMemory = materializeTaskRecoveryMemory(db, task.id);
+  if (recoveryMemory.changed) {
+    const freshRow = db.prepare('SELECT metadata FROM tasks WHERE id=?')
+      .get(task.id) as { metadata: string } | undefined;
+    if (freshRow) claimedTask.metadata = freshRow.metadata;
+  }
+  if (recoveryMemory.snapshot.attempt_count > 0) {
+    journalEvent('recovery.memory_delivered', {
+      epic_id: task.epic_id,
+      workplace_ref: task.workplace_ref ?? undefined,
+    }, {
+      task_id: task.id,
+      attempt_count: recoveryMemory.snapshot.attempt_count,
+      to_status: claimedStatus,
+      worker_id: workerId,
+    });
+  }
 
   journalEvent('assignment.claimed', {
     epic_id: task.epic_id,

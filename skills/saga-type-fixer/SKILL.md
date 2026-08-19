@@ -52,8 +52,10 @@ depends on the dev-task. When the specialist completes, the dev-task's
   created a `specialist.types` task that `depends_on` the triggering
   dev-task.
 - **Postcondition:** The specialist task transitions to `done`. The
-  triggering dev-task's `metadata.hint` is updated. The dev-task becomes
-  claimable; the next worker reads the hint.
+  triggering dev-task's `metadata.hint` is updated via a read-merge-write
+  (`task_get` → `JSON.parse(metadata)` → add `hint` → `task_update` with the
+  FULL merged object; see Step 11). The dev-task becomes claimable; the next
+  worker reads the hint.
 
 ## When to use
 
@@ -397,16 +399,21 @@ before applying P1-P3 — code rename is blocked on SRS decision.
 
 ### Step 11. Save the hint
 
+`task_update` replaces the whole `metadata` object, and `task_get` returns
+`metadata` as a JSON string — so the save MUST be a read-parse-merge-write:
+
 ```
-patchTaskMetadata({
-  task_id: <triggering dev-task id>,
-  path: 'hint',
-  value: <hint markdown>
-})
+const triggerTask = task_get({ id: <triggering dev-task id> });
+const meta = JSON.parse(triggerTask.metadata);   // keep every existing key
+const newMetadata = { ...meta, hint: <hint markdown> };
+task_update({
+  id: <triggering dev-task id>,
+  metadata: newMetadata
+});
 ```
 
-Or fallback via `task_update` with merged metadata (see saga-perf-tuner
-Step 11 for fallback pattern).
+Never call `task_update({ id, metadata: { hint } })` with a fresh object —
+that wipes `process_run_id` and makes the dev-task unclaimable.
 
 ### Step 12. Complete the specialist task
 

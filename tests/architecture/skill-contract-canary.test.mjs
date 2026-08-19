@@ -41,7 +41,7 @@ const skillsRoot = path.join(repoRoot, 'skills');
 const BRIDGED_CONTRACTS = [
   ['metadata.previous_failures', 'src/lifecycle/task-recovery-memory.ts', 'previous_failures'],
   ['metadata.attempt_history', 'src/lifecycle/task-recovery-memory.ts', 'attempt_history'],
-  ['metadata.hint', 'src/lifecycle/task-recovery-memory.ts', '$.hint'],
+  ['metadata.hint', 'src/lifecycle/task-recovery-memory.ts', 'metadata.hint'],
   ['RECOVERY:', 'src/lifecycle/task-recovery-memory.ts', 'RECOVERY_COMMENT_PREFIX'],
   ['recovery_summary', 'src/lifecycle/task-recovery-memory.ts', 'recovery_summary'],
 ];

@@ -221,3 +221,54 @@ test('G1 (bonus pin) — rule 6a states that worker-done-call.json is not a tool
     rmSync(skillDir, { recursive: true, force: true });
   }
 });
+
+test('G1.6 — BLINDSIGHT X2: prior-attempt memory is delivered LOUDLY in the prompt', () => {
+  // A task whose metadata carries the materialized recovery memory (see
+  // src/lifecycle/task-recovery-memory.ts) must surface it as an unmissable
+  // block in the spawn prompt — the census X2 finding was workers starting
+  // every retry from a blank context while the history sat unread in the DB.
+  const metadata = JSON.stringify({
+    process_run_id: 42,
+    attempt_count: 2,
+    hint: 'AC-NFR-1 needs Vite bundle analysis; watch vendor/three.js',
+    previous_failures: [
+      'Lighthouse=78 (need >=80); vendor-three.js 612KB in entry chunk',
+      'axe=5 violations: missing form labels',
+    ],
+    attempt_history: [
+      { attempt: 1, kind: 'recovery_note', recovery_summary: 'Lighthouse=78 (need >=80); vendor-three.js 612KB in entry chunk' },
+      { attempt: 2, kind: 'recovery_note', recovery_summary: 'axe=5 violations: missing form labels' },
+    ],
+  });
+  const fixture = makeFixture({ task: { metadata } });
+  try {
+    assert.ok(fixture.prompt.includes('PRIOR ATTEMPTS'),
+      'the loud prior-attempts header must appear when attempt_count > 0');
+    assert.ok(fixture.prompt.includes('hint=AC-NFR-1 needs Vite bundle analysis; watch vendor/three.js'),
+      'the hint must be quoted verbatim');
+    assert.ok(fixture.prompt.includes('Lighthouse=78 (need >=80); vendor-three.js 612KB in entry chunk'),
+      'every previous_failures entry must be quoted verbatim');
+    assert.ok(fixture.prompt.includes('axe=5 violations: missing form labels'),
+      'all failure entries are delivered, not just the first');
+  } finally {
+    rmSync(fixture.skillDir, { recursive: true, force: true });
+  }
+
+  // Negative: a task with no attempt history gets NO block (fresh tasks must
+  // not be polluted with recovery noise).
+  const fresh = makeFixture({ task: { metadata: JSON.stringify({ process_run_id: 42 }) } });
+  try {
+    assert.ok(!fresh.prompt.includes('PRIOR ATTEMPTS'),
+      'fresh tasks must not carry the prior-attempts block');
+  } finally {
+    rmSync(fresh.skillDir, { recursive: true, force: true });
+  }
+
+  // Corrupt metadata must not break prompt assembly (fail-soft delivery).
+  const corrupt = makeFixture({ task: { metadata: '{not json' } });
+  try {
+    assert.ok(!corrupt.prompt.includes('PRIOR ATTEMPTS'));
+  } finally {
+    rmSync(corrupt.skillDir, { recursive: true, force: true });
+  }
+});
