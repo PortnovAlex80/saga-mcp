@@ -443,10 +443,26 @@ export interface IntegratedSourceCandidate {
   sourceHash: string;
 }
 
+/**
+ * AC-drift network 3 seam: the verification warrant reference cited by the
+ * Formalization settlement certificate. The future warrant-coverage phases in
+ * the readiness provider consume exactly this shape (register + dispositions,
+ * both digest-pinned) — no new oracle, no re-reading of the order prose.
+ */
+export interface VerificationWarrantRef {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  constraintRegisterRef: string;
+  constraintRegisterDigest: string;
+  dispositionsDigest: string;
+  dispositions: Readonly<Record<string, unknown>>;
+}
+
 export interface DevelopmentReadinessManifest {
   schemaVersion: typeof DEVELOPMENT_READINESS_MANIFEST_SCHEMA;
   sourceCandidate: ContentAddressedReference;
   targets: readonly [{ key: 'primary'; readiness: ReadinessProfile }];
+  /** @see VerificationWarrantRef — optional until warrant phases land. */
+  warrantRef?: VerificationWarrantRef;
 }
 
 export type VerificationOutcome =

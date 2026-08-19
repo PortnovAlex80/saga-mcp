@@ -132,6 +132,20 @@ export interface FormalizationArtifactGraphPort {
     srs: number | null;
   };
   /**
+   * AC-drift network 3 seam: the accepted brief's constraint dispositions for
+   * the CURRENT lifecycle run (metadata.constraint_dispositions of the latest
+   * accepted brief), or null when none exist. Formalization settlement cites
+   * them together with the constraint register as the verification warrant
+   * reference. Optional on implementers predating the seam — the settlement
+   * then cites an empty disposition set (the register itself still rides the
+   * FormalizationCase).
+   */
+  readBriefConstraintDispositionsForLifecycle?(
+    epicId: number,
+    lifecycleRunId: number,
+  ): Readonly<Record<string, unknown>> | null;
+
+  /**
    * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash. Same shape as
    * {@link readAcceptanceBaselineHash}.
    */

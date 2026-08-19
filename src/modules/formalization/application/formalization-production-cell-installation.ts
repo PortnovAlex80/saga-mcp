@@ -39,6 +39,7 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
+  resolveFormalizationCaseConstraintRegister,
   type FormalizationCase,
   type FormalizationSolutionContractPayload,
   type FormalizationSettlementInput,
@@ -239,13 +240,33 @@ function createSettlementHandler(
         bundle,
         settlementInput,
       );
+      // AC-drift network 3 seam: cite the constraint register + the accepted
+      // brief's dispositions as the verification warrant reference. The
+      // endgame certifier consumes this WITHOUT re-reading the order (no new
+      // oracle): warrant phases diff against this frozen citation. Absent
+      // entirely when the case carries no register (retro-compat).
+      const constraintBinding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+      const warrantRef = constraintBinding
+        ? {
+            constraintRegisterRef: constraintBinding.constraintRegisterRef,
+            constraintRegisterDigest: constraintBinding.constraintRegisterDigest,
+            dispositionsDigest: sha256Hex(
+              deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId) ?? {},
+            ),
+            dispositions: deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
+              ?? {} as Readonly<Record<string, unknown>>,
+          }
+        : undefined;
       const certificatePayload = {
         schemaVersion: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
         decision: decision.decision,
         reasonCodes: decision.reasonCodes,
         rationale: decision.rationale,
         inputHash: decision.inputHash,
-        payload: formalizationPayload,
+        payload: {
+          ...formalizationPayload,
+          ...(warrantRef ? { warrantRef } : {}),
+        },
       };
       const certificateHash = sha256Hex(certificatePayload);
 

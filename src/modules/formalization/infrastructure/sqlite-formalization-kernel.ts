@@ -154,6 +154,44 @@ export class SqliteFormalizationArtifactGraph implements
   }
 
   /**
+   * AC-drift network 3 seam: the accepted brief's constraint dispositions for
+   * the CURRENT lifecycle run — same ownership chain as
+   * {@link readAcceptedArtifactsForLifecycle}, restricted to accepted briefs.
+   * Returns the parsed metadata.constraint_dispositions object, or null when
+   * no accepted brief / no dispositions exist.
+   */
+  readBriefConstraintDispositionsForLifecycle(
+    epicId: number,
+    lifecycleRunId: number,
+  ): Readonly<Record<string, unknown>> | null {
+    const row = this.db.prepare(
+      `SELECT a.metadata AS metadata
+         FROM artifacts a
+         JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
+         JOIN factory_stage_runs sr ON sr.process_run_id = p.process_run_id
+        WHERE a.epic_id=? AND a.type='brief' AND a.status='accepted'
+          AND sr.lifecycle_run_id=?
+        GROUP BY a.id
+        ORDER BY a.id DESC
+        LIMIT 1`,
+    ).get(epicId, lifecycleRunId) as { metadata: string | null } | undefined;
+    if (!row || typeof row.metadata !== 'string') return null;
+    try {
+      const parsed = JSON.parse(row.metadata) as unknown;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+      const dispositions = (parsed as Record<string, unknown>).constraint_dispositions;
+      if (
+        typeof dispositions !== 'object'
+        || dispositions === null
+        || Array.isArray(dispositions)
+      ) return null;
+      return dispositions as Readonly<Record<string, unknown>>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * ADR-078 (K6): lifecycle-scoped acceptance-baseline hash — same ownership
    * chain as {@link readAcceptedArtifactsForLifecycle}, restricted to AC
    * artifacts of the CURRENT lifecycle run.

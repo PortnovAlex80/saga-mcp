@@ -404,6 +404,28 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
       }
     }
   }
+  // AC-drift network 3 seam: optional warrantRef — when present it must be
+  // the exact typed shape (digest-pinned register + dispositions). Absent is
+  // legal until the warrant phases land (retro-compat).
+  const warrant = payload.warrantRef;
+  if (warrant !== undefined) {
+    if (
+      !isRecordValue(warrant)
+      || !nonEmptyString(warrant.constraintRegisterRef)
+      || !nonEmptyString(warrant.constraintRegisterDigest)
+      || !/^[a-f0-9]{64}$/u.test(warrant.constraintRegisterDigest)
+      || !nonEmptyString(warrant.dispositionsDigest)
+      || !/^[a-f0-9]{64}$/u.test(warrant.dispositionsDigest)
+      || warrant.constraintRegisterRef
+        !== `constraint-register:${warrant.constraintRegisterDigest}`
+      || !isRecordValue(warrant.dispositions)
+    ) {
+      errors.push(
+        'warrantRef must carry constraintRegisterRef (constraint-register:<64-hex digest>), '
+        + 'constraintRegisterDigest (64-hex), dispositionsDigest (64-hex) and a dispositions object',
+      );
+    }
+  }
   return errors;
 }
 
