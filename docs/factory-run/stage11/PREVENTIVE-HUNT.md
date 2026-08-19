@@ -240,3 +240,13 @@ route finding-trajectory tail в 3 существующие точки:
 (a) provider parameters в gate-run-driver
 (b) recovery-feedback sheet
 (c) acceptance commit proof
+
+### Lifecycle слой:
+F1. Ревьюер-2 не видит историю ревью-раундов (HIGH)
+F2. Автор видит только latest rejection; chain не доставляется (HIGH)
+   → «Слепота ПРОИЗВОДИТ budget burn»: регресс починенного = churning = не прощается
+F3. Obligation redrive игнорирует lastError (MED)
+F4. Anti-cycle budget обнуляется на resume (MED)
+F5. Resume не видит failed NodeRuns между checkpoint и crash (MED)
+F6. Epoch last_diagnosis write-only (LOW)
+F7. Burial abandon без причины (LOW/MED)
