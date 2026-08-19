@@ -17,6 +17,7 @@ import { executionContextHash } from '../shared/authority/execution-context.js';
 import { routeToModelRoute } from '../application/routing/worker-execution-route.js';
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 import { logActivity } from '../helpers/activity-logger.js';
+import { journalEvent } from '../observability/run-journal.js';
 
 export const PRIORITY_ORDER =
   "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
@@ -568,6 +569,17 @@ export function findNextClaimable(
     current_execution_id: reservation?.executionId ?? null,
   } as Task;
 
+  journalEvent('assignment.claimed', {
+    epic_id: task.epic_id,
+    workplace_ref: task.workplace_ref ?? undefined,
+  }, {
+    task_id: task.id,
+    from_status: task.status,
+    to_status: claimedStatus,
+    worker_id: workerId,
+    cas_fenced: true,
+  });
+
   if (reservation) {
     const workIntent = readWorkIntentForTaskClaim(db, task);
     // Read the lifecycle selection first. Routing policy then selects the
@@ -616,6 +628,18 @@ export function findNextClaimable(
       new Date().toISOString(),
       'active',
     );
+    journalEvent('execution.reserved', {
+      run_id: reservation.runId,
+      epic_id: task.epic_id,
+      workplace_ref: task.workplace_ref ?? undefined,
+      execution_id: reservation.executionId,
+    }, {
+      task_id: task.id,
+      phase: claimedStatus === 'review_in_progress' ? 'reviewing' : 'executing',
+      model_route: executionContext.model_route,
+      executor_kind: executionContext.executor_kind,
+      execution_context_hash: executionContextHash(executionContext),
+    });
   }
 
   logActivity(

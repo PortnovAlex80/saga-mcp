@@ -33,6 +33,7 @@ import {
 import type { ProductRef } from '../../process-modules/domain/spi/index.js';
 import type { WorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
+import { journalEvent } from '../../observability/run-journal.js';
 
 export const GATE_DECISION_REPLAY_MISMATCH = 'GATE_DECISION_REPLAY_MISMATCH';
 
@@ -83,6 +84,16 @@ export class SqliteGateRepository {
       input.expectedWorkplaceRevision,
       input.gateLeaseRef,
     );
+    journalEvent('gate.created', {
+      workplace_ref: serializeWorkplaceRef(input.workplaceRef),
+      candidate_set_ref: input.subjectCandidateSetRef,
+    }, {
+      gate_run_ref: input.gateRunRef,
+      gate_phase: input.gatePhase,
+      check_plan_ref: input.checkPlanRef,
+      check_plan_digest: input.checkPlanDigest,
+      expected_workplace_revision: input.expectedWorkplaceRevision,
+    });
     return this.readGateRun(input.gateRunRef)!;
   }
 
@@ -162,6 +173,10 @@ export class SqliteGateRepository {
     this.db.prepare(
       `UPDATE factory_gate_runs SET state=?, updated_at=datetime('now') WHERE gate_run_ref=?`,
     ).run(state, gateRunRef);
+    journalEvent('gate.state', {}, {
+      gate_run_ref: gateRunRef,
+      state,
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -212,6 +227,16 @@ export class SqliteGateRepository {
       JSON.stringify(input.evidenceRefs),
       input.receiptDigest,
     );
+    journalEvent('gate.check_receipt', {
+      candidate_set_ref: input.subjectCandidateSetRef,
+    }, {
+      check_receipt_ref: input.checkReceiptRef,
+      gate_run_ref: input.checkRunRef,
+      provider_id: input.check.providerId,
+      provider_version: input.check.version,
+      outcome: input.outcome,
+      receipt_digest: input.receiptDigest,
+    });
     return this.readCheckReceipt(input.checkReceiptRef)!;
   }
 
@@ -335,6 +360,19 @@ export class SqliteGateRepository {
       decision.recoveryIssueRef,
       decision.decisionDigest,
     );
+    journalEvent('gate.decision', {
+      workplace_ref: serializeWorkplaceRef(decision.workplaceRef),
+      candidate_set_ref: decision.subjectCandidateSetRef,
+    }, {
+      decision_key: decision.decisionKey,
+      gate_run_ref: decision.gateRunRef,
+      gate_phase: decision.gatePhase,
+      verdict: decision.verdict,
+      repair_target_role: decision.repairTargetRole,
+      check_plan_digest: decision.checkPlanDigest,
+      decision_digest: decision.decisionDigest,
+      installation_digest: decision.installationDigest,
+    });
     return { decision, replayed: false };
   }
 

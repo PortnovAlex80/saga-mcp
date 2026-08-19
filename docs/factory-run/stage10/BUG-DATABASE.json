@@ -1,0 +1,34 @@
+{
+  "_readme": [
+    "STAGE-10 TASK 3 — the structured bug database. One record per observed defect.",
+    "Lives in the repository, NOT only in the factory DB: it must survive a DB wipe.",
+    "classification is one of: factory_defect | model_compliance | environment | unknown.",
+    "'unknown' is legitimate and expected. NEVER force a classification you cannot",
+    "evidence — a wrong label sends the next investigation in the wrong direction.",
+    "status is one of: open | explained | fixed.",
+    "Watch items from the K13 signature (STAGE-10-AGENT-BRIEF.md 'Watch items') are",
+    "filed with gap_number: 'iii' (freeze-kernel negatives), 'vi' (verification lineage),",
+    "'vii' (planner-skill domain neutrality) — evidence lands where the decision already is.",
+    "evidence_pointer must name the exact journal record, snapshot path, or DB row —",
+    "not prose about where to look."
+  ],
+  "schema": {
+    "id": "string, monotonically increasing, e.g. B-001",
+    "observed_at": "ISO timestamp",
+    "run_id": "string | null",
+    "correlation": {
+      "epic_id": "number | null",
+      "workplace_ref": "string | null",
+      "execution_id": "string | number | null",
+      "node_id": "string | null",
+      "candidate_set_ref": "string | null"
+    },
+    "expected": "what should have happened",
+    "happened": "what actually happened",
+    "evidence_pointer": "journal line / snapshot path / DB query — exact",
+    "classification": "factory_defect | model_compliance | environment | unknown",
+    "status": "open | explained | fixed",
+    "gap_number": "ADR-032 watch item i..vii | null"
+  },
+  "records": []
+}

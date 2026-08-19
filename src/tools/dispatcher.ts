@@ -37,6 +37,7 @@ import {
   workerDonePayload,
   hashPayload,
 } from '../lifecycle/idempotency.js';
+import { journalEvent } from '../observability/run-journal.js';
 import type { WorkerExecutionRoute } from '../application/routing/worker-execution-route.js';
 
 /**
@@ -963,6 +964,16 @@ function handleWorkerDone(
   if (completed.kind === 'submission-rejected') {
     throw completed.error;
   }
+  journalEvent('worker.done', {
+    execution_id: typeof args.execution_id === 'string' ? args.execution_id : undefined,
+  }, {
+    task_id: taskId,
+    worker_id: workerId,
+    verdict,
+    kernel_close: kernelClose ? { commitment_ref: kernelClose.commitmentRef } : null,
+    result_chars: result.length,
+    stop: completed.reply.stop === true,
+  });
   // saga4 cutover (Phase 4): worker_done no longer auto-generates downstream
   // escape hatch where generic task status produced new work. After the
   // cutover only a module-owned node/settlement may generate work; a completed

@@ -153,6 +153,7 @@ import type {
 } from '../modules/delivery/index.js';
 import { SqliteResumeDirectiveRepository } from '../checkpoints/sqlite-resume-directive-repository.js';
 import { reevaluateDownstream } from '../tools/tasks.js';
+import { journalEvent } from '../observability/run-journal.js';
 
 export type { DevelopmentCompositionDependencies };
 export type {
@@ -1096,7 +1097,18 @@ export function createProductLifecycleRuntime(
     const live = new Set<string>();
     for (const scope of unhealthy) {
       live.add(scope.scopeRef);
-      if (reportedProgress.get(scope.scopeRef) === scope.classification) continue;
+      const already = reportedProgress.get(scope.scopeRef) === scope.classification;
+      journalEvent('invariant.classification', {
+        workplace_ref: scope.scopeKind === 'workplace' ? scope.scopeRef : undefined,
+      }, {
+        scope_kind: scope.scopeKind,
+        scope_ref: scope.scopeRef,
+        classification: scope.classification,
+        reason: scope.reason,
+        evidence: scope.evidence,
+        deduped: already,
+      });
+      if (already) continue;
       reportedProgress.set(scope.scopeRef, scope.classification);
       engineLog(
         `[progress-invariant] ${scope.classification.toUpperCase()} `
@@ -1107,6 +1119,9 @@ export function createProductLifecycleRuntime(
     for (const scopeRef of [...reportedProgress.keys()]) {
       if (live.has(scopeRef)) continue;
       reportedProgress.delete(scopeRef);
+      journalEvent('invariant.recovered', {
+        workplace_ref: scopeRef,
+      });
       engineLog(`[progress-invariant] RECOVERED workplace=${scopeRef}`);
     }
   };

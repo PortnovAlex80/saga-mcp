@@ -4,6 +4,11 @@ import path from 'node:path';
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createRepeatedToolLoopDetector } from './repeated-tool-loop.mjs';
+// STAGE-10 TASK 1 — correlated run journal (observation-only; see
+// src/observability/run-journal.ts). Loaded from dist/: a rebuild must
+// precede any runner use after src changes (tracker-view itself is live
+// without a build — the asymmetry the stage-10 brief names).
+import { journalEvent } from '../dist/observability/run-journal.js';
 import {
   markExecutionExited,
   markExecutionProgress,
@@ -1120,6 +1125,26 @@ export class ClaudeBoardRunner {
       _diag.write(`[runner] spawnClaude split: cmd=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/)[0])} prefixArgs=${JSON.stringify(executorSelection.claudePath.trim().split(/\s+/).slice(1))}\n`);
       _diag.end();
     } catch { /* diagnostic is best-effort */ }
+    // STAGE-10 TASK 1 — the exact spawn record: argv, resolved model route,
+    // executor kind, pinned installation. Observation only.
+    try {
+      journalEvent('worker.spawn', {
+        run_id: run.id,
+        execution_id: assignment.execution_id || undefined,
+      }, {
+        task_id: task.id,
+        worker_id: workerId,
+        pid: child.pid ?? null,
+        executor_path: executorSelection.claudePath,
+        argv: args,
+        executor_kind: assignment.execution_context?.executor_kind ?? null,
+        model_route: { provider: am.provider ?? null, model: am.model ?? null, effort: am.effort ?? null },
+        model_arg: modelArg,
+        effort_arg: effortArg,
+        installation_id: launchSpec?.installationId ?? null,
+        cwd: executionCwd,
+      });
+    } catch { /* observation must never break spawn */ }
     // Pipe the prompt through stdin instead of passing it as a command-line
     // argument. This avoids the Windows CreateProcess 32767-char limit that
     // silently kills spawns for large skills (saga-architect: 38KB skill +
@@ -1256,19 +1281,64 @@ export class ClaudeBoardRunner {
 
       if (completed) {
         run.completed += 1;
+        journalEvent('worker.exit', {
+          run_id: run.id,
+          execution_id: execution.executionId || undefined,
+        }, {
+          task_id: task.id,
+          worker_id: workerId,
+          exit_code: code ?? null,
+          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+          worker_done_received: true,
+          task_status_after: taskState?.status || null,
+        });
         this.heartbeat(run, execution, 'CLOSED',
           `exit=${code ?? '?'} completed from durable worker_done status=${taskState?.status || '?'}`);
       } else if (changesRequested) {
         run.completed += 1;
+        journalEvent('worker.exit', {
+          run_id: run.id,
+          execution_id: execution.executionId || undefined,
+        }, {
+          task_id: task.id,
+          worker_id: workerId,
+          exit_code: code ?? null,
+          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+          worker_done_received: true,
+          outcome: 'changes_requested',
+        });
         this.heartbeat(run, execution, 'CLOSED',
           `exit=0 changes_requested → returned to dev queue`);
       } else if (reviewExhausted) {
         run.completed += 1;
+        journalEvent('worker.exit', {
+          run_id: run.id,
+          execution_id: execution.executionId || undefined,
+        }, {
+          task_id: task.id,
+          worker_id: workerId,
+          exit_code: code ?? null,
+          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+          worker_done_received: true,
+          outcome: 'review_budget_exhausted',
+        });
         this.heartbeat(run, execution, 'CLOSED',
           'exit=0 changes_requested → review budget exhausted; task blocked');
       } else {
         run.failed += 1;
         run.lastError = `Task ${task.id} Claude process exited with code ${code} before terminal worker_done`;
+        journalEvent('worker.exit', {
+          run_id: run.id,
+          execution_id: execution.executionId || undefined,
+        }, {
+          task_id: task.id,
+          worker_id: workerId,
+          exit_code: code ?? null,
+          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+          worker_done_received: false,
+          outcome: 'exited_before_worker_done',
+          recovery: 'assignment-recovered',
+        });
         this.heartbeat(run, execution, 'FAILED',
           `exit=${code} before worker_done → task recovered`);
         this.recoverAssignment({

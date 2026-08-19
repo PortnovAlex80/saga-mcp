@@ -6,6 +6,7 @@
 
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import { journalEvent } from '../../observability/run-journal.js';
 import type {
   CausalSourceRevision,
   LeaseFence,
@@ -137,6 +138,15 @@ export class SqliteTransitionObligationLedger {
     });
     const obligation = this.getOrThrow(key);
     assertObligationReplayMatches(obligation, input);
+    journalEvent('obligation.created', {
+      workplace_ref: input.subjectRef,
+    }, {
+      obligation_key: key,
+      handoff_kind: input.handoffKind,
+      source_kind: input.sourceKind,
+      source_ref: input.sourceRef,
+      owner_capability: input.ownerCapability,
+    });
     return obligation;
   }
 
@@ -256,6 +266,13 @@ export class SqliteTransitionObligationLedger {
       fence: fence.value,
       now,
     });
+    if (result.changes === 1) {
+      journalEvent('obligation.claimed', {}, {
+        obligation_key: obligationKey,
+        lease_owner: leaseOwner,
+        lease_fence: fence.value,
+      });
+    }
     return result.changes === 1;
   }
 
@@ -334,6 +351,14 @@ export class SqliteTransitionObligationLedger {
         `TRANSITION_OBLIGATION_COMPLETION_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`,
       );
     }
+    journalEvent('obligation.settled', {
+      workplace_ref: existing.subjectRef,
+    }, {
+      obligation_key: input.obligationKey,
+      completion_receipt: input.completionReceipt,
+      result_digest: input.resultDigest,
+      lease_owner: input.owner,
+    });
     return this.getOrThrow(input.obligationKey);
   }
 
@@ -393,6 +418,14 @@ export class SqliteTransitionObligationLedger {
     if (result.changes !== 1) {
       throw new Error(`TRANSITION_OBLIGATION_FAILURE_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`);
     }
+    journalEvent('obligation.failed', {
+      workplace_ref: existing.subjectRef,
+    }, {
+      obligation_key: input.obligationKey,
+      last_error: input.error,
+      lease_owner: input.owner,
+      returned_to: 'pending',
+    });
     return this.getOrThrow(input.obligationKey);
   }
 

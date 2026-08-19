@@ -5,6 +5,7 @@ import {
   type ProcessModuleReference,
 } from '../domain/process-module.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { journalEvent } from '../../observability/run-journal.js';
 import type {
   ClaimExternalEffectCommand,
   ExternalEffectActionRecord,
@@ -790,6 +791,31 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
       payloadSnapshot,
       sha256Hex(input.payload),
     );
+    const correlation = this.db.prepare(
+      `SELECT process_run_id, module_ref_key, node_id, provider_namespace, action_key
+         FROM factory_external_effect_actions WHERE id=?`,
+    ).get(input.actionId) as {
+      process_run_id: number;
+      module_ref_key: string;
+      node_id: string;
+      provider_namespace: string;
+      action_key: string;
+    } | undefined;
+    if (correlation) {
+      journalEvent('effect.transition', {
+        run_id: `process-run:${correlation.process_run_id}`,
+        node_id: correlation.node_id,
+      }, {
+        action_id: input.actionId,
+        effect: `${correlation.provider_namespace}/${correlation.action_key}`,
+        module_ref_key: correlation.module_ref_key,
+        event_type: input.eventType,
+        from_state: input.fromState,
+        to_state: input.toState,
+        claim_fence: input.claimFence,
+        actor: input.actor,
+      });
+    }
   }
 
   private readRow(actionId: number): ExternalEffectActionRow {
