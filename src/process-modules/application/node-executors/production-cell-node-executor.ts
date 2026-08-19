@@ -1400,7 +1400,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         executionMode: profile.executionMode,
         titlePrefix: `${cell.id}/${role}: `,
         titleSubject: cell.materialization.sourceBinding
-          ? `${workplace.itemId} (${role})`
+          ? workplace.itemId
           : undefined,
         metadata: {
           process_run_id: ctx.processRunId,

@@ -59,9 +59,9 @@ test('fan-out task title is the item subject, not the shared cell objective', ()
   const db = createDb();
   const persistence = createSqliteProductionCellProjectionPersistence(db);
   const plan = persistence.ensureExecutionPlan(planInput({
-    titleSubject: 'impl-physics-core (author)',
+    titleSubject: 'impl-physics-core',
   }));
-  assert.equal(titleOf(db, plan.taskId), 'impl-physics-core (author)');
+  assert.equal(titleOf(db, plan.taskId), 'impl-physics-core');
 });
 
 test('verification.ac task title is derived from its frozen AC artifact', () => {
@@ -93,7 +93,7 @@ test('re-projection with a titleSubject stays replay-safe and never rewrites the
   const first = persistence.ensureExecutionPlan(planInput());
   const legacyTitle = titleOf(db, first.taskId);
   const second = persistence.ensureExecutionPlan(planInput({
-    titleSubject: 'impl-physics-core (author)',
+    titleSubject: 'impl-physics-core',
   }));
   assert.equal(second.replayed, true);
   assert.equal(second.taskId, first.taskId);
