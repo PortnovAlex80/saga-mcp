@@ -128,6 +128,17 @@ export const LEASE_LOSS_RECLAIM_MARKER = 'LEASE_LOSS_RECLAIM';
 export const OBLIGATION_VALVE_MARKER = 'OBLIGATION_VALVE';
 
 /**
+ * BLINDSIGHT Lifecycle F3 — the typed terminal marker prefix written by the
+ * reconciler's redrive when it parks an obligation whose persisted typed
+ * reason requires human judgment (the fail-closed park vocabulary). The park
+ * is a fail-closed END of the redrive loop: the reason is durable, the loop
+ * stops leasing, and a human — not another sweep — owns the next decision.
+ * `abandon` journals kind 'obligation.human_park' exactly for reasons
+ * carrying this prefix.
+ */
+export const OBLIGATION_HUMAN_PARK_MARKER = 'OBLIGATION_HUMAN_PARK';
+
+/**
  * The TYPED reason identity of a defer/fail outcome (CONVEYOR §15 step 1).
  *
  * - 'failed': the typed error CODE prefix before the first colon — the
@@ -591,10 +602,13 @@ export class SqliteTransitionObligationLedger {
       throw new Error(`TRANSITION_OBLIGATION_ABANDON_REQUIRES_REASON: ${obligationKey}`);
     }
     // B-004/O-D6 — the reason-identity valve routes here with the typed
-    // OBLIGATION_VALVE marker prefix; capture the pre-abandon valve state for
-    // the journal correlation (burial-path abandons keep their silent shape).
+    // OBLIGATION_VALVE marker prefix; BLINDSIGHT F3's redrive parks here with
+    // the typed OBLIGATION_HUMAN_PARK marker prefix. Capture the pre-abandon
+    // state for the journal correlation (burial-path abandons keep their
+    // silent shape).
     const valveTrip = reason.startsWith(OBLIGATION_VALVE_MARKER);
-    const prior = valveTrip ? this.get(obligationKey) : null;
+    const humanParkTrip = reason.startsWith(OBLIGATION_HUMAN_PARK_MARKER);
+    const prior = valveTrip || humanParkTrip ? this.get(obligationKey) : null;
     const result = this.db.prepare(
       `UPDATE factory_transition_obligations
           SET state='failed',
@@ -611,6 +625,21 @@ export class SqliteTransitionObligationLedger {
       // Observation-only (the ratchet: written, never read back by the
       // factory). Correlation keys follow the obligation.deferred shape.
       journalEvent('obligation.valve', {
+        workplace_ref: prior?.subjectRef,
+      }, {
+        obligation_key: obligationKey,
+        reason,
+        reason_key: prior?.lastReasonKey ?? null,
+        repeated: prior?.reasonRepeatCount ?? 0,
+        attempt: prior?.attempt ?? 0,
+        terminal: 'failed',
+      });
+    }
+    if (humanParkTrip) {
+      // BLINDSIGHT F3 — same observation-only contract as the valve: the
+      // human park is durable in last_error; the journal row is the audit
+      // trail (a test/observer is the reader).
+      journalEvent('obligation.human_park', {
         workplace_ref: prior?.subjectRef,
       }, {
         obligation_key: obligationKey,
