@@ -612,7 +612,13 @@ async function main() {
         const { certifyAcceptedReplayCapsules } = await import(
           './infrastructure/replay/replay-claim-binder.js'
         );
-        certifyAcceptedReplayCapsules(getDb(), projectId);
+        // R-E1 — the sweep result is observable: {considered, certified,
+        // failed, skipped:{reason:count}}. "0 needed" and "0 of N failed"
+        // are different journal lines now.
+        const sweepSummary = certifyAcceptedReplayCapsules(getDb(), projectId);
+        engineLog(
+          `[orchestrate-cli] replay certification sweep: ${JSON.stringify(sweepSummary)}`,
+        );
       } catch (certifyError) {
         engineLog(
           `[orchestrate-cli] replay certification sweep failed: `

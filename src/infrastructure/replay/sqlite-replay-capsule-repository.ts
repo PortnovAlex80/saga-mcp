@@ -57,13 +57,19 @@ export function ensureReplayCapsuleSchema(db: Database.Database): void {
     -- ADR-080: invalidity is DERIVED EVIDENCE, not a flag. Append-only rows
     -- bind a mismatch to the exact capsule, typed reason, compared digests,
     -- lifecycle, and observing authority. The capsule table stays immutable.
+    -- 'stage-reset' (stage-11 preventive hunt R-D4): the operator stage-reset
+    -- tool (restore-from-checkpoint --reset-stage) destroys the sealed
+    -- material a capsule certifies so the stage can regenerate; the capsule
+    -- must stop being replayable, but stays as evidence via an append-only
+    -- row with this typed reason.
     CREATE TABLE IF NOT EXISTS factory_replay_capsule_invalidations (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       capsule_ref        TEXT NOT NULL
                          REFERENCES factory_replay_capsules(capsule_ref) ON DELETE RESTRICT,
       reason             TEXT NOT NULL CHECK (reason IN (
                            'payload-conflict','package-changed',
-                           'acceptance-superseded','restart-required','refused')),
+                           'acceptance-superseded','restart-required','refused',
+                           'stage-reset')),
       observed_digest    TEXT,
       expected_digest    TEXT,
       lifecycle_run_id   INTEGER,
@@ -75,18 +81,67 @@ export function ensureReplayCapsuleSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_factory_replay_capsule_invalidations_ref
       ON factory_replay_capsule_invalidations(capsule_ref);
   `);
+  migrateStageResetInvalidationReason(db);
+}
+
+/**
+ * R-D4 companion — widen an EXISTING invalidations table to the 'stage-reset'
+ * reason. SQLite cannot ALTER a CHECK constraint, so an old-definition table
+ * is rebuilt in place (copy rows, swap, recreate the index) inside a
+ * savepoint (safe to run inside a caller's transaction). Idempotent: a
+ * definition that already carries the reason is left untouched.
+ */
+function migrateStageResetInvalidationReason(db: Database.Database): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_replay_capsule_invalidations'",
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'stage-reset'")) return;
+  db.exec(`
+    SAVEPOINT migrate_capsule_invalidations_stage_reset;
+    CREATE TABLE factory_replay_capsule_invalidations_new (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      capsule_ref        TEXT NOT NULL
+                         REFERENCES factory_replay_capsules(capsule_ref) ON DELETE RESTRICT,
+      reason             TEXT NOT NULL CHECK (reason IN (
+                           'payload-conflict','package-changed',
+                           'acceptance-superseded','restart-required','refused',
+                           'stage-reset')),
+      observed_digest    TEXT,
+      expected_digest    TEXT,
+      lifecycle_run_id   INTEGER,
+      authority_ref      TEXT NOT NULL,
+      successor_capsule_ref TEXT,
+      recorded_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (capsule_ref, reason, authority_ref)
+    );
+    INSERT INTO factory_replay_capsule_invalidations_new
+      (id,capsule_ref,reason,observed_digest,expected_digest,lifecycle_run_id,
+       authority_ref,successor_capsule_ref,recorded_at)
+    SELECT id,capsule_ref,reason,observed_digest,expected_digest,lifecycle_run_id,
+           authority_ref,successor_capsule_ref,recorded_at
+      FROM factory_replay_capsule_invalidations;
+    DROP TABLE factory_replay_capsule_invalidations;
+    ALTER TABLE factory_replay_capsule_invalidations_new
+      RENAME TO factory_replay_capsule_invalidations;
+    CREATE INDEX IF NOT EXISTS idx_factory_replay_capsule_invalidations_ref
+      ON factory_replay_capsule_invalidations(capsule_ref);
+    RELEASE migrate_capsule_invalidations_stage_reset;
+  `);
 }
 
 /**
  * ADR-080 §2 — the closed set of typed invalidation reasons. Adding a
- * reason requires an ADR.
+ * reason requires an ADR ('stage-reset' is the operator stage-reset tool's
+ * reason — the sealed material a capsule certifies was destroyed so the
+ * stage regenerates; see restore-from-checkpoint.mjs).
  */
 export type CapsuleInvalidationReason =
   | 'payload-conflict'
   | 'package-changed'
   | 'acceptance-superseded'
   | 'restart-required'
-  | 'refused';
+  | 'refused'
+  | 'stage-reset';
 
 /** One append-only invalidation evidence row (ADR-080 §1). */
 export interface CapsuleInvalidationRecord {

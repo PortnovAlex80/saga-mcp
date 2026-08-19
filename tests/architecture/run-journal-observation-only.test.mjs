@@ -49,9 +49,13 @@ const SRC_MODULE = join(repoRoot, 'src', 'observability', 'run-journal.ts');
  * (error.thrown), the engine-adapter result boundary (run.terminal), the CLI
  * exit hook (engine.exit), and the supervision reap loop
  * (supervision.reaped). The transition-obligation ledger was already wired
- * (its defer/appendFenced/claimed events extend in place). */
+ * (its defer/appendFenced/claimed events extend in place).
+ * R-E1 companion (stage-11 preventive hunt): the replay certification sweep
+ * journals per-workplace certification failures (error.thrown) so a sweep
+ * that certifies nothing is run-journal-visible, not stderr-only. */
 const FROZEN_COMPILED_IMPORTERS = [
   'app/product-lifecycle-runtime.js',
+  'infrastructure/replay/replay-claim-binder.js',
   'infrastructure/work/worker-supervision-service.js',
   'infrastructure/workplace/sqlite-gate-repository.js',
   'lifecycle/work-assignment-core.js',
