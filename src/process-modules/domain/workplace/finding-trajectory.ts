@@ -19,13 +19,18 @@
  *                       keys" (over-tax) or mask real ones.
  *   - `findingSet`    — the comparable identity of one rejection: digest,
  *                       count, canonically ordered keys, fatalKeys.
- *   - `trajectory`    — 'converging' | 'spinning' | 'churning':
+ *   - `trajectory`    — 'converging' | 'spinning' | 'churning'
+ *                       | 'scope-impossible':
  *                       spinning  = byte-identical key set;
  *                       converging= strict subset (>= 1 removed AND 0 new)
  *                                   AND the fatal key set did not grow
  *                                   (severity growth re-taxes, §15 fail-safe:
  *                                   over-tax, never under-tax);
- *                       churning  = everything else.
+ *                       churning  = everything else;
+ *                       scope-impossible = spinning-or-churning while the SAME
+ *                                   path-outside-authority key sits in both
+ *                                   sets (REPLAN-CYCLE-TZ §1 — re-plan
+ *                                   mandate, not another attempt).
  *   - Review-path exclusion (design constraint): reviewer findings carry
  *     ORDINAL codes (`review-finding-N`, `deferred-out-of-scope-N`) over free
  *     prose — the same ordinal means a different finding on the next attempt,
@@ -112,19 +117,60 @@ export function findingSet(findings: readonly TrajectoryFinding[]): FindingSet {
   };
 }
 
-export type FindingTrajectory = 'converging' | 'spinning' | 'churning';
+export type FindingTrajectory = 'converging' | 'spinning' | 'churning' | 'scope-impossible';
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the diagnostic code of the frozen
+ * changeScopes authority check (development-check-providers.ts). A finding
+ * with this code names Git paths OUTSIDE the item's frozen scope: the worker
+ * physically cannot repair it inside its own authority — the defect is
+ * cross-seam, and the cure is a re-carve, not another attempt.
+ */
+const PATH_OUTSIDE_AUTHORITY_CODE = 'path-outside-authority';
+
+/** Tests a comparable key's CODE segment (`${code}::${message}`). */
+export function isPathOutsideAuthorityKey(key: string): boolean {
+  const code = String(key ?? '').split('::')[0] ?? '';
+  return code === PATH_OUTSIDE_AUTHORITY_CODE
+    || code.endsWith(`:${PATH_OUTSIDE_AUTHORITY_CODE}`);
+}
+
+/**
+ * The path-outside-authority keys present in BOTH sets — the cross-seam
+ * defects that survived a full repair attempt unchanged.
+ */
+export function survivingScopeViolationKeys(
+  prev: FindingSet,
+  latest: FindingSet,
+): readonly string[] {
+  const prevKeys = new Set(prev.keys);
+  return latest.keys.filter(key => prevKeys.has(key) && isPathOutsideAuthorityKey(key));
+}
 
 /**
  * The trajectory between two consecutive rejections of one
  * (workplace, gate, role, check-plan) chain.
  *
- * converging: strict subset (>= 1 removed, 0 new) AND fatalKeys(next)
- *             is a subset of fatalKeys(prev) — severity never grew.
- * spinning:   byte-identical key set (the same defect chain returns).
- * churning:   everything else — including any new key and any severity
- *             growth. Fail-safe direction: over-tax, never under-tax.
+ * converging:      strict subset (>= 1 removed, 0 new) AND fatalKeys(next)
+ *                  is a subset of fatalKeys(prev) — severity never grew.
+ * spinning:        byte-identical key set (the same defect chain returns).
+ * churning:        everything else — including any new key and any severity
+ *                  growth. Fail-safe direction: over-tax, never under-tax.
+ * scope-impossible: spinning-or-churning overall WHILE the same
+ *                  path-outside-authority key sits in both sets — the worker
+ *                  cannot write into the frozen scope it keeps offending, so
+ *                  budget/tax semantics are moot: the route is a re-plan
+ *                  mandate, never another attempt (REPLAN-CYCLE-TZ §1).
  */
 export function trajectory(prev: FindingSet, next: FindingSet): FindingTrajectory {
+  const base = baseTrajectory(prev, next);
+  if (base !== 'converging' && survivingScopeViolationKeys(prev, next).length > 0) {
+    return 'scope-impossible';
+  }
+  return base;
+}
+
+function baseTrajectory(prev: FindingSet, next: FindingSet): FindingTrajectory {
   const prevKeys = new Set(prev.keys);
   const nextKeys = new Set(next.keys);
   const identical = prevKeys.size === nextKeys.size
