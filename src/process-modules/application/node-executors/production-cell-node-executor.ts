@@ -177,6 +177,24 @@ export interface ProductionCellProjectionPersistence {
   readProjectedRoleTask?(workplaceRef: WorkplaceRef, role: 'author' | 'reviewer'):
     { taskId: number } | null;
   /**
+   * BLINDSIGHT C6 — the durable reviewer round history of a workplace
+   * (prior verdicts + rejected author candidates), read at PROJECTION time
+   * and delivered into the reviewer objective so the reviewer sees WHICH
+   * round it is and what it already rejected. Optional: without durable
+   * reviewer history the reviewer projects exactly as before.
+   */
+  readReviewerRoundHistory?(workplaceRef: WorkplaceRef): {
+    readonly round: number;
+    readonly priorVerdicts: readonly {
+      readonly round: number;
+      readonly subjectCandidateSetRef: string;
+      readonly verdict: 'approved' | 'changes_requested' | 'unknown';
+      readonly findings: readonly string[];
+      readonly submittedAt: string;
+    }[];
+    readonly rejectedCandidateSetRefs: readonly string[];
+  } | null;
+  /**
    * Read the task associated with a workplace (for crash-recovery attempt
    * counting). Optional — when absent, attemptCount falls back to sealed
    * CandidateSet count only.
@@ -1496,11 +1514,25 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // cell names involved. Appended to the objective, which flows into the
     // task description and the worker's prompt.
     const defectEvidence = this.readContinuationDefectEvidence(ctx);
-    const objective = defectEvidence
-      ? `${cell.id}/${role}: ${node.description || node.label}\n\n`
-        + `REPAIR CONTEXT (parent-run acceptance failures):\n`
-        + defectEvidence
-      : `${cell.id}/${role}: ${node.description || node.label}`;
+    // BLINDSIGHT C6 — the reviewer must see the ROUND it is in, its own past
+    // verdicts and the rejected author candidates, so a cosmetically patched
+    // resubmission is structurally visible at the point of judgment. The
+    // history is durable (managed reviewer submissions of this workplace) and
+    // rides the objective into the task description / worker prompt — the
+    // same delivery surface as the continuation defect evidence above.
+    const reviewerHistory = role === 'reviewer'
+      ? this.opts.persistence.readReviewerRoundHistory?.(workplace.ref) ?? null
+      : null;
+    const contextBlocks: string[] = [];
+    if (defectEvidence) {
+      contextBlocks.push(`REPAIR CONTEXT (parent-run acceptance failures):\n${defectEvidence}`);
+    }
+    if (reviewerHistory !== null && reviewerHistory.priorVerdicts.length > 0) {
+      contextBlocks.push(this.renderReviewerHistoryBlock(reviewerHistory));
+    }
+    const objective = contextBlocks.length === 0
+      ? `${cell.id}/${role}: ${node.description || node.label}`
+      : `${cell.id}/${role}: ${node.description || node.label}\n\n${contextBlocks.join('\n\n')}`;
     const preparationBindings = isRecord(ctx.input)
       && isRecord((ctx.input as Record<string, unknown>).bindings)
       ? (ctx.input as { bindings: Record<string, unknown> }).bindings
@@ -1688,6 +1720,43 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       lines.push(`- [${provider}${at ? ` @ ${at}` : ''}] ${record.message.slice(0, 900)}`);
     }
     return lines.length > 0 ? lines.join('\n') : null;
+  }
+
+  /**
+   * BLINDSIGHT C6 — render the durable reviewer round history as a prompt
+   * block: the round number, the prior verdicts (subject + verdict + finding
+   * messages) and the rejected author candidates. The explicit cosmetic-
+   * resubmission instruction turns «the author keeps patching and
+   * resubmitting» from an invisible pattern into a named obligation.
+   */
+  private renderReviewerHistoryBlock(history: {
+    readonly round: number;
+    readonly priorVerdicts: readonly {
+      readonly round: number;
+      readonly subjectCandidateSetRef: string;
+      readonly verdict: 'approved' | 'changes_requested' | 'unknown';
+      readonly findings: readonly string[];
+      readonly submittedAt: string;
+    }[];
+    readonly rejectedCandidateSetRefs: readonly string[];
+  }): string {
+    const lines: string[] = [
+      `REVIEW HISTORY — you are review round ${history.round} on this workplace `
+      + `(${history.priorVerdicts.length} prior verdict(s)).`,
+      'The author may be cosmetically patching and resubmitting: compare the CURRENT candidate '
+      + 'against the prior rejected candidates and verdict findings below. If a prior finding is '
+      + 'not actually resolved, say so explicitly and request changes again.',
+    ];
+    for (const verdict of history.priorVerdicts) {
+      lines.push(`- Round ${verdict.round} — ${verdict.subjectCandidateSetRef}: ${verdict.verdict}`
+        + (verdict.findings.length > 0
+          ? ` — ${verdict.findings.map(finding => finding.replace(/\s+/g, ' ').trim()).join('; ')}`
+          : ''));
+    }
+    if (history.rejectedCandidateSetRefs.length > 0) {
+      lines.push(`Previously rejected author candidates: ${history.rejectedCandidateSetRefs.join(', ')}`);
+    }
+    return lines.join('\n');
   }
 
   private sealCandidateSet(

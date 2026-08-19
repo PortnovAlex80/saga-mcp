@@ -125,6 +125,7 @@ import {
   countGateRejectedCandidateSets as countGateRejectedCandidateSetsSql,
   createSqliteProductionCellProjectionPersistence,
   readLastRepairRequiredDiagnosis as readLastRepairRequiredDiagnosisSql,
+  readReviewerRoundHistory as readReviewerRoundHistorySql,
 } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
@@ -573,6 +574,11 @@ export function createProductLifecycleRuntime(
           ).get(serialized) as { taskId: number } | undefined;
           return row ?? null;
         },
+        // BLINDSIGHT C6 — durable reviewer round history for the reviewer
+        // projection: the round number, prior verdicts and rejected author
+        // candidates ride the reviewer objective into the worker prompt.
+        readReviewerRoundHistory: (workplaceRef) =>
+          readReviewerRoundHistorySql(db, serializeWorkplaceRef(workplaceRef)),
         countTerminalExecutionsForTask: (taskId) => countTerminalExecutionsForTask(db, taskId),
         // Fix-3 — an ACCEPTED CandidateSet must not consume recovery budget.
         countGateRejectedCandidateSets: (workplaceRef, role) =>

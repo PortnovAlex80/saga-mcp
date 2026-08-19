@@ -868,6 +868,88 @@ function readCurrentProductionCellRecoveryFeedback(
   };
 }
 
+// ---------------------------------------------------------------------------
+// BLINDSIGHT C6 — durable reviewer round history. The reviewer's prior
+// verdict submissions for one workplace, read from the append-only managed
+// submission ledger at PROJECTION time: the reviewer prompt must carry the
+// round number, the past verdicts and the rejected author candidates, so a
+// cosmetically patched resubmission is structurally visible to the only
+// actor who can call it out.
+// ---------------------------------------------------------------------------
+
+export interface ReviewerRoundHistory {
+  /** 1-based ordinal of the review being projected (prior verdicts + 1). */
+  readonly round: number;
+  readonly priorVerdicts: readonly {
+    readonly round: number;
+    readonly subjectCandidateSetRef: string;
+    readonly verdict: 'approved' | 'changes_requested' | 'unknown';
+    readonly findings: readonly string[];
+    readonly submittedAt: string;
+  }[];
+  /** Distinct subjects of prior changes_requested verdicts, in order. */
+  readonly rejectedCandidateSetRefs: readonly string[];
+}
+
+const REVIEWER_HISTORY_FINDING_CAP = 5;
+const REVIEWER_HISTORY_FINDING_LENGTH = 240;
+
+export function readReviewerRoundHistory(
+  db: Database.Database,
+  workplaceRef: string,
+): ReviewerRoundHistory {
+  const rows = db.prepare(
+    `SELECT s.payload_snapshot AS payload, s.created_at AS submitted_at
+       FROM factory_managed_node_submissions s
+       JOIN tasks t ON t.id=s.task_id
+      WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='reviewer'
+      ORDER BY s.id`,
+  ).all(workplaceRef) as Array<{ payload: string; submitted_at: string }>;
+  const priorVerdicts: ReviewerRoundHistory['priorVerdicts'][number][] = [];
+  const rejected: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    let payload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(row.payload) as unknown;
+      payload = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      payload = {};
+    }
+    const subject = typeof payload.subject_candidate_set_ref === 'string'
+      ? payload.subject_candidate_set_ref
+      : '(unbound subject)';
+    const verdict = payload.verdict === 'approved' || payload.verdict === 'changes_requested'
+      ? payload.verdict
+      : 'unknown';
+    const findings = (Array.isArray(payload.findings) ? payload.findings : [])
+      .map(finding => {
+        if (typeof finding === 'string') return finding;
+        if (finding && typeof finding === 'object' && typeof (finding as { message?: unknown }).message === 'string') {
+          return (finding as { message: string }).message;
+        }
+        return '';
+      })
+      .filter(message => message.trim() !== '')
+      .slice(0, REVIEWER_HISTORY_FINDING_CAP)
+      .map(message => message.slice(0, REVIEWER_HISTORY_FINDING_LENGTH));
+    priorVerdicts.push({
+      round: index + 1,
+      subjectCandidateSetRef: subject,
+      verdict,
+      findings,
+      submittedAt: row.submitted_at,
+    });
+    if (verdict === 'changes_requested' && !rejected.includes(subject)) rejected.push(subject);
+  }
+  return {
+    round: priorVerdicts.length + 1,
+    priorVerdicts,
+    rejectedCandidateSetRefs: rejected,
+  };
+}
+
 function parseStringArray(raw: string): string[] {
   try {
     const value = JSON.parse(raw) as unknown;
