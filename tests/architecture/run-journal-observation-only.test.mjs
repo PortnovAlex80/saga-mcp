@@ -65,6 +65,8 @@ const FROZEN_COMPILED_IMPORTERS = [
   'process-modules/application/post-acceptance-effects.js',
   'process-modules/persistence/sqlite-external-effect-ledger.js',
   'process-modules/persistence/sqlite-transition-obligation-ledger.js',
+  'tools/comments.js', // BLINDSIGHT X2: comment_add emits recovery.note_recorded when a
+  // RECOVERY:-prefixed note lands in the task's durable attempt history.
   'tools/dispatcher.js',
 ];
 
