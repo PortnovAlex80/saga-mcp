@@ -2229,6 +2229,52 @@ CREATE TABLE IF NOT EXISTS factory_author_candidate_carry_forward_consumptions (
   consumed_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- X-6 (stage-11 preventive hunt): a sibling desk's successful integration can
+-- legitimately advance the shared integration branch between an authorization
+-- and its retry (the documented NORM for parallel desks). The base
+-- authorization above is immutable and UNIQUE per continuation, so the
+-- re-observed head is recorded as an append-only SUPERSEDING authorization
+-- referencing its predecessor. Purely additive (CREATE TABLE IF NOT EXISTS
+-- applies it to existing DBs on open; no column of any existing table
+-- changes, therefore no SCHEMA_VERSION bump is required).
+CREATE TABLE IF NOT EXISTS factory_author_candidate_carry_forward_reauthorizations (
+  authorization_ref       TEXT PRIMARY KEY,
+  continuation_ref        TEXT NOT NULL REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+  predecessor_authorization_ref TEXT NOT NULL,
+  supersede_ordinal       INTEGER NOT NULL,
+  source_lifecycle_run_id INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+  source_process_run_id   INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+  source_workplace_ref    TEXT NOT NULL,
+  source_candidate_set_ref TEXT NOT NULL,
+  source_candidate_set_digest TEXT NOT NULL,
+  source_gate_decision_key TEXT NOT NULL,
+  source_gate_decision_digest TEXT NOT NULL,
+  source_product_schema   TEXT NOT NULL,
+  source_product_ref      TEXT NOT NULL,
+  source_product_digest   TEXT NOT NULL,
+  semantic_input_digest   TEXT NOT NULL,
+  item_snapshot_hash      TEXT NOT NULL,
+  project_repository_id   INTEGER NOT NULL REFERENCES project_repositories(id) ON DELETE RESTRICT,
+  integration_branch      TEXT NOT NULL,
+  base_commit             TEXT NOT NULL,
+  source_commit           TEXT NOT NULL,
+  source_tree             TEXT NOT NULL,
+  eligible_failure_code   TEXT NOT NULL,
+  evidence_snapshot       TEXT NOT NULL,
+  evidence_digest         TEXT NOT NULL,
+  authorized_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (continuation_ref, supersede_ordinal)
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_reauthorization_immutable_update
+BEFORE UPDATE ON factory_author_candidate_carry_forward_reauthorizations BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward reauthorizations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_reauthorization_immutable_delete
+BEFORE DELETE ON factory_author_candidate_carry_forward_reauthorizations BEGIN
+  SELECT RAISE(ABORT, 'author carry-forward reauthorizations are immutable');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_factory_order_runs_immutable_update
 BEFORE UPDATE ON factory_order_runs BEGIN
   SELECT RAISE(ABORT, 'factory_order_runs are immutable');
