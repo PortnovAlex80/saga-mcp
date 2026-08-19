@@ -26,7 +26,27 @@ import type {
   TransitionHandoffKind,
   TransitionObligation,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
+import { OBLIGATION_VALVE_MARKER } from '../persistence/sqlite-transition-obligation-ledger.js';
 import type { LeaseFence } from '../domain/transition-obligation.js';
+
+// ---------------------------------------------------------------------------
+// B-004/O-D6 — the reason-identity valve (CONVEYOR §15 "Budget must count
+// spin, not work").
+//
+// defer/fail have no cap and `attempt` was never compared (observed >1500 on a
+// permanently-deferring obligation; the only exits — complete and abandon —
+// were unreachable for a paused lifecycle). The valve gives the loop an HONEST
+// end:
+//   - the SAME typed reason key repeating REPEAT_THRESHOLD times
+//     CONSECUTIVELY is spin — abandon with a typed terminal marker;
+//   - a NEW reason key resets the repetition counter (a converging chain is
+//     work: another link of the defect chain removed — never taxed);
+//   - the absolute ATTEMPT_CEILING stays the hard cap regardless of reason
+//     novelty (§15 rule 4: even converging chains terminate). 30 matches
+//     ADR-075 DEFAULT_RECOVERY_TOTAL_ATTEMPTS.
+// ---------------------------------------------------------------------------
+export const OBLIGATION_VALVE_REPEAT_THRESHOLD = 3;
+export const OBLIGATION_VALVE_ATTEMPT_CEILING = 30;
 
 // ---------------------------------------------------------------------------
 // Handler interface.
@@ -92,6 +112,8 @@ export interface ReconcileResult {
   readonly failed: number;
   readonly deferred: number;
   readonly skipped: number;
+  /** B-004/O-D6 — obligations terminally abandoned by the reason-identity valve. */
+  readonly valved: number;
 }
 
 export class TransitionObligationReconciler {
@@ -136,6 +158,41 @@ export class TransitionObligationReconciler {
     );
   }
 
+  /**
+   * B-004/O-D6 — apply the reason-identity valve to a JUST-deferred/failed
+   * obligation (returned to pending by the ledger, which persisted the typed
+   * reason key and the consecutive repetition count). Trips:
+   *   - reason-repeat: the same key repeated OBLIGATION_VALVE_REPEAT_THRESHOLD
+   *     times consecutively (spin);
+   *   - attempt-ceiling: attempt >= OBLIGATION_VALVE_ATTEMPT_CEILING (hard
+   *     cap regardless of reason novelty).
+   * Routes to {@link SqliteTransitionObligationLedger.abandon} with the typed
+   * OBLIGATION_VALVE marker so the loop ENDS honestly instead of spinning.
+   */
+  private applyReasonIdentityValve(obligation: TransitionObligation): boolean {
+    if (obligation.state !== 'pending') return false;
+    const repeatTrip = obligation.reasonRepeatCount >= OBLIGATION_VALVE_REPEAT_THRESHOLD;
+    const ceilingTrip = obligation.attempt >= OBLIGATION_VALVE_ATTEMPT_CEILING;
+    if (!repeatTrip && !ceilingTrip) return false;
+    const tripKind = repeatTrip ? 'reason-repeat' : 'attempt-ceiling';
+    const reason = `${OBLIGATION_VALVE_MARKER}(${tripKind}): `
+      + (repeatTrip
+        ? `reason-key <${obligation.lastReasonKey ?? 'none'}> repeated `
+          + `${obligation.reasonRepeatCount} times consecutively`
+        : `absolute attempt ceiling ${OBLIGATION_VALVE_ATTEMPT_CEILING} reached `
+          + `(last reason-key <${obligation.lastReasonKey ?? 'none'}>)`)
+      + ` at attempt ${obligation.attempt} — CONVEYOR §15 spin valve: the loop ends honestly`;
+    const abandoned = this.ledger.abandon(obligation.obligationKey, reason);
+    if (abandoned) {
+      this.log?.(
+        `VALVE ${tripKind} attempt=${obligation.attempt} `
+        + `handoff=${obligation.handoffKind} key=${obligation.obligationKey} `
+        + `:: ${obligation.lastReasonKey ?? '(no reason key)'}`,
+      );
+    }
+    return abandoned !== null;
+  }
+
   registerHandler(handler: TransitionObligationHandler): void {
     if (this.handlers.has(handler.handoffKind)) {
       throw new Error(
@@ -163,6 +220,7 @@ export class TransitionObligationReconciler {
     let failed = 0;
     let deferred = 0;
     let skipped = 0;
+    let valved = 0;
 
     for (const obligation of ready) {
       const handler = this.handlers.get(obligation.handoffKind);
@@ -227,13 +285,20 @@ export class TransitionObligationReconciler {
         const result = await handler.execute(leasedObligation);
         if (result.outcome === 'deferred') {
           this.throttledLog(leasedObligation, 'DEFER', result.reason);
-          this.ledger.defer({
+          const afterDefer = this.ledger.defer({
             obligationKey: obligation.obligationKey,
             reason: result.reason,
             owner: options.leaseOwner,
             fence,
           });
           deferred += 1;
+          if (this.applyReasonIdentityValve(afterDefer)) {
+            // The valve's terminal abandon is a failure outcome for sweep
+            // bookkeeping so the engine log line surfaces it (completed>0 ||
+            // failed>0 branch), plus its own valved counter.
+            failed += 1;
+            valved += 1;
+          }
           continue;
         }
         // ADR-053 C7-04 — completion is fenced by the lease token this sweep
@@ -263,19 +328,20 @@ export class TransitionObligationReconciler {
         // (the newer owner will re-dispatch) rather than letting the rejection
         // crash the sweep.
         try {
-          this.ledger.fail({
+          const afterFail = this.ledger.fail({
             obligationKey: obligation.obligationKey,
             owner: options.leaseOwner,
             fence,
             error: message,
           });
           failed += 1;
+          if (this.applyReasonIdentityValve(afterFail)) valved += 1;
         } catch {
           skipped += 1;
         }
       }
     }
 
-    return { dispatched, completed, failed, deferred, skipped };
+    return { dispatched, completed, failed, deferred, skipped, valved };
   }
 }

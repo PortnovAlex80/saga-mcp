@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAtSha": "81048a2b559a",
+  "capturedAtSha": "648c62687429",
   "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.",
   "categories": {
     "escalate-vocabulary": {
@@ -45,6 +45,6 @@
   },
   "schemaSnapshot": {
     "tableCount": 97,
-    "digest": "8358142f2264ffcd6b9772954937a2520fc9a317b12d0fcd4a973dbe656e4e19"
+    "digest": "294b72b5acd7feb0dd7d4a54f20dfb4399b43a41a7416fd52d2853810e1671b9"
   }
 }

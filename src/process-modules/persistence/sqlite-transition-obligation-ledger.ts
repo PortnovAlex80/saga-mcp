@@ -58,6 +58,10 @@ export interface TransitionObligation {
   readonly completionReceipt: string | null;
   readonly resultDigest: string | null;
   readonly lastError: string | null;
+  /** B-004/O-D6 — typed identity of the last defer/fail reason (§15 valve). */
+  readonly lastReasonKey: string | null;
+  /** B-004/O-D6 — CONSECUTIVE repetitions of {@link lastReasonKey}. */
+  readonly reasonRepeatCount: number;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly completedAt: string | null;
@@ -114,8 +118,60 @@ export function transitionObligationKey(input: {
 const LEASE_DURATION_SECONDS = 120;
 export const LEASE_LOSS_RECLAIM_MARKER = 'LEASE_LOSS_RECLAIM';
 
+/**
+ * B-004/O-D6 (CONVEYOR §15) — the typed terminal marker prefix written by the
+ * reconciler's reason-identity valve when it abandons a spinning obligation.
+ * `abandon` journals kind 'obligation.valve' exactly for reasons carrying this
+ * prefix; every other abandon reason (e.g. the engine-start burial's
+ * LIFECYCLE_TERMINAL provenance) keeps its existing silent behavior.
+ */
+export const OBLIGATION_VALVE_MARKER = 'OBLIGATION_VALVE';
+
+/**
+ * The TYPED reason identity of a defer/fail outcome (CONVEYOR §15 step 1).
+ *
+ * - 'failed': the typed error CODE prefix before the first colon — the
+ *   fail-closed vocabulary style. Prose after the colon (counts, digests,
+ *   volatile detail) is excluded: a rephrased message with the same CODE is
+ *   the SAME reason.
+ * - 'deferred': the postcondition reason string — the durable statement of
+ *   WHICH postcondition arm is still missing.
+ *
+ * The first line, capped, is the identity. Timestamps/run digests/execution
+ * ids never appear in these sources by construction.
+ */
+export function obligationReasonKey(
+  kind: 'deferred' | 'failed',
+  message: string,
+): string {
+  const firstLine = String(message ?? '').trim().split('\n', 1)[0] ?? '';
+  const identity = kind === 'failed' ? (firstLine.split(':', 1)[0] || firstLine) : firstLine;
+  return identity.slice(0, 200);
+}
+
+/**
+ * PRAGMA-guarded ADD COLUMN for existing factory DBs (the K13 lazy-ALTER
+ * pattern: converge with the base DDL in schema.ts, never reset rows).
+ */
+function ensureReasonValveColumns(db: SqliteDatabase): void {
+  const names = new Set(
+    (db.prepare('PRAGMA table_info(factory_transition_obligations)').all() as
+      { name: string }[]).map((column) => column.name),
+  );
+  if (!names.has('last_reason_key')) {
+    db.exec('ALTER TABLE factory_transition_obligations ADD COLUMN last_reason_key TEXT');
+  }
+  if (!names.has('reason_repeat_count')) {
+    db.exec(
+      'ALTER TABLE factory_transition_obligations ADD COLUMN reason_repeat_count INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+}
+
 export class SqliteTransitionObligationLedger {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(private readonly db: SqliteDatabase) {
+    ensureReasonValveColumns(db);
+  }
 
   append(input: AppendObligationInput): TransitionObligation {
     assertCausalSourceRevision(input.causalSourceRevision);
@@ -382,10 +438,20 @@ export class SqliteTransitionObligationLedger {
     requireOwner(input.owner, 'DEFER', input.obligationKey);
     const existing = this.getOrThrow(input.obligationKey);
     this.assertCurrentLease(existing, input.owner, input.fence, 'defer');
+    // B-004/O-D6 — persist the typed reason identity and the CONSECUTIVE
+    // repetition count (a new key resets to 1; CONVEYOR §15: converging
+    // chains are work, not spin — do not tax them).
+    const reasonKey = obligationReasonKey('deferred', input.reason);
+    const repeatCount = existing.lastReasonKey === reasonKey
+      ? existing.reasonRepeatCount + 1
+      : 1;
     const result = this.db.prepare(
       `UPDATE factory_transition_obligations
           SET state='pending',lease_owner=NULL,lease_expires_at=NULL,
-              last_error=@reason,updated_at=datetime('now')
+              last_error=@reason,
+              last_reason_key=@reasonKey,
+              reason_repeat_count=@repeatCount,
+              updated_at=datetime('now')
         WHERE obligation_key=@key
           AND state='in_progress'
           AND lease_owner=@owner
@@ -395,6 +461,8 @@ export class SqliteTransitionObligationLedger {
       owner: input.owner,
       fence: input.fence.value,
       reason: `DEFERRED: ${input.reason}`,
+      reasonKey,
+      repeatCount,
     });
     if (result.changes !== 1) {
       throw new Error(`TRANSITION_OBLIGATION_DEFER_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`);
@@ -422,12 +490,20 @@ export class SqliteTransitionObligationLedger {
       );
     }
     this.assertCurrentLease(existing, input.owner, input.fence, 'failure');
+    // B-004/O-D6 — same §15 valve state as defer: the typed error CODE prefix
+    // is the identity; varying prose after the colon is the SAME reason.
+    const reasonKey = obligationReasonKey('failed', input.error);
+    const repeatCount = existing.lastReasonKey === reasonKey
+      ? existing.reasonRepeatCount + 1
+      : 1;
     const result = this.db.prepare(
       `UPDATE factory_transition_obligations
           SET state='pending',
               lease_owner=NULL,
               lease_expires_at=NULL,
               last_error=@error,
+              last_reason_key=@reasonKey,
+              reason_repeat_count=@repeatCount,
               updated_at=datetime('now')
         WHERE obligation_key=@key
           AND state='in_progress'
@@ -438,6 +514,8 @@ export class SqliteTransitionObligationLedger {
       owner: input.owner,
       fence: input.fence.value,
       error: input.error,
+      reasonKey,
+      repeatCount,
     });
     if (result.changes !== 1) {
       throw new Error(`TRANSITION_OBLIGATION_FAILURE_REQUIRES_CURRENT_LEASE: ${input.obligationKey}`);
@@ -512,6 +590,11 @@ export class SqliteTransitionObligationLedger {
     if (typeof reason !== 'string' || reason.trim() === '') {
       throw new Error(`TRANSITION_OBLIGATION_ABANDON_REQUIRES_REASON: ${obligationKey}`);
     }
+    // B-004/O-D6 — the reason-identity valve routes here with the typed
+    // OBLIGATION_VALVE marker prefix; capture the pre-abandon valve state for
+    // the journal correlation (burial-path abandons keep their silent shape).
+    const valveTrip = reason.startsWith(OBLIGATION_VALVE_MARKER);
+    const prior = valveTrip ? this.get(obligationKey) : null;
     const result = this.db.prepare(
       `UPDATE factory_transition_obligations
           SET state='failed',
@@ -524,6 +607,20 @@ export class SqliteTransitionObligationLedger {
           AND state IN ('pending','in_progress')`,
     ).run({ key: obligationKey, reason });
     if (result.changes !== 1) return null;
+    if (valveTrip) {
+      // Observation-only (the ratchet: written, never read back by the
+      // factory). Correlation keys follow the obligation.deferred shape.
+      journalEvent('obligation.valve', {
+        workplace_ref: prior?.subjectRef,
+      }, {
+        obligation_key: obligationKey,
+        reason,
+        reason_key: prior?.lastReasonKey ?? null,
+        repeated: prior?.reasonRepeatCount ?? 0,
+        attempt: prior?.attempt ?? 0,
+        terminal: 'failed',
+      });
+    }
     return this.getOrThrow(obligationKey);
   }
 
@@ -606,6 +703,8 @@ interface TransitionObligationRow {
   completion_receipt: string | null;
   result_digest: string | null;
   last_error: string | null;
+  last_reason_key: string | null;
+  reason_repeat_count: number;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -629,6 +728,8 @@ function rowToObligation(row: TransitionObligationRow): TransitionObligation {
     completionReceipt: row.completion_receipt,
     resultDigest: row.result_digest,
     lastError: row.last_error,
+    lastReasonKey: row.last_reason_key ?? null,
+    reasonRepeatCount: row.reason_repeat_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
