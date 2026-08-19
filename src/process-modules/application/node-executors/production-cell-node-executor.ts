@@ -21,6 +21,7 @@ import {
   assertValidProductionCellDefinition,
   asWorkplaceRef,
   candidateSetDigestForRevision,
+  DEFAULT_CONVERGENCE_CHAIN_ATTEMPTS,
   DEFAULT_RECOVERY_TOTAL_ATTEMPTS,
   recoveryEpochBackoffMs,
   serializeWorkplaceRef,
@@ -57,6 +58,10 @@ import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infra
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteGateFindingSetChain } from '../../../infrastructure/workplace/sqlite-gate-finding-set-chain.js';
+import {
+  convergingStreak,
+  trajectory,
+} from '../../domain/workplace/finding-trajectory.js';
 import {
   buildAcceptanceEffectRepairIssue,
   computeAcceptanceDigest,
@@ -603,6 +608,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           effectRepairs: baseline.baselineEffectRepairs,
         });
       if (attemptsInEpoch >= cell.recovery.maxAttempts) {
+        // FINDING-TRAJECTORY BUDGET — set when the requeue arm waives this
+        // exhaustion as converging work: the shared pause/fail tail below
+        // must NOT run (the workplace requeues instead of parking/terminal).
+        let convergenceWaived = false;
         if (cell.recovery.onExhausted === 'pause') {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
             verdict: 'human_required', isFinal: true,
@@ -638,42 +647,85 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
             state = this.requireState(workplace.ref);
             return this.terminalOutcome(workplace.ref, state);
           }
-          const nextEpoch = (baseline?.epoch ?? 0) + 1;
-          const counters = this.rawAttemptCounters(workplace.ref, state.nextRole);
-          engineLog(
-            `[recovery-budget] ROLLOVER cell=${cell.id} `
-            + `workplace=${serializeWorkplaceRef(workplace.ref)} `
-            + `role=${state.nextRole} epoch=${nextEpoch} `
-            + `epochAttempts=${attemptsInEpoch}/${cell.recovery.maxAttempts} `
-            + `total=${totalAttempts}/${totalCap} `
-            + `backoffMs=${recoveryEpochBackoffMs(nextEpoch)} `
-            + `:: ${diagnosis.message.slice(0, 400)}`,
+          // FINDING-TRAJECTORY BUDGET (variant d hybrid, §15 "budget must
+          // count spin, not work"): a rejection whose comparable finding-key
+          // set is a STRICT SUBSET of the previous rejection (>= 1 removed,
+          // 0 new, fatal keys not growing) removed another link of the defect
+          // chain — that is work, not spin. Active ONLY for 'requeue' cells;
+          // crash/effect accounting is NEVER waived; the absolute totalAttempts
+          // cap above stays untouchable (checked before this gate).
+          const trajectoryGate = this.readConvergenceTrajectoryGate(
+            cell, workplace.ref, state.nextRole, baseline,
           );
-          this.opts.persistence.recordRecoveryEpoch?.({
-            workplaceRef: workplace.ref,
-            role: state.nextRole,
-            epoch: nextEpoch,
-            baselineRejectedSets: counters.rejectedSets,
-            baselineTerminalExecutions: counters.terminalExecutions,
-            baselineEffectRepairs: counters.effectRepairs,
-            exhaustedAttempts: attemptsInEpoch,
-            maxAttempts: cell.recovery.maxAttempts,
-            totalAttemptsCap: totalCap,
-            lastDiagnosis: diagnosis.message,
-          });
-          // Stay in repair_wait through the backoff window; the pass after it
-          // expires falls through to the below-budget requeue branch.
-          return pendingOutcome();
+          if (trajectoryGate !== null && trajectoryGate.outcome === 'ceiling') {
+            engineLog(
+              `[recovery-budget] CONVERGENCE-CEILING cell=${cell.id} `
+              + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+              + `role=${state.nextRole} streak=${trajectoryGate.streak}/${trajectoryGate.ceiling} `
+              + `— terminal failed :: ${trajectoryGate.streak} consecutive converging repairs `
+              + `left ${trajectoryGate.survivingKeys.length} surviving finding key(s): `
+              + `${trajectoryGate.survivingKeys.slice(0, 5).map(key => key.slice(0, 160)).join(' | ')}`,
+            );
+            this.opts.coordinator.applyGateDecision(workplace.ref, {
+              verdict: 'failed', isFinal: true,
+            });
+            this.opts.persistence.projectWorkplace(workplace.ref);
+            state = this.requireState(workplace.ref);
+            return this.terminalOutcome(workplace.ref, state);
+          }
+          if (trajectoryGate === null) {
+            const nextEpoch = (baseline?.epoch ?? 0) + 1;
+            const counters = this.rawAttemptCounters(workplace.ref, state.nextRole);
+            engineLog(
+              `[recovery-budget] ROLLOVER cell=${cell.id} `
+              + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+              + `role=${state.nextRole} epoch=${nextEpoch} `
+              + `epochAttempts=${attemptsInEpoch}/${cell.recovery.maxAttempts} `
+              + `total=${totalAttempts}/${totalCap} `
+              + `backoffMs=${recoveryEpochBackoffMs(nextEpoch)} `
+              + `:: ${diagnosis.message.slice(0, 400)}`,
+            );
+            this.opts.persistence.recordRecoveryEpoch?.({
+              workplaceRef: workplace.ref,
+              role: state.nextRole,
+              epoch: nextEpoch,
+              baselineRejectedSets: counters.rejectedSets,
+              baselineTerminalExecutions: counters.terminalExecutions,
+              baselineEffectRepairs: counters.effectRepairs,
+              exhaustedAttempts: attemptsInEpoch,
+              maxAttempts: cell.recovery.maxAttempts,
+              totalAttemptsCap: totalCap,
+              lastDiagnosis: diagnosis.message,
+            });
+            // Stay in repair_wait through the backoff window; the pass after it
+            // expires falls through to the below-budget requeue branch.
+            return pendingOutcome();
+          }
+          engineLog(
+            `[recovery-budget] CONVERGING ${trajectoryGate.prevCount}→${trajectoryGate.nextCount} keys `
+            + `cell=${cell.id} `
+            + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+            + `role=${state.nextRole} streak=${trajectoryGate.streak}/${trajectoryGate.ceiling} `
+            + `epochAttempts=${attemptsInEpoch}/${cell.recovery.maxAttempts} `
+            + `(rejectedSets waived — crashes/effects still charge) `
+            + `total=${totalAttempts}/${totalCap} — requeue without epoch rollover`,
+          );
+          convergenceWaived = true;
+          // Fall past the shared pause/fail tail to the below-budget requeue
+          // branch: the epoch budget does not exhaust for a converging
+          // attempt.
         } else {
           this.opts.coordinator.applyGateDecision(workplace.ref, {
             verdict: 'failed', isFinal: true,
           });
         }
-        this.opts.persistence.projectWorkplace(workplace.ref);
-        state = this.requireState(workplace.ref);
-        return state.loopState === 'paused'
-          ? pausedOutcome()
-          : this.terminalOutcome(workplace.ref, state);
+        if (!convergenceWaived) {
+          this.opts.persistence.projectWorkplace(workplace.ref);
+          state = this.requireState(workplace.ref);
+          return state.loopState === 'paused'
+            ? pausedOutcome()
+            : this.terminalOutcome(workplace.ref, state);
+        }
       }
       this.opts.coordinator.requeue(workplace.ref, state.nextRole);
       this.opts.persistence.projectWorkplace(workplace.ref);
@@ -1895,6 +1947,69 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       ? this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0
       : 0;
     return { rejectedSets, terminalExecutions, effectRepairs };
+  }
+
+  /**
+   * FINDING-TRAJECTORY BUDGET — consult the finding-set chain of the role's
+   * last rejections and decide whether the epoch-budget exhaustion may be
+   * waived for convergence (variant d hybrid, 'requeue' cells only).
+   *
+   * Returns null when the attempt must be CHARGED (non-weakening, the
+   * existing ADR-075 behavior runs byte-for-byte): fewer than two same-scope
+   * chain rows, a non-converging trajectory (spinning / churning), or crash /
+   * effect accounting that already spent the epoch budget on its own
+   * (terminalExecutions and effectRepairs are NEVER waived — a converging
+   * cell with dying workers does not spin for free).
+   *
+   * Returns 'waive' when the LATEST rejection's key set is a strict subset of
+   * its predecessor and the consecutive converging streak is within the
+   * ceiling; 'ceiling' when the streak exceeded it — the honest terminal with
+   * the surviving-key diagnosis (§15 rule 4: even converging chains
+   * terminate).
+   */
+  private readConvergenceTrajectoryGate(
+    cell: ProductionCellDefinition,
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+    baseline: {
+      baselineTerminalExecutions: number;
+      baselineEffectRepairs: number;
+    } | null,
+  ): {
+    outcome: 'waive' | 'ceiling';
+    prevCount: number;
+    nextCount: number;
+    streak: number;
+    ceiling: number;
+    survivingKeys: readonly string[];
+  } | null {
+    const tail = this.findingSetChain.readTrajectoryTail(
+      serializeWorkplaceRef(ref),
+      role,
+    );
+    if (tail === null || tail.sets.length < 2) return null;
+    const sets = tail.sets;
+    const previous = sets[sets.length - 2]!;
+    const latest = sets[sets.length - 1]!;
+    if (trajectory(previous, latest) !== 'converging') return null;
+    const streak = convergingStreak(sets);
+    const ceiling = cell.recovery.convergenceChainAttempts
+      ?? DEFAULT_CONVERGENCE_CHAIN_ATTEMPTS;
+    const survivingKeys = tail.latestKeys;
+    if (streak > ceiling) {
+      return { outcome: 'ceiling', prevCount: previous.count, nextCount: latest.count, streak, ceiling, survivingKeys };
+    }
+    // The waiver removes ONLY the rejectedSets contribution. Crashes and
+    // effect repairs still charge: if they alone exhausted the epoch budget,
+    // the attempt is not waived.
+    const raw = this.rawAttemptCounters(ref, role);
+    const clamp = (value: number, offset: number) => Math.max(0, value - offset);
+    const nonWaived = Math.max(
+      clamp(raw.terminalExecutions, baseline?.baselineTerminalExecutions ?? 0),
+      clamp(raw.effectRepairs, baseline?.baselineEffectRepairs ?? 0),
+    );
+    if (nonWaived >= cell.recovery.maxAttempts) return null;
+    return { outcome: 'waive', prevCount: previous.count, nextCount: latest.count, streak, ceiling, survivingKeys };
   }
 
   private attemptCount(
