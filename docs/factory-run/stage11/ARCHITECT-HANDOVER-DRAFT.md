@@ -332,9 +332,10 @@ RED-first commits; per-branch summary:
 Plus the implementation trees: `repair/worker-disorientation` DELIVERED (2
 commits, 522/0 process-modules, E2E on real opencode; root cause corrected —
 env.PWD beats cwd in opencode 1.18.18, fix pins --dir + env.PWD + spawn
-cwd, AGENTS.md marker as duplicating network) and `repair/ac-drift-remedy`
-(three networks per `docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`) —
-returning.
+cwd, AGENTS.md marker as duplicating network) and `repair/ac-drift-remedy` DELIVERED (~17 commits, RED-first, 52/52 new
+units, 521/0 process-modules, 345/0 architecture: the constraint register
++ all three networks + the warrantRef stub; honest design-vs-code
+divergences documented in its report).
 
 ### 4.4b Worker-start disorientation — investigation closed, fix delivered
 
