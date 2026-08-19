@@ -938,6 +938,58 @@ export function reapInterruptedWorkerStops(
 }
 
 // ---------------------------------------------------------------------------
+// Park — place a project-scope operator hold (graceful-drain pause).
+// ---------------------------------------------------------------------------
+
+export interface PlaceProjectHoldInput {
+  readonly projectId: number;
+  readonly reason: string;
+  readonly createdBy: string;
+}
+
+export interface PlaceProjectHoldResult {
+  /** Durable hold identity — the unpark handle. */
+  readonly holdRef: string;
+  /** false when an unreleased project hold already existed (idempotent replay). */
+  readonly placed: boolean;
+}
+
+/**
+ * GRACEFUL-DRAIN PAUSE (docs/architecture/PAUSE-DESIGN.md). One project-scope
+ * hold IS the whole pause: the claim SQL (work-assignment-core) refuses every
+ * card of the project while the hold is unreleased, active workers are
+ * untouched (holds are consulted only on claim — one launch = one card, so a
+ * worker never claims a second card on its own), and the engine drains its
+ * active tail then self-parks via the existing 3-streak exit-2 'paused' path.
+ * Counterpart writer of releaseOperatorHolds({projectId}).
+ *
+ * No kill, no rewind, no fence: the queue fence alone lets every in-flight
+ * turn finish. Idempotent — a second placement (operator double-click, panel
+ * reload) surfaces the SAME hold instead of stacking rows.
+ */
+export function placeProjectHold(
+  db: Database.Database,
+  input: PlaceProjectHoldInput,
+): PlaceProjectHoldResult {
+  return withImmediateTransaction(db, () => {
+    const existing = db.prepare(
+      `SELECT hold_ref FROM factory_operator_holds
+        WHERE subject_kind='project' AND subject_ref=? AND released_at IS NULL`,
+    ).get(String(input.projectId)) as { hold_ref: string } | undefined;
+    if (existing) {
+      return { holdRef: existing.hold_ref, placed: false };
+    }
+    const holdRef = `hold-${randomUUID()}`;
+    db.prepare(
+      `INSERT INTO factory_operator_holds
+         (hold_ref, subject_kind, subject_ref, reason, created_by)
+       VALUES (?, 'project', ?, ?, ?)`,
+    ).run(holdRef, String(input.projectId), input.reason, input.createdBy);
+    return { holdRef, placed: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Unpark — release operator holds.
 // ---------------------------------------------------------------------------
 

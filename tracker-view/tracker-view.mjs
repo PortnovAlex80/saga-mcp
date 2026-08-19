@@ -332,6 +332,10 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/factory/start') {
     return adminApi.handleFactoryStart(req, res);
   }
+  // Graceful-drain pause (PAUSE-DESIGN): one durable project-scope hold.
+  if (req.method === 'POST' && url.pathname === '/api/factory/pause') {
+    return adminApi.handleFactoryPause(req, res);
+  }
   if (req.method === 'POST' && url.pathname === '/api/repository/register') {
     return lifecycleApi.handleSagaOperation(req, res, 'repository_register');
   }
