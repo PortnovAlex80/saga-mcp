@@ -38,6 +38,10 @@ import { copyFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Replay-capsule schema ensure (creates the tables on pre-capsule golden DBs
+// and migrates the invalidations CHECK to the 'stage-reset' reason — R-D4).
+import { ensureReplayCapsuleSchema } from '../dist/infrastructure/replay/sqlite-replay-capsule-repository.js';
+
 // ──────────────────────────────────────────────────────────────────────────
 // Stage reset helpers
 //
@@ -80,6 +84,12 @@ import { fileURLToPath } from 'node:url';
 /**
  * Names of BEFORE DELETE immutability triggers that must be dropped to allow
  * the reset DELETEs, then recreated from their sqlite_master definition.
+ *
+ * S-4/S-5 (stage-11 preventive hunt): the list is now the EXACT set of
+ * triggers guarding the tables resetStage deletes — the old list carried the
+ * stale `trg_factory_adoptions_no_delete` (factory_adoptions is never deleted)
+ * and MISSED the real guards, so the "defended" delete paths aborted with
+ * RAISE(ABORT) on any DB that actually had those rows.
  */
 const IMMUTABILITY_TRIGGERS = [
   'trg_factory_cell_effect_receipts_no_delete',
@@ -89,7 +99,16 @@ const IMMUTABILITY_TRIGGERS = [
   'trg_factory_gate_decisions_no_delete',
   'trg_factory_workplace_contributions_no_delete',
   'trg_factory_workplace_production_revisions_no_delete',
-  'trg_factory_adoptions_no_delete',
+  // production adoption + author carry-forward (A1 deletes)
+  'trg_factory_production_adoption_immutable_delete',
+  'trg_factory_author_carry_forward_immutable_delete',
+  'trg_factory_author_carry_consumption_immutable_delete',
+  // FK children of the sealed material (A0 deletes)
+  'trg_factory_effect_attempts_no_delete',
+  'trg_factory_gate_presentation_attempts_no_delete',
+  // execution-scoped audit children (D-pre deletes)
+  'trg_final_presentation_commitments_no_delete',
+  'trg_factory_execution_completion_products_immutable_delete',
 ];
 
 /** Read trigger definitions from sqlite_master, DROP them, return saved SQL. */
@@ -131,6 +150,25 @@ function updateRange(db, label, sql, params = []) {
 }
 
 /**
+ * S-3 — fail loudly if the reset (or any restore step) orphaned a child row.
+ * `PRAGMA foreign_key_check` walks every FK in the schema even with
+ * foreign_keys enforcement on, so a clean result is a POSITIVE proof.
+ */
+function assertForeignKeyCheckClean(db, scopeLabel) {
+  const violations = db.prepare('PRAGMA foreign_key_check').all();
+  if (violations.length > 0) {
+    const detail = violations
+      .slice(0, 10)
+      .map(v => `${v.table}[rowid=${v.rowid}] -> ${v.parent} (fkid=${v.fkid})`)
+      .join('; ');
+    throw new Error(
+      `[reset-stage] foreign_key_check FAILED after ${scopeLabel}: `
+      + `${violations.length} violation(s): ${detail}`,
+    );
+  }
+}
+
+/**
  * Reset one stage/module so `factory.mjs resume` re-runs its Production Cell
  * from scratch (attempt counter 0), preserving other stages and `artifacts`.
  *
@@ -162,6 +200,13 @@ function resetStageRun(db, stage) {
   process.stdout.write(
     `[reset-stage] resetting ${runs.map(r => `${r.module_name}#${r.id}`).join(', ')}\n`,
   );
+
+  // S-3 — FK enforcement is EXPLICIT for the reset (never rely on a library
+  // default), and the replay-capsule schema must exist before the reset
+  // writes invalidation evidence (R-D4; also migrates old golden DBs to the
+  // 'stage-reset' reason CHECK).
+  db.pragma('foreign_keys = ON');
+  ensureReplayCapsuleSchema(db);
 
   // Workplace + CandidateSet scope for this stage (read-only, before any mutation).
   const wpSubsql = `SELECT workplace_ref FROM factory_workplaces WHERE process_run_id IN (${runIdList})`;
@@ -207,6 +252,67 @@ function resetStageRun(db, stage) {
     // ── A. Delete sealed material (the attempt counter + accepted state) ──
     // FK-safe child-first order. Triggers were dropped before this txn body.
     process.stdout.write('[reset-stage] deleting sealed CandidateSet material:\n');
+
+    // A0. S-3 — FK children of the immutable audit rows deleted below. On a
+    //     real factory DB these rows EXIST (a repaired workplace has effect
+    //     attempts, decided gates have presentation attempts and decision
+    //     heads); leaving them behind either aborts the reset (FK enforcement)
+    //     or orphans them. Child-first, stage-scoped:
+    //       - gate presentation attempts FK gate_runs (deleted at A5)
+    //       - decision heads FK gate_decisions — the "current repair authority"
+    //       - effect attempts FK candidate_sets (deleted at A6)
+    deleteRange(
+      db, 'factory_gate_presentation_attempts',
+      `DELETE FROM factory_gate_presentation_attempts
+        WHERE gate_run_ref IN (SELECT gate_run_ref FROM factory_gate_runs WHERE workplace_ref IN (${wpSubsql}))`,
+    );
+    deleteRange(
+      db, 'factory_workplace_gate_decision_heads',
+      `DELETE FROM factory_workplace_gate_decision_heads WHERE workplace_ref IN (${wpSubsql})`,
+    );
+    deleteRange(
+      db, 'factory_effect_attempts',
+      `DELETE FROM factory_effect_attempts WHERE workplace_ref IN (${wpSubsql})`,
+    );
+
+    // A0.5 R-D4 — invalidate the replay capsules bound to this stage's sealed
+    //      material BEFORE the source rows are deleted. The operator reset
+    //      the stage to REGENERATE production: a surviving capsule would make
+    //      the next claim in these workplaces REPLAY the exact material that
+    //      was just destroyed. Capsules are evidence — they are KEPT and get
+    //      an append-only typed invalidation row (reason 'stage-reset',
+    //      idempotent on (capsule_ref, reason, authority_ref)).
+    //      Scope: capsules whose source CandidateSet belongs to the stage,
+    //      whose source execution is a reset-stage execution, or whose frozen
+    //      replay-key material targets one of the stage's workplaces (the
+    //      kernel carry-forward capsules whose target task lives here).
+    const stageRunLabels = runs.map(r => `${r.module_name}#${r.id}`).join(',');
+    const lifecycleRunId = db.prepare(
+      `SELECT MIN(lifecycle_run_id) AS id FROM factory_stage_runs
+        WHERE process_run_id IN (${runIdList})`,
+    ).get().id;
+    const invalidated = db.prepare(
+      `INSERT OR IGNORE INTO factory_replay_capsule_invalidations
+         (capsule_ref, reason, lifecycle_run_id, authority_ref)
+       SELECT capsule_ref, 'stage-reset', ?, ?
+         FROM factory_replay_capsules
+        WHERE project_id IN (SELECT project_id FROM factory_process_runs WHERE id IN (${runIdList}))
+          AND (source_candidate_set_ref IN (${csetSubsql})
+               OR source_execution_ref IN (
+                    SELECT execution_id FROM worker_executions
+                     WHERE task_id IN (${taskSubsql}))
+               OR EXISTS (
+                    SELECT 1 FROM factory_workplaces w2
+                     WHERE w2.process_run_id IN (${runIdList})
+                       AND json_extract(payload_snapshot,'$.key.moduleRef')=w2.module_ref
+                       AND json_extract(payload_snapshot,'$.key.productionCellId')=w2.production_cell_id
+                       AND json_extract(payload_snapshot,'$.key.workKey')=w2.work_key))`,
+    ).run(lifecycleRunId, `stage-reset:${stageRunLabels}`);
+    if (invalidated.changes > 0) {
+      process.stdout.write(
+        `[reset-stage]   invalidated ${invalidated.changes} replay capsule(s) (reason 'stage-reset' — rows kept as evidence)\n`,
+      );
+    }
 
     // A1. Carry-forward / adoption tables that RESTRICT-reference CandidateSets
     //     (0 in the common reset case; defended for completeness). Consumptions
@@ -326,17 +432,92 @@ function resetStageRun(db, stage) {
 
     // ── D. Worker executions: delete only those NOT pinned by an immutable
     //       audit row (managed_node_submissions / recovery receipts). The rest
-    //       are KEPT as audit — they do not affect the attempt counter once the
-    //       workplace is idle (the crash fallback applies only in repair_wait).
+    //       are KEPT as audit — they do not affect the attempt counter once
+    //       the workplace is idle (the crash fallback applies only in repair_wait).
+    //       D-pre (S-3): first clear the FK children OF THE DELETED EXECUTIONS
+    //       (commitments/completion products are immutable — triggers were
+    //       dropped; worker stops is plain). Scoped to the deleted set only:
+    //       audit rows of KEPT (pinned) executions survive untouched.
+    const deletedExecSubsql = `
+      SELECT execution_id FROM worker_executions
+       WHERE task_id IN (${taskSubsql})
+         AND execution_id NOT IN (SELECT execution_id FROM factory_managed_node_submissions)
+         AND execution_id NOT IN (SELECT execution_id FROM factory_orphaned_launch_recovery_receipts
+                                    WHERE execution_id IS NOT NULL)
+         AND execution_id NOT IN (SELECT execution_id FROM factory_automatic_spawn_recovery_receipts)`;
+    deleteRange(
+      db, 'factory_final_presentation_commitments (deleted executions only)',
+      `DELETE FROM factory_final_presentation_commitments WHERE execution_id IN (${deletedExecSubsql})`,
+    );
+    deleteRange(
+      db, 'factory_execution_completion_products (deleted executions only)',
+      `DELETE FROM factory_execution_completion_products WHERE execution_id IN (${deletedExecSubsql})`,
+    );
+    deleteRange(
+      db, 'factory_worker_stops (deleted executions only)',
+      `DELETE FROM factory_worker_stops WHERE worker_execution_ref IN (${deletedExecSubsql})`,
+    );
     deleteRange(
       db, 'worker_executions (unpinned only)',
-      `DELETE FROM worker_executions
-        WHERE task_id IN (${taskSubsql})
-          AND execution_id NOT IN (SELECT execution_id FROM factory_managed_node_submissions)
-          AND execution_id NOT IN (SELECT execution_id FROM factory_orphaned_launch_recovery_receipts
-                                     WHERE execution_id IS NOT NULL)
-          AND execution_id NOT IN (SELECT execution_id FROM factory_automatic_spawn_recovery_receipts)`,
+      `DELETE FROM worker_executions WHERE execution_id IN (${deletedExecSubsql})`,
     );
+
+    // ── D-post (S-6): re-baseline recovery epochs for the reset workplaces.
+    //      The reset dropped the attempt counters (CandidateSets, gate
+    //      decisions, repair issues) but the immutable epoch baselines still
+    //      snapshot the OLD, higher counters — attempts-in-epoch (counter −
+    //      baseline) would go negative and the ADR-075 budget math misfires.
+    //      Epochs are append-only (no UPDATE/DELETE), so re-baselining
+    //      APPENDS one new epoch row per affected (workplace, role) whose
+    //      latest baseline exceeds the CURRENT post-reset counters — the same
+    //      write path recordRecoveryEpoch uses. Idempotent: when the latest
+    //      baseline already matches the counters, nothing is appended.
+    const epochLatest = db.prepare(
+      `SELECT e.workplace_ref AS wp, e.role AS role, e.epoch AS epoch,
+              e.baseline_rejected_sets AS brs, e.baseline_terminal_executions AS bte,
+              e.baseline_effect_repairs AS ber, e.max_attempts AS maxAttempts,
+              e.total_attempts_cap AS totalCap
+         FROM factory_workplace_recovery_epochs e
+        WHERE e.workplace_ref IN (${wpSubsql})
+          AND e.epoch = (SELECT MAX(e2.epoch) FROM factory_workplace_recovery_epochs e2
+                          WHERE e2.workplace_ref = e.workplace_ref AND e2.role = e.role)`,
+    ).all();
+    const countTerminalExecutions = db.prepare(
+      `SELECT COUNT(*) AS n
+         FROM worker_executions we JOIN tasks t ON t.id = we.task_id
+        WHERE (t.workplace_ref = ? OR json_extract(t.metadata, '$.workplace_ref') = ?)
+          AND we.task_id IN (${taskSubsql})
+          AND we.state IN ('lost','terminated','spawn_failed')
+          AND we.voided_at IS NULL`,
+    );
+    const insertEpoch = db.prepare(
+      `INSERT OR IGNORE INTO factory_workplace_recovery_epochs
+         (workplace_ref, role, epoch,
+          baseline_rejected_sets, baseline_terminal_executions, baseline_effect_repairs,
+          exhausted_attempts, max_attempts, total_attempts_cap, last_diagnosis)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+    );
+    let rebaselined = 0;
+    for (const row of epochLatest) {
+      // Post-reset counters: rejected sets and effect repairs are 0 (the
+      // decisions/sets/issues were deleted); terminal executions counted LIVE
+      // over the workplace's surviving (pinned) executions.
+      const terminalExecutions = countTerminalExecutions.get(row.wp, row.wp).n;
+      if (row.brs <= 0 && row.bte <= terminalExecutions && row.ber <= 0) continue;
+      insertEpoch.run(
+        row.wp, row.role, row.epoch + 1,
+        0, terminalExecutions, 0,
+        row.maxAttempts, row.totalCap,
+        'stage-reset re-baseline (restore-from-checkpoint --reset-stage): '
+          + 'attempt counters were reset; baseline snapshots the post-reset counters',
+      );
+      rebaselined += 1;
+    }
+    if (rebaselined > 0) {
+      process.stdout.write(
+        `[reset-stage]   appended ${rebaselined} recovery-epoch re-baseline row(s) — attempts-in-epoch stays non-negative\n`,
+      );
+    }
 
     // ── E. Node runs: delete so resume re-executes the stage flow from its
     //       entry node. Without this, the generic-flow executor resumes at the
@@ -361,6 +542,11 @@ function resetStageRun(db, stage) {
     reset();
     recreateImmutabilityTriggers(db, savedTriggers);
   })();
+  // S-3 — positive proof: even with FK enforcement on, foreign_key_check walks
+  // every FK in the schema; any orphan (from this reset or pre-existing in
+  // the golden checkpoint) fails the restore loudly instead of poisoning
+  // later reconciliation.
+  assertForeignKeyCheckClean(db, `reset-stage '${stage}'`);
   process.stdout.write(`[reset-stage] done: stage '${stage}' ready to resume from scratch\n`);
 }
 
@@ -386,8 +572,11 @@ const fixStuck = args.includes('--fix-stuck');
 mkdirSync(dirname(targetDb), { recursive: true });
 copyFileSync(goldenDb, targetDb);
 
-// Checkpoint WAL in the copy
+// Checkpoint WAL in the copy. S-3: FK enforcement is EXPLICIT for the whole
+// script — never rely on a library default — and the final foreign_key_check
+// below fails loudly instead of leaving orphans behind.
 const db = new Database(targetDb);
+db.pragma('foreign_keys = ON');
 db.pragma('wal_checkpoint(TRUNCATE)');
 
 // ─── 2. Reset lifecycle + ProcessRuns ──────────────────────────────────
@@ -443,7 +632,9 @@ if (fixStuck) {
   }
 }
 
-// ─── 5. Summary ────────────────────────────────────────────────────────
+// ─── 5. FK hygiene proof, then summary ──────────────────────────────────
+assertForeignKeyCheckClean(db, 'restore');
+
 const summary = {
   lifecycle: db.prepare('SELECT status, current_stage_id FROM factory_lifecycle_runs ORDER BY id DESC LIMIT 1').get(),
   processRuns: db.prepare('SELECT module_name, status FROM factory_process_runs ORDER BY id').all(),
