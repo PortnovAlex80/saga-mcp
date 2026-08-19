@@ -118,6 +118,14 @@ Abort (stop the run, collect logs, do not "fix" mid-run) when:
 - **Any `failed` transition that is NOT understood** — read the
   settlement/gate reason codes before continuing; do not retry blind.
 
+Reading repair iterations (CONVEYOR-MENTAL-MODEL §15 "Cycle is not spinning"):
+iteration count and revision growth are WORK, not failure — do not abort on
+them. The abort signal is REASON IDENTITY: the same rejection cause recurring
+after the material changed (fix touched a symptom), cosmetic churn with the
+worker repeating identical actions, or the gate rejecting a criterion the
+submission satisfies. Distinct reasons converging (each iteration removes a
+different link of the defect chain) is the healthy cycle doing its job.
+
 ## 7. Recovery — first claim froze on the paid cloud model
 
 The known trap (CLAUDE.md:30-39). Recovery:

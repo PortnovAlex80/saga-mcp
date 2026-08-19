@@ -602,6 +602,34 @@ falls through to the selected model.
 A corrupt capsule hit also fails closed. It does not silently call a paid model
 inside the same execution. Recovery creates a new execution and resolves again.
 
+### Cycle is not spinning (reading repair iterations)
+
+A repair iteration is WORK, not failure. The author → gate → repair arc exists
+to eliminate a defect chain: each iteration must consume the previous rejection
+and remove a DIFFERENT link of that chain. Revision growth measures work
+performed; iteration count alone is never an alarm and must never be taxed
+against a panic budget — that would punish the convergence mechanism the
+conveyor exists to perform.
+
+Spinning is defined by REASON IDENTITY, not by count or duration:
+
+- the same rejection cause returns after the material changed (the fix
+  touched a symptom, not the cause);
+- the material changes only cosmetically while the worker repeats the same
+  actions (feedback not consumed);
+- the gate rejects on a criterion the submission satisfies (unfalsifiable or
+  contradictory gate — a factory defect, not an author defect).
+
+Consequences:
+
+- abort rules key on identical-error repetition ("the same node failing three
+  times with the same error"), never on iteration number;
+- budgets (review budget, recovery `totalAttempts`) are escape valves for TRUE
+  spinning, not a tax on convergence;
+- operator views must not render iteration count as a warning by itself; the
+  reason sequence is the signal (distinct reasons converging = healthy cycle,
+  same reason recurring = spin).
+
 ---
 
 ## 16. Test projects and production projects use the same runtime
