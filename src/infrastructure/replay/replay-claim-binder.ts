@@ -19,8 +19,25 @@ import {
   resolveReplayKeyMaterial,
 } from './replay-key-material.js';
 import { selectReplayCapsule } from './replay-capsule-selection.js';
+import { journalEvent } from '../../observability/run-journal.js';
 
 export { resolveReplayKeyMaterial };
+
+/**
+ * R-E1 — the certification sweep's observable outcome. "0 capsules needed"
+ * and "0 of 12 workplaces certified because every capture failed" must never
+ * be the same journal line again.
+ */
+export interface ReplayCertificationSweepSummary {
+  /** Terminal-accepted workplaces in project scope the sweep considered. */
+  readonly considered: number;
+  /** Capsules captured (or proven already present) this run. */
+  readonly certified: number;
+  /** Workplaces whose certification threw (non-fatal per workplace). */
+  readonly failed: number;
+  /** Counted skip reasons, e.g. { 'candidate-set-missing': 2 }. */
+  readonly skipped: Readonly<Record<string, number>>;
+}
 
 /**
  * A capsule becomes ineligible for subsequent recovery attempts in the SAME
@@ -109,26 +126,49 @@ function parseStringArray(raw: string, label: string): string[] {
  * Crash/reconciliation fallback. Direct post-terminal capture is normal; this
  * sweep only backfills missing capsules from authoritative final acceptance.
  * It uses the SAME fail-closed completeness proof as direct capture.
+ *
+ * R-D2 — the sweep's workplace selection is NO LONGER gated on
+ * `factory_cell_final_acceptances`: that row is written by the direct capture
+ * effect, i.e. it is exactly the row missing when the primary path failed and
+ * this fallback is needed. Gating the fallback on the primary's success
+ * precondition made every crash-window workplace invisible to both paths.
+ * Selection is now terminal-accepted workplaces of the project, regardless of
+ * cfa-row presence; the accepted decision resolves through the cfa when it
+ * exists and through the accepted-authority head otherwise. Each workplace is
+ * idempotent by capsule evidence (source_candidate_set_ref), and every skip is
+ * counted and logged — the sweep can finally see its own failures (R-C6/R-E1).
  */
 export function certifyAcceptedReplayCapsules(
   db: Database.Database,
   projectId: number,
-): void {
+): ReplayCertificationSweepSummary {
   ensureReplayCapsuleSchema(db);
   const repo = new SqliteReplayCapsuleRepository(db);
   const workplaces = db.prepare(
     `SELECT w.workplace_ref
        FROM factory_workplaces w
        JOIN factory_process_runs pr ON pr.id=w.process_run_id
-       JOIN factory_cell_final_acceptances cfa
-         ON cfa.workplace_ref=w.workplace_ref
       WHERE pr.project_id=?
         AND w.loop_state='terminal'
         AND w.terminal_reason='accepted'`,
   ).all(projectId) as Array<{ workplace_ref: string }>;
 
+  const skipped: Record<string, number> = {};
+  const skip = (reason: string, workplaceRef: string, detail?: string): void => {
+    skipped[reason] = (skipped[reason] ?? 0) + 1;
+    process.stderr.write(
+      `[replay-certification] skip(${reason}): ${workplaceRef}`
+      + (detail ? ` — ${detail}` : '') + '\n',
+    );
+  };
+  let certified = 0;
+  let failed = 0;
+
   for (const workplace of workplaces) {
     try {
+      // Preferred: the authoritative FinalAcceptance's decision. Fallback
+      // (R-D2): the accepted-authority head's author gate decision — the
+      // decision recordFinalAcceptanceAndCapture would have used.
       const decision = db.prepare(
         `SELECT gd.decision_key,gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs
            FROM factory_cell_final_acceptances cfa
@@ -140,11 +180,23 @@ export function certifyAcceptedReplayCapsules(
         decision_key: string;
         subject_candidate_set_ref: string;
         assessment_candidate_set_refs: string;
-      } | undefined;
+      } | undefined
+        ?? db.prepare(
+          `SELECT gd.decision_key,gd.subject_candidate_set_ref,gd.assessment_candidate_set_refs
+             FROM factory_accepted_authority_head h
+             JOIN factory_gate_decisions gd
+               ON gd.decision_key=h.accepted_author_gate_decision_key
+            WHERE h.workplace_ref=?
+              AND gd.verdict='accepted'`,
+        ).get(workplace.workplace_ref) as {
+          decision_key: string;
+          subject_candidate_set_ref: string;
+          assessment_candidate_set_refs: string;
+        } | undefined;
       if (!decision) {
-        process.stderr.write(
-          `[replay-certification] terminal accepted workplace has no exact FinalAcceptance GateDecision: `
-          + `${workplace.workplace_ref}\n`,
+        skip(
+          'no-accepted-decision', workplace.workplace_ref,
+          'no exact accepted FinalAcceptance or authority-head GateDecision',
         );
         continue;
       }
@@ -164,7 +216,24 @@ export function certifyAcceptedReplayCapsules(
         ).get(candidateSetRef, workplace.workplace_ref) as {
           candidate_set_ref: string;
         } | undefined;
-        if (!candidate) continue;
+        if (!candidate) {
+          // R-C6 — a missing candidate row is a counted, logged skip (typical
+          // after a partial reset), never a silent continue.
+          skip('candidate-set-missing', workplace.workplace_ref, candidateSetRef);
+          continue;
+        }
+        // Idempotency by sealed material: a capsule already citing this exact
+        // CandidateSet proves the material is certified (capture is idempotent
+        // by capsule_ref; re-running the completeness proof would only
+        // re-derive the same row).
+        const alreadyCertified = db.prepare(
+          `SELECT 1 FROM factory_replay_capsules
+            WHERE source_candidate_set_ref=? LIMIT 1`,
+        ).get(candidate.candidate_set_ref);
+        if (alreadyCertified) {
+          skip('already-certified', workplace.workplace_ref, candidate.candidate_set_ref);
+          continue;
+        }
         const presentations = requireAcceptedCandidatePresentations(db, {
           workplaceRef: workplace.workplace_ref,
           finalDecisionKey: decision.decision_key,
@@ -178,15 +247,35 @@ export function certifyAcceptedReplayCapsules(
               candidateSetRef: candidate.candidate_set_ref,
               expectedReplayBinding: presentation,
             }));
+          certified += 1;
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      failed += 1;
+      // R-E1 companion — the failure is journal-visible (observation only; the
+      // journal never feeds a decision), not just a lost stderr line.
+      journalEvent('error.thrown', { workplace_ref: workplace.workplace_ref }, {
+        error_name: error instanceof Error ? error.name : typeof error,
+        message,
+        source_site: 'replay-certification-sweep',
+      });
       process.stderr.write(
         `[replay-certification] workplace=${workplace.workplace_ref}: ${message}\n`,
       );
     }
   }
+
+  const summary: ReplayCertificationSweepSummary = {
+    considered: workplaces.length,
+    certified,
+    failed,
+    skipped,
+  };
+  process.stderr.write(
+    `[replay-certification] sweep summary: ${JSON.stringify(summary)}\n`,
+  );
+  return summary;
 }
 
 /**
