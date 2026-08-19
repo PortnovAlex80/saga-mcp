@@ -255,6 +255,77 @@ export function readLatestSubmissionRejectionForExecution(
     : null;
 }
 
+// ---------------------------------------------------------------------------
+// BLINDSIGHT F5 — the RETROSPECTIVE reader over the durable rejection chain.
+//
+// One append-only rejection row lands per rejected worker_done preflight,
+// each carrying the byte-identity of the observed artifact set
+// (observed_set_digest). The chain was written and never read as a CHAIN:
+// the pattern "the worker resubmitted BYTE-IDENTICAL material after N
+// rejections" (zero repair — minimal labor) was invisible, and the loop
+// could only end by mechanically exhausting a budget this path does not
+// have. Same CONVEYOR §15 policy as the obligation valve, F1 and F2: a
+// CHANGED observed set (real repair work) resets the consecutive run and is
+// never taxed.
+// ---------------------------------------------------------------------------
+
+/**
+ * How many consecutive NEWEST rejections carrying the byte-identical
+ * observed set mean the repair loop is producing zero work. Default 5
+ * (PREVENTIVE-HUNT worker/tool layer finding 1: "repeat-minimal-work").
+ */
+export const DEFAULT_SUBMISSION_STASIS_THRESHOLD = 5;
+
+export interface SubmissionRejectionStasis {
+  /** Consecutive newest rejections whose observed_set_digest is identical. */
+  readonly consecutiveIdenticalBytes: number;
+  /** The byte-identity of the repeating observed artifact set. */
+  readonly observedSetDigest: string;
+  /** The typed rejection code of the newest rejection. */
+  readonly rejectionCode: string;
+}
+
+/**
+ * Read the rejection chain for a task NEWEST-first and count how many
+ * consecutive rows share the newest observed_set_digest. Crosses executions
+ * (repair rounds): the same execution resubmitting identical bytes is
+ * deduplicated by UNIQUE(execution_id, rejection_digest), so a grown count
+ * proves N repair rounds each produced byte-identical material — zero
+ * repair. Returns null when the task has no rejection rows.
+ */
+export function readSubmissionRejectionStasis(
+  db: Database,
+  taskId: number,
+): SubmissionRejectionStasis | null {
+  let rows: Array<{ observed_set_digest: string; rejection_code: string }>;
+  try {
+    rows = db.prepare(
+      `SELECT observed_set_digest, rejection_code
+         FROM factory_submission_validation_rejections
+        WHERE task_id=?
+        ORDER BY id DESC`,
+    ).all(taskId) as typeof rows;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return null;
+    throw error;
+  }
+  if (rows.length === 0) return null;
+  const newest = rows[0]!;
+  let consecutiveIdenticalBytes = 0;
+  for (const row of rows) {
+    if (row.observed_set_digest === newest.observed_set_digest) {
+      consecutiveIdenticalBytes += 1;
+    } else {
+      break;
+    }
+  }
+  return {
+    consecutiveIdenticalBytes,
+    observedSetDigest: newest.observed_set_digest,
+    rejectionCode: newest.rejection_code,
+  };
+}
+
 function parseMetadata(raw: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw) as unknown;

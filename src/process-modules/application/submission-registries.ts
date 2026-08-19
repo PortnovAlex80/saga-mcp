@@ -22,12 +22,18 @@ import { wireSubmissionValidation } from './wire-submission-validation.js';
 
 let policyRegistry: NodeSubmissionPolicyRegistry | null = null;
 let validatorRegistry: NodeSubmissionValidatorRegistry | null = null;
+let wiredDb: Database.Database | null = null;
 
 export function initSubmissionRegistries(db: Database.Database): void {
-  if (policyRegistry && validatorRegistry) return;
+  // Re-wire when the DATABASE INSTANCE changes (a closeDb/getDb reopen
+  // cycle): validators capture the db handle at wiring time, and keeping a
+  // closed connection wired would kill every later worker_done in the same
+  // process with "The database connection is not open".
+  if (policyRegistry && validatorRegistry && wiredDb === db) return;
   policyRegistry = new InMemoryNodeSubmissionPolicyRegistry();
   validatorRegistry = new InMemoryNodeSubmissionValidatorRegistry();
   wireSubmissionValidation(policyRegistry, validatorRegistry, db);
+  wiredDb = db;
 }
 
 export function getSubmissionPolicyRegistry(): NodeSubmissionPolicyRegistry | null {
