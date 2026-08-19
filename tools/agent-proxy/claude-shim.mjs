@@ -30,9 +30,16 @@
 // signal for the foreman (markExecutionProgress), so opencode's ANSI output is
 // safe. All SAGA_* env is inherited so the MCP gateway and the hook plugin see
 // the execution identity.
+//
+// PROVIDER-RETRY: the child runs over pipes with a live tee (capture for the
+// retry discriminator, byte-identical forwarding for the runner), and deaths
+// that match a conservative transient class (429/5xx/socket, or a provably
+// pre-first-tool death) climb a jittered exponential ladder inside the shim
+// with a stdout heartbeat during sleeps — see the PROVIDER-RETRY block below
+// and docs/architecture/PROVIDER-RETRY-DESIGN.md.
 
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,7 +49,12 @@ import { fileURLToPath } from 'node:url';
 // the real bin inside the global opencode-ai package instead.
 function resolveOpenCodeBin() {
   if (process.env.SAGA_PROXY_OPENCODE_PATH && existsSync(process.env.SAGA_PROXY_OPENCODE_PATH)) {
-    return { cmd: process.env.SAGA_PROXY_OPENCODE_PATH, shell: false };
+    const p = process.env.SAGA_PROXY_OPENCODE_PATH;
+    // A .js/.mjs/.cjs override is a node script (wrapper scripts, and the
+    // hermetic shim tests) — run it with the current interpreter, args
+    // appended after the script path.
+    if (/\.(mjs|cjs|js)$/i.test(p)) return { cmd: process.execPath, argsPrefix: [p], shell: false };
+    return { cmd: p, shell: false };
   }
   if (process.platform === 'win32') {
     try {
@@ -284,6 +296,186 @@ function ensureHookPlugin(parsedSettings) {
 }
 
 // ---------------------------------------------------------------------------
+// PROVIDER-RETRY (docs/architecture/PROVIDER-RETRY-DESIGN.md).
+//
+// The shim owns the worker's life cycle, so transient provider deaths
+// (429/5xx storms, dropped sockets) are retried HERE — the factory never
+// learns about the transient (zero factory changes, zero recovery-budget
+// spend). Preconditions per the design:
+//   * stdio pipes + live tee (the child's output is captured for the
+//     discriminator while being forwarded byte-for-byte, so the runner keeps
+//     seeing the exact stream it sees today);
+//   * a heartbeat on stdout during every retry sleep (claude-runner's
+//     progress_at is throttled to 30s and STUCK_SILENCE_MS is 10min — silence
+//     accumulates ACROSS attempts, so an unheartbeated ladder would be
+//     reaped mid-climb);
+//   * a conservative discriminator (below) with a hard NEVER on
+//     saga_worker_done — retrying a worker that completed its card would
+//     double-complete it.
+//
+// Accounting is log-visible only: retry notes and the summary go to stderr,
+// which the runner tees into the worker JSONL (/api/worker/tail).
+// ----------------------------------------------------------------------------
+
+export const MAX_ATTEMPTS_PRE_TOOL = 8;   // full ladder: side-effect-free deaths
+export const MAX_ATTEMPTS_POST_TOOL = 3;  // reduced ladder (design: 2-3)
+export const RETRY_JITTER_MAX_MS = 250;   // de-synchronizes parallel workers
+export const HEARTBEAT_INTERVAL_MS = 20_000; // < the runner's 30s progress throttle
+
+// How much captured output the text discriminator inspects (tail = proximate
+// cause of death; a 429 the backend recovered from mid-run must not trigger a
+// retry of a finished run) and how much is kept at all (rolling window, for
+// the marker/done scans on very long ANSI outputs).
+const CAPTURE_TAIL_BYTES = 16 * 1024;
+const CAPTURE_WINDOW_BYTES = 2 * 1024 * 1024;
+
+// Retryable provider-error classes, each alternative documented:
+//   429 / too many requests     — provider rate limiting the plan
+//   rate.?limit                 — same, in prose ("rate limit", "rate-limit")
+//   overloaded                  — provider capacity (Anthropic-style wording)
+//   status[: ]5\d\d             — any 5xx surfaced as "status 503" / "status:503"
+//                                 (ONE separator char; "status: 503" with both
+//                                 colon and space deliberately does NOT match —
+//                                 keep the class narrow, miss > false-retry)
+//   socket connection was closed— AI_APICallError transport death (observed ×5
+//                                 in the live opencode private logs)
+//   ECONNRESET / ETIMEDOUT      — node fetch/socket errors
+//   fetch failed                — undici's generic transport failure
+export const RETRYABLE_ERROR_RE = /429|rate.?limit|overloaded|too many requests|status[: ]5\d\d|socket connection was closed|ECONNRESET|ETIMEDOUT|fetch failed/i;
+
+// A "tool ran" marker in the captured child output:
+//   ⚙                    — opencode TUI renders tool calls as `⚙ saga_<tool> {json}`
+//                          lines on stdout (the factory's failure-log parses these)
+//   "type":"tool_use"    — opencode `run --format json` stream events (the es1
+//                          stream-json translation composes with this retry:
+//                          its translator consumes the same captured stream)
+const TOOL_MARKER_RE = /⚙|"type"\s*:\s*"tool_use"/;
+
+// Completion guard — retrying past any of these would double-complete the card:
+//   saga_worker_done       — the worker called its completion tool (any spelling:
+//                            plain text, ⚙ render, or stream-json input)
+//   "type":"result"        — a terminal claude-format result event (what the es1
+//                            translation emits at child close)
+const WORKER_DONE_RE = /saga_worker_done|"type"\s*:\s*"result"/;
+
+export function computeLadderDelayMs(n) {
+  // min(2^(n-1), 256s): 1,2,4,8,16,32,64,128s; capped at 256s so a future
+  // raise of MAX_ATTEMPTS_PRE_TOOL keeps the total sleep budget bounded.
+  return Math.min(2 ** (n - 1), 256) * 1000;
+}
+
+export function nextRetryDelayMs(n, rand = Math.random) {
+  // + uniform jitter 0..250ms. Fixed steps synchronize parallel workers on the
+  // same quota (the operator's ban concern); jitter de-synchronizes them.
+  return computeLadderDelayMs(n) + Math.floor(rand() * (RETRY_JITTER_MAX_MS + 1));
+}
+
+function tailText(text, max) {
+  return text.length > max ? text.slice(-max) : text;
+}
+
+// Conservative death classifier. Verdicts:
+//   worker-done     NEVER retry — completion is already recorded upstream
+//   text            retry — retryable provider error in the CURRENT attempt's
+//                          output tail (per-attempt, so a successful attempt
+//                          is never re-run on residue from an earlier one)
+//   pre-tool-death  retry — exit≠0/signal AND no tool marker anywhere in the
+//                          capture: provably died before its first tool, so the
+//                          attempt was side-effect-free → full ladder
+//   post-tool-death retry — death after at least one tool ran. The design
+//                          sanctions this with the REDUCED ladder only ("the
+//                          same risk class the factory recovery already
+//                          accepts" — its 300ms respawn re-runs such cards);
+//                          without a retryable text this is still gated to
+//                          MAX_ATTEMPTS_POST_TOOL attempts, never the full 8
+//   clean           no retry — exit 0 with no retryable text
+//
+// stdout/stderr are the FULL accumulated capture (marker/done scans — markers
+// from any earlier attempt keep the ladder reduced, conservative); the
+// optional attemptStdout/attemptStderr slices scope the text match to the
+// attempt that just closed.
+export function classifyFailure({ exitCode, signal, stdout, stderr, attemptStdout, attemptStderr }) {
+  const out = String(stdout || '');
+  const err = String(stderr || '');
+  if (WORKER_DONE_RE.test(out) || WORKER_DONE_RE.test(err)) {
+    return { retry: false, class: 'worker-done', postTool: true, detail: 'saga_worker_done/result event seen' };
+  }
+  const textOut = attemptStdout !== undefined ? String(attemptStdout) : out;
+  const textErr = attemptStderr !== undefined ? String(attemptStderr) : err;
+  const tail = `${tailText(textErr, CAPTURE_TAIL_BYTES)}\n${tailText(textOut, CAPTURE_TAIL_BYTES)}`;
+  // Take the LAST match in the tail and report its whole line: the proximate
+  // cause of this death, in operator-readable form for the retry summary.
+  let match = null;
+  for (const m of tail.matchAll(new RegExp(RETRYABLE_ERROR_RE.source, `${RETRYABLE_ERROR_RE.flags}g`))) match = m;
+  // Markers accumulate across attempts (capture is not reset): if ANY attempt
+  // ran a tool, every later attempt is treated as post-tool — conservative.
+  const postTool = TOOL_MARKER_RE.test(out) || TOOL_MARKER_RE.test(err);
+  if (match) {
+    const lineStart = tail.lastIndexOf('\n', match.index) + 1;
+    const lineEndRaw = tail.indexOf('\n', match.index);
+    const lineEnd = lineEndRaw === -1 ? tail.length : lineEndRaw;
+    const detail = tail.slice(lineStart, lineEnd).trim().slice(0, 200);
+    return { retry: true, class: 'text', postTool, detail: detail || match[0] };
+  }
+  const died = (exitCode !== null && exitCode !== undefined && exitCode !== 0) || Boolean(signal);
+  if (died && !postTool) return { retry: true, class: 'pre-tool-death', postTool: false };
+  if (died) return { retry: true, class: 'post-tool-death', postTool: true };
+  return { retry: false, class: 'clean', postTool: false };
+}
+
+// Sleep totalMs while keeping the runner's progress_at fresh: one heartbeat
+// line on stdout per HEARTBEAT_INTERVAL_MS (the runner throttles progress to
+// 30s and reaps silence at 10min — silence accumulates across attempts).
+// Injectable clock/sleep/writers for tests. Resolves true when aborted early.
+export async function sleepWithRetryHeartbeat(totalMs, { attempt, className }, io = {}) {
+  const now = io.now || Date.now;
+  const sleepFn = io.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const out = io.stdout || process.stdout;
+  const shouldAbort = io.shouldAbort || (() => false);
+  const start = now();
+  for (;;) {
+    const remaining = totalMs - (now() - start);
+    if (remaining <= 0) return false;
+    await sleepFn(Math.min(remaining, HEARTBEAT_INTERVAL_MS));
+    if (shouldAbort()) return true;
+    const elapsed = now() - start;
+    if (elapsed >= totalMs) return false;
+    const secs = Math.ceil((totalMs - elapsed) / 1000);
+    out.write(`[agent-proxy] retry #${attempt} in ${secs}s (${className}) — heartbeat\n`);
+  }
+}
+
+// Rolling capture of one stream: keeps the last CAPTURE_WINDOW_BYTES for the
+// discriminator while the tee forwards every chunk live. markAttempt() draws
+// the boundary the text discriminator scopes itself to.
+class OutputCapture {
+  constructor() {
+    this.chunks = [];
+    this.bytes = 0;
+    this.mark = 0;
+  }
+  append(chunk) {
+    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    this.chunks.push(b);
+    this.bytes += b.length;
+    while (this.bytes > CAPTURE_WINDOW_BYTES && this.chunks.length > 1) {
+      this.bytes -= this.chunks[0].length;
+      this.chunks.shift();
+      if (this.mark > 0) this.mark -= 1;
+    }
+  }
+  markAttempt() {
+    this.mark = this.chunks.length;
+  }
+  text() {
+    return Buffer.concat(this.chunks).toString('utf8');
+  }
+  attemptText() {
+    return Buffer.concat(this.chunks.slice(this.mark)).toString('utf8');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main.
 // ---------------------------------------------------------------------------
 
@@ -335,25 +527,112 @@ async function main() {
   if (process.env.SAGA_RUN_ID) ocArgs.push('--title', process.env.SAGA_RUN_ID);
 
   const bin = resolveOpenCodeBin();
-  const child = spawn(bin.cmd, bin.shell ? [ocArgs.join(' ')] : ocArgs, { stdio: ['pipe', 'inherit', 'inherit'], env, shell: bin.shell });
+  const childArgs = [...(bin.argsPrefix || []), ...(bin.shell ? [ocArgs.join(' ')] : ocArgs)];
 
-  const fwd = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
+  // PROVIDER-RETRY loop. stdio is pipes+tee (was inherit): every child chunk
+  // is captured for the discriminator and forwarded live, so the runner keeps
+  // seeing the exact stdout/stderr stream it saw before (byte-identical when
+  // no retry fires — shim notes go to stderr only). Composition with the es1
+  // stream-json translation (not merged into this base): its translator sits
+  // between the capture and the forward — append to stdoutCapture first, then
+  // hand the chunk to the translator instead of the raw write.
+  const stdoutCapture = new OutputCapture();
+  const stderrCapture = new OutputCapture();
+  let aborted = false;      // a forwarded SIGTERM/SIGINT must break the ladder
+  let currentChild = null;  // kill target for forwarded signals
+  const fwd = (sig) => () => {
+    aborted = true;
+    try { currentChild?.kill(sig); } catch { /* already gone */ }
+  };
   process.on('SIGTERM', fwd('SIGTERM'));
   process.on('SIGINT', fwd('SIGINT'));
 
-  child.stdin.on('error', () => { /* opencode may exit early; close is handled below */ });
-  child.stdin.end(stdin);
+  const runOnce = () => new Promise((resolve, reject) => {
+    stdoutCapture.markAttempt();
+    stderrCapture.markAttempt();
+    const child = spawn(bin.cmd, childArgs, { stdio: ['pipe', 'pipe', 'pipe'], env, shell: bin.shell });
+    currentChild = child;
+    child.stdin.on('error', () => { /* opencode may exit early; close is handled below */ });
+    child.stdin.end(stdin);
+    child.stdout.on('data', (chunk) => { stdoutCapture.append(chunk); process.stdout.write(chunk); });
+    child.stderr.on('data', (chunk) => { stderrCapture.append(chunk); process.stderr.write(chunk); });
+    child.on('error', reject);
+    child.on('close', (code, signal) => resolve({ code, signal }));
+  });
 
-  child.on('error', (e) => {
+  // The tee turned the runner streams from inherited FDs into user-space
+  // writes; on POSIX those are async — drain both pipes before ANY exit so
+  // the runner never loses the tail of the stream.
+  const flushStreams = () => new Promise((resolve) => {
+    let pending = 2;
+    const done = () => { pending -= 1; if (pending === 0) resolve(); };
+    process.stdout.write('', done);
+    process.stderr.write('', done);
+  });
+
+let attempt = 0;
+let lastCode = null;
+let lastSignal = null;
+const classes = [];
+for (;;) {
+  attempt += 1;
+  let res;
+  try {
+    res = await runOnce();
+  } catch (e) {
+    // Spawn failure is a wiring error, not a provider transient — never retried.
     process.stderr.write(`[agent-proxy] failed to spawn opencode: ${e.message}\n`);
+    await flushStreams();
     process.exit(127);
+  }
+  lastCode = res.code;
+  lastSignal = res.signal;
+  if (aborted) break; // the runner/operator stopped us — do not climb further
+
+  const verdict = classifyFailure({
+    exitCode: res.code,
+    signal: res.signal,
+    stdout: stdoutCapture.text(),
+    stderr: stderrCapture.text(),
+    attemptStdout: stdoutCapture.attemptText(),
+    attemptStderr: stderrCapture.attemptText(),
   });
-  child.on('close', (code, signal) => {
-    process.exit(code ?? (signal ? 137 : 0));
-  });
+  classes.push(verdict.detail ? `${verdict.class}:${verdict.detail}` : verdict.class);
+  if (!verdict.retry) break;
+
+  const maxAttempts = verdict.postTool ? MAX_ATTEMPTS_POST_TOOL : MAX_ATTEMPTS_PRE_TOOL;
+  if (attempt >= maxAttempts) break;
+
+  const delayMs = nextRetryDelayMs(attempt);
+  const className = verdict.detail ? `${verdict.class}:${verdict.detail}` : verdict.class;
+  process.stderr.write(
+    `[agent-proxy] attempt ${attempt} failed (exit=${res.code ?? `signal:${res.signal}`}, `
+    + `class=${verdict.class}${verdict.detail ? ` "${verdict.detail}"` : ''}, ladder=${verdict.postTool ? 'reduced' : 'full'}) `
+    + `— retrying in ${Math.round(delayMs / 100) / 10}s (jitter ≤${RETRY_JITTER_MAX_MS}ms)\n`,
+  );
+  const abortedWhileSleeping = await sleepWithRetryHeartbeat(delayMs, { attempt, className }, { shouldAbort: () => aborted });
+  if (abortedWhileSleeping || aborted) break;
 }
 
-main().catch((e) => {
-  process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
-  process.exit(1);
-});
+process.stderr.write(`[agent-proxy] retry summary: ${attempt} attempts, classes seen: ${classes.join(', ')}\n`);
+await flushStreams();
+process.exit(lastCode ?? (lastSignal ? 137 : 0));
+}
+
+// Run only when executed as a CLI (node claude-shim.mjs ...), not when
+// imported by tests for the provider-retry units — main() awaits stdin 'end',
+// which would hang an importing test process forever.
+const invokedAsCli = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsCli) {
+  main().catch((e) => {
+    process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
+    process.exit(1);
+  });
+}
