@@ -19,6 +19,7 @@ import {
   createDevelopmentTaskGraphCheckProvider,
   createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
+  createDevelopmentReplanGraphCheckProvider,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
@@ -27,6 +28,8 @@ import { developmentProcessModule } from '../../process-modules/modules/developm
 import {
   DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF,
   developmentContinuationProcessModule,
+  DEVELOPMENT_REPLAN_CONTINUATION_PROCESS_MODULE_REF,
+  developmentReplanContinuationProcessModule,
 } from '../../process-modules/modules/development/development-continuation-process-module.js';
 import { createDevelopmentContinuationTaskGraphHandler } from './infrastructure/development-continuation-installation.js';
 import {
@@ -98,6 +101,7 @@ export function registerDevelopment(
     ?? new SqliteDevelopmentOutputRepository(db, [
       developmentProcessModule.identity,
       developmentContinuationProcessModule.identity,
+      developmentReplanContinuationProcessModule.identity,
       developmentVerificationContinuationProcessModule.identity,
     ]);
   const deps: DevelopmentModuleInstallationDependencies = {
@@ -122,6 +126,13 @@ export function registerDevelopment(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     git,
+  }));
+  // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 planner gate check
+  // (parallelism anti-pattern + shared-surface extraction). Inert outside
+  // replan continuation runs.
+  registerWorkshopCheckProvider(createDevelopmentReplanGraphCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
   }));
   // ADR-053 Phase 1: payload contracts are installed from the single workshop
   // capability manifest by the orchestrator composition root, not per-module.
@@ -277,6 +288,31 @@ export function registerDevelopment(
   registries.installationRegistry.register({
     definition: developmentContinuationProcessModule,
     executor: continuationExecutor,
+  } as Parameters<typeof registries.installationRegistry.register>[0]);
+
+  // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4) — the cycle-2 continuation variant:
+  // enters through the 'replan-task-graph' planner cell; kernel handlers are
+  // the already-registered development handlers (the resolver node references
+  // the standard resolveTaskGraph handler id).
+  const replanContinuationExecutor = new GenericFlowExecutor({
+    moduleRef: developmentReplanContinuationProcessModule.identity,
+    processRunRepo: sharedDeps.processRunRepo,
+    nodeRunRepo: sharedDeps.nodeRunRepo,
+    certificateRepo: sharedDeps.certificateRepo,
+    transitionObligations: sharedDeps.transitionObligations,
+    nodeExecutors: sharedDeps.nodeExecutors,
+    resolveNodeProducts: sharedDeps.resolveNodeProducts,
+    resolveOutput: createVersionedDevelopmentOutputResolver(
+      outputRepository,
+      DEVELOPMENT_REPLAN_CONTINUATION_PROCESS_MODULE_REF,
+    ),
+    adoptedNodeResults: sharedDeps.adoptedNodeResults,
+    v2: sharedDeps.executorV2Options,
+  });
+  registries.moduleRegistry.register(developmentReplanContinuationProcessModule);
+  registries.installationRegistry.register({
+    definition: developmentReplanContinuationProcessModule,
+    executor: replanContinuationExecutor,
   } as Parameters<typeof registries.installationRegistry.register>[0]);
 
   return { executor, graph, outputRepository };

@@ -7,11 +7,51 @@ import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../domain/source-change-candi
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/domain/development-kernel-ports.js';
 import { developmentProcessModule } from './development-process-module.js';
 import { buildCheckPlan } from '../../application/standard-check-providers.js';
+import {
+  DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,
+  DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
+  DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+} from '../../../modules/development/application/development-check-providers.js';
 
 export const DEVELOPMENT_CONTINUATION_PROCESS_MODULE_REF = {
   name: 'solution-development-managed',
   version: '1.1.0',
 } as const;
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4) — the cycle-2 variant of the managed
+ * continuation. The plain continuation deliberately filters the planner out
+ * (deterministic recovery, no planner inference). A run whose case carries
+ * replanContext is cycle 2: it ENTERS through a planner cell
+ * ('replan-task-graph') placed BEFORE 'resolve-task-graph', so the planner —
+ * seeing the whole integrated cycle-1 code through replanContext — re-carves
+ * the graph with maximum parallelism. Distinct module version (1.2.0): both
+ * variants coexist in the registry; cycle-2 runs get fresh workplace
+ * authority keyed by the new moduleRef.
+ */
+export const DEVELOPMENT_REPLAN_CONTINUATION_PROCESS_MODULE_REF = {
+  name: 'solution-development-managed',
+  version: '1.2.0',
+} as const;
+
+const REPLAN_PLANNER_CHECK_PLAN = buildCheckPlan(
+  'development.replan-task-graph.final',
+  [
+    {
+      providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
+      version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
+      providerDigest: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
+    },
+    {
+      providerId: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,
+      version: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION,
+      providerDigest: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_DIGEST,
+    },
+  ],
+);
 
 const RESOURCE_ROOT =
   'src/process-modules/modules/development/package/resources/managed-source';
@@ -151,6 +191,101 @@ export const developmentContinuationProcessModule: ProcessModuleDefinition = (()
           'The author can read repository content and submit text, but cannot mutate Git refs, use Bash, or write a checkout.',
         enforcement: 'runtime',
       },
+    ],
+  };
+})();
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4) — the cycle-2 continuation: the plain
+ * continuation's deterministic graph is REPLANNED by an LM planner cell
+ * inserted BEFORE 'resolve-task-graph'. The planner's gate runs the standard
+ * task-graph provider PLUS the replan-graph provider (parallelism
+ * anti-pattern + shared-surface extraction, REPLAN-CYCLE-TZ §2). The rest of
+ * the managed grammar (textual source production, Factory-owned Git effects)
+ * is inherited unchanged from the plain continuation.
+ */
+export const developmentReplanContinuationProcessModule: ProcessModuleDefinition = (() => {
+  const base = structuredClone(developmentContinuationProcessModule) as ProcessModuleDefinition;
+  const originalPlanner = developmentProcessModule.flow.nodes.find(
+    node => node.id === 'plan-task-graph',
+  );
+  if (!originalPlanner || originalPlanner.kind !== 'production-cell') {
+    throw new Error('re-plan Development requires the base planner cell');
+  }
+  // The base module's planner profile was filtered out of the continuation;
+  // cycle 2 restores it verbatim (Read/Glob/Grep repo visibility).
+  const plannerProfile = developmentProcessModule.executionProfiles.find(
+    profile => profile.id === 'development-task-graph-planner',
+  );
+  if (!plannerProfile) {
+    throw new Error('re-plan Development requires the base planner execution profile');
+  }
+  const plannerNode: ProductionCellFlowNodeDefinition = {
+    ...(originalPlanner as ProductionCellFlowNodeDefinition),
+    id: 'replan-task-graph',
+    label: 'Re-plan Task Graph',
+    description:
+      'Cycle-2 planner: re-carves the task graph over the WHOLE integrated cycle-1 code (replanContext) with maximum parallelism; the gate enforces coverage, the parallelism anti-pattern rule and shared-surface extraction.',
+    cellDefinition: {
+      ...(originalPlanner as ProductionCellFlowNodeDefinition).cellDefinition!,
+      id: 'development-replan-task-graph',
+      authorGate: {
+        gateId: 'development-replan-task-graph-author',
+        gatePhase: 'final',
+        checkPlan: REPLAN_PLANNER_CHECK_PLAN,
+      },
+    },
+  };
+  const rest = base.flow.nodes
+    .filter(node => node.id !== 'replan-task-graph')
+    .map(node => node.id === 'resolve-task-graph' && node.kind === 'kernel'
+      ? {
+        ...node,
+        // Cycle 2 resolves the PLANNER's accepted proposal (the standard
+        // handler), not the deterministic continuation graph — the whole
+        // point of the re-plan cycle.
+        handler: DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph,
+        description:
+          'Canonicalize the cycle-2 gate-accepted re-plan proposal and materialize its projected work idempotently.',
+      }
+      : node);
+  const resolverIndex = rest.findIndex(node => node.id === 'resolve-task-graph');
+  if (resolverIndex < 0) {
+    throw new Error('re-plan Development requires resolve-task-graph');
+  }
+  // The planner sits strictly BEFORE the resolver in node order.
+  const nodes = [
+    ...rest.slice(0, resolverIndex),
+    plannerNode,
+    ...rest.slice(resolverIndex),
+  ];
+  return {
+    ...base,
+    identity: {
+      ...DEVELOPMENT_REPLAN_CONTINUATION_PROCESS_MODULE_REF,
+      kind: 'development',
+      displayName: 'Solution Development (Managed Re-Plan Continuation)',
+      description:
+        'Cycle-2 continuation: replans the task graph over the integrated cycle-1 reality, then produces managed textual source with Factory-owned Git effects.',
+    },
+    flow: {
+      ...base.flow,
+      id: 'factory.development.managed-replan-continuation',
+      version: '1.2.0',
+      entryNodeId: 'replan-task-graph',
+      nodes,
+      transitions: [
+        { from: 'replan-task-graph', to: 'resolve-task-graph', on: 'domain.accepted' },
+        { from: 'replan-task-graph', to: 'complete-failed', on: 'domain.failed' },
+        ...base.flow.transitions,
+      ],
+      recovery: (base.flow.recovery ?? []).filter(policy =>
+        nodes.some(node => node.id === policy.verifyNodeId)
+        && nodes.some(node => node.id === policy.repairNodeId)),
+    },
+    executionProfiles: [
+      plannerProfile,
+      ...base.executionProfiles,
     ],
   };
 })();

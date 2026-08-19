@@ -45,10 +45,120 @@ import {
   type DevelopmentSrsContentResult,
 } from './development-srs-artifact-content.js';
 import { partitionFactoryManagedPaths } from '../domain/factory-managed-repository-paths.js';
+import {
+  parallelismViolations,
+  uncoveredSharedSurfacePaths,
+  type ReplanScopeViolation,
+} from '../domain/replan-graph-checks.js';
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.2.0';
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 gate check. Runs ONLY in
+ * the replan continuation module's planner cell, beside the standard
+ * task-graph provider (which keeps owning coverage/lineage/DAG semantics):
+ * enforces the parallelism anti-pattern rule and the shared-surface
+ * extraction rule over the proposal, using the replanContext of the run's
+ * OWN input case (the cycle-1 diagnosis travels in the run input).
+ */
+export const DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID =
+  'development.replan-graph.v1';
+export const DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,
+  version: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION,
+  invariant: 'replan-graph-exploits-integrated-cycle1-reality-parallelism-and-shared-surface',
+});
+
+export function createDevelopmentReplanGraphCheckProvider(input: {
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
+}): CheckProvider {
+  return {
+    providerId: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_DIGEST,
+    run({ subjectCandidateSetRef, parameters }) {
+      try {
+        const processRunId = Number(parameters.processRunId);
+        if (!Number.isInteger(processRunId) || processRunId <= 0) {
+          return 'error';
+        }
+        const run = input.db.prepare(
+          `SELECT input_schema,input_snapshot FROM factory_process_runs WHERE id=?`,
+        ).get(processRunId) as { input_schema: string; input_snapshot: string } | undefined;
+        if (!run || run.input_schema !== DEVELOPMENT_CASE_SCHEMA) return 'error';
+        const replanContext = (JSON.parse(run.input_snapshot) as {
+          replanContext?: {
+            cycle1Diagnosis?: { scopeViolations?: unknown };
+          };
+        }).replanContext;
+        const violations = replanContext?.cycle1Diagnosis?.scopeViolations;
+        if (!Array.isArray(violations)) {
+          return scopeFailure(subjectCandidateSetRef, 'replan-context-missing',
+            'The re-plan gate requires the run input to carry replanContext.cycle1Diagnosis.scopeViolations.');
+        }
+        const scopeViolations = violations.flatMap((violation): ReplanScopeViolation[] => {
+          if (!violation || typeof violation !== 'object') return [];
+          const paths = (violation as { paths?: unknown }).paths;
+          const scopes = (violation as { scopes?: unknown }).scopes;
+          if (!Array.isArray(paths) || !Array.isArray(scopes)) return [];
+          return [{
+            paths: paths.filter((p): p is string => typeof p === 'string'),
+            scopes: scopes.filter((s): s is string => typeof s === 'string'),
+          }];
+        });
+        // Resolve the proposal by the EXACT CandidateSet member submission
+        // (same binding discipline as the task-graph provider).
+        const candidate = input.candidateSets.read(subjectCandidateSetRef);
+        if (!candidate || candidate.role !== 'author' || candidate.members.length === 0) {
+          return 'error';
+        }
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return 'error';
+        }
+        const submissionId = Number(
+          member.productRef.ref.slice('managed-node-submission:'.length),
+        );
+        const row = input.db.prepare(
+          `SELECT payload_snapshot,content_hash
+             FROM factory_managed_node_submissions
+            WHERE id=? AND process_run_id=?`,
+        ).get(submissionId, processRunId) as
+          | { payload_snapshot: string; content_hash: string }
+          | undefined;
+        if (!row || row.content_hash !== member.productRef.digest) {
+          return scopeFailure(subjectCandidateSetRef, 'submission-binding-invalid',
+            'The re-plan task graph proposal does not match the exact CandidateSet member submission.');
+        }
+        const decoded = decodeDevelopmentTaskGraphProposal(
+          JSON.parse(row.payload_snapshot),
+        );
+        if (!decoded.ok) return 'error';
+        const items = decoded.value.implementationItems;
+        const diagnostics = [
+          ...parallelismViolations(items),
+          ...uncoveredSharedSurfacePaths(scopeViolations, items),
+        ];
+        if (diagnostics.length === 0) return 'passed';
+        return {
+          outcome: 'failed',
+          evidenceRefs: diagnostics.map(diagnostic => encodeCheckDiagnostic({
+            code: diagnostic.code,
+            message: diagnostic.message,
+            subjectRef: subjectCandidateSetRef,
+          })),
+        };
+      } catch {
+        return 'error';
+      }
+    },
+  };
+}
 
 export const DEVELOPMENT_TASK_GRAPH_PAYLOAD_CONTRACT_ID =
   'development.task-graph-proposal-payload.v1';
