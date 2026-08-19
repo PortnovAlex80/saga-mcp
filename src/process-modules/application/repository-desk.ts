@@ -51,6 +51,23 @@ export interface RepositoryDeskGit {
   readonly observedIntegrationHead?: string;
 }
 
+/**
+ * REPAIR-CODE-PRESERVATION — the rejected attempt's coordinates, delivered to
+ * the repair author's desk as previous-attempt.{json,patch}. Provenance only:
+ * the materials are a VIEW (git diff against the merge-base), never an
+ * inherited base. See it, but do not be bound — no auto-merge, no rebase.
+ */
+export interface PreviousAttemptDeskMaterials {
+  /** The shared-ref branch the rejected attempt committed to. */
+  readonly branch: string;
+  /** The frozen HEAD of that branch at rejection time. */
+  readonly commitSha: string;
+  /** merge-base(current frozen base, previous head) the diff was taken against. */
+  readonly mergeBaseCommit: string;
+  /** Directory receiving previous-attempt.{json,patch} (the execution workspace). */
+  readonly patchDirectory: string;
+}
+
 export interface RepositoryDesk {
   /** The project_repositories.id this desk is bound to. */
   readonly projectRepositoryId: number;
@@ -62,4 +79,6 @@ export interface RepositoryDesk {
   readonly role: RepositoryDeskRole;
   /** Frozen git state of the desk at provisioning time. */
   readonly git: RepositoryDeskGit;
+  /** Present only on author desks provisioned as a repair attempt. */
+  readonly previousAttempt?: PreviousAttemptDeskMaterials;
 }

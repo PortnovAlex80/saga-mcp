@@ -221,3 +221,94 @@ test('G1 (bonus pin) — rule 6a states that worker-done-call.json is not a tool
     rmSync(skillDir, { recursive: true, force: true });
   }
 });
+
+// REPAIR-CODE-PRESERVATION — the prompt line that opens the author's eyes to
+// the rejected attempt WITHOUT binding the author to it ("see it, but do not
+// be bound": no auto-merge, no rebase, no `git apply`).
+function makeRepairFixture(processWorkspace) {
+  const skillDir = mkdtempSync(join(tmpdir(), 'g1-prompt-skills-'));
+  writeFileSync(join(skillDir, 'protocol-skill.md'), 'G1-MARKER:protocol\n');
+  writeFileSync(join(skillDir, 'semantic-skill.md'), 'G1-MARKER:semantic\n');
+  writeFileSync(join(skillDir, 'reviewer-skill.md'), 'G1-MARKER:reviewer\n');
+  const task = {
+    id: 78,
+    status: 'in_progress',
+    task_kind: 'development.implement',
+    workflow_stage: 'solution-development',
+    execution_mode: 'git_change',
+    tags: '[]',
+  };
+  const prompt = buildPrompt({
+    assignment: {
+      execution_id: 'exec-repair-0002',
+      skill: 'semantic-skill',
+      repository: { name: 'widgets' },
+      task,
+    },
+    project: { id: 3, name: 'Widgets' },
+    workerId: 'worker-g1',
+    workspaceRoot: 'C:/tmp/g1-workspace',
+    sagaSkillRoot: GLOBAL_ROOT_THAT_MUST_NOT_APPEAR,
+    resolvedProfile: null,
+    processWorkspace,
+    launchSpec: {
+      installationId: 'inst-g1-test',
+      role: { protocolSkill: 'protocol-skill', semanticSkill: 'semantic-skill', reviewSkill: 'reviewer-skill' },
+      allowedToolIds: ['Bash', 'Read', 'Write', 'Edit'],
+      resolveSkill: (name) => join(skillDir, `${name}.md`),
+    },
+  });
+  return { prompt, skillDir };
+}
+
+const REPAIR_WORKSPACE = {
+  moduleRef: 'development@1.0.0',
+  profileId: 'development-implementation-worker',
+  trackerPath: 'docs/development/projects/3/executions/node-x/tracker.md',
+  executionDirectory: 'docs/development/projects/3/executions/node-x/wp/exec-repair-0002',
+  callFiles: [],
+  checklists: [],
+  workspaceFiles: [],
+  recoveryFeedback: {
+    present: true,
+    path: 'docs/development/projects/3/executions/node-x/wp/exec-repair-0002/recovery-feedback.json',
+    reasons: ['scope: the submission edits 373 lines outside the frozen item scope'],
+  },
+  reviewFeedback: { present: false, path: null },
+  agentAssistance: { required: false, path: null },
+};
+
+test('G1-REPAIR — the prompt names previous-attempt.patch and forbids binding to it', () => {
+  const { prompt, skillDir } = makeRepairFixture({
+    ...REPAIR_WORKSPACE,
+    previousAttempt: {
+      branch: 'saga/task/78/execution/abc123def45678901234',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      patchPath: 'docs/development/projects/3/executions/node-x/wp/exec-repair-0002/previous-attempt.patch',
+      descriptorPath: 'docs/development/projects/3/executions/node-x/wp/exec-repair-0002/previous-attempt.json',
+    },
+  });
+  try {
+    assert.ok(prompt.includes(
+      'docs/development/projects/3/executions/node-x/wp/exec-repair-0002/previous-attempt.patch',
+    ), 'the patch path is delivered to the decision point (the prompt)');
+    assert.ok(prompt.includes('A previous repair attempt EXISTS'),
+      'the one-line existence statement is present');
+    assert.ok(/see it, but do NOT be bound/i.test(prompt),
+      'the see-but-not-bound rule is stated');
+    assert.ok(!prompt.includes('git apply'),
+      'the prompt must never instruct applying the patch (no auto-merge of the rejected attempt)');
+    assert.ok(!prompt.includes('git merge') && !prompt.includes('git rebase'),
+      'no merge/rebase of the previous attempt may be suggested');
+  } finally {
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+
+  const bare = makeRepairFixture(REPAIR_WORKSPACE);
+  try {
+    assert.ok(!bare.prompt.includes('previous-attempt.patch'),
+      'a first-pass desk (no previous attempt) must not mention the patch');
+  } finally {
+    rmSync(bare.skillDir, { recursive: true, force: true });
+  }
+});

@@ -75,6 +75,19 @@ export interface WorkplaceDesk {
   readonly agentAssistanceAbsolutePath?: string;
 
   readonly repositoryDesk?: RepositoryDesk;
+  /**
+   * REPAIR-CODE-PRESERVATION — present only on git_change repair desks
+   * (managed_review_rejections > 0). The rejected attempt's diff is a VIEW on
+   * the desk (previous-attempt.patch next to recovery-feedback.json): see it,
+   * but do not be bound. Paths are workspace-relative like every other desk
+   * path delivered to the prompt.
+   */
+  readonly previousAttempt?: {
+    readonly branch: string;
+    readonly commitSha: string;
+    readonly patchPath: string;
+    readonly descriptorPath: string;
+  };
 }
 
 export function assertDeskInvariants(desk: WorkplaceDesk): void {
@@ -126,6 +139,22 @@ export function assertDeskInvariants(desk: WorkplaceDesk): void {
       `WORKPLACE_DESK_REVIEW_PRESENT_BUT_NO_PATH: reviewFeedback.present `
       + `is true for node '${desk.nodeId}' but path is null.`,
     );
+  }
+  if (desk.previousAttempt !== undefined) {
+    const previous = desk.previousAttempt;
+    if (
+      !previous.patchPath.endsWith('previous-attempt.patch')
+      || !previous.descriptorPath.endsWith('previous-attempt.json')
+      || path.posix.dirname(previous.patchPath) !== path.posix.dirname(previous.descriptorPath)
+      || !previous.branch.trim()
+      || !/^[0-9a-f]{40}$/.test(previous.commitSha)
+    ) {
+      throw new Error(
+        `WORKPLACE_DESK_PREVIOUS_ATTEMPT_INVALID: previousAttempt on node `
+        + `'${desk.nodeId}' must carry a 40-hex commitSha, a branch, and a `
+        + `patch/descriptor pair sharing one directory.`,
+      );
+    }
   }
 }
 
