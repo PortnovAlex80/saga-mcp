@@ -630,6 +630,32 @@ Consequences:
   reason sequence is the signal (distinct reasons converging = healthy cycle,
   same reason recurring = spin).
 
+### Budget must count spin, not work (separation mechanism)
+
+Today the factory does NOT distinguish: the review budget counts rounds
+(`managed_review_rejections` + historical `changes_requested` receipts,
+dispatcher worker_done branch) and recovery epochs count attempts
+(`totalAttempts`, ADR-075) — both are reason-blind. The reason IS persisted
+(`managed_review_last_feedback`, gate `recovery_issue_ref`) but never
+compared. To make budgets charge spin only:
+
+1. each rejection records a `reason_key`: a TYPED reason code (check id +
+   violation class, the fail-closed vocabulary style) over the affected
+   targets, excluding volatile parts (timestamps, run digests, execution
+   ids). Prose feedback stays for humans/models; the key is the identity.
+2. the card carries an append-only reason chain (a table — not task
+   metadata, which already bloats);
+3. the panic budget (review budget) decrements ONLY when the new key already
+   appears in the chain (reason repetition = spin). A new key = another link
+   of the defect chain removed = work, charged to a separate, generous chain
+   cap;
+4. the hard cap stays absolute — even converging chains must terminate;
+5. caveat: a rephrased prose reason can pass as a false "new" key. Typed
+   reason codes at the gate are the robust form; string identity is only the
+   minimal start;
+6. operator projection renders the reason chain (converging vs repeating) —
+   never the bare iteration count.
+
 ---
 
 ## 16. Test projects and production projects use the same runtime
