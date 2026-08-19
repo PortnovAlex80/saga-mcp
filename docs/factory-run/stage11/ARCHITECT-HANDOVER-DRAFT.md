@@ -193,6 +193,18 @@ edge-only reconciliation, planner coverage=1-item-per-AC). Fix directions:
 compose integration verification before settlement; (3) requirement-
 coverage ratchet at formalization (source-constraints→PRD→AC reverse check)
 plus carrying the constraint list through `brief_payload`.
+
+**Forensic correction (architect A1, live-DB verified):** the loss point is
+NOT a missing content bridge. FormalizationCase already carries the full
+`discoveryProposalPayload` (commit `6c191b9a`) into task 3's
+`process_node_input` and thus into the spawn prompt — the author SAW all
+three requirements. `brief_payload` is the author's decision OUTPUT, not
+the input bridge. The real defect: **no obligation to react** — delivered
+data was not mandatory to consume, and none of the eight blind mechanisms
+counts constraints. Remedy designs by three architects (A1 obligation
+bridge with typed per-ID dispositions enforced by a deterministic gate,
+A2 coverage ratchet, A3 verification warrant) live in
+`docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`.
 ⏳ Endgame evidence for ADR-032 watch items (iii) freeze negatives and
 (vi) verification lineage — the live run's freeze/verification phases produce
 it; see §4.4.

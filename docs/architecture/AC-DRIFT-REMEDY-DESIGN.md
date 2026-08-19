@@ -127,7 +127,69 @@ SRS→AC back-edge — территория А1/А2, дизайн *зависи�
 
 ---
 
-## А1 (мост контента): ⏳ перезапущен
+## А1 (мост контента): МОСТ-ОБЯЗАТЕЛЬСТВО ✅ (с эмпирической поправкой форензика)
+
+### Поправка к вердикту следователя (проверено по живой БД stage11, readonly)
+
+«Единственный мост brief_payload контент не переносит» — **неточно в
+локализации**. Контент границу УЖЕ пересёк: FormalizationCase (коммит
+`6c191b9a`, до прогона) несёт `discoveryProposalPayload` целиком → он в
+`tasks.metadata.process_node_input` задачи 3 (там `assumptions` =
+Chrome/Docker/TypeScript, `candidate_scope` = докинг+compose) → он в самом
+spawn-промпте (`claude-runner.mjs` buildPrompt: `JSON.stringify(task)`).
+**Автор видел все три требования.** brief_payload — не вход, а ВЫХОД
+(запись решения автора, `artifacts.ts:268`). Настоящий дефект: **нет
+обязанности реакции** — доставленные данные не обязательны к потреблению.
+Это не «данные не доставлены» (форма census), а «не enforced». (Греп
+следователя по логу сессии — ноль вхождений — совместимо: слова были в
+промпте, модель их ни разу не эхнула/не искала.)
+
+### Дизайн
+
+Принцип: копия уже едет (sealed по ref+hash+payload — одна authority,
+ADR-053); недостающее — типизированный реестр constraints с per-ID
+диспозицией, enforced детерминированным гейтом. Стык с А3: его warrant-реестр
+= этот же реестр (извлечение на discovery-settlement, владелец order-run);
+А1 переносит и обязывает, А3 в конце исполняет.
+
+1. **Извлечение** (владелец order-run): discovery-settlement-records +
+   settlement-service → `{id: ord-c-NNN, class: execution|material|human,
+   text, evidenceRef}`, digest-pinned.
+2. **Перенос**: `product-delivery-lifecycle.ts:313-323` (outputMapping) +
+   `:348-360` (inputMapping) → FormalizationCase +=
+   `constraintRegisterRef/Digest/Register` (`formalization-schemas.ts:19-33`).
+3. **Доставка бесплатна**: реестр в `process_node_input`
+   (`sqlite-production-cell-projection-persistence.ts:116`) и в промпт;
+   скилл saga-product += шаг «отрендерить реестр в brief §constraints с
+   диспозицией по каждому ID» + шаблон артефакта с полем
+   `constraint_register`.
+4. **Enforcement (сердце)**: `formalization-contract-validator.ts:55-75` —
+   детерминированный дифф: ID реестра (из кейса) минус диспозиции
+   `{id: accepted|waived, reason?, evidence?}` в метаданных brief. Непустой
+   остаток → `FORMALIZATION_CONSTRAINT_UNDISPOSED`, типизированные per-ID
+   SubmissionGap (`relation: covers_constraint`) — автор на repair получает
+   ровно список ID через существующий recovery-feedback путь. Typed-ID, не
+   string-match: реакция обязательна, формулировка свободна; waived требует
+   reason и течёт дальше.
+5. **Передача А3**: formalization settlement
+   (`formalization-production-cell-installation.ts:187-231`) цитирует реестр
+   + диспозиции как `warrantRef`.
+
+### Отвергнуто
+
+Дублировать proposal второй authority (нарушает ADR-053); ссылка+обязанность
+читать (это сегодня — прогон доказал: прочитал и переписал без последствий);
+расширять BriefPayload контентом (чужой слой, decision-запись); LLM-оракул
+на гейте (отвергнут и А3); `artifact_traces target_type='constraint'` (миграция
+CHECK-словаря ради того, что метаданные+дифф дают сейчас).
+
+### Не покрывает
+
+Качество извлечения реестра (LLM-шаг, граница А3); constraints, умершие
+внутри discovery (мост начинается с реестра); честность диспозиции (гейт
+требует наличие реакции, не правдивость — backstop А3); AC→constraint
+back-edge и SRS-восстановление (территория А2); abuse waive (operator-only
+канал — обозначено А3); fan-out 1:N (сейчас 1:1).
 
 ## А2 (coverage рэтчет): ⏳ в работе
 
