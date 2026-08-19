@@ -156,6 +156,19 @@ was never touched.
 
 ⏳ **Terminal result** (completed/failed + final counts + snapshot
 `factory-snapshots/stage11-terminal-*` + harvest) — fills when the run ends.
+
+**Open run-finding (independent assessor, 2026-08-19, verdict verbatim):**
+the run's PRD/SRS captured "docker compose up", TypeScript backend and the
+Chrome client (SRS lines 314/325), but **none of the three landed in any of
+the 5 ACs or any card** — the delivered `dev` branch (1.2k src LOC, 3.4k test
+LOC, physics/renderer/ws/docking all real) has no docker, no TS (all `.js`),
+no HTML client. The AC-carving step dropped order requirements and no gate
+noticed. This is the "AC drift" endgame risk, now confirmed materialized;
+whether the readiness certifier fails the run honestly on it is the endgame
+question. Time accounting (9.5h session time): ~23% productive code,
+~45% conveyor overhead (8k words of formalization, 43 gates, reviews),
+up to ~50% rework/cold-starts/deaths. Full verdict preserved in the
+assessment agent transcript (agent_ec5a27aa).
 ⏳ Endgame evidence for ADR-032 watch items (iii) freeze negatives and
 (vi) verification lineage — the live run's freeze/verification phases produce
 it; see §4.4.
