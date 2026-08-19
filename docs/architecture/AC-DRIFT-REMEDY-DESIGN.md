@@ -191,6 +191,76 @@ CHECK-словаря ради того, что метаданные+дифф д�
 back-edge и SRS-восстановление (территория А2); abuse waive (operator-only
 канал — обозначено А3); fan-out 1:N (сейчас 1:1).
 
-## А2 (coverage рэтчет): ⏳ в работе
+## А2 (coverage рэтчет): ОБЯЗАТЕЛЬСТВО СТРУКТУРЫ ✅
 
-## Синтез трёх: ⏳ после возврата А1+А2
+Диагноз: даже при честном brief (А1) остаётся второй путь смерти — дрейф
+внутри формализации: SRS-ревью «восстановил» docker/TS в HOW-§10/§11, но
+граф слеп: `findContractGap` (`formalization-contract-analysis.ts:122-131`)
+проверяет рёбра только вниз (AC→FR/NFR), `srs-contract-validator.ts:288-322`
+— только биекцию кодов §D2↔baseline, планировщик наследует пустоту с
+верификацией 1:1 (`development-check-providers.ts:1019-1021`).
+
+Дизайн:
+1. **Coverage как данные**: каждый AC несёт `covered_constraint_ids`
+   (метаданные артефакта), waiver только типизированный `{id, accepted|waived,
+   reason}`. Замороженный baseline уже существует
+   (`factory_formalization_acceptance_baselines`, payload читается
+   `srs-contract-validator.ts:442-504`) — расширяется полем
+   `coveredConstraints`, digest-pin бесплатен.
+2. **Обратный дифф в findContractGap**, режим `required.coverage`: ID
+   реестра (мост А1) минус union(covered_constraint_ids всех AC) минус
+   waived = ∅. Место: `formalization-contract-analysis.ts:70-131`, вызовы
+   из contract-validator `:40-76` и `acceptance-contract-validator.ts:
+   172-185` (worker_done-граница). Не дубль А1: А1 фейлит недиспозированный
+   brief (реакция), А2 — недопокрытый AC-граф (структура).
+3. **SRS→AC back-edge — сердце**: каждая §D2-строфа += covered_constraint_ids
+   (`srs-d2-parser.ts`), дифф union строф против реестра в
+   `srs-contract-validator.ts:288-322` + копия в
+   `srs-structural-check-provider.ts:60-88` (снимает его самодекларацию
+   слепоты). Упомянуть docker в HOW нельзя, не закрыв constraint в D2 или
+   явно waived — сценарий stage-11 становится машинно-видим.
+4. **Планировщик/верификация — ретрансляция**: карточка наследует
+   constraint-IDs фризнутого AC (`development-task-graph.ts:105`), lineage-чек
+   (`development-check-providers.ts:1017-1025`) пиннит их вместе с
+   criterionId; стык с А3 — `verified_by` закрывает warrant-строку по
+   совпадению ID+digest.
+5. **Живость/миграция**: диспозиции в brief-метаданных (А1), фризятся в
+   baseline-payload, цитируются warrantRef (А3) — один источник, три
+   проекции. Ретро: реестра нет → пустой дифф → зелёный (монотонен, старое
+   не ломается). Replay: изменение baseline-digest = честный miss.
+
+Отвергнуто: string-match; полный SRS-контент-парсинг (комбинаторный взрыв —
+только типизированное поле §D2); отдельный coverage-провайдер вне
+формализации (вторая authority, predicate desync); LLM-оракул на гейте.
+
+Не покрывает: правдивость ссылки ID→AC (заявление автора — вторая сеть:
+ревьюер-скилл с перечнем ID в чеклисте; третья — исполнение А3); качество
+извлечения реестра (граница discovery); «частично покрыт» не типизирован;
+abuse waive (operator-only канал, А3).
+
+## Синтез трёх: ТРИ СЕТИ ОБЯЗАТЕЛЬСТВ ✅
+
+Все три архитектора сошлись в одну картину — требование ордера нельзя
+потерять одним отказом:
+
+| Сеть | Архитектор | Что обязывает | Где фейлит |
+|---|---|---|---|
+| Реакция | А1 | автор brief диспозирует каждый constraint-ID (accepted/waived+reason) | `FORMALIZATION_CONSTRAINT_UNDISPOSED` на недиспозированный brief |
+| Структура | А2 | AC-граф и SRS §D2 покрывают реестр; карточки наследуют IDs | обратный дифф в findContractGap + srs-валидатор + lineage-чек |
+| Исполнение | А3 | сертификатор исполняет канонические проверки ордера (warrant) | warrant-фаза в readiness + `verified_by`-линки; `warrant-blocked-environment` → оператор |
+
+Единый источник — реестр constraints (извлечение на discovery-settlement,
+владелец order-run, digest-pinned), три проекции (brief-метаданные →
+baseline-payload → warrantRef). Потеря требования = три независимых
+отказа, из них второй чисто механический. Человеческий фактор переписывания
+(эмпирика А1) закрыт сетью реакции; дрейф после честного brief (сценарий
+stage-11) — сетью структуры; самосертификация готовности — сетью исполнения.
+
+Общие честные границы (вне дизайна, назначены владельцам): качество
+извлечения реестра — discovery-ассессор; правдивость диспозиции —
+ревьюер-скилл (перечень ID в чеклисте); abuse waive — operator-only канал;
+fan-out 1:N — будущее.
+
+Единый реестр — prerequisite всех трёх сетей: реализация начинается с
+извлечения реестра на discovery-settlement (точка А3/А1), дальше три сети
+независимы и могут вливаться отдельными ветками.
