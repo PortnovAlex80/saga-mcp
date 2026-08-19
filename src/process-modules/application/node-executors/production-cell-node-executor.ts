@@ -75,6 +75,43 @@ import {
   finalAcceptanceAbsent,
 } from '../transition-handoff-postconditions.js';
 
+/**
+ * BLINDSIGHT Lifecycle F6 — typed identity of a recovery-budget diagnosis
+ * (factory_workplace_recovery_epochs.last_diagnosis).
+ *
+ * The diagnosis message is `recoveryBudgetParkReason().message`:
+ * "Recovery budget exhausted: <attempts> unsuccessful attempt(s) for role
+ * '<role>' (maxAttempts=<max>); <disposition>. Last rejection at gate
+ * '<gate>' (<decisionKey>): <findings>".
+ *
+ * VOLATILE parts are excluded: the attempt counts (they differ between
+ * epochs by design) and the parenthesized decisionKey (unique per gate
+ * decision — a fresh rejection always mints a fresh one). The durable reason
+ * identity is the GATE plus the FINDINGS: same gate + same findings across
+ * epochs = the material did not change = cross-epoch spin (CONVEYOR §15
+ * reason identity). A materially different finding set is a DIFFERENT key —
+ * converging work, never taxed.
+ */
+export function recoveryDiagnosisKey(message: string): string {
+  const text = String(message ?? '').trim();
+  const marker = 'Last rejection at gate ';
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex >= 0) {
+    const afterMarker = text.slice(markerIndex + marker.length);
+    // Strip the "'<gate>' (<decisionKey>): " prefix down to the durable
+    // gate identity + findings.
+    const header = /^'([^']*)'\s*\([^)]*\):\s*/.exec(afterMarker);
+    const identity = header
+      ? `${header[1]}::${afterMarker.slice(header[0].length)}`
+      : afterMarker;
+    return identity.slice(0, 400);
+  }
+  // No durable rejection evidence (crash-churn exhaustion): the identity is
+  // the disposition tail after the volatile counts.
+  const parts = text.split(';');
+  return (parts.length > 1 ? parts.slice(1).join(';') : text).slice(0, 400);
+}
+
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
     intent: {
@@ -227,6 +264,14 @@ export interface ProductionCellProjectionPersistence {
    * rollover timestamp (for the inter-epoch backoff window). Optional — when
    * absent, 'requeue' cells behave epoch-less (all-time counters drive the
    * budget, exhaustion still honors the total cap).
+   *
+   * BLINDSIGHT F6 — `lastDiagnosis` carries the PREVIOUS epoch's persisted
+   * diagnosis (factory_workplace_recovery_epochs.last_diagnosis). It was
+   * written at every rollover and read by nobody: a new epoch meant a clean
+   * budget plus zero memory of why the previous one burned. The rollover
+   * decision now reads it (same typed diagnosis repeating across epochs =
+   * cross-epoch spin → the fresh budget is denied). Optional for
+   * backward-compatible harnesses — absent means "no epoch memory".
    */
   readRecoveryEpochBaseline?(
     workplaceRef: WorkplaceRef,
@@ -237,6 +282,7 @@ export interface ProductionCellProjectionPersistence {
     baselineTerminalExecutions: number;
     baselineEffectRepairs: number;
     rolledBackoffUntilMs: number;
+    lastDiagnosis?: string | null;
   } | null;
   /**
    * ADR-075 — append one immutable recovery-epoch rollover row. Idempotent by
@@ -784,6 +830,34 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
             return this.terminalOutcome(workplace.ref, state);
           }
           if (trajectoryGate === null) {
+            // BLINDSIGHT F6 — READ the previous epoch's persisted diagnosis
+            // (last_diagnosis was written at every rollover and read by
+            // nobody: each new epoch was a clean budget with zero memory of
+            // why the previous one burned). The SAME typed diagnosis
+            // repeating across epochs is cross-epoch spin (§15 reason
+            // identity): the material did not change, so another clean
+            // budget cannot converge — deny the rollover and end honestly.
+            const prevDiagnosis = baseline?.lastDiagnosis ?? null;
+            const diagnosisRepeat = prevDiagnosis !== null
+              && recoveryDiagnosisKey(prevDiagnosis)
+                === recoveryDiagnosisKey(diagnosis.message);
+            if (diagnosisRepeat) {
+              engineLog(
+                `[recovery-budget] ROLLOVER-DENIED diagnosis-repeat cell=${cell.id} `
+                + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+                + `role=${state.nextRole} epoch=${(baseline?.epoch ?? 0) + 1} `
+                + `total=${totalAttempts}/${totalCap} `
+                + `— the previous epoch burned on the SAME typed diagnosis; `
+                + `a fresh budget would be spin amnesia. `
+                + `prevDiagnosis=${recoveryDiagnosisKey(prevDiagnosis).slice(0, 300)}`,
+              );
+              this.opts.coordinator.applyGateDecision(workplace.ref, {
+                verdict: 'failed', isFinal: true,
+              });
+              this.opts.persistence.projectWorkplace(workplace.ref);
+              state = this.requireState(workplace.ref);
+              return this.terminalOutcome(workplace.ref, state);
+            }
             const nextEpoch = (baseline?.epoch ?? 0) + 1;
             const counters = this.rawAttemptCounters(workplace.ref, state.nextRole);
             engineLog(
@@ -793,6 +867,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
               + `epochAttempts=${attemptsInEpoch}/${cell.recovery.maxAttempts} `
               + `total=${totalAttempts}/${totalCap} `
               + `backoffMs=${recoveryEpochBackoffMs(nextEpoch)} `
+              + (prevDiagnosis !== null
+                ? `prevDiagnosis=${recoveryDiagnosisKey(prevDiagnosis).slice(0, 300)} `
+                : '')
               + `:: ${diagnosis.message.slice(0, 400)}`,
             );
             this.opts.persistence.recordRecoveryEpoch?.({
