@@ -20,7 +20,7 @@ honest and successful — implement and exercise the E9 recycle.
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | ✖ stopped 2/7 (merge 3 conflicted, per protocol) | wave-B agent | worker-prompt `f6042bd9`, gate-delivery `a53eebad` both green (build 0; arch 393/393; pm 1104/1104 then 1117/1117). Merge 3 `repair/blindsight-lifecycle` CONFLICT in `tests/process-modules/production-cell-node-executor.test.mjs` → abort, tree clean at `a53eebad`, wave stopped; merges 4–7 not attempted. See log 00:44 |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🔄 3/7 done, remainder agent dispatched | wave-B agent + main | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, hand-resolved test append-union). Counts: arch 393/393, pm 1132/1132 |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
@@ -158,3 +158,13 @@ first; any E9-reserve code is escalate-never-delete.
     `repair/blindsight-lifecycle` onto `a53eebad`. NOTE: merges 4–7 remain
     unmerged; `repair/blindsight-persistence` still carries schema 99→100
     (the only allowed schema move, untouched).
+- **00:52 (main)** — Wave B at 3/7. worker-prompt f6042bd9 (pm 1104/1104) and
+  gate-delivery a53eebad (pm 1117/1117) merged clean by the agent; the agent
+  stopped on blindsight-lifecycle's test-file append overlap
+  (production-cell-node-executor.test.mjs, both trees appended blocks). Main
+  resolved as append-union with restored dangling closers. LESSON recorded:
+  these tests import from **dist/** — after resolving any merge, `npm run
+  build` BEFORE judging suite results (three F6 "failures" were a stale
+  artifact, not the resolution: file 30/30 after rebuild). Merged ae2e634b:
+  arch 393/393, pm 1132/1132. Remainder re-dispatched: persistence (schema
+  99→100 + infra suite), phantom-bridges, integration-verify, reconciliation.
