@@ -908,23 +908,11 @@ if (command === 'start') {
 
   if (sandboxName) {
     const root = resolve(sandboxName);
-    const repositoryPath = join(root, 'product');
-    if (existsSync(root)) rmSync(root, { recursive: true, force: true });
-    mkdirSync(repositoryPath, { recursive: true });
-
-    function git(gitArgs) {
-      const result = spawnSync('git', gitArgs, { cwd: repositoryPath, encoding: 'utf8' });
-      if (result.status !== 0) throw new Error(result.stderr);
-      return result.stdout.trim();
-    }
-    git(['init', '-b', 'main']);
-    git(['config', 'user.name', 'Saga Factory']);
-    git(['config', 'user.email', 'saga-factory@example.test']);
-    writeFileSync(join(repositoryPath, 'README.md'), `# ${sandboxName}\n`);
-    git(['add', '-A']);
-    git(['commit', '-m', 'chore: initialize product']);
-    git(['checkout', '-b', 'dev']);
-    git(['rev-parse', 'HEAD']);
+    // Provisioning (git init + README + AGENTS.md workspace marker) lives in
+    // scripts/lib so its filesystem contract is unit-testable — factory.mjs
+    // runs its CLI dispatch at import time and cannot be imported by tests.
+    const { provisionSandboxProduct } = await import('./lib/provision-sandbox-product.mjs');
+    const repositoryPath = provisionSandboxProduct(root, sandboxName);
 
     const db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
