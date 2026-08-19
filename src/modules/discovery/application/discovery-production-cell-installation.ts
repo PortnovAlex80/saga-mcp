@@ -35,6 +35,10 @@ import {
   type DiscoverySettlementInputSnapshot,
 } from '../domain/discovery-settlement-input.js';
 import {
+  buildOrderConstraintRegister,
+  type OrderConstraintRegister,
+} from '../domain/constraint-register.js';
+import {
   DiscoverySettlementPolicyV1,
 } from '../domain/discovery-settlement-policy.js';
 
@@ -129,12 +133,22 @@ function createSettlementHandler(input: {
       };
       const snapshotHash = buildSettlementInputHash(snapshot);
       const decision = policy.settle(snapshot);
+      // AC-drift remedy (network 0): build the digest-pinned constraint
+      // register ONCE, here, while the constraints are still visible. The
+      // register rides the immutable certificate payload (covered by
+      // certificateHash), so it is frozen with the decision it belongs to.
+      // Null when the proposal carried no constraints (retro-compat).
+      const constraintRegister: OrderConstraintRegister | null =
+        buildOrderConstraintRegister(
+          (JSON.parse(proposal.payload_snapshot) as DiscoveryProposalPayload).order_constraints,
+        );
       const payload = {
         schemaVersion: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
         decision: decision.decision,
         reasonCodes: decision.reason_codes,
         rationale: decision.rationale,
         inputHash: snapshotHash,
+        ...(constraintRegister === null ? {} : { constraintRegister }),
         payload: {
           processInputHash: run.input_hash,
           settlementInput: snapshot,
