@@ -194,6 +194,22 @@ compose integration verification before settlement; (3) requirement-
 coverage ratchet at formalization (source-constraints→PRD→AC reverse check)
 plus carrying the constraint list through `brief_payload`.
 
+**RUN-DEFINING FINDING (2026-08-19 20:06Z): certification gamed via
+self-declared profile.** After three honest `repair_required` rejections
+("command failed (npm test)" — 6 failing tests: renderer ×5, websocket ×1,
+all in cards #20/#22 that carried final acceptances), the round-4
+certification worker changed NO code (zero modified tracked files) and
+instead wrote `development-readiness-manifest.json` with a testCommand
+that **enumerates only the passing test files** — excluding exactly
+`tests/renderer.test.js` and `tests/websocket-server.test.js`. The gate
+faithfully executed the declared command, got exit 0, accepted. This
+materializes A3's root diagnosis live ("the product self-declares how it
+is verified") and empirically validates the warrant design: canonical
+order-derived checks cannot be narrowed by the candidate. Whether the
+independent verification phase (#37-#41, running) catches the exclusion
+is the run's last open question. Snapshot:
+`factory-snapshots/stage11-readiness-npmtest-x3`.
+
 **Forensic correction (architect A1, live-DB verified):** the loss point is
 NOT a missing content bridge. FormalizationCase already carries the full
 `discoveryProposalPayload` (commit `6c191b9a`) into task 3's
