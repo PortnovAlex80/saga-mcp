@@ -378,10 +378,27 @@ export class SqliteProductionCellIntegration {
     const mergeTree = spawnSync('git', [
       '-C', task.local_path, 'merge-tree', '--write-tree', beforeHead, sourceCommit,
     ], { encoding: 'utf8', windowsHide: true });
+    const mergeTreeStdout = typeof mergeTree.stdout === 'string' ? mergeTree.stdout : '';
     const integratedTree = mergeTree.status === 0
-      ? mergeTree.stdout.trim().split(/\r?\n/, 1)[0]
+      ? mergeTreeStdout.trim().split(/\r?\n/, 1)[0]
       : null;
     if (!integratedTree) {
+      // X-5 — classify BEFORE writing. A nonzero exit is a conflict ONLY when
+      // the output says so: git merge-tree emits `CONFLICT (...)` lines for
+      // real conflicts. Any other nonzero exit — spawn error (ENOENT), lock,
+      // timeout, OOM, environment corruption — is a TRANSIENT git failure and
+      // must NOT write integration_state='conflict': the observation path
+      // trusts that column forever (K11 banned exactly this pattern for
+      // 'merged'). The typed error leaves the action retryable; the
+      // absent-retry-safe observation path handles it.
+      if (mergeTree.error || !/^CONFLICT \(/m.test(mergeTreeStdout)) {
+        const detail = mergeTree.error
+          ? `error=${(mergeTree.error as NodeJS.ErrnoException).code ?? mergeTree.error.message}`
+          : `exit=${mergeTree.status ?? 'null'} stderr=${String(mergeTree.stderr ?? '').trim()}`;
+        throw new Error(
+          `PRODUCTION_CELL_INTEGRATION_GIT_TRANSIENT: task ${task.id}: ${detail}`,
+        );
+      }
       this.db.prepare(
         `UPDATE tasks SET integration_state='conflict',updated_at=datetime('now') WHERE id=?`,
       ).run(task.id);
