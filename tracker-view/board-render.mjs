@@ -881,13 +881,15 @@ export function createBoardRenderApi({
           } catch { /* workers probe unavailable — fall through to controls */ }
           const panelSeesEngine = state.running && state.alive;
           if (!panelSeesEngine && blindLive > 0) {
-            engineToggle.disabled = true;
-            engineToggle.textContent = '▶';
-            engineToggle.classList.remove('engine-running');
-            engineToggle.title = 'Завод работает (запущен вне панели): живых воркеров — '
-              + blindLive + '. Кнопка отключена: старт породил бы второй движок, стоп убил бы живых воркеров.';
+            // Truthful affordance: the factory IS running, so the button is a
+            // real ⏸ — the soft-stop kills the workers cleanly (voided fences)
+            // and places operator holds that block re-hire. The ENGINE brake
+            // is a no-op on blind controls (E-A6): the engine process survives
+            // idle — say so in the status line instead of hiding the button.
+            engineToggle.disabled = false;
+            syncEngineToggleButton(true);
             runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
-              + ' · concurrency=' + state.concurrency;
+              + ' · ⏸ остановит воркеров; движок останется жив (запущен вне панели)';
           } else {
             engineToggle.disabled = false;
             syncEngineToggleButton(panelSeesEngine);
