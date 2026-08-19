@@ -1,0 +1,111 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 9,
+      "artifactStatus": "draft",
+      "artifactType": "AC",
+      "contentHash": "12dede79b81b7ed233cb754c9d485d941f714085d4f145c7c49301cd9ccf5eb7"
+    }
+  ],
+  "expectedSchemaRef": "factory.formalization-acceptance-bundle.v1",
+  "schemaVersion": "factory.workplace-production-snapshot.v3",
+  "traces": [
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 6,
+      "targetType": "artifact",
+      "traceHash": "595c63ce84662aa4bcb3d5af2efcc674168359b3a57ad949955368b2ed3b6aff",
+      "traceId": 11
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 7,
+      "targetType": "artifact",
+      "traceHash": "26f2751ef607672f4ec9c1658ecfb6069e50c6c6eb30e7ffc9b791bfffb5e460",
+      "traceId": 12
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 8,
+      "targetType": "artifact",
+      "traceHash": "5e2ddd70d0183dccdc7fa1c83ecb8d1ee3004684a32a67b367185c41634f690d",
+      "traceId": 13
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "857e124cec380ecdc34116b55567cbb0d4e3e24989a98c5b57d53e4ac163ce8d",
+      "traceId": 14
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 4,
+      "targetType": "artifact",
+      "traceHash": "e1cead6b96fdcd1a83467290774fea849b772862a8dd24524e08aea0f9689d5d",
+      "traceId": 15
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 5,
+      "targetType": "artifact",
+      "traceHash": "9522d75c4d4ecd674be51112155677039e9ca4680d1eaf274a90a6491e7d133f",
+      "traceId": 16
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 6,
+      "targetType": "artifact",
+      "traceHash": "595c63ce84662aa4bcb3d5af2efcc674168359b3a57ad949955368b2ed3b6aff",
+      "traceId": 17
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 7,
+      "targetType": "artifact",
+      "traceHash": "26f2751ef607672f4ec9c1658ecfb6069e50c6c6eb30e7ffc9b791bfffb5e460",
+      "traceId": 18
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 8,
+      "targetType": "artifact",
+      "traceHash": "5e2ddd70d0183dccdc7fa1c83ecb8d1ee3004684a32a67b367185c41634f690d",
+      "traceId": 19
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "857e124cec380ecdc34116b55567cbb0d4e3e24989a98c5b57d53e4ac163ce8d",
+      "traceId": 20
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 4,
+      "targetType": "artifact",
+      "traceHash": "e1cead6b96fdcd1a83467290774fea849b772862a8dd24524e08aea0f9689d5d",
+      "traceId": 21
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 9,
+      "targetId": 5,
+      "targetType": "artifact",
+      "traceHash": "9522d75c4d4ecd674be51112155677039e9ca4680d1eaf274a90a6491e7d133f",
+      "traceId": 22
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

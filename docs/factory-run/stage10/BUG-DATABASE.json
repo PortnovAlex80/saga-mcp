@@ -30,5 +30,96 @@
     "status": "open | explained | fixed",
     "gap_number": "ADR-032 watch item i..vii | null"
   },
-  "records": []
+  "records": [
+    {
+      "id": "B-001",
+      "observed_at": "2026-08-19T06:38:54Z",
+      "run_id": "board-1-10940-1787120334001",
+      "correlation": {
+        "epic_id": 1,
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton",
+        "execution_id": "worker-execution:d49faf75-74e2-4af5-ba18-01961a3baeda",
+        "node_id": "produce-proposal",
+        "candidate_set_ref": null
+      },
+      "expected": "the first discovery-proposal author worker finishes its turn and calls worker_done (its workspace file edits were live seconds before death — the operator watched the model filling the proposal on the dashboard)",
+      "happened": "worker exited at exactly 20m00s runtime with exit_code 1, no worker_done; stdout (shim JSONL) frozen since 06:22:48Z (16 min before death) while workspace file writes continued; the factory recovered the assignment and spawned a replacement in ~300ms (journal: worker.exit -> assignment.claimed -> execution.reserved -> worker.spawn all at 06:38:54)",
+      "evidence_pointer": "factory-run-journal.jsonl lines 4-7 @ 06:38:54.155-.456Z; worker JSONL .factory-sandboxes/stage10-logs/board-1-10940-1787120334001/task-1-worker-ef156416-fcdb-4514-aad4-db51635ff809.jsonl (mtime frozen 06:22:48Z, 19371 bytes); duration_ms=1200112 in the worker.exit record",
+      "classification": "unknown",
+      "status": "open",
+      "gap_number": null
+    },
+    {
+      "id": "B-002",
+      "observed_at": "2026-08-19T06:24:00Z",
+      "run_id": "board-1-10940-1787120334001",
+      "correlation": {
+        "epic_id": 1,
+        "workplace_ref": null,
+        "execution_id": null,
+        "node_id": null,
+        "candidate_set_ref": null
+      },
+      "expected": "the engine writes its operator log, heartbeat marker and phase marker (quickstart §5, engine-file-logger), enabling [progress-invariant] observation and stale-engine detection",
+      "happened": "on the `factory.mjs start` path SAGA_ENGINE_LOG is never set: no saga-engine-*.log exists for launch-94507c42 (only stale logs from earlier sessions, since deleted); the engine's stdout is buffered inside the factory.mjs pipe and unreadable until that process exits; engine heartbeat/phase markers do not exist for this run",
+      "evidence_pointer": "factory_launch_requests row launch-94507c42-7fa5-46f6-a766-5d6145d3a30d: engine_log_path IS NULL; absence of any saga-engine-*.log newer than run start in %TEMP%",
+      "classification": "factory_defect",
+      "status": "open",
+      "gap_number": null
+    },
+    {
+      "id": "B-003",
+      "observed_at": "2026-08-19T06:36:00Z",
+      "run_id": null,
+      "correlation": {
+        "epic_id": 1,
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton",
+        "execution_id": "worker-execution:d49faf75-74e2-4af5-ba18-01961a3baeda",
+        "node_id": null,
+        "candidate_set_ref": null
+      },
+      "expected": "the worker-card log tail loads in the observer front",
+      "happened": "the UI showed 'err unknown endpoint: /api/worker/tail' next to the worker card; /api/worker/tail is a tracker-view (4321) endpoint and is NOT served by core-view (4325, only /api/core/*); the request reached core-view's responder. The dashboard's own logTail terminal (workspace-file based) worked and showed live model thoughts",
+      "evidence_pointer": "operator screenshot text 2026-08-19 09:36; core-view/server.mjs endpoint set (/api/core/heartbeat|projects|snapshot|events|cell only); tracker-view/shared.mjs:172 owns /api/worker/tail",
+      "classification": "factory_defect",
+      "status": "open",
+      "gap_number": null
+    },
+    {
+      "id": "B-004",
+      "observed_at": "2026-08-19T08:13:12Z",
+      "run_id": "board-1-10940-1787127192020",
+      "correlation": {
+        "epic_id": 1,
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
+        "execution_id": "worker-execution:4b08ddc1-8818-45bf-89d3-b12fe0f5b53c",
+        "node_id": "define-acceptance-contract",
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract"
+      },
+      "expected": "after the FINAL gate decision 'accepted' for the acceptance-contract cell, a CellFinalAcceptance is recorded and the solution-formalization module routes to Development",
+      "happened": "the engine re-opened the author card (assignment.claimed task 8 at 08:13:12, right after obligation.settled) with NO recovery feedback present (worker's recovery-feedback.json read fails 'File not found'); factory_cell_final_acceptances has 0 rows for this workplace (4 total, all earlier cells); solution-formalization stays 'paused'; the worker performs a fresh author pass over already-accepted material — CONVEYOR §15 'cycle vs spinning' third class: a re-dispatch with NO reason at all",
+      "evidence_pointer": "journal lines @08:13:12 (obligation.settled -> assignment.claimed task8 -> worker.spawn); gate decisions for the workplace: author accepted -> final repair_required -> author accepted -> final ACCEPTED; DB: factory_cell_final_acceptances count 0 for workplace; worker log D:\\Development\\saga-mcp\\.factory-sandboxes\\stage10-logs\\board-1-10940-1787127192020\\task-8-worker-f6c8b42e-ec58-4bbb-ac33-958165a0c697.jsonl (recovery-feedback.json File not found)",
+      "classification": "unknown",
+      "status": "open",
+      "gap_number": "iii"
+    },
+    {
+      "id": "B-005",
+      "observed_at": "2026-08-19T08:28:08Z",
+      "run_id": "board-1-10940-1787120334001",
+      "correlation": {
+        "epic_id": 1,
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
+        "execution_id": null,
+        "node_id": "define-acceptance-contract",
+        "candidate_set_ref": null
+      },
+      "expected": "after the AC-contract final gate accepts, the engine captures the replay capsule and the lifecycle routes to Development",
+      "happened": "engine exited code=1; durable launch error: REPLAY_CAPTURE_TRACE_NOT_FOUND: expected 12, resolved 6; lifecycle run 1 is TERMINAL failed at solution-formalization (finalStage solution-formalization, cycles 2, scopeCompleted false). The FINAL GATE had ACCEPTED the same material the replay capture then rejected — two authorities with different predicates on the same boundary. This terminates the B-004 re-dispatch loop as a run death",
+      "evidence_pointer": "factory_launch_requests.error JSON (endedAt 08:28:08, lastError REPLAY_CAPTURE_TRACE_NOT_FOUND: expected 12, resolved 6); snapshot factory-snapshots/stage10-engine-death-0828 (db integrity ok, journal 241 lines); engine stdout lost to the tail-12 pipe (B-002)",
+      "classification": "factory_defect",
+      "status": "open",
+      "gap_number": "iii"
+    }
+  ]
 }

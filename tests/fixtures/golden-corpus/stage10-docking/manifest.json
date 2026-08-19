@@ -1,0 +1,320 @@
+{
+  "schema": "saga.golden-corpus.v1",
+  "source": {
+    "run": "tests/golden-runs/stage10-run-001-20260819",
+    "harvestedBy": "tools/harvest-golden-corpus.mjs"
+  },
+  "counts": {
+    "products": 24,
+    "documents": 0,
+    "artifacts": 9
+  },
+  "products": [
+    {
+      "nodeId": "assess-readiness",
+      "schemaId": "factory.discovery-readiness-assessment.v2",
+      "productKind": "factory.discovery-readiness-assessment.v2",
+      "productKey": "content:2da1b2d32c3602f3330c979c1867dec34d0b97ef3bd66b65a67e449c4b0671d3",
+      "ordinal": 1,
+      "file": "products/assess-readiness.factory.discovery-readiness-assessment.v2.1.json",
+      "sourcePayloadHash": "2da1b2d32c3602f3330c979c1867dec34d0b97ef3bd66b65a67e449c4b0671d3",
+      "bytes": 3221
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:9",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "789d7cf7e80b9441cadef4d61552e0764caecfeb88c3e49f23afbd8e516b7f93",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.formalization-acceptance-bundle.v1",
+      "productKind": "factory.formalization-acceptance-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-acceptance-contract:e60b746f85efc22c2267c8b77407b516a769abfe7712662bbc53bb9ee753b5ae",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.formalization-acceptance-bundle.v1.1.json",
+      "sourcePayloadHash": "e60b746f85efc22c2267c8b77407b516a769abfe7712662bbc53bb9ee753b5ae",
+      "bytes": 1415
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.formalization-acceptance-bundle.v1",
+      "productKind": "factory.formalization-acceptance-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-acceptance-contract:1a5c33f3574ef7d762c6516fb56df90bc64e3ac2d493d330bcfc4a175b49eb81",
+      "ordinal": 2,
+      "file": "products/define-acceptance-contract.factory.formalization-acceptance-bundle.v1.2.json",
+      "sourcePayloadHash": "1a5c33f3574ef7d762c6516fb56df90bc64e3ac2d493d330bcfc4a175b49eb81",
+      "bytes": 2435
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.formalization-acceptance-bundle.v1",
+      "productKind": "factory.formalization-acceptance-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-acceptance-contract:80fc78e72acbda045e85ce36714345fd06ce8c936b899ca51591e71507cee655",
+      "ordinal": 3,
+      "file": "products/define-acceptance-contract.factory.formalization-acceptance-bundle.v1.3.json",
+      "sourcePayloadHash": "80fc78e72acbda045e85ce36714345fd06ce8c936b899ca51591e71507cee655",
+      "bytes": 2435
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:bc9d7cc58f4d6e73995170dd6b0e1a590fa2613909d325c3b9a84aae5c0e0fc6",
+      "ordinal": 1,
+      "file": "products/define-acceptance-contract.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "bc9d7cc58f4d6e73995170dd6b0e1a590fa2613909d325c3b9a84aae5c0e0fc6",
+      "bytes": 886
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:265b654111312fd7d1947498bb41235559c1065a0d29f02aed229c12a16f2b3f",
+      "ordinal": 2,
+      "file": "products/define-acceptance-contract.factory.review-verdict.v1.2.json",
+      "sourcePayloadHash": "265b654111312fd7d1947498bb41235559c1065a0d29f02aed229c12a16f2b3f",
+      "bytes": 227
+    },
+    {
+      "nodeId": "define-acceptance-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:c61863b87df6674aa39442f3c06ed8a932248d342b3cbbd488491e5fcd215d5a",
+      "ordinal": 3,
+      "file": "products/define-acceptance-contract.factory.review-verdict.v1.3.json",
+      "sourcePayloadHash": "c61863b87df6674aa39442f3c06ed8a932248d342b3cbbd488491e5fcd215d5a",
+      "bytes": 227
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:1",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "aeed353b3c5d8df2083d1ec74d54baebdf0dd8a6d437a8a559f9f8f36033a5d9",
+      "bytes": 112
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:2",
+      "ordinal": 2,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.2.json",
+      "sourcePayloadHash": "870a62cb1b3fc3abb7663397648d67a3560d7917c36e45c1c8ed2471a3b24544",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:3",
+      "ordinal": 3,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.3.json",
+      "sourcePayloadHash": "51013d5693f40dbdf5d9681ff5fbcc2e0495f59faaa0cab202a0be9292a96d05",
+      "bytes": 109
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:4",
+      "ordinal": 4,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.4.json",
+      "sourcePayloadHash": "becc39e7d9100c89149885958157af66a2ab1093bc5be46f24c7813ea604f26e",
+      "bytes": 110
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:5",
+      "ordinal": 5,
+      "file": "products/define-product-contract.factory.artifact-ref.v1.5.json",
+      "sourcePayloadHash": "579a1b8e1b6f54f20be319815b0b517896ab9ac7202bc7614cc4addeb4ef9473",
+      "bytes": 111
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.formalization-product-bundle.v1",
+      "productKind": "factory.formalization-product-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:define-product-contract:49eaff3da8ae1c170ade2bf5061928134d225f1316592a07f479e93bf041bab6",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.formalization-product-bundle.v1.1.json",
+      "sourcePayloadHash": "49eaff3da8ae1c170ade2bf5061928134d225f1316592a07f479e93bf041bab6",
+      "bytes": 1644
+    },
+    {
+      "nodeId": "define-product-contract",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:d2727c9ba719161a2bb7c1fc0eeb57a91c6cf2745668d2793b8a979d61e7c636",
+      "ordinal": 1,
+      "file": "products/define-product-contract.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "d2727c9ba719161a2bb7c1fc0eeb57a91c6cf2745668d2793b8a979d61e7c636",
+      "bytes": 224
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:6",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.1.json",
+      "sourcePayloadHash": "5e748a6294375d4c4212fb09fd5b1a709fe89a703c3863ba4cc8038ca201e4eb",
+      "bytes": 109
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:7",
+      "ordinal": 2,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.2.json",
+      "sourcePayloadHash": "84c0f62823605337ad371c5a93080a5573fb1ded2a5e338419cd056c30d56d4e",
+      "bytes": 109
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.artifact-ref.v1",
+      "productKind": "factory.artifact-ref.v1",
+      "productKey": "artifact:8",
+      "ordinal": 3,
+      "file": "products/model-use-cases.factory.artifact-ref.v1.3.json",
+      "sourcePayloadHash": "bb56d24759b266c2df8a04d2a3b6ec9a11a8678600764df271ade3a5ac3ba508",
+      "bytes": 109
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.formalization-use-case-bundle.v1",
+      "productKind": "factory.formalization-use-case-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:model-use-cases:bea607b49a154585cb97ab93f2069074577d71ebdd32caae4b1ae027ea1e3fea",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.formalization-use-case-bundle.v1.1.json",
+      "sourcePayloadHash": "bea607b49a154585cb97ab93f2069074577d71ebdd32caae4b1ae027ea1e3fea",
+      "bytes": 1666
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.formalization-use-case-bundle.v1",
+      "productKind": "factory.formalization-use-case-bundle.v1",
+      "productKey": "workplace:solution-formalization@1.0.0:model-use-cases:8e06e05a96b8d7a31a1bd8544100cc151ba347b069b1439d82404c44724a7283",
+      "ordinal": 2,
+      "file": "products/model-use-cases.factory.formalization-use-case-bundle.v1.2.json",
+      "sourcePayloadHash": "8e06e05a96b8d7a31a1bd8544100cc151ba347b069b1439d82404c44724a7283",
+      "bytes": 1666
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:5ca28f27509336e4a6fff465b6c75079df31ee75824d79b7139429d3b3303207",
+      "ordinal": 1,
+      "file": "products/model-use-cases.factory.review-verdict.v1.1.json",
+      "sourcePayloadHash": "5ca28f27509336e4a6fff465b6c75079df31ee75824d79b7139429d3b3303207",
+      "bytes": 1314
+    },
+    {
+      "nodeId": "model-use-cases",
+      "schemaId": "factory.review-verdict.v1",
+      "productKind": "factory.review-verdict.v1",
+      "productKey": "content:98ae918afac0536de580cc3d6918151530d8b92e9bbd47a5915f504cfba7da91",
+      "ordinal": 2,
+      "file": "products/model-use-cases.factory.review-verdict.v1.2.json",
+      "sourcePayloadHash": "98ae918afac0536de580cc3d6918151530d8b92e9bbd47a5915f504cfba7da91",
+      "bytes": 217
+    },
+    {
+      "nodeId": "produce-proposal",
+      "schemaId": "factory.discovery-proposal-ref.v1",
+      "productKind": "factory.discovery-proposal-ref.v1",
+      "productKey": "proposal:1",
+      "ordinal": 1,
+      "file": "products/produce-proposal.factory.discovery-proposal-ref.v1.1.json",
+      "sourcePayloadHash": "3d2035e299293b77fa1263eb8976c929dc43f49c1c8ccf0db6bb00f28904de69",
+      "bytes": 97
+    },
+    {
+      "nodeId": "produce-proposal",
+      "schemaId": "factory.discovery-proposal.v1",
+      "productKind": "factory.discovery-proposal.v1",
+      "productKey": "content:1467c290075837bd149f17cdc39bb9e34a11f8db455bf0771468a9151a218d04",
+      "ordinal": 1,
+      "file": "products/produce-proposal.factory.discovery-proposal.v1.1.json",
+      "sourcePayloadHash": "1467c290075837bd149f17cdc39bb9e34a11f8db455bf0771468a9151a218d04",
+      "bytes": 4380
+    }
+  ],
+  "documents": [],
+  "artifacts": [
+    {
+      "type": "brief",
+      "code": "brief",
+      "title": "Space Docking Simulator - Brief",
+      "path": "docs/requirements/REQ-001/01-brief.md",
+      "status": "accepted"
+    },
+    {
+      "type": "PRD",
+      "code": "PRD",
+      "title": "Space Docking Simulator - PRD",
+      "path": "docs/requirements/REQ-001/02-PRD.md",
+      "status": "accepted"
+    },
+    {
+      "type": "FR",
+      "code": "FR",
+      "title": "Functional Requirements",
+      "path": "docs/requirements/REQ-001/03-functional-requirements.md",
+      "status": "accepted"
+    },
+    {
+      "type": "NFR",
+      "code": "NFR",
+      "title": "Non-Functional Requirements",
+      "path": "docs/requirements/REQ-001/04-non-functional-requirements.md",
+      "status": "accepted"
+    },
+    {
+      "type": "RULE",
+      "code": "RULE",
+      "title": "Business Rules",
+      "path": "docs/requirements/REQ-001/05-business-rules.md",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-1",
+      "title": "Manual Spacecraft Docking",
+      "path": "docs/requirements/REQ-001/02-use-cases-uc-1.md",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-2",
+      "title": "System Startup",
+      "path": "docs/requirements/REQ-001/02-use-cases-uc-2.md",
+      "status": "accepted"
+    },
+    {
+      "type": "UC",
+      "code": "UC-3",
+      "title": "Automated Docking Test",
+      "path": "docs/requirements/REQ-001/02-use-cases-uc-3.md",
+      "status": "accepted"
+    },
+    {
+      "type": "AC",
+      "code": "AC",
+      "title": "Acceptance Criteria",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md",
+      "status": "accepted"
+    }
+  ]
+}

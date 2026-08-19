@@ -1,0 +1,75 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 6,
+      "artifactStatus": "draft",
+      "artifactType": "UC",
+      "contentHash": "219d52d6ed90d4f83285bfdf0b27679e950abd9664d75f6612e828f7e2e7d446"
+    },
+    {
+      "artifactId": 7,
+      "artifactStatus": "draft",
+      "artifactType": "UC",
+      "contentHash": "aefdc5acd7083e0b203b75ec199a7ae9158eeff6a5a628ee3b630eaac25db16a"
+    },
+    {
+      "artifactId": 8,
+      "artifactStatus": "draft",
+      "artifactType": "UC",
+      "contentHash": "b6ea66ad96ccb06edd57b7fb5b210f54fa1ce7ea7b761fcbc2cb6e92e58cb039"
+    }
+  ],
+  "expectedSchemaRef": "factory.formalization-use-case-bundle.v1",
+  "schemaVersion": "factory.workplace-production-snapshot.v3",
+  "traces": [
+    {
+      "linkType": "derived_from",
+      "sourceId": 6,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "281a1a0bfe48c13d999b9d4ae516ed32b5456557749c8307fde679ea60cc9346",
+      "traceId": 5
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 6,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "8b98f949c8e1c268848a7e663d7d2cbfcd55135604434a41a6965cde247849f9",
+      "traceId": 6
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 7,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "cb7f78cfb54da4ccb2c3e9dcbb302c2a12be1c67ac800ecdfaa36e99ffd33bf8",
+      "traceId": 7
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 7,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "753458f88976fb6300ac31512c26137d231f6d80d5d92390bc21e805c21018cb",
+      "traceId": 8
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 8,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "56fea060e69e3c63f01ff6f9846306e4479b9bf7d2c949b922d7e5dfc87fa5bd",
+      "traceId": 9
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 8,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "97b4e9624050bf9658946333ad692f49d20d3ca1107f28423444447ef71e9ea8",
+      "traceId": 10
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+}

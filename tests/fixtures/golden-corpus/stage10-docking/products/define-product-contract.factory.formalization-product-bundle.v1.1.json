@@ -1,0 +1,71 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 1,
+      "artifactStatus": "draft",
+      "artifactType": "brief",
+      "contentHash": "21c6a66286de79b91da2e8ec9507de62fad3095e912744879ee3f59345afe95d"
+    },
+    {
+      "artifactId": 2,
+      "artifactStatus": "draft",
+      "artifactType": "PRD",
+      "contentHash": "49a97a62f33faadb5c0c8fff19dac4fc635faaada8b2eb4bf540ff3c2e697860"
+    },
+    {
+      "artifactId": 3,
+      "artifactStatus": "draft",
+      "artifactType": "FR",
+      "contentHash": "817250023b4ccdac15e9542a5601ca48ec10cc87855c294d462375706baa798c"
+    },
+    {
+      "artifactId": 4,
+      "artifactStatus": "draft",
+      "artifactType": "NFR",
+      "contentHash": "f417ef99f52bb48ee47fd3b2f9d4ece86330ded772d81c563b3d3bf1c510d246"
+    },
+    {
+      "artifactId": 5,
+      "artifactStatus": "draft",
+      "artifactType": "RULE",
+      "contentHash": "b589d6ecf1ebc0c6ed2ca6ef0e6a49fd78b3a26e09093e8752914b39b2e8a63c"
+    }
+  ],
+  "expectedSchemaRef": "factory.formalization-product-bundle.v1",
+  "schemaVersion": "factory.workplace-production-snapshot.v3",
+  "traces": [
+    {
+      "linkType": "derived_from",
+      "sourceId": 2,
+      "targetId": 1,
+      "targetType": "artifact",
+      "traceHash": "bce412de0dc2e649b9951a637ea087f47fc9d3b394389e15382bdeea6cdde384",
+      "traceId": 1
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 3,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "19224bf102236d0a0427dcf70ec3ede7faeba934c2010d427a5204502e4c23bb",
+      "traceId": 2
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 4,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "fb68f488a9fd2661299791ee790293ab1ea10a3a59db429debc494b2faf0f621",
+      "traceId": 3
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 5,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "dd4914f09a59ce61aa7c2146ec7b105cbd138235474f54ec784093355b560bc8",
+      "traceId": 4
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+}

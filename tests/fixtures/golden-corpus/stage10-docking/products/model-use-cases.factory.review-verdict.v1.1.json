@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "message": "CRITICAL: All three UC artifacts (UC-1: artifactId 6, UC-2: artifactId 7, UC-3: artifactId 8) have the exact same content_hash 'def4735c95e1508f08172e467be6c8dbfdb565f166102b7652bd0a61466b80d2'. This violates data integrity requirements - each distinct artifact must have a unique hash based on its actual content. The file docs/requirements/REQ-001/02-use-cases.md contains three different use cases but the artifacts were incorrectly tracked with identical hashes.",
+      "severity": "error",
+      "subjectRef": "artifact:6"
+    },
+    {
+      "message": "UC-2 (artifactId 7) has identical content_hash to UC-1, but describes a different use case 'System Startup' with different actor, preconditions, and flows. Each artifact must hash its own distinct content section.",
+      "severity": "error",
+      "subjectRef": "artifact:7"
+    },
+    {
+      "message": "UC-3 (artifactId 8) has identical content_hash to UC-1 and UC-2, but describes a different use case 'Automated Docking Test' with different actor, preconditions, and flows. Each artifact must hash its own distinct content section.",
+      "severity": "error",
+      "subjectRef": "artifact:8"
+    }
+  ],
+  "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/257ca4c03ff3c962eb7bc66d62521a93ef9428adb0d7946853f3bd82a81bb8d3/author",
+  "verdict": "changes_requested"
+}
