@@ -21,7 +21,7 @@ honest and successful — implement and exercise the E9 recycle.
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
 | 2 | TASK 1 Wave B merge: 7 blindsight trees | ✅ done 7/7 | agents + main | f6042bd9, a53eebad (agent, clean); ae2e634b, bf9f66a5, fb2ece90, f27b02aa, 62b9339e (main, hand-resolved). Final: build 0, arch 408/408, pm 1169/1169, infra 394 pass/0 fail/12 skip, schema 100 |
-| 3 | TASK 1 Wave C merge: ac-drift-remedy alone + full regression + count reconciliation | 🔄 next | wave-C agent | schema note: Wave B already spent the only schema move (99→100); ac-drift-remedy must NOT carry another |
+| 3 | TASK 1 Wave C merge: ac-drift-remedy alone + full regression + count reconciliation | ⏸ stopped after landing | wave-C agent | merge `2a0c21d7` clean, all critical checks PASS (schema 100 unchanged, E9 reserve intact, build 0, pm 1209/1209, arch 408/408); STOP per rule c — lifecycle/w9/golden-path red, all three proven PRE-EXISTING at 7ecedc6d (see 01:37 entry); NOT pushed, main decides |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
 | 6 | LAUNCH: fresh run, `--model glm-4.6`, concurrency 2, guard env, docking-slice order; monitor to terminal | ⬚ pending | main | |
@@ -276,3 +276,67 @@ first; any E9-reserve code is escalate-never-delete.
   item 4 — STOP and report, do not decide.
 - **01:21 (cron)** — ac-drift-remedy merge commit landed: `2a0c21d7` (wave C
   agent; full six-suite regression + reconciliation report still running).
+- **01:37 (wave-C agent)** — WAVE C STOPPED AFTER LANDING (rule c: reproducible
+  fails → stop, no push; every red proven PRE-EXISTING at pre-merge `7ecedc6d`,
+  none caused by the merge). Verbatim record:
+  - Pre-checks: saga4 clean at `7ecedc6d` (only never-touch untracked
+    evidence). Branch tip `be0690e1` (20 commits from base `3384dfc3`). Tree
+    diff vs base touches **no** schema.ts / legacy-allowlist.json / migrations.
+  - Merge `repair/ac-drift-remedy` → `2a0c21d7` (no-ff, **zero conflicts**,
+    'ort' strategy, 32 files +3101/−26).
+  - **Critical checks PASS**: schema `tools/legacy-freeze.mjs --report` before
+    AND after = `schema-snapshot: 100 tables, digest f9143455ea65`, `legacy
+    freeze: OK` — no second schema move, escalation item 4 NOT triggered (the
+    schema.ts delta branch↔saga4 is entirely Wave B's already-merged 99→100,
+    one-sided, so the merge keeps saga4's schema). **E9 reserve intact**:
+    `src/shared/constraint-register.ts` line 2 `[E9 RESERVE — DO NOT REMOVE]`.
+    `npm run build` exit 0.
+  - Six suites at merged HEAD, verbatim:
+    - architecture: `tests 408 / pass 408 / fail 0 / skipped 0` (unchanged)
+    - lifecycle (first run tonight): `tests 136 / pass 135 / fail 1 /
+      skipped 0`
+    - process-modules: `tests 1209 / pass 1209 / fail 0 / skipped 0`
+      (+40 = the tree's five new constraint test files)
+    - infrastructure: `tests 406 / pass 394 / fail 0 / skipped 12` (unchanged)
+    - factory-e2e w9: `tests 18 / pass 1 / fail 17 / skipped 0`
+    - factory-contract golden-path: `tests 1 / pass 0 / fail 1 / skipped 0`
+    - extra (not among the six): `tests/discovery/order-constraint-register.test.mjs`
+      `tests 12 / pass 12 / fail 0 / skipped 0`
+  - **Count reconciliation**: the tree's own reports (arch 345/0, pm 521/0,
+    "52/52 new unit tests") are stale branch-point numbers measured against
+    pre-wave-A/B saga4 (base `3384dfc3`, when the counts were ~329 arch /
+    ~1098 pm per the 00:31 wave-A baseline record). Merged reality: arch 408
+    (tree adds NO architecture tests), pm 1169→1209 (+40). The "52" reconciles
+    EXACTLY: 40 process-modules tests + 12 discovery-suite register tests.
+  - **STOP cause, attributed in detached worktrees (read-only probes)**:
+    - lifecycle fail `architecture: no direct lifecycle UPDATE outside
+      sanctioned writers` — verbatim error: `direct lifecycle UPDATE forbidden
+      outside sanctioned writers. Found: src/modules/development/application/
+      replan-supersede.ts: matches /UPDATE\s+tasks\s+SET\s+status\s*=/`. The
+      violating file was last touched by `e9ea5aa7` (08-19 20:49, stage-11
+      replan-cycle), which IS an ancestor of wave-A baseline `17eec614` —
+      **predates the entire night shift**. Fails identically at `7ecedc6d`.
+    - w9 + golden-path (the drive-harness family): **GREEN at `17eec614`**
+      (w9 18/18, golden 1/1), **RED by `5d01b711`** (w9 0/18) and red ever
+      since, including at `7ecedc6d` (already on origin) and at the merged
+      HEAD. One of the six merges `b8b50c04`/`f3600d07`/`42f58586`/`2af953e6`
+      /`f6042bd9`/`a53eebad` broke the drive family; tonight's per-merge gate
+      (arch+pm only) never saw it. Culprit NOT isolated (stop discipline;
+      bisect is main's daylight act). Typical errors: w9 `AssertionError:
+      drive-1: ≥10 scripted invocations` (w9-02-single-drive.mjs:182 — the
+      drive stalls early); golden-path `AssertionError: Run A orchestrate-cli
+      exited 1` (golden-path.test.mjs:324).
+  - **HAZARD for the morning bisect**: running the w9 drive from a LINKED
+    WORKTREE corrupted the shared repo config — `core.bare=true` appeared in
+    `.git/config` (~01:23, during worktree probes; repo blocked for all
+    worktree ops, incl. this tracker's cron loop). Restored to `false` at
+    01:28; verified saga4 intact, zero tracked dirt, all 22 sibling worktrees
+    intact, both probe worktrees removed. Bisect drives in the MAIN checkout
+    or check `git config core.bare` after every step.
+  - **NOT PUSHED** (no green, no push). origin/saga4 stays `7ecedc6d`; local
+    saga4 = merge `2a0c21d7` + cron `4f46d6d5` + this entry. Main's morning
+    decisions: (a) push wave C — it breaks nothing that wasn't already broken
+    at `7ecedc6d` and adds pm 1169→1209; (b) bisect the drive-family break in
+    the six-merge range above; (c) the lifecycle sanctioned-writer violation
+    (`replan-supersede.ts`) — sanction or escalate, architect's act, not mine.
+
