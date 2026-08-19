@@ -96,6 +96,10 @@ const CLASSIFICATION = Object.freeze({
     release: 'K8',
     verdict: 'K8 cut active/exhausted/non-terminal picks to readSingleRecoveryCase + fail-closed resolveActive; remaining: readLastAttemptForCase (max attempt within exact case — structural frontier)',
   },
+  'src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts': {
+    release: 'FINDING-TRAJECTORY-BUDGET',
+    verdict: 'kept: append-only audit frontier — the latest row id of an append-only chain scoped by exact (workplace_ref, repair_target_role) defines the comparison scope (gate_ref + check_plan_digest); the material (finding keys) then flows through the FULL exact-scope tail read, never through the latest row alone; id is the append ordinal (no wall-clock chronology)',
+  },
 });
 
 const allowlist = JSON.parse(
