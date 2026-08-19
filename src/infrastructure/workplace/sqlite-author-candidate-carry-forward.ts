@@ -19,6 +19,60 @@ export const DEVELOPMENT_FREEZE_PROJECTION_FAILURE_CODE =
 export const CROSS_CELL_CARRY_SCOPE_FAILURE_CODE =
   'cross-cell-carry-forward-scope-mismatch' as const;
 
+/**
+ * X-6 — append-only superseding carry-forward authorizations.
+ *
+ * A sibling desk's successful integration legitimately advances the shared
+ * integration branch between an authorization and its retry (the documented
+ * NORM for parallel desks). The base authorization is immutable and UNIQUE per
+ * continuation, so the re-observed head is recorded as a SUPERSEDING row
+ * referencing its predecessor. The table is also declared in SCHEMA_SQL; this
+ * ensure is the lazy safety net for databases whose schema predates it
+ * (idempotent CREATE IF NOT EXISTS — mirrors the ensureFactory* pattern).
+ */
+export function ensureAuthorCarryForwardReauthorizationSchema(
+  db: Database.Database,
+): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS factory_author_candidate_carry_forward_reauthorizations (
+      authorization_ref       TEXT PRIMARY KEY,
+      continuation_ref        TEXT NOT NULL REFERENCES factory_continuation_authorizations(authorization_ref) ON DELETE RESTRICT,
+      predecessor_authorization_ref TEXT NOT NULL,
+      supersede_ordinal       INTEGER NOT NULL,
+      source_lifecycle_run_id INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
+      source_process_run_id   INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+      source_workplace_ref    TEXT NOT NULL,
+      source_candidate_set_ref TEXT NOT NULL,
+      source_candidate_set_digest TEXT NOT NULL,
+      source_gate_decision_key TEXT NOT NULL,
+      source_gate_decision_digest TEXT NOT NULL,
+      source_product_schema   TEXT NOT NULL,
+      source_product_ref      TEXT NOT NULL,
+      source_product_digest   TEXT NOT NULL,
+      semantic_input_digest   TEXT NOT NULL,
+      item_snapshot_hash      TEXT NOT NULL,
+      project_repository_id   INTEGER NOT NULL REFERENCES project_repositories(id) ON DELETE RESTRICT,
+      integration_branch      TEXT NOT NULL,
+      base_commit             TEXT NOT NULL,
+      source_commit           TEXT NOT NULL,
+      source_tree             TEXT NOT NULL,
+      eligible_failure_code   TEXT NOT NULL,
+      evidence_snapshot       TEXT NOT NULL,
+      evidence_digest         TEXT NOT NULL,
+      authorized_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (continuation_ref, supersede_ordinal)
+    );
+    CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_reauthorization_immutable_update
+    BEFORE UPDATE ON factory_author_candidate_carry_forward_reauthorizations BEGIN
+      SELECT RAISE(ABORT, 'author carry-forward reauthorizations are immutable');
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_factory_author_carry_reauthorization_immutable_delete
+    BEFORE DELETE ON factory_author_candidate_carry_forward_reauthorizations BEGIN
+      SELECT RAISE(ABORT, 'author carry-forward reauthorizations are immutable');
+    END;
+  `);
+}
+
 export interface AuthorCandidateCarryForwardDirective {
   readonly authorizationRef: string;
   readonly presenterRef: string;
@@ -55,6 +109,7 @@ export function authorizeEligibleAuthorCandidateCarryForward(
   db: Database.Database,
   input: { readonly continuationRef: string; readonly parentLifecycleRunId: number },
 ): { authorizationRef: string; replayed: boolean } | null {
+  ensureAuthorCarryForwardReauthorizationSchema(db);
   return db.transaction(() => {
     const parent = db.prepare(
       `SELECT status,terminal_status,error FROM factory_lifecycle_runs WHERE id=?`,
@@ -403,14 +458,25 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     const observedSource = git(repository.local_path, 'rev-parse', `${sourceCommit}^{commit}`);
     const observedTree = git(repository.local_path, 'rev-parse', `${sourceCommit}^{tree}`);
     const observedBranch = git(repository.local_path, 'rev-parse', branch);
-    if (
-      observedSource !== sourceCommit
-      || observedTree !== sourceTree || observedBranch !== sourceCommit
-      || (eligibleFailureCode === REVIEW_SCHEMA_FAILURE_CODE
-        ? head !== baseCommit
-        : head !== source.integrated_commit
-          || !isAncestor(repository.local_path, sourceCommit, head))
-    ) throw new Error('AUTHOR_CARRY_FORWARD_GIT_IDENTITY_DRIFT');
+    // X-6 — classify head movement BEFORE drifting. A sibling desk's
+    // successful integration advances the shared branch past the sealed base
+    // (a real merge, verified by a REAL git ancestry call, never string
+    // comparison); the sealed task branch must still point at the sealed
+    // source commit. Only a NON-descendant head (force-move/rebase) or a
+    // moved task branch is genuine drift.
+    const sealedBase = eligibleFailureCode === REVIEW_SCHEMA_FAILURE_CODE
+      ? baseCommit
+      : source.integrated_commit!;
+    const branchIdentityValid = observedSource === sourceCommit
+      && observedTree === sourceTree
+      && observedBranch === sourceCommit;
+    const ourMaterialRetained = eligibleFailureCode === REVIEW_SCHEMA_FAILURE_CODE
+      || isAncestor(repository.local_path, sourceCommit, head);
+    const headUnmovedOrForward = head === sealedBase
+      || isAncestor(repository.local_path, sealedBase, head);
+    if (!branchIdentityValid || !headUnmovedOrForward || !ourMaterialRetained) {
+      throw new Error('AUTHOR_CARRY_FORWARD_GIT_IDENTITY_DRIFT');
+    }
 
     const evidence = {
       schemaVersion: 'factory.author-candidate-carry-forward-authorization.v1',
@@ -440,19 +506,72 @@ export function authorizeEligibleAuthorCandidateCarryForward(
     };
     const evidenceDigest = sha256Hex(evidence);
     const authorizationRef = `author-carry-forward:${evidenceDigest}`;
-    const prior = db.prepare(
-      `SELECT authorization_ref,evidence_digest
+    // The CURRENT authority for this continuation: the newest superseding
+    // re-authorization when one exists, else the immutable base row.
+    const priorReauthorization = db.prepare(
+      `SELECT authorization_ref,evidence_snapshot,evidence_digest,supersede_ordinal
+         FROM factory_author_candidate_carry_forward_reauthorizations
+        WHERE continuation_ref=?
+        ORDER BY supersede_ordinal DESC LIMIT 1`,
+    ).get(input.continuationRef) as {
+      authorization_ref: string;
+      evidence_snapshot: string;
+      evidence_digest: string;
+      supersede_ordinal: number;
+    } | undefined;
+    const priorBase = db.prepare(
+      `SELECT authorization_ref,evidence_snapshot,evidence_digest
          FROM factory_author_candidate_carry_forward_authorizations
         WHERE continuation_ref=?`,
     ).get(input.continuationRef) as {
       authorization_ref: string;
+      evidence_snapshot: string;
       evidence_digest: string;
     } | undefined;
+    const prior = priorReauthorization ?? priorBase;
     if (prior) {
-      if (prior.authorization_ref !== authorizationRef || prior.evidence_digest !== evidenceDigest) {
+      if (prior.authorization_ref === authorizationRef && prior.evidence_digest === evidenceDigest) {
+        return { authorizationRef, replayed: true };
+      }
+      // X-6 — a retry whose ONLY difference is the observed integration head
+      // is a legitimate sibling merge, not an idempotency violation: every
+      // authority field must be byte-equal and the prior sealed head must be
+      // a REAL git ancestor of the new head (forward movement only). Record a
+      // superseding append-only row instead of killing the continuation.
+      const priorEvidence = parseRecord(prior.evidence_snapshot, 'authorization evidence');
+      const priorHead = priorEvidence.expectedIntegrationHead;
+      const authorityUnchangedExceptHead = canonicalJson({
+        ...priorEvidence, expectedIntegrationHead: undefined,
+      }) === canonicalJson({ ...evidence, expectedIntegrationHead: undefined });
+      const headAdvancedForward = typeof priorHead === 'string'
+        && isAncestor(repository.local_path, priorHead, head);
+      if (!authorityUnchangedExceptHead || !headAdvancedForward) {
         throw new Error('AUTHOR_CARRY_FORWARD_IDEMPOTENCY_MISMATCH');
       }
-      return { authorizationRef, replayed: true };
+      const insertColumns = `(authorization_ref,continuation_ref,predecessor_authorization_ref,
+         supersede_ordinal,source_lifecycle_run_id,source_process_run_id,
+         source_workplace_ref,source_candidate_set_ref,source_candidate_set_digest,
+         source_gate_decision_key,source_gate_decision_digest,source_product_schema,
+         source_product_ref,source_product_digest,semantic_input_digest,item_snapshot_hash,
+         project_repository_id,integration_branch,base_commit,source_commit,source_tree,
+         eligible_failure_code,evidence_snapshot,evidence_digest)`;
+      const values = [
+        authorizationRef, input.continuationRef, prior.authorization_ref,
+        (priorReauthorization?.supersede_ordinal ?? 0) + 1,
+        input.parentLifecycleRunId, stage.process_run_id, source.workplace_ref,
+        source.candidate_set_ref, source.candidate_set_digest,
+        authorDecisions[0]!.decision_key, authorDecisions[0]!.decision_digest,
+        member.product_schema, member.product_ref, member.product_digest,
+        semanticInputDigest, itemSnapshotHash, source.project_repository_id,
+        repository.integration_branch, baseCommit, sourceCommit, sourceTree,
+        eligibleFailureCode, canonicalJson(evidence), evidenceDigest,
+      ];
+      db.prepare(
+        `INSERT INTO factory_author_candidate_carry_forward_reauthorizations
+         ${insertColumns}
+       VALUES (${values.map(() => '?').join(',')})`,
+      ).run(...values);
+      return { authorizationRef, replayed: false };
     }
     db.prepare(
       `INSERT INTO factory_author_candidate_carry_forward_authorizations
@@ -478,7 +597,9 @@ export function authorizeEligibleAuthorCandidateCarryForward(
 }
 
 export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryForwardPort {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database.Database) {
+    ensureAuthorCarryForwardReauthorizationSchema(db);
+  }
 
   resolve(input: {
     readonly processRunId: number;
@@ -488,16 +609,30 @@ export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryFo
     readonly expectedProductSchemas: readonly string[];
   }): AuthorCandidateCarryForwardDirective | null {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
+    // X-6 — the CURRENT authority is the newest superseding re-authorization
+    // when a sibling merge advanced the head after the base authorization;
+    // otherwise the immutable base row. Same join shape in both cases.
     const row = this.db.prepare(
       `SELECT a.*
-         FROM factory_author_candidate_carry_forward_authorizations a
+         FROM factory_author_candidate_carry_forward_reauthorizations a
          JOIN factory_continuation_authorizations c
            ON c.authorization_ref=a.continuation_ref
          JOIN factory_stage_runs sr
            ON sr.lifecycle_run_id=c.child_lifecycle_run_id
           AND sr.process_run_id=?
-        WHERE c.state='consumed'`,
-    ).get(input.processRunId) as Record<string, unknown> | undefined;
+        WHERE c.state='consumed'
+        ORDER BY a.supersede_ordinal DESC LIMIT 1`,
+    ).get(input.processRunId) as Record<string, unknown> | undefined
+      ?? this.db.prepare(
+        `SELECT a.*
+           FROM factory_author_candidate_carry_forward_authorizations a
+           JOIN factory_continuation_authorizations c
+             ON c.authorization_ref=a.continuation_ref
+           JOIN factory_stage_runs sr
+             ON sr.lifecycle_run_id=c.child_lifecycle_run_id
+            AND sr.process_run_id=?
+          WHERE c.state='consumed'`,
+      ).get(input.processRunId) as Record<string, unknown> | undefined;
     if (!row) return null;
     const sourceWorkplace = deserializeWorkplaceRef(String(row.source_workplace_ref));
     if (sourceWorkplace.productionCellId !== input.workplaceRef.productionCellId) {
@@ -616,8 +751,13 @@ export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryFo
     const expectedHead = postAcceptance
       ? evidence.expectedIntegrationHead
       : row.base_commit;
+    // X-6 — the demand is "the branch has not diverged BACKWARDS". A head
+    // that advanced FORWARD past the sealed expectation is legitimate (a
+    // sibling merge, or a merge of our own branch) — verified by a REAL git
+    // ancestry call. Only a NON-descendant current head (force-move/rebase)
+    // stays a typed drift.
     if (
-      currentHead !== expectedHead
+      !isAncestor(repository.local_path, String(expectedHead), currentHead)
       || git(repository.local_path, 'rev-parse', `${String(row.source_commit)}^{tree}`) !== row.source_tree
       || (postAcceptance
         && !isAncestor(repository.local_path, String(row.source_commit), currentHead))

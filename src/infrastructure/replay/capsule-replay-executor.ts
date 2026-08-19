@@ -575,6 +575,23 @@ function applyGitRecipe(
   }
 
   const patchBytes = Buffer.from(recipe.patchBase64, 'base64');
+  // X-9 — checkout -B is the ONLY force-mover of the sealed source branch.
+  // Capture its position BEFORE the move so a mid-recipe failure can restore
+  // it (plain update-ref back to what was there; the branch is DELETED again
+  // if it did not exist pre-replay). Without this, any failure left the
+  // branch at baseCommit and every seal-consuming proof (integration
+  // REVIEWED_SOURCE_MISMATCH, carry-forward GIT_IDENTITY_DRIFT, replay's own
+  // base checks) failed permanently.
+  const sourceBranchRef = `refs/heads/${recipe.sourceBranch}`;
+  let preReplaySourceBranchCommit: string | null = null;
+  try {
+    preReplaySourceBranchCommit = gitExec(
+      worktreePath,
+      ['rev-parse', '--verify', sourceBranchRef],
+    );
+  } catch {
+    preReplaySourceBranchCommit = null; // branch absent pre-replay
+  }
   let sourceBranchCheckedOut = false;
   try {
     gitExec(worktreePath, ['checkout', '-B', recipe.sourceBranch, recipe.baseCommit]);
@@ -616,7 +633,24 @@ function applyGitRecipe(
     return actualCommit;
   } catch (error) {
     if (sourceBranchCheckedOut) {
+      // Clean the worktree/index FIRST (while the branch ref is still at
+      // baseCommit — `git reset --hard` moves the ref it is on), then restore
+      // the sealed branch position, then leave HEAD where replay found it.
       try { gitExec(worktreePath, ['reset', '--hard', recipe.baseCommit]); } catch { /* preserve original */ }
+      try {
+        if (preReplaySourceBranchCommit !== null) {
+          gitExec(worktreePath, ['update-ref', sourceBranchRef, preReplaySourceBranchCommit]);
+        } else {
+          gitExec(worktreePath, ['update-ref', '-d', sourceBranchRef]);
+        }
+      } catch (restoreError) {
+        // Loud, never masking the original failure.
+        process.stderr.write(
+          `[capsule-replay] X-9 sealed-branch restore FAILED for ${sourceBranchRef} `
+          + `(pre-replay commit: ${preReplaySourceBranchCommit ?? '<absent>'}): `
+          + `${errorMessage(restoreError)}\n`,
+        );
+      }
       try { gitExec(worktreePath, ['checkout', recipe.integrationBranch]); } catch { /* preserve original */ }
     }
     if (error instanceof Error && error.message.startsWith('CAPSULE_REPLAY_')) throw error;
