@@ -18,6 +18,7 @@ import { routeToModelRoute, resolveFrozenRouteEndpoint } from '../application/ro
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { journalEvent } from '../observability/run-journal.js';
+import { pickWorkerName, stageFromModuleName } from '../worker-names.js';
 
 export const PRIORITY_ORDER =
   "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
@@ -588,8 +589,11 @@ export function findNextClaimable(
     let modelRoute: ExecutionModelRoute = readModelRouteAtClaim(db, task.epic_id);
     let executorKind: ExecutionContextExecutorKind = 'claude-cli';
     let routePolicy: ExecutionRoutePolicyRef | null = null;
+    // The route key (module/cell/role/profile) is resolved ONCE here: the
+    // optional routing policy consumes it, and the WORKER-NAMES stamp below
+    // reuses its module name to select the workshop name pool.
+    const routeKey = readRouteKeyForTask(db, task, claimedStatus === 'review_in_progress');
     if (routeResolver) {
-      const routeKey = readRouteKeyForTask(db, task, claimedStatus === 'review_in_progress');
       const route = routeResolver(routeKey);
       modelRoute = routeToModelRoute(route, modelRoute);
       executorKind = route.executor.kind;
@@ -617,11 +621,21 @@ export function findNextClaimable(
       execution_context: executionContext,
       execution_context_hash: executionContextHash(executionContext),
     });
+    // WORKER-NAMES-DESIGN: stamp the factory callsign INSIDE this claim
+    // transaction. Uniqueness is scoped to LIVE executions of this project
+    // (reserved/running/cancel_requested) — the UUID identifiers in this row
+    // stay the authority everywhere; the name is display-only.
+    const displayName = pickWorkerName(
+      db,
+      projectId,
+      stageFromModuleName(routeKey.module),
+    );
     db.prepare(
       `INSERT INTO worker_executions
         (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
-         phase,metadata,lease_expires_at,heartbeat_at,progress_at,stuck_state)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         phase,metadata,lease_expires_at,heartbeat_at,progress_at,stuck_state,
+         display_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
       reservation.executionId,
       reservation.runId,
@@ -636,6 +650,7 @@ export function findNextClaimable(
       new Date().toISOString(),
       new Date().toISOString(),
       'active',
+      displayName,
     );
     journalEvent('execution.reserved', {
       run_id: reservation.runId,
@@ -648,6 +663,9 @@ export function findNextClaimable(
       model_route: executionContext.model_route,
       executor_kind: executionContext.executor_kind,
       execution_context_hash: executionContextHash(executionContext),
+      // WORKER-NAMES-DESIGN: the callsign rides in the data payload — NEVER
+      // as a correlation key (execution_id above stays the sole key).
+      display_name: displayName,
     });
   }
 

@@ -67,6 +67,25 @@ import {
   ageText,
 } from './shared.mjs';
 
+// WORKER-NAMES-DESIGN: execution_id → factory callsign for board rendering.
+// One read-only query per render; guarded for a pre-migration DB (column not
+// yet ALTERed by an engine open) — the kanban falls back to the UUID label.
+function readWorkerDisplayNames() {
+  try {
+    return withDb(db => {
+      const hasColumn = db.prepare('PRAGMA table_info(worker_executions)')
+        .all().some(c => c.name === 'display_name');
+      if (!hasColumn) return new Map();
+      const rows = db.prepare(
+        'SELECT execution_id, display_name FROM worker_executions WHERE display_name IS NOT NULL',
+      ).all();
+      return new Map(rows.map(r => [r.execution_id, r.display_name]));
+    });
+  } catch {
+    return new Map();
+  }
+}
+
 export function createBoardRenderApi({
   RELOAD_SEC,
   loadBoard,
@@ -365,6 +384,12 @@ export function createBoardRenderApi({
     const bootstrapOptions = repoBindings.map(r =>
       `<option value="${r.id}">${esc(r.name)} (${esc(r.status)})</option>`).join('');
 
+    // WORKER-NAMES-DESIGN: execution_id → factory callsign for every claimed
+    // card of this board. Read-only map; guarded for a pre-migration DB
+    // (display_name column not yet ALTERed by an engine open) — the kanban
+    // then falls back to the UUID label, never 500s.
+    const workerNamesByExec = readWorkerDisplayNames();
+
     const cards = tasks.map(t => {
       const e = epicById[t.epic_id];
       // needs-human флаг — задача ждёт ответа человека, мигает красным
@@ -376,6 +401,9 @@ export function createBoardRenderApi({
         epicId: t.epic_id,
         prio: PRIO[t.priority] || '#95a5a6',
         needsHuman,
+        workerName: t.current_execution_id
+          ? workerNamesByExec.get(t.current_execution_id) || null
+          : null,
       };
     });
     const byStatus = {};
@@ -387,7 +415,7 @@ export function createBoardRenderApi({
         <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" style="border-left:6px solid ${proj.color}">
           <div class="card-head">
             <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
-            ${c.t.assigned_to ? `<span class="assigned" title="assigned_to">${esc(c.t.assigned_to)}</span>` : ''}
+            ${c.t.assigned_to ? `<span class="assigned" title="${esc(c.t.assigned_to)}">@${esc(c.workerName || c.t.assigned_to)}</span>` : ''}
             ${c.needsHuman ? '<span class="ask-flag" title="needs human answer">⚠ needs human</span>' : ''}
             <span style="flex:1"></span>
             <span class="card-id">#${c.t.id}</span>
@@ -551,6 +579,7 @@ export function createBoardRenderApi({
           next.set(Number(w.task_id), {
             log_mtime_ms: w.log_mtime_ms || null,
             worker_id: w.worker_id || '',
+            display_name: w.display_name || '',
             is_stale: w.is_stale === true,
           });
         }
@@ -625,18 +654,24 @@ export function createBoardRenderApi({
           const iconEl = row.querySelector('.wr-icon');
           if (iconEl && iconEl.textContent !== iconNow) iconEl.textContent = iconNow;
           row.classList.toggle('is-recovery', w.task_kind === 'recovery.heal');
-          row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
+          // WORKER-NAMES-DESIGN: панель воркеров — «#217 Forge · exec · 14m».
+          // Callsign в заголовке (fallback worker_id), фаза рядом, возраст в
+          // wr-age; полное название задачи уходит в tooltip строки.
+          const workerLabel = w.display_name || w.worker_id;
+          const phaseLabel = w.process_phase || 'exec';
+          row.title = (w.title || '').slice(0, 120) + ' · ' + w.worker_id;
+          row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + workerLabel;
           row.querySelector('.wr-age').textContent = ageMin + 'm';
-          // Worker subtitle: show output token speed + cumulative output tokens.
-          // tok/s = output_tokens / elapsed_seconds — the model's live
+          // Worker subtitle: phase + output token speed + cumulative output
+          // tokens. tok/s = output_tokens / elapsed_seconds — the model's live
           // production rate from the API-reported cumulative usage.
           const tps = w.tokens_per_sec;
           const tt = w.total_tokens;
           if (tps != null && tt != null) {
             const fmt = n => n > 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-            row.querySelector('.wr-sub').textContent = tps + ' tok/s · ' + fmt(tt) + ' out';
+            row.querySelector('.wr-sub').textContent = phaseLabel + ' · ' + tps + ' tok/s · ' + fmt(tt) + ' out';
           } else {
-            row.querySelector('.wr-sub').textContent = w.worker_id;
+            row.querySelector('.wr-sub').textContent = phaseLabel + ' · ' + w.worker_id;
           }
           if (expandedWorkers.has(w.worker_id)) row.classList.add('expanded');
         }
@@ -1194,7 +1229,8 @@ export function createBoardRenderApi({
           dot.classList.remove('green', 'yellow', 'red', 'streaming', 'pulse-fast', 'pulse-med', 'pulse-slow');
           dot.classList.add(cls);
           if (pulse) dot.classList.add(pulse);
-          dot.title = (w.is_stale ? 'STALE ' : '') + ageS + 's ago (' + (w.worker_id || '?') + ')';
+          dot.title = (w.is_stale ? 'STALE ' : '') + ageS + 's ago ('
+            + (w.display_name || w.worker_id || '?') + ')';
         });
       }
       async function refreshBoard() {
@@ -1383,7 +1419,7 @@ export function createBoardRenderApi({
           <div class="tc-header-row">
             <span class="tc-status-chip" style="background:${sColor}22;border-color:${sColor};color:${sColor}">${esc(task.status)}</span>
             <span class="prio" style="background:${prioColor}">${esc(task.priority)}</span>
-            ${task.assigned_to ? `<span class="assigned" title="assigned_to">@${esc(task.assigned_to)}</span>` : ''}
+            ${task.assigned_to ? `<span class="assigned" title="${esc(task.assigned_to)}">@${esc(readWorkerDisplayNames().get(task.current_execution_id) || task.assigned_to)}</span>` : ''}
             ${tagsArr.includes('needs-human') ? '<span class="ask-flag">⚠ needs human</span>' : ''}
           </div>
           <div class="tc-section">
