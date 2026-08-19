@@ -197,7 +197,7 @@ test('review provider distinguishes valid changes_requested from malformed revie
   });
   assert.equal(stringFinding.outcome, 'failed');
   assert.deepEqual(stringFinding.evidenceRefs.map(decodeCheckDiagnostic), [{
-    code: 'review-finding-1', message: 'bug',
+    code: 'review-finding:unscoped', message: 'bug',
   }]);
   const structuredFinding = reviewOutcome({
     subject_candidate_set_ref: 'author-set',
@@ -206,7 +206,7 @@ test('review provider distinguishes valid changes_requested from malformed revie
   });
   assert.equal(structuredFinding.outcome, 'failed');
   assert.deepEqual(structuredFinding.evidenceRefs.map(decodeCheckDiagnostic), [{
-    code: 'review-finding-1', message: 'missing trace', subjectRef: 'artifact:16',
+    code: 'review-finding:unscoped', message: 'missing trace', subjectRef: 'artifact:16',
   }]);
   assert.equal(reviewOutcome({ verdict: 'changes_requested', findings: ['bug'] }), 'unknown');
   assert.equal(reviewOutcome({

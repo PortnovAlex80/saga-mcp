@@ -97,7 +97,7 @@ test('all blockers out-of-scope → verdict passes, findings deferred as observa
   assert.equal(result.outcome, 'passed');
   const diag = decoded(result);
   assert.equal(diag.length, 1);
-  assert.equal(diag[0].code, 'deferred-out-of-scope-1');
+  assert.equal(diag[0].code, 'deferred-out-of-scope:launcher/switch-x');
   assert.match(diag[0].message, /DEFERRED — outside this item's frozen changeScopes/);
   db.close();
 });
@@ -110,8 +110,8 @@ test('in-scope blocker keeps force; out-of-scope one rides as deferred', () => {
   ]);
   assert.equal(result.outcome, 'failed');
   const diag = decoded(result);
-  const blocking = diag.filter(d => d.code === 'review-finding-1');
-  const deferred = diag.filter(d => d.code === 'deferred-out-of-scope-2');
+  const blocking = diag.filter(d => d.code === 'review-finding:zone-a/widget-x');
+  const deferred = diag.filter(d => d.code === 'deferred-out-of-scope:launcher/switch-x');
   assert.equal(blocking.length, 1);
   assert.equal(deferred.length, 1);
   assert.match(deferred[0].message, /DEFERRED/);
@@ -125,7 +125,7 @@ test('no declared scopes (non-repository cell) → filter is a no-op', () => {
   ]);
   assert.equal(result.outcome, 'failed');
   const diag = decoded(result);
-  assert.equal(diag[0].code, 'review-finding-1');
+  assert.equal(diag[0].code, 'review-finding:elsewhere/thing');
   db.close();
 });
 
@@ -135,7 +135,7 @@ test('partially in-scope paths stay actionable (conservative)', () => {
     { message: 'mixed', severity: 'error', paths: ['zone-a/widget-x', 'launcher/switch-x'] },
   ]);
   assert.equal(result.outcome, 'failed');
-  assert.equal(decoded(result)[0].code, 'review-finding-1');
+  assert.equal(decoded(result)[0].code, 'review-finding:launcher/switch-x|zone-a/widget-x');
   db.close();
 });
 
@@ -162,6 +162,6 @@ test('a later author task cannot change the sealed subject scope authority', () 
     { message: 'accepted-scope defect', severity: 'error', paths: ['zone-a/widget-x'] },
   ]);
   assert.equal(result.outcome, 'failed');
-  assert.equal(decoded(result)[0].code, 'review-finding-1');
+  assert.equal(decoded(result)[0].code, 'review-finding:zone-a/widget-x');
   db.close();
 });
