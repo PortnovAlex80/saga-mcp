@@ -42,6 +42,8 @@ export interface InterfacePair {
 
 export interface ReplanContext {
   readonly cycleNumber: number;
+  /** The cycle-1 process run (task supersede target, REPLAN-CYCLE-TZ §5). */
+  readonly cycle1ProcessRunId: number;
   readonly cycle1Diagnosis: {
     readonly survivingKeys: readonly string[];
     readonly completedItems: readonly string[];
@@ -197,6 +199,7 @@ export function buildReplanCase(db: Database.Database, input: ReplanCaseInput): 
     ...developmentCase,
     replanContext: {
       cycleNumber: 2,
+      cycle1ProcessRunId: workplaceRef.processRunId,
       cycle1Diagnosis: {
         survivingKeys: [...input.survivingKeys],
         completedItems: items.filter(item => item.accepted).map(item => item.itemKey).sort(),

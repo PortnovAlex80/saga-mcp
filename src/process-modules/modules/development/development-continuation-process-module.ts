@@ -241,12 +241,12 @@ export const developmentReplanContinuationProcessModule: ProcessModuleDefinition
     .map(node => node.id === 'resolve-task-graph' && node.kind === 'kernel'
       ? {
         ...node,
-        // Cycle 2 resolves the PLANNER's accepted proposal (the standard
-        // handler), not the deterministic continuation graph — the whole
-        // point of the re-plan cycle.
-        handler: DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph,
+        // Cycle 2 resolves the PLANNER's accepted proposal through the
+        // supersede-wrapping handler (REPLAN-CYCLE-TZ §5): remaining cycle-1
+        // tasks are drained BEFORE the new graph materializes.
+        handler: DEVELOPMENT_KERNEL_HANDLER_IDS.resolveReplanTaskGraph,
         description:
-          'Canonicalize the cycle-2 gate-accepted re-plan proposal and materialize its projected work idempotently.',
+          'Drain remaining cycle-1 tasks (superseded_by), then canonicalize the cycle-2 gate-accepted re-plan proposal and materialize its projected work idempotently.',
       }
       : node);
   const resolverIndex = rest.findIndex(node => node.id === 'resolve-task-graph');

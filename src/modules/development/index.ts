@@ -32,6 +32,7 @@ import {
   developmentReplanContinuationProcessModule,
 } from '../../process-modules/modules/development/development-continuation-process-module.js';
 import { createDevelopmentContinuationTaskGraphHandler } from './infrastructure/development-continuation-installation.js';
+import { supersedeRemainingCycleTasks } from './application/replan-supersede.js';
 import {
   DEVELOPMENT_VERIFICATION_CONTINUATION_PROCESS_MODULE_REF,
   developmentVerificationContinuationProcessModule,
@@ -289,6 +290,36 @@ export function registerDevelopment(
     definition: developmentContinuationProcessModule,
     executor: continuationExecutor,
   } as Parameters<typeof registries.installationRegistry.register>[0]);
+
+  // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4+§5) — the cycle-2 resolver wraps the
+  // standard resolveTaskGraph handler: remaining cycle-1 tasks are superseded
+  // (metadata.$.superseded_by + cancelled cards + drained projections) in the
+  // SAME kernel step that materializes the cycle-2 graph, so zero cycle-1
+  // workers can wake beside cycle 2.
+  const replanHandlers = createVersionedDevelopmentKernelHandlers(
+    deps,
+    DEVELOPMENT_REPLAN_CONTINUATION_PROCESS_MODULE_REF,
+  );
+  const replanResolver = replanHandlers[DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph];
+  if (!replanResolver) {
+    throw new Error('DEVELOPMENT_REPLAN_RESOLVER_INCOMPLETE');
+  }
+  registries.kernelHandlers.register(
+    DEVELOPMENT_KERNEL_HANDLER_IDS.resolveReplanTaskGraph,
+    ctx => {
+      const replanContext = (ctx.frame.runInput as { replanContext?: { cycle1ProcessRunId?: unknown } })
+        ?.replanContext;
+      const cycle1ProcessRunId = Number(replanContext?.cycle1ProcessRunId);
+      if (!Number.isInteger(cycle1ProcessRunId) || cycle1ProcessRunId <= 0) {
+        throw new Error('DEVELOPMENT_REPLAN_CYCLE1_RUN_INVALID: the cycle-2 case must carry replanContext.cycle1ProcessRunId');
+      }
+      supersedeRemainingCycleTasks(db, {
+        cycle1ProcessRunId,
+        cycle2RunId: ctx.processRunId,
+      });
+      return replanResolver(ctx);
+    },
+  );
 
   // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4) — the cycle-2 continuation variant:
   // enters through the 'replan-task-graph' planner cell; kernel handlers are
