@@ -579,6 +579,42 @@ export function createProductLifecycleRuntime(
         // candidates ride the reviewer objective into the worker prompt.
         readReviewerRoundHistory: (workplaceRef) =>
           readReviewerRoundHistorySql(db, serializeWorkplaceRef(workplaceRef)),
+        // BLINDSIGHT C3 — bind the carry-forward parent-failure context to
+        // the child author task metadata (the recovery_feedback desk-binding
+        // surface). Set-once per authority; the authorizationRef may move
+        // forward on an X-6 supersede while the typed reason stays fixed;
+        // any other drift fails closed.
+        bindCarryForwardFailureContext: (input) => {
+          const workplace = serializeWorkplaceRef(input.workplaceRef);
+          const row = db.prepare(
+            'SELECT metadata,workplace_ref FROM tasks WHERE id=?',
+          ).get(input.taskId) as { metadata: string; workplace_ref: string } | undefined;
+          if (!row || row.workplace_ref !== workplace) {
+            throw new Error(`CARRY_FORWARD_FAILURE_TASK_NOT_EXACT: ${input.taskId}`);
+          }
+          const metadata = JSON.parse(row.metadata) as Record<string, unknown>;
+          const binding = {
+            schemaVersion: 'factory.carry-forward-failure.v1',
+            eligibleFailureCode: input.eligibleFailureCode,
+            parentError: input.parentError,
+            authorizationRef: input.authorizationRef,
+          };
+          const prior = metadata.carry_forward_failure;
+          if (prior !== undefined) {
+            const priorRecord = prior as typeof binding;
+            if (
+              priorRecord.eligibleFailureCode !== binding.eligibleFailureCode
+              || priorRecord.parentError !== binding.parentError
+            ) {
+              throw new Error(`CARRY_FORWARD_FAILURE_CONTEXT_MISMATCH: task ${input.taskId}`);
+            }
+            if (priorRecord.authorizationRef === binding.authorizationRef) return;
+          }
+          metadata.carry_forward_failure = binding;
+          db.prepare(
+            "UPDATE tasks SET metadata=?, updated_at=datetime('now') WHERE id=?",
+          ).run(JSON.stringify(metadata), input.taskId);
+        },
         countTerminalExecutionsForTask: (taskId) => countTerminalExecutionsForTask(db, taskId),
         // Fix-3 — an ACCEPTED CandidateSet must not consume recovery budget.
         countGateRejectedCandidateSets: (workplaceRef, role) =>

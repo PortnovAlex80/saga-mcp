@@ -1161,3 +1161,32 @@ test('round-1 reviewer objective has no REVIEW HISTORY block', async () => {
     'a first review round carries no stale history');
   h.db.close();
 });
+
+test('carry-forward failure context is delivered to the child author task (blindsight C3)', async () => {
+  const bound = [];
+  const directive = {
+    authorizationRef: 'author-carry-forward:c3',
+    presenterRef: 'factory-carry-forward-presenter:author-carry-forward:c3',
+    sourceCandidateSetRef: 'candidate-set:prior-author',
+    sourceCandidateSetDigest: sha('prior-author'),
+    eligibleFailureCode: 'review-output-schema-mismatch',
+    parentFailureError:
+      "review verdict contract expected exactly one 'factory.development-review-verdict.v1', received 0",
+    products: [{
+      schemaId: 'factory.test-product.v1', ref: 'managed-node-submission:prior', digest: sha('prior-product'),
+    }],
+  };
+  const carry = { resolve: () => directive, consume() {} };
+  const h = harness(null, carry);
+  h.persistence.readProjectedRoleTask = () => ({ taskId: 4242 });
+  h.persistence.bindCarryForwardFailureContext = input => bound.push(input);
+  const ctx = context(cell({ review: true }));
+  await h.executor.execute(ctx);
+  assert.equal(bound.length, 1,
+    'C3: the typed parent failure reason must be bound to the child author task');
+  assert.equal(bound[0].taskId, 4242);
+  assert.equal(bound[0].eligibleFailureCode, 'review-output-schema-mismatch');
+  assert.match(bound[0].parentError, /review verdict contract expected exactly one/);
+  assert.equal(bound[0].authorizationRef, 'author-carry-forward:c3');
+  h.db.close();
+});

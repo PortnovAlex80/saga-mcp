@@ -195,6 +195,20 @@ export interface ProductionCellProjectionPersistence {
     readonly rejectedCandidateSetRefs: readonly string[];
   } | null;
   /**
+   * BLINDSIGHT C3 — bind the carry-forward parent-failure context (typed
+   * eligibleFailureCode + the exact parent error + the authorization ref) to
+   * the child author task metadata, so the continuation KNOWS why the parent
+   * died (the same desk-binding surface recovery_feedback uses). Optional:
+   * installs without durable task metadata keep the legacy behavior.
+   */
+  bindCarryForwardFailureContext?(input: {
+    readonly taskId: number;
+    readonly workplaceRef: WorkplaceRef;
+    readonly eligibleFailureCode: string;
+    readonly parentError: string;
+    readonly authorizationRef: string;
+  }): void;
+  /**
    * Read the task associated with a workplace (for crash-recovery attempt
    * counting). Optional — when absent, attemptCount falls back to sealed
    * CandidateSet count only.
@@ -875,6 +889,26 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
             workplace.ref,
             directive.presenterRef,
           );
+          // BLINDSIGHT C3 — deliver the parent's typed failure reason to the
+          // child author task: the continuation must know WHICH boundary
+          // killed the parent (review schema mismatch, post-acceptance
+          // manifest, freeze projection, cross-cell scope), not merely that
+          // it now presents carried material.
+          if (directive.eligibleFailureCode) {
+            const authorTask = this.opts.persistence.readProjectedRoleTask?.(
+              workplace.ref,
+              'author',
+            );
+            if (authorTask) {
+              this.opts.persistence.bindCarryForwardFailureContext?.({
+                taskId: authorTask.taskId,
+                workplaceRef: workplace.ref,
+                eligibleFailureCode: directive.eligibleFailureCode,
+                parentError: directive.parentFailureError ?? '',
+                authorizationRef: directive.authorizationRef,
+              });
+            }
+          }
           state = this.requireState(workplace.ref);
         }
       }

@@ -78,6 +78,15 @@ export interface AuthorCandidateCarryForwardDirective {
   readonly presenterRef: string;
   readonly sourceCandidateSetRef: string;
   readonly sourceCandidateSetDigest: string;
+  /**
+   * BLINDSIGHT C3 — the TYPED reason the parent run died (one of the
+   * *_FAILURE_CODE constants). The continuation child must know WHICH
+   * boundary failed, not merely that it carries authorized material: the
+   * code was loaded from the authorization row and thrown away before.
+   */
+  readonly eligibleFailureCode: string;
+  /** The exact parent terminal error text (human/model context for the code). */
+  readonly parentFailureError: string;
   readonly products: readonly ProductRef[];
 }
 
@@ -668,11 +677,20 @@ export class SqliteAuthorCandidateCarryForward implements AuthorCandidateCarryFo
 
     this.reverifySource(row);
     const authorizationRef = String(row.authorization_ref);
+    // BLINDSIGHT C3 — the row already carries eligible_failure_code (NOT NULL)
+    // and the sealed evidence carries the exact parent error; deliver BOTH to
+    // the child instead of dropping them at this boundary.
+    const evidence = parseRecord(String(row.evidence_snapshot), 'authorization evidence');
+    const parentFailureError = typeof evidence.parentError === 'string'
+      ? evidence.parentError
+      : '';
     return {
       authorizationRef,
       presenterRef: `factory-carry-forward-presenter:${authorizationRef}`,
       sourceCandidateSetRef: String(row.source_candidate_set_ref),
       sourceCandidateSetDigest: String(row.source_candidate_set_digest),
+      eligibleFailureCode: String(row.eligible_failure_code),
+      parentFailureError,
       products: [{
         schemaId: String(row.source_product_schema),
         ref: String(row.source_product_ref),
