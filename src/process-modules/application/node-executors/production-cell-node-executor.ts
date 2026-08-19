@@ -9,6 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import type Database from 'better-sqlite3';
 import { engineLog } from '../../../runtime/engine-file-logger.js';
 
 import type {
@@ -62,6 +63,10 @@ import {
 import type { SubmissionValidationReceiptProjection } from '../submission-validation-receipt-authority.js';
 import type { WorkplaceParkReason } from '../../../infrastructure/workplace/workplace-park-reasons.js';
 import type { GateDecision } from '../../domain/workplace/gate.js';
+import {
+  effectsSettledProceedable,
+  finalAcceptanceAbsent,
+} from '../transition-handoff-postconditions.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -258,6 +263,14 @@ export interface ProductionCellProductReader {
 
 export interface ProductionCellNodeExecutorOptions {
   readonly coordinator: ProductionCellCoordinator;
+  /**
+   * B-004/W-1 — the shared effects-settled boundary predicate
+   * (transition-handoff-postconditions.ts) is derived from the durable
+   * postcondition tables exactly as the reconciler derives it; the executor
+   * must read them through the SAME module, not a second divergent
+   * predicate. Same construction shape as the other sqlite repositories.
+   */
+  readonly db: Database.Database;
   /** ADR-081 (K12) — the proof-backed acceptance mutation service. */
   readonly authorityCommit: CommitAcceptedCandidate;
   readonly candidateSetRepo: SqliteCandidateSetRepository;
@@ -496,7 +509,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           serializeWorkplaceRef(workplace.ref),
         )) {
         const accepted = this.acceptedAuthorCandidate(workplace.ref);
-        if (!accepted || !this.gateEffectHandoffReady(workplace.ref, accepted)) {
+        if (!accepted || !this.finalAcceptanceReentryAdmissible(workplace.ref, accepted)) {
           return pendingOutcome();
         }
         const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, workplace);
@@ -828,15 +841,16 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // identity (decisionKey + decisionDigest from runGate), not a fabricated
         // workplace-scoped string — so crash recovery redrives effects against
         // the precise accepted decision instead of guessing one by recency.
-        // TB-12: a COMPLETED handoff is ready too — the effects are already
-        // durable and the post-gate state machine below must proceed.
+        // TB-12 + B-004/W-1: a COMPLETED handoff is ready too — evaluated by
+        // the ONE shared effects-settled predicate (in_progress lease OR
+        // completed with its durable postcondition still satisfied), not the
+        // old bare state disjunction.
         // An accepted author Gate with a reviewer has already performed its
         // factual transition by moving the Workplace to the reviewer desk. It
         // intentionally has no post-acceptance-effects obligation, so absence
         // of that obligation must not park reviewer materialization.
         nextHandoffReady = Boolean(cell.review)
-          || decision.transitionObligation?.state === 'in_progress'
-          || decision.transitionObligation?.state === 'completed';
+          || effectsSettledProceedable(this.opts.db, decision.transitionObligation).satisfied;
       } else {
         this.opts.coordinator.applyGateDecision(workplace.ref, {
           verdict: decision.verdict,
@@ -866,9 +880,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // ADR-053 B-8/C6 — reviewer gate accepted → effects must run (mandatory).
         // Obligation carries the EXACT reviewer GateDecision identity (not the
         // author subject's digest), so recovery redrives the right verdict.
-        // TB-12: completed counts as ready — see the author-gate branch above.
-        nextHandoffReady = decision.transitionObligation?.state === 'in_progress'
-          || decision.transitionObligation?.state === 'completed';
+        // TB-12 + B-004/W-1: completed counts as ready through the shared
+        // effects-settled predicate — see the author-gate branch above.
+        nextHandoffReady = effectsSettledProceedable(
+          this.opts.db, decision.transitionObligation,
+        ).satisfied;
       }
       this.opts.coordinator.applyReviewerVerdict(workplace.ref, {
         verdict: decision.verdict,
@@ -1149,6 +1165,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   /**
    * Recreate the exact GateAccepted obligation from the durable authority head
    * and admit the next handoff only while the reconciler owns its live lease.
+   *
+   * This is the PROVIDER-INVOCATION gate (settleAcceptanceEffect): invoking an
+   * external effect requires the live run-effects lease — a completed handoff
+   * NEVER authorizes a new provider call (CONVEYOR §20 idempotency). The
+   * effects-settled RE-ENTRY boundary (C8/record-final-acceptance recovery)
+   * is the deliberately different {@link finalAcceptanceReentryAdmissible}.
    */
   private gateEffectHandoffReady(
     workplaceRef: WorkplaceRef,
@@ -1167,6 +1189,52 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       gateDecisionDigest: decision.decisionDigest,
       workplaceRef: serializeWorkplaceRef(workplaceRef),
     }).state === 'in_progress';
+  }
+
+  /**
+   * B-004/W-1 — the C8/record-final-acceptance RE-ENTRY gate.
+   *
+   * The old gate demanded obligation state 'in_progress' exclusively, so a
+   * crash between completeAcceptanceEffect and recordFinalAcceptanceAndCapture
+   * (run-effects completed by the reconciler from the then-satisfied
+   * postcondition; receipt durable; FinalAcceptance missing) made it
+   * PERMANENTLY false — pendingOutcome forever, the record-final-acceptance
+   * obligation deferring forever (the stage-10 W-1 kill).
+   *
+   * Now the same disjunction TB-12 uses, evaluated by the ONE shared
+   * effects-settled predicate (effectsSettledProceedable — in_progress OR
+   * completed-with-durable-postcondition), and the completed arm fires only
+   * while the recovery target is genuinely absent (no FinalAcceptance row for
+   * the exact accepted decision — derived from the same postcondition module
+   * the reconciler uses, never a second predicate).
+   */
+  private finalAcceptanceReentryAdmissible(
+    workplaceRef: WorkplaceRef,
+    acceptedCandidate: CandidateSet,
+  ): boolean {
+    const decisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef),
+      acceptedCandidate.candidateSetRef,
+    );
+    const decision = this.opts.gateRepo.readDecision(decisionKey);
+    if (!decision || decision.verdict !== 'accepted') {
+      throw new Error(`ACCEPTED_GATE_DECISION_NOT_FOUND: ${decisionKey}`);
+    }
+    const obligation = this.opts.obligationIntegrator.onGateAccepted({
+      gateDecisionKey: decision.decisionKey,
+      gateDecisionDigest: decision.decisionDigest,
+      workplaceRef: serializeWorkplaceRef(workplaceRef),
+    });
+    const proceedable = effectsSettledProceedable(this.opts.db, obligation);
+    if (!proceedable.satisfied) return false;
+    if (obligation.state === 'completed') {
+      return finalAcceptanceAbsent(
+        this.opts.db,
+        serializeWorkplaceRef(workplaceRef),
+        decision.decisionKey,
+      );
+    }
+    return true;
   }
 
   private ensureRoleProjection(

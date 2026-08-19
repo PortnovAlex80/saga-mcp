@@ -140,6 +140,86 @@ function fact(row: unknown, missingReason: string): TransitionHandoffPostconditi
 }
 
 /**
+ * B-004/W-1/O-B1 — the ONE predicate for the effects-settled boundary.
+ *
+ * The boundary was previously evaluated four divergent ways: the C8
+ * re-entry gate demanded obligation state 'in_progress' only, TB-12 accepted
+ * 'in_progress OR completed' with no durability proof, this module's
+ * run-effects postcondition accepted receipt/repair/final-acceptance, and
+ * the reconciler completed run-effects from that postcondition without
+ * re-driving. A crash between completeAcceptanceEffect and
+ * recordFinalAcceptanceAndCapture left the run-effects obligation completed
+ * (postcondition satisfied via the receipt) while the C8 gate was
+ * permanently false → record-final-acceptance deferred forever.
+ *
+ * This function is the shared decision BOTH node-executor callers use:
+ *   - 'in_progress' → proceed (a live reconciler lease drives the handoff);
+ *   - 'completed'   → proceed ONLY while the durable postcondition chain
+ *     still justifies it (the exact run-effects postcondition of this
+ *     module — receipt, routed repair issue, or FinalAcceptance for the
+ *     exact accepted GateDecision);
+ *   - anything else → not proceedable.
+ */
+export function effectsSettledProceedable(
+  db: Database.Database,
+  obligation: TransitionObligation | null | undefined,
+): TransitionHandoffPostcondition {
+  if (!obligation || obligation.handoffKind !== 'run-effects') {
+    return {
+      satisfied: false,
+      reason: 'run-effects handoff obligation is absent',
+    };
+  }
+  if (obligation.state === 'in_progress') {
+    return {
+      satisfied: true,
+      reason: 'run-effects handoff holds a live reconciler lease',
+    };
+  }
+  if (obligation.state !== 'completed') {
+    return {
+      satisfied: false,
+      reason: `run-effects handoff is ${obligation.state}`,
+    };
+  }
+  const postcondition = readTransitionHandoffPostcondition(db, obligation);
+  if (!postcondition.satisfied) {
+    return {
+      satisfied: false,
+      reason: `completed run-effects handoff no longer satisfies its durable `
+        + `postcondition: ${postcondition.reason}`,
+    };
+  }
+  return {
+    satisfied: true,
+    reason: 'completed run-effects handoff with its durable postcondition still satisfied',
+  };
+}
+
+/**
+ * B-004/W-1 companion — is the FinalAcceptance recovery target GENUINELY
+ * absent? The C8/record-final-acceptance re-entry may fire on a COMPLETED
+ * run-effects handoff only while the acceptance row it exists to record is
+ * still missing; presence means there is nothing to recover and production
+ * must not be re-driven. Derived from the same postcondition tables the
+ * reconciler's record-final-acceptance postcondition reads — not from a
+ * second, divergent predicate.
+ */
+export function finalAcceptanceAbsent(
+  db: Database.Database,
+  workplaceRef: string,
+  gateDecisionKey: string,
+): boolean {
+  const row = db.prepare(
+    `SELECT 1
+       FROM factory_cell_final_acceptances fa
+      WHERE fa.workplace_ref=? AND fa.gate_decision_key=?
+      LIMIT 1`,
+  ).get(workplaceRef, gateDecisionKey);
+  return row === undefined;
+}
+
+/**
  * K13 (card commit 3) — the EXACT durable completion receipt for an
  * obligation: the persisted row's own identity, never a fabricated alias.
  *
