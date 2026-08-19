@@ -187,6 +187,34 @@ export function parseD2CriticalityByAc(
   return result;
 }
 
+/**
+ * AC-drift back-edge: parse each §D2 stanza's covered_constraint_ids —
+ * comma-separated typed constraint IDs (`ord-c-001, ord-c-002`). Missing
+ * field -> empty list (retro-compat). IDs are trimmed and lowercased
+ * defensively typed: only `ord-c-NNN`-shaped tokens count, everything else
+ * is dropped rather than guessed at.
+ */
+const CONSTRAINT_ID = /^ord-c-\d{3,}$/;
+
+export function parseD2CoveredConstraintIdsByAc(
+  content: string,
+): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const stanza of extractD2Stanzas(content)) {
+    const raw = stanza.fields.get('covered_constraint_ids');
+    if (!raw || raw.trim() === '') {
+      result.set(stanza.ac, []);
+      continue;
+    }
+    const ids = raw
+      .split(',')
+      .map(token => token.trim())
+      .filter(token => CONSTRAINT_ID.test(token));
+    result.set(stanza.ac, ids);
+  }
+  return result;
+}
+
 export function validateD2Structure(content: string): D2StructuralGap[] {
   const parsed = parseD2(content);
   const gaps = [...parsed.gaps];

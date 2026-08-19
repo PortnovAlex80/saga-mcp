@@ -20,7 +20,12 @@
  */
 
 import type { CheckProvider, CheckOutcome } from '../../../process-modules/domain/workplace/gate.js';
-import { validateD2Structure, checkDecisionLogSection, extractD2Stanzas } from './srs-d2-parser.js';
+import {
+  validateD2Structure,
+  checkDecisionLogSection,
+  extractD2Stanzas,
+  parseD2CoveredConstraintIdsByAc,
+} from './srs-d2-parser.js';
 
 /**
  * Port for reading the content of a sealed CandidateSet member. The concrete
@@ -85,7 +90,42 @@ export function createSrsStructuralCheckProvider(
       if (stanzas.length === 0) {
         return 'failed';
       }
+      // AC-drift back-edge (same diff as srs-contract-validator): when the
+      // GateRun driver pins the constraint register + waivers as parameters,
+      // union(§D2 covered_constraint_ids) must cover the register. Without
+      // the parameters the provider keeps its previous behavior — the
+      // worker_done validator owns the gate; this is the sealed-candidate
+      // second look.
+      const registerIds = parseIdListParameter(input.parameters, 'constraintRegisterIds');
+      const waivedIds = parseIdListParameter(input.parameters, 'waivedConstraintIds');
+      if (registerIds !== null) {
+        const covered = new Set<string>();
+        for (const ids of parseD2CoveredConstraintIdsByAc(content).values()) {
+          for (const id of ids) covered.add(id);
+        }
+        const waived = new Set(waivedIds ?? []);
+        const uncovered = registerIds.filter(id => !covered.has(id) && !waived.has(id));
+        if (uncovered.length > 0) {
+          return 'failed';
+        }
+      }
       return 'passed';
     },
   };
+}
+
+/** Parse a JSON-encoded string[] parameter; null when absent/unreadable. */
+function parseIdListParameter(
+  parameters: Readonly<Record<string, unknown>>,
+  key: string,
+): string[] | null {
+  const raw = parameters[key];
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.every(id => typeof id === 'string') ? parsed as string[] : null;
+  } catch {
+    return null;
+  }
 }
