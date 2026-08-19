@@ -140,7 +140,7 @@ function harness() {
     countGateRejectedCandidateSets(db, serializeWorkplaceRef(ref), role);
   persistence.readTaskForWorkplace = () => ({ taskId: 1 });
   persistence.countTerminalExecutionsForTask = () => 0;
-  const executor = new ProductionCellNodeExecutor({
+  const executorOptions = {
     db,
     coordinator,
     authorityCommit: new CommitAcceptedCandidate({ gateRepo, coordinator }),
@@ -176,12 +176,13 @@ function harness() {
     },
     resolveInstallationDigest: () => sha('installation'),
     now: () => new Date(),
-  });
+  };
+  const executor = new ProductionCellNodeExecutor(executorOptions);
   const setCheckDiagnostics = (outcome, diagnostics) => {
     checkOutcome = { outcome, evidenceRefs: diagnostics };
   };
   return {
-    db, workplaceRepo, coordinator, candidateSetRepo, executor, products, persistence,
+    db, workplaceRepo, coordinator, candidateSetRepo, executor, executorOptions, products, persistence,
     setCheckDiagnostics,
   };
 }
@@ -250,12 +251,12 @@ function engineLogCapture() {
   };
 }
 
-async function rejectedAttempt(h, ctx, ref, label, diagnostics) {
+async function rejectedAttempt(h, ctx, ref, label, diagnostics, executor = h.executor) {
   h.setCheckDiagnostics('failed', diagnostics);
   finishRole(h, ref, `execution:${label}`, {
     schemaId: 'factory.test-product.v1', ref: `product:${label}`, digest: sha(label),
   });
-  await h.executor.execute(ctx);
+  await executor.execute(ctx);
   const state = h.coordinator.readState(ref);
   assert.equal(state.loopState, 'repair_wait', `attempt ${label} must be rejected into repair_wait`);
 }
@@ -315,6 +316,78 @@ test('T2 RED: scope-impossible routes repair_wait to a re-plan mandate (parked R
       h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?').get(serialized).n,
       0,
       'no recovery-epoch row — the budget never engaged',
+    );
+  } finally {
+    log.restore();
+    h.db.close();
+  }
+});
+
+test('T8 executor companion: a ratchet denial parks REPLAN_CYCLE_RATCHET (human_required), not a mandate', async () => {
+  const h = harness();
+  const POLICY_KEY = 'development-case:run:7:test-module@1.0.0';
+  const SPACECRAFT_KEY = `${PROVIDER}:path-outside-authority`
+    + '::Git paths [src/physics/spacecraft.js] are outside frozen changeScopes '
+    + '[package.json, src/game/, tests/].';
+  // The ledger-backed policy with one prior mandate of the SAME lineage that
+  // already burned this exact key (the run row is absent → run-scoped lineage).
+  const ledgerTable = `
+    CREATE TABLE IF NOT EXISTS factory_replan_mandates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_lineage_key TEXT NOT NULL,
+      workplace_ref TEXT NOT NULL,
+      role TEXT NOT NULL,
+      cycle_number INTEGER NOT NULL,
+      surviving_keys TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (workplace_ref, role)
+    );`;
+  h.db.exec(ledgerTable);
+  h.db.prepare(
+    'INSERT INTO factory_replan_mandates (case_lineage_key, workplace_ref, role, cycle_number, surviving_keys) '
+    + "VALUES (?, 'workplace/prior-cycle', 'author', 2, ?)",
+  ).run(POLICY_KEY, JSON.stringify([SPACECRAFT_KEY]));
+  const { SqliteReplanMandateLedger } = await import(
+    '../../dist/infrastructure/workplace/sqlite-replan-mandate-ledger.js'
+  );
+  const policyExecutor = new ProductionCellNodeExecutor({
+    ...h.executorOptions,
+    replanCyclePolicy: new SqliteReplanMandateLedger(h.db),
+  });
+  const ctx = context(cell());
+  const ref = workplaceRef();
+  const log = engineLogCapture();
+  try {
+    await policyExecutor.execute(ctx); // hire the author
+    await rejectedAttempt(h, ctx, ref, 'ratchet-1', [
+      authorityViolation('src/physics/spacecraft.js'),
+      overlapDiagnostic('auth', 'billing'),
+    ], policyExecutor);
+    await policyExecutor.execute(ctx);
+    // The SAME key returns: scope-impossible, but the ratchet sees it already
+    // burned the prior mandate of this lineage — no cycle 3.
+    await rejectedAttempt(h, ctx, ref, 'ratchet-2', [
+      authorityViolation('src/physics/spacecraft.js'),
+      overlapDiagnostic('auth', 'billing'),
+    ], policyExecutor);
+    const result = await policyExecutor.execute(ctx);
+    const state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'paused',
+      'the ratchet denial parks the workplace for a human decision');
+    assert.equal(state.terminalReason, null);
+    assert.equal(result.pause?.kind, 'human_required',
+      'a ratchet denial is a HUMAN wait — no replan_required, no new cycle');
+    const park = h.db.prepare(
+      'SELECT reason_code, message FROM factory_workplace_park_reasons ORDER BY id DESC LIMIT 1',
+    ).get();
+    assert.equal(park.reason_code, 'REPLAN_CYCLE_RATCHET');
+    assert.match(park.message, /src\/physics\/spacecraft\.js/,
+      'the full diagnosis names the reproduced burn');
+    assert.match(log.read(), /REPLAN-RATCHET/);
+    assert.equal(
+      h.db.prepare('SELECT COUNT(*) AS n FROM factory_replan_mandates').get().n,
+      1,
+      'the denied trigger minted NO new mandate row',
     );
   } finally {
     log.restore();
