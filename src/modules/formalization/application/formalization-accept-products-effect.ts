@@ -8,6 +8,7 @@ import { WORKPLACE_PRODUCTION_SNAPSHOT_SCHEMA_VERSION } from '../../../process-m
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import { FORMALIZATION_RECONCILIATION_SCHEMA } from '../domain/formalization-schemas.js';
 import type { ProductRef } from '../../../process-modules/domain/spi/production-envelope.js';
+import { appendArtifactDriftTransition } from '../../../shared/artifact-drift-events.js';
 
 export const FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID =
   'formalization.accept-exact-products.v1';
@@ -24,6 +25,12 @@ interface ArtifactRow {
   content_hash: string | null;
   accepted_hash: string | null;
   drift_state: string;
+}
+
+/** Fail closed: the DB CHECK constrains the column to this union. */
+function asDriftState(value: string): 'unknown' | 'clean' | 'drifted' {
+  if (value === 'unknown' || value === 'clean' || value === 'drifted') return value;
+  throw new Error(`FORMALIZATION_ACCEPTANCE_DRIFT_STATE_INVALID: ${value}`);
 }
 
 interface SnapshotArtifact {
@@ -136,12 +143,25 @@ export function createFormalizationAcceptProductsEffect(
           ) {
             continue;
           }
+          // BLINDSIGHT F6 — acceptance OVERWRITES drift_state to 'clean';
+          // chain the transition before the projection is replaced so a
+          // drifted-then-accepted artifact keeps durable proof of the drift
+          // episode. Same-state acceptance appends nothing.
+          appendArtifactDriftTransition(db, {
+            artifactId: artifact.id,
+            fromState: asDriftState(artifact.drift_state),
+            toState: 'clean',
+            observedContentHash: item.content_hash,
+            acceptedHash: item.content_hash,
+            cause: 'formalization-acceptance',
+            observedBy: 'formalization-accept-products-effect',
+          });
           const updated = db.prepare(
             `UPDATE artifacts
                 SET status='accepted', accepted_hash=?, drift_state='clean',
                     updated_at=datetime('now')
               WHERE id=? AND content_hash=?`,
-          ).run(item.content_hash, item.artifact_id, item.content_hash);
+          ).run(item.content_hash, artifact.id, item.content_hash);
           if (updated.changes !== 1) {
             throw new Error(`FORMALIZATION_ACCEPTANCE_CAS_FAILED: artifact ${item.artifact_id}`);
           }

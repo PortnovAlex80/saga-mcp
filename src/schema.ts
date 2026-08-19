@@ -505,6 +505,42 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
 
+-- BLINDSIGHT F6 (persistence layer): artifacts.drift_state is a MUTABLE
+-- projection overwritten on every re-hash (refreshArtifactHash) and on every
+-- deliberate accept. Without this table the transition history is DESTROYED
+-- at each write: a clean -> drifted -> clean cycle left no durable fact that
+-- the drift ever happened, and consumers of the column could never
+-- distinguish "never drifted" from "drifted and repaired". Every TRANSITION
+-- (old value != new value) appends one immutable row here — old + new form
+-- a recoverable chain; same-state re-reads append nothing. Purely additive
+-- (CREATE TABLE IF NOT EXISTS applies it to existing DBs on open; no column
+-- of any existing table changes, therefore no SCHEMA_VERSION bump is
+-- required — same policy as factory_author_candidate_carry_forward_
+-- reauthorizations).
+CREATE TABLE IF NOT EXISTS factory_artifact_drift_events (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  artifact_id          INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  from_state           TEXT NOT NULL CHECK (from_state IN ('unknown','clean','drifted')),
+  to_state             TEXT NOT NULL CHECK (to_state IN ('unknown','clean','drifted')),
+  observed_content_hash TEXT,
+  accepted_hash        TEXT,
+  cause                TEXT NOT NULL,
+  observed_by          TEXT NOT NULL,
+  observed_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_factory_artifact_drift_events_artifact
+  ON factory_artifact_drift_events(artifact_id, id);
+CREATE TRIGGER IF NOT EXISTS trg_factory_artifact_drift_events_no_update
+  BEFORE UPDATE ON factory_artifact_drift_events
+  BEGIN
+    SELECT RAISE(ABORT, 'ARTIFACT_DRIFT_EVENT_IMMUTABLE');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_artifact_drift_events_no_delete
+  BEFORE DELETE ON factory_artifact_drift_events
+  BEGIN
+    SELECT RAISE(ABORT, 'ARTIFACT_DRIFT_EVENT_DELETE_FORBIDDEN');
+  END;
+
 -- The artifact catalogue is a forest, not a general graph. Traceability edges
 -- belong in artifact_traces; parent_artifact_id must stay acyclic and inside
 -- one project/episode. SQLite permits a freshly inserted row to reference its

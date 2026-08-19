@@ -4,6 +4,7 @@ import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { validateBrief } from '../validators/brief.js';
 import { artifactDiskHash, refreshArtifactHash } from '../helpers/artifact-file.js';
+import { appendArtifactDriftTransition } from '../shared/artifact-drift-events.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 import {
   recordManagedArtifactProduction,
@@ -301,14 +302,25 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
 
   if (code !== null) {
     const existing = db.prepare(
-      'SELECT id,status FROM artifacts WHERE epic_id=? AND type=? AND code=?',
-    ).get(epicId, type, code) as { id: number; status: string } | undefined;
+      'SELECT id,status,drift_state FROM artifacts WHERE epic_id=? AND type=? AND code=?',
+    ).get(epicId, type, code) as { id: number; status: string; drift_state: 'unknown' | 'clean' | 'drifted' } | undefined;
     if (existing) {
       assertManagedArtifactMutationAuthority(
         managedExecution,
         status,
         existing.status,
       );
+      // BLINDSIGHT F6 — the upsert OVERWRITES drift_state; chain the
+      // transition before the projection is replaced.
+      appendArtifactDriftTransition(db, {
+        artifactId: existing.id,
+        fromState: existing.drift_state,
+        toState: driftState,
+        observedContentHash: contentHash,
+        acceptedHash,
+        cause: 'artifact-upsert',
+        observedBy: managedExecution ? `execution:${managedExecution.executionId}` : 'operator',
+      });
       db.prepare(
         `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
                               project_repository_id=?, content_hash=?, accepted_hash=?,
@@ -333,9 +345,9 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     // single match. Ambiguity stays an insert (fail-closed: never silently
     // pick among duplicates) but is logged for triage.
     const candidates = db.prepare(
-      `SELECT id,status FROM artifacts
+      `SELECT id,status,drift_state FROM artifacts
         WHERE project_id=? AND type=? AND code IS NULL AND title=? AND path=?`,
-    ).all(projectId, type, title, path) as Array<{ id: number; status: string }>;
+    ).all(projectId, type, title, path) as Array<{ id: number; status: string; drift_state: 'unknown' | 'clean' | 'drifted' }>;
     if (candidates.length === 1) {
       const existing = candidates[0]!;
       assertManagedArtifactMutationAuthority(
@@ -343,6 +355,16 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
         status,
         existing.status,
       );
+      // BLINDSIGHT F6 — same chain discipline on the code-null upsert path.
+      appendArtifactDriftTransition(db, {
+        artifactId: existing.id,
+        fromState: existing.drift_state,
+        toState: driftState,
+        observedContentHash: contentHash,
+        acceptedHash,
+        cause: 'artifact-upsert',
+        observedBy: managedExecution ? `execution:${managedExecution.executionId}` : 'operator',
+      });
       db.prepare(
         `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
                               project_repository_id=?, content_hash=?, accepted_hash=?,
@@ -633,6 +655,19 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
   db.prepare(`UPDATE artifacts SET ${fields.join(', ')} WHERE id=?`).run(...params);
   const updated = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact;
+  // BLINDSIGHT F6 — a deliberate drift_state write is a TRANSITION: record
+  // it on the append-only chain before it overwrites the projection (the
+  // UPDATE above already ran; the chain row preserves the PREVIOUS state
+  // from `existing`). Same-state writes append nothing.
+  appendArtifactDriftTransition(db, {
+    artifactId: id,
+    fromState: existing.drift_state,
+    toState: updated.drift_state,
+    observedContentHash: updated.content_hash,
+    acceptedHash: updated.accepted_hash,
+    cause: 'artifact-update',
+    observedBy: managedExecution ? `execution:${managedExecution.executionId}` : 'operator',
+  });
   recordManagedArtifactProduction(db, updated, 'update');
 
   // logActivity: one summary line; status change is the most interesting
