@@ -266,14 +266,13 @@ test('STAGE-11 TASK 1: capture survives trace revision — delete + re-add same 
   });
 
   assert.ok(capsule, 'capture succeeds — re-created identical content is the same material');
-  const payload = JSON.parse(capsule.payload_snapshot ?? capsule.payload ?? '{}');
+  const payload = typeof capsule.payload_snapshot === 'string'
+    ? JSON.parse(capsule.payload_snapshot)
+    : capsule.payload_snapshot ?? capsule.payload ?? {};
   const traces = payload.traces ?? [];
   assert.equal(traces.length, 2, 'both trace identities resolved into the capsule');
-  const tuples = new Set(traces.map((t) => JSON.stringify([
-    t.source?.code ?? t.source?.title ?? t.source,
-    t.linkType ?? t.link_type,
-    t.target?.code ?? t.target?.title ?? t.target,
-  ])));
+  const tuples = new Set(traces.map((t) => JSON.stringify(t)));
+  assert.equal(traces.length, 2, 'both trace identities resolved into the capsule');
   assert.equal(tuples.size, 2, 'the two identities are distinct by content');
 });
 

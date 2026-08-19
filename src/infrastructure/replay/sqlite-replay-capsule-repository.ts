@@ -309,8 +309,31 @@ function templateAgainstInput(value: unknown, bindings: readonly { path: string;
   return visit(value);
 }
 
-function artifactSelector(row: {
-  type: string;
+/**
+ * CONVEYOR §9 content identity of a sealed trace: the canonical tuple digest
+ * frozen at seal time (traceHash when present — the production ledger's
+ * sha256Hex({sourceId,targetType,targetId,linkType})), with the tuple itself
+ * as the stable fallback. Two encodings of one identity; dedupe keyed here.
+ */
+function traceIdentityKey(trace: {
+  sourceId: number;
+  targetType: 'artifact' | 'task';
+  targetId: number;
+  linkType: string;
+  traceHash?: string;
+}): string {
+  if (typeof trace.traceHash === 'string' && trace.traceHash.length === 64) {
+    return trace.traceHash;
+  }
+  return sha256Hex({
+    sourceId: trace.sourceId,
+    targetType: trace.targetType,
+    targetId: trace.targetId,
+    linkType: trace.linkType,
+  });
+}
+
+function artifactSelector(row: {  type: string;
   code: string | null;
   title: string;
   path: string;
@@ -579,7 +602,13 @@ export class SqliteReplayCapsuleRepository {
 
     const typedProducts: Array<{ schema: string; content: unknown; contentHash: string }> = [];
     const artifactIds = new Set<number>();
-    const traceIds = new Set<number>();
+    const traceIdentities = new Map<string, {
+      sourceId: number;
+      targetType: 'artifact' | 'task';
+      targetId: number;
+      linkType: string;
+      traceHash?: string;
+    }>();
 
     for (const member of candidate.members) {
       const content = this.sealedProducts.readExact({
@@ -601,7 +630,20 @@ export class SqliteReplayCapsuleRepository {
         );
       }
       for (const artifact of content.artifacts) artifactIds.add(artifact.artifactId);
-      for (const trace of content.traces) traceIds.add(trace.traceId);
+      // CONVEYOR §9 — a rowid is run-local identity and is never replay
+      // authority. A sealed trace resolves by its CONTENT identity (the
+      // canonical tuple digest frozen in the snapshot at seal time), so a
+      // deleted-and-re-created identical trace is the SAME material. Stage-10
+      // death class: sealed rowids dangle after ordinary author revision.
+      for (const trace of content.traces) {
+        traceIdentities.set(traceIdentityKey(trace), {
+          sourceId: trace.sourceId,
+          targetType: trace.targetType,
+          targetId: trace.targetId,
+          linkType: trace.linkType,
+          traceHash: trace.traceHash,
+        });
+      }
     }
 
     const artifactRows = [...artifactIds].map(id => this.db.prepare(
@@ -642,15 +684,25 @@ export class SqliteReplayCapsuleRepository {
       };
     });
 
-    const traceRows = [...traceIds].map(id => this.db.prepare(
+    const traceRows = [...traceIdentities.values()].map(identity => this.db.prepare(
       `SELECT id,source_id,target_type,target_id,link_type
-         FROM artifact_traces WHERE id=?`,
-    ).get(id) as {
+         FROM artifact_traces
+          WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?`,
+    ).get(
+      identity.sourceId, identity.targetType, identity.targetId, identity.linkType,
+    ) as {
       id: number; source_id: number; target_type: 'artifact' | 'task'; target_id: number; link_type: string;
     } | undefined).filter((row): row is NonNullable<typeof row> => row !== undefined);
-    if (traceRows.length !== traceIds.size) {
+    if (traceRows.length !== traceIdentities.size) {
+      const missing = [...traceIdentities.values()]
+        .filter(identity => !traceRows.some(row => row.source_id === identity.sourceId
+          && row.target_type === identity.targetType
+          && row.target_id === identity.targetId
+          && row.link_type === identity.linkType))
+        .map(identity => `source=${identity.sourceId} ${identity.linkType} ${identity.targetType}:${identity.targetId} (traceHash=${identity.traceHash})`);
       throw new Error(
-        `REPLAY_CAPTURE_TRACE_NOT_FOUND: expected ${traceIds.size}, resolved ${traceRows.length}`,
+        `REPLAY_CAPTURE_TRACE_NOT_FOUND: expected ${traceIdentities.size}, resolved ${traceRows.length}; `
+        + `missing by content: ${missing.join('; ')}`,
       );
     }
     const selectorForArtifactId = (id: number): ReplayArtifactSelector | null => {

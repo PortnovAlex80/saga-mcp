@@ -61,7 +61,10 @@ export function assertReplayCapsuleComplete(
 
   const expectedTyped = new Map<string, CandidateMemberRow>();
   const expectedArtifactIds = new Set<number>();
-  const expectedTraceIds = new Set<number>();
+  // CONVEYOR §9 — trace completeness counts CONTENT identities, not rowids:
+  // a re-sealed snapshot may embed both generations of a revised trace
+  // (deleted rowids + re-created twins) which collapse to one identity each.
+  const expectedTraceIdentities = new Set<string>();
 
   for (const member of members) {
     const product = readPersistedProduct(db, member);
@@ -70,7 +73,12 @@ export function assertReplayCapsuleComplete(
       continue;
     }
     for (const artifact of product.artifacts) expectedArtifactIds.add(artifact.artifactId);
-    for (const trace of product.traces) expectedTraceIds.add(trace.traceId);
+    for (const trace of product.traces) {
+      const key = typeof trace.traceHash === 'string' && trace.traceHash.length === 64
+        ? trace.traceHash
+        : JSON.stringify([trace.sourceId, trace.targetType, trace.targetId, trace.linkType]);
+      expectedTraceIdentities.add(key);
+    }
   }
 
   const actualTyped = new Set(
@@ -88,9 +96,9 @@ export function assertReplayCapsuleComplete(
       `REPLAY_CAPTURE_INCOMPLETE_ARTIFACTS: expected ${expectedArtifactIds.size}, captured ${record.payload.artifacts.length}`,
     );
   }
-  if (record.payload.traces.length !== expectedTraceIds.size) {
+  if (record.payload.traces.length !== expectedTraceIdentities.size) {
     throw new Error(
-      `REPLAY_CAPTURE_INCOMPLETE_TRACES: expected ${expectedTraceIds.size}, captured ${record.payload.traces.length}`,
+      `REPLAY_CAPTURE_INCOMPLETE_TRACES: expected ${expectedTraceIdentities.size}, captured ${record.payload.traces.length}`,
     );
   }
 
