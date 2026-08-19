@@ -260,21 +260,26 @@ function readCommentsAndRejections(
 
   const consumedCommentIds = new Set<number>();
   const reviewRejections: ReviewRejectionHistoryEntry[] = receipts.map(receipt => {
-    const pairWindowMs = 1500;
-    let best: { row: CommentRow; delta: number } | null = null;
-    for (const comment of comments) {
-      if (consumedCommentIds.has(comment.id)) continue;
-      if (receipt.actor_id !== null && comment.author !== receipt.actor_id) continue;
-      const delta = Math.abs(parseDbTime(comment.created_at) - parseDbTime(receipt.accepted_at));
-      if (delta > pairWindowMs) continue;
-      if (best === null || delta < best.delta) best = { row: comment, delta };
-    }
+    // Fail-closed pairing: only a receipt that carries its author identity may
+    // claim a comment. A null actor_id gets no text (visible absence) rather
+    // than a time-window guess that could attach the WRONG comment.
     let feedback: string | null = null;
-    if (best !== null) {
-      consumedCommentIds.add(best.row.id);
-      feedback = best.row.content.length > MAX_COMMENT_CHARS
-        ? `${best.row.content.slice(0, MAX_COMMENT_CHARS)}…`
-        : best.row.content;
+    if (receipt.actor_id !== null) {
+      const pairWindowMs = 1500;
+      let best: { row: CommentRow; delta: number } | null = null;
+      for (const comment of comments) {
+        if (consumedCommentIds.has(comment.id)) continue;
+        if (comment.author !== receipt.actor_id) continue;
+        const delta = Math.abs(parseDbTime(comment.created_at) - parseDbTime(receipt.accepted_at));
+        if (delta > pairWindowMs) continue;
+        if (best === null || delta < best.delta) best = { row: comment, delta };
+      }
+      if (best !== null) {
+        consumedCommentIds.add(best.row.id);
+        feedback = best.row.content.length > MAX_COMMENT_CHARS
+          ? `${best.row.content.slice(0, MAX_COMMENT_CHARS)}…`
+          : best.row.content;
+      }
     }
     return {
       kind: 'review_rejection' as const,
