@@ -104,7 +104,7 @@ Abort conditions were checked every monitoring cycle; the
 
 **How far the run got, per stage, with accepted heads:**
 - product-discovery: **completed** — proposal `7a6af555…`, outcome
-certificate `certificate:1` (digest 8b7d176b…), local outcome 
+  certificate `certificate:1` (digest 8b7d176b…), local outcome `go`
 - solution-formalization: **completed** (9 artifacts, 11 tasks) — solution
 contract `formalization-solution-contract:1`, certificate `certificate:2`
 (digest d7bfa390…)
