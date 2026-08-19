@@ -40,19 +40,74 @@ import { fileURLToPath } from 'node:url';
 // Resolve the opencode executable. On Windows a bare spawn('opencode') hits
 // npm's .cmd shim, which node's spawn (no shell) cannot execute — point at
 // the real bin inside the global opencode-ai package instead.
+//
+// SAGA_PROXY_OPENCODE_PATH follows the runner's SAGA_REAL_CLAUDE_PATH
+// convention: a compound value ("node D:/tools/fake-opencode.mjs") splits on
+// spaces into executable + fixed prefix args. Single-path values keep their
+// exact previous behavior; the compound form lets tests (and exotic hosts)
+// route the shim at a script-backed bin without a shell.
 function resolveOpenCodeBin() {
-  if (process.env.SAGA_PROXY_OPENCODE_PATH && existsSync(process.env.SAGA_PROXY_OPENCODE_PATH)) {
-    return { cmd: process.env.SAGA_PROXY_OPENCODE_PATH, shell: false };
+  const custom = process.env.SAGA_PROXY_OPENCODE_PATH;
+  if (custom) {
+    const parts = custom.split(' ').filter(Boolean);
+    if (parts.length > 1) return { cmd: parts[0], prefix: parts.slice(1), shell: false };
+    if (existsSync(custom)) return { cmd: custom, prefix: [], shell: false };
   }
   if (process.platform === 'win32') {
     try {
       const prefix = execSync('npm config get prefix', { encoding: 'utf8' }).trim();
       const exe = path.join(prefix, 'node_modules', 'opencode-ai', 'bin', 'opencode.exe');
-      if (existsSync(exe)) return { cmd: exe, shell: false };
+      if (existsSync(exe)) return { cmd: exe, prefix: [], shell: false };
     } catch { /* fall through */ }
-    return { cmd: 'opencode', shell: true };
+    return { cmd: 'opencode', prefix: [], shell: true };
   }
-  return { cmd: 'opencode', shell: false };
+  return { cmd: 'opencode', prefix: [], shell: false };
+}
+
+// ---------------------------------------------------------------------------
+// Session-directory pinning (worker disorientation fix).
+//
+// opencode 1.18.18 resolves the session base directory as
+//   path.resolve(process.env.PWD ?? process.cwd())
+// (Cli.run handler; verified in the 2026-08-18 disorient-lab: spawning with
+// cwd=<product> but an inherited env.PWD=<factory root> anchors the session
+// at the factory root — docs/factory-run/stage11/DISORIENTATION-INVESTIGATION.md).
+// The factory process tree inherits PWD from the operator's shell at the
+// factory root, so worker sessions resolved relative desk paths against the
+// wrong tree (72% of sessions, ~1 min self-recovery tax each).
+//
+// The shim therefore pins the session directory explicitly:
+//   - the declared-but-previously-swallowed `--cwd` claude flag is honored,
+//   - otherwise the shim's own process cwd (the runner's spawn cwd) is used,
+//   - the value is passed to opencode as `--dir` (documented `opencode run`
+//     pinning flag; opencode chdirs there before creating the instance),
+//   - env.PWD is overridden to the same value so no code path can
+//     re-inherit the stale factory-root PWD,
+//   - the opencode child is spawned with an explicit cwd.
+// ---------------------------------------------------------------------------
+
+function buildSessionPinning(parsedValues, fallbackCwd) {
+  const raw = parsedValues && parsedValues['--cwd'];
+  // Relative --cwd values resolve against the shim's cwd (the runner's spawn
+  // cwd), matching how the runner would have interpreted them; absolute
+  // values pass through path.resolve unchanged.
+  const sessionDir = raw
+    ? path.resolve(fallbackCwd, String(raw))
+    : path.resolve(fallbackCwd);
+  return {
+    sessionDir,
+    dirArgs: ['--dir', sessionDir],
+    envPatch: { PWD: sessionDir },
+    spawnCwd: sessionDir,
+    inheritedPwdMismatch(candidate) {
+      if (!candidate) return false;
+      try {
+        return path.resolve(String(candidate)) !== sessionDir;
+      } catch {
+        return false;
+      }
+    },
+  };
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -287,8 +342,8 @@ function ensureHookPlugin(parsedSettings) {
 // Main.
 // ---------------------------------------------------------------------------
 
-async function main() {
-  const parsed = parseArgv(process.argv.slice(2));
+async function main(argv = process.argv.slice(2)) {
+  const parsed = parseArgv(argv);
   if (parsed.ignored.length) {
     process.stderr.write(`[agent-proxy] ignored claude args: ${parsed.ignored.join(' ')}\n`);
   }
@@ -296,10 +351,18 @@ async function main() {
     process.stderr.write(`[agent-proxy] --effort ${parsed.values['--effort']} ignored on the opencode backend\n`);
   }
 
+  // Session-directory pinning: --cwd (claude contract) or the shim's cwd.
+  const pinning = buildSessionPinning(parsed.values, process.cwd());
+  if (pinning.inheritedPwdMismatch(process.env.PWD)) {
+    process.stderr.write(
+      `[agent-proxy] overriding inherited PWD=${process.env.PWD} -> ${pinning.sessionDir} `
+      + `(opencode resolves the session base from env.PWD; stale values anchored sessions at the factory root)\n`);
+  }
+
   const model = resolveModel(parsed.values['--model'] || parsed.values['-m']);
 
   // Config file (MCP + bridge instructions) → OPENCODE_CONFIG.
-  const env = { ...process.env };
+  const env = { ...process.env, ...pinning.envPatch };
   const mcpPath = parsed.values['--mcp-config'];
   if (mcpPath) {
     const cfgDir = path.join(os.tmpdir(), `saga-opencode-${process.pid}`);
@@ -331,11 +394,12 @@ async function main() {
   });
   process.stderr.write(`[agent-proxy] opencode backend, model=${model}, prompt=${stdin.length} bytes\n`);
 
-  const ocArgs = ['run', '--model', model];
+  const ocArgs = ['run', '--model', model, ...pinning.dirArgs];
   if (process.env.SAGA_RUN_ID) ocArgs.push('--title', process.env.SAGA_RUN_ID);
 
   const bin = resolveOpenCodeBin();
-  const child = spawn(bin.cmd, bin.shell ? [ocArgs.join(' ')] : ocArgs, { stdio: ['pipe', 'inherit', 'inherit'], env, shell: bin.shell });
+  const fullArgs = [...bin.prefix, ...ocArgs];
+  const child = spawn(bin.cmd, bin.shell ? [fullArgs.join(' ')] : fullArgs, { stdio: ['pipe', 'inherit', 'inherit'], env, cwd: pinning.spawnCwd, shell: bin.shell });
 
   const fwd = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
   process.on('SIGTERM', fwd('SIGTERM'));
@@ -353,7 +417,22 @@ async function main() {
   });
 }
 
-main().catch((e) => {
-  process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
-  process.exit(1);
-});
+// Entry guard: run only when executed as a script (`node claude-shim.mjs`),
+// so tests can import the pure helpers (parseArgv/buildSessionPinning/
+// resolveOpenCodeBin) without triggering the stdin-prompt pipeline.
+const isEntry = (() => {
+  try {
+    return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+export { parseArgv, resolveOpenCodeBin, buildSessionPinning };
+
+if (isEntry) {
+  main().catch((e) => {
+    process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
+    process.exit(1);
+  });
+}
