@@ -291,9 +291,11 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   // --- upsert by (epic_id, code, type) (FR-1: idempotent re-create) ---
   //
   // A repeat artifact_create with the same code within an episode updates the
-  // existing row instead of duplicating. code is nullable; when it is null we
-  // always insert (there is nothing to match on). The match is scoped to the
-  // epic + type so AC-1 in two different episodes never collide.
+  // existing row instead of duplicating. code is nullable; a null code
+  // resolves by the replay matcher's selector tuple (project, type, code
+  // NULL, title, path) — see the R-D6 note below. The code-present match is
+  // scoped to the epic + type so AC-1 in two different episodes never
+  // collide.
   let artifactId: number | undefined;
   let updatedExisting = false;
 
@@ -319,6 +321,48 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
       );
       artifactId = existing.id;
       updatedExisting = true;
+    }
+  } else {
+    // R-D6 (stage-11 preventive hunt) — code-null debris: a failed-then-
+    // retried capsule replay re-creates the SAME code-null artifact, and the
+    // old always-INSERT accumulated duplicates. The replay matcher
+    // (resolveExistingArtifactId) resolves by the selector tuple
+    // (project, type, code, title, path) and returns null on ambiguity — so
+    // one workplace's retry debris broke OTHER capsules' replays with
+    // TRACE_SOURCE_MISSING. Resolve the SAME tuple here and UPDATE the exact
+    // single match. Ambiguity stays an insert (fail-closed: never silently
+    // pick among duplicates) but is logged for triage.
+    const candidates = db.prepare(
+      `SELECT id,status FROM artifacts
+        WHERE project_id=? AND type=? AND code IS NULL AND title=? AND path=?`,
+    ).all(projectId, type, title, path) as Array<{ id: number; status: string }>;
+    if (candidates.length === 1) {
+      const existing = candidates[0]!;
+      assertManagedArtifactMutationAuthority(
+        managedExecution,
+        status,
+        existing.status,
+      );
+      db.prepare(
+        `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
+                              project_repository_id=?, content_hash=?, accepted_hash=?,
+                              drift_state=?, tags=?, metadata=?, updated_at=datetime('now')
+         WHERE id=?`,
+      ).run(
+        projectId, title, path, status, parentArtifactId, projectRepositoryId,
+        contentHash, acceptedHash, driftState,
+        JSON.stringify(tags), JSON.stringify(metadataToPersist), existing.id,
+      );
+      artifactId = existing.id;
+      updatedExisting = true;
+    } else if (candidates.length > 1) {
+      process.stderr.write(
+        `[artifact-create] ambiguous code-null selector (project=${projectId} `
+        + `type=${type} title='${title}' path='${path}') matches `
+        + `${candidates.length} rows (ids: ${candidates.map(row => row.id).join(', ')}) `
+        + '— inserting a new row; pre-existing duplicates are replay debris and must be '
+        + 'triaged manually\n',
+      );
     }
   }
 
