@@ -641,7 +641,7 @@ export function createProductLifecycleRuntime(
         readRecoveryEpochBaseline: (workplaceRef, role) => {
           const row = db.prepare(
             `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
-                    baseline_effect_repairs, created_at
+                    baseline_effect_repairs, created_at, last_diagnosis
                FROM factory_workplace_recovery_epochs
               WHERE workplace_ref=? AND role=?
               ORDER BY epoch DESC LIMIT 1`,
@@ -651,6 +651,7 @@ export function createProductLifecycleRuntime(
             baseline_terminal_executions: number;
             baseline_effect_repairs: number;
             created_at: string;
+            last_diagnosis: string | null;
           } | undefined;
           if (!row) return null;
           return {
@@ -658,6 +659,10 @@ export function createProductLifecycleRuntime(
             baselineRejectedSets: row.baseline_rejected_sets,
             baselineTerminalExecutions: row.baseline_terminal_executions,
             baselineEffectRepairs: row.baseline_effect_repairs,
+            // BLINDSIGHT F6 — deliver the PREVIOUS epoch's persisted diagnosis
+            // to the rollover decision (it was written at every rollover and
+            // never read: epoch amnesia).
+            lastDiagnosis: row.last_diagnosis ?? null,
             rolledBackoffUntilMs:
               Date.parse(`${row.created_at.replace(' ', 'T')}Z`)
               + recoveryEpochBackoffMs(row.epoch),

@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
@@ -1189,4 +1192,219 @@ test('carry-forward failure context is delivered to the child author task (blind
   assert.match(bound[0].parentError, /review verdict contract expected exactly one/);
   assert.equal(bound[0].authorizationRef, 'author-carry-forward:c3');
   h.db.close();
+});
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT Lifecycle F6 — recovery_epochs.last_diagnosis is written at every
+// rollover and read by NOBODY. A new epoch means a clean budget plus zero
+// memory of why the previous one burned. The rollover decision must READ the
+// previous epoch's persisted diagnosis:
+//   - SAME typed diagnosis repeating across epochs = cross-epoch spin → the
+//     fresh budget is DENIED (honest terminal, fail-closed — not an infinite
+//     epoch chain on the total cap's mercy);
+//   - a CHANGED diagnosis = converging work → the rollover is granted, with
+//     the previous diagnosis delivered to the ROLLOVER log line.
+// ---------------------------------------------------------------------------
+function wireEpochAccountingWithDiagnosis(h) {
+  wireEpochAccounting(h);
+  h.persistence.readRecoveryEpochBaseline = (ref, role) => {
+    const row = h.db.prepare(
+      `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
+              baseline_effect_repairs, created_at, last_diagnosis
+         FROM factory_workplace_recovery_epochs
+        WHERE workplace_ref=? AND role=?
+        ORDER BY epoch DESC LIMIT 1`,
+    ).get(serializeWorkplaceRef(ref), role);
+    if (!row) return null;
+    return {
+      epoch: row.epoch,
+      baselineRejectedSets: row.baseline_rejected_sets,
+      baselineTerminalExecutions: row.baseline_terminal_executions,
+      baselineEffectRepairs: row.baseline_effect_repairs,
+      lastDiagnosis: row.last_diagnosis ?? null,
+      rolledBackoffUntilMs: h.epochBackoffOverride ?? (
+        Date.parse(`${row.created_at.replace(' ', 'T')}Z`)
+        + recoveryEpochBackoffMs(row.epoch)
+      ),
+    };
+  };
+}
+
+test('F6a: recoveryDiagnosisKey ignores volatile counts, keys on the durable rejection evidence', async () => {
+  const { recoveryDiagnosisKey } = await import(
+    '../../dist/process-modules/application/node-executors/production-cell-node-executor.js'
+  );
+  const a = "Recovery budget exhausted: 1 unsuccessful attempt(s) for role 'author' "
+    + '(maxAttempts=1); the budget rolls over into a new recovery epoch (no human required). '
+    + "Last rejection at gate 'author-gate' (dk-1): AC-9 Violation: lap capture while paused";
+  const b = "Recovery budget exhausted: 2 unsuccessful attempt(s) for role 'author' "
+    + '(maxAttempts=1); the budget rolls over into a new recovery epoch (no human required). '
+    + "Last rejection at gate 'author-gate' (dk-1): AC-9 Violation: lap capture while paused";
+  const c = "Recovery budget exhausted: 2 unsuccessful attempt(s) for role 'author' "
+    + '(maxAttempts=1); the budget rolls over into a new recovery epoch (no human required). '
+    + "Last rejection at gate 'author-gate' (dk-2): AC-4 Violation: different finding";
+  assert.equal(recoveryDiagnosisKey(a), recoveryDiagnosisKey(b),
+    'differing attempt counts are volatile — the SAME durable rejection is the SAME diagnosis');
+  assert.notEqual(recoveryDiagnosisKey(a), recoveryDiagnosisKey(c),
+    'a materially different rejection finding is a DIFFERENT diagnosis (work, not spin)');
+});
+
+test('F6b: a rollover onto the SAME persisted diagnosis is denied — no clean budget, no epoch amnesia', async () => {
+  const logDir = mkdtempSync(join(tmpdir(), 'saga-f6-engine-log-'));
+  const logPath = join(logDir, 'engine.log');
+  process.env.SAGA_ENGINE_LOG = logPath;
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'AC-9 Violation: lap capture while paused',
+  });
+  try {
+    wireRejectionAccounting(h);
+    wireEpochAccountingWithDiagnosis(h);
+    h.epochBackoffOverride = undefined;
+    const definition = cell();
+    definition.recovery = { maxAttempts: 1, onExhausted: 'requeue', totalAttempts: 10 };
+    const ctx = context(definition);
+    const ref = workplaceRef('singleton-cell');
+    const serialized = serializeWorkplaceRef(ref);
+
+    // Attempt 1: rejected (same finding) → repair_wait.
+    await h.executor.execute(ctx);
+    setAuthorCheckOutcome(h, 'failed');
+    finishRole(h, ref, 'execution:rejected-1', {
+      schemaId: 'factory.test-product.v1', ref: 'product:r1', digest: sha('r1'),
+    });
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+    // Exhaustion of epoch 0 → ROLLOVER into epoch 1 (no previous diagnosis —
+    // nothing to remember yet; the grant is correct).
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+    assert.equal(
+      h.db.prepare(
+        'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+      ).get(serialized).n,
+      1,
+      'the first rollover is granted — there is no prior diagnosis to repeat',
+    );
+
+    // After backoff, the fresh epoch requeues.
+    h.epochBackoffOverride = 0;
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'queued');
+
+    // Attempt 2: rejected with the SAME finding → repair_wait again.
+    setAuthorCheckOutcome(h, 'failed');
+    finishRole(h, ref, 'execution:rejected-2', {
+      schemaId: 'factory.test-product.v1', ref: 'product:r2', digest: sha('r2'),
+    });
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+    // DEFECT F6: the second exhaustion (total 2 << cap 10) rolled over into a
+    // CLEAN epoch 2 budget with zero memory that epoch 1 burned on the same
+    // diagnosis. The fix reads the persisted last_diagnosis and DENIES.
+    await h.executor.execute(ctx);
+    const finalState = h.coordinator.readState(ref);
+    assert.equal(finalState.loopState, 'terminal',
+      'a same-diagnosis rollover is cross-epoch spin — the honest end is terminal');
+    assert.equal(finalState.terminalReason, 'failed');
+    assert.equal(
+      h.db.prepare(
+        'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+      ).get(serialized).n,
+      1,
+      'no second rollover row — the denial never grants the clean budget',
+    );
+
+    // The delivery: the denial line carries the previous epoch's diagnosis.
+    const log = readFileSync(logPath, 'utf8');
+    assert.match(log, /ROLLOVER-DENIED diagnosis-repeat/,
+      'the typed denial is visible in the engine log');
+    assert.match(log, /prevDiagnosis=gate:7:final::Check test\.production-contract@\d/,
+      'the PREVIOUS epoch\'s persisted diagnosis (gate + findings identity) '
+      + 'is delivered to the decision log');
+  } finally {
+    delete process.env.SAGA_ENGINE_LOG;
+    h.db.close();
+    rmSync(logDir, { recursive: true, force: true });
+  }
+});
+
+test('F6c: a rollover onto a CHANGED diagnosis is granted with the previous diagnosis in the log', async () => {
+  const logDir = mkdtempSync(join(tmpdir(), 'saga-f6-engine-log-'));
+  const logPath = join(logDir, 'engine.log');
+  process.env.SAGA_ENGINE_LOG = logPath;
+  const h = harness({
+    outcome: 'repair_required',
+    reason: 'AC-9 Violation: lap capture while paused',
+  });
+  try {
+    wireRejectionAccounting(h);
+    wireEpochAccountingWithDiagnosis(h);
+    h.epochBackoffOverride = undefined;
+    const definition = cell();
+    definition.recovery = { maxAttempts: 1, onExhausted: 'requeue', totalAttempts: 10 };
+    const ctx = context(definition);
+    const ref = workplaceRef('singleton-cell');
+    const serialized = serializeWorkplaceRef(ref);
+
+    // Attempt 1 rejected (finding A) → ROLLOVER into epoch 1.
+    await h.executor.execute(ctx);
+    setAuthorCheckOutcome(h, 'failed');
+    finishRole(h, ref, 'execution:rejected-1', {
+      schemaId: 'factory.test-product.v1', ref: 'product:r1', digest: sha('r1'),
+    });
+    await h.executor.execute(ctx);
+    await h.executor.execute(ctx);
+    assert.equal(
+      h.db.prepare(
+        'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+      ).get(serialized).n,
+      1,
+    );
+
+    // After backoff the fresh epoch requeues.
+    h.epochBackoffOverride = 0;
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'queued');
+
+    // Attempt 2 rejected with a DIFFERENT finding (the worker removed the
+    // first defect link and hit the next one — §15 work, not spin).
+    setAuthorCheckOutcome(h, 'failed');
+    h.persistence.readLastRepairRequiredDiagnosis = () => ({
+      gateRef: 'author-gate',
+      decisionKey: 'dk-2',
+      findings: ['AC-4 Violation: release note missing'],
+      checkReceiptRefs: [],
+    });
+    finishRole(h, ref, 'execution:rejected-2', {
+      schemaId: 'factory.test-product.v1', ref: 'product:r2', digest: sha('r2'),
+    });
+    await h.executor.execute(ctx);
+    assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+    // The second exhaustion ROLLS OVER: the diagnosis materially changed.
+    await h.executor.execute(ctx);
+    assert.equal(
+      h.db.prepare(
+        'SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?',
+      ).get(serialized).n,
+      2,
+      'a changed diagnosis is converging work — the rollover is granted',
+    );
+    assert.equal(h.coordinator.readState(ref).loopState, 'repair_wait');
+
+    // The delivery: the ROLLOVER line carries the previous epoch diagnosis.
+    const log = readFileSync(logPath, 'utf8');
+    const rolloverLines = log.split('\n').filter((line) => line.includes('] ROLLOVER '));
+    assert.ok(rolloverLines.length >= 1, 'the ROLLOVER line exists');
+    assert.match(rolloverLines.at(-1), /prevDiagnosis=/,
+      'the granted rollover log line carries the previous epoch\'s diagnosis '
+      + '(epoch amnesia fixed at the decision point)');
+  } finally {
+    delete process.env.SAGA_ENGINE_LOG;
+    h.db.close();
+    rmSync(logDir, { recursive: true, force: true });
+  }
 });

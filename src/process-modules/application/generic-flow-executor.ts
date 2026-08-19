@@ -88,6 +88,11 @@ import type {
 import type { AdoptedNodeResultPort } from '../../checkpoints/sqlite-resume-directive-repository.js';
 import type { TransitionObligationIntegrator } from './transition-obligation-integrator.js';
 import { processSettlementDigest } from './process-settlement-digest.js';
+import {
+  analyzeResumeCrashWindow,
+  ResumeSpinDetectedError,
+} from './resume-crash-window.js';
+import { engineLog } from '../../runtime/engine-file-logger.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -621,6 +626,43 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       currentNodeId = flow.entryNodeId;
     }
 
+    // BLINDSIGHT Lifecycle F5 — READ the failed NodeRuns between the resume
+    // cursor (last completed non-paused run) and the crash BEFORE continuing.
+    // The durable rows existed all along; the resume decision was blind to
+    // them and silently re-executed the failed region "как ни в чём не
+    // бывало". The analysis delivers the debris to the engine log, and the
+    // §15 spin verdict (the same typed error code repeating consecutively on
+    // the node we are about to re-enter) fails the walk closed with a typed
+    // cause instead of re-executing a deterministic failure once per factory
+    // restart.
+    const crashWindow = analyzeResumeCrashWindow(
+      allRuns,
+      lastCompleted?.id ?? null,
+      currentNodeId,
+    );
+    if (crashWindow.failedAfterCursor.length > 0) {
+      const debris = crashWindow.failedAfterCursor
+        .map((entry) => `${entry.nodeId}#a${entry.attempt}=${entry.errorCode}`)
+        .slice(0, 10)
+        .join(' | ');
+      engineLog(
+        `[flow-executor] RESUME-DEBRIS processRun=${context.processRunId} `
+        + `cursor=${lastCompleted?.id ?? 'none'} `
+        + `failedAfterCursor=${crashWindow.failedAfterCursor.length} `
+        + `durableFailedAttempts=${crashWindow.durableFailedAttempts} `
+        + `reenter=${currentNodeId} :: ${debris} `
+        + `— the crash window is accounted for, not silently skipped`,
+      );
+    }
+    if (crashWindow.spin) {
+      engineLog(
+        `[flow-executor] RESUME_SPIN_DETECTED processRun=${context.processRunId} `
+        + `node=${crashWindow.spin.nodeId} code=${crashWindow.spin.errorCode} `
+        + `consecutive=${crashWindow.spin.consecutive} — §15 spin valve at resume`,
+      );
+      throw new ResumeSpinDetectedError(crashWindow.spin);
+    }
+
     // Bound malformed cycles independently from each recovery policy's own
     // semantic budget. Valid repair paths may revisit several ordinary nodes.
     const totalRepairBudget = (flow.recovery ?? [])
@@ -628,6 +670,13 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     const maxSteps = flow.nodes.length * 4
       + totalRepairBudget * (flow.nodes.length + 2)
       + 10;
+    // BLINDSIGHT Lifecycle F4 — seed the anti-cycle budget from the DURABLE
+    // failed attempts of this process run. maxSteps used to restart at zero
+    // on every crash-resume while factory_node_runs accumulated attempts
+    // write-only: a factory restarted 10 times got 10 fresh budgets. §15:
+    // only FAILED attempts charge the seed — completed rows are work and are
+    // never taxed; the spin guard above is what ends same-reason loops.
+    const seededSteps = crashWindow.durableFailedAttempts;
 
     // Executor-side completion tracking (side-channel). The module settlement
     // kernels emit `completion: ModuleCompletion` in their KernelHandlerResult,
@@ -671,7 +720,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       chainInput = restoreProduction(lastCompletedForChain);
     }
 
-    for (let step = 0; step < maxSteps; step += 1) {
+    for (let step = seededSteps; step < maxSteps; step += 1) {
       heartbeat();
       const node = this.findNode(flow, currentNodeId);
       if (!node) {

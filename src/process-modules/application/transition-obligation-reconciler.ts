@@ -26,8 +26,14 @@ import type {
   TransitionHandoffKind,
   TransitionObligation,
 } from '../persistence/sqlite-transition-obligation-ledger.js';
-import { OBLIGATION_VALVE_MARKER } from '../persistence/sqlite-transition-obligation-ledger.js';
+import {
+  LEASE_LOSS_RECLAIM_MARKER,
+  OBLIGATION_HUMAN_PARK_MARKER,
+  OBLIGATION_VALVE_MARKER,
+} from '../persistence/sqlite-transition-obligation-ledger.js';
 import type { LeaseFence } from '../domain/transition-obligation.js';
+
+export { OBLIGATION_HUMAN_PARK_MARKER };
 
 // ---------------------------------------------------------------------------
 // B-004/O-D6 — the reason-identity valve (CONVEYOR §15 "Budget must count
@@ -47,6 +53,148 @@ import type { LeaseFence } from '../domain/transition-obligation.js';
 // ---------------------------------------------------------------------------
 export const OBLIGATION_VALVE_REPEAT_THRESHOLD = 3;
 export const OBLIGATION_VALVE_ATTEMPT_CEILING = 30;
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT Lifecycle F3 — redrive must READ the persisted typed reason.
+//
+// The valve only ends SAME-KEY repetition (N=3) and the absolute ceiling
+// (30). BETWEEN those thresholds every sweep re-leased and re-dispatched the
+// obligation immediately, whatever the persisted reason said: last_reason_key
+// and last_error were written by defer/fail and never read at the redrive
+// decision point ("данные записаны, но не доставляются к точке решения").
+//
+// The redrive now branches on the typed reason (CONVEYOR §15):
+//   - 'deterministic-retryable' (transient: SQLITE_BUSY, lease loss, network)
+//     → retry WITH BACKOFF — the retry is honest work, but an unbacked
+//     per-second retry storm is spin the system creates itself;
+//   - 'human-judgment' (the fail-closed park vocabulary:
+//     RECOVERY_BUDGET_EXHAUSTED, GATE_HUMAN_REQUIRED, REPLAN_*) → park
+//     human_required — a terminal fail-closed abandon with the typed
+//     OBLIGATION_HUMAN_PARK marker, NOT another lease and NOT an infinite
+//     loop waiting for a person inside the reconciler;
+//   - 'uncategorized' → the pre-existing immediate-retry behavior (reason
+//     identity stays the valve's job; over-classification would weaken the
+//     converging-chain contract).
+// ---------------------------------------------------------------------------
+export type ObligationRedriveClass =
+  | 'human-judgment'
+  | 'deterministic-retryable'
+  | 'uncategorized';
+
+/** Typed terminal marker written by the redrive's human-judgment park. */
+export const REDRIVE_HUMAN_PARK_MARKER = OBLIGATION_HUMAN_PARK_MARKER;
+
+/**
+ * The fail-closed park vocabulary: typed reason identities whose semantics are
+ * "a human must decide" (drawn from the actual park sites: gate human_required
+ * verdicts, recovery-budget exhaustion, re-plan mandates, worker retry
+ * budgets). A generic HUMAN_REQUIRED/HUMAN_PARK substring catches future
+ * members of the family.
+ */
+const HUMAN_JUDGMENT_REASON_CODES = [
+  'RECOVERY_BUDGET_EXHAUSTED',
+  'GATE_HUMAN_REQUIRED',
+  'REPLAN_MANDATED',
+  'REPLAN_CYCLE_CAP',
+  'REPLAN_CYCLE_RATCHET',
+  'WORKER_RETRY_BUDGET_EXHAUSTED',
+];
+
+/**
+ * The transient vocabulary: typed reason identities that are deterministic
+ * AND retryable (the next attempt can legitimately succeed). Prose variants
+ * ("database is locked") are matched case-insensitively as a fallback for
+ * drivers that surface raw SQLite messages without a typed code.
+ */
+const DETERMINISTIC_RETRYABLE_REASON_CODES = [
+  'SQLITE_BUSY',
+  'SQLITE_LOCKED',
+  'ETIMEDOUT',
+  'TIMEOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ECONNABORTED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EPIPE',
+  'PROCESS_RUN_BUSY',
+];
+
+function matchesVocabulary(haystack: string, code: string): boolean {
+  return haystack.toUpperCase().includes(code);
+}
+
+/**
+ * Classify a persisted defer/fail reason into the redrive branch. Inputs are
+ * the obligation's typed reason identity (`lastReasonKey`) and the durable
+ * prose (`lastError`); either may carry the typed code (deferred reasons keep
+ * prose in both, failed reasons keep the CODE prefix in the key).
+ *
+ * A reclaimed row (lastError === LEASE_LOSS_RECLAIM) is ALWAYS
+ * deterministic-retryable regardless of the stale reason key the reclaim did
+ * not clear: the previous holder crashed, the obligation itself is healthy.
+ */
+export function classifyObligationRedrive(
+  lastReasonKey: string | null,
+  lastError: string | null,
+): ObligationRedriveClass {
+  if (lastError === LEASE_LOSS_RECLAIM_MARKER) return 'deterministic-retryable';
+  const haystacks = [lastReasonKey, lastError]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.toUpperCase());
+  if (haystacks.length === 0) return 'uncategorized';
+  for (const code of HUMAN_JUDGMENT_REASON_CODES) {
+    if (haystacks.some((haystack) => matchesVocabulary(haystack, code))) {
+      return 'human-judgment';
+    }
+  }
+  if (haystacks.some((haystack) =>
+    /HUMAN_REQUIRED|HUMAN_PARK/.test(haystack))) {
+    return 'human-judgment';
+  }
+  for (const code of DETERMINISTIC_RETRYABLE_REASON_CODES) {
+    if (haystacks.some((haystack) => matchesVocabulary(haystack, code))) {
+      return 'deterministic-retryable';
+    }
+  }
+  if (haystacks.some((haystack) => haystack.includes('DATABASE IS LOCKED'))) {
+    return 'deterministic-retryable';
+  }
+  return 'uncategorized';
+}
+
+/** Base backoff window for the first repetition of a retryable reason. */
+export const OBLIGATION_BACKOFF_BASE_MS = 2_000;
+/** Backoff ceiling — a retryable reason never waits longer than this. */
+export const OBLIGATION_BACKOFF_CAP_MS = 300_000;
+
+/**
+ * Exponential backoff for a deterministic-retryable reason, keyed on the
+ * CONSECUTIVE repetition count of its typed key (§15: each same-key repeat is
+ * one more evidence unit that the retry is not converging). repeat=1 waits
+ * the base window; every further repeat doubles it; the cap bounds the wait.
+ */
+export function obligationRedriveBackoffMs(reasonRepeatCount: number): number {
+  const repeat = Number.isFinite(reasonRepeatCount) && reasonRepeatCount >= 1
+    ? Math.floor(reasonRepeatCount)
+    : 1;
+  const exponent = Math.min(repeat - 1, 20);
+  const raw = OBLIGATION_BACKOFF_BASE_MS * 2 ** exponent;
+  return Math.min(raw, OBLIGATION_BACKOFF_CAP_MS);
+}
+
+/**
+ * Parse the ledger's SQLite `updated_at` ("YYYY-MM-DD HH:MM:SS", UTC) into a
+ * wall-clock ms value. Returns null when the value is missing/unparseable —
+ * the caller then treats the backoff as elapsed (an unparseable timestamp
+ * must not wedge the obligation forever; dispatch is the pre-existing
+ * behavior).
+ */
+function parseUpdatedAtMs(updatedAt: string | null): number | null {
+  if (typeof updatedAt !== 'string' || updatedAt.trim() === '') return null;
+  const parsed = Date.parse(`${updatedAt.trim().replace(' ', 'T')}Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 // ---------------------------------------------------------------------------
 // Handler interface.
@@ -114,6 +262,17 @@ export interface ReconcileResult {
   readonly skipped: number;
   /** B-004/O-D6 — obligations terminally abandoned by the reason-identity valve. */
   readonly valved: number;
+  /**
+   * BLINDSIGHT F3 — obligations held back this sweep because their persisted
+   * typed reason is deterministic-retryable and the backoff window keyed on
+   * the reason-repetition count has not elapsed yet.
+   */
+  readonly backoff: number;
+  /**
+   * BLINDSIGHT F3 — obligations terminally parked (fail-closed abandon) by
+   * the redrive's human-judgment branch.
+   */
+  readonly humanParked: number;
 }
 
 export class TransitionObligationReconciler {
@@ -221,6 +380,8 @@ export class TransitionObligationReconciler {
     let deferred = 0;
     let skipped = 0;
     let valved = 0;
+    let backoff = 0;
+    let humanParked = 0;
 
     for (const obligation of ready) {
       const handler = this.handlers.get(obligation.handoffKind);
@@ -229,6 +390,52 @@ export class TransitionObligationReconciler {
         // Phase 8 registers production handlers). Skip without failing.
         skipped += 1;
         continue;
+      }
+
+      // BLINDSIGHT F3 — the redrive READS the persisted typed reason before
+      // taking another lease. Between the valve thresholds the reason used to
+      // be invisible at this exact decision point.
+      if (obligation.lastReasonKey !== null || obligation.lastError !== null) {
+        const redriveClass = classifyObligationRedrive(
+          obligation.lastReasonKey,
+          obligation.lastError,
+        );
+        if (redriveClass === 'human-judgment') {
+          const reason = `${OBLIGATION_HUMAN_PARK_MARKER}: reason-key `
+            + `<${obligation.lastReasonKey ?? 'none'}> requires human judgment — `
+            + `the redrive parks instead of leasing a human decision forever `
+            + `(attempt ${obligation.attempt}, repeated `
+            + `${obligation.reasonRepeatCount})`;
+          const abandoned = this.ledger.abandon(obligation.obligationKey, reason);
+          if (abandoned !== null) {
+            humanParked += 1;
+            this.log?.(
+              `HUMAN-PARK attempt=${obligation.attempt} `
+              + `handoff=${obligation.handoffKind} key=${obligation.obligationKey} `
+              + `:: ${obligation.lastReasonKey ?? '(no reason key)'} — parked `
+              + `human_required (fail-closed; the loop ends, a human decides)`,
+            );
+          }
+          continue;
+        }
+        if (redriveClass === 'deterministic-retryable') {
+          const windowMs = obligationRedriveBackoffMs(
+            Math.max(obligation.reasonRepeatCount, 1),
+          );
+          const lastFailureMs = parseUpdatedAtMs(obligation.updatedAt);
+          const nowMs = Date.now();
+          if (lastFailureMs !== null && nowMs < lastFailureMs + windowMs) {
+            backoff += 1;
+            this.throttledLog(
+              obligation,
+              'DEFER',
+              `${obligation.lastReasonKey ?? obligation.lastError} — `
+                + `retryable, backing off (window ${windowMs}ms after repeat `
+                + `${Math.max(obligation.reasonRepeatCount, 1)})`,
+            );
+            continue;
+          }
+        }
       }
 
       // Obtain the lease fence: when the caller did not supply one, ALLOCATE
@@ -342,6 +549,6 @@ export class TransitionObligationReconciler {
       }
     }
 
-    return { dispatched, completed, failed, deferred, skipped, valved };
+    return { dispatched, completed, failed, deferred, skipped, valved, backoff, humanParked };
   }
 }
