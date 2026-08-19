@@ -1,10 +1,17 @@
 # Agent brief — saga-mcp, stage 11: sealed material must not point at mutable rows
 
 Continues `docs/handoff/STAGE-10-AGENT-BRIEF.md`. **All rules from stages 2–10
-still apply.** Do not launch a factory run in this stage — the run already
+still apply.** Do not launch a factory run until TASK 6 — the run already
 happened and its evidence is what you work from.
 
 Branch `saga4`.
+
+> **Evidence base (2026-08-19):** five parallel investigations were dispatched
+> before any code was written — data forensics (identity decision input, blast
+> radius, TASK-1 seam map), code census (§9 rowid-pointer inventory, ratchet
+> gap, trace_delete surface), failure propagation (TASK 4 mechanism),
+> artifact exposure (TASK 3), journal failure-events design (TASK 5). Their
+> reports are the input to tasks 1–5; integrate before writing code.
 
 ---
 
@@ -193,3 +200,39 @@ Task 3: the answer — reachable or latent — with the paths you checked.
 Task 4: the mechanism, in one paragraph.
 Task 5: the new event kinds, and the journal excerpt around a deliberately
 induced failure proving they fire.
+
+---
+
+## TASK 6 — relaunch the factory from scratch (operator override, 2026-08-19)
+
+The header originally forbade a factory run in this stage. **The operator
+overrides that once tasks 1–5 are committed:** the fixed factory must be
+exercised for real, from zero.
+
+Pre-flight (mandatory, paste):
+
+- **clean ALL stale logs** — temp engine logs, the dead run's board dirs and
+  tracker/core-view logs. The evidence copies live in
+  `factory-snapshots/stage10-early/` and `factory-snapshots/stage10-engine-death-0828/`
+  and are NEVER deleted; the harvest corpus is in git;
+  `.factory-sandboxes/stage10-db/` (DB + journal) is the sealed run record
+  and stays. Everything else log-like goes.
+- fresh DB and fresh sandbox (`stage11-db/`, `stage11/`, `stage11-logs/`);
+- build clean, HEAD SHA, clean tree;
+- guard env held: `SAGA_REAL_CLAUDE_PATH` → agent-proxy shim,
+  `SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1`, `SAGA_FACTORY_CONCURRENCY=2`,
+  `SAGA_RUN_JOURNAL` + `SAGA_ORCHESTRATION_LOG` pinned to the new run dirs;
+- both observer fronts up per the quickstart (tracker 4321, core-view 4325)
+  on the NEW DB;
+- `~/.claude/settings.json` hash baselined before launch and checked every
+  monitoring cycle.
+
+The order: the same docking slice (`docs/factory-run/stage10/ORDER.md`) —
+the interesting question is whether the FIXED conveyor passes the exact cell
+that killed stage 10. Success criterion: formalization's
+acceptance-contract cell completes (CellFinalAcceptance recorded, replay
+capture succeeds over revised traces) and the run reaches development.
+
+Stage-10 disciplines hold unchanged: observe, never repair mid-run, snapshot
+first on any failure, a dead run with a snapshot and post-mortem is a valid
+result.
