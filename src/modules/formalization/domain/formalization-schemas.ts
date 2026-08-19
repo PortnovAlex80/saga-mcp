@@ -4,6 +4,11 @@ export {
   FORMALIZATION_CASE_SCHEMA,
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
+import {
+  buildOrderConstraintRegister,
+  orderConstraintRegisterRef,
+  type OrderConstraintRegister,
+} from '../../../shared/constraint-register.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'factory.formalization-settlement-input.v1';
 export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'factory.formalization-product-bundle.v1';
@@ -15,6 +20,20 @@ export const ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA = 'factory.acceptance-baseline-
 export const FORMALIZATION_SRS_SCHEMA = 'factory.srs.v1';
 export const FORMALIZATION_CERTIFICATE_SCHEMA_VERSION =
   'factory.solution-contract-certificate.generic.v1';
+
+/**
+ * AC-drift remedy: the constraint register binding carried on the
+ * FormalizationCase. The register itself is owned by discovery settlement
+ * (digest-pinned into its certificate); this binding is the SAME register
+ * resolved through the case's sealed discoveryProposalPayload — one source,
+ * deterministic rebuild, never a second authority (ADR-053).
+ */
+export interface FormalizationConstraintRegisterBinding {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  readonly constraintRegisterRef: string;
+  readonly constraintRegisterDigest: string;
+  readonly constraintRegister: OrderConstraintRegister;
+}
 
 export interface FormalizationCase {
   schemaVersion: typeof FORMALIZATION_CASE_SCHEMA;
@@ -30,6 +49,40 @@ export interface FormalizationCase {
   /** Original request retained as an independent information-conservation anchor. */
   initiativeSubject: string;
   initiatedBy: string;
+  /**
+   * Optional because the register is DERIVED, not handoff-authored: the
+   * lifecycle mapping already carries the full discoveryProposalPayload, and
+   * the strict JSON-path resolver cannot map optional source paths. Resolve
+   * via resolveFormalizationCaseConstraintRegister — the identical pure
+   * builder discovery settlement used.
+   */
+  constraintRegister?: FormalizationConstraintRegisterBinding;
+}
+
+/**
+ * Deterministically resolve the constraint register binding from a
+ * FormalizationCase's sealed discoveryProposalPayload. Same input → same
+ * binding (positional IDs + content digest), so every consumer (the A1
+ * disposition gate, the A2 coverage diffs, the A3 warrantRef) sees exactly
+ * one register. Returns null when the proposal carried no constraints
+ * (retro-compat: empty downstream diffs, existing gates stay green).
+ */
+export function resolveFormalizationCaseConstraintRegister(
+  formalizationCase: FormalizationCase,
+): FormalizationConstraintRegisterBinding | null {
+  if (formalizationCase.constraintRegister) {
+    return formalizationCase.constraintRegister;
+  }
+  const payload = formalizationCase.discoveryProposalPayload as {
+    order_constraints?: unknown;
+  };
+  const register = buildOrderConstraintRegister(payload?.order_constraints);
+  if (!register) return null;
+  return {
+    constraintRegisterRef: orderConstraintRegisterRef(register),
+    constraintRegisterDigest: register.registerDigest,
+    constraintRegister: register,
+  };
 }
 
 export interface SolutionContractBundle {
@@ -95,6 +148,12 @@ export interface FormalizationSolutionContractPayload {
     criterionHash?: string;
     implementationRequired: boolean;
     criticality: AcceptanceCriticality;
+    /**
+     * AC-drift relay: the constraint-register IDs this criterion covers,
+     * carried from the SRS §D2 stanza (covered_constraint_ids). Absent when
+     * no register exists — Development then relays nothing (retro-compat).
+     */
+    coveredConstraintIds?: readonly string[];
   }[];
 }
 

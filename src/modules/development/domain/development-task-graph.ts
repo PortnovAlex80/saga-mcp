@@ -10,6 +10,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
+  acceptanceCriterionIdentity,
   type CandidateIntegrationTarget,
   type ContentAddressedReference,
   type DevelopmentCase,
@@ -74,8 +75,8 @@ export function buildCanonicalDevelopmentTaskGraph(
     acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,
     srsHash: developmentCase.srs.hash,
     plannerSubmission: { ...plannerSubmission },
-    implementationItems: canonicalItems(proposal.implementationItems),
-    verificationItems: canonicalItems(proposal.verificationItems),
+    implementationItems: canonicalItems(proposal.implementationItems, developmentCase),
+    verificationItems: canonicalItems(proposal.verificationItems, developmentCase),
     integrationTargets: canonicalTargets(proposal.integrationTargets),
   } as const;
   return {
@@ -219,15 +220,36 @@ function decodeTargets(
 
 function canonicalItems(
   items: readonly DevelopmentTaskGraphItem[],
+  developmentCase: DevelopmentCase,
 ): DevelopmentTaskGraphItem[] {
-  return items.map(item => ({
-    ...item,
-    acceptanceCriterionIds: [...item.acceptanceCriterionIds]
-      .sort((left, right) => left - right),
-    dependsOnKeys: [...item.dependsOnKeys].sort(),
-    changeScopes: [...(item.changeScopes
-      ?? (item.kind === 'implementation' ? [`work-item:${item.key}`] : []))].sort(),
-  })).sort((left, right) => left.key.localeCompare(right.key));
+  // AC-drift relay: the kernel derives each item's coveredConstraintIds as
+  // the union over the FROZEN criteria the item references — the planner
+  // proposes acceptanceCriterionIds only; coverage is inherited, never
+  // proposed, so it cannot be forged or silently dropped at the handoff.
+  const coverageByCriterionId = new Map<number, readonly string[]>();
+  for (const criterion of developmentCase.acceptanceCriteria) {
+    if (criterion.coveredConstraintIds && criterion.coveredConstraintIds.length > 0) {
+      coverageByCriterionId.set(
+        acceptanceCriterionIdentity(criterion),
+        criterion.coveredConstraintIds,
+      );
+    }
+  }
+  return items.map(item => {
+    const inherited = [...new Set(
+      item.acceptanceCriterionIds
+        .flatMap(id => coverageByCriterionId.get(id) ?? []),
+    )].sort();
+    return {
+      ...item,
+      acceptanceCriterionIds: [...item.acceptanceCriterionIds]
+        .sort((left, right) => left - right),
+      dependsOnKeys: [...item.dependsOnKeys].sort(),
+      changeScopes: [...(item.changeScopes
+        ?? (item.kind === 'implementation' ? [`work-item:${item.key}`] : []))].sort(),
+      ...(inherited.length > 0 ? { coveredConstraintIds: inherited } : {}),
+    };
+  }).sort((left, right) => left.key.localeCompare(right.key));
 }
 
 function canonicalTargets(

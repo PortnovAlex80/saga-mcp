@@ -26,8 +26,13 @@ interface DbHandle {
 }
 import {
   buildContractSnapshot,
+  constraintCoverageGapIdList,
   findContractGap,
 } from './formalization-contract-analysis.js';
+import {
+  constraintCoverageSubmissionGaps,
+  readConstraintCoverageRequirement,
+} from './constraint-coverage.js';
 import type { FormalizationArtifactSnapshot, FormalizationCanonicalGraphPort, FormalizationTraceSnapshot } from '../domain/formalization-kernel-ports.js';
 import type {
   NodeSubmissionValidationInput,
@@ -159,7 +164,7 @@ export function createAcceptanceContractValidator(
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
-    validatorVersion: '1.0.0',
+    validatorVersion: '1.1.0',
     validate(input: NodeSubmissionValidationInput): NodeSubmissionValidationResult {
       const graph = graphPortFromDb(db);
       const artifacts = readContractArtifacts(db, input.processRunId);
@@ -170,6 +175,28 @@ export function createAcceptanceContractValidator(
         return acceptWithReceipt(db, input, artifacts, []);
       }
       const snapshot = buildContractSnapshot(graph, artifacts);
+      // AC-drift structure network: typed-ID reverse diff first (never string
+      // matching over gap prose); structural dimensions reported alongside in
+      // the same rejection round.
+      const coverage = readConstraintCoverageRequirement(db, input.taskId, input.processRunId);
+      if (coverage) {
+        const uncovered = constraintCoverageGapIdList(snapshot, coverage);
+        if (uncovered.length > 0) {
+          const structuralGap = findContractGap(snapshot, {
+            product: true,
+            useCases: true,
+            acceptance: true,
+          });
+          return {
+            accepted: false,
+            code: 'FORMALIZATION_CONSTRAINT_UNCOVERED',
+            gaps: [
+              ...constraintCoverageSubmissionGaps(uncovered, coverage.registerTexts),
+              ...(structuralGap ? parseGaps(structuralGap, snapshot) : []),
+            ],
+          };
+        }
+      }
       const gap = findContractGap(snapshot, {
         product: true,
         useCases: true,

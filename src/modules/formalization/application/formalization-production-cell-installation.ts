@@ -39,6 +39,7 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
+  resolveFormalizationCaseConstraintRegister,
   type FormalizationCase,
   type FormalizationSolutionContractPayload,
   type FormalizationSettlementInput,
@@ -48,8 +49,34 @@ import { acceptanceCriteriaForArtifact } from '../domain/acceptance-criterion-do
 import {
   extractD2Stanzas,
   parseD2CriticalityByAc,
+  parseD2CoveredConstraintIdsByAc,
 } from './srs-d2-parser.js';
 import { acContentRequiresImplementation } from './formalization-contract-analysis.js';
+
+/**
+ * Read covered_constraint_ids from AC artifact metadata (typed IDs only).
+ * The metadata column arrives as a JSON string from SQLite — normalize once
+ * here (same ingress rule as coveredConstraintIdsOfArtifacts).
+ */
+function coveredConstraintIdsFromMetadata(metadata: unknown): string[] {
+  let record: Record<string, unknown> | null = null;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata) as unknown;
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        record = parsed as Record<string, unknown>;
+      }
+    } catch {
+      record = null;
+    }
+  } else if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    record = metadata as Record<string, unknown>;
+  }
+  if (!record) return [];
+  const ids = record['covered_constraint_ids'];
+  if (!Array.isArray(ids)) return [];
+  return ids.filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
 
 export const FORMALIZATION_KERNEL_HANDLER_IDS = {
   freezeBaseline: 'formalization-baseline-freezer',
@@ -123,6 +150,21 @@ function createBaselineFreezer(
       if (new Set(acceptanceCriteria.map(item => item.code)).size !== acceptanceCriteria.length) {
         throw new Error('atomic acceptance criterion codes must be unique across accepted artifacts');
       }
+      // AC-drift structure network: freeze the per-AC constraint coverage
+      // (covered_constraint_ids metadata) into the baseline payload. One
+      // source, three projections — brief dispositions (network 1), this
+      // frozen map (network 2), the downstream warrantRef (network 3).
+      // Omitted entirely when no AC carries coverage — old runs freeze the
+      // exact payload shape they always had.
+      const coveredConstraints = Object.fromEntries(
+        acs
+          .map(artifact => [
+            artifact.code ?? String(artifact.id),
+            coveredConstraintIdsFromMetadata(artifact.metadata),
+          ] as const,
+        )
+        .filter(([, ids]) => ids.length > 0),
+      );
       // Cross-run semantic digest (CONVEYOR v4.3 §5-6): stable AC codes +
       // accepted hashes, no DB IDs/processRunId/refs. See the sibling
       // acceptanceBaselineSemanticDigest in formalization-installation.ts.
@@ -137,6 +179,7 @@ function createBaselineFreezer(
         acArtifactIds: [...accepted.acs].sort((a, b) => a - b),
         acArtifactHashes: hashes,
         acceptanceCriteria,
+        ...(Object.keys(coveredConstraints).length > 0 ? { coveredConstraints } : {}),
         baselineHash: baseline.hash,
       } as const;
       const frozen = deps.baselineRepository.freeze(payload);
@@ -197,13 +240,33 @@ function createSettlementHandler(
         bundle,
         settlementInput,
       );
+      // AC-drift network 3 seam: cite the constraint register + the accepted
+      // brief's dispositions as the verification warrant reference. The
+      // endgame certifier consumes this WITHOUT re-reading the order (no new
+      // oracle): warrant phases diff against this frozen citation. Absent
+      // entirely when the case carries no register (retro-compat).
+      const constraintBinding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+      const warrantRef = constraintBinding
+        ? {
+            constraintRegisterRef: constraintBinding.constraintRegisterRef,
+            constraintRegisterDigest: constraintBinding.constraintRegisterDigest,
+            dispositionsDigest: sha256Hex(
+              deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId) ?? {},
+            ),
+            dispositions: deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
+              ?? {} as Readonly<Record<string, unknown>>,
+          }
+        : undefined;
       const certificatePayload = {
         schemaVersion: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
         decision: decision.decision,
         reasonCodes: decision.reasonCodes,
         rationale: decision.rationale,
         inputHash: decision.inputHash,
-        payload: formalizationPayload,
+        payload: {
+          ...formalizationPayload,
+          ...(warrantRef ? { warrantRef } : {}),
+        },
       };
       const certificateHash = sha256Hex(certificatePayload);
 
@@ -331,6 +394,7 @@ export function buildSolutionContractPayload(
     extractD2Stanzas(srsContent).map(stanza => [stanza.ac, stanza]),
   );
   const criticalityByCode = parseD2CriticalityByAc(srsContent);
+  const coveredIdsByCode = parseD2CoveredConstraintIdsByAc(srsContent);
   const frozen = deps.baselineRepository.readByProcessRun(ctx.processRunId);
   if (!frozen) throw new Error('formalized contract has no frozen acceptance baseline');
   const criteria = frozen.payload.acceptanceCriteria ?? artifacts
@@ -386,6 +450,11 @@ export function buildSolutionContractPayload(
         implementationRequired: acKind === 'implementation'
           || acContentRequiresImplementation(artifact),
         criticality: criticalityByCode.get(artifact.code) ?? 'blocker',
+        // AC-drift relay: carry the §D2 constraint coverage into the frozen
+        // Development handoff (absent when the stanza declares none).
+        ...(coveredIdsByCode.get(artifact.code)?.length
+          ? { coveredConstraintIds: coveredIdsByCode.get(artifact.code) }
+          : {}),
       };
     }),
   };

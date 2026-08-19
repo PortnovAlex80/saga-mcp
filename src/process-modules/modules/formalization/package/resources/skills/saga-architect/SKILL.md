@@ -98,6 +98,18 @@ Extra scalar fields such as `functions` or `public_protocol` may follow the
 required fields, but never replace them. Keep list values inline; the validator
 uses a deliberately strict, replayable line grammar.
 
+### Constraint coverage back-edge (mandatory when a register exists)
+
+If your `process_node_input.discoveryProposalPayload` carries
+`order_constraints` (the order's typed constraint register, IDs like
+`ord-c-001`), the SRS must close every non-waived constraint through §D2: add
+`covered_constraint_ids: ord-c-001,ord-c-002` (comma-separated typed IDs,
+copied verbatim) to the stanza of the AC that actually carries each
+constraint. Constraints validly waived in the brief (waived + reason) need no
+stanza coverage. Mentioning a constraint in HOW sections (§10/§11) without
+closing it in §D2 fails the gate with per-ID `covers_constraint` gaps listing
+the exact IDs — copy them verbatim, never invent or renumber.
+
 Do not use old pseudo-kinds such as `spike` or `merge_with`. Research uncertainty
 belongs in an explicit architectural decision/open question before the SRS is
 accepted; task grouping belongs to the Development planner, not `ac_kind`.

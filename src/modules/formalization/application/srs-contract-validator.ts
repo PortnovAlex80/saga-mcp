@@ -62,7 +62,11 @@ import {
   extractD2Stanzas,
   validateD2Structure,
   checkDecisionLogSection,
+  parseD2CoveredConstraintIdsByAc,
 } from './srs-d2-parser.js';
+import {
+  readConstraintCoverageRequirement,
+} from './constraint-coverage.js';
 
 export const SRS_CONTRACT_VALIDATOR_ID = 'formalization.srs-contract.v1';
 /**
@@ -319,6 +323,38 @@ export function createSrsContractValidator(
               message: `§D2 code ${actual} is not in the frozen baseline and cannot be substituted or expanded into sub-criteria.`,
             });
           }
+        }
+      }
+
+      // --- 7b. AC-drift back-edge: §D2 constraint coverage diff ------------
+      // union(covered_constraint_ids over §D2 stanzas) must cover the register
+      // (minus validly waived IDs). This is what makes "docker/TS smuggled
+      // into HOW §10/§11 while every AC ignores them" machine-visible: you
+      // cannot mention a constraint in HOW without closing it in §D2 or
+      // waiving it in the brief. No register -> empty diff -> green.
+      const coverage = readConstraintCoverageRequirement(db, input.taskId, input.processRunId);
+      if (coverage) {
+        const coveredByD2 = new Set<string>();
+        for (const ids of parseD2CoveredConstraintIdsByAc(fileContent).values()) {
+          for (const id of ids) coveredByD2.add(id);
+        }
+        const waived = new Set(coverage.waivedIds);
+        for (const id of coverage.constraintIds) {
+          if (coveredByD2.has(id) || waived.has(id)) continue;
+          gaps.push({
+            artifactId: srs.id,
+            artifactCode: id,
+            artifactType: 'SRS',
+            existingTargets: [],
+            missing: {
+              relation: 'covers_constraint',
+              requiredTargetTypes: [id],
+              minimum: 1,
+            },
+            message: `Constraint ${id} (${coverage.registerTexts[id] ?? 'order constraint'})`
+              + ` is covered by no §D2 stanza: add covered_constraint_ids to the stanza`
+              + ` that carries it (or waive it in the brief with a reason).`,
+          });
         }
       }
 

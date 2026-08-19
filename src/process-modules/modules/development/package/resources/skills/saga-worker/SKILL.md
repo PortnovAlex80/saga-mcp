@@ -164,6 +164,7 @@ create them later.
     "acceptanceCriterionId": 123,
     "acceptedCriterionHash": "<exact accepted AC SHA-256>",
     "candidateHash": "<exact frozen candidate SHA-256>",
+    "coveredConstraintIds": ["ord-c-001"],
     "outcome": "passed|failed|unknown|error",
     "evidence": {
       "summary": "<what was actually established>",
@@ -172,6 +173,12 @@ create them later.
     }
   }
   ```
+
+  When your task's `cell_input_item` carries `coveredConstraintIds` (the
+  order-constraint register IDs pinned to this card), echo that EXACT array
+  verbatim in `coveredConstraintIds` — the lineage check pins it together
+  with `acceptanceCriterionId`; a missing or divergent set is rejected as a
+  lineage mismatch. Omit the field entirely when the card pins none.
 
   The enclosing immutable product is the content-addressed evidence reference;
   do not invent a nested reference. Provider trust is injected from the

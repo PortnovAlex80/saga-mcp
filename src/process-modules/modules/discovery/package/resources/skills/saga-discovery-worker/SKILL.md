@@ -51,6 +51,25 @@ runtime authority snapshot is final for this execution.
 - evidence_refs: string[]
 - recommended_outcome: go | clarify | reject | defer | inconclusive | failed
 - rationale: non-empty string
+- order_constraints (when the initiative carries constraints): array of typed
+  drafts, serialized ONCE while the order's requirements are visible:
+
+  ```json
+  "order_constraints": [
+    { "class": "execution", "text": "one-command `docker compose up`", "evidence_ref": "initiative.constraints" },
+    { "class": "material", "text": "TypeScript backend", "evidence_ref": "initiative.constraints" },
+    { "class": "human", "text": "Chrome client feel", "evidence_ref": "initiative.constraints" }
+  ]
+  ```
+
+  `class` is exactly one of execution|material|human: execution for runnable
+  checks the order commands, material for static substrate properties, human
+  for checks only a person can perform. Copy each constraint text faithfully
+  from the initiative — do not rephrase, merge, or drop any. The kernel
+  settlement pins these drafts into a digest-addressed constraint register
+  that formalization MUST dispose per ID; constraints not serialized here are
+  invisible to every downstream gate. Omit the field only when the initiative
+  genuinely carries no constraints.
 
 The Production Cell gate validates this exact immutable product. `worker_done`
 means execution complete, not product accepted.

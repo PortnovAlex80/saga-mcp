@@ -47,9 +47,11 @@ export function wireSubmissionValidation(
   // SRS: dedicated validator (checks §12 section + criticality validity).
   validatorRegistry.register(createSrsContractValidator(db));
   // Product, UC, Reconciliation: generic formalization contract validator.
+  // The product node additionally enforces the AC-drift reaction gate
+  // (constraint-register dispositions in the brief metadata).
   validatorRegistry.register(createFormalizationContractValidator(
     db, 'formalization.product-contract.v1', 'define-product-contract',
-    { product: true },
+    { product: true, constraintDispositions: true },
   ));
   validatorRegistry.register(createFormalizationContractValidator(
     db, 'formalization.use-cases.v1', 'model-use-cases',
@@ -57,7 +59,7 @@ export function wireSubmissionValidation(
   ));
   validatorRegistry.register(createFormalizationContractValidator(
     db, 'formalization.reconciliation.v1', 'reconcile-what',
-    { product: true, useCases: true, acceptance: true },
+    { product: true, useCases: true, acceptance: true, coverage: true },
   ));
 
   // --- Formalization policies ---

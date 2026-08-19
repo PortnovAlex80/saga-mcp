@@ -12,6 +12,11 @@
  * the LM to build exactly this shape and submit it via proposal_submit.
  */
 
+import {
+  ORDER_CONSTRAINT_CLASSES,
+  type OrderConstraintDraft,
+} from '../../../shared/constraint-register.js';
+
 /**
  * The WORKER-RECOMMENDATION vocabulary for discovery — a business verdict
  * about the idea, not a process state. 'failed' is a runtime-only outcome
@@ -48,6 +53,15 @@ export interface DiscoveryProposalPayload {
   evidence_refs: string[];
   recommended_outcome: DiscoveryOutcome;
   rationale: string;
+  /**
+   * AC-drift remedy (network 0): the typed constraints the worker observed in
+   * the order's initiative, serialized ONCE while they are visible. The
+   * kernel-side settlement turns these drafts into the digest-pinned
+   * constraint register (see constraint-register.ts). Optional for
+   * retro-compatibility: absent field → no register → empty downstream
+   * diffs → all existing gates stay green.
+   */
+  order_constraints?: readonly OrderConstraintDraft[];
 }
 
 /** Result of validating a discovery proposal payload. */
@@ -97,6 +111,39 @@ export function validateDiscoveryProposal(payload: unknown): DiscoveryProposalVa
     errors.push(
       `field 'recommended_outcome' must be one of [${DISCOVERY_OUTCOMES.join(', ')}]`,
     );
+  }
+
+  // AC-drift remedy: order_constraints is OPTIONAL (retro-compat), but when
+  // present every draft must be structurally valid — the settlement builds
+  // the digest-pinned register from these rows without any further LM step,
+  // so a malformed draft must fail at the submission boundary, not at
+  // settlement.
+  if (p['order_constraints'] !== undefined) {
+    if (!Array.isArray(p['order_constraints'])) {
+      errors.push("field 'order_constraints' must be an array of constraint drafts");
+    } else {
+      p['order_constraints'].forEach((draft, index) => {
+        if (typeof draft !== 'object' || draft === null || Array.isArray(draft)) {
+          errors.push(`order_constraints[${index}] must be an object`);
+          return;
+        }
+        const row = draft as Record<string, unknown>;
+        if (
+          typeof row['class'] !== 'string'
+          || !(ORDER_CONSTRAINT_CLASSES as readonly string[]).includes(row['class'])
+        ) {
+          errors.push(
+            `order_constraints[${index}].class must be one of ${ORDER_CONSTRAINT_CLASSES.join('|')}`,
+          );
+        }
+        if (typeof row['text'] !== 'string' || row['text'].trim() === '') {
+          errors.push(`order_constraints[${index}].text must be a non-empty string`);
+        }
+        if (typeof row['evidence_ref'] !== 'string' || row['evidence_ref'].trim() === '') {
+          errors.push(`order_constraints[${index}].evidence_ref must be a non-empty string`);
+        }
+      });
+    }
   }
 
   return { valid: errors.length === 0, errors };

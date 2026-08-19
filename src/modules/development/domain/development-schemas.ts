@@ -94,6 +94,13 @@ export interface DevelopmentVerificationEvidenceProduct {
   acceptanceCriterionId: number;
   acceptedCriterionHash: string;
   candidateHash: string;
+  /**
+   * AC-drift relay: the constraint IDs pinned by the verification card.
+   * When the card (cell_input_item) carries coveredConstraintIds, the
+   * evidence must echo the exact same set — lineage pins them together
+   * with criterionId. Absent when the card pins none (retro-compat).
+   */
+  coveredConstraintIds?: readonly string[];
   outcome: VerificationOutcome;
   /** The enclosing immutable ProductRef is the evidence reference. */
   evidence: {
@@ -159,6 +166,12 @@ export interface AcceptanceCriterionBinding {
    * SRS did not carry a criticality value (conservative: treat as mandatory).
    */
   criticality: AcceptanceCriticality;
+  /**
+   * AC-drift relay: constraint-register IDs this criterion covers (from the
+   * SRS §D2 stanza). Absent when no register exists — cards then relay
+   * nothing and every legacy shape stays valid (retro-compat).
+   */
+  coveredConstraintIds?: readonly string[];
 }
 
 /**
@@ -219,6 +232,12 @@ export interface DevelopmentTaskGraphItem {
    * so the integration readiness gate can classify verification outcomes.
    */
   criticality: AcceptanceCriticality;
+  /**
+   * AC-drift relay: the KERNEL-computed union of coveredConstraintIds over
+   * the frozen criteria this item references (see canonicalItems). The
+   * planner cannot forge or drop it — it is inherited, not proposed.
+   */
+  coveredConstraintIds?: readonly string[];
 }
 
 export interface CandidateIntegrationTarget {
@@ -447,10 +466,26 @@ export interface IntegratedSourceCandidate {
   sourceHash: string;
 }
 
+/**
+ * AC-drift network 3 seam: the verification warrant reference cited by the
+ * Formalization settlement certificate. The future warrant-coverage phases in
+ * the readiness provider consume exactly this shape (register + dispositions,
+ * both digest-pinned) — no new oracle, no re-reading of the order prose.
+ */
+export interface VerificationWarrantRef {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  constraintRegisterRef: string;
+  constraintRegisterDigest: string;
+  dispositionsDigest: string;
+  dispositions: Readonly<Record<string, unknown>>;
+}
+
 export interface DevelopmentReadinessManifest {
   schemaVersion: typeof DEVELOPMENT_READINESS_MANIFEST_SCHEMA;
   sourceCandidate: ContentAddressedReference;
   targets: readonly [{ key: 'primary'; readiness: ReadinessProfile }];
+  /** @see VerificationWarrantRef — optional until warrant phases land. */
+  warrantRef?: VerificationWarrantRef;
 }
 
 export type VerificationOutcome =

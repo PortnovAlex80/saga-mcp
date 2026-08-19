@@ -20,7 +20,7 @@ export function registerFormalizationCheckProviders(input: {
     input.db,
     'formalization.product-contract.v1',
     'define-product-contract',
-    { product: true },
+    { product: true, constraintDispositions: true },
   );
   const useCaseValidator = createFormalizationContractValidator(
     input.db,
@@ -33,7 +33,7 @@ export function registerFormalizationCheckProviders(input: {
     input.db,
     'formalization.reconciliation.v1',
     'reconcile-what',
-    { product: true, useCases: true, acceptance: true },
+    { product: true, useCases: true, acceptance: true, coverage: true },
   );
 
   for (const entry of [

@@ -99,6 +99,11 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
     changeScopes: [],
     required: true,
     criticality: criterion.criticality,
+    // AC-drift relay: the frozen criterion's constraint coverage rides the
+    // machine-filled card (absent when the criterion carries none).
+    ...(criterion.coveredConstraintIds && criterion.coveredConstraintIds.length > 0
+      ? { coveredConstraintIds: [...criterion.coveredConstraintIds] }
+      : {}),
   }));
   const integrationTargets = repositories.map(repository => ({
     projectRepositoryId: repository.projectRepositoryId,
