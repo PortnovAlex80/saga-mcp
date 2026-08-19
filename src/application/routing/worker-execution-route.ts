@@ -19,6 +19,8 @@
  * Replay is an internal production source resolved from
  * execution_context.replay.capsule_ref inside the normal executor — NOT a route.
  */
+import type { ExecutionRouteEndpoint } from '../../shared/authority/execution-context.js';
+
 export type ExecutorKind =
   | 'claude-cli';
 
@@ -91,4 +93,36 @@ export function routeToModelRoute(
     model: route.model?.id ?? claimTime.model,
     effort: route.inference.effort ?? claimTime.effort,
   };
+}
+
+/**
+ * Resolve the backend coordinates for one claim (C-1, stage-11 PREVENTIVE-HUNT
+ * Layer 6). Called ONCE inside the claim transaction; the result is frozen into
+ * execution_context.model_route.endpoint and NEVER re-resolved after that.
+ *
+ * The engine's process env is the claim-time source of truth for which worker
+ * launcher this factory host uses (SAGA_REAL_CLAUDE_PATH pointing at the
+ * agent-proxy shim) and where LM Studio listens (SAGA_LMSTUDIO_URL). Reading
+ * them HERE is correct: it happens before the execution fence exists. The
+ * spawned worker consumes only the frozen copy.
+ *
+ * Pure function of (route, env) — injectable env for tests.
+ */
+export function resolveFrozenRouteEndpoint(
+  route: ClaimTimeInferenceRoute,
+  env: NodeJS.ProcessEnv = process.env,
+): ExecutionRouteEndpoint {
+  const launcher = `${env.SAGA_REAL_CLAUDE_PATH ?? ''} ${env.SAGA_CLAUDE_PATH ?? ''}`;
+  if (/agent-proxy/.test(launcher)) {
+    return { backend: 'agent-proxy', base_url: null };
+  }
+  if (route.provider === 'lmstudio') {
+    return {
+      backend: 'lmstudio',
+      // Same default as resolveSagaRuntimeConfig — one LM Studio endpoint
+      // contract across the codebase.
+      base_url: env.SAGA_LMSTUDIO_URL?.trim() || 'http://localhost:1234/v1',
+    };
+  }
+  return { backend: 'claude-cli', base_url: null };
 }

@@ -15,6 +15,7 @@ import {
   type ExecutionContextExecutorKind,
   type ExecutionModelRoute,
   type ExecutionReplayBinding,
+  type ExecutionRouteEndpoint,
   type ExecutionRoutePolicyRef,
 } from './execution-context.js';
 import { computeReplayKey, type ReplayKeyMaterial } from '../../replay/replay-capsule.js';
@@ -116,7 +117,42 @@ function parseModelRoute(
   if (typeof raw.provider !== 'string' || raw.provider.trim() === '') return null;
   if (typeof raw.model === 'string' && raw.model.trim() === '') return null;
   if (typeof raw.effort === 'string' && raw.effort.trim() === '') return null;
-  return { provider: raw.provider, model: raw.model, effort: raw.effort };
+  // C-1 endpoint passthrough: the claim-time hash covers the FULL stored
+  // model_route object. Dropping `endpoint` here would change the recomputed
+  // hash and deny every tool call of an endpoint-bearing execution. Absent on
+  // pre-C-1 snapshots (key omitted → omitted in the recomputation too);
+  // malformed → fail-closed.
+  let endpoint: ExecutionModelRoute['endpoint'] | undefined;
+  if (raw.endpoint !== undefined) {
+    if (raw.endpoint === null) {
+      endpoint = null;
+    } else if (isRecord(raw.endpoint)) {
+      const backend = raw.endpoint.backend;
+      const baseUrl = raw.endpoint.base_url;
+      const baseUrlValid = baseUrl === null || baseUrl === undefined
+        || (typeof baseUrl === 'string' && baseUrl.length > 0);
+      if (
+        (backend === 'agent-proxy' || backend === 'lmstudio' || backend === 'claude-cli')
+        && baseUrlValid
+      ) {
+        // Mirror the stored shape exactly (an absent base_url stays absent) so
+        // the recomputed canonical hash is byte-stable against the stored one.
+        endpoint = baseUrl === undefined
+          ? { backend } as ExecutionRouteEndpoint
+          : { backend, base_url: baseUrl };
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
+  }
+  return {
+    provider: raw.provider,
+    model: raw.model,
+    effort: raw.effort,
+    ...(endpoint !== undefined ? { endpoint } : {}),
+  };
 }
 
 function parseRoutePolicy(raw: unknown): ExecutionRoutePolicyRef | null {

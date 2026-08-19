@@ -18,6 +18,30 @@ import type { ReplayKeyMaterial } from '../../replay/replay-capsule.js';
 export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
 
 /**
+ * Resolved backend coordinates frozen into the route at claim (C-1, stage-11
+ * PREVENTIVE-HUNT Layer 6).
+ *
+ * `provider`/`model`/`effort` describe WHO answers; `endpoint` describes WHERE
+ * the request physically goes. Without it the frozen route certified one
+ * backend while the spawned child resolved its endpoint/auth from LIVE
+ * state (settings.json flips, ambient engine env) — one /api/model/set between
+ * claim and spawn silently rerouted a frozen worker.
+ *
+ *   - 'agent-proxy'  — workers run through the agent-proxy shim (opencode
+ *                      backend). The shim owns routing via its model map;
+ *                      ~/.claude/settings.json is NEVER consulted for routing.
+ *   - 'lmstudio'     — base_url is the LM Studio endpoint frozen at claim.
+ *   - 'claude-cli'   — the real claude CLI; the auth contract lives in
+ *                      ~/.claude/settings.json by design, but the CHOICE is
+ *                      recorded here as provenance, and the runner strips
+ *                      ambient ANTHROPIC_* env so nothing ambient reroutes it.
+ */
+export interface ExecutionRouteEndpoint {
+  backend: 'agent-proxy' | 'lmstudio' | 'claude-cli';
+  base_url: string | null;
+}
+
+/**
  * Inference route frozen into the snapshot.
  *
  * `provider` is always required on the normal runtime path: every execution
@@ -27,11 +51,20 @@ export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v2';
  * records what would have been selected — this is provenance, and it keeps
  * inference and replay on the exact same authorization path (CONVEYOR v4.3
  * PART 1,2: the Gate cannot distinguish how a product was produced).
+ *
+ * ADDITIVE-FIELD DISCIPLINE (C-1): `endpoint` is OPTIONAL. Pre-endpoint frozen
+ * snapshots stay byte-identical and hash-valid; the strict gateway passes a
+ * well-formed `endpoint` through so the recomputed context hash matches. The
+ * policy version is NOT bumped: EXECUTION_CONTEXT_POLICY_VERSION gates readers
+ * on shape compatibility, and an optional field is readable by both old and
+ * new readers. Bumping would fail-close every in-flight v2 execution at the
+ * spawn gate for a purely additive provenance field.
  */
 export interface ExecutionModelRoute {
   provider: string | null;
   model: string | null;
   effort: string | null;
+  endpoint?: ExecutionRouteEndpoint | null;
 }
 
 /**
