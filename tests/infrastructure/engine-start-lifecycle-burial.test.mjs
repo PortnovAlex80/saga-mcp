@@ -87,7 +87,7 @@ function obligation(db, key) {
 
 function workplace(db, ref) {
   return db.prepare(
-    'SELECT kanban_phase, loop_state, terminal_reason, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    'SELECT kanban_phase, loop_state, terminal_reason, active_reservation_ref, active_recovery_case_ref FROM factory_workplaces WHERE workplace_ref=?',
   ).get(ref);
 }
 
@@ -285,6 +285,112 @@ test('idempotent: repeated burial passes converge to no-ops', () => {
     assert.equal(second.workplacesReleased, 0);
     assert.equal(obligation(db, 'obl:pending-workplace').last_error, 'LIFECYCLE_TERMINAL: lifecycle-run:1');
     assert.equal(workplace(db, 'workplace/4/m@1/cell/singleton').loop_state, 'terminal');
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT Lifecycle F7 — "Burial abandon не несёт причину (LOW/MED)".
+//
+// The burial abandon reason named WHICH lifecycle died
+// (LIFECYCLE_TERMINAL: lifecycle-run:<id>) but never WHY it failed: the
+// durable lifecycle failure reason (factory_lifecycle_runs.error) is written
+// by the terminal transition and then dropped at the burial boundary. The
+// abandoned obligation, the released workplaces and the boot log all carry
+// zero typed cause. The fix routes the typed failure code into the durable
+// burial records and the log.
+// ---------------------------------------------------------------------------
+function seedLifecycleRunWithError(db, { id, projectId = 1, error }) {
+  db.prepare(
+    `INSERT INTO factory_lifecycle_runs
+       (id, lifecycle_name, lifecycle_version, lifecycle_ref_key, display_name,
+        description, definition_snapshot, definition_hash, project_id,
+        initiated_by, idempotency_key, input_schema, input_snapshot, input_hash,
+        entry_stage_id, terminal_status, error)
+     VALUES (?, ?, '1.0.0', 'lifecycle', ?, '{}', '{}', 'h',
+             ?, 'test', ?, '{}', '{}', 'h', 'stage-1', 'failed', ?)`,
+  ).run(id, `lifecycle-${id}`, `lifecycle-${id}`, projectId, `idem-${id}`, error);
+}
+
+test('F7: burial abandon and released workplaces carry the typed lifecycle failure reason', () => {
+  const db = fresh();
+  try {
+    seedProject(db, 1);
+    seedProcessRun(db, { id: 4 });
+    seedLifecycleRunWithError(db, {
+      id: 1,
+      error: 'LIFECYCLE_STAGE_FAILED: stage formalization exhausted recovery (case 12)',
+    });
+    seedStageRun(db, { id: 1, lifecycleRunId: 1, processRunId: 4 });
+    seedObligation(db, {
+      key: 'obl:typed',
+      subjectRef: 'workplace/4/m@1/cell/singleton',
+      sourceRef: 'decision:gate-run:abc',
+    });
+    seedWorkplace(db, { ref: 'workplace/4/m@1/cell/singleton', processRunId: 4, loopState: 'effect_pending' });
+
+    const result = buryDeadLifecycleObligations(db);
+    assert.equal(result.buried, 1);
+
+    // Durable obligation record: the abandon carries the typed WHY.
+    const row = obligation(db, 'obl:typed');
+    assert.equal(row.state, 'failed');
+    assert.match(
+      row.last_error,
+      /^LIFECYCLE_TERMINAL: lifecycle-run:1 failure=LIFECYCLE_STAGE_FAILED/,
+      'DEFECT F7: the abandon said which lifecycle died but not why it failed',
+    );
+    assert.match(row.last_error, /stage formalization exhausted recovery/);
+
+    // Durable workplace burial record: an append-only park-reason row plus a
+    // live pointer on the released workplace.
+    const parkReason = db.prepare(
+      'SELECT id, reason_code, message FROM factory_workplace_park_reasons WHERE workplace_ref=?',
+    ).get('workplace/4/m@1/cell/singleton');
+    assert.ok(parkReason, 'the buried workplace has an append-only reason row');
+    assert.equal(parkReason.reason_code, 'LIFECYCLE_BURIED');
+    assert.match(parkReason.message, /LIFECYCLE_STAGE_FAILED/,
+      'the typed lifecycle failure rides along');
+    assert.match(parkReason.message, /lifecycle-run:1/);
+    const released = workplace(db, 'workplace/4/m@1/cell/singleton');
+    assert.equal(released.loop_state, 'terminal');
+    assert.equal(
+      released.active_recovery_case_ref,
+      `workplace-park-reason:${parkReason.id}`,
+      'the buried workplace points at its durable burial reason',
+    );
+
+    // The result carries the typed failure for programmatic log consumers.
+    assert.equal(result.details[0].lifecycleFailureCode, 'LIFECYCLE_STAGE_FAILED');
+    assert.equal(result.details[0].lifecycleRunId, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('F7b: an error-less dead lifecycle keeps the legacy provenance-only reason', () => {
+  const db = fresh();
+  try {
+    seedProject(db, 1);
+    seedProcessRun(db, { id: 4 });
+    seedLifecycleRun(db, { id: 1, terminalStatus: 'failed' });
+    seedStageRun(db, { id: 1, lifecycleRunId: 1, processRunId: 4 });
+    seedObligation(db, {
+      key: 'obl:no-error',
+      subjectRef: 'workplace/4/m@1/cell/singleton',
+      sourceRef: 'decision:gate-run:abc',
+    });
+    seedWorkplace(db, { ref: 'workplace/4/m@1/cell/singleton', processRunId: 4, loopState: 'verifying' });
+
+    const result = buryDeadLifecycleObligations(db);
+    assert.equal(result.buried, 1);
+    assert.equal(
+      obligation(db, 'obl:no-error').last_error,
+      'LIFECYCLE_TERMINAL: lifecycle-run:1',
+      'no persisted failure → the reason stays the legacy provenance shape',
+    );
+    assert.equal(result.details[0].lifecycleFailureCode, null);
   } finally {
     db.close();
   }
