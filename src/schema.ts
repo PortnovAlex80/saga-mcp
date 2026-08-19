@@ -101,6 +101,14 @@ CREATE TABLE IF NOT EXISTS epics (
 -- metadata lives in lifecycle_execution_controls. This table is kept as a
 -- compatibility projection target — some code paths still read/seed it for
 -- provenance checks. It will be fully removed once all readers are migrated.
+-- BLINDSIGHT F9 verification (2026): the "untouched by code" claim holds only
+-- for src/ core (by design after the saga4 cutover). Real consumers in
+-- shipped tooling: tools/cgad-spec-lint.mjs (the CGAD lint rules — a shipped
+-- product feature, npm run cgad-lint), skills/saga-patrol/patrol.mjs
+-- (monitoring skill LEFT JOIN), tools/saga-snapshot.mjs (snapshot/restore),
+-- tools/discovery-run.mjs and scripts/bootstrap-*.mjs (writers). Deleting it
+-- would break shipped tooling; removal requires migrating those readers
+-- first. NOT dead weight — do not drop without that migration.
 CREATE TABLE IF NOT EXISTS episode_workflows (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   stage                TEXT NOT NULL DEFAULT 'discovery'
@@ -655,6 +663,14 @@ CREATE TABLE IF NOT EXISTS command_receipts (
 -- Lifecycle event log. Audit trail + projection input. NOT the source of
 -- truth (blueprint §1 non-goals; ADR-011 keeps tasks/worker_executions
 -- authoritative during the Slice 1-7 rollout). Append-only.
+-- BLINDSIGHT F9 verification (2026-08): this table is NOT dead. Writers:
+-- lifecycle/application-service.ts (command audit logging) and
+-- lifecycle/atomic-release.ts. Readers: scripts/factory-status.mjs
+-- (operator status tail) and tests/architecture/worker-supervision-reaper
+-- .test.mjs, which ENFORCES the audit distinction between a system-reaper
+-- TaskReleased and an admin_override event as an invariant. No runtime
+-- DECISION consumer exists by design — the table is an audit log, and
+-- audit logs are consumed by operators and audit tests, not gates.
 CREATE TABLE IF NOT EXISTS lifecycle_events (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   command_id      TEXT NOT NULL REFERENCES command_receipts(command_id) ON DELETE CASCADE,
