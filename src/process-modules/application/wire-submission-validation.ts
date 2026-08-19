@@ -59,7 +59,7 @@ export function wireSubmissionValidation(
   ));
   validatorRegistry.register(createFormalizationContractValidator(
     db, 'formalization.reconciliation.v1', 'reconcile-what',
-    { product: true, useCases: true, acceptance: true },
+    { product: true, useCases: true, acceptance: true, coverage: true },
   ));
 
   // --- Formalization policies ---

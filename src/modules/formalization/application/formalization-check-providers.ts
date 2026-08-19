@@ -33,7 +33,7 @@ export function registerFormalizationCheckProviders(input: {
     input.db,
     'formalization.reconciliation.v1',
     'reconcile-what',
-    { product: true, useCases: true, acceptance: true },
+    { product: true, useCases: true, acceptance: true, coverage: true },
   );
 
   for (const entry of [
