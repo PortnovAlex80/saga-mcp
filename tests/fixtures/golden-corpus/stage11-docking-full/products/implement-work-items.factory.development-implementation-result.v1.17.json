@@ -1,0 +1,34 @@
+{
+  "buildProducts": {
+    "commands": {
+      "installCommand": "npm install",
+      "testCommand": "npm test"
+    }
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "3782c3fcb4ada12f54709ced90d37ca3e8198961",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/input/keyboard-handler.js",
+      "src/physics/vector.js",
+      "src/test/automated-docking-test.js",
+      "tests/automated-docking-test.test.js"
+    ],
+    "commitSha": "4ddaa935caa2bf6e79a909e245174f6c31c22daf",
+    "treeSha": "80698b854fe30f951f700000e40425af8ae49a14"
+  },
+  "source": {
+    "branch": "saga/task/15/execution/3fd3ce9387cfdb899d40",
+    "commitSha": "4ddaa935caa2bf6e79a909e245174f6c31c22daf",
+    "workItemKey": "impl-automated-test"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-automated-test"
+}

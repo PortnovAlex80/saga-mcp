@@ -1,0 +1,20 @@
+{
+  "acceptanceCriterionId": 16,
+  "acceptedCriterionHash": "0cd54064e1a4e59028dc13493a313c087dca9b5b072a37ed323d994952b4f96a",
+  "candidateHash": "962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4",
+  "evidence": {
+    "limitations": [],
+    "observations": [
+      "Docking Detection Integration: 2/2 tests passed - successful docking detection when criteria met, proper integration with simulation state management",
+      "Collision Detection Integration: 2/2 tests passed - high-velocity collision detection prevents docking, hull impact detection works correctly",
+      "Docking Precision Validation: 2/2 tests passed - velocity threshold validation (20,45 pass; 55,100 fail), angular alignment validation (0,π/16 pass; π/6,π/2 fail)",
+      "Real-Time Performance (NFR-1): 2/2 tests passed - docking detection under 1ms average, frame time under 16.67ms average (60Hz), max frame time under 50ms",
+      "System Stability (NFR-2): 2/2 tests passed - no state corruption after 100 repeated detections, state integrity maintained across 500 simulation updates",
+      "Physics Determinism (RULE-1): 2/2 tests passed - identical docking detection results across 10 runs, identical simulation trajectories across 2 runs of 100 steps each"
+    ],
+    "summary": "AC-5 (Automated Docking Test) verified against frozen candidate 962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4. All 12 automated tests passed covering docking detection integration, collision detection integration, docking precision validation, real-time performance constraints, system stability, and physics determinism."
+  },
+  "outcome": "passed",
+  "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+  "verificationItemKey": "verify-ac-5"
+}

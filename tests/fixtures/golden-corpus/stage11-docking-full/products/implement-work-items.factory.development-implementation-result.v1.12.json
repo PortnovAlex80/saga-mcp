@@ -1,0 +1,45 @@
+{
+  "buildProducts": {
+    "commands": {
+      "installCommand": null,
+      "testCommand": "npm test"
+    },
+    "kind": "static"
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "1d2ff68d9e943ebe788514ef5521076a9f04008b",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "package.json",
+        "status": "modified"
+      },
+      {
+        "path": "src/renderer/index.js",
+        "status": "added"
+      },
+      {
+        "path": "src/renderer/renderer-2d.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/renderer.test.js",
+        "status": "added"
+      }
+    ],
+    "commitSha": "42aac6d703c408e0b304f748c9c196a9c35ade82",
+    "treeSha": "c64d0d088cb59aba45f9d23228246ec698265f58"
+  },
+  "source": {
+    "branch": "saga/task/20/execution/414b7b69187b41554a6b",
+    "commitSha": "42aac6d703c408e0b304f748c9c196a9c35ade82",
+    "workItemKey": "impl-renderer-2d"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-renderer-2d"
+}

@@ -1,0 +1,34 @@
+{
+  "buildProducts": {},
+  "readiness": {
+    "commands": {
+      "installCommand": "npm install",
+      "testCommand": "node --test tests/physics.test.js tests/input.test.js tests/station.test.js tests/simulation-state.test.js tests/collision.test.js tests/game-loop.test.js tests/renderer.test.js tests/websocket-server.test.js tests/automated-docking-test.test.js"
+    },
+    "kind": "static"
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "3782c3fcb4ada12f54709ced90d37ca3e8198961",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/test/automated-docking-test.js",
+      "tests/automated-docking-test.test.js"
+    ],
+    "commitSha": "b4c9af4ce3e659a5dce2d83e3c57b34480616ea0",
+    "treeSha": "b4c9af4ce3e659a5dce2d83e3c57b34480616ea0"
+  },
+  "source": {
+    "branch": "saga/task/15/execution/adf8ee41111eec818671",
+    "commitSha": "b4c9af4ce3e659a5dce2d83e3c57b34480616ea0",
+    "workItemKey": "impl-automated-test"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-automated-test"
+}

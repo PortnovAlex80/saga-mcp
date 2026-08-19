@@ -1,0 +1,47 @@
+{
+  "buildProducts": {
+    "acceptanceCriteriaCoverage": [
+      {
+        "acCode": "AC-1",
+        "acId": 12,
+        "evidence": "All 49 tests pass including specific AC-1 property tests: identity, positivity, monotonicity, bounds, determinism, continuity, independence",
+        "status": "covered"
+      }
+    ],
+    "testResults": {
+      "duration": 211.1625,
+      "failed": 0,
+      "passed": 49,
+      "tests": [
+        "Input Handler - AC-1: Physics-Based Spacecraft Controls",
+        "AC-1 Physics-Based Spacecraft Controls"
+      ]
+    }
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "edc0fe73f6204793e4bdda8fa18a223658761546",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/input/index.js",
+      "src/input/input-controller.js",
+      "src/input/keyboard-handler.js",
+      "tests/input.test.js"
+    ],
+    "commitSha": "2a261e6d9972e97eb84cea14feda08c47bb84b30",
+    "treeSha": "66f250f1fe57eb7001981d7a818c2918f319157a"
+  },
+  "source": {
+    "branch": "saga/task/18/execution/aba1907491b9b4fc938f",
+    "commitSha": "2a261e6d9972e97eb84cea14feda08c47bb84b30",
+    "workItemKey": "impl-input-handler"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-input-handler"
+}

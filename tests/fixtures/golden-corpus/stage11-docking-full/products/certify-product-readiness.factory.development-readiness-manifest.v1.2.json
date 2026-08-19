@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "factory.development-readiness-manifest.v1",
+  "sourceCandidate": {
+    "hash": "50f712ef48f7f0b0db16cc5502161c0086c69e34085bfe54ed9d0f4e853ac8d0",
+    "ref": "development-integrated-source:3:50f712ef48f7f0b0db16cc5502161c0086c69e34085bfe54ed9d0f4e853ac8d0",
+    "schema": "factory.integrated-source-candidate.v1"
+  },
+  "targets": [
+    {
+      "key": "primary",
+      "readiness": {
+        "commands": {
+          "installCommand": null,
+          "testCommand": "node --test tests/physics.test.js tests/input.test.js tests/station.test.js tests/simulation-state.test.js tests/collision.test.js tests/game-loop.test.js tests/automated-docking.test.js"
+        },
+        "kind": "static"
+      }
+    }
+  ]
+}

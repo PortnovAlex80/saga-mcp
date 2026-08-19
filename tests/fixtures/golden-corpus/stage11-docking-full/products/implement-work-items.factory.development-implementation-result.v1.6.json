@@ -1,0 +1,48 @@
+{
+  "buildProducts": {},
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "b1a76cdc2b958e7a6368e7d5f23b207b59efd543",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "package.json",
+        "status": "modified"
+      },
+      {
+        "path": "src/state/index.js",
+        "status": "added"
+      },
+      {
+        "path": "src/state/simulation-state.js",
+        "status": "added"
+      },
+      {
+        "path": "src/state/station.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/simulation-state.test.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/station.test.js",
+        "status": "added"
+      }
+    ],
+    "commitSha": "3a8a33d1de6895b282f2017e32d0c42704c31ee4",
+    "treeSha": "e6a762e5e39d8660942598727c259135607a7a34"
+  },
+  "source": {
+    "branch": "saga/task/21/execution/baadd9bb218da2295d66",
+    "commitSha": "3a8a33d1de6895b282f2017e32d0c42704c31ee4",
+    "workItemKey": "impl-simulation-state"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-simulation-state"
+}

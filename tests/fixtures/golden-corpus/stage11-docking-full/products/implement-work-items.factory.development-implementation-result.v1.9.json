@@ -1,0 +1,30 @@
+{
+  "buildProducts": {},
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "7c08b8c61f7f3725045468ca44e850337d78e4a2",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/game/game-loop.js",
+      "src/game/index.js",
+      "src/physics/spacecraft.js",
+      "src/state/station.js",
+      "tests/game-loop.test.js"
+    ],
+    "commitSha": "6de13ff253e2dcca3e6637337b1f361d3a2c480b",
+    "treeSha": "f50d244fedaafe7ce2bec7bfa5f30f23b356df03"
+  },
+  "source": {
+    "branch": "saga/task/17/execution/c5369314f8e96719ed59",
+    "commitSha": "6de13ff253e2dcca3e6637337b1f361d3a2c480b",
+    "workItemKey": "impl-game-loop"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-game-loop"
+}

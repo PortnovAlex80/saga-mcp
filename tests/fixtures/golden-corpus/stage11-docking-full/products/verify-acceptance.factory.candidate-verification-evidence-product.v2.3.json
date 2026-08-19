@@ -1,0 +1,22 @@
+{
+  "acceptanceCriterionId": 15,
+  "acceptedCriterionHash": "0cd54064e1a4e59028dc13493a313c087dca9b5b072a37ed323d994952b4f96a",
+  "candidateHash": "962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4",
+  "evidence": {
+    "limitations": [],
+    "observations": [
+      "Executed test suite against frozen candidate commit ea23e492232b632a4782ccc9696acbe90a7f58da",
+      "Verified hull impact detection when spacecraft contacts station hull at position (85,0) with velocity 30 - test passed",
+      "Verified collision detection when spacecraft contacts docking port at excessive velocity (120) - test passed",
+      "Verified no collision when spacecraft is far from station (position 200,0) - test passed",
+      "Confirmed collision type field correctly set to 'collision' and successful flag to false",
+      "All tests used deterministic node:test framework with consistent results",
+      "Performance constraints met: collision detection under 1ms average",
+      "Test coverage includes spatial boundaries, velocity thresholds, and collision type classification"
+    ],
+    "summary": "AC-4: Hull Impact Detection verified against frozen integrated candidate. All collision detection tests passed successfully, confirming proper hull impact detection, high-velocity collision at docking port, and absence of false positives when spacecraft is distant."
+  },
+  "outcome": "passed",
+  "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+  "verificationItemKey": "verify-ac-4"
+}

@@ -1,0 +1,26 @@
+{
+  "buildProducts": {},
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "3782c3fcb4ada12f54709ced90d37ca3e8198961",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "src/test/automated-docking-test.js",
+      "tests/automated-docking-test.test.js"
+    ],
+    "commitSha": "f0f96f87fce1e67acd3c5374d3510af2ade79d6e",
+    "treeSha": "00c5b8c8686b16b507ceafbed1e768e264980e3e"
+  },
+  "source": {
+    "branch": "saga/task/15/execution/8df29e6b5ab90c2e8ae1",
+    "commitSha": "f0f96f87fce1e67acd3c5374d3510af2ade79d6e",
+    "workItemKey": "impl-automated-test"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-automated-test"
+}

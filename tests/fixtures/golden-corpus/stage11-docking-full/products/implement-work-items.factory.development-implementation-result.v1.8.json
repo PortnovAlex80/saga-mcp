@@ -1,0 +1,45 @@
+{
+  "buildProducts": {
+    "acceptanceCriteriaIds": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "description": "Game loop implementation integrating physics, input handling, collision detection, and simulation state management",
+    "files": [
+      "src/game/game-loop.js",
+      "src/game/index.js",
+      "tests/game-loop.test.js",
+      "package.json"
+    ],
+    "type": "implementation"
+  },
+  "reasonCodes": [
+    "implementation_complete"
+  ],
+  "repository": {
+    "baseCommit": "7c08b8c61f7f3725045468ca44e850337d78e4a2",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/game/game-loop.js",
+      "src/game/index.js",
+      "tests/game-loop.test.js"
+    ],
+    "commitSha": "2366bc318c095e2e5c50f3ed2600fc309fc165b1",
+    "treeSha": "2366bc318c095e2e5c50f3ed2600fc309fc165b1"
+  },
+  "source": {
+    "branch": "saga/task/17/execution/138c17b0cd659a8e0d7c",
+    "commitSha": "2366bc318c095e2e5c50f3ed2600fc309fc165b1",
+    "workItemKey": "impl-game-loop"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-game-loop"
+}

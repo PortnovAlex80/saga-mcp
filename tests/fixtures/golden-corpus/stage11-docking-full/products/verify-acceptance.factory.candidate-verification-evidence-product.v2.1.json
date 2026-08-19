@@ -1,0 +1,17 @@
+{
+  "acceptanceCriterionId": 12,
+  "acceptedCriterionHash": "0cd54064e1a4e59028dc13493a313c087dca9b5b072a37ed323d994952b4f96a",
+  "candidateHash": "962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4",
+  "evidence": {
+    "limitations": [],
+    "observations": [
+      "Executed test command: node --test tests/physics.test.js tests/input.test.js tests/station.test.js tests/simulation-state.test.js tests/collision.test.js tests/game-loop.test.js tests/automated-docking.test.js",
+      "All 123 tests passed (0 failures, 0 skipped)",
+      "Test suites covered: physics-based controls identity/positivity/monotonicity/bounds/determinism properties, input handler keyboard/mapping, game loop 60Hz fixed timestep/subsystem orchestration/integration correctness, collision detection docking/hull impact, simulation state management, station physics rotation/docking port, automated docking precision/performance/stability/determinism"
+    ],
+    "summary": "AC-1 Physics-Based Spacecraft Controls verification passed: All 123 tests in 34 suites executed successfully, confirming complete implementation of physics-based spacecraft controls requirements."
+  },
+  "outcome": "passed",
+  "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+  "verificationItemKey": "verify-ac-1"
+}

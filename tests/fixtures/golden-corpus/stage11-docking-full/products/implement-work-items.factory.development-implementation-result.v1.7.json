@@ -1,0 +1,43 @@
+{
+  "acceptanceCriterionIds": [
+    14,
+    15
+  ],
+  "buildProducts": {
+    "installCommand": null,
+    "testCommand": "node --test tests/physics.test.js tests/input.test.js tests/station.test.js tests/simulation-state.test.js tests/collision.test.js"
+  },
+  "changeScopes": [
+    "package.json",
+    "src/collision/",
+    "tests/"
+  ],
+  "reasonCodes": [
+    "AC-3: Successful Docking Detection",
+    "AC-4: Hull Impact Detection"
+  ],
+  "repository": {
+    "baseCommit": "08db3e73e315a7a0ba44aa512e4b973b1408831e",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/collision/collision-detector.js",
+      "src/collision/index.js",
+      "tests/collision.test.js"
+    ],
+    "commitSha": "70ca5a30578c3dd5ed305e61ece4d63e8149d716",
+    "treeSha": "498a6e84988b909da6c63701b0426e47e33fd736"
+  },
+  "source": {
+    "branch": "saga/task/16/execution/5708bef6b2219e02fc43",
+    "commitSha": "70ca5a30578c3dd5ed305e61ece4d63e8149d716",
+    "workItemKey": "impl-collision-detection"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-collision-detection"
+}

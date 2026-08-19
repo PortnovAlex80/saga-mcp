@@ -1,0 +1,40 @@
+{
+  "buildProducts": [],
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "7d7906334887beac922b01bb0f6719d332f6a170",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "package.json",
+        "status": "modified"
+      },
+      {
+        "path": "src/server/index.js",
+        "status": "added"
+      },
+      {
+        "path": "src/server/websocket-server.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/websocket-server.test.js",
+        "status": "added"
+      }
+    ],
+    "commitSha": "5eda0eb15c9dd30e089123f097131bd8b3e2b7d6",
+    "treeSha": "f5bb60e50efe9d53a702134e965407ebdde344b8"
+  },
+  "source": {
+    "branch": "saga/task/22/execution/dc061123d2e04bc276f1",
+    "commitSha": "5eda0eb15c9dd30e089123f097131bd8b3e2b7d6",
+    "workItemKey": "impl-websocket-server"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-websocket-server"
+}

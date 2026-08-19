@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "artifactId": 10,
+      "artifactStatus": "draft",
+      "artifactType": "UC",
+      "contentHash": "80b992c3d68a772a5aea5bf83bb86c23a2b8f737e53bd5f2a2bc82c53bc3ecc8"
+    },
+    {
+      "artifactId": 11,
+      "artifactStatus": "draft",
+      "artifactType": "UC",
+      "contentHash": "80b992c3d68a772a5aea5bf83bb86c23a2b8f737e53bd5f2a2bc82c53bc3ecc8"
+    }
+  ],
+  "expectedSchemaRef": "factory.formalization-use-case-bundle.v1",
+  "schemaVersion": "factory.workplace-production-snapshot.v3",
+  "traces": [
+    {
+      "linkType": "derived_from",
+      "sourceId": 10,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "79203df2ae8ec32e40c7b664caf6665f0ac41342c1b229aad9d7e986490a92e1",
+      "traceId": 9
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 10,
+      "targetId": 3,
+      "targetType": "artifact",
+      "traceHash": "10cecfee68dc59948101a6e82884eac1fea903e586ca84167c123ed91916f121",
+      "traceId": 10
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 10,
+      "targetId": 4,
+      "targetType": "artifact",
+      "traceHash": "065a59bafb387480563665fb9725dd3f949c1fa13fed340eacb675f3765b85d6",
+      "traceId": 11
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 10,
+      "targetId": 5,
+      "targetType": "artifact",
+      "traceHash": "8fc02d9a7b54f45c36d3499bd4786819180756f3c89548a2c78cf22ace2e21e3",
+      "traceId": 12
+    },
+    {
+      "linkType": "derived_from",
+      "sourceId": 11,
+      "targetId": 2,
+      "targetType": "artifact",
+      "traceHash": "51a42dd7ef8ad52cf906ffd9d4f7de08e6f244d38213b4d6fd85a3c0d16c4d60",
+      "traceId": 13
+    },
+    {
+      "linkType": "covers",
+      "sourceId": 11,
+      "targetId": 6,
+      "targetType": "artifact",
+      "traceHash": "8ff88c7926a76dc54cbecc7abfbe862fbdcb912f727232b59fac4299a12a25d9",
+      "traceId": 14
+    }
+  ],
+  "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+}

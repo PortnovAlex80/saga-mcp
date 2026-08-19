@@ -1,0 +1,40 @@
+{
+  "buildProducts": [],
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "7c08b8c61f7f3725045468ca44e850337d78e4a2",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "changeType": "modified",
+        "path": "package.json"
+      },
+      {
+        "changeType": "added",
+        "path": "src/game/game-loop.js"
+      },
+      {
+        "changeType": "added",
+        "path": "src/game/index.js"
+      },
+      {
+        "changeType": "added",
+        "path": "tests/game-loop.test.js"
+      }
+    ],
+    "commitSha": "5da4f0347f53dd7ed1218ffd1b0b58ac2696825c",
+    "treeSha": "fb43fa00d07042caad6ca61c4dc23435299df2ac"
+  },
+  "source": {
+    "branch": "saga/task/17/execution/561b6564c669bb69a48a",
+    "commitSha": "5da4f0347f53dd7ed1218ffd1b0b58ac2696825c",
+    "workItemKey": "impl-game-loop"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-game-loop"
+}

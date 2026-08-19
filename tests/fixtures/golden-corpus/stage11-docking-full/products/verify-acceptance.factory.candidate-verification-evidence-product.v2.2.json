@@ -1,0 +1,27 @@
+{
+  "acceptanceCriterionId": 13,
+  "acceptedCriterionHash": "0cd54064e1a4e59028dc13493a313c087dca9b5b072a37ed323d994952b4f96a",
+  "candidateHash": "962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4",
+  "evidence": {
+    "limitations": [
+      "Verification limited to automated test suite; manual docking scenarios not covered in test scope",
+      "AC reference in test file description shows 'AC-5' but content matches AC-2 requirements"
+    ],
+    "observations": [
+      "StationPhysics correctly implements rotating station with configurable angularVelocity",
+      "Docking port correctly defined with offset, width, and height parameters",
+      "Docking detection successfully identifies when spacecraft meets all criteria (velocity, angle, position)",
+      "Collision detection correctly prevents docking on high-velocity impact (>100 units) and hull impacts",
+      "Velocity threshold validation: docking allowed <50 units, rejected >50 units",
+      "Angular alignment validation: docking allowed within PI/8 tolerance, rejected outside",
+      "Performance constraints met: detection time <1ms, frame time <16.67ms (60Hz), max <50ms",
+      "System stability verified: no state corruption across 100 repeated detections and 500 simulation updates",
+      "Physics determinism confirmed: identical inputs produce identical detection results and trajectories",
+      "Integration verified: docking detection correctly updates SimulationState and integrates with GameLoop"
+    ],
+    "summary": "Verified AC-2 (Rotating Station and Docking Port) against the frozen integrated candidate. All 12 tests in the automated docking test suite passed, confirming correct implementation of rotating station physics, docking port definition, collision detection, velocity/angle precision, performance (NFR-1), system stability (NFR-2), and physics determinism (RULE-1)."
+  },
+  "outcome": "passed",
+  "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+  "verificationItemKey": "verify-ac-2"
+}

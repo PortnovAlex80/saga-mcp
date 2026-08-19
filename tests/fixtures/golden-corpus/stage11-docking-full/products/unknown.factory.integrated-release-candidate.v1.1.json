@@ -1,0 +1,57 @@
+{
+  "buildProducts": [
+    {
+      "digest": "a41c8037d26a57cdd9c51543051baa5ac4c2d93e",
+      "kind": "source-tree",
+      "ref": "project-repository:1:ea23e492232b632a4782ccc9696acbe90a7f58da"
+    }
+  ],
+  "candidateHash": "962764cc817402126c7b9c80f9b5c332538e1ba8813ba30049883be7486b40b4",
+  "frozen": true,
+  "implementationWorksetHash": "39954f91d89415761e9c5f3d7aa8b3a19f192b1a4a3c72d2ab79ad7e780056b4",
+  "integrationIntentRefs": [
+    "cell-effect-receipt:102bfbd158d2f789277525db3e8869b3379f630163276cbf39c80963aa8aa475:commit:b1a76cdc2b958e7a6368e7d5f23b207b59efd543",
+    "cell-effect-receipt:3b88af82718ec3895e9c9381d863102c49b9f973a6320aa952a02af4e292c465:commit:7c08b8c61f7f3725045468ca44e850337d78e4a2",
+    "cell-effect-receipt:95120aa8d5f87de6a0fde446fc64312bd9d3ed57922af55dde4efabb89b33c65:commit:edc0fe73f6204793e4bdda8fa18a223658761546",
+    "cell-effect-receipt:9a52572a78b20f117b68f4b4ad067ca26bedfbba0210d87becba1f355c5a4ca8:commit:7d7906334887beac922b01bb0f6719d332f6a170",
+    "cell-effect-receipt:9e5e298ef63ee770b86288e5ada51c3f5350056d6683a91283b77b840071881e:commit:3782c3fcb4ada12f54709ced90d37ca3e8198961",
+    "cell-effect-receipt:aafc07cce433d80a9b609b7939c5bd072b94012e55649880b3ccbb38b9218fcf:commit:08db3e73e315a7a0ba44aa512e4b973b1408831e",
+    "cell-effect-receipt:b74935f181f40431469253721368a6ca45cf25d0df105384820b0f65b476afb7:commit:1d2ff68d9e943ebe788514ef5521076a9f04008b",
+    "cell-effect-receipt:cf01f09706e5f04e1972976e245f4d66435b2d6078769c85f597c1656c34784b:commit:ea23e492232b632a4782ccc9696acbe90a7f58da"
+  ],
+  "readiness": {
+    "commands": {
+      "installCommand": null,
+      "testCommand": "node --test tests/physics.test.js tests/input.test.js tests/station.test.js tests/simulation-state.test.js tests/collision.test.js tests/game-loop.test.js tests/automated-docking.test.js"
+    },
+    "kind": "static"
+  },
+  "readinessCertification": {
+    "candidateSetRef": "candidate-set/3/solution-development@1.4.4/development-readiness-certification/singleton/cfe0de20b18bfec01c42c48be865ce6ca0d716182fd8ae970ff6c9184079a93a/author",
+    "checkReceipt": {
+      "hash": "1c557bc6b4ef16b12a0ca5cf9aa1ef955fbe1239baa3b64dc084cb5c341acef3",
+      "ref": "receipt:gate-run:9c319ff4f66c8f55e6f3212a324846428811e10c4dfc34926b12c0c1a0b7d1a9:1:factory.local-runnability.v1",
+      "schema": "factory.check-receipt.v1"
+    },
+    "manifest": {
+      "hash": "27a7b0e15182d039e031a0ebd4409743fbcea09311422f53b1f34ae4284abe8a",
+      "ref": "managed-node-submission:46",
+      "schema": "factory.development-readiness-manifest.v1"
+    }
+  },
+  "repositories": [
+    {
+      "branch": "dev",
+      "commitSha": "ea23e492232b632a4782ccc9696acbe90a7f58da",
+      "projectRepositoryId": 1,
+      "treeHash": "a41c8037d26a57cdd9c51543051baa5ac4c2d93e"
+    }
+  ],
+  "schemaVersion": "factory.integrated-release-candidate.v1",
+  "sourceCandidate": {
+    "hash": "50f712ef48f7f0b0db16cc5502161c0086c69e34085bfe54ed9d0f4e853ac8d0",
+    "ref": "development-integrated-source:3:50f712ef48f7f0b0db16cc5502161c0086c69e34085bfe54ed9d0f4e853ac8d0",
+    "schema": "factory.integrated-source-candidate.v1"
+  },
+  "taskGraphHash": "60d6f9b9370ef333d0d15a29919c02e7c8eb76853cc440d48eeb6d37dbcfbb6d"
+}

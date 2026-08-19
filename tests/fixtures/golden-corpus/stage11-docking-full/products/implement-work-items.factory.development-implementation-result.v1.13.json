@@ -1,0 +1,51 @@
+{
+  "buildProducts": {
+    "testResults": {
+      "duration_ms": 1221.2269,
+      "failed": 7,
+      "passed": 131,
+      "total": 138
+    }
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "1d2ff68d9e943ebe788514ef5521076a9f04008b",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "package.json",
+        "status": "modified"
+      },
+      {
+        "path": "src/renderer/index.js",
+        "status": "added"
+      },
+      {
+        "path": "src/renderer/renderer-2d.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/mock-canvas.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/renderer.test.js",
+        "status": "added"
+      }
+    ],
+    "commitSha": "0cd8481a0d2f7fc8b91261e48f221b69d722e7cb",
+    "treeSha": "1aaef32afe0e20878a5d543f539383f829baf239"
+  },
+  "source": {
+    "branch": "saga/task/20/execution/4b89864b9b78162fe997",
+    "commitSha": "0cd8481a0d2f7fc8b91261e48f221b69d722e7cb",
+    "workItemKey": "impl-renderer-2d"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-renderer-2d"
+}

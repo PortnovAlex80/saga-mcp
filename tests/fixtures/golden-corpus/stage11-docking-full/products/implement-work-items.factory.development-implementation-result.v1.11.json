@@ -1,0 +1,40 @@
+{
+  "buildProducts": [],
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "7c08b8c61f7f3725045468ca44e850337d78e4a2",
+    "integrationBranch": "dev",
+    "name": "docking-simulation",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      {
+        "path": "package.json",
+        "status": "modified"
+      },
+      {
+        "path": "src/game/game-loop.js",
+        "status": "added"
+      },
+      {
+        "path": "src/game/index.js",
+        "status": "added"
+      },
+      {
+        "path": "tests/game-loop.test.js",
+        "status": "added"
+      }
+    ],
+    "commitSha": "45ffb63139284b9d64861577abcdc28dcc7008f9",
+    "treeSha": "cc4eb17ffbf3040e857254d211c7c75ecf9dfd9e"
+  },
+  "source": {
+    "branch": "saga/task/17/execution/b4846bddc034c6903c06",
+    "commitSha": "45ffb63139284b9d64861577abcdc28dcc7008f9",
+    "workItemKey": "impl-game-loop"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-game-loop"
+}
