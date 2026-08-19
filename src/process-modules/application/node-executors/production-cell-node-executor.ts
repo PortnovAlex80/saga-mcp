@@ -56,6 +56,7 @@ import { canonicalProductsToContribution } from '../production-source-adapters.j
 import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
+import { SqliteGateFindingSetChain } from '../../../infrastructure/workplace/sqlite-gate-finding-set-chain.js';
 import {
   buildAcceptanceEffectRepairIssue,
   computeAcceptanceDigest,
@@ -314,7 +315,20 @@ interface ReconcileOutcome {
 export class ProductionCellNodeExecutor implements NodeExecutor {
   readonly kind = 'production-cell' as const;
 
-  constructor(private readonly opts: ProductionCellNodeExecutorOptions) {}
+  /**
+   * FINDING-TRAJECTORY BUDGET — the append-only finding-set chain of
+   * repair_required decisions. Read through the SAME sqlite module as the
+   * write (B-004/W-1 house rule: no second divergent predicate); the
+   * constructor's PRAGMA-guarded CREATE converges a pre-table DB in place.
+   * Built in the constructor body (not a field initializer): `opts` is a
+   * parameter property, assigned only inside the body under ES2022 native
+   * class fields.
+   */
+  private readonly findingSetChain: SqliteGateFindingSetChain;
+
+  constructor(private readonly opts: ProductionCellNodeExecutorOptions) {
+    this.findingSetChain = new SqliteGateFindingSetChain(opts.db);
+  }
 
   async execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
     const node = ctx.node as ProductionCellFlowNodeDefinition;
@@ -1723,6 +1737,22 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         presentationRef,
         acceptedOutputBindings,
       }).decision;
+      // FINDING-TRAJECTORY BUDGET — the rejection's finding-set identity lands
+      // in the SAME transaction as the decision itself: decoded through the
+      // ONE shared decoder the recovery-feedback writer uses, so the worker's
+      // defect sheet and the convergence budget can never read different
+      // findings. Idempotent on decision replay (UNIQUE gate_decision_key).
+      if (decision.verdict === 'repair_required' && decision.repairTargetRole !== null) {
+        this.findingSetChain.appendForDecision({
+          workplaceRef: serializeWorkplaceRef(workplaceRef),
+          gateDecisionKey: decision.decisionKey,
+          gateRef: decision.gateRef,
+          repairTargetRole: decision.repairTargetRole,
+          checkPlanDigest: decision.checkPlanDigest,
+          checkReceiptRefs: decision.checkReceiptRefs,
+          fallbackSubjectRef: decision.subjectCandidateSetRef,
+        });
+      }
       const transitionObligation = decision.verdict === 'accepted' && emitAcceptanceObligation
         ? this.opts.obligationIntegrator.onGateAccepted({
             gateDecisionKey: decision.decisionKey,
