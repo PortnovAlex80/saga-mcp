@@ -10,7 +10,13 @@ import type {
   CheckProviderResult,
 } from '../../process-modules/domain/workplace/gate.js';
 import { encodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
+import {
+  encodeSeamRepairIssue,
+  type SeamKind,
+  type SeamRepairIssue,
+} from '../../process-modules/domain/workplace/seam-repair-issue.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import { repositoryScopeCovers } from '../../shared/repository-scope.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
@@ -34,6 +40,14 @@ import {
   ReadinessExecutionError,
 } from './readiness-executor.js';
 import { DockerReadinessExecutor } from './docker-readiness-executor.js';
+import {
+  CliComposeRunner,
+  composeModeFromEnvironment,
+  DEFAULT_COMPOSE_UP_TIMEOUT_MS,
+  type ComposeDeclaration,
+  type ComposeRunner,
+  validateComposeDeclaration,
+} from './compose-readiness.js';
 
 export {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -46,6 +60,12 @@ interface CandidateSubject {
   commitSha: string;
   treeHash: string;
   candidateHash: string;
+  /**
+   * The process run whose task graph scopes resolve seam repair-issue owners
+   * (SEAM-ARCHITECT Layer 2: the scope provider determines the owning task by
+   * path). Never a material authority — routing metadata only.
+   */
+  processRunId: number;
   /**
    * The explicit readiness profile stated by the accepted product (parsed but
    * NOT yet validated). Validation + the fail-closed policy live in
@@ -70,7 +90,14 @@ const OBJECT_ID_RE = /^[a-f0-9]{40}$/u;
 export function createLocalRunnabilityCheckProvider(input: {
   db: SqlDatabasePort;
   candidateSets: CandidateSetReaderPort;
+  /**
+   * SEAM-ARCHITECT Layer 2 (a) — the compose substrate, injectable so the
+   * compose probe mechanics are hermetically testable (fakes; no docker in
+   * CI). Defaults to the CLI runner.
+   */
+  composeRunner?: ComposeRunner;
 }): CheckProvider {
+  const composeRunner = input.composeRunner ?? new CliComposeRunner();
   return {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -104,7 +131,7 @@ export function createLocalRunnabilityCheckProvider(input: {
       }
       let check: CheckProviderResult;
       try {
-        check = runLocalReadiness(subject);
+        check = runLocalReadiness(input.db, subject, subjectCandidateSetRef, composeRunner);
       } catch (diagErr) {
         const err = diagErr as { message?: unknown; stack?: unknown };
         const reason = (err.message !== undefined ? String(err.message) : String(diagErr))
@@ -212,9 +239,13 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // place rather than drifting. The digest bump means all prior receipts are
     // re-checked exactly once (by design) — the provider still fails closed on
     // any real policy change (category/determinism/status tampering).
-    // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation. Both are
-    // substrate-only changes; the versioned CheckPlan still pins exact code.
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0'].includes(existing.version ?? '')
+    // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation; 1.5 sealed
+    // the manifest-bound subject policy. All substrate-only/subject-wiring
+    // changes; the versioned CheckPlan still pins exact code. 1.6 adds the
+    // compose verification step and typed seam repair-issue emission —
+    // additive evidence paths; the host execution path is unchanged for
+    // profiles that declare no compose.
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -403,6 +434,7 @@ function resolveSubject(
     commitSha: repository.commitSha,
     treeHash: repository.treeHash,
     candidateHash,
+    processRunId: set.workplaceRef.processRunId,
     readiness: manifestReadiness ?? candidate.readiness,
   };
 }
@@ -491,11 +523,23 @@ function extractProcessRunIdFromRef(candidateSetRef: string): number | null {
 }
 
 function runLocalReadiness(
+  db: SqlDatabasePort,
   subject: CandidateSubject,
+  subjectCandidateSetRef: string,
+  composeRunner: ComposeRunner,
 ): CheckProviderResult {
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
   let executor: ReadinessExecutor | null = null;
+  // SEAM-ARCHITECT Layer 2 (b) — which seam is being verified RIGHT NOW. On
+  // failure this tracker (not a boolean) determines the typed SeamRepairIssue:
+  // seamKind by phase, localization (phase/command/substrate), owner resolved
+  // from the failure output's file hints through the task graph change scopes.
+  const seam: {
+    seamKind: SeamKind;
+    phase: string;
+    command?: string;
+  } = { seamKind: 'readiness-profile-invalid', phase: 'readiness-profile' };
   try {
     // ADR-053 / LR-02 — read the exact sealed object by identity. The archive
     // is generated from the content-addressed commitSha verified above (whose
@@ -528,7 +572,14 @@ function runLocalReadiness(
           + '(readiness.kind must be "served" or "static" with valid commands; '
           + 'served also requires serve.startCommand); refusing to infer '
           + 'readiness from incidental files',
-      });
+      }, undefined, buildSeamIssue(db, {
+        seamKind: 'readiness-profile-invalid',
+        phase: 'readiness-profile',
+        substrate: 'host',
+        command: undefined,
+        fileHints: [],
+        summary: 'the frozen readiness profile is absent or invalid; the product contract must state kind/commands (and serve.startCommand for served)',
+      }, subject, subjectCandidateSetRef));
     }
     // Phase-1 dockerization — select the execution substrate from the profile.
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
@@ -539,16 +590,33 @@ function runLocalReadiness(
     // 'error', which would retry indefinitely).
     executor = selectReadinessExecutor(directory, profile);
     const phases: string[] = [];
+    // Typed per-step results (SEAM Layer 2 (a)): every step of the assembled
+    // whole's verification records a typed entry — never a bare boolean.
+    const steps: Array<{ step: string; status: 'passed' }> = [];
+    const step = (name: string): void => {
+      phases.push(name);
+      steps.push({ step: name, status: 'passed' });
+    };
     // Prepare one environment from the exact candidate and the profile-stated
     // install command. Docker freezes post-install state as a disposable OCI
-    // image; host uses its disposable tree/venv.
+    // image; host uses its disposable tree/venv. prepare runs even when the
+    // profile states NO install command: the docker executor's prepare(null)
+    // still builds the prepared image (substrate preparation is not optional).
+    if (profile.commands.installCommand !== null) {
+      seam.seamKind = 'install-command';
+      seam.phase = 'profile-install';
+      seam.command = profile.commands.installCommand;
+    }
     executor.prepare(profile.commands.installCommand, 240_000);
     if (profile.commands.installCommand !== null) {
-      phases.push('profile-install');
+      step('profile-install');
     }
     // Test (deterministic, from the profile) — the runnability authority.
+    seam.seamKind = 'test-command';
+    seam.phase = 'profile-test';
+    seam.command = profile.commands.testCommand;
     executor.runCommand(profile.commands.testCommand, 600_000);
-    phases.push('profile-test');
+    step('profile-test');
     // Additive substrate evidence (free in the digest).
     const desc = executor.describe();
     const substrateEvidence: Record<string, unknown> = {
@@ -566,19 +634,39 @@ function runLocalReadiness(
       // already proven by the test command above; this proves the exact sealed
       // object can also be started, answer on loopback, and stop.
       const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
+      seam.seamKind = 'serve-start';
+      seam.phase = 'profile-serve';
+      seam.command = profile.serve.startCommand;
       const serveEvidence = executor.runServed(profile.serve.startCommand, 15_000, port);
-      phases.push('profile-serve', 'loopback-http-probe', 'clean-shutdown');
+      step('profile-serve');
+      step('loopback-http-probe');
+      step('clean-shutdown');
+      // Compose verification of the assembled whole (SEAM Layer 2 (a)). The
+      // declaration is TYPED on the frozen profile — never an inference from
+      // compose files incidentally present in the tree.
+      const composeObservation = runDeclaredCompose(
+        directory, profile, composeRunner, seam,
+      );
+      for (const name of composeObservation.phases) step(name);
       return evidence('passed', subject, {
         phases,
+        steps,
         readinessKind: 'served',
         ...substrateEvidence,
         ...serveEvidence,
+        ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
       });
     }
+    const composeObservation = runDeclaredCompose(
+      directory, profile, composeRunner, seam,
+    );
+    for (const name of composeObservation.phases) step(name);
     return evidence('passed', subject, {
       phases,
+      steps,
       readinessKind: 'static',
       ...substrateEvidence,
+      ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
       note: 'runnability proven by the profile-stated install/test commands',
     });
   } catch (error) {
@@ -586,14 +674,251 @@ function runLocalReadiness(
     // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) that the evidence function encodes
     // into a decodable check-diagnostic so the verifier's recovery feedback
     // names the exact substrate failure.
-    const code = error instanceof ReadinessExecutionError ? error.code : undefined;
-    return evidence('failed', subject, { reason: errorMessage(error) }, code);
+    const isSubstrateError = error instanceof ReadinessExecutionError;
+    const code = isSubstrateError ? error.code : undefined;
+    const seamKind: SeamKind = isSubstrateError ? 'substrate-unavailable' : seam.seamKind;
+    const refined = refineServeSeamKind(error, seamKind);
+    return evidence(
+      'failed',
+      subject,
+      { reason: errorMessage(error) },
+      code,
+      buildSeamIssue(db, {
+        seamKind: refined,
+        phase: seam.phase,
+        substrate: executor?.describe().substrate ?? 'host',
+        command: seam.command,
+        fileHints: extractFileHints(errorMessage(error)),
+        summary: errorMessage(error).slice(0, 2000),
+      }, subject, subjectCandidateSetRef),
+    );
   } finally {
     // Release substrate resources (docker volumes) before removing the temp
     // directory. Best-effort: a dispose failure must not mask the real result.
     try { executor?.dispose(); } catch { /* best-effort cleanup */ }
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+/**
+ * SEAM-ARCHITECT Layer 2 (a) — run the compose verification declared by the
+ * frozen readiness profile. Config validation ALWAYS (the mandatory minimum);
+ * a bounded `up --wait` then `down` in the full mode. Every step returns a
+ * typed result; a failed step throws a plain Error whose message is the typed
+ * detail (the seam tracker has already been set to the compose phase by the
+ * caller). `down` always runs after `up` — clean shutdown even on failure.
+ */
+function runDeclaredCompose(
+  directory: string,
+  profile: ReadinessProfile,
+  composeRunner: ComposeRunner,
+  seam: { seamKind: SeamKind; phase: string; command?: string },
+): {
+  phases: string[];
+  evidence: Record<string, unknown> | null;
+} {
+  const declared = validateComposeDeclaration(
+    (profile as { compose?: unknown }).compose,
+  );
+  if (declared === null) return { phases: [], evidence: null };
+  const phases: string[] = [];
+  const evidence: Record<string, unknown> = { file: declared.file };
+  seam.seamKind = 'compose-config';
+  seam.phase = 'compose-config';
+  seam.command = `docker compose -f ${declared.file} config`;
+  const config = composeRunner.configValidate(directory, declared);
+  if (config.status === 'failed') {
+    throw new Error(config.detail ?? 'docker compose config validation failed');
+  }
+  phases.push('compose-config-validate');
+  if (composeModeFromEnvironment() === 'up') {
+    seam.seamKind = 'compose-up';
+    seam.phase = 'compose-up';
+    seam.command = `docker compose -f ${declared.file} up -d --wait`;
+    let up;
+    try {
+      up = composeRunner.up(directory, declared, DEFAULT_COMPOSE_UP_TIMEOUT_MS);
+    } finally {
+      // Clean shutdown even on a failed up — the composition must never leak.
+      try {
+        composeRunner.down(directory, declared);
+      } catch { /* best-effort; must not mask the up failure */ }
+    }
+    if (up.status === 'failed') {
+      throw new Error(up.detail ?? 'docker compose up failed');
+    }
+    phases.push('compose-up-wait', 'compose-down');
+  }
+  return { phases, evidence };
+}
+
+/**
+ * Classify a serve-phase failure into the precise serve seam kind using the
+ * ServedProcessError code (typed, not message matching). Non-serve failures
+ * and docker-executor serve failures keep the tracked seam kind.
+ */
+function refineServeSeamKind(error: unknown, tracked: SeamKind): SeamKind {
+  if (tracked !== 'serve-start') return tracked;
+  const code = (error as { code?: unknown }).code;
+  switch (code) {
+    case 'SERVED_PROCESS_PROBE_FAILED':
+      return 'serve-probe';
+    case 'SERVED_PROCESS_TERMINATION_FAILED':
+      return 'serve-shutdown';
+    default:
+      return tracked;
+  }
+}
+
+/** Deterministic repo-relative file-path extraction from failure output. */
+export function extractFileHints(text: string): string[] {
+  const hints = new Set<string>();
+  const tokenRe = /[A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)+\.[A-Za-z0-9]{1,8}/gu;
+  for (const match of text.matchAll(tokenRe)) {
+    const token = match[0];
+    // Repo-relative source paths only: must contain '/', no protocol/host
+    // noise, no node_modules internals (dependency noise, not seam material).
+    if (token.includes('/') && !token.includes('://') && !token.startsWith('node_modules/')
+      && !token.includes('/node_modules/')) {
+      hints.add(token.replace(/^\.\//u, ''));
+    }
+    if (hints.size >= 5) break;
+  }
+  return [...hints];
+}
+
+/**
+ * SEAM-ARCHITECT Layer 2 (c) — resolve the PRODUCING task that owns the seam:
+ * read the canonical task graph product, find implementation items whose
+ * declared change scopes cover the localized file hints, and map them to their
+ * projected task ids. Exactly one distinct owner → `task:<id>`; zero or
+ * several → the typed integration seam (a cross-item defect no single task
+ * owns — the SEAM Layer 3 reconciliation case). Fail-open typed fallback only:
+ * the failure evidence itself stays fail-closed.
+ */
+function resolveSeamProducingTask(
+  db: SqlDatabasePort,
+  processRunId: number,
+  fileHints: readonly string[],
+): string {
+  if (fileHints.length === 0) return 'seam:integration';
+  let scopes: Array<{ key: string; changeScopes: string[] }>;
+  try {
+    const row = db.prepare(
+      `SELECT payload_snapshot FROM factory_process_products
+        WHERE process_run_id=? AND product_kind='development.task-graph'`,
+    ).get(processRunId) as { payload_snapshot: string } | undefined;
+    if (!row) return 'seam:integration';
+    const graph = JSON.parse(row.payload_snapshot) as {
+      implementationItems?: Array<{ key?: unknown; changeScopes?: unknown }>;
+    };
+    if (!Array.isArray(graph.implementationItems)) return 'seam:integration';
+    scopes = graph.implementationItems
+      .filter((item): item is { key: string; changeScopes: string[] } =>
+        typeof item.key === 'string'
+        && Array.isArray(item.changeScopes)
+        && item.changeScopes.every(scope => typeof scope === 'string'))
+      .map(item => ({ key: item.key, changeScopes: item.changeScopes }));
+  } catch {
+    return 'seam:integration';
+  }
+  const owners = new Set<string>();
+  for (const hint of fileHints) {
+    for (const item of scopes) {
+      if (item.changeScopes.some(scope => {
+        try {
+          return repositoryScopeCovers(scope, hint);
+        } catch {
+          return false;
+        }
+      })) {
+        owners.add(item.key);
+      }
+    }
+  }
+  if (owners.size !== 1) return 'seam:integration';
+  const [key] = owners;
+  try {
+    const projected = db.prepare(
+      `SELECT task_id FROM factory_development_task_projections
+        WHERE process_run_id=? AND item_kind='implementation' AND work_item_key=?`,
+    ).get(processRunId, key) as { task_id: number } | undefined;
+    if (projected && Number.isSafeInteger(projected.task_id) && projected.task_id > 0) {
+      return `task:${projected.task_id}`;
+    }
+  } catch {
+    // projections table absent — fall through to the cell-level fallback
+  }
+  return 'seam:integration';
+}
+
+/**
+ * Resolve the producing task for a readiness-PROFILE defect: the readiness
+ * manifest is authored by the development-readiness-certification cell; its
+ * accepted-author head names the exact task. Typed fallback names the cell
+ * when no accepted head is bound (e.g. the profile rode on the candidate
+ * payload directly).
+ */
+function resolveProfileProducingTask(
+  db: SqlDatabasePort,
+  processRunId: number,
+): string {
+  try {
+    const row = db.prepare(
+      `SELECT h.accepted_author_task_id AS taskId
+         FROM factory_workplaces w
+         JOIN factory_accepted_authority_head h
+           ON h.workplace_ref=w.workplace_ref
+        WHERE w.process_run_id=?
+          AND w.production_cell_id='development-readiness-certification'
+          AND w.loop_state='terminal'
+          AND w.terminal_reason='accepted'`,
+    ).get(processRunId) as { taskId: string | null } | undefined;
+    if (row?.taskId && Number.parseInt(row.taskId, 10) > 0) {
+      return `task:${row.taskId}`;
+    }
+  } catch {
+    // tables absent in a minimal store — typed cell fallback below
+  }
+  return 'cell:development-readiness-certification';
+}
+
+function buildSeamIssue(
+  db: SqlDatabasePort,
+  input: {
+    seamKind: SeamKind;
+    phase: string;
+    substrate: 'host' | 'docker';
+    command: string | undefined;
+    fileHints: string[];
+    summary: string;
+  },
+  subject: CandidateSubject,
+  subjectCandidateSetRef: string,
+): SeamRepairIssue {
+  const producingTaskRef = input.seamKind === 'readiness-profile-invalid'
+    ? resolveProfileProducingTask(db, subject.processRunId)
+    : resolveSeamProducingTask(db, subject.processRunId, input.fileHints);
+  return {
+    seamKind: input.seamKind,
+    producingTaskRef,
+    localization: {
+      phase: input.phase,
+      substrate: input.substrate,
+      ...(input.command !== undefined ? { command: input.command } : {}),
+      fileHints: input.fileHints,
+    },
+    evidence: {
+      summary: input.summary,
+      digestRef: `local-readiness:${sha256Hex({
+        candidateHash: subject.candidateHash,
+        commitSha: subject.commitSha,
+        seamKind: input.seamKind,
+        phase: input.phase,
+      })}`,
+    },
+    subjectCandidateSetRef,
+  };
 }
 
 /**
@@ -752,6 +1077,7 @@ function validateReadinessProfile(raw: unknown): ReadinessProfile | null {
     commands?: unknown;
     serve?: unknown;
     environment?: unknown;
+    compose?: unknown;
   };
   const commands = validateRunnability(value.commands);
   if (commands === null) return null;
@@ -769,9 +1095,24 @@ function validateReadinessProfile(raw: unknown): ReadinessProfile | null {
     if (typeof image !== 'string' || image.trim() === '') return null;
     environment = { image };
   }
+  // SEAM Layer 2 (a) — an optional compose declaration. When present it MUST
+  // validate (relative file inside the sealed tree); an invalid compose
+  // invalidates the whole profile → null → 'failed' (fail closed), exactly
+  // like an invalid environment.
+  let compose: ComposeDeclaration | undefined;
+  if (value.compose !== undefined) {
+    const validated = validateComposeDeclaration(value.compose);
+    if (validated === null) return null;
+    compose = validated;
+  }
   if (value.kind === 'static') {
-    return environment
-      ? { kind: 'static', commands, environment }
+    return environment || compose
+      ? {
+        kind: 'static',
+        commands,
+        ...(environment ? { environment } : {}),
+        ...(compose ? { compose } : {}),
+      }
       : { kind: 'static', commands };
   }
   if (value.kind === 'served') {
@@ -779,8 +1120,14 @@ function validateReadinessProfile(raw: unknown): ReadinessProfile | null {
     if (serve === null || typeof serve !== 'object') return null;
     const startCommand = (serve as { startCommand?: unknown }).startCommand;
     if (typeof startCommand !== 'string' || startCommand.trim() === '') return null;
-    return environment
-      ? { kind: 'served', commands, serve: { startCommand }, environment }
+    return environment || compose
+      ? {
+        kind: 'served',
+        commands,
+        serve: { startCommand },
+        ...(environment ? { environment } : {}),
+        ...(compose ? { compose } : {}),
+      }
       : { kind: 'served', commands, serve: { startCommand } };
   }
   return null;
@@ -846,11 +1193,11 @@ function runContractCommand(
   const tokens = trimmed.split(/\s+/u);
   const [program] = tokens;
   if (program === 'npm' || program === 'npm.cmd') {
-    try {
-      runNpm(tokens.slice(1), directory, timeoutMs);
-    } catch (error) {
-      throw new Error(commandFailureDetail('npm', tokens.slice(1), error));
-    }
+    // runNpm ALREADY throws a detailed Error (commandFailureDetail over the
+    // real stdout/stderr of the resolved npm-cli invocation). Re-wrapping it
+    // here would DROP those streams (the outer wrap sees a plain Error with
+    // no stdout/stderr) — the seam localization would lose every file hint.
+    runNpm(tokens.slice(1), directory, timeoutMs);
     return;
   }
   if (program === 'node' || program === 'node.exe') {
@@ -927,6 +1274,7 @@ function evidence(
   subject: CandidateSubject,
   observation: Record<string, unknown>,
   diagnosticCode?: string,
+  seamIssue?: SeamRepairIssue,
 ): CheckProviderResult {
   const digest = sha256Hex({
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -952,6 +1300,13 @@ function evidence(
       code: diagnosticCode ?? 'local-runnability',
       message: reason.slice(0, 4000),
     }));
+    // SEAM-ARCHITECT Layer 2 (b) — the typed seam repair-issue rides the SAME
+    // evidenceRefs array (append-only, no new authority path): seamKind,
+    // producingTaskRef, localization, evidence. Decoded at the points of
+    // decision (recovery feedback sheet, continuation defect evidence).
+    if (seamIssue !== undefined) {
+      evidenceRefs.push(encodeSeamRepairIssue(seamIssue));
+    }
   }
   return { outcome, evidenceRefs };
 }

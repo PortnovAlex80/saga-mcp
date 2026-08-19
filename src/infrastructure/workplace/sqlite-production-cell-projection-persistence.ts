@@ -4,6 +4,7 @@ import type { ProductionCellProjectionPersistence } from '../../process-modules/
 import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/workplace/index.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
+import { decodeSeamRepairIssue } from '../../process-modules/domain/workplace/seam-repair-issue.js';
 import {
   isPathOutsideAuthorityKey,
   trajectory as trajectoryBetween,
@@ -592,6 +593,68 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
   throw new Error(`PRODUCTION_CELL_TASK_METADATA_INVALID: ${taskId}`);
 }
 
+
+/**
+ * SEAM-ARCHITECT Layer 2 (c) — the typed seam repair-issues behind a set of
+ * check receipts, for the recovery-feedback sheet's `issue.seamIssues` slot.
+ * Read through the same receipt substrate as the findings decoder: one source
+ * of truth, no second authority path.
+ */
+export interface DecodedSeamIssue {
+  readonly checkReceiptRef: string;
+  readonly providerId: string;
+  readonly seamKind: string;
+  readonly producingTaskRef: string;
+  readonly localization: {
+    readonly phase: string;
+    readonly substrate: string;
+    readonly command?: string;
+    readonly fileHints: readonly string[];
+  };
+  readonly evidence: {
+    readonly summary: string;
+    readonly digestRef: string;
+  };
+  readonly subjectCandidateSetRef: string;
+}
+
+export function decodeSeamIssuesForReceipts(
+  db: Database.Database,
+  checkReceiptRefs: readonly string[],
+): DecodedSeamIssue[] {
+  if (checkReceiptRefs.length === 0) return [];
+  const placeholders = checkReceiptRefs.map(() => '?').join(',');
+  const receipts = db.prepare(
+    `SELECT check_receipt_ref,provider_id,outcome,evidence_refs
+       FROM factory_check_receipts
+      WHERE check_receipt_ref IN (${placeholders})
+      ORDER BY check_run_ref`,
+  ).all(...checkReceiptRefs) as Array<{
+    check_receipt_ref: string;
+    provider_id: string;
+    outcome: string;
+    evidence_refs: string;
+  }>;
+  const issues: DecodedSeamIssue[] = [];
+  for (const receipt of receipts) {
+    if (receipt.outcome === 'passed') continue;
+    for (const ref of parseStringArray(receipt.evidence_refs)) {
+      const issue = decodeSeamRepairIssue(ref);
+      if (issue === null) continue;
+      issues.push({
+        checkReceiptRef: receipt.check_receipt_ref,
+        providerId: receipt.provider_id,
+        seamKind: issue.seamKind,
+        producingTaskRef: issue.producingTaskRef,
+        localization: issue.localization,
+        evidence: issue.evidence,
+        subjectCandidateSetRef: issue.subjectCandidateSetRef,
+      });
+    }
+  }
+  return issues;
+}
+
 interface GateDecisionRow {
   decision_key: string;
   decision_digest: string;
@@ -739,6 +802,10 @@ function readCurrentProductionCellRecoveryFeedback(
       receiptRefs,
       rejectedCandidateSetRef,
     ),
+    // SEAM L2 (c): the typed seam repair-issues ride the SAME finding/rejection
+    // sheet — the repair author reads the seam kind, the owning task and the
+    // localized files here, not "integration failed".
+    seamIssues: decodeSeamIssuesForReceipts(db, receiptRefs),
     requiredAcceptance: failing.map(item =>
       `Check ${item.provider_id}@${item.provider_version} must return passed.`),
     allowedChanges: productRefs.map(product =>

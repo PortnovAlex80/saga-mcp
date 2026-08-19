@@ -20,14 +20,18 @@ export const AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
   'factory.local-runnability.v1';
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.5.0';
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.6.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
   invariant:
-    'exact-frozen-tree-prepared-oci-environment-isolated-test-and-serve-loopback-clean-shutdown',
+    'exact-frozen-tree-prepared-oci-environment-isolated-test-and-serve-loopback-clean-shutdown-compose-typed-seam-repair-issues',
   commandPolicy:
     'verbatim-profile-commands-on-isolated-host-or-one-prepared-worker-declared-oci-environment-loopback-only',
+  composePolicy:
+    'declared-compose-config-validated-always-bounded-up-wait-then-down-fail-closed',
+  seamIssuePolicy:
+    'failures-emit-typed-content-addressed-seam-repair-issues-with-owner-localization-evidence',
   processTerminationPolicy:
     'linux-proc-zombie-aware-and-live-process-tree-fail-closed-v1',
   subjectPolicy: 'accepted-readiness-manifest-bound-to-exact-integrated-source-v1',

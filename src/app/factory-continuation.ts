@@ -5,6 +5,7 @@ import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sql
 import { SqliteLifecycleContinuationRepository } from '../process-modules/persistence/sqlite-lifecycle-continuation-repository.js';
 import { adoptIntegratedDevelopmentBaseline } from '../modules/development/infrastructure/sqlite-development-baseline-adoption.js';
 import { authorizeEligibleAuthorCandidateCarryForward } from '../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
+import { decodeSeamRepairIssue } from '../process-modules/domain/workplace/seam-repair-issue.js';
 import { DEVELOPMENT_VERIFICATION_CONTINUATION_PROCESS_MODULE_REF } from '../process-modules/modules/development/development-verification-continuation-process-module.js';
 import {
   adoptDevelopmentVerificationBaseline,
@@ -220,15 +221,39 @@ export function prepareDevelopmentContinuation(
 }
 
 /**
+ * One parent-run defect cause. The base shape is the decodable check
+ * diagnostic (provider + timestamp + message); SEAM L2 (c) adds the TYPED seam
+ * projection (seamKind, producingTaskRef, localization) when the receipt
+ * carried a seam repair-issue ref — the re-plan cycle's repair tasks then name
+ * the exact seam and owner, not "integration failed".
+ */
+export interface ParentDefectEvidence {
+  providerId: string;
+  failedAt: string;
+  message: string;
+  /** Present only on seam-typed causes. */
+  seamKind?: string;
+  producingTaskRef?: string;
+  localization?: {
+    phase: string;
+    substrate: string;
+    command?: string;
+    fileHints: string[];
+  };
+}
+
+/**
  * Read the parent run's FAILED check receipts as repair context: the exact
  * causes the parent's acceptance gates recorded (provider id, timestamp, and
- * the decodable diagnostic message — command stderr etc.). Capped to the most
- * recent distinct causes so a long failure history does not bloat every task.
+ * the decodable diagnostic message — command stderr etc.; seam-typed receipts
+ * additionally carry the seam kind, producing task and localization). Capped
+ * to the most recent distinct causes so a long failure history does not bloat
+ * every task. Exported for the seam-routing regression tests.
  */
-function readParentDefectEvidence(
+export function readParentDefectEvidence(
   db: Database.Database,
   parentLifecycleRunId: number,
-): Array<{ providerId: string; failedAt: string; message: string }> {
+): ParentDefectEvidence[] {
   const rows = db.prepare(
     `SELECT cr.provider_id AS provider_id, cr.created_at AS failed_at,
             cr.evidence_refs AS evidence_refs
@@ -249,28 +274,63 @@ function readParentDefectEvidence(
     evidence_refs: string;
   }>;
   const seen = new Set<string>();
-  const evidence: Array<{ providerId: string; failedAt: string; message: string }> = [];
+  const evidence: ParentDefectEvidence[] = [];
   for (const row of rows) {
     let message = '';
+    let seam: {
+      seamKind: string;
+      producingTaskRef: string;
+      localization: ParentDefectEvidence['localization'];
+    } | null = null;
     try {
       for (const ref of JSON.parse(row.evidence_refs) as string[]) {
+        // SEAM L2 (c): prefer the TYPED seam repair-issue — it carries the seam
+        // kind, the producing task and the localized files. The plain
+        // diagnostic remains the fallback (identical failure text).
+        const seamIssue = decodeSeamRepairIssue(ref);
+        if (seamIssue !== null && seam === null) {
+          seam = {
+            seamKind: seamIssue.seamKind,
+            producingTaskRef: seamIssue.producingTaskRef,
+            localization: {
+              phase: seamIssue.localization.phase,
+              substrate: seamIssue.localization.substrate,
+              ...(seamIssue.localization.command !== undefined
+                ? { command: seamIssue.localization.command }
+                : {}),
+              fileHints: [...seamIssue.localization.fileHints],
+            },
+          };
+          message = seamIssue.evidence.summary;
+          continue;
+        }
         const match = ref.match(/factory-check-diagnostic\/v1\/[^/]+\/(.+)$/);
         if (!match) continue;
         const decoded = JSON.parse(
           Buffer.from(match[1]!, 'base64').toString('utf-8'),
         ) as { message?: unknown };
-        if (typeof decoded.message === 'string' && decoded.message !== '') {
+        if (typeof decoded.message === 'string' && decoded.message !== '' && message === '') {
           message = decoded.message;
-          break;
         }
       }
     } catch {
       message = '';
     }
-    const key = `${row.provider_id}:${message}`;
+    const key = `${row.provider_id}:${seam?.seamKind ?? ''}:${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    evidence.push({ providerId: row.provider_id, failedAt: row.failed_at, message });
+    evidence.push({
+      providerId: row.provider_id,
+      failedAt: row.failed_at,
+      message,
+      ...(seam !== null
+        ? {
+          seamKind: seam.seamKind,
+          producingTaskRef: seam.producingTaskRef,
+          localization: seam.localization,
+        }
+        : {}),
+    });
   }
   return evidence;
 }

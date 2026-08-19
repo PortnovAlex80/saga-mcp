@@ -19,6 +19,7 @@ import {
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
+import { isAbsolute } from 'node:path';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../process-modules/domain/source-change-candidate.js';
 import { decodeDevelopmentVerificationProduct } from '../domain/development-verification-product.js';
 import {
@@ -331,6 +332,19 @@ function validateReadinessProfile(value: unknown): string[] {
   if (value.environment !== undefined) {
     if (!isRecordValue(value.environment) || !nonEmptyString(value.environment.image)) {
       errors.push('readiness.environment.image must be a non-empty string when environment is present');
+    }
+  }
+  if (value.compose !== undefined) {
+    if (!isRecordValue(value.compose) || !nonEmptyString(value.compose.file)) {
+      errors.push('readiness.compose.file must be a non-empty relative path when compose is present');
+    } else if (isAbsolute(value.compose.file)
+      || value.compose.file.split(/[\\/]/u).includes('..')) {
+      errors.push('readiness.compose.file must be a relative path inside the sealed tree (no absolute paths or .. segments)');
+    }
+    if (isRecordValue(value.compose)
+      && value.compose.projectName !== undefined
+      && !nonEmptyString(value.compose.projectName)) {
+      errors.push('readiness.compose.projectName must be a non-empty string when present');
     }
   }
   return errors;

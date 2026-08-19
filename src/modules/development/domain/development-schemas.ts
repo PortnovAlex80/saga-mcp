@@ -343,8 +343,8 @@ export interface RunnabilityCommands {
 export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
 
 /**
- * Optional Docker substrate declaration. When present on a readiness profile,
- * the local-runnability provider executes the product's install/test/serve
+ * Optional Docker image substrate declaration. When present on a readiness
+ * profile, the local-runnability provider executes the product's install/test/serve
  * commands inside the named Docker image instead of on the host. The image
  * string is opaque to the engine (no language/tool knowledge): it is passed
  * verbatim to `docker run`. A digest-pinned reference (e.g.
@@ -354,6 +354,25 @@ export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
 export interface ReadinessEnvironment {
   /** Docker image reference (non-empty). Passed verbatim to `docker run`. */
   image: string;
+}
+
+/**
+ * SEAM-ARCHITECT Layer 2 (a) — optional docker compose declaration. When the
+ * readiness profile declares a compose file, the local-runnability provider
+ * verifies the ASSEMBLED WHOLE as a composition: config validation always;
+ * a bounded `up --wait` + `down` in the full mode. This is a TYPED
+ * declaration from the frozen profile/manifest — never an inference from
+ * incidental compose files found in the tree (LR-04 discipline).
+ */
+export interface ReadinessCompose {
+  /**
+   * Compose file path RELATIVE to the candidate root. Non-empty; absolute
+   * paths and `..` traversal are invalid (the file must live inside the
+   * sealed tree).
+   */
+  file: string;
+  /** Optional `docker compose -p` project name. */
+  projectName?: string;
 }
 
 export interface ServedReadinessProfile {
@@ -371,6 +390,8 @@ export interface ServedReadinessProfile {
   };
   /** @see ReadinessEnvironment — optional Docker image for containerized execution. */
   environment?: ReadinessEnvironment;
+  /** @see ReadinessCompose — optional compose verification of the assembled whole. */
+  compose?: ReadinessCompose;
 }
 
 export interface StaticReadinessProfile {
@@ -379,6 +400,8 @@ export interface StaticReadinessProfile {
   commands: RunnabilityCommands;
   /** @see ReadinessEnvironment — optional Docker image for containerized execution. */
   environment?: ReadinessEnvironment;
+  /** @see ReadinessCompose — optional compose verification of the assembled whole. */
+  compose?: ReadinessCompose;
 }
 
 /**
@@ -580,6 +603,7 @@ export type DevelopmentReasonCode =
   | 'verification-provider-untrusted'
   | 'human-decision-required'
   | 'local-readiness-missing'
+  | 'local-readiness-failed'
   | 'infrastructure-error';
 
 export interface DevelopmentCertificatePayload {

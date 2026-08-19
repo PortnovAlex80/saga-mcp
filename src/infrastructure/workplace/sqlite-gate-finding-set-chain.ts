@@ -27,6 +27,7 @@ import {
   type FindingSet,
 } from '../../process-modules/domain/workplace/finding-trajectory.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
+import { decodeSeamRepairIssue } from '../../process-modules/domain/workplace/seam-repair-issue.js';
 
 const CHAIN_TABLE_DDL = `
 CREATE TABLE IF NOT EXISTS factory_gate_finding_set_chain (
@@ -251,6 +252,8 @@ export interface DecodedDecisionFinding {
   readonly message: string;
   readonly subjectRef: string;
   readonly evidenceRefs: readonly string[];
+  /** SEAM L2: localized file hints, present on seam-typed findings only. */
+  readonly fileHints?: readonly string[];
 }
 
 export function decodeFindingsForDecision(
@@ -281,15 +284,40 @@ export function decodeFindingsForDecision(
     const diagnostics = evidenceRefs
       .map(decodeCheckDiagnostic)
       .filter((value): value is NonNullable<typeof value> => value !== null);
-    if (diagnostics.length > 0) {
-      return diagnostics.map(diagnostic => ({
+    // SEAM L2 (c): a receipt may also carry typed seam repair-issues — the
+    // seam finding names the seam kind, the owning task, and the localized
+    // files, so the repair author gets exact localization instead of
+    // "integration failed".
+    const seamIssues = evidenceRefs
+      .map(decodeSeamRepairIssue)
+      .filter((value): value is NonNullable<typeof value> => value !== null);
+    const findings: DecodedDecisionFinding[] = [];
+    for (const diagnostic of diagnostics) {
+      findings.push({
         code: `${item.provider_id}:${diagnostic.code}`,
-        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+        severity: item.outcome === 'error' ? 'fatal' : 'error',
         message: diagnostic.message,
         subjectRef: diagnostic.subjectRef ?? fallbackSubjectRef,
         evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-      }));
+      });
     }
+    for (const issue of seamIssues) {
+      findings.push({
+        code: `${item.provider_id}:seam:${issue.seamKind}`,
+        severity: item.outcome === 'error' ? 'fatal' : 'error',
+        message: `${issue.evidence.summary} `
+          + `(producing task: ${issue.producingTaskRef}; `
+          + `phase: ${issue.localization.phase}`
+          + (issue.localization.fileHints.length > 0
+            ? `; files: ${issue.localization.fileHints.join(', ')}`
+            : '')
+          + ')',
+        subjectRef: issue.subjectCandidateSetRef,
+        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+        fileHints: issue.localization.fileHints,
+      });
+    }
+    if (findings.length > 0) return findings;
     return [{
       code: `${item.provider_id}:${item.outcome}`,
       severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,

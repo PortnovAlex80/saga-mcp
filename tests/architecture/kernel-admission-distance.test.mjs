@@ -242,11 +242,12 @@ test('the linkType behavioural ternary exists in exactly the three known copies'
     });
   }
   assert.deepEqual(copies.sort(), [
-    // 548 -> 567 -> 575: the projection-persistence copy shifted when the
-    // finding-trajectory budget landed above it (19e6002b lineage), and again
-    // when the reviewer-round-history reader landed above it (blindsight C6)
-    // — same three copies, refreshed anchor, same guard.
-    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:575',
+    // 548 -> 567 -> 575 -> 576: the projection-persistence copy shifted when
+    // the finding-trajectory budget landed above it (19e6002b lineage), again
+    // when the reviewer-round-history reader landed above it (blindsight C6),
+    // and once more when the SEAM L2 recovery-feedback reader landed above it
+    // (blindsight integration-verify) — same three copies, refreshed anchor.
+    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:576',
     'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts:413',
     'src/tools/tasks.ts:552',
   ], `the linkType stage-name ternary was copied or moved (${copies.join(', ')}); ` +
