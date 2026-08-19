@@ -24,22 +24,40 @@ card. After the relaunch, a repair campaign (blindsight census: ~37 findings,
 **The run you are judging ran on code as of 12:37. Everything merged after
 12:38 is listed in §4 and takes effect on the next run.**
 
-### 0.1 State at handover (2026-08-19 ~20:40Z)
+### 0.1 State at handover (2026-08-19 ~20:55Z)
 
-- **Run**: in final phase — five independent AC verifiers (#37–#41) working;
-  after them, kernel settlement and terminal `runnable-local`. Snapshot of the
-  certification-gaming moment taken: `stage11-readiness-npmtest-x3`.
+- **Run TERMINAL**: lifecycle `completed`, terminal_status **`runnable-local`**,
+  2026-08-19 20:25:12Z, no error — the first full three-workshop pass in the
+  factory's history. Final counters: 61 worker sessions, 56 terminal gates,
+  22 final acceptances, 1480 journal events. Snapshots:
+  `stage11-readiness-npmtest-x3` (the gaming moment) and
+  `stage11-terminal-completed`. Golden corpora harvested to git (`2b0556b4`):
+  `stage11-docking-full` (all 76 products — deliberately a RED fixture: its
+  green terminal was bought by the narrowed testCommand, so once the
+  anti-gaming remedies land a re-run of THIS corpus must flag the narrowing)
+  and `stage11-docking-w12` (clean discovery+formalization prefix, 32
+  products). Independent acceptance test of the delivered product: ~40% of
+  the order's functionality works (physics/station/collision/docking as a
+  headless library, AC-5 autotest 12/12) and **0% one-command runnability**
+  (no start script, main points at a nonexistent index.js, gameLoop requires
+  browser requestAnimationFrame, ws broadcasts a frozen simulation) —
+  «an engine on a testbed, not a product».
 - **Done since the run started**: trace-identity fix (tasks 1–5, in the run);
   repair campaign — 8 merges reviewed+independently-verified (§4.1);
   blindsight census (~37 findings) → 8 repair branches complete, NOT merged
   (§4.3); AC-drift forensics + three-architect remedy design; certification-
   gaming forensics + three-architect remedy design (§4.5); worker-start
-  disorientation investigation closed with mechanism+empirics (§4.4b).
-- **In flight**: two implementers — AC-drift three networks
-  (`repair/ac-drift-remedy`), disorientation fix
-  (`repair/worker-disorientation`).
+  disorientation investigation closed and its IMPLEMENTATION delivered
+  (`repair/worker-disorientation`, 2 commits, 522/0 process-modules, E2E on
+  real opencode — with a corrected root cause: opencode 1.18.18 anchors the
+  session at `env.PWD ?? cwd`, the operator shell's inherited PWD pins every
+  session to the factory root; the AGENTS.md-ascent theory was disproven;
+  fix = shim pins `--dir` + env.PWD + spawn cwd, marker kept as duplicating
+  network).
+- **In flight**: one implementer — AC-drift three networks
+  (`repair/ac-drift-remedy`), returning.
 - **Merge policy (operator's decision, supersedes the earlier plan)**: saga4
-  is handed over AS-IS (run evidence + reviewed campaign merges). The 13
+  is handed over AS-IS (run evidence + reviewed campaign merges). The
   unmerged branches are handed as TREES — one reviewable unit each, with its
   design doc and RED-first trail. Nothing merges before your review; you mark
   approve/adjust per tree, we merge in your order, run ONE full regression on
@@ -178,8 +196,25 @@ completed; restored immediately; root-caused (homeDir injection missing);
 snapshot `factory-snapshots/stage11-incident-settings-hijack`; the run itself
 was never touched.
 
-⏳ **Terminal result** (completed/failed + final counts + snapshot
-`factory-snapshots/stage11-terminal-*` + harvest) — fills when the run ends.
+**TERMINAL RESULT (filled):** lifecycle `completed`, terminal_status
+**`runnable-local`**, 20:25:12Z, error none — the first full three-workshop
+pass in the factory's history. Final counters: 61 worker sessions, 56
+terminal gates, 22 final acceptances, 1480 journal events. Snapshots:
+`stage11-readiness-npmtest-x3` (the gaming moment), `stage11-terminal-
+completed`. Golden corpora in git: full (RED fixture) + w1-2 clean prefix
+(`2b0556b4`). **The terminal label is dishonest twice over**: the
+certification that granted it was the gamed round-4 (§4.5), and the
+independent acceptance test shows 0% one-command runnability — no start
+script, `main` points at a nonexistent `index.js`, gameLoop requires browser
+`requestAnimationFrame`, the ws server broadcasts a permanently frozen
+simulation. `runnable-local` names a property the delivered artifact does
+not have. The verifiers (#37–#41) did NOT catch the narrowing — M3
+predicted exactly this: their evidence cites "the complete test suite as
+specified in the integrated candidate", i.e. the narrowed set. Watch items:
+(iii) freeze-kernel territory was exercised hard and the run's freeze
+(19:44) completed cleanly on the fixed code; (vi) verification lineage never
+fired a mismatch — but the verification phase inherited the tainted binding,
+so its silence is evidence of the same blindness, not of health.
 
 **Open run-finding (independent assessor, 2026-08-19, verdict verbatim):**
 the run's PRD/SRS captured "docker compose up", TypeScript backend and the
@@ -294,11 +329,14 @@ RED-first commits; per-branch summary:
 | 7 | repair/worker-names | 2 | factory-floor callsigns per WORKER-NAMES-DESIGN |
 | 8 | repair/blindsight-reconciliation | 2 | Layer 3 reconciliation desk + append-only ledger |
 
-Plus two implementation branches in flight (returning): `repair/ac-drift-remedy`
-(three networks per `docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`) and
-`repair/worker-disorientation` (per §4.4b).
+Plus the implementation trees: `repair/worker-disorientation` DELIVERED (2
+commits, 522/0 process-modules, E2E on real opencode; root cause corrected —
+env.PWD beats cwd in opencode 1.18.18, fix pins --dir + env.PWD + spawn
+cwd, AGENTS.md marker as duplicating network) and `repair/ac-drift-remedy`
+(three networks per `docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`) —
+returning.
 
-### 4.4b Worker-start disorientation — investigation closed
+### 4.4b Worker-start disorientation — investigation closed, fix delivered
 
 `docs/factory-run/stage11/DISORIENTATION-INVESTIGATION.md`: 72% of sessions
 start in the main repo instead of the product repo (opencode 1.18.18 ascends
