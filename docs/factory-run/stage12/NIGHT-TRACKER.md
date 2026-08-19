@@ -20,7 +20,7 @@ honest and successful — implement and exercise the E9 recycle.
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🔄 3/7 done, remainder agent dispatched | wave-B agent + main | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, hand-resolved test append-union). Counts: arch 393/393, pm 1132/1132 |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🛑 STOPPED 3/7 at persistence (conflict, aborted clean) | wave-B agent + main | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, hand-resolved test append-union). Counts: arch 393/393, pm 1132/1132. Remainder agent stopped on `legacy-allowlist.json` conflict (schema 99→100 vs worker-names digest) — see 00:49 log |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
@@ -168,3 +168,38 @@ first; any E9-reserve code is escalate-never-delete.
   artifact, not the resolution: file 30/30 after rebuild). Merged ae2e634b:
   arch 393/393, pm 1132/1132. Remainder re-dispatched: persistence (schema
   99→100 + infra suite), phantom-bridges, integration-verify, reconciliation.
+- **00:49 machine clock (wave-B remainder agent; skew vs main's 00:52 above)**
+  — PHASE 2 STOPPED at merge 4, `repair/blindsight-persistence`. No merges
+  landed tonight by this agent; saga4 remains at `28e7b96f`, clean (only the
+  never-touch untracked evidence files). Verbatim merge output:
+  ```
+  Auto-merging docs/architecture/legacy-allowlist.json
+  CONFLICT (content): Merge conflict in docs/architecture/legacy-allowlist.json
+  Auto-merging src/process-modules/application/node-executors/production-cell-node-executor.ts
+  Auto-merging src/schema.ts
+  Automatic merge failed; fix conflicts and then commit the result.
+  ```
+  `git merge --abort` executed; tree clean at `28e7b96f`. Read-only
+  `git merge-tree` confirms the conflict is confined to that ONE file
+  (`docs/architecture/legacy-allowlist.json`); `src/schema.ts` and the
+  executor AUTO-MERGE cleanly. Characterization, both sides vs base
+  `d010a089`:
+  - persistence side (5c290c9e schema-freeze): `tableCount` 99→100, digest
+    `55599618…`→`e25ae1b7…`, `capturedAtSha` → `c7a68ac8` (F6 drift-events
+    table recorded in the legacy baseline).
+  - saga4 side (40a79ac0 worker-names): `tableCount` stays 99, digest
+    `55599618…`→`6ec6ea2b…` (schema content changed at constant table count).
+  Judgment: semantic, not textual — a hand-resolution must pick
+  `tableCount: 100` AND regenerate the digest from the merged `src/schema.ts`
+  (neither side's digest is valid for the union schema). NOT a defect of
+  either tree. Note: `src/schema.ts` itself auto-merges; only the frozen
+  baseline JSON disagrees. Merges 5 (`repair/blindsight-phantom-bridges`), 6
+  (`repair/blindsight-integration-verify`), 7
+  (`repair/blindsight-reconciliation`) NOT attempted — batch stopped per
+  TASK 1 rule. All four trees verified present with commits intact; the
+  other three share base `dae42418` and were not pre-checked beyond
+  existence. No build/test runs performed (no merge landed, nothing to
+  verify); no push (HEAD unchanged at `28e7b96f`, already on origin).
+  Operator action needed at wake: hand-resolve the
+  `legacy-allowlist.json` snapshot (regenerate digest at tableCount 100),
+  then resume merges 5–7 per the remainder protocol.
