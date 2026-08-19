@@ -383,3 +383,20 @@ first; any E9-reserve code is escalate-never-delete.
   - Bisect hazard honored: ran in the main checkout; `core.bare` verified
     false after every step.
   - TASK 1 IS NOW COMPLETE: all 13 trees landed on one HEAD (56e43449).
+- **02:2x (main)** — DOC-EDIT INCIDENT, closed harmlessly. Uncommitted mass
+  doc edits (8 files incl. deletion of FACTORY-START-QUICKSTART.md) appeared
+  mid-night; main misattributed them to the step agent (the only registered
+  worker) and ordered a revert. They were the OPERATOR'S OWN edits. The
+  agent (read-only at that point, zero edits of its own) executed the order
+  but backed the diff up first (%TEMP%/saga-mcp-doc-revert-backup-20260820)
+  and re-applied it after the countermand; main verified the restored tree
+  BYTE-IDENTICAL to the operator's state (1754-line diff match). No commit
+  ever contained the doc changes; HEAD never moved. Standing rule from this:
+  night agents git-add by EXPLICIT PATH only (never -A), and operator-owned
+  dirty files are nobody else's to read for decisions, revert, or commit.
+- **02:3x (main)** — Step agent research complete, STEP 1 (M2-2 additive
+  coverage report) in flight: tests-first, provider 1.6.0→1.7.0, then
+  suites+commit+push. Design notes recorded by the agent: monotonicity
+  provider returns typed unknown → human_required (complete-blocked), and
+  the scripted e2e worker submits a FIXED testCommand so the ratchet stays
+  inert there (no e2e perturbation expected).
