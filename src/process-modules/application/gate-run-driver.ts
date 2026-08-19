@@ -15,6 +15,45 @@ import type {
 } from '../domain/workplace/gate.js';
 import { computeCheckPlanDigest } from '../domain/workplace/gate.js';
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
+import { serializeWorkplaceRef } from '../domain/workplace/workplace-ref.js';
+
+/**
+ * BLINDSIGHT C1 — the read-only rejection-history view delivered to every
+ * check provider inside `candidateSnapshot`. The durable history (the
+ * finding-trajectory chain and the provider's own prior receipts) is already
+ * WRITTEN at decision time; this type is its DELIVERY to the point where the
+ * next outcome is decided, so a provider can recognize a returning finding
+ * key set instead of re-judging every submission in isolation.
+ */
+export interface TrajectoryTailSnapshot {
+  readonly gateRef: string;
+  readonly checkPlanDigest: string;
+  /** Same-scope chain sets, OLDEST first (capped to the last 8). */
+  readonly sets: readonly {
+    readonly digest: string;
+    readonly count: number;
+    readonly keys: readonly string[];
+    readonly fatalKeys: readonly string[];
+  }[];
+}
+
+/** One prior receipt of THIS provider on the same workplace (newest first). */
+export interface CheckProviderHistoryEntry {
+  readonly checkReceiptRef: string;
+  readonly checkRunRef: string;
+  readonly subjectCandidateSetRef: string;
+  readonly outcome: CheckOutcome;
+  readonly evidenceRefs: readonly string[];
+  readonly createdAt: string;
+}
+
+export interface GateCandidateHistoryContext {
+  readonly findingTrajectoryTails: {
+    readonly author: TrajectoryTailSnapshot | null;
+    readonly reviewer: TrajectoryTailSnapshot | null;
+  };
+  readonly providerHistory: readonly CheckProviderHistoryEntry[];
+}
 
 export interface GateRunDriverRepo {
   createGateRun(input: {
@@ -39,6 +78,19 @@ export interface GateRunDriverRepo {
    * the persisted decision without re-running providers or regressing state.
    */
   readTerminalDecisionForGateRun(gateRunRef: string): { readonly decision: GateDecision; readonly receipts: readonly CheckReceipt[] } | null;
+  /**
+   * BLINDSIGHT C1 — read the durable rejection history of the workplace
+   * (finding-trajectory chain tails per repair-target role + the prior
+   * receipts of one exact provider) for delivery to the check providers via
+   * `candidateSnapshot`. Optional: a repo without durable history keeps the
+   * legacy blind `{}` snapshot (never fabricated data). Read-only: the result
+   * is a delivery view and never enters the GateRun identity.
+   */
+  readCandidateHistoryContext?(input: {
+    readonly workplaceRef: WorkplaceRef;
+    readonly providerId: string;
+    readonly providerVersion: string;
+  }): GateCandidateHistoryContext | null;
 }
 
 export interface CheckProviderRegistry {
@@ -155,11 +207,30 @@ export function driveGateRun(
       );
     }
     const effectiveInput = effectiveCheckInputs[entryIndex]!;
+    // BLINDSIGHT C1 — deliver the durable rejection history to the decision
+    // point: the finding-trajectory chain tail (previous finding key sets of
+    // this workplace) plus this provider's own prior receipts. Read AFTER the
+    // C12 terminal-replay check, so a replayed one-shot GateRun does not
+    // re-read history (the persisted decision is authority); read-only — the
+    // snapshot never enters gateRunIdentity/receiptDigest by construction.
+    const history = repo.readCandidateHistoryContext?.({
+      workplaceRef: input.workplaceRef,
+      providerId: entry.check.providerId,
+      providerVersion: entry.check.version,
+    }) ?? null;
+    const candidateSnapshot: Readonly<Record<string, unknown>> = history === null
+      ? {}
+      : {
+          subjectCandidateSetRef: input.subjectCandidateSetRef,
+          workplaceRef: serializeWorkplaceRef(input.workplaceRef),
+          findingTrajectoryTails: history.findingTrajectoryTails,
+          providerHistory: history.providerHistory,
+        };
     const providerResult = provider.run({
       subjectCandidateSetRef: input.subjectCandidateSetRef,
       parameters: effectiveInput.parameters,
       environmentRef: effectiveInput.environmentRef,
-      candidateSnapshot: {},
+      candidateSnapshot,
     });
     if (providerResult instanceof Promise) {
       throw new Error(
