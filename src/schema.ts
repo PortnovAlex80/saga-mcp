@@ -2022,6 +2022,49 @@ CREATE TRIGGER IF NOT EXISTS trg_factory_gate_decisions_no_delete
     SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
   END;
 
+-- FINDING-TRAJECTORY BUDGET (CONVEYOR §15 "budget must count spin, not work"):
+-- the append-only finding-set chain of repair_required gate decisions. One row
+-- per rejection, written in the SAME transaction as the GateDecision, holding
+-- the comparable finding-set identity (digest / count / keys / fatal keys)
+-- derived from the decision's check receipts via the ONE shared decoder
+-- (decodeFindingsForDecision). The chain is scoped by (workplace, gate,
+-- repair-target role) AND check_plan_digest: a plan change starts a fresh
+-- chain (old findings are not comparable evidence under a new plan). The
+-- executor's repair budget compares consecutive rows of one scope to waive
+-- CONVERGING attempts (strict key-subset, fatal non-growing) from the
+-- epoch budget. Append-only; replay is idempotent by the UNIQUE decision key.
+CREATE TABLE IF NOT EXISTS factory_gate_finding_set_chain (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workplace_ref           TEXT NOT NULL,
+  gate_ref                TEXT NOT NULL,
+  repair_target_role      TEXT NOT NULL CHECK (repair_target_role IN ('author','reviewer')),
+  check_plan_digest       TEXT NOT NULL,
+  gate_decision_key       TEXT NOT NULL UNIQUE,
+  finding_set_digest      TEXT NOT NULL,
+  finding_count           INTEGER NOT NULL CHECK (finding_count >= 0),
+  fatal_finding_count     INTEGER NOT NULL CHECK (fatal_finding_count >= 0),
+  -- JSON arrays of canonically ordered finding keys (and the fatal subset).
+  finding_keys            TEXT NOT NULL,
+  fatal_finding_keys      TEXT NOT NULL,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (gate_decision_key) REFERENCES factory_gate_decisions(decision_key) ON DELETE RESTRICT,
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_gate_finding_set_chain_scope
+  ON factory_gate_finding_set_chain(workplace_ref, repair_target_role, gate_ref, check_plan_digest, id DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_gate_finding_set_chain_no_update
+  BEFORE UPDATE ON factory_gate_finding_set_chain
+  BEGIN
+    SELECT RAISE(ABORT, 'factory_gate_finding_set_chain is immutable (append-only)');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS trg_gate_finding_set_chain_no_delete
+  BEFORE DELETE ON factory_gate_finding_set_chain
+  BEGIN
+    SELECT RAISE(ABORT, 'factory_gate_finding_set_chain is immutable (append-only)');
+  END;
+
 -- ---------------------------------------------------------------------------
 -- Factory checkpoints — immutable recovery metadata over an online SQLite
 -- backup plus content-addressed external files. The filesystem manifest is

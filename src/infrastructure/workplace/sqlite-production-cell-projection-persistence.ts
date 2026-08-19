@@ -584,6 +584,72 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
   throw new Error(`PRODUCTION_CELL_TASK_METADATA_INVALID: ${taskId}`);
 }
 
+/**
+ * FINDING-TRAJECTORY BUDGET — the ONE decoder of a repair_required decision's
+ * findings, extracted verbatim from the recovery-feedback writer so the
+ * feedback sheet and the convergence budget CANNOT diverge (two private copies
+ * of this mapping would drift apart exactly when a new finding shape lands).
+ *
+ * Each failing receipt contributes its decodable check diagnostics; a receipt
+ * without diagnostics contributes one fallback finding (composed
+ * provider:outcome code). outcome 'error' is fatal, everything else is error
+ * severity — same semantics the feedback sheet always had.
+ */
+export interface DecodedDecisionFinding {
+  readonly code: string;
+  readonly severity: 'fatal' | 'error';
+  readonly message: string;
+  readonly subjectRef: string;
+  readonly evidenceRefs: readonly string[];
+}
+
+export function decodeFindingsForDecision(
+  db: Database.Database,
+  checkReceiptRefs: readonly string[],
+  fallbackSubjectRef: string,
+): DecodedDecisionFinding[] {
+  const placeholders = checkReceiptRefs.map(() => '?').join(',');
+  const receipts = db.prepare(
+    `SELECT check_receipt_ref,check_run_ref,provider_id,provider_version,provider_digest,
+            outcome,evidence_refs
+       FROM factory_check_receipts
+      WHERE check_receipt_ref IN (${placeholders})
+      ORDER BY check_run_ref`,
+  ).all(...checkReceiptRefs) as Array<{
+    check_receipt_ref: string;
+    check_run_ref: string;
+    provider_id: string;
+    provider_version: string;
+    provider_digest: string;
+    outcome: 'passed' | 'failed' | 'unknown' | 'error';
+    evidence_refs: string;
+  }>;
+  const failing = receipts.filter(receipt => receipt.outcome !== 'passed');
+  if (checkReceiptRefs.length > 0 && failing.length === 0) return [];
+  return failing.flatMap(item => {
+    const evidenceRefs = parseStringArray(item.evidence_refs);
+    const diagnostics = evidenceRefs
+      .map(decodeCheckDiagnostic)
+      .filter((value): value is NonNullable<typeof value> => value !== null);
+    if (diagnostics.length > 0) {
+      return diagnostics.map(diagnostic => ({
+        code: `${item.provider_id}:${diagnostic.code}`,
+        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+        message: diagnostic.message,
+        subjectRef: diagnostic.subjectRef ?? fallbackSubjectRef,
+        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+      }));
+    }
+    return [{
+      code: `${item.provider_id}:${item.outcome}`,
+      severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+      message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
+      subjectRef: fallbackSubjectRef,
+      evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+    }];
+  });
+}
+
 interface GateDecisionRow {
   decision_key: string;
   decision_digest: string;
@@ -723,28 +789,14 @@ function readCurrentProductionCellRecoveryFeedback(
     repairTargetRole: role,
     reasonCode: `gate-${decision.gate_phase}-repair-required`,
     summary: `Gate '${decision.gate_ref}' rejected CandidateSet '${rejectedCandidateSetRef}'.`,
-    findings: failing.flatMap(item => {
-      const evidenceRefs = parseStringArray(item.evidence_refs);
-      const diagnostics = evidenceRefs
-        .map(decodeCheckDiagnostic)
-        .filter((value): value is NonNullable<typeof value> => value !== null);
-      if (diagnostics.length > 0) {
-        return diagnostics.map(diagnostic => ({
-          code: `${item.provider_id}:${diagnostic.code}`,
-          severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-          message: diagnostic.message,
-          subjectRef: diagnostic.subjectRef ?? rejectedCandidateSetRef,
-          evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-        }));
-      }
-      return [{
-        code: `${item.provider_id}:${item.outcome}`,
-        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-        message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
-        subjectRef: rejectedCandidateSetRef,
-        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-      }];
-    }),
+    // FINDING-TRAJECTORY BUDGET: decoded through the ONE shared
+    // decodeFindingsForDecision — the feedback sheet and the convergence
+    // budget read findings through the same decoder by construction.
+    findings: decodeFindingsForDecision(
+      db,
+      receiptRefs,
+      rejectedCandidateSetRef,
+    ),
     requiredAcceptance: failing.map(item =>
       `Check ${item.provider_id}@${item.provider_version} must return passed.`),
     allowedChanges: productRefs.map(product =>

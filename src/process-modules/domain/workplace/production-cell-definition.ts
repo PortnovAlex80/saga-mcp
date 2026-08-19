@@ -81,9 +81,28 @@ export interface CellRecoveryPolicy {
    * outcome instead of a human park.
    */
   readonly totalAttempts?: number;
+  /**
+   * FINDING-TRAJECTORY BUDGET (CONVEYOR §15 "budget must count spin, not
+   * work") — 'requeue' cells ONLY: how many CONSECUTIVE converging repair
+   * attempts (each rejection's finding-key set a strict subset of the
+   * previous, fatal keys not growing) may be waived from the epoch budget's
+   * rejectedSets charge. Crash/effect accounting is never waived. Defaults
+   * to DEFAULT_CONVERGENCE_CHAIN_ATTEMPTS; the absolute totalAttempts cap
+   * stays untouchable regardless of convergence. The streak past this
+   * ceiling ends the line terminally with the surviving-key diagnosis.
+   */
+  readonly convergenceChainAttempts?: number;
 }
 
 export const DEFAULT_RECOVERY_TOTAL_ATTEMPTS = 30;
+
+/**
+ * FINDING-TRAJECTORY BUDGET — the default converging-streak ceiling
+ * (operator: «не штрафовать; до 20 раз»). A strict-subset chain shrinks by
+ * >= 1 key per step, so the chain is self-closing; 20 bounds the wall-clock
+ * cost of one converging station and downstream pendingOutcome stagnation.
+ */
+export const DEFAULT_CONVERGENCE_CHAIN_ATTEMPTS = 20;
 
 /**
  * ADR-075 — inter-epoch backoff: exponential (1min, 2min, 4min, 8min…)
@@ -227,6 +246,23 @@ export function assertValidProductionCellDefinition(
       throw new Error(
         `ProductionCellDefinition '${cell.id}': recovery.totalAttempts must be an integer `
         + `>= maxAttempts (${cell.recovery.maxAttempts})`,
+      );
+    }
+  }
+  if (cell.recovery.convergenceChainAttempts !== undefined) {
+    if (cell.recovery.onExhausted !== 'requeue') {
+      throw new Error(
+        `ProductionCellDefinition '${cell.id}': recovery.convergenceChainAttempts is a `
+        + "'requeue'-only extension — quality convergence must never weaken a human-gated "
+        + "(pause) or failing (fail) cell",
+      );
+    }
+    if (
+      !Number.isInteger(cell.recovery.convergenceChainAttempts)
+      || cell.recovery.convergenceChainAttempts < 1
+    ) {
+      throw new Error(
+        `ProductionCellDefinition '${cell.id}': recovery.convergenceChainAttempts must be a positive integer`,
       );
     }
   }
