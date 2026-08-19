@@ -20,7 +20,7 @@ honest and successful — implement and exercise the E9 recycle.
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🔄 running | wave-B agent | |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | ✖ stopped 2/7 (merge 3 conflicted, per protocol) | wave-B agent | worker-prompt `f6042bd9`, gate-delivery `a53eebad` both green (build 0; arch 393/393; pm 1104/1104 then 1117/1117). Merge 3 `repair/blindsight-lifecycle` CONFLICT in `tests/process-modules/production-cell-node-executor.test.mjs` → abort, tree clean at `a53eebad`, wave stopped; merges 4–7 not attempted. See log 00:44 |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
@@ -114,3 +114,47 @@ first; any E9-reserve code is escalate-never-delete.
 - **00:39 (main)** — Wave B agent dispatched (7 blindsight trees, same
   protocol: build + arch + pm per merge, conflict → abort + stop + report for
   main to hand-resolve, push per merge).
+- **00:44 (wave-B agent)** — PHASE 2 STOPPED after 2 of 7 merges. Verbatim
+  record:
+  - Merge 1 `repair/blindsight-worker-prompt` → merge commit `f6042bd9`
+    (no-ff, no conflicts, auto-merged `tracker-view/claude-runner.mjs`).
+    Build exit 0. Architecture `tests 393 / pass 393 / fail 0 / skipped 0`.
+    Process-modules `tests 1104 / pass 1104 / fail 0 / skipped 0` (+6 new
+    from `tests/process-modules/feedback-history-materialization.test.mjs`).
+    Pushed `c7033c79..f6042bd9`.
+  - Merge 2 `repair/blindsight-gate-delivery` → merge commit `a53eebad`
+    (no-ff, no conflicts, auto-merged `src/schema.ts` + executor). Build
+    exit 0. Architecture `tests 393 / pass 393 / fail 0 / skipped 0`.
+    Process-modules `tests 1117 / pass 1117 / fail 0 / skipped 0` (+13 new
+    across final-acceptance-rejection-history, gate-run-driver-candidate-
+    snapshot, review-finding-structural-codes, carry-forward tests).
+    Pushed `f6042bd9..a53eebad`.
+  - Merge 3 `repair/blindsight-lifecycle` → CONFLICT. Verbatim:
+    ```
+    Auto-merging src/app/product-lifecycle-runtime.ts
+    Auto-merging src/process-modules/application/node-executors/production-cell-node-executor.ts
+    Auto-merging tests/process-modules/production-cell-node-executor.test.mjs
+    CONFLICT (content): Merge conflict in tests/process-modules/production-cell-node-executor.test.mjs
+    Automatic merge failed; fix conflicts and then commit the result.
+    ```
+    `git merge --abort` executed; tree clean at `a53eebad` (only the
+    never-touch untracked evidence files remain). Wave STOPPED per TASK 1
+    rule (no conflict resolution, no repair forward). Read-only
+    `git merge-tree` confirms the conflict is confined to that ONE file;
+    both trees appended tests to the same test file from common base
+    `dae42418` (saga4 side +81 lines via gate-delivery's candidate-snapshot
+    tests; lifecycle side +218 lines of F3/F4/F5 executor behavior tests).
+    The source file `production-cell-node-executor.ts` itself auto-merged
+    cleanly. Judgment: textual overlap between the two trees in one test
+    file, not a defect of either tree; hand-resolution is an append-union
+    of two test blocks.
+  - Merges 4 (`repair/blindsight-persistence`, schema 99→100), 5
+    (`repair/blindsight-phantom-bridges`), 6
+    (`repair/blindsight-integration-verify`), 7
+    (`repair/blindsight-reconciliation`) NOT attempted — wave stopped.
+    No flake observed: every suite run tonight was fail 0 on first pass.
+  - Operator action needed at wake: hand-resolve the test-file overlap
+    (append-union) and resume Wave B from merge 3; alternatively rebase
+    `repair/blindsight-lifecycle` onto `a53eebad`. NOTE: merges 4–7 remain
+    unmerged; `repair/blindsight-persistence` still carries schema 99→100
+    (the only allowed schema move, untouched).
