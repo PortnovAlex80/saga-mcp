@@ -79,6 +79,33 @@ export class SqliteCellFinalAcceptance {
   }
 
   /**
+   * B-004/W-2 — the ACTUAL durable effect receipts for one accepted decision.
+   *
+   * C8 crash recovery must never write a FinalAcceptance that lies about its
+   * receipts: recordFinalAcceptance is immutable + digest-fenced, and the
+   * record-final-acceptance obligation postcondition demands that
+   * effect_receipt_refs CONTAIN the exact 'cell-effect-receipt:<digest>' refs.
+   * An empty list written where receipts exist is an unrecoverable row. This
+   * resolves the same rows that postcondition reads (workplace + exact gate
+   * decision + accepted CandidateSet).
+   */
+  readEffectReceiptRefsForDecision(
+    workplaceRef: WorkplaceRef,
+    gateDecisionKey: string,
+    candidateSetRef: string,
+  ): readonly string[] {
+    const rows = this.db.prepare(
+      `SELECT effect_receipt_ref
+         FROM factory_cell_effect_receipts
+        WHERE workplace_ref=? AND gate_decision_key=? AND candidate_set_ref=?
+        ORDER BY effect_receipt_ref`,
+    ).all(
+      serializeWorkplaceRef(workplaceRef), gateDecisionKey, candidateSetRef,
+    ) as Array<{ effect_receipt_ref: string }>;
+    return rows.map((row) => row.effect_receipt_ref);
+  }
+
+  /**
    * CONVEYOR §20 — append one immutable EffectAttempt for an effect invocation.
    *
    * A receipt proves success and nothing else; an attempt records what actually

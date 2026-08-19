@@ -512,7 +512,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         if (!accepted || !this.finalAcceptanceReentryAdmissible(workplace.ref, accepted)) {
           return pendingOutcome();
         }
-        const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, workplace);
+        const settlementReady = this.ensureFinalAcceptanceForTerminalAccepted(node, cell, workplace);
         if (!settlementReady) return pendingOutcome();
       }
       return this.terminalOutcome(workplace.ref, state);
@@ -920,10 +920,20 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       // normal certification mechanism; the lazy claim-bound sweep remains as
       // a crash/reconciliation fallback only.
       if (postAcceptanceCandidate) {
+        // B-004/W-2 — the receipt set is the ACTUAL durable one for this
+        // accepted decision (never a fabricated empty list): for a declared
+        // effect with no durable receipt there is nothing honest to write —
+        // pendingOutcome lets the reason-identity valve end the wait.
+        const receiptRefs = this.durableEffectReceiptRefs(
+          workplace.ref, postAcceptanceCandidate,
+        );
+        if (cell.postAcceptanceEffect && receiptRefs.length === 0) {
+          return pendingOutcome(candidate.candidateSetRef);
+        }
         const settlementReady = this.recordFinalAcceptanceAndCapture(
           workplace.ref,
           postAcceptanceCandidate,
-          [],
+          receiptRefs,
         );
         if (!settlementReady) return pendingOutcome(candidate.candidateSetRef);
       }
@@ -1139,6 +1149,28 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   /**
+   * B-004/W-2 — the ACTUAL durable effect receipts for an accepted candidate's
+   * exact gate decision, resolved at recovery time. The empty list is returned
+   * only when it is the TRUTHFUL set; callers must not write a FinalAcceptance
+   * that lies about its receipts (the row is immutable + digest-fenced and the
+   * record-final-acceptance obligation postcondition must be able to match it).
+   */
+  private durableEffectReceiptRefs(
+    workplaceRef: WorkplaceRef,
+    acceptedCandidate: CandidateSet,
+  ): readonly string[] {
+    const decisionKey = this.opts.finalAcceptance.getAcceptedGateDecisionKey(
+      serializeWorkplaceRef(workplaceRef),
+      acceptedCandidate.candidateSetRef,
+    );
+    return this.opts.finalAcceptance.readEffectReceiptRefsForDecision(
+      workplaceRef,
+      decisionKey,
+      acceptedCandidate.candidateSetRef,
+    );
+  }
+
+  /**
    * ADR-053 C8 — recover a terminal(accepted) Workplace whose FinalAcceptance
    * row is missing (crash between the gate-accept transition and
    * recordFinalAcceptanceAndCapture). Resolves the accepted author CandidateSet
@@ -1146,9 +1178,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    * candidate for a terminal(accepted) cell is the author set (for a no-review
    * cell it is the sealed author output; for a review cell it is the reviewer's
    * subject — both resolved as the workplace's accepted author candidate).
+   *
+   * B-004/W-2 — the receipt set is the ACTUAL durable one for the accepted
+   * decision: (a) when receipts exist they are passed, making the row the
+   * obligation postcondition can honestly match; (b) when the cell declares an
+   * effect but NO receipt is durable, NOTHING is written and false is returned
+   * (pendingOutcome) — the reason-identity valve terminates that wait honestly
+   * rather than leaving an unmatchable immutable row. For a cell with no
+   * declared effect the empty set is the complete truthful set.
    */
   private ensureFinalAcceptanceForTerminalAccepted(
     node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
     workplace: MaterializedWorkplace,
   ): boolean {
     const accepted = this.acceptedAuthorCandidate(workplace.ref);
@@ -1159,7 +1200,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         `terminal(accepted) Workplace has no accepted author CandidateSet to finalize (C8 crash recovery)`,
       );
     }
-    return this.recordFinalAcceptanceAndCapture(workplace.ref, accepted, []);
+    const receiptRefs = this.durableEffectReceiptRefs(workplace.ref, accepted);
+    if (cell.postAcceptanceEffect && receiptRefs.length === 0) {
+      return false;
+    }
+    return this.recordFinalAcceptanceAndCapture(workplace.ref, accepted, receiptRefs);
   }
 
   /**
