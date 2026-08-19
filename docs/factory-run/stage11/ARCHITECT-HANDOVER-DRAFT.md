@@ -391,6 +391,22 @@ warrant conjunction (ties into AC-DRIFT-REMEDY §synthesis).
 | E6 | Watch-item judgments (iii/vi/vii) | ⏳ endgame evidence |
 | E7 | Certification-gaming remedy: LR-04 amendment (declaration authority → derived-canonical core + additive manifest), profile monotonicity, receipt invariant — governance principles reserved for you | yes — CERTIFICATION-GAMING-REMEDY.md synthesis |
 | E8 | AC-drift remedy: ratify the three-network rollout (register → reaction → structure → execution) and its formalization-gate additions | yes — AC-DRIFT-REMEDY-DESIGN.md synthesis |
+| E9 | **Recycled run (operator's proposal)**: design the mechanics of a NEW pass that does not start from zero — an operator "hook" into the factory session saying: findings exist, this is not the factory's fault, the project is already released; study the current project code and account for the remarks. Hook entry at discovery + formalization (the control input of development). Core semantic: a CHANGE REQUEST making every downstream worker aware the code EXISTS — per item: write from scratch vs read-and-reuse. Three architects drafting variants; your synthesis decides the rollout | ⏳ three-agent design in flight |
+
+## 7. Operator's proposal — the recycled run (input for E9)
+
+Verbatim intent: not a new run from zero, but a factory rework pass over the
+released project — «бросить хук в сессию завода: вот нашли недочёты, это не
+вина завода, проект уже выпущен — изучи текущий код проекта и учти наши
+замечания». The hook lands on discovery/formalization because they are the
+control input of the development workshop; its core semantic is a CHANGE
+REQUEST that makes every downstream worker aware that code exists — decide
+per item: from scratch vs read-and-reuse. Existing mechanisms to build on:
+re-plan cycle's integratedRepoState (merged), previous-attempt patch-on-desk
+(tree #8), control-intent tables, carry-forward. Guards needed: anchoring
+bias (reuse must not degrade into patching bad code — the reason merge was
+rejected in REPAIR-CODE-PRESERVATION), sealed-v1 authority (reference, not
+mutate), cross-run budget/trajectory continuity.
 
 ---
 
