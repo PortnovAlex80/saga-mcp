@@ -400,3 +400,7 @@ first; any E9-reserve code is escalate-never-delete.
   provider returns typed unknown → human_required (complete-blocked), and
   the scripted e2e worker submits a FIXED testCommand so the ratchet stays
   inert there (no e2e perturbation expected).
+- **02:5x (cron)** — STEP 1 LANDED: `a9011b58` (M2-2 additive test-coverage
+  report — executed X of Y vs the sealed-tree canonical set). Step agent now
+  visibly mid-STEP 2 (monotonicity provider: development-check-providers +
+  process-module files in the working tree).
