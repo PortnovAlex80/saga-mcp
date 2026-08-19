@@ -5,6 +5,10 @@ import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/wor
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
 import {
+  isPathOutsideAuthorityKey,
+  trajectory as trajectoryBetween,
+} from '../../process-modules/domain/workplace/finding-trajectory.js';
+import {
   assertRecoveryIssue,
   type RecoveryIssue,
 } from '../../process-modules/domain/recovery.js';
@@ -834,6 +838,12 @@ function readCurrentProductionCellRecoveryFeedback(
     repairTargetRole: role,
     attempt: attemptRow.n,
     maxAttempts: retry?.retry_budget ?? null,
+    // BLINDSIGHT C1a — the WHOLE same-scope finding-trajectory chain + a
+    // human trajectory label ride with the sheet: the author must understand
+    // the TRAJECTORY (converging/spinning/churning/scope-impossible), not
+    // only the latest rejection (CONVEYOR §15: the reason sequence is the
+    // signal, never the bare iteration count).
+    findingTrajectory: readFindingTrajectoryForSheet(db, workplaceRef, role),
     gateDecision: {
       decisionRef: decision.decision_key,
       gateRunRef: decision.gate_run_ref,
@@ -867,6 +877,126 @@ function parseStringArray(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT C1a — finding-trajectory delivery for the recovery-feedback
+// sheet. Reads the SAME append-only factory_gate_finding_set_chain the
+// convergence budget reads, with the SAME scope semantics (the latest row of
+// the (workplace, role) pair derives the gate + check-plan scope; the chain
+// RESETS on a check-plan change). Derived data only: excluded from the
+// recoveryIssueDigest by construction.
+// ---------------------------------------------------------------------------
+
+const SHEET_CHAIN_LIMIT = 20;
+
+export interface RecoverySheetTrajectory {
+  /** The check-plan digest of the chain scope (null when no chain rows). */
+  readonly scopeCheckPlanDigest: string | null;
+  /** Same-scope chain rows, OLDEST first. */
+  readonly chain: readonly {
+    readonly gateDecisionKey: string;
+    readonly digest: string;
+    readonly count: number;
+    readonly keys: readonly string[];
+    readonly fatalKeys: readonly string[];
+    readonly createdAt: string;
+  }[];
+  readonly label: 'first-rejection' | 'converging' | 'spinning' | 'churning' | 'scope-impossible';
+  /** Human explanation of what the label MEANS for the next repair attempt. */
+  readonly explanation: string;
+  readonly lastTransition: {
+    readonly removedKeys: readonly string[];
+    readonly addedKeys: readonly string[];
+  } | null;
+}
+
+function readFindingTrajectoryForSheet(
+  db: Database.Database,
+  workplaceRef: string,
+  role: 'author' | 'reviewer',
+): RecoverySheetTrajectory {
+  const tablePresent = db.prepare(
+    `SELECT COUNT(*) AS n FROM sqlite_master
+      WHERE type='table' AND name='factory_gate_finding_set_chain'`,
+  ).get() as { n: number };
+  const empty: RecoverySheetTrajectory = {
+    scopeCheckPlanDigest: null,
+    chain: [],
+    label: 'first-rejection',
+    explanation: 'First recorded rejection under the current check plan — no trajectory yet. '
+      + 'Address every finding listed above.',
+    lastTransition: null,
+  };
+  if (tablePresent.n === 0) return empty;
+  const latest = db.prepare(
+    `SELECT id, gate_ref, check_plan_digest
+       FROM factory_gate_finding_set_chain
+      WHERE workplace_ref=? AND repair_target_role=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(workplaceRef, role) as
+    | { id: number; gate_ref: string; check_plan_digest: string }
+    | undefined;
+  if (!latest) return empty;
+  const rows = db.prepare(
+    `SELECT gate_decision_key, finding_set_digest, finding_count,
+            finding_keys, fatal_finding_keys, created_at
+       FROM factory_gate_finding_set_chain
+      WHERE workplace_ref=? AND repair_target_role=? AND gate_ref=?
+        AND check_plan_digest=? AND id<=?
+      ORDER BY id DESC LIMIT ${SHEET_CHAIN_LIMIT}`,
+  ).all(workplaceRef, role, latest.gate_ref, latest.check_plan_digest, latest.id)
+    .reverse() as Array<{
+    gate_decision_key: string;
+    finding_set_digest: string;
+    finding_count: number;
+    finding_keys: string;
+    fatal_finding_keys: string;
+    created_at: string;
+  }>;
+  if (rows.length === 0) return empty;
+  const chain = rows.map(row => ({
+    gateDecisionKey: row.gate_decision_key,
+    digest: row.finding_set_digest,
+    count: row.finding_count,
+    keys: parseStringArray(row.finding_keys),
+    fatalKeys: parseStringArray(row.fatal_finding_keys),
+    createdAt: row.created_at,
+  }));
+  const base = {
+    scopeCheckPlanDigest: latest.check_plan_digest,
+    chain,
+  };
+  if (chain.length < 2) {
+    return { ...base, ...empty, scopeCheckPlanDigest: latest.check_plan_digest, chain };
+  }
+  const previous = chain[chain.length - 2]!;
+  const current = chain[chain.length - 1]!;
+  const removedKeys = previous.keys.filter(key => !current.keys.includes(key));
+  const addedKeys = current.keys.filter(key => !previous.keys.includes(key));
+  const survivingScopeKeys = current.keys
+    .filter(key => previous.keys.includes(key) && isPathOutsideAuthorityKey(key));
+  const label = trajectoryBetween(previous, current);
+  const explanations: Record<typeof label, string> = {
+    converging: `Converging: the previous rejection's finding set strictly contains this one `
+      + `(${removedKeys.length} key(s) removed, none new). The defect chain is shrinking — `
+      + `keep removing the remaining keys and do not reintroduce the fixed ones.`,
+    spinning: `Spinning: this rejection repeats the previous finding keys exactly `
+      + `(${current.keys.length} returning). Repeating the same repair will not pass — `
+      + `the CAUSE behind the returning keys must change, not the symptom.`,
+    churning: `Churning: ${addedKeys.length} new finding key(s) appeared and/or severity grew `
+      + `vs the previous rejection. The last repair introduced new defects — re-examine `
+      + `exactly what it touched.`,
+    'scope-impossible': `Scope-impossible: the same path-outside-authority finding(s) survived `
+      + `the repair (${survivingScopeKeys.length}). The defect lives in files this work item `
+      + `must not write — a re-plan (scope re-carve) is required, not another resubmission.`,
+  };
+  return {
+    ...base,
+    label,
+    explanation: explanations[label],
+    lastTransition: { removedKeys, addedKeys },
+  };
 }
 
 interface EffectRepairIssueRow {
