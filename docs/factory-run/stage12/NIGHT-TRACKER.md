@@ -203,3 +203,12 @@ first; any E9-reserve code is escalate-never-delete.
   Operator action needed at wake: hand-resolve the
   `legacy-allowlist.json` snapshot (regenerate digest at tableCount 100),
   then resume merges 5–7 per the remainder protocol.
+- **01:02 (main)** — blindsight-persistence merged `bf9f66a5`. The
+  legacy-allowlist.json conflict resolved semantically: neither side's digest
+  is valid for the union schema, so the allowlist was regenerated from the
+  merged tree (`tools/legacy-freeze.mjs --snapshot`: **100 tables**, digest
+  `f9143455ea65`, `--check` OK). Schema 99→100 is tonight's only schema move,
+  as the brief demands. Verified: build 0, infra **372 pass / 0 fail /
+  12 skip**, arch **403/403**, pm **1143/1143**. Final three trees
+  (phantom-bridges, integration-verify, reconciliation) dispatched to the
+  wave-B final agent.
