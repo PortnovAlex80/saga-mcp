@@ -29,13 +29,48 @@ Read the tracker and `task_get({id:<task id>})`. Use the frozen
 `process_node_input` and its Discovery certificate lineage. Do not replace it
 with a newer epic-wide product. If gate/reviewer feedback exists, read it first.
 
+## Constraint register dispositions (mandatory)
+
+Your `process_node_input.discoveryProposalPayload` may carry
+`order_constraints`: the typed constraint register extracted from the order
+(docker compose up, TypeScript backend, human Chrome checks — each with a
+stable ID `ord-c-NNN`, a class, and text). The register is also pinned in the
+Discovery settlement certificate; you cannot rewrite it.
+
+Seeing the constraints is not enough — you MUST react to every ID:
+
+1. Render the register as a `## Constraints` section in the brief, one line
+   per ID: `ord-c-NNN (<class>): <text>`.
+2. Dispose EVERY ID in the brief artifact metadata under
+   `constraint_dispositions` when creating/updating the brief via
+   `artifact_create`/`artifact_update`:
+
+   ```json
+   "constraint_dispositions": {
+     "ord-c-001": { "disposition": "accepted" },
+     "ord-c-002": { "disposition": "waived", "reason": "<why this constraint is deliberately out of scope>" }
+   }
+   ```
+
+3. `accepted` means the brief/PRD/FR/NFR work actually carries the constraint.
+   `waived` requires a non-empty `reason`; the waiver flows downstream and the
+   endgame certificate will show it.
+4. The `worker_done` gate diffs the register IDs against your dispositions.
+   Any ID without a valid disposition rejects with
+   `FORMALIZATION_CONSTRAINT_UNDISPOSED` listing the exact IDs — fix and
+   resubmit; never exit with an undisposed constraint.
+
+Only constraints that exist in the register count. Do not invent or renumber
+IDs; copy them verbatim.
+
 ## Produce the root brief
 
 Create one `brief` artifact first. It is the durable product root used for
 traceability and architecture sizing. Include only grounded information:
 - problem/objective and actors;
 - accepted scope and explicit non-scope;
-- evidence/constraints carried from Discovery;
+- evidence/constraints carried from Discovery (the rendered `## Constraints`
+  register section from above);
 - visible assumptions/unknowns;
 - complexity profile:
   - `complexity.tshirt`: XS | S | M | L | XL
@@ -75,9 +110,11 @@ Before `worker_done`:
 2. verify there is one brief and one PRD root;
 3. verify PRD -> brief trace exists;
 4. verify every produced FR/NFR/RULE -> PRD trace exists;
-5. verify content is WHAT, not HOW;
-6. verify registered paths/hashes and no placeholder remains;
-7. record durable artifact/trace ids in the tracker.
+5. verify every constraint-register ID from `order_constraints` has a valid
+   disposition in the brief metadata (`accepted`, or `waived` with a reason);
+6. verify content is WHAT, not HOW;
+7. verify registered paths/hashes and no placeholder remains;
+8. record durable artifact/trace ids in the tracker.
 
 Call `worker_done({task_id, worker_id, execution_id, result})` exactly once and
 exit.
