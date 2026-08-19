@@ -324,16 +324,33 @@ template, so ALL claude usage on the machine routes locally until you pick a
 
 ## 5. Observe the correct database
 
-`factory.mjs` starts the engine, not the tracker UI. Start a tracker against the
-same DB on a free port:
+`factory.mjs` starts the engine, not the fronts. Start BOTH fronts against the
+same DB — they are read-only projections, safe on a live run, and the operator
+watches the run through them:
 
 ```bash
-export DB_PATH=$(realpath .factory-sandboxes/my-run/factory.sqlite)
-export PORT=4331
-node tracker-view/tracker-view.mjs
+DB=<absolute path to the run factory.sqlite>
+LOGS=<worker-log root of the run, e.g. .factory-sandboxes/my-run-logs>
+
+# Front 1 — tracker board (tasks, workers, engine controls):
+DB_PATH="$DB" PORT=4321 SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1 \
+  node tracker-view/tracker-view.mjs &
+
+# Front 2 — core-view dashboard (Пульс/Цепочка/Ячейка/Хроника):
+CORE_VIEW_DB="$DB" CORE_VIEW_PORT=4325 CORE_VIEW_LOG_ROOT="$LOGS" \
+  node core-view/server.mjs &
 ```
 
-Open: `http://localhost:4331/?project=1`
+Open: `http://localhost:4321/?project=1` (board) and
+`http://localhost:4325/#pulse` (factory dashboard).
+
+- `SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1` in the tracker env is REQUIRED on
+  the opencode worker backend: the tracker serves `POST /api/model/set`, and the
+  guard keeps that endpoint from rewriting `~/.claude/settings.json`.
+- Port 4325 binds strictly to 127.0.0.1 (core-view). If something else holds a
+  port, the tracker exits quietly ("already in use") and core-view refuses a
+  second instance via its pid file — check the port before blaming the front.
+- Both fronts survive engine restarts; restart them only when the run DB moves.
 
 Never assume that `localhost:4321` points at the current run. Verify the page
 title/DB identity and the database path.
