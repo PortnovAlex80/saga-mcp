@@ -862,17 +862,46 @@ export function createBoardRenderApi({
           const r = await fetch('/api/factory/status?epic_id=' + epicId);
           const state = await r.json();
           if (!r.ok || !state.ok) throw new Error(state.error || 'status unavailable');
-          syncEngineToggleButton(state.running && state.alive);
+          // B-006 guard: the controls row is written only by the PANEL start
+          // path — engines launched via scripts/factory.mjs have no
+          // engine_pid there, so state.running&&alive reads false while the
+          // factory demonstrably works. Live worker executions are the
+          // process-independent truth (shared DB); when they exist and the
+          // controls row is blind, DISABLE the toggle entirely: Play would
+          // spawn a duplicate engine (lease collision), Stop would kill the
+          // live workers. The user WILL press the button — it must be dead,
+          // not merely discouraged.
+          let blindLive = 0;
+          try {
+            const w = await fetch('/api/workers/active?project_id=' + (window.__sagaProjectId || ${projectId}));
+            const wj = await w.json();
+            if (wj.ok && Array.isArray(wj.workers)) {
+              blindLive = wj.workers.filter(x => x.phase !== 'exited').length;
+            }
+          } catch { /* workers probe unavailable — fall through to controls */ }
+          const panelSeesEngine = state.running && state.alive;
+          if (!panelSeesEngine && blindLive > 0) {
+            engineToggle.disabled = true;
+            engineToggle.textContent = '▶';
+            engineToggle.classList.remove('engine-running');
+            engineToggle.title = 'Завод работает (запущен вне панели): живых воркеров — '
+              + blindLive + '. Кнопка отключена: старт породил бы второй движок, стоп убил бы живых воркеров.';
+            runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
+              + ' · concurrency=' + state.concurrency;
+          } else {
+            engineToggle.disabled = false;
+            syncEngineToggleButton(panelSeesEngine);
+            const effective = state.model_limit
+              ? Math.min(state.concurrency || 1, state.model_limit)
+              : state.concurrency;
+            runnerStatus.textContent = (panelSeesEngine ? 'работает' : 'остановлен')
+              + ' · concurrency=' + state.concurrency
+              + (effective !== state.concurrency ? ' (effective ' + effective + ')' : '');
+          }
           if (runnerConcurrency && state.concurrency) {
             runnerConcurrency.value = String(state.concurrency);
           }
           if (modelSelect && state.model) modelSelect.value = state.model;
-          const effective = state.model_limit
-            ? Math.min(state.concurrency || 1, state.model_limit)
-            : state.concurrency;
-          runnerStatus.textContent = (state.running && state.alive ? 'работает' : 'остановлен')
-            + ' · concurrency=' + state.concurrency
-            + (effective !== state.concurrency ? ' (effective ' + effective + ')' : '');
         } catch (error) {
           runnerStatus.textContent = 'статус недоступен';
         }
