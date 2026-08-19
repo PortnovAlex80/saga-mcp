@@ -164,6 +164,18 @@ parallel desks — the stage stage-10 never reached.
 
 ## Repair queue (proposal — red test first, one commit per class)
 
+> **CAMPAIGN STATUS (live tracker — update on every merge):**
+> - Queue 1 B-004 cluster → **MERGED `ccd862a0`** (RED/GREEN independently verified).
+> - Queue 2 E-S1 loop detector → branch `repair/es1-loop-detector` @ `9e38679d` reviewed
+>   (shim-side `--format json` translation; 334/334; live e2e) — **MERGE HELD until the
+>   live run is terminal** (the shim spawns per worker: merging mid-run changes live behavior).
+> - Queue 3 E-P1/A6 spawn+brake → **MERGED `ad202db6`**.
+> - Queue 4a X-6/9/5 integration substrate → branch in progress (`repair/x65-integration`).
+> - Queue 4b C-1/4/5 route freeze → branch in progress (`repair/c145-route-freeze`).
+> - Queue 4c R-sweep + S-tools → branch in progress (`repair/rs-replay-robustness`).
+> Merges land on saga4 after independent review (diff audit + RED reproduction +
+> independent suite counts); dist rebuild deferred to the run-terminal boundary.
+
 1. **W-1/2/3 + O-D6** — the B-004 cluster: one predicate for effects-settled;
    C8 recovery must not write unrecoverable rows; carry-forward presentations
    must be replay-certifiable; defer loops need a valve (reason-identity cap
