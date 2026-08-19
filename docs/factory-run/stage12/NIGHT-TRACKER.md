@@ -274,3 +274,5 @@ first; any E9-reserve code is escalate-never-delete.
   brief's "only schema move" was spent by Wave B (99→100); if the
   ac-drift-remedy tree carries its own schema change, that is escalation
   item 4 — STOP and report, do not decide.
+- **01:21 (cron)** — ac-drift-remedy merge commit landed: `2a0c21d7` (wave C
+  agent; full six-suite regression + reconciliation report still running).
