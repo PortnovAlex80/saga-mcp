@@ -297,8 +297,10 @@ The artifact's document content (the .md file) has this structure:
   degradable in the baseline; verification will record `unknown` and the
   episode will reach Integration without operator intervention.
 - Lesson: When a worker hits ≥3 retries on the same AC, auto-spawn
-  saga-diagnostician. The diagnostician reads `worker_executions.attempt_history`
-  and proposes a hypothesis; this is cheaper than operator hint.
+  saga-diagnostician. The diagnostician reads the stuck task's
+  `metadata.attempt_history` (materialized by saga-core from `RECOVERY:`
+  comments and submission-gate rejections) and proposes a hypothesis; this
+  is cheaper than operator hint.
 
 ## 4. Action items for the next episode
 

@@ -60,9 +60,12 @@ that depends on the dev-task. When the specialist completes, the dev-task's
   created a `specialist.perf` task that `depends_on` the triggering
   dev-task's *current attempt*.
 - **Postcondition:** The specialist task transitions to `done`. The
-  triggering dev-task's `metadata.hint` is updated (via
-  `task_update({ id, metadata: { hint: <structured hint> } })` or via
-  patchTaskMetadata helper B1). The dev-task becomes claimable; the next
+  triggering dev-task's `metadata.hint` is updated via a read-merge-write:
+  `task_get` the dev-task, `JSON.parse` its `metadata` string, add the
+  `hint` key, and pass the FULL merged object to `task_update({ id,
+  metadata })` — `task_update` replaces `metadata` wholesale, so a bare
+  `metadata: { hint }` call would destroy process fields (`process_run_id`)
+  and make the card unclaimable. The dev-task becomes claimable; the next
   worker reads the hint.
 
 ## When to use
@@ -421,30 +424,24 @@ After applying Fix 1+2:
 
 ### Step 11. Save the hint
 
-Two options depending on what helper is available:
+`task_update` replaces the whole `metadata` object, and `task_get` returns
+`metadata` as a JSON string — so the save MUST be a read-parse-merge-write:
 
-**Option A (preferred, B1 helper):**
-```
-patchTaskMetadata({
-  task_id: <triggering dev-task id>,
-  path: 'hint',
-  value: <hint markdown>
-})
-```
-
-**Option B (fallback):**
 ```
 const triggerTask = task_get({ id: <triggering dev-task id> });
-const newMetadata = { ...triggerTask.metadata, hint: <hint markdown> };
+const meta = JSON.parse(triggerTask.metadata);   // keep every existing key
+const newMetadata = { ...meta, hint: <hint markdown> };
 task_update({
   id: <triggering dev-task id>,
   metadata: newMetadata
 });
 ```
 
-Either way, the dev-task now has `metadata.hint` populated. The dev worker
-claiming it next will consume the hint per saga-worker skill (C3 in the
-v2.2 plan).
+Never call `task_update({ id, metadata: { hint } })` with a fresh object —
+that wipes `process_run_id` and makes the dev-task unclaimable.
+
+The dev-task now has `metadata.hint` populated. The dev worker claiming it
+next will consume the hint per saga-worker skill (C3 in the v2.2 plan).
 
 ### Step 12. Complete the specialist task
 

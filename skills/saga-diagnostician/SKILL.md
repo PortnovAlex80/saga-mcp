@@ -69,7 +69,9 @@ The diagnostician reads five things:
 
 1. **The stuck task** — `task_get({id: metadata.stuck_task_id})`.
    Provides `title`, `description`, `source_artifact_ids`, `task_kind`,
-   `workflow_stage`, `metadata.attempt_history` (if persisted), and any
+   `workflow_stage`, `metadata.attempt_history` (the durable attempt log
+   saga-core materializes from `RECOVERY:` comments and submission-gate
+   rejections; present once the task has prior attempts), and any
    prior recovery comments.
 
 2. **The attempts directory** — `<repo>/.solla/attempts/task-<stuck_task_id>/`.

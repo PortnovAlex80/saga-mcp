@@ -464,9 +464,60 @@ export function buildPrompt({
       ? `9. Before worker_done, call verification_record only for the task's canonical AC with recorded_by="${workerId}"${assignment.execution_id ? `, execution_id="${assignment.execution_id}"` : ''}, and truthful pass/fail evidence.`
       : '9. Preserve the task provenance and do not create unrelated downstream work.',
     '',
+    // BLINDSIGHT X2: the durable recovery memory (materialized onto the task
+    // row by src/lifecycle/task-recovery-memory.ts at claim / RECOVERY-comment
+    // time) must reach the worker as a LOUD directive, not as JSON buried in
+    // the task payload below. Workers previously started every retry from a
+    // blank context while the failure history sat unread in the DB.
+    buildRecoveryMemoryBlock(task),
+    '',
     'Assigned task payload:',
     JSON.stringify(task, null, 2),
   ].filter(line => line !== null).join('\n');
+}
+
+/**
+ * Parse the task metadata's recovery-memory fields and render the loud
+ * prior-attempts block. Returns null when the task has no attempt history
+ * (fresh tasks get no recovery noise) or when the metadata is unreadable
+ * (fail-soft: prompt assembly must never break on a corrupt column).
+ */
+export function buildRecoveryMemoryBlock(task) {
+  let metadata = task?.metadata;
+  if (typeof metadata === 'string') {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch {
+      return null;
+    }
+  }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const attemptCount = typeof metadata.attempt_count === 'number'
+    && Number.isInteger(metadata.attempt_count)
+    ? metadata.attempt_count
+    : 0;
+  if (attemptCount <= 0) return null;
+  const failures = Array.isArray(metadata.previous_failures)
+    ? metadata.previous_failures.filter(entry => typeof entry === 'string')
+    : [];
+  const hint = typeof metadata.hint === 'string' && metadata.hint.trim() !== ''
+    ? metadata.hint
+    : null;
+  return [
+    '--- ⚠️ PRIOR ATTEMPTS — EPISODIC MEMORY (machine-materialized) ---',
+    `This task was already in work: ${attemptCount} previous attempt(s). DO NOT start from a blank context and DO NOT repeat failed approaches.`,
+    ...(hint ? [`hint=${hint}`] : []),
+    ...(failures.length
+      ? [
+          'previous_failures (verbatim; each approach below already failed):',
+          ...failures.map((entry, index) => `   ${index + 1}. ${entry}`),
+        ]
+      : []),
+    'Full attempt log: task_get({ id }) → metadata.attempt_history (entries carry recovery_summary, kind recovery_note|submission_rejection, durable source_ref).',
+    '--- END PRIOR ATTEMPTS ---',
+  ].join('\n');
 }
 
 export class ClaudeBoardRunner {

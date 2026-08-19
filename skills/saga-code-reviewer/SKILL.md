@@ -152,9 +152,14 @@ Extract:
 - `source_artifact_ids` — which AC(s) this task implements.
 - `source_ref.file` — the file(s) the Builder was supposed to touch.
 - `metadata.scaffold_files` — files the scaffold task created (Pattern B).
-- `metadata.previous_failures` — earlier review feedback the Builder should
-  have addressed.
-- `metadata.hint` — operator hint if present.
+- `metadata.previous_failures` — prior-attempt failure summaries saga-core
+  materializes at claim: `RECOVERY:` notes left by previous
+  builders/verifiers plus submission-gate rejections. Earlier review
+  verdicts themselves arrive as task comments (`worker_done` stores each
+  result as a comment) — read the `comments` list task_get returns.
+- `metadata.hint` — directed hint from a planner/specialist, or the
+  `[task-recovery-memory]` notice saga-core adds when the task was already
+  in work.
 
 Read each `source_artifact_id` via `artifact_get`. The AC's `Given/When/Then`
 and `properties` block are the **acceptance oracle for behavior**. Code review
@@ -551,9 +556,10 @@ ADVISORY (non-blocking):
 - [perf R-2] useEffect at src/ui/calculator-form.tsx:120 dep is an inline object; fires every render. Memoize or derive inside the effect.
 - [maintainability M2] Commented-out block at src/ui/calculator-form.tsx:140 — delete.
 
-This is the 2nd review of #20. metadata.previous_failures noted the TS2304
-issue was already flagged on review #1 — Builder must address ALL previous
-review feedback, not just one item.
+This is the 2nd review of #20. metadata.previous_failures carries the
+builder's own RECOVERY note about the TS2304 cluster, and the review #1
+verdict text is in the task comments — Builder must address ALL previous
+feedback, not just one item.
 ```
 
 ### Example 3 — soft advisory only

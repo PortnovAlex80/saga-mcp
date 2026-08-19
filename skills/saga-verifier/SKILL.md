@@ -132,22 +132,31 @@ COVERAGE-GAPS:
 на этой же задаче (если они есть):
 
 1. Если в задаче есть **`metadata.hint`** — ОБЯЗАНЫ прочитать и учесть.
-   Hint — это направленная подсказка от planner'а или recovery-воркера: например
+   Hint — это направленная подсказка от planner'а, specialist-воркера
+   (perf/type-fixer) или recovery-системы: например
    "AC-NFR-1 требует Vite bundle analysis, смотрите vendor/three.js".
-   Игнорировать hint = повторять чужие ошибки.
+   При повторном claim saga-core сама проставляет машинный hint
+   `[task-recovery-memory] This task was already in work...` — это сигнал,
+   что у задачи есть история. Игнорировать hint = повторять чужие ошибки.
 
 2. Если есть **`metadata.previous_failures`** — прочитать какие подходы
-   уже пробовали. Это короткий JSON-массив диагнозов от прошлых verifier'ов
-   (Lighthouse=78, axe=5 violations, и т.д.).
+   уже пробовали. Это короткий JSON-массив диагнозов: `RECOVERY:`-заметки
+   прошлых воркеров + отказы submission-gate (Lighthouse=78, axe=5
+   violations, MISSING_ARTIFACT_RELATION, и т.д.).
 
 3. **НЕ повторяйте подходы из `previous_failures`.** Если предыдущая попытка
    сгенерировала property test на monotonicity и упала на Lighthouse —
    не генерируйте тот же тест; либо чините real cause, либо записывайте
    `outcome:'unknown'` с диагностикой.
 
-4. Если есть **`metadata.attempt_history`** — это более полный лог попыток
-   с `recovery_summary`, `model`, `edit_count`. Читайте самое свежее
-   `recovery_summary` — там вербальная рефлексия предыдущего verifier'а.
+4. Если есть **`metadata.attempt_history`** — это полный накопительный лог
+   попыток, который saga-core материализует при claim из durable-источников.
+   Каждая запись: `attempt` (порядковый номер), `kind` (`recovery_note` /
+   `submission_rejection`), `recovery_summary` (вербальная рефлексия
+   предыдущего verifier'а или код отказа), `at`, `worker_id`,
+   `execution_id`, `source_ref` (durable-указатель: `comment:<id>` или
+   `submission-validation-rejection:<ref>`). Читайте самое свежее
+   `recovery_summary`.
 
 > **Why.** В cannon-episode task #31 пережила 38 failed-попыток, потому что
 > каждый свежий verifier начинал с пустого контекстом и повторял один и
