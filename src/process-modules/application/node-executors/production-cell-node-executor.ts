@@ -49,6 +49,10 @@ import {
 import { ProductionCellCoordinator } from '../production-cell-coordinator.js';
 import type { CommitAcceptedCandidate } from '../../application/commit-accepted-candidate.js';
 import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
+import {
+  DEFAULT_EFFECT_ATTEMPT_STASIS_THRESHOLD,
+  detectEffectAttemptStasis,
+} from '../../domain/workplace/effect-attempt-stasis.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { AuthorCandidateCarryForwardPort } from '../../../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import type { TransitionObligationIntegrator } from '../transition-obligation-integrator.js';
@@ -1197,6 +1201,53 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         providerReceiptRef: result.outcome === 'succeeded' ? result.receiptRef : null,
         evidence: result.outcome === 'pending' ? {} : result.evidence ?? {},
       });
+      // BLINDSIGHT F1 — the durable attempt chain IS the retry history of
+      // this exact desired state (idempotencyKey = acceptance digest). The
+      // previously dead reader readEffectAttempts is now consumed AT THE
+      // DECISION POINT: K consecutive attempts with the same typed identity
+      // (outcome + reason) are spin, and the effect_pending loop gets its
+      // honest typed end — the same CONVEYOR §15 policy the obligation
+      // reason-identity valve applies to defer/fail loops. A CHANGING typed
+      // identity resets the run (converging chains are work, never taxed).
+      // Fail-closed: this only ENDS the wait; the receipt boundary below is
+      // untouched and final acceptance still demands the exact receipt.
+      if (result.outcome !== 'succeeded') {
+        const attemptChain = this.opts.finalAcceptance.readEffectAttempts(
+          workplace.ref,
+          effect.effectId,
+          acceptanceDigest,
+        );
+        const stasis = detectEffectAttemptStasis(attemptChain, {
+          repeatThreshold: DEFAULT_EFFECT_ATTEMPT_STASIS_THRESHOLD,
+        });
+        if (stasis) {
+          engineLog(
+            `[effect-stasis] cell=${cell.id} workplace=${serializeWorkplaceRef(workplace.ref)} `
+            + `effect=${effect.effectId} — outcome '${stasis.outcome}' with reason `
+            + `<${stasis.reason ?? '(none)'}> repeated ${stasis.consecutive} times consecutively `
+            + `:: human park ACCEPTANCE_EFFECT_ATTEMPT_STASIS`,
+          );
+          this.opts.coordinator.applyGateDecision(workplace.ref, {
+            verdict: 'human_required',
+            isFinal: true,
+            parkReason: {
+              code: 'ACCEPTANCE_EFFECT_ATTEMPT_STASIS',
+              message: `Post-acceptance effect '${effect.effectId}' returned outcome `
+                + `'${stasis.outcome}' with reason <${stasis.reason ?? '(none)'}> `
+                + `${stasis.consecutive} times consecutively for the same accepted state — `
+                + 'the effect loop is spinning, not converging. Operator review required; '
+                + 'the accepted material and every attempt remain durable.',
+              evidenceRefs: [
+                gateDecisionKey,
+                acceptedCandidate.candidateSetRef,
+                `effect-attempts:${effect.effectId}:${acceptanceDigest}`,
+              ],
+            },
+          });
+          this.opts.persistence.projectWorkplace(workplace.ref);
+          return pausedOutcome(acceptedCandidate.candidateSetRef);
+        }
+      }
       if (result.outcome === 'pending') return pendingOutcome(acceptedCandidate.candidateSetRef);
       if (result.outcome === 'repair_required') {
         const issue = buildAcceptanceEffectRepairIssue({ effect, authority, result });
