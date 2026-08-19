@@ -1,4 +1,10 @@
 /**
+ * [E9 RESERVE — DO NOT REMOVE] This module is also the prerequisite of the
+ * deferred recycle-run design (docs/architecture/RECYCLE-RUN-DESIGN.md,
+ * architect-deferred 2026-08-19): the change-request hook, the capsule
+ * MISS/HIT semantics and the product version row all consume this register
+ * as the baseline of the first honest re-run. See docs/architecture/E9-RESERVE.md.
+ *
  * Order Constraint Register — the single typed source for the three AC-drift
  * obligation networks (docs/architecture/AC-DRIFT-REMEDY-DESIGN.md).
  *
