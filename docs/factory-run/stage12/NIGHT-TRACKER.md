@@ -19,7 +19,7 @@ honest and successful — implement and exercise the E9 recycle.
 | # | Phase | State | Owner | Result |
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
-| 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ⬚ pending | wave-A agent | |
+| 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✖ stopped (1 of 4 green) | wave-A agent | es1-loop-detector merged+pushed `b8b50c04` (arch 339 pass/0 fail, pm 1098 pass/0 fail, build exit 0); provider-retry CONFLICT (content) in `tools/agent-proxy/claude-shim.mjs` → merge aborted, wave stopped per no-conflict-resolution rule; worker-names and worker-disorientation NOT attempted |
 | 2 | TASK 1 Wave B merge: 7 blindsight trees | ⬚ pending | wave-B agent | |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
@@ -59,3 +59,31 @@ first; any E9-reserve code is escalate-never-delete.
   (`factory-model-profiles.ts`: limit 2, effort high, verified via /models
   2026-08-18) and in the shim map (`zai-coding-plan/glm-4.6`, 200K). No code
   change needed for the route.
+- **00:31 machine clock** (wave-A agent; prior entries show later readings —
+  clock skew between sessions) — PHASE 1 STOPPED after 1 of 4 merges. Verbatim
+  record:
+  - Baseline on saga4 @ `17eec614` (clean): `npm run build` exit 0;
+    architecture suite `tests 329 / pass 329 / fail 0 / skipped 0`;
+    process-modules suite `tests 1098 / pass 1098 / fail 0 / skipped 0`.
+    (Brief ballpark said ~345 arch / ~1057 pm; actual saga4-head baselines
+    are 329 / 1098 — recorded as the reconciliation baseline.)
+  - Merge 1 `repair/es1-loop-detector` → merge commit `b8b50c04`
+    (no-ff, no conflicts). Build exit 0. Architecture `tests 339 / pass 339 /
+    fail 0 / skipped 0` (+10 from the new
+    `tests/architecture/claude-shim-stream-json.test.mjs`). Process-modules
+    `tests 1098 / pass 1098 / fail 0 / skipped 0` (unchanged). Pushed
+    `origin/saga4` `17eec614..b8b50c04`.
+  - Merge 2 `repair/provider-retry` → `CONFLICT (content): Merge conflict in
+    tools/agent-proxy/claude-shim.mjs` (README auto-merged). `git merge
+    --abort` executed; tree clean at `b8b50c04`. Wave STOPPED per TASK 1 rule
+    (no conflict resolution, no repair forward). Read-only `git merge-tree`
+    confirms the conflict is confined to `claude-shim.mjs`; both trees rewrote
+    overlapping regions of that one file from common base `6578809f`
+    (es1 +173/−13 lines stream-json translation; provider-retry +309/−15
+    lines retry ladder). Judgment: interaction between the two trees (same
+    file, overlapping hunks), not a build/test defect of either tree.
+  - Merges 3 (`repair/worker-names`) and 4 (`repair/worker-disorientation`)
+    NOT attempted — wave stopped.
+  - Operator action needed at wake: decide how to sequence/rebase the two
+    shim-touching trees (es1 + provider-retry) or hand-resolve the
+    `claude-shim.mjs` overlap; after that, re-plan Wave A remainder.
