@@ -816,15 +816,15 @@ export class ClaudeBoardRunner {
     if (!workspaceRoot || !existsSync(workspaceRoot)) {
       throw new Error(`Local checkout for repository '${assignment.repository.name}' was not found`);
     }
-    // Provider routing: read the active model/provider for this episode from
-    // saga.db metadata (written by POST /api/model/set). provider==='lmstudio'
-    // → point THIS worker's claude at the local LM Studio endpoint via env
-    // (env overrides ~/.claude/settings.json, so the global z.ai config is
-    // whatever ~/.claude/settings.json says.
-    // `am.effort` carries the model-config reasoning effort (e.g. 'high' for
-    // z.ai cloud). LM Studio models omit it → we pass NO --effort so the local
-    // chat template picks its own default (LM Studio rejects effort='xhigh'/
-    // 'high' for qwen, mapping them inefficiently to reasoning='on').
+    // Provider routing: the FROZEN model route from the execution_context
+    // snapshot captured at claim is the single source of truth (D1.1) — same
+    // value the gateway and proposal provenance see. `am.effort` carries the
+    // model-config reasoning effort (e.g. 'high' for z.ai cloud). LM Studio
+    // models omit it → we pass NO --effort so the local chat template picks
+    // its own default (LM Studio rejects effort='xhigh'/'high' for qwen,
+    // mapping them inefficiently to reasoning='on'). The physical endpoint
+    // for each backend is resolved below from `am.endpoint` (C-1) — never from
+    // live settings or ambient env.
     //
     // D1.1: prefer the FROZEN model route from the execution_context snapshot
     // captured at claim (single source of truth — same value the gateway and
@@ -837,7 +837,9 @@ export class ClaudeBoardRunner {
     // The simulator is not a model, so --model is omitted when isSimulator.
     const executorSelection = this.resolveExecutorPath(assignment);
     const isSimulator = executorSelection.isSimulator;
-    const isLmstudio = !isSimulator && am.provider === 'lmstudio' && am.model;
+    const isLmstudio = !isSimulator
+      && (am.provider === 'lmstudio' || am.endpoint?.backend === 'lmstudio')
+      && am.model;
     // For the simulator there is no model id. For LM Studio we pass the concrete
     // model id (--model <lmstudio-id>); for z.ai we keep the 'opus' alias
     // (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL). When the frozen route carries
@@ -1077,28 +1079,53 @@ export class ClaudeBoardRunner {
       const modelIdx = args.indexOf('--model');
       args.splice(modelIdx + 2, 0, '--effort', effortArg);
     }
-    // LM Studio worker env: redirect THIS worker's claude to the local
-    // Anthropic-compatible endpoint. Tokens are placeholders — LM Studio does
-    // not validate them; they exist only so claude CLI doesn't refuse to start
-    // (it requires some non-empty auth value). CLAUDE_CODE_ATTRIBUTION_HEADER=0
-    // is required by the LM Studio Claude Code integration docs (the default
-    // attribution header trips up the local server).
-    const lmstudioEnv = isLmstudio ? {
-      ANTHROPIC_BASE_URL: this.lmstudioBaseUrl,
-      ANTHROPIC_AUTH_TOKEN: 'lm-studio',
-      ANTHROPIC_API_KEY: 'lm-studio',
-      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+    // FROZEN-ROUTE-ENV-INVARIANT (C-1, stage-11 PREVENTIVE-HUNT Layer 6):
+    // the child's backend env is a PURE FUNCTION of the FROZEN route captured
+    // at claim plus the fixed SAGA_* identity env. The runner NEVER reads
+    // ~/.claude/settings.json (or any live model config) to decide routing,
+    // and ambient ANTHROPIC_* routing vars from the engine's own environment
+    // are STRIPPED so they cannot reroute a frozen worker:
+    //
+    //   endpoint.backend === 'lmstudio'
+    //     → ANTHROPIC_BASE_URL = the URL FROZEN at claim (endpoint.base_url);
+    //       tokens are placeholders (LM Studio does not validate them, claude
+    //       CLI just requires a non-empty auth value).
+    //       CLAUDE_CODE_ATTRIBUTION_HEADER=0 per the LM Studio integration docs.
+    //   endpoint.backend === 'agent-proxy' (opencode shim)
+    //     → NO ANTHROPIC_* at all: the shim owns routing via its model map and
+    //       NEVER reads ~/.claude/settings.json for routing. settings.json
+    //       belongs to the operator's interactive claude, not the worker route.
+    //   endpoint.backend === 'claude-cli' (and pre-C-1 routes)
+    //     → NO ambient ANTHROPIC_*: the z.ai auth contract lives in
+    //       ~/.claude/settings.json BY DESIGN (the two-state switch), but
+    //       nothing in the engine's ambient env may steer the endpoint.
+    //       Pre-C-1 lmstudio routes (no endpoint field) keep the legacy
+    //       behavior of resolving from this.lmstudioBaseUrl.
+    const frozenEndpoint = am.endpoint ?? null;
+    const backend = frozenEndpoint?.backend
+      ?? (isLmstudio ? 'lmstudio' : 'claude-cli');
+    const ANTHROPIC_ROUTING_ENV_KEYS = [
+      'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY',
+    ];
+    const sanitizedEnv = { ...process.env };
+    for (const key of ANTHROPIC_ROUTING_ENV_KEYS) delete sanitizedEnv[key];
+    const providerEnv = {};
+    if (backend === 'lmstudio') {
+      providerEnv.ANTHROPIC_BASE_URL = frozenEndpoint?.base_url || this.lmstudioBaseUrl;
+      providerEnv.ANTHROPIC_AUTH_TOKEN = 'lm-studio';
+      providerEnv.ANTHROPIC_API_KEY = 'lm-studio';
+      providerEnv.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
       // Явный context window для non-Claude модели (LM Studio qwen3.6 загружена
       // с loaded_context_length=262144). Без этой переменной Claude Code использует
       // hardcoded fallback (~200k) — см. https://code.claude.com/docs/en/env-vars
       // и anthropics/claude-code#46416.
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
-    } : {};
+      providerEnv.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '262144';
+    }
     const child = this.spawnClaude(executorSelection.claudePath, args, {
       cwd: executionCwd,
       env: {
-        ...process.env,
-        ...lmstudioEnv,
+        ...sanitizedEnv,
+        ...providerEnv,
         SAGA_RUN_ID: run.id,
         SAGA_WORKER_ID: workerId,
         SAGA_EXECUTION_ID: assignment.execution_id || '',
@@ -1138,7 +1165,7 @@ export class ClaudeBoardRunner {
         executor_path: executorSelection.claudePath,
         argv: args,
         executor_kind: assignment.execution_context?.executor_kind ?? null,
-        model_route: { provider: am.provider ?? null, model: am.model ?? null, effort: am.effort ?? null },
+        model_route: { provider: am.provider ?? null, model: am.model ?? null, effort: am.effort ?? null, endpoint: am.endpoint ?? null },
         model_arg: modelArg,
         effort_arg: effortArg,
         installation_id: launchSpec?.installationId ?? null,

@@ -13,6 +13,7 @@ import type { WorkerModelRoute } from '../../application/ports/worker-executor.j
 import os from 'node:os';
 import { getDb } from '../../db.js';
 import { withBusyRetry } from '../../runtime/busy-retry.js';
+import { computeModelAdmission } from '../../runtime/factory-model-profiles.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
 import { reconcileWorkerExecutions, type ProcessProbe } from '../../worker-executions.js';
@@ -56,13 +57,19 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
     const row = getDb().prepare(
       `SELECT c.concurrency AS c,
               c.model_concurrency_limit AS lim,
+              c.model_name AS requested_model,
               (SELECT COUNT(*)
                  FROM worker_executions live
                 WHERE live.epic_id=c.epic_id
                   AND live.state IN ('reserved','running','cancel_requested')) AS active
          FROM lifecycle_execution_controls c
         WHERE c.epic_id=?`,
-    ).get(epicId) as { c: number | null; lim: number | null; active: number } | undefined;
+    ).get(epicId) as {
+      c: number | null;
+      lim: number | null;
+      requested_model: string | null;
+      active: number;
+    } | undefined;
     if (!row) {
       throw new Error(
         `CONCURRENCY_POLICY_MISSING: epic ${epicId} has no lifecycle_execution_controls row`,
@@ -83,11 +90,34 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         `CONCURRENCY_ACTIVE_COUNT_INVALID: epic ${epicId} active count is '${row.active}'`,
       );
     }
+    // C-4 (stage-11 PREVENTIVE-HUNT Layer 6): group the in-flight executions
+    // by their FROZEN model. The live controls row can be rewritten mid-run by
+    // /api/model/set; the frozen route limit of each in-flight execution must
+    // still bind admission or a model switch stacks spawns past both limits.
+    // json_extract on the NOT NULL '{}' default is safe; a missing
+    // execution_context yields NULL → '(unfrozen)' bucket.
+    const requestedModel = typeof row.requested_model === 'string' && row.requested_model.length > 0
+      ? row.requested_model
+      : null;
+    const frozenModels = getDb().prepare(
+      `SELECT json_extract(metadata, '$.execution_context.model_route.model') AS m
+         FROM worker_executions
+        WHERE epic_id=? AND state IN ('reserved','running','cancel_requested')`,
+    ).all(epicId) as Array<{ m: string | null }>;
+    const modelDecision = computeModelAdmission({
+      requestedModel,
+      activeFrozenModels: frozenModels.map(entry => entry.m),
+      effectiveControlsCeiling: Math.min(row.c!, row.lim!),
+    });
     return {
       operatorConcurrency: row.c!,
       modelConcurrencyLimit: row.lim!,
       effectiveConcurrency: Math.min(row.c!, row.lim!),
       activeExecutions: row.active,
+      requestedModel,
+      activeByModel: modelDecision.activeByModel,
+      requestedModelLimit: modelDecision.requestedModelLimit,
+      modelSlotsAvailable: modelDecision.modelSlotsAvailable,
     };
   }
 

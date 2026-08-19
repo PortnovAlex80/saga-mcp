@@ -60,6 +60,29 @@ export interface ConcurrencyAdmissionSnapshot {
   modelConcurrencyLimit: number;
   effectiveConcurrency: number;
   activeExecutions: number;
+  /**
+   * C-4 (stage-11 PREVENTIVE-HUNT Layer 6): the model the NEXT claim would
+   * freeze (the live controls model_name — the same value the claim
+   * transaction freezes into execution_context.model_route.model).
+   */
+  requestedModel: string | null;
+  /**
+   * C-4: active in-flight executions grouped by their FROZEN model
+   * (worker_executions.metadata.execution_context.model_route.model).
+   * Executions without an execution context land in the '(unfrozen)' bucket.
+   */
+  activeByModel: Readonly<Record<string, number>>;
+  /**
+   * C-4: catalog limit of `requestedModel`; null when the model is unknown to
+   * the factory catalog (fail-open — the controls ceiling then binds).
+   */
+  requestedModelLimit: number | null;
+  /**
+   * C-4: would ONE more claim of `requestedModel` stay within the per-model
+   * frozen-limit aggregation? Admission must require BOTH this AND the live
+   * epic-wide ceiling (activeExecutions < effectiveConcurrency).
+   */
+  modelSlotsAvailable: boolean;
 }
 
 /**

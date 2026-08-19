@@ -240,4 +240,20 @@ function assertFrozenExecutionRoute(assignment: AssignedWork): void {
   if (!(modelRoute.effort === null || typeof modelRoute.effort === 'string')) {
     throw new Error('MODEL_ROUTE_INVALID: effort must be string|null');
   }
+  // C-1: endpoint coordinates are optional (pre-C-1 snapshots predate them),
+  // but a PRESENT endpoint must be well-formed — spawn derives the child's
+  // backend env from it, so a malformed marker must fail closed here.
+  const endpoint = modelRoute.endpoint;
+  if (endpoint !== undefined && endpoint !== null) {
+    const backend = (endpoint as { backend?: unknown }).backend;
+    const baseUrl = (endpoint as { base_url?: unknown }).base_url;
+    const backendValid = backend === 'agent-proxy'
+      || backend === 'lmstudio'
+      || backend === 'claude-cli';
+    const baseUrlValid = baseUrl === null || baseUrl === undefined
+      || (typeof baseUrl === 'string' && baseUrl.length > 0);
+    if (typeof endpoint !== 'object' || !backendValid || !baseUrlValid) {
+      throw new Error('MODEL_ROUTE_INVALID: endpoint must be {backend, base_url}');
+    }
+  }
 }

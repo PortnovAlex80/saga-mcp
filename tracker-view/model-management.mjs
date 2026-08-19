@@ -14,6 +14,41 @@ import path from 'node:path';
 import os from 'node:os';
 import { FACTORY_CLOUD_MODELS } from '../dist/runtime/factory-model-profiles.js';
 
+/**
+ * C-5 (stage-11 PREVENTIVE-HUNT Layer 6) — the settings.json switch guard
+ * decision, extracted as a PURE function of (env, durable evidence).
+ *
+ * The old guard read only the TRACKER's process.env. The engine is a separate
+ * detached host: engine on the agent-proxy shim + tracker without the env
+ * markers → the guard passed → /api/model/set rewrote ~/.claude/settings.json
+ * — the operator's interactive channel (the bd81b02b "4.5 grid" recurrence
+ * vector). The durable routing truth must ALSO be consulted:
+ *
+ *   - the engine spawn stamps a worker-backend marker next to the engine log
+ *     (factory_launch_requests.engine_log_path + '.worker-backend');
+ *   - post-C-1 frozen routes carry endpoint.backend on active
+ *     worker_executions.
+ *
+ * ANY 'agent-proxy' evidence among ACTIVE runs → refuse the switch.
+ *
+ * @param {{ env: Record<string,string|undefined>, activeBackendEvidence?: Array<{source:string, backend:string}> }} input
+ * @returns {{ disabled: boolean, reasons: string[] }}
+ */
+export function resolveClaudeSettingsSwitchGuard({ env, activeBackendEvidence = [] }) {
+  const reasons = [];
+  if (env.SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS === '1') {
+    reasons.push('env:SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS');
+  } else if (/agent-proxy/.test(env.SAGA_REAL_CLAUDE_PATH || env.SAGA_CLAUDE_PATH || '')) {
+    reasons.push('env:agent-proxy-launcher');
+  }
+  for (const evidence of activeBackendEvidence) {
+    if (evidence && evidence.backend === 'agent-proxy') {
+      reasons.push(`durable:${evidence.source}`);
+    }
+  }
+  return { disabled: reasons.length > 0, reasons };
+}
+
 export function createModelManagementApi({
   runtimeConfig,
   withDb,
@@ -21,6 +56,9 @@ export function createModelManagementApi({
   respondJson,
   readJsonRequest,
   workerModel,
+  // Injectable home directory (tests point the settings paths at a temp dir;
+  // production keeps os.homedir()).
+  homeDir = os.homedir(),
 }) {
   // --- Constants --------------------------------------------------------------
   // Z.ai cloud models (subscription). Source: Z.ai GLM Coding Plan FAQ
@@ -38,9 +76,57 @@ export function createModelManagementApi({
   // Rewriting it on every /api/model/set would hijack the interactive channel
   // (the "4.5 grid" incident, 2026-08-18). Model routing for the opencode
   // backend lives in lifecycle_execution_controls + the shim's model map.
-  const claudeSettingsSwitchDisabled = () =>
-    process.env.SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS === '1'
-    || /agent-proxy/.test(process.env.SAGA_REAL_CLAUDE_PATH || process.env.SAGA_CLAUDE_PATH || '');
+  //
+  // C-5: the guard must not depend only on THIS process's env. The engine is a
+  // separate detached host; its routing truth is durable — the spawn marker
+  // next to the engine log + the frozen endpoints of active executions.
+  // claudeSettingsSwitchDecision() returns { disabled, reasons } so the API
+  // note can cite WHY the switch was refused.
+  const readDurableBackendEvidence = () => {
+    const evidence = [];
+    // 1. Active launches: the engine spawner stamps
+    //    <engine_log_path>.worker-backend ('agent-proxy' | 'claude-cli')
+    //    right after spawn (scripts/factory-engine-spawn.mjs).
+    try {
+      const launches = withDb(db => db.prepare(
+        `SELECT launch_ref, engine_log_path
+           FROM factory_launch_requests
+          WHERE state IN ('requested','claimed','running')
+            AND engine_log_path IS NOT NULL`,
+      ).all());
+      for (const launch of launches) {
+        const markerPath = `${launch.engine_log_path}.worker-backend`;
+        try {
+          if (fs.existsSync(markerPath)) {
+            const backend = fs.readFileSync(markerPath, 'utf8').trim();
+            if (backend) evidence.push({ source: `launch:${launch.launch_ref}`, backend });
+          }
+        } catch { /* unreadable marker — other evidence may still exist */ }
+      }
+    } catch { /* no factory_launch_requests table on old DBs — additive check */ }
+    // 2. Frozen routes of active executions (post-C-1): the endpoint contract
+    //    froze the shim marker at claim time.
+    try {
+      const rows = withDb(db => db.prepare(
+        `SELECT DISTINCT
+                json_extract(metadata, '$.execution_context.model_route.endpoint.backend') AS backend
+           FROM worker_executions
+          WHERE state IN ('reserved','running','cancel_requested')
+            AND json_extract(metadata, '$.execution_context.model_route.endpoint.backend') IS NOT NULL`,
+      ).all());
+      for (const row of rows) {
+        if (row && typeof row.backend === 'string' && row.backend) {
+          evidence.push({ source: 'frozen-route', backend: row.backend });
+        }
+      }
+    } catch { /* malformed metadata rows must not break the guard */ }
+    return evidence;
+  };
+
+  const claudeSettingsSwitchDecision = () => resolveClaudeSettingsSwitchGuard({
+    env: process.env,
+    activeBackendEvidence: readDurableBackendEvidence(),
+  });
 
   // LM Studio local models (no subscription, runs on this machine). Populated
   // lazily from GET <LMSTUDIO_URL>/models (Anthropic+OpenAI-compatible server
@@ -54,7 +140,7 @@ export function createModelManagementApi({
   // Snapshot of the user's original cloud settings.json — captured BEFORE the
   // first LM Studio activation, restored when switching back to zai. Path next
   // to settings.json so it travels with the user profile.
-  const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+  const CLAUDE_SETTINGS_PATH = path.join(homeDir, '.claude', 'settings.json');
   // Two-state switching (no in-place patching of settings.json, no one-shot
   // backups): keep TWO permanent canonical templates alongside settings.json
   // and switch = copy a template onto settings.json atomically. The templates
@@ -64,8 +150,8 @@ export function createModelManagementApi({
   // a botched toggle. This replaces the old in-place patch + lazy-backup model
   // which silently corrupted tokens when settings.json was already on localhost
   // at snapshot time.
-  const CLAUDE_SETTINGS_CLOUD_TPL    = path.join(os.homedir(), '.claude', 'settings.cloud.json');
-  const CLAUDE_SETTINGS_LMSTUDIO_TPL = path.join(os.homedir(), '.claude', 'settings.lmstudio.json');
+  const CLAUDE_SETTINGS_CLOUD_TPL    = path.join(homeDir, '.claude', 'settings.cloud.json');
+  const CLAUDE_SETTINGS_LMSTUDIO_TPL = path.join(homeDir, '.claude', 'settings.lmstudio.json');
   // Z.ai cloud endpoint (subscription). Used as a fallback when no cloud
   // template exists yet (saga started on LM Studio config or the user never
   // had a cloud session). The endpoint is a Z.ai-wide constant; only the
@@ -275,62 +361,70 @@ export function createModelManagementApi({
       if (!model) return respondJson(res, 400, { ok:false, error:'unknown model: ' + modelId });
       const provider = model.provider || 'zai';
 
-      // 1. Switch ~/.claude/settings.json between the two canonical templates so
-      //    NEW workers (spawned after this call) read the new model/provider.
-      //    Active workers keep the old config.
-      //
-      //    Two-state model: settings.cloud.json and settings.lmstudio.json are
-      //    PERMANENT templates, written once and never overwritten by saga. A
-      //    switch = atomicSettingsWrite(template → settings.json) with fsync +
-      //    readback verify. This replaces the old in-place-patch + lazy-backup
-      //    design, which silently corrupted the cloud AUTH_TOKEN when
-      //    settings.json was already on localhost at snapshot time. The cloud
-      //    template captures the user's real token the first time we see a real
-      //    cloud settings.json and then freezes it forever.
-      //
-      //    NOTE on claude CLI v2.x (regression, anthropics/claude-code#8500):
-      //    spawn-env ANTHROPIC_BASE_URL no longer overrides settings.json, and
-      //    claude v2 appends '/v1' itself — so the LM Studio base URL must be
-      //    WITHOUT /v1. This makes the main interactive ZCode agent follow the
-      //    same provider as the episode while it runs — known side effect, no
-      //    isolation possible in v2.
-      try {
-        let payload;
-        if (provider === 'lmstudio') {
-          // Before we destroy the live cloud config, freeze it into the cloud
-          // template (no-op if already frozen). This is the ONLY capture point.
-          getOrCreateCloudTemplate();
-          payload = getOrCreateLmstudioTemplate();
-        } else {
-          // zai: switch back to the canonical cloud template. If it exists,
-          // apply the chosen cloud model alias on top. If it doesn't (saga
-          // started on a localhost settings.json and no cloud session ever ran),
-          // fall back to ZAI_DEFAULT_BASE_URL with no token — workers will 401
-          // and the user has to populate the cloud template manually.
-          const cloudTpl = getOrCreateCloudTemplate();
-          if (cloudTpl) {
-            payload = cloudTpl;
-            delete payload.env.ANTHROPIC_API_KEY;
-            delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+      // C-5/C-6: resolve the guard ONCE up front. When ANY active factory run
+      // uses a non-claude backend (durable evidence: the engine spawn marker
+      // or frozen route endpoints) — or the env markers are set — the ENTIRE
+      // settings machinery is skipped, INCLUDING getOrCreateCloudTemplate():
+      // the guarded path must not even CREATE settings.cloud.json with the
+      // user's AUTH_TOKEN. DB controls still update, so factory model
+      // switching via the front keeps working.
+      const switchDecision = claudeSettingsSwitchDecision();
+
+      if (!switchDecision.disabled) {
+        // 1. Switch ~/.claude/settings.json between the two canonical templates so
+        //    NEW workers (spawned after this call) read the new model/provider.
+        //    Active workers keep the old config.
+        //
+        //    Two-state model: settings.cloud.json and settings.lmstudio.json are
+        //    PERMANENT templates, written once and never overwritten by saga. A
+        //    switch = atomicSettingsWrite(template → settings.json) with fsync +
+        //    readback verify. This replaces the old in-place-patch + lazy-backup
+        //    design, which silently corrupted the cloud AUTH_TOKEN when
+        //    settings.json was already on localhost at snapshot time. The cloud
+        //    template captures the user's real token the first time we see a real
+        //    cloud settings.json and then freezes it forever.
+        //
+        //    NOTE on claude CLI v2.x (regression, anthropics/claude-code#8500):
+        //    spawn-env ANTHROPIC_BASE_URL no longer overrides settings.json, and
+        //    claude v2 appends '/v1' itself — so the LM Studio base URL must be
+        //    WITHOUT /v1. This makes the main interactive ZCode agent follow the
+        //    same provider as the episode while it runs — known side effect, no
+        //    isolation possible in v2.
+        try {
+          let payload;
+          if (provider === 'lmstudio') {
+            // Before we destroy the live cloud config, freeze it into the cloud
+            // template (no-op if already frozen). This is the ONLY capture point.
+            getOrCreateCloudTemplate();
+            payload = getOrCreateLmstudioTemplate();
           } else {
-            // No cloud template and live settings.json is on localhost — desync.
-            // Build a minimal cloud config so the user isn't stranded; the AUTH
-            // token will be missing and must be set in settings.cloud.json.
-            payload = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
-            payload.env = payload.env || {};
-            payload.env.ANTHROPIC_BASE_URL = ZAI_DEFAULT_BASE_URL;
-            if (payload.env.ANTHROPIC_AUTH_TOKEN === 'lm-studio') delete payload.env.ANTHROPIC_AUTH_TOKEN;
-            delete payload.env.ANTHROPIC_API_KEY;
-            delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+            // zai: switch back to the canonical cloud template. If it exists,
+            // apply the chosen cloud model alias on top. If it doesn't (saga
+            // started on a localhost settings.json and no cloud session ever ran),
+            // fall back to ZAI_DEFAULT_BASE_URL with no token — workers will 401
+            // and the user has to populate the cloud template manually.
+            const cloudTpl = getOrCreateCloudTemplate();
+            if (cloudTpl) {
+              payload = cloudTpl;
+              delete payload.env.ANTHROPIC_API_KEY;
+              delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+            } else {
+              // No cloud template and live settings.json is on localhost — desync.
+              // Build a minimal cloud config so the user isn't stranded; the AUTH
+              // token will be missing and must be set in settings.cloud.json.
+              payload = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
+              payload.env = payload.env || {};
+              payload.env.ANTHROPIC_BASE_URL = ZAI_DEFAULT_BASE_URL;
+              if (payload.env.ANTHROPIC_AUTH_TOKEN === 'lm-studio') delete payload.env.ANTHROPIC_AUTH_TOKEN;
+              delete payload.env.ANTHROPIC_API_KEY;
+              delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+            }
           }
-        }
-        // HARD RULE: the model from the selector is authoritative. No defaults,
-        // no inheritance, no "leave whatever was there". All four claude model
-        // slots get EXACTLY modelId. If modelId is somehow empty we already 400'd
-        // above, so here it is guaranteed non-empty. This closes the bug where
-        // lmstudio template kept stale gemma-4-26b after the user picked qwen3.6.
-        // Skipped entirely on the opencode backend (see claudeSettingsSwitchDisabled).
-        if (!claudeSettingsSwitchDisabled()) {
+          // HARD RULE: the model from the selector is authoritative. No defaults,
+          // no inheritance, no "leave whatever was there". All four claude model
+          // slots get EXACTLY modelId. If modelId is somehow empty we already 400'd
+          // above, so here it is guaranteed non-empty. This closes the bug where
+          // lmstudio template kept stale gemma-4-26b after the user picked qwen3.6.
           payload.env = payload.env || {};
           payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
           payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
@@ -348,9 +442,9 @@ export function createModelManagementApi({
           }
           // Block until durable + verified. Throws on torn write → 500 to caller.
           atomicSettingsWrite(payload);
+        } catch (e) {
+          return respondJson(res, 500, { ok:false, error:'settings.json switch failed: ' + e.message });
         }
-      } catch (e) {
-        return respondJson(res, 500, { ok:false, error:'settings.json switch failed: ' + e.message });
       }
 
       // 2. Upsert model info into lifecycle_execution_controls. The engine's pump
@@ -383,8 +477,9 @@ export function createModelManagementApi({
         }
       }
 
-      const note = claudeSettingsSwitchDisabled()
-        ? 'opencode worker backend: lifecycle controls updated; ~/.claude/settings.json left untouched (interactive claude keeps its own provider).'
+      const note = switchDecision.disabled
+        ? `opencode worker backend detected (${switchDecision.reasons.join(', ')}): lifecycle controls updated; `
+          + '~/.claude/settings.json left untouched (interactive claude keeps its own provider).'
         : provider === 'lmstudio'
         ? `LM Studio (${LMSTUDIO_URL}). settings.json switched to the LM Studio template (atomic + fsync). Cloud config frozen in settings.cloud.json. The whole machine routes to LM Studio until you switch back to a cloud model.`
         : 'settings.json switched to the cloud template (atomic + fsync). New workers will use this model. Active workers keep the old one.';

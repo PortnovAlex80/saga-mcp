@@ -42,6 +42,12 @@ test('concurrency admission is min(operator, model) and counts durable active ex
     modelConcurrencyLimit: 2,
     effectiveConcurrency: 2,
     activeExecutions: 2,
+    // C-4: seeded rows carry no execution_context → '(unfrozen)' bucket; the
+    // requested model glm-4.7 has catalog limit 2 and no frozen competition.
+    requestedModel: 'glm-4.7',
+    activeByModel: { '(unfrozen)': 2 },
+    requestedModelLimit: 2,
+    modelSlotsAvailable: true,
   });
 });
 

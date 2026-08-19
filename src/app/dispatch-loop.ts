@@ -297,6 +297,13 @@ export async function distributeQueuedTasks(
     if (admission.activeExecutions >= admission.effectiveConcurrency) {
       return { kind: 'capacity_blocked' };
     }
+    // C-4: the live epic-wide ceiling alone is not enough — a mid-run
+    // /api/model/set rewrites it under in-flight workers. The per-model
+    // frozen-limit aggregation must ALSO leave a slot for the model the next
+    // claim would freeze.
+    if (admission.modelSlotsAvailable === false) {
+      return { kind: 'capacity_blocked' };
+    }
 
     const workerExecutionId = input.idGenerator.newTypedId('worker-execution');
     const workerId = input.idGenerator.newTypedId('worker');
@@ -591,6 +598,34 @@ function assertAdmission(value: ConcurrencyAdmissionSnapshot): void {
   }
   if (!Number.isInteger(value.activeExecutions) || value.activeExecutions < 0) {
     throw new Error(`activeExecutions must be a non-negative integer, got '${value.activeExecutions}'`);
+  }
+  // C-4: per-model frozen-limit aggregation fields. Legacy in-memory fakes
+  // without them still work (undefined is treated as "no per-model rule"),
+  // but the durable repository always provides them.
+  if (value.requestedModel !== undefined
+    && value.requestedModel !== null
+    && typeof value.requestedModel !== 'string') {
+    throw new Error(`requestedModel must be string|null, got '${String(value.requestedModel)}'`);
+  }
+  if (value.activeByModel !== undefined) {
+    if (!value.activeByModel || typeof value.activeByModel !== 'object'
+      || Array.isArray(value.activeByModel)) {
+      throw new Error('activeByModel must be an object of model → count');
+    }
+    for (const [model, count] of Object.entries(value.activeByModel)) {
+      if (typeof model !== 'string' || model.length === 0
+        || !Number.isInteger(count) || (count as number) < 0) {
+        throw new Error(`activeByModel entry '${model}' must be a non-empty model with a non-negative integer count`);
+      }
+    }
+  }
+  if (value.requestedModelLimit !== undefined
+    && value.requestedModelLimit !== null
+    && !Number.isInteger(value.requestedModelLimit)) {
+    throw new Error(`requestedModelLimit must be integer|null, got '${String(value.requestedModelLimit)}'`);
+  }
+  if (value.modelSlotsAvailable !== undefined && typeof value.modelSlotsAvailable !== 'boolean') {
+    throw new Error(`modelSlotsAvailable must be boolean, got '${String(value.modelSlotsAvailable)}'`);
   }
 }
 

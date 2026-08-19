@@ -12,9 +12,9 @@ import type { Task } from '../types.js';
 import type { AssignedWork } from '../application/ports/worker-executor.js';
 import type { AuthorityScope, WorkIntent } from '../shared/work-intent.js';
 import { buildExecutionContext } from '../shared/authority/build-execution-context.js';
-import type { ExecutionContextExecutorKind, ExecutionRoutePolicyRef } from '../shared/authority/execution-context.js';
+import type { ExecutionContextExecutorKind, ExecutionModelRoute, ExecutionRoutePolicyRef } from '../shared/authority/execution-context.js';
 import { executionContextHash } from '../shared/authority/execution-context.js';
-import { routeToModelRoute } from '../application/routing/worker-execution-route.js';
+import { routeToModelRoute, resolveFrozenRouteEndpoint } from '../application/routing/worker-execution-route.js';
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { journalEvent } from '../observability/run-journal.js';
@@ -585,7 +585,7 @@ export function findNextClaimable(
     // Read the lifecycle selection first. Routing policy then selects the
     // executor and may override provider/model/effort. The merged result is
     // frozen now; neither spawn nor provenance re-reads live configuration.
-    let modelRoute = readModelRouteAtClaim(db, task.epic_id);
+    let modelRoute: ExecutionModelRoute = readModelRouteAtClaim(db, task.epic_id);
     let executorKind: ExecutionContextExecutorKind = 'claude-cli';
     let routePolicy: ExecutionRoutePolicyRef | null = null;
     if (routeResolver) {
@@ -597,6 +597,15 @@ export function findNextClaimable(
         ? { ref: route.policyRef, digest: route.policyDigest }
         : null;
     }
+    // C-1 (stage-11 PREVENTIVE-HUNT Layer 6): freeze the ENDPOINT CONTRACT in
+    // the same claim transaction. provider/model/effort say WHO answers;
+    // endpoint says WHERE the request physically goes (agent-proxy shim marker,
+    // LM Studio URL, or the plain claude-cli backend). Resolved once from the
+    // engine env inside this transaction — spawn never re-reads live config.
+    modelRoute = {
+      ...modelRoute,
+      endpoint: resolveFrozenRouteEndpoint(modelRoute),
+    };
     const executionContext = buildExecutionContext({
       modelRoute,
       executorKind,
