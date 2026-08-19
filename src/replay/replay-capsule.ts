@@ -110,6 +110,12 @@ export interface ReplayCapsulePayload {
   readonly artifacts: readonly ReplayArtifactProduct[];
   readonly traces: readonly ReplayTraceProduct[];
   readonly git: ReplayGitRecipe | null;
+  /**
+   * B-004/W-3 — typed marker present ONLY on capsules that certify
+   * KERNEL-presented carried-forward material (the carry-forward presenter
+   * has no worker execution; the sealed authorization is the provenance).
+   */
+  readonly presentedBy?: string;
 }
 
 export interface ReplayCapsuleRecord {

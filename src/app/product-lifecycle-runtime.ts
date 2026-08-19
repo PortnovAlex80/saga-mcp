@@ -431,6 +431,7 @@ export function createProductLifecycleRuntime(
     ['kernel', new KernelNodeExecutor(kernelHandlers)],
     ['human', new HumanNodeExecutor(humanInteractions)],
     ['production-cell', new ProductionCellNodeExecutor({
+      db,
       coordinator: productionCellCoordinator,
       authorityCommit,
       candidateSetRepo,

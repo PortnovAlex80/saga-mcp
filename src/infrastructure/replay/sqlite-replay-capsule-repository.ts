@@ -17,6 +17,11 @@ import {
 // P6 consolidation: the strict key-material resolver and the stable-product
 // digest helper are shared with the claim binder — one formula, one file.
 import { resolveReplayKeyMaterial } from './replay-key-material.js';
+import {
+  CARRY_FORWARD_PRESENTER_PREFIX,
+  carryForwardPresentationProven,
+  isCarryForwardPresenterRef,
+} from './replay-presentation-authority.js';
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
 import { selectReplayCapsule } from './replay-capsule-selection.js';
@@ -202,6 +207,69 @@ function requireKeyMaterial(value: unknown): ReplayKeyMaterial {
     subjectProductionDigest: row.subjectProductionDigest === null
       ? null
       : requireString(row.subjectProductionDigest, 'subjectProductionDigest'),
+  };
+}
+
+/**
+ * B-004/W-3 — replay identity for a kernel carry-forward presentation.
+ *
+ * Returns null for ordinary (worker-execution) capture refs. For a
+ * presenter-shaped ref the SEALED carry-forward chain must prove the
+ * presentation (fail closed otherwise), and the key material derives from the
+ * TARGET author task — the same task shape
+ * SqliteAuthorCandidateCarryForward.resolve validates before presenting —
+ * through the SAME strict resolver (resolveReplayKeyMaterial). There is no
+ * worker envelope to compare a gate binding against; the sealed
+ * authorization IS the binding, and the gate presentation row's replay
+ * columns are NULL by construction (the caller verifies that).
+ */
+function carryForwardCaptureIdentity(
+  db: Database.Database,
+  executionRef: string,
+  candidateSetRef: string,
+): {
+  keyMaterial: ReplayKeyMaterial;
+  replayKey: string;
+  taskMetadata: Record<string, unknown>;
+} | null {
+  if (!isCarryForwardPresenterRef(executionRef)) return null;
+  if (!carryForwardPresentationProven(db, executionRef, candidateSetRef)) {
+    throw new Error(
+      `REPLAY_CAPTURE_CARRY_FORWARD_NOT_PROVEN: ${executionRef} is presenter-shaped `
+      + `but no sealed carry-forward authorization+consumption binds it to ${candidateSetRef}`,
+    );
+  }
+  const candidate = db.prepare(
+    'SELECT workplace_ref FROM factory_candidate_sets WHERE candidate_set_ref=?',
+  ).get(candidateSetRef) as { workplace_ref: string } | undefined;
+  if (!candidate) {
+    throw new Error(`REPLAY_CAPTURE_CANDIDATE_MISSING: ${candidateSetRef}`);
+  }
+  const task = db.prepare(
+    `SELECT t.id, t.epic_id, t.metadata, t.workplace_ref
+       FROM tasks t
+      WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='author'
+      ORDER BY t.id LIMIT 1`,
+  ).get(candidate.workplace_ref) as
+    | { id: number; epic_id: number; metadata: string; workplace_ref: string }
+    | undefined;
+  if (!task) {
+    throw new Error(
+      `REPLAY_CAPTURE_CARRY_FORWARD_TARGET_TASK_MISSING: workplace `
+      + `${candidate.workplace_ref} has no durable author task to anchor the replay identity`,
+    );
+  }
+  const keyMaterial = resolveReplayKeyMaterial(db, task, 'author');
+  if (!keyMaterial) {
+    throw new Error(
+      `REPLAY_CAPTURE_CARRY_FORWARD_KEY_MATERIAL_MISSING: target author task `
+      + `${task.id} lacks the frozen cross-run semantic identity`,
+    );
+  }
+  return {
+    keyMaterial,
+    replayKey: computeReplayKey(keyMaterial),
+    taskMetadata: parseJsonObject(task.metadata),
   };
 }
 
@@ -563,30 +631,58 @@ export class SqliteReplayCapsuleRepository {
       replayCapsulePayloadHash: string | null;
     };
   }): ReplayCapsuleRecord {
-    const execution = this.db.prepare(
-      `SELECT we.metadata,we.task_id,t.metadata AS task_metadata
-         FROM worker_executions we JOIN tasks t ON t.id=we.task_id
-        WHERE we.execution_id=?`,
-    ).get(input.executionRef) as { metadata: string; task_id: number; task_metadata: string } | undefined;
-    if (!execution) throw new Error(`REPLAY_CAPTURE_EXECUTION_NOT_FOUND: ${input.executionRef}`);
-    const envelope = JSON.parse(execution.metadata) as ExecutionEnvelope;
-    const replay = envelope.execution_context?.replay;
-    const keyMaterial = requireKeyMaterial(replay?.key_material);
-    const replayKey = requireString(replay?.key, 'replay.key');
-    if (replayKey !== computeReplayKey(keyMaterial)) {
-      throw new Error('REPLAY_CAPTURE_KEY_MISMATCH: frozen key does not match key material');
+    // B-004/W-3 — a kernel carry-forward presentation has NO worker
+    // execution: the capsule binds to the sealed carry-forward provenance
+    // instead. The replay key material derives from the TARGET author task
+    // (the workplace the authorization presented into) via the SAME strict
+    // resolver used for worker captures — fail closed when the sealed chain
+    // or the frozen semantic identity is missing. Everything else (member
+    // material, artifacts, traces, git recipe) resolves identically.
+    const carryForward = carryForwardCaptureIdentity(this.db, input.executionRef, input.candidateSetRef);
+    let keyMaterial: ReplayKeyMaterial;
+    let replayKey: string;
+    let taskMetadata: Record<string, unknown>;
+    if (carryForward) {
+      if (input.expectedReplayBinding
+          && (input.expectedReplayBinding.replayKey !== null
+            || input.expectedReplayBinding.replayKeyMaterial !== null
+            || input.expectedReplayBinding.replayCapsuleRef !== null
+            || input.expectedReplayBinding.replayCapsulePayloadHash !== null)) {
+        throw new Error(
+          'REPLAY_CAPTURE_CARRY_FORWARD_BINDING_DRIFT: a kernel-presented gate '
+          + 'presentation carries NULL replay binding columns by construction; '
+          + `non-null binding on ${input.executionRef} is drift`,
+        );
+      }
+      keyMaterial = carryForward.keyMaterial;
+      replayKey = carryForward.replayKey;
+      taskMetadata = carryForward.taskMetadata;
+    } else {
+      const execution = this.db.prepare(
+        `SELECT we.metadata,we.task_id,t.metadata AS task_metadata
+           FROM worker_executions we JOIN tasks t ON t.id=we.task_id
+          WHERE we.execution_id=?`,
+      ).get(input.executionRef) as { metadata: string; task_id: number; task_metadata: string } | undefined;
+      if (!execution) throw new Error(`REPLAY_CAPTURE_EXECUTION_NOT_FOUND: ${input.executionRef}`);
+      const envelope = JSON.parse(execution.metadata) as ExecutionEnvelope;
+      const replay = envelope.execution_context?.replay;
+      keyMaterial = requireKeyMaterial(replay?.key_material);
+      replayKey = requireString(replay?.key, 'replay.key');
+      if (replayKey !== computeReplayKey(keyMaterial)) {
+        throw new Error('REPLAY_CAPTURE_KEY_MISMATCH: frozen key does not match key material');
+      }
+      if (input.expectedReplayBinding) {
+        assertReplayGateBinding({
+          expected: input.expectedReplayBinding,
+          actual: {
+            replayKey, replayKeyMaterial: keyMaterial,
+            replayCapsuleRef: replay?.capsule_ref,
+            replayCapsulePayloadHash: replay?.capsule_payload_hash,
+          },
+        });
+      }
+      taskMetadata = parseJsonObject(execution.task_metadata);
     }
-    if (input.expectedReplayBinding) {
-      assertReplayGateBinding({
-        expected: input.expectedReplayBinding,
-        actual: {
-          replayKey, replayKeyMaterial: keyMaterial,
-          replayCapsuleRef: replay?.capsule_ref,
-          replayCapsulePayloadHash: replay?.capsule_payload_hash,
-        },
-      });
-    }
-    const taskMetadata = parseJsonObject(execution.task_metadata);
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
     const sourceInputBindings = collectIdentityBindings(inputValue);
     const inputBindings = canonicalReplayInputBindings(sourceInputBindings);
@@ -740,6 +836,11 @@ export class SqliteReplayCapsuleRepository {
       artifacts,
       traces,
       git,
+      // B-004/W-3 — typed marker: this capsule certifies KERNEL-presented
+      // carried-forward material, not a worker execution's production.
+      ...(carryForward
+        ? { presentedBy: CARRY_FORWARD_PRESENTER_PREFIX } as const
+        : {}),
     };
     const payloadHash = sha256Hex(payload);
     const capsuleRef = `replay-capsule:${replayKey}:${payloadHash}`;

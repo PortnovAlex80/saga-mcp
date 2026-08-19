@@ -131,6 +131,7 @@ function harness(effectResult = null, authorCandidateCarryForward = undefined, r
     },
   };
   const executor = new ProductionCellNodeExecutor({
+    db,
     coordinator,
     // ADR-081 (K12) — the ONE proof-backed acceptance mutation service. Wired
     // exactly as production does; the executor has no other way to commit an

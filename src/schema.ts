@@ -1655,6 +1655,14 @@ CREATE TABLE IF NOT EXISTS factory_transition_obligations (
   completion_receipt  TEXT,
   result_digest       TEXT,
   last_error          TEXT,
+  -- B-004/O-D6 (CONVEYOR §15): per-obligation reason-identity valve state.
+  -- last_reason_key is the TYPED reason identity of the last defer/fail
+  -- (defer: the postcondition reason string; fail: the typed error CODE
+  -- prefix before the colon). reason_repeat_count counts CONSECUTIVE
+  -- repetitions of that key — a new key resets it to 1. Existing DBs get the
+  -- columns via the PRAGMA-guarded ADD COLUMN in the owning ledger module.
+  last_reason_key     TEXT,
+  reason_repeat_count INTEGER NOT NULL DEFAULT 0,
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at        TEXT,
