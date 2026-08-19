@@ -28,9 +28,9 @@
  */
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve, join } from 'node:path';
+import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { spawnSync, spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
@@ -40,6 +40,8 @@ import {
   factoryModelProfile,
 } from '../dist/runtime/factory-model-profiles.js';
 import { buildReferenceDevelopmentPolicy } from '../dist/app/start-product-lifecycle-from-idea.js';
+// E-P1: detached, file-stdio engine spawn with durable launch/controls stamps.
+import { spawnOrchestrateCliEngine } from './factory-engine-spawn.mjs';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -120,34 +122,16 @@ function resolveFactoryComposition() {
 const factoryCompositionPath = resolveFactoryComposition();
 
 // ─── Shared: spawn the runtime host with a launch capability ──────────────
+// E-P1: the engine host is spawned DETACHED with file-backed stdio and a
+// durable SAGA_ENGINE_LOG, and the launch row + lifecycle_execution_controls
+// are stamped with the engine pid/log path so the panel engine supervisor and
+// the soft-stop brake can see and stop it. See
+// scripts/factory-engine-spawn.mjs for the full contract.
 function spawnOrchestrateCli(dbPath, launchRef, compositionPath = factoryCompositionPath) {
-  const here = fileURLToPath(import.meta.url);
-  const repoRoot = resolve(join(here, '..', '..'));
-  const cliPath = join(repoRoot, 'dist', 'orchestrate-cli.js');
-  if (!existsSync(cliPath)) {
-    die(`orchestrate-cli.js not found at ${cliPath} — run 'npm run build' first`);
-  }
-  const childEnv = {
-    ...process.env,
-    DB_PATH: dbPath,
-    // Package bytes are durable execution authority. Keep their default next
-    // to the durable DB, not under the code checkout: container/image or
-    // release-directory replacement must not make an unchanged active
-    // installation look corrupt on resume. Explicit operator configuration
-    // remains authoritative.
-    SAGA_PACKAGE_STORE_DIR: process.env.SAGA_PACKAGE_STORE_DIR?.trim()
-      || join(dirname(resolve(dbPath)), 'package-store'),
-    SAGA_PRODUCT_LIFECYCLE_COMPOSITION: compositionPath,
-  };
-  // Spawn detached so the factory outlives this script. stdio inherited so
-  // the operator sees cycle/dispatch output in real time.
-  const child = spawn('node', [cliPath, `--launch-ref=${launchRef}`], {
-    stdio: 'inherit',
-    env: childEnv,
-  });
-  child.on('exit', (code, signal) => {
-    process.exit(code ?? (signal ? 128 + 1 : 1));
-  });
+  spawnOrchestrateCliEngine({ dbPath, launchRef, compositionPath });
+  // The engine is detached and unref'd: this script exits here and the
+  // factory outlives it. Its output lands in the engine log file (path is
+  // printed by the spawn module), not in this terminal.
 }
 
 function parseConcurrency(value, fallback = DEFAULT_FACTORY_CONCURRENCY) {
@@ -737,7 +721,7 @@ if (command === 'rerun') {
   }
   process.stdout.write(`[factory] rerun: launch=${launchRef} db=${input.dbPath}\n`);
   spawnOrchestrateCli(input.dbPath, launchRef);
-  // spawnOrchestrateCli wires exit — we don't reach here.
+  // The engine is detached — this script exits and the factory outlives it.
 }
 
 // ─── resume: continue an existing durable lifecycle run ───────────────────
@@ -893,7 +877,7 @@ if (command === 'resume') {
 
   process.stdout.write(`[factory] resume launch=${launchRef} db=${dbPath}\n`);
   spawnOrchestrateCli(dbPath, launchRef);
-  // spawnOrchestrateCli wires exit — we don't reach here.
+  // The engine is detached — this script exits and the factory outlives it.
 }
 
 // ─── start: provision a new sandbox + create a new factory run ────────────
@@ -1043,5 +1027,5 @@ if (command === 'start') {
 
   process.stdout.write(`[factory] start launch=${launchRef} db=${dbPath} model=${modelName}\n`);
   spawnOrchestrateCli(dbPath, launchRef);
-  // spawnOrchestrateCli wires exit — we don't reach here.
+  // The engine is detached — this script exits and the factory outlives it.
 }

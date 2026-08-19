@@ -47,11 +47,15 @@ test('factory start parsing cannot leak control option values into initiative su
 
 test('canonical factory command preflights and supplies production composition', () => {
   const source = read('scripts/factory.mjs');
+  // The engine-child env construction moved to the extracted detached-spawn
+  // module (E-P1); the gateway preflights and forwards the composition path.
+  const spawnModule = read('scripts/factory-engine-spawn.mjs');
 
   assert.match(source, /function resolveFactoryComposition\(\)/);
   assert.match(source, /tracker-view[\s\S]*product-delivery-composition\.mjs/);
   assert.match(source, /const factoryCompositionPath = resolveFactoryComposition\(\)/);
-  assert.match(source, /SAGA_PRODUCT_LIFECYCLE_COMPOSITION:\s*compositionPath/);
+  assert.match(spawnModule, /SAGA_PRODUCT_LIFECYCLE_COMPOSITION:\s*resolvedComposition/);
+  assert.match(spawnModule, /compositionPath\s*\?\?\s*defaultCompositionPath\(\)/);
 });
 
 test('dispatcher cannot claim projection cards owned by a terminal ProcessRun', () => {
