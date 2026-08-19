@@ -169,6 +169,30 @@ question. Time accounting (9.5h session time): ~23% productive code,
 ~45% conveyor overhead (8k words of formalization, 43 gates, reviews),
 up to ~50% rework/cold-starts/deaths. Full verdict preserved in the
 assessment agent transcript (agent_ec5a27aa).
+
+**AC-drift forensic verdict (investigator agent_f19e303e, 2026-08-19):**
+all three requirements die at ONE point — task 3 (formalization-product-
+contract): the brief+PRD author rewrote the order in his own words without
+docker/TS/client, and the only machine bridge from discovery, `brief_payload`
+(6 decision fields, `src/validators/brief.ts:45-64`), carries no content.
+Discovery itself held all three (proposal observed_context + assumptions,
+readiness assessor validated them). The AC author honestly built from an
+already-empty WHAT. The SRS later "restored" docker/TS into HOW-sections
+§10/§11 after a review — but the trace graph has no SRS→AC back-edge, so
+nothing obligates covering them. The planner received the SRS hash, never
+the content (census X1 confirmed: `handleArtifactGet` returns metadata only).
+**Readiness forecast: the endgame will NOT notice** — the certifier's
+commands come from the product's own profile (`npm install && npm test`);
+`docker compose up` is never executed (local-runnability-check-provider.ts:
+518-551, docker only as execution substrate when `environment.image`
+declared). Eight blind mechanisms ranked (brief validator, artifact-get
+content gap, AC→FR unidirectional validator, SRS-structure validator, SRS
+structural provider self-disclaimer, section-checklist reviewers,
+edge-only reconciliation, planner coverage=1-item-per-AC). Fix directions:
+(1) census X1 — SRS content to the planner; (2) SEAM layer 2 — docker
+compose integration verification before settlement; (3) requirement-
+coverage ratchet at formalization (source-constraints→PRD→AC reverse check)
+plus carrying the constraint list through `brief_payload`.
 ⏳ Endgame evidence for ADR-032 watch items (iii) freeze negatives and
 (vi) verification lineage — the live run's freeze/verification phases produce
 it; see §4.4.
