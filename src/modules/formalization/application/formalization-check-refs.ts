@@ -2,7 +2,12 @@ import { submissionValidatorCheckProviderRef } from '../../../process-modules/ap
 import { SRS_CONTRACT_VALIDATOR_VERSION } from './srs-contract-validator.js';
 import { SRS_CONTRACT_REF } from '../domain/srs-contract.js';
 
-const FORMALIZATION_SUBMISSION_VALIDATOR_VERSION = '1.0.0';
+// 1.1.0 — AC-drift remedy: the product validator enforces constraint
+// dispositions; the acceptance/reconciliation validators enforce the
+// coverage ratchet. Must equal the createFormalizationContractValidator /
+// createAcceptanceContractValidator validatorVersion (the workshop manifest
+// binds the executable providers by this digest).
+const FORMALIZATION_SUBMISSION_VALIDATOR_VERSION = '1.1.0';
 
 /** Pure declarative provider identities; safe for the Workshop manifest. */
 export const FORMALIZATION_CHECK_REFS = {
