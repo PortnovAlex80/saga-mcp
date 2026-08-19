@@ -33,6 +33,7 @@ import {
   relativeWorkspacePath,
   recoveryFeedbackFromMetadata,
   reviewFeedbackFromMetadata,
+  reviewFeedbackKeyLines,
   parseMetadata,
 } from './process-execution-workspace.js';
 
@@ -68,7 +69,23 @@ export interface WorkplaceDesk {
      */
     readonly reasons: readonly string[];
   };
-  readonly reviewFeedback: { readonly present: boolean; readonly path: string | null };
+  readonly reviewFeedback: {
+    readonly present: boolean;
+    readonly path: string | null;
+    /**
+     * 1-based review rejection round this provisioning repairs (from
+     * managed_review_rejections). The loud prompt block states it so the
+     * worker knows the reviewer has rejected this work before.
+     */
+    readonly round: number;
+    /**
+     * BLINDSIGHT (a): the reviewer's key points, quoted verbatim (≤3 lines,
+     * ≤500 chars each — see reviewFeedbackKeyLines). The prompt block inlines
+     * them so review feedback — MORE semantic than gate feedback — is no longer
+     * buried in the workspace_files JSON array.
+     */
+    readonly reasons: readonly string[];
+  };
   readonly agentAssistance: { readonly required: boolean; readonly path: string | null };
 
   readonly workspaceFiles: readonly string[];
@@ -321,10 +338,14 @@ export function materializePinnedWorkspace(
   }
 
   let reviewFeedbackPath: string | null = null;
+  let reviewFeedbackRound = 0;
+  let reviewFeedbackReasons: string[] = [];
   const reviewFeedback = reviewFeedbackFromMetadata(metadata);
   if (reviewFeedback) {
     reviewFeedbackPath = path.join(executionDirectory, 'review-feedback.json');
     writeFileSync(reviewFeedbackPath, `${JSON.stringify(reviewFeedback, null, 2)}\n`);
+    reviewFeedbackRound = reviewFeedback.attempt;
+    reviewFeedbackReasons = reviewFeedbackKeyLines(reviewFeedback.feedback);
   }
 
   const workspaceTemplates = profile.workspaceTemplates ?? [];
@@ -519,6 +540,8 @@ export function materializePinnedWorkspace(
     reviewFeedback: {
       present: reviewFeedbackPath !== null,
       path: reviewFeedbackRelative,
+      round: reviewFeedbackRound,
+      reasons: reviewFeedbackReasons,
     },
     agentAssistance: {
       required: agentAssistanceRequired,

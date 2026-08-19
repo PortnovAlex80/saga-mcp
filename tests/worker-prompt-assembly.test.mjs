@@ -76,7 +76,7 @@ function makeFixture(overrides = {}) {
     workspaceRoot: 'C:/tmp/g1-workspace',
     sagaSkillRoot: GLOBAL_ROOT_THAT_MUST_NOT_APPEAR,
     resolvedProfile: null,
-    processWorkspace: null,
+    processWorkspace: overrides.processWorkspace ?? null,
     launchSpec,
   });
   return { prompt, skillDir };
@@ -219,5 +219,167 @@ test('G1 (bonus pin) — rule 6a states that worker-done-call.json is not a tool
     ), 'rule 6a is the instruction the G2.3 file-faking disobedience test leans on');
   } finally {
     rmSync(skillDir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT Worker/Tool layer — feedback must be DELIVERED LOUDLY to the
+// point of decision (the worker prompt), not buried in workspace_files JSON.
+// Mirrors the ⚠️ REPAIR ATTEMPT block the gate feedback already gets.
+// ---------------------------------------------------------------------------
+
+/** Minimal WorkplaceDesk-shaped processWorkspace for delivery tests. */
+function makeDesk(overrides = {}) {
+  return {
+    workplaceRef: 'wp-g1',
+    nodeId: 'author',
+    profileId: 'author-profile',
+    moduleRef: 'test-module@1.0.0',
+    trackerPath: 'docs/development/projects/1/executions/node-author/tracker.md',
+    trackerAbsolutePath: 'C:/tmp/g1-workspace/docs/development/tracker.md',
+    executionDirectory: 'docs/development/projects/1/executions/node-author/exec-g1-0001',
+    callFiles: [],
+    checklists: [],
+    workspaceFiles: [],
+    recoveryFeedback: { present: false, path: null, reasons: [] },
+    reviewFeedback: { present: false, path: null, round: 0, reasons: [] },
+    feedbackHistory: { present: false, path: null, rounds: 0, reviewRejections: 0, submissionRejections: 0 },
+    priorAttempts: { count: 0, deaths: [] },
+    agentAssistance: { required: false, path: null },
+    ...overrides,
+  };
+}
+
+test('G1.6 — review feedback is delivered as a LOUD block with verbatim key points, not buried in workspace_files', () => {
+  const reviewDesk = makeDesk({
+    workspaceFiles: ['docs/development/exec-1/review-feedback.json'],
+    reviewFeedback: {
+      present: true,
+      path: 'docs/development/exec-1/review-feedback.json',
+      round: 2,
+      reasons: [
+        'AC-2 verification step is missing: no assertion that the merge rejects conflicting keys',
+        'src/merge.ts:42 handles null input by crashing instead of returning a typed error',
+      ],
+    },
+  });
+  const { prompt, skillDir } = makeFixture({ processWorkspace: reviewDesk });
+  try {
+    // The loud header must mirror the gate-feedback pattern so the worker
+    // physically cannot miss it.
+    assert.ok(prompt.includes('⚠️⚠️⚠️ REVIEW REJECTION — THE REVIEWER SENT YOUR PREVIOUS WORK BACK'),
+      'a review rejection must produce a loud ⚠️ header block');
+    assert.ok(prompt.includes('review_feedback=docs/development/exec-1/review-feedback.json'),
+      'the review feedback path must be stated as its own line');
+    assert.ok(prompt.includes('READ docs/development/exec-1/review-feedback.json FIRST'),
+      'the worker must be ordered to read the feedback file first');
+    assert.ok(prompt.includes('review rejection round 2'),
+      'the block must state which rejection round is being repaired');
+    // Inline verbatim key points — the semantic content, delivered.
+    assert.ok(prompt.includes("The reviewer's key points, quoted verbatim from that file:"),
+      'the block must announce the verbatim key points');
+    assert.ok(prompt.includes('1. AC-2 verification step is missing: no assertion that the merge rejects conflicting keys'),
+      'key point 1 must be inlined verbatim');
+    assert.ok(prompt.includes('2. src/merge.ts:42 handles null input by crashing instead of returning a typed error'),
+      'key point 2 must be inlined verbatim');
+    assert.ok(prompt.includes('Address EVERY reviewer point before resubmitting'),
+      'the block must demand every point be addressed');
+  } finally {
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+});
+
+test('G1.6b — no review block when the review accepted the work (first pass)', () => {
+  const { prompt, skillDir } = makeFixture({ processWorkspace: makeDesk() });
+  try {
+    assert.ok(!prompt.includes('REVIEW REJECTION'),
+      'a first-pass author must not see a review rejection block');
+    assert.ok(!prompt.includes('⚠️'));
+  } finally {
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+});
+
+test('G1.7 — full feedback history is pointed at in the prompt (history depth > 1 round)', () => {
+  const historyDesk = makeDesk({
+    reviewFeedback: {
+      present: true,
+      path: 'docs/development/exec-1/review-feedback.json',
+      round: 3,
+      reasons: ['round-3 point'],
+    },
+    feedbackHistory: {
+      present: true,
+      path: 'docs/development/exec-1/feedback-history.json',
+      rounds: 5,
+      reviewRejections: 3,
+      submissionRejections: 2,
+    },
+  });
+  const { prompt, skillDir } = makeFixture({ processWorkspace: historyDesk });
+  try {
+    assert.ok(prompt.includes('feedback_history=docs/development/exec-1/feedback-history.json'),
+      'the materialized feedback-history.json path must be stated as its own line');
+    assert.ok(prompt.includes('5 feedback event(s) across ALL rounds (3 review rejection(s), 2 submission validation rejection(s))'),
+      'the block must summarize the accumulated history size');
+    assert.ok(prompt.includes(
+      'Prior rounds may contain findings that were never addressed; read the full history before resubmitting.',
+    ), 'the worker must be pointed at the FULL history, not just the latest round');
+  } finally {
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+});
+
+test('G1.8 — spawn prompt carries the card death history (prior attempts + last failure)', () => {
+  const deathDesk = makeDesk({
+    priorAttempts: {
+      count: 3,
+      deaths: [
+        {
+          executionId: 'exec-g1-0001-prev1',
+          state: 'spawn_failed',
+          lastError: 'Claude spawn failed (pre-assigned): ENOENT claude',
+          finishedAt: '2026-08-17 01:00:00',
+          workerId: 'worker-a',
+        },
+        {
+          executionId: 'exec-g1-0001-prev2',
+          state: 'lost',
+          lastError: 'REPEATED_TOOL_LOOP: Write repeated 12 times with identical input',
+          finishedAt: '2026-08-17 02:00:00',
+          workerId: 'worker-b',
+        },
+        {
+          executionId: 'exec-g1-0001-prev3',
+          state: 'terminated',
+          lastError: 'progress silence past cancel grace',
+          finishedAt: '2026-08-17 03:00:00',
+          workerId: 'worker-c',
+        },
+      ],
+    },
+  });
+  const { prompt, skillDir } = makeFixture({ processWorkspace: deathDesk });
+  try {
+    assert.ok(prompt.includes('PRIOR ATTEMPTS ON THIS CARD: 3'),
+      'the spawn prompt must open with the number of prior dead executions');
+    assert.ok(prompt.includes('REPEATED_TOOL_LOOP: Write repeated 12 times with identical input'),
+      'the last_error of a dead execution (incl. REPEATED_TOOL_LOOP) must be delivered in the prompt');
+    assert.ok(prompt.includes('[lost]'),
+      'each death must carry its terminal state');
+    assert.ok(prompt.includes(
+      'A card whose previous workers died is NOT a healthy card: read the failures above',
+    ), 'the block must tell the worker the card is known to kill workers');
+  } finally {
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+
+  // Healthy card: no prior deaths → no block, no noise.
+  const fresh = makeFixture({ processWorkspace: makeDesk() });
+  try {
+    assert.ok(!fresh.prompt.includes('PRIOR ATTEMPTS ON THIS CARD'),
+      'a card with zero prior deaths must not carry a death-history block');
+  } finally {
+    rmSync(fresh.skillDir, { recursive: true, force: true });
   }
 });
