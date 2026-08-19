@@ -40,8 +40,14 @@ test('generic Factory Start does not silently force static/no-dependency product
 });
 
 test('Factory Start keeps the immutable package store beside the durable DB by default', () => {
+  // The engine-child env (package store default included) moved to the
+  // extracted detached-spawn module (E-P1); the gateway delegates to it.
   const gateway = readFileSync(new URL('../../scripts/factory.mjs', import.meta.url), 'utf8');
-  assert.match(gateway, /SAGA_PACKAGE_STORE_DIR:\s*process\.env\.SAGA_PACKAGE_STORE_DIR/);
-  assert.match(gateway, /join\(dirname\(resolve\(dbPath\)\),\s*'package-store'\)/);
-  assert.doesNotMatch(gateway, /SAGA_PACKAGE_STORE_DIR:\s*join\(repoRoot/);
+  const spawnModule = readFileSync(
+    new URL('../../scripts/factory-engine-spawn.mjs', import.meta.url), 'utf8',
+  );
+  assert.match(gateway, /spawnOrchestrateCliEngine/);
+  assert.match(spawnModule, /SAGA_PACKAGE_STORE_DIR:\s*baseEnv\.SAGA_PACKAGE_STORE_DIR/);
+  assert.match(spawnModule, /join\(dirname\(resolve\(dbPath\)\),\s*'package-store'\)/);
+  assert.doesNotMatch(spawnModule, /SAGA_PACKAGE_STORE_DIR:\s*join\(repoRoot/);
 });
