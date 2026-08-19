@@ -18,9 +18,13 @@
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { RepositoryDesk, RepositoryDeskRole } from '../../process-modules/application/repository-desk.js';
+import type {
+  PreviousAttemptDeskMaterials,
+  RepositoryDesk,
+  RepositoryDeskRole,
+} from '../../process-modules/application/repository-desk.js';
 
 export interface AuthorDeskInput {
   readonly repositoryRoot: string;
@@ -35,6 +39,18 @@ export interface AuthorDeskInput {
   readonly expectedIntegrationHead?: string | null;
   readonly effectiveBaseReceiptRef?: string;
   readonly effectiveBaseReceiptDigest?: string;
+  /**
+   * REPAIR-CODE-PRESERVATION — set only on repair provisioning (prior review
+   * rejection). The provisioner verifies the coordinates against the shared
+   * refs (fail-closed: a branch/sha mismatch aborts) and writes
+   * previous-attempt.{json,patch} into `patchDirectory` (the execution
+   * workspace, next to recovery-feedback.json).
+   */
+  readonly previousAttempt?: {
+    readonly branch: string;
+    readonly commitSha: string;
+    readonly patchDirectory: string;
+  } | null;
 }
 
 export interface ReviewerDeskInput {
@@ -172,12 +188,16 @@ export class RepositoryDeskProvisioner {
         );
       }
       assertIntegrationHead();
-      return this.buildDesk(
-        projectRepositoryId, repositoryRoot, worktreeDir, 'author',
-        branch, baseCommit, headCommit, integrationBranch, false,
-        input.effectiveBaseReceiptRef,
-        input.effectiveBaseReceiptDigest,
-        input.expectedIntegrationHead ?? undefined,
+      return this.withPreviousAttemptMaterials(
+        this.buildDesk(
+          projectRepositoryId, repositoryRoot, worktreeDir, 'author',
+          branch, baseCommit, headCommit, integrationBranch, false,
+          input.effectiveBaseReceiptRef,
+          input.effectiveBaseReceiptDigest,
+          input.expectedIntegrationHead ?? undefined,
+        ),
+        input,
+        baseCommit,
       );
     }
 
@@ -220,12 +240,16 @@ export class RepositoryDeskProvisioner {
       );
     }
     assertIntegrationHead();
-    return this.buildDesk(
-      projectRepositoryId, repositoryRoot, worktreeDir, 'author',
-      branch, baseCommit, headCommit, integrationBranch, false,
-      input.effectiveBaseReceiptRef,
-      input.effectiveBaseReceiptDigest,
-      input.expectedIntegrationHead ?? undefined,
+    return this.withPreviousAttemptMaterials(
+      this.buildDesk(
+        projectRepositoryId, repositoryRoot, worktreeDir, 'author',
+        branch, baseCommit, headCommit, integrationBranch, false,
+        input.effectiveBaseReceiptRef,
+        input.effectiveBaseReceiptDigest,
+        input.expectedIntegrationHead ?? undefined,
+      ),
+      input,
+      baseCommit,
     );
   }
 
@@ -297,6 +321,79 @@ export class RepositoryDeskProvisioner {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * REPAIR-CODE-PRESERVATION — materialize the rejected attempt onto the
+   * repair author's desk (docs/architecture/REPAIR-CODE-PRESERVATION.md).
+   * The code is NOT lost (branches live in shared refs) but the author was
+   * blind: nobody said the previous attempt exists. The cure is a VIEW, never
+   * an inheritance — `git diff <merge-base>..<previousAttemptHead>` is written
+   * as previous-attempt.patch plus a typed previous-attempt.json descriptor
+   * into the execution workspace (next to recovery-feedback.json). The worker
+   * SEES the rejected work without being BOUND to it: no auto-merge (anchoring
+   * bias — the worker would patch the bad instead of rethinking), no rebase
+   * (frozen-base contract). Clean slate preserved, eyes open.
+   *
+   * Fail-closed: coordinates are verified against the shared refs first; a
+   * missing ref or a branch/sha mismatch ABORTS provisioning rather than
+   * writing materials derived from unverifiable state.
+   */
+  private withPreviousAttemptMaterials(
+    desk: RepositoryDesk,
+    input: AuthorDeskInput,
+    baseCommit: string,
+  ): RepositoryDesk {
+    const previous = input.previousAttempt ?? null;
+    if (!previous) return desk;
+    if (!previous.branch.trim() || !/^[0-9a-f]{40}$/.test(previous.commitSha)) {
+      throw new Error('REPOSITORY_DESK_PREVIOUS_ATTEMPT_INPUT_INVALID');
+    }
+    let resolvedHead: string;
+    try {
+      resolvedHead = git(
+        input.repositoryRoot,
+        ['rev-parse', `refs/heads/${previous.branch}`],
+      );
+    } catch {
+      throw new Error(
+        `REPOSITORY_DESK_PREVIOUS_ATTEMPT_REF_MISSING: refs/heads/${previous.branch}`,
+      );
+    }
+    if (resolvedHead !== previous.commitSha) {
+      throw new Error(
+        `REPOSITORY_DESK_PREVIOUS_ATTEMPT_MISMATCH: refs/heads/${previous.branch} `
+        + `is at ${resolvedHead} but the descriptor says ${previous.commitSha}`,
+      );
+    }
+    const mergeBase = git(
+      input.repositoryRoot,
+      ['merge-base', baseCommit, previous.commitSha],
+    );
+    const patch = git(
+      input.repositoryRoot,
+      ['diff', '--binary', `${mergeBase}..${previous.commitSha}`],
+    );
+    mkdirSync(previous.patchDirectory, { recursive: true });
+    writeFileSync(
+      path.join(previous.patchDirectory, 'previous-attempt.json'),
+      `${JSON.stringify(
+        { branch: previous.branch, commitSha: previous.commitSha },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      path.join(previous.patchDirectory, 'previous-attempt.patch'),
+      patch.length === 0 || patch.endsWith('\n') ? patch : `${patch}\n`,
+    );
+    const materials: PreviousAttemptDeskMaterials = {
+      branch: previous.branch,
+      commitSha: previous.commitSha,
+      mergeBaseCommit: mergeBase,
+      patchDirectory: previous.patchDirectory,
+    };
+    return { ...desk, previousAttempt: materials };
   }
 
   private buildDesk(

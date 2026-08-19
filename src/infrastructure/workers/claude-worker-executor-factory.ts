@@ -572,7 +572,19 @@ export function createPinnedClaudeWorkerExecutorFactory(
           if (typeof executionRef !== 'string' || !executionRef) {
             throw new Error(`EFFECTIVE_DESK_BASE_EXECUTION_REQUIRED: task ${task.id}`);
           }
-          const repositoryDesk = provisionRepositoryDesk(task, executionRef);
+          // REPAIR-CODE-PRESERVATION: on repair provisioning the rejected
+          // attempt's patch is written into THIS execution workspace (next to
+          // recovery-feedback.json). The materializer already created the
+          // directory; only its absolute coordinate is derived here.
+          const previousAttemptPatchDirectory = path.resolve(
+            input.workspaceRoot,
+            resolvedWorkspace.executionDirectory,
+          );
+          const repositoryDesk = provisionRepositoryDesk(
+            task,
+            executionRef,
+            previousAttemptPatchDirectory,
+          );
           if (repositoryDesk) {
             resolvedWorkspace = { ...resolvedWorkspace, repositoryDesk };
             // Persist the desk binding into task metadata so settlement and the
@@ -587,6 +599,33 @@ export function createPinnedClaudeWorkerExecutorFactory(
                 git: repositoryDesk.git,
               },
             };
+            if (repositoryDesk.previousAttempt) {
+              const previous = repositoryDesk.previousAttempt;
+              const workspaceAbsoluteRoot = path.resolve(input.workspaceRoot);
+              const patchPath = path
+                .relative(workspaceAbsoluteRoot, path.join(previous.patchDirectory, 'previous-attempt.patch'))
+                .replace(/\\/g, '/');
+              resolvedWorkspace = {
+                ...resolvedWorkspace,
+                previousAttempt: {
+                  branch: previous.branch,
+                  commitSha: previous.commitSha,
+                  patchPath,
+                  descriptorPath: path
+                    .relative(workspaceAbsoluteRoot, path.join(previous.patchDirectory, 'previous-attempt.json'))
+                    .replace(/\\/g, '/'),
+                },
+              };
+              metadata.process_workspace = {
+                ...(metadata.process_workspace as Record<string, unknown>),
+                previous_attempt: {
+                  branch: previous.branch,
+                  commit_sha: previous.commitSha,
+                  merge_base_commit: previous.mergeBaseCommit,
+                  patch_path: patchPath,
+                },
+              };
+            }
             getDb().prepare(
               `UPDATE tasks SET metadata=?, updated_at=datetime('now') WHERE id=?`,
             ).run(JSON.stringify(metadata), task.id);
@@ -778,6 +817,7 @@ function provisionRepositoryDesk(
     metadata?: unknown;
   },
   executionRef: string,
+  previousAttemptPatchDirectory: string | null,
 ): RepositoryDesk | null {
   const db = getDb();
   const taskRepoId = typeof task.project_repository_id === 'number'
@@ -845,6 +885,15 @@ function provisionRepositoryDesk(
     },
   });
   if (task.execution_mode === 'artifact_change') return null;
+  // REPAIR-CODE-PRESERVATION (docs/architecture/REPAIR-CODE-PRESERVATION.md):
+  // a repair provisioning (managed_review_rejections > 0) must open the
+  // author's eyes to the rejected attempt. The reviewer SEES the code (frozen
+  // subject candidate set); the author historically did not — the asymmetry
+  // that burned 373 rejected lines. The rejected source coordinates come from
+  // the task's LATEST submission payload (append-only ledger — the reviewer
+  // rejected exactly that source), and the provisioner turns them into a
+  // verified patch VIEW on the desk. See it, but do not be bound.
+  const previousAttempt = readRejectedAttemptSource(db, task);
   return provisioner.provisionAuthorDesk({
     repositoryRoot: repoRow.resolved_local_path,
     taskId: task.id,
@@ -855,7 +904,58 @@ function provisionRepositoryDesk(
     expectedIntegrationHead: baseReceipt.observedIntegrationHead,
     effectiveBaseReceiptRef: baseReceipt.receiptRef,
     effectiveBaseReceiptDigest: baseReceipt.receiptDigest,
+    ...(previousAttempt && previousAttemptPatchDirectory
+      ? {
+        previousAttempt: {
+          branch: previousAttempt.branch,
+          commitSha: previousAttempt.commitSha,
+          patchDirectory: previousAttemptPatchDirectory,
+        },
+      }
+      : {}),
   });
+}
+
+/**
+ * REPAIR-CODE-PRESERVATION — resolve the git coordinates of the REJECTED
+ * attempt for an author repair desk. Returns null unless this provisioning is
+ * a managed-review repair (rejections > 0); the coordinates themselves are
+ * read from the latest append-only submission payload for the task, whose
+ * `source.{branch, commitSha}` the reviewer's frozen subject was built from.
+ * Typed + shape-validated: a malformed source is a corrupt repair state and
+ * yields null (the desk stays as blind as before rather than guessing) — the
+ * provisioner's shared-ref verification is the fail-closed gate for anything
+ * that DOES pass through.
+ */
+function readRejectedAttemptSource(
+  db: ReturnType<typeof getDb>,
+  task: { id: number; metadata?: unknown },
+): { branch: string; commitSha: string } | null {
+  const metadata = parseTaskMetadata(task.metadata);
+  const rejections = typeof metadata.managed_review_rejections === 'number'
+    ? metadata.managed_review_rejections
+    : 0;
+  if (rejections <= 0) return null;
+  const row = db.prepare(
+    `SELECT payload_snapshot
+       FROM factory_managed_node_submissions
+      WHERE task_id=?
+      ORDER BY id DESC
+      LIMIT 1`,
+  ).get(task.id) as { payload_snapshot: string } | undefined;
+  if (!row?.payload_snapshot) return null;
+  try {
+    const payload = JSON.parse(row.payload_snapshot) as {
+      source?: { branch?: unknown; commitSha?: unknown };
+    };
+    const branch = payload.source?.branch;
+    const commitSha = payload.source?.commitSha;
+    if (typeof branch !== 'string' || !branch.trim()) return null;
+    if (typeof commitSha !== 'string' || !/^[0-9a-f]{40}$/.test(commitSha)) return null;
+    return { branch, commitSha };
+  } catch {
+    return null;
+  }
 }
 
 /**

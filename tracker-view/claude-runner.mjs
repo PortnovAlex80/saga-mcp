@@ -336,6 +336,19 @@ export function buildPrompt({
                   : []),
                 'Address EVERY finding in that file before resubmitting. Repeating the rejected content verbatim wastes a repair attempt and will be rejected again.',
                 'The findings are authoritative for WHAT to fix; the gate already proved the previous output deficient on exactly those points.',
+              ]
+            : []),
+          // REPAIR-CODE-PRESERVATION: the rejected attempt's code is NOT lost
+          // (its branch lives in the shared refs) but the author was blind to
+          // it. The factory materialized previous-attempt.patch onto this
+          // desk. One statement, delivered to the decision point: the attempt
+          // exists, the patch is a VIEW — see it, but do not be bound (no
+          // auto-merge/rebase of rejected work; the clean slate is preserved).
+          ...(processWorkspace?.previousAttempt?.patchPath
+            ? [
+                `previous_attempt_patch=${processWorkspace.previousAttempt.patchPath}`,
+                `A previous repair attempt EXISTS (${processWorkspace.previousAttempt.branch}); its full diff against the merge-base is on this desk as previous-attempt.patch. READ it to see what was already tried and rejected — never rediscover it from memory.`,
+                'See it, but do NOT be bound: never apply, merge, or rebase that patch onto your branch. Your desk starts clean from the frozen base; rethink the requirement and reuse only what the evidence proves right.',
                 '',
               ]
             : []),
