@@ -1,0 +1,42 @@
+{
+  "buildProducts": {
+    "testOutput": "✔ AC-1 Physics-Based Spacecraft Controls (16.6456ms)\nℹ tests 23\nℹ suites 8\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 128.1676",
+    "testStatus": "passed",
+    "testsPassed": 23,
+    "testsTotal": 23
+  },
+  "readiness": {
+    "commands": {
+      "installCommand": "npm install",
+      "testCommand": "npm test"
+    },
+    "kind": "static"
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "807faf164525cc086507247512a04550864adccf",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/physics/index.js",
+      "src/physics/physics-engine.js",
+      "src/physics/spacecraft.js",
+      "src/physics/vector.js",
+      "tests/physics.test.js"
+    ],
+    "commitSha": "b60fde60b91c69a2a316295aa95dc03995d8c591",
+    "treeSha": "7b03e817e08edd9a52ae70254efc249132d6eddf"
+  },
+  "source": {
+    "branch": "saga/task/19/execution/91b7250a5d7c885a144e",
+    "commitSha": "b60fde60b91c69a2a316295aa95dc03995d8c591",
+    "workItemKey": "impl-physics-core"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-physics-core"
+}

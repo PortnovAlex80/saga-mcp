@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "message": "Required section §10 Supporting Systems is missing. The SRS contract requires this section to be complete for L/XL complexity, or use explicit 'n/a' with a reason where permitted. Add §10 documenting supporting systems (CI/CD, monitoring, logging, deployment, etc.) or explicitly justify why these are out of scope.",
+      "severity": "error",
+      "subject": "SRS §10 Supporting Systems"
+    },
+    {
+      "message": "Required section §11 External Integration Landscape is missing. The SRS contract requires this section to exist; active external boundaries should have protocol/auth/SLA/contract information. Add §11 documenting external integrations (WebSocket client/server, any external services) or explicitly justify why no external integrations exist.",
+      "severity": "error",
+      "subject": "SRS §11 External Integration Landscape"
+    },
+    {
+      "message": "Security controls section should follow the structured contract approach: check security axes (OWASP Top 10, appropriate ASVS level, agentic-AI axes when applicable). While local execution may justify minimal security controls, the section should explicitly document this using the structured 'n/a' pattern rather than a casual 'no security concerns' statement.",
+      "severity": "warning",
+      "subject": "SRS §6 Security Considerations"
+    }
+  ],
+  "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/2d77ba4fe25db93e39749e2906f656766de1b73ea15853cf6c32c0818b725e7a/author",
+  "verdict": "changes_requested"
+}
