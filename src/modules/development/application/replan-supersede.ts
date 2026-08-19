@@ -20,7 +20,7 @@
  * Idempotent: a replay finds only drained rows and supersedes nothing.
  */
 
-import type Database from 'better-sqlite3';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 
 export interface SupersedeInput {
   /** The cycle-1 process run whose cell tasks may still be pending. */
@@ -36,7 +36,7 @@ export interface SupersedeResult {
 const REMAINING_TASK_STATUSES = "('todo','in_progress','review','review_in_progress','blocked')";
 
 export function supersedeRemainingCycleTasks(
-  db: Database.Database,
+  db: SqlDatabasePort,
   input: SupersedeInput,
 ): SupersedeResult {
   return db.transaction(() => {

@@ -102,3 +102,39 @@ test('T9 companion (pure): converging strict subsets still converge and scope-im
   assert.equal(convergingStreak(chain), 0,
     'scope-impossible steps are non-converging — no waiver may fire');
 });
+
+test('T9: the trajectory classification table does not conflict — budget semantics are intact beside the new verdict', () => {
+  // The three-row budget table (FINDING-TRAJECTORY-BUDGET.md) plus the new
+  // fourth row (REPLAN-CYCLE-TZ §1): each class keeps its exact route.
+  const overlapA = overlap('auth', 'billing');
+  const overlapB = overlap('cart', 'deck');
+  // converging → waived (strict subset, fatal not growing).
+  assert.equal(
+    trajectory(findingSet([overlapA, overlapB]), findingSet([overlapA])),
+    'converging',
+  );
+  // spinning (no authority key) → stopped/charged exactly as before.
+  assert.equal(
+    trajectory(findingSet([overlapA]), findingSet([{ ...overlapA }])),
+    'spinning',
+  );
+  // churning (new key, no authority key) → charged exactly as before.
+  assert.equal(
+    trajectory(findingSet([overlapA]), findingSet([overlapB])),
+    'churning',
+  );
+  // scope-impossible — ONLY with a surviving path-outside-authority key.
+  assert.equal(
+    trajectory(
+      findingSet([SPACECRAFT, overlapA]),
+      findingSet([{ ...SPACECRAFT }, overlapA]),
+    ),
+    'scope-impossible',
+  );
+  // The authority key alone converging away NEVER blocks the waiver.
+  assert.equal(
+    trajectory(findingSet([SPACECRAFT, overlapA]), findingSet([overlapA])),
+    'converging',
+    'a resolving authority burn is ordinary convergence — the re-plan trigger never fires on progress',
+  );
+});

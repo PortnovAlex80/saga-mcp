@@ -17,7 +17,7 @@
  * (generic-flow-executor inputBeforeNodeRun).
  */
 
-import type Database from 'better-sqlite3';
+import type { SqlDatabasePort } from '../../../application/ports/sql-database.js';
 import type {
   DevelopmentCase,
 } from '../domain/development-schemas.js';
@@ -110,7 +110,7 @@ function parseScopeViolation(key: string): PathScopePair | null {
  * (tasks.metadata.cell_input_item) and acceptance state per workplace.
  */
 function readCellItems(
-  db: Database.Database,
+  db: SqlDatabasePort,
   processRunId: number,
   cellId: string,
 ): CellItemRow[] {
@@ -146,7 +146,7 @@ function readCellItems(
  * (the cycle-1 delta tree) and the item commits (the integration head).
  */
 function readSubmissions(
-  db: Database.Database,
+  db: SqlDatabasePort,
   processRunId: number,
   cellId: string,
 ): SubmissionRow[] {
@@ -175,7 +175,7 @@ function nonOverlappingGroups(items: readonly CellItemRow[]): readonly (readonly
   return groups;
 }
 
-export function buildReplanCase(db: Database.Database, input: ReplanCaseInput): ReplanDevelopmentCase {
+export function buildReplanCase(db: SqlDatabasePort, input: ReplanCaseInput): ReplanDevelopmentCase {
   const { developmentCase, workplaceRef } = input;
   const items = readCellItems(db, workplaceRef.processRunId, workplaceRef.productionCellId);
   const submissions = readSubmissions(db, workplaceRef.processRunId, workplaceRef.productionCellId)

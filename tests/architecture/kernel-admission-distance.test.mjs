@@ -121,6 +121,7 @@ const EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS = [
 
 const EXPECTED_EXECUTABLE_CAPABILITIES = [
   'check-provider/development.implementation-scope.v1',
+  'check-provider/development.replan-graph.v1',
   'check-provider/development.task-graph-contract.v1',
   'check-provider/development.verification-product-contract.v2',
   'check-provider/discovery.proposal-contract.v1',
@@ -158,14 +159,14 @@ test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 7 contracts
     'derived manifest count disagrees with the raw contract array');
 });
 
-test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 23 entries, fail-closed at the boundary', () => {
-  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 23,
+test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 24 entries, fail-closed at the boundary', () => {
+  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 24,
     'executable-capability admission changed: update this frozen count in the SAME commit as the admission (ADR-082 §4)');
   const actual = WORKSHOP_EXECUTABLE_CAPABILITIES
     .map((c) => `${c.kind}/${c.logicalId}`).sort();
   assert.deepEqual(actual, [...EXPECTED_EXECUTABLE_CAPABILITIES].sort(),
     'executable-capability set changed: admitting a provider/effect/handler is an admission act (ADR-082 §4.1)');
-  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 23,
+  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 24,
     'derived manifest count disagrees with the raw capability array');
 
   // The fail-closed boundary being pinned: an undeclared capability cannot be
@@ -241,7 +242,10 @@ test('the linkType behavioural ternary exists in exactly the three known copies'
     });
   }
   assert.deepEqual(copies.sort(), [
-    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:548',
+    // 548 -> 567: the projection-persistence copy shifted when the
+    // finding-trajectory budget landed above it (19e6002b lineage) — same
+    // three copies, refreshed anchor, same guard.
+    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:567',
     'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts:413',
     'src/tools/tasks.ts:552',
   ], `the linkType stage-name ternary was copied or moved (${copies.join(', ')}); ` +
