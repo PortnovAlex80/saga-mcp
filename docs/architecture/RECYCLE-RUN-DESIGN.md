@@ -96,6 +96,57 @@ Merge/inherit релиза в шаблон (тот же вердикт, что R
 требует пути через reconciliation-узел; качество чтения кода воркером —
 только ревьюером; discovery-часть хука — вне угла (Р1).
 
-## Р3 (authority и форма хука): ⏳
+## Р3 (authority и форма хука): CHANGE-ORDER ЧЕРЕЗ WIRED CONTROL-INTENT ✅
+
+(дополнение про линейную версионность продукта — вторым заходом, ⏳)
+
+- **Control intents — НЕ операторский канал** (это проекция внутренних задач
+  воркеров, `sqlite-discovery-runtime.ts:862/973`); запись извне =
+  вмешательство в живой прогон. Но `factory_discovery_diagnosis_control_
+  intents` — правильно спроектированная ЗАГОТОВКА операторского входа
+  (привязка к certificate/hash), schema-only: ни INSERT, ни ридера — её надо
+  довести до wired.
+- **Continuation нелегален и неверен**: v1 терминал `runnable-local` не
+  проходит `isContinuableTerminal`; continuation ремонтирует тот же заказ,
+  change — новая бизнес-воля.
+- **§9-переживаемость находок**: materialized как immutable content-addressed
+  продукты, digest находок + digest baseline входят в `semanticInputDigest`
+  → затронутые ячейки дают capsule MISS (воркер осознанно решает с нуля vs
+  reuse), нетронутые — легальный HIT (35 капсул v1 project-scoped
+  переживают ран). Ссылки на строки v1 — только provenance.
+- **Authority над кодом: та же ветка dev новыми карточками** (канонические
+  рефы двигает только fenced-CAS-эффект; v1 sealed-рефы append-only).
+  Форк легален, но плодит bindings и merge-back authority. Rebase на тег —
+  ОТВЕРГНУТ: переписывает деревья под запечатлённым review, нарушение
+  §18/§27. Владелец директорий изменений — planner (strict write authority
+  в WorkIntent) + детерминированный Git Gate, не оператор и не воркер.
+- **Бюджеты не наследуются** (workplace/obligation-scoped). Риск — не
+  наказание v2, а КОНТАМИНАЦИЯ: ADR-053-швы (выборка задач по эпику без
+  lifecycle-фильтра `sqlite-formalization-kernel.ts:308`; newest-wins
+  капсульный биндер). **Precondition рецикла: lifecycle-точность
+  baseline/binder.** «Не вина завода» = typed origin + ownership-классы;
+  находки v1 = новые reason-ключи = работа, не спин.
+- **Вариант A (рекомендован)**: `FactoryRequest(change)` — новый ордер+ран,
+  source_kind `change`, baseline = sealed v1 (commit+tree digest), находки =
+  typed operator-input продукты с per-ID диспозициями, вход через wired
+  операторский control-intent (образец — discovery-diagnosis). Не покрывает
+  anchoring bias — per-item «rebuild vs reuse» обязан быть явным typed
+  продуктом карточки (закрыто Р2).
+
+## Синтез трёх (предварительный, без версионности): ✅
+
+Все трое независимо сходятся на одном стержне:
+
+| Слой | Решение | Автор |
+|---|---|---|
+| Контракт | НОВЫй FactoryOrder(change) c ChangeRequestAppendix; findings типизированы, ID сохранены; RETIRE только оператор; монотонность реестра (v2 ⊇ выжившее v1) | Р1 |
+| Канал | Wired операторский control-intent (довести discovery-diagnosis-заготовку); continuation отвергнут всеми тремя | Р3 |
+| Семантика сессии | capsule MISS/HIT по semanticInputDigest — «код существует» переживает §9; integratedRepoState в кейсе | Р3+Р2 |
+| Формализация | implementationDisposition на AC (new/modify/verify) + per-ID диспозиции + детерминированные гейты | Р2+Р1 |
+| Разработка | worktree от HEAD релиза (паттерн continuation expectedBaseCommit — механика без канала), диспозиции → changeScopes карточек, форма диффа на гейтах | Р2 |
+| Анкоринг/бюджет | anchoring-вопрос ревьюеру, recycleRounds кэп 2, траектория ловит «реюз-отговорку»; типизированная вина; precondition — lifecycle-точность binder'ов | Р2+Р3 |
+
+⏳ ждёт: линейная версионность продукта (subversion-style ряд v1→v2→v3 как
+first-class — дополнение Р3 в работе).
 
 ## Синтез: ⏳ после Р2+Р3
