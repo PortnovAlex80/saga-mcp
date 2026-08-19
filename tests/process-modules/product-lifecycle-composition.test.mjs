@@ -95,6 +95,10 @@ test('composition installs all module capabilities and refuses implicit input/pr
         'solution-development',
         'solution-development-verification-continuation',
         'solution-development-managed',
+        // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §4) — the cycle-2 variant of the
+        // managed continuation (same name, version 1.2.0): enters through
+        // the replan-task-graph planner cell.
+        'solution-development-managed',
         'delivery-release',
       ],
     );

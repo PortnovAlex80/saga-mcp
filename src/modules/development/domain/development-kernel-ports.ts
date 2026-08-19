@@ -76,6 +76,7 @@ import type {
 export const DEVELOPMENT_KERNEL_HANDLER_IDS = {
   resolveTaskGraph: 'development-resolve-task-graph',
   resolveContinuationTaskGraph: 'development-resolve-continuation-task-graph',
+  resolveReplanTaskGraph: 'development-resolve-replan-task-graph',
   freezeIntegratedCandidate: 'development-freeze-integrated-candidate',
   bindRunnableCandidate: 'development-bind-runnable-candidate',
   freezeContinuationCandidate: 'development-freeze-continuation-candidate',

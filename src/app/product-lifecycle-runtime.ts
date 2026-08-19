@@ -85,6 +85,7 @@ import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-re
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
 import { SqliteCellFinalAcceptance } from '../infrastructure/workplace/sqlite-cell-final-acceptance.js';
 import { SqliteAcceptedAuthorityHeadRepository } from '../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
+import { SqliteReplanMandateLedger } from '../infrastructure/workplace/sqlite-replan-mandate-ledger.js';
 import { SqliteSealedProductMaterialRepository } from '../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteAuthorCandidateCarryForward } from '../infrastructure/workplace/sqlite-author-candidate-carry-forward.js';
 import { SqliteExternalEffectLedger } from '../process-modules/persistence/sqlite-external-effect-ledger.js';
@@ -432,6 +433,9 @@ export function createProductLifecycleRuntime(
     ['human', new HumanNodeExecutor(humanInteractions)],
     ['production-cell', new ProductionCellNodeExecutor({
       db,
+      // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §6) — cap (2 cycles per case lineage)
+      // + monotonic ratchet, backed by the append-only mandate ledger.
+      replanCyclePolicy: new SqliteReplanMandateLedger(db),
       coordinator: productionCellCoordinator,
       authorityCommit,
       candidateSetRepo,
