@@ -20,8 +20,8 @@ honest and successful — implement and exercise the E9 recycle.
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🛑 STOPPED 4/7 at phantom-bridges (test-append conflict, aborted clean) | wave-B agent + main + final agent | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, test append-union); persistence `bf9f66a5` (main, allowlist regenerated at schema 100 — the only schema move). Verified after persistence: build 0, arch 403/403, pm 1143/1143, infra 372/0 fail/12 skip. Final agent stopped on `tests/worker-prompt-assembly.test.mjs` append conflict (phantom-bridges X2 block vs worker-prompt's earlier appended block) — see 00:54 log; integration-verify + reconciliation NOT attempted |
-| 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | ✅ done 7/7 | agents + main | f6042bd9, a53eebad (agent, clean); ae2e634b, bf9f66a5, fb2ece90, f27b02aa, 62b9339e (main, hand-resolved). Final: build 0, arch 408/408, pm 1169/1169, infra 394 pass/0 fail/12 skip, schema 100 |
+| 3 | TASK 1 Wave C merge: ac-drift-remedy alone + full regression + count reconciliation | 🔄 next | wave-C agent | schema note: Wave B already spent the only schema move (99→100); ac-drift-remedy must NOT carry another |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
 | 6 | LAUNCH: fresh run, `--model glm-4.6`, concurrency 2, guard env, docking-slice order; monitor to terminal | ⬚ pending | main | |
@@ -245,3 +245,32 @@ first; any E9-reserve code is escalate-never-delete.
   Operator action needed at wake: hand-resolve the test-file append
   union (phantom-bridges X2 block + saga4's existing blocks, and
   reconciliation's future +91), then resume merges 6–7 per protocol.
+- **01:05 (main)** — phantom-bridges merged `fb2ece90` (append-union in
+  worker-prompt-assembly.test.mjs: worker-prompt feedback/death-history
+  blocks + X2 G1.6 block). Arch 408/408, pm 1143/1143.
+- **01:06 (main)** — TASK 4 answered and committed `7cde1719`
+  (SNAPSHOT-MVP-ANSWERS.md): captured-but-truncated corpus; production
+  gates/settlement inside the replay boundary; NO on gaming, NO on AC-drift
+  (the tape itself benignly games the readiness gate; the drift is frozen
+  into the corpus as ground truth). Branch stays HELD for the architect.
+- **01:10 (main)** — integration-verify merged `f27b02aa` after the deepest
+  resolution of the night: the branch's local decodeFindingsForDecision was
+  a pre-extraction duplicate (gate-delivery had moved it to
+  sqlite-gate-finding-set-chain.ts), so the duplicate block was dropped and
+  the branch's SEAM L2 seam-issue mapping PORTED into the shared decoder
+  (diagnostics AND seam issues feed one findings array; fileHints on the
+  interface); seam-repair-routing test import repointed to the shared
+  module; ternary anchor refreshed 575→576. Arch 408/408, pm 1157/1157.
+- **01:16 (main)** — reconciliation merged `62b9339e`: two interleaved append
+  blocks in worker-prompt-assembly.test.mjs (12/12) + a validator union in
+  pinned-workspace-materializer.ts. PROCESS SLIP recorded: a too-broad
+  `git add -A` briefly staged evidence dirs (.factory-docker-runs etc.);
+  the commit failed harmlessly (exit 128, no junk landed), index reset, the
+  exact 12-file merge set re-added. **WAVE B COMPLETE 7/7**: build 0, arch
+  408/408, pm 1169/1169, infra 394 pass/0 fail/12 skip, schema 100.
+- **01:17 (main)** — Operator set a 10-minute self-hook: tracker check every
+  10 min (this file vs git reality; one short English line per fire).
+  Wave C (ac-drift-remedy alone) dispatching next. NOTE for wave C: the
+  brief's "only schema move" was spent by Wave B (99→100); if the
+  ac-drift-remedy tree carries its own schema change, that is escalation
+  item 4 — STOP and report, do not decide.
