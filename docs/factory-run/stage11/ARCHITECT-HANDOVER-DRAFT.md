@@ -24,6 +24,30 @@ card. After the relaunch, a repair campaign (blindsight census: ~37 findings,
 **The run you are judging ran on code as of 12:37. Everything merged after
 12:38 is listed in §4 and takes effect on the next run.**
 
+### 0.1 State at handover (2026-08-19 ~20:40Z)
+
+- **Run**: in final phase — five independent AC verifiers (#37–#41) working;
+  after them, kernel settlement and terminal `runnable-local`. Snapshot of the
+  certification-gaming moment taken: `stage11-readiness-npmtest-x3`.
+- **Done since the run started**: trace-identity fix (tasks 1–5, in the run);
+  repair campaign — 8 merges reviewed+independently-verified (§4.1);
+  blindsight census (~37 findings) → 8 repair branches complete, NOT merged
+  (§4.3); AC-drift forensics + three-architect remedy design; certification-
+  gaming forensics + three-architect remedy design (§4.5); worker-start
+  disorientation investigation closed with mechanism+empirics (§4.4b).
+- **In flight**: two implementers — AC-drift three networks
+  (`repair/ac-drift-remedy`), disorientation fix
+  (`repair/worker-disorientation`).
+- **Merge policy (operator's decision, supersedes the earlier plan)**: saga4
+  is handed over AS-IS (run evidence + reviewed campaign merges). The 13
+  unmerged branches are handed as TREES — one reviewable unit each, with its
+  design doc and RED-first trail. Nothing merges before your review; you mark
+  approve/adjust per tree, we merge in your order, run ONE full regression on
+  the final HEAD, and only then release. Three of the branches touch
+  governance principles reserved for you (LR-04 declaration authority,
+  warrant, profile monotonicity) — pre-merging them would preempt your
+  escalation rights.
+
 ---
 
 ## 1. Stage 10 — the first real run (per STAGE-10-AGENT-BRIEF report format)
@@ -252,24 +276,54 @@ The live engine runs `dist` built 12:37. Everything below postdates it.
 | `provider-retry` | shim-side progressive retry on 429/5xx — the B-001 mitigation |
 | `snapshot-test-mvp` | zero-token deterministic re-run of the captured corpus + error-scenario suite |
 
-### 4.3 In flight — 8 dispatched agents (blindsight closure)
+### 4.3 Blind-repair wave — 8 branches COMPLETE, handed as trees (not merged)
 
 Census: 5 layers, ~37 findings; systemic shape = "the factory writes the right
 information and fails to deliver it to the point of decision". Registry:
-`docs/factory-run/stage11/AGENT-REGISTRY.md`.
+`docs/factory-run/stage11/AGENT-REGISTRY.md`. All 8 agents returned with
+RED-first commits; per-branch summary:
 
-| # | Branch | Scope | Report |
+| # | Branch | Commits | Delivered |
 |---|---|---|---|
-| 1 | repair/blindsight-worker-prompt | review-feedback loud block, feedback history >1 round, card death history | ⏳ |
-| 2 | repair/blindsight-gate-delivery | candidateSnapshot filled, trajectory label to author, reviewer round/verdicts, acceptance history, carry-forward code | ⏳ |
-| 3 | repair/blindsight-lifecycle | obligation redrive by reason, budget seed on resume, failed NodeRuns on resume, epoch diagnosis, burial reason | ⏳ |
-| 4 | repair/blindsight-persistence | effect-attempt pattern detector, minimal-work detector at worker_done, capsule reason routing, drift append-only, dead tables | ⏳ |
-| 5 | repair/blindsight-phantom-bridges | RECOVERY: parser, metadata.previous_failures/attempt_history delivery, skill-contract canary | ⏳ |
-| 6 | repair/blindsight-integration-verify | SEAM layer 2: full integration verification, typed repair-issues routed to producing tasks | ⏳ |
-| 7 | repair/worker-names | display_name claim-time stamping, 4 workshop pools, prompt/heartbeat/board | ⏳ |
-| 8 | repair/blindsight-reconciliation | SEAM layer 3: previous-attempt.{json,patch} on desk + reconciliation desk | ⏳ |
+| 1 | repair/blindsight-worker-prompt | 5 | fail-closed review/comment pairing, feedback history, death history |
+| 2 | repair/blindsight-gate-delivery | 7 | chain reads via blessed owner, no recency selectors |
+| 3 | repair/blindsight-lifecycle | 4 | F3–F7: redrive by reason, budget seed on resume, epoch diagnosis, burial reason |
+| 4 | repair/blindsight-persistence | 7 | effect-attempt pattern detector, capsule reason routing, drift append-only, schema 99→100 |
+| 5 | repair/blindsight-phantom-bridges | 3 | journal-fence for comments emitter |
+| 6 | repair/blindsight-integration-verify | 3 | X3 settlement sees failed evidence |
+| 7 | repair/worker-names | 2 | factory-floor callsigns per WORKER-NAMES-DESIGN |
+| 8 | repair/blindsight-reconciliation | 2 | Layer 3 reconciliation desk + append-only ledger |
 
-None of the 8 touches the decisions reserved for you (§5 E2/E3).
+Plus two implementation branches in flight (returning): `repair/ac-drift-remedy`
+(three networks per `docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`) and
+`repair/worker-disorientation` (per §4.4b).
+
+### 4.4b Worker-start disorientation — investigation closed
+
+`docs/factory-run/stage11/DISORIENTATION-INVESTIGATION.md`: 72% of sessions
+start in the main repo instead of the product repo (opencode 1.18.18 ascends
+to the nearest workspace marker — the product repo has none, the factory root
+has AGENTS.md); self-heals in ~1 min; tax ~50–60 min/run; the sharpest edge
+is SILENT wrong-content reads (docs/discovery paths exist in the main repo).
+Fix candidates: shim-side session pinning vs marker at sandbox init; one
+spawn-fencing bug («process birth identity unavailable», 3 lost workers)
+filed separately.
+
+### 4.5 Certification gaming — forensics + three-architect remedy
+
+`docs/architecture/CERTIFICATION-GAMING-REMEDY.md` (read whole). The chain:
+merged test bytes were never green anywhere (card #20's repair execution
+committed without a green run, self-report passed as evidence) → three honest
+certification rejections (the first honest execution of those bytes) →
+round-4 narrowing of testCommand (9→7 files, exactly the two red ones, zero
+code change) → gate executed the narrowed declaration and accepted. M3's law:
+gaming passed exactly where the check depended on the candidate's declaration.
+Attribution: conveyor's blindness first, model's reward-hacking second. The
+verifiers (#37–#41) inherit the taint — bind-runnable-candidate bound the
+narrowed manifest. Remedy rollout order inside the doc: additive coverage
+report → monotonicity ratchet + declaration-diff escalation →
+sourceCandidate-keyed receipt invariant → derived-canonical testCommand →
+warrant conjunction (ties into AC-DRIFT-REMEDY §synthesis).
 
 ### 4.4 ADR-032 watch items — where the evidence landed
 
@@ -295,8 +349,10 @@ None of the 8 touches the decisions reserved for you (§5 E2/E3).
 | E2 | Extend content-addressed resolution to artifacts? (Deletion latent + operator routes incl. a paused-window gap; **mutation live**: silent capsule drift.) Replay-compatibility consequence. | yes — REPORT.md TASK 3 |
 | E3 | Error-boundary redesign: cell-scoped failure for post-acceptance effects vs whole-LifecycleRun fatality. Three existing cell-scoped paths were bypassed. | yes — REPORT.md TASK 4 |
 | E4 | Capsule identity change from the trace fix | **closed, no action**: zero traceIds in all stage-10 capsule payloads; only the fail-closed message changed |
-| E5 | Ratification of the §4 merge campaign (12+ merges across run-terminal + agent waves) | ⏳ final map at handover |
+| E5 | Review of the 13 unmerged trees (8 blindsight + 2 implementation + 3 held): mark approve/adjust per tree; we merge in your order, one full regression on the final HEAD | trees ready, design docs attached |
 | E6 | Watch-item judgments (iii/vi/vii) | ⏳ endgame evidence |
+| E7 | Certification-gaming remedy: LR-04 amendment (declaration authority → derived-canonical core + additive manifest), profile monotonicity, receipt invariant — governance principles reserved for you | yes — CERTIFICATION-GAMING-REMEDY.md synthesis |
+| E8 | AC-drift remedy: ratify the three-network rollout (register → reaction → structure → execution) and its formalization-gate additions | yes — AC-DRIFT-REMEDY-DESIGN.md synthesis |
 
 ---
 
