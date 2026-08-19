@@ -244,3 +244,81 @@ test('(b) fresh provisioning with no durable feedback materializes no history fi
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// (c) prior-attempt death history delivered INTO the spawn prompt. The claim
+// SQL only ever looks at live execution states, so worker_executions.last_error
+// (incl. REPEATED_TOOL_LOOP) is otherwise invisible to the next worker. This
+// pins the full chain: typed deaths → materialized desk → buildPrompt block.
+//
+// The fix itself landed RED-first in the two previous commits (G1.8
+// 'AssertionError: the spawn prompt must open with the number of prior dead
+// executions' + readers 'ERR_MODULE_NOT_FOUND'); this test pins the assembled
+// delivery chain so a regression in any link fails loudly.
+// ---------------------------------------------------------------------------
+
+test('(c) card death history rides the materialized desk into the spawn prompt block', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'saga-death-delivery-'));
+  const skillDir = mkdtempSync(path.join(tmpdir(), 'saga-death-skills-'));
+  try {
+    const { writeFileSync: write } = await import('node:fs');
+    write(path.join(skillDir, 'protocol.md'), 'protocol instructions\n');
+    write(path.join(skillDir, 'semantic.md'), 'semantic instructions\n');
+
+    const desk = materializePinnedWorkspace({
+      ...baseRequest(root, 'exec-after-deaths', {}),
+      priorDeaths: [
+        {
+          executionId: 'exec-d1',
+          workerId: 'worker-a',
+          state: 'lost',
+          lastError: 'REPEATED_TOOL_LOOP: Edit repeated 12 times with identical input',
+          finishedAt: '2026-08-17 02:00:00',
+        },
+        {
+          executionId: 'exec-d2',
+          workerId: 'worker-b',
+          state: 'spawn_failed',
+          lastError: 'Claude spawn failed (pre-assigned): ENOENT',
+          finishedAt: '2026-08-17 03:00:00',
+        },
+      ],
+    });
+    assert.equal(desk.priorAttempts.count, 2);
+    assert.equal(desk.priorAttempts.deaths.length, 2);
+
+    const { buildPrompt } = await import('../../tracker-view/claude-runner.mjs');
+    const prompt = buildPrompt({
+      assignment: {
+        execution_id: 'exec-after-deaths',
+        skill: 'semantic',
+        repository: { name: 'product' },
+        task: {
+          id: 41,
+          status: 'in_progress',
+          task_kind: 'development.code',
+          workflow_stage: 'solution-development',
+          execution_mode: 'git_change',
+          tags: '[]',
+        },
+      },
+      project: { id: 1, name: 'P' },
+      workerId: 'worker-next',
+      workspaceRoot: root,
+      resolvedProfile: null,
+      processWorkspace: desk,
+      launchSpec: {
+        installationId: 7,
+        role: { protocolSkill: 'protocol', semanticSkill: 'semantic' },
+        allowedToolIds: ['Read'],
+        resolveSkill: name => path.join(skillDir, `${name}.md`),
+      },
+    });
+    assert.ok(prompt.includes('⚠️ PRIOR ATTEMPTS ON THIS CARD: 2 previous worker execution(s) on this task died without completing.'));
+    assert.ok(prompt.includes('[lost] at 2026-08-17 02:00:00 — REPEATED_TOOL_LOOP: Edit repeated 12 times with identical input'));
+    assert.ok(prompt.includes('[spawn_failed] at 2026-08-17 03:00:00 — Claude spawn failed (pre-assigned): ENOENT'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(skillDir, { recursive: true, force: true });
+  }
+});
