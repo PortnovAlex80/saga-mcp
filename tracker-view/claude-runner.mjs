@@ -293,6 +293,32 @@ export function buildPrompt({
       ? [
           '',
           '--- MACHINE-PROVISIONED PROCESS WORKSPACE (mandatory, exact paths) ---',
+          // BLINDSIGHT (c): the spawn prompt must carry the card's death
+          // history. Claim SQL only ever looks at live states, so a card that
+          // killed N previous workers (worker_executions.last_error, incl.
+          // REPEATED_TOOL_LOOP) otherwise looks identical to a healthy card.
+          // The deaths are delivered HERE — at the point of decision — instead
+          // of remaining "available through task_get by worker initiative".
+          ...(processWorkspace?.priorAttempts && processWorkspace.priorAttempts.count > 0
+            ? [
+                '',
+                `⚠️ PRIOR ATTEMPTS ON THIS CARD: ${processWorkspace.priorAttempts.count} previous worker execution(s) on this task died without completing.`,
+                ...(Array.isArray(processWorkspace.priorAttempts.deaths)
+                  ? processWorkspace.priorAttempts.deaths.map(death => {
+                      const state = typeof death?.state === 'string' ? death.state : 'unknown';
+                      const at = typeof death?.finishedAt === 'string' && death.finishedAt
+                        ? ` at ${death.finishedAt}`
+                        : '';
+                      const failure = typeof death?.lastError === 'string' && death.lastError.length > 0
+                        ? ` — ${death.lastError}`
+                        : ' — (no last_error recorded)';
+                      return `   - [${state}]${at}${failure}`;
+                    })
+                  : []),
+                'A card whose previous workers died is NOT a healthy card: read the failures above and do NOT repeat the exact actions that produced them.',
+                '',
+              ]
+            : []),
           ...(processWorkspace?.recoveryFeedback?.present && processWorkspace?.recoveryFeedback?.path
             ? [
                 '',
@@ -310,6 +336,44 @@ export function buildPrompt({
                   : []),
                 'Address EVERY finding in that file before resubmitting. Repeating the rejected content verbatim wastes a repair attempt and will be rejected again.',
                 'The findings are authoritative for WHAT to fix; the gate already proved the previous output deficient on exactly those points.',
+                '',
+              ]
+            : []),
+          // BLINDSIGHT (a): review feedback is MORE semantic than gate feedback
+          // (a human-role reviewer wrote it) yet it used to be buried inside
+          // the workspace_files JSON array while the gate feedback got a loud
+          // ⚠️ block. Mirror the pattern: loud block + path + verbatim key
+          // points, so the worker physically cannot miss it.
+          ...(processWorkspace?.reviewFeedback?.present && processWorkspace?.reviewFeedback?.path
+            ? [
+                '',
+                '⚠️⚠️⚠️ REVIEW REJECTION — THE REVIEWER SENT YOUR PREVIOUS WORK BACK. ⚠️⚠️⚠️',
+                `review_feedback=${processWorkspace.reviewFeedback.path}`,
+                `READ ${processWorkspace.reviewFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is the reviewer's verdict on your previous submission.`,
+                ...(processWorkspace.reviewFeedback.round > 0
+                  ? [`This is review rejection round ${processWorkspace.reviewFeedback.round}; the reviewer has already rejected this work before.`]
+                  : []),
+                ...(processWorkspace.reviewFeedback.reasons?.length
+                  ? [
+                      "The reviewer's key points, quoted verbatim from that file:",
+                      ...processWorkspace.reviewFeedback.reasons.map(
+                        (message, index) => `   ${index + 1}. ${message}`,
+                      ),
+                    ]
+                  : []),
+                'Address EVERY reviewer point before resubmitting. Repeating rejected content verbatim wastes a review round and will be rejected again.',
+                // BLINDSIGHT (b): the single review-feedback.json is only the
+                // LATEST round. The full multi-round history materialized from
+                // durable sources is pointed at here so history depth is not 1.
+                ...(processWorkspace.feedbackHistory?.present && processWorkspace.feedbackHistory?.path
+                  ? [
+                      `feedback_history=${processWorkspace.feedbackHistory.path}`,
+                      `That file carries ${processWorkspace.feedbackHistory.rounds} feedback event(s) across ALL rounds `
+                        + `(${processWorkspace.feedbackHistory.reviewRejections} review rejection(s), `
+                        + `${processWorkspace.feedbackHistory.submissionRejections} submission validation rejection(s)).`,
+                      'Prior rounds may contain findings that were never addressed; read the full history before resubmitting.',
+                    ]
+                  : []),
                 '',
               ]
             : []),

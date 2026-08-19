@@ -33,6 +33,7 @@ import {
   relativeWorkspacePath,
   recoveryFeedbackFromMetadata,
   reviewFeedbackFromMetadata,
+  reviewFeedbackKeyLines,
   parseMetadata,
 } from './process-execution-workspace.js';
 
@@ -68,7 +69,48 @@ export interface WorkplaceDesk {
      */
     readonly reasons: readonly string[];
   };
-  readonly reviewFeedback: { readonly present: boolean; readonly path: string | null };
+  readonly reviewFeedback: {
+    readonly present: boolean;
+    readonly path: string | null;
+    /**
+     * 1-based review rejection round this provisioning repairs (from
+     * managed_review_rejections). The loud prompt block states it so the
+     * worker knows the reviewer has rejected this work before.
+     */
+    readonly round: number;
+    /**
+     * BLINDSIGHT (a): the reviewer's key points, quoted verbatim (≤3 lines,
+     * ≤500 chars each — see reviewFeedbackKeyLines). The prompt block inlines
+     * them so review feedback — MORE semantic than gate feedback — is no longer
+     * buried in the workspace_files JSON array.
+     */
+    readonly reasons: readonly string[];
+  };
+  /**
+   * BLINDSIGHT (b): the FULL multi-round feedback history materialized from
+   * durable append-only sources (see readTaskFeedbackHistory). The per-round
+   * review-feedback.json / recovery-feedback.json carry only the LATEST round;
+   * this file accumulates every round so history is never destroyed by the
+   * metadata overwrite. Absent when the card has no durable feedback yet.
+   */
+  readonly feedbackHistory: {
+    readonly present: boolean;
+    readonly path: string | null;
+    /** Total feedback events across all rounds (entries in the file). */
+    readonly rounds: number;
+    readonly reviewRejections: number;
+    readonly submissionRejections: number;
+  };
+  /**
+   * BLINDSIGHT (c): prior abnormal executions of this card (deaths with
+   * last_error, incl. REPEATED_TOOL_LOOP) delivered to the spawn prompt so a
+   * card that killed previous workers no longer looks identical to a healthy
+   * card. Empty for a healthy card.
+   */
+  readonly priorAttempts: {
+    readonly count: number;
+    readonly deaths: readonly PriorExecutionDeath[];
+  };
   readonly agentAssistance: { readonly required: boolean; readonly path: string | null };
 
   readonly workspaceFiles: readonly string[];
@@ -76,6 +118,9 @@ export interface WorkplaceDesk {
 
   readonly repositoryDesk?: RepositoryDesk;
 }
+
+/** Delivery-shaped projection of a {@link WorkerExecutionDeath} for prompts. */
+export type PriorExecutionDeath = WorkerExecutionDeath;
 
 export function assertDeskInvariants(desk: WorkplaceDesk): void {
   const expectedTrackerSuffix = `node-${desk.nodeId}.md`;
@@ -127,6 +172,26 @@ export function assertDeskInvariants(desk: WorkplaceDesk): void {
       + `is true for node '${desk.nodeId}' but path is null.`,
     );
   }
+  if (desk.feedbackHistory.present && desk.feedbackHistory.path === null) {
+    throw new Error(
+      `WORKPLACE_DESK_HISTORY_PRESENT_BUT_NO_PATH: feedbackHistory.present `
+      + `is true for node '${desk.nodeId}' but path is null.`,
+    );
+  }
+  if (desk.feedbackHistory.present && desk.feedbackHistory.rounds < 1) {
+    throw new Error(
+      `WORKPLACE_DESK_HISTORY_PRESENT_BUT_EMPTY: feedbackHistory.present is `
+      + `true for node '${desk.nodeId}' but rounds is ${desk.feedbackHistory.rounds}.`,
+    );
+  }
+  if (desk.priorAttempts.count < 0
+    || desk.priorAttempts.count !== desk.priorAttempts.deaths.length) {
+    throw new Error(
+      `WORKPLACE_DESK_DEATHS_COUNT_MISMATCH: priorAttempts.count `
+      + `${desk.priorAttempts.count} must equal deaths.length `
+      + `${desk.priorAttempts.deaths.length}.`,
+    );
+  }
 }
 
 import type { ProcessModuleDefinition, ExecutionProfileDefinition } from '../domain/process-module.js';
@@ -134,6 +199,10 @@ import type {
   ResourceBlob,
   StoredModulePackage,
 } from '../installation/index.js';
+import type {
+  TaskFeedbackHistory,
+  WorkerExecutionDeath,
+} from '../../lifecycle/task-history-readers.js';
 import {
   renderAgentAssistanceProjection,
   serializeAgentAssistanceProjection,
@@ -155,6 +224,19 @@ export interface MaterializePinnedWorkspaceRequest {
   readonly workerId: string;
   readonly additionalBindings?: Readonly<Record<string, unknown>>;
   readonly templatePreparer?: ProcessWorkspaceTemplatePreparer;
+  /**
+   * BLINDSIGHT (b): the FULL feedback history read from durable sources by the
+   * factory host (readTaskFeedbackHistory). When non-null with entries, the
+   * materializer writes feedback-history.json into the execution directory.
+   * The materializer itself never touches a DB — history bytes arrive as typed
+   * data so the pinned-package desk stays pure FS.
+   */
+  readonly feedbackHistory?: TaskFeedbackHistory | null;
+  /**
+   * BLINDSIGHT (c): prior abnormal executions of this card (readTaskDeathHistory).
+   * Delivered on the desk so the spawn prompt can carry the death block.
+   */
+  readonly priorDeaths?: readonly WorkerExecutionDeath[] | null;
 }
 
 function resolveResource(
@@ -321,10 +403,37 @@ export function materializePinnedWorkspace(
   }
 
   let reviewFeedbackPath: string | null = null;
+  let reviewFeedbackRound = 0;
+  let reviewFeedbackReasons: string[] = [];
   const reviewFeedback = reviewFeedbackFromMetadata(metadata);
   if (reviewFeedback) {
     reviewFeedbackPath = path.join(executionDirectory, 'review-feedback.json');
     writeFileSync(reviewFeedbackPath, `${JSON.stringify(reviewFeedback, null, 2)}\n`);
+    reviewFeedbackRound = reviewFeedback.attempt;
+    reviewFeedbackReasons = reviewFeedbackKeyLines(reviewFeedback.feedback);
+  }
+
+  // BLINDSIGHT (b): materialize the FULL multi-round history. Regenerated
+  // from durable append-only sources on every provisioning — it ACCUMULATES
+  // (every prior round reappears), unlike the per-round files above which
+  // carry only the latest feedback.
+  let feedbackHistoryPath: string | null = null;
+  const feedbackHistory = request.feedbackHistory ?? null;
+  if (feedbackHistory && feedbackHistory.entries.length > 0) {
+    feedbackHistoryPath = path.join(executionDirectory, 'feedback-history.json');
+    writeFileSync(
+      feedbackHistoryPath,
+      `${JSON.stringify(
+        {
+          ...feedbackHistory,
+          // generatedAt is re-stamped per materialization so the file always
+          // states when the projection was derived from durable sources.
+          generatedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      )}\n`,
+    );
   }
 
   const workspaceTemplates = profile.workspaceTemplates ?? [];
@@ -499,6 +608,10 @@ export function materializePinnedWorkspace(
   const reviewFeedbackRelative = reviewFeedbackPath
     ? relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)
     : null;
+  const feedbackHistoryRelative = feedbackHistoryPath
+    ? relativeWorkspacePath(workspaceRoot, feedbackHistoryPath)
+    : null;
+  const priorDeaths = [...(request.priorDeaths ?? [])];
   const desk: WorkplaceDesk = {
     workplaceRef,
     nodeId,
@@ -519,6 +632,19 @@ export function materializePinnedWorkspace(
     reviewFeedback: {
       present: reviewFeedbackPath !== null,
       path: reviewFeedbackRelative,
+      round: reviewFeedbackRound,
+      reasons: reviewFeedbackReasons,
+    },
+    feedbackHistory: {
+      present: feedbackHistoryRelative !== null,
+      path: feedbackHistoryRelative,
+      rounds: feedbackHistory ? feedbackHistory.entries.length : 0,
+      reviewRejections: feedbackHistory ? feedbackHistory.reviewRejections : 0,
+      submissionRejections: feedbackHistory ? feedbackHistory.submissionRejections : 0,
+    },
+    priorAttempts: {
+      count: priorDeaths.length,
+      deaths: priorDeaths,
     },
     agentAssistance: {
       required: agentAssistanceRequired,
@@ -530,6 +656,7 @@ export function materializePinnedWorkspace(
       ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),
       ...(recoveryFeedbackRelative ? [recoveryFeedbackRelative] : []),
       ...(reviewFeedbackRelative ? [reviewFeedbackRelative] : []),
+      ...(feedbackHistoryRelative ? [feedbackHistoryRelative] : []),
     ],
     ...(agentAssistanceAbsolutePath ? { agentAssistanceAbsolutePath } : {}),
   };

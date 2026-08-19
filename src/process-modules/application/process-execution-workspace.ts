@@ -329,3 +329,21 @@ export function reviewFeedbackFromMetadata(
     feedback,
   };
 }
+
+/**
+ * BLINDSIGHT (a) — extract the reviewer's key points as verbatim lines for the
+ * LOUD prompt block. Review feedback is free prose (a reviewer role wrote it),
+ * so unlike the gate's structured issue.findings[] there is nothing to decode:
+ * the first non-empty lines ARE the key points. Capped at 3 lines / 500 chars
+ * each, mirroring recoveryFeedbackReasonMessages. The FILE stays the
+ * authority; the inline copy is the loud first line of defence so the worker
+ * sees the semantic reasons even if it never opens review-feedback.json.
+ */
+export function reviewFeedbackKeyLines(feedback: string): string[] {
+  return feedback
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .slice(0, 3)
+    .map(line => (line.length > 500 ? `${line.slice(0, 500)}…` : line));
+}

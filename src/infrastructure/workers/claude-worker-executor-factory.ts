@@ -17,6 +17,10 @@ import type {
 import { getDb } from '../../db.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import { readLatestSubmissionRejectionForExecution } from '../../lifecycle/submission-validation-rejections.js';
+import {
+  readTaskDeathHistory,
+  readTaskFeedbackHistory,
+} from '../../lifecycle/task-history-readers.js';
 import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
 import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
 import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
@@ -527,6 +531,13 @@ export function createPinnedClaudeWorkerExecutorFactory(
           workerId: input.workerId,
           additionalBindings,
           templatePreparer,
+          // BLINDSIGHT (b)+(c): deliver durable history to the point of
+          // decision. The full multi-round feedback history materializes as
+          // feedback-history.json on the desk; prior abnormal executions ride
+          // the desk into the spawn prompt block. Read-only, from append-only
+          // sources — nothing is written back.
+          feedbackHistory: readTaskFeedbackHistory(getDb(), task.id),
+          priorDeaths: readTaskDeathHistory(getDb(), task.id).deaths,
         });
 
         const metadata: Record<string, unknown> = { ...taskMetadata };

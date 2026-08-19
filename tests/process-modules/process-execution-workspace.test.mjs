@@ -450,10 +450,66 @@ test('assertDeskInvariants: passes a well-formed desk (all invariants satisfied)
     nodeId: 'n1',
     trackerAbsolutePath: '/x/project-1-stage-node-n1.md',
     executionDirectory: 'docs/s/executions/node-n1/exec-1',
-    recoveryFeedback: { present: true, path: 'docs/s/executions/node-n1/exec-1/recovery-feedback.json' },
-    reviewFeedback: { present: false, path: null },
+    recoveryFeedback: {
+      present: true,
+      path: 'docs/s/executions/node-n1/exec-1/recovery-feedback.json',
+      reasons: ['finding one'],
+    },
+    reviewFeedback: { present: false, path: null, round: 0, reasons: [] },
+    feedbackHistory: {
+      present: false,
+      path: null,
+      rounds: 0,
+      reviewRejections: 0,
+      submissionRejections: 0,
+    },
+    priorAttempts: { count: 0, deaths: [] },
     agentAssistance: { required: true, path: 'docs/s/executions/node-n1/exec-1/agent-assistance.json' },
   };
   // Does not throw.
   assertDeskInvariants(desk);
+});
+
+// BLINDSIGHT (b)+(c): the extended desk contract fails closed — a present
+// history without a path/rounds, or a death count that disagrees with the
+// death list, is a provisioning bug and must never reach a worker prompt.
+test('assertDeskInvariants: throws on malformed feedbackHistory / priorAttempts (BLINDSIGHT b+c)', () => {
+  const base = {
+    workplaceRef: null,
+    nodeId: 'n1',
+    trackerAbsolutePath: '/x/project-1-stage-node-n1.md',
+    executionDirectory: 'docs/s/executions/node-n1/exec-1',
+    recoveryFeedback: { present: false, path: null, reasons: [] },
+    reviewFeedback: { present: false, path: null, round: 0, reasons: [] },
+    feedbackHistory: {
+      present: false,
+      path: null,
+      rounds: 0,
+      reviewRejections: 0,
+      submissionRejections: 0,
+    },
+    priorAttempts: { count: 0, deaths: [] },
+    agentAssistance: { required: false, path: null },
+  };
+  assert.throws(
+    () => assertDeskInvariants({
+      ...base,
+      feedbackHistory: { ...base.feedbackHistory, present: true, path: null },
+    }),
+    /WORKPLACE_DESK_HISTORY_PRESENT_BUT_NO_PATH/,
+  );
+  assert.throws(
+    () => assertDeskInvariants({
+      ...base,
+      feedbackHistory: { ...base.feedbackHistory, present: true, path: 'x/feedback-history.json', rounds: 0 },
+    }),
+    /WORKPLACE_DESK_HISTORY_PRESENT_BUT_EMPTY/,
+  );
+  assert.throws(
+    () => assertDeskInvariants({
+      ...base,
+      priorAttempts: { count: 2, deaths: [] },
+    }),
+    /WORKPLACE_DESK_DEATHS_COUNT_MISMATCH/,
+  );
 });
