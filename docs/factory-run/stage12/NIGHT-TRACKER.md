@@ -20,7 +20,7 @@ honest and successful — implement and exercise the E9 recycle.
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🛑 STOPPED 3/7 at persistence (conflict, aborted clean) | wave-B agent + main | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, hand-resolved test append-union). Counts: arch 393/393, pm 1132/1132. Remainder agent stopped on `legacy-allowlist.json` conflict (schema 99→100 vs worker-names digest) — see 00:49 log |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🛑 STOPPED 4/7 at phantom-bridges (test-append conflict, aborted clean) | wave-B agent + main + final agent | worker-prompt `f6042bd9`, gate-delivery `a53eebad` (agent, clean); lifecycle `ae2e634b` (main, test append-union); persistence `bf9f66a5` (main, allowlist regenerated at schema 100 — the only schema move). Verified after persistence: build 0, arch 403/403, pm 1143/1143, infra 372/0 fail/12 skip. Final agent stopped on `tests/worker-prompt-assembly.test.mjs` append conflict (phantom-bridges X2 block vs worker-prompt's earlier appended block) — see 00:54 log; integration-verify + reconciliation NOT attempted |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
@@ -212,3 +212,36 @@ first; any E9-reserve code is escalate-never-delete.
   12 skip**, arch **403/403**, pm **1143/1143**. Final three trees
   (phantom-bridges, integration-verify, reconciliation) dispatched to the
   wave-B final agent.
+- **00:54 machine clock (wave-B final agent; skewed vs main's 01:02 above)**
+  — PHASE 2 STOPPED at merge 5, `repair/blindsight-phantom-bridges` (tip
+  `743b5886`). No merges landed by this agent; saga4 remains at `0c32d06e`,
+  clean (only the never-touch untracked evidence files). Verbatim merge
+  output:
+  ```
+  Auto-merging src/lifecycle/work-assignment-core.ts
+  Auto-merging tests/worker-prompt-assembly.test.mjs
+  CONFLICT (content): Merge conflict in tests/worker-prompt-assembly.test.mjs
+  Auto-merging tracker-view/claude-runner.mjs
+  Automatic merge failed; fix conflicts and then commit the result.
+  ```
+  `git merge --abort` executed; tree clean at `0c32d06e`. Read-only
+  `git merge-tree` (base `dae42418`) confirms the conflict is confined to
+  that ONE file; `work-assignment-core.ts` and `claude-runner.mjs` (also
+  changed in both) auto-merge cleanly. Characterization: known shape (i) —
+  both trees appended test blocks at the same end-of-file anchor of
+  `tests/worker-prompt-assembly.test.mjs`. saga4 side (worker-prompt merge
+  `f6042bd9`) appended the "feedback delivered LOUDLY" + death-history
+  blocks (+164 vs base); phantom-bridges side appended the "G1.6 —
+  BLINDSIGHT X2: prior-attempt memory delivered LOUDLY" block (+51 vs
+  base). One conflict hunk at the shared tail anchor (`@@ -222,6`); a
+  hand-resolution is an append-union of both block sets. NOTE:
+  `repair/blindsight-reconciliation` also appends to this same file (+91
+  vs base) — when main hand-resolves, union all three appends or expect
+  the same conflict again at merge 7. Merges 6
+  (`repair/blindsight-integration-verify`, tip `d3b81c7f`) and 7
+  (`repair/blindsight-reconciliation`, tip `e38ba18e`) NOT attempted —
+  batch stopped per TASK 1 rule. No build/test runs (no merge landed);
+  no push of code (HEAD unchanged at `0c32d06e`, already on origin).
+  Operator action needed at wake: hand-resolve the test-file append
+  union (phantom-bridges X2 block + saga4's existing blocks, and
+  reconciliation's future +91), then resume merges 6–7 per protocol.
