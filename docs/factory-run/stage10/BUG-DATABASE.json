@@ -46,8 +46,9 @@
       "happened": "worker exited at exactly 20m00s runtime with exit_code 1, no worker_done; stdout (shim JSONL) frozen since 06:22:48Z (16 min before death) while workspace file writes continued; the factory recovered the assignment and spawned a replacement in ~300ms (journal: worker.exit -> assignment.claimed -> execution.reserved -> worker.spawn all at 06:38:54)",
       "evidence_pointer": "factory-run-journal.jsonl lines 4-7 @ 06:38:54.155-.456Z; worker JSONL .factory-sandboxes/stage10-logs/board-1-10940-1787120334001/task-1-worker-ef156416-fcdb-4514-aad4-db51635ff809.jsonl (mtime frozen 06:22:48Z, 19371 bytes); duration_ms=1200112 in the worker.exit record",
       "classification": "unknown",
-      "status": "open",
-      "gap_number": null
+      "status": "explained",
+      "gap_number": null,
+      "followup_2026_08_19": "the 20:00.1 figure is measured from THIS RUN's own artifacts only (the journal's duration_ms, computed by the runner as finalize minus startedAt; the worker JSONL lives in board-1-10940-1787120334001 — the run-id suffix 1787120334001 equals the 06:18:54.041Z spawn; the pre-run engine logs were deleted at the operator's request and were never the source). NO 20-minute constant exists anywhere in src/, tracker-view/, or the agent-proxy shim (lease TTL is 5 min renewed by supervision — sweeps show leases_renewed=1; the loop detector is call-count based, limit 12, not time based). The wall is therefore EXTERNAL to the repo and timed from SPAWN (not from the 06:22:48 stdout freeze, while workspace file edits continued until ~06:37): consistent with a transport-level session lifetime ceiling in opencode or the z.ai coding endpoint (~20 min per agentic session), where the stream stopped carrying at 06:22:48 and the process was dropped at the ceiling. Classification stays 'unknown' only because the external side cannot be inspected from the repo; the internal suspect set is now empty."
     },
     {
       "id": "B-002",
