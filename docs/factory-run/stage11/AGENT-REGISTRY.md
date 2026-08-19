@@ -12,7 +12,7 @@ ARCHITECT-HANDOVER-DRAFT.md, блок «AC-drift forensic verdict».
 
 | № | Угол | Agent ID |
 |---|------|----------|
-| А1 | Мост контента discovery→formalization (brief_payload, authority-граница копия/ссылка, PRD-валидатор требует реакцию на каждый constraint) | agent_f67db509-870d-42d7-9dfa-9d0e8b791399 |
+| А1 | Мост контента discovery→formalization (brief_payload, authority-граница копия/ссылка, PRD-валидатор требует реакцию на каждый constraint) | agent_08b50387-d945-43eb-b90c-60cee354b5c6 (перезапуск; первый f67db509 остановился) |
 | А2 | Requirement-coverage рэтчет (typed constraint-ID, детерминированная проверка покрытия без LLM в гейте, куда встроить) | agent_9f8c8d8f-2109-49de-a803-0803f68c6fb1 |
 | А3 | Конец цепочки (профиль проверки производен из ЗАКАЗА не из продукта, классы требований статика/исполнение/человек, SEAM слой 2) | agent_abc068b3-a5b8-488b-a597-5781d3a37c74 |
 
