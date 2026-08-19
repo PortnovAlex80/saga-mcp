@@ -360,7 +360,16 @@ export class SqliteDevelopmentModuleStore implements
       return { status: 'failed', reasonCodes: ['readiness-manifest-source-mismatch'] };
     }
     const receipt = this.readExactReadinessReceipt(presentation.candidateSetRef);
-    if (!receipt) return { status: 'waiting', reasonCodes: ['local-readiness-missing'] };
+    if (!receipt) {
+      // X3 (SEAM L2): distinguish FAILED from not-yet-run. A failed readiness
+      // receipt for this exact manifest is a producer verdict — the kernel
+      // bindings carry the typed reason so the run record names the real
+      // cause instead of an eternal local-readiness-missing pause.
+      if (this.readFailedRunReadinessReceipt(input.processRunId) !== null) {
+        return { status: 'waiting', reasonCodes: ['local-readiness-failed'] };
+      }
+      return { status: 'waiting', reasonCodes: ['local-readiness-missing'] };
+    }
     const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
       schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
       taskGraphHash: source.payload.taskGraphHash,
@@ -471,7 +480,11 @@ export class SqliteDevelopmentModuleStore implements
         candidate,
         candidateProduct.reference,
       )
-      : null;
+      // X3 (SEAM L2): a FAILED readiness receipt explains why no runnable
+      // candidate was ever bound. Read it run-wide so the settlement record
+      // (the durable certificate the continuation reads) carries the failure,
+      // not only the binary candidate-missing.
+      : this.readFailedRunReadinessReceipt(input.processRunId);
 
     return {
       schemaVersion: DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA,
@@ -554,6 +567,73 @@ export class SqliteDevelopmentModuleStore implements
       outcome: rows[0]!.outcome as 'passed' | 'failed',
       evidenceRefs,
     };
+  }
+
+  /**
+   * X3 (SEAM L2) — read the run's FAILED local-runnability receipt(s) when no
+   * runnable candidate was bound. The candidateHash binding comes from the
+   * failed receipt's subject manifest (the readiness-certification
+   * presentation states sourceCandidate.hash). ADR-053 B-6 / K7: NO recency
+   * winner — ALL failed receipts of the run must be CONTENT-CONSISTENT
+   * (identical evidence refs + identical manifest subject hash); genuinely
+   * different failures are ambiguous and fail closed to null (the settlement
+   * policy then keeps the plain candidate-missing rationale).
+   */
+  private readFailedRunReadinessReceipt(
+    processRunId: number,
+  ): LocalReadinessReceipt | null {
+    let rows: Array<{
+      evidence_refs: string;
+      payload_snapshot: string | null;
+    }>;
+    try {
+      rows = this.db.prepare(
+        `SELECT cr.evidence_refs, s.payload_snapshot
+           FROM factory_check_receipts cr
+           JOIN factory_candidate_sets cs
+             ON cs.candidate_set_ref=cr.subject_candidate_set_ref
+           JOIN factory_workplaces w
+             ON w.workplace_ref=cs.workplace_ref
+           LEFT JOIN factory_candidate_set_members m
+             ON m.candidate_set_ref=cs.candidate_set_ref
+            AND m.product_schema=?
+           LEFT JOIN factory_managed_node_submissions s
+             ON 'managed-node-submission:' || s.id = m.product_ref
+          WHERE w.process_run_id=?
+            AND cr.provider_id=? AND cr.provider_digest=?
+            AND cr.outcome='failed'
+          ORDER BY cr.check_receipt_ref`,
+      ).all(
+        DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+        processRunId,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+        LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+      ) as Array<{ evidence_refs: string; payload_snapshot: string | null }>;
+    } catch {
+      return null;
+    }
+    if (rows.length === 0) return null;
+    const consistent = new Set(rows.map(row =>
+      `${row.payload_snapshot ?? ''}\u0000${row.evidence_refs}`));
+    if (consistent.size !== 1) return null;
+    const row = rows[0]!;
+    if (!row.payload_snapshot) return null;
+    try {
+      const manifest = JSON.parse(row.payload_snapshot) as {
+        sourceCandidate?: { hash?: unknown };
+      };
+      const candidateHash = manifest.sourceCandidate?.hash;
+      if (typeof candidateHash !== 'string' || !/^[a-f0-9]{64}$/u.test(candidateHash)) {
+        return null;
+      }
+      const parsed = JSON.parse(row.evidence_refs) as unknown;
+      const evidenceRefs = Array.isArray(parsed)
+        ? parsed.filter((ref): ref is string => typeof ref === 'string')
+        : [];
+      return { candidateHash, outcome: 'failed', evidenceRefs };
+    } catch {
+      return null;
+    }
   }
 
   // ----- inner workset reconstruction ---------------------------------
@@ -697,14 +777,17 @@ export class SqliteDevelopmentModuleStore implements
     projectId: number,
     candidateSetRef: string,
   ): {
-    outcome: 'passed';
+    outcome: 'passed' | 'failed';
     evidence: ContentAddressedReference;
     provider: VerificationProviderBinding;
   } | null {
-    const rows = this.db.prepare(
-      `SELECT cr.check_receipt_ref,cr.receipt_digest,cr.provider_id,
-              cr.provider_version,cr.outcome,cr.evidence_refs,
-              tp.id AS trusted_provider_id,tp.name,tp.version
+    // X3 (SEAM L2): the trusted reader now admits FAILED receipts as evidence.
+    // The passed path is unchanged (final gate, verdict accepted). The failed
+    // path reads the LATEST final-phase receipt regardless of the gate verdict:
+    // a failed check IS the finding record of the rejecting decision
+    // (repair_required / failed), and settlement must SEE which AC failed with
+    // which evidence instead of collapsing to verification-evidence-missing.
+    const VERIFICATION_RECEIPT_JOIN = `
          FROM factory_check_receipts cr
          JOIN factory_gate_decisions gd
            ON gd.gate_run_ref=cr.check_run_ref
@@ -721,7 +804,31 @@ export class SqliteDevelopmentModuleStore implements
           ))
           AND tp.category='deterministic_evidence'
           AND tp.determinism='full'
-          AND tp.status='active'
+          AND tp.status='active'`;
+    const projection = `SELECT cr.check_receipt_ref,cr.receipt_digest,cr.provider_id,
+              cr.provider_version,cr.outcome,cr.evidence_refs,
+              tp.id AS trusted_provider_id,tp.name,tp.version`;
+    type VerificationReceiptRow = {
+      check_receipt_ref: string;
+      receipt_digest: string;
+      provider_id: string;
+      provider_version: string;
+      outcome: 'passed' | 'failed';
+      evidence_refs: string;
+      trusted_provider_id: number;
+      name: string;
+      version: string | null;
+    };
+    const params = [
+      projectId,
+      projectId,
+      candidateSetRef,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
+      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
+    ];
+    const passed = this.db.prepare(
+      `${projection}${VERIFICATION_RECEIPT_JOIN}
         WHERE cr.subject_candidate_set_ref=?
           AND cr.provider_id=?
           AND cr.provider_version=?
@@ -730,45 +837,72 @@ export class SqliteDevelopmentModuleStore implements
           AND gd.gate_phase='final'
           AND gd.verdict='accepted'
         ORDER BY cr.check_receipt_ref`,
-    ).all(
-      projectId,
-      projectId,
-      candidateSetRef,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
-      DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
-    ) as Array<{
-      check_receipt_ref: string;
-      receipt_digest: string;
-      provider_id: string;
-      provider_version: string;
-      outcome: 'passed';
-      evidence_refs: string;
-      trusted_provider_id: number;
-      name: string;
-      version: string | null;
-    }>;
-    const admissible = rows.filter(row => {
-      if (row.version !== null && row.version !== row.provider_version) return false;
-      try {
-        const refs = JSON.parse(row.evidence_refs) as unknown;
-        return Array.isArray(refs)
-          && refs.every(ref => typeof ref === 'string' && ref.length > 0);
-      } catch {
-        return false;
-      }
-    });
+    ).all(...params) as VerificationReceiptRow[];
+    const admissiblePassed = passed.filter(row => this.verificationReceiptAdmissible(row));
+    if (admissiblePassed.length === 1) {
+      return this.verificationReceiptResult(admissiblePassed[0]!);
+    }
     // The LM-authored verification product is not authority for its own
     // outcome. The exact immutable CheckReceipt from the trusted executable
     // lineage provider is the evidence coordinate; evidenceRefs are optional
     // auxiliary diagnostics and therefore may lawfully be empty on success.
-    // v2 workset has one provider binding per AC. Multiple executable
-    // authorities need an explicit aggregation receipt rather than an
-    // arbitrary winner.
-    if (admissible.length !== 1) return null;
-    const row = admissible[0]!;
+    // Multiple accepted passed authorities still need an explicit aggregation
+    // receipt rather than an arbitrary winner.
+    if (passed.length > 0) return null;
+    // No single accepted passed receipt → look for the failed evidence (X3).
+    // ADR-053 B-6 / K7: NO recency winner. All admissible failed receipts for
+    // the subject must be CONTENT-CONSISTENT (identical receipt digest — LR-06
+    // durable replay returns the same receipt byte-for-byte); genuinely
+    // different failures are ambiguous and fail closed to null.
+    const failed = this.db.prepare(
+      `${projection}${VERIFICATION_RECEIPT_JOIN}
+        WHERE cr.subject_candidate_set_ref=?
+          AND cr.provider_id=?
+          AND cr.provider_version=?
+          AND cr.provider_digest=?
+          AND cr.outcome='failed'
+          AND gd.gate_phase='final'
+        ORDER BY cr.check_receipt_ref`,
+    ).all(...params) as VerificationReceiptRow[];
+    const admissibleFailed = failed.filter(row => this.verificationReceiptAdmissible(row));
+    if (admissibleFailed.length > 0) {
+      const digests = new Set(admissibleFailed.map(row => row.receipt_digest));
+      if (digests.size === 1) {
+        return this.verificationReceiptResult(admissibleFailed[0]!);
+      }
+    }
+    return null;
+  }
+
+  private verificationReceiptAdmissible(row: {
+    version: string | null;
+    provider_version: string;
+    evidence_refs: string;
+  }): boolean {
+    if (row.version !== null && row.version !== row.provider_version) return false;
+    try {
+      const refs = JSON.parse(row.evidence_refs) as unknown;
+      return Array.isArray(refs)
+        && refs.every(ref => typeof ref === 'string' && ref.length > 0);
+    } catch {
+      return false;
+    }
+  }
+
+  private verificationReceiptResult(row: {
+    check_receipt_ref: string;
+    receipt_digest: string;
+    outcome: 'passed' | 'failed';
+    trusted_provider_id: number;
+    name: string;
+    version: string | null;
+  }): {
+    outcome: 'passed' | 'failed';
+    evidence: ContentAddressedReference;
+    provider: VerificationProviderBinding;
+  } {
     return {
-      outcome: 'passed',
+      outcome: row.outcome,
       evidence: {
         schema: 'factory.check-receipt.v1',
         ref: row.check_receipt_ref,

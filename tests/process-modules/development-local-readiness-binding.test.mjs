@@ -241,10 +241,12 @@ test('LR-07: blocked / local-readiness-missing when the receipt is absent', () =
   assert.equal(result.bundle, null);
 });
 
-test('LR-07: blocked / local-readiness-missing when the receipt outcome is not passed', () => {
+test('LR-07: blocked / local-readiness-failed (X3) when the receipt outcome is failed', () => {
   const candidateHash = buildInput(null).integratedCandidate.candidateHash;
   // (c) Receipt present and bound to the exact candidate, but outcome `failed`
-  //     (the candidate was proven NOT runnable locally) → blocked.
+  //     (the candidate was proven NOT runnable locally) → blocked. X3 (SEAM L2):
+  //     a FAILED receipt bound to the exact candidate is a distinct, evidence-
+  //     carrying reason code — never the generic local-readiness-missing.
   const result = settle(buildInput({
     candidateHash,
     outcome: 'failed',
@@ -252,8 +254,8 @@ test('LR-07: blocked / local-readiness-missing when the receipt outcome is not p
   }));
   assert.equal(result.decision, 'blocked');
   assert.ok(
-    result.reasonCodes.includes('local-readiness-missing'),
-    `expected local-readiness-missing in ${JSON.stringify(result.reasonCodes)}`,
+    result.reasonCodes.includes('local-readiness-failed'),
+    `expected local-readiness-failed in ${JSON.stringify(result.reasonCodes)}`,
   );
   assert.equal(result.bundle, null);
 });

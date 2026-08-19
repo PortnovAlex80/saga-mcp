@@ -7,6 +7,7 @@
  */
 
 import { sha256Hex } from '../../../shared/canonical-json.js';
+import { decodeCheckDiagnostic } from '../../../process-modules/domain/workplace/check-diagnostic.js';
 import {
   parseRepositoryScope,
   repositoryScopeCovers,
@@ -875,6 +876,19 @@ implements DevelopmentSettlementPolicyPort {
 
     const candidate = input.integratedCandidate;
     if (candidate === null) {
+      // X3 (SEAM L2): a FAILED local-readiness receipt explains WHY no runnable
+      // candidate was ever bound. The settlement certificate is the durable
+      // failure record the continuation/re-plan cycle reads — carrying the
+      // decoded failure text (not only the binary) is the whole point.
+      if (input.localReadinessReceipt?.outcome === 'failed') {
+        return result(
+          'blocked',
+          ['candidate-missing', 'local-readiness-failed'],
+          'No integrated release candidate was bound: local readiness FAILED '
+          + `for the frozen candidate — ${describeLocalReadinessFailure(input.localReadinessReceipt)}`,
+          inputHash,
+        );
+      }
       return result(
         'blocked',
         ['candidate-missing'],
@@ -1109,6 +1123,34 @@ implements DevelopmentSettlementPolicyPort {
         inputHash,
       );
     }
+    // X3 (SEAM L2): failed AC verification is EVIDENCE, not silence. The
+    // trusted receipt reader now admits failed receipts (they are the finding
+    // record of the rejecting gate decision); settlement must name WHICH AC
+    // failed (code + artifact id) with WHICH evidence ref — not collapse to a
+    // generic verification-evidence-missing binary. The decision stays
+    // blocked: a failed AC can never settle `verified`.
+    const failedVerificationEvidence = verification.evidence.filter(
+      evidence => evidence.outcome === 'failed',
+    );
+    if (failedVerificationEvidence.length > 0) {
+      const failures = failedVerificationEvidence.map(evidence => {
+        const criterion = criterionById.get(evidence.acceptanceCriterionId);
+        const code = criterion
+          && typeof criterion.code === 'string'
+          && criterion.code.trim() !== ''
+          ? criterion.code
+          : `artifact-${evidence.acceptanceCriterionId}`;
+        return `${code} (artifact ${evidence.acceptanceCriterionId}, item `
+          + `'${evidence.verificationItemKey}') failed with evidence `
+          + `${evidence.evidence.schema}:${evidence.evidence.ref}@${evidence.evidence.hash}`;
+      }).join('; ');
+      return result(
+        'blocked',
+        ['verification-failed'],
+        `Acceptance verification FAILED for the frozen candidate: ${failures}.`,
+        inputHash,
+      );
+    }
     if (input.openHumanGateIds.length > 0) {
       return result(
         'blocked',
@@ -1126,19 +1168,29 @@ implements DevelopmentSettlementPolicyPort {
     // proven-runnable-local product (W5). The terminal state now REQUIRES a
     // receipt that is (a) present, (b) outcome `passed`, and (c) bound to the
     // exact frozen integrated candidate — receipt.candidateHash ===
-    // candidate.candidateHash. A missing, failed, or mismatched (different
-    // product's) receipt keeps the terminal state closed: blocked /
-    // local-readiness-missing. This does not alter any other branch.
+    // candidate.candidateHash. A missing or mismatched (different product's)
+    // receipt keeps the terminal state closed: blocked / local-readiness-missing.
+    // X3 (SEAM L2): a FAILED receipt bound to the EXACT candidate is a distinct,
+    // evidence-carrying verdict — blocked / local-readiness-failed with the
+    // decoded failure text, never the generic missing message.
     const readiness = input.localReadinessReceipt;
     if (
       readiness === null
-      || readiness.outcome !== 'passed'
       || readiness.candidateHash !== candidate.candidateHash
     ) {
       return result(
         'blocked',
         ['local-readiness-missing'],
         'No passed local-readiness receipt is bound to the exact frozen integrated candidate.',
+        inputHash,
+      );
+    }
+    if (readiness.outcome !== 'passed') {
+      return result(
+        'blocked',
+        ['local-readiness-failed'],
+        'Local readiness FAILED for the exact frozen integrated candidate '
+        + `— ${describeLocalReadinessFailure(readiness)}`,
         inputHash,
       );
     }
@@ -1188,6 +1240,50 @@ implements DevelopmentSettlementPolicyPort {
       bundle,
     );
   }
+}
+
+/**
+ * X3 (SEAM L2) — decode the failure text carried by a FAILED local-readiness
+ * receipt. The receipt's evidenceRefs hold decodable factory-check-diagnostic
+ * refs (the provider encodes the failing command output) and typed seam
+ * repair-issue refs; both are human-readable once decoded. Pure: operates on
+ * the immutable receipt only. Capped so a long history cannot bloat every
+ * certificate.
+ */
+function describeLocalReadinessFailure(receipt: {
+  outcome: 'passed' | 'failed';
+  evidenceRefs: readonly string[];
+}): string {
+  const messages: string[] = [];
+  for (const ref of receipt.evidenceRefs) {
+    if (messages.length >= 3) break;
+    const diagnostic = decodeCheckDiagnostic(ref);
+    if (diagnostic !== null) {
+      messages.push(`${diagnostic.code}: ${diagnostic.message}`.slice(0, 1200));
+      continue;
+    }
+    // Seam repair-issue refs decode through their own prefix; surface the
+    // readable body without importing the whole seam module (policy stays
+    // dependency-light): the diagnostic branch covers the same failure text.
+    if (ref.startsWith('factory-seam-repair-issue/v1/')) {
+      try {
+        const body = JSON.parse(
+          Buffer.from(ref.split('/')[3] ?? '', 'base64url').toString('utf8'),
+        ) as { seamKind?: unknown; producingTaskRef?: unknown; evidence?: { summary?: unknown } };
+        const seam = typeof body.seamKind === 'string' ? body.seamKind : 'unknown';
+        const owner = typeof body.producingTaskRef === 'string'
+          ? body.producingTaskRef : 'unknown-owner';
+        const summary = body.evidence && typeof body.evidence.summary === 'string'
+          ? body.evidence.summary : '';
+        messages.push(`seam ${seam} (producing ${owner}): ${summary}`.slice(0, 1200));
+      } catch {
+        // unreadable seam body — the diagnostic ref already carried the text
+      }
+    }
+  }
+  return messages.length > 0
+    ? messages.join(' | ')
+    : 'local runnability check failed (no decodable evidence in the receipt)';
 }
 
 export function buildDevelopmentCertificatePayload(
