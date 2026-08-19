@@ -133,7 +133,39 @@ Merge/inherit релиза в шаблон (тот же вердикт, что R
   anchoring bias — per-item «rebuild vs reuse» обязан быть явным typed
   продуктом карточки (закрыто Р2).
 
-## Синтез трёх (предварительный, без версионности): ✅
+## Р3-дополнение: линейная версионность продукта (SVN-модель) ✅
+
+Код-факт: сущности «продуктовая версия» сегодня НЕТ — `ProductRevision` в
+коде это QC-ревизия стола, таблицы `factory_product_revisions` не существует.
+Дизайн:
+
+- **Номер аллоцирует settlement, не order-run**: `seq = MAX(seq)+1` внутри
+  settlement-транзакции, `UNIQUE(project_id, seq)` + append-only триггеры
+  (готовый паттерн схемы). Номер существует только когда существует контент
+  — проваленный ран не оставляет дыр (SVN-семантика). Ордер владеет только
+  baseline-ссылкой (seq + digest).
+- **Новая append-only таблица** `factory_product_revisions { seq, project_id,
+  order_ref, lifecycle_run_id, commit, tree, revision_digest, base_seq,
+  change_request_ref, findings_digest, snapshot_ref, certificate_ref,
+  issued_at }` — рядок несёт всю причинность перехода; digests, не указатели
+  на мутируемые строки (урок stage-11).
+- **Гарантия линейности — не только нумерация**: settlement перед аллокацией
+  доказывает merge-base (дерево n+1 descends от v(n)), иначе typed-отказ
+  `BASELINE_DRIFT` — иначе получим «пронумерованный DAG».
+- **Три разных факта**: commit/tree — контент-идентичность (provenance);
+  seq — фабричная authority; тег `product/v<n>` — внешняя наблюдаемая
+  проекция, immutable-эффект с EffectReceipt (без force; теговой
+  эффект-обвязки в коде нет — в touchpoints).
+- **Оператору**: один рядок = один проход улучшения + его evidence (CR,
+  findings digest, сертификаты, вычислимый diff v(n)..v(n+1)); DAG веток
+  остаётся машинерией QC и в историю продукта не попадает. Десятки карточных
+  merge в `dev` схлопываются в одну версию. **Жёсткая оговорка §2/§27**: ряд
+  — проекция и аллокация для человека и ордеров; машины продолжают работать
+  exact refs/digests — номер НИКОГДА не подменяет контент-адресацию как
+  authority (иначе ре-имплементируем run-local-identity дефект).
+- Touchpoints к варианту A: schema (+таблица, +тег-эффект провайдер),
+  settlement-аллокация, FactoryRequest(change) ссылается на `baseline_seq`
+  + digest, OrderRunChain показывает ряд оператору.
 
 Все трое независимо сходятся на одном стержне:
 
@@ -145,8 +177,11 @@ Merge/inherit релиза в шаблон (тот же вердикт, что R
 | Формализация | implementationDisposition на AC (new/modify/verify) + per-ID диспозиции + детерминированные гейты | Р2+Р1 |
 | Разработка | worktree от HEAD релиза (паттерн continuation expectedBaseCommit — механика без канала), диспозиции → changeScopes карточек, форма диффа на гейтах | Р2 |
 | Анкоринг/бюджет | anchoring-вопрос ревьюеру, recycleRounds кэп 2, траектория ловит «реюз-отговорку»; типизированная вина; precondition — lifecycle-точность binder'ов | Р2+Р3 |
+| Версионность | монотонный ряд factory_product_revisions: номер аллоцирует settlement (SVN-семантика, без дыр), merge-base-доказательство линейности (BASELINE_DRIFT), тег product/v&lt;n&gt; как immutable-эффект; номер — проекция для человека, authority остаётся за digest'ами | Р3-доп |
 
-⏳ ждёт: линейная версионность продукта (subversion-style ряд v1→v2→v3 как
-first-class — дополнение Р3 в работе).
+**Precondition перед любым рецикл-прогоном**: lifecycle-точность
+baseline/binder (контаминация ADR-053-швов — выборка задач по эпику без
+lifecycle-фильтра, newest-wins капсульный биндер) — см. Р3 §3.
 
-## Синтез: ⏳ после Р2+Р3
+Синтез полон: контракт + канал + семантика капсул + диспозиции + анкоринг-гарды
++ версионный ряд. Документ готов как вход для решения E9.
