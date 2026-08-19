@@ -193,3 +193,27 @@ parallel desks — the stage stage-10 never reached.
    reset invalidates capsules; replay debris cleanup.
 7. **O-D1** — wire the typed scoped path for contract-shape violations.
 8. **S-3/S-6** — repair the repair tools (FKs on, epoch baseline reset).
+
+## Слепота по слоям (blindsight census, 2026-08-19 18:00)
+
+**Системный паттерн подтверждён на persistence-слое:** фабрика последовательно
+ЗАПИСЫВАЕТ правильную информацию и последовательно НЕ ЧИТАЕТ её в точке решения.
+
+### Worker/Tool слой (3 HIGH):
+1. worker_done принимает repeat-minimal-work без сравнения с историей
+2. Review-фидбек не доставляется громко (нет ⚠️ блока, depth=1)
+3. Spawn не видит истории смертей карточки (last_error не читается)
+
+### Persistence слой (2 HIGH + 1 MED-HIGH):
+F1. factory_effect_attempts — детектор существует, reader=0 вызовов
+F2. factory_external_effect_events — только MAX(sequence)
+F3. recovery_epochs.last_diagnosis — пишется, не читается
+F4. capsule_invalidations — 6 причин → boolean EXISTS
+F5. command_receipts — ноль ретроспективы
+F6. drift_state — история уничтожается при записи
+F9. Мёртвые таблицы: lifecycle_events, episode_workflows
+
+### Правильный паттерн (уже дважды в коде):
+- finding-trajectory chain (влит вчера) = «читай историю в точке решения»
+- readParentDefectEvidence = тот же паттерн для continuation
+Оба — F1-F4 это те же паттерны без последнего вызова.
