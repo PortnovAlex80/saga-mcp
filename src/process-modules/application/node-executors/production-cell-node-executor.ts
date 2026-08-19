@@ -60,6 +60,7 @@ import type { SqliteSealedProductMaterialRepository } from '../../../infrastruct
 import { SqliteGateFindingSetChain } from '../../../infrastructure/workplace/sqlite-gate-finding-set-chain.js';
 import {
   convergingStreak,
+  survivingScopeViolationKeys,
   trajectory,
 } from '../../domain/workplace/finding-trajectory.js';
 import {
@@ -300,6 +301,8 @@ export interface ProductionCellNodeExecutorOptions {
   readonly sealedProductMaterials: SqliteSealedProductMaterialRepository;
   /** ADR-053 C1 — MANDATORY. The durable current accepted-author authority pointer; read by acceptedAuthorCandidate instead of hash-order selection. */
   readonly authorityHead: SqliteAcceptedAuthorityHeadRepository;
+  /** RE-PLAN CYCLE (REPLAN-CYCLE-TZ §6) — cap+ratchet policy; absent = mint (lifecycle owns the final cycle start). */
+  readonly replanCyclePolicy?: ReplanCyclePolicyPort;
   readonly now?: () => Date;
 }
 
@@ -315,9 +318,38 @@ interface ReconcileOutcome {
   readonly paused: boolean;
   readonly accepted: boolean;
   readonly failed: boolean;
+  /**
+   * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the typed re-plan mandate outcome.
+   * Set ONLY by the scope-impossible route: not terminal failed (the defect is
+   * a carve error, not a worker failure), not a requeue (another attempt is
+   * impossible, not slow). Aggregates into pause.kind 'replan_required'.
+   */
+  readonly replan?: { readonly survivingKeys: readonly string[] };
   readonly products: readonly ProductRef[];
   readonly candidateSetRef: string | null;
   readonly executionRef: string | null;
+}
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §6) — the cap+ratchet port consulted before
+ * minting a mandate. `cycleNumber` is the number of the cycle the mandate
+ * mints (the first mandate mints cycle 2). When no policy is installed the
+ * executor-side trigger always mints the mandate (allowed); the lifecycle
+ * layer that consumes mandates owns starting the actual cycle-2 run.
+ */
+export interface ReplanCycleDecision {
+  readonly allowed: boolean;
+  readonly cycleNumber: number;
+  readonly reason: 'mint' | 'cap' | 'ratchet';
+  readonly diagnosis?: string;
+}
+
+export interface ReplanCyclePolicyPort {
+  canReplan(input: {
+    workplaceRef: WorkplaceRef;
+    role: 'author' | 'reviewer';
+    survivingKeys: readonly string[];
+  }): ReplanCycleDecision;
 }
 
 export class ProductionCellNodeExecutor implements NodeExecutor {
@@ -411,6 +443,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // pending production is owned by a fenced worker/gate and will move on its
     // own. `pause.kind` preserves that distinction for diagnostics and the
     // progress-obligation classifier.
+    if (outcomes.some(outcome => outcome.replan)) {
+      // RE-PLAN CYCLE — a third, typed wait: the wake source is a NEW
+      // planning cycle, not a worker and not a human (REPLAN-CYCLE-TZ §1).
+      return {
+        runtimeEvent: 'paused',
+        pause: {
+          kind: 'replan_required',
+          reason: `cell '${cell.id}' parked with a re-plan mandate — scope-impossible finding trajectory`,
+        },
+        production: this.manifestProduction(cell, workplaces, outcomes, false),
+      };
+    }
     if (outcomes.some(outcome => outcome.paused)) {
       return {
         runtimeEvent: 'paused',
@@ -602,6 +646,69 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // only) so a fresh epoch does not spawn immediately after a rejection
         // storm. The engine's kernel-progress loop keeps the run alive.
         return pendingOutcome();
+      }
+      // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — cross-seam defect recognition on
+      // the SAME finding-set chain as the trajectory budget: the same
+      // path-outside-authority key survived two consecutive rejections while
+      // the overall set spun or churned. The worker physically cannot write
+      // into the frozen scope it keeps offending — another attempt is
+      // IMPOSSIBLE, not slow — so this routes BEFORE any budget arithmetic:
+      // a typed re-plan mandate (not terminal failed, not a requeue).
+      const replanGate = this.readReplanMandateGate(workplace.ref, state.nextRole);
+      if (replanGate !== null) {
+        const surviving = replanGate.survivingKeys;
+        const evidence = surviving.map(key => key.slice(0, 160));
+        const decision = this.opts.replanCyclePolicy?.canReplan({
+          workplaceRef: workplace.ref,
+          role: state.nextRole,
+          survivingKeys: surviving,
+        }) ?? { allowed: true, cycleNumber: 2, reason: 'mint' as const };
+        if (!decision.allowed) {
+          // §6 cap/ratchet denial: the honest human park with the FULL
+          // diagnosis — surviving keys plus the denial reason. No cycle 3.
+          engineLog(
+            `[replan-cycle] REPLAN-${decision.reason.toUpperCase()} cell=${cell.id} `
+            + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+            + `role=${state.nextRole} — human_required :: ${decision.diagnosis ?? 're-plan cap reached'} `
+            + `surviving path-outside-authority key(s): ${evidence.join(' | ')}`,
+          );
+          this.opts.coordinator.applyGateDecision(workplace.ref, {
+            verdict: 'human_required', isFinal: true,
+            parkReason: {
+              code: `REPLAN_CYCLE_${decision.reason.toUpperCase()}`,
+              message: `re-plan ${decision.reason === 'cap'
+                ? `cap reached (${decision.cycleNumber} cycles on this case)`
+                : 'ratchet: the same path-outside-authority key survived the re-carve'} `
+                + `— human decision required. Surviving path-outside-authority key(s): `
+                + `${evidence.join(' | ')}. ${decision.diagnosis ?? ''}`.trim(),
+              evidenceRefs: evidence,
+            },
+          });
+          this.opts.persistence.projectWorkplace(workplace.ref);
+          state = this.requireState(workplace.ref);
+          return pausedOutcome();
+        }
+        engineLog(
+          `[replan-cycle] REPLAN-MANDATE cell=${cell.id} `
+          + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+          + `role=${state.nextRole} cycle=${decision.cycleNumber} `
+          + `— ${surviving.length} surviving path-outside-authority key(s): `
+          + `${evidence.join(' | ')} :: distributed repair is impossible — a re-plan cycle is mandated`,
+        );
+        this.opts.coordinator.applyGateDecision(workplace.ref, {
+          verdict: 'human_required', isFinal: true,
+          parkReason: {
+            code: 'REPLAN_MANDATED',
+            message: `scope-impossible finding trajectory: the same path-outside-authority `
+              + `key survived consecutive rejections — the worker cannot repair it inside `
+              + `frozen changeScopes. Re-plan cycle ${decision.cycleNumber} is mandated. `
+              + `Surviving key(s): ${evidence.join(' | ')}`,
+            evidenceRefs: evidence,
+          },
+        });
+        this.opts.persistence.projectWorkplace(workplace.ref);
+        state = this.requireState(workplace.ref);
+        return replanMandatoryOutcome(surviving);
       }
       const attemptsInEpoch = baseline === null
         ? totalAttempts
@@ -2018,6 +2125,29 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     return { outcome: 'waive', prevCount: previous.count, nextCount: latest.count, streak, ceiling, survivingKeys };
   }
 
+  /**
+   * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the scope-impossible recognition:
+   * consults the SAME finding-set chain as the convergence budget and returns
+   * the surviving path-outside-authority keys when the trajectory between the
+   * last two rejections is 'scope-impossible' (same authority key in both
+   * sets while the overall set spun or churned). Null = no mandate (ordinary
+   * budget flow runs byte-for-byte as before).
+   */
+  private readReplanMandateGate(
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): { readonly survivingKeys: readonly string[] } | null {
+    const tail = this.findingSetChain.readTrajectoryTail(
+      serializeWorkplaceRef(ref),
+      role,
+    );
+    if (tail === null || tail.sets.length < 2) return null;
+    const previous = tail.sets[tail.sets.length - 2]!;
+    const latest = tail.sets[tail.sets.length - 1]!;
+    if (trajectory(previous, latest) !== 'scope-impossible') return null;
+    return { survivingKeys: survivingScopeViolationKeys(previous, latest) };
+  }
+
   private attemptCount(
     ref: WorkplaceRef,
     role: 'author' | 'reviewer',
@@ -2606,6 +2736,24 @@ function pausedOutcome(candidateSetRef: string | null = null): ReconcileOutcome 
     failed: false,
     products: [],
     candidateSetRef,
+    executionRef: null,
+  };
+}
+
+/**
+ * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the typed mandate outcome: not
+ * terminal failed, not a requeue. The workplace is parked REPLAN_MANDATED and
+ * the node-level wait is pause.kind 'replan_required'.
+ */
+function replanMandatoryOutcome(survivingKeys: readonly string[]): ReconcileOutcome {
+  return {
+    pending: false,
+    paused: false,
+    accepted: false,
+    failed: false,
+    replan: { survivingKeys },
+    products: [],
+    candidateSetRef: null,
     executionRef: null,
   };
 }

@@ -161,7 +161,14 @@ export type NodePauseKind =
   /** Production is genuinely in flight: a fenced worker or gate owns the next mutation. */
   | 'worker_active'
   /** Progress requires an explicit human decision; no machine wake source exists. */
-  | 'human_required';
+  | 'human_required'
+  /**
+   * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1): the finding trajectory is
+   * scope-impossible — the worker cannot repair inside its frozen authority,
+   * so a NEW planning cycle (a new process run) is the wake source. Neither a
+   * live worker nor a human: a third, typed wait.
+   */
+  | 'replan_required';
 
 export interface NodeExecutionResult {
   runtimeEvent: 'completed' | 'failed' | 'paused';
