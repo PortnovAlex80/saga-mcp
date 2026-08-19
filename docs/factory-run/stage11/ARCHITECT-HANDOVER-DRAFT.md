@@ -1,11 +1,11 @@
-# HANDOVER TO THE ARCHITECT — stages 10 + 11 (DRAFT v1, 2026-08-19)
+# HANDOVER TO THE ARCHITECT — stages 10 + 11 (FINAL, 2026-08-19 ~21:45Z)
 
-> **Status:** draft. Completion conditions: (1) the live stage-11 run reaches
-> terminal; (2) the 8 dispatched repair agents return and their branches are
-> reviewed+merged; (3) the 3 held branches merge post-terminal. Every ⏳ marker
-> below is a slot that fills at those moments. Nothing in this document asks
-> the architect to sign a new gate; it delivers the evidence the two briefs
-> define, and lists the decisions the briefs reserved for you.
+> **Status:** final. The run is terminal; every dispatched agent has
+> returned; all trees and design documents are in place. Remaining ⏳ slots
+> (E5 tree marks, E6 judgments) are yours by design — they are decision
+> slots, not missing evidence. Nothing in this document asks the architect
+> to sign a new gate; it delivers the evidence the two briefs define, and
+> lists the decisions the briefs reserved for you.
 
 ---
 
@@ -103,11 +103,11 @@ Abort conditions were checked every monitoring cycle; the
 ### 1.4 Task 6 report
 
 **How far the run got, per stage, with accepted heads:**
-- product-discovery: **completed**, accepted head ⏳ (fill from
-  `factory-snapshots/stage10-engine-death-0828` DB: `factory_authority_head`
-  at discovery completion)
-- solution-formalization: **completed** (9 artifacts, 11 tasks), accepted head ⏳
-  (same source)
+- product-discovery: **completed** — proposal `7a6af555…`, outcome
+certificate `certificate:1` (digest 8b7d176b…), local outcome 
+- solution-formalization: **completed** (9 artifacts, 11 tasks) — solution
+contract `formalization-solution-contract:1`, certificate `certificate:2`
+(digest d7bfa390…)
 - solution-development: never reached
 - terminal: **failed** 08:28:08Z, error `REPLAY_CAPTURE_TRACE_NOT_FOUND`
 
@@ -417,8 +417,16 @@ mutate), cross-run budget/trajectory continuity.
 - Stage-10: `ORDER.md`, `BUG-DATABASE.json`, snapshots (early, engine-death-0828),
   golden corpus (24 products)
 - Stage-11: `REPORT.md` (tasks 1–5), `PREVENTIVE-HUNT.md` (census),
-  `AGENT-REGISTRY.md` (dispatch), snapshots (replay-fitness,
-  incident-settings-hijack, ⏳ terminal)
+  `AGENT-REGISTRY.md` (dispatch), `DISORIENTATION-INVESTIGATION.md`,
+  snapshots (replay-fitness, incident-settings-hijack,
+  readiness-npmtest-x3, terminal-completed)
+- Design documents: `docs/architecture/AC-DRIFT-REMEDY-DESIGN.md`,
+  `CERTIFICATION-GAMING-REMEDY.md`, `RECYCLE-RUN-DESIGN.md` (E9),
+  `DISORIENTATION-INVESTIGATION.md` (fix delivered)
+- Golden corpora: `tests/fixtures/golden-corpus/stage11-docking-full`
+  (RED fixture) + `stage11-docking-w12` (clean prefix) — commit 2b0556b4
+- Review trees (13): 8 blindsight + ac-drift-remedy + worker-disorientation
+  + es1-loop-detector + provider-retry + snapshot-test-mvp
 - Live run: `.factory-sandboxes/stage11-db/factory.sqlite` +
   `factory-run-journal.jsonl` (failure-event-capable since `52189f43`)
 - Commit timeline: see git log 2026-08-19 08:22 → terminal
