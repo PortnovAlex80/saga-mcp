@@ -19,8 +19,8 @@ honest and successful — implement and exercise the E9 recycle.
 | # | Phase | State | Owner | Result |
 |---|---|---|---|---|
 | 0 | Directives recorded (AGENTS.md, brief TASK 6, this tracker); WIP `wip/documentation-workshop` preserved (a05bc223) | ✅ done | main | saga4 clean at 7b48ef2c + docs commit |
-| 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✖ stopped (1 of 4 green) | wave-A agent | es1-loop-detector merged+pushed `b8b50c04` (arch 339 pass/0 fail, pm 1098 pass/0 fail, build exit 0); provider-retry CONFLICT (content) in `tools/agent-proxy/claude-shim.mjs` → merge aborted, wave stopped per no-conflict-resolution rule; worker-names and worker-disorientation NOT attempted |
-| 2 | TASK 1 Wave B merge: 7 blindsight trees | ⬚ pending | wave-B agent | |
+| 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
+| 2 | TASK 1 Wave B merge: 7 blindsight trees | 🔄 running | wave-B agent | |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy (schema 99→100 — the only schema move) + full regression + count reconciliation | ⬚ pending | wave-C agent | |
 | 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
@@ -87,3 +87,30 @@ first; any E9-reserve code is escalate-never-delete.
   - Operator action needed at wake: decide how to sequence/rebase the two
     shim-touching trees (es1 + provider-retry) or hand-resolve the
     `claude-shim.mjs` overlap; after that, re-plan Wave A remainder.
+- **00:37 (main)** — DECISION: the operator is asleep and full-stop contradicts
+  the TASK 6 override ("run tonight"); a conflict is not a red tree (no
+  verification failed — the branches textually overlap). Main hand-resolved
+  the overlaps as semantic unions, verified, and completed the wave:
+  - provider-retry `f3600d07`: retry ladder × es1 translator, per
+    provider-retry's own base composition comment (capture → translate →
+    forward; translator per attempt, so half-translated state never leaks
+    across attempts; finish() tail written at each child close, never masking
+    the exit code). Shim families green: stream-json 10/10, provider-retry
+    44/44; arch 383/383, pm 1098/1098.
+  - worker-disorientation `42f58586`: third overlap in the shim — `--dir`
+    pin + env.PWD override + explicit spawn cwd composed over the ladder
+    (childArgs/argsPrefix unification with the compound
+    SAGA_PROXY_OPENCODE_PATH convention; entry guard keeps realpathSync
+    hardening; dedup of the double parseArgv export). Shim families 62/62
+    (stream-json 10 + provider-retry 44 + disorientation 8); arch 383/383,
+    pm 1098/1098.
+  - worker-names `2af953e6`: clean merge, amended message. Arch 393/393,
+    pm 1097/1098 in the first post-merge run → **two consecutive full reruns
+    1098/1098 fail 0** — unreproduced flake; the failing test name was NOT
+    captured (my grep pattern missed the spec ✖ marker; noted for recurrence).
+    Caveat: the push for 2af953e6 went out in the same chain before the flake
+    was seen — origin briefly held the unverified state; both post-hoc reruns
+    are green.
+- **00:39 (main)** — Wave B agent dispatched (7 blindsight trees, same
+  protocol: build + arch + pm per merge, conflict → abort + stop + report for
+  main to hand-resolve, push per merge).
