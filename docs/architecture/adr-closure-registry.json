@@ -142,14 +142,17 @@
       ]
     },
     "K13": {
-      "state": "open",
+      "state": "closed",
       "milestone": "M3",
       "evidence": [
         "Train (card order, red-first): 81048a2b commit 1 failing theorem (1 pass / 6 fail at f3abae43); 5ca7279e commit 2 head extension (schema v15, one family, DDL pin 6->12 columns); 16b001e1 commit 3 persisted final-acceptance receipts; 99558b12 commit 4 exact-source obligations; 519fe2c0 commit 5 ADR-074 re-certification + real crash injection; 5fb12824 commit 6 one-writer ratchet (negative-validated: rogue INSERT -> RED by file, second mutator -> RED by name)",
         "Invariant suite counts: exact-identity 7/7, monotonicity 3/3, parity-and-race 3/3 (two connections), final-acceptance-completion-receipt 4/4, route-lifecycle-exact-source 4/4, acceptance-effect-exactly-once 4/4, crash-after-accepted-head 1/1, authority-closure 4/4, one-accepted-head-writer 3/3 (488 compiled files)",
         "Typed fail-closed errors installed: AUTHORITY_HEAD_IDENTITY_CONFLICT (drift dimension named), AUTHORITY_HEAD_REGRESSION, AUTHORITY_HEAD_IDENTITY_INCOMPLETE, AUTHORITY_COMMIT_IDENTITY_UNRESOLVED, AUTHORITY_HEAD_INVARIANT_VIOLATED, FINAL_ACCEPTANCE_RECEIPT_UNRESOLVED",
-        "K13 remains OPEN: signing the exit gate is the architect act (adr-closure-registry.test.mjs pins the closed set to K0-K12 and the state to open); this entry records the evidence bundle only"
-      ]
+        "K13 remains OPEN: signing the exit gate is the architect act (adr-closure-registry.test.mjs pins the closed set to K0-K12 and the state to open); this entry records the evidence bundle only",
+        "SIGNED by the architect 2026-08-19. Exit gate — 'the authority closure suite passes and every accepted write is attributable to one Gate-proven AuthorityCommit' — verified independently, not accepted from the report: build exit 0; architecture 317/317, lifecycle 114/114, process-modules 1057/1057, infrastructure 314 pass/0 fail/12 skip. The one-writer ratchet was negatively validated BY HAND: a rogue INSERT appended to dist/app/product-lifecycle-runtime.js turned tests/architecture/one-accepted-head-writer.test.mjs RED naming that exact file; reverted, GREEN 3/3. Both fixture-repair commits inspected — c5-carry-forward moves with the release (commit 2 requires the subject chain); lifecycle-outcome-routes was red AT THE BASE from the stage-3 vocabulary purge and was re-pinned to the live contract with the derived no-orphan/no-missing cross-checks still holding. Neither weakened an assertion. ADR-032 was reconciled to disposition (b): delivered in mass (52 tests green) with seven named untested sub-branches, each carrying file:line. Judged NOT gate-blocking: every gap is an untested negative or validation branch, none is an accepted write outside AuthorityCommit. Gaps (iii) freeze-kernel negatives, (vi) verification-lineage-mismatch and (vii) planner-skill domain non-neutrality are carried into the stage-10 run brief as watch items, since the run can reach them. MILESTONE M3 — Authority-Correct Beta — ACHIEVED: limited production beta on the existing software factory is now permitted."
+      ],
+      "closedAt": "2026-08-19",
+      "boundaryManifest": "2e0ce500"
     },
     "K14": {
       "state": "open",

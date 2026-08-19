@@ -86,10 +86,14 @@ test('stage 5: the releases block records all 21 K-releases; the closed set is K
   // — a release that reopens and re-closes must leave both halves visible.
   assert.deepEqual(
     closed,
-    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K11', 'K12'],
+    ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8', 'K9', 'K10', 'K11', 'K12', 'K13'],
     `closed set drifted: got ${closed.join(',')}`,
   );
-  assert.equal(registry.releases.K13.state, 'open', 'K13 closure is the architect\'s exit gate to sign, never a bookkeeping edit');
+  // K13 signed 2026-08-19 — MILESTONE M3 (Authority-Correct Beta). The flip and
+  // this pin land in ONE commit by design: the state alone fails two tests, so a
+  // release can never close as a bookkeeping edit. K14 is now the open frontier.
+  assert.equal(registry.releases.K13.state, 'closed', 'K13 is signed (M3); reopening it is a deliberate act with a reason');
+  assert.equal(registry.releases.K14.state, 'open', 'K14 closure is the architect\'s exit gate to sign, never a bookkeeping edit');
   for (const key of keys) {
     const rel = registry.releases[key];
     assert.ok(['closed', 'open', 'unknown', 'reopened'].includes(rel.state), `${key}.state must be closed|open|unknown|reopened`);

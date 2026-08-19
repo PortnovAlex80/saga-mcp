@@ -37,6 +37,19 @@ test('no NEW file selects authority-persistence rows by recency outside the free
   assert.deepEqual(added, [], `new ORDER BY ... DESC ... LIMIT 1 selectors (owners K7/K8):\n${added.join('\n')}`);
 });
 
+// ADR-078 (K7, closed) cited THIS suite as the enforcement of the
+// epic-scoped-material-read freeze. It never was: the category string had never
+// appeared in this file at any point in its history (verified 2026-08-19 by
+// `git log -S`), so the invariant held only de facto — a third epic-scoped read
+// could appear and nothing would fail. That is the dormant-ratchet pattern the
+// K11 evidence names, and a closed release resting on it is how ADR-039 rotted.
+// The assertion the ADR always claimed now exists.
+test('no NEW file reads accepted material by epic scope outside the freeze baseline', () => {
+  const allowed = new Set(allowlist.categories['epic-scoped-material-read'].files);
+  const added = scan.categories['epic-scoped-material-read'].filter(f => !allowed.has(f));
+  assert.deepEqual(added, [], `new epic-scoped material reads (owner K7):\n${added.join('\n')}`);
+});
+
 test('execution-scoped lookup helpers stay at ZERO code references', () => {
   assert.deepEqual(
     scan.categories['execution-scoped-lookup'],
