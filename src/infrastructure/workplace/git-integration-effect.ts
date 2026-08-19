@@ -3,6 +3,7 @@ import { SqliteProductionCellIntegration } from './sqlite-production-cell-integr
 import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
   ExternalEffectActionRecord,
+  ExternalEffectFailurePattern,
   ExternalEffectLedger,
 } from '../../process-modules/persistence/external-effect-ledger.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
@@ -14,6 +15,44 @@ export const GIT_INTEGRATION_EFFECT_DIGEST = sha256Hex({
   version: GIT_INTEGRATION_EFFECT_VERSION,
   invariant: 'accepted-authority-external-effect-ledger-cas-integration',
 });
+
+/**
+ * BLINDSIGHT F2 — how many CONSECUTIVE byte-identical failures (from the
+ * audit trail, not the single last_error column) mean the retry loop is
+ * spinning. Mirrors the obligation reason-identity valve threshold
+ * (OBLIGATION_VALVE_REPEAT_THRESHOLD = 3): at K identical failures the next
+ * retry authorization becomes a typed fail-closed escalation instead of one
+ * more blind re-execution.
+ */
+export const DEFAULT_EFFECT_FAILURE_STASIS_THRESHOLD = 3;
+
+/**
+ * The retry decision for an action whose provider absence was just proven
+ * (absent-retry-safe → retry-authorized). The durable FAILURE PATTERN over
+ * the audit trail decides: below the threshold one more honest retry; at or
+ * above it the loop ends with a typed human_required escalation carrying the
+ * repeating error and the count. Pure and exported for the pattern test.
+ */
+export function integrationRetryDecision(
+  action: Pick<ExternalEffectActionRecord, 'state' | 'lastError'>,
+  pattern: ExternalEffectFailurePattern | null,
+  options: { readonly repeatThreshold?: number } = {},
+):
+  | { readonly outcome: 'pending'; readonly reason: string }
+  | { readonly outcome: 'human_required'; readonly reason: string } {
+  const threshold = options.repeatThreshold ?? DEFAULT_EFFECT_FAILURE_STASIS_THRESHOLD;
+  void action;
+  if (pattern && pattern.consecutiveIdentical >= threshold) {
+    return {
+      outcome: 'human_required',
+      reason: `EXTERNAL_EFFECT_FAILURE_STASIS: integration failed with the same error `
+        + `<${pattern.lastError ?? 'unknown'}> ${pattern.consecutiveIdentical} times `
+        + 'consecutively — the retry loop is spinning, not converging. Operator '
+        + 'review required; every attempt remains durable in the effect audit trail.',
+    };
+  }
+  return { outcome: 'pending', reason: 'absence proven; retry authorized' };
+}
 
 export function createGitIntegrationEffect(
   integration: SqliteProductionCellIntegration,
@@ -77,7 +116,19 @@ export function createGitIntegrationEffect(
         action = ledger.recordObservation({ claim: observationClaim.claim, observation });
         if (action.state === 'succeeded') return succeeded(action);
         if (action.state === 'retry-authorized') {
-          return { outcome: 'pending', reason: 'absence proven; retry authorized' };
+          // BLINDSIGHT F2 — the moment we are about to authorize ANOTHER
+          // retry, consult the durable FAILURE PATTERN over the audit trail
+          // (readExecutionFailurePattern), not only the row's last_error.
+          // K consecutive byte-identical failures = spin: the loop ends with
+          // a typed fail-closed escalation instead of one more blind retry.
+          const retry = integrationRetryDecision(
+            action,
+            ledger.readExecutionFailurePattern(action.id),
+          );
+          if (retry.outcome === 'human_required') {
+            return { outcome: 'human_required', reason: retry.reason };
+          }
+          return { outcome: 'pending', reason: retry.reason };
         }
         return {
           outcome: observation.outcome === 'blocked' && isRepairableIntegrationReason(observation.reason)

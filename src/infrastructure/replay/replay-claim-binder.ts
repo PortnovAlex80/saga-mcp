@@ -8,6 +8,7 @@ import {
 import {
   ensureReplayCapsuleSchema,
   SqliteReplayCapsuleRepository,
+  type CapsuleInvalidationRecord,
 } from './sqlite-replay-capsule-repository.js';
 import { captureReplayCapsuleFailClosed } from './replay-capsule-completeness.js';
 import { requireAcceptedCandidatePresentations } from './replay-presentation-authority.js';
@@ -22,6 +23,71 @@ import { selectReplayCapsule } from './replay-capsule-selection.js';
 import { journalEvent } from '../../observability/run-journal.js';
 
 export { resolveReplayKeyMaterial };
+
+// ---------------------------------------------------------------------------
+// BLINDSIGHT F4 — typed invalidation routing.
+//
+// factory_replay_capsule_invalidations records SIX typed reasons, but the
+// claim-side consumer collapsed them into a boolean EXISTS: a capsule killed
+// by a payload CONFLICT (divergent payloads under one semantic key — the
+// replay pipeline itself is inconsistent) took the same silent-miss route as
+// routine obsolescence. The typed reason was written durably and dropped at
+// the decision boundary. The classification below routes the recovery by
+// REASON:
+//   - integrity-suspect (payload-conflict, refused): corruption-class
+//     evidence — the miss is typed AND journaled loudly so the operator
+//     escalates instead of trusting silent regeneration;
+//   - obsolete (package-changed, acceptance-superseded, restart-required,
+//     stage-reset): the designed invalidate+rebuild route — typed in the
+//     bound context, no alarm.
+// ---------------------------------------------------------------------------
+
+/** Reasons whose evidence implicates the replay pipeline itself, not the capsule's age. */
+const INTEGRITY_SUSPECT_INVALIDATION_REASONS = new Set<CapsuleInvalidationRecord['reason']>([
+  'payload-conflict',
+  'refused',
+]);
+
+export type CapsuleInvalidationClassification =
+  | 'integrity-suspect'
+  | 'obsolete';
+
+export interface CapsuleInvalidationRouting {
+  readonly classification: CapsuleInvalidationClassification;
+  /** The governing typed reason (integrity-suspect dominates when both classes exist). */
+  readonly reason: CapsuleInvalidationRecord['reason'];
+  readonly capsuleRef: string;
+  readonly observedDigest: string | null;
+  readonly expectedDigest: string | null;
+  readonly authorityRef: string;
+  readonly recordedAt: string;
+}
+
+/**
+ * Classify typed invalidation evidence for routing. Returns null only when
+ * there is no evidence (the caller keeps the plain hit path — no fabricated
+ * reasons). Integrity-suspect DOMINATES: when a capsule carries both
+ * classes of evidence, the escalation class wins (fail-closed).
+ */
+export function classifyCapsuleInvalidations(
+  records: readonly CapsuleInvalidationRecord[],
+): CapsuleInvalidationRouting | null {
+  if (records.length === 0) return null;
+  const newest = records[records.length - 1]!;
+  const suspect = records.find(
+    record => INTEGRITY_SUSPECT_INVALIDATION_REASONS.has(record.reason),
+  );
+  const governing = suspect ?? newest;
+  return {
+    classification: suspect ? 'integrity-suspect' : 'obsolete',
+    reason: governing.reason,
+    capsuleRef: governing.capsuleRef,
+    observedDigest: governing.observedDigest,
+    expectedDigest: governing.expectedDigest,
+    authorityRef: governing.authorityRef,
+    recordedAt: governing.recordedAt,
+  };
+}
 
 /**
  * R-E1 — the certification sweep's observable outcome. "0 capsules needed"
@@ -343,11 +409,36 @@ export function bindReplayToClaim(
     );
   }
   const capsule = selection.outcome === 'hit' ? selection.capsule : undefined;
-  // ADR-080 §1 — derived invalidity: ANY evidence row for the exact
-  // capsule makes it ineligible; the claim degrades to a typed miss (the
-  // next execution takes its normal selected route — regeneration is a
-  // dispatch decision, not a data mutation).
-  const invalidated = capsule ? repo.hasInvalidation(capsule.capsule_ref) : false;
+  // ADR-080 §1 + BLINDSIGHT F4 — derived invalidity from TYPED evidence: the
+  // claim degrades to a typed miss whose ROUTE depends on the reason.
+  // Integrity-suspect evidence (payload-conflict / refused) is corruption
+  // class: the miss is typed in the bound context AND journaled loudly —
+  // operator escalation, not silent regeneration. Obsolete-class evidence
+  // (package-changed / acceptance-superseded / restart-required /
+  // stage-reset) is the designed invalidate+rebuild route: typed in the
+  // bound context, no alarm. The previously boolean hasInvalidation() call
+  // erased exactly this distinction.
+  const invalidationRouting = capsule
+    ? classifyCapsuleInvalidations(repo.readInvalidationsForCapsule(capsule.capsule_ref))
+    : null;
+  const invalidated = invalidationRouting !== null;
+  if (invalidationRouting?.classification === 'integrity-suspect') {
+    const processRunId = Number(metadataObject(input.task.metadata).process_run_id);
+    journalEvent('replay.invalidation.integrity-suspect', {
+      run_id: Number.isSafeInteger(processRunId) && processRunId > 0
+        ? `process-run:${processRunId}`
+        : undefined,
+    }, {
+      replay_key: replayKey,
+      capsule_ref: invalidationRouting.capsuleRef,
+      reason: invalidationRouting.reason,
+      observed_digest: invalidationRouting.observedDigest,
+      expected_digest: invalidationRouting.expectedDigest,
+      authority_ref: invalidationRouting.authorityRef,
+      recorded_at: invalidationRouting.recordedAt,
+      route: 'typed-miss+operator-escalation',
+    });
+  }
 
   const workplaceRef = readWorkplaceRefForTask(db, input.task);
   const effectiveCapsule = capsule && !invalidated
@@ -373,6 +464,22 @@ export function bindReplayToClaim(
     key_material: keyMaterial,
     capsule_ref: effectiveCapsule?.capsule_ref ?? null,
     capsule_payload_hash: effectiveCapsule?.payload_hash ?? null,
+    // BLINDSIGHT F4 — deliver the typed invalidation routing to the spawn
+    // decision point: WHY the capsule was refused and WHICH recovery class
+    // applies. Present only when evidence exists (never fabricated).
+    ...(invalidationRouting
+      ? {
+          invalidation: {
+            capsuleRef: invalidationRouting.capsuleRef,
+            reason: invalidationRouting.reason,
+            classification: invalidationRouting.classification,
+            observedDigest: invalidationRouting.observedDigest,
+            expectedDigest: invalidationRouting.expectedDigest,
+            authorityRef: invalidationRouting.authorityRef,
+            recordedAt: invalidationRouting.recordedAt,
+          },
+        }
+      : {}),
   };
   envelope.execution_context = context;
   envelope.execution_context_hash = executionContextHash(context);

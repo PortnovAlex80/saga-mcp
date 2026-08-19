@@ -126,6 +126,22 @@ export interface RecordExternalEffectObservationCommand {
 }
 
 /**
+ * BLINDSIGHT F2 — the RETRY PATTERN over the append-only audit trail
+ * (factory_external_effect_events). `last_error` on the action row keeps only
+ * the newest failure; the audit trail keeps every one. A retry decision must
+ * see how many CONSECUTIVE failures carried the byte-identical payload
+ * (payload_hash) — spin — versus a changing failure chain — convergence.
+ */
+export interface ExternalEffectFailurePattern {
+  /** Consecutive failures (ending at the newest) with identical payloads. */
+  readonly consecutiveIdentical: number;
+  /** The newest failure's error text. */
+  readonly lastError: string | null;
+  /** The newest failure event's payload hash (its typed identity). */
+  readonly lastPayloadHash: string | null;
+}
+
+/**
  * Persistence port only. Provider calls and provider-specific interpretation
  * stay in external adapters; this port records authority, fencing and history.
  */
@@ -167,4 +183,17 @@ export interface ExternalEffectLedger {
   recordObservation(
     command: RecordExternalEffectObservationCommand,
   ): ExternalEffectActionRecord;
+
+  /**
+   * BLINDSIGHT F2 — read the failure PATTERN from the append-only audit
+   * trail (not just the row's last_error): how many consecutive
+   * execution.failed / execution.unknown events carry the byte-identical
+   * payload. Retry bookkeeping events (claims, observations) interleaved
+   * between failures are part of the same retry cycle and do not reset the
+   * failure identity; only a DIFFERENT failure payload resets the run.
+   * Returns null when no failure event exists.
+   */
+  readExecutionFailurePattern(
+    actionId: number,
+  ): ExternalEffectFailurePattern | null;
 }

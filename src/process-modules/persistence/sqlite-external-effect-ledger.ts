@@ -13,6 +13,7 @@ import type {
   ExternalEffectClaim,
   ExternalEffectClaimKind,
   ExternalEffectExecutionResult,
+  ExternalEffectFailurePattern,
   ExternalEffectLedger,
   ExternalEffectObservation,
   RecordExternalEffectExecutionResultCommand,
@@ -711,6 +712,53 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
       });
       return rowToRecord(updated);
     });
+  }
+
+  /**
+   * BLINDSIGHT F2 — the retry PATTERN over the append-only audit trail.
+   *
+   * Walks this action's failure events (execution.failed / execution.unknown,
+   * in sequence order) from the NEWEST backwards, counting how many carry
+   * the byte-identical payload (payload_hash). Interleaved retry-cycle
+   * bookkeeping events (execution.claimed, observation.*) sit BETWEEN
+   * failures of one spin cycle by construction and do not reset the failure
+   * identity; only a failure event with a DIFFERENT payload hash does.
+   * `last_error` on the action row holds one value; this reader holds the
+   * history the retry decision needs.
+   */
+  readExecutionFailurePattern(actionId: number): ExternalEffectFailurePattern | null {
+    const rows = this.db.prepare(
+      `SELECT event_type, payload_snapshot, payload_hash
+         FROM factory_external_effect_events
+        WHERE action_id=? AND event_type IN ('execution.failed','execution.unknown')
+        ORDER BY sequence ASC`,
+    ).all(actionId) as Array<{
+      event_type: string;
+      payload_snapshot: string;
+      payload_hash: string;
+    }>;
+    if (rows.length === 0) return null;
+    const newest = rows[rows.length - 1]!;
+    let consecutiveIdentical = 0;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]!.payload_hash === newest.payload_hash) {
+        consecutiveIdentical += 1;
+      } else {
+        break;
+      }
+    }
+    let lastError: string | null = null;
+    try {
+      const parsed = JSON.parse(newest.payload_snapshot) as { error?: unknown };
+      if (typeof parsed.error === 'string') lastError = parsed.error;
+    } catch {
+      lastError = null;
+    }
+    return {
+      consecutiveIdentical,
+      lastError,
+      lastPayloadHash: newest.payload_hash,
+    };
   }
 
   private claimFromRow(

@@ -87,3 +87,42 @@ export function releaseTaskExecution(db: Database.Database, input: {
     );
   }
 }
+
+/**
+ * BLINDSIGHT F5 — park a conveyor-bound task for a human (PROC-13) with a
+ * TYPED park reason, atomically releasing the active worker reservation.
+ * Returns false when the task has no materialized workplace (the caller
+ * applies its own non-conveyor block transition). Throws with a typed prefix
+ * when the conveyor refuses the park (fail-closed: the transaction aborts).
+ */
+export function parkTaskExecutionForHuman(db: Database.Database, input: {
+  taskId: number;
+  taskKind: string | null;
+  metadata: string;
+  reason: {
+    readonly code: string;
+    readonly message: string;
+    readonly evidenceRefs?: readonly string[];
+  };
+}): boolean {
+  const rt = runtime(db);
+  const ref = deriveWorkplaceRefFromTaskMetadata({
+    taskId: input.taskId,
+    metadata: input.metadata,
+    taskKind: input.taskKind,
+  });
+  if (!ref) return false;
+  try {
+    rt.pauseForHuman({
+      workplaceRef: ref,
+      taskId: input.taskId,
+      reason: input.reason,
+    });
+  } catch (error) {
+    throw new Error(
+      `FACTORY_HUMAN_PARK_FAILED: task=${input.taskId} workplace=${ref.workKey}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  return true;
+}

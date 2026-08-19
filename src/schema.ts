@@ -122,6 +122,14 @@ CREATE TABLE IF NOT EXISTS epics (
 -- metadata lives in lifecycle_execution_controls. This table is kept as a
 -- compatibility projection target — some code paths still read/seed it for
 -- provenance checks. It will be fully removed once all readers are migrated.
+-- BLINDSIGHT F9 verification (2026): the "untouched by code" claim holds only
+-- for src/ core (by design after the saga4 cutover). Real consumers in
+-- shipped tooling: tools/cgad-spec-lint.mjs (the CGAD lint rules — a shipped
+-- product feature, npm run cgad-lint), skills/saga-patrol/patrol.mjs
+-- (monitoring skill LEFT JOIN), tools/saga-snapshot.mjs (snapshot/restore),
+-- tools/discovery-run.mjs and scripts/bootstrap-*.mjs (writers). Deleting it
+-- would break shipped tooling; removal requires migrating those readers
+-- first. NOT dead weight — do not drop without that migration.
 CREATE TABLE IF NOT EXISTS episode_workflows (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   stage                TEXT NOT NULL DEFAULT 'discovery'
@@ -536,6 +544,42 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
 
+-- BLINDSIGHT F6 (persistence layer): artifacts.drift_state is a MUTABLE
+-- projection overwritten on every re-hash (refreshArtifactHash) and on every
+-- deliberate accept. Without this table the transition history is DESTROYED
+-- at each write: a clean -> drifted -> clean cycle left no durable fact that
+-- the drift ever happened, and consumers of the column could never
+-- distinguish "never drifted" from "drifted and repaired". Every TRANSITION
+-- (old value != new value) appends one immutable row here — old + new form
+-- a recoverable chain; same-state re-reads append nothing. Purely additive
+-- (CREATE TABLE IF NOT EXISTS applies it to existing DBs on open; no column
+-- of any existing table changes, therefore no SCHEMA_VERSION bump is
+-- required — same policy as factory_author_candidate_carry_forward_
+-- reauthorizations).
+CREATE TABLE IF NOT EXISTS factory_artifact_drift_events (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  artifact_id          INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  from_state           TEXT NOT NULL CHECK (from_state IN ('unknown','clean','drifted')),
+  to_state             TEXT NOT NULL CHECK (to_state IN ('unknown','clean','drifted')),
+  observed_content_hash TEXT,
+  accepted_hash        TEXT,
+  cause                TEXT NOT NULL,
+  observed_by          TEXT NOT NULL,
+  observed_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_factory_artifact_drift_events_artifact
+  ON factory_artifact_drift_events(artifact_id, id);
+CREATE TRIGGER IF NOT EXISTS trg_factory_artifact_drift_events_no_update
+  BEFORE UPDATE ON factory_artifact_drift_events
+  BEGIN
+    SELECT RAISE(ABORT, 'ARTIFACT_DRIFT_EVENT_IMMUTABLE');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_artifact_drift_events_no_delete
+  BEFORE DELETE ON factory_artifact_drift_events
+  BEGIN
+    SELECT RAISE(ABORT, 'ARTIFACT_DRIFT_EVENT_DELETE_FORBIDDEN');
+  END;
+
 -- The artifact catalogue is a forest, not a general graph. Traceability edges
 -- belong in artifact_traces; parent_artifact_id must stay acyclic and inside
 -- one project/episode. SQLite permits a freshly inserted row to reference its
@@ -650,6 +694,14 @@ CREATE TABLE IF NOT EXISTS command_receipts (
 -- Lifecycle event log. Audit trail + projection input. NOT the source of
 -- truth (blueprint §1 non-goals; ADR-011 keeps tasks/worker_executions
 -- authoritative during the Slice 1-7 rollout). Append-only.
+-- BLINDSIGHT F9 verification (2026-08): this table is NOT dead. Writers:
+-- lifecycle/application-service.ts (command audit logging) and
+-- lifecycle/atomic-release.ts. Readers: scripts/factory-status.mjs
+-- (operator status tail) and tests/architecture/worker-supervision-reaper
+-- .test.mjs, which ENFORCES the audit distinction between a system-reaper
+-- TaskReleased and an admin_override event as an invariant. No runtime
+-- DECISION consumer exists by design — the table is an audit log, and
+-- audit logs are consumed by operators and audit tests, not gates.
 CREATE TABLE IF NOT EXISTS lifecycle_events (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   command_id      TEXT NOT NULL REFERENCES command_receipts(command_id) ON DELETE CASCADE,

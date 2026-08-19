@@ -12,14 +12,16 @@ import {
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
-import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
+import { reserveTaskExecution, releaseTaskExecution, parkTaskExecutionForHuman } from './conveyor-runtime-helper.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
 import { readFrozenProductionIngressIfBound } from '../process-modules/application/production-ingress-contract.js';
 import { freezeManagedCompletionProduct } from '../infrastructure/workplace/sqlite-managed-completion-product.js';
 import {
   clearSubmissionValidationFeedback,
+  DEFAULT_SUBMISSION_STASIS_THRESHOLD,
   persistSubmissionValidationRejection,
+  readSubmissionRejectionStasis,
 } from '../lifecycle/submission-validation-rejections.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
@@ -492,7 +494,8 @@ type WorkerDoneReply = {
 
 type WorkerDoneTransactionResult =
   | { readonly kind: 'completed'; readonly reply: WorkerDoneReply }
-  | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError };
+  | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError }
+  | { readonly kind: 'submission-stasis-blocked'; readonly error: SubmissionValidationError };
 
 interface KernelPresentationCloseAuthority {
   readonly commitmentRef: string;
@@ -636,6 +639,99 @@ function handleWorkerDone(
         args.execution_id as string | undefined,
       );
       if (validationError) {
+        // BLINDSIGHT F5 — the rejection row was persisted in THIS transaction;
+        // now read the durable CHAIN at the decision point. N consecutive
+        // rejections with the byte-identical observed set (across repair
+        // rounds) prove zero repair work — the loop ends with a typed
+        // fail-closed block instead of waiting for a mechanical budget this
+        // path does not have. A CHANGED observed set (real repair) never
+        // reaches this branch: the retrospective counter resets on new bytes.
+        const stasis = readSubmissionRejectionStasis(db, taskId);
+        if (
+          stasis
+          && stasis.consecutiveIdenticalBytes >= DEFAULT_SUBMISSION_STASIS_THRESHOLD
+        ) {
+          const N = stasis.consecutiveIdenticalBytes;
+          // Conveyor-bound task: the park is the conveyor's own PROC-13 use
+          // case (atomic workplace park + reservation release + append-only
+          // typed park reason + reverse projection of tasks.status).
+          // Non-conveyor task: the direct typed block below stands alone.
+          const parkedWithConveyor = parkTaskExecutionForHuman(db, {
+            taskId,
+            taskKind: task.task_kind,
+            metadata: task.metadata,
+            reason: {
+              code: 'SUBMISSION_STASIS_IDENTICAL_BYTES',
+              message: `Submission preflight ${stasis.rejectionCode} rejected ${N} `
+                + 'consecutive byte-identical submissions — no repair work happened '
+                + 'between attempts. Task blocked for operator review; every '
+                + 'rejection remains durable as evidence.',
+              evidenceRefs: [
+                `submission-stasis:task-${taskId}`,
+                `observed-set:${stasis.observedSetDigest}`,
+              ],
+            },
+          });
+          db.prepare(
+            `UPDATE tasks
+                SET status=COALESCE(?, status), assigned_to=NULL,
+                    metadata=json_set(
+                      CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,
+                      '$.managed_submission_stasis', json(?)
+                    ),
+                    updated_at=datetime('now')
+              WHERE id=? AND assigned_to=?`,
+          ).run(
+            parkedWithConveyor ? null : 'blocked',
+            JSON.stringify({
+              rejectionCode: stasis.rejectionCode,
+              observedSetDigest: stasis.observedSetDigest,
+              consecutiveRejections: N,
+              blockedAt: new Date().toISOString(),
+            }),
+            taskId,
+            workerId,
+          );
+          logActivity(
+            db,
+            'task',
+            taskId,
+            'status_changed',
+            'status',
+            'in_progress',
+            parkedWithConveyor ? 'blocked' : 'blocked',
+            `Task '${task.title}' submission stasis: ${stasis.rejectionCode} rejected `
+              + `${N} consecutive byte-identical submissions — blocked for operator review`,
+          );
+          return {
+            kind: 'submission-stasis-blocked',
+            error: new SubmissionValidationError(
+              'SUBMISSION_STASIS_IDENTICAL_BYTES',
+              [{
+                artifactId: -1,
+                artifactCode: null,
+                artifactType: 'SUBMISSION_STASIS',
+                existingTargets: [],
+                missing: {
+                  relation: 'submission_progress',
+                  requiredTargetTypes: ['artifact_update'],
+                  minimum: 1,
+                },
+                message: `${N} consecutive rejections observed byte-identical observed `
+                  + `material (rejection ${stasis.rejectionCode}) — no repair work happened `
+                  + `between attempts. The task is blocked; operator review is required. `
+                  + `Every rejection remains durable as evidence.`,
+              }],
+              {
+                submissionStasis: {
+                  consecutiveRejections: N,
+                  rejectionCode: stasis.rejectionCode,
+                  observedSetDigest: stasis.observedSetDigest,
+                },
+              },
+            ),
+          };
+        }
         // The rejection row + feedback pointer have been written in this SAME
         // transaction. Return a sentinel so BEGIN IMMEDIATE commits; only then
         // does the outer handler throw the actionable MCP error.
@@ -962,6 +1058,13 @@ function handleWorkerDone(
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
   if (completed.kind === 'submission-rejected') {
+    throw completed.error;
+  }
+  if (completed.kind === 'submission-stasis-blocked') {
+    // BLINDSIGHT F5 — the typed stasis refusal surfaces AFTER the blocking
+    // transaction commits, so the durable block and the worker-visible
+    // refusal are atomic in intent: the task is already blocked when the
+    // worker reads this error.
     throw completed.error;
   }
   journalEvent('worker.done', {
