@@ -24,7 +24,26 @@
 //                                     and opencode MCP tool naming, best-effort;
 //                                     the saga gateway remains the real authority)
 //   --effort                        → ignored (reasoning is model-picked here), logged
-//   --bare / --disable-slash-...    → accepted no-ops for this backend
+//   --bare / --disable-slash-...    → accepted no-op for this backend
+//   --output-format stream-json     → `opencode run --format json` + live translation
+//                                     of the REAL opencode events (tool_use/text/
+//                                     step_finish) into claude stream-json lines on
+//                                     stdout, so every claude-stream-json consumer
+//                                     works unmodified: the repeated-tool-loop
+//                                     detector (claude-runner.mjs kill path, E-S1),
+//                                     the /api/worker/tail events view and the
+//                                     token accounting in lifecycle-endpoints.mjs.
+//                                     Without this flag the passthrough behavior is
+//                                     byte-identical to before (ANSI TUI, no
+//                                     translation). Captured real event shapes
+//                                     (opencode 1.18.18): {"type":"tool_use",
+//                                     "part":{"tool":"read","callID":"...",
+//                                     "state":{"status":"completed","input":{...}}}},
+//                                     {"type":"text","part":{"type":"text","text":...}},
+//                                     {"type":"step_finish","part":{"tokens":{...}}}.
+//   --verbose / --forward-subagent-text / --no-session-persistence
+//                                  → accepted no-op bools (part of the runner argv
+//                                     surface, claude-runner.mjs spawn args)
 //
 // Exit code and stdout/stderr are passed through; stdout is only a progress
 // signal for the foreman (markExecutionProgress), so opencode's ANSI output is
@@ -32,7 +51,7 @@
 // the execution identity.
 
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -140,13 +159,15 @@ const VALUE_FLAGS = new Set([
   '--model', '-m', '--effort', '--mcp-config', '--settings',
   '--allowedTools', '--allowed-tools', '--disallowedTools', '--disallowed-tools',
   '--cwd', '--session', '--resume', '--permission-mode', '--mode',
+  '--output-format',
 ]);
 const BOOL_FLAGS = new Set([
   '-p', '--print', '--bare', '--disable-slash-commands', '--strict-mcp-config',
   '--dangerously-skip-permissions', '--allow-main-worktree-yolo',
+  '--verbose', '--forward-subagent-text', '--no-session-persistence',
 ]);
 
-function parseArgv(argv) {
+export function parseArgv(argv) {
   const out = { flags: new Set(), values: {}, ignored: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -164,6 +185,106 @@ function parseArgv(argv) {
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// E-S1 (stage-11 PREVENTIVE-HUNT Layer 3): stream-json translation.
+//
+// The runner spawns workers with `--output-format stream-json` and feeds the
+// child's stdout to the repeated-tool-loop detector (claude-runner.mjs), the
+// tail-events view and the token accounting — all of which parse CLAUDE
+// stream-json lines ({"type":"assistant","message":{"content":[...]}}). opencode
+// (1.18.18) has no claude-compatible stream mode, but `opencode run --format
+// json` emits REAL structured events on stdout (verified live 2026-08-19):
+//
+//   {"type":"step_start","part":{"type":"step-start",...}}
+//   {"type":"tool_use","part":{"type":"tool","tool":"read","callID":"...",
+//                              "state":{"status":"completed","input":{...},...}}}
+//   {"type":"text","part":{"type":"text","text":"...",...}}
+//   {"type":"step_finish","part":{"reason":"stop"|"tool-calls",
+//                              "tokens":{"input":N,"output":N,"cache":{"read":N}}}}
+//
+// This translator converts them line-by-line into the claude shapes those
+// consumers already understand. Tool names keep opencode's native spelling
+// (read/bash/edit/...) — the detector compares signatures, not names. A callID
+// is emitted once: opencode may re-emit a part as its state advances
+// (pending → completed), and the 12-repetition kill must count invocations,
+// not state updates. step_finish tokens are accumulated and flushed as one
+// claude `result` event with summed usage when the child closes (matches the
+// claude CLI's terminal result event; omitted entirely when no step reported
+// tokens so a dead child does not masquerade as a 0-token success).
+// ----------------------------------------------------------------------------
+
+export function createOpenCodeStreamTranslator() {
+  let buffer = '';
+  const seenCallIds = new Set();
+  const usageTotals = { input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 };
+  const line = obj => `${JSON.stringify(obj)}\n`;
+
+  const handleEvent = (event) => {
+    const part = event?.part;
+    if (!part || typeof part !== 'object') return [];
+    if (event.type === 'tool_use' && part.type === 'tool' && typeof part.tool === 'string') {
+      const callId = typeof part.callID === 'string' && part.callID
+        ? part.callID
+        : `${part.tool}:${part.id ?? ''}`;
+      if (seenCallIds.has(callId)) return [];
+      seenCallIds.add(callId);
+      return [line({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: callId,
+            name: part.tool,
+            input: part.state && typeof part.state.input === 'object' && part.state.input !== null
+              ? part.state.input
+              : {},
+          }],
+        },
+      })];
+    }
+    if (event.type === 'text' && part.type === 'text' && typeof part.text === 'string') {
+      return [line({ type: 'assistant', message: { content: [{ type: 'text', text: part.text }] } })];
+    }
+    if (event.type === 'step_finish' && part.tokens && typeof part.tokens === 'object') {
+      usageTotals.input_tokens += Number(part.tokens.input) || 0;
+      usageTotals.cache_read_input_tokens += Number(part.tokens.cache?.read) || 0;
+      usageTotals.output_tokens += Number(part.tokens.output) || 0;
+    }
+    return [];
+  };
+
+  return {
+    // Feed raw stdout chunks; returns translated claude stream-json lines ('' when none).
+    push(chunk) {
+      buffer += String(chunk);
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? '';
+      let out = '';
+      for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        let event;
+        try { event = JSON.parse(trimmed); } catch { continue; }
+        for (const translated of handleEvent(event)) out += translated;
+      }
+      return out;
+    },
+    // Flush at child close: any trailing unterminated JSON, then the result event.
+    finish() {
+      let out = '';
+      const rest = buffer.trim();
+      buffer = '';
+      if (rest) {
+        try { for (const translated of handleEvent(JSON.parse(rest))) out += translated; } catch { /* truncated tail — drop */ }
+      }
+      if (usageTotals.input_tokens || usageTotals.output_tokens || usageTotals.cache_read_input_tokens) {
+        out += line({ type: 'result', subtype: 'success', is_error: false, usage: usageTotals });
+      }
+      return out;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +418,7 @@ async function main() {
   }
 
   const model = resolveModel(parsed.values['--model'] || parsed.values['-m']);
+  const streamJson = parsed.values['--output-format'] === 'stream-json';
 
   // Config file (MCP + bridge instructions) → OPENCODE_CONFIG.
   const env = { ...process.env };
@@ -329,13 +451,27 @@ async function main() {
     process.stdin.on('error', () => resolve(Buffer.concat(chunks)));
     process.stdin.resume();
   });
-  process.stderr.write(`[agent-proxy] opencode backend, model=${model}, prompt=${stdin.length} bytes\n`);
+  process.stderr.write(`[agent-proxy] opencode backend, model=${model}, format=${streamJson ? 'stream-json (translated)' : 'raw passthrough'}, prompt=${stdin.length} bytes\n`);
 
   const ocArgs = ['run', '--model', model];
+  if (streamJson) ocArgs.push('--format', 'json');
   if (process.env.SAGA_RUN_ID) ocArgs.push('--title', process.env.SAGA_RUN_ID);
 
   const bin = resolveOpenCodeBin();
-  const child = spawn(bin.cmd, bin.shell ? [ocArgs.join(' ')] : ocArgs, { stdio: ['pipe', 'inherit', 'inherit'], env, shell: bin.shell });
+  // stream-json mode captures opencode's stdout (--format json) and translates
+  // it live; every other mode inherits stdout unchanged, byte-identical to the
+  // pre-E-S1 shim (ANSI TUI passthrough).
+  let translator = null;
+  if (streamJson) translator = createOpenCodeStreamTranslator();
+  const childStdout = translator ? 'pipe' : 'inherit';
+  const child = spawn(bin.cmd, bin.shell ? [ocArgs.join(' ')] : ocArgs, { stdio: ['pipe', childStdout, 'inherit'], env, shell: bin.shell });
+  if (translator) {
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => {
+      const out = translator.push(chunk);
+      if (out) process.stdout.write(out);
+    });
+  }
 
   const fwd = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
   process.on('SIGTERM', fwd('SIGTERM'));
@@ -349,11 +485,30 @@ async function main() {
     process.exit(127);
   });
   child.on('close', (code, signal) => {
+    if (translator) {
+      try {
+        const tail = translator.finish();
+        if (tail) process.stdout.write(tail);
+      } catch { /* translation must never mask the exit code */ }
+    }
     process.exit(code ?? (signal ? 137 : 0));
   });
 }
 
-main().catch((e) => {
-  process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
-  process.exit(1);
-});
+// Run only when executed as a CLI (node claude-shim.mjs ...), not when imported
+// by tests for parseArgv/createOpenCodeStreamTranslator — main() awaits stdin
+// 'end', which would hang an importing test process forever.
+const invokedAsCli = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsCli) {
+  main().catch((e) => {
+    process.stderr.write(`[agent-proxy] fatal: ${e && e.stack || e}\n`);
+    process.exit(1);
+  });
+}

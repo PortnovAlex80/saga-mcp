@@ -61,10 +61,15 @@ Coding-эндпоинт плана обслуживает 9 моделей (пр
 | `--settings` (PostToolUse-хуки) | плагин `saga-structured-context` (см. выше) |
 | `--disallowedTools` | `OPENCODE_PERMISSION` deny (оба написания MCP-инструментов; реальная authority — гейтвей saga) |
 | `--allowedTools` | не переводится (opencode не имеет allowlist-only режима; D-whitelist — оптимизация токенов, authority остаётся за гейтвеем) |
-| `--bare`, `--disable-slash-commands`, `--strict-mcp-config` | принимаются как no-op |
+| `--output-format stream-json` | `opencode run --format json` + живой перевод реальных событий opencode (`tool_use`/`text`/`step_finish`) в claude-совместимые stream-json строки на stdout — чинит детектор повторных циклов (E-S1, stage-11), tail-вью `/api/worker/tail` и подсчёт токенов в lifecycle-endpoints без правок раннера. Без флага — прежний байт-в-байт passthrough |
+| `--bare`, `--disable-slash-commands`, `--strict-mcp-config`, `--verbose`, `--forward-subagent-text`, `--no-session-persistence` | принимаются как no-op |
 
-Выходной код и stdout пробрасываются. stdout для формена — только сигнал
-прогресса (`markExecutionProgress`), так что ANSI-вывод opencode безопасен.
+Выходной код и stdout/stderr пробрасываются. В режиме `--output-format
+stream-json` stdout — транслированные claude stream-json строки (события
+assistant/tool_use/text + финальный result с суммарным usage); во всех остальных
+режимах stdout для формена — только сигнал прогресса (`markExecutionProgress`),
+так что ANSI-вывод opencode безопасен. Фикстуры реальных событий opencode
+(1.18.18) — в `tests/architecture/claude-shim-stream-json.test.mjs`.
 
 ## Известные ограничения
 
