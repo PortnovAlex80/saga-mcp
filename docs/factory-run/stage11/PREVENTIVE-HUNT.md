@@ -217,3 +217,26 @@ F9. Мёртвые таблицы: lifecycle_events, episode_workflows
 - finding-trajectory chain (влит вчера) = «читай историю в точке решения»
 - readParentDefectEvidence = тот же паттерн для continuation
 Оба — F1-F4 это те же паттерны без последнего вызова.
+
+### Authority/Gate слой (8/8 подтверждены):
+C1. Check providers — candidateSnapshot ВСЕГДА {} — не видят историю (HIGH)
+C1a. Автор на ремонте — только latest findings, нет trajectory label (HIGH)
+C2. Acceptance commit — не видит истории отказов; plan-swap laundering (MED-HIGH)
+C3. Carry-forward — eligible_failure_code выброшен на границе (MED-HIGH)
+C4. Effect retry — readEffectAttempts мёртвый код (MED)
+C5. Head writer — UPSERT уничтожает историю (MED)
+C6. Ревьюер — не видит отвергнутых кандидатов, раунд, прошлые вердикты (HIGH)
+C7. AC верификаторы — изолированы по дизайну, не видят друг друга (MED-HIGH)
+C8. Freeze kernel — не сверяет содержимое ветки с planned scopes (MED)
+
+### Четыре формы слепоты:
+1. Мёртвый код доставки (readEffectAttempts=0, candidateSnapshot={})
+2. Поле выброшено на границе (eligible_failure_code)
+3. История уничтожена (head UPSERT)
+4. Сравнение отключено (reviewer findings excluded from trajectory)
+
+### Дешевейший системный фикс:
+route finding-trajectory tail в 3 существующие точки:
+(a) provider parameters в gate-run-driver
+(b) recovery-feedback sheet
+(c) acceptance commit proof
