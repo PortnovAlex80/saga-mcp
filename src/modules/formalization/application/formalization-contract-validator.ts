@@ -22,8 +22,13 @@ interface DbHandle {
 }
 import {
   buildContractSnapshot,
+  constraintCoverageGapIdList,
   findContractGap,
 } from './formalization-contract-analysis.js';
+import {
+  constraintCoverageSubmissionGaps,
+  readConstraintCoverageRequirement,
+} from './constraint-coverage.js';
 import type { FormalizationArtifactSnapshot, FormalizationCanonicalGraphPort } from '../domain/formalization-kernel-ports.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
@@ -57,6 +62,8 @@ export function createFormalizationContractValidator(
     acceptance?: boolean;
     architecture?: boolean;
     constraintDispositions?: boolean;
+    /** AC-drift structure network: enforce the coverage ratchet. */
+    coverage?: boolean;
   },
 ): NodeSubmissionValidator {
   const validatorVersion = '1.1.0';
@@ -85,7 +92,29 @@ export function createFormalizationContractValidator(
         return acceptWithReceipt(input, [], [], validatorId, validatorVersion);
       }
       const snapshot = buildContractSnapshot(graph, artifacts);
-      const gap = findContractGap(snapshot, required);
+      // AC-drift structure network: the coverage ratchet uses the shared
+      // typed-ID reverse diff (constraintCoverageGapIdList) — never string
+      // matching over gap prose. The structural dimensions stay separate so
+      // both defect classes are reported in one round.
+      const { coverage: _coverageFlag, constraintDispositions: _dispositionsFlag, ...dimensions } = required;
+      const coverage = required.coverage
+        ? readConstraintCoverageRequirement(db, input.taskId, input.processRunId)
+        : null;
+      if (coverage) {
+        const uncovered = constraintCoverageGapIdList(snapshot, coverage);
+        if (uncovered.length > 0) {
+          const structuralGap = findContractGap(snapshot, dimensions);
+          return {
+            accepted: false,
+            code: 'FORMALIZATION_CONSTRAINT_UNCOVERED',
+            gaps: [
+              ...constraintCoverageSubmissionGaps(uncovered, coverage.registerTexts),
+              ...(structuralGap ? parseGaps(structuralGap) : []),
+            ],
+          };
+        }
+      }
+      const gap = findContractGap(snapshot, dimensions);
       if (gap) {
         return {
           accepted: false,

@@ -66,6 +66,80 @@ export function buildContractSnapshot(
   };
 }
 
+/**
+ * The AC-drift coverage ratchet input: the register IDs that must be covered
+ * and the IDs validly waived in the brief dispositions. An empty
+ * `constraintIds` list is the retro-compatible no-op (empty diff -> green).
+ */
+export interface ConstraintCoverageRequirement {
+  readonly constraintIds: readonly string[];
+  readonly waivedIds: readonly string[];
+}
+
+/**
+ * Normalize an artifact metadata column value: better-sqlite3 returns the
+ * JSON column as a string; in-memory fixtures may hand the parsed object.
+ * Normalize once at this ingress — consumers only ever see the object form.
+ */
+function metadataObject(metadata: unknown): Record<string, unknown> | null {
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata) as unknown;
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  return metadata as Record<string, unknown>;
+}
+
+/** Collect covered_constraint_ids from AC artifact metadata (typed IDs only). */
+export function coveredConstraintIdsOfArtifacts(
+  artifacts: readonly FormalizationArtifactSnapshot[],
+): Set<string> {
+  const covered = new Set<string>();
+  for (const artifact of artifacts) {
+    if (artifact.type !== 'AC' || artifact.status === 'superseded') continue;
+    const metadata = metadataObject(artifact.metadata);
+    if (!metadata) continue;
+    const ids = metadata['covered_constraint_ids'];
+    if (!Array.isArray(ids)) continue;
+    for (const id of ids) {
+      if (typeof id === 'string' && id.length > 0) covered.add(id);
+    }
+  }
+  return covered;
+}
+
+/**
+ * The reverse diff core: register IDs minus covered minus waived, as the raw
+ * typed-ID list. Shared by findContractGap (string form) and the worker_done
+ * validators (structured per-ID SubmissionGap form) so the gate and the
+ * resolver can never disagree.
+ */
+export function constraintCoverageGapIdList(
+  snapshot: ContractSnapshot,
+  coverage: ConstraintCoverageRequirement,
+): string[] {
+  if (coverage.constraintIds.length === 0) return [];
+  const covered = coveredConstraintIdsOfArtifacts(snapshot.artifacts);
+  const waived = new Set(coverage.waivedIds);
+  return coverage.constraintIds
+    .filter(id => !covered.has(id) && !waived.has(id));
+}
+
+/** The string form of the reverse diff (one line per uncovered ID). */
+export function constraintCoverageGapIds(
+  snapshot: ContractSnapshot,
+  coverage: ConstraintCoverageRequirement,
+): string[] {
+  return constraintCoverageGapIdList(snapshot, coverage)
+    .map(id => `Constraint ${id} is not covered by any AC covered_constraint_ids and not waived in the brief`);
+}
+
 /** Validate trace/cardinality obligations over one exact owned material set. */
 export function findContractGap(
   snapshot: ContractSnapshot,
@@ -75,6 +149,7 @@ export function findContractGap(
     acceptance?: boolean;
     reconciliation?: boolean;
     architecture?: boolean;
+    coverage?: ConstraintCoverageRequirement;
   },
 ): string | null {
   const categories = categorize(snapshot.artifacts);
@@ -160,6 +235,15 @@ export function findContractGap(
       if (!coveredByUc && !coveredByAc) {
         gaps.push(`FR/NFR ${fr.id} (${fr.code ?? fr.type}) has no incoming covers/derived_from from any UC/AC — orphan requirement`);
       }
+    }
+  }
+  if (required.coverage) {
+    // AC-drift reverse coverage: every constraint-register ID must be carried
+    // by some AC's covered_constraint_ids metadata or validly waived in the
+    // brief. Checked in addition to the downward edges — a graph with perfect
+    // AC→FR/NFR traces can still drop the order's constraints entirely.
+    for (const gap of constraintCoverageGapIds(snapshot, required.coverage)) {
+      gaps.push(gap);
     }
   }
   if (required.architecture) {

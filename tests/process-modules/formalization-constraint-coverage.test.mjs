@@ -24,6 +24,7 @@ import {
   buildContractSnapshot,
   findContractGap,
   constraintCoverageGapIds,
+  constraintCoverageGapIdList,
 } from '../../dist/modules/formalization/application/formalization-contract-analysis.js';
 import { createAcceptanceContractValidator } from '../../dist/modules/formalization/application/acceptance-contract-validator.js';
 import { createFormalizationContractValidator } from '../../dist/modules/formalization/application/formalization-contract-validator.js';
@@ -94,14 +95,14 @@ test('coverage across multiple ACs is the union of their covered ids', () => {
     acSnapshot(31, { covered_constraint_ids: ['ord-c-002'] }),
   ]);
   assert.deepEqual(
-    constraintCoverageGapIds(snapshot, {
+    constraintCoverageGapIdList(snapshot, {
       constraintIds: ['ord-c-001', 'ord-c-002'],
       waivedIds: [],
     }),
     [],
   );
   assert.deepEqual(
-    constraintCoverageGapIds(snapshot, {
+    constraintCoverageGapIdList(snapshot, {
       constraintIds: ['ord-c-001', 'ord-c-002', 'ord-c-003'],
       waivedIds: [],
     }),
@@ -222,10 +223,10 @@ function seedManagedProduction(db, artifactId, type) {
   ).run(artifactId, type);
 }
 
-function seedTrace(db, sourceId, targetId) {
+function seedTrace(db, sourceId, targetId, linkType = 'derived_from') {
   db.prepare(
-    `INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (?, 'artifact', ?, 'derived_from')`,
-  ).run(sourceId, targetId);
+    `INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (?, 'artifact', ?, ?)`,
+  ).run(sourceId, targetId, linkType);
 }
 
 /** Complete acceptance contract: brief→PRD→FR→UC→AC edges all present. */
@@ -237,6 +238,8 @@ function seedCompleteAcceptanceContract(db, { briefMetadata, acMetadata }) {
   seedArtifact(db, 29, 'AC', 'AC-1', acMetadata ?? {});
   seedTrace(db, 2, 1); // PRD → brief root
   seedTrace(db, 3, 2); // FR → PRD
+  seedTrace(db, 26, 2); // UC → PRD
+  seedTrace(db, 26, 3, 'covers'); // UC → FR
   seedTrace(db, 29, 3); // AC → FR
   seedTrace(db, 29, 26); // AC → UC
   seedManagedProduction(db, 1, 'brief');
@@ -387,14 +390,16 @@ test('baseline freezer carries AC covered_constraint_ids into payload.coveredCon
     },
     settlementPolicy: { settle: () => { throw new Error('not expected'); } },
     certificateRepository: { issue: () => { throw new Error('not expected'); } },
-    readArtifactContent: () => { throw new Error('not expected'); },
+    readArtifactContent: (id) => (id === 29
+      ? '## AC-1 Docking slice\n\nThe docking slice works end to end.\n'
+      : 'x'.repeat(10)),
   };
   const handlers = createFormalizationProductionCellKernelHandlers(deps);
   const result = handlers[FORMALIZATION_KERNEL_HANDLER_IDS.freezeBaseline]({
     projectId: 1,
     epicId: 1,
     processRunId: 2,
-    input: { 'reconcile-what': { artifactRef: 'a', contentHash: 'c' } },
+    input: { artifactRef: 'a', contentHash: 'c' },
     frame: { runInput: formalizationCase() },
     heartbeat: () => {},
     initiatedBy: 'operator',
@@ -448,14 +453,16 @@ test('baseline payload omits coveredConstraints when no AC carries any (retro-co
     solutionContractRepository: { persist: () => {} },
     settlementPolicy: { settle: () => { throw new Error('not expected'); } },
     certificateRepository: { issue: () => { throw new Error('not expected'); } },
-    readArtifactContent: () => 'x'.repeat(10),
+    readArtifactContent: (id) => (id === 29
+      ? '## AC-1 Docking slice\n\nThe docking slice works end to end.\n'
+      : 'x'.repeat(10)),
   };
   const handlers = createFormalizationProductionCellKernelHandlers(deps);
   const result = handlers[FORMALIZATION_KERNEL_HANDLER_IDS.freezeBaseline]({
     projectId: 1,
     epicId: 1,
     processRunId: 2,
-    input: { 'reconcile-what': { artifactRef: 'a', contentHash: 'c' } },
+    input: { artifactRef: 'a', contentHash: 'c' },
     frame: { runInput: formalizationCase() },
     heartbeat: () => {},
     initiatedBy: 'operator',

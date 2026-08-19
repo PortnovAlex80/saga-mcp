@@ -51,6 +51,31 @@ import {
 } from './srs-d2-parser.js';
 import { acContentRequiresImplementation } from './formalization-contract-analysis.js';
 
+/**
+ * Read covered_constraint_ids from AC artifact metadata (typed IDs only).
+ * The metadata column arrives as a JSON string from SQLite — normalize once
+ * here (same ingress rule as coveredConstraintIdsOfArtifacts).
+ */
+function coveredConstraintIdsFromMetadata(metadata: unknown): string[] {
+  let record: Record<string, unknown> | null = null;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata) as unknown;
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        record = parsed as Record<string, unknown>;
+      }
+    } catch {
+      record = null;
+    }
+  } else if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    record = metadata as Record<string, unknown>;
+  }
+  if (!record) return [];
+  const ids = record['covered_constraint_ids'];
+  if (!Array.isArray(ids)) return [];
+  return ids.filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
 export const FORMALIZATION_KERNEL_HANDLER_IDS = {
   freezeBaseline: 'formalization-baseline-freezer',
   settle: 'formalization-settlement-policy',
@@ -123,6 +148,21 @@ function createBaselineFreezer(
       if (new Set(acceptanceCriteria.map(item => item.code)).size !== acceptanceCriteria.length) {
         throw new Error('atomic acceptance criterion codes must be unique across accepted artifacts');
       }
+      // AC-drift structure network: freeze the per-AC constraint coverage
+      // (covered_constraint_ids metadata) into the baseline payload. One
+      // source, three projections — brief dispositions (network 1), this
+      // frozen map (network 2), the downstream warrantRef (network 3).
+      // Omitted entirely when no AC carries coverage — old runs freeze the
+      // exact payload shape they always had.
+      const coveredConstraints = Object.fromEntries(
+        acs
+          .map(artifact => [
+            artifact.code ?? String(artifact.id),
+            coveredConstraintIdsFromMetadata(artifact.metadata),
+          ] as const,
+        )
+        .filter(([, ids]) => ids.length > 0),
+      );
       // Cross-run semantic digest (CONVEYOR v4.3 §5-6): stable AC codes +
       // accepted hashes, no DB IDs/processRunId/refs. See the sibling
       // acceptanceBaselineSemanticDigest in formalization-installation.ts.
@@ -137,6 +177,7 @@ function createBaselineFreezer(
         acArtifactIds: [...accepted.acs].sort((a, b) => a - b),
         acArtifactHashes: hashes,
         acceptanceCriteria,
+        ...(Object.keys(coveredConstraints).length > 0 ? { coveredConstraints } : {}),
         baselineHash: baseline.hash,
       } as const;
       const frozen = deps.baselineRepository.freeze(payload);
