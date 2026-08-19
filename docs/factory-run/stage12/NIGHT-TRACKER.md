@@ -346,3 +346,40 @@ first; any E9-reserve code is escalate-never-delete.
     above; (c) the lifecycle sanctioned-writer violation
     (`replan-supersede.ts`) — sanction or escalate, architect's act, not mine.
 
+- **01:40–02:10 (main)** — WAVE C + the drive-family forensics, complete.
+  - ac-drift-remedy merged `2a0c21d7` (wave-C agent): ZERO conflicts, 32
+    files +3101/−26; schema budget intact (100 tables, digest f9143455ea65
+    before AND after — no second migration); **E9 reserve header intact**
+    (constraint-register.ts line 2); count reconciliation: the tree's own
+    "521 pm / 345 arch / 52 units" were stale branch-point numbers; merged
+    reality = +40 pm (its five constraint test files) + 12 discovery-suite
+    register tests = exactly the claimed 52.
+  - The agent's full six-suite regression STOPPED on three red suites —
+    none the merge's own defect, and main bisected + healed all of them:
+  - **Bisect** (oracle: golden-path exit; range 17eec614..5d01b711): first
+    bad `1df043d2` = blindsight C6 inside repair/blindsight-gate-delivery.
+    Root cause 1: `readReviewerRoundHistory` selected `s.created_at` — a
+    column that NEVER existed (real DDL: `submitted_at`; the branch's own
+    fixture hand-rolled `created_at` and production SQL copied the
+    fixture's lie — the M2 disease again). Verbatim:
+    `lastError "no such column: s.created_at"`, terminal failed at
+    solution-formalization.
+  - With root cause 1 fixed, a second break surfaced at wave-C HEAD: the
+    acceptance-contract validator DECLARED 1.1.0 but STAMPED sealed
+    receipts with the stale literal 1.0.0 → member-key lookup could never
+    find its proof → `SUBMISSION_VALIDATION_RECEIPT_REQUIRED` → infinite
+    repair_required loop at gate:2:author until timeout. DB forensics on
+    the failed run's sealed revision proved the receipts HAD material
+    (17 artifacts / 13 traces) — the key, not the material, was wrong.
+  - Both fixed in `56e43449` (fixture corrected to real DDL; one
+    ACCEPTANCE_CONTRACT_VALIDATOR_VERSION constant for declaration AND
+    stamp, mirroring the sibling validators' pattern).
+  - **Post-fix verification: golden-path 1/1, w9 18/18 (was 1/18), arch
+    408/408, pm 1209/1209, infra 394 pass/0 fail/12 skip.**
+  - Lifecycle stays 135/136: the single failure is the PRE-EXISTING
+    replan-supersede.ts sanctioned-writer violation (stage-11 e9ea5aa7,
+    red at tonight's baseline 17eec614 as well). Architect escalation —
+    untouched per the brief.
+  - Bisect hazard honored: ran in the main checkout; `core.bare` verified
+    false after every step.
+  - TASK 1 IS NOW COMPLETE: all 13 trees landed on one HEAD (56e43449).
