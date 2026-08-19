@@ -244,8 +244,14 @@ export interface EngineBrakeResult {
 
 /**
  * Guarded-stop every persisted engine covering the scope. The engine's PID is
- * NEVER guessed: it is the persisted `lifecycle_execution_controls.engine_pid`,
- * and a kill is issued only when the live process's command line matches the
+ * NEVER guessed: it is the union of the two DURABLE pid sources —
+ * `lifecycle_execution_controls.engine_pid` (written by the panel
+ * engine-administration start path) and `factory_launch_requests.engine_pid`
+ * (written by the tracker run-starter and scripts/factory.mjs after their
+ * detached spawns). Reading only the controls column made the brake a no-op
+ * for every engine launched through the factory CLI or the run-starter
+ * (E-A6): the operator's stop left the engine alive and re-hiring. A kill is
+ * issued only when the live process's command line matches the
  * `orchestrate-cli.js` guard (a reused PID of an unrelated process is never
  * killed). FAILS CLOSED when a verified engine survives the kill.
  */
@@ -256,7 +262,7 @@ export function brakeEnginesForProject(
 ): EngineBrakeResult[] {
   const projectId = scope.projectId ?? null;
   const projectClause = projectId !== null ? 'AND e.project_id=?' : '';
-  const rows = db.prepare(
+  const controlsRows = db.prepare(
     `SELECT c.epic_id, c.engine_state, c.engine_pid
        FROM lifecycle_execution_controls c
        JOIN epics e ON e.id=c.epic_id
@@ -266,42 +272,73 @@ export function brakeEnginesForProject(
     engine_state: string;
     engine_pid: number;
   }>;
+  // E-A6: non-terminal launch rows carry the pid for engines spawned by the
+  // run-starter and factory.mjs. 'completed'/'failed' are terminal for the
+  // launch; 'paused' frees the one-active slot but its engine may still be
+  // winding down — an operator stop wants every live engine of the project.
+  const launchProjectClause = projectId !== null ? 'AND l.project_id=?' : '';
+  const launchRows = db.prepare(
+    `SELECT l.epic_id, l.engine_pid
+       FROM factory_launch_requests l
+      WHERE l.engine_pid IS NOT NULL
+        AND l.state IN ('requested','claimed','running','paused')
+        ${launchProjectClause}`,
+  ).all(...(projectId !== null ? [projectId] : [])) as Array<{
+    epic_id: number;
+    engine_pid: number;
+  }>;
+
+  // Union the pid sources, deduped by pid (the controls entry wins — same
+  // engine, same epic, the richer record).
+  const scoped = new Map<number, { epicId: number }>();
+  for (const row of controlsRows) {
+    scoped.set(row.engine_pid, { epicId: row.epic_id });
+  }
+  for (const row of launchRows) {
+    if (!scoped.has(row.engine_pid)) {
+      scoped.set(row.engine_pid, { epicId: row.epic_id });
+    }
+  }
 
   const results: EngineBrakeResult[] = [];
-  for (const row of rows) {
-    if (!deps.isAlive(row.engine_pid)) {
-      markEngineStopped(db, row.epic_id);
-      results.push({ epicId: row.epic_id, enginePid: row.engine_pid, outcome: 'already_dead' });
+  for (const [enginePid, { epicId }] of scoped) {
+    if (!deps.isAlive(enginePid)) {
+      markEngineStopped(db, epicId);
+      results.push({ epicId, enginePid, outcome: 'already_dead' });
       continue;
     }
-    const commandLine = deps.readCommandLine(row.engine_pid);
+    const commandLine = deps.readCommandLine(enginePid);
     if (commandLine === null || !commandLine.includes('orchestrate-cli.js')) {
       // Live PID that is NOT our engine (PID reuse). Guarded skip: never kill
       // an unrelated process. There is provably no live engine of ours.
-      markEngineStopped(db, row.epic_id);
-      results.push({ epicId: row.epic_id, enginePid: row.engine_pid, outcome: 'pid_reused_foreign' });
+      markEngineStopped(db, epicId);
+      results.push({ epicId, enginePid, outcome: 'pid_reused_foreign' });
       continue;
     }
-    deps.killTree(row.engine_pid);
-    if (deps.isAlive(row.engine_pid)) {
+    deps.killTree(enginePid);
+    if (deps.isAlive(enginePid)) {
       throw new Error(
-        `ENGINE_BRAKE_FAILED: persisted engine pid ${row.engine_pid} `
-        + `(epic ${row.epic_id}) matched the orchestrate-cli.js command-line `
+        `ENGINE_BRAKE_FAILED: persisted engine pid ${enginePid} `
+        + `(epic ${epicId}) matched the orchestrate-cli.js command-line `
         + 'guard but survived a force tree-kill; refusing to continue the '
         + 'soft-stop with a live engine',
       );
     }
-    markEngineStopped(db, row.epic_id);
-    results.push({ epicId: row.epic_id, enginePid: row.engine_pid, outcome: 'braked' });
+    markEngineStopped(db, epicId);
+    results.push({ epicId, enginePid, outcome: 'braked' });
   }
   return results;
 }
 
 function markEngineStopped(db: Database.Database, epicId: number): void {
+  // Idempotent upsert: a launch-row-only brake (E-A6) may target an epic with
+  // NO controls row yet — the stopped stamp is still durably recorded for the
+  // panel status path, and a pre-existing row keeps its operator columns.
   db.prepare(
-    `UPDATE lifecycle_execution_controls
-        SET engine_state='stopped', stopped_at=datetime('now'), updated_at=datetime('now')
-      WHERE epic_id=?`,
+    `INSERT INTO lifecycle_execution_controls (epic_id, engine_state, stopped_at)
+     VALUES (?, 'stopped', datetime('now'))
+     ON CONFLICT(epic_id) DO UPDATE SET
+       engine_state='stopped', stopped_at=datetime('now'), updated_at=datetime('now')`,
   ).run(epicId);
 }
 
