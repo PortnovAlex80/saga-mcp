@@ -280,9 +280,12 @@ export function createBoardRenderApi({
           </select>
           <button id="agent-engine-toggle" class="engine-toggle${
             controlState.running ? ' engine-running' : ''
-          }" type="button"${controlEpic ? '' : ' disabled'} aria-label="Запуск / пауза движка" title="Запуск / пауза движка этого эпизода">${
+          }" type="button"${controlEpic ? '' : ' disabled'} aria-label="Запуск / пауза движка" title="Запуск / пауза движка этого эпизода. Пауза — дожин: ограда очереди, активные воркеры доработают.">${
             controlState.running ? '⏸' : '▶'
           }</button>
+          <button id="agent-engine-hardstop" class="engine-hardstop" type="button"${
+            controlEpic ? '' : ' disabled'
+          } aria-label="Стоп немедленно" title="Жёсткий стоп (backstop): убить движок и воркеров немедленно. Только для зависшего дожина — обычная пауза это ⏸.">⏹</button>
           <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
             ${Array.from({ length: 10 }, (_, i) => {
               // Pre-select the option matching the engine's current concurrency,
@@ -881,20 +884,19 @@ export function createBoardRenderApi({
           } catch { /* workers probe unavailable — fall through to controls */ }
           const panelSeesEngine = state.running && state.alive;
           if (!panelSeesEngine && blindLive > 0) {
-            // Wiring truth (stop-mechanics audit): the panel endpoint is
-            // killEngineTree — on blind controls its matchers hit NOTHING
-            // (the legacy positional matcher never matches --launch-ref
-            // spawns; the orphan matcher wants 'project_id=' in argv but the
-            // prompt travels over stdin). Firing it would stamp 'stopped'
-            // while the factory keeps working: a lying no-op. Until ⏸ is
-            // wired to the real soft-stop (docs/architecture/PAUSE-DESIGN),
-            // the button stays visible but tells the operator the true path.
-            engineToggle.disabled = true;
+            // B-006 v3 truth, PAUSE-DESIGN update: the durable project hold
+            // is ENGINE-AGNOSTIC — ⏸ works even for a blind-controls engine
+            // (the queue fence lives in the shared DB, not in the controls
+            // row). The engine drains active turns and self-parks (exit-2
+            // 'paused'). Killing a blind engine stays CLI-only: the panel
+            // stop matchers cannot see this engine (fence+void+rewind+holds
+            // live in factory.mjs stop).
+            engineToggle.disabled = false;
             engineToggle.textContent = '⏸';
             engineToggle.classList.add('engine-running');
-            engineToggle.title = 'Панельный стоп не подключён к soft-stop и не видит этот движок. Настоящий стоп: node scripts/factory.mjs stop <db> --project N';
+            engineToggle.title = 'Пауза-дожин: ограда очереди держится в БД и не зависит от панели. Движок сам припаркуется после дожина; для убийства — CLI: node scripts/factory.mjs stop <db> --project N';
             runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
-              + ' · стоп только через CLI: factory.mjs stop (кнопка — пустышка для этого движка)';
+              + ' · ⏸ доступен (дожин): движок сам припаркуется после дожина; для убийства — CLI';
           } else {
             engineToggle.disabled = false;
             syncEngineToggleButton(panelSeesEngine);
@@ -956,12 +958,48 @@ export function createBoardRenderApi({
         }
       });
       // --- Engine Start/Pause toggle button ---
-      //▶ starts the engine (spawn orchestrate-cli with current concurrency).
-      //⏸ stops the engine + workers (kill tree, no respawn). Persists
-      // $.engine_running in lifecycle_execution_controls.engine_state so the next page load
-      // shows the right icon. Token-safety: the engine only starts when the
-      // user explicitly presses ▶ — never automatically.
+      //▶ starts/resumes the engine (resume now also releases operator holds —
+      //   the unpark — before spawning, see /api/factory/start).
+      //⏸ GRACEFUL-DRAIN PAUSE (docs/architecture/PAUSE-DESIGN): places ONE
+      //   durable project-scope operator hold (POST /api/factory/pause) and
+      //   kills NOTHING. The queue fence lets every active turn finish; the
+      //   engine self-parks via its 3-streak exit-2 'paused' path. The status
+      //   line enters two-phase drain mode (⏳ waiting on workers → paused).
+      //⏹ (separate button) is the explicit hard-stop backstop for a hung
+      //   drain — confirm-gated, legacy /api/factory/stop.
       const engineToggle = document.getElementById('agent-engine-toggle');
+      // Two-phase drain: after the hold is placed, poll /api/workers/active
+      // until 0, then show the paused state. ▶ stays available the whole
+      // time (start releases the hold — aborting the drain is legitimate).
+      let drainTimer = null;
+      function stopDrainPolling() {
+        if (drainTimer) { clearTimeout(drainTimer); drainTimer = null; }
+      }
+      function drainModePoll(lastActive, queuedCards) {
+        stopDrainPolling();
+        syncEngineToggleButton(false);
+        const projectId = window.__sagaProjectId || ${projectId};
+        const tick = async () => {
+          let active = lastActive;
+          try {
+            const w = await fetch('/api/workers/active?project_id=' + projectId);
+            const wj = await w.json();
+            if (wj.ok && Array.isArray(wj.workers)) {
+              active = wj.workers.filter(x => x.phase !== 'exited').length;
+            }
+          } catch { /* probe unavailable — keep the last count */ }
+          if (active > 0) {
+            runnerStatus.textContent = '⏳ дожидаемся ' + active + ' воркер(ов) — новых наймов нет (ограда очереди)';
+            drainTimer = setTimeout(tick, ${RELOAD_SEC * 1000});
+            return;
+          }
+          drainTimer = null;
+          runnerStatus.textContent = 'на паузе (' + (queuedCards > 0
+            ? queuedCards + ' карт в очереди'
+            : 'очередь пуста') + ') · ▶ снимет ограду и продолжит';
+        };
+        tick();
+      }
       if (engineToggle) {
         engineToggle.addEventListener('click', async () => {
           const epicId = window.__sagaEpicId;
@@ -969,26 +1007,29 @@ export function createBoardRenderApi({
           // Read current state to decide direction.
           let running = engineToggle.classList.contains('engine-running');
           if (running) {
-            if (!confirm('Остановить движок этого эпизода? Активные воркеры будут убиты. Задачи останутся в очереди.')) return;
+            // Pause = one durable hold. Immediate on click, no confirm: the
+            // hold is reversible (▶ releases it) and hurts nothing in flight.
             engineToggle.disabled = true;
-            runnerStatus.textContent = 'остановка…';
+            runnerStatus.textContent = 'пауза: ставим ограду очереди…';
             try {
-              const r = await fetch('/api/factory/stop', {
+              const r = await fetch('/api/factory/pause', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // epic_id, not project_id: the engine panel is epic-scoped;
+                // the endpoint normalizes it.
                 body: JSON.stringify({ epic_id: epicId }),
               });
               const d = await r.json();
-              if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось остановить');
-              syncEngineToggleButton(false);
-              runnerStatus.textContent = 'движок остановлен';
+              if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось поставить паузу');
+              drainModePoll(d.active_workers ?? 0, d.queued_cards ?? 0);
             } catch (e) {
-              alert('Стоп движка: ' + e.message);
+              alert('Пауза: ' + e.message);
               runnerStatus.textContent = 'ошибка';
             } finally {
               engineToggle.disabled = false;
             }
           } else {
+            stopDrainPolling();
             if (!confirm('Продолжить завод с последней durable-точки? Будут созданы воркеры, расходующие токены.')) return;
             engineToggle.disabled = true;
             runnerStatus.textContent = 'старт…';
@@ -997,19 +1038,52 @@ export function createBoardRenderApi({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // epic_id, not project_id: the engine panel is epic-scoped
-                // (same as the stop branch); the endpoint normalizes it.
+                // (same as the pause branch); the endpoint normalizes it.
                 body: JSON.stringify({ epic_id: epicId }),
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось запустить');
               syncEngineToggleButton(true);
-              runnerStatus.textContent = 'resume lifecycle=' + d.lifecycle_run_id + ' (pid ' + d.engine_pid + ')';
+              runnerStatus.textContent = 'resume lifecycle=' + d.lifecycle_run_id
+                + ' (pid ' + d.engine_pid + ')'
+                + (d.holds_released > 0 ? ' · ограда снята (' + d.holds_released + ')' : '');
             } catch (e) {
               alert('Старт движка: ' + e.message);
               runnerStatus.textContent = 'ошибка';
             } finally {
               engineToggle.disabled = false;
             }
+          }
+        });
+      }
+      // --- Hard-stop backstop (drain deadline) ---
+      // The EXPLICIT second action for a hung drain: confirm-gated, legacy
+      // kill path (/api/factory/stop). Never the default — the default pause
+      // is ⏸ (graceful drain, zero token loss).
+      const engineHardstop = document.getElementById('agent-engine-hardstop');
+      if (engineHardstop) {
+        engineHardstop.addEventListener('click', async () => {
+          const epicId = window.__sagaEpicId;
+          if (!epicId) return;
+          if (!confirm('Остановить немедленно? Активные воркеры будут убиты, их текущий ход потерян. Задачи останутся в очереди. Сначала попробуйте ⏸ (дожин без потерь).')) return;
+          engineHardstop.disabled = true;
+          stopDrainPolling();
+          runnerStatus.textContent = 'жёсткий стоп…';
+          try {
+            const r = await fetch('/api/factory/stop', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ epic_id: epicId }),
+            });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось остановить');
+            syncEngineToggleButton(false);
+            runnerStatus.textContent = 'движок остановлен (жёстко)';
+          } catch (e) {
+            alert('Жёсткий стоп: ' + e.message);
+            runnerStatus.textContent = 'ошибка';
+          } finally {
+            engineHardstop.disabled = false;
           }
         });
       }
