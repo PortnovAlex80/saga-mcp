@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import {
+  withDb,
   withDbWrite,
   respondJson,
   esc,
@@ -19,6 +20,7 @@ import {
   decodeFactoryStartCommand,
   resolveFactoryResumeTarget,
 } from '../dist/app/factory-start.js';
+import { placeProjectHold, releaseOperatorHolds } from '../dist/app/operator-soft-stop.js';
 import {
   captureProductIdeaUrl,
   ideaPromptView,
@@ -464,6 +466,19 @@ export function createAdminEndpointsApi({
       if (command.kind === 'resume') {
         try {
           const target = withDbWrite(db => resolveFactoryResumeTarget(db, command.projectId));
+          // GRACEFUL-DRAIN PAUSE (PAUSE-DESIGN MVP #2): ▶ must UNPARK before
+          // the spawn. Until this, NOTHING on the start path released
+          // operator holds (the only releaser was `factory.mjs unpark`), so a
+          // hold-placed factory resumed, claimed 0 cards (the claim SQL honors
+          // factory_operator_holds) and died 'paused' after 3 empty streaks —
+          // the "stopped factory that looks started" trap. Releasing here
+          // fixes ALL pause flavors (panel pause, CLI soft-stop holds) in one
+          // place. Pre-spawn on purpose: the hold must never survive into the
+          // new engine's first claim cycle.
+          const holds = withDbWrite(db => releaseOperatorHolds(db, {
+            projectId: target.projectId,
+            releasedBy: 'panel-start',
+          }));
           // Antifreeze layer C: single-engine sweep before the spawn. A live
           // engine with a FRESH heartbeat means the resume button was pressed
           // while the factory already runs — do not spawn a duplicate. A live
@@ -482,6 +497,7 @@ export function createAdminEndpointsApi({
               lifecycle_run_id:target.lifecycleRunId,
               engine_pid:sweep.engine_pid,
               running:true,
+              holds_released:holds.released,
             });
           }
           const state = sagaApplication.startEngine({ epicId:target.epicId });
@@ -494,6 +510,7 @@ export function createAdminEndpointsApi({
             engine_pid:state.pid,
             running:state.running,
             killed_frozen_engine:sweep.action === 'killed_frozen',
+            holds_released:holds.released,
           });
         } catch (error) {
           const status = error?.code === 'FACTORY_PROJECT_NOT_FOUND' ? 404 : 409;
@@ -784,6 +801,91 @@ export function createAdminEndpointsApi({
     });
   }
 
+  // GRACEFUL-DRAIN PAUSE (docs/architecture/PAUSE-DESIGN.md). The panel ⏸
+  // places ONE durable project-scope operator hold — the exact row shape the
+  // claim predicate (work-assignment-core) already honors. Nothing is killed,
+  // rewound or fenced: active turns finish, the engine drains and self-parks
+  // via its 3-streak exit-2 'paused' path. The engine_state column is NOT
+  // touched (its CHECK has no 'pausing'; the HOLD is the durable fence).
+  // Idempotent: a double-click surfaces the same hold.
+  function handleFactoryPause(req, res) {
+    parseRequest(req, fields => {
+      // The panel speaks EPIC ids (like the stop/concurrency endpoints);
+      // accept project_id directly too.
+      let projectId = Number(fields.project_id);
+      let epicId = null;
+      if (Number.isSafeInteger(projectId) && projectId >= 1) {
+        try {
+          const project = withDbWrite(
+            handle => handle.prepare('SELECT id FROM projects WHERE id=?').get(projectId));
+          if (!project) {
+            return respondJson(res, 404, {
+              ok:false,
+              error:`Проект #${projectId} не найден`,
+              code:'FACTORY_PROJECT_NOT_FOUND',
+            });
+          }
+        } catch (error) {
+          return respondJson(res, 500, { ok:false, error:'db: ' + error.message });
+        }
+      } else {
+        epicId = Number(fields.epic_id);
+        if (!Number.isSafeInteger(epicId) || epicId < 1) {
+          return respondJson(res, 400, {
+            ok:false,
+            error:'pass epic_id or project_id',
+            code:'FACTORY_PROJECT_ID_INVALID',
+          });
+        }
+        try {
+          const epic = withDbWrite(
+            handle => handle.prepare('SELECT id, project_id FROM epics WHERE id=?').get(epicId));
+          if (!epic) {
+            return respondJson(res, 404, {
+              ok:false,
+              error:`Эпик #${epicId} не найден`,
+              code:'FACTORY_PROJECT_NOT_FOUND',
+            });
+          }
+          projectId = epic.project_id;
+        } catch (error) {
+          return respondJson(res, 500, { ok:false, error:'db: ' + error.message });
+        }
+      }
+      try {
+        const placement = withDbWrite(db => placeProjectHold(db, {
+          projectId,
+          reason: 'panel-drain-pause',
+          createdBy: 'panel',
+        }));
+        // Read-only observability counts for the two-phase UI drain line.
+        const counts = withDb(db => ({
+          active_workers: db.prepare(
+            `SELECT COUNT(*) AS c FROM worker_executions
+              WHERE project_id=? AND state IN ('reserved','running','cancel_requested')`,
+          ).get(projectId).c,
+          queued_cards: db.prepare(
+            `SELECT COUNT(*) AS c FROM tasks t JOIN epics e ON e.id=t.epic_id
+              WHERE e.project_id=? AND t.status IN ('todo','review')`,
+          ).get(projectId).c,
+        }));
+        return respondJson(res, 200, {
+          ok:true,
+          mode:'pause',
+          project_id:projectId,
+          ...(epicId !== null ? { epic_id:epicId } : {}),
+          hold_ref:placement.holdRef,
+          placed:placement.placed,
+          active_workers:counts.active_workers,
+          queued_cards:counts.queued_cards,
+          note:'ограда очереди поставлена; активные воркеры доработают, движок сам припаркуется (exit-2 paused)',
+        });
+      } catch (error) {
+        return respondJson(res, 500, { ok:false, error:'db: ' + error.message });
+      }
+    });
+  }
+
   return {
     handleProjectCreate,
     handleProjectArchive,
@@ -791,6 +893,7 @@ export function createAdminEndpointsApi({
     handleAdminPurgeAllProjects,
     handleEpicCreate,
     handleFactoryStart,
+    handleFactoryPause,
     renderAdmin,
   };
 }
