@@ -20,7 +20,7 @@ import {
   decodeFactoryStartCommand,
   resolveFactoryResumeTarget,
 } from '../dist/app/factory-start.js';
-import { placeProjectHold } from '../dist/app/operator-soft-stop.js';
+import { placeProjectHold, releaseOperatorHolds } from '../dist/app/operator-soft-stop.js';
 import {
   captureProductIdeaUrl,
   ideaPromptView,
@@ -466,6 +466,19 @@ export function createAdminEndpointsApi({
       if (command.kind === 'resume') {
         try {
           const target = withDbWrite(db => resolveFactoryResumeTarget(db, command.projectId));
+          // GRACEFUL-DRAIN PAUSE (PAUSE-DESIGN MVP #2): ▶ must UNPARK before
+          // the spawn. Until this, NOTHING on the start path released
+          // operator holds (the only releaser was `factory.mjs unpark`), so a
+          // hold-placed factory resumed, claimed 0 cards (the claim SQL honors
+          // factory_operator_holds) and died 'paused' after 3 empty streaks —
+          // the "stopped factory that looks started" trap. Releasing here
+          // fixes ALL pause flavors (panel pause, CLI soft-stop holds) in one
+          // place. Pre-spawn on purpose: the hold must never survive into the
+          // new engine's first claim cycle.
+          const holds = withDbWrite(db => releaseOperatorHolds(db, {
+            projectId: target.projectId,
+            releasedBy: 'panel-start',
+          }));
           // Antifreeze layer C: single-engine sweep before the spawn. A live
           // engine with a FRESH heartbeat means the resume button was pressed
           // while the factory already runs — do not spawn a duplicate. A live
@@ -484,6 +497,7 @@ export function createAdminEndpointsApi({
               lifecycle_run_id:target.lifecycleRunId,
               engine_pid:sweep.engine_pid,
               running:true,
+              holds_released:holds.released,
             });
           }
           const state = sagaApplication.startEngine({ epicId:target.epicId });
@@ -496,6 +510,7 @@ export function createAdminEndpointsApi({
             engine_pid:state.pid,
             running:state.running,
             killed_frozen_engine:sweep.action === 'killed_frozen',
+            holds_released:holds.released,
           });
         } catch (error) {
           const status = error?.code === 'FACTORY_PROJECT_NOT_FOUND' ? 404 : 409;
