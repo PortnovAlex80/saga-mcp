@@ -13,6 +13,10 @@ import {
   type RecoveryIssue,
 } from '../../process-modules/domain/recovery.js';
 import { cellEffectRepairReceiptBody } from './sqlite-cell-final-acceptance.js';
+import {
+  decodeFindingsForDecision,
+  SqliteGateFindingSetChain,
+} from './sqlite-gate-finding-set-chain.js';
 
 /**
  * Factory-wide SQLite projection adapter for Production Cells.
@@ -588,72 +592,6 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
   throw new Error(`PRODUCTION_CELL_TASK_METADATA_INVALID: ${taskId}`);
 }
 
-/**
- * FINDING-TRAJECTORY BUDGET — the ONE decoder of a repair_required decision's
- * findings, extracted verbatim from the recovery-feedback writer so the
- * feedback sheet and the convergence budget CANNOT diverge (two private copies
- * of this mapping would drift apart exactly when a new finding shape lands).
- *
- * Each failing receipt contributes its decodable check diagnostics; a receipt
- * without diagnostics contributes one fallback finding (composed
- * provider:outcome code). outcome 'error' is fatal, everything else is error
- * severity — same semantics the feedback sheet always had.
- */
-export interface DecodedDecisionFinding {
-  readonly code: string;
-  readonly severity: 'fatal' | 'error';
-  readonly message: string;
-  readonly subjectRef: string;
-  readonly evidenceRefs: readonly string[];
-}
-
-export function decodeFindingsForDecision(
-  db: Database.Database,
-  checkReceiptRefs: readonly string[],
-  fallbackSubjectRef: string,
-): DecodedDecisionFinding[] {
-  const placeholders = checkReceiptRefs.map(() => '?').join(',');
-  const receipts = db.prepare(
-    `SELECT check_receipt_ref,check_run_ref,provider_id,provider_version,provider_digest,
-            outcome,evidence_refs
-       FROM factory_check_receipts
-      WHERE check_receipt_ref IN (${placeholders})
-      ORDER BY check_run_ref`,
-  ).all(...checkReceiptRefs) as Array<{
-    check_receipt_ref: string;
-    check_run_ref: string;
-    provider_id: string;
-    provider_version: string;
-    provider_digest: string;
-    outcome: 'passed' | 'failed' | 'unknown' | 'error';
-    evidence_refs: string;
-  }>;
-  const failing = receipts.filter(receipt => receipt.outcome !== 'passed');
-  if (checkReceiptRefs.length > 0 && failing.length === 0) return [];
-  return failing.flatMap(item => {
-    const evidenceRefs = parseStringArray(item.evidence_refs);
-    const diagnostics = evidenceRefs
-      .map(decodeCheckDiagnostic)
-      .filter((value): value is NonNullable<typeof value> => value !== null);
-    if (diagnostics.length > 0) {
-      return diagnostics.map(diagnostic => ({
-        code: `${item.provider_id}:${diagnostic.code}`,
-        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-        message: diagnostic.message,
-        subjectRef: diagnostic.subjectRef ?? fallbackSubjectRef,
-        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-      }));
-    }
-    return [{
-      code: `${item.provider_id}:${item.outcome}`,
-      severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
-      message: `Check ${item.provider_id}@${item.provider_version} returned ${item.outcome}.`,
-      subjectRef: fallbackSubjectRef,
-      evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-    }];
-  });
-}
-
 interface GateDecisionRow {
   decision_key: string;
   decision_digest: string;
@@ -998,10 +936,6 @@ function readFindingTrajectoryForSheet(
   workplaceRef: string,
   role: 'author' | 'reviewer',
 ): RecoverySheetTrajectory {
-  const tablePresent = db.prepare(
-    `SELECT COUNT(*) AS n FROM sqlite_master
-      WHERE type='table' AND name='factory_gate_finding_set_chain'`,
-  ).get() as { n: number };
   const empty: RecoverySheetTrajectory = {
     scopeCheckPlanDigest: null,
     chain: [],
@@ -1010,47 +944,26 @@ function readFindingTrajectoryForSheet(
       + 'Address every finding listed above.',
     lastTransition: null,
   };
-  if (tablePresent.n === 0) return empty;
-  const latest = db.prepare(
-    `SELECT id, gate_ref, check_plan_digest
-       FROM factory_gate_finding_set_chain
-      WHERE workplace_ref=? AND repair_target_role=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(workplaceRef, role) as
-    | { id: number; gate_ref: string; check_plan_digest: string }
-    | undefined;
-  if (!latest) return empty;
-  const rows = db.prepare(
-    `SELECT gate_decision_key, finding_set_digest, finding_count,
-            finding_keys, fatal_finding_keys, created_at
-       FROM factory_gate_finding_set_chain
-      WHERE workplace_ref=? AND repair_target_role=? AND gate_ref=?
-        AND check_plan_digest=? AND id<=?
-      ORDER BY id DESC LIMIT ${SHEET_CHAIN_LIMIT}`,
-  ).all(workplaceRef, role, latest.gate_ref, latest.check_plan_digest, latest.id)
-    .reverse() as Array<{
-    gate_decision_key: string;
-    finding_set_digest: string;
-    finding_count: number;
-    finding_keys: string;
-    fatal_finding_keys: string;
-    created_at: string;
-  }>;
-  if (rows.length === 0) return empty;
-  const chain = rows.map(row => ({
-    gateDecisionKey: row.gate_decision_key,
-    digest: row.finding_set_digest,
-    count: row.finding_count,
-    keys: parseStringArray(row.finding_keys),
-    fatalKeys: parseStringArray(row.fatal_finding_keys),
-    createdAt: row.created_at,
+  // Single blessed owner of the chain recency selector (K7/K8 freeze): the
+  // scope semantics live in ONE module together with the convergence budget.
+  const scope = new SqliteGateFindingSetChain(db).readScopeRows(
+    workplaceRef, role, SHEET_CHAIN_LIMIT,
+  );
+  if (scope === null) return empty;
+  const chain = scope.rows.map(row => ({
+    gateDecisionKey: row.gateDecisionKey,
+    digest: row.set.digest,
+    count: row.set.count,
+    keys: row.set.keys,
+    fatalKeys: row.set.fatalKeys,
+    createdAt: row.createdAt,
   }));
   const base = {
-    scopeCheckPlanDigest: latest.check_plan_digest,
+    scopeCheckPlanDigest: scope.checkPlanDigest,
     chain,
   };
   if (chain.length < 2) {
-    return { ...base, ...empty, scopeCheckPlanDigest: latest.check_plan_digest, chain };
+    return { ...base, ...empty, scopeCheckPlanDigest: scope.checkPlanDigest, chain };
   }
   const previous = chain[chain.length - 2]!;
   const current = chain[chain.length - 1]!;

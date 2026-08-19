@@ -39,6 +39,7 @@ import type {
   GateCandidateHistoryContext,
   TrajectoryTailSnapshot,
 } from '../../process-modules/application/gate-run-driver.js';
+import { SqliteGateFindingSetChain } from './sqlite-gate-finding-set-chain.js';
 
 export const GATE_DECISION_REPLAY_MISMATCH = 'GATE_DECISION_REPLAY_MISMATCH';
 
@@ -330,7 +331,10 @@ export class SqliteGateRepository {
     readonly providerVersion: string;
   }): GateCandidateHistoryContext | null {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
-    const receipts = this.db.prepare(
+    // Read the COMPLETE ordered receipt history of the provider on this
+    // workplace (ascending — no latest-wins recency selector; the K7/K8
+    // freeze owns those), then keep the newest bounded window in memory.
+    const allReceipts = this.db.prepare(
       `SELECT cr.check_receipt_ref AS check_receipt_ref,
               cr.check_run_ref AS check_run_ref,
               cr.subject_candidate_set_ref AS subject_candidate_set_ref,
@@ -340,8 +344,7 @@ export class SqliteGateRepository {
          FROM factory_check_receipts cr
          JOIN factory_gate_runs gr ON gr.gate_run_ref=cr.check_run_ref
         WHERE gr.workplace_ref=? AND cr.provider_id=? AND cr.provider_version=?
-        ORDER BY cr.created_at DESC, cr.check_receipt_ref DESC
-        LIMIT 16`,
+        ORDER BY cr.created_at ASC, cr.check_receipt_ref ASC`,
     ).all(workplace, input.providerId, input.providerVersion) as Array<{
       check_receipt_ref: string;
       check_run_ref: string;
@@ -350,6 +353,7 @@ export class SqliteGateRepository {
       evidence_refs: string;
       created_at: string;
     }>;
+    const receipts = allReceipts.slice(-PROVIDER_HISTORY_LIMIT).reverse();
     const providerHistory: CheckProviderHistoryEntry[] = receipts.map(row => ({
       checkReceiptRef: row.check_receipt_ref,
       checkRunRef: row.check_run_ref,
@@ -571,48 +575,31 @@ function deserializeWorkplaceRef(serialized: string): WorkplaceRef {
 // ---------------------------------------------------------------------------
 
 const TRAJECTORY_TAIL_SET_LIMIT = 8;
+const PROVIDER_HISTORY_LIMIT = 16;
 
+/**
+ * The chain tail for the candidateSnapshot, read through the SINGLE blessed
+ * owner of the chain's recency selector (SqliteGateFindingSetChain — the
+ * legacy-freeze allowlisted module), so no second copy of the scope
+ * semantics can drift here.
+ */
 function readTrajectoryTailSnapshot(
   db: Database.Database,
   workplaceRef: string,
   role: 'author' | 'reviewer',
 ): TrajectoryTailSnapshot | null {
-  const tablePresent = db.prepare(
-    `SELECT COUNT(*) AS n FROM sqlite_master
-      WHERE type='table' AND name='factory_gate_finding_set_chain'`,
-  ).get() as { n: number };
-  if (tablePresent.n === 0) return null;
-  const latest = db.prepare(
-    `SELECT id, gate_ref, check_plan_digest
-       FROM factory_gate_finding_set_chain
-      WHERE workplace_ref=? AND repair_target_role=?
-      ORDER BY id DESC LIMIT 1`,
-  ).get(workplaceRef, role) as
-    | { id: number; gate_ref: string; check_plan_digest: string }
-    | undefined;
-  if (!latest) return null;
-  const rows = db.prepare(
-    `SELECT finding_set_digest, finding_count, finding_keys, fatal_finding_keys
-       FROM factory_gate_finding_set_chain
-      WHERE workplace_ref=? AND repair_target_role=? AND gate_ref=?
-        AND check_plan_digest=? AND id<=?
-      ORDER BY id DESC LIMIT ${TRAJECTORY_TAIL_SET_LIMIT}`,
-  ).all(workplaceRef, role, latest.gate_ref, latest.check_plan_digest, latest.id)
-    .reverse() as Array<{
-    finding_set_digest: string;
-    finding_count: number;
-    finding_keys: string;
-    fatal_finding_keys: string;
-  }>;
-  if (rows.length === 0) return null;
+  const scope = new SqliteGateFindingSetChain(db).readScopeRows(
+    workplaceRef, role, TRAJECTORY_TAIL_SET_LIMIT,
+  );
+  if (scope === null) return null;
   return {
-    gateRef: latest.gate_ref,
-    checkPlanDigest: latest.check_plan_digest,
-    sets: rows.map(row => ({
-      digest: row.finding_set_digest,
-      count: row.finding_count,
-      keys: parseJsonStringArray(row.finding_keys),
-      fatalKeys: parseJsonStringArray(row.fatal_finding_keys),
+    gateRef: scope.gateRef,
+    checkPlanDigest: scope.checkPlanDigest,
+    sets: scope.rows.slice(-TRAJECTORY_TAIL_SET_LIMIT).map(row => ({
+      digest: row.set.digest,
+      count: row.set.count,
+      keys: row.set.keys,
+      fatalKeys: row.set.fatalKeys,
     })),
   };
 }
