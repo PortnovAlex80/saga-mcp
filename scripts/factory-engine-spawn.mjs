@@ -39,7 +39,7 @@
  * production consumer.
  */
 import Database from 'better-sqlite3';
-import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -200,6 +200,25 @@ export function spawnOrchestrateCliEngine({
     closeSync(logFd);
   }
   child.unref();
+
+  // C-5 (stage-11 PREVENTIVE-HUNT Layer 6): stamp the DURABLE worker-backend
+  // marker next to the engine log. The tracker's /api/model/set guard reads it
+  // (factory_launch_requests.engine_log_path + '.worker-backend') so an engine
+  // spawned on the agent-proxy shim refuses the ~/.claude/settings.json switch
+  // EVEN WHEN the tracker process itself lacks the env markers — the bd81b02b
+  // recurrence vector. Best-effort: a failed marker write warns loudly but must
+  // not kill an already-alive engine.
+  try {
+    const launcher = `${childEnv.SAGA_REAL_CLAUDE_PATH ?? ''} ${childEnv.SAGA_CLAUDE_PATH ?? ''}`;
+    const backend = /agent-proxy/.test(launcher) ? 'agent-proxy' : 'claude-cli';
+    writeFileSync(`${engineLog}.worker-backend`, `${backend}\n`, 'utf8');
+  } catch (error) {
+    process.stderr.write(
+      `[factory] WARNING: engine started but its worker-backend marker failed `
+      + `(/api/model/set cannot durably detect the shim for this launch): `
+      + `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
   if (typeof child.on === 'function') {
     // Spawn-time errors (node missing, EMFILE): the script exits right after
     // this call, so surface the failure instead of dying silently.
