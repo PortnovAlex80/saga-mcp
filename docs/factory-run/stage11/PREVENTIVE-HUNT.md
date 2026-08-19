@@ -250,3 +250,22 @@ F4. Anti-cycle budget обнуляется на resume (MED)
 F5. Resume не видит failed NodeRuns между checkpoint и crash (MED)
 F6. Epoch last_diagnosis write-only (LOW)
 F7. Burial abandon без причины (LOW/MED)
+
+### Cross-Layer (финальный):
+X1. Planner не видит SRS-текст — только hash/ref; engine читает SRS, планировщик нет (HIGH)
+X2. Sills обещают phantom-поля (6 скиллов, 0 реализаций) — RECOVERY:, attempt_history (HIGH)
+X3. Settlement видит только binary passed; failed AC не доходит как evidence (MED-HIGH)
+X4. Certifier не видит verifier findings в continuation (MED)
+X5. Operator не видит finding-SEQUENCE — только repairs count + last verdict (LOW-MED)
+X6. Journal содержит reasoning (invariant.classification) который нигде больше не живёт (MED)
+
+### ИТОГО: ~11 HIGH / ~9 MED-HIGH / ~17 MED / мёртвые данные / фиктивные контракты
+
+### Три уровня системной проблемы:
+1. Данные есть → доставка отсутствует (~30 находок)
+2. Документация обещает → код не реализует (6 скиллов, 0 строк)
+3. История уничтожается → append не соблюдается (UPSERT/overwrite/reset)
+
+### Дешевейший системный фикс (паттерн уже в коде):
+route finding-trajectory tail в 3 существующие точки чтения.
+Правильный образец: replanContext (buildReplanCase) — «дай LM весь контекст».
