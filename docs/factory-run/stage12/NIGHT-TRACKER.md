@@ -333,10 +333,16 @@ first; any E9-reserve code is escalate-never-delete.
     01:28; verified saga4 intact, zero tracked dirt, all 22 sibling worktrees
     intact, both probe worktrees removed. Bisect drives in the MAIN checkout
     or check `git config core.bare` after every step.
-  - **NOT PUSHED** (no green, no push). origin/saga4 stays `7ecedc6d`; local
-    saga4 = merge `2a0c21d7` + cron `4f46d6d5` + this entry. Main's morning
-    decisions: (a) push wave C — it breaks nothing that wasn't already broken
-    at `7ecedc6d` and adds pm 1169→1209; (b) bisect the drive-family break in
-    the six-merge range above; (c) the lifecycle sanctioned-writer violation
+  - **PUSH PROVENANCE**: this agent never pushed (STOP held). At 01:21:56
+    MAIN'S OWN CRON LOOP pushed `2a0c21d7` + `4f46d6d5` to origin
+    (reflog: `update by push`, 3 s after the cron commit; `ls-remote`
+    confirms origin/saga4 = `4f46d6d5`). Decision (a) below is therefore
+    moot — the merge is already public by main's act; the STOP record
+    (this entry) is docs-only and pushed alongside. Decisions (b) and (c)
+    stand. Main's morning decisions:
+    (a) push wave C — RESOLVED BY MAIN'S CRON PUSH at 01:21:56 (the merge
+    breaks nothing that wasn't already broken at `7ecedc6d` and adds pm
+    1169→1209); (b) bisect the drive-family break in the six-merge range
+    above; (c) the lifecycle sanctioned-writer violation
     (`replan-supersede.ts`) — sanction or escalate, architect's act, not mine.
 
