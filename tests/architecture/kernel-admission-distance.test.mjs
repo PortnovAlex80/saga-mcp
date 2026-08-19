@@ -245,7 +245,9 @@ test('the linkType behavioural ternary exists in exactly the three known copies'
     // 548 -> 567: the projection-persistence copy shifted when the
     // finding-trajectory budget landed above it (19e6002b lineage) — same
     // three copies, refreshed anchor, same guard.
-    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:567',
+    // 567 -> 568: SEAM L2 seam-repair-issue import landed above it — same
+    // three copies, refreshed anchor, same guard.
+    'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:568',
     'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts:413',
     'src/tools/tasks.ts:552',
   ], `the linkType stage-name ternary was copied or moved (${copies.join(', ')}); ` +

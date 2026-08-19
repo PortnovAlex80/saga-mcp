@@ -147,6 +147,14 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
     // (continuation re-routes the defect to the producing workshop) instead
     // of burning this workplace's repair budget on probe rewrites that
     // cannot fix the product.
+    //
+    // SEAM L2 (c) restore: bb968ecf dropped this flag while keeping the
+    // comment, so a failed runnability check repair-looped the CERTIFIER
+    // (who can only rewrite the manifest, never the frozen candidate) and
+    // the typed seam repair-issue never reached the producing task. The
+    // upstream flag is what routes the seam defect through the existing
+    // escalation → continuation → producing-workshop path.
+    failureOwnership: 'upstream',
     expectedSubjectSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
     subjectScope: 'cell-product',
     repairTargetRoleOnIndeterminate: 'author',

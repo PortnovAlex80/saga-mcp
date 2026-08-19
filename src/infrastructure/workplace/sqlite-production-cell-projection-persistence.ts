@@ -4,6 +4,7 @@ import type { ProductionCellProjectionPersistence } from '../../process-modules/
 import { assertValidTargetRecoveryIssue } from '../../process-modules/domain/workplace/index.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { decodeCheckDiagnostic } from '../../process-modules/domain/workplace/check-diagnostic.js';
+import { decodeSeamRepairIssue } from '../../process-modules/domain/workplace/seam-repair-issue.js';
 import {
   assertRecoveryIssue,
   type RecoveryIssue,
@@ -590,10 +591,13 @@ function parseObject(raw: string, taskId: number): Record<string, unknown> {
  * feedback sheet and the convergence budget CANNOT diverge (two private copies
  * of this mapping would drift apart exactly when a new finding shape lands).
  *
- * Each failing receipt contributes its decodable check diagnostics; a receipt
- * without diagnostics contributes one fallback finding (composed
- * provider:outcome code). outcome 'error' is fatal, everything else is error
- * severity — same semantics the feedback sheet always had.
+ * Each failing receipt contributes its decodable check diagnostics AND its
+ * typed seam repair-issues (SEAM L2 (c): the seam finding names the seam kind,
+ * the owning task, and the localized files — the repair author gets exact
+ * localization instead of "integration failed"); a receipt without either
+ * contributes one fallback finding (composed provider:outcome code). outcome
+ * 'error' is fatal, everything else is error severity — same semantics the
+ * feedback sheet always had.
  */
 export interface DecodedDecisionFinding {
   readonly code: string;
@@ -601,6 +605,8 @@ export interface DecodedDecisionFinding {
   readonly message: string;
   readonly subjectRef: string;
   readonly evidenceRefs: readonly string[];
+  /** SEAM L2: localized file hints, present on seam-typed findings only. */
+  readonly fileHints?: readonly string[];
 }
 
 export function decodeFindingsForDecision(
@@ -631,15 +637,36 @@ export function decodeFindingsForDecision(
     const diagnostics = evidenceRefs
       .map(decodeCheckDiagnostic)
       .filter((value): value is NonNullable<typeof value> => value !== null);
-    if (diagnostics.length > 0) {
-      return diagnostics.map(diagnostic => ({
+    const seamIssues = evidenceRefs
+      .map(decodeSeamRepairIssue)
+      .filter((value): value is NonNullable<typeof value> => value !== null);
+    const findings: DecodedDecisionFinding[] = [];
+    for (const diagnostic of diagnostics) {
+      findings.push({
         code: `${item.provider_id}:${diagnostic.code}`,
-        severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
+        severity: item.outcome === 'error' ? 'fatal' : 'error',
         message: diagnostic.message,
         subjectRef: diagnostic.subjectRef ?? fallbackSubjectRef,
         evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
-      }));
+      });
     }
+    for (const issue of seamIssues) {
+      findings.push({
+        code: `${item.provider_id}:seam:${issue.seamKind}`,
+        severity: item.outcome === 'error' ? 'fatal' : 'error',
+        message: `${issue.evidence.summary} `
+          + `(producing task: ${issue.producingTaskRef}; `
+          + `phase: ${issue.localization.phase}`
+          + (issue.localization.fileHints.length > 0
+            ? `; files: ${issue.localization.fileHints.join(', ')}`
+            : '')
+          + ')',
+        subjectRef: issue.subjectCandidateSetRef,
+        evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
+        fileHints: issue.localization.fileHints,
+      });
+    }
+    if (findings.length > 0) return findings;
     return [{
       code: `${item.provider_id}:${item.outcome}`,
       severity: item.outcome === 'error' ? 'fatal' as const : 'error' as const,
@@ -648,6 +675,67 @@ export function decodeFindingsForDecision(
       evidenceRefs: [item.check_receipt_ref, ...evidenceRefs],
     }];
   });
+}
+
+/**
+ * SEAM-ARCHITECT Layer 2 (c) — the typed seam repair-issues behind a set of
+ * check receipts, for the recovery-feedback sheet's `issue.seamIssues` slot.
+ * Read through the same receipt substrate as the findings decoder: one source
+ * of truth, no second authority path.
+ */
+export interface DecodedSeamIssue {
+  readonly checkReceiptRef: string;
+  readonly providerId: string;
+  readonly seamKind: string;
+  readonly producingTaskRef: string;
+  readonly localization: {
+    readonly phase: string;
+    readonly substrate: string;
+    readonly command?: string;
+    readonly fileHints: readonly string[];
+  };
+  readonly evidence: {
+    readonly summary: string;
+    readonly digestRef: string;
+  };
+  readonly subjectCandidateSetRef: string;
+}
+
+export function decodeSeamIssuesForReceipts(
+  db: Database.Database,
+  checkReceiptRefs: readonly string[],
+): DecodedSeamIssue[] {
+  if (checkReceiptRefs.length === 0) return [];
+  const placeholders = checkReceiptRefs.map(() => '?').join(',');
+  const receipts = db.prepare(
+    `SELECT check_receipt_ref,provider_id,outcome,evidence_refs
+       FROM factory_check_receipts
+      WHERE check_receipt_ref IN (${placeholders})
+      ORDER BY check_run_ref`,
+  ).all(...checkReceiptRefs) as Array<{
+    check_receipt_ref: string;
+    provider_id: string;
+    outcome: string;
+    evidence_refs: string;
+  }>;
+  const issues: DecodedSeamIssue[] = [];
+  for (const receipt of receipts) {
+    if (receipt.outcome === 'passed') continue;
+    for (const ref of parseStringArray(receipt.evidence_refs)) {
+      const issue = decodeSeamRepairIssue(ref);
+      if (issue === null) continue;
+      issues.push({
+        checkReceiptRef: receipt.check_receipt_ref,
+        providerId: receipt.provider_id,
+        seamKind: issue.seamKind,
+        producingTaskRef: issue.producingTaskRef,
+        localization: issue.localization,
+        evidence: issue.evidence,
+        subjectCandidateSetRef: issue.subjectCandidateSetRef,
+      });
+    }
+  }
+  return issues;
 }
 
 interface GateDecisionRow {
@@ -797,6 +885,10 @@ function readCurrentProductionCellRecoveryFeedback(
       receiptRefs,
       rejectedCandidateSetRef,
     ),
+    // SEAM L2 (c): the typed seam repair-issues ride the SAME finding/rejection
+    // sheet — the repair author reads the seam kind, the owning task and the
+    // localized files here, not "integration failed".
+    seamIssues: decodeSeamIssuesForReceipts(db, receiptRefs),
     requiredAcceptance: failing.map(item =>
       `Check ${item.provider_id}@${item.provider_version} must return passed.`),
     allowedChanges: productRefs.map(product =>

@@ -1666,7 +1666,10 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    * failures off the continuation recovery snapshot in the run input.
    * Returns null for ordinary (non-continuation) runs. The shape is the
    * externalBaselineSnapshot.defectEvidence array written by
-   * prepareDevelopmentContinuation: {providerId, failedAt, message}.
+   * prepareDevelopmentContinuation: {providerId, failedAt, message}, plus the
+   * SEAM L2 typed projection {seamKind, producingTaskRef, localization} on
+   * seam-typed causes — the repair task's objective names the exact seam,
+   * owning task and localized files, not "integration failed".
    */
   private readContinuationDefectEvidence(ctx: NodeExecutionContext): string | null {
     const runInput = ctx.frame.runInput as {
@@ -1681,11 +1684,39 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const lines: string[] = [];
     for (const entry of evidence) {
       if (!entry || typeof entry !== 'object') continue;
-      const record = entry as { providerId?: unknown; failedAt?: unknown; message?: unknown };
+      const record = entry as {
+        providerId?: unknown;
+        failedAt?: unknown;
+        message?: unknown;
+        seamKind?: unknown;
+        producingTaskRef?: unknown;
+        localization?: {
+          phase?: unknown;
+          command?: unknown;
+          fileHints?: unknown;
+        };
+      };
       if (typeof record.message !== 'string' || record.message === '') continue;
       const provider = typeof record.providerId === 'string' ? record.providerId : 'unknown-check';
       const at = typeof record.failedAt === 'string' ? record.failedAt : '';
-      lines.push(`- [${provider}${at ? ` @ ${at}` : ''}] ${record.message.slice(0, 900)}`);
+      let seamTag = '';
+      if (typeof record.seamKind === 'string') {
+        const owner = typeof record.producingTaskRef === 'string'
+          ? record.producingTaskRef : 'unknown';
+        const localization = record.localization ?? {};
+        const phase = typeof localization.phase === 'string'
+          ? localization.phase : '';
+        const files = Array.isArray(localization.fileHints)
+          && localization.fileHints.every(hint => typeof hint === 'string')
+          ? localization.fileHints.join(', ')
+          : '';
+        seamTag = ' | '
+          + `seam:${record.seamKind}`
+          + ` owner:${owner}`
+          + (phase !== '' ? ` phase:${phase}` : '')
+          + (files !== '' ? ` files:${files}` : '');
+      }
+      lines.push(`- [${provider}${at ? ` @ ${at}` : ''}${seamTag}] ${record.message.slice(0, 900)}`);
     }
     return lines.length > 0 ? lines.join('\n') : null;
   }
