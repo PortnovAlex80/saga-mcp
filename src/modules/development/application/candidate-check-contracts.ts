@@ -20,7 +20,13 @@ export const AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
   'factory.local-runnability.v1';
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.6.0';
+// 1.7.0 — CERTIFICATION-GAMING-REMEDY M2-2: the provider now attaches an
+// ADDITIVE test-coverage report to every outcome (which test files the sealed
+// tree's canonical set contains vs which the declaration runs, opaque
+// declarations resolved through the sealed package.json). Report only — the
+// outcome semantics are byte-for-byte unchanged. The digest bump re-checks
+// every prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.7.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -35,4 +41,6 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   processTerminationPolicy:
     'linux-proc-zombie-aware-and-live-process-tree-fail-closed-v1',
   subjectPolicy: 'accepted-readiness-manifest-bound-to-exact-integrated-source-v1',
+  coverageReportPolicy:
+    'additive-x-of-y-sealed-tree-canonical-vs-declared-test-files-report-only-never-enforcing-v1',
 });

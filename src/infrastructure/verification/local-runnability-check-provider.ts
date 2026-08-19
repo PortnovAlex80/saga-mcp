@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { CandidateSetReaderPort } from '../../application/ports/candidate-set-reader.js';
@@ -28,6 +35,11 @@ import {
   INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
 } from '../../modules/development/domain/development-schemas.js';
 import type { ReadinessProfile, RunnabilityCommands } from '../../modules/development/domain/development-schemas.js';
+import {
+  isTestFilePath,
+  normalizeTestPath,
+  resolveDeclaredTestSurface,
+} from '../../modules/development/domain/readiness-test-surface.js';
 import {
   runServedProcess,
   type CommandTarget,
@@ -239,13 +251,13 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // place rather than drifting. The digest bump means all prior receipts are
     // re-checked exactly once (by design) — the provider still fails closed on
     // any real policy change (category/determinism/status tampering).
-    // 1.1 added opt-in Docker; 1.2 adds ephemeral venv isolation; 1.5 sealed
-    // the manifest-bound subject policy. All substrate-only/subject-wiring
-    // changes; the versioned CheckPlan still pins exact code. 1.6 adds the
-    // compose verification step and typed seam repair-issue emission —
-    // additive evidence paths; the host execution path is unchanged for
-    // profiles that declare no compose.
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0'].includes(existing.version ?? '')
+    // 1.1 added opt-in Docker; 1.2 sealed the manifest-bound subject policy;
+    // 1.5 the sealed manifest-bound subject policy; 1.6 added the compose
+    // verification step and typed seam repair-issue emission. 1.7 adds the
+    // M2-2 ADDITIVE test-coverage report (evidence-only; outcomes unchanged).
+    // All additive; the versioned CheckPlan still pins exact code. The digest
+    // bump means all prior receipts are re-checked exactly once (by design).
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -531,6 +543,11 @@ function runLocalReadiness(
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
   let executor: ReadinessExecutor | null = null;
+  // M2-2 — ADDITIVE coverage evidence (report only, never enforcing): which
+  // test files the sealed tree's canonical set contains vs which the declared
+  // testCommand runs. Computed as soon as the profile validates; rides BOTH
+  // passed and failed outcomes.
+  let coverage: { observation: Record<string, unknown>; message: string } | null = null;
   // SEAM-ARCHITECT Layer 2 (b) — which seam is being verified RIGHT NOW. On
   // failure this tracker (not a boolean) determines the typed SeamRepairIssue:
   // seamKind by phase, localization (phase/command/substrate), owner resolved
@@ -581,6 +598,12 @@ function runLocalReadiness(
         summary: 'the frozen readiness profile is absent or invalid; the product contract must state kind/commands (and serve.startCommand for served)',
       }, subject, subjectCandidateSetRef));
     }
+    // M2-2 — derive the canonical test-file universe from the EXACT sealed
+    // tree (tests/** plus the sealed package.json scripts.test enumeration)
+    // and the executed set from the declaration (opaque npm-test resolved
+    // through the SAME sealed package.json, never the declaration's word).
+    // Purely additive evidence: it never influences the outcome below.
+    coverage = computeTestCoverageReport(directory, profile);
     // Phase-1 dockerization — select the execution substrate from the profile.
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
     // (host or docker). When the profile declares environment.image, the docker
@@ -655,7 +678,8 @@ function runLocalReadiness(
         ...substrateEvidence,
         ...serveEvidence,
         ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
-      });
+        ...(coverage ? { testCoverage: coverage.observation } : {}),
+      }, undefined, undefined, coverage?.message);
     }
     const composeObservation = runDeclaredCompose(
       directory, profile, composeRunner, seam,
@@ -667,8 +691,9 @@ function runLocalReadiness(
       readinessKind: 'static',
       ...substrateEvidence,
       ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
+      ...(coverage ? { testCoverage: coverage.observation } : {}),
       note: 'runnability proven by the profile-stated install/test commands',
-    });
+    }, undefined, undefined, coverage?.message);
   } catch (error) {
     // A ReadinessExecutionError carries a specific diagnostic code (e.g.
     // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) that the evidence function encodes
@@ -681,7 +706,10 @@ function runLocalReadiness(
     return evidence(
       'failed',
       subject,
-      { reason: errorMessage(error) },
+      {
+        reason: errorMessage(error),
+        ...(coverage ? { testCoverage: coverage.observation } : {}),
+      },
       code,
       buildSeamIssue(db, {
         seamKind: refined,
@@ -691,6 +719,7 @@ function runLocalReadiness(
         fileHints: extractFileHints(errorMessage(error)),
         summary: errorMessage(error).slice(0, 2000),
       }, subject, subjectCandidateSetRef),
+      coverage?.message,
     );
   } finally {
     // Release substrate resources (docker volumes) before removing the temp
@@ -1269,12 +1298,127 @@ function resolveCommandTarget(command: string): CommandTarget {
   return { executable: trimmed, args: [], shell: true };
 }
 
+/**
+ * CERTIFICATION-GAMING-REMEDY M2-2 — the additive coverage report (REPORT
+ * ONLY, never enforcing). Derives, from the EXACT sealed tree already
+ * extracted for the runnability proof:
+ *
+ *   - the CANONICAL test-file universe: test files under tests/** union the
+ *     test files enumerated by the sealed package.json scripts.test;
+ *   - the EXECUTED set: the test files the declared testCommand runs (opaque
+ *     npm-test style commands resolved through the sealed package.json of the
+ *     same tree; genuinely opaque runners reported as opaque, no fabricated
+ *     claims).
+ *
+ * The stage-11 gaming this makes visible: 9 canonical files, declaration
+ * enumerating 7, the two red ones excluded — reported as
+ * "executed 7 of 9; not executed: tests/renderer.test.js,
+ * tests/websocket-server.test.js" while the outcome itself is unchanged.
+ */
+function computeTestCoverageReport(
+  directory: string,
+  profile: ReadinessProfile,
+): { observation: Record<string, unknown>; message: string } {
+  const treeTests = collectCanonicalTestFiles(directory);
+  const packageTestScript = readSealedPackageJsonTestScript(directory);
+  const scriptFiles = packageTestScript !== null
+    ? extractTestFileTokensFromCommand(packageTestScript)
+    : [];
+  const canonical = [...new Set([...treeTests, ...scriptFiles])].sort();
+  const declared = resolveDeclaredTestSurface({
+    testCommand: profile.commands.testCommand,
+    sealedPackageJsonTestScript: packageTestScript,
+  });
+  // A directory-shaped execution (declaration or resolved script) runs the
+  // whole sealed tests/** tree.
+  const executed = declared.files !== null && declared.files.length > 0
+    ? declared.files
+    : (declared.status === 'whole-tests-directory'
+        || (declared.status === 'resolved-via-sealed-package-json'
+          && declared.files !== null))
+      ? treeTests
+      : null;
+  const notExecuted = executed === null
+    ? null
+    : canonical.filter(file => !executed.includes(file));
+  const observation: Record<string, unknown> = {
+    canonicalTestFiles: canonical,
+    declaredTestCommandResolution: declared.status,
+    declaredExecutedTestFiles: executed,
+    notExecutedTestFiles: notExecuted,
+  };
+  const message = executed === null
+    ? 'declared test command is opaque ('
+      + truncateMiddle(profile.commands.testCommand.trim(), 80)
+      + `); canonical test files in the sealed tree: ${canonical.length}`
+      + (canonical.length > 0 ? ` [${formatFileList(canonical)}]` : ' (none found)')
+    : `executed ${executed.length} of ${canonical.length} canonical test files`
+      + ' (sealed tree tests/** universe); not executed: '
+      + (notExecuted !== null && notExecuted.length > 0
+        ? notExecuted.join(', ')
+        : '(none)');
+  return { observation, message };
+}
+
+/** Test-suffixed files under the sealed tree's tests/ directory (recursive). */
+function collectCanonicalTestFiles(directory: string): string[] {
+  const found: string[] = [];
+  const walk = (relative: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(join(directory, relative), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules') continue;
+      const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (entry.isFile() && isTestFilePath(child)) found.push(normalizeTestPath(child));
+    }
+  };
+  walk('tests');
+  return found.sort();
+}
+
+/** The sealed package.json's scripts.test string, or null when unreadable. */
+function readSealedPackageJsonTestScript(directory: string): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+      scripts?: { test?: unknown };
+    };
+    const test = parsed.scripts?.test;
+    return typeof test === 'string' && test.trim() !== '' ? test : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractTestFileTokensFromCommand(command: string): string[] {
+  return [...resolveDeclaredTestSurface({
+    testCommand: command,
+    sealedPackageJsonTestScript: null,
+  }).files ?? []];
+}
+
+function formatFileList(files: readonly string[]): string {
+  const shown = files.slice(0, 12).join(', ');
+  return files.length > 12 ? `${shown} (+${files.length - 12} more)` : shown;
+}
+
+function truncateMiddle(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const half = Math.floor((max - 3) / 2);
+  return `${value.slice(0, half)}...${value.slice(value.length - half)}`;
+}
+
 function evidence(
   outcome: 'passed' | 'failed',
   subject: CandidateSubject,
   observation: Record<string, unknown>,
   diagnosticCode?: string,
   seamIssue?: SeamRepairIssue,
+  coverageMessage?: string,
 ): CheckProviderResult {
   const digest = sha256Hex({
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -1307,6 +1451,15 @@ function evidence(
     if (seamIssue !== undefined) {
       evidenceRefs.push(encodeSeamRepairIssue(seamIssue));
     }
+  }
+  // M2-2 — the additive coverage report rides every outcome as a DECODABLE
+  // diagnostic (appended last: existing failure diagnostics keep their
+  // positions). Report only: its presence never changes the outcome.
+  if (coverageMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'readiness-test-coverage',
+      message: coverageMessage,
+    }));
   }
   return { outcome, evidenceRefs };
 }
