@@ -205,7 +205,11 @@ export const developmentTaskGraphPayloadContract: ProductPayloadContract = {
 // observed on live conveyor submissions.
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID =
   'development.implementation-result-payload.v1';
-export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.1.0';
+// v1.2.0 — STAGE-18 R2: snapshot.droppedFiles joined the CONSUMER read
+// surface (the claim-surface monotonicity provider reads it as the lawful
+// disposition channel). The contract pins its shape: an array of
+// {path, reason} entries; a missing/empty reason is not a disposition.
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.2.0';
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   decoder: 'validateDevelopmentImplementationResultPayload',
@@ -287,6 +291,21 @@ function validateDevelopmentImplementationResultPayload(payload: unknown): strin
         || !files.every(entry => typeof entry === 'string'
           || (isRecordValue(entry) && typeof entry.path === 'string' && entry.path !== ''))) {
       errors.push('snapshot.changedFiles must be a non-empty array of paths or {path} entries');
+    }
+    // STAGE-18 R2: the disposition channel of the claim-surface monotonicity
+    // ratchet. Present-but-malformed is a contract violation (fail closed);
+    // absent is legal (nothing was dropped).
+    if (snapshot.droppedFiles !== undefined) {
+      const drops = snapshot.droppedFiles;
+      if (!Array.isArray(drops)
+          || !drops.every(entry => isRecordValue(entry)
+            && typeof entry.path === 'string' && entry.path !== ''
+            && typeof entry.reason === 'string' && entry.reason.trim() !== '')) {
+        errors.push(
+          'snapshot.droppedFiles must be an array of {path, reason} entries with non-empty strings'
+          + ' — an entry without a reason is not a disposition',
+        );
+      }
     }
   }
   // ADR-070: readiness on a scoped implementation result is item-local
@@ -1420,6 +1439,189 @@ export function createDevelopmentReadinessMonotonicityCheckProvider(input: {
       } catch (err) {
         return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_CHECK_ERROR',
           `The readiness monotonicity check could not complete deterministically: ${
+            err instanceof Error ? err.message.slice(0, 600) : String(err).slice(0, 600)
+          }`);
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// STAGE-18 R2 — implementation claim-surface monotonicity (live finding
+// E-F5 / matrix E8). The stage-15 run proved the hole submit by submit:
+// card 1 claimed root.config on sub 14, dropped it on sub 15 and was
+// ACCEPTED terminal-forever with the hole; card 2 claimed root.config on
+// subs 17/18/19, dropped it (and one more) on sub 20 and passed the author
+// gate — only that card's reviewer happened to run a build. The scope
+// check compares the CURRENT claim against the git diff and the frozen
+// scopes, never against the card's own PRIOR claims, so a silent narrowing
+// is invisible to it. The rule (copied from the readiness monotonicity
+// form, second object): a card may not silently narrow its claimed file
+// surface between submissions — a dropped file is either an explicit
+// snapshot.droppedFiles disposition (with a reason) or a regression.
+// ---------------------------------------------------------------------------
+
+export const DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_ID =
+  'development.implementation-claim-monotonicity.v1';
+export const DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_ID,
+  version: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_VERSION,
+  invariant:
+    'claimed-file-surface-never-silently-narrows-between-implementation-submissions-of-the-same-task',
+  lawfulExit:
+    'a-drop-is-legal-only-with-an-explicit-snapshot-droppedFiles-entry-carrying-a-non-empty-reason',
+  comparisonScope:
+    'union-of-all-prior-implementation-result-submissions-of-the-same-task-pure-durable-state',
+});
+
+/** The claimed file paths of one submission payload (both changedFiles
+ *  shapes: plain path strings and {path,…} entries). Null when the payload
+ *  states no readable claim at all. */
+function claimedFilePaths(payload: unknown): readonly string[] | null {
+  if (!isRecordValue(payload)) return null;
+  const snapshot = payload.snapshot;
+  if (!isRecordValue(snapshot) || !Array.isArray(snapshot.changedFiles)) return null;
+  const paths: string[] = [];
+  for (const entry of snapshot.changedFiles) {
+    if (typeof entry === 'string') {
+      if (entry !== '') paths.push(entry);
+    } else if (isRecordValue(entry) && typeof entry.path === 'string' && entry.path !== '') {
+      paths.push(entry.path);
+    }
+  }
+  return paths;
+}
+
+/** The explicitly dispositioned drops of the CURRENT payload. A
+ *  droppedFiles entry without a non-empty reason is NOT a disposition —
+ *  the field's existence must not launder a silent drop. */
+function dispositionedDropPaths(payload: unknown): readonly string[] {
+  if (!isRecordValue(payload)) return [];
+  const snapshot = payload.snapshot;
+  if (!isRecordValue(snapshot) || !Array.isArray(snapshot.droppedFiles)) return [];
+  const paths: string[] = [];
+  for (const entry of snapshot.droppedFiles) {
+    if (isRecordValue(entry)
+        && typeof entry.path === 'string' && entry.path !== ''
+        && typeof entry.reason === 'string' && entry.reason.trim() !== '') {
+      paths.push(entry.path);
+    }
+  }
+  return paths;
+}
+
+export function createImplementationClaimMonotonicityCheckProvider(input: {
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
+}): CheckProvider {
+  return {
+    providerId: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+    run({ subjectCandidateSetRef, parameters }) {
+      try {
+        const processRunId = Number(parameters.processRunId);
+        if (!Number.isSafeInteger(processRunId) || processRunId < 1) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_CONTEXT_INVALID',
+            'The claim-surface monotonicity check requires the process run id of the implementation cell.');
+        }
+        const candidate = input.candidateSets.read(subjectCandidateSetRef);
+        if (!candidate || candidate.role !== 'author' || candidate.members.length !== 1) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_SUBJECT_INVALID',
+            'The claim-surface monotonicity check requires the exact single author candidate set of the implementation cell.');
+        }
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId !== DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_SUBJECT_INVALID',
+            `The claim-surface monotonicity subject must be a ${DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA} managed-node-submission,`
+            + ` got ${member.productRef.schemaId}:${member.productRef.ref}.`);
+        }
+        const submissionId = Number(
+          member.productRef.ref.slice('managed-node-submission:'.length),
+        );
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_SUBJECT_INVALID',
+            `The implementation submission ref '${member.productRef.ref}' does not carry a numeric managed-node-submission id.`);
+        }
+        const row = input.db.prepare(
+          `SELECT payload_snapshot, content_hash, task_id
+             FROM factory_managed_node_submissions
+            WHERE id=? AND process_run_id=? AND schema_version=?`,
+        ).get(submissionId, processRunId, DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA) as
+          | { payload_snapshot: string; content_hash: string; task_id: number }
+          | undefined;
+        if (!row || row.content_hash !== member.productRef.digest) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_SUBMISSION_UNBOUND',
+            'The implementation submission does not match the exact CandidateSet member submission digest.');
+        }
+        let currentPayload: unknown;
+        try {
+          currentPayload = JSON.parse(row.payload_snapshot);
+        } catch {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_PAYLOAD_INVALID',
+            'The implementation submission payload is not parsable JSON.');
+        }
+        const currentPaths = claimedFilePaths(currentPayload);
+        if (currentPaths === null) {
+          return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_PAYLOAD_INVALID',
+            'The implementation submission payload does not state a readable snapshot.changedFiles claim.');
+        }
+        const dispositioned = new Set(dispositionedDropPaths(currentPayload));
+        // The card's OWN prior claims (same task), oldest first. The surface
+        // is the UNION of every prior claim — a file claimed by ANY prior
+        // submission counts, not just the latest one.
+        let priors: Array<{ id: number; payload_snapshot: string }>;
+        try {
+          priors = input.db.prepare(
+            `SELECT id, payload_snapshot
+               FROM factory_managed_node_submissions
+              WHERE task_id=? AND schema_version=?
+              ORDER BY id ASC`,
+          ).all(row.task_id, DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA) as Array<{
+            id: number; payload_snapshot: string;
+          }>;
+        } catch {
+          // No submission history substrate (pre-table store): the ratchet is
+          // inert by design — nothing to compare, not an error.
+          return 'passed';
+        }
+        const priorSurface = new Set<string>();
+        for (const prior of priors) {
+          if (prior.id === submissionId) continue;
+          let priorPayload: unknown;
+          try {
+            priorPayload = JSON.parse(prior.payload_snapshot);
+          } catch {
+            continue;
+          }
+          const priorPaths = claimedFilePaths(priorPayload);
+          if (priorPaths === null) continue;
+          for (const path of priorPaths) priorSurface.add(path);
+        }
+        const dropped = [...priorSurface]
+          .filter(path => !currentPaths.includes(path) && !dispositioned.has(path));
+        if (dropped.length > 0) {
+          return {
+            outcome: 'failed',
+            evidenceRefs: [encodeCheckDiagnostic({
+              code: 'IMPLEMENTATION_CLAIM_NARROWED',
+              subjectRef: subjectCandidateSetRef,
+              message:
+                `The claimed file surface NARROWED: [${dropped.join(', ')}] was claimed by a `
+                + 'prior submission of this card and is absent from the current claim without a '
+                + 'disposition. Either deliver the dropped file(s) again, or dispose of the drop '
+                + 'explicitly in snapshot.droppedFiles (one {path, reason} entry per file — an '
+                + 'empty reason is not a disposition). A silent drop is a regression of the '
+                + "card's own claim (IMPLEMENTATION_CLAIM_NARROWED).",
+            })],
+          };
+        }
+        return 'passed';
+      } catch (err) {
+        return monotonicityError(subjectCandidateSetRef, 'CLAIM_MONOTONICITY_CHECK_ERROR',
+          `The claim-surface monotonicity check could not complete deterministically: ${
             err instanceof Error ? err.message.slice(0, 600) : String(err).slice(0, 600)
           }`);
       }

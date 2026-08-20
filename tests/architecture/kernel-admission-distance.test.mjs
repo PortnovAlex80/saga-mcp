@@ -120,6 +120,7 @@ const EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS = [
 ];
 
 const EXPECTED_EXECUTABLE_CAPABILITIES = [
+  'check-provider/development.implementation-claim-monotonicity.v1',
   'check-provider/development.implementation-scope.v1',
   'check-provider/development.readiness-profile-monotonicity.v1',
   'check-provider/development.replan-graph.v1',
@@ -160,14 +161,14 @@ test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 7 contracts
     'derived manifest count disagrees with the raw contract array');
 });
 
-test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 25 entries, fail-closed at the boundary', () => {
-  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 25,
+test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 26 entries, fail-closed at the boundary', () => {
+  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 26,
     'executable-capability admission changed: update this frozen count in the SAME commit as the admission (ADR-082 §4)');
   const actual = WORKSHOP_EXECUTABLE_CAPABILITIES
     .map((c) => `${c.kind}/${c.logicalId}`).sort();
   assert.deepEqual(actual, [...EXPECTED_EXECUTABLE_CAPABILITIES].sort(),
     'executable-capability set changed: admitting a provider/effect/handler is an admission act (ADR-082 §4.1)');
-  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 25,
+  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 26,
     'derived manifest count disagrees with the raw capability array');
 
   // The fail-closed boundary being pinned: an undeclared capability cannot be

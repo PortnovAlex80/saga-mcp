@@ -50,6 +50,8 @@ const SATISFIABILITY_CLASSIFICATION = Object.freeze({
     'open:semantic-human-role (review judgment is not decided by the factory; the rung requires it be MARKED open, never hidden as decidable)',
   'development.readiness-profile-monotonicity.v1':
     'decidable:set-comparison (declaration surface ⊇ prior surface — monotone set relation)',
+  'development.implementation-claim-monotonicity.v1':
+    'decidable:set-comparison (claimed surface ⊇ union of prior claims unless explicitly dispositioned — monotone set relation over durable rows; STAGE-18 R2)',
   'factory.local-runnability.v1':
     'decidable:derivation-union-coverage (executed set = canonical ∪ declared — additive union coverage, M1-b step 4)',
   'factory.product-contract.v1':

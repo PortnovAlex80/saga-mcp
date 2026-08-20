@@ -22,6 +22,7 @@ import {
   createDevelopmentVerificationCheckProvider,
   createDevelopmentReplanGraphCheckProvider,
   createDevelopmentReadinessMonotonicityCheckProvider,
+  createImplementationClaimMonotonicityCheckProvider,
   DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
   DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
@@ -136,6 +137,13 @@ export function registerDevelopment(
     // task's latest granted widening revision, or the original carve.
     readEffectiveChangeScopes: (taskId, originalScopes) =>
       new SqliteScopeWideningLedger(db).readEffectiveChangeScopes(taskId, originalScopes),
+  }));
+  // STAGE-18 R2 — the claim-surface monotonicity ratchet: a card may not
+  // silently narrow its own claimed file surface between submissions. The
+  // lawful exit is an explicit snapshot.droppedFiles disposition.
+  registerWorkshopCheckProvider(createImplementationClaimMonotonicityCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
   }));
   // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 planner gate check
   // (parallelism anti-pattern + shared-surface extraction). Inert outside

@@ -33,6 +33,9 @@ import {
   DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
   DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
+  DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_ID,
+  DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_VERSION,
   DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DIGEST,
   DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID,
   DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION,
@@ -101,7 +104,14 @@ const PLANNER_CHECK_PLAN = buildCheckPlan(
   }],
 );
 const IMPLEMENTATION_AUTHOR_PLAN = buildCheckPlan(
-  'development.implementation.author.v2',
+  // v3 — STAGE-18 R2: the claim-surface monotonicity provider joins the
+  // plan after the scope check. The scope check compares the current claim
+  // against the git diff and the frozen scopes but never against the card's
+  // own prior claims — the stage-15 silent narrowings (sub 14→15 accepted
+  // terminal, subs 17/18/19→20 passed the gate) rode exactly that hole.
+  // A dropped file is now either an explicit snapshot.droppedFiles
+  // disposition or a failed submission routed back to the author.
+  'development.implementation.author.v3',
   [{
     providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_VERSION,
@@ -112,6 +122,13 @@ const IMPLEMENTATION_AUTHOR_PLAN = buildCheckPlan(
     // its Git diff. If the cell's product contract ever changes shape (e.g.
     // a managed textual candidate), module install must fail here instead of
     // the gate rejecting every submission live.
+    expectedSubjectSchemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+    subjectScope: 'cell-product',
+  }, {
+    providerId: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_IMPLEMENTATION_CLAIM_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+    repairTargetRoleOnFailure: 'author',
     expectedSubjectSchemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
     subjectScope: 'cell-product',
   }],

@@ -68,6 +68,7 @@ import {
   developmentImplementationPayloadContract,
   createDevelopmentVerificationCheckProvider,
   createDevelopmentImplementationScopeCheckProvider,
+  createImplementationClaimMonotonicityCheckProvider,
 } from '../../dist/modules/development/application/development-check-providers.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 
@@ -239,8 +240,8 @@ const FINDINGS = [
     boundary: 'implementation attempt → attempt (claim-surface monotonicity, brief E8)',
     severity: 'high',
     fed: `LIVE, stage-15, both cards: card 2 claimed tsconfig.json on submits 17/18/19 then dropped it on 20 (accepted); card 1 claimed it on 14, dropped it on 15 — accepted, terminal. Domain-free: prior attempt claims [package.json, aaa/thing, zzz/shared.config], resubmission claims [package.json, aaa/thing] with no disposition`,
-    factorySaid: 'the narrowed resubmission passes the implementation scope provider — it compares the CURRENT claim against the git diff and the frozen scopes, never against the PRIOR attempt\'s claim. The narrowing is a pure function of two durable rows (factory_managed_node_submissions of one task) and nothing reads it',
-    shouldLive: 'src/modules/development/application/development-check-providers.ts:717-917 — the shape to copy exists one surface over: development.readiness-profile-monotonicity.v1 forbids the declared readiness surface from shrinking across rounds of the same bytes. Same shape, second object: an implementation claim-surface monotonicity provider comparing consecutive submissions of one card (a dropped file is an explicit disposition or a regression). NOT IMPLEMENTED HERE — architect decision',
+    factorySaid: 'the narrowed resubmission passed the implementation scope provider — it compares the CURRENT claim against the git diff and the frozen scopes, never against the PRIOR attempt\'s claim. The narrowing is a pure function of two durable rows (factory_managed_node_submissions of one task) and nothing read it',
+    shouldLive: 'FIXED 2026-08-20 (STAGE-18 R2): development.implementation-claim-monotonicity.v1 in src/modules/development/application/development-check-providers.ts:1464 — the union of the card\'s prior claims is the surface; a drop is legal only with an explicit snapshot.droppedFiles {path, reason} disposition. Joined the author plan as development.implementation.author.v3 (the scope provider stays permissive by design; the ratchet is its own provider)',
   },
 ];
 
@@ -314,8 +315,8 @@ test('space E — E1: the restatement boundaries are enumerated from the process
   assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
   assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 150);
   assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 180);
-  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 206);
-  assert.equal(lineOf(development, "id: 'implement-work-items'"), 242);
+  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 223);
+  assert.equal(lineOf(development, "id: 'implement-work-items'"), 259);
   assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');
   assert.equal(BOUNDARIES.length, 5, 'the E1 boundary list is fixed at five');
   for (const row of BOUNDARIES) {
@@ -673,14 +674,18 @@ test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOK
  * dropped it on 20; card 1 claimed it on 14, dropped it on 15, was accepted
  * and went terminal.
  *
- * The mechanism already exists on another surface
+ * The mechanism already existed on another surface
  * (development.readiness-profile-monotonicity.v1 forbids the declared
- * readiness surface from shrinking across rounds of the same bytes). This
- * test asserts the honest gap: the implementation surface has NO such
- * monotonicity — the narrowed resubmission passes the real provider.
- * The provider itself is NOT implemented here (architect decision).
+ * readiness surface from shrinking across rounds of the same bytes).
+ * FIXED 2026-08-20 (STAGE-18 R2): development.implementation-claim-
+ * monotonicity.v1 joined the author plan (v3) — the union of the card's
+ * prior claims is the surface; a drop is legal only with an explicit
+ * snapshot.droppedFiles {path, reason} disposition. This test now pins the
+ * FIXED state: the scope provider alone stays permissive (containment is
+ * one-directional by design), and the monotonicity provider refuses the
+ * same durable rows.
  */
-test('space E — E8 claim-surface monotonicity: a card may not silently narrow its claimed surface; today it can (finding E-F5, honest current behavior)', () => {
+test('space E — E8 claim-surface monotonicity: the silent narrowing is refused by the claim-monotonicity provider (fixed by STAGE-18 R2; the scope provider stays permissive by design)', () => {
   const priorFiles = ['package.json', 'aaa/thing', 'zzz/shared.config'];
   const narrowedFiles = ['package.json', 'aaa/thing']; // zzz/ silently dropped
 
@@ -727,20 +732,50 @@ test('space E — E8 claim-surface monotonicity: a card may not silently narrow 
   const narrowed = provider.run({ subjectCandidateSetRef: 'candidate-set/m', parameters: { processRunId: 1 } });
   const outcome = typeof narrowed === 'string' ? narrowed : narrowed.outcome;
   assert.equal(outcome, 'passed',
-    'honest behavior: the silently narrowed resubmission passes the implementation gate — finding E-F5');
+    'the SCOPE provider alone stays permissive (containment is one-directional by design) — the ratchet is the second provider');
 
-  // The mechanism exists on ANOTHER surface (the shape to copy): the
-  // readiness monotonicity provider forbids the declared verification
-  // surface from shrinking. Pin its existence and the implementation
-  // provider's lack of any prior-submission comparison.
+  // STAGE-18 R2 (the fix): the same durable rows through the claim-surface
+  // monotonicity provider — the silent narrowing is REFUSED.
+  const monoProvider = createImplementationClaimMonotonicityCheckProvider({
+    db: { prepare(sql) {
+      if (!sql.includes('factory_managed_node_submissions')) {
+        throw new Error(`unrouted SQL: ${sql.slice(0, 60)}`);
+      }
+      return {
+        get: id => rows.get(Number(id)),
+        all: () => [...rows.entries()].map(([id, r]) => ({ id, payload_snapshot: r.payload_snapshot })),
+      };
+    } },
+    candidateSets: { read: () => ({
+      role: 'author',
+      workplaceRef: { processRunId: 1 },
+      members: [{ productRef: { schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA, ref: 'managed-node-submission:10', digest: sha256('narrowed') } }],
+    }) },
+  });
+  const monoResult = monoProvider.run({ subjectCandidateSetRef: 'candidate-set/m', parameters: { processRunId: 1 } });
+  const monoOutcome = typeof monoResult === 'string' ? monoResult : monoResult.outcome;
+  assert.equal(monoOutcome, 'failed',
+    'the claim-monotonicity provider refuses the silently narrowed resubmission — E-F5 fixed by R2');
+  if (typeof monoResult === 'object') {
+    const diagnostic = decodeCheckDiagnostic(monoResult.evidenceRefs[0]);
+    assert.equal(diagnostic.code, 'IMPLEMENTATION_CLAIM_NARROWED');
+    assert.match(diagnostic.message, /zzz\/shared\.config/, 'the dropped path is named');
+  }
+
+  // The copied form exists on ANOTHER surface (the shape E8 copied): the
+  // readiness monotonicity provider. Pin both providers' existence and the
+  // structural split — monotonicity lives in its OWN provider, the scope
+  // provider stays vocabulary-free.
   const providers = src('src/modules/development/application/development-check-providers.ts');
   assert.match(providers, /createDevelopmentReadinessMonotonicityCheckProvider/,
-    'the readiness monotonicity provider must exist (the shape E8 copies)');
+    'the readiness monotonicity provider must exist (the shape E8 copied)');
+  assert.match(providers, /createImplementationClaimMonotonicityCheckProvider/,
+    'the implementation claim-monotonicity provider must exist (R2)');
   const implStart = providers.indexOf('export function createDevelopmentImplementationScopeCheckProvider');
   const implEnd = providers.indexOf('\nexport function', implStart + 1);
   const implSlice = providers.slice(implStart, implEnd === -1 ? undefined : implEnd);
   assert.ok(!/prior submission|previous submission|monotonic|narrow/i.test(implSlice),
-    'the implementation scope provider gained monotonicity vocabulary — E-F5 changed; update this registry');
+    'the implementation scope provider gained monotonicity vocabulary — the ratchet must stay its own provider; update this registry');
 });
 
 // ── E7: the silent surrender (brief addendum, found live in stage 15) ───────
