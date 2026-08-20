@@ -234,6 +234,14 @@ const FINDINGS = [
     factorySaid: `attempt 1 → failed, path-outside-authority (the fence works); attempt 2 → 'passed'. The scope provider's only questions are identity, ancestry, exact-set diff equality, and containment against frozen scopes — it never asks whether the card's criteria/constraints are covered by what was produced. developmentImplementationPayloadContract has no field to carry the answer even if it asked. The review-verdict channel's input vocabulary has no card-requirement field either: the gate checked what was presented, nothing checked what was NOT presented`,
     shouldLive: 'src/modules/development/application/development-check-providers.ts:887-917 — the acceptance side of the implementation path: a criterion/constraint COVERAGE obligation on the accepted implementation result (the card pins acceptanceCriterionIds + coveredConstraintIds; the accepted diff must dispose them — produced, or explicitly waived like the formalization register dispositions). The lawful exits already exist: worker_done scope-insufficient (stage 13) or a typed waiver — silent abandonment must be neither',
   },
+  {
+    id: 'E-F5',
+    boundary: 'implementation attempt → attempt (claim-surface monotonicity, brief E8)',
+    severity: 'high',
+    fed: `LIVE, stage-15, both cards: card 2 claimed tsconfig.json on submits 17/18/19 then dropped it on 20 (accepted); card 1 claimed it on 14, dropped it on 15 — accepted, terminal. Domain-free: prior attempt claims [package.json, aaa/thing, zzz/shared.config], resubmission claims [package.json, aaa/thing] with no disposition`,
+    factorySaid: 'the narrowed resubmission passes the implementation scope provider — it compares the CURRENT claim against the git diff and the frozen scopes, never against the PRIOR attempt\'s claim. The narrowing is a pure function of two durable rows (factory_managed_node_submissions of one task) and nothing reads it',
+    shouldLive: 'src/modules/development/application/development-check-providers.ts:717-917 — the shape to copy exists one surface over: development.readiness-profile-monotonicity.v1 forbids the declared readiness surface from shrinking across rounds of the same bytes. Same shape, second object: an implementation claim-surface monotonicity provider comparing consecutive submissions of one card (a dropped file is an explicit disposition or a regression). NOT IMPLEMENTED HERE — architect decision',
+  },
 ];
 
 // ── fixtures: in-memory DB façades routing the exact validator SQL ──────────
@@ -654,6 +662,87 @@ test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOK
   assert.match(diagnostic.message, /coveredConstraintIds/);
 });
 
+// ── E8: claim-surface monotonicity (brief addendum — the implementable E7) ──
+
+/**
+ * E8's rule, verbatim from the brief: a card may not silently narrow its own
+ * claimed surface between attempts. Dropping a previously-claimed file is
+ * either an explicit disposition or a regression. NO semantics needed — the
+ * narrowing is visible in durable state (consecutive submissions of one
+ * card): stage-15 card 2 claimed tsconfig.json on submits 17/18/19 and
+ * dropped it on 20; card 1 claimed it on 14, dropped it on 15, was accepted
+ * and went terminal.
+ *
+ * The mechanism already exists on another surface
+ * (development.readiness-profile-monotonicity.v1 forbids the declared
+ * readiness surface from shrinking across rounds of the same bytes). This
+ * test asserts the honest gap: the implementation surface has NO such
+ * monotonicity — the narrowed resubmission passes the real provider.
+ * The provider itself is NOT implemented here (architect decision).
+ */
+test('space E — E8 claim-surface monotonicity: a card may not silently narrow its claimed surface; today it can (finding E-F5, honest current behavior)', () => {
+  const priorFiles = ['package.json', 'aaa/thing', 'zzz/shared.config'];
+  const narrowedFiles = ['package.json', 'aaa/thing']; // zzz/ silently dropped
+
+  // The narrowing is computable from durable state alone: consecutive
+  // factory_managed_node_submissions rows for one task. The façade DB holds
+  // both attempts exactly as the live DB did.
+  const rows = new Map([
+    [9, { // the prior attempt — claimed zzz/shared.config
+      payload_snapshot: JSON.stringify({ workItemKey: 'imp-1', repository: { baseCommit: HEX40 }, snapshot: { commitSha: HEX40, changedFiles: priorFiles } }),
+      content_hash: sha256('prior'),
+      metadata: JSON.stringify({ cell_input_item: { key: 'imp-1', changeScopes: ['package.json', 'aaa/', 'zzz/'] } }),
+      task_id: 42, local_path: 'x:/matrix/product', effective_base_commit: HEX40,
+    }],
+    [10, { // the narrowed resubmission — zzz/ silently dropped
+      payload_snapshot: JSON.stringify({ workItemKey: 'imp-1', repository: { baseCommit: HEX40 }, snapshot: { commitSha: HEX40, changedFiles: narrowedFiles } }),
+      content_hash: sha256('narrowed'),
+      metadata: JSON.stringify({ cell_input_item: { key: 'imp-1', changeScopes: ['package.json', 'aaa/', 'zzz/'] } }),
+      task_id: 42, local_path: 'x:/matrix/product', effective_base_commit: HEX40,
+    }],
+  ]);
+  const claimed = id => JSON.parse(rows.get(id).payload_snapshot).snapshot.changedFiles;
+  // (d) durable derivability, by construction: prior ⊋ current, no disposition.
+  assert.ok(claimed(9).length > claimed(10).length && claimed(10).every(f => claimed(9).includes(f)),
+    'the narrowing is a pure function of the two durable rows');
+
+  const provider = createDevelopmentImplementationScopeCheckProvider({
+    db: { prepare(sql) {
+      if (sql.includes('factory_managed_node_submissions')) {
+        return { get: id => rows.get(Number(id)) };
+      }
+      throw new Error(`unrouted SQL: ${sql.slice(0, 60)}`);
+    } },
+    candidateSets: { read: () => ({
+      role: 'author',
+      workplaceRef: { processRunId: 1 },
+      members: [{ productRef: { schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA, ref: 'managed-node-submission:10', digest: sha256('narrowed') } }],
+    }) },
+    git: { read(_p, args) {
+      if (args[0] === 'merge-base') return HEX40;
+      if (args[0] === 'diff') return narrowedFiles.join('\n');
+      return null;
+    } },
+  });
+  const narrowed = provider.run({ subjectCandidateSetRef: 'candidate-set/m', parameters: { processRunId: 1 } });
+  const outcome = typeof narrowed === 'string' ? narrowed : narrowed.outcome;
+  assert.equal(outcome, 'passed',
+    'honest behavior: the silently narrowed resubmission passes the implementation gate — finding E-F5');
+
+  // The mechanism exists on ANOTHER surface (the shape to copy): the
+  // readiness monotonicity provider forbids the declared verification
+  // surface from shrinking. Pin its existence and the implementation
+  // provider's lack of any prior-submission comparison.
+  const providers = src('src/modules/development/application/development-check-providers.ts');
+  assert.match(providers, /createDevelopmentReadinessMonotonicityCheckProvider/,
+    'the readiness monotonicity provider must exist (the shape E8 copies)');
+  const implStart = providers.indexOf('export function createDevelopmentImplementationScopeCheckProvider');
+  const implEnd = providers.indexOf('\nexport function', implStart + 1);
+  const implSlice = providers.slice(implStart, implEnd === -1 ? undefined : implEnd);
+  assert.ok(!/prior submission|previous submission|monotonic|narrow/i.test(implSlice),
+    'the implementation scope provider gained monotonicity vocabulary — E-F5 changed; update this registry');
+});
+
 // ── E7: the silent surrender (brief addendum, found live in stage 15) ───────
 
 /**
@@ -779,7 +868,7 @@ test(`space E — E7 silent surrender: a card whose criteria require an artefact
 // ── E5 + E6 ─────────────────────────────────────────────────────────────────
 
 test('space E — E5: the findings registry is well-formed and every uncovered boundary is registered', () => {
-  assert.equal(FINDINGS.length, 4);
+  assert.equal(FINDINGS.length, 5);
   for (const finding of FINDINGS) {
     assert.ok(finding.id && finding.boundary && finding.fed && finding.factorySaid && finding.shouldLive && finding.severity,
       `${finding.id} is missing a registry field`);
