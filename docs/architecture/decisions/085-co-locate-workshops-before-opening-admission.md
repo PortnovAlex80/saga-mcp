@@ -25,30 +25,32 @@ directory, and adding one cannot be completed through one local contract.
 
 Connection is split as well. Package manifests are installed through the
 content-addressed package store, executable capabilities are collected in the
-factory-wide `workshop-capability-manifest.ts`, and production runtime still
+factory-wide `workshop-capability-manifest.ts`, and the canonical runtime still
 contains workshop-specific `register*` calls and schema resolver maps. The
 existing `ProcessModulePlugin`, installation binding SPI and module authoring
 kit prove useful pieces of the intended design, but do not yet make a package
-the production composition authority.
+the canonical composition authority.
 
 This is not permission to open plugin admission. ADR-082 intentionally freezes
 four manual admission surfaces until C12. A package-supplied composite manifest
 or a generic catalog that silently admits new executable atoms would violate
 that decision. Physical ownership and executable admission are distinct
-problems and must be migrated independently.
+problems and must be changed independently.
 
-Moving files also changes resource and implementation digests. A non-terminal
-run pinned to the old package must never resume through ambient current code.
-The migration therefore requires a compatibility census and an explicit drain
-or historical executable strategy before any production cutover.
+There is currently no deployed production environment, persistent production
+database or non-terminal run population to preserve. Resource and
+implementation digests may therefore be regenerated for the new layout. This
+decision does not require data migration, a drain window, compatibility shims
+or historical executable storage. Databases created by tests are disposable
+test fixtures, not migration targets.
 
 ## Decision drivers
 
-1. Preserve accepted-material, package-pin and temporal semantics exactly.
+1. Preserve accepted-material and temporal semantics in code exactly.
 2. Make a workshop understandable from one directory and one public entrypoint.
 3. Give authors a mechanical creation and connection checklist.
 4. Prevent orchestrator, worker MCP and scripted-worker capability drift.
-5. Avoid a second executable path and preserve resume of exact package pins.
+5. Avoid a second executable path or a transitional compatibility architecture.
 6. Respect ADR-082 rather than smuggling a C12 decision into a file move.
 7. Reuse the existing manifest, installer, binding and conformance machinery.
 
@@ -56,26 +58,25 @@ or historical executable strategy before any production cutover.
 
 ### A. Atomic co-location and a closed built-in catalog
 
-Move all four built-ins under `src/modules` in one quiesced cutover and make a
-source-controlled, closed tuple the real production composition input. The
+Move all four built-ins under `src/modules` in one direct cutover and make a
+source-controlled, closed tuple the real canonical composition input. The
 tuple cannot load external packages or package-supplied executable atoms. The
 four ADR-082 admission surfaces remain explicit checked projections.
 
 ### B. New workspace packages and SPI v2
 
 Create `workshops/<name>` workspace packages and a new `workshop-spi` package,
-then migrate all runtimes to generated package admission.
+then switch all runtimes to generated package admission.
 
 This has the cleanest theoretical package boundary, but creates a third
-architecture during migration, broadens digest and build changes, and has the
-weakest rollback story for pinned runs.
+architecture during the refactor and unnecessarily broadens digest, build and
+tooling changes.
 
-### C. Per-workshop migration with shadow composition
+### C. Per-workshop phased refactor with shadow composition
 
-Move one workshop at a time behind a shadow descriptor, switch new starts, and
-delete the old path after its pinned cohort drains. This appears reversible,
-but the package store does not preserve old executable handler functions. It
-would either strand resume or retain dual executable trees indefinitely.
+Move one workshop at a time behind a shadow descriptor and delete the old path
+later. With no deployed state to migrate, this adds a transitional architecture
+without buying safety and risks leaving two composition paths indefinitely.
 
 ## MCDA
 
@@ -88,8 +89,8 @@ Scores are 1 (poor) to 5 (strong). Weighted totals are out of 500.
 | Agent readability | 20 | 5 | 5 | 5 |
 | Extensibility | 10 | 4 | 5 | 4 |
 | Testability | 10 | 4 | 4 | 5 |
-| Reversibility | 10 | 3 | 2 | 3 |
-| **Weighted total** | **100** | **460** | **310** | **370** |
+| Reversibility | 10 | 4 | 2 | 3 |
+| **Weighted total** | **100** | **470** | **310** | **370** |
 
 ## Decision
 
@@ -117,12 +118,13 @@ the deliberate ADR-082 ceremony. The four frozen surfaces are retained as
 explicit projections and exact parity ratchets. At C12, a separate ADR may
 consider generic admission.
 
-There is one executable cutover, not a shadow production path. Before it, new
-starts are paused and non-terminal package pins are drained, or a real
-digest-scoped historical executable registry is implemented and proven. Then
-all four trees, composition consumers and legacy implementations change in one
-bounded merge. Characterization and differential tests run before the cutover
-on isolated snapshots; they are test oracles, not a second live binder.
+There is one executable cutover, not a shadow runtime path. All four trees,
+composition consumers and legacy implementations change in one bounded merge.
+Digests and generated fixtures are rebuilt from the new canonical layout.
+Characterization and differential tests compare the base and candidate
+revisions in isolated disposable environments; they are test oracles, not a
+second live binder. No database migration or runtime compatibility layer is
+created.
 
 ## Target ownership boundary
 
@@ -158,47 +160,45 @@ merely to achieve visual proximity.
 
 - An agent can map a workshop from one directory and one generated inventory.
 - The module boundary becomes mechanically enforceable rather than customary.
-- Existing package pins, manifests and installation machinery remain the
-  migration foundation.
-- The live system has one composition authority after the cutover.
+- Existing manifests, installation validation and conformance machinery remain
+  the refactoring foundation.
+- The repository has one composition authority after the cutover.
 - Physical consolidation proceeds without opening package admission.
 
 ### Negative
 
 - Before C12, adding a built-in workshop still edits four admission surfaces.
 - Concrete host adapters remain outside the workshop directory by design.
-- Digest-sensitive moves require versioning, a pin census and possibly a drain
-  window or historical executable registry.
 - A semantic trace normalizer and isolated before/after harness must be built
-  before the runtime cutover.
-- The cutover is broader than a per-workshop move and needs a drain window.
+  before the repository cutover.
+- The cutover is broader than a per-workshop move and must land as one complete
+  repository state.
 
 ## Pre-mortem
 
 | Failure mode | Early signal | Required control |
 |---|---|---|
-| The atomic change becomes too large to review | Structural and behavioral edits are mixed | Prepare import-only commits without production switch; final cutover contains no business-rule changes and has a machine diff report |
+| The atomic change becomes too large to review | Structural and behavioral edits are mixed | Use reviewable branch commits, but merge only the complete topology; require a machine diff report |
 | Differential parity proves only structural equality | Equal manifests but different durable receipts/effects/routes | Compare the normalized durable authority graph on isolated snapshots |
-| File moves strand pinned runs | Non-terminal runs reference unavailable package/handler digests | Census pins; drain or preserve digest-scoped executable snapshots; fail closed |
 | `WORKSHOP.md` becomes stale prose | Resource/capability inventory differs from code | Generate factual inventory blocks and verify anchors in CI |
 | Co-location weakens ADR-082 | Installed packages begin supplying executable atoms | Catalog is a closed literal tuple; exact admission projections remain until a later ADR |
-| Tests turn green by disappearing | Scenario or edge counts fall during a move | Non-vacuity floors and mutant tests are migration gates |
+| Tests turn green by disappearing | Scenario or edge counts fall during a move | Non-vacuity floors and mutant tests are refactor gates |
 
 ## Red Team resolution
 
-The adversarial review overturned the initial preference for option C. Handler
-digests depend on executable installation-module bytes, while the package store
-snapshots manifests and resources rather than executable functions. A
-new-starts-only migration would therefore strand old non-terminal pins or keep
-two executable trees forever. That is the repository-scale form of the
-strangler-without-strangulation failure diagnosed by ADR-053.
+The adversarial review overturned the initial preference for option C. A
+new-starts-only rollout would create two executable trees and repeat the
+strangler-without-strangulation failure diagnosed by ADR-053. The absence of a
+deployed environment and persistent run state removes the only reason to accept
+that transitional complexity: all current digests and fixtures can be rebuilt
+directly from the new layout.
 
 The review also demonstrated that the two current trees already form one cyclic
-component and production still uses the manual `register*` root. Per-workshop
-shadow binding would prove a non-production theorem. The accepted correction is
-an atomic all-built-in cutover after drain, with the closed catalog consumed by
-production in the same change and the legacy implementation removed at the
-merge gate.
+component and the canonical runtime still uses the manual `register*` root.
+Per-workshop shadow binding would prove a non-canonical theorem. The accepted correction is
+an atomic all-built-in cutover, with the closed catalog consumed by the
+canonical runtime in the same change and the legacy implementation removed at
+the merge gate.
 
 The second accepted objection is that putting concrete persistence beside a
 workshop would improve browsing at the cost of reversing an established
@@ -209,14 +209,13 @@ makes them discoverable from the workshop inventory instead.
 
 - **Observation:** the current layout is a partial consolidation, not two
   independent module systems.
-- **Uncertainty:** C12 timing and the availability of old executable bytes are
-  unknown; neither is guessed by this decision.
-- **Rejected shortcuts:** opening generic package admission, and maintaining a
-  second live binder while old cohorts drain.
-- **Reversibility point:** all preparation before the quiesced cutover is
-  test-only or structural and has no authoritative writes.
-- **Irreversibility point:** once new starts use bumped package versions, rollback
-  must restore the whole release and its executable set, never an ambient mix.
+- **Known constraint:** there is no deployed production state or persistent
+  database to migrate; C12 timing remains unknown.
+- **Rejected shortcuts:** opening generic package admission, adding database
+  migrations, and maintaining a second binder for compatibility that is not
+  needed.
+- **Reversibility:** the repository change is reverted as a whole before any
+  future persistent environment exists; no data rollback procedure is needed.
 - **Expected evidence:** the implementation plan's phase gates and L0-L5/S
   test ladder.
 

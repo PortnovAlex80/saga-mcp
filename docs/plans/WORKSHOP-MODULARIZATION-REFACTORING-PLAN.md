@@ -6,6 +6,22 @@
 - Scope: Discovery, Formalization, Development and Delivery built-ins
 - Explicit non-goal: opening generic package admission before C12
 
+## 0. Starting condition
+
+This is a greenfield repository refactor. There is no deployed production
+environment, persistent production database, customer data or non-terminal run
+population. Consequently:
+
+- all four workshops may be moved immediately in one repository change;
+- package/resource/handler digests and generated fixtures may be rebuilt;
+- there is no data migration, drain, backward-compatibility period or stored
+  state rollback protocol;
+- no legacy re-export or historical executable registry is required;
+- SQLite or repository instances mentioned below are disposable test fixtures.
+
+In this document, “canonical runtime” means the code path intended to become the
+real runtime. It does not imply that a production deployment exists today.
+
 ## 1. Outcome
 
 After this refactoring, an agent starts at
@@ -13,10 +29,10 @@ After this refactoring, an agent starts at
 definition, resource, port and executable binding declaration under that
 directory, and imports the workshop only through its `index.ts`.
 
-Production starts from one closed, source-controlled tuple of the four built-in
+The canonical runtime starts from one closed, source-controlled tuple of the four built-in
 workshops. Orchestrator, worker MCP and scripted worker resolve the same declared
 capability identities and record exact binding receipts. The old
-`src/process-modules/modules/*` implementations, workshop-specific production
+`src/process-modules/modules/*` implementations, workshop-specific runtime
 registration calls and competing manual module arrays no longer exist.
 
 This is a structural and composition refactor. It must not change Workplace
@@ -31,10 +47,10 @@ The repository currently makes one logical workshop span several authorities:
 |---|---|---|
 | Definition/package/resources | `src/process-modules/modules/<name>` | Separated from implementation and registration |
 | Domain/application/ports | `src/modules/<name>` | Imports back into the package tree |
-| Registration | workshop `index.ts` plus `product-lifecycle-runtime.ts` | Production-specific manual calls |
+| Registration | workshop `index.ts` plus `product-lifecycle-runtime.ts` | Runtime-specific manual calls |
 | Executable capability list | `workshop-capability-manifest.ts` | Factory-wide list imports every workshop |
 | Installation lists | CLI, fresh harness and runtime roots | More than one composition surface |
-| Authoring proof | `tools/module-authoring-kit` | Validates a package, not production connectivity |
+| Authoring proof | `tools/module-authoring-kit` | Validates a package, not canonical runtime connectivity |
 
 Measured on 2026-08-21:
 
@@ -47,10 +63,10 @@ Measured on 2026-08-21:
 
 The current dependency ratchet treats both roots as one module tree. That
 protects dependency direction but hides the navigation cost. The current
-conformance runner scans the legacy module path, while production does not use
+conformance runner scans the legacy module path, while the canonical runtime does not use
 the existing plugin/binding SPI as its composition authority. A manifest that
 passes authoring-kit validation is therefore not proof that a workshop is
-connected to production.
+connected to the canonical runtime.
 
 ADR-082 adds a deliberate constraint: admission is closed until C12. The
 refactor may centralize the four built-ins, but must not discover packages,
@@ -143,7 +159,7 @@ export const BUILT_IN_WORKSHOPS = [
 
 It may not read installed packages, scan directories, load configuration,
 accept an external composite capability manifest, or let a package register a
-kernel handler. Production composition must consume this tuple directly.
+kernel handler. Canonical runtime composition must consume this tuple directly.
 
 ADR-082's four admission surfaces remain explicit and mechanically compared:
 
@@ -257,11 +273,11 @@ the machine authority.
       bindings before orchestration starts.
 - [ ] Write and compare expected/resolved binding receipts for orchestrator,
       worker MCP and scripted worker; fail closed on any difference.
-- [ ] Pin installation, package, definition, CheckPlan and handler digests on
-      new ProcessRuns; resume only through their exact historical pins.
+- [ ] Confirm disposable test runs pin installation, package, definition,
+      CheckPlan and handler digests consistently after the move.
 - [ ] Pass the generic conformance suite and every negative drift mutant.
 - [ ] Pass a fresh scripted L5 run and a same-project Run A to Run B replay.
-- [ ] Run a monitored real canary only after all deterministic gates are green.
+- [ ] Run the local full-lifecycle E2E only after deterministic gates are green.
 - [ ] Verify that deleting the catalog entry makes the workshop unreachable and
       that no private registration path remains.
 
@@ -270,30 +286,12 @@ the closed tuple into filesystem or package discovery.
 
 ## 7. Refactoring sequence
 
-The migration unit is all four built-ins. Workshops may be prepared and
-reviewed in separate branch commits, but no partial topology is deployed and no
-second production binder is introduced.
+The refactoring unit is all four built-ins. There is no deployed state, so the
+target topology can replace the current topology directly. Commits may be
+organized for review, but the branch is complete only when no legacy path,
+compatibility layer or second binder remains.
 
-### P0 — Freeze and census
-
-Deliverables:
-
-- capture the current HEAD and exact test-suite inventory;
-- census every non-terminal ProcessRun and its installation/package/handler
-  pins;
-- determine whether old executable bytes exist anywhere durable;
-- pause the refactor while the active Stage-20 run is live;
-- declare a future start-freeze/drain window.
-
-Exit gate:
-
-- either zero non-terminal runs depend on handler bytes that will change, or a
-  digest-keyed historical executable registry has L2-L4 proof;
-- there is an agreed rollback release containing its matching executable set.
-
-Package snapshots alone do not satisfy this gate.
-
-### P1 — Build the no-regression oracle
+### P0 — Capture the behavioral baseline
 
 Add test-only tooling that exports for every workshop:
 
@@ -309,40 +307,58 @@ database row IDs. It must compare semantic inputs/products, Workplace and
 ProductionRevision lineage, CandidateSets, receipts, decisions, effects,
 settlement, routes and reason sequence.
 
-Run the baseline on the pre-refactor revision and persist signed/fingerprinted
+Run the baseline on the pre-refactor revision and persist fingerprinted
 fixtures. Prove the oracle is non-vacuous by mutating one item in each class and
-observing a red test.
+observing a red test. All database/repository state used here is created by the
+test and discarded afterwards.
 
 Exit gate: clean current baseline plus a reviewed semantic ignore list.
 
-### P2 — Prepare the canonical workshop trees off the live path
+### P1 — Move all four workshop trees
 
 For all four workshops:
 
 - create the target layout and `WORKSHOP.md`;
 - consolidate resources, definitions, protocols, domain, application and ports;
 - convert outside imports to the public `index.ts`;
-- declare runtime bindings without activating a second production route;
+- declare runtime bindings without creating a second runtime route;
 - move concrete adapters to the existing infrastructure boundary;
 - update authoring-kit templates and inventory generator.
 
-Temporary old-path files may only be pure re-exports needed while assembling
-the change. They may not contain fallback logic, registrations or a second
-implementation, and they cannot survive the cutover merge gate.
-
 Recommended review order is Discovery, Formalization, Development, Delivery.
-This is review decomposition, not runtime rollout.
+This is review decomposition only. Do not leave pure re-exports, fallbacks or
+duplicate implementations in the completed branch.
 
-Exit gate: new tree compiles and passes L0-L4 in isolated tests, old production
-composition remains the only live path, and the diff contains no business-rule
+Exit gate: every workshop-owned file has exactly one canonical location, all
+imports use public module surfaces, and the diff contains no business-rule
 change.
+
+### P2 — Switch composition immediately
+
+In the same completed repository change:
+
+1. rebuild package/resource/handler digests from the new paths;
+2. install the closed built-in catalog as the canonical runtime input;
+3. make CLI, lifecycle runtime, worker MCP and scripted harness consume that
+   same closed composition;
+4. write exact cross-role binding receipts and fail before issuing work on
+   mismatch;
+5. remove `src/process-modules/modules/*`, `register*` runtime calls, competing
+   manifest arrays and all compatibility re-exports;
+6. update ADR-082 exact ratchets without opening package admission.
+
+There is no database migration, data copier, dual-read, dual-write, feature
+flag, legacy fallback or old-version compatibility code.
+
+Exit gate: zero legacy files/imports/manual composition lists and exactly one
+canonical composition consumer graph.
 
 ### P3 — Prove before/after semantic equivalence
 
 Run the old revision and candidate revision separately against byte-identical
-database and repository snapshots, identical provider/effect fakes and the same
-scripted inference seam. Never run both against one database or external effect
-target.
+disposable test fixtures, identical provider/effect fakes and the same scripted
+inference seam. This is a comparison of two git revisions, not runtime
+coexistence and not a data migration.
 
 Compare the full normalized authority graph for:
 
@@ -357,47 +373,28 @@ Compare the full normalized authority graph for:
 Exit gate: semantic diff is zero. Any intended semantic difference leaves this
 refactor and requires its own ADR/change.
 
-### P4 — Atomic cutover
+### P4 — Run the full local proof
 
-During the drain/start-freeze window, merge one bounded production change that:
+Run L0-L5/S against fresh disposable fixtures. Include one scripted scenario
+per workshop, the full lifecycle, same-project Run A to Run B, restart/fault
+schedules and externally runnable product proof. No real deployment or
+persistent environment is required.
 
-1. bumps package versions/digests honestly where bytes changed;
-2. installs the closed built-in catalog as the actual production input;
-3. makes CLI, lifecycle runtime, worker MCP and scripted harness consume that
-   same closed composition;
-4. writes exact cross-role binding receipts and fails before issuing work on
-   mismatch;
-5. removes `src/process-modules/modules/*` implementations, `register*`
-   production calls, competing manifest arrays and compatibility re-exports;
-6. updates ADR-082 exact ratchets without opening package admission.
+Exit gate: all deterministic suites pass, scenario/count floors are unchanged
+or higher, and every required mutant makes CI red.
 
-Exit gate before starts reopen:
-
-- zero legacy imports/implementations/manual composition lists;
-- L0-L5/S green on a fresh database/repository;
-- resume census still satisfies P0;
-- rollback artifact and operator procedure are available.
-
-### P5 — Burn-in
-
-Run one scripted canary per workshop and the full lifecycle, then monitored real
-canaries. Require two green release/nightly cycles. Observe binding mismatches,
-resume refusals, duplicate effects, settlement/routing differences and product
-runnability.
-
-Rollback is whole-release only: code, package identities and executable set
-move together. Do not restore a hidden old registry or mix current handlers
-with old pins.
-
-### P6 — Ratchet and close
+### P5 — Ratchet and close
 
 - make legacy paths/imports and direct `register*` calls hard CI failures;
 - make `built-in-catalog.ts` the only permitted built-in list;
-- fail if the binder/plugin lacks a production consumer;
+- fail if the binder/plugin lacks a canonical runtime consumer;
 - fail if any process role resolves a different capability receipt;
 - update architecture maps and delete stale references to removed
   `docs/refactor-management` material;
-- record baseline, cutover and burn-in evidence in the ADR.
+- record baseline, equivalence and full-suite evidence in the ADR.
+
+Exit gate: the branch contains only the target topology and can be merged
+without any operational migration step.
 
 ## 8. No-regression test strategy
 
@@ -427,27 +424,27 @@ Update the conformance scanner and dependency ratchets to treat
 - same-Workplace reject-to-repair;
 - workshop-owned scenarios through one shared conformance runner.
 
-### L2 — Durable installation and pinning
+### L2 — Installation semantics on disposable stores
 
-Use real SQLite to cover:
+Use a fresh disposable SQLite fixture or repository implementation to cover:
 
 - first install and idempotent reinstall;
 - changed bytes under stable identity fail closed;
 - missing/corrupt resource or handler;
 - missing/extra/mutated binding and namespace collision;
-- package/install pin survives restart;
+- package/install identity remains consistent across a simulated restart;
 - terminal history immutability;
 - concurrent install/dispatch;
-- old pin never resolves through ambient current handlers.
+- a mutated identity never resolves through ambient handlers.
 
 ### L3 — Canonical composition
 
-Use the real production composition with only inference substituted:
+Use the canonical runtime composition with only inference substituted:
 
 - exact cross-role capability and binding receipts;
 - all outcome edges and reject-to-repair;
 - exact cross-workshop product handoff;
-- production composition fingerprint;
+- canonical composition fingerprint;
 - no test-private registrar or fake gate;
 - closed catalog removal makes a workshop unavailable everywhere.
 
@@ -470,11 +467,12 @@ progress explanation.
 
 ### L5 — Product proof
 
-- fresh scripted full lifecycle through the production runner seam;
+- fresh scripted full lifecycle through the canonical runner seam;
 - same-project Run A to Run B replay with current gates;
 - exact accepted products and terminal outcomes;
 - externally runnable product proof, not only an internal success label;
-- monitored real-model canary only after deterministic levels pass.
+- optional local real-model smoke only after deterministic levels pass; it is
+  not a deployment or migration gate.
 
 ### S — Satisfiability
 
@@ -489,7 +487,7 @@ Each mutant must make CI red:
 - remove a decoder from worker MCP but keep it in orchestrator;
 - change a handler/provider logical ID, version or digest;
 - add a direct `register*` bypass outside the catalog consumer;
-- make the plugin/binder exist with no production consumer;
+- make the plugin/binder exist with no canonical runtime consumer;
 - omit or mutate an indexed resource;
 - reintroduce a legacy-root or cross-workshop import;
 - branch on workshop name in universal kernel code;
@@ -502,7 +500,7 @@ Each mutant must make CI red:
 
 ## 10. CI lanes and performance guards
 
-Add deterministic commands (names are proposed and must be implemented in P1):
+Add deterministic commands (names are proposed and must be implemented in P0):
 
 ```text
 npm run workshop:inventory -- --check
@@ -510,29 +508,28 @@ npm run workshop:conform -- --all
 npm run workshop:diff -- --baseline <baseline-ref> --candidate <candidate-ref>
 ```
 
-The cutover gate also runs the existing build, process-module, architecture,
+The refactor gate also runs the existing build, process-module, architecture,
 temporal, contract, golden-path and acceptance-matrix suites. Capture startup,
 installation and dispatch query counts plus bounded cycle counts at P0. Use
 explicit reviewed thresholds; avoid noisy wall-clock-only assertions.
 
-No build, testbed mutation or factory run should be launched while the current
-Stage-20 production run is live. The implementation team must re-read the live
-tracker immediately before executing these lanes.
+Every test creates and removes its own state. No migration fixture, production
+snapshot or long-lived database is part of the acceptance criteria.
 
 ## 11. Work packages
 
 | WP | Deliverable | Depends on | Done when |
 |---|---|---|---|
-| WP-1 | Pin census and drain/rollback procedure | none | P0 exit gate |
-| WP-2 | Inventory, trace normalizer and mutant oracle | WP-1 | P1 exit gate |
-| WP-3 | Target trees and public surfaces for all four | WP-2 | P2 exit gate |
-| WP-4 | Binding coverage and closed catalog | WP-3 | Catalog has a production consumer in candidate |
-| WP-5 | Authoring kit and generated `WORKSHOP.md` | WP-3 | New scaffold passes L0-L3 |
-| WP-6 | Isolated old/new equivalence campaign | WP-3, WP-4 | Semantic diff zero |
-| WP-7 | Atomic production cutover and deletion | WP-1, WP-6 | P4 exit gate |
-| WP-8 | Canaries, burn-in and permanent ratchets | WP-7 | P5-P6 complete |
+| WP-1 | Inventory, trace normalizer and mutant oracle | none | P0 exit gate |
+| WP-2 | Target trees and public surfaces for all four | WP-1 | P1 exit gate |
+| WP-3 | Binding coverage and closed catalog | WP-2 | Catalog is consumed by the canonical runtime |
+| WP-4 | Authoring kit and generated `WORKSHOP.md` | WP-2 | New scaffold passes L0-L3 |
+| WP-5 | Remove legacy tree and competing wiring | WP-3 | P2 exit gate |
+| WP-6 | Isolated base/candidate equivalence campaign | WP-3, WP-5 | P3 exit gate |
+| WP-7 | Full local proof and permanent ratchets | WP-4, WP-6 | P4-P5 complete |
 
-WP-3 may be reviewed workshop-by-workshop, but WP-7 is one deployment unit.
+WP-2 may be reviewed workshop-by-workshop, but WP-2, WP-3 and WP-5 form one
+complete repository cutover. There is no deployment migration unit.
 
 ## 12. Definition of done
 
@@ -541,17 +538,17 @@ The refactor is complete only when all statements are true:
 - [ ] Each workshop-owned source/resource is under exactly one
       `src/modules/<workshop>` tree.
 - [ ] Every `WORKSHOP.md` inventory matches the machine manifest.
-- [ ] Production, CLI, worker MCP and scripted harness consume one closed
+- [ ] Canonical runtime, CLI, worker MCP and scripted harness consume one closed
       built-in composition.
 - [ ] The four ADR-082 admission projections are exact and package admission is
       still closed.
 - [ ] There are no legacy implementations/re-exports, direct `register*` calls,
       competing built-in lists or core workshop-name branches.
-- [ ] Exact package and executable pins can resume, or the census proves none
-      require removed bytes.
+- [ ] Package/resource/handler digests are rebuilt and internally consistent in
+      disposable tests; no compatibility mapping exists.
 - [ ] Old/new normalized semantic traces are equal for every required scenario.
 - [ ] L0-L5/S and all mutation tests are green and non-vacuous.
-- [ ] Two release/nightly cycles and all workshop canaries are green.
+- [ ] The complete local scripted lifecycle and per-workshop scenarios are green.
 - [ ] The authoring and connection checklists are exercised by a synthetic
       workshop fixture without changing universal runtime code.
 
@@ -561,7 +558,8 @@ The refactor is complete only when all statements are true:
 - A new workspace/package topology or SPI v2.
 - Dynamic external handler loading.
 - Changing factory vocabulary, Workplace authority or lifecycle semantics.
-- Keeping a long-lived legacy runtime fallback.
+- Any data or database migration layer.
+- Keeping a legacy runtime fallback.
 
 These require separate decisions. They are not hidden acceptance criteria for
 this co-location refactor.
