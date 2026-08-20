@@ -170,3 +170,15 @@ stays open (stage 16).
   passed because the worker happened to redo the natural work it had been
   taught by the rejection suffix; a self-limiting worker would also have
   passed (E-F4 through the widened door).
+- **13:2xZ — FORENSIC CHAIN (operator asked for the cold deep look):** all
+  submissions of both cards read from the DB. Card 2 round 4 (sub 20,
+  accepted 13:05:05) DROPPED tsconfig.json + src/physics/index.ts despite
+  the grant — W-F1 self-limit, author gate accepted (E-F4), reviewer
+  caught it at 13:12:41 by running the build ("npm run build cannot
+  function without tsconfig.json") → round 5 writes it lawfully. Card 1
+  (sub 15, 12:01:03) made the SAME surrender (tsconfig + jest.config
+  dropped) and went TERMINAL 12:04:58 — its reviewer never built. One
+  defect class, two cards: accepted silently on one, caught by reviewer
+  diligence on the other. D7 + W-F1 + E-F4 converged on one file across
+  three hours of factory time; one delivered line of authority would have
+  prevented all of it.
