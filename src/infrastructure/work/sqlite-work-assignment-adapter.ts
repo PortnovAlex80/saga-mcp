@@ -24,6 +24,7 @@ import {
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import { bindReplayToClaim } from '../replay/replay-claim-binder.js';
 import { withBusyRetry } from '../../runtime/busy-retry.js';
+import { SqliteScopeWideningLedger } from '../workplace/sqlite-scope-widening-ledger.js';
 
 export type RouteResolverFn = (key: {
   module: string | null;
@@ -63,6 +64,12 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
           input.taskIds,
           this.routeResolver,
           input.excludeTaskIds,
+          // STAGE-18 R1: resolve the task's effective write authority inside
+          // the claim transaction and attach it to the claimed card — the
+          // same ledger read every scope fence consults, so a worker staffed
+          // after a grant sees the widened set, not the stale carve.
+          (taskId, originalScopes) => new SqliteScopeWideningLedger(this.db)
+            .readEffectiveChangeScopes(taskId, originalScopes),
         );
         if (claimed) {
           reserveTaskExecution(this.db, {

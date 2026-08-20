@@ -66,6 +66,13 @@ export interface Task {
   verification_target_artifact_id: number | null;
   tags: string;
   metadata: string;
+  // STAGE-18 R1: the task's EFFECTIVE write authority (frozen carve union
+  // its widening grants), resolved at claim time through the same ledger
+  // reader every scope fence consults. Delivery-only — never persisted and
+  // never gates a claim; it rides the claimed card so the worker prompt can
+  // state the authority as values, not as an implied constraint. Absent on
+  // tasks without a scope carve and on read paths that predate the claim.
+  effective_change_scopes?: readonly string[];
   created_at: string;
   updated_at: string;
 }

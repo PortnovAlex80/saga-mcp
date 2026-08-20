@@ -23,17 +23,22 @@
 //   and no effective scopes. The worker's only knowledge of the widened
 //   paths is the teaching suffix inside the PREVIOUS rejection message.
 //
-// Consequence (finding W-F1, high): the widened authority is half-delivered.
+// Consequence (finding W-F1, high): the widened authority was half-delivered.
 // A re-staffed worker that self-limits to its card's printed scopes still
 // PASSES the gate — containment is one-directional (diff ⊆ effective) — so
-// the silent-surrender door (matrix E-F4) stays open THROUGH the widened
-// grant. The lawful exit only works when the worker happens to redo the
-// natural work; nothing informs it that it may.
+// the silent-surrender door (matrix E-F4) stayed open THROUGH the widened
+// grant. The lawful exit only worked when the worker happened to redo the
+// natural work; nothing informed it that it may.
 //
-// Findings, not fixes (brief §2). Flip-on-fix: the honest-behavior
-// assertions below break the moment a repair stamps effective authority
-// into the re-staffed work order or an acceptance-side coverage obligation
-// (E-F4's home) lands — then this registry is updated in the same commit.
+// FIXED 2026-08-20 (STAGE-18 R1, the repair the stage-15 run proved
+// necessary): the claim now resolves the effective authority inside the
+// assignment transaction (findNextClaimable → readEffectiveChangeScopes,
+// the same ledger read the fence consults), carries it on AssignedWork
+// (.effectiveChangeScopes), and the prompt renders it as a WRITE AUTHORITY
+// section. The card's carve itself stays immutable (the ledger is the
+// widening record); delivery rides the claim, not a metadata rewrite.
+// The E-F4 gate-side door (containment ⊆ accepts under-delivery) remains
+// OPEN by design — R1 closes the information asymmetry only.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -57,8 +62,9 @@ const HEX40 = 'b2'.repeat(20);
 const FINDING = {
   id: 'W-F1',
   severity: 'high',
-  claim: 'a granted widening re-staffing does not inform the re-staffed worker: the card keeps the original carve and the assignment seam never reads the ledger',
-  home: 'src/process-modules/application/production-cell-coordinator.ts:371 (grantScopeWidening applies the workplace event only) — the effective authority must be stamped into the re-staffed work order (card projection or assignment seam), or the E-F4 coverage obligation must make under-delivery impossible regardless of what the worker knows',
+  status: 'FIXED 2026-08-20 (STAGE-18 R1): claim-time delivery — findNextClaimable resolves effective scopes via the widening ledger, AssignedWork carries them, the prompt renders the WRITE AUTHORITY section. The gate-side surrender door (E-F4) remains open by design.',
+  claim: 'a granted widening re-staffing did not inform the re-staffed worker: the card kept the original carve and the assignment seam never read the ledger',
+  home: 'src/lifecycle/work-assignment-core.ts (claim seam — fixed there by R1, deliberately NOT by stamping the card)',
 };
 
 test('coverage inventory — the live case chain IS covered elsewhere (pins; renames break this)', () => {
@@ -80,7 +86,7 @@ test('coverage inventory — the live case chain IS covered elsewhere (pins; ren
     'space D\'s fence→grant→same-submission-passes proof must exist');
 });
 
-test('W-F1 (honest current behavior): the grant does not touch the card — the widened authority is invisible to the re-staffed worker', () => {
+test('W-F1 (fixed by STAGE-18 R1): the claim reads the ledger and the delivery reaches the prompt seam', () => {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   const original = ['package.json', 'aaa/', 'tests/'];
@@ -110,22 +116,33 @@ test('W-F1 (honest current behavior): the grant does not touch the card — the 
   const decision = ledger.decide({ request: { id: 1, workplace_ref: 'workplace/1/dev@1.0.0/cell-a/k1' } });
   assert.equal(decision.granted, true, 'precondition: the grant lands (no live holder)');
 
-  // The card after the grant: STILL the original carve. The widened
-  // authority lives only in the ledger; the work order the re-staffed
-  // worker reads never changes. (Flip-on-fix: a repair that stamps the
-  // effective authority into the card breaks this assertion deliberately.)
+  // The card after the grant: STILL the original carve — by design. The
+  // carve is the immutable frozen input; the widened authority lives in the
+  // ledger and is resolved onto the CLAIM (AssignedWork), not stamped into
+  // the card. (Fixed by R1 at the seam; the card itself must never mutate.)
   const card = JSON.parse(db.prepare('SELECT metadata FROM tasks WHERE id=?').get(taskId).metadata);
   assert.deepEqual(card.cell_input_item.changeScopes, original,
-    'honest behavior: the card still carries the original carve after the grant — finding W-F1');
+    'the card keeps the immutable original carve after the grant — the delivery rides the claim, never a metadata rewrite');
 
-  // The assignment/prompt seam has no widening vocabulary at all.
+  // STAGE-18 R1 (the fix): the assignment seam resolves the effective
+  // authority through the SAME ledger reader the fence consults, and the
+  // adapter wires it into every claim.
   const assignment = src('src/lifecycle/work-assignment-core.ts');
-  assert.ok(
-    !/widening|effectiveScopes|readEffectiveChangeScopes/i.test(assignment),
-    'the assignment seam reads the widening ledger — W-F1 changed; update this registry',
-  );
+  assert.match(assignment, /readEffectiveChangeScopes/,
+    'the claim seam must read the widening ledger (effective scopes resolved at claim time)');
+  assert.match(assignment, /effective_change_scopes/,
+    'the resolved authority must be attached to the claimed card');
+  const adapter = src('src/infrastructure/work/sqlite-work-assignment-adapter.ts');
+  assert.match(adapter, /new SqliteScopeWideningLedger\(this\.db\)/,
+    'the adapter must wire the ledger reader into findNextClaimable');
+  const runner = src('tracker-view/claude-runner.mjs');
+  assert.match(runner, /buildWriteAuthorityBlock/,
+    'the prompt seam must render the WRITE AUTHORITY section from the delivered scopes');
+  assert.match(runner, /effectiveChangeScopes/,
+    'the runner must merge the claim-time delivery onto the task the prompt reads');
 
-  // The grant transition itself applies the workplace event ONLY.
+  // The grant transition itself still applies the workplace event ONLY
+  // (unchanged by R1 — delivery is claim-time, the coordinator stays thin).
   const coordinator = src('src/process-modules/application/production-cell-coordinator.ts');
   const grantBody = coordinator.slice(
     coordinator.indexOf('grantScopeWidening(ref: WorkplaceRef'),
@@ -184,9 +201,11 @@ test('W-F1 consequence: a post-grant worker that self-limits to its card STILL p
   void lawful;
 });
 
-test('W-F1 registry: the finding is recorded with its home (findings, not fixes)', () => {
-  assert.match(FINDING.home, /src\/.*\.ts:\d+/, 'must cite file:line');
+test('W-F1 registry: the finding is recorded with its fix status and home', () => {
+  assert.match(FINDING.home, /src\/.*\.ts/, 'must cite the seam file');
+  assert.match(FINDING.status, /^FIXED 2026-08-20 \(STAGE-18 R1\)/,
+    'the fix must be recorded with its date and stage');
   assert.equal(FINDING.severity, 'high');
   // eslint-disable-next-line no-console
-  console.log(`[matrix] ${FINDING.id} (${FINDING.severity}): ${FINDING.claim}\n         home: ${FINDING.home}`);
+  console.log(`[matrix] ${FINDING.id} (${FINDING.severity}): ${FINDING.claim}\n         ${FINDING.status}`);
 });

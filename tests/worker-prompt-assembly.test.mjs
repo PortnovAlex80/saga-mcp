@@ -525,3 +525,110 @@ test('G1-REPAIR — the prompt names previous-attempt.patch and forbids binding 
     rmSync(bare.skillDir, { recursive: true, force: true });
   }
 });
+
+// ── STAGE-18 TASK 1 (R1): the write authority is DELIVERED to the worker ────
+//
+// Found live in the stage-15 run: the widening grant for tsconfig.json was
+// recorded at 12:50:54 and the re-staffed worker was never told — it
+// self-limited to the original carve, dropped the file, and the author gate
+// accepted (the silent surrender). The worker's scopes — original or widened —
+// appeared nowhere on the prompt path (claude-runner.mjs had ZERO scope
+// vocabulary; the checklist names the constraint but prints no values).
+//
+// The rule under test: the prompt states the task's EFFECTIVE write authority
+// — the frozen carve plus every granted widening, resolved at staffing time —
+// as an authority, not a hint. And the negative that outlives this fix: for a
+// task that HAS scopes, the prompt may never be empty of them.
+
+test('STAGE-18 R1 RED: the prompt states the task\'s effective write authority (scopes delivered, not implied)', () => {
+  const metadata = JSON.stringify({
+    process_run_id: 7,
+    cell_input_item: { key: 'imp-1', changeScopes: ['package.json', 'aaa/'] },
+  });
+  const fixture = makeFixture({
+    task: {
+      id: 77,
+      metadata,
+      // Resolved at staffing (T1.2): the frozen carve plus granted widenings,
+      // computed through the same effective-scope reader the check provider
+      // uses. No grant yet → identical to the carve.
+      effective_change_scopes: ['package.json', 'aaa/'],
+    },
+  });
+  try {
+    assert.match(fixture.prompt, /WRITE AUTHORITY/i,
+      'the prompt must carry an authority section for the write scopes');
+    assert.ok(fixture.prompt.includes('aaa/'),
+      'the scope VALUES must be delivered, not the constraint\'s name');
+    assert.match(fixture.prompt, /are yours to (write|change)/i,
+      'stated as an authority (these paths are yours), not a suggestion');
+  } finally {
+    rmSync(fixture.skillDir, { recursive: true, force: true });
+  }
+});
+
+test('STAGE-18 R1 freshness: a worker staffed AFTER a grant sees the widened set', () => {
+  const metadata = JSON.stringify({
+    process_run_id: 7,
+    cell_input_item: { key: 'imp-1', changeScopes: ['package.json', 'aaa/'] },
+  });
+  const fixture = makeFixture({
+    task: {
+      id: 77,
+      metadata,
+      // The stage-15 shape one grant later: the widened authority includes
+      // paths OUTSIDE the original carve. The prompt must state the WIDENED
+      // value (resolved at this staffing), not the stale carve.
+      effective_change_scopes: ['package.json', 'aaa/', 'zzz/shared.config'],
+    },
+  });
+  try {
+    assert.ok(fixture.prompt.includes('zzz/shared.config'),
+      'the widened path must reach the re-staffed worker — the grant that is not delivered does not exist for the worker');
+    // The authority section must be the effective set: the widened path is
+    // present AND presented as authority, not as an incidental mention.
+    const authorityMatch = fixture.prompt.match(/WRITE AUTHORITY[^\n]*\n?[^\n]*/i);
+    assert.ok(authorityMatch && fixture.prompt.slice(fixture.prompt.indexOf('WRITE AUTHORITY')).includes('zzz/shared.config'),
+      'the widened path lives inside the authority statement');
+  } finally {
+    rmSync(fixture.skillDir, { recursive: true, force: true });
+  }
+});
+
+test('STAGE-18 R1 negative: a task WITH scopes must never produce a prompt empty of them (no silent regression to zero)', () => {
+  const metadata = JSON.stringify({
+    process_run_id: 7,
+    cell_input_item: { key: 'imp-1', changeScopes: ['package.json', 'aaa/'] },
+  });
+  // Both delivery shapes must stay non-empty: with a grant and without.
+  // DELIVERED means inside the authority statement — the raw task dump
+  // already carries the scopes as an escaped JSON string (found while
+  // writing this test: 'aaa/' appears in the prompt today, buried in
+  // metadata-in-JSON), and the stage-15 run proved the worker does not
+  // read an escaped dump as authority. The assertion is therefore tied to
+  // the authority section, not to byte-existence.
+  for (const effective of [['package.json', 'aaa/'], ['package.json', 'aaa/', 'zzz/shared.config']]) {
+    const fixture = makeFixture({
+      task: { id: 77, metadata, effective_change_scopes: effective },
+    });
+    try {
+      const headerAt = fixture.prompt.search(/WRITE AUTHORITY/i);
+      assert.ok(headerAt >= 0, 'the authority section exists for a scope-bearing task');
+      const section = fixture.prompt.slice(headerAt);
+      const delivered = effective.filter(scope => section.includes(scope));
+      assert.equal(delivered.length, effective.length,
+        `every effective scope must appear INSIDE the authority section (delivered ${delivered.length}/${effective.length}) — the delivery may never silently regress to the escaped dump`);
+    } finally {
+      rmSync(fixture.skillDir, { recursive: true, force: true });
+    }
+  }
+  // A task with NO scopes at all (non-implementation work) must not grow a
+  // bogus empty authority section.
+  const bare = makeFixture({});
+  try {
+    assert.ok(!/WRITE AUTHORITY/i.test(bare.prompt),
+      'no scope-bearing task → no authority section (the section is earned by the scopes, not unconditional)');
+  } finally {
+    rmSync(bare.skillDir, { recursive: true, force: true });
+  }
+});

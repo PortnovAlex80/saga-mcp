@@ -242,3 +242,106 @@ test('releaseAssignment returns the card to the queue', () => {
   assert.equal(row.assigned_to, null, 'assignment cleared');
   assert.equal(row.current_execution_id, null, 'fence cleared');
 });
+
+// ── STAGE-18 R1: the claim DELIVERS the effective write authority ──────────
+//
+// Found live in the stage-15 run: the widening grant was recorded at
+// 12:50:54Z and the re-staffed worker was never told — it self-limited to
+// the stale carve and the author gate accepted the silent surrender. The
+// claim must resolve the task's CURRENT authority (frozen carve union
+// grants) through the same widening-ledger reader the scope fence consults
+// and carry it out on the AssignedWork. Delivery only: never a claim gate.
+
+function makeScopeBearingTask(epicId, changeScopes, title = 'scoped') {
+  const task = makeTodoTask(epicId, { title });
+  stampProcessRun(task.id);
+  const db = getDb();
+  const meta = JSON.parse(
+    db.prepare('SELECT metadata FROM tasks WHERE id=?').get(task.id).metadata || '{}',
+  );
+  meta.cell_input_item = { key: `imp-${task.id}`, changeScopes };
+  db.prepare('UPDATE tasks SET metadata=? WHERE id=?').run(JSON.stringify(meta), task.id);
+  return task;
+}
+
+function recordGrant(taskId, grantedScopes) {
+  const db = getDb();
+  const workplaceRef = `workplace/test/${taskId}/imp`;
+  db.prepare(
+    `INSERT OR IGNORE INTO factory_workplaces
+       (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
+        kanban_phase,loop_state,next_role)
+     VALUES (?,1,'test-module','cell-1',?, 'todo','idle','author')`,
+  ).run(workplaceRef, `imp-${taskId}`);
+  db.prepare(
+    `INSERT INTO factory_scope_widening_events
+       (event_kind,workplace_ref,task_id,role,source,requested_scopes,
+        granted_revision,granted_scopes)
+     VALUES ('grant',?,?, 'author','worker-declared',?, 1, ?)`,
+  ).run(workplaceRef, taskId, JSON.stringify(grantedScopes), JSON.stringify(grantedScopes));
+}
+
+test('STAGE-18 R1: a scope-bearing claim carries the effective authority (grant union carve) on AssignedWork', () => {
+  const { projectId, epicId } = setupProject();
+  const task = makeScopeBearingTask(epicId, ['package.json', 'aaa/']);
+  // The stage-15 shape: one grant landed before the re-staffing.
+  recordGrant(task.id, ['aaa/', 'package.json', 'zzz/shared.config']);
+  const adapter = new SqliteWorkAssignmentAdapter(getDb());
+
+  const work = adapter.assignTask({
+    projectId,
+    workerId: 'w-r1',
+    workerExecutionId: 'exec-r1-delivery',
+    runId: 'r1',
+    machineId: 'm1',
+  });
+  assert.notEqual(work, null);
+  assert.ok(work.taskId === task.id, 'the scoped card is claimable and claimed');
+  assert.deepEqual(
+    work.effectiveChangeScopes,
+    ['aaa/', 'package.json', 'zzz/shared.config'],
+    'the claim delivers the WIDENED set (carve ∪ grant, ledger order), not the stale carve',
+  );
+});
+
+test('STAGE-18 R1: without a grant the delivered authority is the frozen carve itself', () => {
+  const { projectId, epicId } = setupProject();
+  makeScopeBearingTask(epicId, ['package.json', 'aaa/']);
+  const adapter = new SqliteWorkAssignmentAdapter(getDb());
+
+  const work = adapter.assignTask({
+    projectId,
+    workerId: 'w-r1b',
+    workerExecutionId: 'exec-r1-carve',
+    runId: 'r1',
+    machineId: 'm1',
+  });
+  assert.notEqual(work, null);
+  assert.deepEqual(
+    work.effectiveChangeScopes,
+    ['package.json', 'aaa/'],
+    'no grant → the carve is the whole truth, delivered as values',
+  );
+});
+
+test('STAGE-18 R1: a card without a scope carve gets NO authority payload (no bogus empty section)', () => {
+  const { projectId, epicId } = setupProject();
+  const task = makeTodoTask(epicId, { title: 'unscoped' });
+  stampProcessRun(task.id);
+  const adapter = new SqliteWorkAssignmentAdapter(getDb());
+
+  const work = adapter.assignTask({
+    projectId,
+    workerId: 'w-r1c',
+    workerExecutionId: 'exec-r1-bare',
+    runId: 'r1',
+    machineId: 'm1',
+  });
+  assert.notEqual(work, null);
+  assert.equal(work.taskId, task.id);
+  assert.equal(
+    work.effectiveChangeScopes,
+    undefined,
+    'no carve → no authority data; the prompt section is earned by scopes, not unconditional',
+  );
+});

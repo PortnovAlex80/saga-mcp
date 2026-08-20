@@ -28,9 +28,10 @@
 //     delivery channel: the only way to learn the constraint is to violate
 //     it first. That is finding F-α1 regardless of run convergence.
 //
-// Findings, not fixes (brief §2). Flip-on-fix: the honest pins break the
-// moment delivery lands (prompt gains scope values / the checklist gains
-// interpolation) — then this registry is updated in the same commit.
+// Findings, not fixes (brief §2). Flip-on-fix: F-α1/F-α2 flipped GREEN on
+// 2026-08-20 when STAGE-18 R1 landed the claim-time delivery + the WRITE
+// AUTHORITY prompt section — the registry below records the fixed state;
+// F-α3/F-α4 remain open findings.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,15 +51,17 @@ const FINDINGS = [
   {
     id: 'F-α1',
     severity: 'high',
+    status: 'FIXED 2026-08-20 (STAGE-18 R1): the claim-time delivery — findNextClaimable resolves effective scopes, the prompt renders the WRITE AUTHORITY section with the values',
     authority: 'changeScopes VALUES (the original carve)',
-    claim: 'the worker is ordered to obey a value it is never shown: the prompt builder and the assignment seam carry zero scope vocabulary; the checklist names the constraint and teaches the exit but prints no values; the only carrier of the values is the path-outside-authority rejection message',
-    home: 'tracker-view/claude-runner.mjs:109 (buildPrompt — the delivery point) — the re-staffed work order must carry the effective authority values; until then the rejection suffix remains the only channel',
+    claim: 'the worker was ordered to obey a value it was never shown: the prompt builder and the assignment seam carried zero scope vocabulary; the checklist named the constraint and taught the exit but printed no values; the only carrier of the values was the path-outside-authority rejection message',
+    home: 'tracker-view/claude-runner.mjs (buildPrompt — the delivery point, now buildWriteAuthorityBlock)',
   },
   {
     id: 'F-α2',
     severity: 'high',
+    status: 'FIXED 2026-08-20 (STAGE-18 R1): freshness by construction — the effective set is resolved at EVERY staffing through the widening ledger, so a post-grant re-staffing sees carve ∪ grants',
     authority: 'changeScopes EFFECTIVE (post-widening)',
-    claim: 'no freshness: even if the original values were delivered, a mid-cell widening grant changes the authority and nothing re-delivers it — the re-staffed worker keeps the first-staffing view (verified live: grant rev 1 at 12:50:54Z, card still original, round 4 passed only because the worker happened to redo the taught work)',
+    claim: 'no freshness: even if the original values were delivered, a mid-cell widening grant changed the authority and nothing re-delivered it — the re-staffed worker kept the first-staffing view (verified live: grant rev 1 at 12:50:54Z, card still original, round 4 passed only because the worker happened to redo the taught work)',
     home: 'tests/matrix/widening-worker-visibility.test.mjs (W-F1) — the freshness drive lives there; this registry references it',
   },
   {
@@ -95,9 +98,19 @@ test('space F — F1/F2/F6: the authority-delivery table (enumerated from code, 
   const shim = src('tools/agent-proxy/claude-shim.mjs');
   assert.match(shim, /OPENCODE_PERMISSION/, 'the shim must enforce the tool deny list at call time');
 
-  // NOT DELIVERED (honest current behavior — the findings):
-  // The prompt builder has NO authority-value vocabulary at all.
-  for (const word of ['changeScopes', 'widening', 'effectiveScopes', 'acceptanceCriterionIds']) {
+  // DELIVERED since STAGE-18 R1 (2026-08-20, fixed live findings F-α1/F-α2):
+  // the claim resolves the effective write authority through the widening
+  // ledger (the fence's read path) and the prompt renders it as a WRITE
+  // AUTHORITY section with the VALUES, stated as authority.
+  assert.match(promptBuilder, /WRITE AUTHORITY/,
+    'the prompt builder must carry the authority section (R1)');
+  assert.match(promptBuilder, /effective_change_scopes/,
+    'the section is fed by the claim-time effective scopes, not a re-read of the carve');
+  assert.match(promptBuilder, /are yours to (write|change)/i,
+    'the scopes are stated as authority (these paths are yours), not a suggestion');
+  // Still NOT delivered (honest current behavior — the remaining findings):
+  // acceptance-criterion values have no prompt-channel vocabulary.
+  for (const word of ['acceptanceCriterionIds']) {
     assert.ok(!promptBuilder.includes(word),
       `honest behavior: the prompt builder does not deliver '${word}' — if this fails, delivery landed; update the registry`);
   }
@@ -110,21 +123,22 @@ test('space F — F1/F2/F6: the authority-delivery table (enumerated from code, 
   // TEACHING sentence is a placeholder the worker fills, not a delivered
   // authority value — excluded explicitly.)
   assert.ok(!/\$\{item|item\.changeScopes|frozen changeScopes:\s*\[/.test(checklist),
-    'honest behavior: the checklist template carries no authority values (no interpolation) — finding F-α1');
-  // The rejection message is the ONLY value carrier on the worker path.
-  assert.match(provider, /outside frozen changeScopes \[\$\{effectiveScopes\.join/, 'the rejection prints the values (the only carrier)');
+    'honest behavior: the checklist template carries no authority values (no interpolation) — the value carrier is now the R1 prompt section');
+  // The rejection message remains the at-fence (enforcement-time) value
+  // carrier; the R1 prompt section is the pre-act carrier.
+  assert.match(provider, /outside frozen changeScopes \[\$\{effectiveScopes\.join/, 'the rejection prints the values (the at-fence carrier)');
 
   // eslint-disable-next-line no-console
   console.log([
     '[space F] authority → actor → channel → delivered pre-act → fresh',
-    '  changeScopes values      impl author   checklist names it, prompt omits it        NO   —  F-α1',
-    '  changeScopes effective   impl author   none                                          NO   —  F-α2 (W-F1)',
+    '  changeScopes values      impl author   WRITE AUTHORITY prompt section (R1)      YES  at staffing (fixed F-α1)',
+    '  changeScopes effective   impl author   claim resolves carve ∪ grants (R1)      YES  at staffing (fixed F-α2/W-F1)',
     '  allowed tools            worker        runtime enforcement (shim deny) + rules    at call time (enforced)',
     '  check plan               impl author   hand-transcribed into the checklist       partial (stale risk) — F-α3',
     '  acceptance criteria      impl author   workspace file, discoverable, undirected  yes (undirected)',
     '  prior review findings    author/rev    recovery memory + LOUD delivery           YES',
     '  rejected attempt code    author        previous_attempt_patch on the desk       YES',
-    '  recovery budget/attempts author        binding validation only, never as text   NO  —  F-α4',
+    '  recovery budget/attempts author        binding validation only, never as text   NO  — F-α4',
   ].join('\n'));
 });
 
@@ -134,20 +148,23 @@ test('space F — F4: freshness is covered by the W-F1 drive (cross-pin)', () =>
   assert.match(w, /readEffectiveChangeScopes/, 'the drive must use the production effective-scopes port');
 });
 
-test('space F — F5: the negative — a rejection message is not a delivery channel', () => {
+test('space F — F5: the negative — a rejection message is not a delivery channel (the pre-act carrier must exist besides it)', () => {
   const promptBuilder = src(PROMPT_BUILDER);
   const checklist = src(CHECKLIST);
   const provider = src(SCOPE_PROVIDER);
-  // The constraint values exist in exactly one worker-reachable place: the
-  // rejection. Violation-first discovery. This is a finding EVEN THOUGH the
-  // stage-15 run converged (round 4 passed): convergence depended on the
-  // worker re-attempting the taught work, not on knowing the authority.
-  const valuesInPrompt = /\[.*(?:changeScopes|scopes).*\]/.test(promptBuilder);
+  // Violation-first discovery was the F-α1 defect: the only way to learn the
+  // constraint was to violate it first. FIXED by R1: the pre-act carrier is
+  // the WRITE AUTHORITY prompt section. This pin now guards BOTH carriers:
+  // the pre-act section must exist AND the rejection must stay identifiable
+  // as the at-fence carrier (a repair that removes either changes this).
+  const valuesInPrompt = /WRITE AUTHORITY/.test(promptBuilder);
   const valuesInChecklist = /\$\{item|frozen changeScopes:\s*\[/.test(checklist);
   const valuesInRejection = provider.includes('outside frozen changeScopes [${effectiveScopes.join');
-  assert.ok(!valuesInPrompt && !valuesInChecklist,
-    'values are (unexpectedly) delivered pre-act — findings F-α1/F-α2 changed; update the registry');
-  assert.ok(valuesInRejection, 'the rejection must remain identifiable as the sole value carrier for this pin to mean anything');
+  assert.ok(valuesInPrompt,
+    'the pre-act value carrier (the prompt section) must exist — F-α1 fixed by R1; if this fails, delivery regressed; update the registry');
+  assert.ok(!valuesInChecklist,
+    'the checklist template must stay value-free (no interpolation) — it is teaching, not delivery');
+  assert.ok(valuesInRejection, 'the rejection must remain identifiable as the at-fence carrier for this pin to mean anything');
 });
 
 test('space F — registry well-formed (findings, not fixes)', () => {

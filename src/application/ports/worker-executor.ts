@@ -58,6 +58,13 @@ export interface AssignedWork {
   /** Frozen execution-context snapshot (model route + authority) captured at
    *  claim. Spawn + provenance read this single value — no re-read. */
   executionContext: unknown;
+  /** STAGE-18 R1: the card's effective write authority (frozen carve union
+   *  widening grants) resolved inside the claim transaction through the same
+   *  widening-ledger reader the scope fence consults. Delivery-only claim
+   *  data — it exists so the worker prompt can state the authority as
+   *  values, not as an implied constraint. Absent on cards without a scope
+   *  carve. */
+  effectiveChangeScopes?: readonly string[];
 }
 
 /**

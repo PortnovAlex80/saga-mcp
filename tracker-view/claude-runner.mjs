@@ -477,6 +477,11 @@ export function buildPrompt({
       ? `9. Before worker_done, call verification_record only for the task's canonical AC with recorded_by="${workerId}"${assignment.execution_id ? `, execution_id="${assignment.execution_id}"` : ''}, and truthful pass/fail evidence.`
       : '9. Preserve the task provenance and do not create unrelated downstream work.',
     '',
+    // STAGE-18 R1: the effective write authority resolved at claim time.
+    // The widening grant that is not delivered does not exist for the
+    // worker — stage-15 proved it twice (silent surrender).
+    buildWriteAuthorityBlock(task),
+    '',
     // BLINDSIGHT X2: the durable recovery memory (materialized onto the task
     // row by src/lifecycle/task-recovery-memory.ts at claim / RECOVERY-comment
     // time) must reach the worker as a LOUD directive, not as JSON buried in
@@ -487,6 +492,28 @@ export function buildPrompt({
     'Assigned task payload:',
     JSON.stringify(task, null, 2),
   ].filter(line => line !== null).join('\n');
+}
+
+/**
+ * STAGE-18 R1: render the task's effective write authority — the frozen
+ * carve union every granted widening, resolved at claim time through the
+ * same widening-ledger reader the scope fence consults (delivered on the
+ * claimed card as `effective_change_scopes`). The stage-15 run proved the
+ * grant that is not delivered does not exist for the worker: re-staffed
+ * after a grant, it self-limited to the stale carve and the author gate
+ * accepted the silent surrender. No scopes → no section at all (the section
+ * is earned by the scopes, not unconditional).
+ */
+export function buildWriteAuthorityBlock(task) {
+  const scopes = task?.effective_change_scopes;
+  if (!Array.isArray(scopes) || scopes.length === 0) return null;
+  return [
+    '--- WRITE AUTHORITY (machine-resolved at your staffing — supersedes any older scope you remember) ---',
+    'These paths are yours to write or change for this task — exactly these, no others:',
+    ...scopes.map((scope) => `  • ${scope}`),
+    'The set above is your CURRENT write authority: it already includes every widening grant recorded for this task before you were staffed. Anything outside it goes through scope widening (path-outside-authority) — never silent omission of the work.',
+    '--- END WRITE AUTHORITY ---',
+  ].join('\n');
 }
 
 /**
@@ -934,6 +961,13 @@ export class ClaudeBoardRunner {
     const task = this.getTask(work.taskId);
     if (!task) {
       throw new Error(`Pre-assigned task ${work.taskId} not found (was it deleted between assignTask and launch?)`);
+    }
+    // STAGE-18 R1: re-attach the claim-time delivery data. getTask re-reads
+    // the durable row (which intentionally does not persist this field), so
+    // the effective write authority resolved inside the claim transaction
+    // rides the AssignedWork — the only source that was computed at staffing.
+    if (work.effectiveChangeScopes && work.effectiveChangeScopes.length > 0) {
+      task.effective_change_scopes = work.effectiveChangeScopes;
     }
     return {
       task,

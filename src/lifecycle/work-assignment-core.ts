@@ -372,6 +372,27 @@ function claimedStatusFor(
  * post-claim projection, so downstream skill/phase selection can never use a
  * stale pre-claim status.
  */
+/**
+ * STAGE-18 R1: the task's frozen scope carve from tasks.metadata
+ * (cell_input_item.changeScopes). Mirrors the widening ledger's parser
+ * semantics exactly — kept local so the lifecycle core does not grow an
+ * infrastructure dependency. Absent/unparsable metadata means "no carve"
+ * (the truthful default for non-implementation cards).
+ */
+function parseCarvedChangeScopes(metadata: string | null): readonly string[] {
+  if (!metadata) return [];
+  try {
+    const item = (JSON.parse(metadata) as { cell_input_item?: unknown }).cell_input_item;
+    if (!item || typeof item !== 'object') return [];
+    const scopes = (item as { changeScopes?: unknown }).changeScopes;
+    return Array.isArray(scopes)
+      ? scopes.filter((scope): scope is string => typeof scope === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function findNextClaimable(
   db: Database.Database,
   workerId: string,
@@ -404,6 +425,19 @@ export function findNextClaimable(
    * priority order. Optional — callers that omit it behave exactly as before.
    */
   excludeTaskIds?: number[],
+  /**
+   * STAGE-18 R1: optional effective-scope reader (the widening ledger).
+   * When present, a scope-bearing claim resolves the task's CURRENT write
+   * authority — frozen carve union every granted widening, the same read
+   * path the scope check provider consults — and attaches it to the
+   * returned card as `effective_change_scopes`. Delivery to the worker
+   * prompt only: it never gates the claim. Callers that omit it behave
+   * exactly as before.
+   */
+  readEffectiveChangeScopes?: (
+    taskId: number,
+    originalScopes: readonly string[],
+  ) => readonly string[],
 ): Task | null {
   if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
 
@@ -594,6 +628,31 @@ export function findNextClaimable(
       to_status: claimedStatus,
       worker_id: workerId,
     });
+  }
+
+  // STAGE-18 R1: deliver the effective write authority on the claimed card —
+  // the frozen carve union every granted widening, resolved through the same
+  // ledger reader the scope fence consults (the check provider's read path).
+  // The stage-15 run proved the missing half of the widening law: a grant
+  // that never reaches the re-staffed worker does not exist for it — the
+  // worker self-limits to the stale carve and the author gate accepts the
+  // silent surrender. Delivery-only: this attaches data, it never gates.
+  const carvedScopes = parseCarvedChangeScopes(task.metadata);
+  if (carvedScopes.length > 0 && readEffectiveChangeScopes) {
+    const effectiveScopes = [...new Set(readEffectiveChangeScopes(task.id, carvedScopes))];
+    claimedTask.effective_change_scopes = effectiveScopes;
+    const deliveredGrants = effectiveScopes.filter((scope) => !carvedScopes.includes(scope));
+    if (deliveredGrants.length > 0) {
+      journalEvent('authority.grant_delivered', {
+        epic_id: task.epic_id,
+        workplace_ref: task.workplace_ref ?? undefined,
+      }, {
+        task_id: task.id,
+        worker_id: workerId,
+        granted_paths: deliveredGrants.length,
+        effective_scope_count: effectiveScopes.length,
+      });
+    }
   }
 
   journalEvent('assignment.claimed', {
@@ -942,5 +1001,6 @@ export function buildAssignedWorkFromClaim(args: {
     machineId: machineId ?? 'unknown',
     repository: repository ?? null,
     executionContext,
+    effectiveChangeScopes: task.effective_change_scopes,
   };
 }
