@@ -68,6 +68,12 @@ const FROZEN_COMPILED_IMPORTERS = [
   'tools/comments.js', // BLINDSIGHT X2: comment_add emits recovery.note_recorded when a
   // RECOVERY:-prefixed note lands in the task's durable attempt history.
   'tools/dispatcher.js',
+  // STAGE-15 TASK 1: the production-cell node executor emits
+  // scope_widening.granted / scope_widening.refused at the contention
+  // decision (the dispatcher emits scope_widening.declared at the
+  // worker_done boundary) so a run's widening outcome is journalled
+  // evidence, not a database query after the fact.
+  'process-modules/application/node-executors/production-cell-node-executor.js',
 ];
 
 function walk(dir, prefix = '') {

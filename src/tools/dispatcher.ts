@@ -661,13 +661,27 @@ function handleWorkerDone(
         );
       }
       const ledger = new SqliteScopeWideningLedger(db);
-      ledger.recordRequest({
+      const wideningRequestId = ledger.recordRequest({
         workplaceRef: task.workplace_ref,
         taskId,
         role: 'author',
         source: 'worker-declared',
         requestedScopes: args.requested_scopes as string[],
         requestedByExecution: (args.execution_id as string) ?? task.current_execution_id ?? null,
+      });
+      // STAGE-15 TASK 1 — every widening declaration is journalled with its
+      // correlation keys so a run with zero widenings is distinguishable
+      // from a run that never reached the fence. Observation only.
+      journalEvent('scope_widening.declared', {
+        epic_id: task.epic_id,
+        workplace_ref: task.workplace_ref,
+        execution_id: (args.execution_id as string) ?? task.current_execution_id ?? undefined,
+      }, {
+        request_id: wideningRequestId,
+        task_id: taskId,
+        role: 'author',
+        source: 'worker-declared',
+        requested_scopes: [...(args.requested_scopes as string[])],
       });
       // Release the card back to the claimable queue; the workplace itself
       // moves running → repair_wait via the 'declared' release outcome and

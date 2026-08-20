@@ -319,6 +319,30 @@ function engineLogCapture() {
   };
 }
 
+/**
+ * STAGE-15 TASK 1 — the widening decision must be JOURNALLED evidence, not a
+ * post-hoc database query. The capture mirrors engineLogCapture: pin
+ * SAGA_RUN_JOURNAL to a temp file for the test's extent.
+ */
+function journalCapture() {
+  const path = join(tmpdir(), `scope-widening-journal-${process.pid}-${Date.now()}.jsonl`);
+  const prior = process.env.SAGA_RUN_JOURNAL;
+  process.env.SAGA_RUN_JOURNAL = path;
+  return {
+    events(kind) {
+      try {
+        return readFileSync(path, 'utf8').split('\n').filter(Boolean)
+          .map(line => JSON.parse(line)).filter(e => e.kind === kind);
+      } catch { return []; }
+    },
+    restore() {
+      if (prior === undefined) delete process.env.SAGA_RUN_JOURNAL;
+      else process.env.SAGA_RUN_JOURNAL = prior;
+      rmSync(path, { force: true });
+    },
+  };
+}
+
 async function rejectedAttempt(h, ctx, ref, label, diagnostics, executor = h.executor) {
   h.setCheckDiagnostics('failed', diagnostics);
   finishRole(h, ref, `execution:${label}`, {
@@ -335,6 +359,7 @@ test('trajectory grant: scope-impossible routes to a widening GRANT, re-freezes 
   const ref = workplaceRef();
   seedTaskRow(h, ref);
   const log = engineLogCapture();
+  const journal = journalCapture();
   try {
     await h.executor.execute(ctx); // hire the author
     await rejectedAttempt(h, ctx, ref, 'poa-1', [
@@ -376,6 +401,19 @@ test('trajectory grant: scope-impossible routes to a widening GRANT, re-freezes 
     const engineLine = log.read();
     assert.match(engineLine, /scope-widening\] GRANTED/);
     assert.doesNotMatch(engineLine, /ROLLOVER/, 'no epoch rollover may fire — the widening preempted the budget');
+
+    // STAGE-15 TASK 1 — the decision is journalled evidence: correlation key
+    // + resulting scope revision, readable without touching the DB.
+    const grantedEvents = journal.events('scope_widening.granted');
+    assert.equal(grantedEvents.length, 1, 'exactly one grant journal event');
+    assert.equal(grantedEvents[0].workplace_ref, serializeWorkplaceRef(ref));
+    assert.equal(grantedEvents[0].data.resulting_scope_revision, 1);
+    assert.ok(
+      grantedEvents[0].data.granted_scopes.includes('src/physics/spacecraft.js'),
+      'the journalled grant carries the widened scopes',
+    );
+    assert.equal(journal.events('scope_widening.refused').length, 0);
+
     assert.equal(
       h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs').get().n,
       0,
@@ -393,6 +431,7 @@ test('trajectory grant: scope-impossible routes to a widening GRANT, re-freezes 
         .get(serializeWorkplaceRef(ref)).id, ['package.json', 'src/game/', 'tests/']);
     assert.ok(effective.includes('src/physics/spacecraft.js'));
   } finally {
+    journal.restore();
     log.restore();
     h.db.close();
   }
@@ -405,6 +444,7 @@ test('trajectory refusal: a LIVE holder blocks the grant — terminal failed, ho
   seedTaskRow(h, ref);
   seedHolderWorkplace(h, ref, ['src/physics/']);
   const log = engineLogCapture();
+  const journal = journalCapture();
   try {
     await h.executor.execute(ctx);
     await rejectedAttempt(h, ctx, ref, 'ref-1', [authorityViolation('src/physics/spacecraft.js')]);
@@ -427,7 +467,16 @@ test('trajectory refusal: a LIVE holder blocks the grant — terminal failed, ho
     assert.equal(holders[0].workKey, 'holder-card', 'the refusal NAMES the contending holder');
     assert.equal(holders[0].scope, 'src/physics/');
     assert.match(log.read(), /scope-widening\] REFUSED.*holder-card/);
+
+    // STAGE-15 TASK 1 — the refusal is journalled with the named holders.
+    const refusedEvents = journal.events('scope_widening.refused');
+    assert.equal(refusedEvents.length, 1, 'exactly one refusal journal event');
+    assert.equal(refusedEvents[0].workplace_ref, serializeWorkplaceRef(ref));
+    assert.equal(refusedEvents[0].data.holders.length, 1);
+    assert.equal(refusedEvents[0].data.holders[0].scope, 'src/physics/');
+    assert.equal(journal.events('scope_widening.granted').length, 0);
   } finally {
+    journal.restore();
     log.restore();
     h.db.close();
   }

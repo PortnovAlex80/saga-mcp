@@ -63,6 +63,7 @@ import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastruct
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteGateFindingSetChain } from '../../../infrastructure/workplace/sqlite-gate-finding-set-chain.js';
 import { SqliteScopeWideningLedger, type ContentionHolder } from '../../../infrastructure/workplace/sqlite-scope-widening-ledger.js';
+import { journalEvent } from '../../../observability/run-journal.js';
 import {
   convergingStreak,
   survivingScopeViolationKeys,
@@ -2407,6 +2408,31 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       source = 'cell-trajectory';
     }
     const decision = ledger.decide({ request });
+    // STAGE-15 TASK 1 — every contention decision is journalled with the
+    // resulting scope revision (grant) or the named live holders (refusal).
+    // Observation only; the ledger row is the authority.
+    journalEvent(
+      decision.granted ? 'scope_widening.granted' : 'scope_widening.refused',
+      { workplace_ref: serialized },
+      {
+        request_id: decision.requestEventId,
+        task_id: request.task_id,
+        role: request.role,
+        source,
+        ...(decision.granted
+          ? {
+              resulting_scope_revision: decision.grantedRevision,
+              granted_scopes: [...(decision.grantedScopes ?? [])],
+            }
+          : {
+              holders: decision.holders.map(holder => ({
+                workplace_ref: holder.workplaceRef,
+                task_id: holder.taskId,
+                scope: holder.scope,
+              })),
+            }),
+      },
+    );
     return { granted: decision.granted, source, decision };
   }
 
