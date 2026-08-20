@@ -89,8 +89,9 @@ const GROUPS = {
       'tests/factory-proof/obligation-compiler.test.mjs',
       'tests/factory-proof/scenario-actor-observer.test.mjs',
       'tests/factory-proof/kernel-self-mutations.test.mjs',
+      'tests/factory-proof/w1-1-fabricated-hash.test.mjs',
     ],
-    note: 'W0 proof kernel (ADR-084) — canonical composition + obligation contracts + mutation algebra/kill matrix + scenario DSL/actor/observer + self-mutations. BLOCKING: no quarantine, no continue-on-error.',
+    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof. BLOCKING: no quarantine, no continue-on-error.',
   },
 };
 
