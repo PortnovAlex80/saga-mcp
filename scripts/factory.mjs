@@ -88,11 +88,12 @@ function parseStartArguments(rawArgs) {
   };
 }
 
-if (command !== 'start' && command !== 'resume' && command !== 'continue' && command !== 'abandon' && command !== 'rerun' && command !== 'stop' && command !== 'unpark') {
-  die(`usage: node scripts/factory.mjs <start|resume|continue|abandon|rerun|stop|unpark> <db-path> [options]\n`
+if (command !== 'start' && command !== 'resume' && command !== 'continue' && command !== 'redevelop' && command !== 'abandon' && command !== 'rerun' && command !== 'stop' && command !== 'unpark') {
+  die(`usage: node scripts/factory.mjs <start|resume|continue|redevelop|abandon|rerun|stop|unpark> <db-path> [options]\n`
     + `  start   <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
     + `  resume  <db-path> [--requeue-paused|--recover-failed-gate]\n`
     + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]\n`
+    + `  redevelop <db-path> --from-lifecycle <id> [--check]   — stage-19: re-enter development with the STANDARD module from the frozen formalization capsule\n`
     + `  abandon <db-path> <project-id> [--reason <text>]   — drop a poisoned run (fail-closed)\n`
     + `  rerun   <db-path> <project-id> [--model <name>] [--reason <text>]   — abandon-if-poisoned + new_start\n`
     + `  stop    <db-path> [--project N | --all] [--dry-run] [--reason <text>]   — operator SOFT-STOP of running workers\n`
@@ -490,6 +491,127 @@ async function openSoftStopDb(dbPath) {
   );
   ensureFactoryProcessRunSchema(db);
   return db;
+}
+
+// ─── redevelop: stage-19 entry — STANDARD development module from the frozen
+// workshops-1/2 capsule after a terminal development failure ───────────────
+if (command === 'redevelop') {
+  const dbPathArg = args[1];
+  const fromLifecycle = Number(args.find((v, i) => args[i - 1] === '--from-lifecycle'));
+  const check = args.includes('--check');
+  if (!dbPathArg) die('redevelop: db-path argument is required');
+  if (!Number.isSafeInteger(fromLifecycle) || fromLifecycle < 1) {
+    die('redevelop: --from-lifecycle must be a positive integer');
+  }
+  const absoluteDbPath = resolve(dbPathArg);
+  if (!existsSync(absoluteDbPath)) die(`redevelop: DB not found: ${absoluteDbPath}`);
+  // --check runs on a THROWAWAY copy (authorize+consume are writes: a dry
+  // run must never create the child on the live DB); a real run backs the
+  // DB up first, same discipline as continue.
+  let workingDbPath = absoluteDbPath;
+  let checkRoot = null;
+  if (check) {
+    checkRoot = mkdtempSync(join(tmpdir(), 'saga-redevelopment-check-'));
+    workingDbPath = join(checkRoot, 'factory.sqlite');
+    const checkSource = new Database(absoluteDbPath, { readonly: true });
+    await checkSource.backup(workingDbPath);
+    checkSource.close();
+  } else {
+    const backupRoot = join(resolve(absoluteDbPath, '..'), '.factory-backups');
+    mkdirSync(backupRoot, { recursive: true });
+    const backupPath = join(
+      backupRoot,
+      `pre-redevelopment-${new Date().toISOString().replaceAll(':', '-')}.sqlite`,
+    );
+    const source = new Database(absoluteDbPath, { readonly: true });
+    await source.backup(backupPath);
+    source.close();
+    process.stdout.write(`[factory] redevelopment backup=${backupPath}\n`);
+  }
+  let redevelopDb = null;
+  try {
+    const db = new Database(workingDbPath);
+    redevelopDb = db;
+    db.pragma('foreign_keys=ON');
+    const { SCHEMA_SQL } = await import('../dist/schema.js');
+    db.exec(SCHEMA_SQL);
+    // Launch pre-step (the supervision reap): the operator stop kills worker
+    // PROCESSES; rows may still read active. Redevelopment requires zero
+    // active executions, same as the managed continuation.
+    const reaped = db.prepare(
+      `UPDATE worker_executions SET state='lost'
+        WHERE state IN ('reserved','running','cancel_requested')`,
+    ).run().changes;
+    if (reaped > 0) {
+      process.stdout.write(`[factory] redevelopment reaped ${reaped} stale worker execution(s)\n`);
+    }
+    const parent = db.prepare(
+      `SELECT COALESCE(
+                (SELECT chain.order_ref FROM factory_order_runs chain
+                  WHERE chain.lifecycle_run_id=?),
+                (SELECT root.order_ref FROM factory_orders root
+                  WHERE root.lifecycle_run_id=?)
+              ) AS order_ref`,
+    ).get(fromLifecycle, fromLifecycle);
+    if (!parent?.order_ref) {
+      db.close();
+      redevelopDb = null;
+      die(`redevelop: lifecycle ${fromLifecycle} has no root FactoryOrder`);
+    }
+    const { prepareDevelopmentRedevelopment } = await import('../dist/app/factory-redevelopment.js');
+    const prepared = prepareDevelopmentRedevelopment(db, {
+      orderRef: parent.order_ref,
+      parentLifecycleRunId: fromLifecycle,
+      actorId: 'factory-redevelopment-operator',
+      reason: 'stage-19 redevelopment: standard module, frozen formalization capsule',
+    });
+    process.stdout.write(
+      `[factory] redevelopment child=${prepared.childLifecycleRunId} capsule=${prepared.capsuleHash.slice(0, 12)}…\n`,
+    );
+    if (check) {
+      db.close();
+      redevelopDb = null;
+      process.stdout.write(`[factory] redevelopment check: OK (child would be ${prepared.childLifecycleRunId})\n`);
+      process.exitCode = 0;
+    } else {
+      const { requestFactoryLaunch } = await import(
+        '../dist/infrastructure/factory/sqlite-factory-launch-repository.js'
+      );
+      const concurrency = resumeConcurrency(db, prepared.epicId);
+      const launchRef = requestFactoryLaunch({
+        orderRef: prepared.orderRef,
+        mode: 'resume',
+        projectId: prepared.projectId,
+        epicId: prepared.epicId,
+        lifecycleRunId: prepared.childLifecycleRunId,
+        initiatedBy: 'factory-redevelopment-operator',
+        idempotencyKey: `${prepared.childIdempotencyKey}:launch`,
+        concurrency,
+      }, db);
+      db.close();
+      redevelopDb = null;
+      process.stdout.write(
+        `[factory] redevelopment launch=${launchRef} child=${prepared.childLifecycleRunId} db=${absoluteDbPath}\n`,
+      );
+      const factoryCompositionPath = resolveFactoryComposition();
+      spawnOrchestrateCli(absoluteDbPath, launchRef, factoryCompositionPath);
+    }
+  } finally {
+    if (redevelopDb) {
+      try { redevelopDb.close(); } catch { /* preserve the primary failure */ }
+    }
+    if (checkRoot) {
+      try {
+        rmSync(checkRoot, { recursive: true, force: true });
+      } catch (cleanupError) {
+        process.stderr.write(
+          `[factory] redevelopment check cleanup deferred for ${checkRoot}: `
+          + `${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}
+`,
+        );
+      }
+    }
+  }
 }
 
 if (command === 'stop') {
