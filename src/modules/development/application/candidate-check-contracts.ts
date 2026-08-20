@@ -20,13 +20,16 @@ export const AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST = sha256Hex({
 
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
   'factory.local-runnability.v1';
-// 1.7.0 — CERTIFICATION-GAMING-REMEDY M2-2: the provider now attaches an
-// ADDITIVE test-coverage report to every outcome (which test files the sealed
-// tree's canonical set contains vs which the declaration runs, opaque
-// declarations resolved through the sealed package.json). Report only — the
-// outcome semantics are byte-for-byte unchanged. The digest bump re-checks
-// every prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.7.0';
+// 1.7.0 — M2-2: additive test-coverage report (report only, outcomes
+// unchanged).
+// 1.8.0 — D1: the sourceCandidate-keyed receipt invariant. Every real result
+// now carries a subject binding (local-readiness-subject:<candidateHash>:
+// <commitSha>:<treeHash>) and the persisted-receipt replay/conflict lookup is
+// keyed by the candidate BYTES the receipt was produced against — a receipt
+// can neither travel to a different candidate nor be escaped by sealing a new
+// manifest over the same bytes. Outcome semantics per run are unchanged; the
+// digest bump re-checks every prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.8.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -43,4 +46,6 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   subjectPolicy: 'accepted-readiness-manifest-bound-to-exact-integrated-source-v1',
   coverageReportPolicy:
     'additive-x-of-y-sealed-tree-canonical-vs-declared-test-files-report-only-never-enforcing-v1',
+  subjectBindingPolicy:
+    'receipts-bound-to-exact-candidate-bytes-candidatehash-commitsha-treehash-replay-across-manifests-conflict-on-failed-plus-passed-same-bytes-v1',
 });

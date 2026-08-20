@@ -126,7 +126,17 @@ export function createLocalRunnabilityCheckProvider(input: {
       // second (competing) replay authority that overlapped with the durable
       // Gate receipts. The provider only READS receipts; the GateRun driver
       // WRITES them — there is no second store.
-      const replayed = readPersistedReadinessReceipt(input.db, subjectCandidateSetRef);
+      //
+      // D1 — the replay is keyed by the candidate BYTES (see
+      // resolveSubjectBindingRef), not by the manifest's candidate-set ref:
+      // every repair round seals a NEW manifest (new content = new ref), and a
+      // ref-only key let a rewritten declaration manufacture a "new subject"
+      // out of unchanged bytes. DB-only resolution (no git) so a replay works
+      // even when the repository checkout is gone.
+      const subjectBindingRef = resolveSubjectBindingRef(input, subjectCandidateSetRef);
+      const replayed = readPersistedReadinessReceipt(
+        input.db, subjectCandidateSetRef, subjectBindingRef,
+      );
       if (replayed) return replayed;
       let subject;
       try {
@@ -156,9 +166,126 @@ export function createLocalRunnabilityCheckProvider(input: {
           })],
         };
       }
-      return check;
+      // D1 — bind the receipt to the candidate bytes it was produced against.
+      // The binding rides every real (non-replayed) result so the next
+      // round's persisted-receipt lookup can find it across manifest refs.
+      // Appended LAST: existing evidence positions (proof ref, failure
+      // diagnostic, seam issue, coverage report) are unchanged.
+      return typeof check === 'string'
+        ? { outcome: check, evidenceRefs: [subjectBindingRefOf(subject)] }
+        : { outcome: check.outcome, evidenceRefs: [...check.evidenceRefs, subjectBindingRefOf(subject)] };
     },
   };
+}
+
+/** The D1 subject binding ref: local-readiness-subject:<hash>:<commit>:<tree>. */
+function subjectBindingRefOf(subject: CandidateSubject): string {
+  return `local-readiness-subject:${subject.candidateHash}:${subject.commitSha}:${subject.treeHash}`;
+}
+
+/**
+ * D1 — resolve the candidate-bytes binding for a subject candidate-set ref,
+ * DB-ONLY (candidate-set member → readiness manifest → sourceCandidate →
+ * sealed product payload; or the integrated-candidate member directly). No
+ * git access: a persisted receipt must replay even when the repository
+ * checkout is gone. Returns null on any miss — the caller then falls back to
+ * the legacy exact-ref receipt lookup and never fails because of this
+ * pre-pass.
+ */
+function resolveSubjectBindingRef(
+  input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
+  candidateSetRef: string,
+): string | null {
+  try {
+    const set = input.candidateSets.read(candidateSetRef);
+    if (!set || set.role !== 'author') return null;
+    // Path 1 — the readiness-certification subject: a managed readiness
+    // manifest member naming its exact integrated-source candidate.
+    const manifestMember = set.members.find(candidate =>
+      candidate.productRef.schemaId === DEVELOPMENT_READINESS_MANIFEST_SCHEMA
+      && candidate.productRef.ref.startsWith('managed-node-submission:'));
+    if (manifestMember) {
+      const id = Number(
+        manifestMember.productRef.ref.slice('managed-node-submission:'.length),
+      );
+      if (!Number.isSafeInteger(id)) return null;
+      const row = input.db.prepare(
+        `SELECT payload_snapshot FROM factory_managed_node_submissions
+          WHERE id=? AND process_run_id=? AND schema_version=? AND content_hash=?`,
+      ).get(
+        id,
+        set.workplaceRef.processRunId,
+        DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+        manifestMember.productRef.digest,
+      ) as { payload_snapshot: string } | undefined;
+      if (!row) return null;
+      const manifest = JSON.parse(row.payload_snapshot) as {
+        sourceCandidate?: { schema?: unknown; ref?: unknown; hash?: unknown };
+      };
+      const source = manifest.sourceCandidate;
+      if (source?.schema !== INTEGRATED_SOURCE_CANDIDATE_SCHEMA
+          || typeof source.ref !== 'string' || typeof source.hash !== 'string'
+          || !/^[a-f0-9]{64}$/u.test(source.hash)) {
+        return null;
+      }
+      return bindingForProduct(
+        input, set.workplaceRef.processRunId,
+        INTEGRATED_SOURCE_CANDIDATE_SCHEMA, source.ref, source.hash,
+      );
+    }
+    // Path 2 — the legacy subject shape: an integrated-candidate member.
+    const member = set.members.find(
+      candidate => candidate.productRef.schemaId === INTEGRATED_CANDIDATE_SCHEMA,
+    );
+    if (!member) return null;
+    return bindingForProduct(
+      input, set.workplaceRef.processRunId,
+      INTEGRATED_CANDIDATE_SCHEMA, member.productRef.ref, member.productRef.digest,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Read the sealed product's candidate identity and build the binding ref. */
+function bindingForProduct(
+  input: { db: SqlDatabasePort },
+  processRunId: number,
+  schemaId: string,
+  artifactRef: string,
+  productHash: string,
+): string | null {
+  try {
+    const product = input.db.prepare(
+      `SELECT payload_snapshot FROM factory_process_products
+        WHERE process_run_id=? AND schema_id=? AND artifact_ref=? AND product_hash=?`,
+    ).get(processRunId, schemaId, artifactRef, productHash) as
+      { payload_snapshot: string } | undefined;
+    if (!product) return null;
+    const candidate = JSON.parse(product.payload_snapshot) as {
+      candidateHash?: unknown;
+      sourceHash?: unknown;
+      repositories?: Array<{ commitSha?: unknown; treeHash?: unknown }>;
+    };
+    const candidateHash = typeof candidate.candidateHash === 'string'
+      ? candidate.candidateHash
+      : candidate.sourceHash;
+    const repository = Array.isArray(candidate.repositories)
+      ? candidate.repositories[0]
+      : undefined;
+    if (typeof candidateHash !== 'string'
+        || !/^[a-f0-9]{64}$/u.test(candidateHash)
+        || !repository
+        || typeof repository.commitSha !== 'string'
+        || !OBJECT_ID_RE.test(repository.commitSha)
+        || typeof repository.treeHash !== 'string'
+        || !OBJECT_ID_RE.test(repository.treeHash)) {
+      return null;
+    }
+    return `local-readiness-subject:${candidateHash}:${repository.commitSha}:${repository.treeHash}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -172,32 +299,45 @@ export function createLocalRunnabilityCheckProvider(input: {
  * because they represent a subject-resolution or execution failure that may
  * have been transient).
  *
- * The lookup keys on subject_candidate_set_ref + provider_id + provider_digest
- * (the receipt table already indexes subject_candidate_set_ref). Because a
- * sealed CandidateSet is immutable, the same ref always resolves to the same
- * sealed product / git object, so a prior receipt for this ref IS the prior
- * decision for this exact subject. The provider_digest filter ensures a
- * swapped implementation (different digest) does not replay a stale receipt.
+ * D1 — the lookup is ALSO keyed by the candidate BYTES: receipts whose
+ * evidence carries the same subject binding (candidateHash + commitSha +
+ * treeHash) participate in the replay/conflict decision EVEN WHEN they were
+ * recorded under a different manifest's candidate-set ref. Effects:
+ *   - a receipt for the same bytes replays across manifest rounds (a rewritten
+ *     declaration cannot manufacture a "new subject" out of unchanged bytes —
+ *     the round-4 gaming manifest hits the round-1 failed receipt);
+ *   - same bytes + previously failed + now passed — with zero tracked-file
+ *     diff, which the identical commit/tree in the binding PROVES — is a
+ *     structurally impossible honest outcome and fails closed with the typed
+ *     READINESS_RECEIPT_CANDIDATE_CONFLICT.
+ * The exact-ref matches keep the legacy LR-06 semantics (replay of receipts
+ * recorded for this exact ref, including pre-binding test-seeded rows); the
+ * provider_digest filter ensures a swapped implementation (different digest)
+ * does not replay a stale receipt.
  */
 function readPersistedReadinessReceipt(
   db: SqlDatabasePort,
   subjectCandidateSetRef: string,
+  subjectBindingRef: string | null,
 ): CheckProviderResult | null {
   let rows;
   try {
     rows = db.prepare(
-      `SELECT outcome, evidence_refs
+      `SELECT outcome, evidence_refs, subject_candidate_set_ref
          FROM factory_check_receipts
-        WHERE subject_candidate_set_ref=?
-          AND provider_id=?
+        WHERE provider_id=?
           AND provider_digest=?
           AND outcome IN ('passed','failed')
+          AND (subject_candidate_set_ref=?
+               OR (? <> '' AND instr(evidence_refs, ?) > 0))
         ORDER BY check_receipt_ref`,
     ).all(
-      subjectCandidateSetRef,
       LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
       LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
-    ) as Array<{ outcome: string; evidence_refs: string }>;
+      subjectCandidateSetRef,
+      subjectBindingRef ?? '',
+      subjectBindingRef ?? '',
+    ) as Array<{ outcome: string; evidence_refs: string; subject_candidate_set_ref: string }>;
   } catch {
     // The table is absent (e.g. a minimal in-memory test schema that did not
     // create the Gate receipt substrate). In production the table always exists
@@ -206,6 +346,29 @@ function readPersistedReadinessReceipt(
     return null;
   }
   if (rows.length === 0) return null;
+  // D1 — the impossible-outcome invariant over the receipts that are bound to
+  // these exact bytes.
+  if (subjectBindingRef !== null) {
+    const bindingOutcomes = new Set(
+      rows
+        .filter(row => row.evidence_refs.includes(subjectBindingRef))
+        .map(row => row.outcome),
+    );
+    if (bindingOutcomes.has('failed') && bindingOutcomes.has('passed')) {
+      return {
+        outcome: 'failed',
+        evidenceRefs: [encodeCheckDiagnostic({
+          code: 'READINESS_RECEIPT_CANDIDATE_CONFLICT',
+          message: `Conflicting durable outcomes for the same source candidate bytes (subject binding ${subjectBindingRef}): `
+            + 'a failed receipt and a passed receipt both bind these exact bytes. '
+            + 'Same bytes + previously failed + now passed with zero tracked-file diff '
+            + '(the identical commit and tree in the binding prove the zero diff) is a '
+            + 'structurally impossible honest outcome — failing closed. Repair the '
+            + 'failing cause in the candidate; do not rewrite the readiness declaration.',
+        })],
+      };
+    }
+  }
   const canonical = new Set(rows.map(row => JSON.stringify({
     outcome: row.outcome,
     evidenceRefs: JSON.parse(row.evidence_refs) as string[],
@@ -253,11 +416,12 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // any real policy change (category/determinism/status tampering).
     // 1.1 added opt-in Docker; 1.2 sealed the manifest-bound subject policy;
     // 1.5 the sealed manifest-bound subject policy; 1.6 added the compose
-    // verification step and typed seam repair-issue emission. 1.7 adds the
-    // M2-2 ADDITIVE test-coverage report (evidence-only; outcomes unchanged).
+    // verification step and typed seam repair-issue emission; 1.7 the M2-2
+    // ADDITIVE test-coverage report. 1.8 adds the D1 sourceCandidate-keyed
+    // receipt binding (evidence append + bytes-keyed replay/conflict lookup).
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
