@@ -1,4 +1,4 @@
-# Conveyor Mental Model — Saga4 (Version 5.2)
+# Conveyor Mental Model — Saga4 (Version 5.3)
 
 This document is the architectural compass for the Saga conveyor. It is the
 plain-language interpretation of the formal CGAD invariants and must be used to
@@ -1433,6 +1433,52 @@ And:
 
 If either answer is no, worker/run implementation details have leaked into
 factory physics.
+
+---
+
+## 30. Frozen predictions, satisfiability, and fences (stage-13 invariants)
+
+Four invariants govern every authority the factory freezes and every fence
+it enforces. They are deliberately stated domain-free: a reader who has
+never seen this system's runs must be able to apply them to a plant that
+builds anything at all. A rule that only makes sense to an eyewitness is a
+diary entry, not a rule.
+
+1. **A frozen prediction is not an authority.** Anything frozen before the
+   fact and enforced afterward — a scope of paths, a declared environment,
+   a declared check set — is a guess about work not yet performed, and a
+   guess cannot obligate reality. For every frozen prediction the factory
+   does exactly one of two things: it derives the freeze from fact (from
+   the order, from the artefact, from observation), or it makes revising
+   the freeze a first-class transition with its own recorded authority.
+   "Predict better" is not a third option: a better guess is still a guess
+   and fails the same way, later.
+
+2. **Acceptance criteria are derived from the order, never from the
+   candidate.** The standard that judges work must come from what was
+   ordered. The moment any part of acceptance is supplied by the thing
+   being judged, judge and judged are the same party and every downstream
+   verdict is negotiable.
+
+3. **Obligations the factory issues from different authorities must be
+   jointly satisfiable, and the factory owns proving it — or owns a lawful
+   path out of the contradiction.** Two individually correct obligations
+   can still describe an impossible world: "produce this artefact" and
+   "never touch the place this artefact lives" are each defensible and
+   together unsatisfiable. A conveyor of individually-correct gates that
+   admits no possible world is the factory's defect, not the worker's;
+   neither the satisfiability proof nor the lawful exit can be delegated
+   to the worker.
+
+4. **A fence decides contention, never necessity.** A fence may answer
+   "is this resource claimed by another live worker?" — a question that is
+   decidable, always, in any domain. A fence may not answer "does this
+   work truly need this resource?" — a question that has no answer before
+   the work exists. A fence asked the second question will eventually
+   block exactly the progress it exists to protect.
+
+Any newly proposed mechanism, gate, or frozen declaration is tested
+against these four before any run exercises it.
 
 ---
 
