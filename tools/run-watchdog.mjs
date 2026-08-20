@@ -97,7 +97,7 @@ function sampleDatabase(dbPath, journalPath) {
       `SELECT event_kind, COUNT(*) AS n FROM factory_scope_widening_events GROUP BY event_kind`).map(r => [r.event_kind, r.n]));
     const launch = getTolerant(db,
       `SELECT launch_ref, state, engine_pid, engine_log_path, engine_spawned_at
-         FROM factory_launch_requests ORDER BY id DESC LIMIT 1`);
+         FROM factory_launch_requests ORDER BY rowid DESC LIMIT 1`);
     const controls = getTolerant(db,
       `SELECT engine_state, engine_pid FROM lifecycle_execution_controls ORDER BY rowid DESC LIMIT 1`);
     return { lifecycle, stages, workplaces, tasks, gates, widening, launch, controls };
