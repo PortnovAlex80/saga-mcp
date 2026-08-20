@@ -600,3 +600,12 @@ first; any E9-reserve code is escalate-never-delete.
   finished list). NIGHT SHIFT COMPLETE. Handoff to morning: architect reads
   the night report + arbitrates the two run defects; operator decides the
   engine's fate (left running under its own caps, no process touches).
+- **09:0x (main) — PROCESS SLIP, recorded**: the final commit's
+  `git add -A docs/` swept three of the operator's uncommitted doc edits
+  (docs/INSTALL.md, docs/design/FACTORY-CHECKPOINT-AND-TEST-PROFILES.md,
+  deletion of docs/FACTORY-START-QUICKSTART.md) into `24bc7634` alongside
+  the night's files — content intact, but provenance mixed. Root-level
+  operator files (CLAUDE.md, DRAGON-*, README.md, ЗАВОД-ЗАПУСК.md) remain
+  uncommitted and untouched. Offer to the operator: split the commit into
+  one operator-docs commit + one night commit (single force-push), or leave
+  history as-is with this note as the record.
