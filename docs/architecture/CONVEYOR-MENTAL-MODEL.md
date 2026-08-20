@@ -1163,6 +1163,20 @@ The layers test different theorems and none substitutes for the next:
 | L3 Temporal composition | the **canonical production composition** schedules every required synchronization edge | scripted workers, real orchestrator/dispatcher/gates, durable temporal trace |
 | L4 Fault schedule | every crash/interleaving converges to progress, typed wait or terminal incident | process kill and fault injection before/after durable boundaries |
 | L5 Product E2E | a new Project traverses the installed lifecycle and produces the intended product | zero-token scripted run, then optional monitored real-model canary |
+| **S — Satisfiability** | **a state exists satisfying ALL simultaneously enforced constraints** | conjunction decision over installed check plans: decidable instances decided mechanically (containment-with-widening, monotonicity, derivation coverage) and semantic obligations honestly marked open |
+
+The S rung is named by KIND OF QUESTION, not scope of execution — L0–L5 each
+prove a layer correct; S asks whether the layers' obligations, taken
+together, describe a possible world at all. A conveyor of
+individually-correct gates can still admit no possible world (the stage-12
+deadlock: review demanded an artefact class the scope fence forbade — each
+verdict defensible, the conjunction unsatisfiable, and the conjunction was
+nobody's unit). Every check provider installed in a lifecycle plan carries a
+satisfiability classification — decidable with its named procedure or lawful
+exit, or honestly open — and an unclassified gate fails the rung before any
+run discovers the impossible world the hard way. Where the general form is
+undecidable, the decidable instance is delivered and said so: a weaker
+property that holds beats a stronger one that guesses.
 
 The historically missing layer was L3/L4. Existing fake executors often changed
 host status and durable execution state simultaneously, eliminating the real

@@ -251,6 +251,22 @@ export class SqliteScopeWideningLedger {
     return [...holders.values()].sort((a, b) => a.workplaceRef.localeCompare(b.workplaceRef));
   }
 
+  /** Read one request row by its exact id (decision input). */
+  private readRequestById(id: number): ScopeWideningRequestRow {
+    const row = this.readTolerant<ScopeWideningRequestRow | undefined>(
+      `SELECT id, event_kind, workplace_ref, task_id, role, source,
+              requested_scopes, surviving_keys, requested_by_execution
+         FROM factory_scope_widening_events
+        WHERE event_kind='request' AND id=?`,
+      [id],
+      undefined,
+    );
+    if (!row) {
+      throw new Error(`SCOPE_WIDENING_REQUEST_MISSING: ${id}`);
+    }
+    return row;
+  }
+
   /**
    * Decide and append the decision row (grant or refusal) for a request.
    * The grant's full frozen set = the task's current effective scopes union
@@ -258,11 +274,22 @@ export class SqliteScopeWideningLedger {
    */
   decide(input: {
     readonly request: Pick<ScopeWideningRequestRow,
-      'id' | 'workplace_ref' | 'task_id' | 'role' | 'source' | 'requested_scopes'>;
+      'id' | 'workplace_ref'> & Partial<Pick<ScopeWideningRequestRow,
+      'task_id' | 'role' | 'source' | 'requested_scopes'>>;
   }): ScopeWideningDecision {
-    const requested = parseStringArray(input.request.requested_scopes);
+    // The full row is re-read by id when the caller passed a partial — the
+    // decision must be made against the recorded request, never a re-stated
+    // copy of it.
+    const stated = input.request;
+    const request: ScopeWideningRequestRow = (typeof stated.task_id === 'number'
+      && typeof stated.role === 'string'
+      && typeof stated.source === 'string'
+      && typeof stated.requested_scopes === 'string')
+      ? stated as ScopeWideningRequestRow
+      : this.readRequestById(stated.id);
+    const requested = parseStringArray(request.requested_scopes);
     const holders = this.findLiveContentionHolders({
-      requesterWorkplaceRef: input.request.workplace_ref,
+      requesterWorkplaceRef: request.workplace_ref,
       requestedScopes: requested,
     });
     if (holders.length > 0) {
@@ -272,26 +299,26 @@ export class SqliteScopeWideningLedger {
             request_event_id, holders)
          VALUES ('refusal', ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
-        input.request.workplace_ref,
-        input.request.task_id,
-        input.request.role,
-        input.request.source,
-        input.request.requested_scopes,
-        input.request.id,
+        request.workplace_ref,
+        request.task_id,
+        request.role,
+        request.source,
+        request.requested_scopes,
+        request.id,
         JSON.stringify(holders),
       );
-      return { requestEventId: input.request.id, granted: false, holders };
+      return { requestEventId: request.id, granted: false, holders };
     }
     const effective = this.readEffectiveChangeScopes(
-      input.request.task_id,
-      this.readOriginalScopes(input.request.task_id),
+      request.task_id,
+      this.readOriginalScopes(request.task_id),
     );
     const grantedScopes = [...new Set([...effective, ...requested])].sort();
     const priorRevision = this.readTolerant<{ n: number }>(
       `SELECT COALESCE(MAX(granted_revision), 0) AS n
          FROM factory_scope_widening_events
         WHERE task_id=? AND event_kind='grant'`,
-      [input.request.task_id],
+      [request.task_id],
       { n: 0 },
     );
     const revision = priorRevision.n + 1;
@@ -302,17 +329,17 @@ export class SqliteScopeWideningLedger {
           request_event_id, granted_revision, granted_scopes)
        VALUES ('grant', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      input.request.workplace_ref,
-      input.request.task_id,
-      input.request.role,
-      input.request.source,
-      input.request.requested_scopes,
-      input.request.id,
+      request.workplace_ref,
+      request.task_id,
+      request.role,
+      request.source,
+      request.requested_scopes,
+      request.id,
       revision,
       JSON.stringify(grantedScopes),
     );
     return {
-      requestEventId: input.request.id,
+      requestEventId: request.id,
       granted: true,
       holders: [],
       grantedRevision: revision,
