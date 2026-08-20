@@ -3,7 +3,7 @@
  * monotonic ratchet, pure decision.
  *
  * Re-plan wins when ONE non-converging cross-seam defect exists (the repair
- * is impossible, not slow — REPLAN-CYCLE-DESIGN.md economics). Two rules keep
+ * is impossible, not slow — REPLAN-CYCLE-TZ.md economics). Two rules keep
  * the mechanism from becoming an eternal loop:
  *
  *   CAP     — at most {@link REPLAN_CYCLE_CAP} re-plan cycles per case

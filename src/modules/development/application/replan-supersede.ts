@@ -6,7 +6,7 @@
  * is a NEW process run, so the new graph mint cannot conflict. What MUST NOT
  * happen is the old run's un-raised workplaces waking up beside cycle 2:
  * zero active cycle-1 workers before the continuation starts (the five
- * architects' verdict — REPLAN-CYCLE-DESIGN.md, graph lifecycle).
+ * architects' verdict — REPLAN-CYCLE-TZ.md, graph lifecycle).
  *
  * The drain is honest and one-directional:
  *   - remaining tasks (not yet terminal) get metadata.$.superseded_by =
