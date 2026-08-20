@@ -28,6 +28,7 @@
 // The library surface (validateManifest, scaffoldPackage, runConformanceCorpus)
 // is exported for the kit's own test suite (validator.test.mjs).
 
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, cpSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -49,7 +50,7 @@ const canonicalDefinitionValidatorPath = requireFromRepo.resolve(
   './dist/process-modules/application/validate-process-module.js',
 );
 
-const { validateProcessModuleManifest } = await import(
+const { validateProcessModuleManifest, PENDING_DIGEST } = await import(
   pathToFileURL(canonicalManifestValidatorPath).href
 );
 const { validateProcessModuleDefinition } = await import(
@@ -333,6 +334,26 @@ export function scaffoldPackage(nodeKind, outDir, vars) {
   for (const f of copied) {
     substituteInFile(f, resolved);
     files.push(path.relative(outDir, f));
+  }
+  // K3 follow-up (stage-18 baseline repair): a handlerRef IS the pin of the
+  // executable implementation — the kernel validator rightly rejects the
+  // authoring placeholder on handlers (HANDLER_DIGEST_PENDING, since
+  // de9b2f88). The scaffold therefore stamps the REAL digest at scaffold
+  // time: sha256 over the raw bytes of the SUBSTITUTED definition.mjs — the
+  // exact implementation file the package ships (the same raw-bytes formula
+  // as the kernel's handlerImplementationDigest). Resources keep the
+  // placeholder: the installer stamps real bytes at install (Step 3.5).
+  const manifestPath = path.join(outDir, 'manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const handlerRefs = manifest.handlerRefs ?? [];
+  if (handlerRefs.some(h => h.digest === PENDING_DIGEST)) {
+    const implDigest = createHash('sha256')
+      .update(readFileSync(path.join(outDir, 'definition.mjs')))
+      .digest('hex');
+    for (const h of handlerRefs) {
+      if (h.digest === PENDING_DIGEST) h.digest = implDigest;
+    }
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   }
   return { outDir, kind: nodeKind, filesWritten: files.sort() };
 }
