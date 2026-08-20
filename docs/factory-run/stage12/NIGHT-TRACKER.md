@@ -407,3 +407,7 @@ first; any E9-reserve code is escalate-never-delete.
 - **03:0x (cron)** — STEP 2 LANDED: `3d814347` (M1-a monotonicity ratchet +
   D2 declaration-diff escalation → human_required, never silent retry).
   Step 3 (sourceCandidate-keyed receipts) next — the last launch gate.
+- **03:1x (cron)** — STEP 3 LANDED: `7c29c6d6` (D1 sourceCandidate-keyed
+  receipt invariant — a receipt is bound to the candidate bytes). ALL THREE
+  LAUNCH GATES DOWN. Awaiting the agent's RED-replay result + final counts,
+  then main verification → pre-flight → LAUNCH.
