@@ -104,18 +104,21 @@ blocking acceptance matrix.
 
 ---
 
-## Brief W0-2 — Независимый Normative Obligation Registry
+## Brief W0-2 — Компилятор Acceptance Obligation Contracts
 
 ### Цель
 
-Создать независимую норму «что Factory обязан защищать» и доказать set-equality
-с реально установленными protections.
+Создать независимую машинно-читаемую норму «что Factory обязан защищать»,
+автоматически вывести из неё конечные семейства мутантов и доказать set-equality
+с реально установленными protections. Не создавать вручную поддерживаемую
+копию Gate-ов и не требовать от человека писать negative fixtures по одному.
 
 ### Сделать
 
-1. Добавить вручную поддерживаемый test-side registry, например
-   `tests/factory-proof/normative-obligations.mjs`.
-2. Минимальная запись:
+1. Добавить test-side schema и compiler для `AcceptanceObligationContract`.
+   Контракт является нормативным источником и не импортирует validator,
+   CheckProvider или installed CheckPlan, который будет проверять.
+2. Минимальная запись контракта:
 
 ```js
 {
@@ -123,40 +126,68 @@ blocking acceptance matrix.
   sourceRefs,              // REG/PROC/ADR/failure-axis
   subjectKind,
   protectedProperty,
+  constraints: [
+    // cardinality, unique, grammar, ref, digestOf, equality, subset,
+    // projection, lineage, ordering, version, crossField
+  ],
   expectedProtection: { moduleRef, nodeRef, role, checkId, providerRef },
   faultClasses,
+  mutationProfile: { structural: true, relational: true, semanticProfileRef: null },
   requiredCorpus: { positive, negative, repair, ignoredFeedback },
   allowedTerminalKinds
 }
 ```
 
-3. Отдельный installed-protection reader получает фактические module manifests,
+3. Реализовать одну общую mutation algebra. Она автоматически компилирует:
+   - из JSON/tool schema: missing required, wrong type/enum/bounds, empty,
+     malformed, unknown field и incompatible version;
+   - из constraints: zero/below/above cardinality, duplicate, malformed/truncated
+     grammar, missing/foreign/stale/cross-run ref, wrong-object digest,
+     missing/extra/substituted member, empty/ambiguous projection, broken lineage,
+     order и cross-field mismatch.
+4. Генератор создаёт `MutantCase` с точным `obligationId`, `operatorId`,
+   нарушенным constraint, seed digest и ожидаемой authorized rejection boundary.
+   Он не копирует ожидаемый ответ из production validator.
+5. Отдельный installed-protection reader получает фактические module manifests,
    CheckPlans, schemas, providers, effects и routes через production public
-   declarations. Он не читает normative registry.
-4. Сравнить exact sets:
+   declarations. Он не читает obligation compiler output при построении
+   installed set.
+6. Сравнить exact sets:
    - нормативное обязательство без protection — fail;
    - protection без нормы — fail/unclassified installation;
    - дублирующий/неоднозначный owner — fail;
-   - corpus ref без fixture — fail.
-5. Для каждого obligation зарегистрировать минимум один mutation operator,
-   который его назначенный detector обязан убить.
-6. Ввести явные oracle classes:
+   - obligation без сгенерированного mutant family — fail;
+   - required causal corpus class без representative scenario — fail.
+7. Построить kill matrix
+   `obligation × operator × assigned detector × observed outcome`.
+   Нарушающий обязательство мутант не обязан падать на intake, но не может
+   достичь acceptance: допустимы только typed rejection, `repair_required` или
+   declared typed wait/terminal.
+8. Ввести явные oracle classes:
    `mechanical | semantic-adjudicated | harvested`. Harvested acceptance не
    является положительной истиной без независимой разметки.
 
 ### Независимость
 
-- `sourceRefs`, expected protection и expected outcome задаются вручную из
-  нормативных документов.
+- Человек или архитектурный агент один раз объявляет защищаемое свойство и
+  constraints при создании/миграции ProductContract или Gate. Он не пишет
+  отдельные negative fixtures и mutation cases.
+- Obligation contracts версионируются независимо от validator implementation.
 - Installed reader может обнаружить реализацию, но не генерирует ожидание.
 - Durable trace проверяется третьим компонентом в следующих briefs.
+- Семантически бесконечное пространство не объявляется исчерпанным: обязательна
+  только полнота относительно объявленного конечного constraint/fault model.
 
 ### Приёмка
 
 - Удаление одного installed check из копии manifest делает тест красным.
 - Удаление obligation из installed surface не удаляет норму автоматически.
 - Новый CheckPlan entry ломает set-equality до явной классификации.
-- Registry не импортируется production runtime и ничего не пишет в БД.
+- Один declarative `cardinality(min:1)` автоматически порождает zero-member
+  mutant; `unique(by:criterionCode)` — duplicate-code mutant; `grammar` —
+  malformed/truncated/near-miss family.
+- Принятый мутант делает suite красным и показывает obligation/operator/detector.
+- Compiler не импортируется production runtime и ничего не пишет в БД.
 
 ---
 
@@ -171,7 +202,8 @@ blocking acceptance matrix.
 1. Реализовать runtime validator для `CausalFaultScenario` из стратегии:
    fault class, oracle class, injection boundary, assumptions, detector,
    diagnosability, owner, frontier, preserved prefix, invalidation cone,
-   budget, repair fixture и independent facts.
+   budget, repair fixture и independent facts. Для generated mutation добавить
+   `obligationId`, `mutantId`, `operatorId`, `violatedConstraint` и seed digest.
 2. Создать read-only durable trace observer. Он читает реальные:
    WorkIntent, ProductRef, CandidateSet, CheckReceipt, GateDecision,
    RecoveryIssue, effect/transition receipts и lifecycle outcomes.
@@ -191,6 +223,10 @@ blocking acceptance matrix.
 8. Progress oracle после fair drain обязан классифицировать каждый nonterminal:
    runnable owner, due transition, typed wait или typed terminal. Иначе fail как
    anonymous stall.
+9. Полная mutation conformance выполняется дёшево на реальной Gate/validator
+   границе. Полный causal loop выполняется минимум для одного автоматически
+   выбранного representative каждого эквивалентного класса outcome/frontier,
+   а не для каждой комбинации полей.
 
 ### Приёмка
 
@@ -212,11 +248,15 @@ blocking acceptance matrix.
 
 1. Добавить `factory-proof` group в `tools/run-acceptance-matrix.mjs` только
    после зелёных W0-1..W0-3.
-2. Включить registry set-equality, DSL validation, actual-composition allowlist,
-   actor counterfactual self-test и progress oracle.
+2. Включить obligation-contract compilation, installed-protection set-equality,
+   mutation kill matrix, DSL validation, actual-composition allowlist, actor
+   counterfactual self-test и progress oracle.
 3. Не помещать новый group в quarantine и не использовать `continue-on-error`.
 4. Coverage self-test обязан видеть новый group и его файлы.
 5. Добавить mutation tests:
+   - удалить obligation contract;
+   - принять generated mutant;
+   - отключить один mutation operator;
    - удалить protection;
    - изменить provider/version/check id;
    - actor тайно смотрит attempt number;
@@ -228,7 +268,8 @@ blocking acceptance matrix.
 ### Приёмка
 
 - CI-команда `--group factory-proof` запускает ненулевой exact file set.
-- Каждая из пяти мутаций делает suite красным.
+- Каждая self-mutation proof-kernel делает suite красным.
+- В отчёте есть ненулевая kill matrix; ни один mutant не достиг acceptance.
 - Quarantine не вырос.
 
 ---
@@ -356,21 +397,45 @@ providers + effects, а не stage-executor stub или vacuous zero-action asse
 
 ### Цель
 
-Для каждого installed Gate/CheckPlan entry закрыть семейство, заданное
-пользовательской целью, и доказать recovery completeness конечной fault model.
+Для каждого installed Gate/CheckPlan entry автоматически скомпилировать
+пространство неправильности из его Acceptance Obligation Contracts и доказать
+recovery completeness объявленной конечной fault model. Ручной список мусора
+и ручной negative fixture на каждый Gate не являются допустимой архитектурой.
 
-### Для каждого entry
+### Mutation conformance для каждого entry
+
+1. Получить или построить минимальный valid witness, независимо проверить его
+   obligations и не считать прежний production acceptance доказательством.
+2. Сгенерировать structural mutant family из schema/tool contract.
+3. Сгенерировать relational mutant family из constraint DSL.
+4. Подключить версионированный semantic/metamorphic profile там, где свойство
+   нельзя выразить структурным constraint; curated fixtures необязательны и не
+   являются ручной основой покрытия.
+5. Прогнать все mutants через настоящую authorized boundary и записать kill
+   matrix. Ни один нарушающий obligation mutant не может достичь acceptance.
+6. Принятый mutant — blocking failure с триажем: либо неверна декларация нормы,
+   либо найден production defect. До явного решения suite остаётся красным.
+
+### Causal representative family
+
+Для каждого эквивалентного класса `{detector, reason, owner, frontier}` compiler
+выбирает representative и проводит полный путь:
 
 1. valid product;
-2. structurally invalid JSON/tool payload;
-3. contract-valid defective product;
-4. exact expected detector/receipt/reason/evidence;
-5. exact feedback в следующем worker input;
-6. repaired immutable revision;
-7. repeated successful acceptance;
-8. ignored/no-op repair до bounded typed wait/terminal;
-9. stale/corrupted feedback counterfactual;
-10. mutation operator, который assigned protection обязан убить.
+2. generated defective product;
+3. exact expected detector/receipt/reason/evidence;
+4. exact feedback в следующем worker input;
+5. repaired immutable revision;
+6. repeated successful acceptance;
+7. ignored/no-op repair до bounded typed wait/terminal;
+8. absent/stale/corrupted feedback counterfactual.
+
+Обязательный первый relational family Formalization:
+
+- `atomicCriteria cardinality(min:1)` → zero-criteria bundle;
+- `criterionCode unique` → duplicate codes;
+- heading grammar → malformed, truncated и near-miss headings;
+- accepted container без точного atomic anchor → empty/ambiguous projection.
 
 ### Causal assertions
 
@@ -400,7 +465,9 @@ typed boundary. Отдельное persisted recovery redesign выноситс�
 ```text
 normative obligations
   = installed protection declarations
-  = covered positive/negative/repair/ignored-feedback families
+  = compiled non-empty mutant families
+  = mutation kill matrix without accepted violations
+  = covered causal representative repair/ignored-feedback families
 
 emitted repair_required/failed/human_required reason classes
   = registered routes or explicit unclassified typed terminals
@@ -411,12 +478,54 @@ nonterminal scope после fair drain/budget.
 
 ---
 
+## Definition of Done — остановка архитектурного рефакторинга
+
+Эта программа не является бесконечной. Архитектурный рефакторинг объявляется
+завершённым, когда одновременно выполнены следующие условия:
+
+1. Архитектурно приняты W0-1…W0-4.
+2. Закрыты P0 proofs W1-1…W1-4 через canonical production composition.
+3. На свежей БД проходит scripted happy E2E без ручных authority-записей.
+4. На свежей БД проходит scripted repair E2E: дефект → detector → exact feedback
+   → причинный владелец → новая immutable revision → повторная acceptance.
+5. Затем проходят два узких real-model canary через opencode, Docker,
+   concurrency `1` и production composition:
+   - happy canary до заявленного terminal без оператора;
+   - repair canary с заранее внесённым исправимым дефектом до acceptance без
+     SQL-правок, `unpark`, подмены результата или скрытого resume.
+6. Durable trace обоих canary сохраняет точную authority-цепочку:
+   `WorkIntent → ProductRef → ProductionRevision → CandidateSet → GateDecision
+   → effect/final receipt → terminal`.
+7. После fair drain нет `DEFERRED`, ownerless nonterminal, material selection по
+   latest/task/execution, ручного восстановления и расхождения terminal label с
+   independently observed product.
+
+До canary допускается максимум две итерации исправлений, найденных scripted E2E.
+После выполнения Definition of Done единичный новый дефект не открывает новый
+архитектурный цикл автоматически:
+
+- implementation defect → обычный локальный `fix`;
+- отсутствующий класс объявленной fault model → новый obligation/constraint;
+- слабость конкретной LLM → prompt/model/eval;
+- новый нарушенный authority invariant → отдельный ADR.
+
+W1-5 продолжается как систематическое расширение mutation coverage и не блокирует
+первую эксплуатацию после P0 и двух canary. Он блокирует заявление о полной
+recovery-completeness всех Gate families, но не возвращает проект в бесконечный
+архитектурный refactor.
+
+Короткий критерий: Factory без человека производит и принимает простой продукт,
+а затем без человека обнаруживает, объясняет и исправляет один реальный дефект,
+сохраняя exact authority и завершаясь в пределах бюджета.
+
+---
+
 ## Порядок передачи рабочей лошадке
 
 Строго последовательно:
 
 1. W0-1 — canonical composition.
-2. W0-2 — independent obligation registry.
+2. W0-2 — obligation-contract compiler и mutation algebra.
 3. W0-3 — DSL/observer/actor.
 4. W0-4 — blocking group.
 5. W1-1 — первый causal vertical slice.

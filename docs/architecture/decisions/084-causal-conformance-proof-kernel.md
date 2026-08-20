@@ -68,8 +68,8 @@ a schema/cutover and risks laundering an ambiguous diagnosis into authority.
 
 ### Option C — causal conformance proof kernel first
 
-Extend the existing graph strategy with an independent normative obligation
-registry, a test-side scenario/trace vocabulary, feedback-counterfactual
+Extend the existing graph strategy with independent machine-readable acceptance
+obligation contracts, a compiled mutation algebra, a test-side scenario/trace vocabulary, feedback-counterfactual
 scripted actors, and explicit recovery-completeness criteria. Fix the active
 derived-evidence boundary without adding a new persisted recovery authority.
 Use proof results to decide later which recovery frontier/invalidation facts
@@ -95,9 +95,9 @@ correctness for this subsystem.
 Assumption: Option C was implemented and failed six months later.
 
 1. **Circular oracle** — likelihood: high; detectable by deleting an installed
-   gate and observing that coverage stays green. Mitigation: normative
-   obligations are maintained independently; require set equality and a
-   mutation killed by each assigned gate.
+   gate and observing that coverage stays green. Mitigation: versioned acceptance
+   obligation contracts are independent of validator implementations; require
+   set equality and a compiled mutation family killed by each assigned gate.
 2. **Omniscient scripted workers** — likelihood: high; detectable when the
    repair succeeds with feedback removed. Mitigation: actors see only real
    WorkIntent/desk/tool feedback; require exact-feedback vs stale/absent
@@ -161,13 +161,17 @@ source of expected truth.
 
 Every proof reconciles three sources:
 
-1. normative obligation registry (`REG`/`PROC`/ADR/failure-axis references);
+1. compiled normative obligations from versioned acceptance obligation contracts
+   (`REG`/`PROC`/ADR/failure-axis references), never from validator code;
 2. installed nodes/contracts/checks/providers/effects/routes;
 3. independently observed durable trace and external-world facts.
 
 Coverage is set equality plus executed receipts, not a hand-written `TRACED`
-label. Each deterministic obligation has at least one negative mutation that
-its assigned protection must reject.
+label. A reusable mutation algebra derives structural mutants from schemas and
+relational mutants from obligation constraints. Every violating mutant must be
+killed by its assigned protection before acceptance. Full causal repair runs use
+one representative per equivalent `{detector, reason, owner, frontier}` class;
+they do not multiply full Factory runs by every field combination.
 
 ### Scripted actor contract
 
@@ -220,10 +224,12 @@ silently guessed.
 
 **Negative:**
 
-- The normative obligation registry is intentionally independent and must be
-  maintained.
-- Scenario authors must provide counterfactual and mutation cases, not only a
-  happy repair.
+- Acceptance obligation contracts are intentionally independent and must be
+  versioned, but humans do not maintain per-Gate negative fixture lists.
+- The compiler and mutation algebra are shared proof infrastructure; semantic
+  completeness remains relative to the declared finite constraint/fault model.
+- Scenario authors must provide feedback counterfactuals for representative
+  causal classes, not hand-author every mechanical mutant.
 - Universal automated cross-stage recovery remains open until lineage,
   diagnosability and invalidation proofs justify a production schema.
 
@@ -248,8 +254,8 @@ derived-evidence rule before adding a universal production recovery registry.
 **Ex-ante expectations — IF this decision was right, I expect:**
 
 - In 30 days: every new installed deterministic gate/check names at least one
-  normative obligation and has positive, negative and repair coverage; removal
-  of the gate turns the blocking matrix red.
+  acceptance obligation whose compiler emits a non-empty mutant family; removal
+  of the gate or acceptance of a mutant turns the blocking matrix red.
 - In 90 days: known repair regressions produce a minimized causal trace showing
   exact subject, detector, issue, owner and frontier; no test-only reducer has
   been introduced.
@@ -259,11 +265,29 @@ derived-evidence rule before adding a universal production recovery registry.
 **Check trigger:** a new gate/provider/effect is installed, a repair reaches the
 wrong owner, or a shape-valid caller-derived value reaches accepted authority.
 
-**What would change my mind:** if independent obligations cannot be maintained
-without duplicating the complete production domain, replace the registry with a
-smaller externally curated contract corpus; if cross-stage faults cannot be
-diagnosed from existing lineage, add explicit production provenance before
-attempting automatic invalidation.
+**What would change my mind:** if the constraint DSL cannot express a material
+class of deterministic obligations without duplicating validator implementation,
+add a new independent oracle kind instead of hand-writing per-Gate fixtures; if
+cross-stage faults cannot be diagnosed from existing lineage, add explicit
+production provenance before attempting automatic invalidation.
+
+## Amendment — 2026-08-20: compiled obligations and finite finish line
+
+The original phrase “manually maintained normative registry” does not scale and
+would recreate documentation drift. The normative source is now a versioned,
+machine-readable `AcceptanceObligationContract`. A proof compiler derives the
+registry, structural/relational mutant families, set-equality expectations and a
+kill matrix. Humans or architectural agents declare a protected property once;
+they do not author every invalid fixture. Curated semantic examples remain an
+optional independent oracle, not the mechanical coverage foundation.
+
+The architectural refactor also gains an explicit finish condition. After W0,
+P0 W1-1…W1-4, fresh scripted happy/repair E2E, and two real-model canaries
+(happy and feedback-driven repair) preserve exact authority and terminate within
+budget without operator mutation, the refactor is closed. Subsequent local bugs
+are fixes, missing declared fault classes extend obligation contracts, and model
+quality belongs to evals. A new architecture cycle requires evidence of a broken
+authority invariant, not merely one failed production run.
 
 ## References
 

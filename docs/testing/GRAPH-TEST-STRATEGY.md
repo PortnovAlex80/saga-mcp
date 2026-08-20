@@ -119,19 +119,43 @@ root cause по тексту ошибки.
 
 Чтобы тест не доказывал сам себя, сравниваются три независимых источника:
 
-1. **Normative Obligation Registry** — ручной машиночитаемый реестр того, что
-   завод обязан защищать (REG/PROC/ADR/failure-axis references).
+1. **Acceptance Obligation Contracts** — независимые machine-readable
+   декларации защищаемых свойств (REG/PROC/ADR/failure-axis references), из
+   которых compiler строит normative registry и mutation families. Человек не
+   пишет отдельные negative fixtures для каждого Gate.
 2. **Installed protection** — фактически установленные nodes, schemas,
    CheckPlans, providers, effects, routes и recovery policies.
 3. **Observed trace** — реально полученные SQLite-факты, ProductRefs,
    CheckReceipts, GateDecisions, RecoveryIssues, effect/transition receipts и
    независимые наблюдения filesystem/Git/Docker.
 
-Норма не генерируется из production declarations. Иначе удалённый гейт исчезнет
-одновременно из реализации и ожидаемого теста. Обязательны set-equality
-`normative obligations ↔ installed protection`, фактический trace и mutation
-score: для каждого обязательства существует дефект, который назначенный гейт
-обязан убить.
+Норма не генерируется из validator implementation или installed CheckPlan.
+Иначе удалённый гейт исчезнет одновременно из реализации и ожидаемого теста.
+Она объявляется один раз как часть versioned acceptance contract. Обязательны
+set-equality `compiled normative obligations ↔ installed protection`,
+фактический trace и mutation kill matrix: для каждого constraint compiler
+порождает дефекты, которые назначенный гейт обязан убить.
+
+#### Contract-derived mutation algebra
+
+Ручной список мусора не масштабируется. Общий compiler автоматически строит:
+
+- из JSON/tool schema: missing required, wrong type/enum/bounds, empty,
+  malformed, unknown field и incompatible version;
+- из constraint DSL: zero/below/above cardinality, duplicate, malformed или
+  truncated grammar, missing/foreign/stale/cross-run ref, wrong-object digest,
+  missing/extra/substituted member, empty/ambiguous projection, broken lineage,
+  ordering и cross-field mismatch.
+
+Каждый generated mutant несёт `obligationId`, `operatorId`, нарушенный
+constraint, seed digest и ожидаемую authorized rejection boundary. Нарушающий
+обязательство mutant может завершиться schema rejection, `repair_required` или
+declared typed wait/terminal, но никогда acceptance или ownerless stall.
+
+Полный mutant family исполняется дёшево на реальной validator/Gate boundary.
+Полный causal loop исполняется для representative каждого эквивалентного класса
+`{detector, reason, owner, frontier}`. Поэтому стоимость не равна количеству
+комбинаций полей, но каждый объявленный класс неправильности проверен.
 
 #### Таксономия дефектов и диагностируемость
 
@@ -170,6 +194,13 @@ receipt lineage либо оставаться `ambiguous`. Сценарий, к�
 ```ts
 interface CausalFaultScenario {
   readonly defectId: string;
+  readonly mutant?: {
+    readonly obligationId: string;
+    readonly mutantId: string;
+    readonly operatorId: string;
+    readonly violatedConstraint: string;
+    readonly seedDigest: string;
+  };
   readonly faultClass: 'authored-semantic' | 'contract-shape'
     | 'authority-binding' | 'derived-evidence' | 'detector-fault'
     | 'feedback-fault' | 'durable-transition' | 'effect-external'
@@ -209,26 +240,28 @@ interface CausalFaultScenario {
 
 - `mechanical`: schema/hash/Git/tree/build/SQLite/Docker факт вычисляется
   независимо от результата Factory;
-- `semantic-adjudicated`: positive/negative/repair fixtures размечены человеком
-  или внешним эталоном и версионированы;
+- `semantic-adjudicated`: versioned metamorphic/adversarial profile проверяется
+  независимым provider или внешним эталоном; ручная разметка необязательна;
 - `harvested`: материал взят из реального рана, но сам факт прежнего acceptance
   не считается доказательством правильности.
 
 #### Корпус `positive / negative / repair`
 
-Для каждого normative obligation хранится не один happy fixture, а тройка:
+Для каждого normative obligation compiler формирует не один happy fixture, а
+семейство:
 
 1. **positive** — минимальный валидный продукт проходит назначенный detector;
-2. **negative** — ровно одна именованная мутация нарушает обязательство и
-   обязана быть убита earliest detector-ом;
+2. **negative** — generated mutant нарушает ровно один объявленный constraint и
+   обязан быть убит authorized detector-ом до acceptance;
 3. **repair** — новый продукт строится только из видимого exact feedback и
    проходит повторную приёмку как новая immutable revision.
 
 Positive и negative не должны различаться скрытым scenario id. Repair не может
 быть заранее привязан к `attempt=2`: он выбирается по nonce/reason/evidence из
-реального desk input. Для семантических obligations corpus версионируется
-независимо от production CheckPlan; для механических mutations ожидаемый факт
-получается независимым вычислением, а не копированием Factory receipt.
+реального desk input. Для semantic obligations profiles версионируются
+независимо от production CheckPlan; curated fixtures являются дополнительным
+усилением, но не ручной основой покрытия. Для mechanical mutations ожидаемый
+факт получается независимым вычислением, а не копированием Factory receipt.
 
 Scripted worker заменяет только мышление LLM. Он проходит настоящий
 assignment → desk → MCP → ProductRef/CandidateSet → Gate → feedback → effects
@@ -463,11 +496,38 @@ idempotency-key с другим input; молча править инструк�
 
 ---
 
-## 5. Дорожная карта
+## 5. Definition of Done архитектурного рефакторинга
+
+Рефакторинг имеет конечную SMART-цель: на свежих БД production Factory должен
+без человека сначала произвести и принять простой эталонный продукт, а затем в
+отдельном прогоне обнаружить заранее внесённый исправимый дефект, доставить exact
+feedback причинному владельцу, создать новую immutable revision и завершиться в
+пределах бюджета.
+
+Архитектурная программа закрыта, когда одновременно:
+
+1. приняты W0-1…W0-4 и P0 proofs W1-1…W1-4;
+2. прошли fresh scripted happy и repair E2E через production composition;
+3. прошли real-model happy и repair canary через opencode, Docker,
+   concurrency `1`, без SQL-правок, `unpark`, подмены результата и hidden resume;
+4. durable trace сохраняет цепочку `WorkIntent → ProductRef → ProductionRevision
+   → CandidateSet → GateDecision → effect/final receipt → terminal`;
+5. после fair drain нет `DEFERRED`, ownerless nonterminal, material selection по
+   latest/task/execution, ручного восстановления и ложного terminal label.
+
+До canary допускается максимум две итерации исправлений scripted E2E. После
+достижения цели локальный баг получает обычный `fix`, новый объявленный fault —
+obligation/constraint, слабость LLM — prompt/model/eval. Новый архитектурный ADR
+допустим только при нарушении authority invariant. W1-5 продолжает систематическое
+mutation coverage, но не удерживает проект в бесконечном refactor после P0 и двух
+успешных canary.
+
+## 6. Дорожная карта
 
 - **Волна 0 (proof kernel)**: выбрать одну production composition authority;
   запретить четвёртый harness; валидировать реальный overlay, а не toy-object;
-  ввести normative obligation registry, общий trace vocabulary, Scenario DSL и
+  ввести obligation-contract compiler, mutation algebra, общий trace vocabulary,
+  Scenario DSL и
   первый causal proof `fabricated-derived-evidence`. Ни temporal, ни W9 proof
   не считается существующим, пока он не входит в blocking acceptance matrix.
 - **Волна 1 (P0)**: 6 тестов раздела 3 + исправление «Статуса конформности».
@@ -481,7 +541,7 @@ idempotency-key с другим input; молча править инструк�
 - **Связка с WORKSHOP-планом**: волны 1–2 — ДО раунда W2 (формализация
   опирается на proof 0.3/0.5); качество цехов — как в WORKSHOP-плане.
 
-## 6. Исходные материалы
+## 7. Исходные материалы
 
 Полные граф-отчёты цехов (машинные состояния, все corner cases, per-цеховые
 playbook'и) — в сессии анализа 2026-08-20; карты проверок:
