@@ -48,6 +48,9 @@ import {
   DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST,
   DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID,
   DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
 } from '../../../modules/development/application/development-check-providers.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -136,8 +139,26 @@ const VERIFICATION_FINAL_PLAN = buildCheckPlan(
   }],
 );
 const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
-  'development.readiness-certification.final.v1',
+  // v2 — CERTIFICATION-GAMING-REMEDY step 2: the monotonicity ratchet
+  // provider joins the plan BEFORE the runnability provider, so a narrowed or
+  // changed readiness declaration escalates (human_required) even when the
+  // narrowed command itself would pass.
+  'development.readiness-certification.final.v2',
   [{
+    providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+    // M1-a / D2: a narrowed or changed declaration on the same
+    // sourceCandidate is NOT a gate failure (the worker submitted nothing
+    // malformed) — it is an ESCALATION. 'unknown' + fail-closed +
+    // human-required disposition reduces to a human_required verdict, which
+    // the cell routes through its humanRequiredTransition (complete-blocked).
+    // Escalation-only by construction: this entry never softens the
+    // runnability check below it.
+    indeterminateDisposition: 'human-required',
+    expectedSubjectSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+    subjectScope: 'cell-product',
+  }, {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,

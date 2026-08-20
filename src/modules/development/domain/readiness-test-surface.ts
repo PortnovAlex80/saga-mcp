@@ -44,16 +44,23 @@ export function extractTestFileTokens(command: string): string[] {
 }
 
 /**
- * Whole-directory test tokens (`tests`, `tests/`, `tests/**` — also `test`
- * and `__tests__`): a declaration naming a directory runs everything the
- * sealed tree keeps under it. Returns the recognized directory name or null.
+ * Whole-directory test tokens. A directory is recognized ONLY in an
+ * unambiguous shape — with a trailing separator or glob (`tests/`,
+ * `tests/**`, `test/`, `__tests__`, `__tests__/**`). The BARE words
+ * `test`/`tests` are deliberately NOT directories: they are the package
+ * manager's script name (`npm test`), and treating them as directories would
+ * misread every opaque npm-test declaration as a whole-tree run.
  */
-export function extractTestDirectoryToken(command: string): 'tests' | 'test' | '__tests__' | null {
+export function extractTestDirectoryToken(
+  command: string,
+): 'tests' | 'test' | '__tests__' | null {
   for (const token of command.trim().split(/\s+/u)) {
     const bare = token.replace(/\\/gu, '/').replace(/['"]/gu, '');
-    if (bare === 'tests' || bare === 'tests/' || bare === 'tests/**') return 'tests';
-    if (bare === 'test' || bare === 'test/' || bare === 'test/**') return 'test';
-    if (bare === '__tests__' || bare === '__tests__/**') return '__tests__';
+    if (bare === 'tests/' || bare === 'tests/**') return 'tests';
+    if (bare === 'test/' || bare === 'test/**') return 'test';
+    if (bare === '__tests__' || bare === '__tests__/' || bare === '__tests__/**') {
+      return '__tests__';
+    }
   }
   return null;
 }

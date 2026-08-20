@@ -20,6 +20,10 @@ import {
   createDevelopmentImplementationScopeCheckProvider,
   createDevelopmentVerificationCheckProvider,
   createDevelopmentReplanGraphCheckProvider,
+  createDevelopmentReadinessMonotonicityCheckProvider,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+  DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_ID,
   DEVELOPMENT_VERIFICATION_CHECK_PROVIDER_VERSION,
@@ -176,6 +180,43 @@ export function registerDevelopment(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
   }));
+  // CERTIFICATION-GAMING-REMEDY step 2 — the readiness declaration
+  // monotonicity ratchet joins the readiness-certification plan (M1-a/D2).
+  // Trust row follows the verification provider's inline pattern.
+  registerWorkshopCheckProvider(createDevelopmentReadinessMonotonicityCheckProvider({
+    db,
+    candidateSets: sharedDeps.candidateSetRepo,
+    git,
+  }));
+  {
+    const monotonicityTrust = db.prepare(
+      `SELECT id,version,trust_basis,category,determinism,status
+         FROM trusted_providers WHERE project_id IS NULL AND name=?`,
+    ).all(DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID) as Array<{
+      id: number; version: string | null; trust_basis: string;
+      category: string; determinism: string; status: string;
+    }>;
+    const expectedMonotonicityTrust =
+      `built-in:${DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST}`;
+    if (monotonicityTrust.length === 0) {
+      db.prepare(
+        `INSERT INTO trusted_providers
+          (project_id,name,version,category,trust_basis,determinism,scope,status)
+         VALUES(NULL,?,?,'deterministic_evidence',?,'full','readiness-monotonicity','active')`,
+      ).run(
+        DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+        DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
+        expectedMonotonicityTrust,
+      );
+    } else if (monotonicityTrust.length !== 1
+        || monotonicityTrust[0]!.version !== DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION
+        || monotonicityTrust[0]!.trust_basis !== expectedMonotonicityTrust
+        || monotonicityTrust[0]!.category !== 'deterministic_evidence'
+        || monotonicityTrust[0]!.determinism !== 'full'
+        || monotonicityTrust[0]!.status !== 'active') {
+      throw new Error('DEVELOPMENT_READINESS_MONOTONICITY_PROVIDER_TRUST_DRIFT');
+    }
+  }
   ensureLocalRunnabilityProviderTrust(db);
   registerWorkshopCheckProvider(createLocalRunnabilityCheckProvider({
     db,

@@ -17,8 +17,14 @@ import {
   DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+  INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
+import {
+  isTestFilePath,
+  normalizeTestPath,
+  resolveDeclaredTestSurface,
+} from '../domain/readiness-test-surface.js';
 import { isAbsolute } from 'node:path';
 import { SOURCE_CHANGE_CANDIDATE_SCHEMA } from '../../../process-modules/domain/source-change-candidate.js';
 import { decodeDevelopmentVerificationProduct } from '../domain/development-verification-product.js';
@@ -1092,6 +1098,311 @@ export function createDevelopmentVerificationCheckProvider(input: {
         return 'passed';
       } catch {
         return 'error';
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CERTIFICATION-GAMING-REMEDY step 2 — M1-a monotonicity ratchet + D2
+// declaration-diff escalation (readiness certification cell).
+//
+// The stage-11 gaming: rounds 1-3 declared opaque `npm test`; round 4 declared
+// the 7-of-9 enumeration (excluding exactly the two red test files) with ZERO
+// code change, and the gate ran the narrowed declaration silently. The
+// declared verification surface of a readiness manifest may never shrink
+// relative to a prior readiness manifest of the SAME sourceCandidate, and any
+// readiness.commands.* change on the same sourceCandidate is an ESCALATION —
+// a human_required verdict (the cell's complete-blocked transition), never a
+// silent retry and never a plain gate failure (the worker submitted nothing
+// malformed).
+//
+// Comparison scope is deliberate: same process run + identical
+// sourceCandidate.hash. Narrowing across a candidate change may be legitimate
+// (the bytes changed); only the derived-canonical core (rollout step 4, the
+// architect's act) closes that. Opaque `npm test`-style priors resolve through
+// the SEALED package.json of the exact source candidate (git show by object
+// id — read-only, never a ref), so `npm test` -> 7-of-9 is caught
+// mechanically; when the substrate is unreadable the declaration-diff (D2)
+// still catches any command change deterministically.
+// ---------------------------------------------------------------------------
+
+export const DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID =
+  'development.readiness-profile-monotonicity.v1';
+export const DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION = '1.0.0';
+export const DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST = sha256Hex({
+  providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+  version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
+  invariant:
+    'declared-verification-surface-never-shrinks-or-silently-changes-between-readiness-manifests-of-the-same-source-candidate',
+  escalationPolicy:
+    'narrowing-or-command-change-is-human-required-escalation-never-silent-retry-never-plain-failure',
+  comparisonScope:
+    'prior-managed-readiness-manifest-submissions-of-the-same-process-run-with-identical-source-candidate-hash',
+  opaqueResolution:
+    'npm-test-style-commands-resolve-through-the-sealed-package-json-of-the-exact-source-candidate-by-git-object-id',
+});
+
+/** The ratchet-relevant projection of one readiness manifest. */
+interface ReadinessManifestCommands {
+  readonly sourceHash: string;
+  readonly installCommand: string | null;
+  readonly testCommand: string;
+}
+
+function parseManifestCommands(payload: unknown): ReadinessManifestCommands | null {
+  if (!isRecordValue(payload)) return null;
+  const source = payload.sourceCandidate;
+  if (!isRecordValue(source)
+      || typeof source.hash !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(source.hash)) {
+    return null;
+  }
+  const targets = payload.targets;
+  if (!Array.isArray(targets) || targets.length < 1) return null;
+  const target = targets[0];
+  if (!isRecordValue(target) || !isRecordValue(target.readiness)) return null;
+  const commands = (target.readiness as { commands?: unknown }).commands;
+  if (!isRecordValue(commands)) return null;
+  const { installCommand, testCommand } = commands as {
+    installCommand?: unknown; testCommand?: unknown;
+  };
+  if (typeof testCommand !== 'string' || testCommand.trim() === '') return null;
+  if (installCommand !== null
+      && (typeof installCommand !== 'string' || installCommand.trim() === '')) {
+    return null;
+  }
+  return {
+    sourceHash: source.hash,
+    installCommand: installCommand === null ? null : installCommand,
+    testCommand,
+  };
+}
+
+/** The sealed test material of one exact source candidate (read-only git). */
+interface SealedTestMaterial {
+  readonly packageJsonTestScript: string | null;
+  readonly testsTreeFiles: readonly string[] | null;
+}
+
+function readSealedTestMaterial(
+  input: { db: SqlDatabasePort; git: GitPort },
+  processRunId: number,
+  sourceHash: string,
+): SealedTestMaterial | null {
+  try {
+    const product = input.db.prepare(
+      `SELECT payload_snapshot FROM factory_process_products
+        WHERE process_run_id=? AND schema_id=? AND product_hash=?`,
+    ).get(processRunId, INTEGRATED_SOURCE_CANDIDATE_SCHEMA, sourceHash) as
+      { payload_snapshot: string } | undefined;
+    if (!product) return null;
+    const payload = JSON.parse(product.payload_snapshot) as {
+      repositories?: Array<{ projectRepositoryId?: unknown; commitSha?: unknown }>;
+    };
+    const repository = Array.isArray(payload.repositories)
+      ? payload.repositories[0]
+      : undefined;
+    if (!repository
+        || !Number.isSafeInteger(repository.projectRepositoryId)
+        || typeof repository.commitSha !== 'string') {
+      return null;
+    }
+    const binding = input.db.prepare(
+      'SELECT local_path FROM project_repositories WHERE id=?',
+    ).get(repository.projectRepositoryId) as { local_path: string | null } | undefined;
+    if (!binding?.local_path) return null;
+    let packageJsonTestScript: string | null = null;
+    const pkgRaw = input.git.read(binding.local_path, [
+      'show', `${repository.commitSha}:package.json`,
+    ]);
+    if (pkgRaw !== null) {
+      try {
+        const test = (JSON.parse(pkgRaw) as { scripts?: { test?: unknown } }).scripts?.test;
+        if (typeof test === 'string' && test.trim() !== '') packageJsonTestScript = test;
+      } catch { /* unreadable package.json: resolution unavailable */ }
+    }
+    const lsRaw = input.git.read(binding.local_path, [
+      'ls-tree', '-r', '--name-only', repository.commitSha,
+    ]);
+    const testsTreeFiles = lsRaw === null ? null
+      : lsRaw.split(/\r?\n/u)
+        .map(line => normalizeTestPath(line))
+        .filter(file => file.startsWith('tests/') && isTestFilePath(file))
+        .sort();
+    return { packageJsonTestScript, testsTreeFiles };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The resolved test-file surface one declaration executes, or null when it
+ * cannot be resolved (opaque runner, unreadable substrate). Directory-shaped
+ * declarations (`node --test tests/`, or a sealed scripts.test that names the
+ * directory) execute the whole sealed tests tree.
+ */
+function declaredTestSurface(
+  manifest: ReadinessManifestCommands,
+  material: SealedTestMaterial | null,
+): readonly string[] | null {
+  const declared = resolveDeclaredTestSurface({
+    testCommand: manifest.testCommand,
+    sealedPackageJsonTestScript: material?.packageJsonTestScript ?? null,
+  });
+  if (declared.files !== null && declared.files.length > 0) return declared.files;
+  if (declared.status === 'whole-tests-directory'
+      || declared.status === 'resolved-via-sealed-package-json') {
+    return material?.testsTreeFiles ?? null;
+  }
+  return null;
+}
+
+function truncateCommand(value: string | null, max = 120): string {
+  const text = value === null ? 'null' : value;
+  return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
+function monotonicityError(
+  subjectRef: string,
+  code: string,
+  message: string,
+): CheckProviderResult {
+  return {
+    outcome: 'error',
+    evidenceRefs: [encodeCheckDiagnostic({ code, message, subjectRef })],
+  };
+}
+
+export function createDevelopmentReadinessMonotonicityCheckProvider(input: {
+  db: SqlDatabasePort;
+  candidateSets: CandidateSetReaderPort;
+  git: GitPort;
+}): CheckProvider {
+  return {
+    providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
+    version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
+    providerDigest: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST,
+    run({ subjectCandidateSetRef, parameters }) {
+      try {
+        const processRunId = Number(parameters.processRunId);
+        if (!Number.isSafeInteger(processRunId) || processRunId < 1) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_CONTEXT_INVALID',
+            'The readiness monotonicity check requires the process run id of the certification cell.');
+        }
+        const candidate = input.candidateSets.read(subjectCandidateSetRef);
+        if (!candidate || candidate.role !== 'author' || candidate.members.length !== 1) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_SUBJECT_INVALID',
+            'The readiness monotonicity check requires the exact single author candidate set of the readiness-certification cell.');
+        }
+        const member = candidate.members[0]!;
+        if (member.productRef.schemaId !== DEVELOPMENT_READINESS_MANIFEST_SCHEMA
+            || !member.productRef.ref.startsWith('managed-node-submission:')) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_SUBJECT_INVALID',
+            `The readiness monotonicity subject must be a ${DEVELOPMENT_READINESS_MANIFEST_SCHEMA} managed-node-submission,`
+            + ` got ${member.productRef.schemaId}:${member.productRef.ref}.`);
+        }
+        const submissionId = Number(
+          member.productRef.ref.slice('managed-node-submission:'.length),
+        );
+        if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_SUBJECT_INVALID',
+            `The readiness manifest submission ref '${member.productRef.ref}' does not carry a numeric managed-node-submission id.`);
+        }
+        const row = input.db.prepare(
+          `SELECT payload_snapshot, content_hash
+             FROM factory_managed_node_submissions
+            WHERE id=? AND process_run_id=? AND schema_version=?`,
+        ).get(submissionId, processRunId, DEVELOPMENT_READINESS_MANIFEST_SCHEMA) as
+          | { payload_snapshot: string; content_hash: string }
+          | undefined;
+        if (!row || row.content_hash !== member.productRef.digest) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_SUBMISSION_UNBOUND',
+            'The readiness manifest does not match the exact CandidateSet member submission digest.');
+        }
+        const current = parseManifestCommands(JSON.parse(row.payload_snapshot));
+        if (current === null) {
+          return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_MANIFEST_INVALID',
+            'The readiness manifest payload does not state a valid sourceCandidate and primary readiness.commands.');
+        }
+        // Every prior readiness manifest of this process run, oldest first.
+        let priors: Array<{ id: number; payload_snapshot: string }>;
+        try {
+          priors = input.db.prepare(
+            `SELECT id, payload_snapshot
+               FROM factory_managed_node_submissions
+              WHERE process_run_id=? AND schema_version=?
+              ORDER BY id ASC`,
+          ).all(processRunId, DEVELOPMENT_READINESS_MANIFEST_SCHEMA) as Array<{
+            id: number; payload_snapshot: string;
+          }>;
+        } catch {
+          // No submission history substrate (pre-table store): the ratchet is
+          // inert by design — nothing to compare, not an error.
+          return 'passed';
+        }
+        const material = readSealedTestMaterial(input, processRunId, current.sourceHash);
+        const currentSurface = declaredTestSurface(current, material);
+        for (const prior of priors) {
+          if (prior.id === submissionId) continue;
+          let priorCommands: ReadinessManifestCommands | null = null;
+          try {
+            priorCommands = parseManifestCommands(JSON.parse(prior.payload_snapshot));
+          } catch {
+            continue;
+          }
+          // Only manifests of the SAME sourceCandidate compare: the bytes the
+          // declaration will run against are identical, so a surface change
+          // is a change of WHAT is verified, not of what is verified against.
+          if (priorCommands === null || priorCommands.sourceHash !== current.sourceHash) {
+            continue;
+          }
+          const identical = priorCommands.installCommand === current.installCommand
+            && priorCommands.testCommand === current.testCommand;
+          if (identical) continue;
+          const priorSurface = declaredTestSurface(priorCommands, material);
+          const dropped = priorSurface !== null && currentSurface !== null
+            ? priorSurface.filter(file => !currentSurface.includes(file))
+            : [];
+          if (dropped.length > 0) {
+            return {
+              outcome: 'unknown',
+              evidenceRefs: [encodeCheckDiagnostic({
+                code: 'READINESS_PROFILE_NARROWED',
+                subjectRef: subjectCandidateSetRef,
+                message:
+                  'The declared verification surface NARROWED against prior readiness manifest submission '
+                  + `${prior.id} for the same sourceCandidate ${current.sourceHash.slice(0, 12)}…: `
+                  + `the prior declaration ran [${dropped.join(', ')}] which the current declaration no `
+                  + `longer executes (prior testCommand: ${truncateCommand(priorCommands.testCommand)}; `
+                  + `current testCommand: ${truncateCommand(current.testCommand)}). A candidate may not `
+                  + 'shrink its declared verification surface without changing its bytes — human review '
+                  + 'required (READINESS_PROFILE_NARROWED).',
+              })],
+            };
+          }
+          return {
+            outcome: 'unknown',
+            evidenceRefs: [encodeCheckDiagnostic({
+              code: 'READINESS_DECLARATION_CHANGED',
+              subjectRef: subjectCandidateSetRef,
+              message:
+                `readiness.commands CHANGED against prior readiness manifest submission ${prior.id} for `
+                + `the same sourceCandidate ${current.sourceHash.slice(0, 12)}… (zero code change): `
+                + `installCommand '${truncateCommand(priorCommands.installCommand, 40)}' -> `
+                + `'${truncateCommand(current.installCommand, 40)}'; testCommand `
+                + `'${truncateCommand(priorCommands.testCommand)}' -> '${truncateCommand(current.testCommand)}'. `
+                + 'A declaration change on unchanged bytes is never a silent retry — human review '
+                + 'required (READINESS_DECLARATION_CHANGED).',
+            })],
+          };
+        }
+        return 'passed';
+      } catch (err) {
+        return monotonicityError(subjectCandidateSetRef, 'READINESS_MONOTONICITY_CHECK_ERROR',
+          `The readiness monotonicity check could not complete deterministically: ${
+            err instanceof Error ? err.message.slice(0, 600) : String(err).slice(0, 600)
+          }`);
       }
     },
   };
