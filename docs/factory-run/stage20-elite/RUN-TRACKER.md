@@ -79,3 +79,24 @@ resume path re-stamps the catalog limit).
   claimed at `workplace/1/product-discovery@3.0.2/discovery-proposal`,
   in_progress; engine cycling paused@initial-discovery with 1 durable active
   execution, supervision sweeps clean (reaped=0).
+- **22:17:34Z — TERMINAL FAILED (real defect caught by the fail-closed
+  boundary).** Lifecycle 1 died at solution-formalization with
+  `REPLAY_CAPTURE_TRACE_NOT_FOUND: expected 35, resolved 29` — the six
+  `AC-2..AC-7 → RULE-1` traces (sources 14–19 → artifact 5).
+  Root-cause chain (from activity_log + sealed snapshots + gate decisions):
+  21:45–46 acceptance author traced 12 ACs (incl. →RULE-1); 21:48 gate
+  accepted round 1; 21:50 `repair_required` (review round 2); **21:54 the
+  worker lawfully DELETED the six AC→RULE traces** (trace_delete);
+  21:58 gate ACCEPTED the repaired live material — but the re-sealed
+  WorkplaceProductionSnapshot (21:58:43, digest 573e78…) STILL froze all 35
+  traces, because the snapshot reads `factory_managed_trace_productions`
+  and **trace_delete never mirrors into that ledger**; 22:17 the replay
+  certification compared the ledger-frozen tuples against live
+  artifact_traces → 6 missing → lifecycle terminal failed. Two desynced
+  authorities: live artifact_traces (trace_delete mutates) vs the managed
+  trace ledger (trace_add appends, delete does nothing). Fix (post-mortem,
+  this terminal): handleTraceDelete mirrors the delete into
+  factory_managed_trace_productions in the same transaction, so every
+  FUTURE seal is live-consistent; already-sealed snapshots stay frozen and
+  the fail-closed certification boundary is untouched. Regression test +
+  relaunch follow. Engine exited code 1; watchdog will show natural death.
