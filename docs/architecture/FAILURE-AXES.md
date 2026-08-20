@@ -37,10 +37,22 @@ risk.
 contradiction (AC vs `changeScopes`).
 
 ### Axis 2 — Delivery
-**Does the actor bound by an authority receive it before acting?**
+**Does the actor bound by an authority receive it, before acting, intact?**
 
 An authority computed correctly and never delivered is indistinguishable, from
 the actor's side, from no authority at all.
+
+**Amended 2026-08-20 under §3.4.** The original wording asked only whether the
+actor *receives* the authority. It did not cover an authority that arrives
+**corrupted** — and stage 15 produced one: an integration diagnostic that
+reported a comparison which had passed (`submitted X but branch is X`, identical
+SHAs), because a three-predicate disjunction printed the values of the second
+predicate whichever one fired. The repair loop received it and worked on the
+wrong problem for a full round.
+
+> **Corrupt delivery is worse than no delivery.** A missing authority makes the
+> actor guess; a false one makes it confidently repair the wrong thing. A
+> branching check must name the branch that fired.
 
 *Instances found:* the worker is never told its `changeScopes` — original or
 widened — and learns the fence only by violating it; order constraints not
@@ -91,6 +103,22 @@ world it describes.
 *Instance found:* `integration_state = 'merged'` believed as proof that a merge
 happened. Fixed for that one case by making ancestry the proof — the repository,
 not a column. **The general axis is unenumerated.**
+
+*Instance found (stage 15), the same shape a second time:* the implementation
+result declares `snapshot.treeSha` — a fact about the repository — and the
+author gate never asks the repository. It validates `commitSha` as 40-hex and
+`changedFiles` as non-empty; `treeSha` is not mentioned at all. A worker wrote
+the commit SHA into it twice in one run, and the belief detonated at the
+integration effect.
+
+Note what the tree comparison there is actually worth: `sourceTree` is derived
+as `rev-parse ${commit}^{tree}` from the commit already checked equal to the
+declared one, and a commit's tree is immutable. **The only variable in that
+predicate is what the worker typed** — it has zero power to detect divergence in
+the world. A world-model check whose two sides derive from the same immutable
+object is not a world-model check; it is a typo detector placed at the most
+expensive point in the loop. Judge candidate checks on this axis by asking what
+could make them fail *other than the declaration itself*.
 
 ### Axis 8 — Liveness
 **Is there a well-founded measure guaranteeing termination?**

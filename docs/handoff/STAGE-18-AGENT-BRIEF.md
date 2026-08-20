@@ -48,7 +48,12 @@ the fence only by violating it and reading the rejection.
 Sub 19 claimed `tsconfig.json`; sub 20 did not; the author gate accepted. Nothing
 compares a card's claim across its own attempts.
 
-**The shared-root-file problem (D7) is not a third defect.** The grant *was*
+**R3 — a worker-declared fact about the repository is believed without asking
+the repository, and the diagnostic that follows names the wrong comparison.**
+Verified by the architect in the run DB. Two halves, one repair each — see
+TASK 2A. The shared-root-file problem (D7) is still not a defect of its own.
+
+**The shared-root-file problem (D7) is not a separate defect.** The grant *was*
 issued for `tsconfig.json` — the machinery handled it correctly. What failed was
 delivery. Fix R1 and the shared file arrives through the widening path that
 already exists. The residual question — two cards contending for it
@@ -122,6 +127,66 @@ The rule:
 shape and on the sub-14 → sub-15 shape. Reproduce them **domain-free** — no
 `tsconfig.json`, no TypeScript, no path from this run.
 
+## TASK 2A — the declared tree, and the lying diagnostic (R3)
+
+Two repairs, one family. **Read the evidence before designing.** From
+`.factory-sandboxes/stage15-db`, `factory_managed_node_submissions.payload_snapshot`:
+
+```
+sub 14,15,17,18,20   commitSha ≠ treeSha    correct
+sub 19               5f979ed9…  5f979ed9…   treeSha IS the commit
+sub 22               88968715…  88968715…   treeSha IS the commit
+```
+
+and the single detonation, `factory_effect_attempts`:
+
+```
+13:50:56  repair_required
+PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task 18
+submitted 88968715a17d… but branch is 88968715a17d…
+```
+
+### The analysis, so you do not re-derive it
+
+`sqlite-production-cell-integration.ts:273-285` is a **disjunction of three
+predicates with one message that prints the values of the second**. When (c)
+fires, the message reports a comparison that passed. The round-6 worker read it
+and concluded its work was "on a different branch".
+
+Predicate (c) is `sourceTree !== payload.snapshot.treeSha`, where `sourceTree`
+is `rev-parse ${sourceCommit}^{tree}` — derived from the same commit already
+checked equal to `snapshot.commitSha`. A commit's tree is immutable. **The only
+variable in (c) is what the worker typed.** It cannot detect workspace drift, a
+moved branch, or anything in the world. It is a typo detector, firing at the
+most expensive point in the loop.
+
+Meanwhile `development-check-providers.ts:279-291` — the author gate — does not
+mention `treeSha` at all. Not a value check, not a type check.
+
+This is the `integration_state = 'merged'` shape (axis 7): a fact about the
+repository believed from a field, with the repository never asked.
+
+- [ ] T2A.1. Verify the tree **at the author gate**: resolve the tree from the
+      declared commit and compare it to the declared `treeSha`. A mismatch is a
+      refusal with a named diagnostic and the stage-13 teaching suffix. This is
+      the `workItemKey` lesson from d-2 — equality belongs at the gate, not as a
+      detonation at the effect.
+- [ ] T2A.2. **Do not silently derive the value instead of refusing.** A
+      mismatch means the worker is confused about its own work, and we want that
+      visible in one cheap round rather than papered over.
+- [ ] T2A.3. Do not change the worker payload contract. The skill already
+      documents `treeSha`; this adds verification, not a new field.
+- [ ] T2A.4. Make the disjunction name the disjunct that fired: which predicate
+      failed, with both of *its* values. Applies to all three, not just (c).
+      **A branching check must never report a branch that passed.**
+- [ ] T2A.5. RED for both halves: a submission with `treeSha == commitSha`
+      refused at the gate; a tree mismatch reaching the effect producing a
+      message that names the tree comparison and its two values. Domain-free.
+- [ ] T2A.6. Non-vacuity for both. Quote the RED verbatim.
+
+**Not this stage:** `treeSha` is a redundant field and the contract could drop
+it. That is a C-ladder decision, not a night's work. Verify it; do not remove it.
+
 ## TASK 3 — rebuild clean and prove the baseline
 
 The factory executes `dist/`, and stage 19 runs on this build.
@@ -169,6 +234,8 @@ One commit per task. Push to `origin saga4`.
 Task 1: the prompt excerpt showing delivered scopes, before and after a grant,
 and the non-vacuity RED verbatim.
 Task 2: the two domain-free reproductions and their RED messages.
+Task 2A: the gate refusal on `treeSha == commitSha`, and the effect message
+before and after, showing it names the tree comparison.
 Task 3: the full baseline and the HEAD SHA for stage 19.
 
 State what you did not finish.
