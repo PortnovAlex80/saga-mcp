@@ -1,6 +1,6 @@
 # ADR-085: Co-locate workshops before opening package admission
 
-- Status: Proposed
+- Status: Proposed; implementation blocked by the Saga Kernel Conformance Engine
 - Date: 2026-08-21
 - Owners: factory architecture
 - Implementation plan: `docs/plans/WORKSHOP-MODULARIZATION-REFACTORING-PLAN.md`

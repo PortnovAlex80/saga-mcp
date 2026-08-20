@@ -1,12 +1,19 @@
 # Workshop modularization and co-location refactoring plan
 
-- Status: Proposed
+- Status: Blocked by the Saga Kernel Conformance Engine prerequisite
 - Date: 2026-08-21
 - Decision: ADR-085
 - Scope: Discovery, Formalization, Development and Delivery built-ins
 - Explicit non-goal: opening generic package admission before C12
 
 ## 0. Starting condition
+
+Implementation is not authorized until the Structural Refactor Qualification
+Gate in `docs/plans/PROJECT-STRUCTURAL-CLEANUP-PLAN.md` is green. The required
+test engine is defined by
+`docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md`. Until then, this document
+is planning input only: do not move workshop files, introduce the target
+catalog, change runtime wiring or split workshop implementations.
 
 This is a greenfield repository refactor. There is no deployed production
 environment, persistent production database, customer data or non-terminal run

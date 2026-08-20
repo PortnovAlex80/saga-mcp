@@ -1,6 +1,6 @@
 # Project structural cleanup plan
 
-Status: Proposed
+Status: Blocked by the Saga Kernel Conformance Engine prerequisite
 
 Date: 2026-08-21
 
@@ -9,6 +9,52 @@ Audience: implementation agents, reviewers, and integrators
 Decision: ADR-086
 
 Related workshop plan: `docs/plans/WORKSHOP-MODULARIZATION-REFACTORING-PLAN.md`
+
+## 0. Hard prerequisite: test engine first
+
+No runtime, schema, lifecycle, composition, workshop-path or large-file
+refactor in this plan is authorized until the Saga Kernel Conformance Engine
+can protect the change.
+
+Authoritative prerequisite plan:
+
+`docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md`
+
+The minimum Structural Refactor Qualification Gate is:
+
+- [ ] K0 baseline, normalized trace vocabulary and non-vacuity floors are
+      complete.
+- [ ] K1 provides one truthful canonical proof composition and fingerprint.
+- [ ] K2 drives strict L3 scenarios through the production `workerSpawn` seam.
+- [ ] K3 provides independent obligation contracts and mutation algebra.
+- [ ] K4 provides the read-only observer, scenario DSL, fault scheduler,
+      progress oracle and deterministic evidence bundle.
+- [ ] K5 exposes a non-empty blocking `factory-proof` group with exact coverage
+      and mutation self-tests.
+- [ ] The blocking group contains at least one full-lifecycle happy scenario.
+- [ ] The blocking group contains one feedback-driven same-Workplace repair
+      scenario.
+- [ ] The blocking group covers the named durable boundaries affected by the
+      proposed structural cutover.
+- [ ] The engine can run base and candidate revisions separately and report a
+      normalized semantic diff.
+- [ ] Removing a production module, lifecycle transition, fence, receipt,
+      effect or route makes the gate red.
+- [ ] The observer and scenario engine perform zero authoritative writes.
+- [ ] The integration owner has recorded the exact command that runs the gate
+      from a clean checkout.
+
+While this gate is incomplete, permitted work is limited to:
+
+- implementing and validating the conformance engine;
+- read-only architecture inventory;
+- documentation and task decomposition;
+- fixes required to make the conformance engine truthful.
+
+Do not move source files, split runtime files, replace composition, remove
+schema compatibility code or introduce target facades while blocked. The test
+engine must observe the current real runtime before it is used to protect its
+replacement.
 
 ## 1. Purpose
 
@@ -313,6 +359,11 @@ one atomic merge train.
 Owner: baseline and policy lane
 
 Goal: record what must remain semantically identical before moving ownership.
+
+Prerequisite: the Structural Refactor Qualification Gate is green. WP-00
+consumes and freezes conformance-engine evidence for this specific refactor. It
+must not build a second trace format, scenario runner, observer or mutation
+framework.
 
 ### Tasks
 

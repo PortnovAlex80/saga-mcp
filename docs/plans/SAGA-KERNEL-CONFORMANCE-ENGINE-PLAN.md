@@ -455,8 +455,8 @@ Checklist:
       composition rather than strict L3.
 - [ ] Prevent new proof tests from importing legacy composition surfaces.
 - [ ] Keep legacy suites until every obligation has a blocking replacement.
-- [ ] Make canonical composition consume the same closed built-in workshop
-      catalog introduced by ADR-085.
+- [ ] Fingerprint the current canonical built-in workshop composition
+      without depending on the future ADR-085 catalog layout.
 
 Exit gate:
 
@@ -742,15 +742,34 @@ Exit gate:
 - [ ] Real-model canaries are monitored evidence, not deterministic gate
       substitutes.
 
-## 12. Coordination with ADR-085 workshop co-location
+## 12. Structural refactor prerequisite and later coordination
 
-The proof-kernel plan and workshop co-location plan run as coordinated tracks.
-Neither waits for the other to finish completely.
+The proof kernel runs first. ADR-085 workshop co-location and ADR-086 structural
+cleanup remain blocked until the Structural Refactor Qualification Gate below
+is green. They do not run as parallel implementation tracks.
+
+### Structural Refactor Qualification Gate
+
+- [ ] K0 through K5 exit gates are complete.
+- [ ] The blocking `factory-proof` group includes a strict full-lifecycle happy
+      scenario through `workerSpawn`.
+- [ ] The blocking group includes a strict feedback-driven same-Workplace
+      repair scenario.
+- [ ] Named fault boundaries affected by the planned refactor are blocking.
+- [ ] Base and candidate revisions can be executed separately and compared
+      through the normalized authority trace.
+- [ ] Composition removal, lifecycle bypass, missing fence/receipt/effect and
+      route omission mutants make the group red.
+- [ ] The observer and scenario engine make no authoritative writes.
+- [ ] A clean-checkout command for the complete gate is documented and passes.
+
+Before this gate is green, agents may inventory and document ADR-085/086 work,
+but may not move workshop/runtime files or introduce target compatibility
+facades.
 
 ### Before ADR-085 P1/P2 cutover
 
-- [ ] Complete K0 normalized trace and fingerprint baseline.
-- [ ] Complete enough of K1 to guarantee one canonical proof entrypoint.
+- [ ] The Structural Refactor Qualification Gate is green.
 - [ ] Freeze scenario/count/edge floors.
 - [ ] Capture pre-cutover evidence on the base revision.
 
@@ -782,8 +801,8 @@ Neither waits for the other to finish completely.
 If ADR-086 is adopted, the proof kernel is the evidence rail for the atomic
 schema, lifecycle, tool, and composition cutover. It is not a later cleanup.
 
-- [ ] Complete the K0 baseline, normalized trace, and mutation non-vacuity
-      checks before the authority cutover changes canonical construction.
+- [ ] Require the Structural Refactor Qualification Gate before the authority
+      cutover changes canonical construction.
 - [ ] Express the strict actor seam as an immutable composition contract rather
       than depending on the current composition-root file location.
 - [ ] Remove test dependence on mutable `lastFactory*` accessors when the

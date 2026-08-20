@@ -1,6 +1,6 @@
 # ADR-086: Atomic greenfield authority cutover
 
-- Status: Proposed
+- Status: Proposed; implementation blocked by the Saga Kernel Conformance Engine
 - Date: 2026-08-21
 - Builds on: ADR-053, ADR-076, ADR-082, ADR-085
 - Implementation plan: `docs/plans/PROJECT-STRUCTURAL-CLEANUP-PLAN.md`
