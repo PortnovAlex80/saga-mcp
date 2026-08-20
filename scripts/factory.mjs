@@ -174,6 +174,46 @@ function resumeConcurrency(db, epicId) {
   return effectiveFactoryConcurrency(requested, modelLimit);
 }
 
+/**
+ * Local LM Studio model profile (operator directive 2026-08-20: local runs
+ * may use the machine's LM Studio). A model id that is NOT in the cloud
+ * catalog is accepted only when LM Studio is reachable and actually serves
+ * that id (live /v1/models check) — no offline guessing. The provider is
+ * pinned to 'lmstudio', so the claim-time route freezes the worker endpoint
+ * to the local server (the executor cannot reach Anthropic); concurrency
+ * ceiling comes from SAGA_LMSTUDIO_LIMIT (default 1 — local models are slow).
+ */
+async function resolveLocalLmstudioProfile(modelId) {
+  if (!modelId || !modelId.includes('/')) return null; // LM Studio ids are namespaced (qwen/...)
+  const base = (process.env.SAGA_LMSTUDIO_URL || 'http://localhost:1234/v1')
+    .replace(/\/+$/, '');
+  let ids;
+  try {
+    const response = await fetch(`${base}/models`, { signal: AbortSignal.timeout(5000) });
+    const payload = await response.json();
+    ids = Array.isArray(payload?.data)
+      ? payload.data.map(entry => String(entry.id))
+      : [];
+  } catch {
+    return null; // LM Studio offline → not a local model run
+  }
+  if (!ids.includes(modelId)) return null;
+  const requested = Number(process.env.SAGA_LMSTUDIO_LIMIT ?? 1);
+  const limit = Number.isInteger(requested) && requested >= 1 && requested <= 10
+    ? requested
+    : 1;
+  return {
+    id: modelId,
+    label: `Local LM Studio — ${modelId}`,
+    provider: 'lmstudio',
+    effort: 'high', // runner omits --effort for lmstudio routes; catalog shape only
+    limit,
+    tier: 'sonnet',
+    note: 'Local LM Studio model (verified live via /v1/models). Provider pinned '
+      + 'to lmstudio: the worker endpoint is frozen to the local server at claim.',
+  };
+}
+
 function parseContinueArguments(rawArgs) {
   const result = {
     dbPath: rawArgs[1],
@@ -1012,8 +1052,13 @@ if (command === 'start') {
   } = parseStartArguments(args);
   if (!dbPath) die('start: db-path argument is required');
   if (!idea) die('start: idea-text argument is required');
-  const modelProfile = factoryModelProfile(modelName);
-  if (!modelProfile) die(`start: unknown Factory model '${modelName}'`);
+  const modelProfile = factoryModelProfile(modelName)
+    ?? await resolveLocalLmstudioProfile(modelName);
+  if (!modelProfile) {
+    die(`start: unknown Factory model '${modelName}' — pass a cloud catalog id `
+      + '(see GET /api/models) or a reachable local LM Studio model id '
+      + '(qwen/..., verified live via SAGA_LMSTUDIO_URL /v1/models)');
+  }
   const requestedConcurrency = parseConcurrency(process.env.SAGA_FACTORY_CONCURRENCY);
   const launchConcurrency = effectiveFactoryConcurrency(
     requestedConcurrency,

@@ -22,6 +22,25 @@ function isForbiddenClaudeCli(p) {
   return false;
 }
 
+/**
+ * Operator opt-in (directive 2026-08-20, "local machine may bring claude
+ * back"): allow the claude CLI ONLY for executions whose claim-time frozen
+ * route is the local LM Studio backend, and only when the run explicitly set
+ * SAGA_ALLOW_LOCAL_CLAUDE_CLI=1. Safe by construction: an lmstudio-route
+ * worker gets ANTHROPIC_BASE_URL env-injected from the frozen endpoint at
+ * spawn (see the providerEnv block in runAssignment) — it physically cannot
+ * reach an Anthropic endpoint, so the cost reason behind the opencode
+ * migration cannot trigger. Cloud routes (agent-proxy / claude-cli backends)
+ * stay forbidden regardless of the flag.
+ */
+export function localClaudeCliOverrideAllowed(assignment, env = process.env) {
+  if (env.SAGA_ALLOW_LOCAL_CLAUDE_CLI !== '1') return false;
+  const ctx = assignment?.execution_context;
+  const route = ctx && typeof ctx === 'object' ? ctx.model_route : undefined;
+  if (!route || typeof route !== 'object') return false;
+  return route.endpoint?.backend === 'lmstudio' || route.provider === 'lmstudio';
+}
+
 // STAGE-10 TASK 1 — correlated run journal (observation-only; see
 // src/observability/run-journal.ts). Loaded from dist/: a rebuild must
 // precede any runner use after src changes (tracker-view itself is live
@@ -691,14 +710,23 @@ export class ClaudeBoardRunner {
       // Вызов claude Code запрещён: завод переехал на opencode (см. коммент
       // выше). Причина запрета — стоимость claude. Fail closed, спавн не
       // происходит, карточка переочередится с этим же объяснением.
-      throw new Error(
-        'FACTORY_CLAUDE_BACKEND_FORBIDDEN: the factory moved to opencode '
-        + '(tools/agent-proxy/claude-shim.mjs on the official Z.AI Coding Plan '
-        + 'provider). Spawning the claude CLI is forbidden — claude became too '
-        + `expensive. Resolved executor: '${resolved}'. Set `
-        + 'SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs" '
-        + '(and SAGA_CLAUDE_PATH to the same value) before starting the factory.',
-      );
+      // Единственное исключение — операторский локальный запуск (директива
+      // 2026-08-20): claude CLI допускается ТОЛЬКО с явным env-флагом и
+      // ТОЛЬКО для замороженного lmstudio-маршрута (воркер физически
+      // заперт на локальный endpoint — см. localClaudeCliOverrideAllowed).
+      if (!localClaudeCliOverrideAllowed(assignment)) {
+        throw new Error(
+          'FACTORY_CLAUDE_BACKEND_FORBIDDEN: the factory moved to opencode '
+          + '(tools/agent-proxy/claude-shim.mjs on the official Z.AI Coding Plan '
+          + 'provider). Spawning the claude CLI is forbidden — claude became too '
+          + `expensive. Resolved executor: '${resolved}'. Set `
+          + 'SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs" '
+          + '(and SAGA_CLAUDE_PATH to the same value) before starting the factory. '
+          + 'Local LM Studio runs: set SAGA_ALLOW_LOCAL_CLAUDE_CLI=1 and route the '
+          + 'epic to an lmstudio model (the worker endpoint is then frozen to the '
+          + 'local server and cannot reach Anthropic).',
+        );
+      }
     }
     const ctx = assignment?.execution_context;
     const frozenKind = ctx && typeof ctx === 'object'
