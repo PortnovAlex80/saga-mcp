@@ -281,7 +281,14 @@ function artifactHashMap(
   const result: Record<string, string> = {};
   for (const artifact of [...artifacts].sort((a, b) => a.id - b.id)) {
     if (!isSha256(artifact.contentHash)) {
-      throw new Error(`artifact ${artifact.id} has no canonical SHA-256 content hash`);
+      throw new Error(
+        `artifact ${artifact.id} has no canonical SHA-256 content hash — the artifact's `
+        + 'file did not resolve at update time, so no server-side hash was stamped. '
+        + 'Repair: re-run artifact_update with the correct repo-relative path (the file '
+        + 'must exist under the project repository) and WITHOUT content_hash — the '
+        + 'factory computes the canonical digest from the file on disk; a '
+        + 'worker-supplied digest is never trusted.',
+      );
     }
     result[String(artifact.id)] = artifact.contentHash;
   }

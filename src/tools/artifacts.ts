@@ -152,6 +152,47 @@ function assertAcceptedAcNotFrozenByTags(
 // Handlers
 // ============================================================================
 
+/**
+ * SERVER-SIDE CANONICALIZATION of the artifact content hash (the
+ * artifact-hash hole, found live 2026-08-20 on a formalization run: a worker
+ * that could not produce a canonical SHA-256 FABRICATED one — 32 hex of a
+ * known digest padded to 64 — and the factory stored it verbatim whenever
+ * the artifact file did not resolve; the worker then panic-looped 12+ minutes
+ * against an unattributed analysis error). A worker must never compute what
+ * the factory can canonicalize itself (the principle product_submit already
+ * pins: "internal canonicalization — no caller-supplied digest"):
+ *   - resolvable file → the SERVER-computed hash wins; the caller value is
+ *     ignored even when it differs;
+ *   - no resolvable file + a caller digest → typed rejection with the repair
+ *     recipe (never trusted, never stored);
+ *   - malformed digest → typed rejection at intake;
+ *   - no file + no digest → null (the checklists teach: content_hash NULL
+ *     after create means the file was not found — STOP and fix).
+ */
+function resolveCanonicalContentHash(
+  diskHash: string | null,
+  callerHash: unknown,
+  artifactPath: string,
+): string | null {
+  if (diskHash) return diskHash;
+  if (callerHash === undefined) return null;
+  if (typeof callerHash !== 'string' || !/^[a-f0-9]{64}$/.test(callerHash)) {
+    throw new Error(
+      'ARTIFACT_CONTENT_HASH_INVALID: content_hash must be a 64-hex sha256 — but do NOT '
+      + 'compute it yourself. Write the artifact file under the project repository and '
+      + 're-submit WITHOUT content_hash: the factory computes the canonical digest from '
+      + 'the file on disk.',
+    );
+  }
+  throw new Error(
+    `ARTIFACT_CONTENT_HASH_UNVERIFIABLE: no artifact file resolved at '${artifactPath}' `
+    + 'under the project repository, so a caller-supplied content_hash cannot be verified '
+    + 'and is never trusted (a worker must not compute what the factory canonicalizes '
+    + 'itself). Write the artifact file first (or fix the path), then re-submit WITHOUT '
+    + 'content_hash — the factory will hash it from disk.',
+  );
+}
+
 function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const db = getDb();
   const managedExecution = resolveManagedExecutionProvenance(db);
@@ -249,8 +290,19 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     metadataToPersist = { ...metadata, path_warning: 'absolute_path_no_repo_binding' };
   }
 
-  const contentHash = artifactDiskHash(db, path, projectRepositoryId)
-    ?? (args.content_hash as string | undefined) ?? null;
+  // SERVER-SIDE CANONICALIZATION (the artifact-hash hole, found live on
+  // 2026-08-20: a worker fabricated a 64-hex digest and the factory stored
+  // it verbatim whenever the file did not resolve). The factory hashes the
+  // artifact FILE from disk — a caller-supplied digest is never trusted:
+  // resolvable file → the server hash wins; no file + a caller digest →
+  // typed rejection with the repair recipe; no file + no digest → null (the
+  // checklists teach "content_hash NULL after create = file not found —
+  // STOP and fix").
+  const contentHash = resolveCanonicalContentHash(
+    artifactDiskHash(db, path, projectRepositoryId),
+    args.content_hash,
+    path,
+  );
 
   // --- type-specific guards + payload prep (SRS §2b.3) ---
   //
@@ -590,7 +642,11 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
     }
   }
   const diskHash = artifactDiskHash(db, effectivePath, effectiveRepositoryId);
-  const contentHash = diskHash ?? (args.content_hash as string | null | undefined);
+  const contentHash = resolveCanonicalContentHash(
+    diskHash,
+    args.content_hash,
+    effectivePath,
+  );
   if (contentHash !== undefined) {
     fields.push('content_hash=?'); params.push(contentHash);
     const acceptedHash = status === 'accepted'
@@ -981,7 +1037,7 @@ export const definitions: Tool[] = [
         status: { type: 'string', enum: [...ARTIFACT_STATUSES] },
         parent_artifact_id: { type: 'integer', description: 'Pass null to detach from parent.' },
         project_repository_id: { type: ['integer', 'null'] },
-        content_hash: { type: ['string', 'null'], description: 'Current document digest; changing it after acceptance marks drift.' },
+        content_hash: { type: ['string', 'null'], description: 'NEVER compute or fabricate this value: the factory computes the canonical SHA-256 from the artifact FILE on disk (server-side canonicalization). A supplied value is ignored when the file resolves, and REJECTED with a repair recipe when it does not (ARTIFACT_CONTENT_HASH_UNVERIFIABLE).' },
         tags: { type: 'array', items: { type: 'string' } },
         metadata: { type: 'object' },
       },
