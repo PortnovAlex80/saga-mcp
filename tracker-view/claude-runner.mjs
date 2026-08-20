@@ -4,6 +4,24 @@ import path from 'node:path';
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createRepeatedToolLoopDetector } from './repeated-tool-loop.mjs';
+
+// ⛔ ЗАВОД ПЕРЕЕХАЛ НА OPENCODE (2026-08-20). Вызов claude Code из завода
+// ЗАПРЕЩЁН: claude стал очень дорогим. Единственный разрешённый executor —
+// agent-proxy шимка (tools/agent-proxy/claude-shim.mjs → opencode run на
+// официальном провайдере Z.AI Coding Plan). Всё, что резолвится в бинарник
+// claude CLI (дефолтный 'claude', путь к claude/.exe/.cmd/.ps1/.sh, бинарник
+// VS Code-расширения), — fail closed в resolveExecutorPath.
+function isForbiddenClaudeCli(p) {
+  if (!p) return false;
+  const s = String(p).trim().toLowerCase();
+  if (s.includes('agent-proxy')) return false; // blessed opencode shim
+  if (s === 'claude' || s === 'claude.exe' || s === 'claude.cmd'
+    || s === 'claude.ps1' || s === 'claude.sh') return true;
+  if (/[\\/]claude(\.exe|\.cmd|\.ps1|\.sh)?$/.test(s)) return true;
+  if (s.includes('anthropic.claude-code') || s.includes('claude-code')) return true;
+  return false;
+}
+
 // STAGE-10 TASK 1 — correlated run journal (observation-only; see
 // src/observability/run-journal.ts). Loaded from dist/: a rebuild must
 // precede any runner use after src changes (tracker-view itself is live
@@ -648,36 +666,52 @@ export class ClaudeBoardRunner {
     }
     return this.spawn(claudePath, args, options);
   }
-
   /**
    * Resolve the executor binary for one assignment from the FROZEN route in
    * execution_context.executor_kind (routing cutover, v2).
+   *
+   * ⛔ ЗАВОД ПЕРЕЕХАЛ НА OPENCODE (2026-08-20). Бэкенд claude CLI ЗАПРЕЩЁН:
+   * Anthropic сделал claude непомерно дорогим для заводских нагрузок. Воркеры
+   * спавнятся ТОЛЬКО через agent-proxy шимку
+   * (tools/agent-proxy/claude-shim.mjs → `opencode run`, официальный
+   * провайдер Z.AI Coding Plan). Если резолв executor'а похож на claude CLI —
+   * fail closed здесь: никаких тихих фолбэков и случайных списаний Anthropic.
    *
    * CONVEYOR v4.3 PART 1,3,12: there is exactly ONE Factory execution path.
    * The `claude-cli-simulator` executor kind is no longer supported — replay
    * is an internal production source resolved from
    * execution_context.replay.capsule_ref inside the normal WorkerExecutor, so
-   * spawn is never reached for a capsule-bound execution. This resolver only
-   * ever returns the real Claude CLI binary.
-   *
-   * Fallback chain (preserves pre-cutover behavior when no frozen executor_kind):
-   *   1. frozen execution_context.executor_kind='claude-cli'  (v2 — authoritative)
-   *   2. this.claudePath / SAGA_CLAUDE_PATH / 'claude'         (legacy default)
+   * spawn is never reached for a capsule-bound execution.
    *
    * Returns { claudePath, isSimulator }.
    */
   resolveExecutorPath(assignment) {
+    const resolved = this.realClaudePath ?? this.claudePath;
+    if (isForbiddenClaudeCli(resolved)) {
+      // Вызов claude Code запрещён: завод переехал на opencode (см. коммент
+      // выше). Причина запрета — стоимость claude. Fail closed, спавн не
+      // происходит, карточка переочередится с этим же объяснением.
+      throw new Error(
+        'FACTORY_CLAUDE_BACKEND_FORBIDDEN: the factory moved to opencode '
+        + '(tools/agent-proxy/claude-shim.mjs on the official Z.AI Coding Plan '
+        + 'provider). Spawning the claude CLI is forbidden — claude became too '
+        + `expensive. Resolved executor: '${resolved}'. Set `
+        + 'SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs" '
+        + '(and SAGA_CLAUDE_PATH to the same value) before starting the factory.',
+      );
+    }
     const ctx = assignment?.execution_context;
     const frozenKind = ctx && typeof ctx === 'object'
       ? ctx.executor_kind
       : undefined;
     if (frozenKind === 'claude-cli' || frozenKind === undefined) {
-      // The real Claude CLI. Provider/model/effort come from model_route.
-      return { claudePath: this.realClaudePath ?? this.claudePath, isSimulator: false };
+      // The opencode proxy (or another approved compound executor).
+      // Provider/model/effort come from model_route.
+      return { claudePath: resolved, isSimulator: false };
     }
     // Any other frozen kind is rejected upstream by the authority layer. We
     // never select a simulator here.
-    return { claudePath: this.realClaudePath ?? this.claudePath, isSimulator: false };
+    return { claudePath: resolved, isSimulator: false };
   }
 
   // Записать строку в heartbeat-лог. Формат:

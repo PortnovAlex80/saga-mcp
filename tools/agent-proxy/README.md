@@ -1,8 +1,16 @@
-# Agent Proxy — переключение бэкендов завода (opencode / claude / zcode)
+# Agent Proxy — бэкенд завода: OpenCode (claude запрещён)
+
+> ⛔ **2026-08-20: claude CLI как бэкенд завода ЗАПРЕЩЁН.** Anthropic сделал
+> claude непомерно дорогим для заводских нагрузок. Единственный рабочий
+> бэкенд — OpenCode (Z.AI Coding Plan) через шимку. Запрет вшит в код:
+> `tracker-view/claude-runner.mjs` → `isForbiddenClaudeCli()` + fail-closed
+> `resolveExecutorPath()` (ошибка FACTORY_CLAUDE_BACKEND_FORBIDDEN на старте
+> воркера). Путь «просто не задавать SAGA_REAL_CLAUDE_PATH» больше НЕ
+> работает — и это намеренно.
 
 Слой совместимости: завод спавнит воркеров через claude-CLI-поверхность
 (`claude -p --model X --mcp-config Y --settings <hooks> ...`), а этот прокси
-переводит вызов на другой официальный CLI-агент без правок раннера.
+переводит вызов на официальный CLI-агент opencode без правок раннера.
 
 ## Файлы
 
@@ -12,14 +20,15 @@
   завода на OpenCode-плагин (`tool.execute.after` + `session.prompt noReply`).
   Копируется в `~/.config/opencode/plugins/` шимкой; без фабричного env — no-op.
 
-## Переключение агентов
+## Единственный бэкенд — OpenCode
 
 ```bash
-# OpenCode (Z.AI Coding Plan — официальный провайдер в opencode)
+# Обязательный env для запуска завода (без него спавн упадёт fail-closed):
 export SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs"
+export SAGA_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs"
 
-# Claude (резерв, по умолчанию) — просто не задавать переменную
-unset SAGA_REAL_CLAUDE_PATH
+# ⛔ Запрещено (вызов claude Code из завода):
+# unset SAGA_REAL_CLAUDE_PATH  → спавн упадёт с FACTORY_CLAUDE_BACKEND_FORBIDDEN
 ```
 
 Авторизация OpenCode: `~/.local/share/opencode/auth.json`, провайдер
