@@ -218,3 +218,46 @@ stays open (stage 16).
   implementation was on a different branch…"). THE review-loop-that-cannot-
   pass, third live defect. R3 candidate — architect's decision; no
   mid-run repair.
+
+- **14:29:29Z — STOP (operator's directive: fix what the run proved, then
+  rebuild cleanly).** Snapshot `factory-snapshots/stage15-db-2026-08-20T14-29-29-947Z`
+  (integrity ok) → `factory.mjs stop` → engine pid 58644 stopped, the
+  round-7 worker already dead, workplace rewound. Watchdog stopped, the
+  observation cron removed. Terminal run state (DB, read-only): lifecycle 1
+  **failed@solution-development**, terminal_status=failed, error
+  `PRODUCTION_CELL_PLAN_BINDING_MISMATCH … development-implementation/e125bf77…:author`;
+  discovery 'go', formalization 'formalized' (both completed, attempt 1);
+  dev head on `dev` = c700df8 ("factory: integrate task #19" — card 2's
+  round-5 work IS integrated); task 18's seven unmerged execution branches
+  remain in the product repo.
+
+## TASK 3 — the three stage questions, answered from the stopped run
+
+1. **Does the scope-widening transition work under load?** YES, end-to-end
+   in production: fence ×2 (12:28:15, 12:50:54) → trajectory
+   scope-impossible → ledger grant rev 1 (12:50:54.276, no live holder) →
+   re-staff 12:51:29 → the previously-rejected work accepted 13:05:09. The
+   release half (fence/desk re-read the widened authority) works. The
+   DELIVERY half did not: the re-staffed worker was never informed (W-F1)
+   and self-limited (E-F4) on both cards — card 1 terminal with the hole,
+   card 2 saved only by its reviewer's build. → **fixed by STAGE-18 R1**
+   (claim-time delivery + the WRITE AUTHORITY prompt section, b9bcb063).
+2. **Does the factory self-terminate?** NO. It parked indefinitely on the
+   unresolvable R3 repair loop (fresh heartbeat, correct engine cycling,
+   no path to a terminal state); only the pre-declared operator threshold
+   ended it. The misattributed `X but branch is X` diagnosis made the
+   loop UNINTERPRETABLE to every re-staffed worker (round 6's log shows
+   the confusion verbatim). → **fixed by STAGE-18 R3** (per-arm
+   attribution + the treeSha≠commitSha contract pin, 7a51617b). The
+   silent-narrowing acceptance that started the loop's cost → **fixed by
+   R2** (claim-surface monotonicity, fc062f77).
+3. **Is the terminal label true?** N/A as declared — the run reached no
+   natural terminal state; the label 'failed' was written by the operator
+   stop path. The label truth-verification exercise moves to the stage-19
+   run on the rebuilt factory, where a natural terminal state is the
+   success criterion.
+
+**Stage-15 disposition: harvest complete.** Three live defect classes
+(delivery, monotonicity, attribution) each carried to a fix with RED-first
+tests in stage 18; the full-baseline counts and the pre-flight HEAD SHA for
+stage 19 live in docs/factory-run/stage18/REPORT.md.
