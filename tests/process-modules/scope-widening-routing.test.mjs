@@ -1,23 +1,28 @@
-// tests/process-modules/replan-mandate-routing.test.mjs
+// tests/process-modules/scope-widening-routing.test.mjs
 //
-// RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1 step 2) — the executor repair_wait
-// routing, unit T2 of 9. When the finding-set trajectory of the role's last
-// two rejections is SCOPE-IMPOSSIBLE (the same path-outside-authority key
-// survived while the overall set spun or churned), the budget arithmetic is
-// moot: the worker physically cannot write into the frozen scope it keeps
-// offending. The route is a TYPED RE-PLAN MANDATE —
-//   NOT terminal failed (the defect is a planning carve error, not a worker
-//                       failure),
-//   NOT a requeue (another attempt is impossible, not slow).
+// STAGE-13 — scope insufficiency as a LAWFUL TRANSITION: the executor
+// repair_wait routing (successor of the retired re-plan mandate routing).
 //
-// The finding shape is the REAL stage-11 authority check:
-//   <provider>:path-outside-authority
-//   :: Git paths [src/physics/spacecraft.js] are outside frozen changeScopes
-//      [package.json, src/game/, tests/].
+// When the finding-set trajectory of the role's last two rejections is
+// SCOPE-IMPOSSIBLE (the same path-outside-authority key survived while the
+// overall set spun or churned), the worker physically cannot write into the
+// frozen scope it keeps offending. The route is a TYPED WIDENING REQUEST to
+// the carve authority, decided on CONTENTION ONLY:
+//   granted  → a wider scope revision is frozen (append-only ledger) and the
+//              SAME workplace is re-staffed (requeue, budget-free);
+//   refused  → terminal failed, the refusal row naming the LIVE holders.
+//
+// The finding shape is the REAL authority-check diagnostic
+// (development-check-providers.ts path-outside-authority), with the
+// stage-13 teaching suffix tolerated.
+//
+// Also covered: the worker-declared entry (worker_done outcome
+// 'scope-insufficient' records a pending request; the next executor drive
+// decides it before any budget arithmetic).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -34,25 +39,23 @@ import { ProductionCellNodeExecutor } from '../../dist/process-modules/applicati
 import { CommitAcceptedCandidate } from '../../dist/process-modules/application/commit-accepted-candidate.js';
 import { TransitionObligationIntegrator } from '../../dist/process-modules/application/transition-obligation-integrator.js';
 import { SqliteTransitionObligationLedger } from '../../dist/process-modules/persistence/sqlite-transition-obligation-ledger.js';
+import { SqliteScopeWideningLedger } from '../../dist/infrastructure/workplace/sqlite-scope-widening-ledger.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { encodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
-import {
-  countGateRejectedCandidateSets,
-} from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import { countGateRejectedCandidateSets } from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
 const PROVIDER = 'test.production-contract';
 const PROVIDER_DIGEST = sha('provider');
 
-// The REAL stage-11 authority-violation diagnostic (development-check-providers
-// path-outside-authority): the physics worker keeps touching
-// src/physics/spacecraft.js while its frozen scope owns only
-// [package.json, src/game/, tests/].
 function authorityViolation(path, scopes = 'package.json, src/game/, tests/') {
   return encodeCheckDiagnostic({
     code: 'path-outside-authority',
-    message: `Git paths [${path}] are outside frozen changeScopes [${scopes}].`,
+    message: `Git paths [${path}] are outside frozen changeScopes [${scopes}]. `
+      + `If the acceptance criteria genuinely require these paths, conclude the attempt with `
+      + `worker_done({ outcome: 'scope-insufficient', requested_scopes: [paths] }) instead of `
+      + `writing them undeclared.`,
   });
 }
 function overlapDiagnostic(left, right) {
@@ -100,6 +103,26 @@ function cell() {
 function harness() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
+  db.prepare(
+    `INSERT INTO projects (name) VALUES ('scope-widening-unit')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO epics (project_id, name) VALUES (1, 'scope-widening-unit-epic')`,
+  ).run();
+  // The re-plan mandate ledger table is lazily created by its repository; the
+  // executor no longer mints mandates (stage-13 removed the trigger), so the
+  // test creates it to assert NO row is minted.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS factory_replan_mandates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_lineage_key TEXT NOT NULL,
+      workplace_ref TEXT NOT NULL,
+      role TEXT NOT NULL,
+      cycle_number INTEGER NOT NULL,
+      surviving_keys TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (workplace_ref, role)
+    );`);
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
@@ -113,7 +136,7 @@ function harness() {
     let obligation = durableIntegrator[method](input);
     if (obligation.state === 'pending') {
       const fence = obligationLedger.allocateLeaseFence(obligation.obligationKey);
-      obligationLedger.lease(obligation.obligationKey, 'replan-unit-test', fence);
+      obligationLedger.lease(obligation.obligationKey, 'scope-widening-unit-test', fence);
       obligation = obligationLedger.get(obligation.obligationKey);
     }
     return obligation;
@@ -138,7 +161,13 @@ function harness() {
   };
   persistence.countGateRejectedCandidateSets = (ref, role) =>
     countGateRejectedCandidateSets(db, serializeWorkplaceRef(ref), role);
-  persistence.readTaskForWorkplace = () => ({ taskId: 1 });
+  persistence.readTaskForWorkplace = ref => {
+    const serialized = serializeWorkplaceRef(ref);
+    const row = db.prepare(
+      'SELECT id AS taskId FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1',
+    ).get(serialized);
+    return row ?? null;
+  };
   persistence.countTerminalExecutionsForTask = () => 0;
   const executorOptions = {
     db,
@@ -210,6 +239,46 @@ function workplaceRef() {
   return { processRunId: 7, moduleRef: 'test-module@1.0.0', productionCellId: 'singleton-cell', workKey: 'singleton' };
 }
 
+/**
+ * The card row the executor's task binding resolves: original frozen scopes
+ * [package.json, src/game/, tests/], the honest need src/physics/spacecraft.js.
+ */
+function seedTaskRow(h, ref, overrides = {}) {
+  const serialized = serializeWorkplaceRef(ref);
+  const metadata = JSON.stringify({
+    process_run_id: 7,
+    cell_input_item: {
+      key: overrides.key ?? 'singleton',
+      changeScopes: overrides.scopes ?? ['package.json', 'src/game/', 'tests/'],
+    },
+  });
+  const existing = h.db.prepare('SELECT id FROM tasks WHERE workplace_ref=?').get(serialized);
+  if (existing) return existing.id;
+  const info = h.db.prepare(
+    `INSERT INTO tasks (title, status, epic_id, task_kind, workflow_stage, execution_mode, tags, metadata, workplace_ref)
+     VALUES ('scope fixture', 'todo', 1, 'test.author', 'test', 'tracker_only', '[]', ?, ?)`,
+  ).run(metadata, serialized);
+  return Number(info.lastInsertRowid);
+}
+
+/** A second LIVE workplace holding a claim (for refusal). */
+function seedHolderWorkplace(h, ref, holderScopes) {
+  const holderRef = {
+    processRunId: ref.processRunId,
+    moduleRef: ref.moduleRef,
+    productionCellId: ref.productionCellId,
+    workKey: 'holder-card',
+  };
+  new SqliteWorkplaceRepository(h.db).materialize({
+    processRunId: holderRef.processRunId,
+    moduleRef: holderRef.moduleRef,
+    productionCellId: holderRef.productionCellId,
+    workKey: holderRef.workKey,
+  });
+  seedTaskRow(h, holderRef, { key: 'holder-card', scopes: holderScopes });
+  return holderRef;
+}
+
 function finishRole(h, ref, executionRef, product) {
   const queued = h.workplaceRepo.read(ref);
   const leased = h.workplaceRepo.applyTransition({
@@ -237,8 +306,7 @@ function finishRole(h, ref, executionRef, product) {
 }
 
 function engineLogCapture() {
-  const dir = mkdtempSync(join(tmpdir(), 'replan-routing-'));
-  const path = join(dir, 'engine.log');
+  const path = join(tmpdir(), `scope-widening-${process.pid}-${Date.now()}.log`);
   const prior = process.env.SAGA_ENGINE_LOG;
   process.env.SAGA_ENGINE_LOG = path;
   return {
@@ -246,7 +314,7 @@ function engineLogCapture() {
     restore() {
       if (prior === undefined) delete process.env.SAGA_ENGINE_LOG;
       else process.env.SAGA_ENGINE_LOG = prior;
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(path, { force: true });
     },
   };
 }
@@ -261,28 +329,21 @@ async function rejectedAttempt(h, ctx, ref, label, diagnostics, executor = h.exe
   assert.equal(state.loopState, 'repair_wait', `attempt ${label} must be rejected into repair_wait`);
 }
 
-test('T2 RED: scope-impossible routes repair_wait to a re-plan mandate (parked REPLAN_MANDATED — not terminal, not requeue)', async () => {
+test('trajectory grant: scope-impossible routes to a widening GRANT, re-freezes a wider revision, requeues budget-free', async () => {
   const h = harness();
   const ctx = context(cell());
   const ref = workplaceRef();
-  const serialized = serializeWorkplaceRef(ref);
+  seedTaskRow(h, ref);
   const log = engineLogCapture();
   try {
     await h.executor.execute(ctx); // hire the author
-
-    // Attempt 1: the physics worker touched src/physics/spacecraft.js outside
-    // its frozen scope [package.json, src/game/, tests/].
     await rejectedAttempt(h, ctx, ref, 'poa-1', [
       authorityViolation('src/physics/spacecraft.js'),
       overlapDiagnostic('auth', 'billing'),
     ]);
     await h.executor.execute(ctx); // below budget → requeue
-    assert.equal(h.coordinator.readState(ref).loopState, 'queued',
-      'the FIRST authority violation alone still requeues — one burn is not yet scope-impossible');
+    assert.equal(h.coordinator.readState(ref).loopState, 'queued');
 
-    // Attempt 2: the SAME path-outside-authority key returns byte-identical
-    // (spinning overall). Budget would say 2/2 = ROLLOVER; the trajectory says
-    // the repair is IMPOSSIBLE — the mandate must preempt the budget.
     await rejectedAttempt(h, ctx, ref, 'poa-2', [
       authorityViolation('src/physics/spacecraft.js'),
       overlapDiagnostic('auth', 'billing'),
@@ -290,104 +351,150 @@ test('T2 RED: scope-impossible routes repair_wait to a re-plan mandate (parked R
     const result = await h.executor.execute(ctx); // THE routing decision
 
     const state = h.coordinator.readState(ref);
-    assert.equal(state.loopState, 'paused',
-      'scope-impossible parks the workplace under a re-plan mandate');
-    assert.equal(state.terminalReason, null,
-      'the mandate is NOT a terminal failed — the defect is a carve error, not a worker failure');
-    assert.notEqual(state.loopState, 'queued', 'the mandate is NOT a requeue');
-    assert.equal(result.runtimeEvent, 'paused');
-    assert.equal(result.pause?.kind, 'replan_required',
-      'the node-level pause is TYPED — a re-plan wait, distinguishable from worker_active and human_required');
+    assert.equal(state.loopState, 'queued',
+      'the grant re-staffs the SAME workplace (queued), not a park, not terminal');
+    assert.equal(state.terminalReason, null);
+    assert.equal(result.runtimeEvent, 'paused',
+      'a granted widening is scheduled production ("in flight"), not a human pause');
+    assert.equal(result.pause?.kind, 'worker_active',
+      'the node-level wait is typed worker_active — re-staffed work, not a park');
 
-    const park = h.db.prepare(
-      'SELECT reason_code, message FROM factory_workplace_park_reasons ORDER BY id DESC LIMIT 1',
-    ).get();
-    assert.equal(park.reason_code, 'REPLAN_MANDATED',
-      'the park reason row carries the typed mandate code');
-    assert.match(park.message, /src\/physics\/spacecraft\.js/,
-      'the park diagnosis NAMES the offending path');
+    const events = h.db.prepare(
+      'SELECT event_kind, source, requested_scopes, granted_revision, granted_scopes, holders FROM factory_scope_widening_events ORDER BY id',
+    ).all();
+    assert.equal(events.length, 2, 'request + grant rows');
+    assert.equal(events[0].event_kind, 'request');
+    assert.equal(events[0].source, 'cell-trajectory');
+    assert.deepEqual(JSON.parse(events[0].requested_scopes), ['src/physics/spacecraft.js']);
+    assert.equal(events[1].event_kind, 'grant');
+    assert.equal(events[1].granted_revision, 1);
+    const granted = JSON.parse(events[1].granted_scopes);
+    for (const scope of ['package.json', 'src/game/', 'tests/', 'src/physics/spacecraft.js']) {
+      assert.ok(granted.includes(scope), `granted revision must contain ${scope}`);
+    }
 
     const engineLine = log.read();
-    assert.match(engineLine, /REPLAN-MANDATE/);
-    assert.match(engineLine, /path-outside-authority/);
-    assert.doesNotMatch(engineLine, /ROLLOVER/,
-      'no epoch rollover may fire — the mandate preempted the budget arithmetic');
+    assert.match(engineLine, /scope-widening\] GRANTED/);
+    assert.doesNotMatch(engineLine, /ROLLOVER/, 'no epoch rollover may fire — the widening preempted the budget');
     assert.equal(
-      h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs WHERE workplace_ref=?').get(serialized).n,
+      h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs').get().n,
       0,
       'no recovery-epoch row — the budget never engaged',
     );
+    assert.equal(
+      h.db.prepare('SELECT COUNT(*) AS n FROM factory_replan_mandates').get().n,
+      0,
+      'no re-plan mandate may be minted — one mechanism for one event',
+    );
+
+    // The widened authority is what the fence reads now.
+    const effective = new SqliteScopeWideningLedger(h.db)
+      .readEffectiveChangeScopes(h.db.prepare('SELECT id FROM tasks WHERE workplace_ref=?')
+        .get(serializeWorkplaceRef(ref)).id, ['package.json', 'src/game/', 'tests/']);
+    assert.ok(effective.includes('src/physics/spacecraft.js'));
   } finally {
     log.restore();
     h.db.close();
   }
 });
 
-test('T8 executor companion: a ratchet denial parks REPLAN_CYCLE_RATCHET (human_required), not a mandate', async () => {
+test('trajectory refusal: a LIVE holder blocks the grant — terminal failed, holders named', async () => {
   const h = harness();
-  const POLICY_KEY = 'development-case:run:7:test-module@1.0.0';
-  const SPACECRAFT_KEY = `${PROVIDER}:path-outside-authority`
-    + '::Git paths [src/physics/spacecraft.js] are outside frozen changeScopes '
-    + '[package.json, src/game/, tests/].';
-  // The ledger-backed policy with one prior mandate of the SAME lineage that
-  // already burned this exact key (the run row is absent → run-scoped lineage).
-  const ledgerTable = `
-    CREATE TABLE IF NOT EXISTS factory_replan_mandates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      case_lineage_key TEXT NOT NULL,
-      workplace_ref TEXT NOT NULL,
-      role TEXT NOT NULL,
-      cycle_number INTEGER NOT NULL,
-      surviving_keys TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (workplace_ref, role)
-    );`;
-  h.db.exec(ledgerTable);
-  h.db.prepare(
-    'INSERT INTO factory_replan_mandates (case_lineage_key, workplace_ref, role, cycle_number, surviving_keys) '
-    + "VALUES (?, 'workplace/prior-cycle', 'author', 2, ?)",
-  ).run(POLICY_KEY, JSON.stringify([SPACECRAFT_KEY]));
-  const { SqliteReplanMandateLedger } = await import(
-    '../../dist/infrastructure/workplace/sqlite-replan-mandate-ledger.js'
-  );
-  const policyExecutor = new ProductionCellNodeExecutor({
-    ...h.executorOptions,
-    replanCyclePolicy: new SqliteReplanMandateLedger(h.db),
-  });
   const ctx = context(cell());
   const ref = workplaceRef();
+  seedTaskRow(h, ref);
+  seedHolderWorkplace(h, ref, ['src/physics/']);
   const log = engineLogCapture();
   try {
-    await policyExecutor.execute(ctx); // hire the author
-    await rejectedAttempt(h, ctx, ref, 'ratchet-1', [
-      authorityViolation('src/physics/spacecraft.js'),
-      overlapDiagnostic('auth', 'billing'),
-    ], policyExecutor);
-    await policyExecutor.execute(ctx);
-    // The SAME key returns: scope-impossible, but the ratchet sees it already
-    // burned the prior mandate of this lineage — no cycle 3.
-    await rejectedAttempt(h, ctx, ref, 'ratchet-2', [
-      authorityViolation('src/physics/spacecraft.js'),
-      overlapDiagnostic('auth', 'billing'),
-    ], policyExecutor);
-    const result = await policyExecutor.execute(ctx);
+    await h.executor.execute(ctx);
+    await rejectedAttempt(h, ctx, ref, 'ref-1', [authorityViolation('src/physics/spacecraft.js')]);
+    await h.executor.execute(ctx);
+    await rejectedAttempt(h, ctx, ref, 'ref-2', [authorityViolation('src/physics/spacecraft.js')]);
+    const result = await h.executor.execute(ctx);
+
     const state = h.coordinator.readState(ref);
-    assert.equal(state.loopState, 'paused',
-      'the ratchet denial parks the workplace for a human decision');
-    assert.equal(state.terminalReason, null);
-    assert.equal(result.pause?.kind, 'human_required',
-      'a ratchet denial is a HUMAN wait — no replan_required, no new cycle');
-    const park = h.db.prepare(
-      'SELECT reason_code, message FROM factory_workplace_park_reasons ORDER BY id DESC LIMIT 1',
+    assert.equal(state.loopState, 'terminal', 'a refused widening is terminal');
+    assert.equal(state.terminalReason, 'failed', 'the honest terminal outcome');
+    assert.equal(result.runtimeEvent, 'completed');
+    assert.equal(result.domainEvent, 'failed');
+
+    const refusal = h.db.prepare(
+      "SELECT holders FROM factory_scope_widening_events WHERE event_kind='refusal'",
     ).get();
-    assert.equal(park.reason_code, 'REPLAN_CYCLE_RATCHET');
-    assert.match(park.message, /src\/physics\/spacecraft\.js/,
-      'the full diagnosis names the reproduced burn');
-    assert.match(log.read(), /REPLAN-RATCHET/);
+    assert.ok(refusal, 'a refusal row exists');
+    const holders = JSON.parse(refusal.holders);
+    assert.equal(holders.length, 1);
+    assert.equal(holders[0].workKey, 'holder-card', 'the refusal NAMES the contending holder');
+    assert.equal(holders[0].scope, 'src/physics/');
+    assert.match(log.read(), /scope-widening\] REFUSED.*holder-card/);
+  } finally {
+    log.restore();
+    h.db.close();
+  }
+});
+
+test('worker-declared: a pending request is decided on the next drive, before budget arithmetic', async () => {
+  const h = harness();
+  const ctx = context(cell());
+  const ref = workplaceRef();
+  const taskId = seedTaskRow(h, ref);
+  const serialized = serializeWorkplaceRef(ref);
+  const log = engineLogCapture();
+  try {
+    await h.executor.execute(ctx); // hire → queued
+
+    // A worker leases and starts the attempt, then concludes it with the
+    // typed outcome; the tool layer records the request and releases the
+    // execution 'declared' (running → repair_wait).
+    const queued = h.workplaceRepo.read(ref);
+    const leased = h.workplaceRepo.applyTransition({
+      workplaceRef: ref,
+      expectedRevision: queued.revision,
+      kanbanPhase: queued.kanbanPhase,
+      loopState: 'leased',
+      nextRole: queued.nextRole,
+      terminalReason: null,
+      activeReservationRef: 'execution:declared-1',
+    });
+    assert.equal(leased.applied, true);
+    const started = h.workplaceRepo.applyTransition({
+      workplaceRef: ref,
+      expectedRevision: leased.revision,
+      kanbanPhase: leased.state.kanbanPhase,
+      loopState: 'running',
+      nextRole: leased.state.nextRole,
+      terminalReason: null,
+      activeReservationRef: 'execution:declared-1',
+    });
+    assert.equal(started.applied, true);
+    new SqliteScopeWideningLedger(h.db).recordRequest({
+      workplaceRef: serialized,
+      taskId,
+      role: 'author',
+      source: 'worker-declared',
+      requestedScopes: ['src/physics/spacecraft.js'],
+      requestedByExecution: 'execution:declared-1',
+    });
+    h.coordinator.applyEvent(ref, { kind: 'scope-declared' });
+    let state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'repair_wait', 'the declaration parks the attempt lawfully');
+
+    const result = await h.executor.execute(ctx); // THE decision drive
+    state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'queued', 'uncontended declaration → grant → re-staffed');
+    assert.equal(result.runtimeEvent, 'paused');
+    assert.equal(result.pause?.kind, 'worker_active');
+
+    const events = h.db.prepare(
+      'SELECT event_kind, source FROM factory_scope_widening_events ORDER BY id',
+    ).all();
+    assert.equal(events.length, 2);
+    assert.equal(events[0].source, 'worker-declared');
+    assert.equal(events[1].event_kind, 'grant');
     assert.equal(
-      h.db.prepare('SELECT COUNT(*) AS n FROM factory_replan_mandates').get().n,
-      1,
-      'the denied trigger minted NO new mandate row',
+      h.db.prepare('SELECT COUNT(*) AS n FROM factory_workplace_recovery_epochs').get().n,
+      0,
+      'no budget engagement for a lawful transition',
     );
   } finally {
     log.restore();
@@ -395,10 +502,11 @@ test('T8 executor companion: a ratchet denial parks REPLAN_CYCLE_RATCHET (human_
   }
 });
 
-test('T2 companion: one authority violation then a RESOLVED key stays ordinary budget flow (no false mandate)', async () => {
+test('trajectory companion: one violation then a RESOLVED key stays ordinary budget flow (no false widening)', async () => {
   const h = harness();
   const ctx = context(cell());
   const ref = workplaceRef();
+  seedTaskRow(h, ref);
   const log = engineLogCapture();
   try {
     await h.executor.execute(ctx);
@@ -408,16 +516,18 @@ test('T2 companion: one authority violation then a RESOLVED key stays ordinary b
     ]);
     await h.executor.execute(ctx);
     assert.equal(h.coordinator.readState(ref).loopState, 'queued');
-    // Attempt 2 moved the file inside its scope: the authority key is GONE
-    // from latest (strict subset, still-converging) — not scope-impossible.
     await rejectedAttempt(h, ctx, ref, 'burn-2-resolved', [
       overlapDiagnostic('auth', 'billing'),
     ]);
     await h.executor.execute(ctx);
     const state = h.coordinator.readState(ref);
     assert.equal(state.loopState, 'queued',
-      'a resolved authority violation is converging work — the waiver holds, no mandate');
-    assert.doesNotMatch(log.read(), /REPLAN-MANDATE/);
+      'a resolved authority violation is converging work — no widening request');
+    assert.doesNotMatch(log.read(), /scope-widening/);
+    assert.equal(
+      h.db.prepare('SELECT COUNT(*) AS n FROM factory_scope_widening_events').get().n,
+      0,
+    );
   } finally {
     log.restore();
     h.db.close();

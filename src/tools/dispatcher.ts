@@ -13,6 +13,7 @@ import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution, parkTaskExecutionForHuman } from './conveyor-runtime-helper.js';
+import { SqliteScopeWideningLedger } from '../infrastructure/workplace/sqlite-scope-widening-ledger.js';
 import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
 import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
 import { readFrozenProductionIngressIfBound } from '../process-modules/application/production-ingress-contract.js';
@@ -531,6 +532,29 @@ function handleWorkerDone(
   if (verdict !== 'approved' && verdict !== 'changes_requested') {
     throw new Error(`verdict must be 'approved' or 'changes_requested', got '${verdict}'`);
   }
+  // STAGE-13 — the typed scope-insufficiency conclusion. The attempt stops
+  // honestly and names what it needs; it does not grant itself anything.
+  const scopeOutcome = args.outcome === 'scope-insufficient' ? 'scope-insufficient' : null;
+  if (args.outcome !== undefined && !scopeOutcome) {
+    throw new Error(
+      `worker_done: 'outcome' must be 'scope-insufficient' when present (got ${JSON.stringify(args.outcome)}). `
+      + `The typed conclusion shape: worker_done({ task_id, worker_id, execution_id, result, `
+      + `outcome: 'scope-insufficient', requested_scopes: ['<path-or-dir>', ...] }).`,
+    );
+  }
+  if (scopeOutcome) {
+    if (verdict !== 'approved') {
+      throw new Error("worker_done: outcome 'scope-insufficient' cannot carry a review verdict");
+    }
+    if (!Array.isArray(args.requested_scopes) || args.requested_scopes.length === 0
+      || args.requested_scopes.some(s => typeof s !== 'string' || !s.trim())) {
+      throw new Error(
+        "worker_done: outcome 'scope-insufficient' requires requested_scopes: a non-empty "
+          + 'array of repository paths/directories the work honestly needs and the frozen '
+          + 'changeScopes do not contain.',
+      );
+    }
+  }
 
   const completeTask = (): WorkerDoneTransactionResult => {
     // Operator SOFT-STOP tool fence (schema v13): FIRST check, before the
@@ -565,7 +589,7 @@ function handleWorkerDone(
     // already be null after the first call cleared the fence).
     const commandId = kernelClose
       ? `${String(args.execution_id)}:presentation-close:${kernelClose.commitmentRef}`
-      : workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
+      : workerDoneCommandId(args.execution_id as string | undefined, scopeOutcome ?? verdict, taskId, workerId, result);
     const payload = kernelClose
       ? {
           task_id: taskId,
@@ -574,7 +598,12 @@ function handleWorkerDone(
           product_ref: kernelClose.productRef,
           product_digest: kernelClose.productDigest,
         }
-      : workerDonePayload(taskId, workerId, result, verdict);
+      : scopeOutcome
+        ? {
+            ...workerDonePayload(taskId, workerId, result, scopeOutcome),
+            requested_scopes: (args.requested_scopes as string[]).slice(),
+          }
+        : workerDonePayload(taskId, workerId, result, verdict);
     const payloadHash = hashPayload(payload);
     const prior = checkReceipt(db, commandId, payloadHash);
     if (prior.kind === 'replay') {
@@ -611,6 +640,94 @@ function handleWorkerDone(
       task as Task & { current_execution_id?: string | null },
       args.execution_id,
     );
+
+    // STAGE-13 — the typed scope-insufficient conclusion of an AUTHOR
+    // attempt. This is a SUCCESSFUL conclusion, not a failed check and not a
+    // recovery trigger: no typed product is required or sealed. The request
+    // is recorded append-only and routed to the carve authority (the kernel
+    // decides it on contention before any budget arithmetic on its next
+    // drive). The worker is released honestly.
+    if (scopeOutcome) {
+      if (task.status !== 'in_progress') {
+        throw new Error(
+          `worker_done: outcome 'scope-insufficient' concludes an ACTIVE author attempt `
+            + `(task status 'in_progress', got '${task.status}')`,
+        );
+      }
+      if (!task.workplace_ref) {
+        throw new Error(
+          "worker_done: outcome 'scope-insufficient' requires a conveyor workplace card "
+            + '(task.workplace_ref missing — plain tracker tasks cannot widen scopes)',
+        );
+      }
+      const ledger = new SqliteScopeWideningLedger(db);
+      ledger.recordRequest({
+        workplaceRef: task.workplace_ref,
+        taskId,
+        role: 'author',
+        source: 'worker-declared',
+        requestedScopes: args.requested_scopes as string[],
+        requestedByExecution: (args.execution_id as string) ?? task.current_execution_id ?? null,
+      });
+      // Release the card back to the claimable queue; the workplace itself
+      // moves running → repair_wait via the 'declared' release outcome and
+      // the kernel's widening decision re-staffs (grant) or terminates
+      // (refusal) it on the next drive.
+      db.prepare(
+        `UPDATE tasks
+            SET status='todo', assigned_to=NULL, current_execution_id=NULL,
+                updated_at=datetime('now')
+          WHERE id=? AND assigned_to=?`,
+      ).run(taskId, workerId);
+      const projectIdRow = db
+        .prepare('SELECT project_id FROM epics WHERE id=?')
+        .get(task.epic_id) as { project_id?: number } | undefined;
+      releaseTaskExecution(db, {
+        taskId,
+        epicId: task.epic_id,
+        projectId: projectIdRow?.project_id ?? 0,
+        taskKind: task.task_kind,
+        metadata: task.metadata,
+        executionId: (args.execution_id as string) ?? task.current_execution_id ?? workerId,
+        outcome: 'declared',
+        taskStatus: 'todo',
+        executionMode: task.execution_mode,
+        integrationState: task.integration_state,
+      });
+      db.prepare(
+        'INSERT INTO comments (task_id, author, content) VALUES (?, ?, ?)',
+      ).run(taskId, workerId, result);
+      logActivity(
+        db,
+        'task',
+        taskId,
+        'status_changed',
+        'status',
+        task.status,
+        'todo',
+        `Task '${task.title}' concluded scope-insufficient by ${workerId}: `
+          + `requested [${(args.requested_scopes as string[]).join(', ')}] — widening request recorded, carve authority will decide`,
+      );
+      const reply: WorkerDoneReply = {
+        completed: taskId,
+        completed_new_status: 'todo',
+        active_tasks: [],
+        stop: true,
+        stop_reason:
+          'scope-insufficiency declaration accepted — the carve authority decides the widening; stop now and return your summary',
+      };
+      storeReceipt(db, {
+        commandId,
+        commandKind: 'worker_done',
+        actorKind: 'managed_execution',
+        actorId: workerId,
+        executionId: task.current_execution_id,
+        taskId,
+        payload,
+        reply,
+      });
+      return { kind: 'completed', reply };
+    }
 
     // A Production Cell completion is never authoritative prose. The exact
     // fenced execution must first persist at least one typed managed product;

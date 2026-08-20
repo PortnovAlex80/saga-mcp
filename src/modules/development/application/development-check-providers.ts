@@ -718,6 +718,13 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
   db: SqlDatabasePort;
   candidateSets: CandidateSetReaderPort;
   git: GitPort;
+  /**
+   * STAGE-13 — the current write authority of a task (original carve union
+   * its granted widening revisions), or the original scopes when no grant
+   * exists. Injected by the composition root; absent degrades to the
+   * original carve (no widening has ever happened).
+   */
+  readEffectiveChangeScopes?: (taskId: number, originalScopes: readonly string[]) => readonly string[];
 }): CheckProvider {
   return {
     providerId: DEVELOPMENT_IMPLEMENTATION_SCOPE_CHECK_PROVIDER_ID,
@@ -749,7 +756,7 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
         // content_hash===digest check (line below) is the authority binding.
         // execution_id is redundant forbidden authority — removed.
         const row = input.db.prepare(
-          `SELECT s.payload_snapshot,s.content_hash,t.metadata,pr.local_path,
+          `SELECT s.payload_snapshot,s.content_hash,t.metadata,t.id AS task_id,pr.local_path,
                   r.effective_base_commit
              FROM factory_managed_node_submissions s
              JOIN tasks t ON t.id=s.task_id
@@ -761,6 +768,7 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
           payload_snapshot: string;
           content_hash: string;
           metadata: string;
+          task_id: number;
           local_path: string;
           effective_base_commit: string;
         } | undefined;
@@ -871,12 +879,23 @@ export function createDevelopmentImplementationScopeCheckProvider(input: {
             + ' and .saga-bootstrap.md are excluded automatically).'
             + filteredSuffix);
         }
-        const normalizedScopes = scopes.map(parseRepositoryScope);
+        // STAGE-13 — the fence reads the CURRENT write authority: the task's
+        // latest granted scope revision (append-only widening ledger), or the
+        // original carve when no grant exists. The fence's question is
+        // containment against the frozen authority — widened lawfully or not
+        // at all — never "does the work need this path".
+        const effectiveScopes = input.readEffectiveChangeScopes
+          ? input.readEffectiveChangeScopes(row.task_id, scopes)
+          : scopes;
+        const normalizedScopes = effectiveScopes.map(parseRepositoryScope);
         const offending = actual.filter(path =>
           !normalizedScopes.some(scope => repositoryScopeContainsPath(scope, path)));
         if (offending.length > 0) {
           return scopeFailure(subjectCandidateSetRef, 'path-outside-authority',
-            `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${scopes.join(', ')}].`);
+            `Git paths [${offending.join(', ')}] are outside frozen changeScopes [${effectiveScopes.join(', ')}]. `
+            + `If the acceptance criteria genuinely require these paths, conclude the attempt with `
+            + `worker_done({ outcome: 'scope-insufficient', requested_scopes: [paths] }) instead of `
+            + `writing them undeclared.`);
         }
         // Non-fatal operator note when factory-managed paths were filtered:
         // the pass stays a pass, but the exclusion stays visible.

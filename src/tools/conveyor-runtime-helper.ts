@@ -54,7 +54,7 @@ export function releaseTaskExecution(db: Database.Database, input: {
   taskKind: string | null;
   metadata: string;
   executionId: string;
-  outcome: 'completed' | 'crashed' | 'expired' | 'cancelled';
+  outcome: 'completed' | 'crashed' | 'expired' | 'cancelled' | 'declared';
   taskStatus: string;
   executionMode?: string;
   integrationState?: string;

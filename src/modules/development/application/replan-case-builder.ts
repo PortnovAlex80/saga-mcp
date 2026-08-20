@@ -91,11 +91,15 @@ interface SubmissionRow {
  * Parse the REAL path-outside-authority message grammar
  * (development-check-providers.ts):
  *   `Git paths [p1, p2] are outside frozen changeScopes [s1, s2].`
+ *
+ * STAGE-13: the fence's message now carries a teaching suffix (the lawful
+ * scope-insufficiency exit) after the canonical sentence — the prefix match
+ * tolerates it.
  */
 function parseScopeViolation(key: string): PathScopePair | null {
   if (!isPathOutsideAuthorityKey(key)) return null;
   const message = key.slice(key.indexOf('::') + 2);
-  const match = /^Git paths \[(.*?)\] are outside frozen changeScopes \[(.*?)\]\.$/
+  const match = /^Git paths \[(.*?)\] are outside frozen changeScopes \[(.*?)\]\./
     .exec(message);
   if (!match) return { findingKey: key, paths: [], scopes: [] };
   return {

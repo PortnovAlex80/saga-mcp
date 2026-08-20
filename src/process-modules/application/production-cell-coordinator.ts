@@ -363,6 +363,25 @@ export class ProductionCellCoordinator {
   }
 
   /**
+   * STAGE-13 — the carve authority granted a scope-widening request on
+   * contention. The wider scope revision is already frozen (append-only
+   * widening ledger); this re-staffs the SAME workplace under the widened
+   * write authority. Budget-free: a lawful transition is not recovery.
+   */
+  grantScopeWidening(ref: WorkplaceRef, role: NextRole): StepResult {
+    return this.applyEvent(ref, { kind: 'scope-widening-granted', role });
+  }
+
+  /**
+   * STAGE-13 — the carve authority refused the widening: another live cell
+   * holds the claimed path (holders recorded in the widening ledger). The
+   * honest terminal outcome, with a reason a human can act on.
+   */
+  refuseScopeWidening(ref: WorkplaceRef): StepResult {
+    return this.applyEvent(ref, { kind: 'scope-widening-refused' });
+  }
+
+  /**
    * Record a worker crash (running → repair_wait). Kanban UNCHANGED.
    */
   recordWorkerCrash(ref: WorkplaceRef): StepResult {

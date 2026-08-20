@@ -172,6 +172,13 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     //     still-nonterminal cards, guarded by `AND status IN (...)`.
     'src/app/operator-soft-stop.ts',
     'src/app/engine-start-lifecycle-burial.ts',
+    // STAGE-13: the designed cycle-2 supersede drain (REPLAN-CYCLE-TZ §5) —
+    // transactional, one-way, guarded by `AND status IN (...)`, CAS revision
+    // bump on the drained projection. Its scope-trajectory trigger was removed
+    // by stage-13 TASK 2 (scope widening is now THE lawful transition; one
+    // mechanism for one event); the writer stays sanctioned as the drain for
+    // any future explicitly-mandated re-plan cycle.
+    'src/modules/development/application/replan-supersede.ts',
   ]);
 
   const FORBIDDEN_PATTERNS = [

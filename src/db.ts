@@ -95,6 +95,13 @@ let db: Database.Database | null = null;
  *       PRAGMA-guarded ADD COLUMN in the owning repository (rows written
  *       before the extension keep NULL — the documented legacy meaning).
  *
+ * STAGE-13 NOTE — factory_scope_widening_events is deliberately NOT a version
+ * bump: it is a purely additive append-only table (no column changes, no data
+ * migration), created idempotently by SCHEMA_SQL on fresh DBs and by the
+ * owning repository constructor on existing ones — the documented no-bump
+ * precedent (see schema.ts additive-table comments). This also keeps live
+ * stage-12 run databases openable by current code while their engine runs.
+ *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).

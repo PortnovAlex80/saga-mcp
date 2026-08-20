@@ -62,6 +62,7 @@ import type { SqliteWorkplaceProductionRevisionRepository } from '../../../infra
 import type { SqliteAcceptedAuthorityHeadRepository } from '../../../infrastructure/workplace/sqlite-accepted-authority-head-repository.js';
 import type { SqliteSealedProductMaterialRepository } from '../../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { SqliteGateFindingSetChain } from '../../../infrastructure/workplace/sqlite-gate-finding-set-chain.js';
+import { SqliteScopeWideningLedger, type ContentionHolder } from '../../../infrastructure/workplace/sqlite-scope-widening-ledger.js';
 import {
   convergingStreak,
   survivingScopeViolationKeys,
@@ -400,13 +401,6 @@ interface ReconcileOutcome {
   readonly paused: boolean;
   readonly accepted: boolean;
   readonly failed: boolean;
-  /**
-   * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the typed re-plan mandate outcome.
-   * Set ONLY by the scope-impossible route: not terminal failed (the defect is
-   * a carve error, not a worker failure), not a requeue (another attempt is
-   * impossible, not slow). Aggregates into pause.kind 'replan_required'.
-   */
-  readonly replan?: { readonly survivingKeys: readonly string[] };
   readonly products: readonly ProductRef[];
   readonly candidateSetRef: string | null;
   readonly executionRef: string | null;
@@ -525,18 +519,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // pending production is owned by a fenced worker/gate and will move on its
     // own. `pause.kind` preserves that distinction for diagnostics and the
     // progress-obligation classifier.
-    if (outcomes.some(outcome => outcome.replan)) {
-      // RE-PLAN CYCLE — a third, typed wait: the wake source is a NEW
-      // planning cycle, not a worker and not a human (REPLAN-CYCLE-TZ §1).
-      return {
-        runtimeEvent: 'paused',
-        pause: {
-          kind: 'replan_required',
-          reason: `cell '${cell.id}' parked with a re-plan mandate — scope-impossible finding trajectory`,
-        },
-        production: this.manifestProduction(cell, workplaces, outcomes, false),
-      };
-    }
     if (outcomes.some(outcome => outcome.paused)) {
       return {
         runtimeEvent: 'paused',
@@ -729,68 +711,43 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         // storm. The engine's kernel-progress loop keeps the run alive.
         return pendingOutcome();
       }
-      // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — cross-seam defect recognition on
-      // the SAME finding-set chain as the trajectory budget: the same
-      // path-outside-authority key survived two consecutive rejections while
-      // the overall set spun or churned. The worker physically cannot write
-      // into the frozen scope it keeps offending — another attempt is
-      // IMPOSSIBLE, not slow — so this routes BEFORE any budget arithmetic:
-      // a typed re-plan mandate (not terminal failed, not a requeue).
-      const replanGate = this.readReplanMandateGate(workplace.ref, state.nextRole);
-      if (replanGate !== null) {
-        const surviving = replanGate.survivingKeys;
-        const evidence = surviving.map(key => key.slice(0, 160));
-        const decision = this.opts.replanCyclePolicy?.canReplan({
-          workplaceRef: workplace.ref,
-          role: state.nextRole,
-          survivingKeys: surviving,
-        }) ?? { allowed: true, cycleNumber: 2, reason: 'mint' as const };
-        if (!decision.allowed) {
-          // §6 cap/ratchet denial: the honest human park with the FULL
-          // diagnosis — surviving keys plus the denial reason. No cycle 3.
+      // STAGE-13 — scope insufficiency is a LAWFUL TRANSITION, not recovery.
+      // The same path-outside-authority key surviving two consecutive
+      // rejections means the cell's frozen write authority is SHORT for its
+      // criteria: the worker physically cannot repair it inside the fence.
+      // The cure is a widening request to the carve authority, decided on
+      // CONTENTION ONLY (never necessity — that judgment does not exist
+      // before the implementation does). Routed BEFORE any budget
+      // arithmetic: an epoch must not burn on a lawful transition.
+      const widening = this.resolveScopeWidening(workplace, cell, state);
+      if (widening !== null) {
+        if (widening.granted) {
           engineLog(
-            `[replan-cycle] REPLAN-${decision.reason.toUpperCase()} cell=${cell.id} `
+            `[scope-widening] GRANTED cell=${cell.id} `
             + `workplace=${serializeWorkplaceRef(workplace.ref)} `
-            + `role=${state.nextRole} — human_required :: ${decision.diagnosis ?? 're-plan cap reached'} `
-            + `surviving path-outside-authority key(s): ${evidence.join(' | ')}`,
+            + `role=${state.nextRole} revision=${widening.decision.grantedRevision} `
+            + `scopes=[${widening.decision.grantedScopes?.join(', ')}] `
+            + `source=${widening.source} — no live cell holds the claim; the wider `
+            + `scope revision is frozen and the SAME workplace is re-staffed`,
           );
-          this.opts.coordinator.applyGateDecision(workplace.ref, {
-            verdict: 'human_required', isFinal: true,
-            parkReason: {
-              code: `REPLAN_CYCLE_${decision.reason.toUpperCase()}`,
-              message: `re-plan ${decision.reason === 'cap'
-                ? `cap reached (${decision.cycleNumber} cycles on this case)`
-                : 'ratchet: the same path-outside-authority key survived the re-carve'} `
-                + `— human decision required. Surviving path-outside-authority key(s): `
-                + `${evidence.join(' | ')}. ${decision.diagnosis ?? ''}`.trim(),
-              evidenceRefs: evidence,
-            },
-          });
+          this.opts.coordinator.grantScopeWidening(workplace.ref, state.nextRole);
           this.opts.persistence.projectWorkplace(workplace.ref);
           state = this.requireState(workplace.ref);
-          return pausedOutcome();
+          return pendingOutcome();
         }
+        const holders = widening.decision.holders
+          .map(holder => `${holder.workplaceRef} (${holder.workKey}) holds [${holder.scope}]`)
+          .join('; ');
         engineLog(
-          `[replan-cycle] REPLAN-MANDATE cell=${cell.id} `
+          `[scope-widening] REFUSED cell=${cell.id} `
           + `workplace=${serializeWorkplaceRef(workplace.ref)} `
-          + `role=${state.nextRole} cycle=${decision.cycleNumber} `
-          + `— ${surviving.length} surviving path-outside-authority key(s): `
-          + `${evidence.join(' | ')} :: distributed repair is impossible — a re-plan cycle is mandated`,
+          + `role=${state.nextRole} source=${widening.source} `
+          + `— contention: ${holders} — terminal failed (a human can act on the holders)`,
         );
-        this.opts.coordinator.applyGateDecision(workplace.ref, {
-          verdict: 'human_required', isFinal: true,
-          parkReason: {
-            code: 'REPLAN_MANDATED',
-            message: `scope-impossible finding trajectory: the same path-outside-authority `
-              + `key survived consecutive rejections — the worker cannot repair it inside `
-              + `frozen changeScopes. Re-plan cycle ${decision.cycleNumber} is mandated. `
-              + `Surviving key(s): ${evidence.join(' | ')}`,
-            evidenceRefs: evidence,
-          },
-        });
+        this.opts.coordinator.refuseScopeWidening(workplace.ref);
         this.opts.persistence.projectWorkplace(workplace.ref);
         state = this.requireState(workplace.ref);
-        return replanMandatoryOutcome(surviving);
+        return this.terminalOutcome(workplace.ref, state);
       }
       const attemptsInEpoch = baseline === null
         ? totalAttempts
@@ -2395,7 +2352,65 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
    * sets while the overall set spun or churned). Null = no mandate (ordinary
    * budget flow runs byte-for-byte as before).
    */
-  private readReplanMandateGate(
+  /**
+   * STAGE-13 — resolve the cell's scope-insufficiency widening, if one is
+   * due. Two lawful entries, ONE transition:
+   *
+   *   - worker-declared: the attempt concluded with the typed outcome and a
+   *     pending request row awaits the kernel's decision;
+   *   - cell-trajectory: the same path-outside-authority key survived two
+   *     consecutive rejections — the CELL reports the need through its gate
+   *     evidence, the offending paths ARE the request.
+   *
+   * Returns null when no widening is due (ordinary budget flow). The
+   * decision is contention-only and lives in the append-only widening
+   * ledger; this method never judges necessity.
+   */
+  private resolveScopeWidening(
+    workplace: MaterializedWorkplace,
+    cell: { readonly id: string },
+    state: { readonly nextRole: 'author' | 'reviewer' },
+  ): {
+    granted: boolean;
+    source: string;
+    decision: {
+      grantedRevision?: number;
+      grantedScopes?: readonly string[];
+      holders: readonly ContentionHolder[];
+    };
+  } | null {
+    const serialized = serializeWorkplaceRef(workplace.ref);
+    const ledger = this.scopeWideningLedger();
+    void cell;
+    const taskBinding = this.opts.persistence.readTaskForWorkplace?.(workplace.ref);
+    const taskId = taskBinding?.taskId;
+    if (typeof taskId !== 'number') return null;
+    let request = ledger.readPendingRequest(serialized);
+    let source: string;
+    if (request !== null) {
+      source = request.source;
+    } else {
+      const gate = this.readScopeInsufficiencyGate(workplace.ref, state.nextRole);
+      if (gate === null) return null;
+      const requestedScopes = requestedScopesFromSurvivingKeys(gate.survivingKeys);
+      if (requestedScopes.length === 0) return null;
+      const id = ledger.recordRequest({
+        workplaceRef: serialized,
+        taskId,
+        role: state.nextRole,
+        source: 'cell-trajectory',
+        requestedScopes,
+        survivingKeys: gate.survivingKeys,
+      });
+      request = ledger.readPendingRequest(serialized);
+      if (request === null || request.id !== id) return null;
+      source = 'cell-trajectory';
+    }
+    const decision = ledger.decide({ request });
+    return { granted: decision.granted, source, decision };
+  }
+
+  private readScopeInsufficiencyGate(
     ref: WorkplaceRef,
     role: 'author' | 'reviewer',
   ): { readonly survivingKeys: readonly string[] } | null {
@@ -2408,6 +2423,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const latest = tail.sets[tail.sets.length - 1]!;
     if (trajectory(previous, latest) !== 'scope-impossible') return null;
     return { survivingKeys: survivingScopeViolationKeys(previous, latest) };
+  }
+
+  private scopeWideningLedgerCache: InstanceType<typeof SqliteScopeWideningLedger> | null = null;
+  private scopeWideningLedger(): InstanceType<typeof SqliteScopeWideningLedger> {
+    this.scopeWideningLedgerCache ??= new SqliteScopeWideningLedger(this.opts.db);
+    return this.scopeWideningLedgerCache;
   }
 
   private attemptCount(
@@ -2978,6 +2999,27 @@ function completionSatisfied(
   }
 }
 
+/**
+ * STAGE-13 — extract the requested scopes from surviving
+ * path-outside-authority finding keys. The check provider's message grammar
+ * is `Git paths [p1, p2] are outside frozen changeScopes [s1, s2].` (the
+ * fence's teaching sentence may follow — the prefix match tolerates it).
+ * The offending paths ARE the cell's need statement.
+ */
+function requestedScopesFromSurvivingKeys(keys: readonly string[]): readonly string[] {
+  const paths = new Set<string>();
+  for (const key of keys) {
+    const message = key.slice(key.indexOf('::') + 2);
+    const match = /^Git paths \[(.*?)\] are outside frozen changeScopes \[/.exec(message);
+    if (!match) continue;
+    for (const part of match[1]!.split(',')) {
+      const path = part.trim();
+      if (path) paths.add(path);
+    }
+  }
+  return [...paths].sort();
+}
+
 function pendingOutcome(candidateSetRef: string | null = null): ReconcileOutcome {
   return {
     pending: true,
@@ -2998,24 +3040,6 @@ function pausedOutcome(candidateSetRef: string | null = null): ReconcileOutcome 
     failed: false,
     products: [],
     candidateSetRef,
-    executionRef: null,
-  };
-}
-
-/**
- * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §1) — the typed mandate outcome: not
- * terminal failed, not a requeue. The workplace is parked REPLAN_MANDATED and
- * the node-level wait is pause.kind 'replan_required'.
- */
-function replanMandatoryOutcome(survivingKeys: readonly string[]): ReconcileOutcome {
-  return {
-    pending: false,
-    paused: false,
-    accepted: false,
-    failed: false,
-    replan: { survivingKeys },
-    products: [],
-    candidateSetRef: null,
     executionRef: null,
   };
 }

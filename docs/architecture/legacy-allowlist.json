@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAtSha": "f7eb6836ca09",
+  "capturedAtSha": "3fbe3dbdf712",
   "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.",
   "categories": {
     "escalate-vocabulary": {
@@ -27,6 +27,7 @@
       "files": [
         "src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts",
         "src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts",
+        "src/infrastructure/workplace/sqlite-scope-widening-ledger.ts",
         "src/modules/development/infrastructure/sqlite-development-verification-adoption.ts",
         "src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts",
         "src/process-modules/persistence/sqlite-managed-node-submission-repository.ts",
@@ -45,7 +46,7 @@
     }
   },
   "schemaSnapshot": {
-    "tableCount": 100,
-    "digest": "f9143455ea656042c61407e4db540f3fc1874371c0471ed841d1b823db4b5bc9"
+    "tableCount": 101,
+    "digest": "5ca5339ea99713eb3130ede6ca42b7cb03dcfd92915d0d0ee2f39ae7fd95c34f"
   }
 }

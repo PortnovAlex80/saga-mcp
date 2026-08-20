@@ -100,6 +100,10 @@ const CLASSIFICATION = Object.freeze({
     release: 'FINDING-TRAJECTORY-BUDGET',
     verdict: 'kept: append-only audit frontier — the latest row id of an append-only chain scoped by exact (workplace_ref, repair_target_role) defines the comparison scope (gate_ref + check_plan_digest); the material (finding keys) then flows through the FULL exact-scope tail read, never through the latest row alone; id is the append ordinal (no wall-clock chronology)',
   },
+  'src/infrastructure/workplace/sqlite-scope-widening-ledger.ts': {
+    release: 'STAGE-13',
+    verdict: 'kept: append-only authority-revision frontier — readEffectiveChangeScopes picks the MAX granted_revision row per EXACT task (granted_revision is a per-task ordinal minted monotonically by the decide writer, never wall-clock chronology, and the grant row carries the FULL frozen scope set, so the material flows through the picked row itself); readPendingRequest is the latest undecided append row scoped by exact workplace and a request is decided exactly once (grant/refusal reference request_event_id); no material subject is ever selected by recency',
+  },
 });
 
 const allowlist = JSON.parse(

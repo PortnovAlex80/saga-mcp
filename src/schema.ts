@@ -1440,6 +1440,49 @@ BEFORE DELETE ON factory_workplace_recovery_epochs BEGIN
   SELECT RAISE(ABORT, 'factory_workplace_recovery_epochs are immutable');
 END;
 
+-- STAGE-13: scope insufficiency is a LAWFUL cell outcome, not a recovery
+-- trigger. One append-only event ledger serves the whole widening transition:
+-- the request (worker-declared via the worker_done typed conclusion, or
+-- cell-declared from the surviving path-outside-authority trajectory) and the
+-- carve authority decision. A grant IS a new scope revision: granted_scopes
+-- carries the FULL frozen set at that revision (a superset of the prior
+-- authority, monotonic by construction), so the effective write authority of
+-- a task is its latest grant row, or the original carve when no grant exists.
+-- A refusal names the contending live holders; the workplace then terminates
+-- honestly (failed) with a reason a human can act on. Contention — is the
+-- path claimed by another LIVE cell — is the only question this ledger
+-- answers; necessity is deliberately unasked.
+CREATE TABLE IF NOT EXISTS factory_scope_widening_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('request','grant','refusal')),
+  workplace_ref TEXT NOT NULL,
+  task_id INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('author','reviewer')),
+  source TEXT NOT NULL CHECK (source IN ('worker-declared','cell-trajectory')),
+  requested_scopes TEXT NOT NULL,
+  surviving_keys TEXT,
+  requested_by_execution TEXT,
+  request_event_id INTEGER,
+  holders TEXT,
+  granted_revision INTEGER CHECK (granted_revision IS NULL OR granted_revision >= 1),
+  granted_scopes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_scope_widening_events_task
+  ON factory_scope_widening_events(task_id, event_kind, id);
+CREATE INDEX IF NOT EXISTS idx_scope_widening_events_workplace
+  ON factory_scope_widening_events(workplace_ref, id);
+
+CREATE TRIGGER IF NOT EXISTS trg_scope_widening_events_no_update
+BEFORE UPDATE ON factory_scope_widening_events BEGIN
+  SELECT RAISE(ABORT, 'factory_scope_widening_events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_scope_widening_events_no_delete
+BEFORE DELETE ON factory_scope_widening_events BEGIN
+  SELECT RAISE(ABORT, 'factory_scope_widening_events are immutable');
+END;
+
 -- The stage input's expectedBaseCommit is a lineage anchor, not the base for
 -- every fan-out author. Before an author is spawned the Factory freezes the
 -- effective repository base for that exact execution. A root item may use

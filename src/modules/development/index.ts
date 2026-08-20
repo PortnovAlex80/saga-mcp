@@ -7,6 +7,7 @@ import { SqliteDevelopmentOutputRepository } from './infrastructure/development-
 import { SqliteDevelopmentModuleStore } from './infrastructure/sqlite-development-settlement-state.js';
 import { SqliteManagedProductionLedger } from '../../process-modules/persistence/sqlite-managed-production-ledger.js';
 import { createGitPort, createMachinePort } from '../../infrastructure/process-modules/git-machine-ports.js';
+import { SqliteScopeWideningLedger } from '../../infrastructure/workplace/sqlite-scope-widening-ledger.js';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
@@ -131,6 +132,10 @@ export function registerDevelopment(
     db,
     candidateSets: sharedDeps.candidateSetRepo,
     git,
+    // STAGE-13 — the scope fence reads the CURRENT write authority: the
+    // task's latest granted widening revision, or the original carve.
+    readEffectiveChangeScopes: (taskId, originalScopes) =>
+      new SqliteScopeWideningLedger(db).readEffectiveChangeScopes(taskId, originalScopes),
   }));
   // RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 planner gate check
   // (parallelism anti-pattern + shared-surface extraction). Inert outside

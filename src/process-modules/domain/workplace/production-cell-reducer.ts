@@ -105,7 +105,18 @@ export type ProductionCellEvent =
   | { readonly kind: 'gate-failed' }
   | { readonly kind: 'authorized-cancel' }
   // Repair re-queue (after repair_wait, a new worker is hired).
-  | { readonly kind: 'repair-requeued'; readonly role: NextRole };
+  | { readonly kind: 'repair-requeued'; readonly role: NextRole }
+  // STAGE-13 — scope insufficiency is a lawful transition, not recovery.
+  // The attempt concluded successfully with a typed scope-need statement
+  // (worker_done outcome 'scope-insufficient'); no CandidateSet is sealed.
+  | { readonly kind: 'scope-declared' }
+  // The carve authority granted the widening on contention: a wider scope
+  // revision is frozen (append-only ledger) and the SAME workplace is
+  // staffed again under widened write authority.
+  | { readonly kind: 'scope-widening-granted'; readonly role: NextRole }
+  // The carve authority refused: another LIVE cell holds the requested
+  // claim (holders named in the widening ledger). Honest terminal failure.
+  | { readonly kind: 'scope-widening-refused' };
 
 // ---------------------------------------------------------------------------
 // Reducer.
@@ -315,6 +326,36 @@ function computeNextState(
         return { ...state, kanbanPhase: targetPhase, loopState: 'queued', nextRole: event.role, revision: rev };
       }
       return { ...state, loopState: 'queued', nextRole: event.role, revision: rev };
+    }
+
+    // --- Scope widening (STAGE-13: lawful, budget-free) --------------------
+    case 'scope-declared': {
+      // running → repair_wait. The attempt STOPPED honestly and left a typed
+      // need statement on the desk instead of material. The kernel decides
+      // the widening request on its next drive, BEFORE any budget
+      // arithmetic — a lawful transition must not burn recovery budget.
+      assertLoop(state, 'running');
+      return { ...state, loopState: 'repair_wait', revision: rev };
+    }
+    case 'scope-widening-granted': {
+      // repair_wait → queued. The carve authority re-froze a WIDER scope
+      // revision (a grant row in the append-only widening ledger); the same
+      // workplace is staffed again under the widened write authority.
+      assertLoop(state, 'repair_wait');
+      if (!isRoleCompatibleWithPhase(state.kanbanPhase, event.role)) {
+        throw new Error(
+          `scope-widening-granted: role '${event.role}' is not compatible with `
+            + `kanbanPhase '${state.kanbanPhase}'`,
+        );
+      }
+      return { ...state, loopState: 'queued', nextRole: event.role, revision: rev };
+    }
+    case 'scope-widening-refused': {
+      // repair_wait → terminal(failed). Another live cell holds the claimed
+      // path; the refusal row names the holders. This is the honest
+      // fail-closed outcome a human can act on — never a loop.
+      assertLoop(state, 'repair_wait');
+      return terminal(state, 'failed', rev);
     }
 
     default: {

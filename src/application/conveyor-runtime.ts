@@ -143,7 +143,7 @@ export class ConveyorRuntime {
     workplaceRef: WorkplaceRef;
     reservationRef: string;
     taskId: number;
-    outcome: 'completed' | 'crashed' | 'expired' | 'cancelled';
+    outcome: 'completed' | 'crashed' | 'expired' | 'cancelled' | 'declared';
   }): UseCaseResult {
     return this.atomically(input.workplaceRef, input.taskId, (_current, ref) => {
       // Fence check: the caller's reservation must match the workplace's
@@ -164,6 +164,14 @@ export class ConveyorRuntime {
         // (the same worker may still be the active actor until the gate runs).
         event = { kind: 'candidate-sealed' };
         keepReservation = true;
+      } else if (input.outcome === 'declared') {
+        // STAGE-13 — running → repair_wait with a TYPED need statement, not a
+        // crash: the attempt concluded successfully with worker_done outcome
+        // 'scope-insufficient'. The kernel decides the widening request on its
+        // next drive, before any budget arithmetic. Fence cleared — the
+        // decision and any re-staffing belong to the carve authority.
+        event = { kind: 'scope-declared' };
+        keepReservation = false;
       } else if (input.outcome === 'crashed' || input.outcome === 'expired') {
         // running → repair_wait (REG-28-AC-02). The fence is cleared — a
         // replacement worker will lease a new reservation.

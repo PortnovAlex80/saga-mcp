@@ -12,6 +12,13 @@ Before `worker_done`:
 - `snapshot.changedFiles` was recomputed from
   `git diff --name-only <base_commit>..<your-commit>` and declares exactly
   that path set, minus factory-managed paths.
+- **Scope insufficiency is a lawful exit, not a failure to hide.** If the
+  acceptance criteria genuinely require a path the frozen `changeScopes`
+  do not contain, do NOT write it undeclared and do NOT silently skip the
+  criterion: conclude the attempt with
+  `worker_done({ outcome: 'scope-insufficient', requested_scopes: [<the honestly needed paths/dirs>] })`
+  and stop. The carve authority decides the widening on contention; you
+  state the need, you never grant it to yourself.
 - Local checks that prove the bound AC(s) hold have been run.
 - Independent review approved the exact source commit (or a changes_requested loop completed).
 - The reviewed source commit is committed on the task branch and left for the factory's git-integration effect to merge — no worker-side merge was performed (stage-8: the merge tools are not granted to workers).

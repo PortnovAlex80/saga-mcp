@@ -24,7 +24,7 @@ export const RUN_MANIFEST_VERSION = 'factory-e2e.run-manifest.v1' as const;
 export type RunManifestVersion = typeof RUN_MANIFEST_VERSION;
 
 /** The W9 finish-line lane a scenario belongs to. */
-export type E2ELane = 'W9-02' | 'W9-03' | 'W9-04' | 'W9-05';
+export type E2ELane = 'W9-02' | 'W9-03' | 'W9-04' | 'W9-05' | 'W9-06';
 
 /** The only inference mode the finish-line harness permits. */
 export type InferenceMode = 'scripted';
@@ -265,7 +265,7 @@ function parseScenario(raw: unknown): RunScenario {
   }
   return Object.freeze({
     scenarioId: requireString(raw.scenarioId, 'scenario.scenarioId'),
-    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' || raw.lane === 'W9-05' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be 'W9-02', 'W9-03', 'W9-04' or 'W9-05', got '${String(raw.lane)}'`); })(),
+    lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' || raw.lane === 'W9-05' || raw.lane === 'W9-06' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be one of W9-02..W9-06, got '${String(raw.lane)}'`); })(),
     description: requireString(raw.description, 'scenario.description'),
     freshState,
     concurrencyCap: requireConcurrencyCap(raw.concurrencyCap, 'scenario.concurrencyCap'),
@@ -511,6 +511,7 @@ export function defaultW9RunManifest(baseline: {
       },
       ...w9OutcomeEdgeScenarios(concurrencyCap),
       ...w9WorkerDisobedienceScenarios(concurrencyCap),
+      ...w9ScopeWideningScenarios(concurrencyCap),
     ],
   });
 }
@@ -701,6 +702,73 @@ function w9OutcomeEdgeScenarios(
         + 'completes the lifecycle.',
         `w9-04-disc-${code}`,
       ),
+    ),
+  ];
+}
+
+/**
+ * W9-06 — scope insufficiency as a lawful transition (stage-13 brief TASK 1).
+ *
+ * Domain-free reproduction of the frozen-prediction deadlock: an honest
+ * worker's criteria require an artefact path its frozen changeScopes do not
+ * contain. The fixture names no path from the stage-12 run — the invented
+ * artefact world is `atlas/registry-map.json`.
+ *
+ * Grant lane: the trajectory-declared insufficiency routes to a widening
+ * request; no other live cell holds the claim; the grant re-freezes a wider
+ * scope revision; the SAME workplace completes the work and the lifecycle
+ * finishes runnable-local.
+ *
+ * Declared lane: the worker concludes its attempt with the typed
+ * scope-insufficient outcome; the same grant path serves it.
+ */
+function w9ScopeWideningScenarios(
+  concurrencyCap: number,
+): ReturnType<typeof parseScenario>[] {
+  const invariants = W9_AUTHORITY_INVARIANTS;
+  const scenario = (
+    scenarioId: string,
+    description: string,
+    scenarioKey: string,
+  ) => ({
+    scenarioId,
+    lane: 'W9-06' as const,
+    description,
+    freshState: true,
+    concurrencyCap,
+    scriptedInference: {
+      mode: 'scripted' as const,
+      scenarioKey,
+      description:
+        'Happy-path handlers with one targeted implement override: the honest '
+        + 'worker keeps producing the criterion artefact outside its frozen '
+        + 'scope; the factory must resolve the insufficiency lawfully.',
+    },
+    deterministicCrashPoints: [],
+    expectedAuthorityInvariants: invariants,
+  });
+
+  return [
+    scenario(
+      'w9-06-scope-widening-grant',
+      'The first implementation card honestly requires atlas/registry-map.json, '
+      + 'which its frozen changeScopes do not contain. Two consecutive '
+      + 'path-outside-authority rejections make the insuffibility structural; '
+      + 'the factory routes it to a scope-widening request. No other live cell '
+      + 'holds the atlas/ claim, so the carve authority grants it: a new wider '
+      + 'scope revision is frozen, the same workplace is re-staffed, the third '
+      + 'attempt passes its gates and the lifecycle completes runnable-local.',
+      'w9-06-scope-widening-grant',
+    ),
+    scenario(
+      'w9-06-scope-declared',
+      'The same honest work, but the worker uses the typed conclusion: after '
+      + 'the first scope rejection it ends its attempt with worker_done '
+      + "outcome 'scope-insufficient' naming atlas/. The kernel decides the "
+      + 'widening request on contention, grants it, re-freezes the wider '
+      + 'revision and re-staffs the workplace; the retry passes and the '
+      + 'lifecycle completes runnable-local.',
+      'w9-06-scope-declared',
     ),
   ];
 }

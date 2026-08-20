@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
+import { SqliteScopeWideningLedger } from '../workplace/sqlite-scope-widening-ledger.js';
 import {
   SOURCE_CHANGE_CANDIDATE_SCHEMA,
   type SourceChangeCandidateInput,
@@ -104,7 +105,14 @@ function validateEntries(entries: readonly SourceChangeEntry[], scopes: readonly
       }
     }
     const inScope = parsedScopes.some(scope => repositoryScopeContainsPath(scope, candidatePath));
-    if (!inScope) throw new Error(`SOURCE_CHANGE_OUT_OF_SCOPE: ${candidatePath}`);
+    if (!inScope) {
+      throw new Error(
+        `SOURCE_CHANGE_OUT_OF_SCOPE: ${candidatePath}; it is outside the frozen changeScopes `
+        + `[${parsedScopes.join(', ')}]. If the work genuinely requires it, conclude the attempt `
+        + `with worker_done({ outcome: 'scope-insufficient', requested_scopes: [${candidatePath}] }) — `
+        + 'never write it undeclared.',
+      );
+    }
   }
 }
 
@@ -187,10 +195,16 @@ export function materializeManagedSourceChange(
   const itemRecord = item && typeof item === 'object' && !Array.isArray(item)
     ? item as Record<string, unknown>
     : {};
-  const scopes = Array.isArray(itemRecord.changeScopes)
+  const originalScopes = Array.isArray(itemRecord.changeScopes)
     ? itemRecord.changeScopes.filter((value): value is string => typeof value === 'string')
     : [];
-  if (scopes.length === 0) throw new Error('SOURCE_CHANGE_SCOPE_REQUIRED');
+  if (originalScopes.length === 0) throw new Error('SOURCE_CHANGE_SCOPE_REQUIRED');
+  // STAGE-13 — the desk fence enforces the CURRENT write authority: the
+  // task's latest granted scope revision (append-only widening ledger), or
+  // the original carve when no grant exists. A lawful widening re-freezes a
+  // wider revision; there is no other way in.
+  const scopes = new SqliteScopeWideningLedger(db)
+    .readEffectiveChangeScopes(context.task_id, originalScopes);
   validateEntries(candidate.entries, scopes);
 
   const repositoryRoot = context.repository_root;
