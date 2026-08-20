@@ -22,7 +22,7 @@ honest and successful — implement and exercise the E9 recycle.
 | 1 | TASK 1 Wave A merge: es1-loop-detector, provider-retry, worker-names, worker-disorientation | ✅ done 4/4 (main finished the wave) | wave-A agent + main | b8b50c04 clean; f3600d07 hand-resolved (shim ×2); 42f58586 hand-resolved (shim, 3-way); 2af953e6 clean. Final: build 0, arch 393/393, pm 1098/1098 (one unreproduced flake, see log) |
 | 2 | TASK 1 Wave B merge: 7 blindsight trees | ✅ done 7/7 | agents + main | f6042bd9, a53eebad (agent, clean); ae2e634b, bf9f66a5, fb2ece90, f27b02aa, 62b9339e (main, hand-resolved). Final: build 0, arch 408/408, pm 1169/1169, infra 394 pass/0 fail/12 skip, schema 100 |
 | 3 | TASK 1 Wave C merge: ac-drift-remedy alone + full regression + count reconciliation | ⏸ stopped after landing | wave-C agent | merge `2a0c21d7` clean, all critical checks PASS (schema 100 unchanged, E9 reserve intact, build 0, pm 1209/1209, arch 408/408); STOP per rule c — lifecycle/w9/golden-path red, all three proven PRE-EXISTING at 7ecedc6d (see 01:37 entry); NOT pushed, main decides |
-| 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ⬚ pending | step agents | |
+| 4 | TASK 2 anti-gaming steps 1–4 (per CERTIFICATION-GAMING-REMEDY rollout) + RED gaming replay must FAIL | ✅ steps 1–3 + RED replay done (a9011b58, 3d814347, 7c29c6d6, b4ca0748); step 4 (derived-canonical) NOT started — reserved to a separate agent per the brief | step agent | RED replay: golden v1.2 gaming manifest → verdict human_required (READINESS_PROFILE_NARROWED) + round-1 failed receipt REPLAYED by candidate bytes (gaming command never executed). Final: build 0, arch 408/408, pm 1219/1219, infra 413/401/0/12; guards golden-path 1/1, w9 18/18 |
 | 5 | TASK 3 bounded hygiene + TASK 4 snapshot-mvp answers + TASK 5 E2 migration note | ⬚ pending | agents | |
 | 6 | LAUNCH: fresh run, `--model glm-4.6`, concurrency 2, guard env, docking-slice order; monitor to terminal | ⬚ pending | main | |
 | 7 | Post-run: snapshot, harvest corpus, one-command product check (no fixes), findings list | ⬚ pending | subagent | |
@@ -411,3 +411,92 @@ first; any E9-reserve code is escalate-never-delete.
   receipt invariant — a receipt is bound to the candidate bytes). ALL THREE
   LAUNCH GATES DOWN. Awaiting the agent's RED-replay result + final counts,
   then main verification → pre-flight → LAUNCH.
+
+- **03:2x (step agent — TASK 2 final report)** — Steps 1–3 + the RED replay
+  landed, one commit each, all pushed to origin/saga4. Verbatim counts per
+  step (baseline at f902297b: build 0; arch `tests 408 / pass 408 / fail 0 /
+  skipped 0`; pm `tests 1209 / pass 1209 / fail 0 / skipped 0`; infra
+  `tests 406 / pass 394 / fail 0 / skipped 12`):
+  - STEP 1 — `a9011b58` (M2-2, REPORT ONLY): local-runnability provider
+    1.6.0→1.7.0 derives the canonical test-file universe from the EXACT
+    sealed tree (tests/** ∪ sealed package.json scripts.test) and the
+    executed set from the declaration (opaque `npm test` resolved through
+    the sealed package.json); additive `readiness-test-coverage` diagnostic
+    + testCoverage observation on EVERY outcome; outcome semantics
+    unchanged. New shared pure domain helper readiness-test-surface.ts.
+    After: build 0; arch 408/408; pm 1209/1209; infra `tests 410 / pass 398
+    / fail 0 / skipped 12` (+4 new tests). Empirical note: the 7-of-9
+    gaming STILL passes the check itself (by design — report only) but now
+    says so: "executed 7 of 9; not executed: tests/renderer.test.js,
+    tests/websocket-server.test.js".
+  - STEP 2 — `3d814347` (M1-a + D2): new deterministic provider
+    development.readiness-profile-monotonicity.v1 in the readiness plan
+    (now development.readiness-certification.final.v2, monotonicity BEFORE
+    runnability): shrink vs any prior manifest of the SAME
+    sourceCandidate.hash → typed READINESS_PROFILE_NARROWED (dropped files
+    named; opaque priors resolved via sealed package.json by git object id;
+    unresolvable substrate still caught by D2); ANY readiness.commands.*
+    change on the same bytes → READINESS_DECLARATION_CHANGED; identical
+    commands pass; different sourceCandidate not compared (documented
+    boundary). Escalation-only: 'unknown' + fail-closed +
+    indeterminateDisposition human-required → gate verdict human_required →
+    the cell's existing complete-blocked. Also fixed: bare 'test'/'tests'
+    tokens are NOT directory tokens (npm-test was misread as a whole-tree
+    run). ADR-082 §4 frozen executable-capability count 24→25 updated IN the
+    same commit per the ratchet's own protocol. After: build 0; arch
+    408/408; pm `tests 1218 / pass 1218 / fail 0 / skipped 12→0`;
+    infra 410/398/0/12; guards golden-path 1/1, w9 18/18 (scripted
+    readiness submissions use a FIXED testCommand → ratchet inert there by
+    design).
+  - STEP 3 — `7c29c6d6` (D1): provider 1.7.0→1.8.0 appends
+    local-readiness-subject:<candidateHash>:<commitSha>:<treeHash> to every
+    real result and keys the persisted-receipt lookup by those BYTES
+    (DB-only resolution, no git): a failed receipt for the same bytes
+    REPLAYS across manifest rounds (the round-4 gaming manifest hits the
+    round-1 failed receipt; the narrowed command never executes); same
+    bytes + failed + passed receipts (zero tracked-file diff PROVEN by the
+    identical commit/tree in the binding) → typed
+    READINESS_RECEIPT_CANDIDATE_CONFLICT, outcome failed; different bytes =
+    fresh subject (fix-the-code path stays honest). Legacy LR-06 exact-ref
+    replay unchanged. After: build 0; arch 408/408; pm 1218/1218; infra
+    `tests 413 / pass 401 / fail 0 / skipped 12` (+3 new tests); guards
+    golden-path 1/1, w9 18/18.
+  - RED REPLAY — `b4ca0748`: ONE deterministic replay of the ACTUAL gaming
+    bytes (golden fixtures v1.1 + v1.2 verbatim) through the REAL
+    certify-product-readiness plan via driveGateRun + real providers +
+    SqliteGateRepository. Verbatim result: PASS (the negative test's
+    assertions all hold). Phase A: on fresh bytes the gaming manifest
+    passes the runnability check itself (report-only boundary) with the
+    7-of-9 coverage diagnostic naming both excluded files. Phase B: round 1
+    (v1.1 `npm test`, honest 9-file run, 2 red) → gate verdict `failed`;
+    round 4 (v1.2 gaming manifest, same sourceCandidate 50f712ef…, zero
+    code change) → gate verdict `human_required`, monotonicity receipt
+    `unknown` / READINESS_PROFILE_NARROWED naming
+    tests/renderer.test.js + tests/websocket-server.test.js and prior
+    submission 1; runnability receipt `failed` = the round-1 receipt
+    REPLAYED (evidenceRefs deepEqual — the gaming command never executed);
+    round-1 receipt carries the candidate-bytes binding. NOT claimed: on
+    NEVER-BEFORE-CHECKED bytes a narrowed first declaration still executes
+    verbatim with the gap only reported — closing THAT is step 4
+    (derived-canonical testCommand from the order/sealed tree, manifest
+    additive-only, blocking completeness with typed waivers): the executed
+    command stops being the candidate's declaration at all. Step 4 is
+    untouched tonight per the brief (a separate agent lands it behind the
+    step-1 report; escalation item 3 — LR-04 semantics belong to the
+    architect).
+  - Flake record (honest): the FIRST full pm suite run after adding the
+    replay showed `tests 1219 / pass 1218 / fail 1`; the failing test name
+    was NOT captured (grep pattern missed the spec marker — same miss as
+    the 00:37 wave-A flake). Four consecutive full reruns:
+    `tests 1219 / pass 1219 / fail 0 / skipped 0` (twice with full output
+    captured, zero ✖ markers). Unreproduced; attributed as a flake, not
+    repaired through.
+  - Harness finding worth keeping: under the outer node:test runner, the
+    runner's exported NODE_TEST_CONTEXT silently turns any provider-spawned
+    `node --test` into a no-output exit-0 child (red files pass!). The
+    factory orchestrator never runs under node:test, so this is a TEST
+    HARNESS artifact only — the new tests scrub it around provider/gate
+    invocations (with save/restore so per-test reporting stays intact).
+    Step 1's first suite run initially showed my file collapsing to +1
+    aggregate test because a module-top delete broke the child wiring —
+    fixed by scrubbing inside test bodies.
