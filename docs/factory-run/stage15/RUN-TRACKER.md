@@ -143,3 +143,18 @@ stays open (stage 16).
   (9bea1194): the lawful exits work; nothing checks what was NOT
   presented. Stage-15's question 1 answer so far: the widening transition
   has NEVER fired in this run — the cheap third exit beat it twice.
+- **12:50:54Z — THE WIDENING FIRED (first in project history).** Cell
+  64892151 (task 18), source **cell-trajectory** (the classifier read the
+  same surviving keys — src/physics/index.ts, tsconfig.json — across two
+  consecutive finding sets; the worker never used worker_done), role
+  author, contention check found NO live holder → **grant, revision 1**:
+  original carve ∪ requested = [package.json, src/collision/,
+  src/physics/StationPhysics.ts, **src/physics/index.ts**, tests/,
+  **tsconfig.json**]. The workplace re-staffed (r14 running) with the
+  widened frozen authority; the byte-identical work that was rejected at
+  12:28 is now lawful. Journal event carries request_id, revision and the
+  granted set — the stage-15 TASK 1 instrumentation answering question 1
+  in the same minute. NOTE the D7 thread: tsconfig.json is the SHARED
+  path (two cards blocked on it an hour apart) — card 1 (45b9646b) took
+  the silent-surrender exit (E-F4), card 2 took the lawful grant after
+  card 1 went terminal. Both doors observed, in one run, on one path.
