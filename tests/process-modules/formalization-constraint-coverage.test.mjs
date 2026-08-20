@@ -17,6 +17,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
@@ -205,8 +208,46 @@ function seedTask(db, metadata) {
   ).run(JSON.stringify(metadata));
 }
 
+// ---------------------------------------------------------------------------
+// Real-bytes AC fixture: the acceptance-contract validator v1.2.0 reads the
+// EXACT accepted bytes of every /^AC-/ artifact (heading-resolution gate) via
+// readExactArtifactContent — the AC artifact row must carry a real
+// repository-backed file whose sha256 equals content_hash and whose level-2
+// heading matches the artifact code. Other artifact types stay synthetic
+// (the heading gate only inspects type='AC').
+// ---------------------------------------------------------------------------
+const REPO_DIR = mkdtempSync(join(tmpdir(), 'constraint-coverage-'));
+mkdirSync(join(REPO_DIR, 'docs'), { recursive: true });
+process.on('exit', () => {
+  try { rmSync(REPO_DIR, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+const AC_BODY = '# AC-1: Constraint Coverage Fixture\n\n## AC-1: Constraint Coverage Fixture\n\nDeterministic AC document for the coverage validator.\n';
+const AC_PATH = 'docs/ac-1.md';
+const AC_DISK_HASH = createHash('sha256').update(AC_BODY, 'utf8').digest('hex');
+writeFileSync(join(REPO_DIR, AC_PATH), AC_BODY, 'utf8');
+
+function seedRepository(db) {
+  db.prepare(
+    `INSERT INTO repositories (id, name, default_branch, metadata) VALUES (1, 'coverage-fixture', 'dev', '{}')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO project_repositories
+       (id, project_id, repository_id, role, local_path, integration_branch, status)
+     VALUES (1, 1, 1, 'component', ?, 'dev', 'active')`,
+  ).run(REPO_DIR);
+}
+
 function seedArtifact(db, id, type, code, metadata = {}) {
   const h = hash(`${type}-${code}-${id}`);
+  if (type === 'AC') {
+    // Real bytes on disk: path + content_hash + project_repository_id must
+    // resolve and re-hash exactly, or the v1.2.0 gate fail-closes.
+    db.prepare(
+      `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, storage_kind, tags, metadata, project_repository_id)
+       VALUES (?, 1, 1, ?, ?, ?, ?, 'accepted', ?, ?, 'clean', 'file_backed', '[]', ?, 1)`,
+    ).run(id, type, code, code, AC_PATH, AC_DISK_HASH, AC_DISK_HASH, JSON.stringify(metadata));
+    return;
+  }
   db.prepare(
     `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
      VALUES (?, 1, 1, ?, ?, ?, 'docs/x.md', 'accepted', ?, ?, 'clean', 'file_backed', '[]', ?)`,
@@ -231,6 +272,7 @@ function seedTrace(db, sourceId, targetId, linkType = 'derived_from') {
 
 /** Complete acceptance contract: brief→PRD→FR→UC→AC edges all present. */
 function seedCompleteAcceptanceContract(db, { briefMetadata, acMetadata }) {
+  seedRepository(db);
   seedArtifact(db, 1, 'brief', 'BRIEF-1', briefMetadata ?? {});
   seedArtifact(db, 2, 'PRD', 'PRD', {});
   seedArtifact(db, 3, 'FR', 'FR-1', {});

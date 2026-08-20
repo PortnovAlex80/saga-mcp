@@ -198,6 +198,13 @@
       "evidence": [
         "No closure record; ADR-066 (K20) planned with principalProof 'Tier 4 proof before GA canary'; M6/Core 3.0 GA not achieved"
       ]
+    },
+    "K21": {
+      "state": "open",
+      "milestone": "M6",
+      "evidence": [
+        "Open: ADR-084 proof-kernel waves W0-2..W1-5 (canonical composition landed 2026-08-20)"
+      ]
     }
   },
   "decisions": [
@@ -1128,6 +1135,19 @@
       "principalProof": "K19 commit train 5 (environment-drift incompatibility tests): same logical tool name with changed implementation digest is incompatible; preparation and certification digests bind one identity on every receipt",
       "successor": null,
       "notes": "K19 commit 1 (contract freeze, stage-13). Freezes the DerivedExecutionEnvironment model: derived-not-declared environments (candidate declarations additive only, contradiction fails closed at freeze), tool identity = implementation digest, ADR-077 fingerprint extension keyed toolchainDigests (resume-incompatible on change), certification as an ordinary Production Cell with exact-subject receipts, ephemeral preparation. Commits 2-6 of the train not started; boundary stated inside the ADR."
+    },
+    {
+      "adr": "084",
+      "file": "084-causal-conformance-proof-kernel.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "W0 proof kernel blocking: independent normative-obligation registry set-equality with installed protections; feedback-counterfactual scripted actors; first fabricated-derived-evidence causal proof through the real agentic loop",
+      "successor": null,
+      "notes": "Accepted 2026-08-20 (MCDA Option C, 485/500). Establishes the causal conformance proof kernel and the Factory-owned derived-evidence rule BEFORE any production recovery-registry schema. Implementation waves: W0-1 canonical composition (landed), W0-2/W0-3 registry+DSL+actor, W0-4 blocking group, W1 causal proofs. Kernel-genericity note: the factory-redevelopment stage-name branches are register additions owned by this train, not boundary widening."
     }
   ]
 }

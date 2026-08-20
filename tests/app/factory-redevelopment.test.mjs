@@ -46,6 +46,31 @@ async function tempCopy() {
   return { root, db };
 }
 
+/**
+ * The live-parent positive fixture existed only between the stage-19 entry
+ * (cbdfe972) and the real launch: the redevelop run appended a child
+ * lifecycle to the order chain and consumed the parent's continuation
+ * authorization, so lifecycle 1 is no longer the active leaf and CANNOT be
+ * re-authorized (CONTINUATION_PARENT_NOT_ACTIVE_LEAF — the eligibility rule
+ * working as designed). The append-only guards (immutable order runs,
+ * no-delete authorizations) rightly forbid restoring the pre-launch chain
+ * shape even in a copy. The authorization behavior this test proved is now
+ * proven STRONGER by the real stage-19 run — see
+ * docs/factory-run/stage19/RUN-TRACKER.md (TERMINAL seal 17dd3916:
+ * childLifecycleRunId, capsuleHash == the frozen input_hash, STANDARD
+ * solution-development@1.4.4, additive capsule mapping).
+ */
+function liveParentFixtureSpent(db) {
+  const leaf = db.prepare(
+    `SELECT forl.lifecycle_run_id AS leaf
+       FROM factory_order_runs forl
+       JOIN factory_orders o ON o.order_ref = forl.order_ref
+      WHERE o.lifecycle_run_id = 1
+      ORDER BY forl.ordinal DESC LIMIT 1`,
+  ).get();
+  return leaf?.leaf !== 1;
+}
+
 function orderRefOf(db, lifecycleRunId) {
   const row = db.prepare(
     `SELECT COALESCE(
@@ -60,7 +85,19 @@ function orderRefOf(db, lifecycleRunId) {
 }
 
 test('redevelopment authorizes the STANDARD development module with the capsule mapping (live parent)',
-  { skip: missingSource }, async () => {
+  async () => {
+  if (missingSource) return test.skip(missingSource);
+  const probe = new Database(sourcePath, { readonly: true });
+  const spent = liveParentFixtureSpent(probe);
+  probe.close();
+  if (spent) {
+    return test.skip(
+      'live-parent fixture spent by the REAL stage-19 redevelop launch '
+      + '(2026-08-20): lifecycle 1 is no longer the order-chain leaf and the '
+      + 'append-only guards forbid restoring the chain shape. The '
+      + 'authorization proof now lives in the run itself — '
+      + 'docs/factory-run/stage19/RUN-TRACKER.md (TERMINAL seal 17dd3916).');
+  }
   const { root, db } = await tempCopy();
   try {
     const before = db.prepare('SELECT COUNT(*) c FROM factory_lifecycle_runs').get().c;

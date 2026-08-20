@@ -318,9 +318,11 @@ const DRIFT_REPORTED = [
   { file: 'src/app/product-lifecycle-repository-bindings.ts', anchor: 'moduleRef.version !== DEVELOPMENT_PROCESS_MODULE_REF.version', why: 'repository binding gated on the development module-ref version — audit miss' },
   { file: 'src/infrastructure/replay/replay-authority-rebinder.ts', anchor: 'DEVELOPMENT_MODULE_REFS.has(String(', why: 'replay rebinding gated on the development module-ref set — audit miss; kernel by ADR-082\'s own definition (replay)' },
   { file: 'src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts', anchor: "stage_id='solution-development'", why: 'carry-forward lookup scoped to the development stage — audit miss' },
+  { file: 'src/app/factory-redevelopment.ts', anchor: "parent.current_stage_id !== 'solution-development'", why: 'redevelopment parent-boundary equality on a stage id — audit miss; sibling of the factory-continuation boundary pair (ADR-084 proof-kernel train owns the entry)' },
+  { file: 'src/app/factory-redevelopment.ts', anchor: "sr.stage_id='solution-development'", why: 'redevelopment capsule lookup scoped to the development stage — audit miss; same train' },
 ];
 
-const FROZEN_REGISTER_COUNTS = { benign: 4, blessed: 2, drift: 14 };
+const FROZEN_REGISTER_COUNTS = { benign: 4, blessed: 2, drift: 16 };
 
 test('the kernel branches on a workshop/stage name only inside the frozen registers', () => {
   const registers = [

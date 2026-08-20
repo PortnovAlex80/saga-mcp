@@ -70,13 +70,13 @@ test('ADR-076 closure evidence: this suite enforces the protocol', () => {
   );
 });
 
-test('stage 5: the releases block records all 21 K-releases; the closed set is K0-K12', () => {
+test('stage 5: the releases block records all 22 K-releases; the closed set is K0-K12', () => {
   const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/architecture/adr-closure-registry.json'), 'utf8'));
   const keys = Object.keys(registry.releases).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   assert.deepEqual(
     keys,
-    Array.from({ length: 21 }, (_, i) => `K${i}`),
-    'the releases block must cover K0-K20 — removing a release from the record is a deliberate act',
+    Array.from({ length: 22 }, (_, i) => `K${i}`),
+    'the releases block must cover K0-K21 — removing a release from the record is a deliberate act',
   );
   const closed = keys.filter((k) => registry.releases[k].state === 'closed');
   // K11 was reopened 2026-08-18 (the effect read task.integration_state as proof

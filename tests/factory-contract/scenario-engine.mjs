@@ -238,7 +238,13 @@ export const actions = {
   async createArtifact(client, { projectId, epicId, type, code, title, artifactPath, status = 'draft', projectRepositoryId, repoPath, fileContent }) {
     // file_backed artifacts require real bytes on disk for replay capture.
     if (repoPath && artifactPath) {
-      const body = fileContent || `# ${title}\n\nDeterministic ${type} artifact for ${code}.\n`;
+      // AC documents follow the conveyor heading grammar (acceptance-
+      // criterion-document.ts): every /^AC-/ artifact code must resolve to
+      // exactly one level-2/3 heading `## AC-x: <title>` — the
+      // acceptance-contract validator v1.2.0 rejects bundles whose AC codes
+      // resolve to no heading. Other artifact types keep the level-1 heading.
+      const heading = type === 'AC' ? `## ${title}` : `# ${title}`;
+      const body = fileContent || `${heading}\n\nDeterministic ${type} artifact for ${code}.\n`;
       const fullPath = path.join(repoPath, artifactPath.split('#')[0]);
       mkdirSync(path.dirname(fullPath), { recursive: true });
       writeFileSync(fullPath, body, 'utf8');

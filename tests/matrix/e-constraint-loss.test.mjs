@@ -35,7 +35,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -259,6 +260,27 @@ function formalizationDb({ taskId = 50, processRunId = 1, taskMetadata, brief, a
       if (/^SELECT metadata FROM tasks WHERE id=\?/.test(sql)) {
         return { get: id => (id === taskId ? { metadata: meta(taskMetadata) } : undefined), all: () => [] };
       }
+      if (sql.includes('FROM artifacts a') && sql.includes('WHERE a.id=?')) {
+        // readExactArtifactContent (the acceptance-contract validator v1.2.0
+        // heading-resolution gate reads the exact accepted bytes of every
+        // /^AC-/ artifact). AC artifacts get the real-bytes fixture below;
+        // non-AC types never reach the gate.
+        return {
+          get: id => {
+            const a = artifactById.get(id);
+            if (a && a.type === 'AC') {
+              return { path: AC_HEADING_PATH, content_hash: AC_HEADING_HASH, project_repository_id: 1 };
+            }
+            return { path: 'docs/x.md', content_hash: null, project_repository_id: null };
+          },
+          all: () => [],
+        };
+      }
+      if (sql.includes('FROM project_repositories pr')) {
+        // resolveEffectiveRepositoryRoot — the active-machine-checkout
+        // precedence resolver shared by workers and artifact hashing.
+        return { get: () => ({ local_path: AC_HEADING_REPO }), all: () => [] };
+      }
       if (sql.includes("a.type='brief'") && sql.includes('factory_managed_artifact_productions')) {
         return { get: () => (brief ? { id: brief.id, metadata: meta(brief.metadata) } : undefined), all: () => [] };
       }
@@ -279,6 +301,34 @@ function formalizationDb({ taskId = 50, processRunId = 1, taskMetadata, brief, a
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Real-bytes AC fixture (the acceptance-contract validator v1.2.0
+// heading-resolution gate): every /^AC-/ artifact code must resolve to
+// exactly one level-2/3 heading in real repository-backed bytes whose sha256
+// equals content_hash. The file carries one heading per AC id used by this
+// suite (AC-5, AC-9); each artifact resolves to exactly its own leaf.
+// ---------------------------------------------------------------------------
+const AC_HEADING_REPO = mkdtempSync(join(tmpdir(), 'e-constraint-loss-'));
+mkdirSync(join(AC_HEADING_REPO, 'docs'), { recursive: true });
+const AC_HEADING_PATH = 'docs/ac.md';
+const AC_HEADING_BODY = [
+  '# AC Documents',
+  '',
+  '## AC-5: Restatement Boundary Fixture',
+  '',
+  'Deterministic AC document for the boundary sweep.',
+  '',
+  '## AC-9: Constraint Carry Fixture',
+  '',
+  'Deterministic AC document for the coverage validator.',
+  '',
+].join('\n');
+const AC_HEADING_HASH = createHash('sha256').update(AC_HEADING_BODY, 'utf8').digest('hex');
+writeFileSync(join(AC_HEADING_REPO, 'docs', 'ac.md'), AC_HEADING_BODY, 'utf8');
+process.on('exit', () => {
+  try { rmSync(AC_HEADING_REPO, { recursive: true, force: true }); } catch { /* best effort */ }
+});
 
 const artifact = (id, type, extra = {}) => ({
   id, projectId: 7, epicId: 8, type, code: `${type}-${id}`, status: 'accepted',
