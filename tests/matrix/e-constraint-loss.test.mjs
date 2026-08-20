@@ -1,0 +1,673 @@
+// tests/matrix/e-constraint-loss.test.mjs
+//
+// STAGE-16 SPACE E — constraint loss across restatement (defect shape S4).
+//
+// Thesis (see tests/matrix/README.md): a requirement present upstream can be
+// absent downstream with no disposition. The AC-drift remedy (stage-12 wave C,
+// the order-constraint register) closed ONE boundary (discovery→formalization).
+// This file sweeps ALL boundaries where a worker restates upstream material in
+// its own words and asks, per boundary: if a distinctive token travels in the
+// upstream material and the restatement omits it, does anything DETECT the
+// loss?
+//
+// Method (brief §SPACE E):
+//   E1  the boundaries are enumerated FROM the process-module sources — the
+//       cited node lines are re-derived from the files in test 1, so a moved
+//       node breaks the citation, not just the comment.
+//   E2  a table in-file: boundary → constraint register (or equivalent
+//       carrying mechanism) present? → consuming it obligatory? → exactly
+//       which wired check covers which loss.
+//   E3  every boundary is driven LIVE: the REAL validators/policies/providers
+//       from ../../dist (the same code the gates run), fed domain-free
+//       fixtures over an in-memory DB façade (the SQL routing mirrors the
+//       exact statements the validators issue). Covered boundaries must
+//       detect the loss; uncovered boundaries assert the HONEST current
+//       behavior (loss passes) and land in the FINDINGS registry — no fake
+//       detection (brief §2).
+//   E4  the token is the arbitrary string 'CONSTRAINT-ALPHA' — tier-1
+//       material. No realistic requirement anywhere.
+//   E5  findings registry: boundary, what was fed, what the factory said,
+//       file:line of where a detector SHOULD live. Findings, not fixes.
+//   E6  the boundary table is printed to the console.
+//
+// No real LLM. No SQLite. No filesystem writes. Runtime target: < 1 s.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { buildOrderConstraintRegister } from '../../dist/shared/constraint-register.js';
+import { validateDiscoveryProposal } from '../../dist/modules/discovery/domain/discovery-proposal.js';
+import { createFormalizationContractValidator } from '../../dist/modules/formalization/application/formalization-contract-validator.js';
+import { createAcceptanceContractValidator } from '../../dist/modules/formalization/application/acceptance-contract-validator.js';
+import {
+  buildContractSnapshot,
+  findContractGap,
+} from '../../dist/modules/formalization/application/formalization-contract-analysis.js';
+import {
+  FORMALIZATION_CASE_SCHEMA,
+  DEVELOPMENT_CASE_SCHEMA,
+} from '../../dist/process-modules/lifecycles/product-delivery-module-contracts.js';
+import {
+  decodeDevelopmentTaskGraphProposal,
+  buildCanonicalDevelopmentTaskGraph,
+} from '../../dist/modules/development/domain/development-task-graph.js';
+import {
+  ReferenceDevelopmentTaskGraphPolicy,
+  hashDevelopmentPolicy,
+} from '../../dist/modules/development/domain/development-settlement-policy.js';
+import {
+  DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+  DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+} from '../../dist/modules/development/domain/development-schemas.js';
+import {
+  developmentImplementationPayloadContract,
+  createDevelopmentVerificationCheckProvider,
+} from '../../dist/modules/development/application/development-check-providers.js';
+import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
+const src = relative => readFileSync(join(repoRoot, relative), 'utf8');
+
+/** E4: the tier-1 token. Arbitrary text; nothing downstream may parse it. */
+const TOKEN = 'CONSTRAINT-ALPHA';
+
+const sha256 = value => createHash('sha256').update(String(value)).digest('hex');
+const HEX40 = 'a1'.repeat(20);
+
+/** 1-based line number of the first line containing `needle` in `text`. */
+function lineOf(text, needle) {
+  const index = text.indexOf(needle);
+  assert.ok(index !== -1, `citation source drifted: '${needle}' not found`);
+  return text.slice(0, index).split('\n').length;
+}
+
+// ── E1: the boundaries, enumerated from the process modules ─────────────────
+//
+// Every row cites the node that owns the restatement and where the restated
+// material is produced (prompt assembly / payload / card). Test 1 re-derives
+// the node line numbers from the files so the citations cannot rot silently.
+const DISCOVERY_MODULE = 'src/process-modules/modules/discovery/discovery-process-module.ts';
+const FORMALIZATION_MODULE = 'src/process-modules/modules/formalization/formalization-process-module.ts';
+const DEVELOPMENT_MODULE = 'src/process-modules/modules/development/development-process-module.ts';
+const CARD_EXECUTOR = 'src/process-modules/application/node-executors/production-cell-node-executor.ts';
+
+const BOUNDARIES = [
+  {
+    id: 'B1',
+    boundary: 'order → proposal (Discovery, produce-proposal)',
+    upstream: 'the order/initiative prose (tier-1, opaque — factory.discovery-case.v1 carries no typed constraint field)',
+    restatement: 'DiscoveryProposalPayload.order_constraints — typed drafts the discovery worker serializes while the order is visible',
+    node: `${DISCOVERY_MODULE}:70-88 (node 'produce-proposal'; executionProfile 'discovery-proposal-worker' :163-187)`,
+    promptAssembly: 'resources/proposal-call-template.json + skills/saga-discovery-worker/SKILL.md:54-66 (the serialization instruction); drafts validated at src/modules/discovery/domain/discovery-proposal.ts:116-147',
+  },
+  {
+    id: 'B2',
+    boundary: 'proposal → PRD/brief (Formalization, define-product-contract)',
+    upstream: 'the accepted DiscoveryProposal (its order_constraints became the digest-pinned register at settlement)',
+    restatement: 'the brief/PRD artifacts; the register reaction is the brief artifact metadata constraint_dispositions',
+    node: `${FORMALIZATION_MODULE}:149-163 (node 'define-product-contract')`,
+    promptAssembly: 'resources/artifact-create-call-template.json + formalization-node-checklist.md (authorProfile :301-302); dispositions gate: src/modules/formalization/application/formalization-contract-validator.ts:77-86',
+  },
+  {
+    id: 'B3',
+    boundary: 'PRD → AC (Formalization, define-acceptance-contract)',
+    upstream: 'the accepted PRD/FR/NFR/UC artifacts',
+    restatement: 'AC artifacts: trace_add derived_from edges + metadata covered_constraint_ids',
+    node: `${FORMALIZATION_MODULE}:179-193 (node 'define-acceptance-contract')`,
+    promptAssembly: 'resources/trace-add-call-template.json; validator: src/modules/formalization/application/acceptance-contract-validator.ts:168-223; reverse orphan check (UNWIRED — finding E-F2): src/modules/formalization/application/formalization-contract-analysis.ts:211-239',
+  },
+  {
+    id: 'B4',
+    boundary: 'AC → task graph (Development, plan-task-graph)',
+    upstream: 'the frozen acceptance baseline / DevelopmentCase.acceptanceCriteria',
+    restatement: 'the typed task-graph proposal (acceptanceCriterionIds per item; constraint relay is kernel-derived, never proposed)',
+    node: `${DEVELOPMENT_MODULE}:205-230 (node 'plan-task-graph')`,
+    promptAssembly: 'machine-filled card: src/modules/development/application/development-workspace-preparation.ts:78-124; gate semantics: src/modules/development/domain/development-settlement-policy.ts:250-589; relay derivation: src/modules/development/domain/development-task-graph.ts:221-253',
+  },
+  {
+    id: 'B5',
+    boundary: 'task graph → workplace cards (Development, implement-work-items / verify-acceptance)',
+    upstream: 'the canonical task graph item (cell_input_item: key, acceptanceCriterionIds, changeScopes, coveredConstraintIds)',
+    restatement: 'the implementation result product (workItemKey + git snapshot) and the verification evidence product',
+    node: `${DEVELOPMENT_MODULE}:241-302 (node 'implement-work-items'; verification fan-out :348-398)`,
+    promptAssembly: `card projection: ${CARD_EXECUTOR}:1744 (cell_input_item: workplace.item) and :1751-1753 (nodeInput = { upstream, item }); implementation scope provider: src/modules/development/application/development-check-providers.ts:717-917; verification echo check: :1089-1112`,
+  },
+];
+
+// ── E2: the carrying-mechanism table ────────────────────────────────────────
+//
+// boundary → register (or equivalent) present? → consuming it obligatory?
+// → exactly which WIRED check covers which loss. 'Wired' means: a gate,
+// provider, validator or settlement path actually invokes it on the live
+// conveyor (grep-verified; the wiring-honesty assertions below pin it).
+const CARRYING = [
+  {
+    id: 'B1',
+    registerPresent: 'no — the register is BORN here, from worker-typed drafts; nothing upstream is typed to diff against',
+    obligatory: 'no — order_constraints is optional (discovery-proposal.ts:116-121) and is never diffed against the order text (by design: constraint-register.ts:24-30 makes extraction quality "the discovery assessor\'s boundary")',
+    covers: 'nothing; a malformed draft is rejected, an OMITTED one is not',
+    lossDetected: false,
+    finding: 'E-F1',
+  },
+  {
+    id: 'B2',
+    registerPresent: 'yes — FormalizationCase resolves the digest-pinned register from discoveryProposalPayload (formalization-schemas.ts:70-86)',
+    obligatory: 'yes — product validator mode "required" (wire-submission-validation.ts:73-77); FORMALIZATION_CONSTRAINT_UNDISPOSED (formalization-contract-validator.ts:77-86)',
+    covers: 'every register ID must be disposed in the brief metadata (accepted | waived+reason)',
+    lossDetected: true,
+    finding: null,
+  },
+  {
+    id: 'B3',
+    registerPresent: 'yes — AC metadata covered_constraint_ids diffed against the register (constraint-coverage.ts:37-107)',
+    obligatory: 'yes — FORMALIZATION_CONSTRAINT_UNCOVERED at define-acceptance-contract AND reconcile-what; trace_add forward edges obligatory (acceptance validator + settlement findFirstTraceabilityGapForLifecycle, sqlite-formalization-kernel.ts:246-322 — forward only)',
+    covers: 'register IDs (covered or validly waived); every AC → FR/NFR(+UC) edge',
+    lossDetected: 'partial — register-carried IDs yes; a plain FR/NFR with NO incoming UC covers / AC derived_from edge passes every wired gate (the reconciliation:true reverse check exists at formalization-contract-analysis.ts:211-239 and is passed by NO call site — finding E-F2)',
+    finding: 'E-F2',
+  },
+  {
+    id: 'B4',
+    registerPresent: 'yes — coveredConstraintIds are KERNEL-derived per item from the frozen criteria (development-task-graph.ts:221-253): inherited, never proposed, cannot be forged or dropped at the handoff',
+    obligatory: 'yes — ReferenceDevelopmentTaskGraphPolicy set equality: implementation-coverage-gap (:455-517) and verification-plan-coverage-gap (:518-536)',
+    covers: 'every implementationRequired AC covered by a required implementation item, zero foreign ids; verification coverage === the exact accepted AC set',
+    lossDetected: true,
+    finding: null,
+  },
+  {
+    id: 'B5',
+    registerPresent: 'yes on the card — cell_input_item carries acceptanceCriterionIds + coveredConstraintIds into the workplace',
+    obligatory: 'verification card: yes — evidence must echo the card-pinned set (development-check-providers.ts:1089-1112, verification-lineage-mismatch). Implementation card: NO — the implementation result consumer contract (development-check-providers.ts:206-297) has no constraint/criterion field at all, and the scope provider reads cell_input_item only for key/changeScopes (:786-813)',
+    covers: 'verification echo only',
+    lossDetected: 'split — verification card yes; implementation card no (finding E-F3)',
+    finding: 'E-F3',
+  },
+];
+
+// ── E5: the findings registry (findings, not fixes — brief §2) ──────────────
+const FINDINGS = [
+  {
+    id: 'E-F1',
+    boundary: 'B1 order → proposal',
+    severity: 'high',
+    fed: `order prose containing the token '${TOKEN}'; worker serialized ONE order_constraints draft and omitted the token-bearing one`,
+    factorySaid: `validateDiscoveryProposal → valid=true (order_constraints is optional and structurally fine); buildOrderConstraintRegister → a register WITHOUT the token; every downstream register diff is empty, so the entire closed network (B2/B3/B4/B5) inherits an ungated LM extraction loss`,
+    shouldLive: 'src/modules/discovery/application/discovery-check-providers.ts:47-77 — the proposal check provider currently runs only structural validateDiscoveryProposal; a detector would need a typed upstream form on factory.discovery-case.v1 to diff against (none exists today — the gap is by design, constraint-register.ts:24-30)',
+  },
+  {
+    id: 'E-F2',
+    boundary: 'B3 PRD → AC (plain FR/NFR, not register-carried)',
+    severity: 'high',
+    fed: 'FR-B accepted in the product bundle; the AC author restated only FR-A; no UC covers FR-B either',
+    factorySaid: 'findContractGap over every WIRED dimension set ({product,useCases,acceptance} at define-acceptance-contract and {product,useCases,acceptance,coverage} at reconcile-what) → gap=null; settlement trace check (sqlite-formalization-kernel.ts:246-322) is forward-only (AC→FR), never reverse. The detector CODE exists — findContractGap({reconciliation:true}) names the orphan — but no call site passes that flag',
+    shouldLive: 'the reconciliation validator wiring: src/modules/formalization/application/formalization-check-providers.ts:32-37 and src/process-modules/application/wire-submission-validation.ts:60-63 — add reconciliation:true to the dimension set (the orphan check at formalization-contract-analysis.ts:211-239 then runs at the reconcile-what gate)',
+  },
+  {
+    id: 'E-F3',
+    boundary: 'B5 task graph → implementation card',
+    severity: 'high',
+    fed: `card (cell_input_item) pins coveredConstraintIds ['ord-c-001'] (the '${TOKEN}' register entry); the implementation worker submits a scope-clean git change that never addresses it`,
+    factorySaid: "developmentImplementationPayloadContract.validate → [] errors (the consumer contract has NO field that carries or echoes the card's criterion/constraint set — the token cannot even be expressed, let alone missed); the implementation scope provider reads cell_input_item only for {key, changeScopes}; the gate passes",
+    shouldLive: 'src/modules/development/application/development-check-providers.ts:717-917 (createDevelopmentImplementationScopeCheckProvider) — an echo obligation on cell_input_item.acceptanceCriterionIds/coveredConstraintIds, exactly like the verification provider\'s constraintLineageOk at :1089-1112. The verification echo proves the VERIFIER saw the id, not that the implementer did',
+  },
+];
+
+// ── fixtures: in-memory DB façades routing the exact validator SQL ──────────
+
+/** A faithful in-memory stand-in for the formalization validators' DB handle.
+ * Route table (each route matches the exact statement shape the validators
+ * issue — see formalization-contract-validator.ts:147-192, :229-279 and
+ * acceptance-contract-validator.ts:58-118, constraint-coverage.ts:42-96). */
+function formalizationDb({ taskId = 50, processRunId = 1, taskMetadata, brief, artifacts = [], traces = [] }) {
+  const artifactById = new Map(artifacts.map(a => [a.id, a]));
+  const meta = value => (typeof value === 'string' ? value : JSON.stringify(value));
+  return {
+    prepare(sql) {
+      if (/^SELECT metadata FROM tasks WHERE id=\?/.test(sql)) {
+        return { get: id => (id === taskId ? { metadata: meta(taskMetadata) } : undefined), all: () => [] };
+      }
+      if (sql.includes("a.type='brief'") && sql.includes('factory_managed_artifact_productions')) {
+        return { get: () => (brief ? { id: brief.id, metadata: meta(brief.metadata) } : undefined), all: () => [] };
+      }
+      if (/^SELECT DISTINCT a\.id/.test(sql)) { // readContractArtifacts(processRunId)
+        return { get: () => undefined, all: () => artifacts.map(a => ({ ...a, metadata: meta(a.metadata) })) };
+      }
+      if (sql.includes('FROM artifacts WHERE id IN')) {
+        // the graph port spreads the ids: .all(...ids)
+        return { get: () => undefined, all: (...ids) => ids.map(id => artifactById.get(id)).filter(Boolean) };
+      }
+      if (sql.includes('FROM artifact_traces WHERE id IN')) {
+        return { get: () => undefined, all: (...ids) => traces.filter(t => ids.includes(t.id)) };
+      }
+      if (sql.includes('FROM artifact_traces') && sql.includes('source_id IN')) {
+        return { get: () => undefined, all: (...ids) => traces.filter(t => ids.includes(t.sourceArtifactId)) };
+      }
+      throw new Error(`formalizationDb: unrouted SQL: ${sql.replace(/\s+/g, ' ').slice(0, 80)}`);
+    },
+  };
+}
+
+const artifact = (id, type, extra = {}) => ({
+  id, projectId: 7, epicId: 8, type, code: `${type}-${id}`, status: 'accepted',
+  contentHash: sha256(`content:${id}`), acceptedHash: sha256(`content:${id}`),
+  driftState: 'clean', tags: null, metadata: {}, ...extra,
+});
+const trace = (id, sourceArtifactId, targetId, linkType) => ({
+  id, sourceArtifactId, targetType: 'artifact', targetId, linkType,
+});
+
+/** The FormalizationCase that rides the task's process_node_input metadata.
+ * constraintRegister is absent on purpose: production resolves it from
+ * discoveryProposalPayload.order_constraints (formalization-schemas.ts:70-86). */
+const caseCarryingToken = {
+  schemaVersion: FORMALIZATION_CASE_SCHEMA,
+  discoveryProposalPayload: {
+    order_constraints: [
+      { class: 'execution', text: `${TOKEN} must hold`, evidence_ref: 'order.source_body' },
+      { class: 'material', text: 'an unrelated second constraint', evidence_ref: 'order.source_body' },
+    ],
+  },
+};
+
+// ── E1 ──────────────────────────────────────────────────────────────────────
+
+test('space E — E1: the restatement boundaries are enumerated from the process modules, not from memory', () => {
+  const discovery = src(DISCOVERY_MODULE);
+  const formalization = src(FORMALIZATION_MODULE);
+  const development = src(DEVELOPMENT_MODULE);
+  const cardExecutor = src(CARD_EXECUTOR);
+  // The cited node lines are re-derived from the sources. A moved node breaks
+  // the citation (and this test), never the reader's trust.
+  assert.equal(lineOf(discovery, "id: 'produce-proposal'"), 71);
+  assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
+  assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 150);
+  assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 180);
+  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 206);
+  assert.equal(lineOf(development, "id: 'implement-work-items'"), 242);
+  assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');
+  assert.equal(BOUNDARIES.length, 5, 'the E1 boundary list is fixed at five');
+  for (const row of BOUNDARIES) {
+    assert.ok(row.node && row.promptAssembly && row.upstream && row.restatement, `${row.id} citation incomplete`);
+  }
+});
+
+// ── E3 · B1: order → proposal — UNCOVERED (finding E-F1) ────────────────────
+
+test(`space E — E3.B1 order→proposal: '${TOKEN}' lost at extraction is NOT detected (finding E-F1, honest current behavior)`, () => {
+  // The order body (tier-1 prose) mentions the token; the worker restates the
+  // order as proposal prose + ONE typed draft, omitting the token's draft.
+  const restated = {
+    problem_statement: `x mentions ${TOKEN} in prose only`,
+    observed_context: 'o', stakeholders_or_actors: ['a'], assumptions: [], unknowns: [],
+    risks: [], candidate_scope: 's', evidence_refs: ['e'],
+    recommended_outcome: 'go', rationale: 'r',
+    order_constraints: [
+      { class: 'material', text: 'an unrelated second constraint', evidence_ref: 'order.source_body' },
+    ],
+  };
+  // 1. The proposal gate's ONLY check (the real one the discovery cell runs —
+  //    createDiscoveryProposalCheckProvider calls exactly this validator).
+  const validation = validateDiscoveryProposal(restated);
+  assert.equal(validation.valid, true, 'honest behavior: the omission is structurally legal');
+  // 2. Settlement then builds the register from exactly what was serialized
+  //    (discovery-production-cell-installation.ts:141-144) — the register
+  //    never sees the token.
+  const register = buildOrderConstraintRegister(restated.order_constraints);
+  assert.ok(register);
+  assert.deepEqual(
+    register.constraints.map(entry => entry.text.includes(TOKEN)),
+    [false],
+    'honest behavior: the register pins only the serialized drafts',
+  );
+  // 3. Every downstream register diff (B2/B3/B4/B5) is therefore empty: the
+  //    closed network cannot detect a loss that happened before it started.
+  assert.equal(FINDINGS.find(f => f.id === 'E-F1').boundary.startsWith('B1'), true);
+});
+
+// ── E3 · B2: proposal → PRD/brief — COVERED (the stage-12 precedent, live) ──
+
+test(`space E — E3.B2 proposal→PRD: register id '${TOKEN}' left undisposed IS detected (FORMALIZATION_CONSTRAINT_UNDISPOSED)`, () => {
+  const make = briefMetadata => createFormalizationContractValidator(
+    formalizationDb({ taskMetadata: { process_node_input: caseCarryingToken }, brief: { id: 900, metadata: briefMetadata } }),
+    'formalization.product-contract.v1', 'define-product-contract',
+    { product: true, constraintDispositions: true }, // the production wiring (wire-submission-validation.ts:52-55)
+  );
+  const input = { processRunId: 1, moduleRef: 'solution-formalization@1.0.0', nodeId: 'define-product-contract', executionId: 'e1', taskId: 50, contractRef: null };
+
+  // LOSS: the brief reacts to nothing — the author restated the proposal and
+  // dropped the constraint with no disposition.
+  const loss = make({}).validate(input);
+  assert.equal(loss.accepted, false);
+  assert.equal(loss.code, 'FORMALIZATION_CONSTRAINT_UNDISPOSED');
+  assert.match(loss.gaps[0].message, /ord-c-001/);
+  assert.match(loss.gaps[0].message, new RegExp(TOKEN), 'the rejection names the lost token');
+  assert.equal(loss.gaps.length, 2, 'both register ids are reported per-ID');
+
+  // A waiver without a reason is not a disposition.
+  const badWaiver = make({ constraint_dispositions: {
+    'ord-c-001': { disposition: 'waived', reason: ' ' },
+    'ord-c-002': { disposition: 'accepted' },
+  } }).validate(input);
+  assert.equal(badWaiver.accepted, false);
+  assert.equal(badWaiver.code, 'FORMALIZATION_CONSTRAINT_UNDISPOSED');
+
+  // Honest carry: accepted | waived+reason passes the reaction gate.
+  const carried = make({ constraint_dispositions: {
+    'ord-c-001': { disposition: 'accepted' },
+    'ord-c-002': { disposition: 'waived', reason: 'out of scope for this build' },
+  } }).validate(input);
+  assert.equal(carried.accepted, true, 'a valid disposition set carries the register across');
+  assert.equal(carried.receipt.validatorId, 'formalization.product-contract.v1');
+});
+
+// ── E3 · B3a: PRD → AC — COVERED for register-carried ids ───────────────────
+
+test(`space E — E3.B3a PRD→AC: register id '${TOKEN}' covered by no AC IS detected (FORMALIZATION_CONSTRAINT_UNCOVERED)`, () => {
+  const artifacts = [
+    artifact(999, 'brief'),
+    artifact(1, 'PRD'),
+    artifact(2, 'FR'),
+    artifact(4, 'UC'),
+    artifact(9, 'AC', { metadata: {} }), // the restating AC author: no covered_constraint_ids
+  ];
+  const traces = [
+    trace(11, 1, 999, 'derived_from'),
+    trace(12, 4, 1, 'derived_from'),
+    trace(13, 4, 2, 'covers'),
+    trace(14, 9, 2, 'derived_from'),
+    trace(15, 9, 4, 'derived_from'),
+  ];
+  const db = formalizationDb({
+    taskMetadata: { process_node_input: caseCarryingToken },
+    brief: { id: 900, metadata: { constraint_dispositions: {
+      'ord-c-002': { disposition: 'waived', reason: 'deferred' }, // ord-c-001 must be COVERED by an AC
+    } } },
+    artifacts, traces,
+  });
+  const validator = createAcceptanceContractValidator(db);
+  const input = { processRunId: 1, moduleRef: 'solution-formalization@1.0.0', nodeId: 'define-acceptance-contract', executionId: 'e2', taskId: 50, contractRef: null };
+
+  const loss = validator.validate(input);
+  assert.equal(loss.accepted, false);
+  assert.equal(loss.code, 'FORMALIZATION_CONSTRAINT_UNCOVERED');
+  const gap = loss.gaps.find(g => (g.message ?? '').includes('ord-c-001'));
+  assert.ok(gap, 'the uncovered id is reported per-ID');
+  assert.match(gap.message, new RegExp(TOKEN));
+
+  // Honest carry: the AC metadata covers the id → accepted with receipt.
+  artifacts[4] = artifact(9, 'AC', { metadata: { covered_constraint_ids: ['ord-c-001'] } });
+  const carried = createAcceptanceContractValidator(formalizationDb({
+    taskMetadata: { process_node_input: caseCarryingToken },
+    brief: { id: 900, metadata: { constraint_dispositions: { 'ord-c-002': { disposition: 'waived', reason: 'deferred' } } } },
+    artifacts, traces,
+  })).validate(input);
+  assert.equal(carried.accepted, true);
+  assert.equal(carried.receipt.validatorId, 'formalization.acceptance-contract.v1');
+});
+
+// ── E3 · B3b: PRD → AC — UNCOVERED for plain FR/NFR (finding E-F2) ──────────
+
+test('space E — E3.B3b PRD→AC: a plain FR with no UC/AC consumer is NOT detected by any WIRED gate (finding E-F2); the detector code exists but is unwired', () => {
+  // The real snapshot builder over an in-memory graph port (the port's three
+  // reads are exactly what the SQLite adapter implements).
+  const artifacts = [
+    artifact(999, 'brief'), artifact(1, 'PRD'),
+    artifact(2, 'FR', { code: 'FR-A' }),
+    artifact(3, 'FR', { code: 'FR-B' }), // the orphan: restated nowhere downstream
+    artifact(4, 'UC'), artifact(5, 'AC'),
+  ];
+  const traces = [
+    trace(11, 1, 999, 'derived_from'),
+    trace(12, 4, 1, 'derived_from'),
+    trace(13, 4, 2, 'covers'),       // UC covers FR-A only
+    trace(14, 5, 2, 'derived_from'), // AC derived from FR-A only
+    trace(15, 5, 4, 'derived_from'),
+  ];
+  const port = {
+    readArtifactsByIds: ids => ids.map(id => artifacts.find(a => a.id === id)).filter(Boolean),
+    readTracesByIds: ids => traces.filter(t => ids.includes(t.id)),
+    readOutgoingArtifactTraces: ids => traces.filter(t => ids.includes(t.sourceArtifactId)),
+  };
+  const snapshot = buildContractSnapshot(port, artifacts);
+
+  // Every dimension set any wired gate passes today. Note: the wired
+  // reconciliation validator's literal `{ ..., coverage: true }` is a FLAG of
+  // the validator layer — createFormalizationContractValidator resolves it to
+  // a real coverage requirement (register-ID diff) or drops it. It contributes
+  // nothing to an FR orphan either way: with no register the diff is empty,
+  // with a register it only diffs register IDs. Both forms are driven.
+  const acceptanceDims = { product: true, useCases: true, acceptance: true }; // define-acceptance-contract
+  assert.equal(findContractGap(snapshot, acceptanceDims), null,
+    'honest behavior: FR-B (no consumer at all) passes the acceptance gate');
+  assert.equal(
+    findContractGap(snapshot, { product: true, useCases: true, acceptance: true, coverage: { constraintIds: [], waivedIds: [] } }),
+    null,
+    'honest behavior: FR-B passes the reconciliation gate too (register diff empty)');
+  assert.equal(
+    findContractGap(snapshot, { product: true, useCases: true, acceptance: true, coverage: { constraintIds: ['ord-c-001'], waivedIds: ['ord-c-001'] } }),
+    null,
+    'honest behavior: even a register-carrying reconciliation gate (register validly waived) never looks at FR consumers — only at register IDs',
+  );
+  // The settlement trace check is forward-only (sqlite-formalization-kernel.ts:246-322:
+  // PRD→brief, SRS→PRD, UC→PRD/FR, AC→FR/NFR) — it cannot see a reverse orphan.
+
+  // The check that WOULD catch it exists in the same real module:
+  assert.match(
+    findContractGap(snapshot, { reconciliation: true }),
+    /FR\/NFR 3 \(FR-B\) has no incoming covers\/derived_from from any UC\/AC — orphan requirement/,
+    'the unwired reconciliation dimension names the orphan exactly',
+  );
+
+  // Wiring honesty: no call site passes reconciliation:true today. If this
+  // assertion ever fails, finding E-F2 has been fixed — revisit the registry.
+  const providerWiring = src('src/modules/formalization/application/formalization-check-providers.ts');
+  const rootWiring = src('src/process-modules/application/wire-submission-validation.ts');
+  for (const [name, text] of [['formalization-check-providers.ts', providerWiring], ['wire-submission-validation.ts', rootWiring]]) {
+    const calls = [...text.matchAll(/createFormalizationContractValidator\([^)]*'formalization\.reconciliation\.v1'[^)]*\)/gs)];
+    assert.ok(calls.length === 1, `${name}: the reconciliation validator registration moved`);
+    assert.ok(!/reconciliation:\s*true/.test(calls[0][0]),
+      `${name}: the reconciliation validator NOW passes reconciliation:true — finding E-F2 is fixed; update the FINDINGS registry`);
+  }
+});
+
+// ── E3 · B4: AC → task graph — COVERED ──────────────────────────────────────
+
+test(`space E — E3.B4 AC→task graph: a dropped AC IS detected; the '${TOKEN}' relay is kernel-derived and undroppable`, () => {
+  const policyBody = { id: 'matrix-policy', version: '1.0.0' };
+  const devCase = {
+    schemaVersion: DEVELOPMENT_CASE_SCHEMA,
+    projectId: 7, epicId: 8, initiatedBy: 'matrix',
+    formalizationCertificate: { schema: 'factory.solution-contract-certificate.v1', ref: 'certificate:1', hash: sha256('cert'), decision: 'formalized' },
+    solutionContract: { schema: 'factory.sc.x', ref: 'r', hash: sha256('sol') },
+    acceptanceBaselineHash: sha256('baseline'),
+    srs: { schema: 'factory.srs.x', ref: 'r2', hash: sha256('srs') },
+    acceptanceCriteria: [
+      { artifactId: 101, code: 'AC-1', acceptedHash: sha256('ac1'), implementationRequired: true, criticality: 'blocker', coveredConstraintIds: ['ord-c-001'] },
+      { artifactId: 102, code: 'AC-2', acceptedHash: sha256('ac2'), implementationRequired: true, criticality: 'blocker' },
+      { artifactId: 103, code: 'AC-3', acceptedHash: sha256('ac3'), implementationRequired: false, criticality: 'nice_to_have' },
+    ],
+    repositories: [{ projectRepositoryId: 5, integrationBranch: 'b', expectedBaseCommit: 'c0' }],
+    policy: { ...policyBody, contentHash: hashDevelopmentPolicy(policyBody) },
+  };
+  const implItem = {
+    key: 'imp-1', kind: 'implementation', taskKind: 'development.code',
+    executionSkill: 'saga-worker', executionMode: 'git_change', projectRepositoryId: 5,
+    acceptanceCriterionIds: [101, 102], dependsOnKeys: [], changeScopes: ['zzz/'],
+    required: true, criticality: 'blocker',
+  };
+  const verifyItem = id => ({
+    key: `verify-${id}`, kind: 'verification', taskKind: 'verification.ac',
+    executionSkill: 'saga-verifier', executionMode: 'read_only_evidence', projectRepositoryId: 5,
+    acceptanceCriterionIds: [id], dependsOnKeys: [], changeScopes: [],
+    required: true, criticality: 'blocker',
+  });
+  const completeProposal = {
+    schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    implementationItems: [implItem],
+    verificationItems: [101, 102, 103].map(verifyItem),
+    integrationTargets: [{ projectRepositoryId: 5, sourceWorkItemKeys: ['imp-1'], targetBranch: 'b', expectedBaseCommit: 'c0' }],
+  };
+  const submission = { schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA, ref: 'managed-node-submission:9', hash: sha256('sub') };
+  const policy = new ReferenceDevelopmentTaskGraphPolicy();
+
+  const build = proposal => {
+    const decoded = decodeDevelopmentTaskGraphProposal(proposal); // the REAL proposal decoder
+    if (!decoded.ok) assert.fail(decoded.errors.join('; '));
+    return buildCanonicalDevelopmentTaskGraph(devCase, decoded.value, submission);
+  };
+
+  // Positive control: the complete graph validates.
+  assert.equal(policy.validate(devCase, build(completeProposal)).valid, true);
+
+  // LOSS: the planner drops the verification item for AC-3 (artifactId 103).
+  const lossy = structuredClone(completeProposal);
+  lossy.verificationItems = lossy.verificationItems.filter(item => item.key !== 'verify-103');
+  const verdict = policy.validate(devCase, build(lossy));
+  assert.equal(verdict.valid, false, 'a dropped AC is detected');
+  assert.ok(verdict.reasonCodes.includes('verification-plan-coverage-gap'));
+  assert.match(verdict.errors.join('; '), /missing AC artifact ids: \[103\]/);
+
+  // LOSS: an implementation item quietly stops carrying an implementationRequired AC.
+  const narrowed = structuredClone(completeProposal);
+  narrowed.implementationItems[0].acceptanceCriterionIds = [102];
+  const narrowedVerdict = policy.validate(devCase, build(narrowed));
+  assert.equal(narrowedVerdict.valid, false);
+  assert.ok(narrowedVerdict.reasonCodes.includes('implementation-coverage-gap'));
+
+  // The constraint relay: the PROPOSAL carries no coveredConstraintIds, yet the
+  // canonical item does — inherited from the frozen criteria, kernel-side
+  // (development-task-graph.ts:221-253). The planner cannot drop CONSTRAINT-ALPHA here.
+  const canonical = build(completeProposal);
+  assert.deepEqual(canonical.implementationItems[0].coveredConstraintIds, ['ord-c-001']);
+  assert.deepEqual(
+    canonical.verificationItems.find(item => item.key === 'verify-101').coveredConstraintIds,
+    ['ord-c-001'],
+  );
+});
+
+// ── E3 · B5: task graph → cards — SPLIT (finding E-F3) ──────────────────────
+
+test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOKEN}' silently (finding E-F3); the verification card echo IS detected`, () => {
+  const card = {
+    key: 'imp-1', acceptanceCriterionIds: [101], changeScopes: ['zzz/'],
+    coveredConstraintIds: ['ord-c-001'], // CONSTRAINT-ALPHA rides the card
+  };
+
+  // (a) IMPLEMENTATION CARD — honest current behavior: the real consumer
+  // contract of the implementation result has NO field that echoes the card's
+  // criterion/constraint set, so the token cannot be restated, dropped, or
+  // missed: the gate passes a result that never addresses it.
+  const implementationResult = {
+    workItemKey: 'imp-1', // identity echo — the ONLY card field the result must repeat
+    repository: { baseCommit: HEX40 },
+    snapshot: { commitSha: HEX40, changedFiles: ['zzz/thing'] },
+  };
+  const payloadErrors = developmentImplementationPayloadContract.validate(implementationResult);
+  assert.deepEqual(payloadErrors, [],
+    'honest behavior: a constraint-blind implementation result passes its consumer contract');
+  // Wiring honesty: the scope provider reads cell_input_item only for
+  // {key, changeScopes} (development-check-providers.ts:786). If this fails,
+  // finding E-F3 gained (or lost) its echo — revisit the registry.
+  const providers = src('src/modules/development/application/development-check-providers.ts');
+  const implScopeSlice = providers.slice(
+    providers.indexOf('createDevelopmentImplementationScopeCheckProvider'),
+    providers.indexOf('createDevelopmentVerificationCheckProvider'),
+  );
+  assert.match(implScopeSlice, /cell_input_item\?: \{ key\?: unknown; changeScopes\?: unknown \};/,
+    'the implementation scope provider now decodes MORE than key/changeScopes from the card — finding E-F3 changed');
+  assert.ok(!implScopeSlice.includes('coveredConstraintIds') && !implScopeSlice.includes('acceptanceCriterionIds'),
+    'the implementation gate reads the card constraint/criterion set — finding E-F3 is fixed; update the FINDINGS registry');
+
+  // (b) VERIFICATION CARD — the contrast: the REAL verification provider
+  // (createDevelopmentVerificationCheckProvider) fails the evidence when it
+  // does not echo the card-pinned constraint set.
+  const makeProvider = coveredConstraintIds => {
+    const evidence = {
+      schemaVersion: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+      verificationItemKey: 'verify-101',
+      acceptanceCriterionId: 101,
+      acceptedCriterionHash: sha256('ac1'),
+      candidateHash: sha256('cand'),
+      ...(coveredConstraintIds ? { coveredConstraintIds } : {}),
+      outcome: 'passed',
+      evidence: { summary: 's', observations: ['o'], limitations: [] },
+    };
+    const taskMetadata = {
+      cell_input_item: { key: 'verify-101', acceptanceCriterionIds: [101], coveredConstraintIds: ['ord-c-001'] },
+      process_node_input: { upstream: { bindings: { candidate: { candidateHash: sha256('cand') } } } },
+    };
+    const row = {
+      payload_snapshot: JSON.stringify(evidence),
+      content_hash: 'digest-1',
+      verification_target_artifact_id: 101,
+      metadata: JSON.stringify(taskMetadata),
+      accepted_hash: sha256('ac1'),
+    };
+    const db = {
+      prepare(sql) {
+        if (!sql.includes('factory_managed_node_submissions')) throw new Error(`unrouted SQL: ${sql.slice(0, 60)}`);
+        return { get: () => row, all: () => [] };
+      },
+    };
+    const candidateSets = {
+      read: () => ({
+        role: 'author',
+        workplaceRef: { processRunId: 1 },
+        members: [{ productRef: { schemaId: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA, ref: 'managed-node-submission:9', digest: 'digest-1' } }],
+      }),
+    };
+    return { provider: createDevelopmentVerificationCheckProvider({ db, candidateSets }) };
+  };
+  const run = provider => provider.run({ subjectCandidateSetRef: 'candidate-set/matrix', parameters: { processRunId: 1 } });
+
+  // Echo present → passed.
+  assert.equal(run(makeProvider(['ord-c-001']).provider), 'passed');
+  // LOSS: the verifier drops the echo → detected, typed, with repair text.
+  const dropped = run(makeProvider(undefined).provider);
+  assert.equal(dropped.outcome, 'failed');
+  const diagnostic = decodeCheckDiagnostic(dropped.evidenceRefs[0]);
+  assert.equal(diagnostic.code, 'verification-lineage-mismatch');
+  assert.match(diagnostic.message, /coveredConstraintIds/);
+});
+
+// ── E5 + E6 ─────────────────────────────────────────────────────────────────
+
+test('space E — E5: the findings registry is well-formed and every uncovered boundary is registered', () => {
+  assert.equal(FINDINGS.length, 3);
+  for (const finding of FINDINGS) {
+    assert.ok(finding.id && finding.boundary && finding.fed && finding.factorySaid && finding.shouldLive && finding.severity,
+      `${finding.id} is missing a registry field`);
+    assert.match(finding.shouldLive, /src\/.*\.ts:\d+/, `${finding.id} must cite file:line for the detector's home`);
+  }
+  // Every boundary whose lossDetected is not fully true must be registered.
+  for (const row of CARRYING) {
+    if (row.lossDetected === true) continue;
+    assert.ok(FINDINGS.some(f => f.id === row.finding), `${row.id} is uncovered but not registered`);
+  }
+});
+
+test('space E — E6: the boundary table (boundary → register present → loss detected)', () => {
+  // Consistency between the two tables before printing.
+  for (const carrying of CARRYING) {
+    const boundary = BOUNDARIES.find(b => b.id === carrying.id);
+    assert.ok(boundary, `carrying row ${carrying.id} has no boundary row`);
+  }
+  const cell = (value, width) => {
+    const text = String(value);
+    return text.length <= width ? text.padEnd(width) : `${text.slice(0, width - 1)}…`;
+  };
+  const lines = [
+    '[space E] constraint-loss boundary table (S4: upstream requirement absent downstream, no disposition)',
+    ...CARRYING.map(row => {
+      const detected = row.lossDetected === true
+        ? 'YES' : row.lossDetected === false ? 'NO ' : 'SPLIT/PART';
+      return `  ${row.id} ${cell(BOUNDARIES.find(b => b.id === row.id).boundary, 46)} register:${row.registerPresent === 'yes' || row.registerPresent.startsWith('yes') ? 'yes' : 'no '}  loss detected:${detected}${row.finding ? `  → ${row.finding}` : ''}`;
+    }),
+    `[space E] findings: ${FINDINGS.map(f => `${f.id} (${f.severity})`).join(', ')} — details in the FINDINGS registry; nothing was fixed (brief §2)`,
+  ];
+  // eslint-disable-next-line no-console
+  console.log(lines.join('\n'));
+});

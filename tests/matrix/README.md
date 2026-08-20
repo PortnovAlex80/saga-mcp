@@ -26,6 +26,12 @@ One file per space:
   certification chain), delete + identical re-creation must still resolve.
   Row-id kinds that break are FINDINGS (B-F1 artifacts, B-F2 trace task
   targets, B-F3 counts-only errors) — recorded, not fixed.
+- `e-constraint-loss.test.mjs` — shape S4: a CONSTRAINT-ALPHA token placed
+  upstream and dropped at each restatement boundary (order→proposal→PRD→
+  AC→task graph→cards). Covered boundaries assert detection; the three
+  HIGH findings (E-F1 ungated order extraction, E-F2 the reconciliation
+  detector exists but no call site passes the flag, E-F3 no constraint
+  echo on implementation cards) assert the honest gaps.
 - (later spaces land one commit each)
 
 Rules that govern every file here (brief §2): **findings, not fixes** — a
