@@ -152,6 +152,13 @@ forensic loss. Recommendation: E2 as its own stage, ceremony as its TASK 1.
 
 ## Task 6 (operator override) — the run
 
+**Run artifacts (exact paths):**
+- **DB**: `D:\Development\saga-mcp\.factory-sandboxes\stage12-db\factory.sqlite` (live run record; WAL mode — open read-only or via the fronts; `package-store/` beside it holds the installed immutable package bytes)
+- **Sandbox (product repo + worktrees)**: `D:\Development\saga-mcp\.factory-sandboxes\stage12\`
+- **Logs**: `D:\Development\saga-mcp\.factory-sandboxes\stage12-logs\` — `run-journal.jsonl` (append-only correlation journal), `saga-engine-1-2026-08-20T00-26-45.394Z.log` (+ `.heartbeat`), per-worker JSONL under `board-1-33236-*\`
+- **Snapshots** (SQLite backup API, taken live): `factory-snapshots/stage12-path-outside-authority-x4` (05:2x) and `factory-snapshots/stage12-abort-path-outside-authority-postrecarve` (08:0x, db 6.4MB, integrity ok)
+- **Observer fronts** (read-only, still up): tracker `http://localhost:4321/?project=1`, core-view `http://localhost:4325/#pulse`
+
 Launched 03:26 per the override (glm-4.6, concurrency 2, OPENCODE shim,
 guard env, docking-slice order; pre-flight in the tracker; settings.json
 tripwire `1d0aac5e…` held for the whole run). Crossed discovery +
