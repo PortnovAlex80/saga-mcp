@@ -191,7 +191,7 @@ test('lm-marketing: resource logicalIds are unique and kinds are known', () => {
   ]);
   for (const entry of marketingResourceIndex) {
     assert.ok(knownKinds.has(entry.kind), `resource kind '${entry.kind}' is known`);
-    assert.equal(entry.digest, 'pending@wave-2', 'placeholder digest until Wave 2');
+    assert.equal(entry.digest, 'pending@wave-2', 'resource placeholder digest — legal on resources (the installer stamps real bytes at install)');
   }
 });
 
@@ -212,7 +212,7 @@ test('lm-marketing: handlerRefs are well-formed with unique logicalIds', () => {
   for (const h of marketingHandlerRefs) {
     assert.equal(typeof h.logicalId, 'string', 'handler logicalId');
     assert.equal(typeof h.version, 'string', 'handler version');
-    assert.equal(h.digest, 'pending@wave-2', 'handler placeholder digest');
+    assert.match(h.digest, /^[a-f0-9]{64}$/, 'K3: the handlerRef pins a REAL implementation digest (de9b2f88)');
   }
 });
 

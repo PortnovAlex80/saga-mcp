@@ -546,12 +546,14 @@ test('§1 ProtocolRun: pause is a crash-safe checkpoint; resume re-enters the ex
  */
 function freshNodeRun(db, processRunId) {
   const repo = new SqliteNodeRunRepository(db);
-  const started = repo.start({
+  // f97cd7c8 purged the legacy start/complete surface: the repository speaks
+  // only startV2/completeV2 (one node-run contract). Same fields, V2 names.
+  const started = repo.startV2({
     processRunId,
     nodeId: 'node.producer',
     nodeKind: 'lm',
   });
-  const completed = repo.complete({
+  const completed = repo.completeV2({
     id: started.id,
     event: 'runtime.completed',
   });
@@ -681,21 +683,20 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
     assert.equal(caseRow.status, 'exhausted', 'case is terminal exhausted');
     assert.equal(caseRow.attemptCount, 3, 'all three attempts accounted for, none lost');
 
-    // After exhaustion the case is terminal. A NEW source NodeRun does NOT
-    // continue the exhausted case — it opens a FRESH active case at attempt 1
-    // (the exhausted case is immutable history). This is the durable
-    // contract: exhaustion is terminal-for-that-case, never silently extended.
+    // After exhaustion the budget is STICKY (0c93f488): a NEW source NodeRun
+    // probing the same exhausted policy does NOT open a fresh case and does
+    // NOT gain a new budget — the repository returns the same terminal case
+    // with its last durable feedback (the generic executor may re-run the
+    // verifier as a probe after external or human repair; the probe reads
+    // the terminal state, it never mints attempts into it).
     const src4 = freshNodeRun(db, processRunId);
     const r4 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src4, 'STILL_OFF', maxAttempts),
     );
-    assert.notEqual(r4.caseRecord.id, caseRow.id, 'a fresh source opens a NEW case');
-    assert.equal(r4.caseRecord.status, 'active', 'the new case is active (not the exhausted one)');
-    assert.equal(r4.caseRecord.attemptCount, 1, 'new case restarts the attempt budget at 1');
-    // The exhausted case is unchanged (immutable history).
-    const exhaustedCase = new SqliteRecoveryCaseRepository(db).readCase(caseRow.id);
-    assert.equal(exhaustedCase.status, 'exhausted', 'exhausted case stays terminal');
-    assert.equal(exhaustedCase.attemptCount, 3, 'exhausted case attempt count unchanged');
+    assert.equal(r4.caseRecord.id, caseRow.id, 'a fresh source returns the SAME exhausted case (sticky budget)');
+    assert.equal(r4.caseRecord.status, 'exhausted', 'the case stays terminal');
+    assert.equal(r4.exhausted, true, 'still reported exhausted');
+    assert.equal(r4.caseRecord.attemptCount, 3, 'no new attempt is minted into the exhausted case');
   } finally {
     world.kill();
     rmSync(dir, { recursive: true, force: true });

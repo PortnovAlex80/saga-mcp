@@ -731,7 +731,11 @@ test('product-delivery-lifecycle: routing is purely declarative — every Discov
   );
   assert.ok(discovery);
   // Every outcome — go and every non-go — forwards to Formalization.
-  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  // 'defer'/'inconclusive' were deleted with their routes (5cbbb1ff,
+  // W9-04-UNREACHABLE-EDGE-EVIDENCE: no runtime producer — a submission
+  // carrying them is invalid input, never translated). The producible
+  // vocabulary is go/clarify/reject plus the runtime-only 'failed'.
+  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
     assert.deepEqual(
       routeProcessOutcome(discovery, outcome).target,
       { type: 'stage', stageId: 'solution-formalization' },

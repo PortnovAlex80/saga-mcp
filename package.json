@@ -38,7 +38,7 @@
     "legacy:report": "node tools/legacy-freeze.mjs --report",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "test": "tsc && node --test",
+    "test": "tsc && node tools/run-full-suite.mjs",
     "test:process-modules": "tsc && node tools/run-process-module-tests.mjs all",
     "test:process-modules:a": "tsc && node tools/run-process-module-tests.mjs a",
     "test:process-modules:b": "tsc && node tools/run-process-module-tests.mjs b",

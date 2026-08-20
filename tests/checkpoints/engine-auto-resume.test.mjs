@@ -62,9 +62,14 @@ test('engine start automatically resumes the unique active lifecycle run', t => 
        FROM factory_launch_requests`,
   ).get();
   db.close();
-  assert.deepEqual(launch, {
-    mode:'resume', project_id:1, epic_id:2,
-    idempotency_key:'same-order', concurrency:2, state:'requested',
+  // Each auto-resume is a FRESH launch attempt: the engine suffixes the run's
+  // key with ':resume:<uuid>' (engine-administration.ts) so a restart after a
+  // completed launch row is never swallowed by idempotency dedup. The prefix
+  // still ties the launch to the resumed run's key.
+  const { idempotency_key: launchKey, ...launchRest } = launch;
+  assert.match(launchKey, /^same-order:resume:[0-9a-f-]{36}$/);
+  assert.deepEqual(launchRest, {
+    mode:'resume', project_id:1, epic_id:2, concurrency:2, state:'requested',
   });
 });
 

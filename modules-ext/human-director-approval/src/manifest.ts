@@ -31,6 +31,8 @@
  */
 
 import type { ContractRef } from '../../../dist/process-modules/domain/spi/contract-ref.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../dist/process-modules/domain/spi/contract-ref.js';
 import type {
   HandlerRef,
@@ -164,7 +166,13 @@ export const HUMAN_DIRECTOR_HANDLER_REFS: readonly HandlerRef[] = Object.freeze(
   {
     logicalId: HUMAN_DIRECTOR_INTERACTION_CONTRACT,
     version: DIRECTOR_CONSOLE_ADAPTER_REF.split('@')[1] ?? '1.0.0',
-    digest: PENDING_DIGEST,
+    // K3 (de9b2f88): a handlerRef must pin a REAL implementation digest —
+    // the 'pending@wave-2' placeholder is legal on resources only. The
+    // digest covers this package's definition.ts raw bytes (the executable
+    // implementation the manifest ships), per handlerImplementationDigest.
+    digest: createHash('sha256')
+      .update(readFileSync(new URL('./definition.ts', import.meta.url)))
+      .digest('hex'),
   },
 ]);
 

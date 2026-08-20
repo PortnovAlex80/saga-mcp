@@ -133,6 +133,21 @@ function cloneModule(module) {
   return JSON.parse(JSON.stringify(module));
 }
 
+// The production-cell cutover removed lm-kind nodes from every real module;
+// the conformance checks still guard future modules. Inject a minimal,
+// VALID lm node (label/description per validateNode) to drive the lm-shape
+// regressions.
+function withSyntheticLmNode(definition) {
+  definition.flow.nodes.push({
+    id: 'synthetic-lm',
+    kind: 'lm',
+    label: 'Synthetic LM node',
+    description: 'Synthetic lm node driving the W9-A7 regression shapes.',
+    executionProfile: definition.executionProfiles[0].id,
+  });
+  return definition.flow.nodes.find((n) => n.kind === 'lm');
+}
+
 test('W9-A7 regression: a kernel node carrying an executionProfile FAILS the kernel dimension', async () => {
   const bad = cloneModule(formalizationProcessModule);
   const kernelNode = bad.flow.nodes.find((n) => n.kind === 'kernel');
@@ -145,7 +160,7 @@ test('W9-A7 regression: a kernel node carrying an executionProfile FAILS the ker
 
 test('W9-A7 regression: an LM node carrying a handler FAILS the kernel dimension', async () => {
   const bad = cloneModule(formalizationProcessModule);
-  const lmNode = bad.flow.nodes.find((n) => n.kind === 'lm');
+  const lmNode = withSyntheticLmNode(bad);
   lmNode.handler = 'stolen-handler';
   const report = await runModuleConformance({ definition: bad });
   const lmHandler = resultsFor(report, 'kernel').find((r) => r.check === 'lm_nodes_never_carry_handler');
@@ -182,6 +197,14 @@ test('W9-A7 regression: a profile with an open backoff literal FAILS the retry d
 
 test('W9-A7 regression: a recovery entry pointing at a missing node FAILS the recovery dimension', async () => {
   const bad = cloneModule(formalizationProcessModule);
+  // No real module declares flow.recovery anymore; inject a complete, VALID
+  // entry first, then break exactly one field per regression case.
+  const realNodeId = bad.flow.nodes[0].id;
+  bad.flow.recovery = [{
+    id: 'rec-synthetic', verifyNodeId: realNodeId, repairNodeId: bad.flow.nodes[1].id,
+    triggerEvents: ['node.failed'], resolvedEvents: ['node.completed'],
+    maxAttempts: 2, onExhausted: 'human-review',
+  }];
   bad.flow.recovery[0].verifyNodeId = 'does-not-exist';
   const report = await runModuleConformance({ definition: bad });
   const recovery = resultsFor(report, 'recovery').find((r) => r.check === 'flow_recovery_entries');
@@ -190,6 +213,11 @@ test('W9-A7 regression: a recovery entry pointing at a missing node FAILS the re
 
 test('W9-A7 regression: a recovery entry with an open onExhausted literal FAILS', async () => {
   const bad = cloneModule(formalizationProcessModule);
+  bad.flow.recovery = [{
+    id: 'rec-synthetic', verifyNodeId: bad.flow.nodes[0].id, repairNodeId: bad.flow.nodes[1].id,
+    triggerEvents: ['node.failed'], resolvedEvents: ['node.completed'],
+    maxAttempts: 2, onExhausted: 'human-review',
+  }];
   bad.flow.recovery[0].onExhausted = 'pray';
   const report = await runModuleConformance({ definition: bad });
   const recovery = resultsFor(report, 'recovery').find((r) => r.check === 'flow_recovery_entries');
@@ -209,7 +237,7 @@ test('W9-A7 regression: a terminal node emitting an undeclared outcome FAILS the
 
 test('W9-A7 regression: an LM node referencing an unknown profile FAILS execution', async () => {
   const bad = cloneModule(formalizationProcessModule);
-  const lmNode = bad.flow.nodes.find((n) => n.kind === 'lm');
+  const lmNode = withSyntheticLmNode(bad);
   lmNode.executionProfile = 'no-such-profile';
   const report = await runModuleConformance({ definition: bad });
   const exec = resultsFor(report, 'execution').find((r) => r.check === 'lm_nodes_bind_profiles');

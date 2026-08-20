@@ -201,6 +201,17 @@ function seedManagedFenceRow(db, ctx) {
     ctx.workerId,
     'machine-w12a2',
   );
+  // b7d298e8 hardened the submission boundary: the receipt write resolves the
+  // WorkIntent ROW (factory_work_intents) — the metadata work_intent_id alone
+  // no longer suffices. Seed the durable intent with the exact output schema
+  // these tests submit and a minimal authority scope (no payload bindings).
+  db.prepare(
+    `INSERT INTO factory_work_intents
+       (id, epic_id, kind, objective, authority_scope, output_schema,
+        token_budget, retry_budget, projected_task_id, status)
+     VALUES (?, ?, 'development', 'w12-a2 crash-boundary receipt',
+             '{}', 'factory.development-task-graph.v1', 0, 0, ?, 'executing')`,
+  ).run(intentId, ctx.run.epicId, taskId);
   return { taskId, intentId };
 }
 

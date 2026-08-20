@@ -159,7 +159,8 @@ function buildProcessModuleManifest() {
       },
     ],
     handlerRefs: [
-      { logicalId: 'noop-handler', version: '1.0.0', digest: 'pending@wave-2' },
+      // K3 (de9b2f88): a handlerRef pins a REAL implementation digest.
+      { logicalId: 'noop-handler', version: '1.0.0', digest: 'e'.repeat(64) },
     ],
     inputContractRef: makeContractRef('synthetic.roundtrip.input.v1'),
     outputContractRef: makeContractRef('synthetic.roundtrip.output.v1'),

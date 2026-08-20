@@ -71,7 +71,9 @@ function makeValidManifest(overrides = {}) {
       },
     ],
     handlerRefs: [
-      { logicalId: 'draft-handler', version: '1.0.0', digest: PENDING_DIGEST },
+      // K3 (de9b2f88): a handlerRef must pin a REAL implementation digest —
+      // the placeholder is legal on resources only.
+      { logicalId: 'draft-handler', version: '1.0.0', digest: 'e'.repeat(64) },
     ],
     inputContractRef: makeContractRef('synthetic.marketing.input.v1'),
     outputContractRef: makeContractRef('synthetic.marketing.output.v1'),

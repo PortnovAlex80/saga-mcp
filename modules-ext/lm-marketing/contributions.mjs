@@ -30,6 +30,8 @@
  * @typedef {import('../../dist/process-modules/domain/spi/contract-ref.js').ContractRef} ContractRef
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { PENDING_DIGEST } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../dist/process-modules/domain/spi/contract-ref.js';
 import {
@@ -89,10 +91,16 @@ const HANDLER_VERSION = '1.0.0';
  * @returns {HandlerRef}
  */
 function marketingHandlerRef(logicalId) {
+  // K3 (de9b2f88): a handlerRef must pin a REAL implementation digest — the
+  // authoring placeholder is legal on resources only. The digest covers the
+  // package's own definition.mjs raw bytes (the executable implementation
+  // this manifest ships), per handlerImplementationDigest's formula.
   return Object.freeze({
     logicalId,
     version: HANDLER_VERSION,
-    digest: PENDING_DIGEST,
+    digest: createHash('sha256')
+      .update(readFileSync(new URL('./definition.mjs', import.meta.url)))
+      .digest('hex'),
   });
 }
 

@@ -237,7 +237,10 @@ function moduleManifestWithResources(name, version) {
       { logicalId: 'res-a', path: 'skills/a.md', kind: 'skill', digest: d },
     ],
     handlerRefs: [
-      { logicalId: 'h-a', version: '0.1.0', digest: 'pending@wave-2' },
+      // K3 (de9b2f88): a handlerRef must pin a REAL implementation digest —
+      // the placeholder is legal on resources only. Any stable 64-hex pins
+      // this fixture's (inline) handler implementation.
+      { logicalId: 'h-a', version: '0.1.0', digest: 'f'.repeat(64) },
     ],
   };
 }

@@ -153,7 +153,10 @@ test('Discovery is a real gate: only go routes to Formalization', () => {
     type: 'stage',
     stageId: 'solution-formalization',
   });
-  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  // 'defer'/'inconclusive' were deleted with their routes (5cbbb1ff — no
+  // runtime producer, W9-04-UNREACHABLE-EDGE-EVIDENCE): the producible
+  // vocabulary is go/clarify/reject plus the runtime-only 'failed'.
+  for (const outcome of ['clarify', 'reject', 'failed']) {
     assert.deepEqual(discovery.outcomeRoutes[outcome], {
       type: 'stage',
       stageId: 'solution-formalization',

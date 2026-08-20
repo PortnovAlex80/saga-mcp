@@ -50,7 +50,18 @@ function makeHarness(overrides = {}) {
   const profile = {
     protocolSkill: 'protocol', semanticSkill: 'author', reviewSkill: 'reviewer',
   };
+  // ⛔ The factory moved to opencode (2026-08-20): the runner fail-closes any
+  // executor that resolves to the claude CLI (FACTORY_CLAUDE_BACKEND_FORBIDDEN)
+  // — the default 'claude' path is forbidden. The one blessed executor is the
+  // agent-proxy shim; construct the runner with it explicitly (the spawn is
+  // faked below, nothing executes).
+  const shim = `node ${path.resolve(
+    path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
+    '../tools/agent-proxy/claude-shim.mjs',
+  )}`;
   const runner = new ClaudeBoardRunner({
+    claudePath: shim,
+    realClaudePath: shim,
     dbPath: path.join(root, 'saga.db'), sagaEntry: path.join(root, 'index.js'),
     sagaSkillRoot: path.join(root, 'unused'), logRoot: path.join(root, 'logs'),
     getProject: id => ({ id, name: 'target-project', tags: '[]' }),

@@ -43,6 +43,13 @@ function baseRegistry(decisions) {
   return {
     schemaVersion: 1,
     evidenceBaseline: { commit: 'a'.repeat(40), capturedAt: '2026-08-17' },
+    // Stage-5 TASK 1: registry.releases is REQUIRED — the machine-readable
+    // record of which K-releases are closed. Minimal closed entry for the
+    // fixture's owningReleases: ['K20'] references.
+    // K20 is OPEN in the fixture so a 'planned' entry it owns is coherent
+    // (CLOSURE_LAGS_RELEASES fires when every owning release is closed but
+    // the entry still says planned without a missing-evidence note).
+    releases: { K20: { state: 'open' } },
     decisions,
   };
 }

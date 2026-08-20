@@ -85,6 +85,13 @@ import { lmMarketingModule } from '../fixtures/synthetic-modules/lm-marketing/de
 
 const PENDING = 'pending@wave-2';
 
+// Real implementation digest for the fixture's handlerRef (K3: the placeholder
+// is rejected on handlers since de9b2f88). sha256 over the synthetic module's
+// definition.mjs raw bytes — the same file the manifest's definition embeds.
+const HANDLER_DIGEST = createHash('sha256')
+  .update(readFileSync(new URL('../fixtures/synthetic-modules/lm-marketing/definition.mjs', import.meta.url)))
+  .digest('hex');
+
 function makeContractRef(schemaId) {
   return { schemaId, version: '1.0.0', digest: PENDING };
 }
@@ -119,7 +126,11 @@ function makeManifest(versionOverride) {
       },
     ],
     handlerRefs: [
-      { logicalId: 'draft-handler', version: '1.0.0', digest: PENDING },
+      // K3 (de9b2f88): a handlerRef must pin a REAL implementation digest —
+      // the placeholder is legal on resources only. The digest covers the
+      // synthetic module's definition bytes (the handler implementation this
+      // fixture ships), per handlerImplementationDigest's raw-bytes formula.
+      { logicalId: 'draft-handler', version: '1.0.0', digest: HANDLER_DIGEST },
     ],
     inputContractRef: makeContractRef('synthetic.marketing.input.v1'),
     outputContractRef: makeContractRef('synthetic.marketing.output.v1'),

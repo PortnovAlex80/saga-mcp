@@ -73,6 +73,14 @@ function makeHarness(overrides = {}) {
   const runner = new ClaudeBoardRunner({
     dbPath: path.join(root, 'saga.db'), sagaEntry: path.join(root, 'index.js'),
     sagaSkillRoot: path.join(root, 'unused'), logRoot: path.join(root, 'logs'),
+    // ⛔ The factory moved to opencode (2026-08-20): the default 'claude'
+    // executor path is forbidden (FACTORY_CLAUDE_BACKEND_FORBIDDEN). These
+    // tests assert SPAWN ENV derivation, not the executor binary — construct
+    // with the one blessed executor (the agent-proxy shim; spawn is faked).
+    claudePath: `node ${path.resolve(
+      path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
+      '../../tools/agent-proxy/claude-shim.mjs',
+    )}`,
     // LIVE config deliberately different from the frozen endpoint: the spawn
     // must use the FROZEN route, not this constructor-time value.
     lmstudioBaseUrl: overrides.lmstudioBaseUrl ?? 'http://live-runner-config:1234/v1',
