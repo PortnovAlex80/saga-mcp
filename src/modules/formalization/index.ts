@@ -1,8 +1,5 @@
 /** Formalization module registration on the target Production Cell runtime. */
 
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
 import {
   registerWorkshopCheckProvider,
@@ -16,6 +13,7 @@ import {
   createFormalizationOutputResolver,
 } from './application/formalization-production-cell-installation.js';
 import { registerFormalizationCheckProviders } from './application/formalization-check-providers.js';
+import { readExactArtifactContent } from './application/artifact-content-reader.js';
 import { createFormalizationAcceptProductsEffect } from './application/formalization-accept-products-effect.js';
 import { SqliteSealedProductMaterialRepository } from '../../infrastructure/workplace/sqlite-sealed-product-material-repository.js';
 import { assertPersistedAcceptedCandidateAuthority } from '../../infrastructure/workplace/sqlite-accepted-candidate-authority.js';
@@ -40,7 +38,6 @@ export interface FormalizationRegistration {
   baselineRepository: SqliteFormalizationBaselineRepository;
   solutionContractRepository: SqliteFormalizationSolutionContractRepository;
 }
-
 export function registerFormalization(
   registries: ModuleRegistries,
   sharedDeps: ModuleSharedDeps,
@@ -102,30 +99,4 @@ export function registerFormalization(
   } as Parameters<typeof registries.installationRegistry.register>[0]);
 
   return { executor, baselineRepository, solutionContractRepository };
-}
-
-function readExactArtifactContent(
-  db: ModuleSharedDeps['db'],
-  artifactId: number,
-): string {
-  const row = db.prepare(
-    `SELECT a.path,a.content_hash,r.local_path
-       FROM artifacts a
-       JOIN project_repositories r ON r.id=a.project_repository_id
-      WHERE a.id=?`,
-  ).get(artifactId) as {
-    path: string;
-    content_hash: string | null;
-    local_path: string;
-  } | undefined;
-  if (!row || !row.content_hash || !row.local_path) {
-    throw new Error(`FORMALIZATION_ARTIFACT_CONTENT_UNAVAILABLE: ${artifactId}`);
-  }
-  const filePath = join(row.local_path, row.path.split('#')[0]!);
-  const content = readFileSync(filePath, 'utf8');
-  const actual = createHash('sha256').update(content, 'utf8').digest('hex');
-  if (actual !== row.content_hash) {
-    throw new Error(`FORMALIZATION_ARTIFACT_CONTENT_DRIFT: ${artifactId}`);
-  }
-  return content;
 }

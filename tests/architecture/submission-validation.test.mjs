@@ -15,6 +15,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
@@ -143,34 +146,55 @@ test('submission validator accepts AC with complete FR + UC edges', () => {
   seedArtifact(db, 'FR', 'FR-1', 3);
   seedArtifact(db, 'UC', 'UC-1', 26);
   seedArtifact(db, 'AC', 'AC-1', 29);
-  // PRD → brief (root edge)
-  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (2, 'artifact', 1, 'derived_from')`).run();
-  // UC → PRD (derived_from) + UC → FR (covers) — required by findContractGap useCases check
-  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (26, 'artifact', 2, 'derived_from')`).run();
-  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (26, 'artifact', 3, 'covers')`).run();
-  // Complete traces: AC → FR + AC → UC
-  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (29, 'artifact', 3, 'derived_from')`).run();
-  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (29, 'artifact', 26, 'derived_from')`).run();
-  seedManagedProduction(db, 2, 'PRD');
-  seedManagedProduction(db, 3, 'FR');
-  seedManagedProduction(db, 26, 'UC');
-  seedManagedProduction(db, 29, 'AC');
+  // v1.2.0 heading-resolution gate reads the AC artifact's real bytes: give
+  // the fixture a repository checkout and a document whose heading resolves
+  // the registered code (production artifacts are file_backed with matching
+  // content hashes — seed rows alone cannot satisfy the exact-bytes reader).
+  const repoDir = mkdtempSync(path.join(os.tmpdir(), 'subval-repo-'));
+  try {
+    mkdirSync(path.join(repoDir, 'docs'), { recursive: true });
+    const doc = '# Acceptance Criteria\n\n## AC-1: Click increments the count\nbody\n';
+    writeFileSync(path.join(repoDir, 'docs', 'ac.md'), doc, 'utf8');
+    const docHash = createHash('sha256').update(doc, 'utf8').digest('hex');
+    db.prepare(`INSERT INTO repositories (id, name) VALUES (1, 'repo')`).run();
+    db.prepare(
+      `INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status)
+       VALUES (1, 1, 1, 'component', ?, 'dev', 'active')`,
+    ).run(repoDir);
+    db.prepare(
+      `UPDATE artifacts SET path='docs/ac.md', content_hash=?, accepted_hash=?, project_repository_id=1 WHERE id=29`,
+    ).run(docHash, docHash);
+    // PRD → brief (root edge)
+    db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (2, 'artifact', 1, 'derived_from')`).run();
+    // UC → PRD (derived_from) + UC → FR (covers) — required by findContractGap useCases check
+    db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (26, 'artifact', 2, 'derived_from')`).run();
+    db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (26, 'artifact', 3, 'covers')`).run();
+    // Complete traces: AC → FR + AC → UC
+    db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (29, 'artifact', 3, 'derived_from')`).run();
+    db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (29, 'artifact', 26, 'derived_from')`).run();
+    seedManagedProduction(db, 2, 'PRD');
+    seedManagedProduction(db, 3, 'FR');
+    seedManagedProduction(db, 26, 'UC');
+    seedManagedProduction(db, 29, 'AC');
 
-  const validator = createAcceptanceContractValidator(db);
-  const result = validator.validate({
-    processRunId: 2,
-    moduleRef: 'solution-formalization@1.0.0',
-    nodeId: 'define-acceptance-contract',
-    executionId: 'exec-test',
-    taskId: 5,
-    epicId: 1,
-    projectId: 1,
-  });
+    const validator = createAcceptanceContractValidator(db);
+    const result = validator.validate({
+      processRunId: 2,
+      moduleRef: 'solution-formalization@1.0.0',
+      nodeId: 'define-acceptance-contract',
+      executionId: 'exec-test',
+      taskId: 5,
+      epicId: 1,
+      projectId: 1,
+    });
 
-  assert.equal(result.accepted, true);
-  assert.ok(result.receipt.artifactIds.includes(29));
-  assert.ok(result.receipt.validatedSetDigest);
-  db.close();
+    assert.equal(result.accepted, true);
+    assert.ok(result.receipt.artifactIds.includes(29));
+    assert.ok(result.receipt.validatedSetDigest);
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+    db.close();
+  }
 });
 
 test('policy registry: define-acceptance-contract is required, others unsupported', () => {

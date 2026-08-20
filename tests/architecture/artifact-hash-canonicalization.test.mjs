@@ -45,6 +45,9 @@ process.env.DB_PATH = join(temp, 'ah.db');
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { handlers, definitions } = await import('../../dist/tools/artifacts.js');
+const { readExactArtifactContent } = await import(
+  '../../dist/modules/formalization/application/artifact-content-reader.js'
+);
 
 // The managed-execution fence the artifact handlers ride on (the same idiom
 // as tests/app/operator-soft-stop.test.mjs): a running worker_executions row,
@@ -156,6 +159,8 @@ test('RED: hashing observes the same active machine checkout used by workers', (
     const row = artifactByCode(db, 'SPEC-CHECKOUT');
     assert.equal(row.content_hash, sha256(Buffer.from('active checkout bytes')),
       'the active machine checkout, not the stale canonical path, owns observed bytes');
+    assert.equal(readExactArtifactContent(db, row.id), 'active checkout bytes',
+      'the acceptance reader observes the exact same checkout as hash stamping');
   } finally {
     db.prepare(
       'DELETE FROM repository_checkouts WHERE project_repository_id=? AND machine_id=?',

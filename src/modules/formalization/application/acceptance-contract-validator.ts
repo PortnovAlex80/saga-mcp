@@ -33,6 +33,8 @@ import {
   constraintCoverageSubmissionGaps,
   readConstraintCoverageRequirement,
 } from './constraint-coverage.js';
+import { readExactArtifactContent } from './artifact-content-reader.js';
+import { parseAtomicAcceptanceCriteria } from '../domain/acceptance-criterion-document.js';
 import type { FormalizationArtifactSnapshot, FormalizationCanonicalGraphPort, FormalizationTraceSnapshot } from '../domain/formalization-kernel-ports.js';
 import type {
   NodeSubmissionValidationInput,
@@ -48,7 +50,13 @@ export const ACCEPTANCE_CONTRACT_VALIDATOR_ID = 'formalization.acceptance-contra
 // must be this one constant — a dual literal here once produced member keys
 // the check could never find (receipts stamped 1.0.0 vs checks demanding
 // 1.1.0 → SUBMISSION_VALIDATION_RECEIPT_REQUIRED loop).
-export const ACCEPTANCE_CONTRACT_VALIDATOR_VERSION = '1.1.0';
+// 1.2.0 — heading-resolution gate (defect class 2026-08-17..20: sudoku
+// 'AC-1' vs 'AC-01' zero-padding, counter container row 'AC-Doc'): every
+// /^AC-/ artifact code must resolve to exactly one document heading BEFORE
+// the bundle is accepted, so the freeze kernel can never terminal-fail a
+// finished run on a registration/heading mismatch the worker could have
+// repaired in-cell.
+export const ACCEPTANCE_CONTRACT_VALIDATOR_VERSION = '1.2.0';
 
 /**
  * Build a FormalizationCanonicalGraphPort over a raw DB handle. Reads
@@ -216,10 +224,85 @@ export function createAcceptanceContractValidator(
           gaps: structuredGaps,
         };
       }
+      // v1.2.0 heading-resolution gate: every /^AC-/ artifact code must
+      // resolve to exactly one level-2/3 heading in its document BEFORE the
+      // bundle is accepted. This is the SAME parse the freeze kernel uses —
+      // reusing parseAtomicAcceptanceCriteria guarantees the pre-submit gate
+      // and the post-hoc freeze never disagree on the heading grammar.
+      // Without it a container row ('AC-Doc') or a zero-padded heading
+      // ('AC-1' vs 'AC-01') sails through every cell gate and kills the run
+      // at the freeze with no repair path left (2026-08-17..20 defect class:
+      // sudoku, tetris, sheets, counter).
+      const headingGaps = acHeadingResolutionSubmissionGaps(
+        artifacts.filter(a => a.type === 'AC'),
+        artifactId => readExactArtifactContent(db, artifactId),
+      );
+      if (headingGaps.length > 0) {
+        return {
+          accepted: false,
+          code: 'FORMALIZATION_AC_HEADING_UNRESOLVED',
+          gaps: headingGaps,
+        };
+      }
       const traceIds = snapshot.traces.map(t => t.id);
       return acceptWithReceipt(db, input, artifacts, traceIds);
     },
   };
+}
+
+/**
+ * Submission gaps for AC artifact codes that do not resolve to exactly one
+ * document heading. Fail-closed and diagnostic: the gap message carries the
+ * parsed headings (capped) and BOTH legal repairs — rename/add the heading,
+ * or drop the container row. Pure over (artifacts, readContent) so it is
+ * unit-testable without a DB.
+ */
+export function acHeadingResolutionSubmissionGaps(
+  acArtifacts: ReadonlyArray<{ id: number; code: string | null }>,
+  readContent: (artifactId: number) => string,
+): SubmissionGap[] {
+  const gaps: SubmissionGap[] = [];
+  for (const artifact of acArtifacts) {
+    if (!artifact.code || !/^AC-/i.test(artifact.code)) continue; // 'AC' container grammar is legal
+    let parsedCodes: string[] = [];
+    let readError: string | null = null;
+    try {
+      parsedCodes = parseAtomicAcceptanceCriteria(readContent(artifact.id))
+        .map(item => item.code);
+    } catch (error) {
+      readError = error instanceof Error ? error.message : String(error);
+    }
+    if (readError) {
+      gaps.push({
+        artifactId: artifact.id,
+        artifactCode: artifact.code,
+        artifactType: 'AC',
+        existingTargets: [],
+        missing: { relation: 'heading', requiredTargetTypes: [artifact.code], minimum: 1 },
+        message: `AC artifact ${artifact.code} content could not be read for the`
+          + ` heading-resolution check: ${readError}. Ensure the artifact file is`
+          + ` committed with the registered content hash before worker_done.`,
+      });
+      continue;
+    }
+    if (parsedCodes.includes(artifact.code)) continue;
+    const shown = parsedCodes.slice(0, 25).join(', ');
+    const more = parsedCodes.length > 25 ? `, …(+${parsedCodes.length - 25})` : '';
+    gaps.push({
+      artifactId: artifact.id,
+      artifactCode: artifact.code,
+      artifactType: 'AC',
+      existingTargets: [],
+      missing: { relation: 'heading', requiredTargetTypes: [artifact.code], minimum: 1 },
+      message: `AC artifact '${artifact.code}' has no matching document heading`
+        + ` (parsed headings: [${shown}${more}]). Either add/rename the heading to`
+        + ` exactly '${artifact.code}: <title>' (level 2-3, colon required), or —`
+        + ` if '${artifact.code}' names the whole document rather than one`
+        + ` criterion — remove that artifact row: a container row must not be`
+        + ` registered as an atomic AC artifact.`,
+    });
+  }
+  return gaps;
 }
 
 function acceptWithReceipt(

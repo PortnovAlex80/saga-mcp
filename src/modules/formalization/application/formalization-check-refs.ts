@@ -1,12 +1,16 @@
 import { submissionValidatorCheckProviderRef } from '../../../process-modules/application/submission-validator-check-provider.js';
 import { SRS_CONTRACT_VALIDATOR_VERSION } from './srs-contract-validator.js';
 import { SRS_CONTRACT_REF } from '../domain/srs-contract.js';
+import { ACCEPTANCE_CONTRACT_VALIDATOR_VERSION } from './acceptance-contract-validator.js';
 
 // 1.1.0 — AC-drift remedy: the product validator enforces constraint
 // dispositions; the acceptance/reconciliation validators enforce the
 // coverage ratchet. Must equal the createFormalizationContractValidator /
 // createAcceptanceContractValidator validatorVersion (the workshop manifest
 // binds the executable providers by this digest).
+// The acceptance validator alone moved to 1.2.0 (heading-resolution gate,
+// 2026-08-20); each ref imports the exact version its validator stamps, the
+// way architecture already does for SRS.
 const FORMALIZATION_SUBMISSION_VALIDATOR_VERSION = '1.1.0';
 
 /** Pure declarative provider identities; safe for the Workshop manifest. */
@@ -25,7 +29,7 @@ export const FORMALIZATION_CHECK_REFS = {
   }),
   acceptance: submissionValidatorCheckProviderRef({
     validatorId: 'formalization.acceptance-contract.v1',
-    validatorVersion: FORMALIZATION_SUBMISSION_VALIDATOR_VERSION,
+    validatorVersion: ACCEPTANCE_CONTRACT_VALIDATOR_VERSION,
     nodeId: 'define-acceptance-contract',
     requireManagedProduction: true,
   }),
