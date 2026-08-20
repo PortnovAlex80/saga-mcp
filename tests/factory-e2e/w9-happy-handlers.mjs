@@ -21,17 +21,12 @@
 //     can resolve it as its subject and produce a passed receipt (LR-07).
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const DISC = 'product-discovery@3.0.2';
 const FRM = 'solution-formalization@1.0.0';
 const DEV = 'solution-development@1.4.4';
-
-function sha256(content) {
-  return createHash('sha256').update(content, 'utf8').digest('hex');
-}
 
 function git(cwd, ...args) {
   return execFileSync('git', ['-C', cwd, ...args], {
@@ -52,10 +47,6 @@ function findObject(value, predicate, seen = new Set()) {
     if (found) return found;
   }
   return null;
-}
-
-function artifactHash(type, code, title) {
-  return sha256(`${type}:${code}:${title}`);
 }
 
 /**
@@ -200,12 +191,11 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
     scaffold_artifacts: [], shared_mutation_risk: false,
     completeness: 'high', degraded: false,
   };
-  const briefHash = sha256('brief:BRIEF-1');
   writeRepoFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md',
-    status: 'accepted', content_hash: briefHash,
+    status: 'accepted',
     metadata: { brief_payload: briefPayload },
   });
   const prd = createFormalizationArtifact(handlers, {
@@ -233,13 +223,12 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
 function createFormalizationArtifact(handlers, {
   projectId, epicId, type, code, title, artifactPath, repoPath, status = 'accepted',
 }) {
-  const hash = artifactHash(type, code, title);
   if (repoPath && artifactPath) {
     writeRepoFile(repoPath, artifactPath, `# ${title}\n\nDeterministic ${type} artifact for ${code}.\n`);
   }
   return handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type, code, title,
-    path: artifactPath, status, content_hash: hash,
+    path: artifactPath, status,
   });
 }
 
@@ -342,11 +331,10 @@ function formalizationArchitecture({ handlers, assignment, context, db }) {
   ].join('\n');
   const srsPath = 'docs/formalization/SRS.md';
   writeRepoFile(repoPath, srsPath, srsContent);
-  const fileHash = sha256(srsContent);
   const srs = handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type: 'SRS', code: 'SRS',
     title: 'SRS', path: srsPath, status: 'draft',
-    content_hash: fileHash, project_repository_id: 1,
+    project_repository_id: 1,
   });
   addTrace(handlers, srs.id, prds[0].id, 'derived_from');
   done(handlers, assignment, 'formalization architecture: SRS->PRD');

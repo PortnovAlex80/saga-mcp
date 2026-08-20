@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { appendArtifactDriftTransition } from '../shared/artifact-drift-events.js';
@@ -11,8 +12,14 @@ export function artifactDiskHash(
 ): string | null {
   if (projectRepositoryId == null) return null;
   const row = db.prepare(
-    'SELECT local_path FROM project_repositories WHERE id=?',
-  ).get(projectRepositoryId) as { local_path: string | null } | undefined;
+    `SELECT COALESCE(rc.local_path, pr.local_path) AS local_path
+       FROM project_repositories pr
+       LEFT JOIN repository_checkouts rc
+         ON rc.project_repository_id=pr.id
+        AND rc.machine_id=?
+        AND rc.status='active'
+      WHERE pr.id=?`,
+  ).get(os.hostname(), projectRepositoryId) as { local_path: string | null } | undefined;
   if (!row?.local_path) return null;
   const root = path.resolve(row.local_path);
   const relative = artifactPath.split('#')[0];

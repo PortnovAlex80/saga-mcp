@@ -155,11 +155,12 @@ function assertAcceptedAcNotFrozenByTags(
 /**
  * SERVER-SIDE CANONICALIZATION of the artifact content hash (the
  * artifact-hash hole, found live 2026-08-20 on a formalization run: a worker
- * that could not produce a canonical SHA-256 FABRICATED one — 32 hex of a
- * known digest padded to 64 — and the factory stored it verbatim whenever
- * the artifact file did not resolve; the worker then panic-looped 12+ minutes
- * against an unattributed analysis error). A worker must never compute what
- * the factory can canonicalize itself (the principle product_submit already
+ * supplied a shape-valid 64-hex value that was not bound to bytes observed by
+ * the Factory, and the Factory stored it verbatim whenever the artifact file
+ * did not resolve). How the model produced that particular string is not an
+ * observable or load-bearing part of the diagnosis. A worker must never
+ * compute what the factory can canonicalize itself (the principle
+ * product_submit already
  * pins: "internal canonicalization — no caller-supplied digest"):
  *   - resolvable file → the SERVER-computed hash wins; the caller value is
  *     ignored even when it differs;
@@ -173,9 +174,13 @@ function resolveCanonicalContentHash(
   diskHash: string | null,
   callerHash: unknown,
   artifactPath: string,
-): string | null {
+): string | undefined {
   if (diskHash) return diskHash;
-  if (callerHash === undefined) return null;
+  // `undefined` means "the Factory could not observe authoritative bytes on
+  // this call".  It is deliberately NOT `null`: on artifact_update, turning
+  // a missing observation into NULL would erase a previously verified
+  // content_hash during an unrelated metadata/status edit.
+  if (callerHash === undefined) return undefined;
   if (typeof callerHash !== 'string' || !/^[a-f0-9]{64}$/.test(callerHash)) {
     throw new Error(
       'ARTIFACT_CONTENT_HASH_INVALID: content_hash must be a 64-hex sha256 — but do NOT '
@@ -209,18 +214,27 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const title = args.title as string;
   let projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
   // Server-side fallback: if the worker omitted project_repository_id but we
-  // are running under managed execution, read it from the task's metadata.
+  // are running under managed execution, read the frozen task binding first
+  // (metadata is legacy compatibility only).
   // Without it, artifactDiskHash cannot resolve the file path and content_hash
   // ends up NULL — which causes formalization resolvers to reject the artifact
   // ("does not match its canonical row"). The worker SHOULD pass it (the
   // template and checklist say so), but models sometimes forget — this guard
   // makes the infrastructure resilient to that omission.
   if (projectRepositoryId === null && managedExecution) {
-    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    const taskRow = db.prepare(
+      'SELECT project_repository_id,metadata FROM tasks WHERE id=?',
+    ).get(managedExecution.taskId) as {
+      project_repository_id: number | null;
+      metadata: string;
+    } | undefined;
     if (taskRow) {
+      if (typeof taskRow.project_repository_id === 'number') {
+        projectRepositoryId = taskRow.project_repository_id;
+      }
       try {
         const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
-        if (typeof taskMeta.project_repository_id === 'number') {
+        if (projectRepositoryId === null && typeof taskMeta.project_repository_id === 'number') {
           projectRepositoryId = taskMeta.project_repository_id;
         }
       } catch { /* metadata not JSON — ignore */ }
@@ -298,11 +312,12 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   // typed rejection with the repair recipe; no file + no digest → null (the
   // checklists teach "content_hash NULL after create = file not found —
   // STOP and fix").
-  const contentHash = resolveCanonicalContentHash(
+  const observedContentHash = resolveCanonicalContentHash(
     artifactDiskHash(db, path, projectRepositoryId),
     args.content_hash,
     path,
   );
+  const contentHash = observedContentHash ?? null;
 
   // --- type-specific guards + payload prep (SRS §2b.3) ---
   //
@@ -629,13 +644,22 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   const effectivePath = path ?? existing.path;
   let effectiveRepositoryId = projectRepositoryId !== undefined
     ? projectRepositoryId : existing.project_repository_id;
-  // Server-side fallback: if still null and under managed execution, read from task metadata.
+  // Server-side fallback: use the fenced task repository binding; metadata is
+  // retained only for legacy projected tasks that predate the typed column.
   if (effectiveRepositoryId == null && managedExecution) {
-    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    const taskRow = db.prepare(
+      'SELECT project_repository_id,metadata FROM tasks WHERE id=?',
+    ).get(managedExecution.taskId) as {
+      project_repository_id: number | null;
+      metadata: string;
+    } | undefined;
     if (taskRow) {
+      if (typeof taskRow.project_repository_id === 'number') {
+        effectiveRepositoryId = taskRow.project_repository_id;
+      }
       try {
         const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
-        if (typeof taskMeta.project_repository_id === 'number') {
+        if (effectiveRepositoryId == null && typeof taskMeta.project_repository_id === 'number') {
           effectiveRepositoryId = taskMeta.project_repository_id;
         }
       } catch { /* metadata not JSON — ignore */ }
@@ -971,7 +995,7 @@ export const definitions: Tool[] = [
     name: 'artifact_create',
     description:
       "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD). " +
-      'Call shape: artifact_create({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", title: "<string>", path: "<string>", code: "<string (e.g. AC-1)>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: project_id, epic_id, type, title, path.',
+      'Call shape: artifact_create({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", title: "<string>", path: "<string>", code: "<string (e.g. AC-1)>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer>, project_repository_id: <integer>, tags: ["<string>", ...], metadata: {<object>} }). Required: project_id, epic_id, type, title, path. Do not compute or submit content_hash: the Factory derives it from the authoritative artifact source.',
     annotations: { title: 'Artifact: Create', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -985,7 +1009,7 @@ export const definitions: Tool[] = [
         status: { type: 'string', enum: [...ARTIFACT_STATUSES], default: 'draft' },
         parent_artifact_id: { type: 'integer', description: 'Optional parent artifact (builds hierarchy: AC→UC, FR→PRD).' },
         project_repository_id: { type: 'integer', description: 'Optional physical product repository containing the artifact document.' },
-        content_hash: { type: 'string', description: 'SHA-256 (or equivalent stable digest) of the current document revision.' },
+        content_hash: { type: 'string', description: 'Legacy compatibility assertion only. Omit this field: the Factory derives the canonical digest from the authoritative artifact source and never treats a caller value as evidence.' },
         tags: { type: 'array', items: { type: 'string' }, default: [] },
         metadata: { type: 'object', default: {} },
       },
@@ -1025,7 +1049,7 @@ export const definitions: Tool[] = [
     name: 'artifact_update',
     description:
       "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes. " +
-      'Call shape: artifact_update({ id: <integer>, title: "<string>", path: "<string>", code: "<string>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer (pass null to detach)>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: id. The parameter is "id" (not "artifact_id").',
+      'Call shape: artifact_update({ id: <integer>, title: "<string>", path: "<string>", code: "<string>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer (pass null to detach)>, project_repository_id: <integer>, tags: ["<string>", ...], metadata: {<object>} }). Required: id. The parameter is "id" (not "artifact_id"). Do not compute or submit content_hash: the Factory derives it from the authoritative artifact source.',
     annotations: { title: 'Artifact: Update', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',

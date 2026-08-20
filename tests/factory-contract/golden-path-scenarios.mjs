@@ -113,12 +113,11 @@ const formalizationProduct = async ({ client, task, prompt, repoPath }) => {
     scaffold_artifacts: [], shared_mutation_risk: false,
     completeness: 'high', degraded: false,
   };
-  const briefHash = actions.contentHash('brief:BRIEF-1');
   if (repoPath) actions.writeFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = await client.callJson('artifact_create', {
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md',
-    status: 'accepted', content_hash: briefHash,
+    status: 'accepted',
     metadata: { brief_payload: briefPayload },
   });
   const prd = await actions.createArtifact(client, {
@@ -199,11 +198,10 @@ const formalizationArchitecture = async ({ client, task, prompt, repoPath }) => 
   const srsContent = `# SRS\n\n## §D2 Acceptance Criteria Decomposition\n\n\`\`\`yaml\n- ac: AC-1\n  title: Pipeline Completes\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Factory reaches terminal']\n  test_layers: ['e2e']\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n- ac: AC-2\n  title: NFR Compliance\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Deterministic']\n  test_layers: ['contract']\n  pattern: B\n  depends_on: []\n  ac_kind: implementation\n  criticality: degradable\n\`\`\`\n\n## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|---------------|------------------------|-----------|------|\n| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-08 |\n`;
   const srsPath = 'docs/formalization/SRS.md';
   actions.writeFile(repoPath, srsPath, srsContent);
-  const fileHash = actions.contentHash(srsContent);
   const srs = await client.callJson('artifact_create', {
     project_id: projectId, epic_id: epicId, type: 'SRS', code: 'SRS',
     title: 'SRS', path: srsPath, status: 'draft',
-    content_hash: fileHash, project_repository_id: 1,
+    project_repository_id: 1,
   });
   await actions.addTrace(client, srs.id, prds[0].id, 'derived_from');
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,

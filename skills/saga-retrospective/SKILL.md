@@ -318,7 +318,10 @@ The artifact's document content (the .md file) has this structure:
 - Activity log events scanned: <count>
 ```
 
-The artifact's `content_hash` should be the SHA-256 of the .md file content.
+Do not compute or submit the artifact's `content_hash`. Write the `.md` file at
+the declared repo-relative path and let the Factory derive the canonical digest
+from the authoritative bytes. Read the returned artifact to confirm the
+Factory-issued `content_hash` is present.
 
 ### Step 7. Persist patterns as `project.notes`
 

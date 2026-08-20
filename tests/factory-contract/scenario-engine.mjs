@@ -234,9 +234,8 @@ export const actions = {
     return client.callJson('product_submit', { schema, content });
   },
 
-  /** Create an artifact with deterministic content_hash. */
-  async createArtifact(client, { projectId, epicId, type, code, title, artifactPath, status = 'draft', contentHash, projectRepositoryId, repoPath, fileContent }) {
-    const hash = contentHash || createHash('sha256').update(`${type}:${code}:${title}`).digest('hex');
+  /** Create file-backed material; the Factory, not the scripted actor, derives its digest. */
+  async createArtifact(client, { projectId, epicId, type, code, title, artifactPath, status = 'draft', projectRepositoryId, repoPath, fileContent }) {
     // file_backed artifacts require real bytes on disk for replay capture.
     if (repoPath && artifactPath) {
       const body = fileContent || `# ${title}\n\nDeterministic ${type} artifact for ${code}.\n`;
@@ -246,7 +245,7 @@ export const actions = {
     }
     return client.callJson('artifact_create', {
       project_id: projectId, epic_id: epicId, type, code, title,
-      path: artifactPath, status, content_hash: hash,
+      path: artifactPath, status,
       ...(projectRepositoryId ? { project_repository_id: projectRepositoryId } : {}),
     });
   },

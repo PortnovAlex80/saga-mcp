@@ -34,8 +34,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import os from 'node:os';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,7 +44,7 @@ const temp = mkdtempSync(join(tmpdir(), 'saga-artifact-hash-'));
 process.env.DB_PATH = join(temp, 'ah.db');
 
 const { closeDb, getDb } = await import('../../dist/db.js');
-const { handlers } = await import('../../dist/tools/artifacts.js');
+const { handlers, definitions } = await import('../../dist/tools/artifacts.js');
 
 // The managed-execution fence the artifact handlers ride on (the same idiom
 // as tests/app/operator-soft-stop.test.mjs): a running worker_executions row,
@@ -106,6 +107,7 @@ test.before(() => {
     `INSERT INTO project_repositories (project_id, repository_id, local_path, integration_branch)
      VALUES (1, 1, ?, 'main')`,
   ).run(repoDir);
+  db.prepare('UPDATE tasks SET project_repository_id=1 WHERE id=9001').run();
 });
 
 function artifactByCode(db, code) {
@@ -134,6 +136,47 @@ test('RED: a resolvable file — the SERVER hash wins over any caller-supplied d
     'the server-computed digest of the file must win over the caller-supplied value');
 });
 
+test('RED: hashing observes the same active machine checkout used by workers', () => {
+  const db = getDb();
+  const checkoutDir = join(temp, 'active-checkout');
+  mkdirSync(join(checkoutDir, 'docs'), { recursive: true });
+  writeFileSync(join(repoDir, 'docs', 'checkout.md'), 'stale canonical bytes');
+  writeFileSync(join(checkoutDir, 'docs', 'checkout.md'), 'active checkout bytes');
+  db.prepare(
+    `INSERT INTO repository_checkouts
+       (project_repository_id,machine_id,local_path,status)
+     VALUES (?,?,?,'active')`,
+  ).run(1, os.hostname(), checkoutDir);
+  try {
+    handlers.artifact_create({
+      project_id: 1, epic_id: 1, type: 'SPEC', code: 'SPEC-CHECKOUT',
+      title: 'Checkout authority', path: 'docs/checkout.md', status: 'draft',
+      project_repository_id: 1,
+    });
+    const row = artifactByCode(db, 'SPEC-CHECKOUT');
+    assert.equal(row.content_hash, sha256(Buffer.from('active checkout bytes')),
+      'the active machine checkout, not the stale canonical path, owns observed bytes');
+  } finally {
+    db.prepare(
+      'DELETE FROM repository_checkouts WHERE project_repository_id=? AND machine_id=?',
+    ).run(1, os.hostname());
+  }
+});
+
+test('RED: a managed worker may omit repository identity because the task binding is authoritative', () => {
+  const db = getDb();
+  writeFileSync(join(repoDir, 'docs', 'task-bound.md'), 'task-bound bytes');
+  handlers.artifact_create({
+    project_id: 1, epic_id: 1, type: 'SPEC', code: 'SPEC-TASK-BOUND',
+    title: 'Task-bound repository', path: 'docs/task-bound.md', status: 'draft',
+  });
+  assert.equal(
+    artifactByCode(db, 'SPEC-TASK-BOUND').content_hash,
+    sha256(Buffer.from('task-bound bytes')),
+    'the Factory resolves the repository from the fenced task, not model input',
+  );
+});
+
 test('RED: an unresolvable file + a caller-supplied digest is REJECTED typed with a repair recipe', () => {
   const db = getDb();
   assert.throws(
@@ -157,6 +200,37 @@ test('RED: an unresolvable file + a caller-supplied digest is REJECTED typed wit
     'nothing was persisted from the rejected call');
 });
 
+test('positive/negative/repair seed: exact rejection instructions lead to Factory-derived identity', () => {
+  const db = getDb();
+  const before = db.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n;
+  let rejection;
+  try {
+    handlers.artifact_create({
+      project_id: 1, epic_id: 1, type: 'SPEC', code: 'SPEC-REPAIR',
+      title: 'Repair from feedback', path: 'docs/repair.md', status: 'draft',
+      project_repository_id: 1, content_hash: FABRICATED,
+    });
+    assert.fail('shape-valid caller evidence must be rejected when bytes are unavailable');
+  } catch (error) {
+    rejection = error;
+  }
+  assert.match(rejection.message, /ARTIFACT_CONTENT_HASH_UNVERIFIABLE/);
+  assert.match(rejection.message, /Write the artifact file first/);
+  assert.match(rejection.message, /WITHOUT content_hash/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n, before,
+    'negative attempt has zero durable mutation');
+
+  const repairedBytes = Buffer.from('bytes created because the rejection required them');
+  writeFileSync(join(repoDir, 'docs', 'repair.md'), repairedBytes);
+  handlers.artifact_create({
+    project_id: 1, epic_id: 1, type: 'SPEC', code: 'SPEC-REPAIR',
+    title: 'Repair from feedback', path: 'docs/repair.md', status: 'draft',
+    project_repository_id: 1,
+  });
+  assert.equal(artifactByCode(db, 'SPEC-REPAIR').content_hash, sha256(repairedBytes),
+    'the repaired call omits caller evidence and receives Factory-derived identity');
+});
+
 test('RED: artifact_update with an unresolvable file + a caller digest is REJECTED the same way', () => {
   const db = getDb();
   // A hashless artifact created via the designed path (file absent → null).
@@ -173,6 +247,42 @@ test('RED: artifact_update with an unresolvable file + a caller digest is REJECT
     /ARTIFACT_CONTENT_HASH_UNVERIFIABLE/,
     'the update path must not launder a fabricated digest into an accepted artifact either',
   );
+});
+
+test('RED: an unavailable file observation cannot erase a previously verified digest', () => {
+  const db = getDb();
+  const filePath = join(repoDir, 'docs', 'preserve.md');
+  writeFileSync(filePath, 'verified bytes');
+  handlers.artifact_create({
+    project_id: 1, epic_id: 1, type: 'SPEC', code: 'SPEC-PRESERVE',
+    title: 'Original title', path: 'docs/preserve.md', status: 'draft',
+    project_repository_id: 1,
+  });
+  const before = artifactByCode(db, 'SPEC-PRESERVE');
+  assert.equal(before.content_hash, sha256(Buffer.from('verified bytes')),
+    'precondition: the Factory observed and hashed the source bytes');
+
+  // A later metadata-only edit is not a new content observation. If the file
+  // is temporarily unavailable, the existing verified identity must survive;
+  // absence of observation is not an authoritative NULL digest.
+  unlinkSync(filePath);
+  handlers.artifact_update({ id: before.id, title: 'Metadata-only title change' });
+  const after = artifactByCode(db, 'SPEC-PRESERVE');
+  assert.equal(after.content_hash, before.content_hash,
+    'metadata-only update preserves the last verified digest');
+});
+
+test('model-facing artifact contracts tell workers to omit derived hashes', () => {
+  const create = definitions.find(tool => tool.name === 'artifact_create');
+  const update = definitions.find(tool => tool.name === 'artifact_update');
+  assert.ok(create && update, 'real MCP definitions are installed');
+  assert.doesNotMatch(create.description, /content_hash:\s*"<string>"/,
+    'artifact_create call shape does not invite a caller-authored digest');
+  assert.doesNotMatch(update.description, /content_hash:\s*"<string>"/,
+    'artifact_update call shape does not invite a caller-authored digest');
+  assert.match(create.description, /Do not compute or submit content_hash/);
+  assert.match(update.description, /Do not compute or submit content_hash/);
+  assert.match(create.inputSchema.properties.content_hash.description, /Legacy compatibility assertion only/);
 });
 
 test('RED: a malformed digest is rejected typed at intake (not silently stored)', () => {

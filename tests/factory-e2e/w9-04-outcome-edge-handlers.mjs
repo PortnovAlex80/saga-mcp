@@ -17,15 +17,10 @@
 // code under test is the ONLY field the override changes.
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { W9_HAPPY_HANDLERS } from './w9-happy-handlers.mjs';
 import { loadCorpus } from '../mock-claude/corpus.mjs';
-
-function sha256(content) {
-  return createHash('sha256').update(content, 'utf8').digest('hex');
-}
 
 function git(cwd, ...args) {
   return execFileSync('git', ['-C', cwd, ...args], {
@@ -213,7 +208,6 @@ export function buildFormalizationInconsistentHandlers() {
       project_id: projectId, epic_id: epicId,
       type: 'AC', code: 'AC-EXTRA', title: 'AC-EXTRA: Out-Of-Baseline Criterion',
       path: 'docs/formalization/AC-EXTRA.md', status: 'draft',
-      content_hash: sha256(body),
     });
     // Produce the happy SRS afterwards (same production as W9_HAPPY_HANDLERS).
     return W9_HAPPY_HANDLERS[`${FRM}/define-architecture-contract/author/singleton`]({
@@ -262,7 +256,6 @@ export function buildFormalizationFailedHandlers() {
       return handlers.artifact_create({
         project_id: projectId, epic_id: epicId, type, code, title,
         path: artifactPath, status: 'accepted',
-        content_hash: sha256(content),
       });
     };
     const trace = (sourceId, targetId, linkType) => handlers.trace_add({
@@ -386,4 +379,3 @@ export function buildDevelopmentBlockedHandlers() {
     [`${DEV}/verify-acceptance/author/*`]: verifyWorkerWithRepositoryDrift,
   };
 }
-
