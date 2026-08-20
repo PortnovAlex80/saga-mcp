@@ -57,7 +57,21 @@ export function acceptanceCriteriaForArtifact(
   if (parsed.length === 0 || !artifactCode || !/^AC-/i.test(artifactCode)) return parsed;
   const exact = parsed.filter(item => item.code === artifactCode);
   if (exact.length !== 1) {
-    throw new Error(`atomic acceptance artifact '${artifactCode}' has no matching document heading`);
+    // Defect class 2026-08-17..20 (sudoku AC-1 vs AC-01 zero-padding, counter
+    // AC-Doc container row): the ONE-line error hid both the parsed headings
+    // and the repair path. The kernel stays fail-closed — it never guesses
+    // containers or near-misses — but now says exactly what the document has
+    // and what the two legal repairs are. The acceptance-contract submission
+    // gate (v1.2.0) rejects these bundles BEFORE the freeze ever runs.
+    const parsedCodes = parsed.map(item => item.code).join(', ');
+    throw new Error(
+      `atomic acceptance artifact '${artifactCode}' has no matching document heading`
+      + ` (parsed headings: [${parsedCodes}]). Either add/rename the heading to`
+      + ` exactly '${artifactCode}: <title>' (level 2-3, colon required), or — if`
+      + ` '${artifactCode}' names the whole document rather than one criterion —`
+      + ` remove that artifact row: a container row must not be registered as an`
+      + ` atomic AC artifact.`,
+    );
   }
   return exact;
 }
