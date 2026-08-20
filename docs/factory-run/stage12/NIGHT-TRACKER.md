@@ -609,3 +609,14 @@ first; any E9-reserve code is escalate-never-delete.
   uncommitted and untouched. Offer to the operator: split the commit into
   one operator-docs commit + one night commit (single force-push), or leave
   history as-is with this note as the record.
+- **08:5x (main, from the operator's CORE VIEW paste)** — DEFECT #2
+  REFINED with a third face, verbatim from the reviewer: "The Jest
+  configuration was added to the candidate but is missing from the actual
+  commit." The worker WRITES out-of-scope files (jest.config.js,
+  frontend/*) into its worktree, but the desk's sanctioned commit path
+  EXCLUDES them — so compliance attempts never reach the commit the gate
+  inspects. Full trap now: (a) review demands files, (b) desk silently
+  drops them from commits, (c) author gate rejects the worktree diff that
+  contains them. Also confirmed visually: rev 102, worker names (Anvil/
+  Endmill) rendering, shim route glm-4.6 + stream-json translation + PWD
+  override all live in production logs.
