@@ -56,14 +56,18 @@ test('outcome edge solution-formalization:inconsistent — architecture author a
   assert.equal(evidence.strandedActiveExecutions, 0);
 });
 
-test('outcome edge solution-formalization:failed — AC document contradicts its artifact identity', () => {
-  const evidence = runEdgeDrive('frm-failed');
-  assert.equal(evidence.stageRunOutcome, 'failed');
-  assert.equal(evidence.lifecycleTerminalStatus, 'failed');
-  assert.equal(evidence.certificateDecision, null,
-    'this edge detonates in the baseline-freeze kernel before settlement — no module certificate may exist');
-  assert.equal(evidence.strandedActiveExecutions, 0);
-});
+// NOTE — `solution-formalization:failed` has NO scripted scenario here
+// anymore. Its former producer (w9-04-frm-failed: an AC document whose
+// headings contradict the artifact code, sailing through the then-structural
+// acceptance gate and terminal-failing at the baseline freeze) rode exactly
+// the freeze-kills-finished-runs defect class that the heading-resolution
+// gate v1.2.0 extinguished: the contradiction is now rejected in-cell with a
+// repair recipe and the stage never reaches `failed` through it. The §D2-gap
+// variant is likewise pre-validated (FORMALIZATION_SRS_INCOMPLETE), and
+// drifted bytes route to complete-inconsistent, not failed. Like the other
+// `failed` edges, the remaining producers are kernel-seam faults and the
+// bounded budget ceilings — see lifecycle-outcome-edge-coverage.test.mjs
+// (PENDING) and the W1-5 gate-family brief for the budget-exhaustion route.
 
 test('outcome edge solution-development:blocked — repository drifts after candidate freeze', () => {
   const evidence = runEdgeDrive('dev-blocked');

@@ -224,7 +224,13 @@ function createFormalizationArtifact(handlers, {
   projectId, epicId, type, code, title, artifactPath, repoPath, status = 'accepted',
 }) {
   if (repoPath && artifactPath) {
-    writeRepoFile(repoPath, artifactPath, `# ${title}\n\nDeterministic ${type} artifact for ${code}.\n`);
+    // AC documents follow the conveyor heading grammar (acceptance-criterion-
+    // document.ts): every /^AC-/ artifact code must resolve to exactly one
+    // level-2/3 heading `## AC-x: <title>` — the acceptance-contract
+    // validator v1.2.0 rejects bundles whose AC codes resolve to no heading.
+    // Other artifact types keep the plain level-1 document heading.
+    const heading = type === 'AC' ? `## ${title}` : `# ${title}`;
+    writeRepoFile(repoPath, artifactPath, `${heading}\n\nDeterministic ${type} artifact for ${code}.\n`);
   }
   return handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type, code, title,

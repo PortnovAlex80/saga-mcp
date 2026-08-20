@@ -663,15 +663,12 @@ function w9OutcomeEdgeScenarios(
       + 'terminates Formalization inconsistent.',
       'w9-04-frm-inconsistent',
     ),
-    scenario(
-      'w9-04-frm-failed',
-      'The acceptance-contract author writes an AC document whose atomic '
-      + 'headings contradict the artifact code (artifact AC-1, document '
-      + 'heading AC-9). The acceptance gate is structural and passes; the '
-      + 'baseline freeze parses atomic members and fails terminally — '
-      + 'Formalization terminates failed.',
-      'w9-04-frm-failed',
-    ),
+    // 'w9-04-frm-failed' is RETIRED: its producer (AC headings contradicting
+    // the artifact code, accepted by the then-structural acceptance gate,
+    // then terminal-failing at the baseline freeze) was the
+    // freeze-kills-finished-runs defect class extinguished by the
+    // heading-resolution gate v1.2.0. The edge remains installed and is
+    // classified PENDING in lifecycle-outcome-edge-coverage.test.mjs.
     scenario(
       'w9-04-dev-blocked',
       'The frozen integrated candidate drifts: between candidate freeze and '

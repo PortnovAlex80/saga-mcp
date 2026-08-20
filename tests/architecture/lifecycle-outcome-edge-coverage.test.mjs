@@ -38,7 +38,6 @@ const TRACED = Object.freeze({
   // scripted-worker override per edge, the factory classifies through its
   // normal gates/checks/settlement (tests/factory-e2e/w9-04).
   'solution-formalization:inconsistent': 'factory-e2e/w9-04-frm-inconsistent',
-  'solution-formalization:failed': 'factory-e2e/w9-04-frm-failed',
   'solution-development:blocked': 'factory-e2e/w9-04-dev-blocked',
   'initial-discovery:clarify': 'factory-e2e/w9-04-disc-clarify',
   'initial-discovery:reject': 'factory-e2e/w9-04-disc-reject',
@@ -54,6 +53,14 @@ const PENDING = Object.freeze({
   'initial-discovery:failed':
     'runtime producer exists (discovery settle-kernel catch → domain.failed → complete-failed); '
     + 'drivable only by a fault injected at the kernel seam, which the scripted harness does not expose',
+  'solution-formalization:failed':
+    'runtime producer exists (freeze/settle kernel throw → domain.failed → complete-failed). Its former '
+    + 'scripted trace (w9-04-frm-failed) rode the freeze-kills-finished-runs defect class extinguished by '
+    + 'the heading-resolution gate v1.2.0: contradictory AC headings are now rejected in-cell with a repair '
+    + 'recipe, the §D2 gap is pre-validated (FORMALIZATION_SRS_INCOMPLETE), and drifted bytes route to '
+    + 'complete-inconsistent. Remaining producers: kernel-seam faults (not exposed by the scripted harness) '
+    + 'and the bounded budget ceilings (TOTAL-CAP/CONVERGENCE) — the budget-exhaustion family is the W1-5 '
+    + 'gate-family brief route to re-trace this edge',
   'solution-development:failed':
     'runtime producer exists (freeze/binding/settle kernel failure paths → domain.failed → complete-failed); '
     + 'drivable only by a fault injected at the kernel seam, which the scripted harness does not expose',

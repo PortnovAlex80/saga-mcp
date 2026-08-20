@@ -45,16 +45,14 @@ const SCENARIO_MAP = {
     expectCertificate: true,
     maxCycles: 120,
   },
-  'frm-failed': {
-    manifestId: 'w9-04-frm-failed',
-    handlers: handlersMod.buildFormalizationFailedHandlers,
-    edgeKey: 'solution-formalization:failed',
-    expectedTerminal: 'failed',
-    // The failure detonates in the baseline-freeze KERNEL, before the
-    // settlement node — so NO formalization settlement certificate may exist.
-    expectCertificate: false,
-    maxCycles: 120,
-  },
+  // 'frm-failed' is RETIRED: its producer (AC document headings contradicting
+  // the artifact code, accepted by the then-structural acceptance gate, then
+  // terminal-failing at the baseline freeze) was the freeze-kills-finished-runs
+  // defect class extinguished by the heading-resolution gate v1.2.0. The
+  // §D2-gap variant is pre-validated by FORMALIZATION_SRS_INCOMPLETE; drifted
+  // bytes route to complete-inconsistent. The edge stays installed — its
+  // remaining producers (kernel-seam faults, bounded budget ceilings) are
+  // classified PENDING in lifecycle-outcome-edge-coverage.test.mjs.
 
   'dev-blocked': {
     manifestId: 'w9-04-dev-blocked',
