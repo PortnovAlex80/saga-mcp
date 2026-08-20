@@ -1148,6 +1148,36 @@
       "principalProof": "W0 proof kernel blocking: independent normative-obligation registry set-equality with installed protections; feedback-counterfactual scripted actors; first fabricated-derived-evidence causal proof through the real agentic loop",
       "successor": null,
       "notes": "Accepted 2026-08-20 (MCDA Option C, 485/500). Establishes the causal conformance proof kernel and the Factory-owned derived-evidence rule BEFORE any production recovery-registry schema. Implementation waves: W0-1 canonical composition (landed), W0-2/W0-3 registry+DSL+actor, W0-4 blocking group, W1 causal proofs. Kernel-genericity note: the factory-redevelopment stage-name branches are register additions owned by this train, not boundary widening."
+    },
+    {
+      "adr": "085",
+      "file": "085-co-locate-workshops-before-opening-admission.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [],
+      "evidenceOwner": "",
+      "principalProof": "Co-location equivalence via the K0 normalized authority-trace base/candidate diff (zero semantic diff) + the W0 proof kernel remaining blocking green through the cutover",
+      "successor": null,
+      "notes": "Proposed 2026-08-21. Coordinates with the conformance-engine plan §12 (K0/K1 before P1/P2; K0/K4 trace vocabulary for P3 equivalence). Physical co-location only — package admission stays closed per ADR-082 until C12; no owning K-release assigned while Proposed.",
+      "evidence": [
+        "docs/plans/WORKSHOP-MODULARIZATION-REFACTORING-PLAN.md — implementation plan",
+        "docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md §12 — coordination contract"
+      ]
+    },
+    {
+      "adr": "086",
+      "file": "086-atomic-greenfield-authority-cutover.md",
+      "decisionStatus": "proposed",
+      "closureState": "planned",
+      "owningReleases": [],
+      "evidenceOwner": "",
+      "principalProof": "Base-vs-candidate authority-graph comparison in isolated disposable environments (K0 fingerprint + normalized traces), zero legacy authority entrypoints at the merge gate",
+      "successor": null,
+      "notes": "Proposed 2026-08-21. If adopted, the proof kernel is the evidence rail for the atomic cutover (plan §12): K0 baseline and mutation non-vacuity complete BEFORE canonical construction changes; no compatibility harness for the pre-cutover graph. No owning K-release assigned while Proposed.",
+      "evidence": [
+        "docs/plans/PROJECT-STRUCTURAL-CLEANUP-PLAN.md — implementation plan",
+        "docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md §12 — ADR-086 coordination block"
+      ]
     }
   ]
 }

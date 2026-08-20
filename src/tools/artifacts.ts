@@ -7,6 +7,7 @@ import { artifactDiskHash, refreshArtifactHash } from '../helpers/artifact-file.
 import { appendArtifactDriftTransition } from '../shared/artifact-drift-events.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 import {
+  ensureManagedProductionLedgerSchema,
   recordManagedArtifactProduction,
   recordManagedTraceProduction,
   resolveManagedExecutionProvenance,
@@ -889,6 +890,23 @@ function handleTraceDelete(args: Record<string, unknown>): { deleted: boolean } 
   const info = db.prepare(
     `DELETE FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?`,
   ).run(sourceId, targetType, targetId, linkType);
+
+  // Stage-20 elite post-mortem: the managed trace production ledger feeds
+  // every FUTURE WorkplaceProductionSnapshot seal, while this handler used to
+  // mutate only the live artifact_traces row. A lawful in-repair trace
+  // deletion then desynced the two authorities — the re-sealed snapshot kept
+  // freezing the dead tuple and the replay certification (which compares
+  // sealed tuples against live rows) failed the lifecycle terminally with
+  // REPLAY_CAPTURE_TRACE_NOT_FOUND. Mirror the delete into the ledger in the
+  // SAME transaction so the next seal is live-consistent. Already-sealed
+  // snapshots stay frozen; the fail-closed certification boundary is intact.
+  if (info.changes > 0) {
+    ensureManagedProductionLedgerSchema(db);
+    db.prepare(
+      `DELETE FROM factory_managed_trace_productions
+        WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?`,
+    ).run(sourceId, targetType, targetId, linkType);
+  }
 
   logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
     `Trace ${linkType} deleted: artifact ${sourceId} → ${targetType} ${targetId}`);
