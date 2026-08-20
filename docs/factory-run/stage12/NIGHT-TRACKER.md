@@ -560,3 +560,28 @@ first; any E9-reserve code is escalate-never-delete.
   rejections on the NEW workplace (post-re-carve), or terminal failed, or
   >20 min no worker progress → immediate abort + snapshot + report. No
   repairs, no process touches, no DB edits regardless.
+- **08:0x (main) — RUN ABORTED PER PROTOCOL (hard tripwire exceeded).**
+  Two more `path-outside-authority` rejections this cycle → **4 post-re-carve,
+  threshold was 3**. Snapshot FIRST:
+  `factory-snapshots/stage12-abort-path-outside-authority-postrecarve`
+  (db 6.4MB, integrity ok; earlier evidence snapshot retained at
+  `stage12-path-outside-authority-x4`).
+  - Verbatim newest rejections: paths [frontend/index.html, jest.config.js,
+    src/index.ts] outside frozen changeScopes; earlier
+    [frontend/index.html, frontend/simulation.js, frontend/styles.css,
+    src/index.ts] outside scopes. Meanwhile AC-14 demands "all required
+    services (backend, frontend…)" — **the acceptance criteria require work
+    the frozen scopes forbid. Structural conflict, not worker misbehavior.**
+  - Machinery state at abort: 6 recovery epochs burned, original workplace
+    54fba2d4… at **revision 93**, repair_wait; the re-carved workplace
+    36f12aaf… sits **idle at revision 0 — minted but never adopted** (the
+    engine kept cycling the old workplace). DEFECT CANDIDATE #1 for the
+    architect: the re-plan carve does not divert dispatch. DEFECT CANDIDATE
+    #2: the scope carver freezes scopes that do not cover what the ACs
+    then demand (frontend/ absent).
+  - Per the rules: no process kills, no repairs, no DB edits — the engine's
+    own caps own the termination from here; the operator decides at wake.
+  - Consequence: the run does NOT meet tonight's success definition →
+    **the conditional E9 recycle phase is CANCELLED** (its precondition was
+    a successful run). TASK 3 hygiene + TASK 5 E2 note remain valid and
+    proceed in the morning gap.
