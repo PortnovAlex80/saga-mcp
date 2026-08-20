@@ -158,3 +158,15 @@ stays open (stage 16).
   path (two cards blocked on it an hour apart) — card 1 (45b9646b) took
   the silent-surrender exit (E-F4), card 2 took the lawful grant after
   card 1 went terminal. Both doors observed, in one run, on one path.
+- **13:05:09Z — THE WIDENING LOOP CLOSED END-TO-END.** Round 4 (the
+  re-staffed author, grant rev 1 in force) → author gate **accepted**
+  (13:05:09); cell r17, review in progress. The live sequence, complete:
+  fence ×2 (12:28, 12:50:54) → trajectory scope-impossible → grant same
+  second → re-staff 12:51:29 → the previously-rejected work ACCEPTED
+  13:05:09. Question 1 of the stage (does the widening transition work
+  under load): YES — observed in production, both halves (the trigger and
+  the release). Caveat found while verifying coverage (matrix W-F1,
+  a54639ec): the worker is never INFORMED of the grant — this round
+  passed because the worker happened to redo the natural work it had been
+  taught by the rejection suffix; a self-limiting worker would also have
+  passed (E-F4 through the widened door).

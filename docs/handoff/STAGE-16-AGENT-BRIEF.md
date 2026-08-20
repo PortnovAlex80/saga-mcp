@@ -20,7 +20,7 @@ defects live.
 ### 0.1 The key fact that makes this possible
 
 You cannot predict the *content* of the next defect. You **can** enumerate its
-*shape*. Every defect found in this project falls into four shapes:
+*shape*. Every defect found in this project falls into five shapes — the fifth was added after the stage-15 run produced it:
 
 | # | Shape | Real instance |
 |---|---|---|
@@ -28,8 +28,9 @@ You cannot predict the *content* of the next defect. You **can** enumerate its
 | **S2** | **Self-declaration narrowing** — the candidate declares less than the canonical requirement | `testCommand` listing 7 of 9 files; install command omitting an imported package |
 | **S3** | **Cross-authority contradiction** — two factory-issued constraints cannot both be satisfied on one card | AC requires an artefact class; `changeScopes` forbids its path |
 | **S4** | **Constraint loss across restatement** — a requirement present upstream is absent downstream with no disposition | order constraints absent from every AC |
+| **S5** | **Authority not delivered** — the factory computes a constraint and the actor bound by it never receives it before acting | the worker is never told its `changeScopes`; a widening grant reaches the ledger and the gate, never the worker |
 
-A generator applying these four shapes to any fixture would have caught **all
+A generator applying these shapes to any fixture would have caught **all
 five** defects this project has found the expensive way. That is the thesis you
 are implementing.
 
@@ -53,7 +54,7 @@ Three tiers:
   provider's logic only*: git paths compared by `implementation-scope`, the graph
   checked by `task-graph-contract`, the command tokenized by the coverage report.
 
-**All four defect shapes live in tier 3.** So your fixtures must carry real
+**Shapes S1-S4 live in tier 3; S5 lives in the delivery path, not in the material at all.** So your fixtures must carry real
 structure there — and it can be tiny and meaningless. To reproduce the scope
 deadlock you need three strings: an AC implying path class `zzz/`, a card scoped
 to `aaa/`, a commit touching `zzz/thing`. No product, no code, no semantics.
@@ -69,10 +70,9 @@ fragile, and proves less. Minimal structure, arbitrary text.
 
 ---
 
-## 1. The five spaces
+## 1. The six spaces
 
-Build them in this order. Each is independent; finishing three well beats
-starting five.
+Build them in this order. Each is independent.
 
 Home: `tests/matrix/` (new directory). One file per space, plus
 `tests/matrix/README.md` explaining the thesis in §0.1 so the next reader does not
@@ -238,6 +238,56 @@ boundary. **The other boundaries are not covered.**
 
 ---
 
+### SPACE F — authority delivery (shape S5)
+
+**Question:** for every authority the factory computes, does the actor bound by it
+receive it *before* acting — or only as a rejection afterwards?
+
+**This space exists because the first five missed a whole axis.** Spaces A–E all
+ask questions *about gates*: does material resolve, can a declaration narrow, can
+two constraints contradict, is a requirement lost, does a state progress. Every
+gate in the stage-15 scope incident behaved **correctly** — the fence rejected
+rightly, the trajectory classifier fired rightly, contention granted rightly. No
+decision was wrong. The defect is that **the actor obliged to obey the authority
+is never told it.**
+
+This is not a new discovery. The stage-11 blindsight census named the systemic
+shape exactly — *"the factory writes the right information and fails to deliver it
+to the point of decision"* — 37 findings across 5 layers, 8 repair branches. It
+was not carried into the matrix. That omission is why a sixth defect class
+appeared after five were enumerated.
+
+**Verified live, stage-15 run:** `tracker-view/claude-runner.mjs` (the prompt
+builder) contains **zero** occurrences of `changeScopes`;
+`src/lifecycle/work-assignment-core.ts` contains **zero** occurrences of
+`widening`. `changeScopes` is stored in the task-graph product, the production
+envelope, transition snapshots and replay capsules — and in nothing on the path
+to the worker. A grant was recorded in the ledger for task 18 and the re-staffed
+worker had no way to learn of it, because it had never been told the original
+scope either. The teaching suffix in a rejection is the **only** channel.
+
+#### TODO — Space F
+
+- [ ] F1. Enumerate every authority the factory computes that constrains an actor:
+      change scopes (original and widened), allowed tools, the check plan the
+      material will be judged by, acceptance criteria, prior review findings,
+      recovery budget and attempt number. Read the code; do not guess the list.
+- [ ] F2. For each, identify the actor bound by it and the delivery channel
+      (prompt section, node input, MCP tool response, or none).
+- [ ] F3. Assert delivery: for every authority, a test proves the actor can obtain
+      it **before** acting. `none` is a finding, not a row to skip.
+- [ ] F4. Assert freshness: when the authority changes mid-cell (a widening grant
+      is the live example), the next actor sees the **new** value, not the value
+      frozen at first staffing.
+- [ ] F5. Assert the negative that matters most: **a rejection message is not a
+      delivery channel.** If the only way an actor can learn a constraint is by
+      violating it, record it as a finding regardless of whether the run
+      eventually converges.
+- [ ] F6. Report the table: authority → bound actor → channel → delivered before
+      acting → fresh after change.
+
+---
+
 ## 2. Rules that apply to every space
 
 - [ ] **Findings, not fixes.** This stage builds the instrument and reads it.
@@ -295,5 +345,4 @@ produced, the non-vacuity RED message verbatim, and the run time.
 Then one consolidated findings list, ordered by how badly each would hurt in a
 real run.
 
-State plainly which spaces you did not build. Three spaces done properly are
-worth more than five half-built.
+State plainly which spaces you did not build. Three spaces done properly are worth more than six half-built.
