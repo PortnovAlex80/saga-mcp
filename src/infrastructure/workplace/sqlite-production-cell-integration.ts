@@ -46,6 +46,40 @@ export type ProductionCellIntegrationObservation =
   | { readonly outcome: 'absent-retry-safe'; readonly evidence: Readonly<Record<string, unknown>> }
   | { readonly outcome: 'blocked'; readonly reason: string; readonly evidence: Readonly<Record<string, unknown>> };
 
+/**
+ * STAGE-18 R3: attribute the reviewed-source mismatch to the comparison that
+ * ACTUALLY failed. The stage-15 unresolvable loop was born in the old single
+ * message: the worker stamped its commit sha into snapshot.treeSha, the TREE
+ * arm of the comparison failed, but the message printed the BRANCH arm
+ * ("submitted X but branch is X" — equal shas, branch intact), so no repair
+ * could ever target the defect. A repair message names the failed arm and,
+ * for the tree arm, the likely stamping cause.
+ */
+export function reviewedSourceMismatchReason(
+  taskId: number,
+  arms: {
+    sourceCommit: string;
+    resolvedCommit: string | null;
+    branchHead: string | null;
+    sourceTree: string | null;
+    claimedTreeSha: string;
+  },
+): string {
+  const prefix = `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task ${taskId}`;
+  if (arms.resolvedCommit === null || arms.resolvedCommit !== arms.sourceCommit) {
+    return `${prefix} — the reviewed commit ${arms.sourceCommit} does not resolve in the repository (missing or rewritten); re-submit from a fresh desk.`;
+  }
+  if (arms.sourceTree !== null && arms.sourceTree !== arms.claimedTreeSha) {
+    const stamped = arms.claimedTreeSha === arms.sourceCommit;
+    return `${prefix} — the reviewed commit ${arms.sourceCommit} holds tree ${arms.sourceTree} `
+      + `but the accepted snapshot claims treeSha ${arms.claimedTreeSha}`
+      + (stamped
+        ? ' (a commit sha stamped as a tree sha — stamp snapshot.treeSha from `git rev-parse <commit>^{tree}`, never the commit sha)'
+        : " (the snapshot's tree does not match the reviewed commit — re-stamp it from the reviewed commit's tree)");
+  }
+  return `${prefix} — submitted ${arms.sourceCommit} but branch is ${arms.branchHead ?? 'missing'}`;
+}
+
 export class SqliteProductionCellIntegration {
   private readonly sealedProducts: SqliteSealedProductMaterialRepository;
 
@@ -280,8 +314,16 @@ export class SqliteProductionCellIntegration {
         taskId: task.id,
         sourceCommit,
         sourceTree: sourceTree ?? payload.snapshot.treeSha,
-        reason: `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task ${task.id} submitted `
-          + `${sourceCommit} but branch is ${branchHead ?? 'missing'}`,
+        // STAGE-18 R3: attribute the arm that actually failed — the old
+        // single message printed the branch comparison even when the tree
+        // comparison failed, producing an unresolvable repair loop.
+        reason: reviewedSourceMismatchReason(task.id, {
+          sourceCommit,
+          resolvedCommit: source,
+          branchHead,
+          sourceTree,
+          claimedTreeSha: payload.snapshot.treeSha,
+        }),
       };
     }
     const targetHead = git(task.local_path, [

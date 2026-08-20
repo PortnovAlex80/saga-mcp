@@ -209,7 +209,13 @@ export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_ID =
 // surface (the claim-surface monotonicity provider reads it as the lawful
 // disposition channel). The contract pins its shape: an array of
 // {path, reason} entries; a missing/empty reason is not a disposition.
-export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.2.0';
+// v1.3.0 — STAGE-18 R3: snapshot.treeSha and source joined the CONSUMER read
+// surface (the git integration effect reads them). Pinned when present:
+// treeSha is a 40-hex TREE sha and never the commit sha (the stage-15
+// stamping defect passed shape-only validation and produced an
+// unattributable repair loop at integration); source.commitSha matches
+// snapshot.commitSha.
+export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_VERSION = '1.3.0';
 export const DEVELOPMENT_IMPLEMENTATION_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   decoder: 'validateDevelopmentImplementationResultPayload',
@@ -305,6 +311,30 @@ function validateDevelopmentImplementationResultPayload(payload: unknown): strin
           'snapshot.droppedFiles must be an array of {path, reason} entries with non-empty strings'
           + ' — an entry without a reason is not a disposition',
         );
+      }
+    }
+    // STAGE-18 R3: the git integration effect reads snapshot.treeSha (the
+    // tree the reviewed commit must hold) and source.{commitSha,branch}. Pin
+    // them when present — a commit sha stamped as treeSha passed shape-only
+    // validation in stage 15 and the defect surfaced only at integration as
+    // an unattributable mismatch. Absent fields stay legal (pre-R3
+    // producers); present ones must be truthful.
+    if (snapshot.treeSha !== undefined) {
+      if (typeof snapshot.treeSha !== 'string' || !HEX40.test(snapshot.treeSha)) {
+        errors.push('snapshot.treeSha must be a 40-hex tree sha (from `git rev-parse <commit>^{tree}`)');
+      } else if (typeof snapshot.commitSha === 'string' && snapshot.treeSha === snapshot.commitSha) {
+        errors.push('snapshot.treeSha must be the commit\'s TREE sha, not the commit sha '
+          + '— a commit sha stamped as treeSha fails integration (STAGE-18 R3)');
+      }
+    }
+    if (payload.source !== undefined) {
+      const source = payload.source;
+      if (!isRecordValue(source)
+          || typeof source.commitSha !== 'string' || !HEX40.test(source.commitSha)
+          || typeof source.branch !== 'string' || source.branch.trim() === '') {
+        errors.push('source must carry a 40-hex commitSha and a non-empty branch');
+      } else if (typeof snapshot.commitSha === 'string' && snapshot.commitSha !== source.commitSha) {
+        errors.push('snapshot.commitSha must equal source.commitSha — the snapshot describes the reviewed source commit');
       }
     }
   }
