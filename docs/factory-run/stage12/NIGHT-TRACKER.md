@@ -500,3 +500,43 @@ first; any E9-reserve code is escalate-never-delete.
     Step 1's first suite run initially showed my file collapsing to +1
     aggregate test because a module-top delete broke the child wiring —
     fixed by scrubbing inside test bodies.
+- **03:20 (main)** — TASK 2 COMPLETE, independently verified, then LAUNCHED.
+  - Steps: `a9011b58` (M2-2 coverage report — "executed 7 of 9; not executed:
+    renderer, websocket-server" now rides every outcome), `3d814347` (M1-a
+    ratchet + D2 diff → human_required, never silent retry; plan
+    development.readiness-certification.final.v2; tokenizer bug fixed),
+    `7c29c6d6` (D1 receipts keyed to candidate bytes; failed receipt
+    REPLAYS; failed+passed on same bytes = typed CONFLICT, failed).
+  - **RED replay** `b4ca0748`: the ACTUAL stage-11 gaming (v1.2 manifest,
+    same sourceCandidate, zero code change) → verdict **human_required**
+    with READINESS_PROFILE_NARROWED naming both excluded files, and the
+    round-1 FAILED receipt replayed — the gaming command never executed.
+    Not claimed (step 4, derived-canonical): a narrowed FIRST declaration
+    on never-checked bytes still executes with the gap reported.
+  - Main's independent verification of HEAD ff1f8596: build 0, arch
+    **408/408**, pm **1219/1219**, infra **401 pass / 0 fail / 12 skip**,
+    RED replay 1/1. One unreproduced pm flake (1218/1219, name uncaptured,
+    4 clean reruns) — recorded, not repaired through.
+- **03:26 (main) — PHASE 6: THE RUN IS LIVE.**
+  - Pre-flight: fresh `.factory-sandboxes/stage12-db/` + `stage12/` +
+    `stage12-logs/`; settings.json tripwire anchored at launch:
+    `1d0aac5e46b7eb297a70bd97…`; HEAD ff1f8596; src/tests CLEAN (the only
+    dirty files are the operator's own uncommitted doc edits — named,
+    zero runtime impact, deliberately untouched per the standing rule).
+  - Launch env: SAGA_REAL_CLAUDE_PATH → agent-proxy shim,
+    SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1, SAGA_FACTORY_CONCURRENCY=2,
+    journal + orchestration log pinned to stage12-logs; order = stage-10
+    docking slice verbatim; `--model glm-4.6`.
+  - Evidence at +75s: engine `orchestrate-cli --launch-ref=launch-b7a2a952`
+    (this repo), first worker `opencode.exe run --model
+    zai-coding-plan/glm-4.6 --dir …` (**route + disorientation pin live**),
+    DB + run-journal + engine log + heartbeat all growing. Foreign
+    processes (glm-5.3 from saga-mcp-gdesign-run, glm-4.7 from C:\Users)
+    are the operator's parallel sessions — untouched.
+  - Fronts restarted on the new DB: tracker 4321 (pid 39844, guard env),
+    core-view 4325 (pid 25544).
+  - Monitoring per the operator protocol on every wake: abort on terminal
+    failed / same refusal ×3 on one node / no progress >20 min with live
+    process / settings.json drift from `1d0aac5e…`. On abort: snapshot
+    FIRST via tools/capture-run-snapshot.mjs, then report. No mid-run
+    repairs, no process touches beyond documented recovery, no DB edits.
