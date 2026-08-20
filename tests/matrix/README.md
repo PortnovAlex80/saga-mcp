@@ -46,7 +46,14 @@ One file per space:
   ledger grants rev 1 → the same byte-identical submission passes).
   Findings: d-1 (ADR-062 deferral reads the original carve, not the
   widened authority), d-3 (shared-path serialization — the stage-15 cost,
-  by design), d-2 (desk workItemKey equality only at the gate). D7: no
+  by design), d-2 (desk workItemKey equality only at the gate).
+- `widening-worker-visibility.test.mjs` — the stage-15 live case, closed
+  loop: a coverage inventory pinning that the fence×2→grant→re-staff chain
+  IS tested elsewhere, plus W-F1 (high): the grant never informs the
+  re-staffed worker — the card keeps the original carve, the assignment
+  seam never reads the ledger, and a self-limiting post-grant submission
+  still passes containment. The silent-surrender door (E-F4) stays open
+  THROUGH the widened grant. D7: no
   permanent refusal of a shared path — both release axes re-grant.
 - (later spaces land one commit each)
 
