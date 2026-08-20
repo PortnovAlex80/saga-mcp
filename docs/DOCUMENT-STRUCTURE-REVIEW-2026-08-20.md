@@ -127,8 +127,8 @@ AC-DRIFT-REMEDY-DESIGN — все проверены в src/ и закоммич
 - `WEAK-MODEL-CONTROL-CHECKLIST.md` (корень) — чек-лист контроля слабой
   модели, концептуально жив.
 - `howto/AGENT-WORKER-MONITOR.md` — как читать мозг живого воркера (:4321).
-  `howto/CODEX-HOOK-ENVELOPE.md` — рецепт впрыска контекста в Codex-сессию
-  (однократное успешное применение; AGENTS.md ссылается на ту же механику).
+  (`howto/CODEX-HOOK-ENVELOPE.md` удалён 2026-08-20 вместе с конвертом —
+  см. РЕШЕНИЕ 2 в §4.)
 - `design/EXECUTION-ROUTE-ARCHITECTURE.md` — claim-time merge маршрутов
   (factory.execution.v2), низкий дрейф.
 - `design/FACTORY-CORE-VIEW.md` — реализованное sidecar-наблюдение (:4323).
@@ -197,11 +197,16 @@ AC-DRIFT-REMEDY-DESIGN — все проверены в src/ и закоммич
 > `ideas/P22-trackplan.md` ОСТАВЛЕН. Ссылки в DRAGON-MAP.md проверены —
 > ссылок на удалённое нет. Два комментария в src (replan-supersede.ts,
 > replan-cycle-policy.ts) переведены с удалённого REPLAN-CYCLE-DESIGN.md
-> на REPLAN-CYCLE-TZ.md. AGENT-ENVELOPE.md (замороженный исторический
-> конверт) упоминает ADR-053-CUTOVER-EXECUTION-TRACKER и W10-RUN-PROFILE —
-> оставлено как история. Папки discovery/tools/ и formalization/tools/
+> на REPLAN-CYCLE-TZ.md. Папки discovery/tools/ и formalization/tools/
 > рантайм пересеивает из src/process-modules/.../resources при следующем
 > discovery-прогоне (это генерируемый вывод, больше не коммитим).
+>
+> **РЕШЕНИЕ 2 (оператор, 2026-08-20):** легаси-конверт `AGENT-ENVELOPE.md`
+> (941 строка, почтовый ящик оператор↔агенты от 2026-08-11) удалён вместе
+> с его инструкцией `docs/howto/CODEX-HOOK-ENVELOPE.md` (инжектор читал
+> именно конверт). Ссылка в DRAGON-MAP.md почищена; историческое упоминание
+> в REFACTORING-PLAN-AND-STATUS.md оставлено как история. Скрипт хука
+> `~/.codex/hooks/envelope-reminder.mjs` лежит вне репо — не тронут.
 
 ### 4.1 Все 30 кандидатов по дате создания (git: первый коммит с файлом)
 

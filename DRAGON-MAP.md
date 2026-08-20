@@ -35,8 +35,8 @@
 | 4 | `docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md` | 1021 | **Главный диагноз.** Почему владелец материала — WorkplaceProductionRevision, а WorkerExecution — только provenance. Без этого код ядра не читается |
 | 5 (опц.) | `docs/architecture/CONVEYOR-TRANSITION-DIAGNOSTICS.md` + `CONVEYOR-TRANSITION-CHECKLIST.md` | 332 | Универсальная диагностика «почему не едет» |
 
-Культурный контекст (обязательно, коротко): `AGENTS.md` — конверт оператора
-`AGENT-ENVELOPE.md`, правило «читай ADR-053 перед стабилизационным фиксом».
+Культурный контекст (обязательно, коротко): `AGENTS.md` —
+правило «читай ADR-053 перед стабилизационным фиксом».
 
 ## Этап 1 — Доменное ядро: инварианты без I/O (~3 400 строк)
 
