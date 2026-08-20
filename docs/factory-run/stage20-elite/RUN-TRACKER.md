@@ -100,3 +100,16 @@ resume path re-stamps the catalog limit).
   FUTURE seal is live-consistent; already-sealed snapshots stay frozen and
   the fail-closed certification boundary is untouched. Regression test +
   relaunch follow. Engine exited code 1; watchdog will show natural death.
+- **22:46:43Z — RELAUNCHED on the fixed build (run 2).** HEAD `563ce45c`
+  (merge `95c2a3a1` of the W0/K proof branch + the trace_delete ledger-mirror
+  fix + ADR-085/086 registry entries; full suite 731/734 → the 2 ADR
+  registry failures were pre-existing red from the 00:34-00:38 planning
+  commits, fixed in the same commit; regression pack
+  trace-delete-managed-ledger-mirror 3/3). Pushed saga4+w0-waves. Fresh
+  `elite-db/`+`elite/`+`elite-logs/` (failed run 1 archived as
+  `*-failed1/`, nothing deleted). Engine pid 58004, launch
+  `launch-5337b4e7-950a-4600-87da-415fb4b1bcef`, controls raised to 4/4
+  immediately. Watchdog restarted (60 s / 45 min / 12 h, settings sha
+  `2d6176e8…` unchanged). Tracker restarted on the new DB, port 4321.
+  Same idea, same protocol; expected difference: a lawful in-repair
+  trace deletion can no longer desync the managed ledger.
