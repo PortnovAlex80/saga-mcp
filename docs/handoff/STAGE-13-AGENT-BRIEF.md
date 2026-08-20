@@ -1,173 +1,201 @@
-# Agent brief — saga-mcp, stage 13: two factory obligations must be jointly satisfiable
+# Agent brief — saga-mcp, stage 13: a frozen prediction is not an authority
 
 Continues `docs/factory-run/stage12/ARCHITECT-NIGHT-REPORT.md`. **All rules from
 stages 2–12 still apply.** **Do not launch a new factory run.** The stage-12 run
-may continue to its own terminal — see §0.3.
+may continue to its own terminal — see §0.4.
 
 Branch `saga4`.
 
 ---
 
-## 0. The architect's verdict — verified from the three run databases directly
+## 0. The architect's verdict
 
-### 0.1 What the night proved (this is the good news, and it is real)
+### 0.1 What the night proved
 
-The GDesign run reached `terminal_status = failed` **honestly**: 30/30 cards done
-across all three workshops, then `factory.local-runnability.v1` executed
-`python -m pytest tests/` in a sterile `python:3.13` container and found
-`ModuleNotFoundError: No module named 'yaml'` — 126 tests collected, 2 collection
-errors, caused by a genuinely undeclared `pyyaml` dependency.
+The GDesign run reached `terminal_status = failed` **honestly**: 30/30 cards
+across three workshops, then `factory.local-runnability.v1` ran the checks in a
+sterile container and found a genuinely undeclared dependency. Compare stage 11,
+which labelled a 0%-runnable artefact `runnable-local`.
 
-Compare stage 11, which labelled a 0%-runnable artefact `runnable-local`.
+**That is the first truthful verdict this factory has produced.** Keep it. Every
+task below must leave that property intact.
 
-**That is the first time this factory told the truth about its own output.** The
-sterile canonical environment revealed what the worker's polluted environment
-hid. The anti-gaming work worked.
+### 0.2 The unifying defect — read this twice
 
-### 0.2 The new defect class — and it is the child of our own fix
+Three failures this month look different and are one thing:
 
-The stage-12 run is deadlocked. Verified in
-`.factory-sandboxes/stage12-db/factory.sqlite`: workplace revision **106**, **6
-recovery epochs**, 7 review rounds, lifecycle paused at `implement-work-items`.
+| What is frozen | Whose prediction | Made when |
+|---|---|---|
+| `changeScopes` | the planner: which files the work will touch | **before** the code is written |
+| install declaration | the candidate: which packages the code needs | **before** the sterile run |
+| `testCommand` | the candidate: which checks matter | **before** the check |
 
-Two factory authorities give contradictory orders:
+All three are **guesses made ahead of the fact, frozen, then enforced as
+authority**. All three failures are the same sentence: the guess was wrong, and
+the fence made correcting it impossible.
 
-```
-review-verdict.v1        → failed
-  "CRITICAL: AC-14 violation — implementation provides only backend service,
-   but AC-14 requires all required services (backend, frontend) …
-   AC-16 requires the simulation displayed … no HTML page, no visualization."
+> **A frozen prediction is not an authority. Either derive it from fact, or make
+> revising it a first-class transition.**
 
-implementation-scope.v1  → failed
-  "path-outside-authority: Git paths [frontend/index.html, src/index.ts] are
-   outside frozen changeScopes [.gitignore, Dockerfile, docker-compose.yml,
-   package.json, src/modules/startup-runtime/, tests/, tsconfig.json]"
-```
+The factory currently does neither. There is no third option, and "predict
+better" is not one — a better guess is still a guess, and the failure mode is
+unchanged.
 
-**`frontend/` is not in the scope. The AC requires a frontend.** The worker is
-ordered to build one and forbidden from writing the files it consists of. Every
-possible action is rejected. The worker is blameless.
+### 0.3 What this means for the scope fence specifically
 
-The principle:
+Do not read the stage-12 deadlock as "the carve forgot a directory". The next
+order will need something else entirely, and a fix shaped around what *this* run
+needed is worthless.
 
-> **The factory issues obligations from two authorities and never checks that
-> they are jointly satisfiable.**
+The structural facts, in domain-free terms:
 
-This is the *inverse* of stage 12's invariant. That one said criteria must not
-come from the candidate. This one says: **when the factory issues both the
-criteria and the permissions, it owns the contradiction between them.**
+1. **Which paths implementing an acceptance criterion requires is not knowable
+   before the implementation exists.** The planner is *obliged* to guess. A
+   "joint satisfiability check" only checks the guess; it does not remove the
+   guessing, so it does not remove the failure.
 
-And note the causality — **this deadlock is our AC-drift fix succeeding.** The
-ACs now carry the order's docker/frontend/Chrome requirements; that was the
-stage-11 repair. What the fix exposed is the next link: the carve is not obliged
-to cover the ACs it is carving for. The planner's rule was "one item per AC"; it
-creates a card per AC and derives the card's scope from somewhere else, and
-nothing compares the two.
+2. **The fence's real purpose is isolation between concurrent cards, not a
+   completeness contract for one card.** "Is this path claimed by another live
+   card?" is decidable. "Does this criterion require this path?" is not. Today
+   the fence answers the second question and therefore breaks.
 
-The invariant this stage installs:
+3. **Scope insufficiency is normal, not exceptional.** Honest work against an
+   estimate discovers the estimate was short. Today that normal event is modelled
+   as a check failure plus a recovery epoch — a category error that converts
+   ordinary progress into a livelock.
 
-> **A card whose acceptance criteria cannot be satisfied inside its own frozen
-> scope is malformed. Reject it at carve time — not after seven review rounds.**
+The re-plan carve is the half-built correct answer: the instinct was right, it
+was filed under *recovery* instead of *normal operation*, and it was never wired.
 
-### 0.3 Decision on the live run
+The invariants this stage installs:
+
+> **Scope insufficiency is a lawful outcome of a cell, not a defect of its
+> worker.**
+>
+> **A scope fence decides contention, never necessity.**
+
+### 0.4 Decision on the live stage-12 run
 
 **Let it reach its own terminal.** Evidence is captured, cost is tokens only, and
-F6 (merged last night) has no other live test. "Does the factory reach an honest
-terminal by itself, without a human?" is the final goal restated. Killing it by
-hand destroys the only answer we will get.
-
-If it is still looping when you start, leave it. Record its terminal when it
-comes.
+F6 has no other live test. "Does the factory terminate honestly without a human?"
+is the final goal restated; killing it by hand destroys the only answer.
 
 ---
 
-## TASK 1 — the joint-satisfiability check at carve time
+## TASK 1 — make scope insufficiency a lawful transition
 
-The deliverable of this stage. Everything else is smaller.
+The deliverable of this stage.
 
-**RED first.** Reproduce the deadlock as a test: an AC requiring a path outside
-the card's `changeScopes`. Watch it produce the same
-`path-outside-authority` / review-`failed` pair. Only then fix.
+**RED first.** Reproduce the deadlock structurally, **without naming any concrete
+path from the stage-12 run**: a cell whose acceptance criteria require writing
+outside its frozen scope. The fixture must be domain-free — a fix that only works
+for the paths this run needed is not a fix. Watch it livelock through epochs,
+then fix.
 
-The check: when the task graph is frozen, every card's acceptance criteria must
-be satisfiable within that card's declared `changeScopes`. A card that fails this
-is rejected at carve time with a typed diagnostic naming **which AC** and **which
-path class** it needs that the scope does not grant.
+Design what you build against these constraints:
 
-Design constraints, and they decide whether this works:
+- **A cell must be able to report "my scope is insufficient" as a typed,
+  successful conclusion of an attempt** — not as a failed check, not as a
+  recovery trigger. It names what it needs in terms the carve authority can act
+  on.
+- **The request goes to the authority that issued the carve**, never to the
+  worker's own discretion. The worker states the need; it does not grant it.
+- **The grant is decided on contention, not on necessity.** Granted when no other
+  live cell holds the claim; refused with a named holder when one does. The
+  authority must never be asked to judge whether the work "really needs" the
+  path — that judgment is not available to it and pretending otherwise
+  reintroduces the guess.
+- **A grant re-freezes a wider scope as a new revision**, with the same
+  monotonic/append-only discipline the rest of material authority already has. A
+  widened scope is new authority, not a mutation of old authority.
+- **Refusal must be terminal and honest**, carrying the contending holder. A cell
+  that genuinely cannot proceed must fail closed with a reason a human can act
+  on — not loop.
 
-- **Derive the required paths from the AC, do not ask the worker.** Anything
-  else re-opens stage 12's invariant one level up.
-- **Uncertainty must widen the scope, not narrow it.** If the required path set
-  cannot be determined exactly, the honest response is a scope that covers the
-  uncertainty, or a rejection — never a narrower guess. A too-narrow scope is
-  exactly the failure being fixed.
-- **The diagnostic must be actionable by the planner**, i.e. it names what to
-  re-carve, not merely that something is wrong.
+This is a conveyor-grammar change: a new lawful cell outcome and the transition
+it routes to. Treat it as such — it belongs in the flow vocabulary, not as a
+special case inside one check provider.
 
-If deriving required paths from an AC turns out to be undecidable in general —
-that is a real finding. Say so, and deliver the weaker check that is decidable
-(for example: the union of all cards' scopes must cover every path class any AC
-mentions). **A weaker check that holds beats a stronger one that guesses.**
+**If you conclude the contention model cannot express something real** (for
+example two cells that legitimately must write the same path in sequence),
+**escalate with the case.** That is a design question, not something to work
+around.
 
-## TASK 2 — reconnect the re-plan carve to the dispatcher
+## TASK 2 — wire the re-plan carve
 
-The escape hatch already exists: the factory created a new workplace with
-recomputed scopes and **the dispatcher never picked it up** — reported idle at
-revision 0.
+The escape hatch exists and the dispatcher never claims it — reported idle at
+revision 0. A designed remedy that is not wired is worse than none: it makes the
+system look recoverable when it is not.
 
-A designed remedy that is not wired is worse than no remedy: it makes the system
-look recoverable when it is not. Find why the dispatcher does not claim it, fix
-the connection, and prove it with a test that drives the full path — deadlock
-detected → re-plan carve → dispatcher claims → work proceeds.
+Establish why the dispatcher does not claim it, fix the connection, and prove the
+whole path end to end: insufficiency declared → carve authority re-carves →
+dispatcher claims → work proceeds.
 
-If the re-plan carve would still produce the same insufficient scope, **say so** —
-then task 1 is its precondition and this task is blocked on it. That is a
-legitimate outcome; report it rather than forcing a green.
+Task 1 may subsume this: if scope widening becomes a lawful transition, re-plan
+carve may be the mechanism that serves it rather than a parallel recovery path.
+**Report which it is.** Two mechanisms for one event is the shape §27 forbids —
+if you end with both, say so and stop.
 
-## TASK 3 — `installCommand` is `testCommand`'s unguarded twin
+## TASK 3 — environment identity, derived (this is K19, not a patch)
 
-The GDesign failure was a real product defect, correctly caught. But the
-mechanism that let it exist is stage 12's invariant one line higher: **the
-candidate declares its own environment.**
+**No interim.** The architect's instruction is explicit: the environment
+declaration is the same frozen prediction as the scope fence, and patching it
+with a "sufficiency report" would install exactly the pattern this stage exists
+to remove.
 
-We fixed *what* the candidate runs. We did not fix *what it runs in*.
+Do the principled thing: **the environment in which a candidate is certified must
+be one immutable identity, derived from the artefact itself, shared by
+preparation and certification.** The candidate's declaration becomes additive —
+it may add to the derived environment, never define it.
 
-Apply the same additive-canonical treatment to the environment declaration: the
-declared install must be **sufficient for the canonical check set**, and a
-shortfall is reported with the missing package named. Follow the rollout
-discipline that worked: **report-only first**, enforcement after.
+This is K19 — *Readiness and Toolchain Package Identity*, objective verbatim:
+"bind execution environment preparation and post-integration certification to the
+same immutable runtime package model" (`docs/vision/SAGA-CORE-RENEWAL-PLAN.md`
+§K19). Read the card; it is the specification. Its commit train already names the
+pieces: capability/readiness fingerprint contract, ephemeral isolated
+environments with no shared mutable state, one exact environment per pinned
+package with persisted image and dependency digests.
 
-The long-term owner is **K19 — Readiness and Toolchain Package Identity**, whose
-objective is literally binding environment preparation and post-integration
-certification to one immutable runtime package model. This task is the cheap
-interim, not a substitute. Say in your report which parts K19 must still do.
+**Scope discipline applies:** K19 is a release, not a task. If it does not fit
+this stage, execute its commit train in order and stop at a clean boundary,
+reporting exactly where. **Do not deliver a fraction disguised as the whole**, and
+do not substitute a report-only shortcut for the derivation.
 
-## TASK 4 — finish what stage 12 left
+The release-discipline budget (plan §3) applies: ≤ 25 production files, ≤ 6 per
+commit, ≤ 1 schema migration family.
 
-- **`repair/blindsight-reconciliation` is not merged.** Twelve of thirteen trees
-  landed; this one did not, and the stage-12 report presents task 1 as complete.
-  Either merge it under the wave-B discipline (build + architecture suite after)
-  or state plainly why it must not land.
-- **`repair/snapshot-test-mvp`** — still held pending the three answers from
-  stage 12 task 4. If those answers are now in, report them and recommend.
+## TASK 4 — the invariants go into the mental model
 
-## TASK 5 — put both invariants in the mental model
+`docs/architecture/CONVEYOR-MENTAL-MODEL.md` is the arbiter of every design
+argument, and it contains none of the rules this month's failures were all
+instances of. Until they are in it, the same defect returns in a new costume —
+it has done so four times.
 
-`docs/architecture/CONVEYOR-MENTAL-MODEL.md` is the arbiter, and it is missing
-the two rules that this month's failures were all instances of. Add them as
-numbered invariants, in the document's own voice, each with the concrete failure
-that produced it:
+Add, as numbered invariants in the document's own voice:
 
-1. **Acceptance criteria are derived from the order, never from the candidate.**
-   (worker-attested `integration_state`; candidate-declared `testCommand`;
-   candidate-declared install environment.)
-2. **Obligations the factory issues from different authorities must be jointly
-   satisfiable, and the factory owns proving it before hiring a worker.**
-   (AC requiring `frontend/` against a `changeScope` forbidding it.)
+1. **A frozen prediction is not an authority.** Anything the factory freezes and
+   then enforces must be derived from fact, or revising it must be a first-class
+   transition. Cite the three instances: change scope, environment declaration,
+   check declaration.
+2. **Acceptance criteria are derived from the order, never from the candidate.**
+3. **Obligations the factory issues from different authorities must be jointly
+   satisfiable, and the factory owns proving it — or owns a lawful path out of
+   the contradiction.**
+4. **A fence decides contention, never necessity.**
 
-Write them so a reader who never saw these runs can apply them. An invariant that
-only makes sense to someone who was there is a diary entry, not a rule.
+Write them so a reader who never saw these runs can apply them to a domain that
+has nothing to do with software. An invariant that only makes sense to someone
+who was there is a diary entry, not a rule.
+
+## TASK 5 — close stage 12's open end
+
+**`repair/blindsight-reconciliation` is not merged.** Twelve of thirteen trees
+landed; the stage-12 report presents task 1 as complete. Merge it under wave-B
+discipline, or state plainly why it must not land. Either is acceptable; silence
+is not.
+
+`repair/snapshot-test-mvp` stays held until the three stage-12 task-4 answers
+exist.
 
 ---
 
@@ -183,34 +211,32 @@ node --test "tests/factory-e2e/w9-*.test.mjs"
 node --test tests/factory-contract/golden-path.test.mjs
 ```
 
-Quote the base you measured against. The stage-12 report and the tree reports
-quote different baselines; a count you cannot attribute to a base is not
-evidence.
+Quote the base you measured against — the stage-12 and per-tree reports quote
+different baselines, and a count you cannot attribute to a base is not evidence.
 
-One commit per task. Push to `origin saga4`.
+One commit per task; K19 by its own commit train. Push to `origin saga4`.
 
 ---
 
 ## Escalate, do not decide
 
-1. **If AC→path derivation is undecidable** — deliver the weaker decidable check
-   and escalate the design question.
-2. **Any change to changeScope freezing semantics.** Scope is material authority;
-   widening it at the wrong moment reopens the scope fence entirely.
-3. **Enforcement (not report) on the install declaration** — that changes what
-   "certified" means, same as `testCommand` step 4.
-4. **Starting a new factory run.**
+1. **Any case the contention model cannot express.**
+2. **Any change to how material authority freezes or widens** beyond what task 1
+   specifies — scope is material authority.
+3. **Ending with two mechanisms for scope widening.**
+4. **K19 scope overflow** — stop at a boundary and report; never a fraction
+   presented as the whole.
+5. **Starting a new factory run.**
 
 ## Report format
 
-Task 1: the RED reproduction verbatim, the check you built, and — if you fell
-back — which weaker check and why.
-Task 2: why the dispatcher ignored the re-plan carve, and whether task 1 blocks
-it.
-Task 3: the shortfall report format, and what you are leaving to K19.
-Task 4: merged or refused, with the reason.
-Task 5: the two invariants as written.
+Task 1: the domain-free RED reproduction, the outcome/transition you added, and
+the contention rule as implemented.
+Task 2: why the dispatcher ignored the carve, and whether task 1 subsumed it.
+Task 3: which K19 commits landed, where you stopped, what remains.
+Task 4: the invariants as written.
+Task 5: merged or refused, with the reason.
 
-Plus: the stage-12 run's terminal, if it reached one while you worked.
+Plus the stage-12 run's terminal, if it reached one while you worked.
 
 State what you did not finish.
