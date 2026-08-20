@@ -62,10 +62,12 @@ import {
 import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+  DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
 } from '../../dist/modules/development/domain/development-schemas.js';
 import {
   developmentImplementationPayloadContract,
   createDevelopmentVerificationCheckProvider,
+  createDevelopmentImplementationScopeCheckProvider,
 } from '../../dist/modules/development/application/development-check-providers.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 
@@ -185,6 +187,17 @@ const CARRYING = [
     lossDetected: 'split — verification card yes; implementation card no (finding E-F3)',
     finding: 'E-F3',
   },
+  {
+    // Same boundary B5 — its SECOND loss channel. B5 row one: the echo
+    // channel (E-F3). This row: the acceptance channel — found live in
+    // stage 15 (brief addendum E7).
+    id: 'B5',
+    registerPresent: 'yes on the card (as the row above) — but nothing downstream consumes it for the implementation card',
+    obligatory: 'no — after a scope-fence rejection, the card may pass by simply NO LONGER TOUCHING the paths its work needed: no scope-insufficient declaration, no waiver, no disposition. The gate checks what was presented; nothing checks what was NOT presented',
+    covers: 'nothing — the requirement disappears between two repair rounds',
+    lossDetected: false,
+    finding: 'E-F4',
+  },
 ];
 
 // ── E5: the findings registry (findings, not fixes — brief §2) ──────────────
@@ -212,6 +225,14 @@ const FINDINGS = [
     fed: `card (cell_input_item) pins coveredConstraintIds ['ord-c-001'] (the '${TOKEN}' register entry); the implementation worker submits a scope-clean git change that never addresses it`,
     factorySaid: "developmentImplementationPayloadContract.validate → [] errors (the consumer contract has NO field that carries or echoes the card's criterion/constraint set — the token cannot even be expressed, let alone missed); the implementation scope provider reads cell_input_item only for {key, changeScopes}; the gate passes",
     shouldLive: 'src/modules/development/application/development-check-providers.ts:717-917 (createDevelopmentImplementationScopeCheckProvider) — an echo obligation on cell_input_item.acceptanceCriterionIds/coveredConstraintIds, exactly like the verification provider\'s constraintLineageOk at :1089-1112. The verification echo proves the VERIFIER saw the id, not that the implementer did',
+  },
+  {
+    id: 'E-F4',
+    boundary: 'B5-surrender implementation card → acceptance',
+    severity: 'high',
+    fed: `LIVE, stage-15 run (verified from its DB, not from a report): card 45b9646b… hit the fence at 11:44:26 — path-outside-authority [jest.config.js, tsconfig.json] outside frozen changeScopes [package.json, src/physics/, tests/] (teaching suffix present); 17 minutes later, at 12:01:07, the SAME card's author gate returned ACCEPTED on a candidate that simply no longer touched those paths — no scope-insufficient declaration (factory_scope_widening_events holds ZERO rows for the whole run), no waiver, no disposition. The reviewer accepted it at 12:04:58. The domain-free reproduction below: a card whose criterion requires an artefact under zzz/, attempt 1 touches zzz/shared.config (fence fires), attempt 2 drops zzz/ entirely and touches only aaa/ — accepted`,
+    factorySaid: `attempt 1 → failed, path-outside-authority (the fence works); attempt 2 → 'passed'. The scope provider's only questions are identity, ancestry, exact-set diff equality, and containment against frozen scopes — it never asks whether the card's criteria/constraints are covered by what was produced. developmentImplementationPayloadContract has no field to carry the answer even if it asked. The review-verdict channel's input vocabulary has no card-requirement field either: the gate checked what was presented, nothing checked what was NOT presented`,
+    shouldLive: 'src/modules/development/application/development-check-providers.ts:887-917 — the acceptance side of the implementation path: a criterion/constraint COVERAGE obligation on the accepted implementation result (the card pins acceptanceCriterionIds + coveredConstraintIds; the accepted diff must dispose them — produced, or explicitly waived like the formalization register dispositions). The lawful exits already exist: worker_done scope-insufficient (stage 13) or a typed waiver — silent abandonment must be neither',
   },
 ];
 
@@ -633,10 +654,132 @@ test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOK
   assert.match(diagnostic.message, /coveredConstraintIds/);
 });
 
+// ── E7: the silent surrender (brief addendum, found live in stage 15) ───────
+
+/**
+ * The REAL implementation scope provider over in-memory façades: the DB row
+ * (exact submission SQL), the CandidateSet binding, and a git port whose
+ * merge-base/diff answers mirror a faithful repository. The card pins
+ * coveredConstraintIds (CONSTRAINT-ALPHA rides it, as B5) and the criterion
+ * implies an artefact under zzz/ — but the provider's vocabulary decides
+ * what it can even ask about.
+ */
+function implementationScopeHarness({ changedFiles, scopes = ['aaa/'] }) {
+  const digest = sha256('payload');
+  const payload = {
+    workItemKey: 'imp-1',
+    repository: { baseCommit: HEX40 },
+    snapshot: { commitSha: HEX40, changedFiles },
+  };
+  const metadata = {
+    cell_input_item: {
+      key: 'imp-1',
+      changeScopes: scopes,
+      acceptanceCriterionIds: [101],
+      coveredConstraintIds: ['ord-c-001'],
+    },
+  };
+  const row = {
+    payload_snapshot: JSON.stringify(payload),
+    content_hash: digest,
+    metadata: JSON.stringify(metadata),
+    task_id: 42,
+    local_path: 'x:/matrix/product',
+    effective_base_commit: HEX40,
+  };
+  const db = {
+    prepare(sql) {
+      if (!sql.includes('factory_managed_node_submissions')) {
+        throw new Error(`unrouted SQL: ${sql.slice(0, 60)}`);
+      }
+      return { get: () => row };
+    },
+  };
+  const candidateSets = {
+    read: () => ({
+      role: 'author',
+      workplaceRef: { processRunId: 1 },
+      members: [{
+        productRef: {
+          schemaId: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+          ref: 'managed-node-submission:9',
+          digest,
+        },
+      }],
+    }),
+  };
+  const git = {
+    read(_path, args) {
+      if (args[0] === 'merge-base') return HEX40;
+      if (args[0] === 'diff') return changedFiles.join('\n');
+      return null;
+    },
+  };
+  return createDevelopmentImplementationScopeCheckProvider({ db, candidateSets, git });
+}
+
+function runScopeProvider(provider) {
+  const result = provider.run({
+    subjectCandidateSetRef: 'candidate-set/matrix',
+    parameters: { processRunId: 1 },
+  });
+  return typeof result === 'string' ? { outcome: result, evidenceRefs: [] } : result;
+}
+
+test(`space E — E7 silent surrender: a card whose criteria require an artefact it stopped touching is ACCEPTED (finding E-F4, honest current behavior)`, () => {
+  // Attempt 1 — the fence fires, exactly as it did live at 11:44:26: the
+  // work genuinely needs zzz/shared.config, the carve forbids it, the
+  // teaching suffix tells the worker the lawful exit.
+  const fenced = runScopeProvider(implementationScopeHarness({
+    changedFiles: ['aaa/thing', 'zzz/shared.config'],
+  }));
+  assert.equal(fenced.outcome, 'failed', 'the fence must fire on the out-of-scope need');
+  const fenceDiagnostic = decodeCheckDiagnostic(fenced.evidenceRefs[0]);
+  assert.equal(fenceDiagnostic.code, 'path-outside-authority');
+  assert.match(fenceDiagnostic.message, /zzz\/shared\.config/);
+  assert.match(fenceDiagnostic.message, /scope-insufficient/,
+    'the lawful exit is taught in the rejection itself');
+
+  // Attempt 2 — THE SILENT SURRENDER: same card, same pinned criteria, but
+  // the worker simply stops touching zzz/. No declaration, no waiver, no
+  // disposition. The gate passes: its questions are identity, ancestry,
+  // exact-set equality and containment — never coverage of the card's
+  // criteria by what was produced. This is the live 12:01:07 acceptance.
+  const surrendered = runScopeProvider(implementationScopeHarness({
+    changedFiles: ['aaa/thing'],
+  }));
+  assert.equal(surrendered.outcome, 'passed',
+    'honest behavior: the silent surrender passes the implementation gate — finding E-F4');
+
+  // The consumer contract cannot even express the answer: no constraint or
+  // criterion field exists on the implementation result (E-F3's pin, restated
+  // here because the surrender chain runs through it).
+  assert.deepEqual(
+    developmentImplementationPayloadContract.validate({
+      workItemKey: 'imp-1',
+      repository: { baseCommit: HEX40 },
+      snapshot: { commitSha: HEX40, changedFiles: ['aaa/thing'] },
+    }),
+    [],
+    'a constraint-blind implementation result passes its consumer contract',
+  );
+
+  // The reviewer channel cannot ask either: the review-verdict provider's
+  // input vocabulary carries findings and scopes, never the card's
+  // requirement set. Fixing E-F4 on the gate side alone would not close the
+  // acceptance side — the pin below breaks if the reviewer learns the
+  // card's requirements (then revisit the registry).
+  const reviewProvider = src('src/process-modules/application/review-verdict-check-provider.ts');
+  assert.ok(
+    !reviewProvider.includes('coveredConstraintIds') && !reviewProvider.includes('acceptanceCriterionIds'),
+    'the review-verdict provider reads the card constraint/criterion set — E-F4\'s acceptance side changed; update the FINDINGS registry',
+  );
+});
+
 // ── E5 + E6 ─────────────────────────────────────────────────────────────────
 
 test('space E — E5: the findings registry is well-formed and every uncovered boundary is registered', () => {
-  assert.equal(FINDINGS.length, 3);
+  assert.equal(FINDINGS.length, 4);
   for (const finding of FINDINGS) {
     assert.ok(finding.id && finding.boundary && finding.fed && finding.factorySaid && finding.shouldLive && finding.severity,
       `${finding.id} is missing a registry field`);
