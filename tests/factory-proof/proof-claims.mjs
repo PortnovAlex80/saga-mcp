@@ -54,6 +54,11 @@ export const PROOF_CLAIMS = Object.freeze({
     claims: ['kernel self-mutation battery S1-S3 (registry/manifest/operator tamper → red)'],
     notClaimed: [],
   },
+  'tests/factory-proof/k0-baseline.test.mjs': {
+    modes: ['Contract'],
+    claims: ['K0 baseline: composition inventory, normalized authority-trace schema (semantic ignore list), floors + observer non-vacuity'],
+    notClaimed: ['live-trace capture — sample fixtures; live normalization arrives with K4 evidence bundles'],
+  },
   'tests/factory-proof/proof-claims.test.mjs': {
     modes: ['Contract'],
     claims: ['claim-registry closure: every blocking file declares honest modes; summary published'],
