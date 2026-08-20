@@ -1115,6 +1115,19 @@
       "principalProof": "Exact-count ratchet over the four manual admission surfaces plus a single-allowlisted-branch proof; a new admission point cannot appear without a deliberate count change in the same commit",
       "successor": null,
       "notes": "Names the seven atom classes and adopts admission distance (Tier 1 text = 0 kernel edits, Tier 2 qualified providers = 1-2, Tier 3 code = 3-4) as the metric, replacing workshop size and kernel-node count, both of which measured the wrong workshop in the 2026-08-18 audit. Decides NOT to extract a generic abstraction from the three development-private handlers (resolve/freeze/bind) at N=1 per the Controlled Change Plane 8.1 budget rule, and NOT to fix the single behavioural stage-name branch (linkType in sqlite-production-cell-projection-persistence), which is owned by K15/C5. K14 owns the in-core mechanism (its commit train already carries \"compile module definitions into Production Cells\"); the EXTERNAL opening of the boundary is owned by Controlled Change Plane release C12 (Semantic Adapter SDK), whose exit gate already demands a minimal second fixture pack outside the kernel repository. Evidence: docs/research/2026-08-18-kernel-surface-evidence-development-chain.md and docs/research/2026-08-18-ees-admission-judgment.md."
+    },
+    {
+      "adr": "083",
+      "file": "083-readiness-toolchain-package-identity-contract.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K19"
+      ],
+      "evidenceOwner": "K19",
+      "principalProof": "K19 commit train 5 (environment-drift incompatibility tests): same logical tool name with changed implementation digest is incompatible; preparation and certification digests bind one identity on every receipt",
+      "successor": null,
+      "notes": "K19 commit 1 (contract freeze, stage-13). Freezes the DerivedExecutionEnvironment model: derived-not-declared environments (candidate declarations additive only, contradiction fails closed at freeze), tool identity = implementation digest, ADR-077 fingerprint extension keyed toolchainDigests (resume-incompatible on change), certification as an ordinary Production Cell with exact-subject receipts, ephemeral preparation. Commits 2-6 of the train not started; boundary stated inside the ADR."
     }
   ]
 }
