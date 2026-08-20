@@ -21,6 +21,11 @@ One file per space:
   product (4536 cells, <100 ms), every behavior cell annotated reachable /
   reachable-defect / unreachable-defensive, every reachable unhealthy cell
   registered with owner.
+- `b-material-reidentification.test.mjs` — shape S1: for every material
+  kind a seal references (enumerated from the schema and the capsule
+  certification chain), delete + identical re-creation must still resolve.
+  Row-id kinds that break are FINDINGS (B-F1 artifacts, B-F2 trace task
+  targets, B-F3 counts-only errors) — recorded, not fixed.
 - (later spaces land one commit each)
 
 Rules that govern every file here (brief §2): **findings, not fixes** — a
