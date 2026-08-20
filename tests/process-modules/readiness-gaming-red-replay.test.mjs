@@ -275,9 +275,16 @@ test('RED replay: the golden 7-of-9 gaming manifest cannot pass certification �
   const root = stage11Tree();
   try {
     // -----------------------------------------------------------------
-    // Phase A — step 1 only (fresh store, no receipts): the narrowed
-    // declaration passes the runnability check itself (report-only, by
-    // design) and the coverage gap is decodable evidence naming both files.
+    // Phase A — M1-b STEP 4 (STAGE-14 TASK 2, provider 1.9.0): on fresh
+    // store, no receipts, the narrowed declaration NO LONGER passes the
+    // runnability check itself. The executed set is derived from the sealed
+    // tree (declarations additive-only): the gate extends the declaration's
+    // own runner with the excluded canonical files, they run on the red
+    // bytes, and the check fails on their real output. This phase used to
+    // assert the step-3 honest boundary ('report-only: the narrowed run
+    // passes') — updated in the same commit as the enforcement, with this
+    // reason. The deeper negative tests live in
+    // tests/infrastructure/local-runnability-derived-canonical.test.mjs.
     // -----------------------------------------------------------------
     {
       const db = fullSchemaDb(root);
@@ -289,13 +296,13 @@ test('RED replay: the golden 7-of-9 gaming manifest cannot pass certification �
         subjectCandidateSetRef: reader.subjectRef,
         parameters: {}, environmentRef: null, candidateSnapshot: {},
       }));
-      assert.equal(result.outcome, 'passed',
-        'M2-2 is report-only: on never-before-checked bytes the narrowed run passes the check itself');
+      assert.equal(result.outcome, 'failed',
+        'M1-b step 4: on never-before-checked bytes the narrowed declaration already fails — the excluded canonical files run');
       const coverage = result.evidenceRefs
         .map(decodeCheckDiagnostic)
         .find(diag => diag?.code === 'readiness-test-coverage');
       assert.ok(coverage, 'the coverage report must ride the gaming outcome');
-      assert.match(coverage.message, /executed 7 of 9/u);
+      assert.match(coverage.message, /gate DERIVED the executed command from the sealed tree/u);
       assert.match(coverage.message, /tests\/renderer\.test\.js/u);
       assert.match(coverage.message, /tests\/websocket-server\.test\.js/u);
       db.close();

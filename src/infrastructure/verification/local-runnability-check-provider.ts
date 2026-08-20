@@ -39,6 +39,7 @@ import {
   isTestFilePath,
   normalizeTestPath,
   resolveDeclaredTestSurface,
+  withTestFilesExtendedTo,
 } from '../../modules/development/domain/readiness-test-surface.js';
 import {
   runServedProcess,
@@ -419,9 +420,10 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // verification step and typed seam repair-issue emission; 1.7 the M2-2
     // ADDITIVE test-coverage report. 1.8 adds the D1 sourceCandidate-keyed
     // receipt binding (evidence append + bytes-keyed replay/conflict lookup).
+    // 1.9 the M1-b derived-canonical executed set (declarations additive-only).
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -768,7 +770,31 @@ function runLocalReadiness(
     // through the SAME sealed package.json, never the declaration's word).
     // Purely additive evidence: it never influences the outcome below.
     coverage = computeTestCoverageReport(directory, profile);
-    // Phase-1 dockerization — select the execution substrate from the profile.
+    // M1-b (step 4) — DERIVED-CANONICAL ENFORCEMENT. The executed check set
+    // is derived from the order (the sealed tree); the candidate's
+    // declaration is ADDITIVE ONLY — it may add test files, never remove or
+    // replace the canonical ones. When a resolvable declaration falls short
+    // of the canonical universe, the gate derives the executed command by
+    // extending the declaration's own runner and flags with the missing
+    // canonical files (token surgery, readiness-test-surface): the excluded
+    // files RUN, so excluding exactly the red ones can no longer pass.
+    // Unresolved-opaque declarations remain report-only (the M2-2 boundary,
+    // unchanged) — the report still names the universe they never touched.
+    const enforced = enforceDerivedCanonicalTestSet({
+      profile,
+      canonicalFiles: (coverage.observation.canonicalTestFiles as string[]) ?? [],
+      sealedPackageJsonTestScript: readSealedPackageJsonTestScript(directory),
+    });
+    if (enforced.status === 'gate-derived') {
+      coverage.observation.derivation = {
+        status: 'gate-derived-canonical-set',
+        executedTestCommand: enforced.testCommand,
+        addedCanonicalFiles: [...enforced.addedFiles],
+      };
+      coverage.message += '; the gate DERIVED the executed command from the sealed tree, adding: '
+        + enforced.addedFiles.join(', ');
+    }
+    const effectiveTestCommand = enforced.testCommand;
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
     // (host or docker). When the profile declares environment.image, the docker
     // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
@@ -799,10 +825,13 @@ function runLocalReadiness(
       step('profile-install');
     }
     // Test (deterministic, from the profile) — the runnability authority.
+    // M1-b: when the declaration fell short of the canonical set, the
+    // EXECUTED command is the gate-derived one (same runner, canonical files
+    // included); otherwise it is the declared command verbatim.
     seam.seamKind = 'test-command';
     seam.phase = 'profile-test';
-    seam.command = profile.commands.testCommand;
-    executor.runCommand(profile.commands.testCommand, 600_000);
+    seam.command = effectiveTestCommand;
+    executor.runCommand(effectiveTestCommand, 600_000);
     step('profile-test');
     // Additive substrate evidence (free in the digest).
     const desc = executor.describe();
@@ -1522,6 +1551,72 @@ function computeTestCoverageReport(
         ? notExecuted.join(', ')
         : '(none)');
   return { observation, message };
+}
+
+/**
+ * M1-b (step 4) — decide the EXECUTED test command under the
+ * derived-canonical rule. Returns the honored declared command when the
+ * declaration covers the canonical universe (or the universe is empty, or
+ * the declaration is honestly opaque — the unchanged report-only boundary);
+ * otherwise the gate-derived command (the declaration's own runner and
+ * flags, extended with the canonical files it omitted). For an npm-style
+ * declaration the shortfall is measured against the SEALED package.json
+ * script's surface, and the derived command is rebuilt from that sealed
+ * script (derived from the artefact, not the declaration's word).
+ */
+function enforceDerivedCanonicalTestSet(input: {
+  readonly profile: ReadinessProfile;
+  readonly canonicalFiles: readonly string[];
+  readonly sealedPackageJsonTestScript: string | null;
+}): {
+  readonly status: 'honored' | 'gate-derived';
+  readonly testCommand: string;
+  readonly addedFiles: readonly string[];
+} {
+  const declaredCommand = input.profile.commands.testCommand;
+  if (input.canonicalFiles.length === 0) {
+    return { status: 'honored', testCommand: declaredCommand, addedFiles: [] };
+  }
+  const declared = resolveDeclaredTestSurface({
+    testCommand: declaredCommand,
+    sealedPackageJsonTestScript: input.sealedPackageJsonTestScript,
+  });
+  if (declared.status === 'unresolved-opaque') {
+    return { status: 'honored', testCommand: declaredCommand, addedFiles: [] };
+  }
+  if (declared.status === 'declaration-enumerated') {
+    const missing = input.canonicalFiles.filter(file => !declared.files!.includes(file));
+    if (missing.length === 0) {
+      return { status: 'honored', testCommand: declaredCommand, addedFiles: [] };
+    }
+    const derived = withTestFilesExtendedTo({
+      command: declaredCommand,
+      targetFiles: [...new Set([...declared.files!, ...input.canonicalFiles])],
+    });
+    return { status: 'gate-derived', testCommand: derived.command, addedFiles: derived.addedFiles };
+  }
+  // whole-tests-directory / resolved-via-sealed-package-json: the executed
+  // surface is the sealed script's (or the tests/ tree's); measure there and
+  // derive over the SEALED script's own tokens.
+  const scriptCommand = input.sealedPackageJsonTestScript ?? declaredCommand;
+  const scriptSurface = resolveDeclaredTestSurface({
+    testCommand: scriptCommand,
+    sealedPackageJsonTestScript: null,
+  });
+  const scriptFiles = scriptSurface.status === 'declaration-enumerated'
+    ? scriptSurface.files!
+    : null;
+  const missing = scriptFiles === null
+    ? []
+    : input.canonicalFiles.filter(file => !scriptFiles.includes(file));
+  if (missing.length === 0) {
+    return { status: 'honored', testCommand: declaredCommand, addedFiles: [] };
+  }
+  const derived = withTestFilesExtendedTo({
+    command: scriptCommand,
+    targetFiles: [...new Set([...(scriptFiles ?? []), ...input.canonicalFiles])],
+  });
+  return { status: 'gate-derived', testCommand: derived.command, addedFiles: derived.addedFiles };
 }
 
 /** Test-suffixed files under the sealed tree's tests/ directory (recursive). */

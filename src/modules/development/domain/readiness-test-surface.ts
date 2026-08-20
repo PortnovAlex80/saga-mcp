@@ -133,3 +133,30 @@ export function resolveDeclaredTestSurface(input: {
   }
   return { status: 'unresolved-opaque', files: null };
 }
+
+/**
+ * CERTIFICATION-GAMING-REMEDY M1-b (step 4) — the additive-command surgery.
+ *
+ * The executed check set is DERIVED from the sealed tree; a declaration may
+ * ADD test files, never remove or replace the canonical ones. Given a command
+ * whose enumerated test-file surface falls short of the required set, rebuild
+ * it: keep the runner program and every non-file token (flags) verbatim,
+ * replace the enumerated file tokens with `targetFiles` (the union of the
+ * declared and canonical files), and append what was missing. When the
+ * command enumerates no files itself (directory-shaped), `targetFiles` is
+ * appended as-is. Pure string surgery — the declared runner and flags are
+ * never invented or swapped.
+ */
+export function withTestFilesExtendedTo(input: {
+  readonly command: string;
+  readonly targetFiles: readonly string[];
+}): { readonly command: string; readonly addedFiles: readonly string[] } {
+  const tokens = input.command.trim().split(/\s+/u);
+  const enumerated = new Set(extractTestFileTokens(input.command));
+  const target = [...new Set(input.targetFiles.map(normalizeTestPath))].sort();
+  const survivorTokens = tokens.filter(token => !enumerated.has(normalizeTestPath(token)));
+  const before = new Set(enumerated);
+  const addedFiles = target.filter(file => !before.has(file));
+  const rebuilt = [...survivorTokens, ...target].join(' ');
+  return { command: rebuilt, addedFiles };
+}

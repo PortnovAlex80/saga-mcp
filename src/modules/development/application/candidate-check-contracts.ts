@@ -29,14 +29,20 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // can neither travel to a different candidate nor be escaped by sealing a new
 // manifest over the same bytes. Outcome semantics per run are unchanged; the
 // digest bump re-checks every prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.8.0';
+// 1.9.0 — M1-b (step 4): the executed check set is DERIVED from the order.
+// A test-command declaration that enumerates files may no longer exclude the
+// canonical ones: the gate extends the declaration's own runner and flags
+// with the missing sealed-tree files (declarations are additive-only;
+// narrowing executes the excluded files anyway and fails honestly).
+// Unresolved-opaque declarations keep the M2-2 report-only boundary.
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.9.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
   invariant:
     'exact-frozen-tree-prepared-oci-environment-isolated-test-and-serve-loopback-clean-shutdown-compose-typed-seam-repair-issues',
   commandPolicy:
-    'verbatim-profile-commands-on-isolated-host-or-one-prepared-worker-declared-oci-environment-loopback-only',
+    'canonical-test-set-derived-from-sealed-tree-declarations-additive-only-verbatim-runner-and-flags-on-isolated-host-or-one-prepared-worker-declared-oci-environment-loopback-only',
   composePolicy:
     'declared-compose-config-validated-always-bounded-up-wait-then-down-fail-closed',
   seamIssuePolicy:

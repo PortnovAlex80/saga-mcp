@@ -212,12 +212,16 @@ function coverageDiagnostic(result) {
   return null;
 }
 
-test('M2-2: the 7-of-9 gaming passes the check but the coverage report names both unexecuted files', { timeout: 120000 }, async () => {
+test('M2-2 (updated by M1-b step 4): the 7-of-9 gaming no longer passes — the report names both files AND the gate derives the canonical set', { timeout: 120000 }, async () => {
   // THE empirical shape: two red test files exist in the sealed tree; the
   // declaration enumerates exactly the 7 green ones (verbatim golden v1.2
-  // testCommand). Report-only: the outcome stays 'passed' — M2-2 never
-  // enforces — but the evidence now carries an X-of-Y report naming the two
-  // excluded files. This alone would have made the stage-11 gaming visible.
+  // testCommand). M2-2 (1.7.0) kept this passing with an X-of-Y report.
+  // M1-b STEP 4 (1.9.0, STAGE-14 TASK 2) changed the semantics ON PURPOSE:
+  // the executed set is derived from the order, the declaration is
+  // additive-only, so the excluded canonical files now RUN — the outcome is
+  // 'failed' on their real output. This assertion was updated in the same
+  // commit as the enforcement, with this reason; the deeper negative tests
+  // live in local-runnability-derived-canonical.test.mjs.
   const root = stage11Fixture({ twoRed: true });
   const db = minimalDb(root, '5'.repeat(64), {
     kind: 'static',
@@ -227,13 +231,13 @@ test('M2-2: the 7-of-9 gaming passes the check but the coverage report names bot
     const result = await withScrubbedTestContext(() => createLocalRunnabilityCheckProvider({
       db, candidateSets: readerFor('5'.repeat(64)),
     }).run(RUN_ARGS));
-    assert.equal(result.outcome, 'passed',
-      'M2-2 is report-only: the narrowed run itself still passes (enforcement is later rollout steps)');
+    assert.equal(result.outcome, 'failed',
+      'M1-b step 4: a declaration excluding exactly the red canonical files must not pass');
     const coverage = coverageDiagnostic(result);
     assert.ok(coverage, 'a decodable readiness-test-coverage diagnostic must ride the evidence');
-    assert.match(coverage.message, /executed 7 of 9/u);
     assert.match(coverage.message, /tests\/renderer\.test\.js/u);
     assert.match(coverage.message, /tests\/websocket-server\.test\.js/u);
+    assert.match(coverage.message, /gate DERIVED the executed command from the sealed tree/u);
   } finally {
     db.close();
     rmSync(root, { recursive: true, force: true });
