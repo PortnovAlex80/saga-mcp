@@ -80,6 +80,30 @@ re-derive it.
 
 ---
 
+## 1a. Axis coverage — read `docs/architecture/FAILURE-AXES.md` first
+
+Six spaces is not the same as complete. The axis map derives eight kinds of wrong
+this system can be, from its structure rather than its bug history. These spaces
+cover three of them and half of a fourth.
+
+**Two consequences you must act on:**
+
+- [ ] **SPACE A IS SAFETY-ONLY AND WOULD NOT HAVE CAUGHT STAGE-12.** Every state
+      in that deadlock was individually healthy — a live owner, a runnable
+      command, a legitimate new epoch — and the factory walked from healthy state
+      to healthy state 106 times without terminating. Safety is not liveness.
+      Add to Space A: identify a candidate **well-founded measure** (a quantity
+      that strictly decreases and cannot decrease forever) and assert it
+      decreases across every lawful transition. Candidates: unresolved-obligation
+      count, distance-to-terminal, size of the contested constraint set. **If no
+      measure exists, say so — that is the most important finding this stage can
+      produce.**
+- [ ] **Report which axes your spaces do not touch.** Containment, concurrency,
+      durability and world-model fidelity are out of scope here; naming them in
+      the report keeps the next enumeration from starting one axis short again.
+
+---
+
 ### SPACE A — progress space (exhaustive forward sweep)
 
 **Question:** is there any reachable state in which a workplace neither
