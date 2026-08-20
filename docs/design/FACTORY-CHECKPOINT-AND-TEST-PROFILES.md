@@ -36,7 +36,7 @@
 Агент сначала предлагает четыре операторских варианта: production resume,
 новый production-заказ по HTTPS idea URL, `checkpoint_replay` без LLM и
 `test-warm-start` с реальной LLM. Готовый текст вопроса и список обязательных
-параметров находятся в `ЗАВОД-ЗАПУСК.md` §1 и `skills/saga-start/SKILL.md`.
+параметров находятся в `ЗАВОД-ЗАПУСК.md` §2 и `skills/saga-start/SKILL.md`.
 
 Это четыре варианта выбора для оператора, но три execution-профиля ниже:
 production resume и новый production-заказ оба работают в профиле `live`.

@@ -585,3 +585,18 @@ first; any E9-reserve code is escalate-never-delete.
     **the conditional E9 recycle phase is CANCELLED** (its precondition was
     a successful run). TASK 3 hygiene + TASK 5 E2 note remain valid and
     proceed in the morning gap.
+- **08:4x (main)** — TASK 3 DONE per the brief: four operator incident
+  scripts MOVED (not deleted) to `tools/incident/` with one-line purpose
+  headers; `docs/factory-run/stage11/INDEX.md` created (current =
+  ARCHITECT-HANDOVER-DRAFT; nothing deleted); oversized functions in
+  night-touched files NAMED (shim main 176; projection-persistence 292 +
+  201; runLocalReadiness 194) — not refactored, per the brief.
+- **08:5x (main)** — TASK 5 DONE: `docs/architecture/E2-MIGRATION-NOTE.md`
+  (one page: artifact side is the whole delta; freeze→inventory→re-derive→
+  bless→verify ceremony; breakage-without-ceremony modes; E2 as its own
+  stage).
+- **09:00 (main)** — PHASE 9: `docs/factory-run/stage12/ARCHITECT-NIGHT-
+  REPORT.md` written per the brief's report format (Tasks 1–6 + not-
+  finished list). NIGHT SHIFT COMPLETE. Handoff to morning: architect reads
+  the night report + arbitrates the two run defects; operator decides the
+  engine's fate (left running under its own caps, no process touches).
