@@ -61,4 +61,21 @@ resume path re-stamps the catalog limit).
 
 ## Log (append-only, newest last)
 
-_(to be filled at launch)_
+- **20:51:50Z (23:51 local) — LAUNCHED.** Pre-flight: HEAD `c5f7f7aa`, build
+  exit 0 (dist 23:51), full suite green (0 fail after the post-merge repair
+  commit `c5f7f7aa`), fresh `elite-db/`+`elite/`+`elite-logs/`; settings sha
+  anchored `2d6176e8…` (unchanged since stage-19). Engine detached pid 54812,
+  launch `launch-f079ed95-6a85-4a48-bb3c-f2cfe3090217`, log
+  `saga-engine-1-2026-08-20T20-51-50.040Z.log`, worker-backend marker
+  `agent-proxy`. Model glm-4.6; controls raised to concurrency 4 /
+  model_concurrency_limit 4 immediately after start (catalog limit 2 — the
+  operator's ratelimit-4 directive; re-apply after any resume, which
+  re-stamps the catalog value). Pre-launch snapshot
+  `snapshot-pre-launch-*.sqlite` taken. Watchdog live (60 s samples,
+  45-min stagnation, 12-h max, settings tripwire).
+- **+75 s — route + first card verified.** opencode.exe pid 33636 spawned at
+  +2 s: `opencode run --model zai-coding-plan/glm-4.6 --dir …elite\product`
+  (agent-proxy shim → opencode → zai coding plan). Task 1 `discovery.work`
+  claimed at `workplace/1/product-discovery@3.0.2/discovery-proposal`,
+  in_progress; engine cycling paused@initial-discovery with 1 durable active
+  execution, supervision sweeps clean (reaped=0).
