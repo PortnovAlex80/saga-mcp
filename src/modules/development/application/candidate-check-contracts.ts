@@ -35,7 +35,16 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // with the missing sealed-tree files (declarations are additive-only;
 // narrowing executes the excluded files anyway and fails honestly).
 // Unresolved-opaque declarations keep the M2-2 report-only boundary.
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.9.0';
+// 1.10.0 — K19 (ADR-083 §2.1/2.2, train commits 2-3 core): the DERIVED
+// EXECUTION ENVIRONMENT. The environment identity is derived from the exact
+// sealed artefact (import scan vs manifests vs declared install); the
+// declaration is additive, never definitive. An undeclared import is caught
+// BY DERIVATION before any spawn: the install command is augmented with the
+// missing packages (same runner), or the check fails closed with a typed
+// ENVIRONMENT_DERIVATION_UNDECLARED_NEED when there is no install to
+// augment. environmentDigest rides every outcome — preparation and
+// certification hold one immutable identity.
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.10.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,

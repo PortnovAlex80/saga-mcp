@@ -140,18 +140,23 @@ content-addressed artifacts.
 | # | Commit | Builds | Status |
 |---|---|---|---|
 | 1 | `docs(architecture): freeze capability and readiness fingerprint contract` | THIS ADR | **landed** |
-| 2 | `refactor(readiness): isolate Python readiness in ephemeral environments` | §2.7 | not started |
-| 3 | `refactor(environment): prepare one exact OCI environment per pinned package` | §2.1/2.2/2.3 | not started |
+| 2 | `refactor(readiness): isolate readiness in ephemeral environments` | §2.7 | **core landed (stage-14)** — per-attempt isolation already held (temp-dir extraction + disposable venv per check, no shared mutable state); stage-14 added the derivation core below. The full ephemeral-OCI substrate matrix remains open. |
+| 3 | `refactor(environment): one exact environment per pinned package, digests persisted` | §2.1/2.2/2.3 | **core landed (stage-14)** — `environment-derivation.ts`: the environment is DERIVED from the sealed artefact (import scan vs manifests vs declared install), the declaration is additive (install augmented with the gap, same runner), undeclared needs with no install to augment fail closed typed (`ENVIRONMENT_DERIVATION_UNDECLARED_NEED`) BEFORE any spawn, and `environmentDigest` rides every outcome as a decodable diagnostic (preparation and certification hold one identity). NOT done: per-package OCI image/dependency digest persistence in the package store, and the ADR-077 fingerprint's keyed `toolchainDigests` component. |
 | 4 | `refactor(certification): make post-integration readiness a Production Cell` | §2.6 | not started |
-| 5 | `test(readiness): prove environment drift invalidates compatibility` | §2.3/2.4 | not started |
+| 5 | `test(readiness): prove environment drift invalidates compatibility` | §2.3/2.4 | partial — the domain-free GDesign negative (derivation catches the undeclared import pre-spawn) landed with the stage-14 core; image/digest drift invalidation not started |
 | 6 | `docs(core): close readiness ADR cohort` | registry closure | not started |
 
 Release-discipline budget (plan §3): ≤ 25 production files, ≤ 6 per commit,
 ≤ 1 schema migration family — applies to the train as a whole.
 
-## 5. Boundary statement (stage-13 TASK 3)
+## 5. Boundary statement (stage-13 TASK 3, updated by stage-14 TASK 1)
 
-Stage 13 executes the train IN ORDER and stops at a clean boundary. This
-ADR is commit 1 and a clean boundary: the contract is frozen, extends the
-accepted ADR-077 rule, and nothing downstream (commits 2–6) has been
-started or is claimed. A fraction is not presented as the whole.
+Stage 13 executed the train in order and stopped at commit 1. Stage 14
+landed the CORE of commits 2–3 (derivation, additive declarations,
+fail-closed undeclared needs, the one identity riding every outcome — see
+the table above for exactly what that core includes and what it does not).
+Commits 4–6 are not started; the OCI digest-persistence surface of commit 3
+and the ADR-077 `toolchainDigests` extension remain open. A fraction is not
+presented as the whole: the negative test that decides the core
+(the domain-free GDesign reproduction — `orbital-mechanics`, an invented
+package, no Python, no pyyaml) passes, and everything not done is named.

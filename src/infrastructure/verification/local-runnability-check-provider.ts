@@ -54,6 +54,10 @@ import {
 } from './readiness-executor.js';
 import { DockerReadinessExecutor } from './docker-readiness-executor.js';
 import {
+  augmentInstallCommand,
+  deriveExecutionEnvironment,
+} from './environment-derivation.js';
+import {
   CliComposeRunner,
   composeModeFromEnvironment,
   DEFAULT_COMPOSE_UP_TIMEOUT_MS,
@@ -423,7 +427,7 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // 1.9 the M1-b derived-canonical executed set (declarations additive-only).
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -714,6 +718,8 @@ function runLocalReadiness(
   // testCommand runs. Computed as soon as the profile validates; rides BOTH
   // passed and failed outcomes.
   let coverage: { observation: Record<string, unknown>; message: string } | null = null;
+  // K19 — the derived-environment message, set inside try, read by catch.
+  let finalEnvironmentMessage: string | undefined;
   // SEAM-ARCHITECT Layer 2 (b) — which seam is being verified RIGHT NOW. On
   // failure this tracker (not a boolean) determines the typed SeamRepairIssue:
   // seamKind by phase, localization (phase/command/substrate), owner resolved
@@ -795,6 +801,63 @@ function runLocalReadiness(
         + enforced.addedFiles.join(', ');
     }
     const effectiveTestCommand = enforced.testCommand;
+    // K19 (ADR-083 §2.1/2.2, train commits 2–3 core) — the DERIVED EXECUTION
+    // ENVIRONMENT. The environment is derived from the exact sealed tree
+    // (what the artefact imports vs what the manifests and the declared
+    // install provide); the declaration is additive, never definitive. An
+    // undeclared import — the GDesign class (imported, not declared, the
+    // worker's polluted environment hid it until the sterile container
+    // caught it by luck) — is caught BY DERIVATION, before any spawn:
+    // augments the install with the missing packages, or fails closed with
+    // a typed diagnostic when there is no install to augment. The derived
+    // identity (environmentDigest) rides every outcome — preparation and
+    // certification hold one immutable object.
+    const environment = deriveExecutionEnvironment({
+      directory,
+      installCommand: profile.commands.installCommand,
+    });
+    const environmentObservation: Record<string, unknown> = {
+      environmentDigest: environment.environmentDigest,
+      ...(environment.undeclaredImports.length > 0
+        ? { undeclaredImports: [...environment.undeclaredImports] }
+        : {}),
+    };
+    const environmentMessage = 'derived environment ' + environment.environmentDigest.slice(0, 16)
+      + (environment.undeclaredImports.length > 0
+        ? '; undeclared import(s) the derived environment must provide: '
+          + environment.undeclaredImports.join(', ')
+        : '; declared environment covers the sealed artefact');
+    let effectiveInstallCommand = profile.commands.installCommand;
+    if (environment.undeclaredImports.length > 0) {
+      if (profile.commands.installCommand === null) {
+        return evidence('failed', subject, {
+          reason:
+            'ENVIRONMENT_DERIVATION_UNDECLARED_NEED: the sealed artefact imports package(s) '
+            + environment.undeclaredImports.join(', ')
+            + ' that no sealed manifest declares and the readiness profile states NO install '
+            + 'command to augment — the derived environment cannot be prepared. Declared by '
+            + 'derivation from the sealed tree, before any execution.',
+          ...(coverage ? { testCoverage: coverage.observation } : {}),
+          ...environmentObservation,
+        }, 'ENVIRONMENT_DERIVATION_UNDECLARED_NEED', buildSeamIssue(db, {
+          seamKind: 'install-command',
+          phase: 'environment-derivation',
+          substrate: 'host',
+          command: undefined,
+          fileHints: [],
+          summary: `undeclared import(s) ${environment.undeclaredImports.join(', ')}; no install command to augment`,
+        }, subject, subjectCandidateSetRef), coverage?.message, environmentMessage);
+      }
+      effectiveInstallCommand = augmentInstallCommand(
+        profile.commands.installCommand,
+        environment.undeclaredImports,
+      );
+      environmentObservation.derivedInstallCommand = effectiveInstallCommand;
+    }
+    finalEnvironmentMessage = environmentMessage
+      + (environmentObservation.derivedInstallCommand !== undefined
+        ? '; install augmented to: ' + String(environmentObservation.derivedInstallCommand)
+        : '');
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
     // (host or docker). When the profile declares environment.image, the docker
     // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
@@ -815,12 +878,12 @@ function runLocalReadiness(
     // image; host uses its disposable tree/venv. prepare runs even when the
     // profile states NO install command: the docker executor's prepare(null)
     // still builds the prepared image (substrate preparation is not optional).
-    if (profile.commands.installCommand !== null) {
+    if (effectiveInstallCommand !== null) {
       seam.seamKind = 'install-command';
       seam.phase = 'profile-install';
-      seam.command = profile.commands.installCommand;
+      seam.command = effectiveInstallCommand;
     }
-    executor.prepare(profile.commands.installCommand, 240_000);
+    executor.prepare(effectiveInstallCommand, 240_000);
     if (profile.commands.installCommand !== null) {
       step('profile-install');
     }
@@ -872,7 +935,7 @@ function runLocalReadiness(
         ...serveEvidence,
         ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
         ...(coverage ? { testCoverage: coverage.observation } : {}),
-      }, undefined, undefined, coverage?.message);
+      }, undefined, undefined, coverage?.message, finalEnvironmentMessage);
     }
     const composeObservation = runDeclaredCompose(
       directory, profile, composeRunner, seam,
@@ -886,7 +949,7 @@ function runLocalReadiness(
       ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
       ...(coverage ? { testCoverage: coverage.observation } : {}),
       note: 'runnability proven by the profile-stated install/test commands',
-    }, undefined, undefined, coverage?.message);
+    }, undefined, undefined, coverage?.message, finalEnvironmentMessage);
   } catch (error) {
     // A ReadinessExecutionError carries a specific diagnostic code (e.g.
     // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) that the evidence function encodes
@@ -913,6 +976,7 @@ function runLocalReadiness(
         summary: errorMessage(error).slice(0, 2000),
       }, subject, subjectCandidateSetRef),
       coverage?.message,
+      finalEnvironmentMessage,
     );
   } finally {
     // Release substrate resources (docker volumes) before removing the temp
@@ -1678,6 +1742,7 @@ function evidence(
   diagnosticCode?: string,
   seamIssue?: SeamRepairIssue,
   coverageMessage?: string,
+  environmentMessage?: string,
 ): CheckProviderResult {
   const digest = sha256Hex({
     providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
@@ -1718,6 +1783,15 @@ function evidence(
     evidenceRefs.push(encodeCheckDiagnostic({
       code: 'readiness-test-coverage',
       message: coverageMessage,
+    }));
+  }
+  // K19 — the derived-environment identity rides every outcome as a
+  // DECODABLE diagnostic: the immutable object preparation and certification
+  // share, and the derivation gap when one exists.
+  if (environmentMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'environment-derivation',
+      message: environmentMessage,
     }));
   }
   return { outcome, evidenceRefs };
