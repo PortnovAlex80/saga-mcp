@@ -11,6 +11,14 @@ Stage 16. The thesis (`docs/handoff/STAGE-16-AGENT-BRIEF.md` §0.1):
 | S2 | Self-declaration narrowing — the candidate declares less than canonical | `testCommand` 7-of-9 files; install omitting an imported package |
 | S3 | Cross-authority contradiction — two factory-issued constraints unsatisfiable on one card | AC requires an artefact class; scopes forbid its path |
 | S4 | Constraint loss across restatement — upstream requirement absent downstream, no disposition | order constraints absent from every AC |
+| S5 | Authority delivery failure — the factory computes a constraint correctly and never delivers it to the actor bound by it | the stage-15 widening grant: the fence, classifier and ledger all decided rightly; the re-staffed worker was never told (W-F1) |
+
+**Two axes.** S1–S4 (spaces A–E) are the DECISION axis — does a gate decide
+correctly? S5 (space F) is the DELIVERY axis — does the decided authority
+reach the actor BEFORE the action? The stage-11 blindsight census named the
+delivery axis verbatim ("the factory writes the right information and fails
+to deliver it to the point of decision") and it still took a live defect to
+carry it into the matrix.
 
 Plus the progress space (CONVEYOR §23): is there any reachable state that
 neither progresses nor fails closed?
@@ -63,3 +71,15 @@ gap is recorded with file and line and left alone; **domain-free fixtures**
 — every assertion has been seen RED (break mechanism → RED → restore →
 GREEN; the RED message is quoted verbatim in the stage report); **no real
 LLM**; **speed is a feature** — thousands of traversals per minute.
+
+- `f-authority-delivery.test.mjs` — shape S5, the DELIVERY axis: for every
+  authority the factory computes, does the actor bound by it receive it
+  BEFORE acting? Delivered (the blindsight fixes): recovery memory,
+  previous-attempt patch, runtime tool enforcement. Not delivered
+  (findings): changeScopes VALUES (the checklist names the constraint and
+  teaches the exit but prints no values — F-α1), effective scopes after a
+  widening grant (F-α2 = W-F1), the check plan (hand-transcribed into the
+  checklist — F-α3), the recovery budget (F-α4). The negative that
+  anchors the space: a rejection message is not a delivery channel — if
+  the only way to learn a constraint is to violate it, that is a finding
+  regardless of whether the run converges.
