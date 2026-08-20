@@ -68,3 +68,37 @@ _(to be filled at launch)_
   (task 26, development-plan-task-graph) claimed and RUNNING — the fresh
   graph is being carved from the capsule. Watchdog live (60 s samples,
   45-min stagnation, 12-h max). No mid-run repairs; escalate, never decide.
+
+## TERMINAL — 2026-08-20T18:28:05Z (21:28 local) — NATURAL, SELF-TERMINATED
+
+**Duration: 1 h 58 min** from launch (16:30:27Z) to engine self-exit.
+
+- **Journal seals it**: `run.terminal {outcome: completed, final_stage:
+  solution-development, error: null}` → `engine.exit {code: 0, reason:
+  'completed'}`. The factory terminated ITSELF — the stage-15 question 2
+  (can it?) is answered YES on the rebuilt factory.
+- **Label truthfulness** (stage-15 question 3, verified from the DB, not the
+  label): lifecycle 2 `completed`, `terminal_status='runnable-local'`;
+  stage run solution-development **completed / local_outcome='verified'**;
+  process run 4 completed 'verified'; **all 24 cards (26–49) done**;
+  18 workplaces `loop_state='terminal', terminal_reason='accepted'` (zero
+  non-terminal); dev branch carries the actual integrated build on top of
+  the 224dc22 base (task integrations #27/#28/#32 + modules + AC-8 docking
+  tests). The 'verified' outcome is backed by 10/10 verification cards done.
+- **The stage-18 repairs stood in their production path**: no silent
+  narrowing (R2 armed), no misattributed integration loop (R3 armed — the
+  planner's two client-side schema rejections came back with readable
+  recipes and the worker converged on the first attempt), authority delivery
+  live (R1; the planner card correctly carried no scopes — no
+  implementation-card widening occurred this run, so no
+  authority.grant_delivered event was required).
+- Cosmetic residue: worker_executions row for task 49 (the final
+  verification worker, card done) still reads 'running' — the engine exited
+  without terminal-marking that one row; a bookkeeping residue, not a live
+  process (engine.exit code 0).
+- Post-terminal snapshot `factory-snapshots/` (db 7995392 bytes, integrity
+  ok, journal 718 lines, missed 0). Watchdog stopped; observation cron
+  removed.
+
+**Stage-19 disposition: SUCCESS by its own pre-declared criterion — a
+natural terminal state with a truthful label.**
