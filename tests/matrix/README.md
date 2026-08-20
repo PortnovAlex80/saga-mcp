@@ -38,6 +38,16 @@ One file per space:
   six declared-taken surfaces are findings (F-C1 readiness.kind — serve
   verification removable by declaration; F-C2 compose opt-in; F-C3..F-C6)
   — recorded, not fixed.
+- `d-authority-contradiction.test.mjs` — shape S3: the 26-pair matrix over
+  the 14 constraints enforced on the development cards; every
+  contradiction pair carries a satisfiability proof or a lawful
+  transition, driven through the REAL fence/desk/ledger/review/ratchet
+  providers (including the live widening round-trip: fence rejects →
+  ledger grants rev 1 → the same byte-identical submission passes).
+  Findings: d-1 (ADR-062 deferral reads the original carve, not the
+  widened authority), d-3 (shared-path serialization — the stage-15 cost,
+  by design), d-2 (desk workItemKey equality only at the gate). D7: no
+  permanent refusal of a shared path — both release axes re-grant.
 - (later spaces land one commit each)
 
 Rules that govern every file here (brief §2): **findings, not fixes** — a
