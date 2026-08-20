@@ -102,3 +102,33 @@ _(to be filled at launch)_
 
 **Stage-19 disposition: SUCCESS by its own pre-declared criterion — a
 natural terminal state with a truthful label.**
+
+## AMENDMENT — the terminal label is INTERNALLY true, EXTERNALLY false (2026-08-20, post-audit)
+
+An independent product audit (subagent, ran install/tests/launch in the
+sandbox) falsified the external half of the label:
+
+- **AC-7 (single-command deploy) FAILS**: `npm start`/`build`/`deploy` all
+  exit 2 — `config/tsconfig.json` includes only `src/**/*.ts` while every
+  source is `.js` (TS18003), and no `src/index.js` entry point exists at
+  all; `dist/` is never produced.
+- **AC-9/AC-10 have ZERO tests** (grep across the product's suites), yet
+  their verification cards are `done`.
+- The real, working substance: **198/198 product tests pass** — the physics/
+  docking/collision core (AC-1..AC-6, AC-8) is genuinely implemented and
+  tested.
+
+**Correction of the tracker's own claim**: the sealed entry said "SUCCESS by
+its own pre-declared criterion — natural terminal with a truthful label".
+The natural terminal stands (engine.exit 0, self-terminated). The label's
+INTERNAL truth stands (DB consistent: stages/workplaces/cards/journal). The
+label's EXTERNAL truth does NOT: 'runnable-local' certified a product that
+cannot start. My truthfulness check verified the factory's books against
+each other — not against the world. Matrix space G (world fidelity) is
+exactly this class, and its registry file is parked for stage 17.
+
+**Where the certification leaked** (open question for the next stage): the
+readiness/local-runnability path declared runnable-local without ever
+executing the product's own start command — the graph-test analysis's P0 #2
+(the authorized Delivery happy-path has NEVER been proof-executed) is the
+systemic twin of this live lie.
