@@ -32,6 +32,12 @@ One file per space:
   HIGH findings (E-F1 ungated order extraction, E-F2 the reconciliation
   detector exists but no call site passes the flag, E-F3 no constraint
   echo on implementation cards) assert the honest gaps.
+- `c-declaration-narrowing.test.mjs` — shape S2: all 20 candidate-declared
+  surfaces enumerated from the check providers; the derived ones assert
+  narrowing is blocked (declare less → fail) and additive stays legal; the
+  six declared-taken surfaces are findings (F-C1 readiness.kind — serve
+  verification removable by declaration; F-C2 compose opt-in; F-C3..F-C6)
+  — recorded, not fixed.
 - (later spaces land one commit each)
 
 Rules that govern every file here (brief §2): **findings, not fixes** — a
