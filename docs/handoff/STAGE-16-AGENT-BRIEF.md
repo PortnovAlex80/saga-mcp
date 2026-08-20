@@ -246,6 +246,24 @@ boundary. **The other boundaries are not covered.**
 - [ ] E5. Where loss goes undetected, **do not fix it** — record the boundary as a
       finding.
 - [ ] E6. Report the boundary table: boundary → register present → loss detected.
+- [ ] **E8. Claim-surface monotonicity — the implementable form of E7, and it
+      would have caught both cards.** E7 as written depends on `paths(AC)` being
+      computable, which is break 1 and unbridged: the author gate has no way to
+      know `tsconfig.json` is required, because no criterion names it. **This
+      version needs no semantics at all.**
+      Verified in the stage-15 database — submits for one card, in order:
+      `sub 17 tsconfig:Y`, `sub 18 tsconfig:Y`, `sub 19 tsconfig:Y`,
+      `sub 20 tsconfig:-`. The other card: `sub 14 tsconfig:Y`,
+      `sub 15 tsconfig:-` → accepted → terminal. The narrowing is plainly visible
+      in durable state across consecutive attempts of the same card.
+      **The rule:** a card may not silently narrow its own claimed surface
+      between attempts. Dropping a previously-claimed file is either an explicit
+      disposition or a regression.
+      **The mechanism already exists on another surface:**
+      `development.readiness-profile-monotonicity.v1` forbids the declared
+      verification surface from shrinking. Same shape, second object. Write the
+      test; **do not implement the provider** — that is an architect decision.
+
 - [ ] **E7. Silent surrender — found live in stage 15, and it is the sharpest gap
       in this brief.** A card was blocked by the scope fence at 11:44, and at
       12:01 it passed — not by declaring `scope-insufficient` (the ledger holds
