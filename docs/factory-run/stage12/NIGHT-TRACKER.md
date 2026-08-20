@@ -404,3 +404,6 @@ first; any E9-reserve code is escalate-never-delete.
   report — executed X of Y vs the sealed-tree canonical set). Step agent now
   visibly mid-STEP 2 (monotonicity provider: development-check-providers +
   process-module files in the working tree).
+- **03:0x (cron)** — STEP 2 LANDED: `3d814347` (M1-a monotonicity ratchet +
+  D2 declaration-diff escalation → human_required, never silent retry).
+  Step 3 (sourceCandidate-keyed receipts) next — the last launch gate.
