@@ -82,6 +82,20 @@ const GROUPS = {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
   },
+  'factory-proof': {
+    globs: [
+      'tests/factory-proof/canonical-composition.test.mjs',
+      'tests/factory-proof/import-ratchet.test.mjs',
+      'tests/factory-proof/obligation-compiler.test.mjs',
+      'tests/factory-proof/scenario-actor-observer.test.mjs',
+      'tests/factory-proof/kernel-self-mutations.test.mjs',
+      'tests/factory-proof/w1-1-fabricated-hash.test.mjs',
+      'tests/factory-proof/w1-4-two-lifecycles.test.mjs',
+      'tests/factory-proof/proof-claims.test.mjs',
+      'tests/factory-proof/k0-baseline.test.mjs',
+    ],
+    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) + W1-4 two-lifecycle composition (ADR-078) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof. BLOCKING: no quarantine, no continue-on-error.',
+  },
 };
 
 // --- Quarantine -------------------------------------------------------------

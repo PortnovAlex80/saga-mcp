@@ -51,9 +51,17 @@ test('factory-proof imports no legacy composition surface (canonical adapter onl
   const offenders = [];
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
-    for (const banned of BANNED_REFERENCES) {
-      if (source.includes(banned)) {
-        offenders.push(`${path.relative(PROOF_DIR, file)} → ${banned}`);
+    // Match IMPORT SYNTAX (static or dynamic), not bare substrings: the K0
+    // composition inventory legitimately NAMES the legacy paths as data.
+    const importSpecifiers = [
+      ...[...source.matchAll(/from\s+'([^']+)'/g)].map(m => m[1]),
+      ...[...source.matchAll(/import\(\s*'([^']+)'/g)].map(m => m[1]),
+    ];
+    for (const spec of importSpecifiers) {
+      for (const banned of BANNED_REFERENCES) {
+        if (spec.includes(banned)) {
+          offenders.push(`${path.relative(PROOF_DIR, file)} imports ${spec}`);
+        }
       }
     }
   }

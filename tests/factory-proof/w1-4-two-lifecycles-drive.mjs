@@ -1,0 +1,291 @@
+#!/usr/bin/env node
+// tests/factory-proof/w1-4-two-lifecycles-drive.mjs
+//
+// W1-4 — the ADR-078 two-lifecycle composition proof: TWO Formalization
+// lifecycles on ONE epic, different material each, through the canonical
+// composition (W0-1) and the production driver (requestFreshHarnessLaunch —
+// the production second-launch API, no test-side authority writes).
+//
+//   Run A: the W9 happy handlers — material A (AC-1/AC-2). Driven to its
+//          lifecycle terminal (runnable-local).
+//   Run B: variant handlers — material B (AC-B1/AC-B2/AC-B3, three criteria,
+//          different codes/sections) + an accepted decoy artifact created by
+//          B's OWN product-contract cell (fully traced FR+UC). Run B is
+//          driven until its Formalization stage settles (stopOnStageOutcome).
+//
+// Pinned semantics this drive evidences (ADR-078):
+//
+//   F-1  WITHIN-LIFECYCLE CONSERVATION — the acceptance freeze seals EVERY
+//        accepted AC authored during the lifecycle, including the decoy the
+//        product-contract cell accepted: capsule B = {AC-B1..B3, AC-DECOY},
+//        and the SRS gate then forces §D2 decomposition of all four. No
+//        accepted AC can escape the frozen contract (fail-closed). If the
+//        architect later rules the sweep itself a defect, TIGHTEN this test
+//        to exclude AC-DECOY — never the reverse.
+//   F-2  CROSS-LIFECYCLE ISOLATION — A's AC-1/AC-2 are NOT swept into B's
+//        capsule; A's baseline hash is byte-identical before and after run B.
+
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const REPO_ROOT = process.cwd();
+import { createRequire } from 'node:module';
+globalThis.require = createRequire(import.meta.url);
+const harness = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href);
+const { bootstrapFreshHarness, driveFreshHarness, requestFreshHarnessLaunch } = harness;
+const { HARNESS_CONCURRENCY_CEILING } = await import(
+  pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/run-manifest.js')).href
+);
+const { buildCanonicalProofComposition, createScriptedObserver } = await import('./canonical-proof-composition.mjs');
+const { W9_HAPPY_HANDLERS } = await import('../factory-e2e/w9-happy-handlers.mjs');
+
+const FRM = 'solution-formalization@1.0.0';
+
+// --- Material B handlers: three criteria, different sections --------------
+function acceptanceAuthorB({ handlers, assignment, context, db }) {
+  const taskRow = db.prepare(
+    'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
+  ).get(Number(assignment.taskId));
+  const projectId = taskRow?.project_id ?? 1;
+  const epicId = taskRow?.epic_id ?? 1;
+  const repoPath = context.workspaceRoot;
+  const accepted = type => db.prepare(
+    `SELECT id FROM artifacts WHERE epic_id=? AND type=? AND status='accepted' ORDER BY id`,
+  ).all(epicId, type);
+  const frs = accepted('FR');
+  const nfrs = accepted('NFR');
+  const ucs = accepted('UC');
+  if (!frs.length) throw new Error('w1-4: no accepted FR for acceptance B');
+
+  const specs = [
+    ['AC-B1', 'AC-B1: Hyperspace Fuel Model'],
+    ['AC-B2', 'AC-B2: Market Price Spread'],
+    ['AC-B3', 'AC-B3: Pirate Encounter Risk'],
+  ];
+  const { writeFileSync } = require('node:fs');
+  for (const [code, title] of specs) {
+    const p = `docs/formalization/${code}.md`;
+    const full = path.join(repoPath, p);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, `## ${title}\n\nMaterial B atomic criterion ${code}.\n`, 'utf8');
+    const ac = handlers.artifact_create({
+      project_id: projectId, epic_id: epicId, type: 'AC', code, title,
+      path: p, status: 'accepted',
+    });
+    handlers.trace_add({ source_id: ac.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'derived_from' });
+    if (ucs.length) handlers.trace_add({ source_id: ac.id, target_type: 'artifact', target_id: ucs[0].id, link_type: 'derived_from' });
+    if (nfrs.length && code === 'AC-B3') {
+      handlers.trace_add({ source_id: ac.id, target_type: 'artifact', target_id: nfrs[0].id, link_type: 'derived_from' });
+    }
+  }
+  handlers.worker_done({
+    task_id: Number(assignment.taskId), worker_id: assignment.workerId,
+    execution_id: assignment.workerExecutionId, result: 'w1-4 acceptance B: three criteria',
+  });
+  return { kind: 'worker-done-accepted' };
+}
+
+function architectureAuthorB({ handlers, assignment, context, db }) {
+  const taskRow = db.prepare(
+    'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
+  ).get(Number(assignment.taskId));
+  const projectId = taskRow?.project_id ?? 1;
+  const epicId = taskRow?.epic_id ?? 1;
+  const repoPath = context.workspaceRoot;
+  const prds = db.prepare(
+    `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' AND status='accepted' ORDER BY id LIMIT 1`,
+  ).all(epicId);
+  if (!prds.length) throw new Error('w1-4: no accepted PRD for architecture B');
+  const stanza = (ac, title, files, kind) => [
+    `- ac: ${ac}`, `  title: ${title}`, `  module: src/material-b`,
+    `  files: ["${files}"]`, "  invariants: ['Deterministic']", "  test_layers: ['contract']",
+    '  pattern: A', '  depends_on: []', `  ac_kind: ${kind}`, '  criticality: blocker',
+  ].join('\n');
+  const srsContent = [
+    '# SRS B', '', '## §D2 Acceptance Criteria Decomposition', '', '```yaml',
+    stanza('AC-B1', 'Hyperspace Fuel Model', 'src/material-b/fuel.js', 'implementation'),
+    stanza('AC-B2', 'Market Price Spread', 'src/material-b/market.js', 'implementation'),
+    stanza('AC-B3', 'Pirate Encounter Risk', 'src/material-b/risk.js', 'implementation'),
+    // ADR-078 F-1 (pinned semantics): the freeze conserves EVERY accepted AC
+    // authored during this lifecycle — including the decoy the product-contract
+    // cell accepted. The SRS must decompose all of them; no accepted AC may
+    // escape the frozen capsule. Cross-lifecycle material (AC-1/AC-2) stays out.
+    stanza('AC-DECOY', 'Never In Any Contract', 'src/material-b/decoy.js', 'implementation'),
+    '```', '', '## §12 Decision Log', '',
+    '| # | Decision | Source/profile | Alternatives considered | Rationale | Date |',
+    '|---|----------|----------------|--------------------------|-----------|------|',
+    '| 1 | Material B split | CONVEYOR §16 | Material A reuse | Different product | 2026-08-21 |', '',
+  ].join('\n');
+  const srsPath = 'docs/formalization/SRS-B.md';
+  const { writeFileSync, mkdirSync: mk } = require('node:fs');
+  const full = path.join(repoPath, srsPath);
+  mk(path.dirname(full), { recursive: true });
+  writeFileSync(full, srsContent, 'utf8');
+  const srs = handlers.artifact_create({
+    project_id: projectId, epic_id: epicId, type: 'SRS', code: 'SRS-B',
+    title: 'SRS B', path: srsPath, status: 'draft', project_repository_id: 1,
+  });
+  handlers.trace_add({ source_id: srs.id, target_type: 'artifact', target_id: prds[0].id, link_type: 'derived_from' });
+  handlers.worker_done({
+    task_id: Number(assignment.taskId), worker_id: assignment.workerId,
+    execution_id: assignment.workerExecutionId, result: 'w1-4 architecture B',
+  });
+  return { kind: 'worker-done-accepted' };
+}
+
+// The decoy probe: B's product-contract author ALSO creates a properly
+// traced ACCEPTED artifact that neither lifecycle's contract ever names.
+function productContractAuthorWithDecoy(base) {
+  return function withDecoy({ handlers, assignment, context, db }) {
+    const out = base({ handlers, assignment, context, db });
+    try {
+      const taskRow = db.prepare(
+        'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
+      ).get(Number(assignment.taskId));
+      const repoPath = context.workspaceRoot;
+      const frs = db.prepare(
+        `SELECT id FROM artifacts WHERE epic_id=? AND type='FR' AND status='accepted' ORDER BY id LIMIT 1`,
+      ).all(taskRow.epic_id);
+      const ucs = db.prepare(
+        `SELECT id FROM artifacts WHERE epic_id=? AND type='UC' AND status='accepted' ORDER BY id LIMIT 1`,
+      ).all(taskRow.epic_id);
+      const p = 'docs/formalization/AC-DECOY.md';
+      const { writeFileSync, mkdirSync: mk } = require('node:fs');
+      const full = path.join(repoPath, p);
+      mk(path.dirname(full), { recursive: true });
+      writeFileSync(full, '## AC-DECOY: Never In Any Contract\n\nThe epic-accumulator probe.\n', 'utf8');
+      const decoy = handlers.artifact_create({
+        project_id: taskRow.project_id, epic_id: taskRow.epic_id,
+        type: 'AC', code: 'AC-DECOY', title: 'AC-DECOY: Never In Any Contract',
+        path: p, status: 'accepted',
+      });
+      if (frs.length) handlers.trace_add({
+        source_id: decoy.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'derived_from',
+      });
+      // The acceptance gate demands full per-AC legitimacy (FR+UC) for every
+      // accepted AC it can see epic-wide — the decoy must satisfy it too, or
+      // the probe measures my handler bug, not capsule sealing.
+      if (ucs.length) handlers.trace_add({
+        source_id: decoy.id, target_type: 'artifact', target_id: ucs[0].id, link_type: 'derived_from',
+      });
+    } catch { /* the probe never blocks the product contract cell */ }
+    return out;
+  };
+}
+
+const DIS = 'product-discovery@3.0.2';
+const B_HANDLERS = {
+  ...W9_HAPPY_HANDLERS,
+  [`${FRM}/define-acceptance-contract/author/singleton`]: acceptanceAuthorB,
+  [`${FRM}/define-architecture-contract/author/singleton`]: architectureAuthorB,
+  [`${FRM}/define-product-contract/author/singleton`]: productContractAuthorWithDecoy(
+    W9_HAPPY_HANDLERS[`${FRM}/define-product-contract/author/singleton`]),
+};
+function capsuleOf(db, lifecycleRunId) {
+  // lifecycle -> stage run -> process run -> frozen baseline (the real joins)
+  const runIds = db.prepare(
+    `SELECT process_run_id FROM factory_stage_runs
+      WHERE lifecycle_run_id=? AND process_run_id IS NOT NULL ORDER BY id`,
+  ).all(lifecycleRunId).map(r => r.process_run_id);
+  if (runIds.length === 0) return null;
+  const placeholders = runIds.map(() => '?').join(',');
+  const row = db.prepare(
+    `SELECT payload, baseline_hash FROM factory_formalization_acceptance_baselines
+      WHERE process_run_id IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
+  ).get(...runIds);
+  if (!row) return null;
+  const payload = JSON.parse(row.payload);
+  return {
+    baselineHash: row.baseline_hash,
+    codes: (payload.acceptanceCriteria ?? []).map(m => m.code).sort(),
+    memberHashes: (payload.acceptanceCriteria ?? []).map(m => m.contentHash),
+  };
+}
+
+const bootstrap = await bootstrapFreshHarness({
+  repoRoot: REPO_ROOT,
+  concurrencyCap: HARNESS_CONCURRENCY_CEILING,
+  idea: 'W1-4 material A: the two-criteria pipeline product (run A)',
+});
+
+try {
+  bootstrap.assertNoAuthorityWritesYet();
+
+  // ---- Run A -------------------------------------------------------------
+  const observerA = createScriptedObserver();
+  const compositionA = buildCanonicalProofComposition({
+    observer: observerA, repoPath: bootstrap.repoPath, sagaRepoRoot: bootstrap.sagaRepoRoot,
+    handlers: W9_HAPPY_HANDLERS,
+  });
+  const resultA = await driveFreshHarness({
+    bootstrap, composition: compositionA,
+    scenarioConcurrencyCap: HARNESS_CONCURRENCY_CEILING,
+    maxCycles: 160, pollMs: 5, maxEmptyDispatchStreak: 12, scriptedObserver: observerA,
+  });
+
+  const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
+  const db = getDb();
+  const lifecycles = db.prepare('SELECT id, status, terminal_status FROM factory_lifecycle_runs ORDER BY id').all();
+  const capsuleA = capsuleOf(db, lifecycles[0].id);
+  const stageA = db.prepare(
+    `SELECT local_outcome FROM factory_stage_runs
+      WHERE stage_id='solution-formalization' AND lifecycle_run_id=? ORDER BY id DESC`,
+  ).get(lifecycles[0].id);
+
+  // ---- Run B: a NEW launch on the SAME project/epic ----------------------
+  const launchB = requestFreshHarnessLaunch(bootstrap, {
+    idea: 'W1-4 material B: the three-criteria trade-sim product (run B)',
+  });
+  const observerB = createScriptedObserver();
+  const compositionB = buildCanonicalProofComposition({
+    observer: observerB, repoPath: bootstrap.repoPath, sagaRepoRoot: bootstrap.sagaRepoRoot,
+    handlers: B_HANDLERS,
+  });
+  const resultB = await driveFreshHarness({
+    bootstrap, composition: compositionB, launchRef: launchB,
+    scenarioConcurrencyCap: HARNESS_CONCURRENCY_CEILING,
+    maxCycles: 200, pollMs: 5, maxEmptyDispatchStreak: 12, scriptedObserver: observerB,
+    // W1-4 scope is the Formalization stage: stop when it settles instead of
+    // driving Development to completion.
+    stopOnStageOutcome: 'formalized',
+  });
+
+  const lifecyclesAfter = db.prepare('SELECT id, status, terminal_status FROM factory_lifecycle_runs ORDER BY id').all();
+  const capsuleAAfter = capsuleOf(db, lifecyclesAfter[0].id);
+  const capsuleB = capsuleOf(db, lifecyclesAfter[1]?.id);
+  const stageB = db.prepare(
+    `SELECT local_outcome FROM factory_stage_runs WHERE stage_id='solution-formalization' AND lifecycle_run_id=? ORDER BY id DESC`,
+  ).get(lifecyclesAfter[1]?.id);
+  const decoyArtifact = db.prepare(
+    `SELECT id, status, content_hash FROM artifacts WHERE code='AC-DECOY' ORDER BY id`,
+  ).all();
+
+  const bWorkplaces = db.prepare(
+    `SELECT w.workplace_ref, w.kanban_phase, w.loop_state, w.terminal_reason
+       FROM factory_workplaces w JOIN factory_process_runs pr ON pr.id=w.process_run_id
+      WHERE pr.id IN (SELECT process_run_id FROM factory_stage_runs WHERE lifecycle_run_id=?)
+      ORDER BY w.workplace_ref`,
+  ).all(lifecyclesAfter[1]?.id);
+  process.stdout.write(JSON.stringify({
+    bWorkplaces,
+    runA: { terminalReason: resultA.terminalReason, stage: stageA?.local_outcome ?? null,
+      lifecycle: lifecycles[0], capsule: capsuleA },
+    runB: { terminalReason: resultB.terminalReason, stoppedByStageOutcome: resultB.stoppedByStageOutcome,
+      stage: stageB?.local_outcome ?? null,
+      lifecycle: lifecyclesAfter[1] ?? null, capsule: capsuleB },
+    immutability: {
+      capsuleABefore: capsuleA?.baselineHash ?? null,
+      capsuleAAfter: capsuleAAfter?.baselineHash ?? null,
+      unchanged: (capsuleA?.baselineHash ?? null) === (capsuleAAfter?.baselineHash ?? null),
+    },
+    decoy: {
+      rows: decoyArtifact.length,
+      inCapsuleA: capsuleAAfter?.codes?.includes('AC-DECOY') ?? false,
+      inCapsuleB: capsuleB?.codes?.includes('AC-DECOY') ?? false,
+    },
+    stranded: resultA.strandedActiveExecutions + resultB.strandedActiveExecutions,
+  }) + '\n');
+} finally {
+  bootstrap.cleanup();
+}

@@ -111,4 +111,6 @@ jobs:
         # with reasons, and that ci.yml hides no failure (no `|| true`, no
         # continue-on-error, no blanket npm test). This is the machine-checked
         # form of the CI-02 exit rule.
+        run: node tools/run-acceptance-matrix.mjs --group factory-proof
+      - name: acceptance matrix coverage self-check
         run: node tools/run-acceptance-matrix.mjs --group matrix-coverage
