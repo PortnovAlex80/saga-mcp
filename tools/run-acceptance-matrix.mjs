@@ -82,6 +82,16 @@ const GROUPS = {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
   },
+  'factory-proof': {
+    globs: [
+      'tests/factory-proof/canonical-composition.test.mjs',
+      'tests/factory-proof/import-ratchet.test.mjs',
+      'tests/factory-proof/obligation-compiler.test.mjs',
+      'tests/factory-proof/scenario-actor-observer.test.mjs',
+      'tests/factory-proof/kernel-self-mutations.test.mjs',
+    ],
+    note: 'W0 proof kernel (ADR-084) — canonical composition + obligation contracts + mutation algebra/kill matrix + scenario DSL/actor/observer + self-mutations. BLOCKING: no quarantine, no continue-on-error.',
+  },
 };
 
 // --- Quarantine -------------------------------------------------------------
