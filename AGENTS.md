@@ -21,6 +21,18 @@ All factory workers and all agent tooling in this repo run through the
 opencode shim. The claude code CLI is NEVER invoked directly, by any agent,
 for any reason.
 
+**Why: claude (Anthropic) became very expensive** for factory workloads —
+operator decision 2026-08-20. The factory moved to opencode via
+`tools/agent-proxy/claude-shim.mjs` (`opencode run` on the official Z.AI
+Coding Plan provider); the move was validated by a full production run.
+
+**The prohibition is enforced in code** (`tracker-view/claude-runner.mjs`):
+`isForbiddenClaudeCli()` + fail-closed `resolveExecutorPath()` — any executor
+resolving to the claude CLI (the bare `claude` default, a binary path, the
+VS Code extension binary) aborts the worker spawn with
+`FACTORY_CLAUDE_BACKEND_FORBIDDEN`. There is no silent fallback: forgetting
+the env makes the first worker fail loudly instead of billing Anthropic.
+
 - ALWAYS set `SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs"`
   before any factory start/resume. Never unset it — there is no claude
   fallback anymore.

@@ -1,11 +1,20 @@
 # CLAUDE.md — Claude Code / LM Studio notes for saga-mcp
 
+> ⛔ **Claude CLI as a FACTORY worker backend is FORBIDDEN (2026-08-20).**
+> Reason: claude (Anthropic) became very expensive for factory workloads.
+> All factory workers run on opencode via `tools/agent-proxy/claude-shim.mjs`
+> (official Z.AI Coding Plan provider). Enforced in code —
+> `tracker-view/claude-runner.mjs` → `FACTORY_CLAUDE_BACKEND_FORBIDDEN`
+> fail-closed guard; there is no claude fallback. This file describes the
+> INTERACTIVE claude tooling only; see ЗАВОД-ЗАПУСК.md §1 for the directive.
+
 ## Saga4 Factory launch
 
-For the canonical real-worker Factory procedure, read
-[`docs/FACTORY-START-QUICKSTART.md`](docs/FACTORY-START-QUICKSTART.md) first.
-The detailed Russian operational runbook is
-[`ЗАВОД-ЗАПУСК.md`](ЗАВОД-ЗАПУСК.md). `scripts/factory.mjs` creates the durable
+The canonical real-worker Factory procedure (single merged operator runbook,
+opencode-only backend) is [`ЗАВОД-ЗАПУСК.md`](ЗАВОД-ЗАПУСК.md); the former
+`docs/FACTORY-START-QUICKSTART.md` was merged into it and deleted
+(2026-08-20) — do not resurrect it.
+`scripts/factory.mjs` creates the durable
 Factory launch; `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` supplies lifecycle
 infrastructure providers and does not replace the real LLM worker. Always
 observe the tracker against the exact Factory DB used by the launch. Set
@@ -13,37 +22,29 @@ observe the tracker against the exact Factory DB used by the launch. Set
 at two concurrent workers by the canonical model profile. Use
 `--requeue-paused` only for an exhausted submission-preflight Workplace and
 `--recover-failed-gate` only for a verified post-seal provider-version
-mismatch; the full invariants are in the quickstart.
+mismatch; the full invariants are in `ЗАВОД-ЗАПУСК.md` §12.
 For a terminal downstream failure with a certified upstream prefix, use the
-quickstart's `factory.mjs continue ... --check` procedure. Never reopen terminal
+`factory.mjs continue ... --check` procedure (ЗАВОД-ЗАПУСК.md §12). Never reopen terminal
 rows or restore an older whole-factory checkpoint merely to retry one workshop.
 
-### Running workers on a local LM Studio model
+### Local LM Studio models — RETIRED route
 
-Follow quickstart §4b. Short version: `--model` only accepts the checked-in
-cloud catalog, so a local model is selected at runtime — start the tracker
-first, warm the probe (`GET /api/lmstudio/models`), start the factory, then
-flip `POST /api/model/set {"model":"<id>","epic_id":<N>}`. The model route is
-read from `lifecycle_execution_controls` at claim time and frozen into the
-worker's execution_context.
+The claude-CLI-based LM Studio switching (warm the probe
+`GET /api/lmstudio/models`, flip `POST /api/model/set`, first-claim-race
+recovery, `~/.claude/settings.json` two-template rewrite) is retired together
+with the claude CLI itself (operator directive 2026-08-20 — see AGENTS.md and
+`ЗАВОД-ЗАПУСК.md` §1). All workers run through the opencode shim
+(`SAGA_REAL_CLAUDE_PATH` → `tools/agent-proxy/claude-shim.mjs`); a local model
+would have to be configured as an opencode provider and is not part of the
+production directive. The model route is still read from
+`lifecycle_execution_controls` at claim time and frozen into the worker's
+execution_context, and the first-claim race on a NEW order still recovers the
+same way: kill the wrong-profile worker and the orchestrate-cli process, then
+a **plain** `factory.mjs resume` (no flags). The Qwen 3.6 chat template patch
+notes below are kept as historical reference only. Keep the sandbox SQLite
+outside the `--sandbox` root (the root is wiped on start).
 
-Expect the **first-claim race** on a NEW order: both start paths write the
-cloud profile and spawn the engine immediately, so the first claim may freeze
-on the cloud before the flip lands. Recovery: kill the cloud worker
-(`claude ... --bare`) and the orchestrate-cli process, then run a **plain**
-`factory.mjs resume` (no flags) — it adopts the active launch, supervision
-reaps the lost worker (`REAPED ... action=lost`), and the same task re-claims
-on the local model. `--recover-orphaned-launch` requires the worker to be
-already detected `lost` with the workplace in `repair_wait`; a plain resume is
-what drives the state there. Verify the win: the new worker process is
-`claude -p --bare --model <local-model>` with **no** `--effort`.
-
-Switching to LM Studio rewrites `~/.claude/settings.json` (cloud template
-frozen in `settings.cloud.json`), so ALL claude usage on the machine routes
-locally until you pick a Z.ai cloud model in the board selector. Keep the
-sandbox SQLite outside the `--sandbox` root (the root is wiped on start).
-
-## LM Studio: Qwen 3.6 chat template patch
+## LM Studio: Qwen 3.6 chat template patch (historical)
 
 ### Problem
 
