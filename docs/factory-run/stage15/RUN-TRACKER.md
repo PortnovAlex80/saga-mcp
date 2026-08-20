@@ -195,3 +195,26 @@ stays open (stage 16).
   stop → report. This is a live data point for question 2: the factory
   does NOT self-terminate — it parks indefinitely on a fresh-heartbeat
   zombie.
+- **14:2xZ — RETRACTION + THE REAL FINDING (operator's correction accepted).**
+  The 14:1x "zombie worker" entry was WRONG: pid 57532 was mid-turn
+  executing a long `npm test` — the work runs in child processes (host CPU
+  ~0), and a running tool call emits no stream lines. Stream confirmed
+  fresh (new file 20 s later). The operator's reading was right — the
+  system cannot pass review/integration — and the DB names it:
+  effect attempt 1 (13:50:56) repair_required:
+  `PRODUCTION_CELL_REVIEWED_SOURCE_MISMATCH: task 18 submitted
+  88968715…65 but branch is 88968715…65` — the SAME SHA on both sides.
+  Mechanism (sqlite-production-cell-integration.ts:265-287): three
+  predicates — (a) sha resolves, (b) branchHead==commit (PASSED, both
+  equal), (c) actual tree == declared snapshot.treeSha. The message prints
+  ONLY (b)'s values regardless of which predicate fired — a misattributing
+  diagnostic. Verified root: sub 22 declared treeSha = THE COMMIT SHA
+  ITSELF (88968715… — sub 19 same defect, sub 20 correct): the worker
+  intermittently writes commitSha into the treeSha field; the author
+  payload contract accepts it; it detonates at the integration effect
+  with a message that names a comparison that passed. The repair loop
+  re-staffs the author with an uninterpretable "X but X" — the round-6
+  worker's log shows it confused by exactly this ("the previous
+  implementation was on a different branch…"). THE review-loop-that-cannot-
+  pass, third live defect. R3 candidate — architect's decision; no
+  mid-run repair.
