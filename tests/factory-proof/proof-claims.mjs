@@ -69,6 +69,11 @@ export const PROOF_CLAIMS = Object.freeze({
     claims: ['the fabricated-derived-evidence causal theorem: typed detection, zero durable mutation, exact-feedback repair, counterfactual causality — through the canonical composition and real gates'],
     notClaimed: ['strict L3 (workerSpawn) — K2', 'crash/fault-schedule interleavings — K4'],
   },
+  'tests/factory-proof/w1-4-two-lifecycles.test.mjs': {
+    modes: ['Contract', 'Durable', 'CanonicalFast'],
+    claims: ['ADR-078 two-lifecycle composition: cross-lifecycle isolation (A immutable, no adoption) + within-lifecycle conservation (capsule seals every accepted AC of the run) through two production launches on one epic'],
+    notClaimed: ['strict L3 (workerSpawn) — K2', 'Development/Delivery stages of run B — scope is the Formalization boundary'],
+  },
 });
 
 /** Validate: known modes; no premature strict claims; files present on disk. */

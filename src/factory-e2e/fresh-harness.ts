@@ -389,12 +389,54 @@ export async function bootstrapFreshHarness(opts: BootstrapFreshHarnessOptions):
   }
 }
 
+/**
+ * Request an ADDITIONAL factory launch on an already-bootstrapped harness DB
+ * (W1-4: a NEW lifecycle on the SAME project/epic — the ADR-078 isolation
+ * subject). Pure production API: requestFactoryLaunch on a fresh order row;
+ * no authority writes. The caller drives the new launch via driveFreshHarness
+ * with { launchRef }.
+ */
+export function requestFreshHarnessLaunch(
+  bootstrap: FreshHarnessBootstrap,
+  opts: { idea: string; lifecycleInputSchema?: string },
+): string {
+  const db = getDb();
+  const lifecycleInput = assembleProductLifecycleInput({
+    projectId: bootstrap.projectId,
+    epicId: bootstrap.epicId,
+    idea: opts.idea,
+    db,
+  });
+  assertProductDeliveryLifecycleInput(lifecycleInput, lifecycleInputPolicyValidation);
+  const orderRef = `order-fresh-${randomUUID()}`;
+  db.prepare(
+    `INSERT INTO factory_orders (order_ref,project_id,epic_id,source_kind,state)
+     VALUES (?, ?, ?, 'idea_url','starting')`,
+  ).run(orderRef, bootstrap.projectId, bootstrap.epicId);
+  return requestFactoryLaunch({
+    orderRef,
+    mode: 'new',
+    projectId: bootstrap.projectId,
+    epicId: bootstrap.epicId,
+    initiatedBy: 'fresh-harness',
+    idempotencyKey: `fresh-harness-${randomUUID()}`,
+    concurrency: 2,
+    lifecycleInput,
+    lifecycleInputSchema: opts.lifecycleInputSchema ?? HARNESS_LIFECYCLE_INPUT_SCHEMA,
+  }, db);
+}
+
 // ---------------------------------------------------------------------------
 // Drive loop — in-process, bounded, production-faithful.
 // ---------------------------------------------------------------------------
 
 export interface DriveFreshHarnessOptions {
   readonly bootstrap: FreshHarnessBootstrap;
+  /**
+   * Drive THIS launch instead of the bootstrap's own (W1-4: an additional
+   * launch requested via requestFreshHarnessLaunch on the same DB/epic).
+   */
+  readonly launchRef?: string;
   /**
    * Product lifecycle composition carrying the SCRIPTED workerExecutorFactory
    * (inference substitution) + explicit Delivery providers. Factory authority,
@@ -409,6 +451,13 @@ export interface DriveFreshHarnessOptions {
   readonly pollMs?: number;
   /** Empty-dispatch streak before stopping. Default 2. */
   readonly maxEmptyDispatchStreak?: number;
+  /**
+   * Stop driving as soon as the launch's lifecycle has ANY stage run with
+   * this local_outcome (e.g. 'formalized' for W1-4, where the proof scope is
+   * the Formalization stage and the lifecycle would otherwise continue into
+   * Development). The stop is reported via stoppedByStageOutcome.
+   */
+  readonly stopOnStageOutcome?: string;
   /** Optional scripted-executor observer for reporting max concurrency + invocations. */
   readonly scriptedObserver?: ScriptedInferenceObserver;
 }
@@ -428,6 +477,8 @@ export interface HarnessDriveResult {
   readonly reachedTerminal: boolean;
   /** Whether the drive stopped because maxCycles was hit (not a regression). */
   readonly stoppedByCycleBound: boolean;
+  /** Whether the drive stopped because stopOnStageOutcome was observed. */
+  readonly stoppedByStageOutcome: boolean;
 }
 
 /**
@@ -477,12 +528,13 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   }
 
   const claimToken = randomUUID();
-  const ticket = acquireFactoryLaunchController(bootstrap.launchRef, claimToken);
+  const driveLaunchRef = opts.launchRef ?? bootstrap.launchRef;
+  const ticket = acquireFactoryLaunchController(driveLaunchRef, claimToken);
   const controllerEpoch = ticket.controllerEpoch!;
   let controllerFenceLost: Error | null = null;
   const heartbeat = setInterval(() => {
     try {
-      renewFactoryControllerLease(bootstrap.launchRef, claimToken, controllerEpoch);
+      renewFactoryControllerLease(driveLaunchRef, claimToken, controllerEpoch);
     } catch (error) {
       controllerFenceLost = error instanceof Error ? error : new Error(String(error));
     }
@@ -499,13 +551,14 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   let lastStage = '';
   let lifecycleRunId: number | null = null;
   let stoppedByCycleBound = false;
+  let stoppedByStageOutcome = false;
   let emptyDispatchStreak = 0;
 
   try {
     let isFirstCycle = true;
     while (cycles < maxCycles) {
       if (controllerFenceLost) throw controllerFenceLost;
-      assertFactoryControllerFence(bootstrap.launchRef, claimToken, controllerEpoch);
+      assertFactoryControllerFence(driveLaunchRef, claimToken, controllerEpoch);
       const admission = episodeRuntime.readConcurrencyAdmission(bootstrap.epicId);
       const result = await application.runEpisode({
         projectId: bootstrap.projectId,
@@ -525,7 +578,13 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
       lastStage = result.finalStage;
       if (result.lifecycleRun?.id) {
         lifecycleRunId = result.lifecycleRun.id;
-        markFactoryLaunchRunning(bootstrap.launchRef, claimToken, result.lifecycleRun.id);
+        markFactoryLaunchRunning(driveLaunchRef, claimToken, result.lifecycleRun.id);
+      }
+      if (opts.stopOnStageOutcome && result.lifecycleRun?.id && getDb().prepare(
+        `SELECT 1 FROM factory_stage_runs WHERE lifecycle_run_id=? AND local_outcome=? LIMIT 1`,
+      ).get(result.lifecycleRun.id, opts.stopOnStageOutcome)) {
+        stoppedByStageOutcome = true;
+        break;
       }
       if (result.reason !== 'paused') break;
 
@@ -599,7 +658,7 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   const isTerminal = lastReason !== 'paused';
   try {
     finishFactoryLaunch(
-      bootstrap.launchRef,
+      driveLaunchRef,
       claimToken,
       isTerminal ? (lastReason === 'failed' ? 'failed' : 'completed') : 'paused',
       null,
@@ -620,5 +679,6 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
     strandedActiveExecutions: stranded,
     reachedTerminal: isTerminal,
     stoppedByCycleBound,
+    stoppedByStageOutcome,
   };
 }
