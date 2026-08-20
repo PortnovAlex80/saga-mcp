@@ -182,3 +182,16 @@ stays open (stage 16).
   diligence on the other. D7 + W-F1 + E-F4 converged on one file across
   three hours of factory time; one delivered line of authority would have
   prevented all of it.
+- **14:1xZ — THE ZOMBIE WORKER (live diagnosis, no repair).** Task 18's
+  round-6 worker (pid 57532, spawned 13:50:57) is ALIVE with a FRESH
+  heartbeat (renewed every cycle — leases_renewed=1) but CPU 0.14s TOTAL
+  over 22 minutes; its stream froze at 13:58; the journal last moved at
+  13:51:46. The engine cycles correctly and waits on this "durable
+  execution still active" indefinitely: the heartbeat proves the PROCESS
+  EXISTS, not that the worker WORKS — a liveness probe measuring the wrong
+  thing (the B-002 freeze class, resurrected as a hung provider
+  connection). No mid-run repair: the pre-declared 45-min stagnation
+  threshold (fingerprint quiet since ~13:52) trips ~14:37Z → snapshot →
+  stop → report. This is a live data point for question 2: the factory
+  does NOT self-terminate — it parks indefinitely on a fresh-heartbeat
+  zombie.
