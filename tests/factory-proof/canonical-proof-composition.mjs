@@ -53,6 +53,10 @@ const REPO_ROOT = process.cwd();
 
 export const CANONICAL_OVERLAY_ALLOWLIST = Object.freeze([
   'workerExecutorFactory',
+  // K2 (conformance-engine plan §K2): the STRICT L3 seam — replaces only the
+  // physical CLI subprocess; the production executor/envelope is preserved.
+  // Mutually exclusive with workerExecutorFactory in one composition.
+  'workerSpawn',
   'resolveWorkerContext',
   'delivery.providers',
   'delivery.providers.preflight',
@@ -67,6 +71,7 @@ export const CANONICAL_OVERLAY_ALLOWLIST = Object.freeze([
 const LEAF = Symbol('leaf');
 const CANONICAL_OVERLAY_TREE = Object.freeze({
   workerExecutorFactory: LEAF,
+  workerSpawn: LEAF,
   resolveWorkerContext: LEAF,
   delivery: Object.freeze({
     providers: Object.freeze({
@@ -241,10 +246,38 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
  *                                                buildCanonicalDeliveryProviders).
  */
 export function buildCanonicalProofComposition(opts) {
-  const { observer, repoPath, sagaRepoRoot, handlers, crashPoint } = opts;
+  const { observer, repoPath, sagaRepoRoot, handlers, crashPoint, workerSpawn } = opts;
   if (!observer) throw new Error('CANONICAL_COMPOSITION_OBSERVER_REQUIRED');
   if (!repoPath) throw new Error('CANONICAL_COMPOSITION_REPO_PATH_REQUIRED');
   if (!sagaRepoRoot) throw new Error('CANONICAL_COMPOSITION_REPO_ROOT_REQUIRED');
+  if (workerSpawn && handlers) {
+    throw new Error('CANONICAL_COMPOSITION_MODE_CONFLICT: strict workerSpawn and in-process handlers are mutually exclusive');
+  }
+  if (workerSpawn && typeof workerSpawn !== 'function') {
+    throw new Error('CANONICAL_COMPOSITION_SPAWN_INVALID: workerSpawn must be a spawn function');
+  }
+
+  // STRICT L3 (K2): no in-process executor at all — the composition root
+  // builds the PRODUCTION pinned worker factory and only the physical
+  // subprocess is the scripted child. The fast lane stays the default.
+  if (workerSpawn) {
+    return {
+      workerSpawn,
+      resolveWorkerContext: ctx => ({
+        projectId: ctx.projectId,
+        epicId: ctx.epicId ?? 0,
+        workspaceRoot: repoPath,
+        dbPath: process.env.DB_PATH,
+        sagaEntry: path.resolve(sagaRepoRoot, 'dist/index.js'),
+        sagaSkillRoot: sagaRepoRoot,
+        claudePath: 'k2-strict-spawn',
+        lmStudioUrl: process.env.SAGA_LMSTUDIO_URL || 'http://localhost:1234/v1',
+      }),
+      delivery: {
+        providers: opts.deliveryProviders ?? buildCanonicalDeliveryProviders({ repoPath }),
+      },
+    };
+  }
 
   const scriptedExecutorFactory = createInProcessScriptedExecutorFactory({
     observer,

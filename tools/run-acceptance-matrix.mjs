@@ -91,6 +91,7 @@ const GROUPS = {
       'tests/factory-proof/kernel-self-mutations.test.mjs',
       'tests/factory-proof/w1-1-fabricated-hash.test.mjs',
       'tests/factory-proof/w1-4-two-lifecycles.test.mjs',
+      'tests/factory-proof/k2-spawned-actor.test.mjs',
       'tests/factory-proof/proof-claims.test.mjs',
       'tests/factory-proof/k0-baseline.test.mjs',
     ],

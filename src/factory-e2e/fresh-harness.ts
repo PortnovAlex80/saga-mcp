@@ -517,6 +517,13 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
     ...(composition.workerExecutorFactory
       ? { workerExecutorFactory: composition.workerExecutorFactory }
       : {}),
+    // K2 strict seam: when the composition carries workerSpawn (and NO
+    // in-process workerExecutorFactory), lift it too so createFactoryApplication
+    // builds the production pinned worker factory with the spawned-child
+    // substitution at the physical-executable seam only.
+    ...(composition.workerSpawn && !composition.workerExecutorFactory
+      ? { workerSpawn: composition.workerSpawn }
+      : {}),
   };
   // The scripted executor replaces inference; the production Claude path is
   // never constructed (overrides.workerExecutorFactory / composition.workerExec
