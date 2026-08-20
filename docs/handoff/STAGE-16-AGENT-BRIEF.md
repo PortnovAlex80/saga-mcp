@@ -189,6 +189,14 @@ it.**
 - [ ] D5. Assert no pair can produce a livelock: contradiction must reach a
       transition or a terminal, never a repeating epoch.
 - [ ] D6. Report the pair matrix with each classification.
+- [ ] **D7. Shared-path contention — found live in stage 15, currently untested.**
+      Two different cards were blocked on the same root-level file
+      (`tsconfig.json`) at 11:44 and 12:28. Root configuration belongs to no card
+      and is needed by many. Write the domain-free case: N cards, one shared
+      path, needed sequentially. Assert the contention rule does not permanently
+      refuse a path that no card owns. **If it does refuse, that is a finding, not
+      a fix** — it is the case the stage-13 brief said to escalate ("two cells
+      that legitimately must write the same path").
 
 ---
 
@@ -214,6 +222,19 @@ boundary. **The other boundaries are not covered.**
 - [ ] E5. Where loss goes undetected, **do not fix it** — record the boundary as a
       finding.
 - [ ] E6. Report the boundary table: boundary → register present → loss detected.
+- [ ] **E7. Silent surrender — found live in stage 15, and it is the sharpest gap
+      in this brief.** A card was blocked by the scope fence at 11:44, and at
+      12:01 it passed — not by declaring `scope-insufficient` (the ledger holds
+      **zero** events), but by simply no longer touching the paths it had needed.
+      The requirement did not get satisfied; it disappeared. The card was then
+      accepted by the reviewer at 12:04.
+      This is constraint loss relocated from the *formalization* boundary
+      (which the register closed) to the *implementation* boundary, and the
+      escape hatch — giving up quietly — turned out cheaper for the worker than
+      the lawful route, even though the teaching suffix was in the message.
+      Write it: a card whose criteria require an artefact it did not produce
+      must not be acceptable as complete. **Nothing today asserts this.** If the
+      test passes on current code, prove non-vacuity before believing it.
 
 ---
 
