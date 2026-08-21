@@ -324,7 +324,11 @@ function makeRetryExhaustionRuntime(targetName) {
     driveOptions: { maxCycles: 220 },
     oracles: [
       gateSeenOracle(`${targetName}.exhaustion.repair-required`, target.workplace, 'repair_required'),
-      gateSeenOracle(`${targetName}.exhaustion.failed`, target.workplace, 'failed'),
+      // Recovery-budget terminalization is ProductionCellCoordinator authority,
+      // not a second persisted GateDecision. Do not invent a `verdict=failed`
+      // gate row as an oracle; prove the externally visible stage terminal plus
+      // the typed Workplace terminal/wait instead.
+      typedBoundedFailureOracle(`${targetName}.exhaustion.typed-terminal`, target.workplace),
       stageOutcomeOracle('failed'),
       noStrandedOracle(),
     ],
