@@ -118,6 +118,27 @@ export function observeDurableTrace(dbPath) {
       acceptedAuthorityHeads: all(
         'SELECT workplace_ref, accepted_candidate_set_ref, accepted_author_task_id FROM factory_accepted_authority_head ORDER BY workplace_ref',
       ),
+      // Generic post-acceptance effect proof: one immutable receipt binds the
+      // exact workplace, accepted CandidateSet and GateDecision. This is the
+      // Production Cell effect ledger used by Formalization and Development;
+      // it is distinct from the older generic factory_effect_receipts table.
+      cellEffectReceipts: all(
+        `SELECT effect_receipt_ref,workplace_ref,effect_id,candidate_set_ref,
+                gate_decision_key,provider_receipt_ref,provider_receipt_digest,
+                receipt_digest
+           FROM factory_cell_effect_receipts ORDER BY effect_receipt_ref`,
+      ),
+      cellEffectAttempts: all(
+        `SELECT attempt_ref,workplace_ref,effect_id,candidate_set_ref,
+                gate_decision_key,idempotency_key,attempt_no,outcome,reason,
+                provider_receipt_ref
+           FROM factory_effect_attempts ORDER BY workplace_ref,effect_id,attempt_no`,
+      ),
+      cellEffectRepairIssues: all(
+        `SELECT effect_repair_ref,workplace_ref,effect_id,candidate_set_ref,
+                gate_decision_key,issue_digest,receipt_digest
+           FROM factory_cell_effect_repair_issues ORDER BY effect_repair_ref`,
+      ),
       effectReceipts: all(
         'SELECT effect_key, effect_kind, state FROM factory_effect_receipts ORDER BY effect_key',
       ),
