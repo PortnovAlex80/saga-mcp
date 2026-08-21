@@ -3,15 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Docs Graph — saga</title>
+  <title>Specification Workspace — saga</title>
   <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/workspace.css" />
   <!--
     Frontend deps vendored via CDN (unpkg) to keep this subpackage zero-install.
-    cytoscape + cytoscape-dagre together render the DAG layout; marked is the
-    markdown preview renderer used by the side panel.
-
-    For offline use, replace these <script> tags with locally vendored copies
-    in public/vendor/ — the API surface used is stable across recent versions.
+    cytoscape + cytoscape-dagre render the documentation DAG; marked renders
+    markdown preview in the document editor.
   -->
   <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
@@ -19,102 +17,140 @@
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
 </head>
 <body>
-  <div class="toolbar">
-    <h1>📄 Docs Graph</h1>
-    <label>
-      Project:
+  <header class="workspace-header toolbar">
+    <div class="workspace-brand" aria-label="Saga Specification Workspace">
+      <span class="workspace-mark" aria-hidden="true"></span>
+      <span class="workspace-brand-copy">
+        <span class="workspace-brand-name">SPEC WORKSPACE</span>
+        <span class="workspace-brand-sub">документация и трассировка</span>
+      </span>
+    </div>
+
+    <div class="workspace-project">
+      <label for="project-select">Проект</label>
       <select id="project-select"></select>
-    </label>
-    <button id="refresh-btn" title="Перестроить граф">↻ Refresh</button>
-    <button id="branches-btn" title="Активные docs-ветки">🌿 Branches</button>
-    <label>
-      Layout:
-      <select id="layout-select">
-        <option value="dagre" selected>DAG (tree)</option>
-        <option value="breadthfirst">Breadth-first</option>
-        <option value="cose">Force</option>
-        <option value="circle">Circle</option>
-        <option value="concentric">Concentric</option>
-      </select>
-    </label>
-    <label title="Скрыть рёбра implements/depends_on для читаемости">
-      <input type="checkbox" id="hide-task-edges" /> hide task edges
-    </label>
-    <div class="spacer"></div>
+    </div>
+
+    <nav class="workspace-tabs" aria-label="Рабочие режимы">
+      <button class="workspace-tab active" type="button" aria-current="page">Граф</button>
+      <button id="branches-btn" class="workspace-tab" type="button" title="Наборы изменений документации">Изменения</button>
+    </nav>
+
+    <div class="workspace-header-spacer"></div>
+    <button id="refresh-btn" class="workspace-refresh" type="button" title="Перестроить проекцию графа">Обновить</button>
+  </header>
+
+  <div class="workspace-statusbar">
+    <span class="projection-badge" title="Граф является проекцией связей и не заменяет authority-артефакты">GRAPH PROJECTION</span>
     <span class="stat" id="stats">—</span>
+    <span class="workspace-status-spacer"></span>
+    <div class="workspace-view-controls">
+      <label for="layout-select">Раскладка</label>
+      <select id="layout-select">
+        <option value="dagre" selected>DAG</option>
+        <option value="breadthfirst">Иерархия</option>
+        <option value="cose">Свободная</option>
+        <option value="circle">Круг</option>
+        <option value="concentric">Концентрическая</option>
+      </select>
+      <label class="inline-check" title="Скрыть связи implements / verified_by / depends_on для задач">
+        <input type="checkbox" id="hide-task-edges" />
+        <span>Скрыть связи задач</span>
+      </label>
+    </div>
   </div>
 
-  <div class="main">
-    <div id="cy"></div>
+  <main class="main">
+    <div id="cy" aria-label="Граф документации и трассировки"></div>
     <aside class="side-panel empty" id="side-panel">
-      Кликните на узел, чтобы увидеть детали.
+      Выберите документ или артефакт. Здесь появятся его статус, связи и действия редактирования.
     </aside>
-  </div>
+  </main>
 
-  <!-- Branches drawer (Phase B): shows active docs branches, switch to editor. -->
+  <!-- Change-set drawer. Internally this still maps 1:1 to docs/* git branches. -->
   <div id="branches-drawer" class="drawer hidden">
     <div class="drawer-header">
-      <span>🌿 Docs branches</span>
-      <button id="branches-close" class="icon-btn">×</button>
+      <span>Изменения документации</span>
+      <button id="branches-close" class="icon-btn" type="button" aria-label="Закрыть">×</button>
     </div>
     <div id="branches-list" class="drawer-body"></div>
   </div>
 
-  <!-- Merge modal (Phase C): PR-like diff preview + merge into integration branch. -->
-  <div id="merge-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <!-- PR-like review before merging a documentation change set. -->
+  <div id="merge-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="merge-title">
     <div class="modal-card">
       <div class="modal-header">
-        <span id="merge-title">Merge docs branch</span>
-        <button id="merge-close" class="icon-btn">×</button>
+        <span id="merge-title">Проверка изменений</span>
+        <button id="merge-close" class="icon-btn" type="button" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body">
         <div id="merge-info" class="merge-info"></div>
         <div class="merge-files">
-          <div class="section-title">Files changed (<span id="merge-files-count">0</span>)</div>
+          <div class="section-title">Изменённые файлы (<span id="merge-files-count">0</span>)</div>
           <div id="merge-files-list"></div>
         </div>
         <details class="merge-patch-details">
-          <summary>Show full diff</summary>
+          <summary>Показать технический diff</summary>
           <pre id="merge-patch" class="merge-patch"></pre>
         </details>
         <div class="editor-actions">
           <span id="merge-status" class="merge-status"></span>
-          <button id="merge-confirm">Merge into <span id="merge-target">dev</span></button>
+          <span class="editor-actions-spacer"></span>
+          <button id="merge-confirm" type="button">Применить в <span id="merge-target">dev</span></button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Editor modal (Phase B): write .md inside a docs branch. -->
-  <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <!-- Document editor. Git/worktree details are deliberately secondary. -->
+  <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editor-title">
     <div class="modal-card">
       <div class="modal-header">
-        <span id="editor-title">Edit</span>
-        <button id="editor-close" class="icon-btn">×</button>
+        <span id="editor-title">Редактор документа</span>
+        <button id="editor-close" class="icon-btn" type="button" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body">
-        <div class="editor-meta">
-          <label>Path:
-            <input id="editor-path" type="text" placeholder="docs/foo.md" />
-          </label>
-          <label>Branch:
-            <select id="editor-branch-select">
-              <option value="">(create new)</option>
-            </select>
-          </label>
-          <label class="new-branch" hidden>
-            New change id:
-            <input id="editor-new-branch" type="text" placeholder="my-change" />
+        <div class="editor-document-meta">
+          <label for="editor-path">Документ
+            <input id="editor-path" type="text" placeholder="docs/specification.md" />
           </label>
         </div>
+
+        <details class="editor-advanced">
+          <summary>Версионирование и Git</summary>
+          <div class="editor-meta">
+            <label>Набор изменений
+              <select id="editor-branch-select">
+                <option value="">Создать новый</option>
+              </select>
+            </label>
+            <label class="new-branch" hidden>
+              Идентификатор изменения
+              <input id="editor-new-branch" type="text" placeholder="change-id" />
+            </label>
+            <label class="commit-message">
+              Сообщение версии
+              <input id="editor-message" type="text" placeholder="Кратко опишите изменение" />
+            </label>
+          </div>
+        </details>
+
         <div class="editor-split">
-          <textarea id="editor-textarea" spellcheck="false"></textarea>
-          <div id="editor-preview" class="markdown-preview"></div>
+          <section class="editor-pane" aria-label="Markdown редактор">
+            <div class="editor-pane-label">Markdown</div>
+            <textarea id="editor-textarea" spellcheck="false"></textarea>
+          </section>
+          <section class="editor-pane" aria-label="Предпросмотр документа">
+            <div class="editor-pane-label">Предпросмотр</div>
+            <div id="editor-preview" class="markdown-preview"></div>
+          </section>
         </div>
+
         <div class="editor-actions">
-          <input id="editor-message" type="text" placeholder="commit message" />
-          <button id="editor-save">Save (commit)</button>
-          <button id="editor-discard" class="danger">Discard branch</button>
+          <span class="editor-actions-hint">Сохранение создаёт версию только в наборе изменений; публикация выполняется отдельно.</span>
+          <span class="editor-actions-spacer"></span>
+          <button id="editor-save" type="button">Сохранить черновик</button>
+          <button id="editor-discard" class="danger" type="button">Удалить набор изменений</button>
         </div>
       </div>
     </div>
