@@ -9,7 +9,6 @@
 // by hashing the K0-normalized trace rather than the raw observer snapshot.
 
 import { createHash } from 'node:crypto';
-import { scenarioDigest } from './scenario-dsl.mjs';
 import { normalizeTrace, traceDigest } from './k0-baseline.mjs';
 
 export const SCENARIO_EVIDENCE_SCHEMA_VERSION
@@ -106,7 +105,11 @@ export function buildScenarioEvidenceBundle(input) {
 
   const scenario = {
     id: String(input.scenario.defectId ?? input.scenario.id ?? '<anonymous>'),
-    digest: scenarioDigest(input.scenario),
+    // Hash the COMPLETE declarative scenario, not only the causal-fault subset.
+    // This keeps positive KernelScenario coverage/expectation changes bound to
+    // different evidence and prevents later DSL fields from becoming invisible.
+    digest: sha(input.scenario),
+    kind: input.scenario.kind ?? (input.scenario.defectId ? 'causal-fault' : null),
     faultClass: input.scenario.faultClass ?? null,
     proves: Array.isArray(input.scenario.proves) ? [...input.scenario.proves] : [],
     injectionBoundary: input.scenario.injection?.boundary ?? null,
