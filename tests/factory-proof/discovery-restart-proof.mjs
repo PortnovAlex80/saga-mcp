@@ -32,10 +32,16 @@ async function runStart({ bootstrap, launchRef, handlers, label, concurrencyCap 
     composition,
     ...(launchRef ? { launchRef } : {}),
     scenarioConcurrencyCap: concurrencyCap,
-    maxCycles: 90,
+    maxCycles: 320,
     pollMs: 5,
     maxEmptyDispatchStreak: 12,
-    stopOnStageOutcome: 'go',
+    // Scope-guard honesty (night triage 2026-08-22): stopping at the 'go'
+    // stage boundary left the lifecycle non-terminal, and every launch uses
+    // a fresh idempotency key — the next requestFreshHarnessLaunch hit the
+    // LIFECYCLE_SCOPE_ALREADY_ACTIVE guard and the process died with an
+    // empty evidence file. Drive each lifecycle to its NATURAL terminal;
+    // the oracles still read the initial-discovery 'go' outcome from the
+    // durable stage runs.
     scriptedObserver: observer,
   });
   return {

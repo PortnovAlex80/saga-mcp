@@ -23,6 +23,7 @@ import {
   isCarryForwardPresenterRef,
 } from './replay-presentation-authority.js';
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
+import { isForeignManagedSubmission } from './replay-capsule-completeness.js';
 import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
 import { selectReplayCapsule } from './replay-capsule-selection.js';
 
@@ -768,6 +769,17 @@ export class SqliteReplayCapsuleRepository {
         digest: member.product_digest,
       });
       if (!isWorkplaceProductionSnapshot(content)) {
+        // F-R1 (night triage 2026-08-22): a reviewed cell's CandidateSet is
+        // cumulative on the accepted-author revision (ADR-053 C14) — the
+        // author's typed product legitimately rides the reviewer's set, but
+        // certifying it into the REVIEWER capsule made replay re-submit the
+        // author product under the reviewer WorkIntent
+        // (MANAGED_NODE_SUBMISSION_SCHEMA_MISMATCH). Foreign members stay
+        // certified by their own cell's capsule; the completeness proof
+        // applies the same own-execution rule.
+        if (isForeignManagedSubmission(this.db, member.product_ref, input.executionRef)) {
+          continue;
+        }
         typedProducts.push({
           schema: member.product_schema,
           content: templateAgainstInput(content, sourceInputBindings),
