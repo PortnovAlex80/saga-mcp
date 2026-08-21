@@ -22,6 +22,7 @@ import {
   clearSubmissionValidationFeedback,
   DEFAULT_SUBMISSION_STASIS_THRESHOLD,
   persistSubmissionValidationRejection,
+  readAcceptedRepairStasis,
   readSubmissionRejectionStasis,
 } from '../lifecycle/submission-validation-rejections.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
@@ -496,7 +497,8 @@ type WorkerDoneReply = {
 type WorkerDoneTransactionResult =
   | { readonly kind: 'completed'; readonly reply: WorkerDoneReply }
   | { readonly kind: 'submission-rejected'; readonly error: SubmissionValidationError }
-  | { readonly kind: 'submission-stasis-blocked'; readonly error: SubmissionValidationError };
+  | { readonly kind: 'submission-stasis-blocked'; readonly error: SubmissionValidationError }
+  | { readonly kind: 'repair-stasis-blocked'; readonly error: SubmissionValidationError };
 
 interface KernelPresentationCloseAuthority {
   readonly commitmentRef: string;
@@ -868,6 +870,95 @@ function handleWorkerDone(
         // does the outer handler throw the actionable MCP error.
         return { kind: 'submission-rejected', error: validationError };
       }
+
+      // BLINDSIGHT F5 sibling — identical ACCEPTED material in a repair
+      // round. The rejection stasis above proves non-progress for identical
+      // REJECTED bytes; the mirror case escaped: the final gate returned
+      // repair_required (review changes_requested) and the author's next
+      // round seals byte-identical material. Content addressing then sees
+      // "the same thing again" and the review round never re-materializes —
+      // the workplace stalls in review/queued with no owner until an
+      // external failure (2026-08-21 conformance finding,
+      // reviewer-feedback-absent: ANONYMOUS-STALL, process failed at 13
+      // cycles underneath a queued workplace). Identical bytes across a
+      // repair_required verdict prove zero repair work: park typed instead
+      // of re-entering a review that cannot re-arm.
+      const repairStasis = task.workplace_ref
+        ? readAcceptedRepairStasis(db, taskId, task.workplace_ref)
+        : null;
+      if (repairStasis) {
+        const parkedWithConveyor = parkTaskExecutionForHuman(db, {
+          taskId,
+          taskKind: task.task_kind,
+          metadata: task.metadata,
+          reason: {
+            code: 'REPAIR_ROUND_IDENTICAL_MATERIAL',
+            message: 'Repair round sealed byte-identical accepted material '
+              + `(observed set ${repairStasis.observedSetDigest.slice(0, 12)}…) after a `
+              + 'repair_required review verdict — no repair work happened between '
+              + 'rounds. Task blocked for operator review; both validated receipts '
+              + 'remain durable as evidence.',
+            evidenceRefs: [
+              `repair-stasis:task-${taskId}`,
+              `observed-set:${repairStasis.observedSetDigest}`,
+            ],
+          },
+        });
+        db.prepare(
+          `UPDATE tasks
+              SET status=COALESCE(?, status), assigned_to=NULL,
+                  metadata=json_set(
+                    CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,
+                    '$.managed_repair_stasis', json(?)
+                  ),
+                  updated_at=datetime('now')
+            WHERE id=?`,
+        ).run(
+          parkedWithConveyor ? null : 'blocked',
+          JSON.stringify({
+            observedSetDigest: repairStasis.observedSetDigest,
+            blockedAt: new Date().toISOString(),
+          }),
+          taskId,
+        );
+        logActivity(
+          db,
+          'task',
+          taskId,
+          'status_changed',
+          'status',
+          'in_progress',
+          'blocked',
+          `Task '${task.title}' repair-round stasis: byte-identical accepted `
+            + 'material after repair_required — blocked for operator review',
+        );
+        return {
+          kind: 'repair-stasis-blocked',
+          error: new SubmissionValidationError(
+            'REPAIR_ROUND_IDENTICAL_MATERIAL',
+            [{
+              artifactId: -1,
+              artifactCode: null,
+              artifactType: 'REPAIR_STASIS',
+              existingTargets: [],
+              missing: {
+                relation: 'repair_progress',
+                requiredTargetTypes: ['artifact_update'],
+                minimum: 1,
+              },
+              message: 'The repair round sealed byte-identical accepted material '
+                + 'after a repair_required review verdict — no repair work happened. '
+                + 'The task is blocked; operator review is required. Both validated '
+                + 'receipts remain durable as evidence.',
+            }],
+            {
+              repairStasis: {
+                observedSetDigest: repairStasis.observedSetDigest,
+              },
+            },
+          ),
+        };
+      }
     }
 
     // Accepted worker_done is the material close boundary. Managed Workplace
@@ -1196,6 +1287,11 @@ function handleWorkerDone(
     // transaction commits, so the durable block and the worker-visible
     // refusal are atomic in intent: the task is already blocked when the
     // worker reads this error.
+    throw completed.error;
+  }
+  if (completed.kind === 'repair-stasis-blocked') {
+    // Same atomic-intent contract for the accepted-material mirror: the
+    // park + block committed; the worker now reads the typed refusal.
     throw completed.error;
   }
   journalEvent('worker.done', {

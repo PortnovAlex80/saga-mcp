@@ -276,8 +276,7 @@ export function readLatestSubmissionRejectionForExecution(
  */
 export const DEFAULT_SUBMISSION_STASIS_THRESHOLD = 5;
 
-export interface SubmissionRejectionStasis {
-  /** Consecutive newest rejections whose observed_set_digest is identical. */
+export interface SubmissionRejectionStasis {  /** Consecutive newest rejections whose observed_set_digest is identical. */
   readonly consecutiveIdenticalBytes: number;
   /** The byte-identity of the repeating observed artifact set. */
   readonly observedSetDigest: string;
@@ -334,5 +333,53 @@ function parseMetadata(raw: string): Record<string, unknown> {
       : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * BLINDSIGHT F5 sibling — identical ACCEPTED material in a repair round.
+ *
+ * The rejection stasis (readSubmissionRejectionStasis) proves non-progress
+ * for byte-identical REJECTED submissions. The mirror case: the final gate
+ * returned repair_required and the author's next round validated
+ * byte-identical material (identical validated_set_digest). Content
+ * addressing then cannot distinguish "no repair" from "already reviewed",
+ * the review round never re-materializes, and the workplace stalls until an
+ * external failure (2026-08-21 conformance finding, reviewer-feedback-absent).
+ *
+ * Returns the observed digest when the task's two newest validation
+ * receipts are byte-identical AND the workplace carries a final
+ * repair_required verdict; null otherwise (first round, real repair, or no
+ * validator receipts at all).
+ */
+export interface AcceptedRepairStasis {
+  readonly observedSetDigest: string;
+}
+
+export function readAcceptedRepairStasis(
+  db: Database,
+  taskId: number,
+  workplaceRef: string,
+): AcceptedRepairStasis | null {
+  try {
+    const rows = db.prepare(
+      `SELECT validated_set_digest
+         FROM factory_submission_validation_receipts
+        WHERE task_id=?
+        ORDER BY id DESC
+        LIMIT 2`,
+    ).all(taskId) as Array<{ validated_set_digest: string }>;
+    if (rows.length < 2) return null;
+    if (rows[0]!.validated_set_digest !== rows[1]!.validated_set_digest) return null;
+    const repairRequired = db.prepare(
+      `SELECT 1 FROM factory_gate_decisions
+        WHERE workplace_ref=? AND gate_phase='final' AND verdict='repair_required'
+        LIMIT 1`,
+    ).get(workplaceRef);
+    if (!repairRequired) return null;
+    return { observedSetDigest: rows[0]!.validated_set_digest };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return null;
+    throw error;
   }
 }
