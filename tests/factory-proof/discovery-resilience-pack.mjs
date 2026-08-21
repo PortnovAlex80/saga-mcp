@@ -335,11 +335,9 @@ function makeRetryExhaustionRuntime(targetName) {
   const target = TARGET[targetName];
   return {
     handlers: withOverrides({ [target.key]: invalidHandler(targetName) }),
-    // Discovery declares onExhausted=requeue. The first 2-attempt exhaustion
-    // writes an immutable recovery epoch and starts a 60s domain backoff. This
-    // fast conformance proof stops there; advancing time or reaching the total
-    // cap is a generic K4 time/fault-scheduler proof, not a workshop-specific
-    // reason to mutate timestamps in a test.
+    // The ordinary single-pass runtime proves the first local budget/epoch and
+    // also supplies the persistent invalid cognition to the slow two-phase
+    // terminal proof used by discovery-scenario-drive.mjs.
     driveOptions: { maxCycles: 80 },
     oracles: [
       gateSeenOracle(`${targetName}.exhaustion.repair-required`, target.workplace, 'repair_required'),
@@ -549,7 +547,10 @@ export const DISCOVERY_RESILIENCE_SCENARIOS = Object.freeze([
       kind: 'causal-fault',
       faultClass: 'contract-shape',
       proves: [target === 'proposal' ? 'discovery.proposal-contract' : 'discovery.readiness-contract'],
-      coverageItems: [`recovery:discovery-${target}:retry-exhaustion-bounded-epoch`],
+      coverageItems: [
+        `recovery:discovery-${target}:retry-exhaustion-terminal`,
+        coverageToken.transition(TARGET[target].node, 'complete-failed'),
+      ],
     }),
     Object.freeze({
       schemaVersion: 'factory.proof.kernel-scenario.v1',
@@ -593,15 +594,13 @@ export const DISCOVERY_CLOSURE_SCENARIOS = Object.freeze([
   ...DISCOVERY_RESILIENCE_SCENARIOS,
 ]);
 
-// These failed routes are generic runtime/time/fault boundaries, not admitted
-// Discovery cognition outcomes. For onExhausted=requeue, terminal failure
-// requires time to cross an inter-epoch backoff / total cap. The settlement
-// failed edge likewise requires a kernel exception after both cells have passed.
-// They belong to the shared K4 fault scheduler. A workshop proof must not gain
-// them by writing timestamps/authority tables or mirroring the reducer.
+// `settle -> complete-failed` is the one remaining internal kernel-exception
+// edge: no admitted Discovery worker material can lawfully produce it because
+// both upstream cells have already passed. It belongs to the shared K4 kernel
+// fault scheduler; the workshop proof must not fabricate it via authority-table
+// writes. Cell failed routes ARE covered by the slow real-backoff exhaustion
+// proofs above.
 export const DISCOVERY_PLATFORM_FAULT_EDGES = Object.freeze([
-  coverageToken.transition('produce-proposal', 'complete-failed'),
-  coverageToken.transition('assess-readiness', 'complete-failed'),
   coverageToken.transition('settle', 'complete-failed'),
 ]);
 
@@ -611,8 +610,8 @@ const workshopFullBase = DISCOVERY_FULL_COVERAGE_UNIVERSE.filter(item =>
 export const DISCOVERY_CLOSURE_COVERAGE_UNIVERSE = Object.freeze([
   ...new Set([
     ...workshopFullBase,
-    'recovery:discovery-proposal:retry-exhaustion-bounded-epoch',
-    'recovery:discovery-readiness:retry-exhaustion-bounded-epoch',
+    'recovery:discovery-proposal:retry-exhaustion-terminal',
+    'recovery:discovery-readiness:retry-exhaustion-terminal',
     'tool-lifecycle:discovery-proposal:late-call-denied',
     'tool-lifecycle:discovery-readiness:late-call-denied',
     'restart:discovery:same-input-replay',
