@@ -26,7 +26,6 @@
     derived_from: '↳ from', depends_on: '↳ dep', verified_by: '↳ verify',
     superseded_by: '↳ super', implements_spec: '↳ spec',
   };
-
   const TASK_EDGE_TYPES = new Set(['implements', 'verified_by', 'depends_on']);
 
   let cy = null;
@@ -59,8 +58,8 @@
             'text-max-width': '120px',
             'font-size': '11px',
             'font-family': '-apple-system, "Segoe UI", sans-serif',
-            'width': (e) => nodeSize(e, 'w'),
-            'height': (e) => nodeSize(e, 'h'),
+            'width': (e) => nodeSize(e),
+            'height': (e) => nodeSize(e),
             'shape': (e) => e.data('kind') === 'task' ? 'diamond' : 'round-rectangle',
             'border-width': 0,
             'overlay-opacity': 0,
@@ -68,11 +67,7 @@
         },
         {
           selector: 'node:selected',
-          style: {
-            'border-width': 3,
-            'border-color': ACCENT,
-            'border-opacity': 1,
-          },
+          style: { 'border-width': 3, 'border-color': ACCENT, 'border-opacity': 1 },
         },
         {
           selector: 'edge',
@@ -89,18 +84,10 @@
         },
         { selector: 'edge:selected', style: { 'width': 3, 'opacity': 1 } },
         { selector: '.faded', style: { 'opacity': 0.12 } },
-        {
-          selector: '.highlighted',
-          style: { 'opacity': 1, 'border-width': 2, 'border-color': ACCENT },
-        },
+        { selector: '.highlighted', style: { 'opacity': 1, 'border-width': 2, 'border-color': ACCENT } },
         {
           selector: 'node.search-match',
-          style: {
-            'opacity': 1,
-            'border-width': 3,
-            'border-color': ACCENT,
-            'border-opacity': 0.9,
-          },
+          style: { 'opacity': 1, 'border-width': 3, 'border-color': ACCENT, 'border-opacity': 0.9 },
         },
       ],
       elements: [],
@@ -117,39 +104,36 @@
     });
     cy.on('unselect', 'node', (evt) => {
       if (evt.target.id() === selectedNodeId) selectedNodeId = null;
-      restoreVisualFocus();
+      if (!currentSearchQuery()) restoreVisualFocus();
     });
 
-    document.getElementById('refresh-btn').addEventListener('click', () => loadGraph());
-    document.getElementById('layout-select').addEventListener('change', () => runLayout());
-    document.getElementById('hide-task-edges').addEventListener('change', () => applyEdgeFilter());
+    document.getElementById('refresh-btn').addEventListener('click', loadGraph);
+    document.getElementById('layout-select').addEventListener('change', runLayout);
+    document.getElementById('hide-task-edges').addEventListener('change', applyEdgeFilter);
 
     const search = document.getElementById('graph-search');
     if (search) {
       search.addEventListener('input', applySearchFilter);
       search.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-          search.value = '';
-          search.blur();
-          applySearchFilter();
-        }
+        if (event.key !== 'Escape') return;
+        search.value = '';
+        search.blur();
+        applySearchFilter();
       });
     }
     document.addEventListener('keydown', (event) => {
       if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
       const tag = String(event.target?.tagName || '').toLowerCase();
-      if (['input', 'textarea', 'select'].includes(tag) || event.target?.isContentEditable) return;
-      if (!search) return;
+      if (['input', 'textarea', 'select'].includes(tag) || event.target?.isContentEditable || !search) return;
       event.preventDefault();
       search.focus();
       search.select();
     });
 
     await loadProjects();
-    const params = new URLSearchParams(location.search);
-    const fromUrl = params.get('project');
+    const fromUrl = new URLSearchParams(location.search).get('project');
     if (fromUrl) document.getElementById('project-select').value = fromUrl;
-    document.getElementById('project-select').addEventListener('change', () => loadGraph());
+    document.getElementById('project-select').addEventListener('change', loadGraph);
     if (document.getElementById('project-select').value) loadGraph();
   }
 
@@ -196,23 +180,12 @@
     cy.elements().remove();
     const hideTaskEdges = document.getElementById('hide-task-edges').checked;
     const nodes = (snapshot.nodes || []).map((n) => ({
-      data: {
-        id: n.id,
-        label: nodeLabel(n),
-        type: n.type,
-        kind: n.kind,
-        raw: n,
-      },
+      data: { id: n.id, label: nodeLabel(n), type: n.type, kind: n.kind, raw: n },
     }));
     const edges = (snapshot.edges || [])
       .filter((e) => !hideTaskEdges || !isTaskEdge(e))
       .map((e, i) => ({
-        data: {
-          id: `e${i}:${e.source}->${e.target}:${e.linkType}`,
-          source: e.source,
-          target: e.target,
-          linkType: e.linkType,
-        },
+        data: { id: `e${i}:${e.source}->${e.target}:${e.linkType}`, source: e.source, target: e.target, linkType: e.linkType },
       }));
     cy.add([...nodes, ...edges]);
     runLayout();
@@ -221,21 +194,20 @@
 
   function runLayout() {
     const sel = document.getElementById('layout-select').value;
-    const layoutOpts =
-      sel === 'dagre'
-        ? { name: 'dagre', rankDir: 'TB', nodeSep: 44, rankSep: 74, animate: false }
-        : sel === 'breadthfirst'
-          ? { name: 'breadthfirst', directed: true, padding: 30, animate: false }
-          : sel === 'cose'
-            ? { name: 'cose', animate: false, nodeRepulsion: 8000, idealEdgeLength: 100 }
-            : sel === 'circle'
-              ? { name: 'circle', animate: false }
-              : sel === 'concentric'
-                ? { name: 'concentric', animate: false }
-                : { name: 'grid' };
-    const l = cy.layout(layoutOpts);
-    l.one('layoutstop', () => cy.fit(undefined, 60));
-    l.run();
+    const opts = sel === 'dagre'
+      ? { name: 'dagre', rankDir: 'TB', nodeSep: 44, rankSep: 74, animate: false }
+      : sel === 'breadthfirst'
+        ? { name: 'breadthfirst', directed: true, padding: 30, animate: false }
+        : sel === 'cose'
+          ? { name: 'cose', animate: false, nodeRepulsion: 8000, idealEdgeLength: 100 }
+          : sel === 'circle'
+            ? { name: 'circle', animate: false }
+            : sel === 'concentric'
+              ? { name: 'concentric', animate: false }
+              : { name: 'grid' };
+    const layout = cy.layout(opts);
+    layout.one('layoutstop', () => cy.fit(undefined, 60));
+    layout.run();
   }
 
   function applyEdgeFilter() {
@@ -245,39 +217,27 @@
   }
 
   function colorFor(type) { return TYPE_COLORS[type] || DEFAULT_COLOR; }
-
-  function nodeSize(ele, dim) {
-    const kind = ele.data('kind');
-    const type = ele.data('type');
-    if (kind === 'artifact') {
-      const big = new Set(['PRD', 'SRS', 'UC']).has(type);
-      return dim === 'w' ? (big ? 52 : 38) : (big ? 52 : 38);
-    }
-    if (kind === 'task') return 28;
-    return 34;
+  function nodeSize(ele) {
+    if (ele.data('kind') === 'task') return 28;
+    if (ele.data('kind') !== 'artifact') return 34;
+    return new Set(['PRD', 'SRS', 'UC']).has(ele.data('type')) ? 52 : 38;
   }
-
   function nodeLabel(n) {
     if (n.kind === 'artifact' && n.code) return n.code;
     if (n.kind === 'task' && n.taskId) return `#${n.taskId}`;
     if (n.path) {
-      const parts = n.path.split('/');
-      const last = parts[parts.length - 1].replace(/\.md$/i, '');
+      const last = n.path.split('/').at(-1).replace(/\.md$/i, '');
       return last.length > 28 ? last.slice(0, 25) + '…' : last;
     }
     return n.title || '?';
   }
-
-  function isTaskEdge(edge) {
-    return TASK_EDGE_TYPES.has(edge.linkType);
-  }
+  function isTaskEdge(edge) { return TASK_EDGE_TYPES.has(edge.linkType); }
 
   function renderSidePanel(nodeId) {
     const node = (currentSnapshot.nodes || []).find((n) => n.id === nodeId);
     if (!node) return;
     const panel = document.getElementById('side-panel');
     panel.classList.remove('empty');
-
     const outgoing = (currentSnapshot.edges || []).filter((e) => e.source === nodeId);
     const incoming = (currentSnapshot.edges || []).filter((e) => e.target === nodeId);
 
@@ -298,24 +258,14 @@
           ${node.mtime ? kv('Изменён', new Date(node.mtime).toLocaleString('ru-RU')) : ''}
           ${(node.tags && node.tags.length) ? kv('Теги', node.tags.join(', ')) : ''}
         </div>
-
-        ${node.path ? `
-          <button class="edit-btn" data-path="${escapeAttr(node.path)}">Редактировать документ</button>
-          ${node.kind === 'artifact' ? `<button class="edit-btn secondary" data-action="view-md" data-path="${escapeAttr(node.path)}">Открыть Markdown</button>` : ''}
-        ` : ''}
-
+        ${node.path ? `<button class="edit-btn" data-path="${escapeAttr(node.path)}">Редактировать документ</button>` : ''}
         ${outgoing.length ? `
-          <div>
-            <div class="section-title">Исходящие связи (${outgoing.length})</div>
-            <div class="edge-list">${outgoing.map(edgeRow(currentSnapshot, 'out')).join('')}</div>
-          </div>` : ''}
+          <div><div class="section-title">Исходящие связи (${outgoing.length})</div>
+          <div class="edge-list">${outgoing.map(edgeRow(currentSnapshot, 'out')).join('')}</div></div>` : ''}
         ${incoming.length ? `
-          <div>
-            <div class="section-title">Входящие связи (${incoming.length})</div>
-            <div class="edge-list">${incoming.map(edgeRow(currentSnapshot, 'in')).join('')}</div>
-          </div>` : ''}
-      </div>
-    `;
+          <div><div class="section-title">Входящие связи (${incoming.length})</div>
+          <div class="edge-list">${incoming.map(edgeRow(currentSnapshot, 'in')).join('')}</div></div>` : ''}
+      </div>`;
 
     panel.querySelectorAll('.edge-row').forEach((row) => {
       row.addEventListener('click', () => {
@@ -326,39 +276,28 @@
         cy.animate({ center: { eles: target }, duration: 160 });
       });
     });
-
     panel.querySelectorAll('.edit-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const p = btn.dataset.path;
-        if (btn.dataset.action === 'view-md') {
-          window.open(p, '_blank');
-          return;
-        }
-        if (window.docsGraphEditor && p) window.docsGraphEditor.openForPath(p);
+        if (window.docsGraphEditor && btn.dataset.path) window.docsGraphEditor.openForPath(btn.dataset.path);
       });
     });
   }
 
   function edgeRow(snapshot, dir) {
-    return (e) => {
-      const otherId = dir === 'out' ? e.target : e.source;
+    return (edge) => {
+      const otherId = dir === 'out' ? edge.target : edge.source;
       const other = (snapshot.nodes || []).find((n) => n.id === otherId) || {};
-      const glyph = LINK_GLYPH[e.linkType] || e.linkType;
+      const glyph = LINK_GLYPH[edge.linkType] || edge.linkType;
       const label = other.code || other.title || other.path || otherId;
-      return `
-        <div class="edge-row" data-target="${escapeAttr(otherId)}">
-          <span class="glyph">${escapeHtml(glyph)}</span>
-          <span>${escapeHtml(truncate(String(label), 36))}</span>
-        </div>`;
+      return `<div class="edge-row" data-target="${escapeAttr(otherId)}"><span class="glyph">${escapeHtml(glyph)}</span><span>${escapeHtml(truncate(String(label), 36))}</span></div>`;
     };
   }
 
   function focusNodeContext(node) {
     if (!node || node.empty()) return;
     cy.elements().removeClass('faded highlighted search-match');
-    const connectedEdges = node.connectedEdges();
-    const neighbors = connectedEdges.connectedNodes();
-    const keep = node.union(connectedEdges).union(neighbors);
+    const edges = node.connectedEdges();
+    const keep = node.union(edges).union(edges.connectedNodes());
     cy.elements().not(keep).addClass('faded');
     keep.addClass('highlighted');
     node.removeClass('highlighted');
@@ -372,19 +311,20 @@
     keep.addClass('highlighted');
   }
 
+  function currentSearchQuery() {
+    return String(document.getElementById('graph-search')?.value || '').trim().toLocaleLowerCase('ru-RU');
+  }
+
   function applySearchFilter() {
     if (!cy) return;
     const input = document.getElementById('graph-search');
-    const query = String(input?.value || '').trim().toLocaleLowerCase('ru-RU');
+    const query = currentSearchQuery();
     input?.closest('.workspace-search')?.classList.toggle('has-query', Boolean(query));
-
     if (!query) {
       restoreVisualFocus();
       return;
     }
 
-    selectedNodeId = null;
-    cy.elements().unselect();
     cy.elements().removeClass('faded highlighted search-match');
     const matches = cy.nodes().filter((node) => nodeMatchesQuery(node.data('raw') || {}, query));
     if (matches.empty()) {
@@ -393,8 +333,7 @@
       return;
     }
     const contextEdges = matches.connectedEdges();
-    const contextNodes = contextEdges.connectedNodes();
-    const keep = matches.union(contextEdges).union(contextNodes);
+    const keep = matches.union(contextEdges).union(contextEdges.connectedNodes());
     cy.elements().not(keep).addClass('faded');
     matches.addClass('search-match');
     setSearchCount(matches.length);
@@ -402,36 +341,22 @@
   }
 
   function nodeMatchesQuery(node, query) {
-    const haystack = [
-      node.code,
-      node.title,
-      node.path,
-      node.type,
-      node.status,
-      node.epicName,
-      ...(Array.isArray(node.tags) ? node.tags : []),
-    ].filter(Boolean).join(' ').toLocaleLowerCase('ru-RU');
-    return haystack.includes(query);
+    return [node.code, node.title, node.path, node.type, node.status, node.epicName, ...(Array.isArray(node.tags) ? node.tags : [])]
+      .filter(Boolean).join(' ').toLocaleLowerCase('ru-RU').includes(query);
   }
 
   function setSearchCount(count) {
     const input = document.getElementById('graph-search');
-    if (!input) return;
-    input.setAttribute('aria-description', count === 1 ? 'Найден 1 узел' : `Найдено узлов: ${count}`);
+    if (input) input.setAttribute('aria-description', count === 1 ? 'Найден 1 узел' : `Найдено узлов: ${count}`);
   }
 
   function restoreVisualFocus() {
     if (!cy) return;
-    const query = String(document.getElementById('graph-search')?.value || '').trim();
-    if (query) {
-      applySearchFilter();
-      return;
-    }
+    if (currentSearchQuery()) return applySearchFilter();
     cy.elements().removeClass('faded highlighted search-match');
-    if (selectedNodeId) {
-      const selected = cy.getElementById(selectedNodeId);
-      if (selected && !selected.empty()) focusNodeContext(selected);
-    }
+    if (!selectedNodeId) return;
+    const selected = cy.getElementById(selectedNodeId);
+    if (selected && !selected.empty()) focusNodeContext(selected);
   }
 
   function showEmpty(reason) {
@@ -442,8 +367,7 @@
     };
     const text = reasons[reason] || 'Граф пуст.';
     if (cy) cy.elements().remove();
-    const cyEl = document.getElementById('cy');
-    cyEl.innerHTML = `<div class="empty-state"><div class="big">${escapeHtml(text)}</div><div>Выберите другой проект.</div></div>`;
+    document.getElementById('cy').innerHTML = `<div class="empty-state"><div class="big">${escapeHtml(text)}</div><div>Выберите другой проект.</div></div>`;
     setStats('');
   }
 
@@ -459,25 +383,18 @@
     clearTimeout(el.__ttl);
     if (ttl > 0) el.__ttl = setTimeout(() => el.remove(), ttl);
   }
-
-  function setStats(t) { document.getElementById('stats').textContent = t; }
-  function kv(k, v) {
-    if (v == null || v === '' || v === undefined) return '';
-    return `<div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(String(v))}</span></div>`;
+  function setStats(text) { document.getElementById('stats').textContent = text; }
+  function kv(key, value) {
+    if (value == null || value === '') return '';
+    return `<div class="kv"><span class="k">${escapeHtml(key)}</span><span class="v">${escapeHtml(String(value))}</span></div>`;
   }
-  function shortHash(h) {
-    if (!h) return null;
-    return h.length > 12 ? `${h.slice(0, 8)}…${h.slice(-4)}` : h;
+  function shortHash(hash) { return !hash ? null : hash.length > 12 ? `${hash.slice(0, 8)}…${hash.slice(-4)}` : hash; }
+  function truncate(value, n) { return value.length > n ? value.slice(0, n - 1) + '…' : value; }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-  function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
+  function escapeAttr(value) { return escapeHtml(value).replace(/'/g, '&#39;'); }
 
   document.addEventListener('DOMContentLoaded', init);
   window.__docsGraphReload = loadGraph;
