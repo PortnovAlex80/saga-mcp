@@ -116,7 +116,7 @@ export function observeDurableTrace(dbPath) {
         'SELECT workplace_ref, candidate_set_ref, gate_decision_key FROM factory_cell_final_acceptances ORDER BY workplace_ref',
       ),
       acceptedAuthorityHeads: all(
-        'SELECT workplace_ref, accepted_candidate_set_ref, accepted_author_task_id FROM factory_accepted_authority_head ORDER BY workplace_ref',
+        'SELECT workplace_ref, accepted_author_candidate_set_ref, accepted_author_task_id FROM factory_accepted_authority_head ORDER BY workplace_ref',
       ),
       // Generic post-acceptance effect proof: one immutable receipt binds the
       // exact workplace, accepted CandidateSet and GateDecision. This is the
@@ -146,7 +146,7 @@ export function observeDurableTrace(dbPath) {
         'SELECT obligation_key, source_kind, source_ref, handoff_kind, state, last_error FROM factory_transition_obligations ORDER BY obligation_key',
       ),
       recoveryEpochs: all(
-        'SELECT workplace_ref, epoch, reason_key, reason_repeat_count FROM factory_workplace_recovery_epochs ORDER BY rowid',
+        'SELECT workplace_ref, role, epoch, exhausted_attempts, max_attempts, last_diagnosis FROM factory_workplace_recovery_epochs ORDER BY rowid',
       ),
       workerExecutions: all(
         'SELECT execution_id AS execution_ref, task_id, state, voided_at FROM worker_executions ORDER BY execution_id',
@@ -173,7 +173,19 @@ export function observeDurableTrace(dbPath) {
  *                       effect_pending/verifying/human boundary);
  *   typed-terminal    — terminal_reason set (honest terminal).
  */
-export function classifyPostDrainProgress(trace) {
+export function classifyPostDrainProgress(trace, stopContext = null) {
+  // A deliberate drive stop (stopOnStageOutcome) leaves the NEXT stage's
+  // cells created-but-never-driven (stage run started by the handoff, no
+  // local outcome). Those are boundary facts, not stalls — but they must be
+  // CLASSIFIED, never silently skipped. Stalls inside stages the scenario
+  // actually drove still fail the oracle.
+  const stageRunByProcessRun = new Map(
+    (trace.stageRuns ?? [])
+      .filter(row => row.process_run_id !== null && row.process_run_id !== undefined)
+      .map(row => [Number(row.process_run_id), row]),
+  );
+  const deliberateStop = stopContext?.stoppedByStageOutcome === true
+    ? String(stopContext.stageOutcome ?? 'formalized') : null;
   const openObligationsFor = workplace => (trace.transitionObligations ?? [])
     .filter(o => o.state !== 'completed'
       && typeof o.source_ref === 'string'
@@ -208,6 +220,17 @@ export function classifyPostDrainProgress(trace) {
     if (own.length > 0) {
       rows.push({ workplace: w.workplace_ref, classification: 'due-transition', evidence: `open obligations: ${own.slice(0, 3).map(o => o.obligation_key).join(', ')}` });
       continue;
+    }
+    if (deliberateStop) {
+      const stageRun = stageRunByProcessRun.get(Number(w.process_run_id));
+      if (stageRun && stageRun.local_outcome === null) {
+        rows.push({
+          workplace: w.workplace_ref,
+          classification: 'BOUNDARY-UNDRIVEN',
+          evidence: `deliberate stop at stage outcome '${deliberateStop}'; cell's stage '${stageRun.stage_id}' was created by the handoff but never driven by this scenario`,
+        });
+        continue;
+      }
     }
     rows.push({
       workplace: w.workplace_ref,

@@ -427,7 +427,7 @@ export const FORMALIZATION_SCENARIOS = Object.freeze([
     proves: ['factory.review-verdict'],
     coverageItems: [
       coverageToken.obligation('factory.review-verdict'),
-      coverageToken.gate('formalization-product-contract.final', 'repair_required'),
+      'detector:work-intent-payload-binding:subject_candidate_set_ref',
       coverageToken.negativeTransition('define-product-contract', 'model-use-cases'),
       'binding:formalization-reviewer:exact-author-candidate',
     ],
@@ -492,6 +492,7 @@ function makeFileRepairRuntime(targetName, mutateContent) {
   const journal = [];
   const handler = context => {
     const artifactCreate = context.handlers.artifact_create;
+    const artifactUpdate = context.handlers.artifact_update;
     const workerDone = context.handlers.worker_done;
     let captured = null;
     const handlers = {
@@ -505,7 +506,9 @@ function makeFileRepairRuntime(targetName, mutateContent) {
         writeFileSync(artifactPath, badContent, 'utf8');
         captured = { input: structuredClone(input), artifactPath, goodContent };
         journal.push({ kind: 'mutated-file-before-create', node: target.node, path: input.path });
-        return artifactCreate(input);
+        const created = artifactCreate(input);
+        captured.createdId = created?.id ?? null;
+        return created;
       },
       worker_done(input) {
         try {
@@ -514,8 +517,16 @@ function makeFileRepairRuntime(targetName, mutateContent) {
           journal.push({ kind: 'preflight-rejected', node: target.node,
             error: error instanceof Error ? error.message : String(error) });
           if (!captured) throw error;
+          // The submission validator reads the artifact content pinned at
+          // create time (readExactArtifactContent), so restoring the file is
+          // not enough: re-creating leaves the mutated hash pinned and the
+          // retry fails identically (observed: 5 identical-digest rejections
+          // → stasis). The production contract path for a changed existing
+          // artifact is artifact_update — the factory re-hashes from disk.
           writeFileSync(captured.artifactPath, captured.goodContent, 'utf8');
-          artifactCreate(captured.input);
+          if (captured.createdId != null) {
+            artifactUpdate({ id: captured.createdId });
+          }
           journal.push({ kind: 'same-execution-file-repair', node: target.node });
           return workerDone(input);
         }
@@ -579,6 +590,7 @@ function makeMalformedReconciliationRuntime() {
 function makeForeignReviewerRuntime() {
   const key = FORMALIZATION_HANDLER_KEYS.productReviewer;
   const base = W9_HAPPY_HANDLERS[key];
+  const journal = [];
   const handler = context => {
     const productSubmit = context.handlers.product_submit;
     const handlers = {
@@ -590,17 +602,79 @@ function makeForeignReviewerRuntime() {
           ...next.content,
           subject_candidate_set_ref: 'candidate-set/foreign-formalization-proof',
         };
-        return productSubmit(next);
+        try {
+          return productSubmit(next);
+        } catch (error) {
+          // The production fence for a foreign review subject is the reviewer
+          // WorkIntent's payload binding, enforced at product_submit intake
+          // (PRODUCT_PAYLOAD_BINDING_REJECTED on subject_candidate_set_ref) —
+          // BEFORE any CandidateSet can seal the verdict. The gate/provider
+          // 'unknown' path is therefore architecturally preempted for this
+          // fault class (it stays reachable for stale bindings after an author
+          // reseal). Journal the SAME typed feedback a real worker sees and
+          // rethrow: an adversarial reviewer must not magically converge.
+          const message = error instanceof Error ? error.message : String(error);
+          journal.push({
+            kind: 'foreign-subject-submit-rejected',
+            error: message,
+            bindsSubjectField: message.includes("field 'subject_candidate_set_ref'"),
+          });
+          throw error;
+        }
       },
     };
     return base({ ...context, handlers });
   };
   return {
     handlers: withOverrides({ [key]: handler }),
+    actorEvidence: journal,
     driveOptions: { maxCycles: 100 },
     oracles: [
-      receiptOracle('formalization.review.foreign-subject-not-passed', 'factory.review-verdict.v1', 'unknown'),
-      gateOracle('formalization.review.foreign-subject-repair', FORMALIZATION_TARGETS.product.cell, 'final', 'repair_required'),
+      {
+        id: 'formalization.review.foreign-subject-rejected-at-intake',
+        evaluate() {
+          const rejections = journal.filter(row => row.kind === 'foreign-subject-submit-rejected');
+          return {
+            passed: rejections.length > 0 && rejections.every(row => row.bindsSubjectField),
+            details: { rejections },
+          };
+        },
+      },
+      {
+        id: 'formalization.review.foreign-subject-never-sealed',
+        evaluate({ durableTrace }) {
+          const sealed = (durableTrace.managedSubmissions ?? [])
+            .filter(row => row.schema_version === REVIEW_SCHEMA);
+          return {
+            passed: sealed.length === 0,
+            evidenceRefs: sealed.map(row => `submission:${row.id}`),
+            details: { sealedVerdictSubmissions: sealed.length },
+          };
+        },
+      },
+      {
+        id: 'formalization.review.foreign-subject-no-final-acceptance',
+        evaluate({ durableTrace }) {
+          const rows = (durableTrace.gateDecisions ?? []).filter(row =>
+            String(row.workplace_ref).includes(FORMALIZATION_TARGETS.product.cell)
+            && row.gate_phase === 'final');
+          return {
+            passed: rows.length === 0,
+            details: { finalGateDecisions: rows.length },
+          };
+        },
+      },
+      {
+        id: 'formalization.review.foreign-subject-no-downstream-node',
+        evaluate({ durableTrace }) {
+          const rows = (durableTrace.managedSubmissions ?? [])
+            .filter(row => row.node_id === 'model-use-cases');
+          return {
+            passed: rows.length === 0,
+            details: { downstreamNodeSubmissions: rows.length },
+          };
+        },
+      },
       noStrandedExecutionOracle(),
     ],
   };
@@ -668,7 +742,7 @@ export const FORMALIZATION_PHASE1_REQUIRED_COVERAGE = Object.freeze([
   'grammar:formalization-ac:exact-heading-resolution',
   'shape:formalization-reconciliation:typed-report-protected',
   'grammar:formalization-srs:d2-enums-and-frozen-ac-codes',
-  coverageToken.gate('formalization-product-contract.final', 'repair_required'),
+  'detector:work-intent-payload-binding:subject_candidate_set_ref',
   coverageToken.negativeTransition('define-product-contract', 'model-use-cases'),
   'binding:formalization-reviewer:exact-author-candidate',
 ]);

@@ -93,11 +93,11 @@ function assertProofModeHonesty(proofModes, workerSpawn) {
     }
     return;
   }
-  if (!proofModes.includes('CanonicalFast')) {
-    throw new Error('SCENARIO_RUNNER_MODE_MISMATCH: in-process cognition requires CanonicalFast');
-  }
   if (proofModes.includes('CanonicalSpawn')) {
     throw new Error('SCENARIO_RUNNER_MODE_MISMATCH: CanonicalSpawn requires workerSpawn');
+  }
+  if (!proofModes.includes('CanonicalFast')) {
+    throw new Error('SCENARIO_RUNNER_MODE_MISMATCH: in-process cognition requires CanonicalFast');
   }
 }
 
@@ -209,7 +209,10 @@ export async function runScenario(input, dependencies = {}) {
   });
 
   const durableTrace = traceApi.observeDurableTrace(bootstrap.dbPath);
-  const progress = traceApi.classifyPostDrainProgress(durableTrace);
+  const progress = traceApi.classifyPostDrainProgress(durableTrace, {
+    stoppedByStageOutcome: driven.result.stoppedByStageOutcome === true,
+    stageOutcome: input.driveOptions?.stopOnStageOutcome ?? null,
+  });
   const oracleContext = Object.freeze({
     scenario,
     bootstrap,

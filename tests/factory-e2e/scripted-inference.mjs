@@ -104,6 +104,7 @@ function runFrozenCapsuleReplay(context, assignment) {
   const handlers = {
     product_submit: input => productHandlersMod.handlers.product_submit(input),
     artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+    artifact_update: input => artifactHandlersMod.handlers.artifact_update(input),
     trace_add: input => artifactHandlersMod.handlers.trace_add(input),
     worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
   };
@@ -301,6 +302,7 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
         product_read: input => productHandlersMod.handlers.product_read(input),
         candidate_read: input => productHandlersMod.handlers.candidate_read(input),
         artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+        artifact_update: input => artifactHandlersMod.handlers.artifact_update(input),
         trace_add: input => artifactHandlersMod.handlers.trace_add(input),
         worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
       };
