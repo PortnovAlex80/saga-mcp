@@ -78,6 +78,9 @@ import {
 } from '../../modules/discovery/application/discovery-check-providers.js';
 import { FORMALIZATION_CHECK_REFS } from '../../modules/formalization/application/formalization-check-refs.js';
 import {
+  formalizationReconciliationReportPayloadContract,
+} from '../../modules/formalization/application/reconciliation-payload-contract.js';
+import {
   factoryReviewVerdictPayloadContract,
   REVIEW_VERDICT_CHECK_PROVIDER_DIGEST,
   REVIEW_VERDICT_CHECK_PROVIDER_ID,
@@ -150,6 +153,11 @@ export const WORKSHOP_PAYLOAD_CONTRACTS: readonly ProductPayloadContract[] = [
   sourceChangeCandidatePayloadContract,
   // --- cross-cutting (review verdict used by development + formalization) ---
   factoryReviewVerdictPayloadContract,
+  // --- formalization: the reconcile-what report is the cell's declared
+  // output; its payload shape is pinned at the product_submit intake (2026-08-21
+  // conformance finding: malformed reports were accepted with only the
+  // WHAT-graph validator behind them). ---
+  formalizationReconciliationReportPayloadContract,
 ];
 
 // ---------------------------------------------------------------------------
@@ -262,6 +270,7 @@ const PAYLOAD_CONTRACT_OWNERS: Readonly<Record<string, string>> = Object.freeze(
   [developmentReviewVerdictPayloadContract.schemaId]: 'development',
   [developmentTaskGraphPayloadContract.schemaId]: 'development',
   [factoryReviewVerdictPayloadContract.schemaId]: 'formalization',
+  [formalizationReconciliationReportPayloadContract.schemaId]: 'formalization',
 });
 
 /**

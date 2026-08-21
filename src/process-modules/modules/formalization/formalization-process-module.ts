@@ -21,6 +21,11 @@ import {
   FORMALIZATION_KERNEL_HANDLER_IDS,
 } from '../../../modules/formalization/application/formalization-production-cell-installation.js';
 import {
+  FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_DIGEST,
+  FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_ID,
+  FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_VERSION,
+} from '../../../modules/formalization/application/reconciliation-payload-contract.js';
+import {
   ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
   FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA,
   FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA,
@@ -93,6 +98,12 @@ function reviewedCell(input: {
   outputSchema: string;
   check: { providerId: string; version: string; providerDigest: string };
   acceptedTransition: string;
+  /** Pinned author-output payload contract (product_submit intake fence). */
+  authorPayloadContract?: {
+    contractId: string;
+    version: string;
+    contractDigest: string;
+  };
 }) {
   return singletonProductionCell({
     id: input.id,
@@ -101,6 +112,9 @@ function reviewedCell(input: {
     cardinality: '1',
     maxAttempts: FORMALIZATION_RECOVERY_MAX_ATTEMPTS,
     onExhausted: 'requeue',
+    ...(input.authorPayloadContract
+      ? { payloadContract: input.authorPayloadContract }
+      : {}),
     checkPlan: authorPlan(input.id, input.check),
     postAcceptanceEffect: FORMALIZATION_ACCEPT_PRODUCTS_EFFECT_ID,
     review: {
@@ -205,6 +219,14 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
           outputSchema: FORMALIZATION_RECONCILIATION_SCHEMA,
           check: FORMALIZATION_CHECK_REFS.reconciliation,
           acceptedTransition: 'freeze-acceptance-baseline',
+          // The report IS this cell's declared output — pin its payload shape
+          // at the product_submit intake (typed rejection before authority),
+          // like review verdicts and development products.
+          authorPayloadContract: {
+            contractId: FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_ID,
+            version: FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_VERSION,
+            contractDigest: FORMALIZATION_RECONCILIATION_PAYLOAD_CONTRACT_DIGEST,
+          },
         }),
       },
       {
