@@ -488,3 +488,41 @@ all 209 lost executions died on the artifact-ref bridge UNIQUE constraint
   exhaustion path in the production-cell executor.
 - retry-exhaustion ×5 and restart-idempotency: re-run after the park fix —
   same supervision territory.
+
+## Addendum 3: layers 1+2 of the supervision family are FIXED; exhaustion = layer 3
+
+- `177a4666` — artifact-ref desk reprojection on lawful same-run repair (was:
+  UNIQUE constraint killed every repair execution; 209 lost in one drive).
+  reviewer-feedback-exact PASSES.
+- `f6a79aa1` — REPAIR_ROUND_IDENTICAL_MATERIAL park: a repair round that
+  seals byte-identical accepted material after a final repair_required
+  verdict parks typed (task blocked + workplace park + durable evidence)
+  instead of stalling review/queued. absent/stale/corrupted PASS.
+
+**Remaining layer (retry-exhaustion ×5, all failing on
+`*.retry-exhaustion.local-budget`: epochRecorded=false):** the ADR-075
+budget machinery in production-cell-node-executor (attemptCount → epoch
+rollover → total-cap terminal failed) NEVER SEES identical review rounds,
+because the review round 2 does not re-materialize for a byte-identical
+author candidate set (content addressing dedups it; the reviewer verdict
+for those exact bytes already exists). The two scenario families share the
+same causal input (author resubmits identical bytes; reviewer rejects) and
+the CORRECT unified semantics per CONVEYOR §15 + ADR-075: on author
+re-acceptance with a set byte-identical to the just-rejected one, the
+round must be TAXED as a wasted attempt (finding-trajectory identity:
+gate + findings), driving budget → epoch rollover → spin detection →
+terminal failed — not a human park at round 2, and not a stall.
+
+Implementation hint: replace the round-2 human park in dispatcher.ts
+(REPAIR_ROUND_IDENTICAL_MATERIAL) with budget taxation — record the
+identical re-seal as a rejected-set attempt for the author role, or
+re-arm the review desk with the prior verdict as the round's outcome,
+letting the existing executor budget take over. Then absent/stale/
+corrupted end `terminal failed` (their typed-bounded oracle accepts
+'terminal') and the exhaustion family gets its epochs + failed stage.
+restart-idempotency still blocked by LIFECYCLE_SCOPE_ALREADY_ACTIVE
+(scope guard; see Addendum 1 options).
+
+Score after this session: core pack 16/16 + feedback quartet 4/4 = 20 of
+26 scenario groups green; 6 red remain (exhaustion ×5 + restart), one
+production layer away.
