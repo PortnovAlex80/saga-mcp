@@ -132,3 +132,15 @@ resume path re-stamps the catalog limit).
   supervision sweeps clean. Night watchdog automation (every 20 min) also
   live. Same idea, same success criteria as run 2 — externally-true
   `runnable-local` or an honest typed terminal.
+- **Night log (2026-08-22, small hours) — around Elite-3.** The run keeps
+  progressing through formalization (no-build protocol honored: every src
+  change committed unverified, verification batched for the terminal).
+  Landed around the run: remote docs-graph frontend merged (e51263c4);
+  F-R1 replay-capsule contamination fix — own-execution typed products only
+  (bdcae547, triage verdict DB-proven); §10.2 selectable base lifecycle for
+  honest Delivery proofs (c0a3c62f); Development conformance tranche D-A —
+  spine PASS 8/8 oracles (01972137); Delivery tranche L-A; refactor Phases
+  R0+R1 (inventory baseline 51941d8d… + BuiltInWorkshop descriptor);
+  reconciliation payload-contract obligation declared after the T3 ratchet
+  caught protection-without-obligation; K0 floor 33→34. Structural suite:
+  91/91 after the fixes.
