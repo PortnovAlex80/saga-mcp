@@ -172,3 +172,10 @@ resume path re-stamps the catalog limit).
   cell parks typed, an honest terminal). Latest execution 23:22:22Z (phase
   executing), 0 lost, tripwire unchanged. No action; watching the attempt
   trend next cycle.
+- **23:46Z watchdog — the grinding cell identified: the PLANNER.** The
+  attempt cycling is development-plan-task-graph (epoch 2 of 3,
+  maxAttempts per epoch) — the 13th open task is a planner re-run after the
+  12 completed implementation/verification cards. Latest execution
+  23:45:59Z (phase executing), 23 total, 0 lost, tripwire unchanged.
+  Per protocol no mid-run action: the §15/ADR-075 budget owns the outcome —
+  convergence, or a typed terminal failed at the total cap.
