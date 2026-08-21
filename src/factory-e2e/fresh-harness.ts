@@ -549,9 +549,26 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   heartbeat.unref();
 
   const idempotencyKey = ticket.idempotencyKey;
+  // A resume launch carries its own idempotency key, but the pinned
+  // LifecycleRun input is durable under the ORIGINAL run's key — the engine
+  // pattern (engine-administration): resolve the resumable run and pass ITS
+  // key so resolveInput finds the persisted input snapshot.
+  const runIdempotencyKey = ticket.mode === 'resume' && ticket.lifecycleRunId !== null
+    ? (getDb().prepare(
+        'SELECT idempotency_key AS key FROM factory_lifecycle_runs WHERE id=?',
+      ).get(ticket.lifecycleRunId) as { key: string } | undefined)?.key ?? idempotencyKey
+    : idempotencyKey;
   const initiatedBy = ticket.initiatedBy;
-  const lifecycleInput = ticket.lifecycleInput ?? bootstrap.lifecycleInput;
-  const lifecycleInputSchema = ticket.lifecycleInputSchema ?? bootstrap.lifecycleInputSchema;
+  // A RESUME launch (mode='resume', no lifecycle_input on the request) continues
+  // the existing paused lifecycle run: the engine pattern from
+  // engine-administration — resumePaused from the FIRST cycle and no
+  // lifecycleInput (passing the original input would collide with the active
+  // scope guard, LIFECYCLE_SCOPE_ALREADY_ACTIVE).
+  const isResumeDrive = ticket.mode === 'resume';
+  const lifecycleInput = isResumeDrive ? undefined
+    : ticket.lifecycleInput ?? bootstrap.lifecycleInput;
+  const lifecycleInputSchema = isResumeDrive ? undefined
+    : ticket.lifecycleInputSchema ?? bootstrap.lifecycleInputSchema;
 
   let cycles = 0;
   let lastReason = 'unknown';
@@ -571,12 +588,12 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
         projectId: bootstrap.projectId,
         epicId: bootstrap.epicId,
         concurrency: admission.effectiveConcurrency,
-        lifecycleInput: isFirstCycle ? lifecycleInput : undefined,
-        lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
+        lifecycleInput: isFirstCycle && !isResumeDrive ? lifecycleInput : undefined,
+        lifecycleInputSchema: isFirstCycle && !isResumeDrive && lifecycleInput !== undefined
           ? lifecycleInputSchema ?? undefined
           : undefined,
-        idempotencyKey,
-        resumePaused: !isFirstCycle,
+        idempotencyKey: runIdempotencyKey,
+        resumePaused: !isFirstCycle || isResumeDrive,
         initiatedBy,
       });
       cycles += 1;

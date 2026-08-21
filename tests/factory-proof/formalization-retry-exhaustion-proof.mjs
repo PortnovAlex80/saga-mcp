@@ -28,7 +28,7 @@ function targetFacts(trace, workplaceFragment) {
   return { workplaces, epochs, gates };
 }
 
-function runPhase({ bootstrap, handlers, concurrencyCap, observer, maxCycles, stopOnStageOutcome }) {
+function runPhase({ bootstrap, handlers, concurrencyCap, observer, maxCycles, stopOnStageOutcome, launchRef }) {
   const composition = buildCanonicalProofComposition({
     observer,
     repoPath: bootstrap.repoPath,
@@ -38,7 +38,7 @@ function runPhase({ bootstrap, handlers, concurrencyCap, observer, maxCycles, st
   return driveCanonicalProof({
     bootstrap,
     composition,
-    launchRef: bootstrap.launchRef,
+    launchRef: launchRef ?? bootstrap.launchRef,
     scenarioConcurrencyCap: concurrencyCap,
     maxCycles,
     pollMs: 5,
@@ -46,6 +46,44 @@ function runPhase({ bootstrap, handlers, concurrencyCap, observer, maxCycles, st
     ...(stopOnStageOutcome ? { stopOnStageOutcome } : {}),
     scriptedObserver: observer,
   });
+}
+
+/**
+ * Phase-B resume seam (production pattern from engine-administration):
+ * every finished drive settles its launch ('paused' is terminal for the
+ * LaunchRequest), so a second drive on the SAME launchRef is not claimable.
+ * A lawful resume creates a FRESH launch under the same order with
+ * mode='resume' bound to the phase-A lifecycle run; the harness then
+ * continues the paused run without re-submitting the lifecycle input.
+ */
+async function requestResumeLaunch(bootstrap, lifecycleRunId) {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const Database = require('better-sqlite3');
+  const { requestFactoryLaunch } = await import(
+    '../../dist/infrastructure/factory/sqlite-factory-launch-repository.js'
+  );
+  const db = new Database(bootstrap.dbPath);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+    const launch = db.prepare(
+      'SELECT order_ref AS orderRef, initiated_by AS initiatedBy, concurrency FROM factory_launch_requests WHERE launch_ref=?',
+    ).get(bootstrap.launchRef);
+    if (!launch) throw new Error(`PROOF_RESUME_LAUNCH_SOURCE_MISSING: ${bootstrap.launchRef}`);
+    return requestFactoryLaunch({
+      orderRef: launch.orderRef,
+      mode: 'resume',
+      projectId: bootstrap.projectId,
+      epicId: bootstrap.epicId,
+      lifecycleRunId,
+      initiatedBy: launch.initiatedBy,
+      concurrency: launch.concurrency,
+      idempotencyKey: `${bootstrap.launchRef}:proof-resume-b`,
+    }, db);
+  } finally {
+    db.close();
+  }
 }
 
 export async function runFormalizationRetryExhaustionProof({
@@ -110,6 +148,10 @@ export async function runFormalizationRetryExhaustionProof({
 
   await sleep(FORMALIZATION_RECOVERY_BACKOFF_WAIT_MS);
 
+  const resumeLaunchRef = await requestResumeLaunch(
+    bootstrap,
+    phaseA.result.lifecycleRunId ?? null,
+  );
   const observerB = createScriptedObserver();
   const phaseB = await runPhase({
     bootstrap,
@@ -118,6 +160,7 @@ export async function runFormalizationRetryExhaustionProof({
     observer: observerB,
     maxCycles: 180,
     stopOnStageOutcome: 'failed',
+    launchRef: resumeLaunchRef,
   });
   const trace = observeDurableTrace(bootstrap.dbPath);
   const progress = classifyPostDrainProgress(trace);

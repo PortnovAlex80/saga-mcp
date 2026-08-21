@@ -123,8 +123,10 @@ import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sql
 import {
   countFailedAcceptanceEffectRepairs as countFailedAcceptanceEffectRepairsSql,
   countGateRejectedCandidateSets as countGateRejectedCandidateSetsSql,
+  countRepairSpinResealsForAuthor as countRepairSpinResealsForAuthorSql,
   createSqliteProductionCellProjectionPersistence,
   readLastRepairRequiredDiagnosis as readLastRepairRequiredDiagnosisSql,
+  readLatestFinalRepairRequiredSubjectSet as readLatestFinalRepairRequiredSubjectSetSql,
   readReviewerRoundHistory as readReviewerRoundHistorySql,
 } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
@@ -626,6 +628,16 @@ export function createProductLifecycleRuntime(
         readLastRepairRequiredDiagnosis: (workplaceRef, role) =>
           readLastRepairRequiredDiagnosisSql(
             db, serializeWorkplaceRef(workplaceRef), role,
+          ),
+        // Layer-3 supervision — identical re-seal detection + §15 spin
+        // taxation (ADR-075 budget).
+        readLatestFinalRepairRequiredSubjectSet: (workplaceRef) =>
+          readLatestFinalRepairRequiredSubjectSetSql(
+            db, serializeWorkplaceRef(workplaceRef),
+          ),
+        countRepairSpinResealsForAuthor: (workplaceRef) =>
+          countRepairSpinResealsForAuthorSql(
+            db, serializeWorkplaceRef(workplaceRef),
           ),
         // Fix-3 companion (QA-E16) — failed effect actions bound the
         // accept → effect-fail → repair cycle now that accepted attempts

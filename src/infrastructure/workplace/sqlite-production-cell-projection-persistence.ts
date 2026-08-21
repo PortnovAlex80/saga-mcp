@@ -1323,6 +1323,69 @@ export function readLastRepairRequiredDiagnosis(
 }
 
 /**
+ * Layer-3 supervision (ADR-075 + CONVEYOR §15) — the subject of the newest
+ * FINAL repair_required decision for a Workplace. An author round that seals
+ * the SAME immutable CandidateSet ref re-presents bytes that already carry a
+ * final rejecting verdict; the executor uses this ref equality to detect the
+ * identical re-seal without re-arming a reviewer that content addressing
+ * would deduplicate away.
+ */
+export function readLatestFinalRepairRequiredSubjectSet(
+  db: Database.Database,
+  workplaceRef: string,
+): { candidateSetRef: string; decisionKey: string } | null {
+  try {
+    const row = db.prepare(
+      `SELECT subject_candidate_set_ref AS ref, decision_key AS decisionKey
+         FROM factory_gate_decisions
+        WHERE workplace_ref=? AND gate_phase='final'
+          AND verdict='repair_required'
+        ORDER BY rowid DESC LIMIT 1`,
+    ).get(workplaceRef) as { ref: string; decisionKey: string } | undefined;
+    return row ? { candidateSetRef: row.ref, decisionKey: row.decisionKey } : null;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return null;
+    throw error;
+  }
+}
+
+/**
+ * Layer-3 supervision (ADR-075 + CONVEYOR §15 "budget must count spin, not
+ * work") — the number of byte-identical author re-seals after the first
+ * round. The append-only submission validation receipts are the durable
+ * per-round fact: the LEADING run of identical validated_set_digest rows on
+ * the Workplace's author task, minus the first round. A real repair changes
+ * the digest, breaks the run and stops taxing — convergence is never
+ * charged; only reason-identical rejections are. Intentionally NOT
+ * epoch-baselined: identical bytes across a rollover are cross-epoch spin,
+ * which the F6 diagnosis-repeat deny converts into an honest terminal.
+ */
+export function countRepairSpinResealsForAuthor(
+  db: Database.Database,
+  workplaceRef: string,
+): number {
+  try {
+    const rows = db.prepare(
+      `SELECT r.validated_set_digest AS digest
+         FROM factory_submission_validation_receipts r
+         JOIN tasks t ON t.id=r.task_id
+        WHERE t.workplace_ref=?
+          AND json_extract(t.metadata,'$.role')='author'
+        ORDER BY r.id DESC LIMIT 40`,
+    ).all(workplaceRef) as Array<{ digest: string }>;
+    let run = 0;
+    for (const row of rows) {
+      if (run === 0 || row.digest === rows[0]!.digest) run += 1;
+      else break;
+    }
+    return Math.max(0, run - 1);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return 0;
+    throw error;
+  }
+}
+
+/**
  * Fix-3 companion (QA-E16 bound) — count failed/blocked post-acceptance
  * effect repair issues whose candidate belongs to this Workplace. Since accepted
  * attempts stopped consuming recovery budget, the accept → effect-fail →

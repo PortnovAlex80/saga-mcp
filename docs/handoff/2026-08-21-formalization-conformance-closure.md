@@ -526,3 +526,58 @@ restart-idempotency still blocked by LIFECYCLE_SCOPE_ALREADY_ACTIVE
 Score after this session: core pack 16/16 + feedback quartet 4/4 = 20 of
 26 scenario groups green; 6 red remain (exhaustion ×5 + restart), one
 production layer away.
+
+## Addendum 4 (night): layer 3 LANDED — identical re-seals are taxed, exhaustion ×5 GREEN
+
+The round-2 human park (`REPAIR_ROUND_IDENTICAL_MATERIAL`, layer 2) is
+REMOVED and replaced by production budget taxation, per the Addendum-3 hint
+and CONVEYOR §15 ("budget must count spin, not work") + ADR-075:
+
+- `production-cell-node-executor` (author verifying branch, reviewed cells):
+  when the freshly sealed CandidateSet ref EQUALS the subject of the newest
+  final `repair_required` decision (`readLatestFinalRepairRequiredSubjectSet`,
+  ref equality = ADR-053 B-2 partition convergence), the prior verdict is
+  re-applied as THIS round's outcome (`applyGateDecision(repair_required)`),
+  the deterministic author gate is not re-run, and the round is taxed.
+- `countRepairSpinResealsForAuthor`: the leading run of identical
+  `validated_set_digest` receipts on the workplace's author task (append-only
+  receipts are the durable per-round fact), minus the first round. NOT
+  epoch-baselined by design: identical bytes across a rollover are
+  cross-epoch spin; the F6 diagnosis-repeat deny ends the line terminally.
+  A real repair changes the digest, breaks the run, stops the tax.
+- dispatcher: the identical-ACCEPTED-material park branch deleted
+  (`readAcceptedRepairStasis` removed with it); worker_done completes
+  normally and the workplace proceeds to verifying, where the executor
+  detects the re-seal.
+
+Drive infrastructure fix (blocker for EVERY two-phase proof): each finished
+drive settles its launch (`finishFactoryLaunch('paused')` — terminal for the
+LaunchRequest), so phase B on the SAME launchRef was impossible
+(`FACTORY_LAUNCH_NOT_CLAIMABLE`; the two-phase exhaustion pattern had never
+actually passed end-to-end). Phase B now creates a lawful RESUME launch
+(production pattern from engine-administration: fresh launch under the same
+order, `mode='resume'`, bound to the phase-A lifecycle run), and
+`driveFreshHarness` became resume-aware (`ticket.mode==='resume'` → no
+lifecycleInput re-submission, `resumePaused` from the first cycle, runEpisode
+receives the ORIGINAL run's idempotency key so the pinned input snapshot
+resolves).
+
+Validation (this session, clean build):
+- `product|useCases|acceptance|reconciliation|architecture-retry-exhaustion`
+  ×5 — ALL PASS (epoch ≥1 recorded, real 61s backoff crossed, terminal
+  failed, never final-accepted, zero stranded).
+- `reviewer-feedback-{exact,absent,stale,corrupted}` ×4 — ALL PASS (absent/
+  stale/corrupted now end `terminal failed` through the honest budget path,
+  as Addendum 3 predicted; exact still converges by real repair).
+- Regressions green: happy-formalized, product-missing-brief-lineage-repair,
+  architecture-invalid-d2-repair; contract packs 9/9.
+
+Score: **25/26** (from 20/26). The one remaining red,
+`restart-idempotency`, is the separate `LIFECYCLE_SCOPE_ALREADY_ACTIVE`
+scope-guard decision (Addendum 1) — operator decision required, unchanged.
+
+Known separate defect (NOT this tranche): Discovery `proposal/readiness
+-retry-exhaustion` still fails phase A (`epochRecorded=false`) at w0-waves
+HEAD and at 7aece87a — its identical-REJECTED-bytes loop (unreviewed author
+gate path, submission rejection stasis) never feeds the budget. Same §15
+family, different seam; needs its own session.
