@@ -50,8 +50,11 @@ function acceptanceAuthorB({ handlers, assignment, context, db }) {
   const projectId = taskRow?.project_id ?? 1;
   const epicId = taskRow?.epic_id ?? 1;
   const repoPath = context.workspaceRoot;
+  // B's contract snapshot is run-scoped: A's FR/NFR/UC rows are invisible to
+  // B's validator even though the traces would land. Bind to the LATEST
+  // accepted rows (B's own productions have the highest ids).
   const accepted = type => db.prepare(
-    `SELECT id FROM artifacts WHERE epic_id=? AND type=? AND status='accepted' ORDER BY id`,
+    `SELECT id FROM artifacts WHERE epic_id=? AND type=? AND status='accepted' ORDER BY id DESC`,
   ).all(epicId, type);
   const frs = accepted('FR');
   const nfrs = accepted('NFR');
@@ -136,19 +139,37 @@ function architectureAuthorB({ handlers, assignment, context, db }) {
 
 // The decoy probe: B's product-contract author ALSO creates a properly
 // traced ACCEPTED artifact that neither lifecycle's contract ever names.
+// Option-1 (2026-08-21): B's OWN contract bytes must differ too — the happy
+// fixtures are byte-identical across runs, downstream input snapshots bind
+// the brief/PRD digests, and identical bytes made B's use-cases/acceptance
+// cells lawfully replay A's capsules (observed: capsule B carried A's
+// AC-1/AC-2). A real second product has a different brief and PRD.
 function productContractAuthorWithDecoy(base) {
   return function withDecoy({ handlers, assignment, context, db }) {
-    const out = base({ handlers, assignment, context, db });
+    const mutated = new Set();
+    const upstreamCreate = handlers.artifact_create;
+    const diffHandlers = {
+      ...handlers,
+      artifact_create(input) {
+        if ((input?.type === 'brief' || input?.type === 'PRD' || input?.type === 'FR')
+            && !mutated.has(input.type)) {
+          mutated.add(input.type);
+          const { readFileSync, writeFileSync } = require('node:fs');
+          const fp = path.join(context.workspaceRoot, String(input.path).split('#')[0]);
+          const content = readFileSync(fp, 'utf8');
+          writeFileSync(fp, `${content}\n## Material B: the three-criteria trade-sim product (run B)\n`, 'utf8');
+        }
+        return upstreamCreate(input);
+      },
+    };
+    const out = base({ handlers: diffHandlers, assignment, context, db });
     try {
       const taskRow = db.prepare(
         'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
       ).get(Number(assignment.taskId));
       const repoPath = context.workspaceRoot;
       const frs = db.prepare(
-        `SELECT id FROM artifacts WHERE epic_id=? AND type='FR' AND status='accepted' ORDER BY id LIMIT 1`,
-      ).all(taskRow.epic_id);
-      const ucs = db.prepare(
-        `SELECT id FROM artifacts WHERE epic_id=? AND type='UC' AND status='accepted' ORDER BY id LIMIT 1`,
+        `SELECT id FROM artifacts WHERE epic_id=? AND type='FR' AND status='accepted' ORDER BY id DESC LIMIT 1`,
       ).all(taskRow.epic_id);
       const p = 'docs/formalization/AC-DECOY.md';
       const { writeFileSync, mkdirSync: mk } = require('node:fs');
@@ -164,10 +185,30 @@ function productContractAuthorWithDecoy(base) {
         source_id: decoy.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'derived_from',
       });
       // The acceptance gate demands full per-AC legitimacy (FR+UC) for every
-      // accepted AC it can see epic-wide — the decoy must satisfy it too, or
-      // the probe measures my handler bug, not capsule sealing.
-      if (ucs.length) handlers.trace_add({
-        source_id: decoy.id, target_type: 'artifact', target_id: ucs[0].id, link_type: 'derived_from',
+      // accepted AC — and the validator's contract snapshot is RUN-SCOPED: a
+      // trace into run A's UC is invisible to run B. The decoy therefore
+      // carries its OWN UC (created in the same cell, derived from the same
+      // PRD/FR) — a self-consistent probe pair visible to B's validator.
+      const ucPath = 'docs/formalization/UC-DECOY.md';
+      const ucFull = path.join(repoPath, ucPath);
+      writeFileSync(ucFull,
+        '# Use Case DECOY\n\nThe epic-accumulator probe companion.\n', 'utf8');
+      const ucDecoy = handlers.artifact_create({
+        project_id: taskRow.project_id, epic_id: taskRow.epic_id,
+        type: 'UC', code: 'UC-DECOY', title: 'Use Case DECOY',
+        path: ucPath, status: 'accepted',
+      });
+      const prdRow = db.prepare(
+        `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' AND status='accepted' ORDER BY id DESC LIMIT 1`,
+      ).get(taskRow.epic_id);
+      if (prdRow) handlers.trace_add({
+        source_id: ucDecoy.id, target_type: 'artifact', target_id: prdRow.id, link_type: 'derived_from',
+      });
+      if (frs.length) handlers.trace_add({
+        source_id: ucDecoy.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'covers',
+      });
+      handlers.trace_add({
+        source_id: decoy.id, target_type: 'artifact', target_id: ucDecoy.id, link_type: 'derived_from',
       });
     } catch { /* the probe never blocks the product contract cell */ }
     return out;
@@ -175,8 +216,77 @@ function productContractAuthorWithDecoy(base) {
 }
 
 const DIS = 'product-discovery@3.0.2';
+
+// Option-1: B's use-cases output must differ too — the UC fixture bytes are
+// identical across runs and the acceptance cell's input snapshot binds the
+// UC digests, so identical UCs lawfully replayed A's acceptance capsule.
+function useCasesAuthorB({ handlers, assignment, context, db }) {
+  const taskRow = db.prepare(
+    'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',
+  ).get(Number(assignment.taskId));
+  const epicId = taskRow?.epic_id ?? 1;
+  const projectId = taskRow?.project_id ?? 1;
+  const repoPath = context.workspaceRoot;
+  const pick = (type, excluded) => db.prepare(
+    `SELECT id FROM artifacts WHERE epic_id=? AND type=? AND status='accepted' ORDER BY id`,
+  ).all(epicId, type).filter(row => !excluded.includes(row.id));
+  const prds = pick('PRD', []);
+  const frs = pick('FR', []);
+  if (!prds.length || !frs.length) throw new Error('w1-4: no accepted PRD/FR for use-cases B');
+  const ucPath = 'docs/formalization/UC-B1.md';
+  const { writeFileSync, mkdirSync: mk } = require('node:fs');
+  const full = path.join(repoPath, ucPath);
+  mk(path.dirname(full), { recursive: true });
+  writeFileSync(full,
+    '# Use Case B1\n\nThe trade crew consolidates fuel, price spread and encounter risk into one route plan.\n', 'utf8');
+  const uc = handlers.artifact_create({
+    project_id: projectId, epic_id: epicId, type: 'UC', code: 'UC-B1',
+    title: 'Use Case B1', path: ucPath, status: 'draft', project_repository_id: 1,
+  });
+  handlers.trace_add({ source_id: uc.id, target_type: 'artifact', target_id: prds[0].id, link_type: 'derived_from' });
+  handlers.trace_add({ source_id: uc.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'covers' });
+  handlers.worker_done({
+    task_id: Number(assignment.taskId), worker_id: assignment.workerId,
+    execution_id: assignment.workerExecutionId, result: 'w1-4 use-cases B: UC-B1->PRD+FR',
+  });
+  return { kind: 'worker-done-accepted' };
+}
+
+// Option-1 (2026-08-21): the W9 discovery proposal payload is a FIXED
+// fixture — the idea string never enters it — so run B's discovery produced
+// byte-identical products and every downstream formalization cell hit run
+// A's replay capsules (observed: capsule B carried A's AC-1/AC-2). B's
+// semantic input must differ from the very head of the chain: the B
+// proposal carries materially different (still contract-valid) content.
+function discoveryProposalB({ handlers, assignment }) {
+  handlers.product_submit({
+    schema: 'factory.discovery-proposal.v1',
+    content: {
+      problem_statement: 'Trade crews plan routes with no consolidated fuel, price and encounter risk view.',
+      observed_context: 'Spreadsheets track each risk factor separately. No consolidated trade-sim exists.',
+      stakeholders_or_actors: ['Trade crews', 'Quartermasters', 'Market watchers'],
+      assumptions: ['Factor models are stable within a voyage.', 'Deterministic workers can substitute LLM.'],
+      unknowns: ['Pirate encounter model calibration.'],
+      risks: ['Factor drift within a long voyage.'],
+      candidate_scope: 'A three-criteria trade-sim through the real Factory with deterministic physical workers.',
+      evidence_refs: ['CONVEYOR-MENTAL-MODEL.md', 'factory-e2e harness'],
+      recommended_outcome: 'go',
+      rationale: 'Three bounded criteria, consolidated model, deterministic verification path.',
+    },
+  });
+  handlers.worker_done({
+    task_id: Number(assignment.taskId),
+    worker_id: assignment.workerId,
+    execution_id: assignment.workerExecutionId,
+    result: 'produced discovery proposal (material B) with recommended_outcome=go',
+  });
+  return { kind: 'worker-done-accepted' };
+}
+
 const B_HANDLERS = {
   ...W9_HAPPY_HANDLERS,
+  [`${DIS}/produce-proposal/author/singleton`]: discoveryProposalB,
+  [`${FRM}/model-use-cases/author/singleton`]: useCasesAuthorB,
   [`${FRM}/define-acceptance-contract/author/singleton`]: acceptanceAuthorB,
   [`${FRM}/define-architecture-contract/author/singleton`]: architectureAuthorB,
   [`${FRM}/define-product-contract/author/singleton`]: productContractAuthorWithDecoy(
@@ -206,6 +316,7 @@ function capsuleOf(db, lifecycleRunId) {
 const bootstrap = await bootstrapFreshHarness({
   repoRoot: REPO_ROOT,
   concurrencyCap: HARNESS_CONCURRENCY_CEILING,
+  ...(process.env.PROOF_KEEP_DIR ? { tempDir: process.env.PROOF_KEEP_DIR } : {}),
   idea: 'W1-4 material A: the two-criteria pipeline product (run A)',
 });
 
@@ -270,8 +381,10 @@ try {
   process.stdout.write(JSON.stringify({
     bWorkplaces,
     runA: { terminalReason: resultA.terminalReason, stage: stageA?.local_outcome ?? null,
+      invocations: observerA.getInvocationCount(), replays: observerA.getReplayCount(),
       lifecycle: lifecycles[0], capsule: capsuleA },
     runB: { terminalReason: resultB.terminalReason, stoppedByStageOutcome: resultB.stoppedByStageOutcome,
+      invocations: observerB.getInvocationCount(), replays: observerB.getReplayCount(),
       stage: stageB?.local_outcome ?? null,
       lifecycle: lifecyclesAfter[1] ?? null, capsule: capsuleB },
     immutability: {
