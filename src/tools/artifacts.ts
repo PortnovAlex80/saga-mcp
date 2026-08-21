@@ -507,6 +507,12 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
       content: { artifactId: artifact.id, type: artifact.type, contentHash: artifact.content_hash },
       executionRef: managedExecution?.executionId ?? 'system',
       productKey: `artifact:${artifact.id}`,
+      // A lawful same-run repair (accepted→draft reopen + content change)
+      // re-projects this logical instance onto the new content identity;
+      // without the flag every repair died on the triple UNIQUE constraint
+      // (2026-08-21 conformance finding: 209 lost repair executions in the
+      // reviewer-feedback loop).
+      reprojectLogicalKey: true,
     });
   }
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,

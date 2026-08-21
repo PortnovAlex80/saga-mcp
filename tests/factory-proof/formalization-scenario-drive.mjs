@@ -106,6 +106,8 @@ const runtimeOracles = scenarioId === 'formalization/happy-formalized'
 const bootstrap = await bootstrapFreshHarness({
   repoRoot: REPO_ROOT,
   concurrencyCap: HARNESS_CONCURRENCY_CEILING,
+  // PROOF_KEEP_DIR: retain the temp harness (DB + repo) for post-mortem.
+  ...(process.env.PROOF_KEEP_DIR ? { tempDir: process.env.PROOF_KEEP_DIR } : {}),
   idea: runtime.specialDrive === 'formalization-restart-idempotency'
     ? FORMALIZATION_RESTART_IDEA
     : `Unified Formalization proof scenario: ${scenarioId}`,

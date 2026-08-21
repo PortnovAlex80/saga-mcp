@@ -121,6 +121,19 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     envelope: NodeProductionEnvelope,
     processRunId: number,
     nodeId: string,
+    options?: {
+      /**
+       * Artifact-ref desk projection repair (2026-08-21 conformance finding):
+       * when an artifact is lawfully repaired within one process run
+       * (accepted→draft reopen + content change), its desk projection under
+       * the STABLE logical key `artifact:<id>` must re-project onto the new
+       * content identity instead of dying on UNIQUE(process_run_id,
+       * product_kind, product_key). Only the artifact-ref bridge sets this:
+       * the projection mirrors the artifact row — it is not independent
+       * authority — so latest-content-wins on the same logical key is honest.
+       */
+      reprojectLogicalKey?: boolean;
+    },
   ): RecordProductResult {
     // Validate inputs BEFORE any DB write. The envelope's schema/artifactRef/
     // contentHash are the content-addressed identity; nodeId ties the row to
@@ -207,17 +220,48 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       // genuine logical-key or lineage collision.
       if (!isSqliteConstraint(error)) throw error;
       const raced = this.readRowBySchemaRef(envelope.schema, envelope.artifactRef, processRunId);
-      if (!raced) throw error;
-      assertReplay(raced, {
-        processRunId,
-        productKind,
-        productKey,
-        schemaId: envelope.schemaId,
-        productHash,
-        payloadSnapshot,
-        payloadHash,
-      });
-      return { record: rowToV2Record(raced), replayed: true };
+      if (raced) {
+        assertReplay(raced, {
+          processRunId,
+          productKind,
+          productKey,
+          schemaId: envelope.schemaId,
+          productHash,
+          payloadSnapshot,
+          payloadHash,
+        });
+        return { record: rowToV2Record(raced), replayed: true };
+      }
+      // Declared logical-key reprojection (artifact-ref bridge): same
+      // (process_run_id, kind, key), NEW content identity — the logical
+      // instance's projection follows the repaired artifact. Fail closed for
+      // everyone else.
+      if (options?.reprojectLogicalKey) {
+        const byKey = this.readRowByLogicalKey(processRunId, productKind, productKey);
+        if (byKey) {
+          this.db.prepare(
+            `UPDATE factory_process_products
+                SET schema_id=?, artifact_ref=?, product_hash=?,
+                    payload_snapshot=?, payload_hash=?, node_id=?
+              WHERE id=?`,
+          ).run(
+            envelope.schema,
+            envelope.artifactRef,
+            productHash,
+            payloadSnapshot,
+            payloadHash,
+            nodeId,
+            byKey.id,
+          );
+          const reprojected = this.readRowBySchemaRef(
+            envelope.schema,
+            envelope.artifactRef,
+            processRunId,
+          );
+          if (reprojected) return { record: rowToV2Record(reprojected), replayed: true };
+        }
+      }
+      throw error;
     }
 
     const inserted = this.readRowBySchemaRef(
@@ -230,6 +274,19 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       record: rowToV2Record(inserted),
       replayed: false,
     };
+  }
+
+  /** Logical-instance lookup under the triple UNIQUE key (latest row wins). */
+  private readRowByLogicalKey(
+    processRunId: number,
+    productKind: string,
+    productKey: string,
+  ): ProcessProductV2Row | null {
+    return (this.db.prepare(
+      `SELECT * FROM factory_process_products
+        WHERE process_run_id=? AND product_kind=? AND product_key=?
+        ORDER BY id DESC LIMIT 1`,
+    ).get(processRunId, productKind, productKey) as ProcessProductV2Row | undefined) ?? null;
   }
 
   private readRowBySchemaRef(
@@ -270,6 +327,7 @@ function isSqliteConstraint(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 interface ProcessProductV2Row {
+  id: number;
   process_run_id: number;
   product_kind: string;
   product_key: string;

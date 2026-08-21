@@ -149,6 +149,7 @@ export class SqliteProductRepository implements ProductRepositoryPort {
       envelope,
       processRunId as number,
       nodeId ?? input.executionRef,
+      ...(input.reprojectLogicalKey ? [{ reprojectLogicalKey: true }] : []),
     );
     return {
       productRef: {

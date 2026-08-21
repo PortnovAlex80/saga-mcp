@@ -79,6 +79,14 @@ export interface SubmitProductInput {
   readonly lineageRefs?: readonly ProductRef[];
   /** Opaque producer-authority tag (worker-execution | gate-run | ...). */
   readonly producerAuthority?: { readonly kind: string; readonly ref: string };
+  /**
+   * Artifact-ref desk projection repair: on a logical-key UNIQUE conflict
+   * with NEW content (same process run, same `artifact:<id>` key), re-project
+   * the row onto the new content identity instead of failing. Only the
+   * artifact-ref bridge may set this — the projection mirrors the artifact
+   * row and is not independent authority.
+   */
+  readonly reprojectLogicalKey?: boolean;
 }
 
 /**
