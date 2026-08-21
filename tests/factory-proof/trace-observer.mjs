@@ -65,6 +65,14 @@ export function observeDurableTrace(dbPath) {
         `SELECT id,module_ref_key,decision,reason_codes,rationale
            FROM factory_process_outcome_certificates ORDER BY id`,
       ),
+      // Exact worker-submitted authority rows. This is needed for idempotency
+      // proofs: a duplicate tool call may be replayed/rejected, but it must
+      // never mint a second durable product row under the same logical attempt.
+      managedSubmissions: all(
+        `SELECT id,process_run_id,node_id,intent_id,task_id,execution_id,
+                schema_version,content_hash,submitted_at
+           FROM factory_managed_node_submissions ORDER BY id`,
+      ),
       workIntents: all(
         'SELECT id, task_kind, status, workplace_ref FROM tasks ORDER BY id',
       ),
