@@ -166,3 +166,9 @@ resume path re-stamps the catalog limit).
   has been worked since ~22:41 across attempts (implementation cards are
   the long ones), 12/13 tasks done, 0 lost executions, tripwire unchanged.
   No action required.
+- **23:26Z watchdog — alive; the 13th card is grinding through attempts.**
+  20 executions total for 13 tasks (12 done) — the long implementation card
+  has consumed several attempts (recovery budget governs; on exhaustion the
+  cell parks typed, an honest terminal). Latest execution 23:22:22Z (phase
+  executing), 0 lost, tripwire unchanged. No action; watching the attempt
+  trend next cycle.
