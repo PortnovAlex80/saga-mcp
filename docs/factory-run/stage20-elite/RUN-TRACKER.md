@@ -113,3 +113,22 @@ resume path re-stamps the catalog limit).
   `2d6176e8…` unchanged). Tracker restarted on the new DB, port 4321.
   Same idea, same protocol; expected difference: a lawful in-repair
   trace deletion can no longer desync the managed ledger.
+- **21:28:22Z (2026-08-22 00:28 local) — ELITE-3 LAUNCHED (night shift).**
+  Tree: w0-waves HEAD `66122a02`, fresh build (last build while the run
+  lives, per protocol). This run carries the day's production hardening:
+  reconciliation report payload contract at intake (`a5e1d409`),
+  artifact-ref desk reprojection on lawful repair (`177a4666`), §15 spin
+  taxation for identical repair re-seals (`2520ba8e`, supersedes the
+  round-2 park `f6a79aa1`), Discovery exhaustion seam (`9d37a9e1`).
+  Conformance baselines at launch: Formalization 25/26 (restart-idempotency
+  red — F-R1 review-capsule content model, diagnosed), Discovery 24/27
+  (readiness-wrong-proposal-hash, readiness-feedback-exact, restart red).
+  Fresh `elite-db/`+`elite/`+`elite-logs/`; settings sha anchored
+  `2d6176e8…` (unchanged). Engine detached pid 15592, launch
+  `launch-84bc03f8-9e36-4780-82b0-f5df54f94b6b`, model glm-4.6, agent-proxy
+  shim. Controls raised 4/4 immediately (catalog 2 → 4). Pre-launch
+  snapshot `snapshot-pre-launch-elite3.sqlite`. Watchdog live (60 s /
+  45 min stagnation / 12 h, pid 511). Task 1 claimed at first poll;
+  supervision sweeps clean. Night watchdog automation (every 20 min) also
+  live. Same idea, same success criteria as run 2 — externally-true
+  `runnable-local` or an honest typed terminal.
