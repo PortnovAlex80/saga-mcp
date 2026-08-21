@@ -73,6 +73,30 @@ export function observeDurableTrace(dbPath) {
                 schema_version,content_hash,submitted_at
            FROM factory_managed_node_submissions ORDER BY id`,
       ),
+      // Append-only preflight rejection evidence. Formalization relies heavily
+      // on submission validators that can reject worker_done BEFORE a CandidateSet
+      // reaches its Gate. Keeping these rows in the common trace lets workshop
+      // packs distinguish preflight repair from Gate/recovery repair without
+      // bespoke SQL or trusting actor journals as the only evidence.
+      submissionValidationRejections: all(
+        `SELECT id,rejection_ref,rejection_digest,validator_id,validator_version,
+                process_run_id,module_ref,node_id,execution_id,task_id,workplace_ref,
+                actor_kind,rejection_code,input_snapshot_hash,observed_set_digest
+           FROM factory_submission_validation_rejections ORDER BY id`,
+      ),
+      // Generic artifact authority facts. These are not Formalization-specific:
+      // artifacts and traces are shared Factory material used by multiple
+      // workshops and effects. Preserve hashes/status so acceptance effects can
+      // be checked independently from their implementation.
+      artifacts: all(
+        `SELECT id,project_id,epic_id,type,code,title,path,status,
+                project_repository_id,content_hash,accepted_hash,drift_state
+           FROM artifacts ORDER BY id`,
+      ),
+      artifactTraces: all(
+        `SELECT id,source_id,target_type,target_id,link_type
+           FROM artifact_traces ORDER BY id`,
+      ),
       workIntents: all(
         'SELECT id, task_kind, status, workplace_ref FROM tasks ORDER BY id',
       ),
