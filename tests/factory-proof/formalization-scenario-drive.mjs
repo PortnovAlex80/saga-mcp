@@ -39,6 +39,31 @@ const { bootstrapFreshHarness } = harness;
 const { HARNESS_CONCURRENCY_CEILING } = manifest;
 
 const runtime = buildFormalizationUnifiedRuntimeCase(scenarioId);
+
+// The legacy trace field `effectReceipts` is the generic transition/effect
+// table. Production Cell post-acceptance effects use the stricter
+// factory_cell_effect_receipts ledger. Until all callers migrate to the latter,
+// replace only the happy-path oracle here with one against the exact Cell ledger.
+const runtimeOracles = scenarioId === 'formalization/happy-formalized'
+  ? [
+      ...(runtime.oracles ?? []).filter(oracle =>
+        oracle.id !== 'formalization.accept-products.effect-receipts'),
+      {
+        id: 'formalization.accept-products.cell-effect-receipts',
+        evaluate({ durableTrace }) {
+          const rows = (durableTrace.cellEffectReceipts ?? []).filter(row =>
+            row.effect_id === 'formalization.accept-exact-products.v1');
+          const workplaces = new Set(rows.map(row => row.workplace_ref));
+          return {
+            passed: rows.length >= 5 && workplaces.size >= 5,
+            evidenceRefs: rows.map(row => String(row.effect_receipt_ref)),
+            details: { count: rows.length, workplaces: [...workplaces].sort() },
+          };
+        },
+      },
+    ]
+  : runtime.oracles;
+
 const bootstrap = await bootstrapFreshHarness({
   repoRoot: REPO_ROOT,
   concurrencyCap: HARNESS_CONCURRENCY_CEILING,
@@ -71,7 +96,7 @@ try {
       proofModes: ['Durable', 'CanonicalFast'],
       handlers: runtime.handlers,
       crashPoint: runtime.crashPoint,
-      oracles: runtime.oracles,
+      oracles: runtimeOracles,
       actorEvidence: runtime.actorEvidence,
       faultJournal: runtime.faultJournal,
       externalWorldJournal: runtime.externalWorldJournal,
