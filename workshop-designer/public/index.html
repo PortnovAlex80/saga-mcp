@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Saga Workshop Designer</title>
+  <link rel="stylesheet" href="/designer.css">
+  <link rel="stylesheet" href="/forms.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark"></span><div><b>WORKSHOP DESIGNER</b><small>Process Module design surface</small></div></div>
+    <div class="module-name"><input id="module-name" aria-label="Название цеха"><span id="save-state">SAVED LOCALLY</span></div>
+    <nav class="modes"><button data-mode="design" class="active">DESIGN</button><button data-mode="proof">PROOF</button></nav>
+    <div class="actions"><button id="reset-btn">Пример</button><button id="import-btn">Импорт</button><input id="import-file" type="file" accept="application/json,.json" hidden><button id="export-btn" class="primary">Экспорт draft</button></div>
+  </header>
+  <div class="status"><span class="draft-pill">DESIGN DRAFT · NOT INSTALLED</span><span id="status-summary">—</span><span></span><small><kbd>/</kbd> поиск · <kbd>Esc</kbd> отмена связи · <kbd>Del</kbd> удалить</small></div>
+
+  <main class="workspace">
+    <aside class="palette">
+      <div class="eyebrow">ЭЛЕМЕНТЫ ЦЕХА</div>
+      <button class="palette-item" data-add="production-cell"><i class="glyph desk"></i><span><b>Рабочий стол</b><small>Production Cell</small></span></button>
+      <button class="palette-item" data-add="kernel"><i class="glyph kernel"></i><span><b>Автомат</b><small>Kernel node</small></span></button>
+      <button class="palette-item" data-add="human"><i class="glyph human"></i><span><b>Решение человека</b><small>Human node</small></span></button>
+      <section><div class="eyebrow">НАВИГАЦИЯ</div><label class="search"><span>⌕</span><input id="node-search" placeholder="стол, id, schema…"></label><button id="fit-btn" class="wide">Показать весь цех</button></section>
+      <section class="legend"><div class="eyebrow">ЯЗЫК СХЕМЫ</div><p><i class="flow-line"></i> основной поток</p><p><span>ОТК</span> Gate внутри стола</p><p><span>R</span> reviewer</p><p><span>↺</span> repair внутри Workplace</p></section>
+    </aside>
+
+    <section class="stage-wrap">
+      <div class="stage-bar"><span id="breadcrumb">Цех · выберите элемент</span><i></i><button id="connect-btn" disabled>Связать от выбранного</button><button id="delete-btn" class="danger" disabled>Удалить</button></div>
+      <div id="stage" class="stage" tabindex="0">
+        <svg id="wires" viewBox="0 0 1700 1050" preserveAspectRatio="none"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z"></path></marker></defs><g id="edge-layer"></g></svg>
+        <div id="node-layer"></div>
+        <div id="connect-banner" class="connect-banner hidden">Выберите следующий узел · Esc — отмена</div>
+      </div>
+    </section>
+
+    <aside class="inspector">
+      <div id="inspector-empty"><div class="eyebrow">ИНСПЕКТОР</div><h2>Цех как исполняемая схема</h2><p>Выберите стол, автомат или решение человека. Здесь задаются производственные контракты, а не координаты картинки.</p><button id="module-settings" class="wide">Параметры цеха</button></div>
+      <div id="inspector-content" class="hidden"></div>
+    </aside>
+
+    <section id="proof" class="proof hidden">
+      <header><div><div class="eyebrow">DESIGN-TIME CONFORMANCE</div><h1>Сертификат проекта цеха</h1></div><strong id="proof-score">—</strong></header>
+      <div id="proof-stats" class="proof-stats"></div>
+      <div id="proof-list"></div>
+      <footer><b>Граница V0.</b> Статическая проверка draft-модели не заменяет install-time validator, conformance pack и Factory runtime proof.</footer>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="/model.js"></script>
+<script src="/validation.js"></script>
+<script src="/render.js"></script>
+<script src="/inspector.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
