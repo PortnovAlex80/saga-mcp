@@ -47,7 +47,6 @@ const TARGET = Object.freeze({
     provider: PROPOSAL_PROVIDER,
     workplace: 'discovery-proposal',
     node: 'produce-proposal',
-    nextNode: 'assess-readiness',
     feedbackNeedle: 'rationale',
     crashInvocation: 1,
   }),
@@ -57,7 +56,6 @@ const TARGET = Object.freeze({
     provider: READINESS_PROVIDER,
     workplace: 'discovery-readiness',
     node: 'assess-readiness',
-    nextNode: 'settle',
     feedbackNeedle: 'proposal_content_hash',
     crashInvocation: 2,
   }),
@@ -265,6 +263,22 @@ function typedBoundedFailureOracle(id, workplaceFragment) {
   };
 }
 
+function recoveryEpochOracle(targetName) {
+  const target = TARGET[targetName];
+  return {
+    id: `${targetName}.exhaustion.recovery-epoch`,
+    evaluate({ durableTrace }) {
+      const rows = (durableTrace.recoveryEpochs ?? []).filter(row =>
+        String(row.workplace_ref).includes(target.workplace) && Number(row.epoch) >= 1);
+      return {
+        passed: rows.length >= 1,
+        evidenceRefs: rows.map(row => `recovery-epoch:${row.workplace_ref}:${row.epoch}`),
+        details: { epochs: rows.map(row => row.epoch) },
+      };
+    },
+  };
+}
+
 function noStrandedOracle() {
   return {
     id: 'factory.no-stranded-worker-executions',
@@ -321,15 +335,17 @@ function makeRetryExhaustionRuntime(targetName) {
   const target = TARGET[targetName];
   return {
     handlers: withOverrides({ [target.key]: invalidHandler(targetName) }),
-    driveOptions: { maxCycles: 220 },
+    // Discovery declares onExhausted=requeue. The first 2-attempt exhaustion
+    // writes an immutable recovery epoch and starts a 60s domain backoff. This
+    // fast conformance proof stops there; advancing time or reaching the total
+    // cap is a generic K4 time/fault-scheduler proof, not a workshop-specific
+    // reason to mutate timestamps in a test.
+    driveOptions: { maxCycles: 80 },
     oracles: [
       gateSeenOracle(`${targetName}.exhaustion.repair-required`, target.workplace, 'repair_required'),
-      // Recovery-budget terminalization is ProductionCellCoordinator authority,
-      // not a second persisted GateDecision. Do not invent a `verdict=failed`
-      // gate row as an oracle; prove the externally visible stage terminal plus
-      // the typed Workplace terminal/wait instead.
-      typedBoundedFailureOracle(`${targetName}.exhaustion.typed-terminal`, target.workplace),
-      stageOutcomeOracle('failed'),
+      recoveryEpochOracle(targetName),
+      typedBoundedFailureOracle(`${targetName}.exhaustion.typed-backoff`, target.workplace),
+      noAcceptedGateOracle(`${targetName}.exhaustion.no-accept`, target.workplace),
       noStrandedOracle(),
     ],
   };
@@ -533,10 +549,7 @@ export const DISCOVERY_RESILIENCE_SCENARIOS = Object.freeze([
       kind: 'causal-fault',
       faultClass: 'contract-shape',
       proves: [target === 'proposal' ? 'discovery.proposal-contract' : 'discovery.readiness-contract'],
-      coverageItems: [
-        `recovery:discovery-${target}:retry-exhaustion-terminal`,
-        coverageToken.transition(TARGET[target].node, 'complete-failed'),
-      ],
+      coverageItems: [`recovery:discovery-${target}:retry-exhaustion-bounded-epoch`],
     }),
     Object.freeze({
       schemaVersion: 'factory.proof.kernel-scenario.v1',
@@ -580,12 +593,15 @@ export const DISCOVERY_CLOSURE_SCENARIOS = Object.freeze([
   ...DISCOVERY_RESILIENCE_SCENARIOS,
 ]);
 
-// `settle -> complete-failed` is an internal kernel-exception edge: no admitted
-// Discovery worker material can lawfully produce it because both upstream cells
-// have already passed their Gates. It belongs to the platform K4 kernel-fault
-// scheduler, not to the workshop cognition/fault matrix. Keep it explicitly
-// outside workshop closure rather than fabricating an authority-table mutation.
+// These failed routes are generic runtime/time/fault boundaries, not admitted
+// Discovery cognition outcomes. For onExhausted=requeue, terminal failure
+// requires time to cross an inter-epoch backoff / total cap. The settlement
+// failed edge likewise requires a kernel exception after both cells have passed.
+// They belong to the shared K4 fault scheduler. A workshop proof must not gain
+// them by writing timestamps/authority tables or mirroring the reducer.
 export const DISCOVERY_PLATFORM_FAULT_EDGES = Object.freeze([
+  coverageToken.transition('produce-proposal', 'complete-failed'),
+  coverageToken.transition('assess-readiness', 'complete-failed'),
   coverageToken.transition('settle', 'complete-failed'),
 ]);
 
@@ -595,8 +611,8 @@ const workshopFullBase = DISCOVERY_FULL_COVERAGE_UNIVERSE.filter(item =>
 export const DISCOVERY_CLOSURE_COVERAGE_UNIVERSE = Object.freeze([
   ...new Set([
     ...workshopFullBase,
-    'recovery:discovery-proposal:retry-exhaustion-terminal',
-    'recovery:discovery-readiness:retry-exhaustion-terminal',
+    'recovery:discovery-proposal:retry-exhaustion-bounded-epoch',
+    'recovery:discovery-readiness:retry-exhaustion-bounded-epoch',
     'tool-lifecycle:discovery-proposal:late-call-denied',
     'tool-lifecycle:discovery-readiness:late-call-denied',
     'restart:discovery:same-input-replay',
@@ -633,9 +649,7 @@ export function buildDiscoveryUnifiedRuntimeCase(id) {
   }
 
   const feedback = /^discovery\/(proposal|readiness)-feedback-(exact|absent|stale|corrupted)$/.exec(id);
-  if (feedback) {
-    return { scenario, ...makeFeedbackRuntime(feedback[1], feedback[2]) };
-  }
+  if (feedback) return { scenario, ...makeFeedbackRuntime(feedback[1], feedback[2]) };
   const crash = /^discovery\/(proposal|readiness)-worker-crash$/.exec(id);
   if (crash) return { scenario, ...makeCrashRuntime(crash[1]) };
   const exhaustion = /^discovery\/(proposal|readiness)-retry-exhaustion$/.exec(id);
