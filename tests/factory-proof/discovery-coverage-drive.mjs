@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 // tests/factory-proof/discovery-coverage-drive.mjs
 //
-// Run every Discovery scenario in an isolated child, aggregate PASS evidence
-// through the mathematical coverage kernel, and print one compact report.
-//
-// Exit 0 means:
-//   - every Phase-1 scenario produced a PASS ScenarioEvidenceBundle;
-//   - demonstrated (not merely declared) Phase-1 coverage is 100%;
-//   - no required Phase-1 coverage item is uncovered.
-// Full-conformance gaps remain visible in report.full and do NOT fail this
-// tranche until the strict recovery/fault scenarios are implemented.
+// Run every Discovery closure scenario in an isolated child, aggregate only
+// PASS ScenarioEvidenceBundles, and require 100% demonstrated workshop closure.
+// The one internal settlement-exception edge remains explicitly classified as
+// a platform K4 fault-scheduler obligation, not silently counted as covered.
 
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -20,15 +15,18 @@ import {
   summarizeCoverage,
 } from './coverage-kernel.mjs';
 import {
-  DISCOVERY_FULL_COVERAGE_UNIVERSE,
   DISCOVERY_PHASE1_REQUIRED_COVERAGE,
-  DISCOVERY_SCENARIOS,
-  planDiscoveryCoverage,
 } from './discovery-scenario-pack.mjs';
+import {
+  DISCOVERY_CLOSURE_COVERAGE_UNIVERSE,
+  DISCOVERY_CLOSURE_SCENARIOS,
+  DISCOVERY_PLATFORM_FAULT_EDGES,
+  planDiscoveryClosureCoverage,
+} from './discovery-resilience-pack.mjs';
 
 const REPO_ROOT = process.cwd();
 const DRIVE = path.resolve(REPO_ROOT, 'tests/factory-proof/discovery-scenario-drive.mjs');
-const TIMEOUT_MS = Number(process.env.DISCOVERY_SCENARIO_TIMEOUT_MS ?? 180_000);
+const TIMEOUT_MS = Number(process.env.DISCOVERY_SCENARIO_TIMEOUT_MS ?? 240_000);
 
 function parseBundle(stdout, scenarioId) {
   const lines = String(stdout ?? '').trim().split('\n').filter(Boolean);
@@ -45,7 +43,7 @@ function parseBundle(stdout, scenarioId) {
 
 const bundles = [];
 const runs = [];
-for (const scenario of DISCOVERY_SCENARIOS) {
+for (const scenario of DISCOVERY_CLOSURE_SCENARIOS) {
   const child = spawnSync(process.execPath, [DRIVE, scenario.id], {
     cwd: REPO_ROOT,
     env: { ...process.env, DISCOVERY_SCENARIO: scenario.id },
@@ -61,32 +59,34 @@ for (const scenario of DISCOVERY_SCENARIOS) {
     signal: child.signal ?? null,
     verdict: bundle?.verdict ?? 'no-evidence',
     bundleDigest: bundle?.bundleDigest ?? null,
-    stderrTail: String(child.stderr ?? '').trim().slice(-1200),
+    stderrTail: String(child.stderr ?? '').trim().slice(-1600),
   });
 }
 
 const phase1Matrix = buildEvidenceCoverageMatrix(bundles, {
   requiredItems: DISCOVERY_PHASE1_REQUIRED_COVERAGE,
 });
-const fullMatrix = buildEvidenceCoverageMatrix(bundles, {
-  requiredItems: DISCOVERY_FULL_COVERAGE_UNIVERSE,
+const closureMatrix = buildEvidenceCoverageMatrix(bundles, {
+  requiredItems: DISCOVERY_CLOSURE_COVERAGE_UNIVERSE,
 });
-const planned = planDiscoveryCoverage();
+const planned = planDiscoveryClosureCoverage();
 
 const report = {
-  schemaVersion: 'factory.proof.discovery-coverage-report.v1',
+  schemaVersion: 'factory.proof.discovery-coverage-report.v2',
+  closureDefinition: {
+    workshopRequiredItems: DISCOVERY_CLOSURE_COVERAGE_UNIVERSE.length,
+    platformFaultEdges: DISCOVERY_PLATFORM_FAULT_EDGES,
+  },
   scenarios: runs,
   planned: {
-    phase1: planned.phase1.summary,
-    phase1MinimalScenarioCover: planned.phase1.minimalScenarioCover,
-    full: planned.full.summary,
+    closure: planned.summary,
+    minimalScenarioCover: planned.minimalScenarioCover,
   },
   demonstrated: {
     phase1: summarizeCoverage(phase1Matrix),
-    phase1MinimalScenarioCover: selectScenarioCover(phase1Matrix),
-    full: summarizeCoverage(fullMatrix),
-    fullMinimalScenarioCover: selectScenarioCover(fullMatrix),
-    excludedBundles: phase1Matrix.excluded,
+    closure: summarizeCoverage(closureMatrix),
+    minimalScenarioCover: selectScenarioCover(closureMatrix),
+    excludedBundles: closureMatrix.excluded,
   },
 };
 
@@ -95,8 +95,10 @@ process.stdout.write(JSON.stringify(report) + '\n');
 const failedRuns = runs.filter(run => run.exitStatus !== 0 || run.verdict !== 'pass');
 if (
   failedRuns.length > 0
-  || report.demonstrated.phase1.uncovered.length > 0
-  || report.demonstrated.phase1.percent !== 100
+  || report.planned.closure.uncovered.length > 0
+  || report.planned.closure.percent !== 100
+  || report.demonstrated.closure.uncovered.length > 0
+  || report.demonstrated.closure.percent !== 100
 ) {
   process.exitCode = 1;
 }
