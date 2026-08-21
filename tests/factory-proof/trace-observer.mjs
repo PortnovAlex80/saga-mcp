@@ -13,14 +13,21 @@ import Database from 'better-sqlite3';
 
 /**
  * Snapshot the durable trace of one factory DB (read-only handle).
- * Unknown/absent tables normalize to empty arrays — the observer reports,
- * it does not demand.
+ * Truly absent tables normalize to empty arrays so older fixture schemas remain
+ * observable. Schema drift inside an existing table (bad column/name/type) is
+ * NOT swallowed: an evidence observer that silently returns [] on query drift
+ * can make a proof vacuously green.
  */
 export function observeDurableTrace(dbPath) {
   const db = new Database(dbPath, { readonly: true });
   try {
     const all = (sql, ...args) => {
-      try { return db.prepare(sql).all(...args); } catch { return []; }
+      try {
+        return db.prepare(sql).all(...args);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('no such table')) return [];
+        throw error;
+      }
     };
     return {
       observedAt: new Date().toISOString(),
@@ -57,7 +64,7 @@ export function observeDurableTrace(dbPath) {
         'SELECT workplace_ref, epoch, reason_key, reason_repeat_count FROM factory_workplace_recovery_epochs ORDER BY rowid',
       ),
       workerExecutions: all(
-        'SELECT execution_ref, task_id, state, voided_at FROM worker_executions ORDER BY execution_ref',
+        'SELECT execution_id AS execution_ref, task_id, state, voided_at FROM worker_executions ORDER BY execution_id',
       ),
     };
   } finally {
