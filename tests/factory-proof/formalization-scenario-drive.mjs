@@ -13,6 +13,7 @@ import {
   FORMALIZATION_CLOSURE_SCENARIOS,
   buildFormalizationUnifiedRuntimeCase,
 } from './formalization-resilience-pack.mjs';
+import { FORMALIZATION_HANDLER_KEYS } from './formalization-scenario-pack.mjs';
 import {
   FORMALIZATION_RESTART_IDEA,
   runFormalizationRestartProof,
@@ -39,6 +40,44 @@ const { bootstrapFreshHarness } = harness;
 const { HARNESS_CONCURRENCY_CEILING } = manifest;
 
 const runtime = buildFormalizationUnifiedRuntimeCase(scenarioId);
+
+// The shared historical W9 fixtures predate the kernel-gate artifact-acceptance
+// cutover and still ask artifact_create(status:'accepted') for Formalization
+// authors. Under the current production contract a worker may only publish
+// candidate material; formalization.accept-exact-products.v1 commits
+// accepted_hash/status after the Gate. Normalize only the scripted cognition
+// stimulus here — never production state or authority.
+const formalizationAuthorKeys = new Set([
+  FORMALIZATION_HANDLER_KEYS.productAuthor,
+  FORMALIZATION_HANDLER_KEYS.useCasesAuthor,
+  FORMALIZATION_HANDLER_KEYS.acceptanceAuthor,
+  FORMALIZATION_HANDLER_KEYS.reconciliationAuthor,
+  FORMALIZATION_HANDLER_KEYS.architectureAuthor,
+]);
+
+function currentAuthorityHandlers(handlers) {
+  const normalized = { ...handlers };
+  for (const key of formalizationAuthorKeys) {
+    const original = normalized[key];
+    if (typeof original !== 'function') continue;
+    normalized[key] = context => {
+      const upstream = context.handlers.artifact_create;
+      const authoritySafeHandlers = {
+        ...context.handlers,
+        artifact_create(input) {
+          if (!input || typeof input !== 'object') return upstream(input);
+          const next = structuredClone(input);
+          if (next.status === 'accepted') next.status = 'draft';
+          return upstream(next);
+        },
+      };
+      return original({ ...context, handlers: authoritySafeHandlers });
+    };
+  }
+  return Object.freeze(normalized);
+}
+
+const runtimeHandlers = currentAuthorityHandlers(runtime.handlers);
 
 // The legacy trace field `effectReceipts` is the generic transition/effect
 // table. Production Cell post-acceptance effects use the stricter
@@ -78,14 +117,14 @@ try {
     bundle = await runFormalizationRestartProof({
       scenario: runtime.scenario,
       bootstrap,
-      handlers: runtime.handlers,
+      handlers: runtimeHandlers,
       concurrencyCap: HARNESS_CONCURRENCY_CEILING,
     });
   } else if (runtime.specialDrive === 'formalization-retry-exhaustion') {
     bundle = await runFormalizationRetryExhaustionProof({
       scenario: runtime.scenario,
       bootstrap,
-      handlers: runtime.handlers,
+      handlers: runtimeHandlers,
       concurrencyCap: HARNESS_CONCURRENCY_CEILING,
       targetName: runtime.targetName,
     });
@@ -94,7 +133,7 @@ try {
       scenario: runtime.scenario,
       bootstrap,
       proofModes: ['Durable', 'CanonicalFast'],
-      handlers: runtime.handlers,
+      handlers: runtimeHandlers,
       crashPoint: runtime.crashPoint,
       oracles: runtimeOracles,
       actorEvidence: runtime.actorEvidence,
