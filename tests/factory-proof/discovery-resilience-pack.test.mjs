@@ -53,7 +53,7 @@ test('Discovery closure: all requested resilience axes are load-bearing coverage
       `counterfactual:discovery-${target}:stale-feedback-no-magical-repair`,
       `counterfactual:discovery-${target}:corrupted-feedback-no-magical-repair`,
       `crash:discovery-${target}:bounded-recovery`,
-      `recovery:discovery-${target}:retry-exhaustion-terminal`,
+      `recovery:discovery-${target}:retry-exhaustion-bounded-epoch`,
       `idempotency:discovery-${target}:duplicate-submit`,
       `tool-lifecycle:discovery-${target}:late-call-denied`,
       `fence:discovery-${target}:stale-execution-denied`,
@@ -66,12 +66,16 @@ test('Discovery closure: all requested resilience axes are load-bearing coverage
   ]) assert.ok(required.has(item), `missing ${item}`);
 });
 
-test('Discovery closure: settlement internal exception remains explicitly platform-owned', () => {
+test('Discovery closure: internal failed routes remain explicitly K4 platform-owned', () => {
   assert.deepEqual(
     DISCOVERY_PLATFORM_FAULT_EDGES,
-    ['transition:settle->complete-failed'],
+    [
+      'transition:produce-proposal->complete-failed',
+      'transition:assess-readiness->complete-failed',
+      'transition:settle->complete-failed',
+    ],
   );
-  assert.ok(!DISCOVERY_CLOSURE_COVERAGE_UNIVERSE.includes(
-    'transition:settle->complete-failed',
-  ));
+  for (const edge of DISCOVERY_PLATFORM_FAULT_EDGES) {
+    assert.ok(!DISCOVERY_CLOSURE_COVERAGE_UNIVERSE.includes(edge), edge);
+  }
 });
