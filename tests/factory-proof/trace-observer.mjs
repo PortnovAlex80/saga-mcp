@@ -31,8 +31,40 @@ export function observeDurableTrace(dbPath) {
     };
     return {
       observedAt: new Date().toISOString(),
-      lifecycleRuns: all('SELECT id,status,current_stage_id,terminal_status FROM factory_lifecycle_runs ORDER BY id'),
-      processRuns: all('SELECT id,module_name,status,local_outcome FROM factory_process_runs ORDER BY id'),
+      lifecycleRuns: all(
+        `SELECT id,status,current_stage_id,terminal_status,input_hash
+           FROM factory_lifecycle_runs ORDER BY id`,
+      ),
+      // Lifecycle StageRun is the durable inter-workshop boundary. Preserve the
+      // exact input/output/certificate snapshots so a scenario oracle can prove
+      // an exact handoff without querying production tables itself.
+      stageRuns: all(
+        `SELECT id,lifecycle_run_id,ordinal,stage_id,attempt,module_name,module_version,
+                module_ref_key,binding_snapshot,binding_hash,input_schema,input_snapshot,
+                input_hash,status,process_run_id,local_outcome,authority,
+                output_schema,output_ref,output_hash,
+                certificate_schema,certificate_ref,certificate_hash,
+                mapped_output_snapshot,result_snapshot
+           FROM factory_stage_runs
+          ORDER BY lifecycle_run_id,ordinal`,
+      ),
+      processTransitions: all(
+        `SELECT id,lifecycle_run_id,from_stage_run_id,transition_key,outcome,
+                target_type,target_stage_id,terminal_status,to_stage_run_id,
+                handoff_snapshot,handoff_hash,decision_hash
+           FROM factory_process_transitions
+          ORDER BY lifecycle_run_id,id`,
+      ),
+      processRuns: all(
+        `SELECT id,module_name,module_version,status,local_outcome,authority,input_hash,
+                output_schema,output_ref,output_hash,
+                certificate_schema,certificate_ref,certificate_hash
+           FROM factory_process_runs ORDER BY id`,
+      ),
+      processOutcomeCertificates: all(
+        `SELECT id,module_ref_key,decision,reason_codes,rationale
+           FROM factory_process_outcome_certificates ORDER BY id`,
+      ),
       workIntents: all(
         'SELECT id, task_kind, status, workplace_ref FROM tasks ORDER BY id',
       ),
