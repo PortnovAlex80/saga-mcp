@@ -470,3 +470,21 @@ authors) — classified, NOT yet fixed:**
 2. W1-4 option-1 rework (B gets genuinely different upstream material;
    guide §8.6: reuse/extend the W1-4 proof, do not replace it).
 3. Only then Phase G registration and the w0-waves → saga4 merge.
+
+## Addendum 2 (same evening): the UNIQUE-constraint root cause is FIXED
+
+Retention-DB post-mortem (PROOF_KEEP_DIR) replaced speculation with data:
+all 209 lost executions died on the artifact-ref bridge UNIQUE constraint
+(`177a4666` — logical-key reprojection for lawful same-run repair).
+
+- `reviewer-feedback-exact` now PASSES (43 cycles, full convergence).
+- `reviewer-feedback-{absent,stale,corrupted}`: next, DIFFERENT layer —
+  the exhausted review loop fails the process but leaves the workplace in
+  review/queued with NO owner and NO park reason (ANONYMOUS-STALL). The
+  fix is the exhausted-loop supervision park: record a park reason
+  (recordWorkplaceParkReason) and move the workplace to a typed
+  repair_wait/paused/terminal state when the review loop exhausts or the
+  process fails underneath it. Start from the review-loop recovery
+  exhaustion path in the production-cell executor.
+- retry-exhaustion ×5 and restart-idempotency: re-run after the park fix —
+  same supervision territory.
