@@ -45,6 +45,8 @@ const bootstrap = await bootstrapFreshHarness({
   idea: runtime.specialDrive === 'discovery-restart-idempotency'
     ? DISCOVERY_RESTART_IDEA
     : `Unified Discovery proof scenario: ${scenarioId}`,
+  // PROOF_KEEP_DIR: retain the temp harness (DB + repo) for post-mortem.
+  ...(process.env.PROOF_KEEP_DIR ? { tempDir: process.env.PROOF_KEEP_DIR } : {}),
 });
 
 try {

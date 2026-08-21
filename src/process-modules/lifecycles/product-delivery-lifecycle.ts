@@ -326,7 +326,16 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         go: { type: 'stage', stageId: 'solution-formalization' },
         clarify: { type: 'stage', stageId: 'solution-formalization' },
         reject: { type: 'stage', stageId: 'solution-formalization' },
-        failed: { type: 'stage', stageId: 'solution-formalization' },
+        // 'failed' is runtime-only (§15 budget terminal, kernel failure) —
+        // NOT an idea-strength decision: a failed Discovery produced no
+        // certificate and no proposal, so Formalization's entry conditions
+        // ('Discovery certificate ref and hash exist') are unsatisfiable by
+        // construction. Forwarding it exploded the handoff mapping
+        // (LIFECYCLE_MAPPING_SOURCE_MISSING: '$.processOutcome.outputPayload')
+        // instead of ending honestly. Terminal 'failed', exactly as
+        // Formalization's own failed route already does (2026-08-21
+        // discovery retry-exhaustion finding).
+        failed: { type: 'terminal', status: 'failed' },
       },
       entryConditions: ['initiative.subject exists'],
       exitConditions: ['Discovery has an immutable local outcome and certificate lineage'],

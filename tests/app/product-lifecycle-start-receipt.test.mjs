@@ -156,10 +156,19 @@ test('Discovery is a real gate: only go routes to Formalization', () => {
   // 'defer'/'inconclusive' were deleted with their routes (5cbbb1ff — no
   // runtime producer, W9-04-UNREACHABLE-EDGE-EVIDENCE): the producible
   // vocabulary is go/clarify/reject plus the runtime-only 'failed'.
-  for (const outcome of ['clarify', 'reject', 'failed']) {
+  for (const outcome of ['clarify', 'reject']) {
     assert.deepEqual(discovery.outcomeRoutes[outcome], {
       type: 'stage',
       stageId: 'solution-formalization',
     });
   }
+  // The runtime-only 'failed' TERMINATES: a failed Discovery has no
+  // certificate/proposal, so Formalization's entry conditions are
+  // unsatisfiable by construction and forwarding exploded the handoff
+  // mapping (LIFECYCLE_MAPPING_SOURCE_MISSING, 2026-08-21 discovery
+  // retry-exhaustion finding).
+  assert.deepEqual(discovery.outcomeRoutes.failed, {
+    type: 'terminal',
+    status: 'failed',
+  });
 });

@@ -1351,19 +1351,30 @@ export function readLatestFinalRepairRequiredSubjectSet(
 
 /**
  * Layer-3 supervision (ADR-075 + CONVEYOR §15 "budget must count spin, not
- * work") — the number of byte-identical author re-seals after the first
- * round. The append-only submission validation receipts are the durable
- * per-round fact: the LEADING run of identical validated_set_digest rows on
- * the Workplace's author task, minus the first round. A real repair changes
- * the digest, breaks the run and stops taxing — convergence is never
- * charged; only reason-identical rejections are. Intentionally NOT
- * epoch-baselined: identical bytes across a rollover are cross-epoch spin,
+ * work") — the number of byte-identical author rounds after the first
+ * rejection, from the two durable per-round facts the production loop
+ * actually leaves:
+ *
+ * 1. reviewed cells (identical ACCEPTED re-seal): the LEADING run of
+ *    identical validated_set_digest receipts on the Workplace's author task,
+ *    minus the first round. Written by the worker_done submission validator
+ *    (payload-contract cells).
+ * 2. unreviewed cells (identical REJECTED re-submit): the author gate runs
+ *    every round and REPEATS a rejecting decision for the SAME immutable
+ *    subject ref — repeats beyond the first per distinct subject are the
+ *    spin count (2026-08-21 discovery exhaustion finding: 40 decisions, 1
+ *    distinct set, zero receipts, zero epochs).
+ *
+ * A real repair changes the digest/ref and stops both taxes — convergence is
+ * never charged; only reason-identical rejections are. Intentionally NOT
+ * epoch-baselined: identical material across a rollover is cross-epoch spin,
  * which the F6 diagnosis-repeat deny converts into an honest terminal.
  */
 export function countRepairSpinResealsForAuthor(
   db: Database.Database,
   workplaceRef: string,
 ): number {
+  let spin = 0;
   try {
     const rows = db.prepare(
       `SELECT r.validated_set_digest AS digest
@@ -1378,11 +1389,38 @@ export function countRepairSpinResealsForAuthor(
       if (run === 0 || row.digest === rows[0]!.digest) run += 1;
       else break;
     }
-    return Math.max(0, run - 1);
+    spin += Math.max(0, run - 1);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('no such table')) return 0;
-    throw error;
+    if (!(error instanceof Error && error.message.includes('no such table'))) throw error;
   }
+  try {
+    const repeats = db.prepare(
+      `SELECT COUNT(*) AS repeats
+         FROM factory_gate_decisions
+        WHERE workplace_ref=? AND verdict='repair_required'
+          AND repair_target_role='author'
+          AND subject_candidate_set_ref IN (
+            SELECT subject_candidate_set_ref
+              FROM factory_gate_decisions
+             WHERE workplace_ref=? AND verdict='repair_required'
+               AND repair_target_role='author'
+             GROUP BY subject_candidate_set_ref
+            HAVING COUNT(*) > 1
+          )`,
+    ).get(workplaceRef, workplaceRef) as { repeats: number } | undefined;
+    if (repeats) {
+      const distinctSubjects = db.prepare(
+        `SELECT COUNT(DISTINCT subject_candidate_set_ref) AS n
+           FROM factory_gate_decisions
+          WHERE workplace_ref=? AND verdict='repair_required'
+            AND repair_target_role='author'`,
+      ).get(workplaceRef) as { n: number };
+      spin += Math.max(0, repeats.repeats - distinctSubjects.n);
+    }
+  } catch (error) {
+    if (!(error instanceof Error && error.message.includes('no such table'))) throw error;
+  }
+  return spin;
 }
 
 /**

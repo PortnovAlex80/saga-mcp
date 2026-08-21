@@ -247,11 +247,19 @@ export function createDiscoveryOutputResolver(db: SqlDatabasePort): (
   terminalResult: NodeExecutionResult,
   context: ProcessModuleExecutionContext,
 ) => ProcessModuleOutput | null {
-  return (module, _terminalOutcome, terminalResult, context) => {
+  return (module, terminalOutcome, terminalResult, context) => {
     if (module.identity.name !== DISCOVERY_PROCESS_MODULE_REF.name
       || module.identity.version !== DISCOVERY_PROCESS_MODULE_REF.version) {
       throw new Error('discovery output: module reference mismatch');
     }
+    // A failed Discovery module (e.g. the §15 recovery-budget terminal) has
+    // NO accepted proposal to project — the resolver must step aside and let
+    // the failure settlement path complete the stage with local outcome
+    // 'failed', exactly as the Formalization resolver does for non-
+    // 'formalized' outcomes. Requiring proposal bindings on a failed run
+    // turned the honest terminal into an exception path (2026-08-21
+    // discovery retry-exhaustion finding).
+    if (!['go', 'clarify', 'reject'].includes(terminalOutcome)) return null;
     const bindings = terminalResult.production?.bindings ?? {};
     const schema = requireStringBinding(bindings, 'proposalSchema');
     // The CandidateSet member ref identifies the managed submission. The

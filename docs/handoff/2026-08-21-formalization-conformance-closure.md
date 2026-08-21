@@ -581,3 +581,42 @@ Known separate defect (NOT this tranche): Discovery `proposal/readiness
 HEAD and at 7aece87a — its identical-REJECTED-bytes loop (unreviewed author
 gate path, submission rejection stasis) never feeds the budget. Same §15
 family, different seam; needs its own session.
+
+## Addendum 5 (same night): the Discovery exhaustion seam is FIXED too
+
+The "separate defect" from Addendum 4 turned out to be three small production
+gaps, all closed in the same §15 frame:
+
+1. **The spin counter only saw receipts.** Reviewed (payload-contract) cells
+   leave validation receipts per round; UNREVIEWED discovery cells leave none
+   — but the author gate runs every round and REPEATS a rejecting decision
+   for the same immutable subject ref (empirical: 40 decisions, 1 distinct
+   set, 0 receipts, 0 epochs). `countRepairSpinResealsForAuthor` now counts
+   BOTH durable facts: the leading identical-receipt run AND rejecting
+   decision repeats beyond the first per distinct subject.
+2. **The Discovery output resolver demanded proposal bindings on a failed
+   run** (`missing terminal binding 'proposalSchema'`), turning the honest
+   §15 terminal into an exception. It now returns null for non-
+   go/clarify/reject outcomes, exactly as the Formalization resolver does.
+3. **The lifecycle forwarded discovery `failed` → solution-formalization**,
+   whose entry conditions require a Discovery certificate that a failed
+   Discovery cannot have — the handoff mapping exploded with
+   `LIFECYCLE_MAPPING_SOURCE_MISSING: '$.processOutcome.outputPayload'`.
+   The route is now `terminal failed` (runtime-only outcome, same shape as
+   Formalization's own failed route). Routing-lock and receipt tests updated
+   to the corrected expectation; the frozen payload-contract ratchet updated
+   7→8 (the reconciliation-report admission from `a5e1d409` landed without
+   its ratchet bump — pre-existing red, now fixed).
+
+Also: `discovery-scenario-drive.mjs` gained PROOF_KEEP_DIR retention (the
+formalization drive already had it).
+
+Validation: `discovery/proposal-retry-exhaustion` and
+`discovery/readiness-retry-exhaustion` BOTH PASS (epoch, real 61s backoff,
+terminal failed, never accepted, zero stranded). Regressions green:
+discovery happy-go, proposal-feedback-absent, formalization happy +
+product-retry-exhaustion; lifecycle-adjacent suites 71/71; contract packs
+9/9. Known still-red (pre-existing, verified against baseline):
+`discovery/proposal-feedback-exact` — the repair is accepted at the workplace
+but the settlement never fires (stage outcome 'go' never recorded, run fails
+at 9 cycles). Same supervision family, next session's first candidate.
