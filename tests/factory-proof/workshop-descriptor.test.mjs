@@ -35,7 +35,7 @@ test('all four installed workshops expose manifest identity + definition identit
       ?? mod.developmentProcessModule ?? mod.deliveryProcessModule;
     assert.ok(definition, `${names[index]} exports its ProcessModuleDefinition`);
     assert.ok(definition.identity?.name, `${names[index]} definition has identity.name`);
-    assert.ok(Array.isArray(definition.flow ?? definition.nodes),
+    assert.ok(Array.isArray(definition.flow?.nodes ?? definition.nodes),
       `${names[index]} definition has a flow graph`);
   });
 });

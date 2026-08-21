@@ -590,6 +590,7 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     ['factory.development-task-graph-proposal.v1', '1.0.0', 'Task graph proposals pin item keys and dependency edges.', 'dev.payload.task-graph-proposal'],
     ['factory.review-verdict.v1', '1.1.0', 'Formalization review verdicts pin the subject candidate set.', 'frm.payload.review-verdict'],
     ['factory.source-change-candidate.v1', '1.0.0', 'Source change candidates pin changed files to the execution worktree.', 'dev.payload.source-change-candidate'],
+    ['factory.formalization-reconciliation-report.v1', '1.0.0', 'Reconciliation reports pin the typed WHAT-catchall payload (status/rationale/empty remaining_gaps/repairs).', 'frm.payload.reconciliation-report'],
   ].map(([schemaId, version, property, id]) => Object.freeze({
     obligationId: id,
     version,
