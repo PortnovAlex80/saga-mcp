@@ -50,7 +50,10 @@
     "test:factory-temporal": "tsc && node --test --test-concurrency=1 \"tests/factory-temporal/*.test.mjs\"",
     "test:factory-model": "tsc && node --test \"tests/factory-model/*.test.mjs\"",
     "test:acceptance-matrix": "tsc && node tools/run-acceptance-matrix.mjs",
-    "test:acceptance-matrix:list": "node tools/run-acceptance-matrix.mjs --list"
+    "test:acceptance-matrix:list": "node tools/run-acceptance-matrix.mjs --list",
+    "workshop:inventory": "node tests/factory-proof/workshop-inventory.mjs --json",
+    "workshop:inventory:check": "node tests/factory-proof/workshop-inventory.mjs --check",
+    "workshop:inventory:baseline": "node tests/factory-proof/workshop-inventory.mjs --baseline"
   },
   "keywords": [
     "mcp",
