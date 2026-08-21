@@ -66,23 +66,49 @@ function hasFrozenCapsule(assignment) {
   return !!replay && typeof replay.capsule_ref === 'string' && replay.capsule_ref.length > 0;
 }
 
+/**
+ * Replay one frozen capsule through production handlers and terminate the
+ * execution through the SAME production finalizer used by spawned and normal
+ * scripted workers.
+ *
+ * This is deliberately not a second recovery implementation. In particular,
+ * a replay validation failure must flow through finalizeManagedWorkerProcess:
+ * it requests Workplace crash repair, atomically terminalizes/releases the
+ * execution fence, and leaves the Production Cell recovery budget to decide
+ * whether the next execution is requeued or escalated.
+ */
 function runFrozenCapsuleReplay(context, assignment) {
   const db = dbMod.getDb();
+  const saved = {
+    SAGA_MANAGED_EXECUTION: process.env.SAGA_MANAGED_EXECUTION,
+    SAGA_EXECUTION_ID: process.env.SAGA_EXECUTION_ID,
+    SAGA_TASK_ID: process.env.SAGA_TASK_ID,
+    SAGA_WORKER_ID: process.env.SAGA_WORKER_ID,
+    DB_PATH: process.env.DB_PATH,
+  };
   process.env.DB_PATH = context.dbPath;
   process.env.SAGA_MANAGED_EXECUTION = '1';
   process.env.SAGA_EXECUTION_ID = assignment.workerExecutionId;
   process.env.SAGA_TASK_ID = String(assignment.taskId);
   process.env.SAGA_WORKER_ID = assignment.workerId;
+
+  markExecutionRunning(
+    context.dbPath,
+    assignment.workerExecutionId,
+    null,
+    null,
+    `fresh-scripted-replay:${assignment.workerExecutionId}`,
+    new Date().toISOString(),
+  );
+
+  const handlers = {
+    product_submit: input => productHandlersMod.handlers.product_submit(input),
+    artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+    trace_add: input => artifactHandlersMod.handlers.trace_add(input),
+    worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
+  };
+
   try {
-    db.prepare(
-      `UPDATE worker_executions SET state='running', started_at=datetime('now'), phase_updated_at=datetime('now') WHERE execution_id=? AND state='reserved'`,
-    ).run(assignment.workerExecutionId);
-    const handlers = {
-      product_submit: input => productHandlersMod.handlers.product_submit(input),
-      artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
-      trace_add: input => artifactHandlersMod.handlers.trace_add(input),
-      worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
-    };
     try {
       executeCapsuleReplay(db, handlers, {
         taskId: Number(assignment.taskId),
@@ -90,36 +116,50 @@ function runFrozenCapsuleReplay(context, assignment) {
         executionId: assignment.workerExecutionId,
         cwd: context.workspaceRoot,
       });
-      // The reference executor (scenario-scripted-executor.mjs) completes the
-      // semantic lifecycle AFTER the replay: worker_done under the execution
-      // fence, then the process state flips to exited. Without this the task
-      // stays in_progress forever and the lifecycle never settles (the W1-2
-      // run-B stall).
+
+      // Replay reconstructs accepted production; semantic completion is still
+      // a normal worker_done receipt under the active execution fence.
       handlers.worker_done({
         task_id: Number(assignment.taskId),
         worker_id: assignment.workerId,
         result: 'capsule replay: reconstructed accepted worker production',
         execution_id: assignment.workerExecutionId,
       });
-      db.prepare(
-        `UPDATE worker_executions SET state='exited', exit_code=0, finished_at=datetime('now'), phase_updated_at=datetime('now') WHERE execution_id=? AND state IN ('running','finishing')`,
-      ).run(assignment.workerExecutionId);
+
+      return {
+        replayError: null,
+        finalizeOutcome: finalizeManagedWorkerProcess(db, {
+          taskId: Number(assignment.taskId),
+          executionId: String(assignment.workerExecutionId),
+          exitCode: 0,
+          reason: 'capsule replay worker exited after accepted worker_done',
+          spawnFailure: false,
+        }),
+      };
     } catch (replayError) {
-      // A failed replay MUST terminalize the execution ('lost'), exactly like
-      // a crashed spawned worker: the capsule is already marked ineligible by
-      // the production binder, so the NEXT execution resolves as an ordinary
-      // miss and runs its selected route. Leaving the row 'running' would
-      // stall the whole lifecycle (observed in the W1-2 drive).
-      db.prepare(
-        `UPDATE worker_executions SET state='lost', exit_code=1, finished_at=datetime('now'), phase_updated_at=datetime('now') WHERE execution_id=? AND state IN ('running','finishing')`,
-      ).run(assignment.workerExecutionId);
-      throw replayError;
+      const replayReason = replayError instanceof Error
+        ? replayError.message
+        : String(replayError);
+
+      // Fail closed, but do not invent replay-specific recovery. The production
+      // finalizer owns crash repair + atomic fence release, so the next host
+      // reconciliation can apply the cell's ordinary recovery policy.
+      return {
+        replayError: replayReason,
+        finalizeOutcome: finalizeManagedWorkerProcess(db, {
+          taskId: Number(assignment.taskId),
+          executionId: String(assignment.workerExecutionId),
+          exitCode: 1,
+          reason: `capsule replay failed before semantic completion: ${replayReason}`,
+          spawnFailure: false,
+        }),
+      };
     }
   } finally {
-    delete process.env.SAGA_MANAGED_EXECUTION;
-    delete process.env.SAGA_EXECUTION_ID;
-    delete process.env.SAGA_TASK_ID;
-    delete process.env.SAGA_WORKER_ID;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 }
 
@@ -404,24 +444,37 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
         // through the PRODUCTION capsule executor (no scripted inference).
         if (hasFrozenCapsule(assignment)) {
           observer.onReplay();
-          let replayBlockedReason = null;
+          let replayResult;
           try {
-            runFrozenCapsuleReplay(context, assignment);
+            replayResult = runFrozenCapsuleReplay(context, assignment);
           } catch (error) {
-            replayBlockedReason = error instanceof Error ? error.message : String(error);
-            process.stderr.write(`[fresh-scripted] capsule replay FAILED: ${replayBlockedReason}
-`);
+            const reason = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[fresh-scripted] capsule replay FINALIZATION FAILED: ${reason}\n`);
+            replayResult = {
+              replayError: reason,
+              finalizeOutcome: {
+                semanticCompletion: false,
+                executionState: 'lost',
+                workplaceRepairRequested: false,
+                taskReleased: false,
+                blockedReason: reason,
+              },
+            };
           }
-          const ok = replayBlockedReason === null;
+
+          const replayBlockedReason = replayResult.replayError
+            ?? replayResult.finalizeOutcome.blockedReason
+            ?? null;
+          if (replayResult.replayError) {
+            process.stderr.write(`[fresh-scripted] capsule replay FAILED: ${replayResult.replayError}\n`);
+          }
+          const finalizeOutcome = {
+            ...replayResult.finalizeOutcome,
+            blockedReason: replayBlockedReason,
+          };
           current = {
             assignment,
-            finalizeOutcome: {
-              semanticCompletion: ok,
-              executionState: ok ? 'completed' : 'lost',
-              workplaceRepairRequested: !ok,
-              taskReleased: !ok,
-              blockedReason: replayBlockedReason,
-            },
+            finalizeOutcome,
             startedAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
           };
@@ -433,10 +486,10 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
             started_at: current.startedAt,
             finished_at: current.finishedAt,
             active: [],
-            completed: ok ? 1 : 0,
-            failed: ok ? 0 : 1,
+            completed: finalizeOutcome.semanticCompletion ? 1 : 0,
+            failed: finalizeOutcome.semanticCompletion ? 0 : 1,
             claimed: 1,
-            last_error: replayBlockedReason,
+            last_error: finalizeOutcome.blockedReason || null,
           };
         }
         // The scripted worker runs SYNCHRONOUSLY here. The production handlers
