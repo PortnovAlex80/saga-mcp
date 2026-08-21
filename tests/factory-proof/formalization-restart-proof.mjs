@@ -27,17 +27,22 @@ async function runStart({ bootstrap, launchRef, handlers, label, concurrencyCap 
     sagaRepoRoot: bootstrap.sagaRepoRoot,
     handlers,
   });
-  const driven = await driveCanonicalProof({
-    bootstrap,
-    composition,
-    ...(launchRef ? { launchRef } : {}),
-    scenarioConcurrencyCap: concurrencyCap,
-    maxCycles: 180,
-    pollMs: 5,
-    maxEmptyDispatchStreak: 12,
-    stopOnStageOutcome: 'formalized',
-    scriptedObserver: observer,
-  });
+      const driven = await driveCanonicalProof({
+        bootstrap,
+        composition,
+        ...(launchRef ? { launchRef } : {}),
+        scenarioConcurrencyCap: concurrencyCap,
+        maxCycles: 220,
+        pollMs: 5,
+        maxEmptyDispatchStreak: 12,
+        // Scope-guard honesty (2026-08-21): each lifecycle runs to its
+        // NATURAL terminal — the LIFECYCLE_SCOPE_ALREADY_ACTIVE guard
+        // correctly refuses a second launch on a non-terminal scope, so a
+        // stopOnStageOutcome mid-flight stop would deadlock launches B/C.
+        // B must replay the FULL lifecycle with zero inference calls — a
+        // strictly stronger §16 statement than a boundary-only replay.
+        scriptedObserver: observer,
+      });
   return {
     label,
     observer,
