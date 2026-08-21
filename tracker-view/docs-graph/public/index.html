@@ -43,6 +43,10 @@
   <div class="workspace-statusbar">
     <span class="projection-badge" title="Граф является проекцией связей и не заменяет authority-артефакты">GRAPH PROJECTION</span>
     <span class="stat" id="stats">—</span>
+    <div class="workspace-search" role="search">
+      <input id="graph-search" type="search" autocomplete="off" placeholder="Найти документ, AC, UC, тег…" aria-label="Поиск по графу" />
+      <kbd>/</kbd>
+    </div>
     <span class="workspace-status-spacer"></span>
     <div class="workspace-view-controls">
       <label for="layout-select">Раскладка</label>
@@ -147,7 +151,7 @@
         </div>
 
         <div class="editor-actions">
-          <span class="editor-actions-hint">Сохранение создаёт версию только в наборе изменений; публикация выполняется отдельно.</span>
+          <span class="editor-actions-hint">Сохранение создаёт версию только в наборе изменений; публикация выполняется отдельно. Ctrl/Cmd+S — сохранить.</span>
           <span class="editor-actions-spacer"></span>
           <button id="editor-save" type="button">Сохранить черновик</button>
           <button id="editor-discard" class="danger" type="button">Удалить набор изменений</button>
