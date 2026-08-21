@@ -287,6 +287,9 @@ export function buildCanonicalProofComposition(opts) {
 
   return {
     workerExecutorFactory: scriptedExecutorFactory,
+    // §10.2: forward the optional base-lifecycle selection (Delivery proofs
+    // pass the product-delivery lifecycle; everything else defaults).
+    ...(opts.lifecycleDefinition ? { lifecycleDefinition: opts.lifecycleDefinition } : {}),
     resolveWorkerContext: ctx => ({
       projectId: ctx.projectId,
       epicId: ctx.epicId ?? 0,

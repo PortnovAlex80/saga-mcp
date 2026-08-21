@@ -139,12 +139,18 @@ try {
   }, db);
 
   const observer = createScriptedObserver();
+  const { productDeliveryLifecycle } = await import(pathToFileURL(path.resolve(
+    REPO_ROOT, 'dist/process-modules/lifecycles/product-delivery-lifecycle.js')).href);
   const composition = buildCanonicalProofComposition({
     observer,
     repoPath: bootstrap.repoPath,
     sagaRepoRoot: bootstrap.sagaRepoRoot,
     handlers: runtime.handlers,
     deliveryProviders: buildCanonicalDeliveryProviders({ repoPath: bootstrap.repoPath }),
+    // §10.2 honesty: drive the lifecycle the authorized input selects — the
+    // product-DELIVERY lifecycle (fresh launches otherwise default to
+    // product-build and end runnable-local with no Delivery stage at all).
+    lifecycleDefinition: productDeliveryLifecycle,
   });
   const driven = await (await import('./canonical-proof-composition.mjs')).driveCanonicalProof({
     bootstrap,

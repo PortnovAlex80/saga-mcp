@@ -171,6 +171,15 @@ export interface ProductLifecycleRuntimeOptions {
     projectId: number;
     epicId: number | null;
   }) => WorkerExecutorFactoryContext;
+  /**
+   * Authoring guide §10.2 (2026-08-21): the BASE lifecycle definition this
+   * engine drives. Defaults to product-build (the ordinary Factory start);
+   * the Delivery conformance proofs and the panel's product-delivery
+   * composition pass the product-delivery lifecycle so fresh launches
+   * honestly drive the lifecycle the input selects instead of a hard-coded
+   * product-build. Purely additive: existing callers see no change.
+   */
+  lifecycleDefinition?: typeof productBuildLifecycle | typeof productDeliveryLifecycle;
   concurrency?: number;
   workAssignment?: WorkAssignmentPort;
   development?: DevelopmentCompositionDependencies;
@@ -947,7 +956,7 @@ export function createProductLifecycleRuntime(
   });
 
   const baseEngine = new LifecycleOrchestrationEngineAdapter({
-    definition: productBuildLifecycle,
+    definition: options.lifecycleDefinition ?? productBuildLifecycle,
     orchestrator,
     resolveDefinition(command, input) {
       const row = readPinnedLifecycleByInvocation(
@@ -955,7 +964,7 @@ export function createProductLifecycleRuntime(
         command.projectId,
         input.idempotencyKey,
       );
-      if (!row) return productBuildLifecycle;
+      if (!row) return options.lifecycleDefinition ?? productBuildLifecycle;
       return JSON.parse(row.definition_snapshot) as typeof productDeliveryLifecycle;
     },
     resolveInput(command) {
