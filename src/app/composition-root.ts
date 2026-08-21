@@ -65,6 +65,14 @@ export type ProductLifecycleCompositionOverrides = Omit<
     projectId: number;
     epicId: number | null;
   }) => import('../application/ports/worker-executor.js').WorkerExecutorFactoryContext;
+  /**
+   * K2 strict L3 seam (conformance-engine plan §K2): replaces only the
+   * physical CLI subprocess of the production pinned worker executor — the
+   * spawn envelope (argv, prompt, cwd, MCP config, permissions, finalization)
+   * stays production. Mutually exclusive with workerExecutorFactory at the
+   * drive level; never exposed through environment config.
+   */
+  workerSpawn?: import('../infrastructure/workers/claude-worker-executor-factory.js').PinnedClaudeWorkerExecutorFactoryOptions['spawn'];
 };
 
 export interface FactoryCompositionOverrides {

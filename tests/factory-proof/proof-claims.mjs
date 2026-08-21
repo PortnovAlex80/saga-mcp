@@ -69,6 +69,11 @@ export const PROOF_CLAIMS = Object.freeze({
     claims: ['the fabricated-derived-evidence causal theorem: typed detection, zero durable mutation, exact-feedback repair, counterfactual causality — through the canonical composition and real gates'],
     notClaimed: ['strict L3 (workerSpawn) — K2', 'crash/fault-schedule interleavings — K4'],
   },
+  'tests/factory-proof/k2-spawned-actor.test.mjs': {
+    modes: ['Contract', 'Durable'],
+    claims: ['K2-A strict seam prototype: a REAL spawned child process under the production envelope (argv+stdin prompt+pinned cwd+per-execution --mcp-config) whose effects flow through the real saga MCP server; the in-process fast lane is not composed'],
+    notClaimed: ['CanonicalSpawn full flip — strict repair counterfactuals (K2-B) and permission negatives (K2-C) pending', 'multi-cell strict lifecycle — one cell (discovery-proposal), happy path only'],
+  },
   'tests/factory-proof/w1-4-two-lifecycles.test.mjs': {
     modes: ['Contract', 'Durable', 'CanonicalFast'],
     claims: ['ADR-078 two-lifecycle composition: cross-lifecycle isolation (A immutable, no adoption) + within-lifecycle conservation (capsule seals every accepted AC of the run) through two production launches on one epic'],
