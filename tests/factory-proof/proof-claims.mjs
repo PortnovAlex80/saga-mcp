@@ -70,9 +70,14 @@ export const PROOF_CLAIMS = Object.freeze({
     notClaimed: ['strict L3 (workerSpawn) — K2', 'crash/fault-schedule interleavings — K4'],
   },
   'tests/factory-proof/k2-spawned-actor.test.mjs': {
-    modes: ['Contract', 'Durable'],
-    claims: ['K2-A strict seam prototype: a REAL spawned child process under the production envelope (argv+stdin prompt+pinned cwd+per-execution --mcp-config) whose effects flow through the real saga MCP server; the in-process fast lane is not composed'],
-    notClaimed: ['CanonicalSpawn full flip — strict repair counterfactuals (K2-B) and permission negatives (K2-C) pending', 'multi-cell strict lifecycle — one cell (discovery-proposal), happy path only'],
+    modes: ['Contract', 'Durable', 'CanonicalSpawn'],
+    claims: ['K2-A strict seam: a REAL spawned child under the production envelope (argv+stdin prompt+pinned cwd+per-execution --mcp-config), effects through the real saga MCP server; the in-process fast lane is not composed'],
+    notClaimed: ['crash/fault-schedule interleavings — K4'],
+  },
+  'tests/factory-proof/k2-strict-formalization.test.mjs': {
+    modes: ['Durable', 'CanonicalSpawn'],
+    claims: ['the STRICT L3 formalization vertical: every cell through spawned children (positive → formalized, capsule sealed); the fabricated-hash causal theorem on real processes — typed intake rejection, repair ONLY under exact feedback (exact → accepted; absent/stale/corrupt → bounded stasis park, never a terminal death); the no-mcp-config envelope negative fails BEFORE any handler'],
+    notClaimed: ['FaultSchedule interleavings — K4', 'strict Development/Delivery stages — the corpus stops at the Formalization boundary'],
   },
   'tests/factory-proof/w1-4-two-lifecycles.test.mjs': {
     modes: ['Contract', 'Durable', 'CanonicalFast'],
@@ -89,9 +94,9 @@ export function validateProofClaims(groupFiles = []) {
     for (const m of claim.modes) {
       if (!PROOF_MODES.includes(m)) errors.push(`${file}: unknown mode '${m}'`);
     }
-    if (claim.modes.includes('CanonicalSpawn')) {
-      errors.push(`${file}: CanonicalSpawn claimed before K2 landed the workerSpawn actor seam`);
-    }
+    // K2-B LANDED (this commit): strict spawned-actor scenarios exist and are
+    // blocking — CanonicalSpawn is now a CLAIMABLE mode. The floor below stays
+    // for modes whose machinery has not landed yet.
     if (claim.modes.includes('FaultSchedule')) {
       errors.push(`${file}: FaultSchedule claimed before K4 landed the fault scheduler`);
     }

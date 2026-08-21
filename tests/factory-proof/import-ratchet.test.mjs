@@ -45,6 +45,27 @@ function listMjsFiles(dir) {
   return out;
 }
 
+test('K2-C: the strict spawned actor is capability-clean (no DB/authority imports)', () => {
+  // The K2 child/corpus files are the actor's world: they may import node
+  // builtins ONLY. Any import of the DB layer, SQLite driver, dist runtime or
+  // repository/finalizer surfaces would break the non-omniscience contract
+  // (conformance-engine plan §K2: "deny direct repository, finalizer,
+  // transition-handler, and SQLite access").
+  const actorFiles = listMjsFiles(PROOF_DIR).filter(f => /k2-(scripted-child|corpus)/.test(path.basename(f)));
+  assert.ok(actorFiles.length >= 2, `expected the k2 actor files, got ${actorFiles.length}`);
+  const offenders = [];
+  for (const file of actorFiles) {
+    const importSpecifiers = [
+      ...[...readFileSync(file, 'utf8').matchAll(/from\s+'([^']+)'/g)].map(m => m[1]),
+      ...[...readFileSync(file, 'utf8').matchAll(/import\(\s*'([^']+)'\)/g)].map(m => m[1]),
+    ];
+    for (const spec of importSpecifiers) {
+      if (!spec.startsWith('node:')) offenders.push(`${path.basename(file)}: ${spec}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'k2 actor files must import node builtins only');
+});
+
 test('factory-proof imports no legacy composition surface (canonical adapter only)', () => {
   const files = listMjsFiles(PROOF_DIR);
   assert.ok(files.length >= 3, `expected proof files to scan, got ${files.length}`);
