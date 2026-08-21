@@ -92,6 +92,7 @@ const GROUPS = {
       'tests/factory-proof/w1-1-fabricated-hash.test.mjs',
       'tests/factory-proof/w1-4-two-lifecycles.test.mjs',
       'tests/factory-proof/k2-spawned-actor.test.mjs',
+      'tests/factory-proof/k2-strict-formalization.test.mjs',
       'tests/factory-proof/proof-claims.test.mjs',
       'tests/factory-proof/k0-baseline.test.mjs',
     ],

@@ -45,9 +45,10 @@ test('K1-D: the claim summary is published (no proof exceeds its seam)', () => {
     for (const n of claim.notClaimed) lines.push(`   ✗ NOT claimed: ${n}`);
   }
   console.log(`\n[proof-claims] ${PROOF_MODES.length} modes; ${Object.keys(PROOF_CLAIMS).length} files:\n${lines.join('\n')}`);
-  // The honest floor: nothing claims strict L3 yet (K2 pending) — the moment
-  // K2 lands, this assertion flips to REQUIRE CanonicalSpawn somewhere.
+  // K2-B LANDED: strict spawned-actor scenarios are blocking, so the floor
+  // now REQUIRES at least one CanonicalSpawn claim — a regression to
+  // fast-lane-only proofs must not pass silently.
   const anySpawn = Object.values(PROOF_CLAIMS).some(c => c.modes.includes('CanonicalSpawn'));
-  assert.equal(anySpawn, false,
-    'CanonicalSpawn claims must arrive WITH K2 — update this floor in the same commit');
+  assert.equal(anySpawn, true,
+    'CanonicalSpawn landed with K2 — at least one blocking file must claim the strict spawned seam');
 });

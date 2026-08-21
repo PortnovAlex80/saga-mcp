@@ -24,8 +24,12 @@ const CHILD_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'k
 
 /**
  * @param {object} opts
- * @param {string} opts.programPath  Actor program JSON (see k2-scripted-child.mjs).
+ * @param {string} opts.programPath  Actor program (JSON steps or an .mjs module — see k2-scripted-child.mjs).
  * @param {string} opts.spawnLog     JSONL interception log for assertions.
+ * @param {string} [opts.variant]    K2_ACTOR_VARIANT — the actor's constitution (W1-1 pattern).
+ * @param {boolean} [opts.stripMcpConfig] K2-D negative: remove --mcp-config from the
+ *                                        envelope — the strict scenario must fail BEFORE
+ *                                        any handler runs (the child cannot reach the server).
  */
 export function createScriptedChildSpawn(opts) {
   if (!opts?.programPath) throw new Error('K2_SPAWN_PROGRAM_REQUIRED');
@@ -39,11 +43,28 @@ export function createScriptedChildSpawn(opts) {
       hasMcpConfig: args.includes('--mcp-config'),
       promptViaStdin: true,
     })}\n`);
-    const env = { ...options.env, K2_ACTOR_PROGRAM: opts.programPath };
-    return nodeSpawn(
+    const env = {
+      ...options.env,
+      K2_ACTOR_PROGRAM: opts.programPath,
+      ...(opts.variant ? { K2_ACTOR_VARIANT: opts.variant } : {}),
+    };
+    // K2-D negative: the envelope WITHOUT the MCP config is unlawful — the
+    // argv-compatible child rejects it (exit 3) before any tool call.
+    const childArgs = opts.stripMcpConfig
+      ? args.filter((flag, i) => flag !== '--mcp-config' && args[i - 1] !== '--mcp-config')
+      : args;
+    const child = nodeSpawn(
       process.execPath,
-      [CHILD_PATH, ...args],
+      [CHILD_PATH, ...childArgs],
       { ...options, env, windowsHide: true },
     );
+    // Debug rail: the child's typed failures land in the spawn log so drives
+    // and tests can see WHY a strict actor exited (never feeds decisions).
+    child.stderr?.on('data', chunk => {
+      try {
+        appendFileSync(opts.spawnLog, `${JSON.stringify({ stderr: String(chunk).slice(0, 600) })}\n`);
+      } catch { /* best effort */ }
+    });
+    return child;
   };
 }
