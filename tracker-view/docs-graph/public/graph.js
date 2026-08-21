@@ -1,12 +1,12 @@
-// Docs Graph Viewer — frontend logic.
+// Specification Workspace — documentation graph frontend.
 //
-// Renders the unified documentation graph (saga artifacts + .md docs + traces)
-// using cytoscape with the dagre layout extension. Clicking a node opens a
-// detail card in the side panel; clicking an edge row highlights both ends.
+// Renders the unified documentation graph (Saga artifacts + Markdown docs +
+// traces) as a read-only projection. Editing remains delegated to editor.js.
 
 (() => {
   'use strict';
 
+  const ACCENT = '#22d3ee';
   const TYPE_COLORS = {
     PRD: '#58a6ff', SRS: '#a371f7', UC: '#3fb950', AC: '#f1c40f',
     FR: '#e67e22', NFR: '#1abc9c', decision: '#9b59b6', theme: '#e84393',
@@ -14,7 +14,6 @@
     SPEC: '#79c0ff', OQ: '#f85149', hypothesis: '#bc8cff',
     business_metric: '#ffa657', summary: '#6e7681',
   };
-  // For nodes without a known type.
   const DEFAULT_COLOR = '#8b949e';
 
   const LINK_COLORS = {
@@ -28,17 +27,15 @@
     superseded_by: '↳ super', implements_spec: '↳ spec',
   };
 
-  // Edges that touch task nodes — toggleable from the toolbar.
   const TASK_EDGE_TYPES = new Set(['implements', 'verified_by', 'depends_on']);
 
   let cy = null;
   let currentSnapshot = null;
   let selectedNodeId = null;
 
-  // ---- bootstrap ----
   async function init() {
     if (typeof cytoscape === 'undefined') {
-      banner('Не удалось загрузить cytoscape (CDN заблокирован?). Проверьте сеть.', 'error');
+      banner('Не удалось загрузить библиотеку графа. Проверьте доступ к CDN.', 'error');
       return;
     }
     if (typeof window.dagre !== 'undefined' && typeof window.cytoscapeDagre !== 'undefined') {
@@ -73,7 +70,7 @@
           selector: 'node:selected',
           style: {
             'border-width': 3,
-            'border-color': '#4f8cff',
+            'border-color': ACCENT,
             'border-opacity': 1,
           },
         },
@@ -86,21 +83,24 @@
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             'arrow-scale': 0.8,
-            'opacity': 0.85,
+            'opacity': 0.82,
             'overlay-opacity': 0,
           },
         },
-        {
-          selector: 'edge:selected',
-          style: { 'width': 3, 'opacity': 1 },
-        },
-        {
-          selector: '.faded',
-          style: { 'opacity': 0.15 },
-        },
+        { selector: 'edge:selected', style: { 'width': 3, 'opacity': 1 } },
+        { selector: '.faded', style: { 'opacity': 0.12 } },
         {
           selector: '.highlighted',
-          style: { 'opacity': 1, 'border-width': 2, 'border-color': '#4f8cff' },
+          style: { 'opacity': 1, 'border-width': 2, 'border-color': ACCENT },
+        },
+        {
+          selector: 'node.search-match',
+          style: {
+            'opacity': 1,
+            'border-width': 3,
+            'border-color': ACCENT,
+            'border-opacity': 0.9,
+          },
         },
       ],
       elements: [],
@@ -108,45 +108,61 @@
 
     cy.on('select', 'node', (evt) => {
       selectedNodeId = evt.target.id();
-      renderSidePanel(evt.target.id());
+      renderSidePanel(selectedNodeId);
+      focusNodeContext(evt.target);
     });
     cy.on('select', 'edge', (evt) => {
       const edge = evt.target();
       highlightNeighborhood(edge.source(), edge.target());
     });
-    cy.on('unselect', () => {
-      cy.elements().removeClass('faded highlighted');
+    cy.on('unselect', 'node', (evt) => {
+      if (evt.target.id() === selectedNodeId) selectedNodeId = null;
+      restoreVisualFocus();
     });
 
-    // Toolbar wiring.
     document.getElementById('refresh-btn').addEventListener('click', () => loadGraph());
     document.getElementById('layout-select').addEventListener('change', () => runLayout());
     document.getElementById('hide-task-edges').addEventListener('change', () => applyEdgeFilter());
 
+    const search = document.getElementById('graph-search');
+    if (search) {
+      search.addEventListener('input', applySearchFilter);
+      search.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          search.value = '';
+          search.blur();
+          applySearchFilter();
+        }
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const tag = String(event.target?.tagName || '').toLowerCase();
+      if (['input', 'textarea', 'select'].includes(tag) || event.target?.isContentEditable) return;
+      if (!search) return;
+      event.preventDefault();
+      search.focus();
+      search.select();
+    });
+
     await loadProjects();
-    // Honor ?project=NN in URL or hash.
     const params = new URLSearchParams(location.search);
     const fromUrl = params.get('project');
-    if (fromUrl) {
-      document.getElementById('project-select').value = fromUrl;
-    }
+    if (fromUrl) document.getElementById('project-select').value = fromUrl;
     document.getElementById('project-select').addEventListener('change', () => loadGraph());
-    if (document.getElementById('project-select').value) {
-      loadGraph();
-    }
+    if (document.getElementById('project-select').value) loadGraph();
   }
 
-  // ---- data loading ----
   async function loadProjects() {
     try {
       const r = await fetch('/api/projects');
       const j = await r.json();
       const sel = document.getElementById('project-select');
-      sel.innerHTML = '<option value="">— select —</option>';
+      sel.innerHTML = '<option value="">— выберите проект —</option>';
       for (const p of j.projects || []) {
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = `${p.name} (${p.artifact_count || 0})`;
+        opt.textContent = `${p.name} · ${p.artifact_count || 0} артеф.`;
         sel.appendChild(opt);
       }
     } catch (e) {
@@ -157,7 +173,7 @@
   async function loadGraph() {
     const pid = document.getElementById('project-select').value;
     if (!pid) return;
-    banner('Загрузка графа…', 'info', 800);
+    banner('Обновление графа…', 'info', 700);
     try {
       const r = await fetch(`/api/graph?project=${encodeURIComponent(pid)}`);
       const j = await r.json();
@@ -166,9 +182,11 @@
         return;
       }
       currentSnapshot = j;
+      selectedNodeId = null;
       renderGraph(j);
       const s = j.stats || {};
-      setStats(`📦 ${s.artifactCount || 0} artifacts · 📄 ${s.docCount || 0} docs · 🔧 ${s.taskCount || 0} tasks · 🔗 ${s.edgeCount || 0} edges`);
+      setStats(`${s.artifactCount || 0} артефактов · ${s.docCount || 0} документов · ${s.taskCount || 0} задач · ${s.edgeCount || 0} связей`);
+      applySearchFilter();
     } catch (e) {
       banner('Ошибка загрузки графа: ' + e.message, 'error');
     }
@@ -176,9 +194,7 @@
 
   function renderGraph(snapshot) {
     cy.elements().remove();
-
     const hideTaskEdges = document.getElementById('hide-task-edges').checked;
-
     const nodes = (snapshot.nodes || []).map((n) => ({
       data: {
         id: n.id,
@@ -189,7 +205,7 @@
       },
     }));
     const edges = (snapshot.edges || [])
-      .filter((e) => !hideTaskEdges || !isTaskEdge(e, snapshot))
+      .filter((e) => !hideTaskEdges || !isTaskEdge(e))
       .map((e, i) => ({
         data: {
           id: `e${i}:${e.source}->${e.target}:${e.linkType}`,
@@ -198,7 +214,6 @@
           linkType: e.linkType,
         },
       }));
-
     cy.add([...nodes, ...edges]);
     runLayout();
     cy.fit(undefined, 60);
@@ -208,13 +223,7 @@
     const sel = document.getElementById('layout-select').value;
     const layoutOpts =
       sel === 'dagre'
-        ? {
-            name: 'dagre',
-            rankDir: 'TB',
-            nodeSep: 40,
-            rankSep: 70,
-            animate: false,
-          }
+        ? { name: 'dagre', rankDir: 'TB', nodeSep: 44, rankSep: 74, animate: false }
         : sel === 'breadthfirst'
           ? { name: 'breadthfirst', directed: true, padding: 30, animate: false }
           : sel === 'cose'
@@ -232,29 +241,25 @@
   function applyEdgeFilter() {
     if (!currentSnapshot) return;
     renderGraph(currentSnapshot);
+    applySearchFilter();
   }
 
-  // ---- node / edge presentation helpers ----
-  function colorFor(type) {
-    return TYPE_COLORS[type] || DEFAULT_COLOR;
-  }
+  function colorFor(type) { return TYPE_COLORS[type] || DEFAULT_COLOR; }
 
   function nodeSize(ele, dim) {
     const kind = ele.data('kind');
     const type = ele.data('type');
-    // Artifact nodes: a bit bigger, sized by type importance.
     if (kind === 'artifact') {
       const big = new Set(['PRD', 'SRS', 'UC']).has(type);
-      return dim === 'w' ? (big ? 52 : 38) : dim === 'h' ? (big ? 52 : 38) : 40;
+      return dim === 'w' ? (big ? 52 : 38) : (big ? 52 : 38);
     }
-    if (kind === 'task') return dim === 'w' ? 28 : 28;
-    return dim === 'w' ? 34 : 34;
+    if (kind === 'task') return 28;
+    return 34;
   }
 
   function nodeLabel(n) {
     if (n.kind === 'artifact' && n.code) return n.code;
     if (n.kind === 'task' && n.taskId) return `#${n.taskId}`;
-    // Doc nodes: trim the basename and drop extension.
     if (n.path) {
       const parts = n.path.split('/');
       const last = parts[parts.length - 1].replace(/\.md$/i, '');
@@ -263,15 +268,10 @@
     return n.title || '?';
   }
 
-  function isTaskEdge(edge, snapshot) {
-    const types = TASK_EDGE_TYPES;
-    if (!types.has(edge.linkType)) return false;
-    // Heuristic: edges that go to/from a task node OR carry a task-only
-    // link_type are considered "task edges" for the filter.
-    return true;
+  function isTaskEdge(edge) {
+    return TASK_EDGE_TYPES.has(edge.linkType);
   }
 
-  // ---- side panel ----
   function renderSidePanel(nodeId) {
     const node = (currentSnapshot.nodes || []).find((n) => n.id === nodeId);
     if (!node) return;
@@ -281,7 +281,7 @@
     const outgoing = (currentSnapshot.edges || []).filter((e) => e.source === nodeId);
     const incoming = (currentSnapshot.edges || []).filter((e) => e.target === nodeId);
 
-    const html = `
+    panel.innerHTML = `
       <div class="node-card">
         <div class="header">
           <span class="type-badge ${escapeAttr(node.type)}">${escapeHtml(node.type || '?')}</span>
@@ -290,62 +290,51 @@
         </div>
         <h2 class="node-title">${escapeHtml(node.title || '(без названия)')}</h2>
         <div class="kv-list">
-          ${kv('Kind', node.kind)}
-          ${kv('Path', node.path)}
-          ${node.epicName ? kv('Epic', node.epicName) : ''}
-          ${kv('Content hash', shortHash(node.contentHash))}
+          ${kv('Тип', node.kind)}
+          ${kv('Путь', node.path)}
+          ${node.epicName ? kv('Эпик', node.epicName) : ''}
+          ${kv('Hash', shortHash(node.contentHash))}
           ${node.driftState ? kv('Drift', node.driftState) : ''}
-          ${node.mtime ? kv('Modified', new Date(node.mtime).toISOString().replace('T', ' ').slice(0, 19)) : ''}
-          ${(node.tags && node.tags.length) ? kv('Tags', node.tags.join(', ')) : ''}
+          ${node.mtime ? kv('Изменён', new Date(node.mtime).toLocaleString('ru-RU')) : ''}
+          ${(node.tags && node.tags.length) ? kv('Теги', node.tags.join(', ')) : ''}
         </div>
 
         ${node.path ? `
-          <button class="edit-btn" data-path="${escapeAttr(node.path)}">✎ Edit in branch</button>
-          ${node.kind === 'artifact' ? `<button class="edit-btn secondary" data-action="view-md" data-path="${escapeAttr(node.path)}">View source</button>` : ''}
+          <button class="edit-btn" data-path="${escapeAttr(node.path)}">Редактировать документ</button>
+          ${node.kind === 'artifact' ? `<button class="edit-btn secondary" data-action="view-md" data-path="${escapeAttr(node.path)}">Открыть Markdown</button>` : ''}
         ` : ''}
 
         ${outgoing.length ? `
           <div>
-            <div class="section-title">Outgoing (${outgoing.length})</div>
-            <div class="edge-list">
-              ${outgoing.map(edgeRow(currentSnapshot, 'out')).join('')}
-            </div>
+            <div class="section-title">Исходящие связи (${outgoing.length})</div>
+            <div class="edge-list">${outgoing.map(edgeRow(currentSnapshot, 'out')).join('')}</div>
           </div>` : ''}
         ${incoming.length ? `
           <div>
-            <div class="section-title">Incoming (${incoming.length})</div>
-            <div class="edge-list">
-              ${incoming.map(edgeRow(currentSnapshot, 'in')).join('')}
-            </div>
+            <div class="section-title">Входящие связи (${incoming.length})</div>
+            <div class="edge-list">${incoming.map(edgeRow(currentSnapshot, 'in')).join('')}</div>
           </div>` : ''}
       </div>
     `;
-    panel.innerHTML = html;
 
-    // Wire edge row clicks to focus the other end.
     panel.querySelectorAll('.edge-row').forEach((row) => {
       row.addEventListener('click', () => {
         const targetId = row.dataset.target;
-        if (targetId) {
-          cy.getElementById(targetId).select();
-          cy.center(cy.getElementById(targetId));
-        }
+        if (!targetId) return;
+        const target = cy.getElementById(targetId);
+        target.select();
+        cy.animate({ center: { eles: target }, duration: 160 });
       });
     });
 
-    // Wire "Edit in branch" / "View source" buttons → editor module.
     panel.querySelectorAll('.edit-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const p = btn.dataset.path;
         if (btn.dataset.action === 'view-md') {
-          // Open raw markdown read-only in a new tab (best-effort: depends on
-          // the repository serving files — falls back to the editor).
           window.open(p, '_blank');
           return;
         }
-        if (window.docsGraphEditor && p) {
-          window.docsGraphEditor.openForPath(p);
-        }
+        if (window.docsGraphEditor && p) window.docsGraphEditor.openForPath(p);
       });
     });
   }
@@ -364,19 +353,92 @@
     };
   }
 
+  function focusNodeContext(node) {
+    if (!node || node.empty()) return;
+    cy.elements().removeClass('faded highlighted search-match');
+    const connectedEdges = node.connectedEdges();
+    const neighbors = connectedEdges.connectedNodes();
+    const keep = node.union(connectedEdges).union(neighbors);
+    cy.elements().not(keep).addClass('faded');
+    keep.addClass('highlighted');
+    node.removeClass('highlighted');
+  }
+
   function highlightNeighborhood(a, b) {
-    cy.elements().removeClass('faded highlighted');
-    const keep = cy.collection().union(a).union(b).union(cy.elements(`edge[source="${a.id()}"][target="${b.id()}"], edge[source="${b.id()}"][target="${a.id()}"]`));
+    cy.elements().removeClass('faded highlighted search-match');
+    const direct = cy.elements(`edge[source="${a.id()}"][target="${b.id()}"], edge[source="${b.id()}"][target="${a.id()}"]`);
+    const keep = cy.collection().union(a).union(b).union(direct);
     cy.elements().not(keep).addClass('faded');
     keep.addClass('highlighted');
   }
 
-  // ---- misc UI helpers ----
+  function applySearchFilter() {
+    if (!cy) return;
+    const input = document.getElementById('graph-search');
+    const query = String(input?.value || '').trim().toLocaleLowerCase('ru-RU');
+    input?.closest('.workspace-search')?.classList.toggle('has-query', Boolean(query));
+
+    if (!query) {
+      restoreVisualFocus();
+      return;
+    }
+
+    selectedNodeId = null;
+    cy.elements().unselect();
+    cy.elements().removeClass('faded highlighted search-match');
+    const matches = cy.nodes().filter((node) => nodeMatchesQuery(node.data('raw') || {}, query));
+    if (matches.empty()) {
+      cy.elements().addClass('faded');
+      setSearchCount(0);
+      return;
+    }
+    const contextEdges = matches.connectedEdges();
+    const contextNodes = contextEdges.connectedNodes();
+    const keep = matches.union(contextEdges).union(contextNodes);
+    cy.elements().not(keep).addClass('faded');
+    matches.addClass('search-match');
+    setSearchCount(matches.length);
+    if (matches.length === 1) cy.animate({ center: { eles: matches }, duration: 160 });
+  }
+
+  function nodeMatchesQuery(node, query) {
+    const haystack = [
+      node.code,
+      node.title,
+      node.path,
+      node.type,
+      node.status,
+      node.epicName,
+      ...(Array.isArray(node.tags) ? node.tags : []),
+    ].filter(Boolean).join(' ').toLocaleLowerCase('ru-RU');
+    return haystack.includes(query);
+  }
+
+  function setSearchCount(count) {
+    const input = document.getElementById('graph-search');
+    if (!input) return;
+    input.setAttribute('aria-description', count === 1 ? 'Найден 1 узел' : `Найдено узлов: ${count}`);
+  }
+
+  function restoreVisualFocus() {
+    if (!cy) return;
+    const query = String(document.getElementById('graph-search')?.value || '').trim();
+    if (query) {
+      applySearchFilter();
+      return;
+    }
+    cy.elements().removeClass('faded highlighted search-match');
+    if (selectedNodeId) {
+      const selected = cy.getElementById(selectedNodeId);
+      if (selected && !selected.empty()) focusNodeContext(selected);
+    }
+  }
+
   function showEmpty(reason) {
     document.getElementById('side-panel').classList.add('empty');
     const reasons = {
       'project-not-found': 'Проект не найден.',
-      'no-artifacts-table': 'В этой БД нет таблицы artifacts (старая saga-mcp).',
+      'no-artifacts-table': 'В этой БД нет таблицы artifacts (старая версия Saga).',
     };
     const text = reasons[reason] || 'Граф пуст.';
     if (cy) cy.elements().remove();
@@ -394,13 +456,11 @@
     }
     el.className = `banner ${kind}`;
     el.textContent = msg;
-    if (ttl > 0) setTimeout(() => el.remove(), ttl);
+    clearTimeout(el.__ttl);
+    if (ttl > 0) el.__ttl = setTimeout(() => el.remove(), ttl);
   }
 
-  function setStats(t) {
-    document.getElementById('stats').textContent = t;
-  }
-
+  function setStats(t) { document.getElementById('stats').textContent = t; }
   function kv(k, v) {
     if (v == null || v === '' || v === undefined) return '';
     return `<div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(String(v))}</span></div>`;
@@ -409,9 +469,7 @@
     if (!h) return null;
     return h.length > 12 ? `${h.slice(0, 8)}…${h.slice(-4)}` : h;
   }
-  function truncate(s, n) {
-    return s.length > n ? s.slice(0, n - 1) + '…' : s;
-  }
+  function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
   function escapeHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
@@ -419,13 +477,8 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
-  function escapeAttr(s) {
-    return escapeHtml(s).replace(/'/g, '&#39;');
-  }
+  function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
 
   document.addEventListener('DOMContentLoaded', init);
-
-  // Expose a reload hook so editor.js can trigger a graph refresh after
-  // branch/discard operations without reaching into internal state.
   window.__docsGraphReload = loadGraph;
 })();
