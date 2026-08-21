@@ -418,3 +418,55 @@ After Discovery and Formalization are locally green:
 5. only then begin Development.
 
 Do not start Development by cloning either pack. Development adds fan-out/fan-in, dependencies, Git effects, readiness and continuation/replan mechanics and must consume a proven generic base rather than another layer of copied test code.
+
+## Addendum 2026-08-21 (evening session): validation results and the remaining resilience-pack classification
+
+The full validation-order run is complete. State after this session:
+
+**Green (16/16 through the coverage drive, core Formalization pack):**
+happy spine, all three trace-repair scenarios, heading repair, d2 repair,
+reconciliation-malformed, reviewer-foreign-subject, plus Discovery spine and
+the shared structural suites. Two production-side changes landed:
+
+1. `a5e1d409` — reconciliation report payload contract pinned at the
+   product_submit intake (canonical ProductPayloadContract mechanism, single
+   manifest); obligation registry Wave F0 cleanup in the same commit.
+2. `7a4a99ee` — pack actors repaired to real production boundaries
+   (artifact_update repair path; foreign-subject oracle redirected to the
+   stronger WorkIntent intake fence; observer schema fixes; explicit
+   BOUNDARY-UNDRIVEN classification).
+
+**Remaining reds (10, all in the resilience pack, never run by the original
+authors) — classified, NOT yet fixed:**
+
+- `reviewer-feedback-{exact,absent,stale,corrupted}` (4): after
+  changes_requested the author repair loop never converges. Observed on
+  `exact`: 213 author executions, actor repair fires every time, artifact
+  upsert is legal (accepted→draft reopen), yet NO second author CandidateSet,
+  NO new gate decisions, ZERO recovery epochs, review never re-arms,
+  cycle-bound stop. This is the F-R1/F-R2 supervision family (see
+  2026-08-21-w1-2-f-r2-candidate-fix.md): the repair_wait→author→new
+  CandidateSet→reviewer re-arm path stalls in production. NOT a pack bug.
+  Needs a dedicated session with DB retention to read per-execution
+  finalize outcomes.
+- `{product,useCases,acceptance,reconciliation,architecture}-retry-exhaustion`
+  (5): not yet diagnosed individually; expected to collide with the same
+  supervision family or with real-backoff timing (61s). Diagnose after the
+  feedback quartet — same production territory.
+- `restart-idempotency` (1): crashes at launch B with
+  LIFECYCLE_SCOPE_ALREADY_ACTIVE — the proof stops lifecycle A at the
+  'formalized' boundary (non-terminal) and immediately starts B on the same
+  project+epic+lifecycle scope. The scope guard is a deliberate production
+  protection. There is no lawful mid-flight lifecycle cancel exposed to the
+  harness. Options: drive runs to natural terminal (collides with F-R1/F-R2
+  for run B — full-lifecycle replay of review capsules is exactly the
+  documented defect), or land F-R2 first, or add a lawful harness-level
+  terminalization seam. Decide with the operator.
+
+**Blocking next steps (order):**
+1. F-R1/F-R2 production fix (review capsule content model + requeue
+   supervision) — unblocks the feedback quartet, retry-exhaustion family,
+   restart-idempotency AND the W1-2 B-run completion.
+2. W1-4 option-1 rework (B gets genuinely different upstream material;
+   guide §8.6: reuse/extend the W1-4 proof, do not replace it).
+3. Only then Phase G registration and the w0-waves → saga4 merge.
