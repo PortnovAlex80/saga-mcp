@@ -20,15 +20,36 @@
      `pre-tool-death`, ~3 мин на спавн) → 3 lost-экзекуции, каждая
      переспавнена супервизией.
   3. Бюджет закрыл ран типизированно. §15/ADR-075 сработали как задумано.
-- **Прод-находки на утро:**
-  - **F-A (главная):** retry-промпт планера накапливает gate-фидбек без
-    ограничения → снежный ком за лимитом полезной нагрузки API → ячейка
-    невосстановима. Фикс-направление: суммаризация/обрезка фидбека в
-    retry-промпте.
-  - **F-B:** валидатор требует явный порядок между файлово-пересекающимися
-    items, но промпт планера это правило не преподаёт — модель не может
-    угадать. Более ранний сабмишен #20 в этом же ране был принят — стена не
-    концептуальная, а retry-специфичная.
+- **Диагноз уточнён оператором утром 2026-08-22 (ниже) — первоначальные
+  формулировки агента частично неверны. Авторитетная версия:**
+  - **F-A (подтверждён, глубже):** дефект не «накопление gate-фидбека», а
+    ОТСУТСТВИЕ prompt budget при нескольких ПЕРЕКРЫВАЮЩИХСЯ каналах
+    исторической информации: protocol skill + semantic skill + current
+    recovery feedback + prior deaths + previous_failures (до 20×2000 chars)
+    + attempt_history (до 50×2000 chars) + recovery memory — и весь
+    `JSON.stringify(task)` целиком, чей metadata уже несёт те же слои.
+  - **F-B (ДИАГНОЗ АГЕНТА НЕВЕРЕН — отозван):** правило overlap-ordering
+    УЖЕ преподавалось в planner skill на коммите Elite-3
+    (skills/saga-planner/SKILL.md:34 «overlapping scopes require a dependency
+    path», :40 «On a repair attempt, rebuild the pairwise overlap matrix»;
+    чеклист — то же). «Прописать правило в промпт» продублировало бы
+    существующий текст. Правильный фикс: фабрика сама детерминированно
+    вычисляет unordered-overlap set / repair delta и даёт планеру готовый
+    список конфликтующих пар, вместо ожидания ручного графового анализа
+    десятков scopes у LLM.
+  - **F-C (ПРОПУЩЕН агентом):** provider adapter ретраит ОКОНЧАТЕЛЬНЫЙ
+    отказ. API отвечал `400 / "Prompt exceeds max length" / isRetryable:
+    false`, но classifyFailure() в claude-shim любой pre-tool exit делает
+    retryable → полная лестница 1s..64s ×8 на каждый спавн (~3 мин),
+    затем new WorkerExecution с тем же 436KB промптом — цикл сжигал recovery
+    budget инфраструктурой. Должно быть: 400 non-retryable → fail-fast →
+    typed diagnosis → factory recovery.
+  - «Завод отработал образцово» — ПРЕУВЕЛИЧЕНО: safety/recovery сработали
+    (нет вечных зависаний, typed terminal), но prevention (prompt budget) и
+    retry classification (F-C) провалились.
+- ~~Первоначальные (частично неверные) формулировки F-A/F-B агента:~~
+  F-A «обрезать gate feedback» — слишком мелко; F-B «правило не преподаётся» —
+  опровергнуто кодом. Зафиксировано для истории триажа.
 
 ## 2. Тестовый движок: все 4 цеха зелёные
 
@@ -105,16 +126,23 @@
 - Watchdog-автомат (20 мин) оставлен; в трекере стоит ⛔-guard: ран терминален,
   НЕ перезапускать — ночью батч владел машиной.
 
-## 6. Что я бы делал днём (рекомендации)
+## 6. Work order перед Elite-4 (замена первоначальных рекомендаций)
 
-1. F-A: ограничить накопление gate-фидбека в retry-промпте планера — иначе
-   каждый сложный ран будет умирать той же смертью на ~10-й попытке.
-2. F-B: преподать overlap-ordering правило в промпте планера (валидатор уже
-   требует).
-3. Драйв Development/Delivery coverage-драйвами до полного закрытия вселенных
-   (сейчас закрыты spines; pending-вселенные D2–D10 и delivery D-эджи
-   задекларированы в паковах).
-4. R2–R10 поездка рефакторинга (гейт зелёный).
+1. **F-A — Prompt Budget (системно):** per-layer бюджеты (protocol /
+   semantic skill / current RecoveryIssue / historical summary / task
+   projection). История остаётся durable полностью (feedback-history.json,
+   attempt-history, DB), но в промпт попадают только: текущая точная
+   проблема + ограниченное summary + path/digest/count полной истории.
+   Обязательно логировать состав промпта: totalBytes, protocolBytes,
+   semanticSkillBytes, taskProjectionBytes, currentFeedbackBytes,
+   historySummaryBytes, priorDeathsBytes.
+2. **F-B — Planner Assistance:** НЕ дублировать правило в промпте; фабрика
+   детерминированно вычисляет unordered-overlap set / repair delta и
+   передаёт планеру готовый список конфликтующих пар.
+3. **F-C — Non-retryable provider failures:** HTTP 400 / «Prompt exceeds
+   max length» / isRetryable:false → fail-fast без retry-лестницы →
+   typed diagnosis → factory recovery.
+4. Далее: coverage-драйвы Dev/Delivery до полных вселенных, R2–R10.
 
 ## Watchdog addendum (03:1xZ cycle)
 
