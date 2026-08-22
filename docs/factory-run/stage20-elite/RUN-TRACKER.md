@@ -224,3 +224,33 @@ resume path re-stamps the catalog limit).
   the failure mode is retry-loop-specific, not a hard capability wall.
   Post-Elite batch UNBLOCKED: build → verify batch → coverage drives →
   merge. Tripwire clean at terminal (2d6176e8…).
+- **01:2xZ — POST-ELITE BATCH: the conformance engine caught a REAL
+  production defect (Type C). The chain, triaged by 3 research subagents:**
+  (1) `discovery/restart-idempotency` red was a STAGE-BOUNDARY proof driving
+  into a formalization dead-end — fixed honestly: stop at 'go' + close each
+  run between starts via the PRODUCTION abandonLifecycleRun (scripts/
+  factory.mjs abandon path; scope guard then frees the next launch).
+  (2) Exposed layer 2: run C replayed A's READINESS for an incompatible
+  input — triage verdict: FIXTURE (W9 proposal content was static; ADR-079:
+  byte-equal material = correct reuse). Fixed: proposal + PRD/UC/AC/SRS
+  artifacts now derive from the discovery proposal digest (content-addressed
+  fidelity).
+  (3) Exposed layer 3 — THE PRODUCTION DEFECT: `formalization/restart-idem-
+  potency` died on REPLAY_KEY_PAYLOAD_CONFLICT. Root cause: the reviewer
+  verdict contract REQUIRES subject_candidate_set_ref (a run-scoped
+  candidate-set/WORKPLACE-NUMBER/... ref) inside the product content; the
+  capture-side input-binding walk could not see it (frozen at top-level task
+  metadata), so every cross-lifecycle acceptance of semantically identical
+  reviewed material planted a DIVERGENT capsule under one semantic key, and
+  §15 (ac89ec88) correctly failed the next claim closed. FIX (2fee5c6e):
+  capture templates the subject ref via a synthetic $.subject_candidate_set_ref
+  binding (resolved at replay serve against the CURRENT run's subject —
+  symmetric to the rebinder); conflict detection compares the SEMANTIC
+  payload projection (typedProducts[].contentHash normalized — it hashes
+  run-scoped identity); prefix:counter handles (formalization-baseline:N)
+  classified as identity candidates. Real-factory exposure: multi-LIFECYCLE
+  restarts on one project (proofs, abandon+restart) — NOT single-lifecycle
+  Elite recovery (one work item = one workplace, refs constant).
+  RESULT: discovery 27/27, formalization 26/26 — both workshops FULLY GREEN
+  on the rebuilt dist. Full suite + delivery/development spine re-runs in
+  flight; then merge w0-waves → saga4.
