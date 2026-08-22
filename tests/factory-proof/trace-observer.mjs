@@ -142,6 +142,14 @@ export function observeDurableTrace(dbPath) {
       effectReceipts: all(
         'SELECT effect_key, effect_kind, state FROM factory_effect_receipts ORDER BY effect_key',
       ),
+      // Delivery publication ledger: the authoritative external-effect record
+      // the delivery runtime writes (sqlite-external-effect-ledger). A
+      // succeeded action row from the publish node IS the publication proof.
+      deliveryEffectActions: all(
+        `SELECT provider_namespace, action_key, node_id, state,
+                provider_effect_id, execution_attempts
+           FROM factory_external_effect_actions ORDER BY id`,
+      ),
       transitionObligations: all(
         'SELECT obligation_key, source_kind, source_ref, handoff_kind, state, last_error FROM factory_transition_obligations ORDER BY obligation_key',
       ),

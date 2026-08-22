@@ -61,19 +61,24 @@ function deliveryStageOutcomeOracle(expected) {
   };
 }
 
-/** The publication effect left a durable receipt with a deterministic key. */
+/** The publication effect left a durable ledger action with a deterministic
+ * key, executed to `succeeded` by the publish node. This reads the REAL
+ * delivery authority (factory_external_effect_actions, written by the
+ * production external-effect ledger) — not the legacy generic receipt table
+ * the delivery runtime never writes. */
 function releaseEffectReceiptOracle() {
   return {
     id: 'delivery.publication.effect-receipt',
     evaluate({ durableTrace }) {
-      const rows = (durableTrace.effectReceipts ?? []).filter(row =>
-        String(row.effect_kind ?? row.effect ?? '').includes('deploy')
-        || String(row.effect_kind ?? row.effect ?? '').includes('publish')
-        || String(row.effect_kind ?? row.effect ?? '').includes('release'));
+      const rows = (durableTrace.deliveryEffectActions ?? []).filter(row =>
+        row.state === 'succeeded' && String(row.provider_effect_id ?? '') !== '');
       return {
         passed: rows.length > 0,
-        evidenceRefs: rows.map(row => String(row.effect_key ?? row.id)),
-        details: { count: rows.length, kinds: [...new Set(rows.map(row => String(row.effect_kind ?? row.effect)))] },
+        evidenceRefs: rows.map(row => `${row.provider_namespace}:${row.action_key}`),
+        details: {
+          count: rows.length,
+          allActions: durableTrace.deliveryEffectActions ?? [],
+        },
       };
     },
   };

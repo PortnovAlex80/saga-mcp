@@ -270,15 +270,20 @@ export async function bootstrapFreshHarness(opts: BootstrapFreshHarnessOptions):
     // Trusted deterministic-evidence + authoritative-state providers used by
     // settlement/release. These are provider REGISTRATIONS (configuration), not
     // authority rows; production settlement reads them at runtime.
+    // The delivery rows carry EXPLICIT ids (9001/9002) pinned by the canonical
+    // proof provider doubles (canonical-proof-composition.mjs) — same
+    // convention as the temporal fixtures (fresh-db.mjs seeds 9101/9102).
+    // resolveTrustedProvider matches id+name+category+version, so an unpinned
+    // row resolves untrusted and production fails the release closed.
     db.prepare(
       `INSERT INTO trusted_providers
-         (project_id,category,name,trust_basis,determinism,scope,layer,version,status)
+         (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
        VALUES
-         (?, 'deterministic_evidence','fresh-harness-preflight',
+         (9001, ?, 'deterministic_evidence','fresh-harness-preflight',
             'fresh harness deterministic fixture','full','fresh-harness','L0','1.0.0','active'),
-         (?, 'authoritative_state','fresh-harness-deployment-state',
+         (9002, ?, 'authoritative_state','fresh-harness-deployment-state',
             'fresh harness authoritative fixture','partial','fresh-harness','L4','1.0.0','active'),
-         (?, 'deterministic_evidence','development.verification-product-contract.v2',
+         (NULL, ?, 'deterministic_evidence','development.verification-product-contract.v2',
             'fresh harness verification provider','full','fresh-harness','L0','2.0.0','active')`,
     ).run(projectId, projectId, projectId);
     ensureReplayCapsuleSchema(db);

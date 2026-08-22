@@ -58,6 +58,11 @@ export const CANONICAL_OVERLAY_ALLOWLIST = Object.freeze([
   // Mutually exclusive with workerExecutorFactory in one composition.
   'workerSpawn',
   'resolveWorkerContext',
+  // §10.2 (authoring guide): canonical lifecycle identity must derive from
+  // the lifecycle actually driven — the drive names the definition object
+  // (productBuildLifecycle | productDeliveryLifecycle) here; the runtime
+  // defaults to productBuildLifecycle when omitted.
+  'lifecycleDefinition',
   'delivery.providers',
   'delivery.providers.preflight',
   'delivery.providers.actionProviders',
@@ -73,6 +78,7 @@ const CANONICAL_OVERLAY_TREE = Object.freeze({
   workerExecutorFactory: LEAF,
   workerSpawn: LEAF,
   resolveWorkerContext: LEAF,
+  lifecycleDefinition: LEAF,
   delivery: Object.freeze({
     providers: Object.freeze({
       preflight: LEAF,
