@@ -734,18 +734,23 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
 });
 
 // Discovery is an idea-STRENGTH gate, not a build gate. An operator who starts
-// the lifecycle has already decided to see the product built. Every Discovery
-// outcome (including non-go) forwards to Formalization; the strength of the
-// idea is recorded in the discovery certificate and carried forward, NOT used
-// to block the conveyor (commit 2af9709). Formalization is the real go/no-go
-// gate: its non-formalized outcomes terminate there.
-test('product lifecycle forwards every Discovery outcome to Formalization (permissive gate)', () => {
+// the lifecycle has already decided to see the product built. Every
+// idea-strength outcome (including non-go) forwards to Formalization; the
+// strength of the idea is recorded in the discovery certificate and carried
+// forward, NOT used to block the conveyor (commit 2af9709). Formalization is
+// the real go/no-go gate: its non-formalized outcomes terminate there.
+// 'failed' is the exception since 9d37a9e1 (2026-08-21 discovery
+// retry-exhaustion finding): it is runtime-only (§15 budget terminal / kernel
+// failure) — a failed Discovery produced no certificate and no proposal, so
+// Formalization's entry conditions are unsatisfiable by construction and
+// forwarding it exploded the handoff mapping. It ends honestly as terminal.
+test('product lifecycle forwards every Discovery idea-strength outcome to Formalization (permissive gate)', () => {
   const discovery = productDeliveryLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery, 'initial-discovery stage must exist');
-  // Every outcome carries the idea forward to Formalization.
-  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
+  // Every idea-strength outcome carries the idea forward to Formalization.
+  for (const outcome of ['go', 'clarify', 'reject']) {
     const route = discovery.outcomeRoutes[outcome];
     assert.ok(route, `Discovery must declare a route for outcome '${outcome}'`);
     assert.equal(
@@ -764,4 +769,11 @@ test('product lifecycle forwards every Discovery outcome to Formalization (permi
       `outcome '${outcome}' must not be terminal (no status), got ${route.status}`,
     );
   }
+  // 'failed' is runtime-only (§15) and must END the lifecycle honestly —
+  // there is no certificate or proposal to forward.
+  assert.equal(
+    discovery.outcomeRoutes.failed,
+    { type: 'terminal', status: 'failed' },
+    "outcome 'failed' must be the honest terminal (no forwardable material)",
+  );
 });
