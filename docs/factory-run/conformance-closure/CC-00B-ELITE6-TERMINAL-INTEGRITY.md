@@ -206,15 +206,36 @@ and wired into K0, K2, K4, K5, K8, CC-80/81/82, and
 - Do not treat CC-GAP-5 as optional because the built-in tracker supervisor
   remained active; the external watchdog layer silently did not exist.
 
-## The runtime is not fixed
+## The runtime is not fixed by this record
 
-This document records classification, facts, and gaps only. As of this
-record, CC-GAP-2..5 are open: the durable Elite-6 states described above
-remain exactly as frozen, and no projection, journal, watchdog, or
-WorkerExecution-terminalization fix has landed. Nothing in CC-00B
-documentation repairs the runtime; remediation belongs to the named gap
-owners under the plan's CC-00B checklists and exit criteria.
+This document records classification, facts, and gaps only. Remediation
+ownership belongs to the named gap owners under the plan's CC-00B
+checklists and exit criteria; nothing here repairs the runtime or
+reopens the run.
 
-The Elite-6 experiment is complete and immutable, and product qualification
-failed. Product-claim integrity remediation (CC-GAP-6..10) belongs to CC-00C;
-nothing in either record repairs the runtime or reopens the run.
+### Integration status (2026-08-22, sixth-pass update — branch truth, not closure)
+
+Remediation commits have landed on the integration branch
+`cc/CC-00B-terminal-integrity-integration` (HEAD `50824c6a`):
+
+| Gap | Landing |
+|---|---|
+| CC-GAP-2 (terminal projection false-green) | `97dbc635` |
+| CC-GAP-3 (stale `running` WorkerExecution) | `9c2253e2` (receipt-authoritative terminal drain) + `f460ae84` (journal-payload strictness) |
+| CC-GAP-4 (duplicate `run.terminal`) | `dd89b40c` |
+| CC-GAP-5 (watchdog CLI drift) | `9205d9f5` |
+| Related CC-00C-scope landings on the same branch | CC-GAP-6 `50824c6a`, CC-GAP-8 `8819e360`, CC-GAP-10 `184b2c77`, proof-subset token-direction repair `3be7393d`, CC-GAP-1 test alignment `3ec49b6f` |
+| CC-GAP-9 (CC-00C scope) | implementation EXISTS at `736621af` + `d3026cbe` (post-REJECT repair) on `cc/CC-GAP-9-substrate-typed-unknown` — NOT integrated |
+| CC-GAP-7 (CC-00C scope) | open — no warrant-execution landing |
+
+Landing is not closure, and this update marks nothing merged: none of
+these commits is merged to `saga4`, the CC-00B exit checklist (evidence
+freeze, blocking regression proofs, deferred-run release) has not been
+re-audited, and neither this record, CC-00C, nor the plan is merged.
+The durable Elite-6 states described above remain exactly as frozen;
+CC-81/CC-82 must still verify each exit item before any gate passes.
+
+The Elite-6 experiment is complete and immutable, and product
+qualification failed. Product-claim integrity remediation (CC-GAP-6..10)
+belongs to CC-00C; nothing in either record repairs the runtime or
+reopens the run.

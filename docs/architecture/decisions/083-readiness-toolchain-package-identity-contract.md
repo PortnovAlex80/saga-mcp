@@ -160,3 +160,38 @@ and the ADR-077 `toolchainDigests` extension remain open. A fraction is not
 presented as the whole: the negative test that decides the core
 (the domain-free GDesign reproduction — `orbital-mechanics`, an invented
 package, no Python, no pyyaml) passes, and everything not done is named.
+
+## 6. Boundary note — environment identity vs availability vs receipt-binding (2026-08-22, conformance-closure sixth pass)
+
+The Conformance Closure substrate seams (CC-GAP-7/CC-GAP-9, ADR-089)
+must not drift into this contract's ownership. The split is normative:
+
+- **ADR-083/K19 owns environment IDENTITY — declared, observed, and
+  authorized.** The `DerivedExecutionEnvironment`, `environmentDigest`,
+  `baseImageDigest`, toolchain `implementationDigest` identities, and
+  the floating-tag prohibition (§3) are defined and authorized here and
+  nowhere else.
+- **CC-GAP-9 owns environment AVAILABILITY only.** Whether the
+  declared/authorized environment can be materialized (for example
+  Docker unavailable) is a CC-GAP-9/ADR-089 concern: bounded
+  deterministic in-check substrate retry, then the typed unknown
+  `warrant-blocked-environment` and a `human_required`
+  blocked/resumable continuation. CC-GAP-9 never defines, redefines, or
+  authorizes environment identity.
+- **CC-GAP-7 CONSUMES and receipt-binds; it never authorizes.** Warrant
+  execution consumes the `environmentDigest` and the readiness receipt
+  binds the digest it ran under (§2.6 exact-subject receipts). CC-GAP-7
+  never issues, blesses, or substitutes an environment identity.
+
+Sequencing and honest fallback: the K19 image/digest remainder (the
+open items of train commits 3 and 5 — per-package OCI image/dependency
+digest persistence in the package store and the ADR-077 keyed
+`toolchainDigests` component) is sequenced BEFORE CC-GAP-7
+receipt-binding. If it has not landed when CC-GAP-7 starts, the honest
+fallback applies: CC-GAP-7 binds the `environmentDigest` the stage-14
+derivation core already produces (it rides every outcome as a decodable
+diagnostic) and records honestly in the receipt and its evidence that
+image and dependency digest persistence is not yet available. The
+fallback never fabricates a digest, never treats an unauthorized
+identity as authorized, and never admits a floating tag (§3 stands
+unconditionally).

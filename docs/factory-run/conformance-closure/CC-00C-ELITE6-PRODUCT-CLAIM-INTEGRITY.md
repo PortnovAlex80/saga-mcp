@@ -457,11 +457,67 @@ no-poison accounting must already be in place):
   `warrant-blocked-environment` unknown outcome, and its
   `human_required` blocked/resumable routing — already in place.
 
-## The runtime is not fixed
+## The runtime is not fixed by this record
 
-This document records classification, facts, and gaps only. As of this
-record, CC-GAP-6..10 are open: nothing in CC-00C documentation repairs the
-runtime, builds the missing frontend, or reclassifies any durable Elite-6
-state. The Elite-6 experiment is complete and immutable, and product
-qualification failed. Remediation belongs to the named gap owners under the
-plan's CC-00C checklists and exit criteria.
+This document records classification, facts, and gaps only; remediation
+ownership belongs to the named gap owners under the plan's CC-00C
+checklists and exit criteria. The Elite-6 experiment is complete and
+immutable, and product qualification failed.
+
+### Integration status (2026-08-22, sixth-pass update — branch truth, not closure)
+
+Remediation commits on the integration branch
+`cc/CC-00B-terminal-integrity-integration` (HEAD `50824c6a`):
+
+| Gap | Landing |
+|---|---|
+| CC-GAP-6 (semantic claim-to-work coverage) | `50824c6a` — ADR-088 contract: reverse diff `constraint-register-uncovered`, register-conditional `srs-module-manifest-missing`, entrypoint-ownership conjunction `constraint-entrypoint-unowned`, kernel-only `coveredConstraintIds` relay; blocking mutations (a)-(d) proven bidirectionally |
+| CC-GAP-8 (verification accounting) | `8819e360` — append-only criterion-key ledger with trigger-enforced UPDATE/DELETE rejection, integrity guard, blocking mutations (a)-(e) |
+| CC-GAP-10 (role projection) | `184b2c77` — rendering-only board/detail author/reviewer role display |
+| Proof-token direction repairs (shared seam) | `3be7393d` — acceptance-contract v2.1.0 uncovered-residue repair + SRS §D2↔AC residues (see ADR-090) |
+| CC-GAP-9 (substrate classification/recovery) | implementation EXISTS at `736621af` + `d3026cbe` (post-REJECT repair: start-of-check docker cache invalidation, obligation pin 1.11.0) on `cc/CC-GAP-9-substrate-typed-unknown` — NOT integrated |
+| CC-GAP-7 (deliverable-aware oracle) | OPEN — no warrant-execution landing |
+
+Landing is not closure, and this update marks nothing merged: none of
+these commits is merged to `saga4`, the CC-00C exit checklist (evidence
+freeze, GAP-9 integration and re-audit, GAP-7 landing and its blocking
+proofs) has not passed, and neither this record, CC-00B, nor the plan is
+merged. CC-80/CC-81/CC-82 must still verify every exit item; with
+CC-GAP-7 open and CC-GAP-9 unintegrated, CC-00C is NOT closed.
+
+### Substrate role split (ADR-083 boundary note, sixth pass)
+
+Environment identity and environment availability are different owners
+and must not drift: ADR-083/K19 owns declared/observed/authorized
+environment identity (`DerivedExecutionEnvironment`,
+`environmentDigest`, image/toolchain implementation digests, and the
+floating-tag prohibition); CC-GAP-9 owns AVAILABILITY only (bounded
+in-check retry, typed unknown `warrant-blocked-environment`,
+human_required blocked/resumable — never an identity decision); CC-GAP-7
+warrant execution CONSUMES the `environmentDigest` and receipt-binds it
+(the readiness receipt binds the digest it ran under) and never
+authorizes environment identity. The K19 image/digest remainder is
+sequenced before CC-GAP-7 receipt-binding, with an honest fallback if it
+has not landed (bind the derivation-core `environmentDigest` and record
+honestly that image/dependency digest persistence is not yet available;
+never a fabricated digest; never a floating tag).
+
+### Latent product defects recorded for conservation mapping (sixth pass)
+
+Two latent product defects are recorded as evidence — both outside
+CC-00C runtime scope, with their own remediation paths (new change
+request or continuation), and the frozen Elite-6 product is NOT
+rewritten:
+
+1. The missing browser frontend (client renderer/hud/effects modules
+   exist, but no index.html, no DOM/canvas use, no static serving route,
+   no npm start; the server exposes only healthz and 404).
+2. The dynamic-pricing latent defect — recorded as BOTH
+   idea-conservation and product behavior evidence (ADR-090 Context):
+   the exact pricing algorithm was UNKNOWN at Discovery (a genuine
+   proposal unknown that died unconsumed), and the shipped frozen
+   product carried `basePrice` constants with argument-level tests that
+   did NOT prove per-system pricing variation. No new runtime token is
+   created for it: it is covered by the ADR-090 open-question and
+   mechanics obligations (`formalization.unknowns-owned`,
+   `formalization.mechanics-spec-required`).

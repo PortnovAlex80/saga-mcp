@@ -17,7 +17,19 @@ derivation). ADR-089 is Accepted and governs the CC-GAP-9 substrate
 contract (bounded deterministic in-check substrate retry, then typed
 unknown `warrant-blocked-environment` and human_required blocked/resumable
 continuation — never product-failed; unknown receipts never poison a later
-pass). ADR-090 is Accepted and governs the Idea Authority Conservation
+pass). ADR-091 is Accepted and governs the CC-GAP-9 RESIDUAL
+(readiness-substrate TOCTOU re-probe): on a mid-check executor/compose
+failure the cached availability probe is invalidated and the daemon is
+mechanically re-probed; only an OBSERVED unavailable/not-linux re-probe
+routes into the existing ADR-089 bounded retry and typed unknown, while
+an observed available+linux re-probe leaves a bad image/tag/config/product
+product `failed`; classification never reads stderr text; compose `down`
+stays best-effort and distinct from invalid config; the three outcome
+classes never collapse; the provider pins `1.12.0` with the digest fence
+and trust migration intact (obligation compiler pin:
+`factory.local-runnability.v1` @ `1.12.0`); the residual closes BEFORE
+any production run and BEFORE CC-GAP-7 warrant execution. ADR-090 is
+Accepted and governs the Idea Authority Conservation
 program (§7A): the single Order Constraint Register vocabulary is extended
 at Discovery settlement — the closed class vocabulary
 (`execution|material|human`) is preserved unchanged and an orthogonal kind
@@ -30,11 +42,21 @@ covered), existing RULE artifacts as the mechanics-spec
 carrier, an advisory-only archaeologist, and proof tokens compiled into
 the single ADR-084 AcceptanceObligationContract family; implementation is
 the bounded serialized packets CC-IC-1..4, which start after the
-CC-GAP-6 seam (landed in integration at commit `50824c6a`, which already
-repairs and tests the v1 read-back verifier — the CC-IC-1 prerequisite
-m0 is a SATISFIED dependency, never re-implemented) and are a mandatory
-overall qualification dependency; the CC-IC v2 vocabulary work itself
-remains open.
+CC-GAP-6 seam (landed in integration at commit `50824c6a`; the v1
+read-back verifier SOURCE repair is landed there and is tested for
+round-trip identity and digest tamper — the id-reorder and
+snake_case-at-verify reds are NOT yet tested and remain explicit CC-IC-1
+base-verification work, so prerequisite m0 is landed-in-source with a
+residual verification obligation, never re-implemented) and are a
+mandatory overall qualification dependency; the CC-IC v2 vocabulary work
+itself remains open. The proof-contract subset direction repair
+(`3be7393d`, landed on the same integration branch) already corrected the
+`frm.submission.acceptance-contract` token (v2.1.0
+`uncoveredConstraintResidue ⊆ empty` form) and the SRS §D2↔AC residues
+(`unrepresentedFrozenAcResidue`/`foreignD2AcResidue` ⊆ empty) — for
+CC-IC-4 those two corrections are VERIFY-ONLY, never redone, and only the
+SRS register-coverage residue constraint remains to be added, always in
+the landed uncovered-residue algebra, never a bare member/of flip.
 ADR-053 is a Proposed architectural
 diagnosis. ADR-085 and ADR-086 are Proposed and remain blocked by the
 Structural Refactor Qualification Gate. A green gate makes their implementation
@@ -282,7 +304,36 @@ retry, and never a terminal product failure). An unknown receipt never
 prevents, fails, annotates, or counts against a later pass of the same
 criterion. CC-GAP-9 outcome/routing lands before
 CC-GAP-7 warrant execution so warrant phases can never re-flatten a
-substrate failure into product failure. Verification accounting is an
+substrate failure into product failure, and the CC-GAP-9 RESIDUAL
+(ADR-091 TOCTOU re-probe) closes before ANY production run and before
+CC-GAP-7: a mid-check executor/compose failure is classified by
+invalidating the cached availability probe and mechanically re-probing
+the daemon — only an observed unavailable/not-linux re-probe routes
+into the ADR-089 bounded retry and typed unknown; an observed
+available+linux re-probe leaves a bad image/tag/config/product product
+`failed`; classification never reads stderr text; compose `down` stays
+best-effort and distinct from invalid config; the three outcome classes
+never collapse; the provider pins `1.12.0` with the digest fence and
+trust migration intact (obligation compiler pin
+`factory.local-runnability.v1` @ `1.12.0`). The substrate roles are split
+and may not drift (ADR-083 boundary note): ADR-083/K19 owns the
+declared/observed/authorized environment IDENTITY — the derived
+`DerivedExecutionEnvironment`, `environmentDigest`, image/toolchain
+implementation digests, and the floating-tag prohibition; CC-GAP-9 owns
+environment AVAILABILITY only (whether the authorized environment can be
+materialized: bounded in-check retry, typed unknown,
+human_required blocked/resumable — never an identity decision); CC-GAP-7
+warrant execution CONSUMES the `environmentDigest` and receipt-binds it
+(the readiness receipt binds the digest it ran under) and never
+authorizes environment identity. The K19 image/digest remainder
+(per-package OCI image/dependency digest persistence and the ADR-077
+keyed `toolchainDigests` component) is sequenced before CC-GAP-7
+receipt-binding; if it has not landed when CC-GAP-7 starts, the honest
+fallback applies — CC-GAP-7 binds the `environmentDigest` the stage-14
+derivation core already produces and records honestly that image and
+dependency digest persistence is not yet available; it must never
+fabricate a digest, never defer to an unauthorized one, and never
+authorize a floating tag. Verification accounting is an
 append-only criterion-key ledger: every required verification obligation
 is a first-class entry keyed by criterion, appending
 `proposed -> pending -> executed(passed|failed) | unknown | waived`
@@ -316,8 +367,9 @@ kind vocabulary (`scope|open-question|mechanics|synthesis|ordered-smoke|
 quality`) is added, with `open-question` entries drafted 1:1 from proposal
 unknowns at Discovery settlement; every
 open-question entry reaches `resolved`, or `deferred` (reason, owner,
-unblock criterion), or a loud per-entry operator-attributed `waived`
-(never a mass author waiver) through the existing disposition network;
+unblock criterion), or a `waived` with trusted operator attribution
+(any author-attributed waiver — single or en masse — is red; no
+undefined mass-waiver concept) through the existing disposition network;
 qualitative/experience (kind `quality`) entries carry typed measurability
 (measurable interpretation or
 typed deferral); the frozen `runnable-local` lifecycle classification
@@ -325,17 +377,27 @@ deterministically injects the whole-product-synthesis and ordered-smoke
 obligations — the engine never infers by rereading prose; existing RULE
 artifacts are the mechanics-spec carrier, with the typed binding
 established at disposition/binding time against the accepted RULE
- artifact (a mechanics entry is created at Discovery with no ref); the
-LM archaeologist is advisory only (promotion produces a new register
-revision/digest, never a gate or authority mutation); and FOUR new
-conservation proof tokens compile into the single ADR-084
+artifact (a mechanics entry is created at Discovery with no ref); the
+LM archaeologist is advisory only, produced solely by an
+operator-commissioned advisory producer with a recorded owner — no
+standing automatic producer, no gate, no authority path (promotion
+produces a new register
+revision/digest, never a gate or authority mutation); every waiver on a
+new-v2 entry requires trusted operator attribution — any
+author-attributed waiver, single or en masse, is a typed red, and no
+separate "mass waiver" concept is defined beside the per-entry rule; and
+FOUR new conservation proof tokens compile into the single ADR-084
 AcceptanceObligationContract family, while epic-clause coverage is
-realized by correcting the direction of the two existing register-coverage
-tokens (`frm.submission.acceptance-contract` — inverted today — and
-`frm.submission.srs-contract` — no register-coverage constraint today)
-to the production coverage direction
-(register minus typed waivers ⊆ covered, the uncovered-residue-empty
-form). Null-binding grandfathering
+realized on the two existing register-coverage tokens — the
+`frm.submission.acceptance-contract` direction defect is ALREADY
+corrected by the landed `3be7393d` (v2.1.0 uncovered-residue form;
+verify-only), and the same landing repaired the SRS §D2↔AC residues of
+`frm.submission.srs-contract`, leaving ONLY the SRS register-coverage
+residue constraint
+(`registerIds-minus-waived` minus union of §D2
+`covered_constraint_ids` = ∅, as a residue-empty constraint)
+to be added in CC-IC-4 — never a bare member/of flip. Null-binding
+grandfathering
 applies only to frozen legacy v1 data (ADR-088 sole grandfather
 condition; frozen evidence never rewritten); every NEW v2 Factory Start
 carries non-null typed authority — a built register, or an explicit typed
@@ -355,14 +417,33 @@ are disposition states that never subtract from the required-coverage
 arithmetic (only the loud per-entry operator-attributed waiver does); the
 runnable-local injection rides a declared digest-pinned injection table
 (owned by `src/process-modules/lifecycles/product-build-lifecycle.ts`,
-consumed read-only by Discovery settlement) with a normative interleave
+consumed read-only by Discovery settlement; the classification reaches
+settlement ONLY through the pinned per-run read —
+`ctx.processRunId` → join `factory_stage_runs.process_run_id` →
+`lifecycle_run_id` → read the pinned `factory_lifecycle_runs`
+`definition_snapshot` + `definition_hash` through a typed
+`readDefinitionByProcessRun` port/repository implemented in
+`src/process-modules/persistence/sqlite-lifecycle-run-repository.ts`,
+injected through `src/app/product-lifecycle-runtime.ts` /
+`src/app/composition-root.ts` — Discovery settlement consumes the
+pinned classification + `definitionHash` read-only; a missing row
+fails closed with a typed error, never an ambient or default
+`lifecycleDefinition` binding; and Discovery imports no lifecycle
+internals (no lifecycle module import — the classification arrives
+only through the injected pinned read; the dedicated host
+`tests/discovery/d7-settlement-lifecycle-classification.test.mjs` proves
+the wiring)) with a normative interleave
 order (proposal-derived block first, injected
 block appended in table order); and the recorded v1 read-back verifier
 defect (`verifyOrderConstraintRegister` — camelCase entries validated
-against the snake_case draft shape) is already repaired and tested by the
-integrated CC-GAP-6 landing (`50824c6a`) — the CC-IC-1 prerequisite (m0)
-is a SATISFIED dependency CC-IC-1 verifies at its base and never
-re-implements. This extension is
+against the snake_case draft shape) is repaired IN SOURCE by the
+integrated CC-GAP-6 landing (`50824c6a`), which tests round-trip
+identity and digest tamper — the id-reorder
+(`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`) and snake_case-at-verify
+typed-rejection reds are NOT yet tested there and remain explicit
+CC-IC-1 base-verification work; the CC-IC-1 prerequisite (m0) is
+landed-in-source with that residual verification obligation, verified at
+the packet base and never re-implemented. This extension is
 implemented by the serialized CC-IC-1..4 packets (§7A), which are not
 required for CC-00C exit (frozen CC-00C scope: CC-GAP-6..10) but ARE a
 mandatory overall qualification dependency: until CC-IC is implemented
@@ -452,8 +533,14 @@ Only one integration owner at a time may edit a row in this table.
       at `50824c6a`, its four blocking mutations proven there): no CC-IC
       packet edits the register or coverage seams before the four
       CC-GAP-6 blocking mutations (ADR-088) are green, no CC-IC packet
-      re-implements the already-repaired v1 read-back verifier (m0 is a
-      satisfied prerequisite), and every CC-IC
+      re-implements the already source-repaired v1 read-back verifier
+      (m0 is landed-in-source; CC-IC-1 adds only the missing id-reorder
+      and snake_case-at-verify verification at its base), no CC-IC
+      packet redoes the already-landed proof-subset token corrections
+      (`3be7393d` acceptance-contract v2.1.0 residue repair and the SRS
+      §D2↔AC residue repairs are verify-only; only the SRS
+      register-coverage residue constraint is added, in the landed
+      residue algebra — never a bare member/of flip), and every CC-IC
       packet rides the single-writer `Constraint register and warrant
       seam` row above.
 - [ ] Never merge competing versions of a shared contract.
@@ -507,9 +594,14 @@ emit `QUALIFICATION_GREEN`.
 The Idea Authority Conservation packets CC-IC-1..4 (ADR-090, §7A) serialize
 after the CC-GAP-6 exit through the single-writer `Constraint register and
 warrant seam` row (the seam's register code is integrated at `50824c6a`;
-that landing already repairs and tests the v1 read-back verifier, so the
-CC-IC-1 prerequisite m0 is a SATISFIED dependency — verified, never
-re-implemented — while the CC-IC v2 vocabulary work remains not started):
+that landing repairs the v1 read-back verifier IN SOURCE and tests
+round-trip plus digest tamper — the CC-IC-1 prerequisite m0 is
+landed-in-source with the id-reorder and snake_case-at-verify reds still
+untested, an explicit CC-IC-1 base-verification obligation, never a
+re-implementation — the proof-subset landing `3be7393d` on the same branch
+already corrected the acceptance-contract and SRS §D2↔AC token directions
+(verify-only for CC-IC-4), and the CC-IC v2 vocabulary work remains not
+started):
 
 ```text
 CC-GAP-6 exit -> CC-IC-1 -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
@@ -565,10 +657,21 @@ Exit checklist:
 
 ### CC-00B - Elite-6 terminal-integrity closure
 
-- Status: EXECUTING 2026-08-22. CC-GAP-2, CC-GAP-4, and CC-GAP-5 are accepted
-  and integrated on `cc/CC-00B-terminal-integrity-integration` through
-  `97dbc635`; CC-GAP-3 remains under implementation/review. The CC-00B exit
-  gate has not passed and nothing is merged to `saga4`.
+- Status: EXECUTING 2026-08-22. Integration truth at `50824c6a` (HEAD of
+  `cc/CC-00B-terminal-integrity-integration`): CC-GAP-2 (`97dbc635`),
+  CC-GAP-3 (`9c2253e2` receipt-authoritative terminal drain, plus the
+  `f460ae84` journal-payload strictness fix), CC-GAP-4 (`dd89b40c`),
+  and CC-GAP-5 (`9205d9f5`) have all LANDED on that integration branch
+  — as have CC-GAP-6 (`50824c6a`), CC-GAP-8 (`8819e360`), CC-GAP-10
+  (`184b2c77`), and the proof-subset token-direction repair
+  (`3be7393d`), which belong to CC-00C scope. CC-GAP-7 is open. The
+  CC-GAP-9 repair exists on its own branch
+  (`cc/CC-GAP-9-substrate-typed-unknown`: `736621af` + `d3026cbe`
+  post-REJECT repair) and is NOT yet integrated. Landing is not closure:
+  the CC-00B exit gate has not been re-audited, none of these commits is
+  merged to `saga4`, and neither the incident records nor this plan is
+  merged — landing status recorded here is branch truth only, never a
+  claim that the packages exited.
 - Owner role: integration owner; gap owners named below
 - Depends on: CC-00
 - Non-goals: reopening or replaying the terminal Elite-6 run, hand-editing
@@ -604,7 +707,7 @@ Checklist:
   projections carry `terminal_status`, stage/process local outcome, and the
   final gate verdict alongside operational completion, so a failed product
   outcome cannot render as bare `completed`.
-- [ ] CC-GAP-3: terminalize the exact WorkerExecution when `worker_done` is
+- [x] CC-GAP-3: terminalize the exact WorkerExecution when `worker_done` is
   accepted and the OS pid is dead, emitting `worker.exit`; align with the
   normative synchronization edge "OS worker exits -> terminalize the exact
   WorkerExecution".
@@ -651,15 +754,53 @@ green.
 
 ### CC-00C - Elite-6 product-claim integrity closure
 
-- Status: incident record landed 2026-08-22; CC-GAP-6..10 open; runtime not
-  fixed.
+- Status: incident record landed 2026-08-22. Integration truth at
+  `50824c6a` (HEAD of `cc/CC-00B-terminal-integrity-integration`):
+  CC-GAP-6 (`50824c6a`, ADR-088 blocking mutations (a)-(d) proven
+  bidirectionally), CC-GAP-8 (`8819e360`, append-only criterion-key
+  ledger with blocking mutations (a)-(e)), and CC-GAP-10 (`184b2c77`,
+  rendering-only) have LANDED on that integration branch. CC-GAP-7 is
+  open (no warrant-execution landing). The CC-GAP-9 repair exists on its
+  own branch (`cc/CC-GAP-9-substrate-typed-unknown`: `736621af` +
+  `d3026cbe` post-REJECT repair) and is NOT yet integrated. Landing is
+  not closure: the CC-00C exit gate has not been re-audited, none of
+  these commits is merged to `saga4`, and neither the incident records
+  nor this plan is merged — this status line records branch truth only,
+  never a claim that CC-00C exited.
 - Owner role: integration owner; gap owners named below
 - Depends on: CC-00B
 - Internal serialization: CC-GAP-9 substrate outcome/routing lands before
   CC-GAP-7 warrant execution — warrant phases must never meet a substrate
   failure without the typed outcome and routing (ADR-089: bounded
   in-check substrate retry, then typed unknown and human_required
-  blocked/resumable) already in place.
+  blocked/resumable) already in place — and the CC-GAP-9 RESIDUAL
+  (ADR-091 readiness-substrate TOCTOU re-probe) closes before ANY
+  production run and likewise before CC-GAP-7: a mid-check
+  executor/compose failure is classified only by invalidating the cached
+  availability probe and mechanically re-probing the daemon (observed
+  unavailable/not-linux → the existing ADR-089 bounded retry/typed
+  unknown; observed available+linux → a bad image/tag/config/product
+  stays product `failed`; no stderr text guessing; compose `down` vs
+  invalid config distinct; collapse guard; provider `1.12.0` with digest
+  fence and trust migration; obligation compiler pin
+  `factory.local-runnability.v1` @ `1.12.0`). Substrate role split
+  (ADR-083 boundary note, normative): ADR-083/K19 owns declared/observed/
+  authorized environment IDENTITY (`DerivedExecutionEnvironment`,
+  `environmentDigest`, image/toolchain implementation digests, and the
+  floating-tag prohibition); CC-GAP-9 owns environment AVAILABILITY only
+  (bounded in-check retry, typed unknown, human_required
+  blocked/resumable — never an identity or authorization decision);
+  CC-GAP-7 warrant execution CONSUMES the `environmentDigest` and
+  receipt-binds it (the readiness receipt binds the digest it ran
+  under), never authorizes environment identity. The K19 image/digest
+  remainder (per-package OCI image/dependency digest persistence and the
+  ADR-077 keyed `toolchainDigests` component) is sequenced before
+  CC-GAP-7 receipt-binding; if it has not landed when CC-GAP-7 starts,
+  the honest fallback applies — CC-GAP-7 binds the `environmentDigest`
+  the stage-14 derivation core already produces and records honestly
+  that image and dependency digest persistence is not yet available;
+  never a fabricated digest, never an unauthorized one, never a floating
+  tag.
 - Objective (SMART): by CC-00C exit, every non-empty versioned Order
   Constraint Register from a new Factory Start is mechanically closed —
   register ids minus union(coveredConstraintIds) minus typed waivers is
@@ -766,6 +907,16 @@ Stable gaps and owners:
   remain distinct typed classes; an earlier unknown receipt never
   prevents, fails, annotates, or counts against a later pass of the same
   criterion. Legacy records are grandfathered, never reclassified.
+  RESIDUAL (ADR-091, closes before any production run and before
+  CC-GAP-7): the mid-check TOCTOU window — on executor/compose failure,
+  invalidate the cached availability probe and mechanically re-probe;
+  only an observed unavailable/not-linux re-probe routes into the
+  ADR-089 bounded retry/typed unknown, an observed available+linux
+  re-probe leaves a bad image/tag/config/product product `failed`, no
+  stderr text guessing, compose `down` vs invalid config distinct,
+  collapse guard, provider `1.12.0` with digest fence and trust
+  migration, obligation compiler pin `factory.local-runnability.v1` @
+  `1.12.0`.
 - CC-GAP-10 role projection clarity — trace/evidence owner. The defect is
   rendering-only: the durable author/reviewer projections are correct
   (tasks 15-25/26-36 are author and reviewer projections over the same 11
@@ -786,7 +937,7 @@ Checklist:
   node:20-alpine Docker, and the `LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE`
   failure record. Record paths and digests; preserve the frozen sources
   immutable.
-- [ ] CC-GAP-6: finish semantic claim-to-work coverage on the existing
+- [x] CC-GAP-6: finish semantic claim-to-work coverage on the existing
   vocabulary, inventing no parallel deliverable-claim terms: classification
   authority originates in Discovery/Formalization — the versioned Order
   Constraint Register plus `coveredConstraintIds` coverage plus SRS §2.2
@@ -808,7 +959,10 @@ Checklist:
   and a missing or file-less §2.2 manifest are typed red, never a legacy
   skip. Make `coveredConstraintIds` strictly kernel-derived from frozen
   criteria so planner output can neither propose nor forge it; frozen
-  evidence is untouched.
+  evidence is untouched. (LANDED on the integration branch at `50824c6a`
+  — reverse diff, register-conditional §2.2 red, entrypoint-ownership
+  conjunction, kernel-only relay, and blocking mutations (a)-(d) proven
+  bidirectionally; landing is not exit.)
 - [ ] CC-GAP-9 (before CC-GAP-7 warrant execution, per ADR-089): a
   substrate-unavailable readiness failure first gets bounded deterministic
   in-check substrate retry (frozen attempt bound and schedule; no model,
@@ -821,6 +975,56 @@ Checklist:
   oracle-insufficient, and substrate-unavailable remain distinct typed
   classes; an earlier unknown receipt never poisons a later pass of the
   same criterion; legacy records are grandfathered, not reclassified.
+  Scope boundary (ADR-083 split): CC-GAP-9 owns environment AVAILABILITY
+  only; environment identity stays with ADR-083/K19. (Implementation
+  EXISTS at `736621af` + `d3026cbe` post-REJECT repair on
+  `cc/CC-GAP-9-substrate-typed-unknown` — NOT yet integrated; integration
+  plus re-audit remains open.)
+- [ ] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
+  closes BEFORE any production run and BEFORE CC-GAP-7 warrant
+  execution): on a mid-check executor/compose failure, invalidate the
+  cached docker availability cache and mechanically re-probe the daemon
+  with the existing bounded probe; classification rides ONLY the observed
+  re-probe result — observed unavailable (probe failure observes
+  unavailable) or not-linux routes into the EXISTING ADR-089 bounded
+  in-check substrate retry and, on exhaustion, the typed unknown
+  `warrant-blocked-environment` outcome plus human_required
+  blocked/resumable continuation (never product-failed); observed
+  available+linux leaves a bad image/tag (`LOCAL_RUNNABILITY_DOCKER_PULL_FAILED`),
+  an invalid compose config, or a failing product install/test/serve
+  command product `failed` (never re-routed to unknown, never retried as
+  substrate, never engine-waived). NO stderr text guessing: the failed
+  command's stderr is recorded as human-facing detail only and no
+  implementation may classify — in whole or in part — by matching,
+  regexing, or interpreting stderr text. Compose truth: `down` is
+  best-effort with no outcome (a failed `down` after a passed `up`
+  leaves the pass green; a failed `down` after a failed `up` never masks
+  the up failure or its class); an invalid `compose config` with the CLI
+  present and the daemon observed healthy is product `failed`; ENOENT
+  CLI-missing stays `LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE`. Collapse
+  guard: product-failed, oracle-insufficient, and substrate-unavailable
+  stay distinct typed classes on every surface and route. Provider pin:
+  the local-runnability check provider version pins `1.12.0` (this
+  branch `1.10.0`; the unintegrated CC-GAP-9 landing `1.11.0`; this
+  residual lands as `1.12.0` on top), the `trusted_providers` row
+  migrates with the trustworthy baseline extended (`1.11.0` before
+  `1.12.0`) and trust basis `built-in:<provider digest>` intact, the
+  receipt digest fence (provider id + provider digest) stands, and the
+  obligation compiler pins `factory.local-runnability` at `1.12.0`
+  (protection `factory.local-runnability.v1` @ `1.12.0`). Blocking
+  mutations (ADR-091 exit tests, wired into CC-10B/CC-80): (a)
+  daemon-death-mid-check + observed-unavailable re-probe yields the
+  ADR-089 path — routing it to product `failed` is red; (b) the same
+  failing step with an observed available+linux re-probe stays product
+  `failed` — routing it to unknown/substrate is red; (c) daemon-shaped
+  stderr paired with an observed available+linux re-probe classifies
+  product `failed`, and clean stderr paired with an observed unavailable
+  re-probe classifies substrate — any stderr-sensitive routing is red;
+  (d) routing every executor/compose failure to unknown (or all to
+  `failed`) fails classification (collapse guard); (e) the compose
+  down/config truths above; (f) the version/digest fence at `1.12.0`
+  (a receipt from a foreign provider digest or an unmigrated trust row
+  is rejected).
 - [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
   the existing `VerificationWarrantRef` seam in the readiness provider
   through package-level, workshop-declared oracle adapters — no new oracle,
@@ -828,8 +1032,14 @@ Checklist:
   branches: a browser-product claim requires
   page/static/canvas/browser-smoke evidence, and a generic loopback health
   oracle must yield oracle-insufficient for it — never a pass and never a
-  product-failed verdict.
-- [ ] CC-GAP-8: implement append-only criterion-key verification
+  product-failed verdict. Receipt-binding duty (ADR-083 split): warrant
+  execution CONSUMES the `environmentDigest` and receipt-binds it (the
+  readiness receipt binds the digest it ran under); it never authorizes
+  environment identity. The K19 image/digest remainder is sequenced before
+  this receipt-binding, with the honest fallback recorded in the internal
+  serialization above if it has not landed. (OPEN — no warrant-execution
+  landing.)
+- [x] CC-GAP-8: implement append-only criterion-key verification
   accounting: proposed but unmaterialized verification obligations become
   first-class ledger entries keyed by criterion, with owner and unblock
   condition, visible as pending; entries survive readiness failure and
@@ -838,14 +1048,18 @@ Checklist:
   `executed(failed)` does not discharge; only a passed receipt or an
   operator-attributed waiver discharges; every entry displays its stage
   and order coordinates; the lifecycle transition obligation ledger is
-  not reused for this role.
-- [ ] CC-GAP-10: make role projections distinguishable — the defect is
+  not reused for this role. (LANDED on the integration branch at
+  `8819e360` — module-local criterion-key ledger, trigger-enforced
+  append-only, integrity guard, blocking mutations (a)-(e); landing is
+  not exit.)
+- [x] CC-GAP-10: make role projections distinguishable — the defect is
   rendering-only (the durable author/reviewer projections are correct):
   board and task-detail surfaces expose author versus reviewer role for
   tasks sharing one Workplace ref, so reviewer projections are not misread
   as duplicate implementation work or graph rematerialization; no
   deduplication and no data rewrite of the durable projections or the
-  sealed graph.
+  sealed graph. (LANDED on the integration branch at `184b2c77` —
+  rendering-only; landing is not exit.)
 - [ ] Add universal scenario DSL vocabulary without workshop-specific
   frontend hardcoding, reusing existing terms instead of inventing parallel
   deliverable-claim vocabulary: order-constraint register coverage facts
@@ -895,6 +1109,20 @@ Checklist:
   separately proven latent product defect with its own remediation path (a
   new change request or continuation), distinct from the substrate readiness
   failure.
+- [ ] Record the Elite-6 dynamic-pricing latent defect as BOTH
+  idea-conservation and product behavior evidence (sixth-pass correction,
+  ADR-090 Context): the exact pricing algorithm was UNKNOWN at Discovery
+  (a genuine proposal unknown that died unconsumed —
+  `DiscoveryProposalPayload.unknowns` opacity), and the shipped frozen
+  product carried `basePrice` constants with argument-level tests that did
+  NOT prove per-system pricing variation — a latent product behavior
+  defect of the same shape. It is recorded as evidence only: NO new
+  runtime token is created for it (it is covered by the ADR-090
+  open-question and mechanics obligations,
+  `formalization.unknowns-owned` and
+  `formalization.mechanics-spec-required`), the frozen Elite-6 product is
+  NOT rewritten, and its remediation path is a new change request or
+  continuation, never a CC-00C runtime scope item.
 
 Exit checklist:
 
@@ -919,6 +1147,18 @@ Exit checklist:
   earlier unknown receipt never poisons a later pass of the same
   criterion; legacy records are grandfathered, and the CC-GAP-9 blocking
   proof is green and landed before CC-GAP-7 warrant execution.
+- [ ] The CC-GAP-9 residual (ADR-091) is closed BEFORE any production run
+  and before CC-GAP-7 warrant execution: a mid-check executor/compose
+  failure is classified by a mechanical re-probe of the invalidated
+  availability cache (observed unavailable/not-linux → the existing
+  ADR-089 bounded retry/typed unknown path; observed available+linux → a
+  bad image/tag/config/product stays product `failed`); no
+  classification reads stderr text; compose `down` stays best-effort and
+  distinct from invalid config; the three outcome classes never collapse;
+  the provider pins `1.12.0` with the digest fence and trust migration
+  intact and the obligation compiler pins
+  `factory.local-runnability.v1` @ `1.12.0`; the ADR-091 blocking
+  mutations (a)-(f) are green and wired into CC-10B/CC-80.
 - [ ] Warrant execution consumes the `VerificationWarrantRef` through
   package-level oracle adapters only; a generic loopback health oracle
   yields oracle-insufficient for a browser-product claim — never a pass and
@@ -1291,8 +1531,9 @@ Checklist:
       part of this group (ADR-090):
       open-question count integrity (every proposal unknown is a register
       entry), open-question disposition closure (resolved; deferred with
-      reason, owner, and unblock criterion; or loud per-entry
-      operator-attributed waived — no mass author waiver), RULE
+      reason, owner, and unblock criterion; or waived with trusted
+      operator attribution — any author-attributed waiver, single or en
+      masse, is red; no undefined mass-waiver concept), RULE
       mechanics binding (established at disposition time against the
       accepted RULE artifact), deterministic runnable-local synthesis/smoke
       injection, typed measurability on qualitative/experience entries,
@@ -1552,24 +1793,41 @@ browser/canvas/smoke, and AC-22 existed as a normative acceptance
 criterion (install -> start -> accessible running game) — what was
 under-typed is whole-product synthesis ownership, task binding, anchors,
 and the end-to-end oracle around that existing criterion, and the
-proposal unknowns are opaque, unconsumed `string[]`. This is a
+proposal unknowns are opaque, unconsumed `string[]` (the Elite-6
+dynamic-pricing unknown is recorded as BOTH idea-conservation and
+product behavior evidence: the exact pricing algorithm was unknown at
+Discovery, and the shipped frozen product's `basePrice` constants with
+argument-level tests did not prove per-system variation — a latent
+product defect covered by the open-question and mechanics obligations
+only; no new runtime token; the frozen product is not rewritten). This
+is a
 bounded packet set with an explicit finish condition — not a standing
 parallel implementation program.
 
 - Status: ADR-090 Accepted 2026-08-22; CC-IC-1..4 not started
   (documentation only); the CC-GAP-6 seam is integrated (`50824c6a`) and
-  already repairs/tests the v1 read-back verifier — the CC-IC-1
-  prerequisite (m0) is a SATISFIED dependency, not work to duplicate or
-  re-implement; the v2 vocabulary work remains open
+  repairs the v1 read-back verifier IN SOURCE, tested there for
+  round-trip identity and digest tamper — the id-reorder
+  (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`) and snake_case-at-verify
+  typed-rejection reds are NOT yet tested, so the CC-IC-1 prerequisite
+  (m0) is landed-in-source with an explicit residual base-verification
+  obligation, not work to duplicate or re-implement; the proof-subset
+  landing `3be7393d` (same integration branch) already corrected the
+  `frm.submission.acceptance-contract` direction (v2.1.0
+  uncovered-residue form) and the SRS §D2↔AC residues — verify-only for
+  CC-IC-4, which adds only the SRS register-coverage residue constraint;
+  the v2 vocabulary work remains open
 - Owner roles: named per packet below; all packets ride the single-writer
   `Constraint register and warrant seam` row (section 4.3)
 - Depends on: CC-GAP-6 exit (the four ADR-088 blocking mutations green;
   the seam's register code integrated at `50824c6a`); CC-IC-1 additionally
   contained a PREREQUISITE repair stage (the v1 read-back verifier
-  `verifyOrderConstraintRegister`) that is ALREADY SATISFIED by that
-  integrated landing (mutation m0 green in
-  `tests/discovery/order-constraint-register.test.mjs`) — CC-IC-1 verifies
-  its presence at the base and builds any v2 field on the repaired
+  `verifyOrderConstraintRegister`) whose SOURCE repair is already landed
+  by that integrated landing, with round-trip and digest-tamper tests
+  green in `tests/discovery/order-constraint-register.test.mjs` — CC-IC-1
+  verifies its presence at the base, ADDS the missing id-reorder and
+  snake_case-at-verify verification (its residual base-verification
+  obligation), and builds any v2 field on the repaired
   verifier; CC-IC-2 and CC-IC-3
   depend on CC-IC-1; CC-IC-4 depends on CC-IC-1..3
 - Objective (SMART, ADR-090): by CC-IC exit, for every new Factory Start
@@ -1609,9 +1867,13 @@ parallel implementation program.
   through the single-writer row)
 - Depends on: CC-GAP-6 exit (seam integrated at `50824c6a`); the v1
   read-back verifier repair below is a PREREQUISITE stage of this packet
-  that is ALREADY SATISFIED by that integrated landing (mutation m0 green
-  in `tests/discovery/order-constraint-register.test.mjs`) — this packet
-  VERIFIES the repaired verifier is present at its base, never duplicates
+  whose SOURCE repair is ALREADY LANDED by that integrated landing
+  (round-trip and digest-tamper tests green in
+  `tests/discovery/order-constraint-register.test.mjs`; the id-reorder
+  and snake_case-at-verify reds remain the packet's explicit
+  base-verification work) — this packet
+  VERIFIES the repaired verifier is present at its base and CLOSES that
+  residual verification, never duplicates
   or re-implements it, before
   any v2 schema field is added to `src/shared/constraint-register.ts`
 - Editable files: `src/shared/constraint-register.ts`;
@@ -1634,22 +1896,31 @@ parallel implementation program.
   of the cross-bound `warrantRef`); `src/modules/development/domain/development-schemas.ts`
   LIMITED to adding cross-bind fields on `VerificationWarrantRef` (same
   single-writer row; the ADR-088 relay semantics carried by that file stay
-  unchanged); `tests/discovery/order-constraint-register.test.mjs` and the
-  `tests/process-modules/*constraint*` fixtures touched by v2
+   unchanged); the NAMED mutation-host suites (the mutations do NOT all
+   live in one host): `tests/discovery/order-constraint-register.test.mjs`
+   (m0 residual verification; m1 with `tests/matrix/e-constraint-loss.test.mjs`;
+   m4a; m5), `tests/matrix/e-constraint-loss.test.mjs` (m1, m6b), the new
+   `tests/discovery/d7-settlement-lifecycle-classification.test.mjs` (m4,
+   m4a, m6), `tests/architecture/product-build-lifecycle.test.mjs` (m4,
+   m4a), `tests/discovery/d4-settlement-recovery.test.mjs` (m6a), and
+   `tests/process-modules/formalization-warrant-ref.test.mjs` (m7), plus
+   the `tests/process-modules/*constraint*` fixtures touched by v2
 - Read-only files: planner schemas (relay semantics already frozen by
   ADR-088); all frozen Elite-6 evidence
 - Explicit non-goals: no change to networks 1-3 enforcement semantics; no
   planner-side vocabulary; no LM call inside settlement
 
-Prerequisite repair — v1 read-back verification (SATISFIED by the
-integrated CC-GAP-6 landing `50824c6a`; CC-IC-1 verifies, never
+Prerequisite repair — v1 read-back verification (SOURCE repair landed by
+the integrated CC-GAP-6 landing `50824c6a`; CC-IC-1 verifies and closes
+the residual id-reorder/snake_case-at-verify verification, never
 re-implements):
 
 - [x] `verifyOrderConstraintRegister` in
-       `src/shared/constraint-register.ts` is REPAIRED AND TESTED by the
-       integrated CC-GAP-6 commit `50824c6a` (satisfied prerequisite —
-       mutation m0 green; do NOT duplicate or re-implement it in any
-       CC-IC packet). Recorded production defect, now closed: the
+       `src/shared/constraint-register.ts` is REPAIRED IN SOURCE by the
+       integrated CC-GAP-6 commit `50824c6a` (source repair landed —
+       do NOT duplicate or re-implement it in any CC-IC packet; see the
+       next item for the residual verification obligation). Recorded
+       production defect, now closed in source: the
        function fed a PERSISTED register (canonical camelCase
        `OrderConstraintEntry[]` — `evidenceRef`) into
        `buildOrderConstraintRegister`, which validates the worker-facing
@@ -1658,22 +1929,30 @@ re-implements):
        it was dead code (no production caller) with no test. The integrated
        repair validates the canonical entry shape
        (id/class/text/evidenceRef, plus execution-class entrypointFiles)
-       directly in the verifier, re-pins the digest and the positional
-       `ord-c-NNN` ids, and is proven in
-       `tests/discovery/order-constraint-register.test.mjs`: build ->
-       verify round-trip identity; digest tamper ->
-       `ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH`; id reorder ->
-       `ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`; a snake_case draft row
-       arriving at the verify boundary is a typed rejection, never a
-       silent reinterpretation. Every "v1 registers verify (unchanged /
-       in CI / round-trip)" statement in ADR-090 and this plan leans on
-       that repaired, tested path — CC-IC-1 verifies it holds at its
-       base and builds any v2 read-back on top of it.
-- [ ] At packet start, verify the integrated repair is present at the
-       CC-IC-1 base (rebase point at or after `50824c6a`) and the
-       round-trip/tamper/id-reorder tests above are green there; record
-       the exact SHA. No CC-IC commit re-implements, rewrites, or
-       re-derives the v1 verifier.
+       directly in the verifier and re-pins the digest and the positional
+       `ord-c-NNN` ids. TEST TRUTH at `50824c6a`
+       (`tests/discovery/order-constraint-register.test.mjs`, sixth-pass
+       verification): build -> verify round-trip identity and digest
+       tamper -> `ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH` are GREEN;
+       the id-reorder red (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`,
+       which the repaired source already throws) and the
+       snake_case-draft-row-at-verify typed rejection are NOT yet tested
+       there. Every "v1 registers verify (unchanged / in CI /
+       round-trip)" statement in ADR-090 and this plan leans on that
+       repaired path and on the CC-IC-1 base-verification item below.
+- [ ] CC-IC-1 BASE VERIFICATION (explicit packet work, not a
+       re-implementation): at packet start, verify the integrated source
+       repair is present at the CC-IC-1 base (rebase point at or after
+       `50824c6a`) and the round-trip and digest-tamper tests are green
+       there; then ADD the two missing verification cases to
+       `tests/discovery/order-constraint-register.test.mjs` (the named
+       CC-IC-1 test host for the verifier): (a) id reorder ->
+       `ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`, and (b) a snake_case
+       draft row arriving at the verify boundary is a typed rejection,
+       never a silent reinterpretation. Record the exact base SHA. No
+       CC-IC commit re-implements, rewrites, or re-derives the v1
+       verifier; this item only closes its residual verification
+       obligation.
 
 Checklist:
 
@@ -1719,35 +1998,59 @@ Checklist:
       rule). (text = the unknown string;
       evidenceRef = the payload field.)
 - [ ] `runnable-local` is the frozen lifecycle classification
-      (`product-build-lifecycle.ts` verified terminal): the injection is
-      realized by a DECLARED, DIGEST-PINNED injection table OWNED BY
-      `src/process-modules/lifecycles/product-build-lifecycle.ts` — an
-      immutable, versioned, content-addressed data declaration declared
-      beside the frozen classification (the lifecycle that freezes the
-      classification owns its injection declaration — data, not engine
-      inference), mapping the frozen
-      classification to the exact injected entry payloads (kind `synthesis`
-      and kind `ordered-smoke`), consumed READ-ONLY by Discovery settlement
-      (`src/modules/discovery/application/discovery-production-cell-installation.ts`),
-      cited by digest from the settlement record;
-      the register never carries browser/canvas/frontend specifics that did
-      not arrive through workshop-declared data (Conveyor Mental Model §3;
-      master plan §4 no-workshop-branch rule). NORMATIVE INTERLEAVE ORDER:
-      proposal-derived entries occupy `ord-c-001..NNN` in payload order,
-      injected entries are APPENDED AFTER them in the declared table order
-      (whole-product-synthesis first, then ordered-smoke) — never interleaved
-      among proposal-derived rows — so proposal-derived positional ids stay
-      stable when the injection table revision changes, and any reordering
-      changes the registerDigest (an honest revision, never an in-place
-      shuffle). Ad-hoc table reconstruction or a different interleave order
-      is a digest change and fails the m4a mutation below.
+       (`product-build-lifecycle.ts` verified terminal): the injection is
+       realized by a DECLARED, DIGEST-PINNED injection table OWNED BY
+       `src/process-modules/lifecycles/product-build-lifecycle.ts` — an
+       immutable, versioned, content-addressed data declaration declared
+       beside the frozen classification (the lifecycle that freezes the
+       classification owns its injection declaration — data, not engine
+       inference), mapping the frozen
+       classification to the exact injected entry payloads (kind `synthesis`
+       and kind `ordered-smoke`), consumed READ-ONLY by Discovery settlement
+       (`src/modules/discovery/application/discovery-production-cell-installation.ts`),
+        cited by digest from the settlement record.
+        LIFECYCLE-CLASSIFICATION WIRING PATH (sixth-pass correction): the
+        classification reaches Discovery settlement ONLY through the pinned
+        per-run read — `ctx.processRunId` → join
+        `factory_stage_runs.process_run_id` → `lifecycle_run_id` → read
+        the pinned `factory_lifecycle_runs` `definition_snapshot` +
+        `definition_hash` through a typed `readDefinitionByProcessRun`
+        port/repository implemented in
+        `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts`,
+        injected through `src/app/product-lifecycle-runtime.ts` /
+        `src/app/composition-root.ts` (the ambient
+        `options.lifecycleDefinition ?? productBuildLifecycle` default is
+        NOT the normative wiring and is never a substitute for the pinned
+        read). Discovery settlement consumes the pinned classification +
+        `definitionHash` read-only; a missing row fails closed with a
+        typed error — never a default `lifecycleDefinition`, never an
+        ambient fallback; and Discovery imports no lifecycle internals
+        (no lifecycle module import: the classification arrives only
+        through the injected pinned read, so no engine or settlement
+        code re-derives the classification from prose, workshop
+        identity, or a default binding); the dedicated test host
+        `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`
+        proves the wiring (new suite);
+        the register never carries browser/canvas/frontend specifics that did
+       not arrive through workshop-declared data (Conveyor Mental Model §3;
+       master plan §4 no-workshop-branch rule). NORMATIVE INTERLEAVE ORDER:
+       proposal-derived entries occupy `ord-c-001..NNN` in payload order,
+       injected entries are APPENDED AFTER them in the declared table order
+       (whole-product-synthesis first, then ordered-smoke) — never interleaved
+       among proposal-derived rows — so proposal-derived positional ids stay
+       stable when the injection table revision changes, and any reordering
+       changes the registerDigest (an honest revision, never an in-place
+       shuffle). Ad-hoc table reconstruction or a different interleave order
+       is a digest change and fails the m4a mutation below.
 - [ ] Digest semantics: v2 typed fields are entry content — adding them
-      produces a new registerDigest (an honest revision, never an in-place
-      mutation); v1 registers verify unchanged under their schema version
-      THROUGH THE REPAIRED read-back verifier of the prerequisite stage
-      (integrated at `50824c6a`; the recorded broken dead-code path above
-      is closed history, and every v2 claim leans on the repaired, tested
-      baseline).
+       produces a new registerDigest (an honest revision, never an in-place
+       mutation); v1 registers verify unchanged under their schema version
+       THROUGH THE REPAIRED read-back verifier of the prerequisite stage
+       (source repair integrated at `50824c6a` with round-trip and
+       digest-tamper tests green; the recorded broken dead-code path above
+       is closed history; the id-reorder and snake_case-at-verify reds are
+       added by the CC-IC-1 base-verification item, and every v2 claim
+       leans on that repaired, fully verified baseline).
 - [ ] New v2 starts never silently build a null register: null-binding
       grandfathering applies only to frozen legacy v1 corpora (their
       behavior is exactly as today — no `order_constraints` builds no
@@ -1783,36 +2086,89 @@ Checklist:
       identity: a warrant silently re-targeted at a different
       certificate/case digest is the m7 typed red below.
 
-Blocking mutations: m0 (the prerequisite stage — SATISFIED by the
-integrated CC-GAP-6 landing `50824c6a`: a genuine persisted v1 register
-round-trips through the repaired verifier, and digest tamper and id
-reorder stay typed reds; CC-IC-1 verifies this holds at its base, never
-re-implements it); m1 (drop a proposal unknown from the open-question
-entries — settlement red); m4 (runnable-local declared without the injected
-synthesis/smoke entries — settlement red); m4a (injection performed from an
-undeclared/ad-hoc table, or injected entries interleaved among
-proposal-derived rows instead of appended in the declared order — the
-registerDigest and the settlement record disagree or the positional block
-layout is violated — red); m5 (a qualitative/experience
-(kind `quality`) entry carrying neither a measurable interpretation nor a
-typed deferral — red); m6 (a new v2 Factory Start whose settlement
-produces a silent null register — red; a no-obligation order must carry
-the explicit typed no-obligations attestation); m6a (a continuation that
-re-extracts a register instead of inheriting the original ref — red);
-m6b (a v2 FormalizationCase whose register binding is supplied by the
-proposal-payload rebuild fallback instead of the one certificate binding —
-red; a v2 case with no binding and no typed no-obligations attestation —
-red); m7 (a warrant re-targeted at a different certificate/case digest than
-the one it was issued against — cross-bind red); legacy-green control
-(frozen legacy registerless and v1 corpora stay green, and v1 cases keep the
-deterministic rebuild fallback).
+Blocking mutations, with their NAMED TEST HOSTS (sixth-pass correction —
+a mutation without a host is not executable work):
+
+- m0 (the prerequisite stage — source repair landed by the integrated
+  CC-GAP-6 landing `50824c6a`; round-trip and digest-tamper are green in
+  its host `tests/discovery/order-constraint-register.test.mjs`; the
+  id-reorder and snake_case-at-verify reds are ADDED to that same host by
+  the CC-IC-1 base-verification item above — never re-implemented):
+  host `tests/discovery/order-constraint-register.test.mjs`.
+- m1 (drop a proposal unknown from the open-question entries —
+  settlement red): hosts `tests/discovery/order-constraint-register.test.mjs`
+  (settlement lifting through `buildOrderConstraintRegister`) and
+  `tests/matrix/e-constraint-loss.test.mjs` (the constraint-loss matrix
+  proves the unknown survives every settlement path).
+- m4 (runnable-local declared without the injected synthesis/smoke
+  entries — settlement red) and m4a (injection performed from an
+  undeclared/ad-hoc table, or injected entries interleaved among
+  proposal-derived rows instead of appended in the declared order — the
+  registerDigest and the settlement record disagree or the positional
+  block layout is violated — red): hosts
+  `tests/architecture/product-build-lifecycle.test.mjs` (the declared,
+  digest-pinned injection table beside the frozen classification) and the
+  new `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`
+  (the pinned classification wiring and the settlement consumption);
+  m4a additionally rides
+  `tests/discovery/order-constraint-register.test.mjs` (the appended
+  block layout in the built register digest).
+- m5 (a qualitative/experience (kind `quality`) entry carrying neither a
+  measurable interpretation nor a typed deferral — red): host
+  `tests/discovery/order-constraint-register.test.mjs`.
+- m6 (a new v2 Factory Start whose settlement produces a silent null
+  register — red; a no-obligation order must carry the explicit typed
+  no-obligations attestation): host the new
+  `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`
+  (settlement boundary under the pinned classification wiring).
+- m6a (a continuation that re-extracts a register instead of inheriting
+  the original ref — red): host
+  `tests/discovery/d4-settlement-recovery.test.mjs` (the settlement
+  recovery/continuation suite).
+- m6b (a v2 FormalizationCase whose register binding is supplied by the
+  proposal-payload rebuild fallback instead of the one certificate
+  binding — red; a v2 case with no binding and no typed no-obligations
+  attestation — red): host `tests/matrix/e-constraint-loss.test.mjs`
+  (the constraint-loss matrix across the certificate-to-case handoff).
+- m7 (a warrant re-targeted at a different certificate/case digest than
+  the one it was issued against — cross-bind red): host
+  `tests/process-modules/formalization-warrant-ref.test.mjs` (the
+  existing `warrantRef` suite, already extended by the integrated
+  CC-GAP-6 landing).
+- Legacy-green control (PINNED FIXTURES, sixth-pass correction): the
+  frozen legacy registerless and v1 corpora stay green, and v1 cases
+  keep the deterministic rebuild fallback, pinned to the NAMED
+  retro-compat fixtures that must stay green unchanged:
+  `tests/discovery/order-constraint-register.test.mjs`
+  ("register is null when no order_constraints are carried
+  (retro-compat)"; "proposal without order_constraints still validates
+  (retro-compat monotonicity)"),
+  `tests/process-modules/formalization-constraint-disposition.test.mjs`
+  ("no register in the case accepts (retro-compat: empty diff is
+  green)"; "missing task metadata / missing process_node_input accepts
+  (retro-compat)"),
+  `tests/process-modules/formalization-constraint-coverage.test.mjs`
+  ("acceptance validator without a register stays green (retro-compat)";
+  "no coverage requirement -> no constraint gap (retro-compat in the
+  pure diff)"; "baseline payload omits coveredConstraints when no AC
+  carries any (retro-compat)"),
+  `tests/process-modules/srs-constraint-coverage.test.mjs`
+  ("SRS validator stays green without a register (retro-compat)";
+  "parseD2CoveredConstraintIdsByAc is empty without the field
+  (retro-compat)"), and
+  `tests/process-modules/formalization-warrant-ref.test.mjs`
+  ("settlement certificate carries no warrantRef without a register
+  (retro-compat)"; "readiness manifest without warrantRef still
+  validates (retro-compat)").
 
 Exit checklist:
 
-- [ ] All mutations above make the blocking group red when reversed
-      (m0 is already satisfied and verified at the base per the
-      prerequisite stage — it is not re-implemented here); the
-      legacy-green controls stay green.
+- [ ] All mutations above make their named test hosts' blocking group red
+      when reversed (m0's source repair is already landed; its residual
+      id-reorder and snake_case-at-verify verification is closed by the
+      base-verification item — it is not re-implemented here); the pinned
+      legacy-green fixtures above stay green, byte-for-byte in
+      expectation.
 - [ ] A v2 register is digest-pinned, positionally stable (proposal-derived
       block, then the declared injected block in table order), and
       verifiable through the repaired read-back path; v1 registers
@@ -1845,12 +2201,17 @@ Exit checklist:
 Checklist:
 
 - [ ] Extend the disposition grammar for kind `open-question` entries on
-      the existing network: `resolved` (evidenceRef required), or
-      `deferred` (non-empty reason + owner + unblockCriterion), or
-      `waived` (loud, per-entry, operator-attributed only — an author or
-      model may at most propose a waiver; a mass author waiver is a typed
-      red); per-ID gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
-      message shape.
+       the existing network: `resolved` (evidenceRef required), or
+       `deferred` (non-empty reason + owner + unblockCriterion), or
+       `waived` — every waiver on a new-v2 entry requires TRUSTED
+       OPERATOR ATTRIBUTION (a recorded operator identity on the
+       per-entry waiver; an author or model may at most propose one, and
+       ANY author-attributed waiver — a single entry or many entries in
+       one act — is a typed red; no separate "mass waiver" category is
+       defined beside the per-entry rule, so an attempted multi-entry
+       author waiver is simply a set of red per-entry waivers); per-ID
+       gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
+       message shape.
 - [ ] Dispositions freeze into the baseline payload and ride the
       `warrantRef` projection (one source, three projections — no new
       carrier): the freeze is authored at the existing projection site in
@@ -1882,9 +2243,12 @@ Checklist:
 Blocking mutations: m2 (an undisposed open-question entry —
 `FORMALIZATION_CONSTRAINT_UNDISPOSED` with per-ID guidance); m2a (a
 deferral without owner or unblockCriterion — red); m2b (a `resolved`
-without evidenceRef — red); m2c (a waiver authored by the worker/author —
-in particular a mass waiver of all open questions in one act — red;
-waivers are loud, per-entry, operator-attributed only); m2d (a disposition
+without evidenceRef — red); m2c (ANY waiver authored by the
+worker/author instead of a trusted operator — a single author-attributed
+entry waiver is red, and an author waiving many or all open questions in
+one act is simply that same red repeated per entry (no undefined
+"mass-waiver" concept is needed or defined); waivers are loud, per-entry,
+trusted-operator-attributed only); m2d (a disposition
 set carried across a `registerDigest` change — positional `ord-c` reuse
 across register revisions — red).
 
@@ -1946,16 +2310,18 @@ Exit checklist:
 - Owner role: obligation/mutation owner with the CI owner for group wiring
 - Depends on: CC-IC-1, CC-IC-2, CC-IC-3
 - Editable files: `tests/factory-proof/obligation-contracts.mjs` (FOUR new
-  tokens in the single ADR-084 family, plus correction of the two existing
-  `frm.submission.acceptance-contract` and `frm.submission.srs-contract`
-  tokens); the installed-protection reader
-  manifest keys; blocking-group registry via the CC-10B wiring;
-  `src/modules/discovery/domain/discovery-settlement-records.ts` LIMITED
-  to the advisory archaeologist report record — an append-only,
-  content-addressed ADVISORY record keyed to the exact proposal/register
-  digest it read, stored beside the settlement lineage it informs (report
-  artifact carrier only, following that file's existing record pattern;
-  no gate wiring, no authority consumer)
+   tokens in the single ADR-084 family, plus the ONE remaining correction
+   of the existing `frm.submission.srs-contract` token — the
+   `frm.submission.acceptance-contract` correction and the SRS §D2↔AC
+   residues are ALREADY landed at `3be7393d` and are verify-only); the
+   installed-protection reader
+   manifest keys; blocking-group registry via the CC-10B wiring;
+   `src/modules/discovery/domain/discovery-settlement-records.ts` LIMITED
+   to the advisory archaeologist report record — an append-only,
+   content-addressed ADVISORY record keyed to the exact proposal/register
+   digest it read, stored beside the settlement lineage it informs (report
+   artifact carrier only, following that file's existing record pattern;
+   no gate wiring, no authority consumer)
 - Explicit non-goals: no second obligation registry; no new
   mutation-algebra kinds (reuse the existing constraint kinds); no
   archaeologist output on any gate, register, relay, or authority path
@@ -1970,63 +2336,82 @@ Checklist:
       `formalization.integration-ac-for-runnable-lifecycle`,
       `formalization.qualitative-quantified`.
       The fifth A–G obligation — epic-clause coverage — is realized by the
-      CORRECTED EXISTING `frm.submission.acceptance-contract` token, which
-      already carries the register-coverage constraint (its `subset`
-      constraint at `tests/factory-proof/obligation-contracts.mjs` names
-      `coveredConstraintIds` vs `registerIds-minus-waived`) over the
-      protection `factory.submission-validator.formalization.
-      acceptance-contract.v1`. Do NOT compile a fifth token for it: two
+      EXISTING `frm.submission.acceptance-contract` token, which — after
+      the LANDED `3be7393d` v2.1.0 correction — already carries the
+      register-coverage constraint in the landed uncovered-residue form
+      (`subset(uncoveredConstraintResidue, of empty)` over the protection
+      `factory.submission-validator.formalization.
+      acceptance-contract.v1`). Do NOT compile a fifth token for it: two
       obligations claiming the same `check-provider::<logicalId>` protection
       key make `assertProtectionSetEquality` throw
       `PROTECTION_OWNER_AMBIGUOUS` (`tests/factory-proof/
-      installed-protection-reader.mjs`), and inventing a second parallel
+      installed-protection-reader.mjs` — the S4 self-mutation landed by
+      `3be7393d` already proves this fail-closed for a future
+      ADR-090-shaped token), and inventing a second parallel
       protection for the same enforced property violates the
       no-parallel-vocabulary rule (ADR-090 non-goals).
-- [ ] Correct the inverted subset constraint of the existing
-      `frm.submission.acceptance-contract` token in
-      `tests/factory-proof/obligation-contracts.mjs` (it currently encodes
-      `coveredConstraintIds` ⊆ `registerIds-minus-waived` — the INVERSE of
-      the production requirement). The production requirement is
-      (register ids minus typed waivers) ⊆ covered — i.e. the ADR-088
-      reverse diff (register − covered − waived = ∅). The corrected shape is
-      the UNCOVERED-RESIDUE-SUBSET-EMPTY form:
-      `{ kind: 'subset', member: 'registerIds-minus-waived', of:
-      'coveredConstraintIds' }`. The four new tokens encode the production
-      direction; the inversion must not be replicated. The correction's
-      acceptance is MUTATION-KILLABLE, not a blind operand flip: with
-      `member: 'registerIds-minus-waived'` the existing subset mutant family
-      (member-extra `__outside_of__`, member-dropped, member-substituted on
-      the register side — `tests/factory-proof/mutation-algebra.mjs`) kills
-      the direction flip, because an uncovered register id entering the
-      member set must fail; the inverse form leaves a dropped covered id
-      invisible (surplus covered ids are not a conservation failure). A
-      reverted-direction mutant that survives on symmetric witnesses means
-      the correction was not landed — a green set-equality alone does not
-      discharge this item.
-- [ ] Own the ANALOGOUS `frm.submission.srs-contract` direction defect: the
-      token currently encodes NO register-coverage constraint at all (its
-      subset constraint covers `d2Stanzas` vs `frozenAcCodes` only), while
-      the production validator `srs-contract-validator.ts` enforces the
-      production direction (register − waived ⊆ union of §D2
-      `covered_constraint_ids`). This is the same under-representation
-      defect class as the inverted acceptance-contract token, recorded as a
-      production defect against the single proof-token family and corrected
-      in the same CC-IC-4 landing: the srs-contract token gains the same
-      uncovered-residue constraint
-      (`member: 'registerIds-minus-waived'`, `of: 'd2CoveredConstraintIds'`
-      — the union of §D2 stanza coverage), with the same
-      mutation-killable acceptance as above.
+- [x] Acceptance-contract token direction repair — LANDED at `3be7393d`
+      (v2.1.0, verify-only for CC-IC-4; never redone, never re-derived):
+      the formerly inverted declaration (`coveredConstraintIds` ⊆
+      `registerIds-minus-waived`) is corrected to the UNCOVERED-RESIDUE
+      form the production validator actually enforces
+      (      `{ kind: 'subset', member: 'uncoveredConstraintResidue', of:
+      'empty' }` — register ids minus union of covered minus validly
+      waived = ∅, the `constraintCoverageGapIdList` /
+      `FORMALIZATION_CONSTRAINT_UNCOVERED` reverse diff), with
+      its inert member binding dropped from the grammar constraint and a
+      rewritten honest T7 adapter (residue mutants must die with
+      `FORMALIZATION_CONSTRAINT_UNCOVERED`). CC-IC-4 VERIFIES this
+      landed state (the v2.1.0 declaration, its kill matrix, and the S4
+      self-mutation are green at the packet base) and adds nothing to
+      this token. PRESCRIPTION BAN (normative): never prescribe or apply
+      a bare member/of flip for this class of defect — the landed repair
+      keeps the mutated member on the worker-authored coverage side; a
+      bare flip would only swap which side a mutant rewrites (and for
+      the SRS token would mutate the frozen baseline, the authority side
+      a worker cannot author).
+- [x] SRS §D2↔AC residue repair — LANDED at `3be7393d` (v2.1.0,
+      verify-only for CC-IC-4): the `frm.submission.srs-contract` token
+      now declares BOTH D2↔AC directions the validator kills
+      (`{ kind: 'subset', member: 'unrepresentedFrozenAcResidue', of:
+      'empty' }` and `{ kind: 'subset', member: 'foreignD2AcResidue',
+      of: 'empty' }`, with the T7b real-validator kill matrix 4/4
+      KILLED_TYPED). CC-IC-4 VERIFIES this landed state and adds nothing
+      to these two constraints.
+- [ ] Own the ONE REMAINING srs-contract residue — the REGISTER-COVERAGE
+      residue: the landed v2.1.0 token still declares no constraint for
+      the register dimension, while the production validator
+      `srs-contract-validator.ts` enforces the production direction
+      (register − waived ⊆ union of §D2 `covered_constraint_ids`). This
+      is the same under-representation defect class, and CC-IC-4 closes
+      it by adding the uncovered-residue constraint in the LANDED
+      residue algebra (an
+      `uncoveredRegisterResidue`-style member with `of: 'empty'`, never
+      a bare member/of flip and never a member bound to the frozen
+      authority side), with the same mutation-killable acceptance: the
+      residue mutant must die through the real SRS validator
+      (`FORMALIZATION_SRS_*` typed gaps), proven in the T7b-style kill
+      matrix, never by a symmetric-witness set-equality alone.
 - [ ] Set equality both directions with the installed protections from
       CC-IC-1..3; mutant families from the existing algebra; wire the
       blocking group per CC-10B.
-- [ ] The LM archaeologist is advisory only: its reports are ordinary
+- [ ] The LM archaeologist is advisory only, and its PRODUCER TRUTH is
+      explicit (sixth-pass correction): a report exists ONLY when the
+      operator commissions an advisory producer run for a specific
+      proposal/register digest — an operator-commissioned advisory
+      producer with a recorded owner (the commissioning record names the
+      producer and the digest it may read); there is NO standing or
+      automatic producer, settlement never spawns or invokes it, the
+      absence of a report is never a red, and the presence of a report is
+      never a pass. Its reports are ordinary
       evidence artifacts carried as append-only advisory records in
       `src/modules/discovery/domain/discovery-settlement-records.ts`
       (content-addressed, keyed to the exact proposal/register digest they
       read; no gate, register, relay, or authority consumer); the sole
       promotion path is a new register
       revision with a new digest through Discovery settlement
-      (append-only); nothing consumes archaeologist output on a gate path.
+      (append-only); nothing consumes archaeologist output on a gate
+      path. No unowned automatic pass is promised anywhere.
 - [ ] Add the archaeologist non-authority mutation: an archaeologist report
       cannot alter the register, digest, relay, reverse diff, or any gate
       outcome.
@@ -2034,24 +2419,32 @@ Checklist:
 Blocking mutations: token-set equality both directions (a missing or extra
 protection is red; a second obligation over an already-claimed protection
 key — the `PROTECTION_OWNER_AMBIGUOUS` shape — is red); token-removal
-self-mutation red; the direction-flip mutants of BOTH corrected tokens
-(reverting either to the inverse, or deleting the srs-contract residue
-constraint) red; the archaeologist-authority mutation red; the five
+self-mutation red; the residue-direction mutants of the srs-contract
+register-coverage constraint (deleting it, or reverting it to a
+non-residue member/of shape that mutates the frozen authority side) red —
+the acceptance-contract and SRS §D2↔AC direction-flip mutants are ALREADY
+proven by the landed `3be7393d` kill matrices (verify-only); the
+archaeologist-authority mutation red; the five
 m1..m5 mutants from CC-IC-1..3 all killed by their assigned gates.
 
 Exit checklist:
 
 - [ ] The four new tokens are set-equal with installed protections, their
-      mutants are killed, the two corrected existing tokens kill their
-      direction-flip mutants, and the blocking group includes all of them.
+      mutants are killed, the landed `3be7393d` acceptance-contract and
+      SRS §D2↔AC residue repairs verify green at the base (never redone),
+      the one added srs-contract register-coverage residue constraint
+      kills its residue mutants, and the blocking group includes all of
+      them.
 - [ ] No parallel scope-clause ledger, unknown ledger, mechanics-spec
       product family, or second obligation registry exists anywhere in the
       diff.
 - [ ] Program finish condition reached: with CC-IC-1..4 exit checklists
-      green (the CC-IC-1 prerequisite v1-verifier repair — SATISFIED by
-      the integrated `50824c6a` — verified at the CC-IC-1 base, not
-      re-implemented) and the
-      four new tokens plus the two corrected existing tokens blocking, the
+      green (the CC-IC-1 prerequisite v1-verifier SOURCE repair — landed
+      by the integrated `50824c6a` — verified at the CC-IC-1 base
+      together with its residual id-reorder and snake_case-at-verify
+      verification, not re-implemented) and the
+      four new tokens plus the landed-and-extended existing tokens
+      blocking, the
       Idea Authority Conservation program is closed. Later defects are
       fixes; new fault classes extend the same register/contract
       vocabulary; there is no standing parallel implementation track.
@@ -2061,12 +2454,12 @@ Exit checklist:
 | Item | As proposed | Disposition in this program |
 |---|---|---|
 | A. Epic-as-authority trace gate | new scope-clause coverage gate | Reused: register ids + kernel-derived `coveredConstraintIds` + SRS §D2/§2.2 reverse diff (ADR-088); v2 entries join the same diff; no parallel scope-clause ledger |
-| B. Requirements archaeologist | gating second model | Advisory only; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority (CC-IC-4) |
-| C. Unknowns are obligations | new OPEN ledger | kind `open-question` register entries (class vocabulary `execution|material|human` unchanged) drafted 1:1 from proposal unknowns (CC-IC-1); `resolved`, or `deferred` (reason, owner, unblock criterion), or loud per-entry operator-attributed `waived` on the existing disposition network (CC-IC-2) |
+| B. Requirements archaeologist | gating second model | Advisory only, operator-commissioned: a report exists only when the operator commissions an advisory producer with a recorded owner; no standing/automatic producer, no gate, no authority path; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority (CC-IC-4) |
+| C. Unknowns are obligations | new OPEN ledger | kind `open-question` register entries (class vocabulary `execution|material|human` unchanged) drafted 1:1 from proposal unknowns (CC-IC-1); `resolved`, or `deferred` (reason, owner, unblock criterion), or `waived` with trusted operator attribution — any author-attributed waiver, single or en masse, is red (no undefined mass-waiver concept) — on the existing disposition network (CC-IC-2) |
 | D. Mechanics first-class | new mechanics-spec family | Existing RULE artifacts are the carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by` (CC-IC-3) |
 | E. Runnable lifecycle auto-requires integration + ordered smoke | inferred at Formalization | Frozen `runnable-local` classification; deterministic injection at Discovery settlement; engine never infers by rereading prose (CC-IC-1) |
 | F. Qualitative quantified | new translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral (CC-IC-1) |
-| G. Five conformance obligations | new obligation family | FOUR new tokens in the single ADR-084 AcceptanceObligationContract (unknowns-owned, mechanics-spec-required, integration-ac, qualitative-quantified); the fifth (epic-clause coverage) is realized by correcting the direction of the existing `frm.submission.acceptance-contract` and `frm.submission.srs-contract` tokens (no fifth token — the protection key is already claimed; `PROTECTION_OWNER_AMBIGUOUS`); existing mutation algebra; blocking via CC-10B/CC-80 floors (CC-IC-4) |
+| G. Five conformance obligations | new obligation family | FOUR new tokens in the single ADR-084 AcceptanceObligationContract (unknowns-owned, mechanics-spec-required, integration-ac, qualitative-quantified); the fifth (epic-clause coverage) rides the EXISTING tokens — the acceptance-contract direction repair and the SRS §D2↔AC residues are LANDED at `3be7393d` (v2.1.0 uncovered-residue algebra; verify-only), and CC-IC-4 adds only the srs-contract register-coverage residue constraint (no fifth token — the protection key is already claimed; `PROTECTION_OWNER_AMBIGUOUS`, already self-mutation-proven by `3be7393d`); never a bare member/of flip; existing mutation algebra; blocking via CC-10B/CC-80 floors (CC-IC-4) |
 
 ---
 
@@ -2371,8 +2764,23 @@ Pre-mortem controls:
   distinct with bounded in-check substrate retry, typed unknown, and
   human_required blocked/resumable (ADR-089; unknown receipts never poison
   a later pass), treats role projection as rendering-only (board/detail
-  display role; no deduplication, no data rewrite), and serializes
-  CC-GAP-9 outcome/routing before CC-GAP-7 warrant execution.
+  display role; no deduplication, no data rewrite), keeps environment
+  identity with ADR-083/K19 (CC-GAP-9 owns availability only; CC-GAP-7
+  consumes and receipt-binds `environmentDigest`, never authorizes it),
+  and serializes
+  CC-GAP-9 outcome/routing before CC-GAP-7 warrant execution (and the
+  K19 image/digest remainder before CC-GAP-7 receipt-binding, with the
+  honest fallback recorded in §3.2 if it has not landed). The CC-GAP-9
+  residual has its own drift risk: a mid-check executor/compose failure
+  in the TOCTOU window between the availability probe and the substrate
+  steps can be flattened back into product failure or "classified" by
+  stderr text guessing — ADR-091 closes it with a mechanical re-probe
+  (only observed unavailable/not-linux routes into the ADR-089 bounded
+  retry/typed unknown; a bad image/tag/config/product stays product
+  `failed`; compose down vs invalid config distinct; collapse guard;
+  provider `1.12.0` with digest fence and trust migration, obligation
+  compiler pin `1.12.0`) before ANY production run and before CC-GAP-7,
+  with blocking mutations (a)-(f) wired into CC-10B/CC-80.
 - [ ] Idea-authority conservation can drift into a parallel vocabulary or a
       standing program: parallel scope-clause or unknown ledgers, a new
       mechanics-spec product family, a gating LM archaeologist, or a second
@@ -2381,11 +2789,17 @@ Pre-mortem controls:
       single-writer `Constraint register and warrant seam` row, and a
       mandatory overall qualification dependency (until implemented and
       proven, CC-10B/CC-80 and overall K qualification stay RED); their
-      proof tokens join the single ADR-084 contract family; the program
+      proof tokens join the single ADR-084 contract family (the
+      acceptance-contract and SRS §D2↔AC direction repairs are already
+      landed at `3be7393d` — verify-only; only the SRS register-coverage
+      residue is added, in the landed residue algebra, never a bare
+      member/of flip); the program
       closes when its exit checklists are green; and order unknowns become
       owned obligations on the register (resolved; deferred with reason,
-      owner, and unblock criterion; or loudly waived per-entry by the
-      operator — never a mass author waiver), never opaque strings.
+      owner, and unblock criterion; or waived with trusted operator
+      attribution — any author-attributed waiver, single or en masse, is
+      red, and no undefined mass-waiver concept exists), never opaque
+      strings.
       Null-binding grandfathering stays frozen-legacy-v1-only: a new v2
       Factory Start that silently builds a null register and passes green
       is itself the drift this item guards against.

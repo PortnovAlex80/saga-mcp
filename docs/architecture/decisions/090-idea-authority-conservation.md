@@ -14,8 +14,14 @@
   and new conformance-obligation family are all rejected
 - **Implementation plan:** `docs/plans/CONFORMANCE-CLOSURE-PLAN.md`
   (§7A, packets CC-IC-1..4, serialized after the CC-GAP-6 seam, which
-  landed in integration at commit `50824c6a`; the CC-IC v2 vocabulary
-  work remains open —
+  landed in integration at commit `50824c6a`; the v1 read-back verifier
+  source repair is landed there with round-trip and digest-tamper tests —
+  the id-reorder and snake_case-at-verify reds remain explicit CC-IC-1
+  base-verification work; the proof-subset landing `3be7393d` already
+  corrected the acceptance-contract token direction (v2.1.0
+  uncovered-residue form) and the SRS §D2↔AC residues — verify-only for
+  CC-IC-4, which adds only the SRS register-coverage residue constraint,
+  never a bare member/of flip; the CC-IC v2 vocabulary work remains open —
   CC-IC is a mandatory overall qualification dependency — CC-10B, CC-80,
   and overall K qualification stay RED until CC-IC is implemented and
   proven, while the frozen CC-00C scope stays CC-GAP-6..10)
@@ -64,11 +70,23 @@ surface is missing:
    conservation enforcement around an existing normative AC, not content
    dropped in transit and not a missing criterion.
 3. **Unknowns are opaque and unconsumed.**
-   `DiscoveryProposalPayload.unknowns` is `string[]`
-   (`src/modules/discovery/domain/discovery-domain-contracts.ts`), carried
-   through normalization aliases and then never consumed by any gate: no
-   identity, no owner, no unblock criterion, no disposition. The pricing
-   algorithm unknown died exactly there — uncounted, not dropped.
+    `DiscoveryProposalPayload.unknowns` is `string[]`
+    (`src/modules/discovery/domain/discovery-domain-contracts.ts`), carried
+    through normalization aliases and then never consumed by any gate: no
+    identity, no owner, no unblock criterion, no disposition. The pricing
+    algorithm unknown died exactly there — uncounted, not dropped. Sixth
+    pass: the Elite-6 dynamic-pricing loss is recorded as BOTH
+    idea-conservation AND product behavior evidence — the exact pricing
+    algorithm was genuinely UNKNOWN at Discovery (a real proposal unknown),
+    and the shipped frozen Elite-6 product carried `basePrice` constants
+    with argument-level tests that did NOT prove per-system pricing
+    variation, so the latent defect reached product behavior. No new
+    runtime token is created for it: it is covered by this decision's
+    open-question and mechanics obligations
+    (`formalization.unknowns-owned`,
+    `formalization.mechanics-spec-required`); the frozen Elite-6 product
+    is not rewritten, and its remediation path is a new change request or
+    continuation.
 4. **The conservation vocabulary already exists and is partially landed.**
    The versioned Order Constraint Register
    (`factory.order-constraint-register.v1`, stable `ord-c-NNN` ids, classes
@@ -227,13 +245,15 @@ Assumption: Option B was implemented and failed six months later.
    mass-deferral without owner/unblock criterion is a red (mutation m2).
    Extraction quality remains the Discovery assessor's boundary and the
    archaeologist's advisory beat; neither sits on the gate path.
-3. Waiver/deferral abuse made open questions a rubber stamp. Likelihood:
-   medium. Detection: deferrals carry reason, owner, and unblock criterion;
-   discharge/deferral accounting follows the ADR-088/089 waiver discipline
-   (typed, non-empty reason; operator-attributed waiver channel only). A
-   waiver is loud, per-entry, and operator-attributed — an author or model
-   may at most PROPOSE one, and a mass author waiver (all open questions
-   waived by the author in one act) is a typed red.
+ 3. Waiver/deferral abuse made open questions a rubber stamp. Likelihood:
+    medium. Detection: deferrals carry reason, owner, and unblock criterion;
+    discharge/deferral accounting follows the ADR-088/089 waiver discipline
+    (typed, non-empty reason; trusted-operator-attributed waiver channel
+    only). Every new-v2 waiver requires trusted operator attribution — an
+    author or model may at most PROPOSE one, and ANY author-attributed
+    waiver is a typed red (a single entry or all open questions in one
+    act alike; no undefined mass-waiver concept is needed — an attempted
+    mass author waiver is simply that red repeated per entry).
 4. The archaeologist quietly became a gate — someone wired its report to
    planning admission. Likelihood: medium. Detection: a blocking mutation
    proves an archaeologist report cannot alter the register digest, the
@@ -261,16 +281,20 @@ advisory-channel noise; no silent-green failure mode is introduced.
    and it is paid deliberately.
 2. **"An advisory-only archaeologist is toothless — you rebuilt the human
    review you removed."** Its output is evidence for promotion decisions,
-   not a verdict. Promotion produces a new register revision/digest through
+   not a verdict — and it is not even automatically produced: it exists
+   only when the operator commissions an advisory producer with a
+   recorded owner, so no unowned automatic pass is promised. Promotion
+   produces a new register revision/digest through
    the normal settlement path and then flows through the same mechanical
    networks — the conservation theorem never depends on the archaeologist
-   being right.
+   being right or even existing.
 3. **"The open-question kind turns every uncertainty into bureaucracy."**
    The Elite-6 defect was precisely that uncertainty was free and
    invisible. The cheap path remains available — a typed deferral with
    reason, owner, and unblock criterion — but it is counted, owned, and
-   unblocked-or-waived explicitly (waivers: loud, per-entry,
-   operator-attributed only; never a mass author waiver).
+   unblocked-or-waived explicitly (waivers require trusted operator
+   attribution; any author-attributed waiver, single or en masse, is
+   red — no undefined mass-waiver concept exists).
 4. **"RULE-as-mechanics-spec confuses policy artifacts with algorithm
    specs."** RULE is the existing business-rule artifact and already binds
    designs through `implements_spec`/`verified_by` traces; SPEC remains the
@@ -320,26 +344,31 @@ Choose Option B. Normatively:
    scope-clause ledger and no parallel unknown ledger may be created;
    every conservation rule rides this register.
 2. **One digest/ref, honest revisions.** The register keeps exactly one
-   content-addressed digest/ref. The v2 typed fields are entry content, so
-   adding measurability/synthesis semantics to an entry produces a new
-   digest — a new register revision, never an in-place mutation. v1
-   registers verify unchanged under their schema version — the
-   prerequisite read-back repair recorded in the implementation plan
-   (CC-IC-1 stage 0, mutation m0) is SATISFIED: the recorded production
-   defect (the pre-repair `verifyOrderConstraintRegister` in
-   `src/shared/constraint-register.ts` fed persisted canonical camelCase
-   entries (`evidenceRef`) into `buildOrderConstraintRegister`, which
-   validates the worker-facing snake_case draft shape (`evidence_ref`), so
-   verifying any genuine persisted v1 register threw
-   `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED`; it was dead code with no
-   test) is closed by the integrated CC-GAP-6 landing (commit `50824c6a`),
-   which validates the canonical camelCase entry shape directly in the
-   verifier and proves build -> verify round-trip identity, digest tamper
-   (`ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH`), and id reorder
-   (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`) in
-   `tests/discovery/order-constraint-register.test.mjs`. CC-IC-1 VERIFIES
-   that repair is present at its base and must not duplicate or
-   re-implement it — v2 read-back builds on the repaired v1 verifier.
+    content-addressed digest/ref. The v2 typed fields are entry content, so
+    adding measurability/synthesis semantics to an entry produces a new
+    digest — a new register revision, never an in-place mutation. v1
+    registers verify unchanged under their schema version — the
+    prerequisite read-back repair recorded in the implementation plan
+    (CC-IC-1 prerequisite stage, mutation m0) is LANDED IN SOURCE by the
+    integrated CC-GAP-6 landing (commit `50824c6a`): the recorded
+    production defect (the pre-repair `verifyOrderConstraintRegister` in
+    `src/shared/constraint-register.ts` fed persisted canonical camelCase
+    entries (`evidenceRef`) into `buildOrderConstraintRegister`, which
+    validates the worker-facing snake_case draft shape (`evidence_ref`), so
+    verifying any genuine persisted v1 register threw
+    `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED`; it was dead code with no
+    test) is closed in source — the verifier now validates the canonical
+    camelCase entry shape directly. TEST TRUTH at `50824c6a` (sixth-pass
+    verification): `tests/discovery/order-constraint-register.test.mjs`
+    proves build -> verify round-trip identity and digest tamper
+    (`ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH`); the id-reorder red
+    (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`, already thrown by the
+    repaired source) and the snake_case-draft-at-verify typed rejection
+    are NOT yet tested and remain EXPLICIT CC-IC-1 base-verification
+    work at that host. CC-IC-1 VERIFIES the source repair at its base and
+    CLOSES that residual verification obligation (adding the two missing
+    test cases — never re-implementing the verifier) — v2 read-back
+    builds on the repaired v1 verifier.
 3. **Typed measurability — qualitative/experience obligations only.**
    Measurability semantics bind ONLY qualitative/experience obligations
    (kind `quality`): each such entry carries either a measurable
@@ -356,16 +385,36 @@ Choose Option B. Normatively:
    DECLARED, DIGEST-PINNED injection table — an immutable, versioned,
    content-addressed data declaration mapping the frozen classification to
    the exact injected entry payloads, cited by digest from the settlement
-   record — OWNED by
-   `src/process-modules/lifecycles/product-build-lifecycle.ts` (declared
-   beside the frozen `runnable-local` terminal classification that file
-   owns; the lifecycle that freezes the classification owns its injection
-   declaration — data, not engine inference) and consumed READ-ONLY by
-   Discovery settlement
-   (`src/modules/discovery/application/discovery-production-cell-installation.ts`,
-   which cites the table digest in the settlement record) — with a
-   NORMATIVE INTERLEAVE ORDER: proposal-derived entries
-   occupy `ord-c-001..NNN` in payload order and injected entries are
+     record — OWNED by
+     `src/process-modules/lifecycles/product-build-lifecycle.ts` (declared
+     beside the frozen `runnable-local` terminal classification that file
+     owns; the lifecycle that freezes the classification owns its injection
+     declaration — data, not engine inference) and consumed READ-ONLY by
+     Discovery settlement
+     (`src/modules/discovery/application/discovery-production-cell-installation.ts`,
+     which cites the table digest in the settlement record). The
+     lifecycle-classification WIRING PATH is explicit (sixth pass): the
+     classification reaches Discovery settlement ONLY through the pinned
+     per-run read — `ctx.processRunId` → join
+     `factory_stage_runs.process_run_id` → `lifecycle_run_id` → read the
+     pinned `factory_lifecycle_runs` `definition_snapshot` +
+     `definition_hash` through a typed `readDefinitionByProcessRun`
+     port/repository implemented in
+     `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts`,
+     injected through `src/app/product-lifecycle-runtime.ts` /
+     `src/app/composition-root.ts`. The ambient
+     `options.lifecycleDefinition ?? productBuildLifecycle` default is NOT
+     the normative wiring and is never a substitute for the pinned read.
+     Discovery settlement consumes the pinned classification +
+     `definitionHash` read-only; a missing row fails closed with a typed
+     error — never a default `lifecycleDefinition`, never an ambient
+     fallback; Discovery imports no lifecycle internals (no lifecycle
+     module import: the classification arrives only through the injected
+     pinned read, and no settlement code re-derives it); the dedicated
+     test host `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`
+     proves the wiring. The injection carries a
+     NORMATIVE INTERLEAVE ORDER: proposal-derived entries
+    occupy `ord-c-001..NNN` in payload order and injected entries are
    appended AFTER them in the declared table order (synthesis, then
    ordered-smoke), never interleaved among proposal-derived rows, so
    proposal-derived positional ids stay stable across injection-table
@@ -375,12 +424,17 @@ Choose Option B. Normatively:
    workshop-declared data (Conveyor Mental Model §3; master plan §4).
 5. **Open questions are obligations with owners.** Settlement drafts
    kind `open-question` entries 1:1 and positionally from the proposal
-   `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
-   must reach, through the existing disposition network, either `resolved`
-   (with evidence) or `deferred` (with non-empty reason, owner, and
-   unblock criterion) or `waived` (loud, per-entry, operator-attributed
-   waiver only — an author or model may at most propose a waiver; a mass
-   author waiver is a typed red). Undisposed open questions are a typed red
+    `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
+    must reach, through the existing disposition network, either `resolved`
+    (with evidence) or `deferred` (with non-empty reason, owner, and
+    unblock criterion) or `waived` — every waiver on a new-v2 entry
+    requires TRUSTED OPERATOR ATTRIBUTION (a recorded operator identity on
+    the per-entry waiver; an author or model may at most propose one), and
+    ANY author-attributed waiver — a single entry or many entries in one
+    act — is a typed red; no separate "mass waiver" category is defined
+    beside the per-entry rule (an attempted multi-entry author waiver is
+    simply a set of red per-entry waivers). Undisposed open questions are a
+    typed red
    (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
    strings. Dispositions are DIGEST-PINNED to the register they were
    authored against: the disposition freeze carries the `registerDigest` it
@@ -389,37 +443,58 @@ Choose Option B. Normatively:
    are never reusable across register revisions (today
    `constraint_dispositions` is keyed positionally with no register-digest
    binding; closing that gap is CC-IC-2, mutation m2d). And the arithmetic
-   stays honest: `resolved` and `deferred` are disposition STATES, not
-   coverage discharges — only the loud per-entry operator-attributed typed
-   waiver subtracts an entry from the required set, so a resolved or
-   deferred open-question entry REMAINS in (register minus typed waivers
-   ⊆ covered) until it is covered or loudly waived; resolution and
-   deferral never become silent waivers.
-6. **Coverage stays the ADR-088 mechanism.** v2 entries join the same
-   kernel-derived `coveredConstraintIds` relay and the same SRS §D2 and
-   §2.2 reverse diff (register ids minus union of covered ids minus typed
-   waivers = empty set). The production requirement direction is
-   (register ids minus typed waivers) ⊆ covered — NEVER the converse;
-   surplus covered ids are not a conservation failure. Found production
-   defects recorded against the single proof-token family, BOTH owed
-   correction by the CC-IC implementation (CC-IC-4): (a) the existing
-   `frm.submission.acceptance-contract` token in
-   `tests/factory-proof/obligation-contracts.mjs` encodes the INVERSE
-   subset (`coveredConstraintIds` ⊆ `registerIds-minus-waived`); (b) the
-   analogous `frm.submission.srs-contract` direction defect — that token
-   carries NO register-coverage constraint at all, while the production
-   validator `srs-contract-validator.ts` enforces the production direction
-   (register minus waived ⊆ union of §D2 `covered_constraint_ids`), so the
-   token under-represents the installed protection. Both corrections
-   produce the UNCOVERED-RESIDUE-SUBSET-EMPTY form
-   (`member: registerIds-minus-waived` ⊆ the respective covered set), and
-   the new conservation tokens must encode the production
-   direction above. The corrections' acceptance is mutation-killable
-   (the direction-flip mutant dies on the register-side subset mutants),
-   never a blind operand flip. Injected synthesis/smoke obligations are
-   enforced by the same planning-admission fail-close and
-   entrypoint-ownership conjunction; a nominal attachment remains
-   non-coverage.
+    stays honest: `resolved` and `deferred` are disposition STATES, not
+    coverage discharges — only the trusted-operator-attributed typed
+    waiver subtracts an entry from the required set, so a resolved or
+    deferred open-question entry REMAINS in (register minus typed waivers
+    ⊆ covered) until it is covered or waived by the operator; resolution
+    and deferral never become silent waivers.
+ 6. **Coverage stays the ADR-088 mechanism.** v2 entries join the same
+    kernel-derived `coveredConstraintIds` relay and the same SRS §D2 and
+    §2.2 reverse diff (register ids minus union of covered ids minus typed
+    waivers = empty set). The production requirement direction is
+    (register ids minus typed waivers) ⊆ covered — NEVER the converse;
+    surplus covered ids are not a conservation failure. Production
+    defects recorded against the single proof-token family, with their
+    sixth-pass status — TWO of the three already repaired by the landed
+    proof-subset commit `3be7393d` (verify-only; never redone), ONE
+     remaining for CC-IC-4: (a) the existing
+    `frm.submission.acceptance-contract` token in
+    `tests/factory-proof/obligation-contracts.mjs` FORMERLY encoded the
+    INVERSE subset (`coveredConstraintIds` ⊆ `registerIds-minus-waived`)
+    — REPAIRED at `3be7393d` (v2.1.0): the constraint is now the landed
+    uncovered-residue form
+    (`{ kind: 'subset', member: 'uncoveredConstraintResidue', of:
+    'empty' }`), with the inert member binding dropped from the grammar
+    constraint, an honest T7 adapter (residue mutants die with
+    `FORMALIZATION_CONSTRAINT_UNCOVERED`), and the S4 self-mutation
+    proving a future second epic-trace token over the same protection
+    fails closed (`PROTECTION_OWNER_AMBIGUOUS`) — verify-only for CC-IC-4;
+    (b) the SRS §D2↔AC residues of `frm.submission.srs-contract` — the
+    token formerly declared only the foreign half (`d2Stanzas` ⊆
+    `frozenAcCodes`); REPAIRED at `3be7393d` (v2.1.0) as two residue
+    constraints (`unrepresentedFrozenAcResidue` ⊆ empty and
+    `foreignD2AcResidue` ⊆ empty) with a real-validator kill matrix
+    (4/4 KILLED_TYPED) — verify-only for CC-IC-4; and (c) the REMAINING
+    srs-contract register-coverage residue: the landed token still
+    declares no constraint for the register dimension, while the
+    production validator `srs-contract-validator.ts` enforces the
+    production direction (register minus waived ⊆ union of §D2
+    `covered_constraint_ids`) — CC-IC-4 adds this one residue constraint
+    in the LANDED residue algebra (an `uncoveredRegisterResidue`-style
+    member with `of: 'empty'`). PRESCRIPTION BAN (normative, from the
+    landed repair): never prescribe or apply a bare member/of flip for
+    this defect class — the residue form keeps the mutated member on the
+    worker-authored side; a bare flip would only swap which side a
+    mutant rewrites (and for the SRS token would mutate the frozen
+    baseline, the authority side a worker cannot author). The new
+    conservation tokens must encode the production direction above, and
+    the remaining correction's acceptance is mutation-killable through
+    the real validator, never a blind operand flip. Injected
+    synthesis/smoke obligations are
+    enforced by the same planning-admission fail-close and
+    entrypoint-ownership conjunction; a nominal attachment remains
+    non-coverage.
 7. **RULE artifacts are the mechanics-spec carrier.** A mechanics-bearing
    entry is CREATED at Discovery settlement as kind `mechanics` with NO
    `mechanicsRef` — the RULE artifact does not exist yet at that point,
@@ -431,37 +506,52 @@ Choose Option B. Normatively:
    trace-bound within the current lifecycle, and the binding's absence at
    coverage time is the typed red. No new mechanics-spec product
    family is created.
-8. **One proof-token family — FOUR new tokens plus two corrected existing
-   tokens.** The conservation obligations compile as follows: epic-clause
-   coverage (post-mortem item A) is realized by the CORRECTED EXISTING
-   `frm.submission.acceptance-contract` token — it already carries the
-   register-coverage constraint over the protection
-   `factory.submission-validator.formalization.acceptance-contract.v1`,
-   so correcting its direction IS the epic-trace obligation; no fifth
-   token is compiled for it, because a second obligation over an
-   already-claimed protection key throws `PROTECTION_OWNER_AMBIGUOUS` at
-   set-equality (`tests/factory-proof/installed-protection-reader.mjs`)
+ 8. **One proof-token family — FOUR new tokens plus landed-and-extended
+    existing tokens.** The conservation obligations compile as follows:
+    epic-clause coverage (post-mortem item A) is realized by the EXISTING
+    `frm.submission.acceptance-contract` token — after the LANDED
+    `3be7393d` v2.1.0 repair it carries the register-coverage constraint
+    in the uncovered-residue form over the protection
+    `factory.submission-validator.formalization.acceptance-contract.v1`,
+    so that landed repair IS the epic-trace obligation correction
+    (verify-only for CC-IC-4); no fifth
+    token is compiled for it, because a second obligation over an
+    already-claimed protection key throws `PROTECTION_OWNER_AMBIGUOUS` at
+    set-equality (`tests/factory-proof/installed-protection-reader.mjs`,
+    proven as a self-mutation by `3be7393d` itself)
    and a second parallel protection for the same enforced property
    violates the no-parallel-vocabulary rule. The four NEW tokens are
    `formalization.unknowns-owned`, `formalization.mechanics-spec-required`,
    `formalization.integration-ac-for-runnable-lifecycle`, and
    `formalization.qualitative-quantified`, compiled into the single ADR-084
    `AcceptanceObligationContract` family
-   (`tests/factory-proof/obligation-contracts.mjs`) with mutants from the
-   existing mutation algebra; the analogous `frm.submission.srs-contract`
-   direction defect is corrected in the same CC-IC-4 landing. No second
-   obligation registry.
-9. **The LM archaeologist is advisory only.** Its reports are evidence for
-   promotion decisions and may be stored as ordinary artifacts, but they
-   never gate, never mutate the register, and never write authority. The
-   report artifact carrier is an APPEND-ONLY ADVISORY record in
-   `src/modules/discovery/domain/discovery-settlement-records.ts`
-   (content-addressed, keyed to the exact proposal/register digest it read,
-   stored beside the settlement lineage it informs) — an ordinary evidence
-   record with no gate, register, relay, or authority consumer. The
-   sole promotion path is a new register revision with a new digest through
-   Discovery settlement; a blocking mutation proves an archaeologist report
-   cannot alter the register, relay, reverse diff, or any gate outcome.
+    (`tests/factory-proof/obligation-contracts.mjs`) with mutants from the
+    existing mutation algebra; the srs-contract §D2↔AC residues are
+    already repaired by `3be7393d` (verify-only), and the ONE remaining
+    srs-contract register-coverage residue constraint is added in the same
+    CC-IC-4 landing, in the landed residue algebra. No second
+    obligation registry.
+ 9. **The LM archaeologist is advisory only, with an explicit producer
+    truth.** Its reports are evidence for
+    promotion decisions and may be stored as ordinary artifacts, but they
+    never gate, never mutate the register, and never write authority.
+    PRODUCER TRUTH (sixth pass): a report exists ONLY when the operator
+    explicitly commissions an advisory producer run for a specific
+    proposal/register digest — an operator-commissioned advisory producer
+    with a recorded owner (the commissioning record names the producer
+    and the digest it may read). There is NO standing or automatic
+    producer: settlement never spawns, schedules, or invokes it, the
+    absence of a report is never a red, and the presence of a report is
+    never a pass. No unowned automatic pass is promised anywhere in this
+    decision or the plan. The
+    report artifact carrier is an APPEND-ONLY ADVISORY record in
+    `src/modules/discovery/domain/discovery-settlement-records.ts`
+    (content-addressed, keyed to the exact proposal/register digest it read,
+    stored beside the settlement lineage it informs) — an ordinary evidence
+    record with no gate, register, relay, or authority consumer. The
+    sole promotion path is a new register revision with a new digest through
+    Discovery settlement; a blocking mutation proves an archaeologist report
+    cannot alter the register, relay, reverse diff, or any gate outcome.
 10. **Null-binding grandfathering is frozen-legacy-v1-only; a new v2
     Factory Start never silently builds a null register.** The ADR-088
     sole grandfather condition (a proposal without `order_constraints`
@@ -504,42 +594,51 @@ Choose Option B. Normatively:
     not a repository artifact and is never cited as evidence; this ADR,
     the plan, CC-00B/CC-00C, and production source/tests carry the
     correction.
-12. **Implementation is bounded and serialized, not a standing program.**
-    The program lands as packets CC-IC-1..4
-    (`docs/plans/CONFORMANCE-CLOSURE-PLAN.md` §7A), serialized after the
-    CC-GAP-6 seam (landed in integration at commit `50824c6a`), through
-    the single-writer
-    `Constraint register and warrant seam` row, with exact files, tests,
-    and blocking mutations per packet and an explicit finish condition.
-    CC-IC-1 opened with a PREREQUISITE repair stage — the broken v1
-    read-back verifier (`verifyOrderConstraintRegister` in
-    `src/shared/constraint-register.ts` — persisted camelCase entries
-    validated against the snake_case draft shape; dead code, untested when
-    recorded) — which is SATISFIED by that integrated CC-GAP-6 landing
-    (`50824c6a` repairs the verifier and proves it in
-    `tests/discovery/order-constraint-register.test.mjs`, mutation m0):
-    CC-IC-1 VERIFIES the repaired verifier is present at its base and must
-    not duplicate or re-implement it; the v2 vocabulary work (mutations
-    m1..m7 and their lettered variants) remains open. It
-    is not a vague parallel implementation program and not a permanently
-    open architecture cycle. CC-IC is NOT required for CC-00C exit (the
-    frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
-    overall qualification dependency: until CC-IC is implemented and
-    proven, the CC-10B blocking group, the CC-80 qualification command,
-    and overall K qualification (CC-81/CC-82) remain RED — the unproven
-    CC-IC set is recorded as an open mandatory dependency, never skipped.
+ 12. **Implementation is bounded and serialized, not a standing program.**
+     The program lands as packets CC-IC-1..4
+     (`docs/plans/CONFORMANCE-CLOSURE-PLAN.md` §7A), serialized after the
+     CC-GAP-6 seam (landed in integration at commit `50824c6a`), through
+     the single-writer
+     `Constraint register and warrant seam` row, with exact files, tests,
+     and blocking mutations per packet and an explicit finish condition
+     (the CC-IC-1 mutations carry NAMED test hosts and PINNED legacy-green
+     fixtures in the plan §7A). CC-IC-1 opened with a PREREQUISITE repair
+     stage — the broken v1
+     read-back verifier (`verifyOrderConstraintRegister` in
+     `src/shared/constraint-register.ts` — persisted camelCase entries
+     validated against the snake_case draft shape; dead code, untested when
+     recorded) — whose SOURCE repair is LANDED by that integrated CC-GAP-6
+     landing (`50824c6a` repairs the verifier; its host
+     `tests/discovery/order-constraint-register.test.mjs` proves
+     round-trip identity and digest tamper, while the id-reorder and
+     snake_case-at-verify reds are NOT yet tested there):
+     CC-IC-1 VERIFIES the repaired verifier is present at its base, CLOSES
+     the residual id-reorder and snake_case-at-verify verification
+     (explicit base-verification work at that host), and must
+     not duplicate or re-implement it; the proof-subset commit `3be7393d`
+     already landed the acceptance-contract direction repair and the SRS
+     §D2↔AC residues (verify-only for CC-IC-4, which adds only the SRS
+     register-coverage residue constraint); the v2 vocabulary work
+     (mutations m1..m7 and their lettered variants) remains open. It
+     is not a vague parallel implementation program and not a permanently
+     open architecture cycle. CC-IC is NOT required for CC-00C exit (the
+     frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
+     overall qualification dependency: until CC-IC is implemented and
+     proven, the CC-10B blocking group, the CC-80 qualification command,
+     and overall K qualification (CC-81/CC-82) remain RED — the unproven
+     CC-IC set is recorded as an open mandatory dependency, never skipped.
 
 ### A–G reconciliation (item by item)
 
 | Item | As proposed by the post-mortem | ADR-090 disposition |
 |---|---|---|
 | A. Epic-as-authority trace gate | new scope-clause coverage gate; residue fails Formalization | Reused, not built: register ids + kernel-derived `coveredConstraintIds` + SRS §D2/§2.2 reverse diff (ADR-088); v2 entries join the same diff — no parallel scope-clause ledger |
-| B. Requirements archaeologist | second model; non-empty output triggers repair | Advisory only; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority |
-| C. Unknowns are obligations | every Unknown becomes OPEN with an owner; Formalization blocked until resolved or deferred | `open-question` register KIND (the class vocabulary `execution|material|human` stays unchanged) drafted 1:1 from proposal unknowns; disposition `resolved`, or `deferred` (reason, owner, unblock criterion), or a loud per-entry operator-attributed `waived` on the existing network |
+| B. Requirements archaeologist | second model; non-empty output triggers repair | Advisory only, operator-commissioned: a report exists only when the operator commissions an advisory producer with a recorded owner; no standing or automatic producer, no gate; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority |
+| C. Unknowns are obligations | every Unknown becomes OPEN with an owner; Formalization blocked until resolved or deferred | `open-question` register KIND (the class vocabulary `execution|material|human` stays unchanged) drafted 1:1 from proposal unknowns; disposition `resolved`, or `deferred` (reason, owner, unblock criterion), or `waived` with trusted operator attribution — any author-attributed waiver, single or en masse, is red (no undefined mass-waiver concept) — on the existing network |
 | D. Mechanics/dynamics first-class | new mechanics-spec artifact family | Existing RULE artifacts are the mechanics-spec carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by`; no new product family |
 | E. Runnable lifecycle auto-requires integration + ordered smoke AC | inferred at Formalization | `runnable-local` frozen lifecycle classification; Discovery settlement deterministically injects whole-product-synthesis + ordered-smoke obligation entries; engine never infers by rereading prose |
 | F. Qualitative adjectives quantified | new measurable-translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral with reason; other entries carry no measurability requirement |
-| G. Five conformance obligations | new obligation family | FOUR new proof tokens in the single ADR-084 `AcceptanceObligationContract` (unknowns-owned, mechanics-spec-required, integration-ac-for-runnable-lifecycle, qualitative-quantified); the fifth (epic-clause coverage) is realized by correcting the direction of the existing `frm.submission.acceptance-contract` token — and correcting the analogous `frm.submission.srs-contract` under-encoding in the same landing — rather than compiling a fifth token over an already-claimed protection key (`PROTECTION_OWNER_AMBIGUOUS`); existing mutation algebra; blocking via existing CC-10B/CC-80 floors |
+| G. Five conformance obligations | new obligation family | FOUR new proof tokens in the single ADR-084 `AcceptanceObligationContract` (unknowns-owned, mechanics-spec-required, integration-ac-for-runnable-lifecycle, qualitative-quantified); the fifth (epic-clause coverage) rides the EXISTING tokens — the acceptance-contract direction repair and the SRS §D2↔AC residues are LANDED at `3be7393d` (v2.1.0 uncovered-residue algebra; verify-only), and CC-IC-4 adds only the srs-contract register-coverage residue constraint — rather than compiling a fifth token over an already-claimed protection key (`PROTECTION_OWNER_AMBIGUOUS`, self-mutation-proven by `3be7393d`); never a bare member/of flip; existing mutation algebra; blocking via existing CC-10B/CC-80 floors |
 
 ## SMART goal and honest boundary
 
@@ -551,8 +650,9 @@ null), each of five blocking mutations
 turns the blocking group red when reversed — (m1) a proposal unknown absent
 from the register's open-question entries; (m2) an open-question entry
 without a resolved-or-deferred disposition (reason, owner, unblock
-criterion) or a loud per-entry operator-attributed waiver; (m3) a
-mechanics-bearing constraint whose RULE binding is removed or
+criterion) or a trusted-operator-attributed waiver (any author-attributed
+waiver is itself red); (m3) a mechanics-bearing constraint whose RULE
+binding is removed or
 untrace-bound; (m4) a runnable-local lifecycle
 classification without the injected whole-product-synthesis and
 ordered-smoke obligations; (m5) a qualitative/experience entry without a
@@ -595,14 +695,17 @@ Negative:
 - a multi-family blocking-mutation set owed in the CC-IC packets (the
   m1..m7 mutation families with lettered variants across CC-IC-1..3, plus
   the CC-IC-4 token and archaeologist mutants; the m0 read-back
-  prerequisite is already satisfied by the integrated CC-GAP-6 landing —
-  see Decision 2);
+  prerequisite source repair is already landed by the integrated CC-GAP-6
+  landing, with its residual id-reorder and snake_case-at-verify
+  verification owed by CC-IC-1 — see Decision 2);
 - open-question friction: deferring is cheap but never free.
 
 Neutral / follow-ups:
 
 - deferral/waiver discipline follows ADR-088/089 typed-waiver rules
-  (waivers loud, per-entry, operator-attributed; no mass author waiver);
+  (every new-v2 waiver requires trusted operator attribution; any
+  author-attributed waiver — single or en masse — is red, and no
+  undefined mass-waiver concept exists);
 - reason-code and token vocabulary above is the contract vocabulary; exact
   string stability is frozen by the CC-IC blocking proofs when they land;
 - the frozen legacy registerless (v1) corpus keeps exactly the current
@@ -623,11 +726,14 @@ reverse diff (production direction: register minus waived ⊆ covered),
 RULE artifacts as the mechanics-spec carrier with typed binding
 established at disposition time against the accepted RULE artifact,
 deterministic runnable-local synthesis/smoke injection, an
-advisory-only LM archaeologist, and proof tokens compiled into the single
+advisory-only LM archaeologist produced solely by an operator-commissioned
+advisory producer, and proof tokens compiled into the single
 ADR-084 AcceptanceObligationContract — implemented as the bounded,
 serialized CC-IC-1..4 packets after the CC-GAP-6 seam (landed in
-integration at commit `50824c6a`, which already satisfies the CC-IC-1
-read-back prerequisite m0), with
+integration at commit `50824c6a`, which lands the CC-IC-1 read-back
+prerequisite m0 in source, with round-trip and digest-tamper tests; the
+proof-subset commit `3be7393d` already lands the acceptance-contract and
+SRS §D2↔AC residue repairs), with
 null-binding grandfathering frozen-legacy-v1-only (new v2 starts carry
 non-null typed authority; continuations inherit the original register
 ref) and CC-IC a mandatory overall qualification dependency while CC-00C
@@ -636,11 +742,14 @@ scope stays frozen.
 **Ex-ante expectations — IF this decision was right, I expect:**
 
 - At CC-IC-1 landing: a frozen legacy registerless corpus and a
-  v1-register corpus stay green in CI, and a genuine persisted v1 register
+  v1-register corpus stay green in CI (the pinned legacy-green fixtures
+  of plan §7A stay green unchanged), and a genuine persisted v1 register
   round-trips through the repaired read-back verifier (prerequisite m0 —
-  SATISFIED by the integrated CC-GAP-6 landing `50824c6a`; CC-IC-1
-  verifies it holds at its base, never re-implements it; digest tamper and
-  id reorder stay typed reds); every proposal
+  source repair landed by the integrated CC-GAP-6 landing `50824c6a`
+  with round-trip and digest-tamper tests already green; CC-IC-1
+  verifies it holds at its base AND adds the missing id-reorder and
+  snake_case-at-verify reds at the same host, never re-implements the
+  verifier); every proposal
   unknown appears as
   an open-question register entry or settlement is red; a runnable-local
   declaration carries the injected synthesis/smoke entries or settlement
@@ -654,13 +763,16 @@ scope stays frozen.
   original ref is red.
 - At CC-IC-2 landing: an undisposed open-question entry fails the
   disposition gate with per-ID guidance; a deferral without owner or
-  unblock criterion is red; dispositions carried across a registerDigest
+  unblock criterion is red; ANY author-attributed waiver (single or en
+  masse) is red; dispositions carried across a registerDigest
   change (positional ord-c reuse) are red.
 - At CC-IC-3 landing: removing a RULE binding from a mechanics-bearing
   constraint turns the coverage diff red.
 - At CC-IC-4 landing: the four new tokens are set-equal with installed
-  protections, their mutants are killed, the direction-flip mutants of
-  both corrected existing tokens are killed, an archaeologist report
+  protections, their mutants are killed, the landed `3be7393d`
+  acceptance-contract and SRS §D2↔AC residue repairs verify green at the
+  base (never redone), the added srs-contract register-coverage residue
+  constraint kills its residue mutants, an archaeologist report
   cannot alter the register/digest/relay/gates, and the blocking group
   includes them.
 - Within 90 days of CC-IC exit: a recurrence of the Elite-6 unknown-loss
@@ -697,8 +809,11 @@ are advisory rather than binding.
 - `src/shared/constraint-register.ts` — the register vocabulary, and the
   read-back verifier
   (`verifyOrderConstraintRegister`: the recorded camelCase-into-snake_case
-  breakage) repaired and tested by the integrated CC-GAP-6 landing
-  (`50824c6a`) — the SATISFIED CC-IC-1 prerequisite (m0)
+  breakage) repaired IN SOURCE by the integrated CC-GAP-6 landing
+  (`50824c6a`; round-trip and digest-tamper tests green there; the
+  id-reorder and snake_case-at-verify reds are added by CC-IC-1
+  base-verification work) — the landed-in-source CC-IC-1 prerequisite
+  (m0)
 - `src/modules/discovery/domain/discovery-domain-contracts.ts` —
   `DiscoveryProposalPayload.unknowns` (opaque `string[]` today)
 - `src/modules/discovery/domain/discovery-proposal.ts` — the worker-facing
@@ -722,17 +837,24 @@ are advisory rather than binding.
   — `constraint_dispositions` keyed positionally by `ord-c-NNN` with no
   register-digest binding today (the m2d gap)
 - `src/modules/formalization/application/srs-contract-validator.ts` — the
-  production-direction §D2 register coverage that the
-  `frm.submission.srs-contract` token currently under-represents
+  production-direction §D2 register coverage that the landed v2.1.0
+  `frm.submission.srs-contract` token still under-represents (the one
+  remaining register-coverage residue constraint, owed by CC-IC-4)
 - `src/modules/development/domain/development-schemas.ts` —
   `VerificationWarrantRef` (gains the certificate/case cross-bind)
 - `src/process-modules/lifecycles/product-build-lifecycle.ts` — the frozen
   `runnable-local` terminal classification; owner of the declared
-  digest-pinned injection table (CC-IC-1)
+  digest-pinned injection table (CC-IC-1); the classification reaches
+  settlement through `src/app/composition-root.ts` →
+  `src/app/product-lifecycle-runtime.ts` (composition owner of the
+  wiring)
 - `tests/factory-proof/obligation-contracts.mjs` — the single
-  AcceptanceObligationContract family the CC-IC tokens join; the inverted
-  `frm.submission.acceptance-contract` subset constraint and the
-  register-coverage-free `frm.submission.srs-contract` constraints
+  AcceptanceObligationContract family the CC-IC tokens join; the formerly
+  inverted `frm.submission.acceptance-contract` subset constraint and the
+  SRS §D2↔AC direction defects are REPAIRED at `3be7393d` (v2.1.0
+  uncovered-residue algebra; verify-only for CC-IC-4), leaving only the
+  srs-contract register-coverage residue constraint to add — never a
+  bare member/of flip
 - `tests/factory-proof/installed-protection-reader.mjs` —
   `assertProtectionSetEquality` and `PROTECTION_OWNER_AMBIGUOUS` (why a
   fifth token over an already-claimed protection key cannot compile)
