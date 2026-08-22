@@ -97,7 +97,6 @@ function noStrandedExecutionOracle() {
 }
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
-  'L:deferred:approval-required-without-external-action',
   'L:approval:pending-holds-publication',
   'L:approval:denied-blocked',
   'L:approval:binds-candidate+preflight+policy-hash',
@@ -124,6 +123,20 @@ export const DELIVERY_SCENARIOS = Object.freeze([
       'kernel:delivery:no-execution-profiles',
     ],
   }),
+  // The authorization boundary, fail-closed: a DEFERRED delivery input (no
+  // operator grant — the harness default) must end the lifecycle at the typed
+  // 'approval-required' terminal with ZERO external effects. A release
+  // without explicit authorization is unreachable by construction.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/deferred-approval-required',
+    kind: 'positive',
+    proves: ['handoff.route-lifecycle'],
+    coverageItems: [
+      'L:deferred:approval-required-without-external-action',
+      coverageToken.transition('settle-delivery', 'complete-approval-required'),
+    ],
+  }),
 ]);
 
 const byId = new Map(DELIVERY_SCENARIOS.map(scenario => [scenario.id, scenario]));
@@ -135,12 +148,42 @@ export function buildDeliveryRuntimeCase(id) {
     case 'delivery/happy-released-authorized':
       return {
         scenario,
+        launchMode: 'authorized',
         handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
         driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
         oracles: [
           terminalOracle('released'),
           deliveryStageOutcomeOracle('released'),
           releaseEffectReceiptOracle(),
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/deferred-approval-required':
+      return {
+        scenario,
+        launchMode: 'harness-default',
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          terminalOracle('approval-required'),
+          deliveryStageOutcomeOracle('approval-required'),
+          // Fail-closed authorization: the DELIVERY stage (publish-deploy)
+          // may fire no external action at all. Development-stage effects
+          // (git-integration on implementation cells) are a different
+          // workshop's lawful material.
+          {
+            id: 'delivery.deferred.zero-effects',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              return {
+                passed: actions.length === 0,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                details: { count: actions.length, actions },
+              };
+            },
+          },
           noStrandedExecutionOracle(),
         ],
       };
