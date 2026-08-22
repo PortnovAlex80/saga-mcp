@@ -845,9 +845,16 @@ are advisory rather than binding.
 - `src/process-modules/lifecycles/product-build-lifecycle.ts` — the frozen
   `runnable-local` terminal classification; owner of the declared
   digest-pinned injection table (CC-IC-1); the classification reaches
-  settlement through `src/app/composition-root.ts` →
-  `src/app/product-lifecycle-runtime.ts` (composition owner of the
-  wiring)
+  settlement ONLY through the pinned per-run read, whose grounded owner
+  list is explicit (seventh pass): the repository file
+  `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts`
+  (owner of the typed `readDefinitionByProcessRun` join/read — nothing
+  else in this wiring may change there) plus the composition files
+  `src/app/composition-root.ts` → `src/app/product-lifecycle-runtime.ts`
+  (owners of the DI/composition of that ONE typed port — CC-IC-1 edits
+  all three LIMITED to exactly that wiring, through the single-writer
+  `Constraint register and warrant seam` row of the plan §4.3, so no
+  other packet may concurrently edit them)
 - `tests/factory-proof/obligation-contracts.mjs` — the single
   AcceptanceObligationContract family the CC-IC tokens join; the formerly
   inverted `frm.submission.acceptance-contract` subset constraint and the

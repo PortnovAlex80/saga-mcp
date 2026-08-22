@@ -11,7 +11,7 @@
   `docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md`
 - **Implementation plan:** `docs/plans/CONFORMANCE-CLOSURE-PLAN.md`
   (CC-00C / CC-GAP-9 residual package; blocking mutations wired into
-  CC-10B and CC-80; serialized BEFORE any production run and BEFORE
+  CC-10B and CC-80; serialized BEFORE any production factory run and BEFORE
   CC-GAP-7 warrant execution)
 
 ## Context
@@ -286,13 +286,16 @@ Choose Option B. The CC-GAP-9 residual contract is normatively:
    `1.12.0`), the trust basis stays `built-in:<provider digest>`, and
    the digest fence stands: receipts key on provider id + provider
    digest, so a swapped implementation is fenced out and never silently
-   re-trusted. The obligation contract `factory.local-runnability`
-   compiles at version `1.12.0` (protection
-   `factory.local-runnability.v1` @ `1.12.0`) — the obligation compiler
-   pin is `1.12.0`.
-8. **Sequencing: before any production run and before CC-GAP-7.** The
-   residual closes before any production run is released on the
-   conformance-closure path and BEFORE CC-GAP-7 warrant execution:
+    re-trusted. The obligation contract `factory.local-runnability`
+    TARGETS version `1.12.0` — after this residual is implemented it
+    compiles at version `1.12.0` (protection
+    `factory.local-runnability.v1` @ `1.12.0`); today this branch
+    compiles it at `1.10.0` and the unintegrated CC-GAP-9 landing at
+    `1.11.0`, so `1.12.0` is a TARGET, never a present-tense claim —
+    the obligation compiler pin is `1.12.0`.
+8. **Sequencing: before any production factory run and before CC-GAP-7.**
+   The residual closes BEFORE any production factory run and BEFORE
+   CC-GAP-7 warrant execution:
    warrant phases must never meet a mid-check substrate failure without
    the observed-classification routing, exactly as ADR-089 serialized
    CC-GAP-9 before CC-GAP-7.
@@ -363,12 +366,12 @@ Negative:
   `failed` for one attempt — honest, recorded, and dischargeable by the
   product path's own re-execution;
 - six more blocking mutations owed in the CC-00C set and wired into
-  CC-10B/CC-80 before any production run.
+  CC-10B/CC-80 before any production factory run.
 
 Neutral:
 
 - failure stderr remains in the evidence as human-facing detail;
-- the sequencing gate (before any production run, before CC-GAP-7) is
+- the sequencing gate (before any production factory run, before CC-GAP-7) is
   enforced by the plan's serialization, not by new runtime state.
 
 ## Decision Journal
@@ -387,7 +390,7 @@ and distinct from invalid config; the three outcome classes never
 collapse; the provider pins `1.12.0` with the digest fence and trust
 migration intact and the obligation compiler pins
 `factory.local-runnability.v1` @ `1.12.0`; the residual closes before
-any production run and before CC-GAP-7 warrant execution.
+any production factory run and before CC-GAP-7 warrant execution.
 
 Ex-ante expectations:
 
@@ -398,7 +401,7 @@ Ex-ante expectations:
   down/config truths; (f) proves the 1.12.0 version/digest fence.
 - The six mutations are wired into the CC-10B blocking group and CC-80
   qualification command; with the residual open, they stay RED and no
-  production run is released on this path.
+  production factory run is released.
 - Frozen Elite-6 records are untouched.
 
 Check trigger: CC-GAP-9 residual exit, or any later proposal to classify
@@ -429,4 +432,8 @@ is an operator-managed externality.
   the provider version/digest pin (this branch `1.10.0`; the GAP-9
   landing `1.11.0`; this ADR `1.12.0`)
 - `tests/factory-proof/obligation-contracts.mjs` — the
-  `factory.local-runnability` obligation compiled at `1.12.0`
+  `factory.local-runnability` obligation: TARGET after implementation is
+  compiled at `1.12.0` (this docs branch compiles it at `1.10.0`; the
+  unintegrated CC-GAP-9 landing compiles at `1.11.0`; no `1.12.0`
+  compilation exists yet — the pin becomes present-tense fact only when
+  the residual lands)

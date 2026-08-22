@@ -28,7 +28,7 @@ stays best-effort and distinct from invalid config; the three outcome
 classes never collapse; the provider pins `1.12.0` with the digest fence
 and trust migration intact (obligation compiler pin:
 `factory.local-runnability.v1` @ `1.12.0`); the residual closes BEFORE
-any production run and BEFORE CC-GAP-7 warrant execution. ADR-090 is
+any production factory run and BEFORE CC-GAP-7 warrant execution. ADR-090 is
 Accepted and governs the Idea Authority Conservation
 program (§7A): the single Order Constraint Register vocabulary is extended
 at Discovery settlement — the closed class vocabulary
@@ -305,7 +305,7 @@ prevents, fails, annotates, or counts against a later pass of the same
 criterion. CC-GAP-9 outcome/routing lands before
 CC-GAP-7 warrant execution so warrant phases can never re-flatten a
 substrate failure into product failure, and the CC-GAP-9 RESIDUAL
-(ADR-091 TOCTOU re-probe) closes before ANY production run and before
+(ADR-091 TOCTOU re-probe) closes before ANY production factory run and before
 CC-GAP-7: a mid-check executor/compose failure is classified by
 invalidating the cached availability probe and mechanically re-probing
 the daemon — only an observed unavailable/not-linux re-probe routes
@@ -517,7 +517,7 @@ Only one integration owner at a time may edit a row in this table.
 | Coverage and report | `coverage-kernel.mjs`, `factory-coverage-universe.mjs`, `conformance-engine.mjs`, report generators |
 | Development pack | `development-scenario-pack.mjs`, its runtime-case switch, Development drive and inventory |
 | Delivery pack | `delivery-scenario-pack.mjs`, Delivery drive, Delivery restart wiring |
-| Constraint register and warrant seam | `src/shared/constraint-register.ts`, `formalization-contract-analysis.ts` and SRS validators, `development-schemas.ts` (`VerificationWarrantRef`), readiness warrant phases in `local-runnability-check-provider.ts` |
+| Constraint register and warrant seam | `src/shared/constraint-register.ts`, `formalization-contract-analysis.ts` and SRS validators, `development-schemas.ts` (`VerificationWarrantRef`), readiness warrant phases in `local-runnability-check-provider.ts`, and the CC-IC-1 lifecycle-classification wiring sites for the same row: `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts` (LIMITED to the typed `readDefinitionByProcessRun` join/read), `src/app/product-lifecycle-runtime.ts` and `src/app/composition-root.ts` (LIMITED to DI/composition of that typed port) — single-writer with the register seam, so no other row or packet may concurrently edit them |
 | Structural comparator | normalized trace schema, differential command, semantic ignore list |
 
 - [ ] Parallelize read-only audits, fixtures, actor programs, external-world
@@ -775,7 +775,7 @@ green.
   in-check substrate retry, then typed unknown and human_required
   blocked/resumable) already in place — and the CC-GAP-9 RESIDUAL
   (ADR-091 readiness-substrate TOCTOU re-probe) closes before ANY
-  production run and likewise before CC-GAP-7: a mid-check
+  production factory run and likewise before CC-GAP-7: a mid-check
   executor/compose failure is classified only by invalidating the cached
   availability probe and mechanically re-probing the daemon (observed
   unavailable/not-linux → the existing ADR-089 bounded retry/typed
@@ -907,7 +907,7 @@ Stable gaps and owners:
   remain distinct typed classes; an earlier unknown receipt never
   prevents, fails, annotates, or counts against a later pass of the same
   criterion. Legacy records are grandfathered, never reclassified.
-  RESIDUAL (ADR-091, closes before any production run and before
+  RESIDUAL (ADR-091, closes before any production factory run and before
   CC-GAP-7): the mid-check TOCTOU window — on executor/compose failure,
   invalidate the cached availability probe and mechanically re-probe;
   only an observed unavailable/not-linux re-probe routes into the
@@ -981,7 +981,7 @@ Checklist:
   `cc/CC-GAP-9-substrate-typed-unknown` — NOT yet integrated; integration
   plus re-audit remains open.)
 - [ ] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
-  closes BEFORE any production run and BEFORE CC-GAP-7 warrant
+  closes BEFORE any production factory run and BEFORE CC-GAP-7 warrant
   execution): on a mid-check executor/compose failure, invalidate the
   cached docker availability cache and mechanically re-probe the daemon
   with the existing bounded probe; classification rides ONLY the observed
@@ -1147,7 +1147,7 @@ Exit checklist:
   earlier unknown receipt never poisons a later pass of the same
   criterion; legacy records are grandfathered, and the CC-GAP-9 blocking
   proof is green and landed before CC-GAP-7 warrant execution.
-- [ ] The CC-GAP-9 residual (ADR-091) is closed BEFORE any production run
+- [ ] The CC-GAP-9 residual (ADR-091) is closed BEFORE any production factory run
   and before CC-GAP-7 warrant execution: a mid-check executor/compose
   failure is classified by a mechanical re-probe of the invalidated
   availability cache (observed unavailable/not-linux → the existing
@@ -1524,7 +1524,16 @@ Checklist:
   stage/order visibility), substrate outcome/routing per ADR-089 (bounded
   in-check substrate retry; typed unknown `warrant-blocked-environment`
   on exhaustion; human_required blocked/resumable; no-poison of later
-  passes; never product-failed), and role projection (board/detail role
+  passes; never product-failed), the CC-GAP-9 RESIDUAL substrate TOCTOU
+  re-probe per ADR-091 with its blocking mutations (a)-(f) — (a) observed
+  unavailable re-probe routes into the ADR-089 path (never product
+  `failed`); (b) observed available+linux re-probe keeps a bad
+  image/tag/config/product product `failed` (never unknown); (c) no
+  stderr-sensitive classification; (d) collapse guard; (e) compose
+  `down`/invalid-config truths; (f) the provider `1.12.0` pin with the
+  digest fence and trust migration (obligation compiler pin
+  `factory.local-runnability.v1` @ `1.12.0`) — RED in this group until
+  the ADR-091 residual lands, and role projection (board/detail role
   display, rendering-only) (CC-GAP-6..10
   wiring).
 - [ ] The idea-authority-conservation blocking mutations are a MANDATORY
@@ -1885,11 +1894,22 @@ parallel implementation program.
   `src/modules/discovery/application/discovery-production-cell-installation.ts`
   (open-question lifting from the payload `unknowns` and read-only
   injection-table consumption at the existing settlement register site);
-  `src/process-modules/lifecycles/product-build-lifecycle.ts` LIMITED to
-  the declared, digest-pinned injection table beside the frozen
-  `runnable-local` terminal classification (data declaration only — no
-  engine inference, no workshop-name branch); register binding
-  pass-through in
+   `src/process-modules/lifecycles/product-build-lifecycle.ts` LIMITED to
+   the declared, digest-pinned injection table beside the frozen
+   `runnable-local` terminal classification (data declaration only — no
+   engine inference, no workshop-name branch);
+   `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts`
+   LIMITED to the typed `readDefinitionByProcessRun` join/read ONLY (the
+   `ctx.processRunId` → `factory_stage_runs.process_run_id` →
+   `lifecycle_run_id` → pinned `factory_lifecycle_runs`
+   `definition_snapshot` + `definition_hash` read the wiring path below
+   prescribes — no other repository surface changes);
+   `src/app/product-lifecycle-runtime.ts` and
+   `src/app/composition-root.ts` LIMITED to DI/composition of that ONE
+   typed port (injecting the pinned-read repository into Discovery
+   settlement; no other composition or registration change — same
+   single-writer row, section 4.3); register binding
+   pass-through in
   `src/modules/formalization/domain/formalization-schemas.ts`;
   `src/modules/formalization/application/formalization-production-cell-installation.ts`
   (settlement-side consumption of the case register binding and construction
@@ -2484,7 +2504,13 @@ Checklist:
   append-only criterion-key verification accounting, substrate outcome
   classification and routing per ADR-089 (bounded in-check substrate
   retry; typed unknown `warrant-blocked-environment`; human_required
-  blocked/resumable; no-poison; never product-failed), and
+  blocked/resumable; no-poison; never product-failed), the CC-GAP-9
+  RESIDUAL substrate TOCTOU re-probe per ADR-091 with its blocking
+  mutations (a)-(f) ((a)/(b) observed-classification routing in both
+  directions; (c) no stderr guessing; (d) collapse guard; (e) compose
+  `down` vs invalid config; (f) provider `1.12.0` with digest fence,
+  trust migration, and obligation compiler pin
+  `factory.local-runnability.v1` @ `1.12.0`), and
   role-projection clarity,
   with their blocking mutations.
 - [ ] The idea-authority-conservation checks are a MANDATORY dependency of
@@ -2779,7 +2805,7 @@ Pre-mortem controls:
   retry/typed unknown; a bad image/tag/config/product stays product
   `failed`; compose down vs invalid config distinct; collapse guard;
   provider `1.12.0` with digest fence and trust migration, obligation
-  compiler pin `1.12.0`) before ANY production run and before CC-GAP-7,
+  compiler pin `1.12.0`) before ANY production factory run and before CC-GAP-7,
   with blocking mutations (a)-(f) wired into CC-10B/CC-80.
 - [ ] Idea-authority conservation can drift into a parallel vocabulary or a
       standing program: parallel scope-clause or unknown ledgers, a new
