@@ -197,6 +197,12 @@ export function buildCanonicalDeliveryProviders({
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
   );
+  // Candidate-drift fault lives IN THE WORLD (not in knowledge of production
+  // internals): the deployment itself mutates the external world beyond the
+  // certified material — the release writes a state marker AND a drift
+  // marker. The candidate observer reads the world; a world carrying
+  // post-certification mutations yields a DIVERGED current candidate hash.
+  const driftMarkerPath = path.join(markerRoot, '.proof-candidate-drift.json');
 
   // REAL-mutation telemetry: every provider.execute() that actually touches
   // the external world increments this. Oracles pin no-duplicate contracts
@@ -237,6 +243,14 @@ export function buildCanonicalDeliveryProviders({
         desiredStateHash: action.desiredStateHash,
       };
       writeFileSync(marker, JSON.stringify(state), 'utf8');
+      // The drift fault is a WORLD mutation: the deployment changed the
+      // external world beyond the certified candidate material.
+      if (driftCandidate) {
+        writeFileSync(driftMarkerPath, JSON.stringify({
+          mutatedBy: 'deployment-execute',
+          actionKey,
+        }), 'utf8');
+      }
       realExecutions += 1;
       return {
         outcome: 'succeeded',
@@ -287,23 +301,28 @@ export function buildCanonicalDeliveryProviders({
     },
   };
 
-  // candidate-immutability seam. The production runtime reads the current
-  // candidate hash from TWO places: inside SqliteDeliveryRuntime.observe
-  // (the observation store — its snapshot is lineage-validated by
-  // delivery-installation the moment it is written) and inside
-  // buildSettlementInput (every settlement/routing read). Drift detected at
-  // the observation store fails the process; drift BETWEEN the stored
-  // observation and the settlement read is the TOCTOU window the
-  // 'candidate-drifted' settlement branch guards. The double discriminates
-  // by the immediate caller frame — if the internals rename, this scenario
-  // fails loudly (wrong terminal), never silently passes.
+  // Candidate-immutability seam (world-driven, operator review 2026-08-22:
+  // no stack-trace knowledge of production internals). Drift present in the
+  // world by observation time fails the observe-release node at the
+  // install-layer lineage check (typed 'invalid publication/candidate
+  // lineage') — the release never settles on mutated material. The
+  // settlement 'candidate-drifted' TOCTOU branch (drift landing in the
+  // window BETWEEN the observation-store read and the settlement read — a
+  // window with no external-world event) stays UNPINNED by conformance and
+  // is honestly documented as such.
   const providers = {
     preflight,
     actionProviders: { deployment },
     observeCurrentCandidateHash(deliveryCase) {
-      if (driftCandidate
-        && !/SqliteDeliveryRuntime\.observe\b/.test(new Error().stack ?? '')) {
-        return sha256Hex({ drifted: deliveryCase.integratedCandidate.hash });
+      // Pure world read: while the world carries no post-certification
+      // mutations the current candidate is the certified one; once the drift
+      // marker exists the observed candidate has DIVERGED. No knowledge of
+      // production internals — the double sees only the external world.
+      if (driftCandidate && existsSync(driftMarkerPath)) {
+        return sha256Hex({
+          drifted: deliveryCase.integratedCandidate.hash,
+          worldMutation: 'deployment-execute',
+        });
       }
       return deliveryCase.integratedCandidate.hash;
     },

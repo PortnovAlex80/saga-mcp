@@ -58,7 +58,7 @@ export function observeDurableTrace(dbPath) {
       processRuns: all(
         `SELECT id,module_name,module_version,status,local_outcome,authority,input_hash,
                 output_schema,output_ref,output_hash,
-                certificate_schema,certificate_ref,certificate_hash
+                certificate_schema,certificate_ref,certificate_hash,error
            FROM factory_process_runs ORDER BY id`,
       ),
       processOutcomeCertificates: all(

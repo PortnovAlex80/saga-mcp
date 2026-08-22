@@ -188,11 +188,11 @@ export const DELIVERY_SCENARIOS = Object.freeze([
   // release is decided by what the external state ACTUALLY says.
   Object.freeze({
     schemaVersion: 'factory.proof.kernel-scenario.v1',
-    id: 'delivery/publication-unknown-routes-to-observation',
+    id: 'delivery/publication-unknown-fails-closed',
     kind: 'positive',
     proves: ['effect.deploy'],
     coverageItems: [
-      'L:publication:unknown-failure-routes-to-observation',
+      'L:publication:unknown-fails-closed-effect-nonterminal',
       'external:observation:authoritative-state',
     ],
   }),
@@ -209,19 +209,22 @@ export const DELIVERY_SCENARIOS = Object.freeze([
       coverageToken.transition('settle-delivery', 'complete-blocked'),
     ],
   }),
-  // Candidate immutability: the material Development certified is the ONLY
-  // material a release may settle on. When the current candidate hash has
-  // drifted from the certified one — the world changed after certification —
-  // settlement blocks on 'candidate-drifted': no release settles on mutated
-  // material, even though the effects already fired.
+  // Candidate immutability (world-driven): the deployment itself mutates
+  // the external world beyond the certified material — the candidate
+  // observer reads the WORLD, and a world carrying post-certification
+  // mutations yields a diverged current candidate. The observe-release node
+  // fails closed on the typed lineage check; the release never settles on
+  // mutated material even though the effects fired. (The settlement
+  // 'candidate-drifted' TOCTOU branch stays unpinned — no external-world
+  // event exists inside that window.)
   Object.freeze({
     schemaVersion: 'factory.proof.kernel-scenario.v1',
-    id: 'delivery/candidate-immutability-drift-blocked',
+    id: 'delivery/candidate-immutability-drift-fails-closed',
     kind: 'positive',
     proves: ['handoff.route-lifecycle'],
     coverageItems: [
       'L:candidate-immutability:drift-after-certification-blocks',
-      coverageToken.transition('settle-delivery', 'complete-blocked'),
+      coverageToken.transition('settle-delivery', 'complete-failed'),
     ],
   }),
   // Observe-before-retry (cross-run idempotency): a non-idempotent effect is
@@ -365,7 +368,7 @@ export function buildDeliveryRuntimeCase(id) {
           noStrandedExecutionOracle(),
         ],
       };
-    case 'delivery/publication-unknown-routes-to-observation':
+    case 'delivery/publication-unknown-fails-closed':
       return {
         scenario,
         launchMode: 'authorized',
@@ -377,21 +380,28 @@ export function buildDeliveryRuntimeCase(id) {
           // publication FAILS the stage typed — never a guessed release,
           // never a silent retry-until-lucky. The operator re-requests.
           terminalOracle('failed'),
+          // The effect stays NON-TERMINAL: the uncertain receipt leaves the
+          // ledger action un-resolved (not falsely succeeded, not failed) —
+          // only an authoritative observation in a later run may settle it.
           {
-            id: 'delivery.unknown.observed-not-released',
+            id: 'delivery.unknown.effect-nonterminal-release-denied',
             evaluate({ durableTrace }) {
               const actions = (durableTrace.deliveryEffectActions ?? [])
                 .filter(a => String(a.node_id).startsWith('publish')
                   || String(a.provider_namespace).startsWith('proof-deployment'));
-              const unknown = actions.length > 0
-                && actions.every(a => a.terminal !== 'released-marker');
               const attempted = actions.some(a => a.execution_attempts >= 1);
+              const allNonTerminal = actions.length > 0
+                && actions.every(a => a.state !== 'succeeded' && a.state !== 'failed');
               const released = (durableTrace.lifecycleRuns ?? [])
                 .some(run => run.terminal_status === 'released');
               return {
-                passed: attempted && !released,
-                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}:${a.state}`),
-                details: { actions: actions.map(a => ({ state: a.state, attempts: a.execution_attempts })), released },
+                passed: attempted && allNonTerminal && !released,
+                evidenceRefs: actions
+                  .map(a => `${a.provider_namespace}:${a.action_key}:${a.state}`),
+                details: {
+                  actions: actions.map(a => ({ state: a.state, attempts: a.execution_attempts })),
+                  releasedTerminal: released,
+                },
               };
             },
           },
@@ -431,7 +441,7 @@ export function buildDeliveryRuntimeCase(id) {
           },
         ],
       };
-    case 'delivery/candidate-immutability-drift-blocked':
+    case 'delivery/candidate-immutability-drift-fails-closed':
       return {
         scenario,
         launchMode: 'authorized',
@@ -439,31 +449,46 @@ export function buildDeliveryRuntimeCase(id) {
         handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
         driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
         oracles: [
-          terminalOracle('delivery-blocked'),
-          deliveryStageOutcomeOracle('blocked'),
-          // The block reason is the DRIFT itself: the settle node's outcome
-          // certificate carries reason code 'candidate-drifted' — not a
-          // generic failure.
+          terminalOracle('failed'),
+          // A failed process leaves the stage with local_outcome null (no
+          // lawful stage outcome exists) — pin the stage STATUS failed.
           {
-            id: 'delivery.drift.reason-candidate-drifted',
+            id: 'delivery.drift.stage-failed',
             evaluate({ durableTrace }) {
-              const cert = (durableTrace.processOutcomeCertificates ?? [])
-                .find(row => JSON.stringify(row.reason_codes ?? row.certificate_payload ?? {})
-                  .includes('candidate-drifted'));
+              const stage = (durableTrace.stageRuns ?? [])
+                .find(row => row.stage_id === DELIVERY_STAGE);
               return {
-                passed: Boolean(cert),
-                evidenceRefs: cert
-                  ? [`outcome-certificate:${cert.certificate_ref ?? cert.id}`]
-                  : [],
+                passed: stage?.status === 'failed' && stage?.local_outcome === null,
+                evidenceRefs: stage ? [`stage-run:${stage.id}`] : [],
                 details: {
-                  certificate: cert?.certificate_ref ?? cert?.id ?? null,
-                  reasonCodes: cert?.reason_codes ?? null,
+                  status: stage?.status ?? null,
+                  localOutcome: stage?.local_outcome ?? null,
                 },
               };
             },
           },
-          // The effects DID fire before settlement — and the release is still
-          // denied: drift blocks the settlement, it does not un-publish.
+          // The fail-closed boundary is TYPED: the observe-release node dies
+          // on the install-layer candidate-lineage check — the world's
+          // current candidate no longer equals the certified one.
+          {
+            id: 'delivery.drift.typed-lineage-failure',
+            evaluate({ durableTrace }) {
+              const deliveryRun = (durableTrace.processRuns ?? [])
+                .find(row => String(row.module_name).includes('delivery'));
+              const error = String(deliveryRun?.error ?? '');
+              const typed = error.includes('invalid publication/candidate lineage');
+              return {
+                passed: Boolean(deliveryRun) && typed,
+                evidenceRefs: deliveryRun ? [`process-run:${deliveryRun.id}`] : [],
+                details: {
+                  processRun: deliveryRun?.id ?? null,
+                  error: error.slice(0, 200),
+                },
+              };
+            },
+          },
+          // The effects DID fire — and the release is still denied: drift
+          // fails the release closed, it does not settle on mutated material.
           {
             id: 'delivery.drift.effect-fired-release-denied',
             evaluate({ durableTrace }) {
