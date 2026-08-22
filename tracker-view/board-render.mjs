@@ -86,6 +86,53 @@ function readWorkerDisplayNames() {
   }
 }
 
+// CC-GAP-10 (rendering-only): the durable author/reviewer projection identity
+// already lives on every production-cell task — `tasks.workplace_ref` plus
+// `tasks.metadata.$.role` ('author' | 'reviewer'). The board and task-detail
+// surfaces below expose that identity AS-IS: two tasks over one Workplace are
+// two ROLES of one production cell in one sealed graph. A reviewer projection
+// is QC over the sealed author candidate — never duplicate implementation
+// work and never a second graph. This code only READS what the sealed graph
+// already persists: no deduplication, no data rewrite, no fabrication of a
+// role where the durable record carries none.
+const ROLE_PROJECTION_NOTE = {
+  author:
+    'author projection — production role of this Workplace (writes the sealed material)',
+  reviewer:
+    'reviewer projection — QC role over the same Workplace and its sealed author candidate; distinct role, not duplicate implementation work',
+};
+const WORKPLACE_BADGE_NOTE =
+  'shared Workplace identity: author and reviewer tasks over this one Workplace are distinct roles of one production cell — not duplicate work';
+
+/**
+ * Pure projection-identity reader for one task row. Accepts any shape the
+ * board/detail queries return (loadProjectBoard does `SELECT t.*`, so both
+ * `workplace_ref` and the JSON `metadata` string are present). Returns
+ * `{ role, workplaceRef }` with `null`s when the durable record carries no
+ * projection identity — the renderers must then show NO role badge, never a
+ * guessed one.
+ */
+export function taskProjectionIdentity(task) {
+  let meta = null;
+  try { meta = JSON.parse(task?.metadata || '{}'); } catch { meta = null; }
+  const rawRole = meta?.role ?? null;
+  const role = rawRole === 'author' || rawRole === 'reviewer' ? rawRole : null;
+  const workplaceRef = task?.workplace_ref || (meta ? meta.workplace_ref : null) || null;
+  return { role, workplaceRef };
+}
+
+/**
+ * Short display form of a serialized WorkplaceRef
+ * (`workplace/<run>/<module>/<cell>/<workKey>`): keeps `<cell>/<workKey>`,
+ * the parts a human matches across author/reviewer cards. The full ref always
+ * rides along in the element title for exact correlation.
+ */
+export function shortWorkplaceRef(ref) {
+  const parts = String(ref).split('/');
+  if (parts.length < 5 || parts[0] !== 'workplace') return String(ref);
+  return `${parts[3]}/${parts.slice(4).join('/')}`;
+}
+
 export function createBoardRenderApi({
   RELOAD_SEC,
   loadBoard,
@@ -395,12 +442,17 @@ export function createBoardRenderApi({
       // needs-human флаг — задача ждёт ответа человека, мигает красным
       let needsHuman = false;
       try { needsHuman = JSON.parse(t.tags || '[]').includes('needs-human'); } catch {}
+      // CC-GAP-10: durable author/reviewer projection identity (rendering
+      // reads it as-is; nulls mean no identity in the durable record).
+      const { role, workplaceRef } = taskProjectionIdentity(t);
       return {
         t, e,
         epicName: e ? e.name : '?',
         epicId: t.epic_id,
         prio: PRIO[t.priority] || '#95a5a6',
         needsHuman,
+        role,
+        workplaceRef,
         workerName: t.current_execution_id
           ? workerNamesByExec.get(t.current_execution_id) || null
           : null,
@@ -412,7 +464,7 @@ export function createBoardRenderApi({
     const columnsHtml = COLS.map(col => {
       const items = byStatus[col.key] || [];
       const cardsHtml = items.map(c => `
-        <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" style="border-left:6px solid ${proj.color}">
+        <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" data-role="${esc(c.role || '')}" data-workplace="${esc(c.workplaceRef || '')}" style="border-left:6px solid ${proj.color}">
           <div class="card-head">
             <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
             ${c.t.assigned_to ? `<span class="assigned" title="${esc(c.t.assigned_to)}">@${esc(c.workerName || c.t.assigned_to)}</span>` : ''}
@@ -428,6 +480,8 @@ export function createBoardRenderApi({
             ${c.t.repository_name ? `<span class="task-badge repo">${esc(c.t.repository_name)}</span>` : ''}
             ${c.t.workflow_stage ? `<span class="task-badge stage">${esc(c.t.workflow_stage)}</span>` : ''}
             ${c.t.task_kind ? `<span class="task-badge kind">${esc(c.t.task_kind)}</span>` : ''}
+            ${c.role ? `<span class="task-badge role role-${c.role}" title="${esc(ROLE_PROJECTION_NOTE[c.role])}">${c.role}</span>` : ''}
+            ${c.workplaceRef ? `<span class="task-badge wp" title="${esc(WORKPLACE_BADGE_NOTE)} · ${esc(c.workplaceRef)}">wp:${esc(shortWorkplaceRef(c.workplaceRef))}</span>` : ''}
             ${c.t.generated_from_task_id ? `<a class="task-badge" href="/?task=${c.t.generated_from_task_id}">from #${c.t.generated_from_task_id}</a>` : ''}
             ${c.t.integration_state && c.t.integration_state !== 'not_required' ? `<span class="task-badge">${esc(c.t.integration_state)}</span>` : ''}
           </div>
@@ -1349,11 +1403,27 @@ export function createBoardRenderApi({
     worktree = meta && meta.worktree ? meta.worktree : null;
     try { tagsArr = JSON.parse(task.tags || '[]'); } catch {}
 
+    // CC-GAP-10 (rendering-only): durable author/reviewer projection identity
+    // of THIS task — read from tasks.workplace_ref + tasks.metadata.$.role,
+    // never guessed. A null role renders no role badge.
+    const { role: taskRole, workplaceRef } = taskProjectionIdentity(task);
+
     // один проход по БД: comments + subtasks + зависимости + обратные traces.
     const extra = withDb(db => {
-      let comments = [], subtasks = [], dependsOn = [], blocks = [], reverseTraces = [];
+      let comments = [], subtasks = [], dependsOn = [], blocks = [], reverseTraces = [], workplaceSiblings = [];
       try { comments = db.prepare('SELECT * FROM comments WHERE task_id=? ORDER BY created_at').all(taskId); } catch {}
       try { subtasks = db.prepare('SELECT * FROM subtasks WHERE task_id=? ORDER BY sort_order, id').all(taskId); } catch {}
+      // CC-GAP-10: read-only sibling lookup over the SAME durable workplace_ref.
+      // Author and reviewer projections of one Workplace are listed side by
+      // side with their roles — never merged, never deduplicated, never
+      // rewritten. The query cannot mutate anything (plain SELECT).
+      if (workplaceRef) {
+        try {
+          workplaceSiblings = db.prepare(
+            'SELECT id, title, status, workplace_ref, metadata FROM tasks WHERE workplace_ref=? ORDER BY id',
+          ).all(workplaceRef);
+        } catch { workplaceSiblings = []; }
+      }
       // task_dependencies(task_id, depends_on_task_id): task_id=N → «зависит от»,
       // depends_on_task_id=N → «блокирует».
       try {
@@ -1375,7 +1445,7 @@ export function createBoardRenderApi({
            WHERE t.target_type='task' AND t.target_id = ?
            ORDER BY t.link_type, a.code`).all(taskId);
       } catch {}
-      return { comments, subtasks, dependsOn, blocks, reverseTraces };
+      return { comments, subtasks, dependsOn, blocks, reverseTraces, workplaceSiblings };
     });
 
     const statusColor = (s) => s === 'done' ? '#3fb950'
@@ -1463,6 +1533,35 @@ export function createBoardRenderApi({
       tracesHtml = '<div class="muted small">нет связанных артефактов</div>';
     }
 
+    // CC-GAP-10 (rendering-only): workplace projection section. Lists THIS
+    // task and its sibling projections over the same durable workplace_ref,
+    // each with its own role badge. The durable rows are rendered as distinct
+    // projections — one row per task, exactly as persisted: no deduplication,
+    // no merge, no rewrite of the sealed graph.
+    let workplaceProjectionHtml = '';
+    if (workplaceRef) {
+      const projectionRows = extra.workplaceSiblings.map(s => {
+        const { role: siblingRole } = taskProjectionIdentity(s);
+        const self = String(s.id) === String(task.id);
+        return `<div class="tc-proj-row${self ? ' tc-proj-self' : ''}">
+          ${siblingRole
+            ? `<span class="task-badge role role-${siblingRole}" title="${esc(ROLE_PROJECTION_NOTE[siblingRole])}">${siblingRole}</span>`
+            : '<span class="task-badge role">role not recorded</span>'}
+          ${self
+            ? `<span class="tc-proj-title">#${s.id} ${esc(s.title)}</span> <span class="muted small">(this task)</span>`
+            : `<a class="tc-proj-title" href="/?task=${s.id}">#${s.id} ${esc(s.title)}</a>`}
+        </div>`;
+      }).join('');
+      workplaceProjectionHtml = `
+          <div class="tc-section">
+            <div class="tc-sec-title">Workplace projection</div>
+            <div class="tc-meta-row"><span class="wm-label">Workplace</span><span class="mono" title="${esc(workplaceRef)}">${esc(shortWorkplaceRef(workplaceRef))}</span></div>
+            ${taskRole ? `<div class="tc-meta-row"><span class="wm-label">Role</span><span class="task-badge role role-${taskRole}" title="${esc(ROLE_PROJECTION_NOTE[taskRole])}">${taskRole}</span></div>` : ''}
+            <div class="muted small tc-proj-note">Author and reviewer tasks over one Workplace are distinct roles of one production cell in one sealed graph. A reviewer projection is QC over the sealed author candidate — not duplicate implementation work.</div>
+            ${projectionRows}
+          </div>`;
+    }
+
     const header = `
       <div class="board-head">
         <a href="/?project=${task.project_id}" class="back">← ${esc(task.project_name)}</a>
@@ -1494,6 +1593,8 @@ export function createBoardRenderApi({
             <div class="tc-meta-grid">
               <div class="tc-meta-row"><span class="wm-label">Проект</span><a href="/?project=${task.project_id}" style="color:${projColor}">${esc(task.project_name)}</a></div>
               <div class="tc-meta-row"><span class="wm-label">Эпик</span><span>${esc(task.epic_name || '—')}</span></div>
+              ${taskRole ? `<div class="tc-meta-row"><span class="wm-label">Role</span><span class="task-badge role role-${taskRole}" title="${esc(ROLE_PROJECTION_NOTE[taskRole])}">${taskRole}</span></div>` : ''}
+              ${workplaceRef ? `<div class="tc-meta-row"><span class="wm-label">Workplace</span><span class="mono" title="${esc(workplaceRef)}">${esc(shortWorkplaceRef(workplaceRef))}</span></div>` : ''}
               <div class="tc-meta-row"><span class="wm-label">Создана</span><span>${esc((task.created_at||'').slice(0,16))}</span></div>
               <div class="tc-meta-row"><span class="wm-label">Обновлена</span><span>${esc((task.updated_at||'').slice(0,16))}</span></div>
               ${task.due_date ? `<div class="tc-meta-row"><span class="wm-label">Дедлайн</span><span>${esc(task.due_date)}</span></div>` : ''}
@@ -1502,6 +1603,7 @@ export function createBoardRenderApi({
               ${tagsArr.length ? `<div class="tc-meta-row"><span class="wm-label">Теги</span><span class="tc-tags">${tagsArr.map(t=>`<span class="tc-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
             </div>
           </div>
+          ${workplaceProjectionHtml}
           <div class="tc-section">
             <div class="tc-sec-title">Связанные артефакты</div>
             ${tracesHtml}
@@ -1600,6 +1702,18 @@ export function createBoardRenderApi({
       .task-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
       .task-badge{font-size:9px;padding:2px 5px;border-radius:8px;background:#21262d;color:#8b949e;border:1px solid #30363d}
       .task-badge.repo{color:#58a6ff}.task-badge.stage{color:#a371f7}.task-badge.kind{color:#3fb950}
+      /* CC-GAP-10: author/reviewer projection identity badges. Author is green
+         (production), reviewer is purple (QC) — the same palette as the kind
+         badge family. The wp badge is monospace: it is a durable identity. */
+      .task-badge.role-author{color:#3fb950;border-color:#238636}
+      .task-badge.role-reviewer{color:#a371f7;border-color:#6e40c9}
+      .task-badge.wp{color:#d29922;font-family:ui-monospace,Consolas,monospace}
+      .tc-proj-note{margin-top:6px;line-height:1.45}
+      .tc-proj-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px}
+      .tc-proj-row .tc-proj-title{color:#e6edf3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .tc-proj-row a.tc-proj-title:hover{color:#58a6ff;text-decoration:underline}
+      .tc-proj-self .tc-proj-title{font-weight:600}
+      .mono{font-family:ui-monospace,Consolas,monospace}
       .filter-bar select{background:#21262d;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:4px 7px;font-size:11px}
 
       /* фильтр-бар */
