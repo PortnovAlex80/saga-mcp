@@ -299,17 +299,24 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     requiredCorpus: corpus('factory.authorized-observer'),
     allowedTerminalKinds: ['repair_required', 'failed'],
   }),
+  // v1.11.0 (2026-08-22, CC-GAP-9 / ADR-089 follow-up): the runnability
+  // provider's identity bumped 1.10.0 → 1.11.0 (bounded in-check substrate
+  // retry; typed unknown `warrant-blocked-environment` on exhaustion; unknown
+  // receipts never replayed, never poison a later pass). The obligation pin
+  // moves in the SAME change — a deliberate provider migration must update
+  // the norm and the manifest together or the compiler fires
+  // PROTECTION_VERSION_DIVERGENCE.
   Object.freeze({
     obligationId: 'factory.local-runnability',
-    version: '1.10.0',
-    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification'],
+    version: '1.11.0',
+    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-089 substrate retry'],
     subjectKind: 'local-runnability-receipt',
-    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe.',
+    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict.',
     constraints: [
       { kind: 'digestOf', field: 'subjectCandidateSetRef', of: 'sealed integrated candidate' },
       { kind: 'equality', field: 'probeOutcome', value: 'passed' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.10.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.11.0' },
     faultClasses: ['derived-evidence', 'effect-external'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),

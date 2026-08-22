@@ -59,24 +59,56 @@ const PROBE_ATTEMPT_TIMEOUT_MS = 600;
 /**
  * Process-level docker availability cache. Probing `docker info` on every
  * command would be wasteful; the daemon state does not change within one
- * readiness check attempt. Reset between CC-GAP-9 in-check substrate retry
- * attempts (each retry must genuinely re-probe, never replay a cached miss)
- * and by process restart.
+ * readiness check attempt. Invalidated by the provider at the START of every
+ * readiness check (CC-GAP-9 follow-up: the FIRST attempt must genuinely
+ * re-probe too — a stale positive left by a previous check in the same engine
+ * process would mask a down daemon as LOCAL_RUNNABILITY_DOCKER_PULL_FAILED,
+ * recreating the Elite-6 failed-for-a-machine-fault shape, and a stale
+ * negative would be replayed as attempt-1 evidence without any probe), again
+ * between CC-GAP-9 in-check substrate retry attempts, and by process restart.
  */
 let dockerAvailabilityCache: { available: boolean; linux: boolean } | null = null;
 
 /**
  * Invalidate the process-level docker availability cache. Called by the
- * provider's bounded in-check substrate retry between attempts (CC-GAP-9 /
- * ADR-089) and by tests that need a fresh probe.
+ * provider at the start of every readiness check and by its bounded in-check
+ * substrate retry between attempts (CC-GAP-9 / ADR-089), and by tests that
+ * need a fresh probe.
  */
 export function resetDockerAvailabilityCache(): void {
   dockerAvailabilityCache = null;
 }
 
 /**
+ * Exported for tests: read the cached availability WITHOUT probing. `null`
+ * means no cached observation — the next availability check must genuinely
+ * probe the daemon. Used by the CC-GAP-9 regression proofs to observe that
+ * the provider invalidates the cache before the FIRST attempt of every
+ * check, not only between retry attempts.
+ */
+export function peekDockerAvailabilityCacheForTests(): { available: boolean; linux: boolean } | null {
+  return dockerAvailabilityCache;
+}
+
+/**
+ * Exported for tests: seed the process-level availability cache with an
+ * observed result, simulating a STALE entry left by a previous readiness
+ * check in the same process. The provider must invalidate it at the start of
+ * the next check (see resetDockerAvailabilityCache); the regression proofs
+ * seed a stale positive over a genuinely down daemon to prove the Elite-6
+ * poisoning shape cannot recur through the cached-first-attempt path.
+ */
+export function seedDockerAvailabilityCacheForTests(
+  observed: { available: boolean; linux: boolean } | null,
+): void {
+  dockerAvailabilityCache = observed;
+}
+
+/**
  * Probe whether the docker daemon is reachable and running a linux runtime.
- * Cached for the process lifetime. Returns { available: false } when the daemon
+ * Memoized per readiness-check attempt (invalidated at the start of every
+ * check and between in-check substrate retry attempts — see
+ * resetDockerAvailabilityCache). Returns { available: false } when the daemon
  * is down, unreachable, or the CLI is absent. Returns { available: true, linux:
  * false } when the daemon is up but the OSType is not linux (e.g. a Windows
  * container runtime) — the executor refuses non-linux because PORT/HOST/CI env

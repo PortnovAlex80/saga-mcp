@@ -931,14 +931,20 @@ function runLocalReadiness(
     // exactly the two frozen codes in substrate-retry.ts) is retried inside
     // the check: a frozen attempt bound and schedule, no model, no
     // WorkerExecution, no CandidateSet, no repair epoch, no worker repair
-    // budget consumed. Each retry genuinely re-probes (the docker
-    // availability cache is invalidated between attempts). On exhaustion the
+    // budget consumed. Each attempt genuinely re-probes the precondition:
+    // the process-level docker availability cache is invalidated BEFORE the
+    // first attempt (a stale entry left by a previous check in the same
+    // engine process would either mask a down daemon as a non-precondition
+    // pull failure — 'failed', the exact Elite-6 machine-fault-as-product-
+    // verdict shape — or replay a cached miss as attempt-1 evidence) and
+    // again between attempts (betweenAttempts below). On exhaustion the
     // check emits the typed unknown `warrant-blocked-environment` outcome —
     // never 'failed' (the product was never exercised), never 'error'
     // (which the gate would retry forever). Non-precondition failures
     // (command failures, pull failures, product failures) propagate
     // unchanged and keep their 'failed' + typed seam repair-issue semantics
     // in the catch below.
+    resetDockerAvailabilityCache();
     const substrate = runBoundedSubstrateRetry({
       attempt: () => {
         const attemptExecutor = substrateOptions.selectExecutor(directory, profile);

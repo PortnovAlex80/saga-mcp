@@ -170,7 +170,12 @@ function sleepSyncBounded(ms: number): void {
  *
  * `betweenAttempts` runs BEFORE each re-probe so the caller can invalidate
  * stale substrate observations (the docker availability cache) — each retry
- * must genuinely re-probe the precondition, never replay a cached miss.
+ * must genuinely re-probe the precondition, never replay a cached miss. The
+ * CALLER likewise invalidates the observation cache before the FIRST attempt
+ * (runLocalReadiness does): a fresh check must never begin from a stale
+ * process-level observation left by an earlier check — a stale positive can
+ * mask a missing precondition as a non-precondition failure (the Elite-6
+ * poisoning shape, one code over) and a stale negative is cached-miss replay.
  * `sleep` is injectable ONLY as a test seam; production uses the real
  * bounded sleep. The policy itself (bound + schedule) is not injectable.
  */

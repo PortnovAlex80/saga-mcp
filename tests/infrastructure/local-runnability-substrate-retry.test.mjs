@@ -48,6 +48,12 @@ import {
 import { createDevelopmentReadinessMonotonicityCheckProvider } from '../../dist/modules/development/application/development-check-providers.js';
 import { createGitPort } from '../../dist/infrastructure/process-modules/git-machine-ports.js';
 import { ReadinessExecutionError } from '../../dist/infrastructure/verification/readiness-executor.js';
+import {
+  isDockerAvailableForReadiness,
+  peekDockerAvailabilityCacheForTests,
+  resetDockerAvailabilityCache,
+  seedDockerAvailabilityCacheForTests,
+} from '../../dist/infrastructure/verification/docker-readiness-executor.js';
 import { developmentProcessModule } from '../../dist/process-modules/modules/development/development-process-module.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import {
@@ -449,6 +455,116 @@ test('provider: genuine non-precondition failures stay product-`failed` with the
     assert.ok(result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
       'genuine failures keep their typed seam repair issue');
   } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CC-GAP-9 follow-up — the residual cache hole (start-of-check invalidation).
+//
+// The retry loop already invalidated the docker availability cache BETWEEN
+// attempts, but the FIRST attempt of every check reused the process-lifetime
+// cache: a stale POSITIVE left by a previous check in the same engine process
+// masked a down daemon (the precondition probe "passed", the subsequent pull
+// failed) → LOCAL_RUNNABILITY_DOCKER_PULL_FAILED → 'failed' + upstream →
+// complete-failed — the exact Elite-6 machine-fault-as-product-verdict shape,
+// one diagnostic code over, with NO retry at all. A stale NEGATIVE was
+// replayed as attempt-1 evidence without any genuine probe.
+// ---------------------------------------------------------------------------
+
+test('follow-up: the check invalidates the availability cache BEFORE the first attempt — no attempt ever observes a stale process-level entry', { timeout: 60_000 }, async () => {
+  const root = fixtureRepo();
+  const db = substrateStore(root);
+  const { manifestDigest, submissionId } = insertDockerManifest(db);
+  const candidateSets = manifestCandidateSets({ submissionId, manifestDigest });
+  try {
+    // A previous check in this process observed docker UP; that observation
+    // is now stale. Without the start-of-check invalidation every prepare
+    // below would observe the seeded entry instead of null.
+    seedDockerAvailabilityCacheForTests({ available: true, linux: true });
+    const cacheObservedAtPrepare = [];
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets,
+      executorSelector: () => ({
+        prepare() {
+          cacheObservedAtPrepare.push(peekDockerAvailabilityCacheForTests());
+          throw new ReadinessExecutionError(
+            'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE', 'stale-cache ordering proof',
+          );
+        },
+        runCommand() { throw new Error('unreachable'); },
+        runServed() { throw new Error('unreachable'); },
+        describe() { return { substrate: 'docker', image: 'node:20-alpine' }; },
+        dispose() {},
+      }),
+      substrateRetrySleep: () => {},
+    });
+    const result = await provider.run(RUN_ARGS(candidateSets.subjectRef));
+    assert.equal(result.outcome, 'unknown');
+    assert.equal(cacheObservedAtPrepare.length, SUBSTRATE_RETRY_POLICY.maxAttempts);
+    // THE follow-up invariant: EVERY attempt — the first included — starts
+    // from a genuinely empty observation (null), never a stale cached entry.
+    assert.deepEqual(
+      cacheObservedAtPrepare,
+      Array.from({ length: SUBSTRATE_RETRY_POLICY.maxAttempts }, () => null),
+      'attempt 1 must genuinely re-probe: the stale process-level availability'
+        + ' entry is invalidated at the start of every check, not only between retries',
+    );
+    // And nothing re-populated the cache behind the fake executors' backs.
+    assert.equal(peekDockerAvailabilityCacheForTests(), null);
+  } finally {
+    resetDockerAvailabilityCache();
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('follow-up BLOCKING: a stale POSITIVE cache over a genuinely down daemon never becomes a product failure (no Elite-6 poisoning through the pull path)', {
+  timeout: 60_000,
+  skip: isDockerAvailableForReadiness()
+    ? 'docker daemon is available — the stale-positive proof needs the daemon genuinely down'
+    : false,
+}, async () => {
+  const root = fixtureRepo();
+  const db = substrateStore(root);
+  const { manifestDigest, submissionId } = insertDockerManifest(db);
+  const candidateSets = manifestCandidateSets({ submissionId, manifestDigest });
+  try {
+    // A previous check in this engine process observed docker UP; the daemon
+    // has since gone down. Without the start-of-check invalidation the
+    // precondition probe trusts the stale cache, the pull then fails against
+    // the dead daemon, and the check records LOCAL_RUNNABILITY_DOCKER_
+    // PULL_FAILED → 'failed' (upstream → complete-failed) with zero retries.
+    seedDockerAvailabilityCacheForTests({ available: true, linux: true });
+    // The REAL production executor selector (no injection): the profile
+    // declares environment.image, so DockerReadinessExecutor.prepare is the
+    // genuine probe path.
+    const provider = createLocalRunnabilityCheckProvider({
+      db,
+      candidateSets,
+      substrateRetrySleep: () => {},
+    });
+    const result = await provider.run(RUN_ARGS(candidateSets.subjectRef));
+
+    assert.equal(result.outcome, 'unknown',
+      'a stale positive cache must not mask the missing precondition as a product failure');
+    const diagnostics = decodeDiagnostics(result);
+    assert.ok(diagnostics.some(diag => diag.code === SUBSTRATE_PRECONDITION_DIAGNOSTIC),
+      'the typed unknown carries the warrant-blocked-environment diagnostic');
+    assert.ok(!diagnostics.some(diag => diag.code === 'LOCAL_RUNNABILITY_DOCKER_PULL_FAILED'),
+      'the down daemon must surface as the retried DOCKER_UNAVAILABLE precondition,'
+        + ' never as the non-retried pull failure (the Elite-6 shape one code over)');
+    assert.ok(!result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
+      'a substrate precondition is not a product defect — no seam repair issue');
+
+    // The stale positive was replaced by GENUINE probe observations: the
+    // daemon is down, so the post-check cache holds the honest result of the
+    // last real probe, not the seeded lie.
+    assert.deepEqual(peekDockerAvailabilityCacheForTests(), { available: false, linux: false });
+  } finally {
+    resetDockerAvailabilityCache();
     db.close();
     rmSync(root, { recursive: true, force: true });
   }
