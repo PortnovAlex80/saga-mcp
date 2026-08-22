@@ -3,7 +3,8 @@
 - Status: Ready for autonomous execution in isolated worktrees
 - Date: 2026-08-22
 - Historical draft base: `saga4@53cf7c81`
-- Runtime base: capture the current `origin/saga4` SHA when CC-00 starts
+- Runtime base: `origin/saga4` @ `6ddcb107` (recorded in
+  `docs/factory-run/conformance-closure/CC-00-BASELINE.md`)
 - Scope end: full Saga Kernel Conformance Engine closure and an explicit,
   evidence-backed handoff to the structural plans
 
@@ -62,6 +63,14 @@ parallel implementation tracks.
 These facts are anchored to the historical draft base. CC-00 must refresh them
 against its recorded runtime base.
 
+CC-00 refreshed them at `6ddcb107`; see `CC-00-BASELINE.md` and
+`CC-00-baseline-ledger.json`.
+
+- [x] CC-00 recorded `CC-GAP-1`: a deterministic red baseline of six
+  Development convergence acceptance/gate/repair E2E failures, bisected to
+  the `303a482a` merge window. A dedicated CC-GAP-1 package owns
+  adjudication; pre-cutover full-suite green and CC-82 require its closure.
+
 - [x] `captureGitRecipe` cell identity was fixed by `1a6fc2a5`: accepted
   same-task predecessor material is not foreign merely because it came from a
   different WorkerExecution.
@@ -108,15 +117,15 @@ against its recorded runtime base.
 
 | Stage | Current status | Required correction |
 |---|---|---|
-| K0 | Partial evidence | Re-audit every exit item, clean-checkout reproduction, live trace baseline, and legacy-to-obligation mapping |
+| K0 | Partial evidence | Re-audit every exit item, clean-checkout reproduction, live trace baseline, and legacy-to-obligation mapping; CC-00B terminal-integrity closure required (no open CC-GAP-2..5); CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | K1 | Partial evidence | Remove special-drive bypasses and prove the truthful canonical entrypoint claim |
-| K2 | Strict Formalization evidence exists | Add the gate-required strict full-lifecycle happy proof and re-audit strict repair evidence |
+| K2 | Strict Formalization evidence exists | Add the gate-required strict full-lifecycle happy proof and re-audit strict repair evidence; CC-00B terminal-integrity closure required (no open CC-GAP-2..5); CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | K3 | Compiler and mutation algebra exist | Add required-mutant closure, harvest aggregation, reporting, and blocking floors |
-| K4 | DSL, observer, runner, progress, and bundles exist | Add named fault scheduling, fault receipts, and deterministic minimization |
-| K5 | Provisional blocking group exists | Add 12 files, exact bidirectional claim closure, K3/K4 ratchets, budgets, and non-vacuity |
+| K4 | DSL, observer, runner, progress, and bundles exist | Add named fault scheduling, fault receipts, and deterministic minimization; CC-00B terminal-integrity closure required (no open CC-GAP-2..5); CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
+| K5 | Provisional blocking group exists | Add 12 files, exact bidirectional claim closure, K3/K4 ratchets, budgets, and non-vacuity; CC-00B terminal-integrity closure required (no open CC-GAP-2..5); CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | K6 | W1-1 and W1-4 are CanonicalFast only | Requalify W1-1/W1-4 through canonical spawn and add W1-2/W1-3 |
 | K7 | Not implemented | Add bounded explorer and deterministic promoted replay |
-| K8 | Four workshop packs use one kernel | Add post-catalog synthetic workshop, binding parity, L5 proofs, budgets, and canaries |
+| K8 | Four workshop packs use one kernel | Add post-catalog synthetic workshop, binding parity, L5 proofs, budgets, and canaries; CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | S | Not implemented | Add finite satisfiability before claiming full master-plan closure |
 
 No `[x]` above is an exit gate. It records observed evidence only.
@@ -157,6 +166,100 @@ No `[x]` above is an exit gate. It records observed evidence only.
   wave; it is not repaired forward inside an unrelated package.
 - [ ] Record exact commands, exit codes, test counts, wall time, candidate SHA,
   and evidence digests for every package.
+- [ ] Obey the terminal-integrity guardrail (section 3.1) and the
+      product-claim integrity guardrail (section 3.2) in every package and
+      every status surface.
+
+### 3.1 Terminal-integrity guardrail (normative)
+
+These five facts are independent and must never be collapsed into one status:
+
+1. operational completion — engine exit code, launch `completed`, clean
+   process termination;
+2. lifecycle terminal outcome — `terminal_status`;
+3. stage/process local outcome — `local_outcome`, `processOutcome.code`;
+4. final gate verdict — for example the final development-readiness gate;
+5. product success.
+
+Exit 0, a completed launch, or lifecycle `status=completed` never proves
+product success. Every status surface — journal events, tracker, launch
+projection, reports — must expose operational and product outcomes as separate
+fields. A failed final gate verdict must never be presented as product
+success. A run configured with `delivery.mode=deferred` ends at Development by
+design; that early end must be labeled explicitly and misclassified as
+neither product failure nor Delivery success. A terminal run leaves zero
+`running` WorkerExecutions and at most one effective terminal journal event per
+terminalized scope: the durable terminal claim is the authority, the journal
+projection is honestly 0..1 under append failure, and exactly one is never
+guaranteed. This guardrail is enforced by CC-00B and wired into K0, K2, K4, K5,
+CC-81, and CC-82: with any CC-GAP-2..5 open, those gates cannot pass and
+`QUALIFICATION_GREEN` cannot be emitted.
+
+### 3.2 Product-claim integrity guardrail (normative)
+
+These five facts are independent and must never be collapsed into one status:
+
+1. ordered deliverable claim — what the product must be and how it must run
+   (for example: install plus start leading to an accessible running
+   browser-product);
+2. semantic claim-to-work coverage — which accepted criteria are covered by
+   which planned items and scopes, and which item explicitly owns
+   whole-product synthesis;
+3. verification accounting — which required verification obligations were
+   proposed, deferred as pending, or actually executed, and through which
+   oracle;
+4. substrate versus product outcome — infrastructure availability (for
+   example Docker) is not a product verdict;
+5. product success.
+
+Deliverable-claim classification authority originates in Discovery and
+Formalization, never in the Development planner: Discovery counts the
+order's requirements as the versioned Order Constraint Register
+(`factory.order-constraint-register.v1`; stable `ord-c-NNN` ids; classes
+`execution|material|human`), Formalization owns AC-to-constraint coverage
+(`coveredConstraintIds` on frozen criteria and SRS sections, plus SRS §2.2
+module-manifest scope coverage) and cites the register as the
+`VerificationWarrantRef`, and the planner and readiness certifier only
+inherit and execute that frozen classification. A nominal
+criterion-to-item attachment is not coverage, and the exit criterion is
+mechanical: for a non-empty register, register ids minus the union of
+`coveredConstraintIds` minus typed waivers equals the empty set (the
+AC-drift network-2 reverse diff), every §2.2 manifest-declared file lies
+inside some item's frozen change scopes, and a buildable/integrator
+criterion with no item owning whole-product synthesis
+(bootstrap/static-page/serving integration or a declared equivalent) fails
+planning admission with a typed reason. Legacy corpora are versioned and
+grandfathered monotonically: proposals without `order_constraints`,
+criteria without `coveredConstraintIds`, and SRS documents without a §2.2
+manifest build no register, produce an empty diff or a typed legacy skip,
+and keep existing gates green — enforcement binds new registers and never
+rewrites frozen evidence. A generic loopback health oracle cannot discharge
+a browser-product claim; the end-to-end oracle is warrant execution over
+the `VerificationWarrantRef` through package-level, workshop-declared
+oracle adapters, with no universal engine or test-engine branch on
+workshop name, `moduleRef`, or role profession. Three outcomes stay
+distinct and are never collapsed: product-failed (a check ran against the
+product and failed), oracle-insufficient (the declared oracle cannot prove
+the claim — an outstanding obligation, never a pass and never a product
+verdict), and substrate-unavailable (a missing environment precondition,
+routed to deterministic repair or `human_required` continuation with a
+repair round — the `warrant-blocked-environment` semantics — never directly
+to terminal product failure). CC-GAP-9 outcome/routing lands before
+CC-GAP-7 warrant execution so warrant phases can never re-flatten a
+substrate failure into product failure. Verification obligations deferred
+by a readiness failure remain first-class pending entries, are never
+rendered discharged, and must execute after readiness recovery. Author and
+reviewer projections of the same Workplace refs must stay distinguishable
+in status surfaces; reviewer projections are not duplicate implementation
+work. Elite-6 root-cause wording: AC-22 existed and was only nominally
+attached — the defect is missing whole-product synthesis ownership and
+missing mechanical classification enforcement upstream of the planner, not
+a missing criterion — and tasks 15-25/26-36 were author and reviewer
+projections of the same 11 Workplace refs, not duplicate implementations.
+
+This guardrail is enforced by CC-00C and wired into K0, K2, K4, K5, K8,
+CC-80, CC-81, and CC-82: with any CC-GAP-6..10 open, those gates cannot pass
+and `QUALIFICATION_GREEN` cannot be emitted.
 
 ---
 
@@ -224,12 +327,17 @@ Only one integration owner at a time may edit a row in this table.
 | Coverage and report | `coverage-kernel.mjs`, `factory-coverage-universe.mjs`, `conformance-engine.mjs`, report generators |
 | Development pack | `development-scenario-pack.mjs`, its runtime-case switch, Development drive and inventory |
 | Delivery pack | `delivery-scenario-pack.mjs`, Delivery drive, Delivery restart wiring |
+| Constraint register and warrant seam | `src/shared/constraint-register.ts`, `formalization-contract-analysis.ts` and SRS validators, `development-schemas.ts` (`VerificationWarrantRef`), readiness warrant phases in `local-runnability-check-provider.ts` |
 | Structural comparator | normalized trace schema, differential command, semantic ignore list |
 
 - [ ] Parallelize read-only audits, fixtures, actor programs, external-world
   journals, and independent mutant-family specifications.
 - [ ] Serialize edits to the execution kernel, report schema, acceptance
   matrix, trace vocabulary, and monolithic workshop packs.
+- [ ] Serialize CC-GAP-9 substrate outcome/routing edits (execution-kernel
+  owner) before CC-GAP-7 warrant-execution edits (verification owner); both
+  touch the readiness provider seam, and warrant phases must never meet a
+  substrate failure without the typed outcome and routing already in place.
 - [ ] Never merge competing versions of a shared contract.
 
 ---
@@ -237,7 +345,7 @@ Only one integration owner at a time may edit a row in this table.
 ## 5. Critical path
 
 ```text
-CC-00 -> CC-10A
+CC-00 -> CC-00B -> CC-00C -> CC-10A
 
 CC-10A -> CC-20 -> CC-21
 CC-10A -> CC-30 -> CC-31 -> CC-32
@@ -254,7 +362,7 @@ CC-10B + CC-22 + CC-24 + CC-32 + CC-44 -> CC-60 -> CC-61/CC-62/CC-63
 CC-32 + CC-42 -> CC-70
 CC-32 + CC-44 -> CC-72
 
-CC-00 + CC-10B + CC-23 + CC-32 + CC-44 + CC-60 -> CC-80 -> CC-81 -> CC-82
+CC-00 + CC-00C + CC-10B + CC-23 + CC-32 + CC-44 + CC-60 -> CC-80 -> CC-81 -> CC-82
 
 CC-50..54 + CC-61..63 + CC-70 + CC-72 + CC-82
   -> STRUCTURAL_IMPLEMENTATION_AUTHORIZED
@@ -266,12 +374,26 @@ K3 and K4 do not land as parallel merge waves because they share report,
 evidence, and runner surfaces. Read-only K4 design may begin earlier; K4
 implementation consumes frozen K3 identities from CC-32.
 
+CC-00B sits on the critical path between CC-00 and CC-00C. Existing CC-10A
+code may land and remain after CC-00, but the CC-10A exit checklist and the
+deferred heavy validation it owns (the deferred CC-00 harvest regeneration and
+the CC-10A fresh-environment runs) cannot close before CC-00B and CC-00C
+exit. With any CC-GAP-2..5 open, K0/K2/K4/K5 evidence is incomplete, CC-81
+stays RED, and CC-82 cannot emit `QUALIFICATION_GREEN`.
+
+CC-00C sits on the critical path between CC-00B and CC-10A. With any
+CC-GAP-6..10 open, K0/K2/K4/K5/K8 evidence is incomplete, CC-80 cannot
+compose a complete qualification command, CC-81 stays RED, and CC-82 cannot
+emit `QUALIFICATION_GREEN`.
+
 ---
 
 ## 6. Milestone A packages - K0 through K5
 
 ### CC-00 - Immutable baseline and gate ledger
 
+- Status: COMPLETE 2026-08-22 except deferred harvest regeneration (operator
+  quiet-machine directive; released by CC-00B/CC-10A).
 - Owner role: integration owner
 - Depends on: none
 - Non-goals: production fixes, evidence cleanup, structural edits
@@ -303,10 +425,299 @@ Exit checklist:
 - [ ] Any red baseline is classified and reproduced before implementation; no
   package hides it.
 
+### CC-00B - Elite-6 terminal-integrity closure
+
+- Status: EXECUTING 2026-08-22. CC-GAP-2, CC-GAP-4, and CC-GAP-5 are accepted
+  and integrated on `cc/CC-00B-terminal-integrity-integration` through
+  `97dbc635`; CC-GAP-3 remains under implementation/review. The CC-00B exit
+  gate has not passed and nothing is merged to `saga4`.
+- Owner role: integration owner; gap owners named below
+- Depends on: CC-00
+- Non-goals: reopening or replaying the terminal Elite-6 run, hand-editing
+  generated evidence or durable state, classifying the clean engine
+  termination as a crash or engine death, production scope widening beyond
+  the four named gaps
+- Incident record:
+  `docs/factory-run/conformance-closure/CC-00B-ELITE6-TERMINAL-INTEGRITY.md`
+  — a clean operational engine termination (exit 0 at 2026-08-22T14:19:30Z)
+  with a failed product outcome and terminal-projection defects. The record
+  documents; the runtime is not fixed by it.
+
+Stable gaps and owners:
+
+- CC-GAP-2 terminal projection false-green — trace/evidence owner.
+- CC-GAP-3 stale `running` WorkerExecution / missing `worker.exit` —
+  execution-kernel owner.
+- CC-GAP-4 duplicate `run.terminal` event — trace/evidence owner.
+- CC-GAP-5 external watchdog CLI drift — integration owner.
+
+Checklist:
+
+- [ ] Freeze the Elite-6 terminal evidence copy-only: both `run.terminal`
+  journal events, lifecycle/stage/process rows with `terminal_status`,
+  `local_outcome`, and `processOutcome.code`, the final development-readiness
+  gate verdict and its `factory.local-runnability.v1` cause, the task 37
+  WorkerExecution row, and the watchdog startup failure record. Record paths
+  and digests; preserve the frozen sources immutable.
+- [ ] Preserve the terminal Elite-6 run state exactly as terminalized:
+  copy-only capture, no replay, restart, status rewrite, event deletion, or
+  in-place deduplication.
+- [x] CC-GAP-2: make journal `run.terminal` payloads and the tracker/launch
+  projections carry `terminal_status`, stage/process local outcome, and the
+  final gate verdict alongside operational completion, so a failed product
+  outcome cannot render as bare `completed`.
+- [ ] CC-GAP-3: terminalize the exact WorkerExecution when `worker_done` is
+  accepted and the OS pid is dead, emitting `worker.exit`; align with the
+  normative synchronization edge "OS worker exits -> terminalize the exact
+  WorkerExecution".
+- [x] CC-GAP-4: make terminal-event emission idempotent and unique per
+  terminalized scope; duplicate emission must be impossible or collapse to
+  one effective event. The durable terminal claim is the authority; a
+  zero-event journal after a failed append is an honest projection, never a
+  defect.
+- [x] CC-GAP-5: correct the external watchdog launch flags (`--interval-seconds`,
+  not `--interval`) and keep the built-in tracker supervisor explicitly
+  classified in coverage records.
+- [ ] Add blocking regression proofs, one per gap: failed final gate cannot
+  present product success (CC-GAP-2); terminal run leaves zero `running`
+  WorkerExecutions (CC-GAP-3); no more than one effective terminal event per
+  terminalized scope, with an honest zero-event projection under append
+  failure (CC-GAP-4); watchdog starts against the real CLI (CC-GAP-5).
+- [ ] Label `delivery.mode=deferred` as the expected early end in every
+  status surface; it is neither product failure nor Delivery success.
+- [ ] Release the deferred CC-00 harvest regeneration and the deferred CC-10A
+  heavy validation runs only after every CC-GAP-2..5 exit criterion passes.
+
+Exit checklist:
+
+- [ ] Status surfaces expose operational and product outcomes as separate
+  fields; no surface renders operational completion as product success.
+- [ ] A failed final gate verdict cannot present product success anywhere;
+  the CC-GAP-2 blocking regression proof is green.
+- [ ] The terminal run leaves zero `running` WorkerExecutions and no more than
+  one effective terminal event per terminalized scope, with an honest
+  zero-event projection under append failure; the CC-GAP-3 and CC-GAP-4
+  blocking regression proofs are green.
+- [ ] The external watchdog launch is smoke-tested against the real CLI and
+  starts; supervisor coverage is recorded with the CC-GAP-5 proof green.
+- [ ] Delivery `deferred` is explicitly labeled and not misclassified.
+- [ ] Elite-6 terminal evidence is frozen copy-only with recorded paths and
+  digests; frozen sources are untouched.
+- [ ] The deferred CC-00 harvest and CC-10A runs are released and their
+  results recorded.
+
+Gate wiring: K0, K2, K4, and K5 exit evidence is incomplete while any
+CC-GAP-2..5 is open. CC-81 must record those gaps and stay RED, and CC-82
+must not emit `QUALIFICATION_GREEN`, until this exit checklist is fully
+green.
+
+### CC-00C - Elite-6 product-claim integrity closure
+
+- Status: incident record landed 2026-08-22; CC-GAP-6..10 open; runtime not
+  fixed.
+- Owner role: integration owner; gap owners named below
+- Depends on: CC-00B
+- Internal serialization: CC-GAP-9 substrate outcome/routing lands before
+  CC-GAP-7 warrant execution — warrant phases must never meet a substrate
+  failure without the typed outcome and routing already in place.
+- Objective (SMART): by CC-00C exit, every non-empty versioned Order
+  Constraint Register from a new Factory Start is mechanically closed —
+  register ids minus union(coveredConstraintIds) minus typed waivers is
+  empty, SRS §2.2 module-manifest scope coverage holds, and warrant
+  execution over `VerificationWarrantRef` routes substrate failures to
+  repair or `human_required`, deferred verification obligations remain
+  first-class pending entries until executed after readiness recovery, and
+  author/reviewer role projections are distinguishable in status surfaces
+  (Specific); measured by the per-gap blocking
+  regression proofs and mutations, never by prose (Measurable); achieved by
+  finishing the landed AC-drift networks 1-2 and the existing
+  `VerificationWarrantRef` seam, adding only network-3 warrant phases and
+  substrate routing (Achievable); it closes CC-GAP-6..10 by reuse, with no
+  parallel deliverable-claim vocabulary (Relevant); bounded by the CC-00C
+  exit checklist before CC-10A heavy validation is released (Time-bound).
+- Non-goals: reopening or replaying the terminal Elite-6 run; building the
+  missing browser frontend inside this package; hardcoding browser, canvas,
+  or any frontend specifics into universal engine or test-engine files;
+  reclassifying the missing frontend as the observed readiness failure;
+  weakening, renaming, or re-scoping acceptance criteria (including AC-22) to
+  close gaps; inventing parallel deliverable-claim vocabulary (new claim
+  descriptors, new coverage receipts, or a second oracle registry beside the
+  existing Order Constraint Register, `coveredConstraintIds`, SRS §2.2
+  module-manifest coverage, and `VerificationWarrantRef` seam)
+- Incident record:
+  `docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md`
+  — the Elite-6 experiment is complete and immutable and product
+  qualification failed; the observed readiness failure was substrate
+  unavailability (`LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE`, before
+  install/test/serve), and the missing browser frontend is a separately
+  proven latent product defect. The record documents; the runtime is not
+  fixed by it.
+
+Stable gaps and owners:
+
+- CC-GAP-6 semantic claim-to-work coverage — planning owner (execution);
+  classification authority originates in Discovery/Formalization. Reuse and
+  finish the existing vocabulary — the versioned Order Constraint Register,
+  the `coveredConstraintIds` relay, and SRS §2.2 module-manifest scope
+  coverage — never a parallel deliverable-claim vocabulary. A
+  buildable/integrator acceptance criterion cannot be discharged by nominal
+  attachment to a semantically insufficient item; whole-product synthesis
+  (install -> start -> accessible running product) requires explicit
+  ownership by a bootstrap/static-page/serving integration item or a declared
+  equivalent, or planning fails closed with a typed reason. Mechanical exit
+  criterion: for a non-empty register, register ids minus
+  union(coveredConstraintIds) minus typed waivers equals the empty set, and
+  every §2.2 manifest-declared file lies inside some frozen item change
+  scope. Legacy corpora are versioned and grandfathered: no register, no
+  `coveredConstraintIds`, or no §2.2 section is an empty diff or a typed
+  legacy skip, never a red gate; frozen evidence is never rewritten.
+- CC-GAP-7 deliverable-aware end-to-end oracle — verification owner; lands
+  after CC-GAP-9 outcome/routing. Finish AC-drift network 3 on the existing
+  seam: the readiness provider executes warrant phases over the
+  `VerificationWarrantRef` (register + dispositions, digest-pinned) through
+  package-level, workshop-declared oracle adapters — no new oracle, no
+  re-reading of order prose; the certifier diffs its phases against the
+  frozen register. A browser-product claim requires
+  page/static/canvas/browser-smoke evidence; a generic loopback health
+  oracle yields oracle-insufficient — never a pass and never a
+  product-failed verdict.
+- CC-GAP-8 verification reachability/accounting — coverage/report owner.
+  Proposed required verification obligations may be deferred but must remain
+  first-class pending entries, never appear discharged, and must
+  execute after readiness recovery.
+- CC-GAP-9 substrate failure classification/recovery — execution-kernel
+  owner; lands before CC-GAP-7 warrant execution. Implement the typed
+  `warrant-blocked-environment` outcome (AC-drift network 3) preserving
+  product-failed vs oracle-insufficient vs substrate-unavailable;
+  infrastructure unavailable (for example Docker unavailable) is distinct
+  from product failure and must route to deterministic repair or
+  `human_required` continuation — including an actual repair round for the
+  seam repair issue — not directly to terminal product failure. Legacy
+  records are grandfathered, never reclassified.
+- CC-GAP-10 role projection clarity — trace/evidence owner. Author and
+  reviewer projections of the same Workplace refs must be distinguishable in
+  status UI; reviewer projections (Elite-6 tasks 26-36) were not duplicate
+  implementation work and not graph rematerialization.
+
+Checklist:
+
+- [ ] Freeze the Elite-6 product-claim evidence copy-only: the formalized
+  acceptance-criteria set including AC-22, the planner task graph (tasks
+  15-25 implementation projections and tasks 26-36 reviewer projections over
+  the same 11 Workplace refs; one sealed graph; 11 integration commits), the
+  22 proposed verificationItems, the readiness manifest declaring
+  node:20-alpine Docker, and the `LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE`
+  failure record. Record paths and digests; preserve the frozen sources
+  immutable.
+- [ ] CC-GAP-6: finish semantic claim-to-work coverage on the existing
+  vocabulary, inventing no parallel deliverable-claim terms: classification
+  authority originates in Discovery/Formalization — the versioned Order
+  Constraint Register plus `coveredConstraintIds` coverage plus SRS §2.2
+  module-manifest scope coverage — and the planner only inherits the frozen
+  classification and fails closed. Mechanical exit criterion: for a
+  non-empty register, register ids minus union(coveredConstraintIds) minus
+  typed waivers equals the empty set, and every §2.2 manifest-declared file
+  lies inside some frozen item change scope; a buildable/integrator
+  criterion with no whole-product synthesis owner
+  (bootstrap/static-page/serving entrypoint or declared equivalent) fails
+  planning admission with a typed reason. Version and grandfather legacy
+  corpora: no register, no `coveredConstraintIds`, or no §2.2 section is an
+  empty diff or a typed legacy skip, never a red gate; frozen evidence is
+  untouched.
+- [ ] CC-GAP-9 (before CC-GAP-7 warrant execution): classify substrate
+  failure with the typed `warrant-blocked-environment` outcome, preserving
+  product-failed vs oracle-insufficient vs substrate-unavailable; readiness
+  failure caused by infrastructure unavailability routes to deterministic
+  repair or `human_required` continuation with a repair round, never
+  directly to `complete-failed` terminal product failure; legacy records
+  are grandfathered, not reclassified.
+- [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
+  the existing `VerificationWarrantRef` seam in the readiness provider
+  through package-level, workshop-declared oracle adapters — no new oracle,
+  no re-reading of order prose, no universal engine or test-engine frontend
+  branches: a browser-product claim requires
+  page/static/canvas/browser-smoke evidence, and a generic loopback health
+  oracle must yield oracle-insufficient for it — never a pass and never a
+  product-failed verdict.
+- [ ] CC-GAP-8: implement deferred verification accounting: proposed but
+  unmaterialized verification obligations remain visible pending entries
+  with owner and unblock condition, are never rendered discharged, and
+  execute after readiness recovery.
+- [ ] CC-GAP-10: make role projections distinguishable: status surfaces
+  expose author versus reviewer role for tasks sharing one Workplace ref, so
+  reviewer projections are not misread as duplicate implementation work or
+  graph rematerialization.
+- [ ] Add universal scenario DSL vocabulary without workshop-specific
+  frontend hardcoding, reusing existing terms instead of inventing parallel
+  deliverable-claim vocabulary: order-constraint register coverage facts
+  (register ids, `coveredConstraintIds`, typed waivers); warrant-execution
+  facts over `VerificationWarrantRef` (executed line, outstanding human
+  line, waived line with provenance); the three distinct outcome classes
+  product-failed, oracle-insufficient, and substrate-unavailable
+  (`warrant-blocked-environment` routing facts); deferred verification
+  accounting entries (proposed -> pending -> executed, never silently
+  discharged); role-projection facts. Browser/canvas specifics arrive only
+  through workshop-declared package data (register lines and package-level
+  oracle adapters), never engine branches.
+- [ ] Add blocking regression proofs, one per gap: dropping whole-product
+  synthesis ownership — an uncovered non-waived register line behind a
+  nominally attached criterion — fails planning admission on the mechanical
+  diff (CC-GAP-6); routing substrate failure to terminal product failure,
+  or collapsing product-failed/oracle-insufficient/substrate-unavailable
+  into one outcome, fails routing (CC-GAP-9, proven before CC-GAP-7);
+  substituting loopback health for the package-level browser oracle yields
+  oracle-insufficient, and rendering it as pass or as product-failed fails
+  verification (CC-GAP-7, after CC-GAP-9); rendering deferred verification
+  as discharged fails accounting (CC-GAP-8); rendering reviewer projections
+  as duplicate implementation fails projection (CC-GAP-10).
+- [ ] Record the missing browser frontend (client renderer/hud/effects
+  modules exist, but no index.html, no DOM/canvas use, no static serving
+  route, no npm start; the server exposes only healthz and 404) as a
+  separately proven latent product defect with its own remediation path (a
+  new change request or continuation), distinct from the substrate readiness
+  failure.
+
+Exit checklist:
+
+- [ ] For every non-empty versioned Order Constraint Register, the
+  mechanical reverse diff (register ids minus union(coveredConstraintIds)
+  minus typed waivers) is empty, SRS §2.2 module-manifest scope coverage
+  holds, and whole-product synthesis ownership is explicit where a criterion
+  requires it; legacy corpora are grandfathered with typed skips and frozen
+  evidence is untouched; the CC-GAP-6 blocking proof is green.
+- [ ] Substrate unavailability routes to deterministic repair or
+  `human_required` continuation with a repair round, not terminal product
+  failure; product-failed, oracle-insufficient, and substrate-unavailable
+  remain distinct typed outcomes (`warrant-blocked-environment` semantics),
+  legacy records are grandfathered, and the CC-GAP-9 blocking proof is
+  green and landed before CC-GAP-7 warrant execution.
+- [ ] Warrant execution consumes the `VerificationWarrantRef` through
+  package-level oracle adapters only; a generic loopback health oracle
+  yields oracle-insufficient for a browser-product claim — never a pass and
+  never a product-failed verdict — and CC-GAP-9 outcome/routing landed
+  first; the CC-GAP-7 blocking proof is green.
+- [ ] Deferred verification obligations remain first-class pending until
+  executed after readiness recovery, and none is rendered discharged; the
+  CC-GAP-8 blocking proof is green.
+- [ ] Author/reviewer role projections are distinguishable in every status
+  surface; the CC-GAP-10 blocking proof is green.
+- [ ] Elite-6 product-claim evidence is frozen copy-only with recorded paths
+  and digests; frozen sources are untouched.
+- [ ] The Elite-6 experiment remains complete and immutable, product
+  qualification is recorded as failed, and the two causes (substrate
+  readiness failure; latent missing-frontend defect) are kept distinct in
+  every record.
+
+Gate wiring: K0, K2, K4, K5, and K8 exit evidence is incomplete while any
+CC-GAP-6..10 is open. CC-80 cannot compose a complete qualification command,
+CC-81 must record those gaps and stay RED, and CC-82 must not emit
+`QUALIFICATION_GREEN`, until this exit checklist is fully green.
+
 ### CC-10A - Provisional v1 CI ratchet
 
 - Owner role: CI and claims owner
-- Depends on: CC-00
+- Depends on: CC-00, CC-00B, and CC-00C (code may land after CC-00 and
+  remain; exit requires CC-00B and CC-00C)
 - Non-goals: claiming K5 complete, FaultSchedule claims, runtime changes
 
 Checklist:
@@ -331,6 +742,11 @@ Exit checklist:
 - [ ] Three complete runs pass with identical semantic results.
 - [ ] Integration-branch CI is green.
 - [ ] Final K5 remains explicitly open until CC-10B.
+- [ ] CC-00B is closed; the deferred heavy validation it releases (the CC-00
+  harvest regeneration and the three fresh-environment runs above) is
+  complete.
+- [ ] CC-00C is closed; no CC-GAP-6..10 remains open, and its product-claim
+  blocking proofs are green.
 
 ### CC-20 - Multi-phase execution contract
 
@@ -623,6 +1039,13 @@ Checklist:
 - [ ] Add vacuous empty-pack mutant that makes the group red.
 - [ ] Add self-mutations for composition removal, lifecycle bypass, missing
   fence/receipt/effect, and route omission.
+- [ ] Include the CC-00C product-claim-integrity blocking mutations in the
+  blocking group: constraint-register coverage (coveredConstraintIds reverse
+  diff plus SRS §2.2 module-manifest scope coverage), warrant execution over
+  `VerificationWarrantRef` through package-level oracle adapters,
+  deferred-verification accounting, substrate outcome/routing
+  (`warrant-blocked-environment`), and role projection (CC-GAP-6..10
+  wiring).
 - [ ] Repeat complete group three times in fresh environments.
 
 Exit checklist:
@@ -864,19 +1287,28 @@ Exit checklist:
 ### CC-80 - Complete qualification command
 
 - Owner role: integration owner
-- Depends on: CC-00, CC-10B, CC-23, CC-32, CC-44, and CC-60
+- Depends on: CC-00, CC-00C, CC-10B, CC-23, CC-32, CC-44, and CC-60
 
 Checklist:
 
 - [ ] Compose one command for every K0-K5 exit and Structural Qualification item.
 - [ ] Include strict happy/repair, cutover faults/mutants, differential compare,
   and zero-authority-write ratchets.
+- [ ] Include the CC-00C product-claim-integrity checks: the mechanical
+  constraint-register coverage diff (register ids minus
+  union(coveredConstraintIds) minus typed waivers), warrant execution over
+  `VerificationWarrantRef` with package-level oracle adapters,
+  deferred-verification accounting, substrate outcome classification and
+  routing (`warrant-blocked-environment`), and role-projection clarity,
+  with their blocking mutations.
 - [ ] Fail on missing fixtures, empty scans, zero tests, or skipped groups.
 
 Exit checklist:
 
 - [ ] Command is documented, non-vacuous, and deterministic.
 - [ ] One known mutation in each required class makes it red.
+- [ ] No CC-GAP-6..10 is open; the CC-00C product-claim blocking proofs are
+  included and green.
 
 ### CC-81 - Read-only qualification audit
 
@@ -890,11 +1322,16 @@ Checklist:
 - [ ] Evaluate every cleanup-plan prerequisite without trusting stale prose marks.
 - [ ] Attach command, SHA, path, digest, and proof mode to every PASS.
 - [ ] Create named `CC-GAP-N` for every failure and return to implementation.
+- [ ] Verify the CC-00B exit checklist explicitly: record PASS or an open gap
+  for each of CC-GAP-2..5. Any open CC-GAP-2..5 keeps this audit RED.
+- [ ] Verify the CC-00C exit checklist explicitly: record PASS or an open gap
+  for each of CC-GAP-6..10. Any open CC-GAP-6..10 keeps this audit RED.
 
 Exit checklist:
 
 - [ ] Every item is evidenced PASS or audit remains RED.
-- [ ] `QUALIFICATION_GREEN` emits only with no open gap.
+- [ ] `QUALIFICATION_GREEN` emits only with no open gap, including no open
+  CC-GAP-2..5 and no open CC-GAP-6..10.
 
 ### CC-82 - Clean-clone reproduction and evidence freeze
 
@@ -908,12 +1345,18 @@ Checklist:
 - [ ] Run complete CC-80 command.
 - [ ] Record commands, exits, counts, time, SHA, report and diff digests.
 - [ ] Freeze scenario, token, edge, required/killed mutant, and runtime floors.
+- [ ] Include the CC-00B terminal-integrity evidence in the frozen set; do not
+  emit `QUALIFICATION_GREEN` with any CC-GAP-2..5 open.
+- [ ] Include the CC-00C product-claim-integrity evidence in the frozen set;
+  do not emit `QUALIFICATION_GREEN` with any CC-GAP-6..10 open.
 - [ ] Capture pre-cutover normalized evidence.
 
 Exit checklist:
 
 - [ ] Complete gate passes from fresh checkout.
 - [ ] Pre-cutover evidence/floors are frozen.
+- [ ] CC-00B evidence is frozen and every CC-GAP-2..5 is closed.
+- [ ] CC-00C evidence is frozen and every CC-GAP-6..10 is closed.
 - [ ] Result states `QUALIFICATION_GREEN` and
   `STRUCTURAL_IMPLEMENTATION_AUTHORIZED = false`.
 
@@ -945,6 +1388,11 @@ Checklist:
 - [ ] Add synthetic workshop using only package, lifecycle, fixtures, actors,
   external providers, and semantic predicates.
 - [ ] Enforce file allowlist proving zero universal engine/runtime edits.
+- [ ] Prove warrant consumption and package-level oracle adapters are
+  workshop-package declarations requiring zero universal engine edits
+  (CC-GAP-7 wiring; semantics ride the existing Order Constraint Register
+  and `VerificationWarrantRef` seam; no frontend hardcoding in engine or
+  test-engine files).
 - [ ] Verify catalog removal disables workshop for every host.
 - [ ] Verify equal binding receipts for orchestrator, worker MCP, scripted actor.
 - [ ] Verify descriptor-based module-owned scenario discovery.
@@ -968,6 +1416,9 @@ Exit checklist:
 ### Qualification-ready
 
 - [ ] K0-K5 exit gates are evidenced and blocking.
+- [ ] CC-00B terminal-integrity exit criteria pass; no CC-GAP-2..5 is open.
+- [ ] CC-00C product-claim-integrity exit criteria pass; no CC-GAP-6..10 is
+  open.
 - [ ] Blocking file and proof-claim sets are equal.
 - [ ] Required P0 mutants have zero survivors and monotonic floors.
 - [ ] Cutover fault schedules and minimization are blocking.
@@ -1012,6 +1463,9 @@ Exit checklist:
 - [ ] Repeat process/fault tests enough to prove determinism.
 - [ ] Run full suite before integration from isolated worktree.
 - [ ] Record commands, exits, counts, time, and digests.
+- [ ] Report operational completion (engine exit code, launch status, tracker
+  status) separately from product outcome; never report operational
+  completion as a successful full factory run.
 - [ ] Confirm no authority write, workshop branch, hidden retry, proof
   inflation, or legacy composition import.
 - [ ] Stage only owned files by explicit path.
@@ -1071,3 +1525,20 @@ Pre-mortem controls:
   use opencode shim.
 - [ ] Green qualification can trigger premature moves. Structural edits remain
   forbidden until explicit authorization transition.
+- [ ] Terminal projections can render a failed product outcome as bare
+  `completed`. CC-00B blocks the critical path until status surfaces separate
+  operational and product outcomes; no CC-GAP-2..5 may stay open at
+  qualification.
+- [ ] Nominal criterion attachment can masquerade as coverage: a
+  buildable/integrator AC attached to a semantically insufficient item passes
+  planning while no item owns whole-product synthesis, a generic loopback
+  oracle cannot prove a browser-product claim, deferred verification can
+  silently vanish from accounting, substrate unavailability can be flattened
+  into product failure, and reviewer projections can read as duplicate work.
+  CC-00C blocks the critical path until all five are enforced; no
+  CC-GAP-6..10 may stay open at qualification. The remedy reuses the
+  existing Order Constraint Register, `coveredConstraintIds`, SRS §2.2
+  module-manifest coverage, and `VerificationWarrantRef` seam — it invents
+  no parallel deliverable-claim vocabulary — keeps product-failed,
+  oracle-insufficient, and substrate-unavailable distinct, and serializes
+  CC-GAP-9 outcome/routing before CC-GAP-7 warrant execution.
