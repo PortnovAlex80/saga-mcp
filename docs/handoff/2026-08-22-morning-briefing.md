@@ -51,17 +51,28 @@
   F-A «обрезать gate feedback» — слишком мелко; F-B «правило не преподаётся» —
   опровергнуто кодом. Зафиксировано для истории триажа.
 
-## 2. Тестовый движок: все 4 цеха зелёные
+## 2. Тестовый движок: единое ядро, 4 цеха (статус честно)
 
-| Цех | Прогон | Результат |
-|---|---|---|
-| Discovery | coverage drive | **27/27** |
-| Formalization | coverage drive | **26/26** |
-| Development | happy-verified spine | **PASS** (9/9 оракулов, терминал verified) |
-| Delivery | happy-released-authorized spine | **PASS** (5/5 оракулов, терминал released, публикация в реальном леджере) |
+**Архитектурная правка (фаза 1 плана DELIVERY-KERNEL-REPAIR, fbb7338b):**
+Delivery возвращён внутрь единого конformance-ядра — mini-runner удалён,
+`runScenario` принимает `lifecycleDefinition`, identity фингерпринтит
+РЕАЛЬНО исполненный lifecycle (build-драйвы байт-стабильны, delivery несёт
+свой fingerprint). Delivery-сценарии теперь выдают стандартный
+ScenarioEvidenceBundle v1 и являются полноценными участниками demonstrated
+coverage.
 
-Движок — это scenario packs (декларативные сценарии + независимые оракулы,
-читающие только авторитетные таблицы) через НАСТОЯЩИЙ прод-фабрик.
+| Цех | Прогон | Результат | Closure |
+|---|---|---|---|
+| Discovery | coverage drive | **27/27** | **CLOSED** |
+| Formalization | coverage drive | **26/26** | **CLOSED** |
+| Development | happy-verified spine | **PASS** (9/9 оракулов) | SPINE — D2–D10 pending |
+| Delivery | happy-released spine | **PASS** (bundle v1 через ядро) | SPINE — pending-вселенные |
+
+«Движок для всех 4 цехов готов» = ядро ЕДИНОЕ для 4 цехов; закрыты
+Discovery и Formalization; Development/Delivery — spines + задекларированные
+pending-вселенные (D2–D10; approval/denied/observation/K4/restart у Delivery).
+Глобальная coverage-математика (Factory Coverage Universe, kill rate,
+aggregates) — фаза 2 плана.
 
 ## 3. Главные находки ночи: движок поймал реальный прод-дефект
 
