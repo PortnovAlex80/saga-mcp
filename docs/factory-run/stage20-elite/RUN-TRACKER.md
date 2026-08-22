@@ -364,3 +364,24 @@ resume path re-stamps the catalog limit).
   real UTF-8 bytes (Buffer.byteLength, was UTF-16 code units) and
   SAGA_PROMPT_MAX_BYTES is an opt-in fail-closed spawn gate with the byte
   ledger in the error (tracker-view/claude-runner.mjs).
+
+## ELITE-6 LAUNCHED (2026-08-22, day shift) — on the merged identity-separated + packaging-fixed build
+- Tree: saga4 merge `303a482a` (w0-waves fully merged: conformance v1,
+  criterion-identity separation, packaging cell fix 1a6fc2a5, F-A), fresh
+  dist build. Controls 4/4 glm-4.6. Watchdog 60s/45m/12h full settings sha
+  `2d6176e8…`. Tracker front http://localhost:4321/ on the elite6 DB.
+- LAUNCH INCIDENT (contained, zero material): first engine spawn died
+  FACTORY_CLAUDE_BACKEND_FORBIDDEN — the harness shell does NOT carry
+  `VAR=x && cmd` prefix assignments into the command (verified:
+  SAGA_X=undefined), so the detached engine saw bare `claude`. The
+  fail-closed guard did its job loudly. Sanctioned `rerun` (launch
+  `launch-c1fce464`, engine pid 30076) with env ON the command → first
+  worker alive (task 2, pid 25320, opencode shim).
+- NOTE for all future launches in this harness: env MUST be inline on the
+  SAME command (`SAGA_REAL_CLAUDE_PATH=... node scripts/factory.mjs ...`),
+  never `export`/prefix before `&&`.
+- Resume/rerun re-stamps model_concurrency_limit back to the catalog 2 —
+  re-raised to 4 after every engine (re)start. Verified 4/4 after rerun.
+- Full suite running in PARALLEL from the w02 worktree (operator directive);
+  w0-waves remote branch deleted post-merge; local worktree removal deferred
+  until the suite exits.

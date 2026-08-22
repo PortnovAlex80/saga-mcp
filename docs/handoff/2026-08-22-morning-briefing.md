@@ -182,3 +182,69 @@ of this state — the morning briefing above owns the narrative.
   foreign diff preserved, Elite-3 terminal. Liveness-only.
 - 05:1xZ cycle: unchanged — tripwire intact, 0/0 unpushed, 0/0 new remote,
   foreign diff preserved, Elite-3 terminal. Liveness-only.
+
+---
+
+# Day briefing addendum — 2026-08-22 (day shift): Factory Conformance Engine v1 DONE
+
+## 1. Factory Conformance Engine v1 — измерительный прибор доверия готов
+
+Всё слито в saga4 (merge `303a482a`) и запушено. Шесть условий оператора:
+
+1. **Один kernel на все 4 цеха** — каждый сценарий идёт через `runScenario`
+   → настоящий Factory → read-only durable trace → независимые оракулы →
+   ScenarioEvidenceBundle v1 (67/67 сценариев собраны через ЭТОТ путь,
+   снапшот коммита — доказательство).
+2. **U математически корректна** — 176 токенов; обязательства движутся
+   pending → demonstrated, никогда не покидают U; монотонность закреплена
+   тестом.
+3. **Declared ≠ demonstrated** — declared-слой и demonstrated-слой
+   разведены; demonstrated только из реальных PASS-бандлов.
+4. **Discovery + Formalization 100% demonstrated** — реальные бандлы на
+   диске (47/47 и 70/70).
+5. **Dev/Delivery полностью инвентаризированы** — Development 18/35 (51.4%),
+   Delivery 17/19 (89.5%); каждый разрыв поименован; заблокированные
+   обязательства — данные (restart:delivery BLOCKED_BY development).
+6. **Один честный глобальный отчёт** — `tests/factory-evidence/conformance-report.json`;
+   inter-workshop = handoff:* (5/5), negative-transition:* (5/5), K4 edges 8,
+   mutation kill rate честно «not measured», 9 multi-phase proofs
+   дисклоужены как отдельные раннеры (унификация — Closure).
+
+## 2. Найденные и починенные прод-дефекты (завод-класс, не только тесты)
+
+- **Elite-4 planner dead-end** — формализация законно эмитит ОДИН артефакт с
+  16 атомарными критериями, а invalidCase требовал уникальности по
+  artifactId. Починено на уровне ЛИЧНОСТИ: `acceptanceCriterionIdentity` =
+  `${artifactId}:${code}` по всему контракту Development (коммиты 1dac22af,
+  f13181e0); метаморфозный тест N-документов ≡ 1-контейнер закреплён.
+- **Packaging flake 50/50** (REPLAY_CAPTURE_GIT_RECIPE_MISSING) —
+ 根-причина: ячейка капсулы определялась EXECUTION, а не ЗАДАЧЕЙ; при
+  retry/repair наследник принимал cumulative set с продуктом предшественника
+  → капсула без implementation → без git-рецепта → смерть. Починено
+  (`1a6fc2a5`): ячейка = задача; все тихие null-пути типизированы;
+  6/6 стабильно; регрессия 4/4.
+- **F-A завершён** — [prompt-budget] теперь меряет реальные UTF-8 байты
+  (Buffer.byteLength) + SAGA_PROMPT_MAX_BYTES fail-closed gate.
+
+## 3. Elite-6 запущен на слитой сборке
+
+- Fresh sandbox `elite6-db`/`elite6`/`elite6-logs`, модель glm-4.6,
+  контролы 4/4, watchdog 60с/45мин/12ч (settings sha 2d6176e8… полная).
+- Первый спавн умер громко (FACTORY_CLAUDE_BACKEND_FORBIDDEN — страж
+  сработал как спроектирован: оболочка harness потеряла инлайн-env перед
+  detached-двигателем) → санкционированный `rerun` с env на команде →
+  воркер жив (task 2, pid 25320), шим opencode.
+- Tracker-фронт: http://localhost:4321/ (200, на elite6-БД).
+- Watch: планерный гейт должен теперь пройти input-контракт и судить граф
+  по существу.
+
+## 4. Что v1 передаёт Closure (gate честно НЕ зелёный)
+
+- Development D2–D10 pending universe (17 токенов), Delivery restart
+  (заблокирован development git-change-desk-replay), K3 мутационная алгебра,
+  K4 fault-планировщик, унификация multi-phase proofs в общий раннер.
+- Инвентарь: `docs/testing/CONFORMANCE-ENGINE-V1-REFRACTORING-INVENTORY.md`.
+
+Полный сьют идёт параллельно заводу (по директиве оператора); локальная
+ветка w0-waves будет удалена вместе с worktree после завершения сьюта
+(удалённая уже удалена).
