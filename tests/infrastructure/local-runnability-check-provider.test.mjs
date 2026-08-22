@@ -1162,14 +1162,17 @@ test('trust migration: 1.0.0 row with tampered determinism still drifts (not mig
 
 const DOCKER_AVAILABLE = isDockerAvailableForReadiness();
 
-test('image declared + docker unavailable → failed (fail closed, NOT error)', {
+test('image declared + docker precondition missing → bounded in-check retry, then typed unknown (CC-GAP-9 / ADR-089)', {
   timeout: 30_000,
   skip: DOCKER_AVAILABLE ? 'docker daemon is available — covered by the e2e test' : false,
 }, async () => {
-  // The profile declares environment.image=alpine. Docker is NOT running. The
-  // provider MUST fail closed with outcome 'failed' (not 'error', which the
-  // gate would retry indefinitely) and a LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE
-  // diagnostic code so the verifier tells the worker exactly what happened.
+  // The profile declares environment.image=alpine. Docker is NOT running.
+  // CC-GAP-9 / ADR-089: the provider retries the environment precondition
+  // inside the check up to the frozen bound (3 attempts, 1000ms schedule),
+  // then emits the typed unknown `warrant-blocked-environment` outcome —
+  // never 'failed' (the product was never exercised) and never 'error'
+  // (which the gate would retry forever). Hermetic per-code proofs and the
+  // blocking mutations live in local-runnability-substrate-retry.test.mjs.
   const root = fixture({ passing: true });
   const { db, provider } = buildProvider({
     root,
@@ -1181,13 +1184,18 @@ test('image declared + docker unavailable → failed (fail closed, NOT error)', 
   });
   try {
     const result = await provider.run(RUN_ARGS);
-    assert.equal(result.outcome, 'failed',
-      'docker unavailable + image declared must be failed (not error)');
+    assert.equal(result.outcome, 'unknown',
+      'docker precondition missing after the frozen retry bound must be typed unknown');
     const code = decodeFailedDiagnosticCode(result);
-    assert.equal(code, 'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
-      'diagnostic must name the docker-unavailable failure');
-  } finally {
+    assert.equal(code, 'warrant-blocked-environment',
+      'diagnostic must carry the frozen ADR-089 unknown vocabulary');
+    assert.ok(!result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
+      'a substrate precondition is not a product defect — no seam repair issue');
     db.close();
+  } catch (error) {
+    db.close();
+    throw error;
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });

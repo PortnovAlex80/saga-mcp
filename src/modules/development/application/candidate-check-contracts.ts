@@ -44,7 +44,16 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // ENVIRONMENT_DERIVATION_UNDECLARED_NEED when there is no install to
 // augment. environmentDigest rides every outcome — preparation and
 // certification hold one immutable identity.
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.10.0';
+// 1.11.0 — CC-GAP-9 / ADR-089: bounded deterministic in-check substrate
+// retry for exactly the two environment-precondition codes
+// (LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE, LOCAL_RUNNABILITY_DOCKER_NOT_LINUX)
+// with a FROZEN attempt bound and schedule (substrate-retry.ts; never env,
+// model, repair budget or CandidateSet); on exhaustion the check emits the
+// typed unknown `warrant-blocked-environment` outcome with attempt evidence
+// and NO seam repair issue. Outcome semantics change honestly: a missing
+// environment precondition is no longer a 'failed' product verdict — the
+// digest bump re-checks every prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.11.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -63,4 +72,6 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'additive-x-of-y-sealed-tree-canonical-vs-declared-test-files-report-only-never-enforcing-v1',
   subjectBindingPolicy:
     'receipts-bound-to-exact-candidate-bytes-candidatehash-commitsha-treehash-replay-across-manifests-conflict-on-failed-plus-passed-same-bytes-v1',
+  substrateRetryPolicy:
+    'bounded-deterministic-in-check-substrate-retry-frozen-attempt-bound-and-schedule-for-docker-unavailable-and-docker-not-linux-only-then-typed-unknown-warrant-blocked-environment-with-attempt-evidence-no-seam-repair-issue-unknown-receipts-never-replayed-never-poison-a-later-pass-v1',
 });

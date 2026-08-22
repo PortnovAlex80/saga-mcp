@@ -160,7 +160,14 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
   // provider joins the plan BEFORE the runnability provider, so a narrowed or
   // changed readiness declaration escalates (human_required) even when the
   // narrowed command itself would pass.
-  'development.readiness-certification.final.v2',
+  // v3 — CC-GAP-9 / ADR-089: the runnability entry's indeterminate outcomes
+  // (the typed unknown `warrant-blocked-environment` emitted after the
+  // bounded in-check substrate retry is exhausted) route human_required —
+  // the cell's humanRequiredTransition (complete-blocked, a truthful typed
+  // wait with a wake source) — instead of author repair. A substrate
+  // condition alone never produces complete-failed; deterministic product
+  // failures keep failureOwnership:'upstream' → 'failed' → complete-failed.
+  'development.readiness-certification.final.v3',
   [{
     providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
@@ -195,7 +202,19 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
     failureOwnership: 'upstream',
     expectedSubjectSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
     subjectScope: 'cell-product',
-    repairTargetRoleOnIndeterminate: 'author',
+    // CC-GAP-9 / ADR-089: this provider's indeterminate outcome is exactly
+    // the typed unknown `warrant-blocked-environment` — an exhausted
+    // in-check substrate retry (docker daemon down / not linux; frozen
+    // bound + schedule inside the check; no model, no WorkerExecution, no
+    // CandidateSet, no repair budget). A missing environment precondition
+    // is NOT a worker defect: an author repair round would charge the
+    // worker repair budget for a machine fault (§15 budgets charge spin,
+    // not work) and no product defect exists to remove. 'unknown' +
+    // fail-closed + human-required disposition reduces to a human_required
+    // verdict → complete-blocked (resumable: after the substrate recovers,
+    // the same criterion executes again under current authority, and the
+    // earlier unknown receipt never poisons the later pass).
+    indeterminateDisposition: 'human-required',
   }],
 );
 

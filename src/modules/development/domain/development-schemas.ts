@@ -493,15 +493,17 @@ export interface RunnabilityCommands {
  *     states only its runnability commands; runnability is proven by the test
  *     command alone, with no serve/probe phase.
  *
- * Phase-1 dockerization: both kinds may optionally carry an `environment.image`
- * stating the Docker image the product must execute in. When present, the
- * local-runnability provider runs the sealed tree's install/test/serve commands
- * inside that image (via the docker CLI) instead of on the host. The image is
- * part of the frozen profile, so it is covered by `candidateHash` — a changed
- * image is a different candidate. When docker is unavailable but an image is
- * declared, the provider fails closed ('failed', NOT 'error') with
- * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE rather than silently falling back to host.
- */
+  * Phase-1 dockerization: both kinds may optionally carry an `environment.image`
+  * stating the Docker image the product must execute in. When present, the
+  * local-runnability provider runs the sealed tree's install/test/serve commands
+  * inside that image (via the docker CLI) instead of on the host. The image is
+  * part of the frozen profile, so it is covered by `candidateHash` — a changed
+  * image is a different candidate. When the docker environment precondition is
+  * missing but an image is declared, the provider retries the precondition
+  * inside the check up to the frozen bound and on exhaustion emits the typed
+  * unknown `warrant-blocked-environment` outcome (CC-GAP-9 / ADR-089) rather
+  * than silently falling back to host or recording a product 'failed'.
+  */
 export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
 
 /**

@@ -24,12 +24,15 @@ import {
  * of the declared base plus the verbatim install command. Test mutations then
  * cannot prepare the separately-created serve container.
  *
- * Fail-closed policy: when the profile declares an image but docker is
- * unavailable (daemon down, not linux), the executor throws
- * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE. The provider catches this INSIDE its
- * try block and records outcome 'failed' (NOT 'error', which would retry
- * indefinitely). This is deliberate: the product declared a docker substrate,
- * so the provider refuses to silently fall back to host.
+ * Fail-closed policy (CC-GAP-9 / ADR-089): when the profile declares an image
+ * but docker is unavailable (daemon down, not linux), the executor throws
+ * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE / LOCAL_RUNNABILITY_DOCKER_NOT_LINUX.
+ * The provider catches these INSIDE its try block, retries the precondition
+ * deterministically up to the frozen in-check bound, and on exhaustion emits
+ * the typed unknown outcome (`warrant-blocked-environment`) — never a product
+ * `failed`. This is deliberate: the product declared a docker substrate, so
+ * the provider refuses to silently fall back to host; and a missing
+ * environment precondition is not a product verdict.
  */
 
 /** `docker info` availability probe timeout (bounded so a hung daemon does not stall the gate). */
@@ -56,9 +59,20 @@ const PROBE_ATTEMPT_TIMEOUT_MS = 600;
 /**
  * Process-level docker availability cache. Probing `docker info` on every
  * command would be wasteful; the daemon state does not change within one
- * readiness check. Reset only by process restart.
+ * readiness check attempt. Reset between CC-GAP-9 in-check substrate retry
+ * attempts (each retry must genuinely re-probe, never replay a cached miss)
+ * and by process restart.
  */
 let dockerAvailabilityCache: { available: boolean; linux: boolean } | null = null;
+
+/**
+ * Invalidate the process-level docker availability cache. Called by the
+ * provider's bounded in-check substrate retry between attempts (CC-GAP-9 /
+ * ADR-089) and by tests that need a fresh probe.
+ */
+export function resetDockerAvailabilityCache(): void {
+  dockerAvailabilityCache = null;
+}
 
 /**
  * Probe whether the docker daemon is reachable and running a linux runtime.
@@ -136,8 +150,11 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
    * Lazily prepare the docker substrate: verify the daemon, ensure the image is
    * present (pull if needed), create the volume, and stream the sealed tree tar
    * into it. Idempotent — the second call is a no-op. Throws
-   * ReadinessExecutionError on any substrate-level failure so the provider
-   * records a decodable 'failed' outcome.
+   * ReadinessExecutionError on any substrate-level failure: the two
+   * environment-precondition codes (daemon down / not linux) carry the
+   * CC-GAP-9 in-check retry and, on exhaustion, the typed unknown
+   * `warrant-blocked-environment` outcome in the provider; every other code
+   * records a decodable 'failed' outcome as before.
    */
   private ensureDockerAvailable(): void {
     // 1. Daemon availability + linux runtime.

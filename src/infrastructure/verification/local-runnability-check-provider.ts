@@ -52,7 +52,17 @@ import {
   type ServeEvidence,
   ReadinessExecutionError,
 } from './readiness-executor.js';
-import { DockerReadinessExecutor } from './docker-readiness-executor.js';
+import {
+  DockerReadinessExecutor,
+  resetDockerAvailabilityCache,
+} from './docker-readiness-executor.js';
+import {
+  runBoundedSubstrateRetry,
+  substrateRetryMessage,
+  substrateRetryObservation,
+  SUBSTRATE_PRECONDITION_DIAGNOSTIC,
+  type SubstrateRetryAttempt,
+} from './substrate-retry.js';
 import {
   augmentInstallCommand,
   deriveExecutionEnvironment,
@@ -113,8 +123,31 @@ export function createLocalRunnabilityCheckProvider(input: {
    * CI). Defaults to the CLI runner.
    */
   composeRunner?: ComposeRunner;
+  /**
+   * CC-GAP-9 / ADR-089 test seam — hermetic control over WHERE the readiness
+   * commands run, so the bounded substrate retry is provable without a real
+   * docker daemon. Defaults to the production selector (host / docker by
+   * profile + SAGA_LOCAL_RUNNABILITY_EXEC). The retry POLICY (bound +
+   * schedule) is NOT injectable — it is frozen in substrate-retry.ts.
+   */
+  executorSelector?: (
+    directory: string,
+    profile: ReadinessProfile,
+  ) => ReadinessExecutor;
+  /**
+   * CC-GAP-9 / ADR-089 test seam — instant sleep for the frozen substrate
+   * retry schedule so exhausted-retry proofs stay hermetic and fast. Only
+   * the sleep FUNCTION is injectable; the schedule VALUE is frozen.
+   */
+  substrateRetrySleep?: (ms: number) => void;
 }): CheckProvider {
   const composeRunner = input.composeRunner ?? new CliComposeRunner();
+  const substrateOptions = {
+    selectExecutor: input.executorSelector ?? selectReadinessExecutor,
+    ...(input.substrateRetrySleep
+      ? { sleep: input.substrateRetrySleep }
+      : {}),
+  };
   return {
     providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -158,7 +191,9 @@ export function createLocalRunnabilityCheckProvider(input: {
       }
       let check: CheckProviderResult;
       try {
-        check = runLocalReadiness(input.db, subject, subjectCandidateSetRef, composeRunner);
+        check = runLocalReadiness(
+          input.db, subject, subjectCandidateSetRef, composeRunner, substrateOptions,
+        );
       } catch (diagErr) {
         const err = diagErr as { message?: unknown; stack?: unknown };
         const reason = (err.message !== undefined ? String(err.message) : String(diagErr))
@@ -425,9 +460,13 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // ADDITIVE test-coverage report. 1.8 adds the D1 sourceCandidate-keyed
     // receipt binding (evidence append + bytes-keyed replay/conflict lookup).
     // 1.9 the M1-b derived-canonical executed set (declarations additive-only).
+    // 1.11 (CC-GAP-9 / ADR-089) reclassifies the two docker
+    // environment-precondition codes from 'failed' to bounded in-check retry
+    // then typed unknown `warrant-blocked-environment` — an honest outcome
+    // semantics change on exactly that class; all other outcomes unchanged.
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -709,6 +748,13 @@ function runLocalReadiness(
   subject: CandidateSubject,
   subjectCandidateSetRef: string,
   composeRunner: ComposeRunner,
+  substrateOptions: {
+    selectExecutor: (
+      directory: string,
+      profile: ReadinessProfile,
+    ) => ReadinessExecutor;
+    sleep?: (ms: number) => void;
+  },
 ): CheckProviderResult {
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
@@ -861,10 +907,7 @@ function runLocalReadiness(
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
     // (host or docker). When the profile declares environment.image, the docker
     // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
-    // host path). When docker is declared but unavailable, the executor throws
-    // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE → caught below → 'failed' (NOT
-    // 'error', which would retry indefinitely).
-    executor = selectReadinessExecutor(directory, profile);
+    // host path).
     const phases: string[] = [];
     // Typed per-step results (SEAM Layer 2 (a)): every step of the assembled
     // whole's verification records a typed entry — never a bare boolean.
@@ -883,7 +926,45 @@ function runLocalReadiness(
       seam.phase = 'profile-install';
       seam.command = effectiveInstallCommand;
     }
-    executor.prepare(effectiveInstallCommand, 240_000);
+    // CC-GAP-9 / ADR-089 — BOUNDED DETERMINISTIC IN-CHECK SUBSTRATE RETRY.
+    // A missing environment precondition (docker daemon down / not linux —
+    // exactly the two frozen codes in substrate-retry.ts) is retried inside
+    // the check: a frozen attempt bound and schedule, no model, no
+    // WorkerExecution, no CandidateSet, no repair epoch, no worker repair
+    // budget consumed. Each retry genuinely re-probes (the docker
+    // availability cache is invalidated between attempts). On exhaustion the
+    // check emits the typed unknown `warrant-blocked-environment` outcome —
+    // never 'failed' (the product was never exercised), never 'error'
+    // (which the gate would retry forever). Non-precondition failures
+    // (command failures, pull failures, product failures) propagate
+    // unchanged and keep their 'failed' + typed seam repair-issue semantics
+    // in the catch below.
+    const substrate = runBoundedSubstrateRetry({
+      attempt: () => {
+        const attemptExecutor = substrateOptions.selectExecutor(directory, profile);
+        try {
+          attemptExecutor.prepare(effectiveInstallCommand, 240_000);
+        } catch (error) {
+          try { attemptExecutor.dispose(); } catch { /* best-effort cleanup */ }
+          throw error;
+        }
+        return attemptExecutor;
+      },
+      betweenAttempts: resetDockerAvailabilityCache,
+      ...(substrateOptions.sleep ? { sleep: substrateOptions.sleep } : {}),
+    });
+    if (substrate.status === 'exhausted') {
+      return substrateUnknownEvidence(
+        substrate.attempts,
+        subject,
+        {
+          ...(coverage ? { testCoverage: coverage.observation } : {}),
+        },
+        coverage?.message,
+        finalEnvironmentMessage,
+      );
+    }
+    executor = substrate.result;
     if (profile.commands.installCommand !== null) {
       step('profile-install');
     }
@@ -952,9 +1033,14 @@ function runLocalReadiness(
     }, undefined, undefined, coverage?.message, finalEnvironmentMessage);
   } catch (error) {
     // A ReadinessExecutionError carries a specific diagnostic code (e.g.
-    // LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE) that the evidence function encodes
+    // LOCAL_RUNNABILITY_DOCKER_PULL_FAILED) that the evidence function encodes
     // into a decodable check-diagnostic so the verifier's recovery feedback
-    // names the exact substrate failure.
+    // names the exact substrate failure. CC-GAP-9 / ADR-089: the two
+    // environment-precondition codes (DOCKER_UNAVAILABLE / DOCKER_NOT_LINUX)
+    // never reach this catch — the bounded in-check retry above returns the
+    // typed unknown `warrant-blocked-environment` outcome on exhaustion, so a
+    // missing environment precondition is never recorded as a product
+    // 'failed' verdict (the Elite-6 CC-00C F8/F10 defect).
     const isSubstrateError = error instanceof ReadinessExecutionError;
     const code = isSubstrateError ? error.code : undefined;
     const seamKind: SeamKind = isSubstrateError ? 'substrate-unavailable' : seam.seamKind;
@@ -1216,9 +1302,13 @@ function buildSeamIssue(
  *   - auto (default) / docker → docker when the profile declares
  *     environment.image; host otherwise (backwards-compatible).
  *
- * When docker is selected but the daemon is unavailable, the DockerReadinessExecutor
- * throws LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE on first use (inside runLocalReadiness's
- * try block) so the outcome is 'failed' (fail closed), NOT 'error'.
+ * When docker is selected but the daemon precondition is missing, the
+ * DockerReadinessExecutor throws LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE /
+ * LOCAL_RUNNABILITY_DOCKER_NOT_LINUX on first use (inside runLocalReadiness's
+ * bounded substrate retry), which retries the precondition up to the frozen
+ * in-check bound and on exhaustion emits the typed unknown
+ * `warrant-blocked-environment` outcome (CC-GAP-9 / ADR-089) — never a
+ * product 'failed' verdict.
  */
 function selectReadinessExecutor(
   directory: string,
@@ -1733,6 +1823,62 @@ function truncateMiddle(value: string, max: number): string {
   if (value.length <= max) return value;
   const half = Math.floor((max - 3) / 2);
   return `${value.slice(0, half)}...${value.slice(value.length - half)}`;
+}
+
+/**
+ * CC-GAP-9 / ADR-089 — the typed UNKNOWN receipt for an exhausted in-check
+ * substrate retry. Never 'passed', never 'failed': the check never exercised
+ * the product, so the verdict asserts exactly that. Carries:
+ *
+ *   - the decodable `warrant-blocked-environment` diagnostic (the frozen
+ *     ADR-089 contract vocabulary) with the human-readable resume guidance;
+ *   - the frozen-policy attempt evidence (per-attempt code, attempt bound,
+ *     retry schedule) inside the content-addressed observation digest.
+ *
+ * Deliberately emits NO SeamRepairIssue: a substrate precondition is not a
+ * product defect — there is no rejected material and no producing task to
+ * route a repair to (ADR-089 Red Team #3; the observation-retry grammar
+ * §21, not the recovery grammar §17).
+ */
+function substrateUnknownEvidence(
+  attempts: readonly SubstrateRetryAttempt[],
+  subject: CandidateSubject,
+  observation: Record<string, unknown>,
+  coverageMessage?: string,
+  environmentMessage?: string,
+): CheckProviderResult {
+  const digest = sha256Hex({
+    providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+    candidateHash: subject.candidateHash,
+    commitSha: subject.commitSha,
+    treeHash: subject.treeHash,
+    observation: {
+      ...observation,
+      ...substrateRetryObservation(attempts),
+    },
+  });
+  const evidenceRefs = [
+    `local-readiness:${digest}`,
+    encodeCheckDiagnostic({
+      code: SUBSTRATE_PRECONDITION_DIAGNOSTIC,
+      message: substrateRetryMessage(attempts),
+    }),
+  ];
+  // M2-2 — the additive coverage report rides this outcome too (report only).
+  if (coverageMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'readiness-test-coverage',
+      message: coverageMessage,
+    }));
+  }
+  // K19 — the derived-environment identity rides this outcome too.
+  if (environmentMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'environment-derivation',
+      message: environmentMessage,
+    }));
+  }
+  return { outcome: 'unknown', evidenceRefs };
 }
 
 function evidence(
