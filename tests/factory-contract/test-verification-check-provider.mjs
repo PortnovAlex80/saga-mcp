@@ -88,12 +88,21 @@ export function createTestVerificationCheckProviderFactory() {
         const criterionKeys = item?.acceptanceCriterionKeys;
         const frozenHash = metadata.process_node_input?.upstream?.bindings
           ?.candidate?.candidateHash;
+        // CC-GAP-1: v2 evidence products no longer carry a separate
+        // acceptanceCriterionId field (removed in f13181e0 — the decoder
+        // allowlist rejects it, so the old predicate comparing that removed
+        // field was unsatisfiable and failed every lawful payload). Exactly
+        // like the production provider, the provenance binding is derived
+        // from the canonical criterion key's artifact-id segment.
+        const keyProvenanceArtifactId = Number(
+          String(decoded.value.acceptanceCriterionKey).split(':')[0],
+        );
 
         if (decoded.value.verificationItemKey !== item?.key
             || !Array.isArray(criterionKeys)
             || criterionKeys.length !== 1
             || decoded.value.acceptanceCriterionKey !== criterionKeys[0]
-            || decoded.value.acceptanceCriterionId
+            || keyProvenanceArtifactId
                !== row.verification_target_artifact_id
             || decoded.value.acceptedCriterionHash !== row.accepted_hash
             || decoded.value.candidateHash !== frozenHash)
