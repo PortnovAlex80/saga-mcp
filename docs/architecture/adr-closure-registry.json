@@ -1195,6 +1195,23 @@
         "docs/plans/CONFORMANCE-CLOSURE-PLAN.md — sections 3.2, CC-00C, CC-10B, CC-80, 13",
         "docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md — CC-GAP-6 record corrected by this ADR"
       ]
+    },
+    {
+      "adr": "089",
+      "file": "089-bounded-in-check-substrate-retry-then-typed-unknown.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "CC-GAP-9 blocking mutations: a substrate-unavailable readiness failure retries in-check up to the frozen bound, then yields exactly one typed unknown warrant-blocked-environment outcome plus one human_required blocked/resumable continuation; routing it to complete-failed terminal product failure fails routing; collapsing product-failed/oracle-insufficient/substrate-unavailable into one outcome fails classification; an exhausted retry consumes no worker repair budget and creates no CandidateSet; an earlier unknown receipt cannot prevent or fail a later passed receipt for the same criterion (no-poison)",
+      "successor": null,
+      "notes": "Accepted 2026-08-22 (MCDA Option B, 465/500). Refines the CC-GAP-9 contract in docs/plans/CONFORMANCE-CLOSURE-PLAN.md and the CC-00C record per the 2026-08-22 accepted research corrections: bounded deterministic in-check substrate retry precedes the typed unknown outcome (warrant-blocked-environment) and human_required blocked/resumable continuation — never a product-failed verdict, never a deterministic repair round for a machine fault; unknown receipts never poison a later pass; discharge requires a passed receipt or an operator-attributed waiver. Implementation owned by CC-00C/CC-GAP-9 in docs/plans/CONFORMANCE-CLOSURE-PLAN.md.",
+      "evidence": [
+        "docs/plans/CONFORMANCE-CLOSURE-PLAN.md — sections 3.2, CC-00C, CC-10B, CC-80, 13",
+        "docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md — CC-GAP-9 record refined by this ADR"
+      ]
     }
   ]
 }

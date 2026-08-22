@@ -92,16 +92,23 @@ not facts):
   3) is not landed — CC-GAP-7.
 - I3 (from F5/F8): required verification obligations proposed by the planner
   vanished from accounting once readiness failed first; deferred obligations
-  must remain pending and execute after recovery — CC-GAP-8.
+  need append-only criterion-key accounting in which pending survives
+  readiness failure and continuation, `executed(failed)` is not discharged,
+  only a passed receipt or an operator-attributed waiver discharges, and
+  entries carry stage/order visibility — CC-GAP-8.
 - I4 (from F8/F10): a substrate failure (Docker unavailable) was classified
-  and routed as terminal product failure, bypassing the repair round the
-  seam repair issue was owed; the typed third outcome
-  (`warrant-blocked-environment`) does not exist yet in routing, and
+  and routed as terminal product failure, bypassing any in-factory
+  substrate handling; the ADR-089 contract — bounded deterministic in-check
+  substrate retry, then typed unknown and `human_required`
+  blocked/resumable, never product-failed, with unknown receipts never
+  poisoning a later pass — does not exist yet in routing, and
   product-failed vs oracle-insufficient vs substrate-unavailable are not
   preserved as distinct classes — CC-GAP-9.
 - I5 (from F6/F7): author and reviewer projections share Workplace refs in
-  one sealed graph; status UI that cannot distinguish roles invites the false
-  "duplicate work / rematerialized graph" reading — CC-GAP-10.
+  one sealed graph and the durable projections are correct; the defect is
+  rendering-only — board and detail surfaces that do not display role
+  invite the false "duplicate work / rematerialized graph" reading —
+  CC-GAP-10.
 
 ## Expected vs observed
 
@@ -110,9 +117,9 @@ not facts):
 | Claim fidelity (order -> Discovery -> Formalization) | Rich Chrome canvas game, install + start, browser smoke, local run preserved end to end | Faithfully preserved; AC-22 requires install + start -> accessible running game | OK |
 | Claim-to-work coverage | Mechanical: for a non-empty versioned Order Constraint Register, ids − union(coveredConstraintIds) − waived = ∅; SRS §2.2 manifest files inside frozen item scopes (a missing or file-less §2.2 is typed red, never a skip); execution-entrypoint files owned by items covering that same constraint (no wide decoy item); coveredConstraintIds kernel-derived, unforgeable from planner output; only registerless corpora grandfathered (ADR-088) | AC-22 nominally attached to `impl-galaxy-ship-foundation` (scopes `package.json` + `data/domain/tests`); no bootstrap/static-page/whole-product item; no inherited mechanical criterion to fail on | **CC-GAP-6** |
 | Deliverable-aware end-to-end oracle | Warrant execution over `VerificationWarrantRef` through package-level oracle adapters; loopback health = oracle-insufficient (never pass, never product-failed) | Served oracle proves only start + loopback HTTP + stop; warrant phases unlanded (types/seam only) | **CC-GAP-7** |
-| Verification reachability/accounting | Required verification obligations stay pending until executed | 22 proposed `verificationItems` materialize only after readiness; readiness failed first; none ran; none surfaced as pending | **CC-GAP-8** |
-| Substrate failure classification | product-failed ≠ oracle-insufficient ≠ substrate-unavailable; substrate routes to deterministic repair or `human_required` continuation (repair round; `warrant-blocked-environment` semantics) | `domain.failed` routed directly to `complete-failed` and terminal; no repair round; no typed substrate outcome | **CC-GAP-9** |
-| Role projection | Author vs reviewer tasks distinguishable in status UI | Tasks 26-36 (reviewer projections, same 11 Workplace refs) can be misread as duplicate implementation | **CC-GAP-10** |
+| Verification reachability/accounting | Append-only criterion-key accounting: required obligations stay first-class pending entries (surviving readiness failure and continuation); `executed(failed)` is not discharged; only a passed receipt or an operator-attributed waiver discharges; stage/order visibility; no reuse of the transition obligation ledger | 22 proposed `verificationItems` materialize only after readiness; readiness failed first; none ran; none surfaced as pending | **CC-GAP-8** |
+| Substrate failure classification | product-failed ≠ oracle-insufficient ≠ substrate-unavailable; substrate gets bounded deterministic in-check retry, then typed unknown and `human_required` blocked/resumable (`warrant-blocked-environment` per ADR-089) — never product-failed; unknown receipts never poison a later pass | `domain.failed` routed directly to `complete-failed` and terminal; no repair round; no typed substrate outcome (the provider encodes Docker-unavailable as `failed`) | **CC-GAP-9** |
+| Role projection | Author vs reviewer role displayed on board and detail surfaces (durable projections correct; rendering-only) | Board/detail render tasks 26-36 (reviewer projections, same 11 Workplace refs) without role, misreadable as duplicate implementation | **CC-GAP-10** |
 | Local-runnability semantics | A failed local-runnability check states what was and was not tested | Failed on Docker unavailability before install/test/serve; browser runnability neither proved nor disproved | Corrected in CC-00B; classification owned by CC-GAP-9 |
 | Graph integrity | One sealed graph; integration commits match implementation projections | One sealed graph; 11 integration commits; no rematerialization | OK |
 
@@ -164,28 +171,60 @@ not facts):
   health for the package-level browser oracle yields oracle-insufficient,
   and rendering that as pass or as product-failed both fail verification.
 - **CC-GAP-8 — verification reachability/accounting.** Owner: coverage/report
-  owner. Proposed required verification obligations may be deferred but must
-  remain first-class pending entries, never appear discharged, and must
-  execute after readiness recovery. Blocking regression proof: rendering
-  deferred verification as discharged fails accounting.
+  owner. Proposed required verification obligations may be deferred but
+  never vanish from accounting: implement an append-only criterion-key
+  accounting ledger — one first-class entry per required verification
+  obligation keyed by criterion, transitions appended
+  (`proposed -> pending -> executed(passed|failed) | unknown | waived`),
+  entries never rewritten or deleted. Pending survives readiness failure
+  and continuation and must execute after recovery. `executed(failed)` is
+  not discharged — the obligation stays outstanding. Only a passed
+  receipt or an operator-attributed waiver discharges. Every entry
+  carries and displays its stage and order coordinates. Do not reuse the
+  lifecycle transition obligation ledger for this role — verification
+  accounting is a separate seam. Blocking regression proofs: rendering
+  unexecuted deferred verification as discharged fails accounting;
+  rendering `executed(failed)` as discharged fails accounting; dropping a
+  pending entry across readiness failure or continuation fails
+  accounting; discharging without a passed receipt or an
+  operator-attributed waiver fails accounting; hiding stage/order
+  coordinates fails accounting.
 - **CC-GAP-9 — substrate failure classification/recovery.** Owner:
-  execution-kernel owner; lands before CC-GAP-7 warrant execution.
-  Implement the typed `warrant-blocked-environment` outcome (AC-drift
-  network 3) preserving the three distinct classes product-failed,
-  oracle-insufficient, and substrate-unavailable; infrastructure
-  unavailable (for example Docker unavailable) is distinct from product
-  failure and must route to deterministic repair or `human_required`
-  continuation — including a repair round for the seam repair issue — not
-  terminal product failure. Legacy records are grandfathered, never
-  reclassified. Blocking regression proof: routing substrate failure to
-  terminal product failure fails routing, and collapsing the three outcome
-  classes into one fails classification.
+  execution-kernel owner; lands before CC-GAP-7 warrant execution, per
+  ADR-089. A missing environment precondition (for example Docker
+  unavailable) gets bounded deterministic in-check substrate retry — a
+  frozen attempt bound and schedule inside the check, no model, no
+  WorkerExecution, no CandidateSet, no repair epoch, no worker repair
+  budget consumed. On exhaustion the check emits the typed unknown
+  outcome (`warrant-blocked-environment`) — never passed, never failed —
+  and the scope routes to a `human_required` blocked/resumable
+  continuation (a truthful typed wait with a wake source), never to
+  terminal product failure. Product-failed, oracle-insufficient, and
+  substrate-unavailable remain distinct typed classes. An earlier unknown
+  receipt never prevents, fails, annotates, or counts against a later
+  pass of the same criterion (no-poison; discharge requires a passed
+  receipt or an operator-attributed waiver, CC-GAP-8). Legacy records are
+  grandfathered, never reclassified. Blocking regression proofs: routing
+  substrate failure to terminal product failure fails routing; collapsing
+  the three outcome classes into one fails classification; skipping the
+  bounded in-check retry straight to escalation or terminalization, or
+  retrying unboundedly, fails routing; charging an exhausted retry to
+  worker repair budget or CandidateSets fails isolation; an earlier
+  unknown receipt blocking or failing a later passed receipt for the same
+  criterion fails the no-poison rule.
 - **CC-GAP-10 — role projection clarity.** Owner: trace/evidence owner.
-  Author and reviewer tasks must be distinguishable in status UI; tasks 26-36
-  were reviewer projections in the same 11 Workplace refs, not duplicate
-  implementation and not graph rematerialization. Blocking regression proof:
-  rendering reviewer projections as duplicate implementation work fails
-  projection.
+  The defect is rendering-only: the durable author/reviewer projections
+  are correct (tasks 15-25/26-36 are author and reviewer projections over
+  the same 11 Workplace refs in one sealed graph — not duplicate
+  implementation and not graph rematerialization). Board and task-detail
+  surfaces must display the role (author vs reviewer) alongside the
+  shared Workplace identity. No deduplication and no data rewrite: the
+  durable projections and the sealed graph are untouched. Blocking
+  regression proofs: rendering reviewer projections as duplicate
+  implementation work or a second graph fails projection; a board or
+  detail surface that omits or hides the role fails projection; a "fix"
+  that deduplicates or rewrites the durable projections instead of the
+  rendering fails projection.
 
 ## Remediation vocabulary (reuse-first, domain-free, no frontend hardcoding)
 
@@ -241,12 +280,18 @@ registry. It reuses and finishes the existing AC-drift three-network design
   readiness provider consuming exactly this shape — no new oracle, no
   re-reading of order prose; the certifier diffs its phases against the
   frozen register.
-- **`warrant-blocked-environment` (designed typed outcome, network 3)** —
-  CC-GAP-9's substrate-unavailable outcome, preserving the three distinct
-  classes product-failed vs oracle-insufficient vs substrate-unavailable;
-  routing to deterministic repair or `human_required` continuation with an
-  operator waive channel, never a silent substitution and never terminal
-  product failure for a machine fault.
+- **`warrant-blocked-environment` (designed typed outcome, network 3,
+  ADR-089)** — CC-GAP-9's substrate-unavailable contract, preserving the
+  three distinct classes product-failed vs oracle-insufficient vs
+  substrate-unavailable: bounded deterministic in-check substrate retry
+  first (frozen bound and schedule; no model, no WorkerExecution, no
+  CandidateSet, no repair epoch, no repair budget), then the typed
+  unknown outcome on exhaustion and a `human_required` blocked/resumable
+  continuation with an operator waive channel — never a silent
+  substitution, never a deterministic repair round for a machine fault,
+  never unbounded silent retry, and never terminal product failure.
+  Unknown receipts never poison a later pass of the same criterion;
+  discharge requires a passed receipt or an operator-attributed waiver.
 - **Package-level oracle adapters (existing package model)** — oracle
   adapters are workshop-package declarations (LEGO principle — Conveyor
   Mental Model §3; no-workshop-branch rule — master plan §4). Browser,
@@ -260,16 +305,23 @@ parallel deliverable-claim vocabulary — no claim descriptors, no coverage
 receipts, no second oracle registry: their scenario DSL facts project the
 existing register ids, `coveredConstraintIds`, and
 `VerificationWarrantRef`. CC-GAP-8/10 add the accounting/role facts:
-deferred verification accounting entries (proposed -> pending -> executed,
-never silently discharged) and role-projection clarity (author vs reviewer
-over shared Workplace refs).
+append-only criterion-key verification accounting entries (proposed ->
+pending -> executed(passed|failed) | unknown | waived; `executed(failed)`
+not discharged; discharge only by a passed receipt or an
+operator-attributed waiver; stage/order visibility; never silently
+discharged; no reuse of the lifecycle transition obligation ledger) and
+role-projection clarity (rendering-only: author vs reviewer displayed
+over the shared Workplace refs on board and detail surfaces; durable
+projections untouched — no deduplication, no data rewrite).
 
 ## Blocking mutations
 
-At least one per gap (CC-GAP-6 carries the four ADR-088 variants); each
-must make the blocking group red. Land and prove order:
-CC-GAP-9 before CC-GAP-7 (warrant execution consumes the outcome/routing
-the CC-GAP-9 mutation protects):
+At least one per gap (CC-GAP-6 carries the four ADR-088 variants;
+CC-GAP-9 carries the ADR-089 variants); each must make the blocking group
+red. Land and prove order: CC-GAP-9 before CC-GAP-7 (warrant execution
+consumes the outcome/routing the CC-GAP-9 mutations protect — bounded
+in-check retry, typed unknown, human_required blocked/resumable, and
+no-poison accounting must already be in place):
 
 1. CC-GAP-6 mutations (ADR-088):
    a. drop the whole-product synthesis coverage (remove the covering
@@ -290,16 +342,39 @@ the CC-GAP-9 mutation protects):
    browser-product claim — warrant execution must report
    oracle-insufficient; rendering it as pass or as product-failed must both
    fail.
-3. CC-GAP-8 mutation: render unexecuted deferred verificationItems as
-   discharged — accounting must fail.
-4. CC-GAP-9 mutation (lands before CC-GAP-7): route
-   `LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE`-class substrate failure directly
-   to `complete-failed` terminal — routing must fail (repair or
-   `human_required` continuation required), and collapsing product-failed,
-   oracle-insufficient, and substrate-unavailable into one outcome must
-   fail classification.
-5. CC-GAP-10 mutation: render reviewer projections (tasks 26-36 shape) as
-   duplicate implementation tasks or a second graph — projection must fail.
+3. CC-GAP-8 mutations (append-only criterion-key accounting):
+   a. render unexecuted deferred verificationItems as discharged —
+      accounting must fail;
+   b. render `executed(failed)` as discharged — accounting must fail;
+   c. drop a pending entry across readiness failure or lifecycle
+      continuation — accounting must fail;
+   d. discharge an obligation without a passed receipt or an
+      operator-attributed waiver — accounting must fail;
+   e. hide an entry's stage/order coordinates from its status projection —
+      accounting must fail.
+4. CC-GAP-9 mutations (ADR-089; lands before CC-GAP-7):
+   a. route `LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE`-class substrate failure
+      directly to `complete-failed` terminal — routing must fail (typed
+      unknown plus `human_required` blocked/resumable continuation
+      required);
+   b. collapse product-failed, oracle-insufficient, and
+      substrate-unavailable into one outcome — classification must fail;
+   c. skip the bounded deterministic in-check retry (escalate or
+      terminalize on first substrate miss) or retry unboundedly/silently —
+      routing must fail;
+   d. charge an exhausted in-check retry to worker repair budget or let it
+      produce a CandidateSet/repair epoch — isolation must fail;
+   e. let an earlier unknown receipt prevent, fail, or annotate a later
+      passed receipt for the same criterion (poison) — accounting/routing
+      must fail.
+5. CC-GAP-10 mutations (rendering-only): render reviewer projections
+   (tasks 26-36 shape) as duplicate implementation tasks or a second
+   graph — projection must fail; render the board or the task-detail
+   surface without the author/reviewer role for tasks sharing one
+   Workplace ref — projection must fail; "fix" the defect by
+   deduplicating or rewriting the durable projections instead of the
+   rendering — projection must fail (the durable projections and the
+   sealed graph are untouched).
 
 ## Critical-path impact
 
@@ -307,7 +382,8 @@ the CC-GAP-9 mutation protects):
   remain landed, but the CC-10A exit checklist and its deferred heavy
   validation cannot close before CC-00B and CC-00C exit.
 - Within CC-00C, CC-GAP-9 outcome/routing is serialized before CC-GAP-7
-  warrant execution; CC-GAP-6 proceeds under the planning owner, serialized
+  warrant execution (ADR-089); CC-GAP-6 proceeds under the planning owner,
+  serialized
   through the plan's single-writer `Constraint register and warrant seam` row
   where files overlap.
 - K0, K2, K4, K5, and K8 exit evidence is incomplete while any CC-GAP-6..10
@@ -328,7 +404,12 @@ the CC-GAP-9 mutation protects):
   and digests; keep frozen sources immutable.
 - Implement CC-GAP-6..10 remediation in isolated worktrees under the named
   owners, each with its blocking mutation set (CC-GAP-6 follows the
-  register-conditional contract of ADR-088). CC-GAP-9 outcome/routing lands
+  register-conditional contract of ADR-088; CC-GAP-9 follows the bounded
+  in-check retry / typed unknown / human_required blocked-resumable /
+  no-poison contract of ADR-089; CC-GAP-8 lands the append-only
+  criterion-key ledger without reusing the transition obligation ledger;
+  CC-GAP-10 is rendering-only — board/detail role display, no
+  deduplication, no data rewrite). CC-GAP-9 outcome/routing lands
   before CC-GAP-7 warrant execution; CC-GAP-6/7/9 reuse the existing Order
   Constraint Register, `coveredConstraintIds`, SRS §2.2 module-manifest
   coverage, and `VerificationWarrantRef` seam — no parallel
@@ -358,15 +439,23 @@ the CC-GAP-9 mutation protects):
   workshop-declared package data — register lines and package-level oracle
   adapters.
 - Do not treat tasks 26-36 as duplicate work to deduplicate or delete; they
-  are reviewer projections over the same sealed graph.
+  are reviewer projections over the same sealed graph, and the durable
+  projections are correct — CC-GAP-10 fixes rendering only (board/detail
+  role display), never the data.
 - Do not invent parallel deliverable-claim vocabulary — no new claim
   descriptors, coverage receipts, or second oracle registry beside the
   existing Order Constraint Register, `coveredConstraintIds`, SRS §2.2
   module-manifest coverage, and `VerificationWarrantRef` seam.
+- Do not reuse the lifecycle transition obligation ledger for verification
+  accounting: CC-GAP-8's criterion-key ledger is a separate seam.
+- Do not render an unknown (`warrant-blocked-environment`) receipt as
+  `passed` or as `failed` on any surface, and never let an earlier unknown
+  block or fail a later pass of the same criterion (ADR-089 no-poison).
 - Do not land CC-GAP-7 warrant execution before CC-GAP-9 outcome/routing:
-  warrant phases must never meet a substrate failure without the typed
-  `warrant-blocked-environment` outcome and its repair/`human_required`
-  routing already in place.
+  warrant phases must never meet a substrate failure without the ADR-089
+  contract — bounded in-check substrate retry, the typed
+  `warrant-blocked-environment` unknown outcome, and its
+  `human_required` blocked/resumable routing — already in place.
 
 ## The runtime is not fixed
 

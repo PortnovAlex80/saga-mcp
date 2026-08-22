@@ -13,7 +13,11 @@ This plan is subordinate to
 the governing conformance decision. ADR-088 is Accepted and governs the
 CC-GAP-6 coverage contract (register-conditional grandfathering,
 execution-entrypoint ownership, kernel-only `coveredConstraintIds`
-derivation). ADR-053 is a Proposed architectural
+derivation). ADR-089 is Accepted and governs the CC-GAP-9 substrate
+contract (bounded deterministic in-check substrate retry, then typed
+unknown `warrant-blocked-environment` and human_required blocked/resumable
+continuation — never product-failed; unknown receipts never poison a later
+pass). ADR-053 is a Proposed architectural
 diagnosis. ADR-085 and ADR-086 are Proposed and remain blocked by the
 Structural Refactor Qualification Gate. A green gate makes their implementation
 eligible; it does not adopt or authorize either proposal by itself.
@@ -251,17 +255,32 @@ workshop name, `moduleRef`, or role profession. Three outcomes stay
 distinct and are never collapsed: product-failed (a check ran against the
 product and failed), oracle-insufficient (the declared oracle cannot prove
 the claim — an outstanding obligation, never a pass and never a product
-verdict), and substrate-unavailable (a missing environment precondition,
-routed to deterministic repair or `human_required` continuation with a
-repair round — the `warrant-blocked-environment` semantics — never directly
-to terminal product failure). CC-GAP-9 outcome/routing lands before
+verdict), and substrate-unavailable (a missing environment precondition:
+bounded deterministic in-check substrate retry, then a typed unknown
+outcome — the `warrant-blocked-environment` semantics — and a
+human_required blocked/resumable continuation, per ADR-089 — never a
+deterministic repair round for a machine fault, never unbounded silent
+retry, and never a terminal product failure). An unknown receipt never
+prevents, fails, annotates, or counts against a later pass of the same
+criterion. CC-GAP-9 outcome/routing lands before
 CC-GAP-7 warrant execution so warrant phases can never re-flatten a
-substrate failure into product failure. Verification obligations deferred
-by a readiness failure remain first-class pending entries, are never
-rendered discharged, and must execute after readiness recovery. Author and
-reviewer projections of the same Workplace refs must stay distinguishable
-in status surfaces; reviewer projections are not duplicate implementation
-work. Elite-6 root-cause wording: AC-22 existed and was only nominally
+substrate failure into product failure. Verification accounting is an
+append-only criterion-key ledger: every required verification obligation
+is a first-class entry keyed by criterion, appending
+`proposed -> pending -> executed(passed|failed) | unknown | waived`
+transitions that are never rewritten or deleted; a pending entry survives
+readiness failure and lifecycle continuation; `executed(failed)` does not
+discharge (the obligation stays outstanding); the sole discharge paths are
+a passed receipt or an operator-attributed waiver; every entry carries and
+displays its stage and order coordinates; and the lifecycle transition
+obligation ledger is not reused for this role — verification accounting is
+a separate seam. Author and
+reviewer projections of the same Workplace refs are correct in the durable
+records; the CC-GAP-10 defect is rendering-only — board and task-detail
+surfaces must display author versus reviewer role alongside the shared
+Workplace identity, with no deduplication and no data rewrite. Reviewer
+projections are not duplicate implementation work. Elite-6 root-cause
+wording: AC-22 existed and was only nominally
 attached — the defect is missing whole-product synthesis ownership and
 missing mechanical classification enforcement upstream of the planner, not
 a missing criterion — and tasks 15-25/26-36 were author and reviewer
@@ -347,7 +366,8 @@ Only one integration owner at a time may edit a row in this table.
 - [ ] Serialize CC-GAP-9 substrate outcome/routing edits (execution-kernel
   owner) before CC-GAP-7 warrant-execution edits (verification owner); both
   touch the readiness provider seam, and warrant phases must never meet a
-  substrate failure without the typed outcome and routing already in place.
+  substrate failure without the ADR-089 outcome/routing (bounded in-check
+  retry, typed unknown, human_required blocked/resumable) already in place.
 - [ ] Never merge competing versions of a shared contract.
 
 ---
@@ -529,18 +549,26 @@ green.
 - Depends on: CC-00B
 - Internal serialization: CC-GAP-9 substrate outcome/routing lands before
   CC-GAP-7 warrant execution — warrant phases must never meet a substrate
-  failure without the typed outcome and routing already in place.
+  failure without the typed outcome and routing (ADR-089: bounded
+  in-check substrate retry, then typed unknown and human_required
+  blocked/resumable) already in place.
 - Objective (SMART): by CC-00C exit, every non-empty versioned Order
   Constraint Register from a new Factory Start is mechanically closed —
   register ids minus union(coveredConstraintIds) minus typed waivers is
   empty, SRS §2.2 module-manifest scope coverage holds
   (register-conditional grandfathering, execution-entrypoint ownership,
-  and kernel-only `coveredConstraintIds` derivation per ADR-088), and
-  warrant execution over `VerificationWarrantRef` routes substrate
-  failures to
-  repair or `human_required`, deferred verification obligations remain
-  first-class pending entries until executed after readiness recovery, and
-  author/reviewer role projections are distinguishable in status surfaces
+  and kernel-only `coveredConstraintIds` derivation per ADR-088), warrant
+  execution over `VerificationWarrantRef` classifies substrate failures
+  per ADR-089 (bounded deterministic in-check substrate retry, then typed
+  unknown `warrant-blocked-environment` and human_required
+  blocked/resumable continuation — never product-failed; unknown receipts
+  never poison a later pass), deferred verification obligations live in
+  an append-only criterion-key accounting ledger (pending survives
+  readiness failure and continuation; `executed(failed)` is not
+  discharged; only a passed receipt or an operator-attributed waiver
+  discharges; stage/order visibility) until executed after readiness
+  recovery, and author/reviewer role projections display role on board
+  and task-detail surfaces (durable projections untouched)
   (Specific); measured by the per-gap blocking
   regression proofs and mutations, never by prose (Measurable); achieved by
   finishing the landed AC-drift networks 1-2 and the existing
@@ -603,22 +631,42 @@ Stable gaps and owners:
   oracle yields oracle-insufficient — never a pass and never a
   product-failed verdict.
 - CC-GAP-8 verification reachability/accounting — coverage/report owner.
-  Proposed required verification obligations may be deferred but must remain
-  first-class pending entries, never appear discharged, and must
-  execute after readiness recovery.
+  Proposed required verification obligations may be deferred but never
+  vanish from accounting: implement an append-only criterion-key
+  accounting ledger — one first-class entry per required verification
+  obligation keyed by criterion, transitions appended
+  (`proposed -> pending -> executed(passed|failed) | unknown | waived`),
+  entries never rewritten or deleted. A pending entry survives readiness
+  failure and lifecycle continuation and must execute after recovery.
+  `executed(failed)` is not discharged — the obligation stays outstanding.
+  The sole discharge paths are a passed receipt or an operator-attributed
+  waiver. Every entry carries and displays its stage and order
+  coordinates. Do not reuse the lifecycle transition obligation ledger for
+  this role — verification accounting is a separate seam.
 - CC-GAP-9 substrate failure classification/recovery — execution-kernel
-  owner; lands before CC-GAP-7 warrant execution. Implement the typed
-  `warrant-blocked-environment` outcome (AC-drift network 3) preserving
-  product-failed vs oracle-insufficient vs substrate-unavailable;
-  infrastructure unavailable (for example Docker unavailable) is distinct
-  from product failure and must route to deterministic repair or
-  `human_required` continuation — including an actual repair round for the
-  seam repair issue — not directly to terminal product failure. Legacy
-  records are grandfathered, never reclassified.
-- CC-GAP-10 role projection clarity — trace/evidence owner. Author and
-  reviewer projections of the same Workplace refs must be distinguishable in
-  status UI; reviewer projections (Elite-6 tasks 26-36) were not duplicate
-  implementation work and not graph rematerialization.
+  owner; lands before CC-GAP-7 warrant execution. Implement the
+  `warrant-blocked-environment` contract per ADR-089: a missing
+  environment precondition (for example Docker unavailable) gets bounded
+  deterministic in-check substrate retry (frozen attempt bound and
+  schedule; no model, no WorkerExecution, no CandidateSet, no repair
+  epoch, no worker repair budget consumed); when the bound is exhausted,
+  the check emits a typed unknown outcome (`warrant-blocked-environment`)
+  — never passed, never failed — and the scope routes to a human_required
+  blocked/resumable continuation (a truthful typed wait with a wake
+  source). A substrate condition alone never produces terminal product
+  failure; product-failed, oracle-insufficient, and substrate-unavailable
+  remain distinct typed classes; an earlier unknown receipt never
+  prevents, fails, annotates, or counts against a later pass of the same
+  criterion. Legacy records are grandfathered, never reclassified.
+- CC-GAP-10 role projection clarity — trace/evidence owner. The defect is
+  rendering-only: the durable author/reviewer projections are correct
+  (tasks 15-25/26-36 are author and reviewer projections over the same 11
+  Workplace refs in one sealed graph — not duplicate implementations and
+  not rematerialization). Board and task-detail surfaces must display the
+  role (author vs reviewer) alongside the shared Workplace identity, so
+  reviewer projections cannot be misread as duplicate work. No
+  deduplication and no data rewrite: the durable projections and the
+  sealed graph are untouched.
 
 Checklist:
 
@@ -653,13 +701,18 @@ Checklist:
   skip. Make `coveredConstraintIds` strictly kernel-derived from frozen
   criteria so planner output can neither propose nor forge it; frozen
   evidence is untouched.
-- [ ] CC-GAP-9 (before CC-GAP-7 warrant execution): classify substrate
-  failure with the typed `warrant-blocked-environment` outcome, preserving
-  product-failed vs oracle-insufficient vs substrate-unavailable; readiness
-  failure caused by infrastructure unavailability routes to deterministic
-  repair or `human_required` continuation with a repair round, never
-  directly to `complete-failed` terminal product failure; legacy records
-  are grandfathered, not reclassified.
+- [ ] CC-GAP-9 (before CC-GAP-7 warrant execution, per ADR-089): a
+  substrate-unavailable readiness failure first gets bounded deterministic
+  in-check substrate retry (frozen attempt bound and schedule; no model,
+  no WorkerExecution, no CandidateSet, no repair epoch, no worker repair
+  budget consumed); on exhaustion the check emits the typed unknown
+  `warrant-blocked-environment` outcome — never passed, never failed —
+  and the scope routes to a human_required blocked/resumable continuation
+  (a truthful typed wait with a wake source), never directly to
+  `complete-failed` terminal product failure; product-failed,
+  oracle-insufficient, and substrate-unavailable remain distinct typed
+  classes; an earlier unknown receipt never poisons a later pass of the
+  same criterion; legacy records are grandfathered, not reclassified.
 - [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
   the existing `VerificationWarrantRef` seam in the readiness provider
   through package-level, workshop-declared oracle adapters — no new oracle,
@@ -668,24 +721,39 @@ Checklist:
   page/static/canvas/browser-smoke evidence, and a generic loopback health
   oracle must yield oracle-insufficient for it — never a pass and never a
   product-failed verdict.
-- [ ] CC-GAP-8: implement deferred verification accounting: proposed but
-  unmaterialized verification obligations remain visible pending entries
-  with owner and unblock condition, are never rendered discharged, and
-  execute after readiness recovery.
-- [ ] CC-GAP-10: make role projections distinguishable: status surfaces
-  expose author versus reviewer role for tasks sharing one Workplace ref, so
-  reviewer projections are not misread as duplicate implementation work or
-  graph rematerialization.
+- [ ] CC-GAP-8: implement append-only criterion-key verification
+  accounting: proposed but unmaterialized verification obligations become
+  first-class ledger entries keyed by criterion, with owner and unblock
+  condition, visible as pending; entries survive readiness failure and
+  lifecycle continuation; transitions append
+  `proposed -> pending -> executed(passed|failed) | unknown | waived`;
+  `executed(failed)` does not discharge; only a passed receipt or an
+  operator-attributed waiver discharges; every entry displays its stage
+  and order coordinates; the lifecycle transition obligation ledger is
+  not reused for this role.
+- [ ] CC-GAP-10: make role projections distinguishable — the defect is
+  rendering-only (the durable author/reviewer projections are correct):
+  board and task-detail surfaces expose author versus reviewer role for
+  tasks sharing one Workplace ref, so reviewer projections are not misread
+  as duplicate implementation work or graph rematerialization; no
+  deduplication and no data rewrite of the durable projections or the
+  sealed graph.
 - [ ] Add universal scenario DSL vocabulary without workshop-specific
   frontend hardcoding, reusing existing terms instead of inventing parallel
   deliverable-claim vocabulary: order-constraint register coverage facts
   (register ids, `coveredConstraintIds`, typed waivers); warrant-execution
   facts over `VerificationWarrantRef` (executed line, outstanding human
   line, waived line with provenance); the three distinct outcome classes
-  product-failed, oracle-insufficient, and substrate-unavailable
-  (`warrant-blocked-environment` routing facts); deferred verification
-  accounting entries (proposed -> pending -> executed, never silently
-  discharged); role-projection facts. Browser/canvas specifics arrive only
+  product-failed, oracle-insufficient, and substrate-unavailable (ADR-089
+  routing facts: bounded in-check substrate retry, typed unknown
+  `warrant-blocked-environment` on exhaustion, human_required
+  blocked/resumable continuation, unknown receipts never poisoning a
+  later pass); append-only criterion-key verification accounting entries
+  (proposed -> pending -> executed(passed|failed) | unknown | waived;
+  `executed(failed)` not discharged; discharge only by passed receipt or
+  operator-attributed waiver; stage/order visibility); role-projection
+  facts (author vs reviewer over shared Workplace refs). Browser/canvas
+  specifics arrive only
   through workshop-declared package data (register lines and package-level
   oracle adapters), never engine branches.
 - [ ] Add blocking regression proofs, one per gap: dropping whole-product
@@ -697,13 +765,22 @@ Checklist:
   ownership, and a planner proposal carrying `coveredConstraintIds` cannot
   alter the kernel-derived relay (CC-GAP-6, per ADR-088); routing
   substrate failure to terminal product failure,
-  or collapsing product-failed/oracle-insufficient/substrate-unavailable
-  into one outcome, fails routing (CC-GAP-9, proven before CC-GAP-7);
-  substituting loopback health for the package-level browser oracle yields
+  collapsing product-failed/oracle-insufficient/substrate-unavailable
+  into one outcome, skipping the bounded in-check retry straight to
+  escalation or terminalization, charging an exhausted retry to worker
+  repair budget or CandidateSets, or letting an earlier unknown receipt
+  prevent or fail a later passed receipt for the same criterion (poison)
+  fails routing/classification (CC-GAP-9, per ADR-089, proven before
+  CC-GAP-7); substituting loopback health for the package-level browser
+  oracle yields
   oracle-insufficient, and rendering it as pass or as product-failed fails
   verification (CC-GAP-7, after CC-GAP-9); rendering deferred verification
-  as discharged fails accounting (CC-GAP-8); rendering reviewer projections
-  as duplicate implementation fails projection (CC-GAP-10).
+  as discharged, rendering `executed(failed)` as discharged, dropping a
+  pending entry across readiness failure or continuation, discharging
+  without a passed receipt or an operator-attributed waiver, or hiding
+  stage/order coordinates fails accounting (CC-GAP-8); rendering reviewer
+  projections as duplicate implementation, or a board/detail surface that
+  omits the role, fails projection (CC-GAP-10).
 - [ ] Record the missing browser frontend (client renderer/hud/effects
   modules exist, but no index.html, no DOM/canvas use, no static serving
   route, no npm start; the server exposes only healthz and 404) as a
@@ -724,22 +801,32 @@ Exit checklist:
   grandfathered with typed skips, planner output cannot forge
   `coveredConstraintIds`, and frozen evidence is untouched; the CC-GAP-6
   blocking proof is green.
-- [ ] Substrate unavailability routes to deterministic repair or
-  `human_required` continuation with a repair round, not terminal product
-  failure; product-failed, oracle-insufficient, and substrate-unavailable
-  remain distinct typed outcomes (`warrant-blocked-environment` semantics),
-  legacy records are grandfathered, and the CC-GAP-9 blocking proof is
-  green and landed before CC-GAP-7 warrant execution.
+- [ ] Substrate unavailability gets bounded deterministic in-check retry,
+  then the typed unknown `warrant-blocked-environment` outcome and a
+  human_required blocked/resumable continuation — never a deterministic
+  repair round, never unbounded silent retry, never terminal product
+  failure (ADR-089); product-failed, oracle-insufficient, and
+  substrate-unavailable remain distinct typed outcomes; an exhausted
+  retry consumes no worker repair budget and creates no CandidateSet; an
+  earlier unknown receipt never poisons a later pass of the same
+  criterion; legacy records are grandfathered, and the CC-GAP-9 blocking
+  proof is green and landed before CC-GAP-7 warrant execution.
 - [ ] Warrant execution consumes the `VerificationWarrantRef` through
   package-level oracle adapters only; a generic loopback health oracle
   yields oracle-insufficient for a browser-product claim — never a pass and
   never a product-failed verdict — and CC-GAP-9 outcome/routing landed
   first; the CC-GAP-7 blocking proof is green.
-- [ ] Deferred verification obligations remain first-class pending until
-  executed after readiness recovery, and none is rendered discharged; the
-  CC-GAP-8 blocking proof is green.
-- [ ] Author/reviewer role projections are distinguishable in every status
-  surface; the CC-GAP-10 blocking proof is green.
+- [ ] Verification accounting is an append-only criterion-key ledger:
+  deferred obligations remain first-class pending until executed after
+  readiness recovery, pending survives readiness failure and continuation,
+  `executed(failed)` is not discharged, nothing is discharged without a
+  passed receipt or an operator-attributed waiver, entries carry
+  stage/order visibility, and the lifecycle transition obligation ledger
+  is not reused; the CC-GAP-8 blocking proof is green.
+- [ ] Author/reviewer role is displayed on board and task-detail surfaces
+  for tasks sharing one Workplace ref; the durable projections and the
+  sealed graph are untouched — no deduplication, no data rewrite
+  (rendering-only, CC-GAP-10); the CC-GAP-10 blocking proof is green.
 - [ ] Elite-6 product-claim evidence is frozen copy-only with recorded paths
   and digests; frozen sources are untouched.
 - [ ] The Elite-6 experiment remains complete and immutable, product
@@ -1084,8 +1171,13 @@ Checklist:
   grandfathering, execution-entrypoint ownership, and kernel-only
   coveredConstraintIds derivation per ADR-088), warrant execution over
   `VerificationWarrantRef` through package-level oracle adapters,
-  deferred-verification accounting, substrate outcome/routing
-  (`warrant-blocked-environment`), and role projection (CC-GAP-6..10
+  append-only criterion-key verification accounting (pending survival,
+  executed(failed)-not-discharged, passed-receipt-or-waiver discharge,
+  stage/order visibility), substrate outcome/routing per ADR-089 (bounded
+  in-check substrate retry; typed unknown `warrant-blocked-environment`
+  on exhaustion; human_required blocked/resumable; no-poison of later
+  passes; never product-failed), and role projection (board/detail role
+  display, rendering-only) (CC-GAP-6..10
   wiring).
 - [ ] Repeat complete group three times in fresh environments.
 
@@ -1341,8 +1433,11 @@ Checklist:
   grandfathering, execution-entrypoint ownership, and kernel-only relay
   derivation per ADR-088), warrant execution over
   `VerificationWarrantRef` with package-level oracle adapters,
-  deferred-verification accounting, substrate outcome classification and
-  routing (`warrant-blocked-environment`), and role-projection clarity,
+  append-only criterion-key verification accounting, substrate outcome
+  classification and routing per ADR-089 (bounded in-check substrate
+  retry; typed unknown `warrant-blocked-environment`; human_required
+  blocked/resumable; no-poison; never product-failed), and
+  role-projection clarity,
   with their blocking mutations.
 - [ ] Fail on missing fixtures, empty scans, zero tests, or skipped groups.
 
@@ -1587,6 +1682,14 @@ Pre-mortem controls:
   SRS §2.2 module-manifest coverage, and `VerificationWarrantRef` seam —
   it invents no parallel deliverable-claim vocabulary — makes
   grandfathering strictly register-conditional with entrypoint ownership
-  and kernel-only relay derivation (ADR-088), keeps product-failed,
-  oracle-insufficient, and substrate-unavailable distinct, and serializes
+  and kernel-only relay derivation (ADR-088), makes verification
+  accounting append-only and criterion-keyed (pending survives readiness
+  failure and continuation; `executed(failed)` is not discharged; only a
+  passed receipt or an operator-attributed waiver discharges;
+  stage/order visibility; no reuse of the transition obligation ledger),
+  keeps product-failed, oracle-insufficient, and substrate-unavailable
+  distinct with bounded in-check substrate retry, typed unknown, and
+  human_required blocked/resumable (ADR-089; unknown receipts never poison
+  a later pass), treats role projection as rendering-only (board/detail
+  display role; no deduplication, no data rewrite), and serializes
   CC-GAP-9 outcome/routing before CC-GAP-7 warrant execution.
