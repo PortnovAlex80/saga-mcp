@@ -50,6 +50,11 @@ import {
   hashIntegratedSourceCandidate,
 } from '../domain/development-settlement-policy.js';
 import {
+  openVerificationLedgerAtGraphMaterialization,
+  recordVerificationExecuted,
+  ensureDevelopmentVerificationLedgerSchema,
+} from './development-verification-ledger.js';
+import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -130,6 +135,17 @@ export class SqliteDevelopmentModuleStore implements
         productHash: input.graph.graphHash,
         payload: input.graph,
         artifactRefPrefix: 'development-task-graph',
+      });
+      // CC-GAP-8: open the append-only criterion-key accounting ledger in
+      // the SAME transaction as the graph product — every verification
+      // obligation is a first-class pending entry from materialization on,
+      // surviving readiness failure and continuation. Replay of an already
+      // stored graph never re-opens (and never back-fills legacy graphs).
+      openVerificationLedgerAtGraphMaterialization(this.db, {
+        processRunId: input.processRunId,
+        projectId: input.developmentCase.projectId,
+        epicId: input.developmentCase.epicId,
+        graph: input.graph,
       });
       return stored.record;
     })();
@@ -756,6 +772,23 @@ export class SqliteDevelopmentModuleStore implements
     const requiredCount = taskGraph.verificationItems
       .filter(item => item.required).length;
     const complete = evidence.length === requiredCount;
+    // CC-GAP-8: append the executed facts to the criterion-key ledger —
+    // outcome and authority are the exact trusted-receipt facts already
+    // validated above (criterion key + acceptedCriterionHash + candidateHash
+    // + trusted provider). Executed-FAILED is recorded but never discharges;
+    // only this exact-passed receipt (or an operator waiver) can. Legacy
+    // runs without ledger rows are skipped whole by the recorder.
+    for (const item of evidence) {
+      recordVerificationExecuted(this.db, {
+        processRunId,
+        criterionKey: item.acceptanceCriterionKey,
+        verificationItemKey: item.verificationItemKey,
+        outcome: item.outcome === 'passed' ? 'passed' : 'failed',
+        receiptRef: item.evidence.ref,
+        receiptDigest: item.evidence.hash,
+        candidateHash: item.candidateHash,
+      });
+    }
     const body: Omit<AcceptanceVerificationWorkset, 'verificationHash'> = {
       schemaVersion: ACCEPTANCE_VERIFICATION_SCHEMA,
       acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,
@@ -1330,6 +1363,7 @@ function stringValue(value: unknown): string {
 }
 
 export function ensureDevelopmentStoreSchema(db: Database.Database): void {
+  ensureDevelopmentVerificationLedgerSchema(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_development_task_projections (
       process_run_id INTEGER NOT NULL
