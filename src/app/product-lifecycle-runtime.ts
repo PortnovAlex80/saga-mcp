@@ -958,6 +958,15 @@ export function createProductLifecycleRuntime(
   const baseEngine = new LifecycleOrchestrationEngineAdapter({
     definition: options.lifecycleDefinition ?? productBuildLifecycle,
     orchestrator,
+    // CC-GAP-4 — the run.terminal journal boundary is gated by a durable
+    // exactly-once claim on the lifecycle run's authority row: whichever of
+    // the competing terminal paths (this dispatch call, the obligation
+    // re-drive above, or a replay in another engine process) reaches the
+    // adapter first claims; every other path replays the terminal record
+    // and stays silent. One terminalized scope ⇒ exactly one effective
+    // run.terminal event.
+    claimTerminalEvent: lifecycleRunId =>
+      lifecycleRunRepo.claimRunTerminalEvent(lifecycleRunId),
     resolveDefinition(command, input) {
       const row = readPinnedLifecycleByInvocation(
         db,
