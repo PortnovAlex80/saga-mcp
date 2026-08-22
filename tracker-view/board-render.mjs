@@ -909,12 +909,23 @@ export function createBoardRenderApi({
           // spawn a duplicate engine (lease collision), Stop would kill the
           // live workers. The user WILL press the button — it must be dead,
           // not merely discouraged.
+          // B-006 guard + ADR-087: the host is not empty while EITHER real
+          // active workers run OR semantically-exited physical tails are
+          // still alive (settlement converged the execution; the OS process
+          // kept running). blindLive counts BOTH so Play/drain can never
+          // claim an empty host; liveTails is reported SEPARATELY so the
+          // labels keep semantic completion (state=exited) distinct from
+          // physical death (exit_code observed).
           let blindLive = 0;
+          let liveTails = 0;
           try {
             const w = await fetch('/api/workers/active?project_id=' + (window.__sagaProjectId || ${projectId}));
             const wj = await w.json();
             if (wj.ok && Array.isArray(wj.workers)) {
-              blindLive = wj.workers.filter(x => x.phase !== 'exited').length;
+              blindLive = wj.workers.filter(x => x.semantic_exited !== true).length;
+              liveTails = typeof wj.physical_tails === 'number'
+                ? wj.physical_tails
+                : wj.workers.filter(x => x.semantic_exited === true).length;
             }
           } catch { /* workers probe unavailable — fall through to controls */ }
           const panelSeesEngine = state.running && state.alive;
@@ -931,7 +942,11 @@ export function createBoardRenderApi({
             engineToggle.classList.add('engine-running');
             engineToggle.title = 'Пауза-дожин: ограда очереди держится в БД и не зависит от панели. Движок сам припаркуется после дожина; для убийства — CLI: node scripts/factory.mjs stop <db> --project N';
             runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
-              + ' · ⏸ доступен (дожин): движок сам припаркуется после дожина; для убийства — CLI';
+              + ' · ⏸ доступен (дожин): движок сам припаркуется после дожина; для убийства — CLI'
+              + (liveTails > 0
+                ? ' · ⚠ живые хвосты ADR-087: ' + liveTails
+                  + ' (семантически завершены [state=exited], процесс жив, физический выход не наблюдён [exit_code=null])'
+                : '');
           } else {
             engineToggle.disabled = false;
             syncEngineToggleButton(panelSeesEngine);
@@ -953,6 +968,13 @@ export function createBoardRenderApi({
                 || state.last_launch.lifecycle.status
                 || 'unknown';
               runnerStatus.textContent += ' · ран завершён, вердикт: ' + verdict;
+            }
+            if (liveTails > 0) {
+              // The engine is NOT running, but the host is NOT empty:
+              // semantically completed processes are still physically alive.
+              runnerStatus.textContent += ' · ⚠ живые хвосты ADR-087: ' + liveTails
+                + ' (воркеры семантически завершены [state=exited], но их процессы ещё живы; '
+                + 'физический выход не наблюдён [exit_code=null] — хост не пуст)';
             }
           }
           if (runnerConcurrency && state.concurrency) {
@@ -1029,15 +1051,33 @@ export function createBoardRenderApi({
         const projectId = window.__sagaProjectId || ${projectId};
         const tick = async () => {
           let active = lastActive;
+          let tails = 0;
           try {
             const w = await fetch('/api/workers/active?project_id=' + projectId);
             const wj = await w.json();
             if (wj.ok && Array.isArray(wj.workers)) {
-              active = wj.workers.filter(x => x.phase !== 'exited').length;
+              active = wj.workers.filter(x => x.semantic_exited !== true).length;
+              tails = typeof wj.physical_tails === 'number'
+                ? wj.physical_tails
+                : wj.workers.filter(x => x.semantic_exited === true).length;
             }
           } catch { /* probe unavailable — keep the last count */ }
           if (active > 0) {
-            runnerStatus.textContent = '⏳ дожидаемся ' + active + ' воркер(ов) — новых наймов нет (ограда очереди)';
+            runnerStatus.textContent = '⏳ дожидаемся ' + active + ' воркер(ов) — новых наймов нет (ограда очереди)'
+              + (tails > 0 ? ' · ⚠ живые хвосты ADR-087: ' + tails : '');
+            drainTimer = setTimeout(tick, ${RELOAD_SEC * 1000});
+            return;
+          }
+          if (tails > 0) {
+            // ADR-087: the drain line may NOT claim an empty host while
+            // semantically-exited processes are still physically alive. They
+            // are NOT working workers (state=exited — semantic completion
+            // stands) and nothing waits on them operationally, but the host
+            // is truthfully not empty until their physical exit is observed
+            // (exit_code backfill) or an operator cleans them up.
+            runnerStatus.textContent = '⏳ активных воркеров нет · живые хвосты ADR-087: ' + tails
+              + ' (семантически завершены [state=exited], процессы живы, физический выход не наблюдён'
+              + ' [exit_code=null]) — хост не пуст';
             drainTimer = setTimeout(tick, ${RELOAD_SEC * 1000});
             return;
           }
@@ -1069,7 +1109,13 @@ export function createBoardRenderApi({
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось поставить паузу');
-              drainModePoll(d.active_workers ?? 0, d.queued_cards ?? 0);
+              // Seed the drain line with BOTH counts (workers + ADR-087
+              // physical tails) so the first paint cannot claim an empty
+              // host before the first /api/workers/active probe refines it.
+              drainModePoll(
+                (d.active_workers ?? 0) + (d.physical_tails ?? 0),
+                d.queued_cards ?? 0,
+              );
             } catch (e) {
               alert('Пауза: ' + e.message);
               runnerStatus.textContent = 'ошибка';

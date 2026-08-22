@@ -1640,57 +1640,76 @@ export class ClaudeBoardRunner {
         }
       }
 
+      // CC-GAP-3 — the worker.exit observation for a RECEIPT-BACKED close is
+      // emitted only after markExited below proves THIS callback won the
+      // durable terminal write. A supervision sweep may already have
+      // converged the row (lost close callback, engine restart, terminal-run
+      // settlement) — that sweep emitted worker.exit itself, so an
+      // unconditional emission here would double-emit for the execution.
+      let workerExitEvent = null;
       if (completed) {
         run.completed += 1;
-        journalEvent('worker.exit', {
-          run_id: run.id,
-          execution_id: execution.executionId || undefined,
-        }, {
-          task_id: task.id,
-          worker_id: workerId,
-          display_name: execution.displayName ?? null,
-          exit_code: code ?? null,
-          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
-          worker_done_received: true,
-          task_status_after: taskState?.status || null,
-        });
+        workerExitEvent = {
+          correlation: {
+            run_id: run.id,
+            execution_id: execution.executionId || undefined,
+          },
+          data: {
+            task_id: task.id,
+            worker_id: workerId,
+            display_name: execution.displayName ?? null,
+            exit_code: code ?? null,
+            duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+            worker_done_received: true,
+            task_status_after: taskState?.status || null,
+          },
+        };
         this.heartbeat(run, execution, 'CLOSED',
           `exit=${code ?? '?'} completed from durable worker_done status=${taskState?.status || '?'}`);
       } else if (changesRequested) {
         run.completed += 1;
-        journalEvent('worker.exit', {
-          run_id: run.id,
-          execution_id: execution.executionId || undefined,
-        }, {
-          task_id: task.id,
-          worker_id: workerId,
-          display_name: execution.displayName ?? null,
-          exit_code: code ?? null,
-          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
-          worker_done_received: true,
-          outcome: 'changes_requested',
-        });
+        workerExitEvent = {
+          correlation: {
+            run_id: run.id,
+            execution_id: execution.executionId || undefined,
+          },
+          data: {
+            task_id: task.id,
+            worker_id: workerId,
+            display_name: execution.displayName ?? null,
+            exit_code: code ?? null,
+            duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+            worker_done_received: true,
+            outcome: 'changes_requested',
+          },
+        };
         this.heartbeat(run, execution, 'CLOSED',
           `exit=0 changes_requested → returned to dev queue`);
       } else if (reviewExhausted) {
         run.completed += 1;
-        journalEvent('worker.exit', {
-          run_id: run.id,
-          execution_id: execution.executionId || undefined,
-        }, {
-          task_id: task.id,
-          worker_id: workerId,
-          display_name: execution.displayName ?? null,
-          exit_code: code ?? null,
-          duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
-          worker_done_received: true,
-          outcome: 'review_budget_exhausted',
-        });
+        workerExitEvent = {
+          correlation: {
+            run_id: run.id,
+            execution_id: execution.executionId || undefined,
+          },
+          data: {
+            task_id: task.id,
+            worker_id: workerId,
+            display_name: execution.displayName ?? null,
+            exit_code: code ?? null,
+            duration_ms: execution.startedAt ? Date.now() - Date.parse(execution.startedAt) : null,
+            worker_done_received: true,
+            outcome: 'review_budget_exhausted',
+          },
+        };
         this.heartbeat(run, execution, 'CLOSED',
           'exit=0 changes_requested → review budget exhausted; task blocked');
       } else {
         run.failed += 1;
         run.lastError = `Task ${task.id} Claude process exited with code ${code} before terminal worker_done`;
+        // No-receipt exit: the supervision sweep never emits worker.exit for
+        // 'lost' rows, so this callback is the observation's ONLY owner and
+        // emits unconditionally (before recovery, exactly as before).
         journalEvent('worker.exit', {
           run_id: run.id,
           execution_id: execution.executionId || undefined,
@@ -1715,17 +1734,31 @@ export class ClaudeBoardRunner {
           spawnFailure: false,
         });
       }
+      let closeWonTerminalWrite = true;
       if (execution.executionId) {
         try {
-          this.executionStore.markExited(
+          const outcome = this.executionStore.markExited(
             this.dbPath,
             execution.executionId,
             code ?? null,
             execution.terminationRequested ? 'terminated' : 'exited',
           );
+          // outcome.terminalized === false ⇒ another writer (the supervision
+          // sweep, or the ADR-087 terminal settlement) already converged the
+          // row and emitted worker.exit. Legacy fakes returning nothing carry
+          // no outcome — assume this close won. A losing callback does not
+          // mutate anything: releaseExecutionAtomically backfills exit_code
+          // (only when still NULL) without a second worker.exit.
+          if (outcome && outcome.terminalized === false) closeWonTerminalWrite = false;
         } catch (error) {
           run.lastError = `execution close persistence failed: ${error.message}`;
+          // The sweep converges the row later and emits the observation —
+          // emitting here would double it.
+          closeWonTerminalWrite = false;
         }
+      }
+      if (workerExitEvent && closeWonTerminalWrite) {
+        journalEvent('worker.exit', workerExitEvent.correlation, workerExitEvent.data);
       }
 
       if (run.stopRequested) {

@@ -21,7 +21,7 @@ import {
   artifactFallbackDocument,
   orderedArtifactTypes,
 } from './artifact-presentation.mjs';
-import { isProcessAlive } from '../dist/worker-executions.js';
+import { isProcessAlive, readProcessBirthToken } from '../dist/worker-executions.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import {
   initShared,
@@ -283,6 +283,9 @@ const lifecycleApi = createLifecycleEndpointsApi({
   repositoryHandlers,
   workerLogRoots: WORKER_LOG_ROOTS,
   isProcessAlive,
+  // ADR-087 tail visibility: birth-safe PID identity for semantically
+  // exited, physically alive local tails (/api/workers/active).
+  readBirthToken: readProcessBirthToken,
 });
 
 // T10 step 6: artifact rendering (renderMarkdown / renderArtifacts /

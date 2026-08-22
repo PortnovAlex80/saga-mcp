@@ -3,6 +3,7 @@
 // the model route, and only then starts Product Delivery.
 
 import path from 'node:path';
+import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -859,16 +860,31 @@ export function createAdminEndpointsApi({
           createdBy: 'panel',
         }));
         // Read-only observability counts for the two-phase UI drain line.
-        const counts = withDb(db => ({
-          active_workers: db.prepare(
-            `SELECT COUNT(*) AS c FROM worker_executions
-              WHERE project_id=? AND state IN ('reserved','running','cancel_requested')`,
-          ).get(projectId).c,
-          queued_cards: db.prepare(
-            `SELECT COUNT(*) AS c FROM tasks t JOIN epics e ON e.id=t.epic_id
-              WHERE e.project_id=? AND t.status IN ('todo','review')`,
-          ).get(projectId).c,
-        }));
+        // ADR-087: physical_tails counts this host's semantically-exited but
+        // physically-unobserved executions (state='exited' AND exit_code IS
+        // NULL on machine_id=this host). The drain line must include them so
+        // it can never claim an empty host while an authority-dead process
+        // still runs; the DB alone cannot prove a PID alive, so this count is
+        // the conservative "physical exit not yet observed" bound — per-PID
+        // liveness truth lives in /api/workers/active (birth-safe probe).
+        const counts = withDb(db => {
+          const host = os.hostname();
+          return {
+            active_workers: db.prepare(
+              `SELECT COUNT(*) AS c FROM worker_executions
+                WHERE project_id=? AND state IN ('reserved','running','cancel_requested')`,
+            ).get(projectId).c,
+            physical_tails: db.prepare(
+              `SELECT COUNT(*) AS c FROM worker_executions
+                WHERE project_id=? AND state='exited' AND exit_code IS NULL
+                  AND machine_id=?`,
+            ).get(projectId, host).c,
+            queued_cards: db.prepare(
+              `SELECT COUNT(*) AS c FROM tasks t JOIN epics e ON e.id=t.epic_id
+                WHERE e.project_id=? AND t.status IN ('todo','review')`,
+            ).get(projectId).c,
+          };
+        });
         return respondJson(res, 200, {
           ok:true,
           mode:'pause',
@@ -877,8 +893,12 @@ export function createAdminEndpointsApi({
           hold_ref:placement.holdRef,
           placed:placement.placed,
           active_workers:counts.active_workers,
+          physical_tails:counts.physical_tails,
           queued_cards:counts.queued_cards,
-          note:'ограда очереди поставлена; активные воркеры доработают, движок сам припаркуется (exit-2 paused)',
+          note:'ограда очереди поставлена; активные воркеры доработают, движок сам припаркуется (exit-2 paused)'
+            + (counts.physical_tails > 0
+              ? `; ⚠ physical_tails=${counts.physical_tails}: семантически завершённые (state=exited) процессы этого хоста, физический выход не наблюдён (exit_code=null) — хост не пуст`
+              : ''),
         });
       } catch (error) {
         return respondJson(res, 500, { ok:false, error:'db: ' + error.message });

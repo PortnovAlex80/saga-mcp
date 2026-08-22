@@ -1178,6 +1178,25 @@
         "docs/plans/PROJECT-STRUCTURAL-CLEANUP-PLAN.md — implementation plan",
         "docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md §12 — ADR-086 coordination block"
       ]
+    },
+    {
+      "adr": "087",
+      "file": "087-receipt-authoritative-terminal-drain.md",
+      "decisionStatus": "accepted",
+      "closureState": "implemented",
+      "owningReleases": [
+        "K15"
+      ],
+      "evidenceOwner": "K15",
+      "principalProof": "Terminal-run receipt settlement: at a terminal boundary every receipt-backed active execution converges to semantic exited through the existing fenced atomic release with exactly one worker.exit and zero kill invocations; a no-receipt/unverifiable residual fails the launch closed (exit 1, typed journal evidence) instead of clean success",
+      "successor": null,
+      "notes": "Accepted 2026-08-22 (autonomous-decision MCDA, Option B over the initial leader A after Red Team). CC-GAP-3 (Conformance Closure): completes the terminal-boundary form of parent ADR-061 (exact worker completion dominates process drain) — owned by K15 like ADR-061. Implementation: settleWorkerExecutionsAtTerminalRun in src/infrastructure/work/worker-supervision-service.ts (bounded natural drain <=5s cap MAX_TERMINAL_DRAIN_MS with typed INVALID_DRAIN_WINDOW config rejection, ordinary reconcile, receipt-authoritative settlement via releaseExecutionAtomically, final fail-closed recount) wired at the orchestrate-cli terminal boundary (launch settled failed/exit 1 + journalEvent terminal_settlement.failed). Companion observability: /api/workers/active exposes semantically-exited physically-alive local tails with birth-token-verified identity; admin pause and board blindLive/drain labels count physical_tails so no surface claims an empty host. Focused evidence: tests/architecture/worker-exit-terminalization.test.mjs 5/5 (dead-PID and alive-PID forms, exactly-once worker.exit, late-exit backfill without duplicate, no-kill assertion using the test process PID, fail-closed residual, drain-window cap ratchets) and tests/architecture/adr087-tail-visibility.test.mjs 3/3. Closure (closed state) awaits the ADR's own decision-journal check trigger: the next full production-style factory run leaving zero receipt-backed running executions and no duplicate worker.exit — hence implemented, not closed.",
+      "evidence": [
+        "tests/architecture/worker-exit-terminalization.test.mjs — ADR-087 terminal drain regression (5 tests)",
+        "tests/architecture/adr087-tail-visibility.test.mjs — required companion observability fences (3 tests)",
+        "src/infrastructure/work/worker-supervision-service.ts — settleWorkerExecutionsAtTerminalRun + TerminalWorkerSettlementError",
+        "src/orchestrate-cli.ts — terminal settlement wiring, fail-closed launch settlement, typed run-journal evidence"
+      ]
     }
   ]
 }
