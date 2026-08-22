@@ -45,6 +45,8 @@ const bootstrap = await bootstrapFreshHarness({
 });
 
 try {
+  let launchRef = null;
+  if (runtime.launchMode !== 'harness-default') {
   // ── INPUT CONSTRUCTION (production modules only — no test-side authority) ──
   const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
   const db = getDb();
@@ -128,7 +130,7 @@ try {
     `INSERT INTO factory_orders (order_ref,project_id,epic_id,source_kind,state)
      VALUES (?, ?, ?, 'idea_url','starting')`,
   ).run(orderRef, bootstrap.projectId, bootstrap.epicId);
-  const launchRef = launchMod.requestFactoryLaunch({
+  const launchRef0 = launchMod.requestFactoryLaunch({
     orderRef, mode: 'new',
     projectId: bootstrap.projectId, epicId: bootstrap.epicId,
     initiatedBy: 'proof-delivery-night',
@@ -137,6 +139,8 @@ try {
     lifecycleInput,
     lifecycleInputSchema: 'factory.product-delivery-lifecycle-input.v2',
   }, db);
+  launchRef = launchRef0;
+  } // end authorized input construction
 
   // ── THE UNIFIED KERNEL ──
   const { productDeliveryLifecycle } = await import(pathToFileURL(path.resolve(
@@ -155,7 +159,7 @@ try {
     assertCleanBootstrap: false,
     lifecycleDefinition: productDeliveryLifecycle,
     driveOptions: {
-      launchRef,
+      ...(launchRef ? { launchRef } : {}),
       scenarioConcurrencyCap: HARNESS_CONCURRENCY_CEILING,
       ...(runtime.driveOptions ?? {}),
     },
