@@ -181,7 +181,7 @@ function providerEvidence(prefix, body) {
   return { schema: `factory.proof.${prefix}.v1`, ref: `proof:${prefix}:${hash}`, hash };
 }
 
-export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus } = {}) {
+export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus, observeMismatch = false, executeUncertain = false } = {}) {
   const markerRoot = path.join(repoPath, '.git');
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
@@ -207,6 +207,12 @@ export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus } = {
     namespace: 'proof-deployment',
     identity: CANONICAL_TEST_PROVIDERS.deployment,
     async execute({ action, actionKey }) {
+      // publication-unknown scenario: the provider cannot confirm the
+      // mutation — the receipt is 'uncertain' and the runtime must route to
+      // authoritative observation instead of trusting or denying blindly.
+      if (executeUncertain) {
+        return { outcome: 'uncertain', externalRef: null, resultHash: null };
+      }
       const marker = markerPath(actionKey);
       const state = {
         actionKey,
@@ -233,7 +239,14 @@ export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus } = {
           observedStateHash = 'proof-deployment:corrupt-state';
         }
       }
-      const matched = observedStateHash === action.desiredStateHash;
+      let matched = observedStateHash === action.desiredStateHash;
+      // observation-mismatch scenario: the authoritative state provider
+      // reports a DIVERGENT external state after execution — settlement must
+      // fail the release closed instead of trusting the execute receipt.
+      if (observeMismatch && matched) {
+        observedStateHash = sha256Hex({ divergent: actionKey, mode: 'mismatch' });
+        matched = false;
+      }
       const body = { actionKey, target: action.target, observedStateHash, matched };
       return {
         outcome: matched ? 'matched' : 'mismatched',

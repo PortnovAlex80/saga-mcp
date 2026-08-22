@@ -155,6 +155,8 @@ try {
     deliveryProviders: buildCanonicalDeliveryProviders({
       repoPath: bootstrap.repoPath,
       ...(runtime.approvalStatus ? { approvalStatus: runtime.approvalStatus } : {}),
+      ...(runtime.observeMismatch ? { observeMismatch: true } : {}),
+      ...(runtime.executeUncertain ? { executeUncertain: true } : {}),
     }),
     // The production launch above is INPUT construction (factory_orders +
     // launch rows) — it wrote no authority tables; the kernel's clean-bootstrap

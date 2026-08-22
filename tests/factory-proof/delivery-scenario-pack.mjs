@@ -98,8 +98,6 @@ function noStrandedExecutionOracle() {
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
   'L:approval:binds-candidate+preflight+policy-hash',
-  'L:publication:unknown-failure-routes-to-observation',
-  'L:observation:mismatch-prevents-released',
   'L:observe-before-retry:no-duplicate-non-idempotent-effect',
   'L:candidate-immutability:drift-after-certification-blocks',
   'K4:crash-after-effect-before-receipt',
@@ -158,6 +156,32 @@ export const DELIVERY_SCENARIOS = Object.freeze([
     coverageItems: [
       'L:approval:pending-holds-publication',
       coverageToken.transition('settle-delivery', 'complete-approval-required'),
+    ],
+  }),
+  // Authoritative observation: the external state provider reports a state
+  // DIVERGENT from the desired one after execution — settlement must fail
+  // the release closed (blocked), never trust the execute receipt alone.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/observation-mismatch-blocked',
+    kind: 'positive',
+    proves: ['effect.deploy'],
+    coverageItems: [
+      'L:observation:mismatch-prevents-released',
+      'external:observation:authoritative-state',
+    ],
+  }),
+  // Unknown publication: the provider cannot confirm the mutation (receipt
+  // 'uncertain') — the runtime routes to authoritative observation, and the
+  // release is decided by what the external state ACTUALLY says.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/publication-unknown-routes-to-observation',
+    kind: 'positive',
+    proves: ['effect.deploy'],
+    coverageItems: [
+      'L:publication:unknown-failure-routes-to-observation',
+      'external:observation:authoritative-state',
     ],
   }),
 ]);
@@ -247,6 +271,72 @@ export function buildDeliveryRuntimeCase(id) {
                 passed: actions.length === 0,
                 evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
                 details: { count: actions.length, actions },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/observation-mismatch-blocked':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        observeMismatch: true,
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          terminalOracle('delivery-blocked'),
+          deliveryStageOutcomeOracle('blocked'),
+          {
+            id: 'delivery.mismatch.effect-attempted-release-denied',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              const attempted = actions.some(a => a.execution_attempts >= 1);
+              const released = (durableTrace.lifecycleRuns ?? [])
+                .some(run => run.terminal_status === 'released');
+              return {
+                passed: attempted && !released,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                details: {
+                  deliveryActions: actions.length,
+                  attempted: actions.some(a => a.execution_attempts >= 1),
+                  releasedTerminal: released,
+                },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/publication-unknown-routes-to-observation':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        executeUncertain: true,
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          // Production contract (observed live): an indeterminable
+          // publication FAILS the stage typed — never a guessed release,
+          // never a silent retry-until-lucky. The operator re-requests.
+          terminalOracle('failed'),
+          {
+            id: 'delivery.unknown.observed-not-released',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              const unknown = actions.length > 0
+                && actions.every(a => a.terminal !== 'released-marker');
+              const attempted = actions.some(a => a.execution_attempts >= 1);
+              const released = (durableTrace.lifecycleRuns ?? [])
+                .some(run => run.terminal_status === 'released');
+              return {
+                passed: attempted && !released,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}:${a.state}`),
+                details: { actions: actions.map(a => ({ state: a.state, attempts: a.execution_attempts })), released },
               };
             },
           },
