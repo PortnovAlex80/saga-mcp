@@ -14,7 +14,7 @@
  */
 
 import type { ProcessModuleDefinition } from '../domain/process-module.js';
-import type { ProcessModuleManifest } from './workshop-capability-manifest.js';
+import type { WorkshopCapabilityManifest } from './workshop-capability-manifest.js';
 
 /** What a workshop declares it needs from the host at binding time. */
 export interface WorkshopBindingContext {
@@ -31,7 +31,7 @@ export interface WorkshopRuntimeBindings {
 }
 
 export interface BuiltInWorkshop {
-  readonly manifest: ProcessModuleManifest;
+  readonly manifest: WorkshopCapabilityManifest;
   readonly definition: ProcessModuleDefinition;
   createBindings(context: WorkshopBindingContext): WorkshopRuntimeBindings;
 }
