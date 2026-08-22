@@ -318,22 +318,38 @@ export function buildCanonicalProofComposition(opts) {
 // oracle (that is the W0-2 registry). Read-only: SELECT only.
 // ---------------------------------------------------------------------------
 
-export async function readInstalledIdentity(bootstrap) {
-  const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
-  const db = getDb();
-
-  const { productBuildLifecycle } = await import(
-    pathToFileURL(path.resolve(REPO_ROOT, 'dist/process-modules/lifecycles/product-build-lifecycle.js')).href
-  );
-
-  const lifecycle = {
-    id: `${productBuildLifecycle.identity.name}@${productBuildLifecycle.identity.version}`,
-    stages: (productBuildLifecycle.stages || []).map(stage => ({
+/**
+ * §10.2: the lifecycle projection of the installed identity — a pure function
+ * of the definition that was ACTUALLY composed and driven (product-build by
+ * default, product-delivery for delivery drives). Evidence binds to the
+ * executed composition: a delivery drive must not carry a build fingerprint.
+ */
+export function projectLifecycleIdentity(definition) {
+  return {
+    id: `${definition.identity.name}@${definition.identity.version}`,
+    stages: (definition.stages || []).map(stage => ({
       stageId: stage.id,
       moduleName: stage.moduleRef?.name ?? stage.moduleRef,
       version: stage.moduleRef?.version,
     })),
   };
+}
+
+export async function readInstalledIdentity(bootstrap, options = {}) {
+  const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
+  const db = getDb();
+
+  // The identity must fingerprint the lifecycle that was ACTUALLY composed
+  // and driven (§10.2). The caller passes the definition it drove; the
+  // default remains product-build for the build-lifecycle packs.
+  const definition = options.lifecycleDefinition ?? await (async () => {
+    const { productBuildLifecycle } = await import(
+      pathToFileURL(path.resolve(REPO_ROOT, 'dist/process-modules/lifecycles/product-build-lifecycle.js')).href
+    );
+    return productBuildLifecycle;
+  })();
+
+  const lifecycle = projectLifecycleIdentity(definition);
 
   const modules = db.prepare(
     `SELECT name, version, package_digest AS packageDigest
@@ -437,9 +453,14 @@ export function computeCanonicalProofFingerprint(bootstrap, composition, identit
 export async function driveCanonicalProof(opts) {
   const { bootstrap, composition } = opts;
   assertCanonicalOverlay(composition);
+  // §10.2: the identity fingerprints the lifecycle the composition actually
+  // carries — a delivery drive gets a delivery fingerprint, a build drive a
+  // build fingerprint. Evidence binds to the executed composition.
   const identity = assertInstalledIdentity(
     bootstrap,
-    await readInstalledIdentity(bootstrap),
+    await readInstalledIdentity(bootstrap, {
+      lifecycleDefinition: composition.lifecycleDefinition ?? null,
+    }),
   );
   const fingerprint = computeCanonicalProofFingerprint(bootstrap, composition, identity);
 

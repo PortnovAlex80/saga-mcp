@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // tests/factory-proof/delivery-scenario-drive.mjs
 //
-// Execute ONE Delivery scenario on the canonical Factory through the FULL
-// product-delivery lifecycle (discovery -> formalization -> development ->
-// delivery-release) with an AUTHORIZED release input (approval not
-// required) built by the same production hash/policy modules the temporal
-// conformance fixtures use — no test-side authority writes beyond the
-// operator grant the production input schema itself demands.
+// Execute ONE Delivery scenario through the UNIFIED conformance kernel:
+// buildDeliveryRuntimeCase → runScenario → ScenarioEvidenceBundle v1.
+//
+// This file owns only INPUT CONSTRUCTION (the authorized release input built
+// by the same production hash/policy modules the temporal fixtures use, and
+// the production factory launch that selects the product-DELIVERY lifecycle).
+// The evidence pipeline — canonical composition, drive, read-only trace,
+// independent oracles, bundle digest — belongs to scenario-runner.mjs, the
+// same kernel every other workshop drives through. No per-workshop
+// mini-runner (kernel-unification repair, docs/testing/
+// DELIVERY-KERNEL-REPAIR-PLAN.md §1.3).
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,11 +19,7 @@ import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 import { runScenario } from './scenario-runner.mjs';
-import {
-  buildCanonicalProofComposition,
-  buildCanonicalDeliveryProviders,
-  createScriptedObserver,
-} from './canonical-proof-composition.mjs';
+import { buildCanonicalDeliveryProviders } from './canonical-proof-composition.mjs';
 import { buildDeliveryRuntimeCase } from './delivery-scenario-pack.mjs';
 
 const REPO_ROOT = process.cwd();
@@ -44,8 +45,7 @@ const bootstrap = await bootstrapFreshHarness({
 });
 
 try {
-  // Build the AUTHORIZED delivery input against the harness's own repo HEAD
-  // (temporal conformance recipe: tests/factory-temporal/lib/fresh-db.mjs).
+  // ── INPUT CONSTRUCTION (production modules only — no test-side authority) ──
   const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
   const db = getDb();
   const baseCommit = execSync('git rev-parse HEAD', {
@@ -56,7 +56,7 @@ try {
   // inventing a name fails closed with REPOSITORY_REF_NOT_FOUND.
   const repoRow = db.prepare(
     `SELECT r.name, pr.role FROM project_repositories pr
-       JOIN repositories r ON r.id=pr.repository_id
+       JOIN repositories r ON r.id = pr.repository_id
       WHERE pr.project_id=? AND pr.status='active' ORDER BY pr.id LIMIT 1`,
   ).get(bootstrap.projectId);
 
@@ -138,65 +138,32 @@ try {
     lifecycleInputSchema: 'factory.product-delivery-lifecycle-input.v2',
   }, db);
 
-  const observer = createScriptedObserver();
+  // ── THE UNIFIED KERNEL ──
   const { productDeliveryLifecycle } = await import(pathToFileURL(path.resolve(
     REPO_ROOT, 'dist/process-modules/lifecycles/product-delivery-lifecycle.js')).href);
-  const composition = buildCanonicalProofComposition({
-    observer,
-    repoPath: bootstrap.repoPath,
-    sagaRepoRoot: bootstrap.sagaRepoRoot,
-    handlers: runtime.handlers,
-    deliveryProviders: buildCanonicalDeliveryProviders({ repoPath: bootstrap.repoPath }),
-    // §10.2 honesty: drive the lifecycle the authorized input selects — the
-    // product-DELIVERY lifecycle (fresh launches otherwise default to
-    // product-build and end runnable-local with no Delivery stage at all).
-    lifecycleDefinition: productDeliveryLifecycle,
-  });
-  const driven = await (await import('./canonical-proof-composition.mjs')).driveCanonicalProof({
-    bootstrap,
-    composition,
-    launchRef,
-    scenarioConcurrencyCap: HARNESS_CONCURRENCY_CEILING,
-    ...(runtime.driveOptions ?? {}),
-    scriptedObserver: observer,
-  });
-
-  const traceApi = await import('./trace-observer.mjs');
-  const durableTrace = traceApi.observeDurableTrace(bootstrap.dbPath);
-  const progress = traceApi.classifyPostDrainProgress(durableTrace, {});
-  const oracleResults = [{
-    id: 'kernel.post-drain-progress',
-    passed: progress.ok,
-    details: progress.ok ? { classifications: progress.rows.length } : { stalls: progress.stalls },
-  }];
-  const context = Object.freeze({
-    scenario: runtime.scenario, bootstrap, result: driven.result,
-    durableTrace, progress, observer,
-  });
-  for (const oracle of runtime.oracles) {
-    const r = await oracle.evaluate(context);
-    oracleResults.push({ id: oracle.id, ...r });
-  }
-
-  const verdict = oracleResults.every(r => r.passed) ? 'pass' : 'fail';
-  process.stdout.write(JSON.stringify({
-    schemaVersion: 'factory.proof.scenario-evidence.v1',
+  const bundle = await runScenario({
     scenario: runtime.scenario,
-    verdict,
-    oracleResults,
-    terminal: {
-      terminalReason: driven.result.terminalReason,
-      cycles: driven.result.cycles,
-      strandedActiveExecutions: driven.result.strandedActiveExecutions,
-      scriptedInvocationCount: observer.getInvocationCount(),
+    bootstrap,
+    proofModes: ['Durable', 'CanonicalFast'],
+    handlers: runtime.handlers,
+    oracles: runtime.oracles,
+    actorEvidence: runtime.actorEvidence ?? [],
+    deliveryProviders: buildCanonicalDeliveryProviders({ repoPath: bootstrap.repoPath }),
+    // The production launch above is INPUT construction (factory_orders +
+    // launch rows) — it wrote no authority tables; the kernel's clean-bootstrap
+    // assertion stays meaningful for the authority surfaces it guards.
+    assertCleanBootstrap: false,
+    lifecycleDefinition: productDeliveryLifecycle,
+    driveOptions: {
+      launchRef,
+      scenarioConcurrencyCap: HARNESS_CONCURRENCY_CEILING,
+      ...(runtime.driveOptions ?? {}),
     },
-    lifecycleRuns: durableTrace.lifecycleRuns,
-    deliveryStageRuns: (durableTrace.stageRuns ?? []).filter(row => row.stage_id === 'delivery-release'),
-    effectReceipts: durableTrace.effectReceipts ?? [],
-    externalEffectEvents: durableTrace.externalEffectEvents ?? [],
-  }) + '\n');
+  });
+
+  process.stdout.write(JSON.stringify(bundle) + '\n');
   await bootstrap.cleanup();
-  process.exit(verdict === 'pass' ? 0 : 1);
+  process.exit(bundle.verdict === 'pass' ? 0 : 1);
 } catch (error) {
   process.stderr.write(String(error?.stack ?? error) + '\n');
   await bootstrap.cleanup();
