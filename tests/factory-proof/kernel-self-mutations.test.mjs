@@ -11,7 +11,12 @@
 //      installed reader exposes digest divergence, not just id/version);
 //   S3 disable one mutation operator → the operator-completeness ratchet +
 //      the mandated derivation tests go red (every constraint kind must keep
-//      ≥1 live operator, and the mandated families must stay derivable).
+//      ≥1 live operator, and the mandated families must stay derivable);
+//   S4 a SECOND (ADR-090-shaped) obligation token claiming an already-owned
+//      protection → red as PROTECTION_OWNER_AMBIGUOUS — when the future
+//      epic-trace/conservation tokens land (ADR-090 §8 compiles them into
+//      this single family), they must extend the OWNING contract, never
+//      quietly double-claim the same validator.
 //
 // The remaining self-mutations from the brief are covered by:
 //   'принять generated mutant'      → obligation-compiler T8;
@@ -138,4 +143,36 @@ test('S3: the operator table is complete — every constraint kind keeps a live 
   }
   assert.ok(STRUCTURAL_OPERATORS.length >= 7 && RELATIONAL_OPERATORS.length >= 20,
     'the operator ratchet: shrinking the table below the declared surface is a deliberate act');
+});
+
+test('S4: a future SECOND epic-trace token on the same protection is rejected as ambiguous', async () => {
+  // ADR-090 (planned; NOT landed in this patch) will compile its conservation
+  // proof tokens into this single ADR-084 family, and its epic-clause
+  // coverage obligation explicitly REUSES the landed acceptance-contract
+  // validator seam. This test proves the ownership fence that awaits it: a
+  // second obligation token pointing at an already-owned protection fails
+  // closed as PROTECTION_OWNER_AMBIGUOUS, naming both claimants. Simulated
+  // on a registry COPY — no ADR-090 token is added to the real set.
+  const manifest = (await realManifestModule()).buildWorkshopCapabilityManifest();
+  const installed = await readInstalledProtections({ manifest });
+  const owned = compileNormativeObligations()
+    .find(c => c.obligationId === 'frm.submission.acceptance-contract');
+  const futureEpicTraceToken = {
+    ...owned,
+    obligationId: 'frm.epic-trace-coverage',
+    version: '0.1.0',
+    protectedProperty: 'hypothetical ADR-090 epic-clause coverage token (S4 demonstration copy)',
+  };
+  assert.throws(
+    () => assertProtectionSetEquality(
+      [...compileNormativeObligations(), futureEpicTraceToken],
+      installed,
+    ),
+    err => err.message.includes('PROTECTION_OWNER_AMBIGUOUS')
+      && err.message.includes('frm.submission.acceptance-contract')
+      && err.message.includes('frm.epic-trace-coverage'),
+    'a second token over one protection must be rejected naming both claimants',
+  );
+  // The real registry (no ADR-090 tokens in this patch) stays clean.
+  assert.doesNotThrow(() => assertProtectionSetEquality(compileNormativeObligations(), installed));
 });

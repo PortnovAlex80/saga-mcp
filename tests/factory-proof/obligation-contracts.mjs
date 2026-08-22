@@ -387,15 +387,29 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'frm.submission.acceptance-contract',
-    version: '2.0.0',
-    sourceRefs: ['acceptance-contract-validator v1.2.0/v2.0.0', '3cf4819a heading gate', 'ADR-053 §3 (DocumentContainer/AtomicContractMember)', 'constraint-coverage remedy'],
+    // v2.1.0 (2026-08-22, proof-subset direction repair): the coverage
+    // constraint is declared as the UNCOVERED RESIDUE (register ids minus
+    // union of covered minus validly waived = empty) — the reverse diff the
+    // validator actually enforces (constraintCoverageGapIdList →
+    // FORMALIZATION_CONSTRAINT_UNCOVERED). The v2.0.0 declaration
+    // (`coveredConstraintIds ⊆ registerIds-minus-waived`) named the opposite
+    // direction: production never rejects an extra unknown covered id, so the
+    // declared member-side family was unenforceable at this boundary, and a
+    // bare member/of flip would only swap which side a mutant rewrites. The
+    // residue form keeps the mutated member on the worker-authored coverage
+    // side and compiles a mutation-killable family. The grammar constraint
+    // drops its inert `member` binding: `atomicCriteria` entries are objects,
+    // so the member-bound grammar operator could never derive a text mutant;
+    // the field form compiles the live heading family.
+    version: '2.1.0',
+    sourceRefs: ['acceptance-contract-validator v1.2.0/v2.0.0', '3cf4819a heading gate', 'ADR-053 §3 (DocumentContainer/AtomicContractMember)', 'constraint-coverage remedy', 'ADR-084 reverse-diff oracle', 'ADR-088 §2 register-conditional red'],
     subjectKind: 'formalization-acceptance-bundle',
-    protectedProperty: 'Every /^AC-/ artifact code resolves to exactly one level-2/3 document heading (exact accepted bytes); criterion codes are unique; the constraint register is covered or waived.',
+    protectedProperty: 'Every /^AC-/ artifact code resolves to exactly one level-2/3 document heading (exact accepted bytes); criterion codes are unique; the uncovered register residue — register ids minus union of AC covered_constraint_ids minus validly waived ids — is empty.',
     constraints: [
       { kind: 'cardinality', min: 1, member: 'atomicCriteria' },
       { kind: 'unique', by: 'criterionCode' },
-      { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$', member: 'atomicCriteria' },
-      { kind: 'subset', member: 'coveredConstraintIds', of: 'registerIds-minus-waived' },
+      { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$' },
+      { kind: 'subset', member: 'uncoveredConstraintResidue', of: 'empty' },
     ],
     expectedProtection: { kind: 'check-provider', logicalId: 'factory.submission-validator.formalization.acceptance-contract.v1', version: '2.0.0' },
     faultClasses: ['contract-shape', 'authority-binding', 'derived-evidence'],
@@ -428,12 +442,24 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'frm.submission.srs-contract',
-    version: '2.0.0',
-    sourceRefs: ['srs-contract-validator', 'FORMALIZATION_SRS_INCOMPLETE gate', 'srs-d2-parser enums'],
+    // v2.1.0 (2026-08-22, proof-subset direction repair): the §D2 coverage
+    // constraints are declared as RESIDUES, not as `d2Stanzas ⊆
+    // frozenAcCodes`. The old direction named only the foreign-code half;
+    // the protected property ("covers every frozen AC code exactly once")
+    // lives in the opposite half the declaration never mentioned. A bare
+    // member/of flip would mutate the FROZEN baseline — the authority side a
+    // worker cannot author — so the mutant family could never be
+    // materialized at the worker boundary. Residue form keeps every mutated
+    // member on the worker-authored §D2 document: an unrepresented frozen AC
+    // (validator gap `represented_by`) and a foreign §D2 code (validator gap
+    // `exact-frozen-ac-code`) are each an empty-set obligation on the SRS.
+    version: '2.1.0',
+    sourceRefs: ['srs-contract-validator', 'FORMALIZATION_SRS_INCOMPLETE gate', 'srs-d2-parser enums', 'ADR-088 §2 register-conditional red'],
     subjectKind: 'srs-contract',
-    protectedProperty: 'The §D2 decomposition covers every frozen AC code exactly once with a valid ac_kind; enum fields hold declared values.',
+    protectedProperty: 'The §D2 decomposition represents the frozen AC set exactly: every frozen AC code appears in §D2 (unrepresented-frozen-AC residue empty), every §D2 code is a frozen AC code (foreign-D2-code residue empty), each exactly once with a valid ac_kind; enum fields hold declared values.',
     constraints: [
-      { kind: 'subset', member: 'd2Stanzas', of: 'frozenAcCodes' },
+      { kind: 'subset', member: 'unrepresentedFrozenAcResidue', of: 'empty' },
+      { kind: 'subset', member: 'foreignD2AcResidue', of: 'empty' },
       { kind: 'unique', by: 'stanzaAcCode' },
       { kind: 'grammar', field: 'acKind', pattern: '^(implementation|verification)$' },
     ],

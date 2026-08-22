@@ -158,31 +158,55 @@ export function relationalMutants(constraint, witness, obligationId) {
       // witness[field] is the grammar-bearing text (or array of texts under
       // member). Families: malformed (pattern broken), truncated (cut), and
       // near-miss (shape-valid but lexically off — e.g. zero-padding/level).
+      //
+      // EMISSION HONESTY (proof-subset direction repair): an operator is
+      // emitted ONLY when its transform actually changes the text, and — for
+      // the pattern-breaking families (malformed/truncated) — only when the
+      // result actually fails the declared pattern. A "mutant" identical to
+      // the witness (no colon to break, nothing to truncate) is not a mutant;
+      // a truncation that still matches the grammar is not a violation. A
+      // declared-pattern check makes the emitted family violating by
+      // construction instead of trusting the transform shape. Near-miss is
+      // exempt BY DESIGN: its text still satisfies the grammar (AC-1 → AC-01)
+      // and is killed by the deeper resolution check, not the pattern.
+      const grammarPattern = typeof constraint.pattern === 'string'
+        ? (() => { try { return new RegExp(constraint.pattern); } catch { return null; } })()
+        : null;
+      const patternBroken = text => grammarPattern === null || !grammarPattern.test(text);
       const texts = member ? witness[member] : [witness[field]];
       const mutated = structuredClone(texts);
       const idx = mutated.findIndex(t => typeof t === 'string' && t.length > 4);
       if (idx >= 0) {
-        const malformed = structuredClone(texts);
-        malformed[idx] = mutated[idx].replace(/:/, ' ');
-        cases.push(mk('grammar-malformed', member
-          ? { ...clone(), [member]: malformed }
-          : { ...clone(), [field]: malformed[idx] }));
+        const malformedText = mutated[idx].replace(/:/, ' ');
+        if (malformedText !== mutated[idx] && patternBroken(malformedText)) {
+          const malformed = structuredClone(texts);
+          malformed[idx] = malformedText;
+          cases.push(mk('grammar-malformed', member
+            ? { ...clone(), [member]: malformed }
+            : { ...clone(), [field]: malformedText }));
+        }
 
-        const truncated = structuredClone(texts);
-        truncated[idx] = mutated[idx].slice(0, Math.max(3, mutated[idx].length - 3));
-        cases.push(mk('grammar-truncated', member
-          ? { ...clone(), [member]: truncated }
-          : { ...clone(), [field]: truncated[idx] }));
+        const truncatedText = mutated[idx].slice(0, Math.max(3, mutated[idx].length - 3));
+        if (truncatedText !== mutated[idx] && patternBroken(truncatedText)) {
+          const truncated = structuredClone(texts);
+          truncated[idx] = truncatedText;
+          cases.push(mk('grammar-truncated', member
+            ? { ...clone(), [member]: truncated }
+            : { ...clone(), [field]: truncatedText }));
+        }
 
-        const nearMiss = structuredClone(texts);
         // Zero-pad the first numeric run: AC-1 -> AC-01 (the sudoku defect
         // class) or shift a heading level (# vs ##) when the text is markdown.
-        nearMiss[idx] = /\d/.test(mutated[idx])
+        const nearMissText = /\d/.test(mutated[idx])
           ? mutated[idx].replace(/(\d+)/, (d) => `0${d}`)
           : mutated[idx].replace(/^#{2,3}/, '#');
-        cases.push(mk('grammar-near-miss', member
-          ? { ...clone(), [member]: nearMiss }
-          : { ...clone(), [field]: nearMiss[idx] }));
+        if (nearMissText !== mutated[idx]) {
+          const nearMiss = structuredClone(texts);
+          nearMiss[idx] = nearMissText;
+          cases.push(mk('grammar-near-miss', member
+            ? { ...clone(), [member]: nearMiss }
+            : { ...clone(), [field]: nearMissText }));
+        }
       }
       return cases;
     }
