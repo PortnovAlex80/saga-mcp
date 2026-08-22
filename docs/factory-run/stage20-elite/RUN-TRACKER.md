@@ -113,3 +113,151 @@ resume path re-stamps the catalog limit).
   `2d6176e8…` unchanged). Tracker restarted on the new DB, port 4321.
   Same idea, same protocol; expected difference: a lawful in-repair
   trace deletion can no longer desync the managed ledger.
+- **21:28:22Z (2026-08-22 00:28 local) — ELITE-3 LAUNCHED (night shift).**
+  Tree: w0-waves HEAD `66122a02`, fresh build (last build while the run
+  lives, per protocol). This run carries the day's production hardening:
+  reconciliation report payload contract at intake (`a5e1d409`),
+  artifact-ref desk reprojection on lawful repair (`177a4666`), §15 spin
+  taxation for identical repair re-seals (`2520ba8e`, supersedes the
+  round-2 park `f6a79aa1`), Discovery exhaustion seam (`9d37a9e1`).
+  Conformance baselines at launch: Formalization 25/26 (restart-idempotency
+  red — F-R1 review-capsule content model, diagnosed), Discovery 24/27
+  (readiness-wrong-proposal-hash, readiness-feedback-exact, restart red).
+  Fresh `elite-db/`+`elite/`+`elite-logs/`; settings sha anchored
+  `2d6176e8…` (unchanged). Engine detached pid 15592, launch
+  `launch-84bc03f8-9e36-4780-82b0-f5df54f94b6b`, model glm-4.6, agent-proxy
+  shim. Controls raised 4/4 immediately (catalog 2 → 4). Pre-launch
+  snapshot `snapshot-pre-launch-elite3.sqlite`. Watchdog live (60 s /
+  45 min stagnation / 12 h, pid 511). Task 1 claimed at first poll;
+  supervision sweeps clean. Night watchdog automation (every 20 min) also
+  live. Same idea, same success criteria as run 2 — externally-true
+  `runnable-local` or an honest typed terminal.
+- **Night log (2026-08-22, small hours) — around Elite-3.** The run keeps
+  progressing through formalization (no-build protocol honored: every src
+  change committed unverified, verification batched for the terminal).
+  Landed around the run: remote docs-graph frontend merged (e51263c4);
+  F-R1 replay-capsule contamination fix — own-execution typed products only
+  (bdcae547, triage verdict DB-proven); §10.2 selectable base lifecycle for
+  honest Delivery proofs (c0a3c62f); Development conformance tranche D-A —
+  spine PASS 8/8 oracles (01972137); Delivery tranche L-A; refactor Phases
+  R0+R1 (inventory baseline 51941d8d… + BuiltInWorkshop descriptor);
+  reconciliation payload-contract obligation declared after the T3 ratchet
+  caught protection-without-obligation; K0 floor 33→34. Structural suite:
+  91/91 after the fixes.
+- **22:27Z watchdog — HEALTHY, formalization cleared.** Stage
+  solution-formalization COMPLETED with local_outcome='formalized' (the
+  first Elite run to clear formalization since the trace_delete mirror fix
+  era; this time on the night build with the reconciliation payload
+  contract + reprojection + §15 spin taxation). Development stage running:
+  12/13 tasks done, lifecycle paused on a live card (latest execution
+  started 22:20:37Z, phase finishing — no opencode process between spawns
+  is expected; stagnation threshold 45 min). 13 executions, 0 lost. Worker
+  backend agent-proxy/opencode; settings tripwire unchanged
+  2d6176e8…. Tree: 15+ night commits on w0-waves, structural suite 91/91,
+  the other agent's uncommitted discovery diff preserved untouched. Merge
+  queue: after this run terminalizes.
+- **22:46Z watchdog — healthy, on-same-card progress.** Latest execution
+  started 22:41:28Z (phase executing, opencode alive), Development stage
+  still in flight at 12/13 tasks; 0 lost executions; tripwire unchanged;
+  tree quiet (only the preserved foreign discovery diff uncommitted).
+  No action required.
+- **23:06Z watchdog — healthy, long implementation card in flight.** New
+  execution started 23:05:18Z (phase executing); the 13th Development card
+  has been worked since ~22:41 across attempts (implementation cards are
+  the long ones), 12/13 tasks done, 0 lost executions, tripwire unchanged.
+  No action required.
+- **23:26Z watchdog — alive; the 13th card is grinding through attempts.**
+  20 executions total for 13 tasks (12 done) — the long implementation card
+  has consumed several attempts (recovery budget governs; on exhaustion the
+  cell parks typed, an honest terminal). Latest execution 23:22:22Z (phase
+  executing), 0 lost, tripwire unchanged. No action; watching the attempt
+  trend next cycle.
+- **23:46Z watchdog — the grinding cell identified: the PLANNER.** The
+  attempt cycling is development-plan-task-graph (epoch 2 of 3,
+  maxAttempts per epoch) — the 13th open task is a planner re-run after the
+  12 completed implementation/verification cards. Latest execution
+  23:45:59Z (phase executing), 23 total, 0 lost, tripwire unchanged.
+  Per protocol no mid-run action: the §15/ADR-075 budget owns the outcome —
+  convergence, or a typed terminal failed at the total cap.
+- **00:06–00:09Z watchdog — planner epochs ALL exhausted (9/30 total cap);
+  first 2 lost executions; run ALIVE and rolling into new epochs.** All
+  three recovery epochs show 3/3 exhausted attempts — but the counter is
+  cumulative: 9 of total_attempts_cap 30 spent, and the run auto-rolls new
+  epochs (diagnosis text: "the budget rolls over into a new recovery epoch
+  (no human required)"). Lifecycle paused at node 'plan-task-graph' with
+  worker_active — a fresh execution started 00:06:16Z, heartbeat 00:09:05Z
+  (14 s fresh at check time). Rejection diagnosis is SPECIFIC and evolving:
+  epoch 1 = task-graph not closed/acyclic + SRS §2.2 test-file declarations;
+  epoch 3 = pairwise "implementation items X and Y overlap without a
+  dependency order" (validator demands explicit ordering between
+  file-overlapping items — actionable feedback glm-4.6 has not yet
+  satisfied). 2 lost executions, both Task 13: "Claude process exited with
+  code 1 before terminal worker_done" (opencode shim exit; supervision
+  respawned within ~2 s both times). 27 executions total. Tripwire
+  unchanged. No mid-run action: budget owns the outcome — convergence or a
+  typed terminal failed at 30/30. MORNING POST-MORTEM ITEMS: (1) planner
+  gate feedback loop vs glm-4.6 — 9 rejections on overlap-ordering suggests
+  the prompt may not surface the pairwise-overlap rule the validator
+  enforces; (2) shim exit code 1 on Task 13 spawns (long-prompt crash?)
+  — capture the worker log before recycling the sandbox.
+- **00:12Z — TERMINAL: Elite-3 completed with terminal_status=failed at
+  00:09:09Z. Typed, honest, budget-owned — the engine exited on its own
+  (no engine process remains; run-watchdog still sampling, harmless).**
+  Final: Discovery go → Formalization FORMALIZED (first night-build run to
+  clear formalization) → Development 12/13 cards done → the 13th (the
+  PLANNER re-run, development-plan-task-graph author) exhausted the
+  recovery budget and the lifecycle typed-failed. ROOT CAUSE CHAIN (evidence
+  in task13-evidence/, 3 worker logs preserved): (1) epochs 1–3 burned 9
+  gate rejections — graph closure/acyclicity first, then pairwise
+  "implementation items X and Y overlap without a dependency order";
+  (2) retry prompts accumulate rejection feedback UNBOUNDEDLY → prompt hit
+  436,283 bytes → opencode/Z.AI API rejects pre-tool: 8 shim retries, all
+  class=pre-tool-death (exit=1), ~3 min per spawn, 3 lost executions
+  00:00:31/00:03:23/00:06:16; (3) supervision respawned each time until the
+  budget terminalized the run. TWO PRODUCTION FINDINGS for the kernel
+  backlog: F-A "planner retry prompt must bound accumulated gate feedback
+  (summarize/trim) or the cell dies by API payload limit — unrecoverable
+  snowball"; F-B "overlap-ordering rule is enforced by the validator but
+  apparently not taught in the planner prompt — glm-4.6 cannot guess it in
+  9 attempts". An EARLIER planner submission was accepted in this same run
+  (Submission #20, digest 4c6d1a52…, 16 impl + 16 verification items) —
+  the failure mode is retry-loop-specific, not a hard capability wall.
+  Post-Elite batch UNBLOCKED: build → verify batch → coverage drives →
+  merge. Tripwire clean at terminal (2d6176e8…).
+- **01:2xZ — POST-ELITE BATCH: the conformance engine caught a REAL
+  production defect (Type C). The chain, triaged by 3 research subagents:**
+  (1) `discovery/restart-idempotency` red was a STAGE-BOUNDARY proof driving
+  into a formalization dead-end — fixed honestly: stop at 'go' + close each
+  run between starts via the PRODUCTION abandonLifecycleRun (scripts/
+  factory.mjs abandon path; scope guard then frees the next launch).
+  (2) Exposed layer 2: run C replayed A's READINESS for an incompatible
+  input — triage verdict: FIXTURE (W9 proposal content was static; ADR-079:
+  byte-equal material = correct reuse). Fixed: proposal + PRD/UC/AC/SRS
+  artifacts now derive from the discovery proposal digest (content-addressed
+  fidelity).
+  (3) Exposed layer 3 — THE PRODUCTION DEFECT: `formalization/restart-idem-
+  potency` died on REPLAY_KEY_PAYLOAD_CONFLICT. Root cause: the reviewer
+  verdict contract REQUIRES subject_candidate_set_ref (a run-scoped
+  candidate-set/WORKPLACE-NUMBER/... ref) inside the product content; the
+  capture-side input-binding walk could not see it (frozen at top-level task
+  metadata), so every cross-lifecycle acceptance of semantically identical
+  reviewed material planted a DIVERGENT capsule under one semantic key, and
+  §15 (ac89ec88) correctly failed the next claim closed. FIX (2fee5c6e):
+  capture templates the subject ref via a synthetic $.subject_candidate_set_ref
+  binding (resolved at replay serve against the CURRENT run's subject —
+  symmetric to the rebinder); conflict detection compares the SEMANTIC
+  payload projection (typedProducts[].contentHash normalized — it hashes
+  run-scoped identity); prefix:counter handles (formalization-baseline:N)
+  classified as identity candidates. Real-factory exposure: multi-LIFECYCLE
+  restarts on one project (proofs, abandon+restart) — NOT single-lifecycle
+  Elite recovery (one work item = one workplace, refs constant).
+  RESULT: discovery 27/27, formalization 26/26 — both workshops FULLY GREEN
+  on the rebuilt dist. Full suite + delivery/development spine re-runs in
+  flight; then merge w0-waves → saga4.
+- **⛔ WATCHDOG GUARD (02:3xZ): the Elite-3 run is TERMINAL (failed@planner,
+  00:09:09Z) — do NOT restart it.** The night now belongs to the POST-ELITE
+  BATCH (verify → suite green → merge w0-waves → saga4 → push); a new factory
+  run would re-forbid builds and block the merge. The 20-min automation should
+  check BATCH progress (this file + git log in the worktree), not factory
+  liveness. Post-mortem owners: F-A planner prompt-snowball (bound the
+  accumulated gate feedback), F-B untaught overlap-ordering rule.

@@ -289,6 +289,24 @@ export interface ProductionCellProjectionPersistence {
     checkReceiptRefs: readonly string[];
   } | null;
   /**
+   * Layer-3 supervision — the subject of the newest FINAL repair_required
+   * decision for this Workplace. Ref equality against a freshly sealed author
+   * CandidateSet identifies the identical re-seal (ADR-075 + §15 spin
+   * taxation). Optional — absent means the identical-reseal path is not
+   * armed and the workplace relies on the round-2 park semantics.
+   */
+  readLatestFinalRepairRequiredSubjectSet?(
+    workplaceRef: WorkplaceRef,
+  ): { candidateSetRef: string; decisionKey: string } | null;
+  /**
+   * Layer-3 supervision (ADR-075 + CONVEYOR §15) — byte-identical author
+   * re-seals after the first round, derived from the append-only submission
+   * validation receipts. Each taxed round drives the recovery budget toward
+   * epoch rollover and, on cross-epoch identity, the F6 terminal deny.
+   * Optional — absent ledgers contribute 0.
+   */
+  countRepairSpinResealsForAuthor?(workplaceRef: WorkplaceRef): number;
+  /**
    * Fix-3 companion (QA-E16 bound) — failed/blocked post-acceptance effect
    * actions of this Workplace. Each certifies one completed worker attempt
    * whose integration did not land, so the accept → effect-fail → repair
@@ -1080,6 +1098,42 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     let nextHandoffReady = true;
 
     if (role === 'author') {
+      // Layer-3 supervision (ADR-075 + CONVEYOR §15) — the identical re-seal.
+      // ADR-053 B-2 partition convergence makes a byte-identical repair round
+      // seal the SAME immutable CandidateSet ref as the round the final gate
+      // already rejected; content addressing then deduplicates the reviewer
+      // (its verdict for these exact bytes exists) and the review round never
+      // re-materializes — the workplace stalls with no owner (2026-08-21
+      // conformance finding). The prior FINAL verdict for the exact ref IS
+      // this round's outcome: re-apply it as repair_required and let the
+      // recovery budget tax the round as spin (countRepairSpinResealsForAuthor
+      // → epoch rollover → F6 diagnosis-repeat → honest terminal failed).
+      // The deterministic author gate cannot add information for identical
+      // inputs, so it is not re-run. A real repair seals a different ref and
+      // never enters this branch.
+      if (cell.review) {
+        const priorReject = this.opts.persistence
+          .readLatestFinalRepairRequiredSubjectSet?.(workplace.ref) ?? null;
+        if (priorReject && priorReject.candidateSetRef === candidate.candidateSetRef) {
+          engineLog(
+            `[recovery-budget] IDENTICAL-RESEAL-TAXED cell=${cell.id} `
+            + `workplace=${serializeWorkplaceRef(workplace.ref)} `
+            + `set=${candidate.candidateSetRef.slice(0, 24)}… `
+            + `priorDecision=${priorReject.decisionKey.slice(0, 48)} `
+            + '— the repair round sealed byte-identical material; the prior '
+            + 'final repair_required verdict is re-applied and the round is '
+            + 'taxed against the recovery budget (§15 spin, not work)',
+          );
+          this.opts.coordinator.applyGateDecision(workplace.ref, {
+            verdict: 'repair_required',
+            isFinal: false,
+            repairTargetRole: 'author',
+          });
+          if (!carryDirective) this.opts.persistence.concludeExecutionIntent(executionRef);
+          this.opts.persistence.projectWorkplace(workplace.ref);
+          return pendingOutcome(candidate.candidateSetRef);
+        }
+      }
       const decision = this.runGate(
         ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef, [],
         this.readGateUpstreamBinding(ctx, cell), executionRef,
@@ -2473,12 +2527,24 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // ADR-075 — with a `baseline` (the immutable epoch-row snapshot), each
     // counter is epoch-relative: counter − baseline, floored at 0. Without
     // one, the all-time counters drive the budget as before.
+    //
+    // Layer-3 supervision (§15 "budget must count spin, not work") —
+    // byte-identical author re-seals are taxed on top. They are deliberately
+    // NOT epoch-baselined: identical bytes across a rollover are cross-epoch
+    // spin (the material did not change), so a fresh epoch must not erase
+    // them; the F6 diagnosis-repeat deny converts the identity into an
+    // honest terminal. A real repair changes the digest, the receipt run
+    // breaks and the taxation stops — convergence is never charged.
     const raw = this.rawAttemptCounters(ref, role);
     const clamp = (value: number, offset: number) => Math.max(0, value - offset);
-    const spent = clamp(
+    const spinReseals = role === 'author'
+      ? this.opts.persistence.countRepairSpinResealsForAuthor?.(ref) ?? 0
+      : 0;
+    const rejectedSpent = clamp(
       raw.rejectedSets,
       baseline?.rejectedSets ?? 0,
     );
+    const spent = rejectedSpent + spinReseals;
     const state = this.opts.coordinator.readState(ref);
     if (state && state.loopState === 'repair_wait') {
       // Companion to Fix-3: an accepted-then-effect-failed attempt must
@@ -2495,9 +2561,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           raw.terminalExecutions,
           baseline?.terminalExecutions ?? 0,
         );
-        return Math.max(spent, failedExecs, failedEffectRepairs);
+        return Math.max(rejectedSpent, failedExecs, failedEffectRepairs) + spinReseals;
       }
-      return Math.max(spent, failedEffectRepairs);
+      return Math.max(rejectedSpent, failedEffectRepairs) + spinReseals;
     }
     return spent;
   }

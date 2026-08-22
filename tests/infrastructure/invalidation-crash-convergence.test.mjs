@@ -41,6 +41,7 @@ import {
   makeTask,
   taskMetadata,
   insertCapsule,
+  divergentPayloadSnapshot,
 } from './lib/replay-binder-fixture.mjs';
 
 const PKG = 'old-package-digest';
@@ -86,8 +87,14 @@ test('K9/convergence: INVALIDATE crash mid-evidence-set → re-dispatch complete
   const key = authorKey();
   // Two capsules under one key with divergent payloads → the conflict path
   // records evidence for BOTH before throwing.
-  insertCapsule(db, { capsuleRef: 'conflict-a', replayKey: key, projectId: 7, payloadHash: 'pa' });
-  insertCapsule(db, { capsuleRef: 'conflict-b', replayKey: key, projectId: 7, payloadHash: 'pb' });
+  insertCapsule(db, {
+    capsuleRef: 'conflict-a', replayKey: key, projectId: 7, payloadHash: 'pa',
+    payloadSnapshot: divergentPayloadSnapshot('approved'),
+  });
+  insertCapsule(db, {
+    capsuleRef: 'conflict-b', replayKey: key, projectId: 7, payloadHash: 'pb',
+    payloadSnapshot: divergentPayloadSnapshot('rejected'),
+  });
 
   // Crash ON the SECOND evidence INSERT (the first row survives).
   const crashedDb = armCrashOnInsert(db, 'factory_replay_capsule_invalidations', 2);

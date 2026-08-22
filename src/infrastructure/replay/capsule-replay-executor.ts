@@ -128,9 +128,16 @@ export function executeCapsuleReplay(
   }
 
   const taskMetadata = parseObject(execRow.task_metadata);
-  const currentInput = taskMetadata.process_node_input
+  const baseInput = taskMetadata.process_node_input
     ?? taskMetadata.cell_input_item
     ?? {};
+  // Symmetric to the capture site: reviewer capsules template the run-scoped
+  // subject CandidateSet ref as `$.subject_candidate_set_ref`; resolve it
+  // against the CURRENT task's top-level subject ref so the served verdict
+  // pins this run's accepted author head.
+  const currentInput = typeof taskMetadata.subject_candidate_set_ref === 'string'
+    ? { subject_candidate_set_ref: taskMetadata.subject_candidate_set_ref, ...baseInput }
+    : baseInput;
   const allowedBindingPaths = new Set(
     (payload.inputBindings ?? []).map(binding => binding.path),
   );
@@ -325,6 +332,10 @@ function replayIdentityCandidate(value: unknown): boolean {
     || value.startsWith('candidate-set:')
     || value.startsWith('workplace/')
     || value.startsWith('product:')
+    // Typed run-scoped handles of the form prefix:counter (e.g.
+    // formalization-baseline:2) are opaque local refs — identity candidates
+    // just like candidate-set:/workplace/ refs, never semantic content.
+    || /^[a-z][a-z0-9-]*:[0-9]+$/.test(value)
     || value.length >= 32;
 }
 

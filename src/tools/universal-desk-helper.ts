@@ -31,6 +31,8 @@ export function writeProduct(
      * When omitted, the persistence layer falls back to `schemaRef`.
      */
     productKey?: string;
+    /** Artifact-ref bridge only: re-project on logical-key conflict. */
+    reprojectLogicalKey?: boolean;
   },
 ): ProductRef {
   if (cachedDb !== db) {
@@ -43,6 +45,7 @@ export function writeProduct(
     schemaRef: input.schemaRef,
     content: input.content,
     productKey: input.productKey,
+    ...(input.reprojectLogicalKey ? { reprojectLogicalKey: true } : {}),
   });
   return result.productRef;
 }

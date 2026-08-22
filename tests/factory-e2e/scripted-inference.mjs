@@ -48,6 +48,121 @@ const dbMod = await import(pathToFileURL(path.resolve('dist/db.js')).href);
 const productHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/products.js')).href);
 const artifactHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/artifacts.js')).href);
 const dispatcherHandlersMod = await import(pathToFileURL(path.resolve('dist/tools/dispatcher.js')).href);
+const replayExecMod = await import(
+  pathToFileURL(path.resolve('dist/infrastructure/replay/capsule-replay-executor.js')).href
+);
+const executeCapsuleReplay = replayExecMod.executeCapsuleReplay;
+
+// W1-2 (CONVEYOR §16): replay-first is a property of every normal factory
+// assignment — when the production claim path binds a frozen capsule_ref to
+// this execution, the canonical fast lane replays the capsule through the
+// PRODUCTION executor + MCP handler surface instead of running a scripted
+// worker. Zero scripted inference calls on compatible hits, exactly like the
+// spawn-based executor.
+function hasFrozenCapsule(assignment) {
+  const ctx = assignment?.executionContext;
+  if (!ctx || typeof ctx !== 'object') return false;
+  const replay = ctx.replay;
+  return !!replay && typeof replay.capsule_ref === 'string' && replay.capsule_ref.length > 0;
+}
+
+/**
+ * Replay one frozen capsule through production handlers and terminate the
+ * execution through the SAME production finalizer used by spawned and normal
+ * scripted workers.
+ *
+ * This is deliberately not a second recovery implementation. In particular,
+ * a replay validation failure must flow through finalizeManagedWorkerProcess:
+ * it requests Workplace crash repair, atomically terminalizes/releases the
+ * execution fence, and leaves the Production Cell recovery budget to decide
+ * whether the next execution is requeued or escalated.
+ */
+function runFrozenCapsuleReplay(context, assignment) {
+  const db = dbMod.getDb();
+  const saved = {
+    SAGA_MANAGED_EXECUTION: process.env.SAGA_MANAGED_EXECUTION,
+    SAGA_EXECUTION_ID: process.env.SAGA_EXECUTION_ID,
+    SAGA_TASK_ID: process.env.SAGA_TASK_ID,
+    SAGA_WORKER_ID: process.env.SAGA_WORKER_ID,
+    DB_PATH: process.env.DB_PATH,
+  };
+  process.env.DB_PATH = context.dbPath;
+  process.env.SAGA_MANAGED_EXECUTION = '1';
+  process.env.SAGA_EXECUTION_ID = assignment.workerExecutionId;
+  process.env.SAGA_TASK_ID = String(assignment.taskId);
+  process.env.SAGA_WORKER_ID = assignment.workerId;
+
+  markExecutionRunning(
+    context.dbPath,
+    assignment.workerExecutionId,
+    null,
+    null,
+    `fresh-scripted-replay:${assignment.workerExecutionId}`,
+    new Date().toISOString(),
+  );
+
+  const handlers = {
+    product_submit: input => productHandlersMod.handlers.product_submit(input),
+    artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+    artifact_update: input => artifactHandlersMod.handlers.artifact_update(input),
+    trace_add: input => artifactHandlersMod.handlers.trace_add(input),
+    worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
+  };
+
+  try {
+    try {
+      executeCapsuleReplay(db, handlers, {
+        taskId: Number(assignment.taskId),
+        workerId: assignment.workerId,
+        executionId: assignment.workerExecutionId,
+        cwd: context.workspaceRoot,
+      });
+
+      // Replay reconstructs accepted production; semantic completion is still
+      // a normal worker_done receipt under the active execution fence.
+      handlers.worker_done({
+        task_id: Number(assignment.taskId),
+        worker_id: assignment.workerId,
+        result: 'capsule replay: reconstructed accepted worker production',
+        execution_id: assignment.workerExecutionId,
+      });
+
+      return {
+        replayError: null,
+        finalizeOutcome: finalizeManagedWorkerProcess(db, {
+          taskId: Number(assignment.taskId),
+          executionId: String(assignment.workerExecutionId),
+          exitCode: 0,
+          reason: 'capsule replay worker exited after accepted worker_done',
+          spawnFailure: false,
+        }),
+      };
+    } catch (replayError) {
+      const replayReason = replayError instanceof Error
+        ? replayError.message
+        : String(replayError);
+
+      // Fail closed, but do not invent replay-specific recovery. The production
+      // finalizer owns crash repair + atomic fence release, so the next host
+      // reconciliation can apply the cell's ordinary recovery policy.
+      return {
+        replayError: replayReason,
+        finalizeOutcome: finalizeManagedWorkerProcess(db, {
+          taskId: Number(assignment.taskId),
+          executionId: String(assignment.workerExecutionId),
+          exitCode: 1,
+          reason: `capsule replay failed before semantic completion: ${replayReason}`,
+          spawnFailure: false,
+        }),
+      };
+    }
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
 
 /**
  * A concurrency + invocation tracker the harness reads to PROVE the cap held.
@@ -58,6 +173,7 @@ export function createScriptedObserver() {
   let active = 0;
   let maxConcurrency = 0;
   let invocations = 0;
+  let replays = 0;
   const outcomes = [];
   return {
     onStart() {
@@ -69,8 +185,14 @@ export function createScriptedObserver() {
       active -= 1;
       outcomes.push(outcome);
     },
+    // W1-2: a capsule replay is NOT a scripted inference — the observer
+    // counts it separately so zero-call replay authority is provable.
+    onReplay() {
+      replays += 1;
+    },
     getMaxConcurrency: () => maxConcurrency,
     getInvocationCount: () => invocations,
+    getReplayCount: () => replays,
     getActive: () => active,
     getOutcomes: () => outcomes.slice(),
   };
@@ -180,6 +302,7 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
         product_read: input => productHandlersMod.handlers.product_read(input),
         candidate_read: input => productHandlersMod.handlers.candidate_read(input),
         artifact_create: input => artifactHandlersMod.handlers.artifact_create(input),
+        artifact_update: input => artifactHandlersMod.handlers.artifact_update(input),
         trace_add: input => artifactHandlersMod.handlers.trace_add(input),
         worker_done: input => dispatcherHandlersMod.handlers.worker_done(input),
       };
@@ -319,6 +442,58 @@ export function createInProcessScriptedExecutorFactory(opts = {}) {
         if (disposed) throw new Error('FreshScriptedExecutor: disposed');
         if (current) throw new Error('FreshScriptedExecutor: already running');
         const { assignment } = command;
+        // W1-2 replay-first: a frozen capsule on the assignment replays
+        // through the PRODUCTION capsule executor (no scripted inference).
+        if (hasFrozenCapsule(assignment)) {
+          observer.onReplay();
+          let replayResult;
+          try {
+            replayResult = runFrozenCapsuleReplay(context, assignment);
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[fresh-scripted] capsule replay FINALIZATION FAILED: ${reason}\n`);
+            replayResult = {
+              replayError: reason,
+              finalizeOutcome: {
+                semanticCompletion: false,
+                executionState: 'lost',
+                workplaceRepairRequested: false,
+                taskReleased: false,
+                blockedReason: reason,
+              },
+            };
+          }
+
+          const replayBlockedReason = replayResult.replayError
+            ?? replayResult.finalizeOutcome.blockedReason
+            ?? null;
+          if (replayResult.replayError) {
+            process.stderr.write(`[fresh-scripted] capsule replay FAILED: ${replayResult.replayError}\n`);
+          }
+          const finalizeOutcome = {
+            ...replayResult.finalizeOutcome,
+            blockedReason: replayBlockedReason,
+          };
+          current = {
+            assignment,
+            finalizeOutcome,
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+          };
+          return {
+            id: runId,
+            project_id: assignment.projectId,
+            concurrency: 1,
+            status: 'completed',
+            started_at: current.startedAt,
+            finished_at: current.finishedAt,
+            active: [],
+            completed: finalizeOutcome.semanticCompletion ? 1 : 0,
+            failed: finalizeOutcome.semanticCompletion ? 0 : 1,
+            claimed: 1,
+            last_error: finalizeOutcome.blockedReason || null,
+          };
+        }
         // The scripted worker runs SYNCHRONOUSLY here. The production handlers
         // are synchronous (SQLite), so the entire worker lifecycle — markRunning,
         // scenario handler, finalize — completes before start() returns. The

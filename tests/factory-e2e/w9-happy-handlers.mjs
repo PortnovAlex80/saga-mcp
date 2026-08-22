@@ -21,7 +21,7 @@
 //     can resolve it as its subject and produce a passed receipt (LR-07).
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const DISC = 'product-discovery@3.0.2';
@@ -55,7 +55,7 @@ function findObject(value, predicate, seen = new Set()) {
  */
 function findAcceptedArtifacts(db, epicId, type) {
   return db.prepare(
-    `SELECT id,project_id,epic_id,type,code,title,status,content_hash,accepted_hash
+    `SELECT id,project_id,epic_id,type,code,title,status,path,content_hash,accepted_hash
        FROM artifacts
       WHERE epic_id=? AND type=? AND status='accepted'
       ORDER BY id`,
@@ -86,17 +86,27 @@ const RUNNABLE_STATIC_READINESS = Object.freeze({
 // Discovery
 // ---------------------------------------------------------------------------
 
-function discoveryProposal({ handlers, assignment }) {
+function discoveryProposal({ handlers, assignment, meta }) {
+  // Proposal content must derive from the ENTRY semantic input (the
+  // initiative subject). Replay identity is content-addressed (ADR-079):
+  // a restart with a DIFFERENT idea must yield a different proposal digest,
+  // otherwise downstream cells legitimately replay the earlier run's
+  // capsules (byte-identical material = correct reuse, not contamination).
+  const subject = String(
+    meta?.process_node_input?.subject
+    ?? meta?.process_node_input?.objective
+    ?? 'unspecified initiative',
+  );
   handlers.product_submit({
     schema: 'factory.discovery-proposal.v1',
     content: {
-      problem_statement: 'The current pipeline lacks automated end-to-end validation.',
+      problem_statement: `[${subject}] The current pipeline lacks automated end-to-end validation.`,
       observed_context: 'Unit tests cover pure domain logic. No full factory test exists.',
       stakeholders_or_actors: ['Platform team', 'Module authors', 'CI reviewers'],
       assumptions: ['Factory physics is correct in isolation.', 'Deterministic workers can substitute LLM.'],
       unknowns: ['None blocking.'],
       risks: ['Fixture drift risk.'],
-      candidate_scope: 'Run Product Delivery through the real Factory with deterministic physical workers.',
+      candidate_scope: `[${subject}] Run Product Delivery through the real Factory with deterministic physical workers.`,
       evidence_refs: ['CONVEYOR-MENTAL-MODEL.md', 'factory-e2e harness'],
       recommended_outcome: 'go',
       rationale: 'Concrete gap, bounded scope and deterministic verification path.',
@@ -181,9 +191,45 @@ function writeRepoFile(repoPath, filePath, content) {
   writeFileSync(fullPath, content, 'utf8');
 }
 
+// ADR-079 replay identity is CONTENT-addressed: authored artifacts must
+// derive from the upstream semantic material, or every restart's downstream
+// cells legitimately replay the earlier run's capsules (byte-equal material
+// is correct reuse, not contamination). The discovery proposal digest is the
+// semantic marker: identical across replays of the same input, different for
+// an incompatible input. It is threaded PRD -> UC -> AC -> SRS.
+function proposalDigestFromMeta(meta) {
+  const pni = meta?.process_node_input;
+  // Stage-entry cells (e.g. formalization-product-contract) receive the
+  // lifecycle-mapped BUSINESS input, which carries the proposal hash at the
+  // top level; intra-stage downstream cells receive an upstream production
+  // manifest, whose items carry typed ProductRefs.
+  if (pni && typeof pni.discoveryProposalHash === 'string') return pni.discoveryProposalHash;
+  const items = pni?.bindings?.items;
+  if (Array.isArray(items)) {
+    for (const item of items) {
+      const p = (item.products || []).find(x => x.schemaId === 'factory.discovery-proposal.v1');
+      if (p) return p.digest;
+    }
+  }
+  return 'no-proposal-digest';
+}
+
+function proposalMarkerFromFile(repoPath, filePath) {
+  if (!filePath) return 'no-proposal-marker';
+  try {
+    const match = /\[proposal ([0-9a-f]{64}|no-proposal-[a-z-]+)\]/.exec(
+      readFileSync(path.join(repoPath, filePath), 'utf8'),
+    );
+    return match?.[1] ?? 'no-proposal-marker';
+  } catch {
+    return 'no-proposal-marker';
+  }
+}
+
 function formalizationProduct({ handlers, assignment, meta, context, db }) {
   const { projectId, epicId } = taskScope(db, assignment.taskId);
   const repoPath = context.workspaceRoot;
+  const proposalDigest = proposalDigestFromMeta(meta);
   const briefPayload = {
     classification: 'product', complexity: { tshirt: 'M', risk_triggers: [] },
     decision: 'go', reasoning: 'Feasible and bounded.',
@@ -201,6 +247,7 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
   const prd = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'PRD', code: 'PRD', title: 'Product Requirements',
     artifactPath: 'docs/formalization/PRD.md', repoPath,
+    marker: proposalDigest,
   });
   const fr = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'FR', code: 'FR-1', title: 'Functional Requirement 1',
@@ -222,6 +269,7 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
 
 function createFormalizationArtifact(handlers, {
   projectId, epicId, type, code, title, artifactPath, repoPath, status = 'accepted',
+  marker = null,
 }) {
   if (repoPath && artifactPath) {
     // AC documents follow the conveyor heading grammar (acceptance-criterion-
@@ -230,7 +278,8 @@ function createFormalizationArtifact(handlers, {
     // validator v1.2.0 rejects bundles whose AC codes resolve to no heading.
     // Other artifact types keep the plain level-1 document heading.
     const heading = type === 'AC' ? `## ${title}` : `# ${title}`;
-    writeRepoFile(repoPath, artifactPath, `${heading}\n\nDeterministic ${type} artifact for ${code}.\n`);
+    const markerSuffix = marker ? ` [proposal ${marker}]` : '';
+    writeRepoFile(repoPath, artifactPath, `${heading}\n\nDeterministic ${type} artifact for ${code}.${markerSuffix}\n`);
   }
   return handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type, code, title,
@@ -250,9 +299,10 @@ function formalizationUseCases({ handlers, assignment, context, db }) {
   const prds = findAcceptedArtifacts(db, epicId, 'PRD');
   const frs = findAcceptedArtifacts(db, epicId, 'FR');
   if (!prds.length || !frs.length) throw new Error('No accepted PRD/FR for use-cases');
+  const marker = proposalMarkerFromFile(repoPath, prds[0].path);
   const uc = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'UC', code: 'UC-1', title: 'Use Case 1',
-    artifactPath: 'docs/formalization/UC-1.md', repoPath,
+    artifactPath: 'docs/formalization/UC-1.md', repoPath, marker,
   });
   addTrace(handlers, uc.id, prds[0].id, 'derived_from');
   addTrace(handlers, uc.id, frs[0].id, 'covers');
@@ -267,15 +317,18 @@ function formalizationAcceptance({ handlers, assignment, context, db }) {
   const nfrs = findAcceptedArtifacts(db, epicId, 'NFR');
   const ucs = findAcceptedArtifacts(db, epicId, 'UC');
   if (!frs.length) throw new Error('No accepted FR for acceptance');
+  const marker = ucs.length
+    ? proposalMarkerFromFile(repoPath, ucs[0].path)
+    : proposalMarkerFromFile(repoPath, frs[0].path);
   const ac1 = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes',
-    artifactPath: 'docs/formalization/AC-1.md', repoPath,
+    artifactPath: 'docs/formalization/AC-1.md', repoPath, marker,
   });
   addTrace(handlers, ac1.id, frs[0].id, 'derived_from');
   if (ucs.length) addTrace(handlers, ac1.id, ucs[0].id, 'derived_from');
   const ac2 = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'AC', code: 'AC-2', title: 'AC-2: NFR Compliance',
-    artifactPath: 'docs/formalization/AC-2.md', repoPath,
+    artifactPath: 'docs/formalization/AC-2.md', repoPath, marker,
   });
   if (nfrs.length) addTrace(handlers, ac2.id, nfrs[0].id, 'derived_from');
   done(handlers, assignment, 'formalization acceptance: AC->FR/NFR+UC');
@@ -333,6 +386,8 @@ function formalizationArchitecture({ handlers, assignment, context, db }) {
     '| # | Decision | Source/profile | Alternatives considered | Rationale | Date |',
     '|---|----------|---------------|------------------------|-----------|------|',
     '| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-12 |',
+    '',
+    `[proposal ${proposalMarkerFromFile(repoPath, prds[0].path)}]`,
     '',
   ].join('\n');
   const srsPath = 'docs/formalization/SRS.md';

@@ -67,6 +67,12 @@ export function freshDb() {
       candidate_set_ref TEXT PRIMARY KEY,
       workplace_ref TEXT
     );
+    -- capture consults isForeignManagedSubmission (F-R1 own-execution rule)
+    -- for managed-node-submission members; a real DB always has this table.
+    CREATE TABLE IF NOT EXISTS factory_managed_node_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      execution_id TEXT
+    );
     CREATE TABLE IF NOT EXISTS worker_executions (
       execution_id TEXT PRIMARY KEY,
       run_id TEXT NOT NULL,
@@ -145,12 +151,30 @@ export function taskMetadata(processRunId, overrides = {}) {
   };
 }
 
-export function insertCapsule(db, { capsuleRef, replayKey, projectId, payloadHash }) {
+export function insertCapsule(db, {
+  capsuleRef, replayKey, projectId, payloadHash, payloadSnapshot = '{}',
+}) {
   db.prepare(
     `INSERT INTO factory_replay_capsules
        (capsule_ref, replay_key, project_id, source_execution_ref,
         source_candidate_set_ref, payload_hash, payload_snapshot)
      VALUES (?,?,?,?,?,?,?)`,
   ).run(capsuleRef, replayKey, projectId, `exec-${capsuleRef}`, `cs-${capsuleRef}`,
-    payloadHash, '{}');
+    payloadHash, payloadSnapshot);
+}
+
+/**
+ * A payload snapshot whose SEMANTIC projection diverges from any other
+ * `divergentPayload(variant)` — conflict detection compares the semantic
+ * projection (run-scoped refs/contentHash normalized away), so two capsules
+ * conflict only when their typed product CONTENT differs (2fee5c6e).
+ */
+export function divergentPayloadSnapshot(variant) {
+  return JSON.stringify({
+    typedProducts: [{
+      schema: 'factory.review-verdict.v1',
+      content: { verdict: variant, findings: [], subject_candidate_set_ref: `candidate-set/${variant}` },
+      contentHash: `raw-${variant}`,
+    }],
+  });
 }

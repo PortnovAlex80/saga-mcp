@@ -115,6 +115,7 @@ const EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS = [
   'factory.development-readiness-manifest.v1',
   'factory.development-review-verdict.v1',
   'factory.development-task-graph-proposal.v1',
+  'factory.formalization-reconciliation-report.v1',
   'factory.review-verdict.v1',
   'factory.source-change-candidate.v1',
 ];
@@ -151,13 +152,13 @@ const EXPECTED_EXECUTABLE_CAPABILITIES = [
 const COMPOSITION_ROOT = 'src/app/product-lifecycle-runtime.ts';
 const REGISTER_FAMILY = /(?:registerDiscovery|registerFormalization|registerDevelopment|registerDelivery)\s*\(/g;
 
-test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 7 contracts', () => {
-  assert.equal(WORKSHOP_PAYLOAD_CONTRACTS.length, 7,
+test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 8 contracts', () => {
+  assert.equal(WORKSHOP_PAYLOAD_CONTRACTS.length, 8,
     'payload-contract admission changed: update this frozen count in the SAME commit as the admission (ADR-082 §4)');
   const actual = WORKSHOP_PAYLOAD_CONTRACTS.map((c) => c.schemaId).sort();
   assert.deepEqual(actual, [...EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS].sort(),
     'payload-contract set changed: adding/removing a contract is an admission act (ADR-082 §4.1)');
-  assert.equal(buildWorkshopCapabilityManifest().payloadContractCount, 7,
+  assert.equal(buildWorkshopCapabilityManifest().payloadContractCount, 8,
     'derived manifest count disagrees with the raw contract array');
 });
 

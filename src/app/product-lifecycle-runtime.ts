@@ -123,8 +123,10 @@ import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sql
 import {
   countFailedAcceptanceEffectRepairs as countFailedAcceptanceEffectRepairsSql,
   countGateRejectedCandidateSets as countGateRejectedCandidateSetsSql,
+  countRepairSpinResealsForAuthor as countRepairSpinResealsForAuthorSql,
   createSqliteProductionCellProjectionPersistence,
   readLastRepairRequiredDiagnosis as readLastRepairRequiredDiagnosisSql,
+  readLatestFinalRepairRequiredSubjectSet as readLatestFinalRepairRequiredSubjectSetSql,
   readReviewerRoundHistory as readReviewerRoundHistorySql,
 } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-production-cell-installation.js';
@@ -169,6 +171,15 @@ export interface ProductLifecycleRuntimeOptions {
     projectId: number;
     epicId: number | null;
   }) => WorkerExecutorFactoryContext;
+  /**
+   * Authoring guide §10.2 (2026-08-21): the BASE lifecycle definition this
+   * engine drives. Defaults to product-build (the ordinary Factory start);
+   * the Delivery conformance proofs and the panel's product-delivery
+   * composition pass the product-delivery lifecycle so fresh launches
+   * honestly drive the lifecycle the input selects instead of a hard-coded
+   * product-build. Purely additive: existing callers see no change.
+   */
+  lifecycleDefinition?: typeof productBuildLifecycle | typeof productDeliveryLifecycle;
   concurrency?: number;
   workAssignment?: WorkAssignmentPort;
   development?: DevelopmentCompositionDependencies;
@@ -627,6 +638,16 @@ export function createProductLifecycleRuntime(
           readLastRepairRequiredDiagnosisSql(
             db, serializeWorkplaceRef(workplaceRef), role,
           ),
+        // Layer-3 supervision — identical re-seal detection + §15 spin
+        // taxation (ADR-075 budget).
+        readLatestFinalRepairRequiredSubjectSet: (workplaceRef) =>
+          readLatestFinalRepairRequiredSubjectSetSql(
+            db, serializeWorkplaceRef(workplaceRef),
+          ),
+        countRepairSpinResealsForAuthor: (workplaceRef) =>
+          countRepairSpinResealsForAuthorSql(
+            db, serializeWorkplaceRef(workplaceRef),
+          ),
         // Fix-3 companion (QA-E16) — failed effect actions bound the
         // accept → effect-fail → repair cycle now that accepted attempts
         // no longer consume budget.
@@ -935,7 +956,7 @@ export function createProductLifecycleRuntime(
   });
 
   const baseEngine = new LifecycleOrchestrationEngineAdapter({
-    definition: productBuildLifecycle,
+    definition: options.lifecycleDefinition ?? productBuildLifecycle,
     orchestrator,
     resolveDefinition(command, input) {
       const row = readPinnedLifecycleByInvocation(
@@ -943,7 +964,7 @@ export function createProductLifecycleRuntime(
         command.projectId,
         input.idempotencyKey,
       );
-      if (!row) return productBuildLifecycle;
+      if (!row) return options.lifecycleDefinition ?? productBuildLifecycle;
       return JSON.parse(row.definition_snapshot) as typeof productDeliveryLifecycle;
     },
     resolveInput(command) {

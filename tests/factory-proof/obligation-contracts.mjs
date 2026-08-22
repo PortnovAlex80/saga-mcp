@@ -222,14 +222,18 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
 
   // ---- Discovery check-providers ------------------------------------------
+  // v1.1.0 (2026-08-21, Wave F0 registry cleanup): the field is
+  // `recommended_outcome`, not `outcome` — the proposal payload contract was
+  // renamed when the kernel took ownership of schema_version pinning. Word
+  // grammar unchanged (go|clarify|reject).
   Object.freeze({
     obligationId: 'discovery.proposal-contract',
-    version: '1.0.0',
-    sourceRefs: ['discovery-check-providers', 'W9-04 deleted-outcome-word'],
+    version: '1.1.0',
+    sourceRefs: ['discovery-check-providers', 'W9-04 deleted-outcome-word', 'discovery-proposal.ts recommended_outcome'],
     subjectKind: 'discovery-proposal',
-    protectedProperty: 'A proposal carries a declared outcome word from the closed grammar; deleted words are rejected, never translated.',
+    protectedProperty: 'A proposal carries a declared recommended_outcome from the closed grammar; deleted words are rejected, never translated.',
     constraints: [
-      { kind: 'grammar', field: 'outcome', pattern: '^(go|clarify|reject)$' },
+      { kind: 'grammar', field: 'recommended_outcome', pattern: '^(go|clarify|reject)$' },
     ],
     expectedProtection: { kind: 'check-provider', logicalId: 'discovery.proposal-contract.v1', version: '1.0.0' },
     faultClasses: ['contract-shape'],
@@ -238,14 +242,21 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     requiredCorpus: corpus('discovery.proposal-contract'),
     allowedTerminalKinds: ['repair_required'],
   }),
+  // v1.2.0 (2026-08-21, Wave F0 registry cleanup): Readiness v2
+  // (`factory.discovery-readiness-assessment.v2`) binds the assessed Proposal
+  // by content hash ONLY (physical ids are provenance, never semantic
+  // content) and classifies all seven required dimensions. The old
+  // `fileDeclarations` vocabulary described the pre-v2 payload.
   Object.freeze({
     obligationId: 'discovery.readiness-contract',
-    version: '1.1.0',
-    sourceRefs: ['discovery-check-providers'],
+    version: '1.2.0',
+    sourceRefs: ['discovery-check-providers', 'discovery-readiness-assessment.ts v2'],
     subjectKind: 'discovery-readiness-declaration',
-    protectedProperty: 'Readiness declarations project every required file declaration; an unresolved or error-word declaration does not pass.',
+    protectedProperty: 'A readiness assessment binds the accepted Proposal by proposal_content_hash only, classifies every required dimension with a legal status, and draws recommended_next_action from the closed grammar.',
     constraints: [
-      { kind: 'projection', field: 'fileDeclarations', requires: ['path', 'exists'] },
+      { kind: 'ref', field: 'proposal_content_hash', target: 'accepted proposal content hash' },
+      { kind: 'cardinality', min: 7, member: 'requiredDimensions' },
+      { kind: 'grammar', field: 'recommended_next_action', pattern: '^(proceed_to_settlement|request_clarification|repeat_discovery|reject|manual_review)$' },
     ],
     expectedProtection: { kind: 'check-provider', logicalId: 'discovery.readiness-contract.v1', version: '1.1.0' },
     faultClasses: ['contract-shape', 'detector-fault'],
@@ -395,12 +406,18 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'frm.submission.reconciliation',
-    version: '2.0.0',
-    sourceRefs: ['formalization-check-refs', 'constraint-coverage final catch-all'],
+    version: '3.0.0',
+    sourceRefs: [
+      'formalization-check-refs',
+      'constraint-coverage final catch-all',
+      'reconciliation-report-validator.ts pinned payload contract (2026-08-21)',
+    ],
     subjectKind: 'formalization-reconciliation-report',
-    protectedProperty: 'The reconciliation report projects the constraint coverage diff exactly (no silent subset).',
+    protectedProperty: 'The reconcile-what author\'s report payload satisfies the pinned report contract: status is exactly "reconciled", the rationale is a non-empty string, remaining_gaps is empty (a report admitting unresolved gaps cannot accept the cell), and repairs is an array. The WHAT-graph coverage checks remain the final catch-all behind the payload pin.',
     constraints: [
-      { kind: 'projection', field: 'coverageDiff', requires: ['covered', 'uncovered'] },
+      { kind: 'projection', field: 'reconciliationReport', requires: ['status', 'rationale', 'remaining_gaps', 'repairs'] },
+      { kind: 'grammar', field: 'status', pattern: '^reconciled$' },
+      { kind: 'subset', member: 'remainingGaps', of: 'empty' },
     ],
     expectedProtection: { kind: 'check-provider', logicalId: 'factory.submission-validator.formalization.reconciliation.v1', version: '2.0.0' },
     faultClasses: ['contract-shape'],
@@ -573,6 +590,7 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     ['factory.development-task-graph-proposal.v1', '1.0.0', 'Task graph proposals pin item keys and dependency edges.', 'dev.payload.task-graph-proposal'],
     ['factory.review-verdict.v1', '1.1.0', 'Formalization review verdicts pin the subject candidate set.', 'frm.payload.review-verdict'],
     ['factory.source-change-candidate.v1', '1.0.0', 'Source change candidates pin changed files to the execution worktree.', 'dev.payload.source-change-candidate'],
+    ['factory.formalization-reconciliation-report.v1', '1.0.0', 'Reconciliation reports pin the typed WHAT-catchall payload (status/rationale/empty remaining_gaps/repairs).', 'frm.payload.reconciliation-report'],
   ].map(([schemaId, version, property, id]) => Object.freeze({
     obligationId: id,
     version,

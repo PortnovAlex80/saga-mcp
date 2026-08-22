@@ -104,6 +104,14 @@ const CLASSIFICATION = Object.freeze({
     release: 'STAGE-13',
     verdict: 'kept: append-only authority-revision frontier — readEffectiveChangeScopes picks the MAX granted_revision row per EXACT task (granted_revision is a per-task ordinal minted monotonically by the decide writer, never wall-clock chronology, and the grant row carries the FULL frozen scope set, so the material flows through the picked row itself); readPendingRequest is the latest undecided append row scoped by exact workplace and a request is decided exactly once (grant/refusal reference request_event_id); no material subject is ever selected by recency',
   },
+  'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts': {
+    release: 'ADR-075-§15',
+    verdict: 'kept (9d37a9e1): append-only repair-desk frontier — the latest repair_required FINAL gate decision per EXACT workplace_ref (rowid is the append ordinal of the gate-decisions chain, never wall-clock chronology; the verdict filter narrows to the repair-target class); the picked row itself carries the material (candidate set ref + decision key) that the repair desk re-projects, and the desk re-projects an ALREADY-ACCEPTED exact product — chronology selects a repair-cycle boundary, not a material subject',
+  },
+  'src/process-modules/persistence/sqlite-process-product-repository-v2.ts': {
+    release: 'PROCESS-PRODUCT-V2',
+    verdict: 'kept: exact-logical-key revision tiebreak — readRowByLogicalKey reads the latest row OF ONE EXACT (process_run_id, product_kind, product_key) triple (id is the insert ordinal among revisions of the same logical key); recency never chooses between different subjects, it picks the current revision of an already-exactly-named product',
+  },
 });
 
 const allowlist = JSON.parse(

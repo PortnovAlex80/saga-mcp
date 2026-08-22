@@ -31,6 +31,7 @@ import {
   makeTask,
   taskMetadata,
   insertCapsule,
+  divergentPayloadSnapshot,
 } from './lib/replay-binder-fixture.mjs';
 
 const PKG = 'pkg-digest-stable';
@@ -59,8 +60,14 @@ test('K9/evidence: payload-conflict persists one append-only row per conflicting
   ).run();
 
   const key = authorKey();
-  insertCapsule(db, { capsuleRef: 'cap-left', replayKey: key, projectId: 7, payloadHash: 'hash-left' });
-  insertCapsule(db, { capsuleRef: 'cap-right', replayKey: key, projectId: 7, payloadHash: 'hash-right' });
+  insertCapsule(db, {
+    capsuleRef: 'cap-left', replayKey: key, projectId: 7, payloadHash: 'hash-left',
+    payloadSnapshot: divergentPayloadSnapshot('approved'),
+  });
+  insertCapsule(db, {
+    capsuleRef: 'cap-right', replayKey: key, projectId: 7, payloadHash: 'hash-right',
+    payloadSnapshot: divergentPayloadSnapshot('rejected'),
+  });
 
   seedExecution(db, 'exec-conflict', 81, 7);
   assert.throws(

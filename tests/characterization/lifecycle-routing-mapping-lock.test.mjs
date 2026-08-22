@@ -723,25 +723,35 @@ test('product-delivery-lifecycle: the plain-data definition hashes deterministic
   assert.equal(sha256Hex({ identity, entryStageId, stages }), sha256Hex(def));
 });
 
-test('product-delivery-lifecycle: routing is purely declarative — every Discovery outcome forwards (permissive)', () => {
+test('product-delivery-lifecycle: routing is purely declarative — strength outcomes forward, failed terminates', () => {
   // W13-A3 CHANGED THIS — the per-run discoveryGate resolver is gone. The
-  // runtime lifecycle is purely permissive: every Discovery outcome forwards to
+  // runtime lifecycle is permissive for idea-STRENGTH outcomes: go/clarify/
+  // reject forward to Formalization. The runtime-only 'failed' (§15 budget
+  // terminal, kernel failure) TERMINATES: a failed Discovery has no
+  // certificate/proposal, so Formalization's entry conditions are
+  // unsatisfiable and forwarding exploded the handoff mapping
+  // (LIFECYCLE_MAPPING_SOURCE_MISSING, 2026-08-21 discovery retry-exhaustion
+  // finding) — same terminal shape as Formalization's own failed route.
   const discovery = productDeliveryLifecycle.stages.find(
     s => s.id === 'initial-discovery',
   );
   assert.ok(discovery);
-  // Every outcome — go and every non-go — forwards to Formalization.
-  // 'defer'/'inconclusive' were deleted with their routes (5cbbb1ff,
+  // The producible vocabulary is go/clarify/reject plus the runtime-only
+  // 'failed'. 'defer'/'inconclusive' were deleted with their routes (5cbbb1ff,
   // W9-04-UNREACHABLE-EDGE-EVIDENCE: no runtime producer — a submission
-  // carrying them is invalid input, never translated). The producible
-  // vocabulary is go/clarify/reject plus the runtime-only 'failed'.
-  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
+  // carrying them is invalid input, never translated).
+  for (const outcome of ['go', 'clarify', 'reject']) {
     assert.deepEqual(
       routeProcessOutcome(discovery, outcome).target,
       { type: 'stage', stageId: 'solution-formalization' },
       `${outcome} forwards under declarative permissive routing`,
     );
   }
+  assert.deepEqual(
+    routeProcessOutcome(discovery, 'failed').target,
+    { type: 'terminal', status: 'failed' },
+    'runtime-only failed terminates honestly',
+  );
 });
 
 test('product-delivery-lifecycle: declarative routing for Formalization/Development/Delivery', () => {

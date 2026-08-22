@@ -868,6 +868,17 @@ function handleWorkerDone(
         // does the outer handler throw the actionable MCP error.
         return { kind: 'submission-rejected', error: validationError };
       }
+
+      // BLINDSIGHT F5 sibling — identical ACCEPTED material in a repair round —
+      // is NO LONGER parked here. The layer-2 human park was replaced by the
+      // layer-3 supervision in the production-cell executor: the identical
+      // re-seal seals the SAME immutable CandidateSet ref the final gate
+      // already rejected, and the executor re-applies the prior verdict as
+      // repair_required, taxing the round against the ADR-075 recovery budget
+      // (§15 spin, not work) until epoch rollover and the F6 cross-epoch deny
+      // end the line terminally. worker_done therefore completes normally and
+      // the workplace proceeds to verifying, where the executor detects the
+      // re-seal by exact ref equality (readLatestFinalRepairRequiredSubjectSet).
     }
 
     // Accepted worker_done is the material close boundary. Managed Workplace

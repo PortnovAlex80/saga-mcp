@@ -131,7 +131,31 @@ export function createDiscoveryReadinessCheckProvider(input: {
           content_hash: string;
           payload_snapshot: string;
         } | undefined;
-        if (!proposal) return 'error';
+        if (!proposal) {
+          // A foreign-but-well-formed hash is a BINDING violation of this
+          // provider's own invariant ('binds-accepted-proposal-by-content-
+          // hash'), not an infrastructure error. A bare 'error' here left
+          // the repair loop informationally blind (night triage 2026-08-22:
+          // readiness-feedback-exact and readiness-wrong-proposal-hash both
+          // red on it) — the feedback sheet fell back to "Check … returned
+          // error." with no decodable reason. Distinguish wrong binding from
+          // true state error: the proposal submission exists by construction
+          // (the proposal cell is accepted before readiness runs).
+          const anyProposal = input.db.prepare(
+            `SELECT content_hash FROM factory_managed_node_submissions
+              WHERE process_run_id=? AND node_id='produce-proposal'
+                AND schema_version=? LIMIT 1`,
+          ).get(processRunId, DISCOVERY_PROPOSAL_SCHEMA) as {
+            content_hash: string;
+          } | undefined;
+          if (anyProposal) {
+            return contractFailure('readiness-contract-invalid', subjectCandidateSetRef, [
+              "field 'proposal_content_hash' does not match the stored Proposal "
+                + `(expected ${anyProposal.content_hash})`,
+            ]);
+          }
+          return 'error';
+        }
         const proposalPayload = JSON.parse(proposal.payload_snapshot) as Record<string, unknown>;
         const allowedRefs = allowedProposalSourceRefs(proposalPayload);
         const validation = validateReadinessAssessment(

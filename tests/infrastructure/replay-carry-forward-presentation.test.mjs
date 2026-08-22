@@ -39,6 +39,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
+import { ensureManagedNodeSubmissionSchema } from '../../dist/process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteSealedProductMaterialRepository } from '../../dist/infrastructure/workplace/sqlite-sealed-product-material-repository.js';
@@ -72,6 +73,9 @@ function makeWorld() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
   ensureFactoryProcessRunSchema(db);
+  // capture consults isForeignManagedSubmission (F-R1) for managed
+  // submission members; the lazy table must exist like in a real DB.
+  ensureManagedNodeSubmissionSchema(db);
   db.pragma('foreign_keys=OFF');
   try {
 

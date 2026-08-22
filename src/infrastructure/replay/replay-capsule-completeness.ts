@@ -38,6 +38,31 @@ function readPersistedProduct(
 }
 
 /**
+ * F-R1 (night triage 2026-08-22): a reviewed cell's CandidateSet is
+ * cumulative on the accepted-author revision (ADR-053 C14) — the author's
+ * typed product legitimately rides the reviewer's set. Certifying foreign
+ * members into the REVIEWER capsule made replay re-submit the author
+ * product under the reviewer WorkIntent (MANAGED_NODE_SUBMISSION_SCHEMA_
+ * MISMATCH, formalization/restart-idempotency). A member belongs to a
+ * capsule only if the capsule's OWN source execution produced it; foreign
+ * members stay certified by their own cell's capsule.
+ */
+export function isForeignManagedSubmission(
+  db: Database.Database,
+  productRef: string,
+  executionRef: string,
+): boolean {
+  if (!productRef.startsWith('managed-node-submission:')) return false;
+  const id = Number(productRef.slice('managed-node-submission:'.length));
+  if (!Number.isSafeInteger(id) || id < 1) return false;
+  const row = db.prepare(
+    'SELECT execution_id FROM factory_managed_node_submissions WHERE id=?',
+  ).get(id) as { execution_id: string } | undefined;
+  if (!row) return false;
+  return row.execution_id !== executionRef;
+}
+
+/**
  * Prove that a capsule is a complete reconstruction recipe for the exact
  * accepted CandidateSet. The CandidateSet ProductRefs are the oracle; physical
  * writes made by sourceExecutionRef are provenance only and may legitimately
@@ -69,6 +94,9 @@ export function assertReplayCapsuleComplete(
   for (const member of members) {
     const product = readPersistedProduct(db, member);
     if (!isWorkplaceProductionSnapshot(product)) {
+      // F-R1: foreign (parent-revision) typed members are certified by their
+      // OWN capsule — they are not this capsule's reconstruction duty.
+      if (isForeignManagedSubmission(db, member.product_ref, executionRef)) continue;
       expectedTyped.set(`${member.product_schema}:${member.product_digest}`, member);
       continue;
     }

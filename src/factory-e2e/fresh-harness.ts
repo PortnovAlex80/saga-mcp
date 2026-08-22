@@ -270,15 +270,20 @@ export async function bootstrapFreshHarness(opts: BootstrapFreshHarnessOptions):
     // Trusted deterministic-evidence + authoritative-state providers used by
     // settlement/release. These are provider REGISTRATIONS (configuration), not
     // authority rows; production settlement reads them at runtime.
+    // The delivery rows carry EXPLICIT ids (9001/9002) pinned by the canonical
+    // proof provider doubles (canonical-proof-composition.mjs) — same
+    // convention as the temporal fixtures (fresh-db.mjs seeds 9101/9102).
+    // resolveTrustedProvider matches id+name+category+version, so an unpinned
+    // row resolves untrusted and production fails the release closed.
     db.prepare(
       `INSERT INTO trusted_providers
-         (project_id,category,name,trust_basis,determinism,scope,layer,version,status)
+         (id,project_id,category,name,trust_basis,determinism,scope,layer,version,status)
        VALUES
-         (?, 'deterministic_evidence','fresh-harness-preflight',
+         (9001, ?, 'deterministic_evidence','fresh-harness-preflight',
             'fresh harness deterministic fixture','full','fresh-harness','L0','1.0.0','active'),
-         (?, 'authoritative_state','fresh-harness-deployment-state',
+         (9002, ?, 'authoritative_state','fresh-harness-deployment-state',
             'fresh harness authoritative fixture','partial','fresh-harness','L4','1.0.0','active'),
-         (?, 'deterministic_evidence','development.verification-product-contract.v2',
+         (NULL, ?, 'deterministic_evidence','development.verification-product-contract.v2',
             'fresh harness verification provider','full','fresh-harness','L0','2.0.0','active')`,
     ).run(projectId, projectId, projectId);
     ensureReplayCapsuleSchema(db);
@@ -549,9 +554,26 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   heartbeat.unref();
 
   const idempotencyKey = ticket.idempotencyKey;
+  // A resume launch carries its own idempotency key, but the pinned
+  // LifecycleRun input is durable under the ORIGINAL run's key — the engine
+  // pattern (engine-administration): resolve the resumable run and pass ITS
+  // key so resolveInput finds the persisted input snapshot.
+  const runIdempotencyKey = ticket.mode === 'resume' && ticket.lifecycleRunId !== null
+    ? (getDb().prepare(
+        'SELECT idempotency_key AS key FROM factory_lifecycle_runs WHERE id=?',
+      ).get(ticket.lifecycleRunId) as { key: string } | undefined)?.key ?? idempotencyKey
+    : idempotencyKey;
   const initiatedBy = ticket.initiatedBy;
-  const lifecycleInput = ticket.lifecycleInput ?? bootstrap.lifecycleInput;
-  const lifecycleInputSchema = ticket.lifecycleInputSchema ?? bootstrap.lifecycleInputSchema;
+  // A RESUME launch (mode='resume', no lifecycle_input on the request) continues
+  // the existing paused lifecycle run: the engine pattern from
+  // engine-administration — resumePaused from the FIRST cycle and no
+  // lifecycleInput (passing the original input would collide with the active
+  // scope guard, LIFECYCLE_SCOPE_ALREADY_ACTIVE).
+  const isResumeDrive = ticket.mode === 'resume';
+  const lifecycleInput = isResumeDrive ? undefined
+    : ticket.lifecycleInput ?? bootstrap.lifecycleInput;
+  const lifecycleInputSchema = isResumeDrive ? undefined
+    : ticket.lifecycleInputSchema ?? bootstrap.lifecycleInputSchema;
 
   let cycles = 0;
   let lastReason = 'unknown';
@@ -571,12 +593,12 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
         projectId: bootstrap.projectId,
         epicId: bootstrap.epicId,
         concurrency: admission.effectiveConcurrency,
-        lifecycleInput: isFirstCycle ? lifecycleInput : undefined,
-        lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
+        lifecycleInput: isFirstCycle && !isResumeDrive ? lifecycleInput : undefined,
+        lifecycleInputSchema: isFirstCycle && !isResumeDrive && lifecycleInput !== undefined
           ? lifecycleInputSchema ?? undefined
           : undefined,
-        idempotencyKey,
-        resumePaused: !isFirstCycle,
+        idempotencyKey: runIdempotencyKey,
+        resumePaused: !isFirstCycle || isResumeDrive,
         initiatedBy,
       });
       cycles += 1;

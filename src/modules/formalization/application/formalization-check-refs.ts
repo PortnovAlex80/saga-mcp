@@ -10,7 +10,9 @@ import { ACCEPTANCE_CONTRACT_VALIDATOR_VERSION } from './acceptance-contract-val
 // binds the executable providers by this digest).
 // The acceptance validator alone moved to 1.2.0 (heading-resolution gate,
 // 2026-08-20); each ref imports the exact version its validator stamps, the
-// way architecture already does for SRS.
+// way architecture already does for SRS. The reconciliation REPORT payload
+// is pinned separately at the product_submit intake boundary
+// (reconciliation-payload-contract.ts), not by this validator version.
 const FORMALIZATION_SUBMISSION_VALIDATOR_VERSION = '1.1.0';
 
 /** Pure declarative provider identities; safe for the Workshop manifest. */

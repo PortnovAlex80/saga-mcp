@@ -276,8 +276,7 @@ export function readLatestSubmissionRejectionForExecution(
  */
 export const DEFAULT_SUBMISSION_STASIS_THRESHOLD = 5;
 
-export interface SubmissionRejectionStasis {
-  /** Consecutive newest rejections whose observed_set_digest is identical. */
+export interface SubmissionRejectionStasis {  /** Consecutive newest rejections whose observed_set_digest is identical. */
   readonly consecutiveIdenticalBytes: number;
   /** The byte-identity of the repeating observed artifact set. */
   readonly observedSetDigest: string;
@@ -336,3 +335,13 @@ function parseMetadata(raw: string): Record<string, unknown> {
     return {};
   }
 }
+
+// Layer-3 note (2026-08-21): the identical-ACCEPTED-material mirror
+// (readAcceptedRepairStasis + the dispatcher round-2 park) was REPLACED by
+// the production-cell executor's identical-reseal supervision: the re-seal
+// seals the same immutable CandidateSet ref the final gate already rejected,
+// and the executor re-applies the prior verdict, taxing the round against
+// the ADR-075 recovery budget (§15 spin) until an honest terminal. The
+// per-round durable fact now lives in the submission validation receipts
+// (countRepairSpinResealsForAuthor in
+// infrastructure/workplace/sqlite-production-cell-projection-persistence.ts).

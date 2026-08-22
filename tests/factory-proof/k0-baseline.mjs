@@ -112,7 +112,7 @@ export function traceDigest(trace) {
 
 export const K0_FLOORS = Object.freeze({
   blockingFactoryProofFiles: 7,
-  obligationContracts: 33,
+  obligationContracts: 34,
   installedProtections: 33,
   mutationOperators: { structural: 7, relational: 21 },
   outcomeEdgeCoverage: { traced: 8, pending: 3, total: 11 },
