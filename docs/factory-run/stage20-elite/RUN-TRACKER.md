@@ -278,3 +278,5 @@ resume path re-stamps the catalog limit).
   ([prompt-budget] lines in worker logs), with F-B rejections now carry the
   computed unordered-overlap pair set, with F-C an oversized prompt would
   fail in seconds instead of 8×backoff per spawn.
+=== watchdog note
+- 05:50Z: the first watchdog instance carried a TRUNCATED --settings-sha baseline (24 chars, copied from the old launch note) and false-tripped SETTINGS_DRIFT; the file was verified unchanged (full sha 2d6176e8…45c6d0) and the watchdog restarted with the full sha — clean samples since.
