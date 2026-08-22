@@ -671,7 +671,7 @@ async function main() {
           : null;
         journalEvent('terminal_settlement.failed', {
           epic_id: epicId ?? undefined,
-          run_id: ticket.lifecycleRunId != null ? String(ticket.lifecycleRunId) : undefined,
+          run_id: ticket.lifecycleRunId !== null ? String(ticket.lifecycleRunId) : undefined,
         }, {
           error_name: typed?.name ?? (settlementError instanceof Error
             ? settlementError.name
