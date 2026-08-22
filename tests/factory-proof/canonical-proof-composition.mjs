@@ -181,14 +181,28 @@ function providerEvidence(prefix, body) {
   return { schema: `factory.proof.${prefix}.v1`, ref: `proof:${prefix}:${hash}`, hash };
 }
 
+// Live telemetry for a built provider set — oracles read the REAL mutation
+// count through this, never through trust. (WeakMap so the providers object
+// stays exactly the production-expected shape.)
+const providerTelemetry = new WeakMap();
+export function deliveryProviderTelemetry(providers) {
+  return providerTelemetry.get(providers) ?? null;
+}
+
 export function buildCanonicalDeliveryProviders({
   repoPath, approvalStatus, observeMismatch = false, executeUncertain = false,
-  driftCandidate = false,
+  driftCandidate = false, worldAlreadyApplied = false,
 } = {}) {
   const markerRoot = path.join(repoPath, '.git');
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
   );
+
+  // REAL-mutation telemetry: every provider.execute() that actually touches
+  // the external world increments this. Oracles pin no-duplicate contracts
+  // against it (deliveryProviderTelemetry).
+  let realExecutions = 0;
+  let worldPreseeded = false;
 
   const preflight = {
     identity: CANONICAL_TEST_PROVIDERS.preflight,
@@ -223,6 +237,7 @@ export function buildCanonicalDeliveryProviders({
         desiredStateHash: action.desiredStateHash,
       };
       writeFileSync(marker, JSON.stringify(state), 'utf8');
+      realExecutions += 1;
       return {
         outcome: 'succeeded',
         externalRef: `proof-deployment:${sha256Hex(actionKey)}`,
@@ -231,6 +246,19 @@ export function buildCanonicalDeliveryProviders({
     },
     async observe({ action, actionKey }) {
       const marker = markerPath(actionKey);
+      // observe-before-retry scenario: model the PRIOR run — the external
+      // world already holds the desired state before this run's first
+      // pre-mutation observation. The runtime must skip the mutation; any
+      // provider.execute() after this is a duplicate non-idempotent effect.
+      if (worldAlreadyApplied && !worldPreseeded) {
+        worldPreseeded = true;
+        const seeded = {
+          actionKey,
+          target: action.target,
+          desiredStateHash: action.desiredStateHash,
+        };
+        writeFileSync(marker, JSON.stringify(seeded), 'utf8');
+      }
       let observedStateHash = 'proof-deployment:not-applied';
       if (existsSync(marker)) {
         try {
@@ -269,7 +297,7 @@ export function buildCanonicalDeliveryProviders({
   // 'candidate-drifted' settlement branch guards. The double discriminates
   // by the immediate caller frame — if the internals rename, this scenario
   // fails loudly (wrong terminal), never silently passes.
-  return {
+  const providers = {
     preflight,
     actionProviders: { deployment },
     observeCurrentCandidateHash(deliveryCase) {
@@ -300,6 +328,12 @@ export function buildCanonicalDeliveryProviders({
       },
     } : {}),
   };
+  providerTelemetry.set(providers, {
+    kind: 'canonical-delivery-provider-double',
+    get realExecutions() { return realExecutions; },
+    get worldPreseeded() { return worldPreseeded; },
+  });
+  return providers;
 }
 
 // ---------------------------------------------------------------------------

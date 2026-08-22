@@ -97,7 +97,6 @@ function noStrandedExecutionOracle() {
 }
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
-  'L:observe-before-retry:no-duplicate-non-idempotent-effect',
   'K4:crash-after-effect-before-receipt',
 ]);
 
@@ -208,6 +207,21 @@ export const DELIVERY_SCENARIOS = Object.freeze([
     coverageItems: [
       'L:candidate-immutability:drift-after-certification-blocks',
       coverageToken.transition('settle-delivery', 'complete-blocked'),
+    ],
+  }),
+  // Observe-before-retry (cross-run idempotency): a non-idempotent effect is
+  // NEVER mutated twice. The external world already holds the desired state
+  // (a prior run applied it) — this run's pre-mutation observation must see
+  // it matched and skip the mutation entirely. Zero real executions, the
+  // release still settles lawfully.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/observe-before-retry-no-duplicate-effect',
+    kind: 'positive',
+    proves: ['effect.deploy'],
+    coverageItems: [
+      'L:observe-before-retry:no-duplicate-non-idempotent-effect',
+      coverageToken.transition('settle-delivery', 'complete-released'),
     ],
   }),
 ]);
@@ -455,6 +469,22 @@ export function buildDeliveryRuntimeCase(id) {
               };
             },
           },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/observe-before-retry-no-duplicate-effect':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        worldAlreadyApplied: true,
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          terminalOracle('released'),
+          deliveryStageOutcomeOracle('released'),
+          // The receipt exists and is succeeded — the release settles lawfully
+          // WITHOUT a second mutation of the non-idempotent effect.
+          releaseEffectReceiptOracle(),
           noStrandedExecutionOracle(),
         ],
       };

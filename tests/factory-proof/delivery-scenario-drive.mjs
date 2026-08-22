@@ -19,7 +19,10 @@ import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 import { runScenario } from './scenario-runner.mjs';
-import { buildCanonicalDeliveryProviders } from './canonical-proof-composition.mjs';
+import {
+  buildCanonicalDeliveryProviders,
+  deliveryProviderTelemetry,
+} from './canonical-proof-composition.mjs';
 import { buildDeliveryRuntimeCase } from './delivery-scenario-pack.mjs';
 
 const REPO_ROOT = process.cwd();
@@ -149,21 +152,47 @@ try {
   // ── THE UNIFIED KERNEL ──
   const { productDeliveryLifecycle } = await import(pathToFileURL(path.resolve(
     REPO_ROOT, 'dist/process-modules/lifecycles/product-delivery-lifecycle.js')).href);
+  const providers = buildCanonicalDeliveryProviders({
+    repoPath: bootstrap.repoPath,
+    ...(runtime.approvalStatus ? { approvalStatus: runtime.approvalStatus } : {}),
+    ...(runtime.observeMismatch ? { observeMismatch: true } : {}),
+    ...(runtime.executeUncertain ? { executeUncertain: true } : {}),
+    ...(runtime.driftCandidate ? { driftCandidate: true } : {}),
+    ...(runtime.worldAlreadyApplied ? { worldAlreadyApplied: true } : {}),
+  });
+  // observe-before-retry: the zero-duplicate oracle reads the provider
+  // double's REAL mutation counter — the world was pre-seeded, so any
+  // provider.execute() is a duplicate non-idempotent effect.
+  const oracles = [...(runtime.oracles ?? [])];
+  if (runtime.worldAlreadyApplied) {
+    oracles.push({
+      id: 'delivery.no-duplicate.provider-real-executions',
+      evaluate() {
+        const telemetry = deliveryProviderTelemetry(providers);
+        return {
+          passed: telemetry !== null
+            && telemetry.realExecutions === 0
+            && telemetry.worldPreseeded === true,
+          evidenceRefs: ['provider-double:realExecutions'],
+          details: telemetry === null
+            ? { telemetry: null }
+            : {
+              realExecutions: telemetry.realExecutions,
+              worldPreseeded: telemetry.worldPreseeded,
+            },
+        };
+      },
+    });
+  }
   const bundle = await runScenario({
     scenario: runtime.scenario,
     bootstrap,
     proofModes: ['Durable', 'CanonicalFast'],
     handlers: runtime.handlers,
-    oracles: runtime.oracles,
+    oracles,
     actorEvidence: runtime.actorEvidence ?? [],
     ...(runtime.expectError ? { expectError: runtime.expectError } : {}),
-    deliveryProviders: buildCanonicalDeliveryProviders({
-      repoPath: bootstrap.repoPath,
-      ...(runtime.approvalStatus ? { approvalStatus: runtime.approvalStatus } : {}),
-      ...(runtime.observeMismatch ? { observeMismatch: true } : {}),
-      ...(runtime.executeUncertain ? { executeUncertain: true } : {}),
-    ...(runtime.driftCandidate ? { driftCandidate: true } : {}),
-    }),
+    deliveryProviders: providers,
     // The production launch above is INPUT construction (factory_orders +
     // launch rows) — it wrote no authority tables; the kernel's clean-bootstrap
     // assertion stays meaningful for the authority surfaces it guards.
