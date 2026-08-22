@@ -518,7 +518,17 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   writeRepoFile(repoPath, filePath,
     `// deterministic implementation for ${workItemKey}\nexport const ${safe.replace(/[^a-zA-Z0-9_]/g, '_')} = true;\n`);
   git(repoPath, 'add', filePath);
-  git(repoPath, 'commit', '-m', `w9: implement ${workItemKey}`);
+  // Replay idempotency (§16): on a restart the SAME material is already
+  // committed on this branch — `git commit` then exits non-zero ("nothing
+  // to commit") and the replayed execution dies. Observe-before-commit: a
+  // failed commit with a CLEAN tree means the commit already happened and
+  // the branch ref already points at it — skip, like the production
+  // external-effect short-circuit. A dirty tree is a real failure.
+  try {
+    git(repoPath, 'commit', '-m', `w9: implement ${workItemKey}`);
+  } catch (error) {
+    if (git(repoPath, 'status', '--porcelain').trim() !== '') throw error;
+  }
   const commitSha = git(repoPath, 'rev-parse', 'HEAD');
   const treeSha = git(repoPath, 'rev-parse', `${commitSha}^{tree}`);
   const baseCommit = git(repoPath, 'merge-base', integrationBranch, branch) ||
