@@ -15,7 +15,8 @@
 // continuations) is DECLARED below but not yet authored — Development is
 // NOT closed until every required item has PASS evidence (§13 closure rule).
 
-import { W9_HAPPY_HANDLERS } from '../factory-e2e/w9-happy-handlers.mjs';
+import { W9_HAPPY_HANDLERS, makeDevelopmentImplementHandler }
+  from '../factory-e2e/w9-happy-handlers.mjs';
 import { coverageToken } from './coverage-kernel.mjs';
 
 export const DEVELOPMENT_STAGE = 'solution-development';
@@ -224,9 +225,31 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
     proves: ['dev.task-graph'],
     coverageItems: ['D2:fanin:completion-policy-all-blocks-early-fanin'],
   }),
+  // D3 implementation-scope fence: the first implementation writes a file
+  // OUTSIDE every declared changeScope (truthfully declared in changedFiles —
+  // the mismatch check passes, the OFFENSE is purely scope). The gate must
+  // reject on the scope check, the repair must land in-scope, and the
+  // workplace must still reach final acceptance.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'development/impl-scope-outside-rejected-repaired',
+    kind: 'positive',
+    proves: ['dev.impl-scope'],
+    coverageItems: ['D3:impl-scope:file-outside-effective-scope-rejected'],
+  }),
 ]);
 
 // --- Planned (not yet demonstrated) universe — honest tranche boundary ---
+
+// DEMONSTRATED (landed) Development obligations — MOVED here from the
+// pending universe as their scenarios passed through the unified kernel.
+// The universe is monotonic: a landed token never leaves U (operator
+// review 2026-08-22 — the denominator must not shrink as coverage grows).
+export const DEVELOPMENT_REQUIRED_UNIVERSE = Object.freeze([
+  'D2:fanout-scheduling:dependency-order-and-concurrency-cap',
+  'D2:fanin:completion-policy-all-blocks-early-fanin',
+  'D3:impl-scope:file-outside-effective-scope-rejected',
+]);
 
 export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
   // Found live by the delivery restart proof (2026-08-22): a replayed
@@ -237,7 +260,6 @@ export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
   // Development-universe item, NOT a delivery concern.
   'restart:development:git-change-desk-replay',
   'D2:sibling-isolation:accepted-sibling-conserved-during-repair',
-  'D3:impl-scope:file-outside-effective-scope-rejected',
   'D3:claim-monotonicity:silent-narrowing-rejected',
   'D4:review:changes-returns-to-same-workplace-author',
   'D4:git-effect:integration-only-after-final-acceptance',
@@ -274,6 +296,46 @@ function traceTimeToMs(value) {
   }
   const parsed = Date.parse(s);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+// D3 fault map: the FIRST implementation-author invocation writes outside
+// every declared scope; the REPAIR invocation returns to the in-scope path
+// WITH the lawful droppedFiles disposition (claim-monotonicity's documented
+// exit — a drop is legal only with an explicit reason); every later chain
+// item uses the normal W9 path.
+function buildScopeFaultHandlers() {
+  const handlers = { ...W9_HAPPY_HANDLERS };
+  const authorKey = Object.keys(handlers)
+    .find(key => key.includes('implement-work-items/author'));
+  const inScope = handlers[authorKey];
+  let phase = 0;
+  let roguePath = null;
+  let inScopePath = null;
+  handlers[authorKey] = ctx => {
+    phase += 1;
+    const item = ctx.meta?.cell_input_item
+      ?? (Array.isArray(ctx.meta?.process_node_input)
+        ? ctx.meta.process_node_input.find(x => x?.kind === 'implementation')
+        : undefined);
+    const safe = String(item?.key ?? '').replace(/[^a-zA-Z0-9._-]/g, '-');
+    if (phase === 1) {
+      roguePath = `rogue/outside/${safe}.ts`;
+      return makeDevelopmentImplementHandler(() => roguePath)(ctx);
+    }
+    if (phase === 2) {
+      inScopePath = `src/w9/${safe}.ts`;
+      return makeDevelopmentImplementHandler(
+        () => inScopePath,
+        () => [{
+          path: roguePath,
+          reason: 'repaired: the rejected attempt wrote outside the frozen authority; '
+            + 'the lawful in-scope implementation replaces it',
+        }],
+      )(ctx);
+    }
+    return inScope(ctx);
+  };
+  return handlers;
 }
 
 const byId = new Map(DEVELOPMENT_SCENARIOS.map(scenario => [scenario.id, scenario]));
@@ -435,6 +497,78 @@ export function buildDevelopmentRuntimeCase(id) {
                   implementationsAcceptedBeforeFreeze: implsBeforeFreeze,
                   settlementBindsFrozenCandidate: bindsFrozenCandidate,
                   frozenCandidateHash: freeze?.product_hash ?? null,
+                },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'development/impl-scope-outside-rejected-repaired':
+      return {
+        scenario,
+        // First implementation invocation writes rogue/outside/<item>.ts —
+        // outside every declared changeScope. The scope check rejects; the
+        // repair invocation returns to the in-scope path and the flow
+        // completes normally.
+        handlers: Object.freeze(buildScopeFaultHandlers()),
+        driveOptions: { maxCycles: 320, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
+          {
+            // The fence fired: an implementation workplace holds a
+            // repair_required gate decision and failed check receipts (the
+            // implementation-scope and claim-monotonicity providers) against
+            // its sealed candidate — the rogue attempt was judged, not waved
+            // through.
+            id: 'development.impl-scope.rogue-rejected',
+            evaluate({ durableTrace }) {
+              const implWorkplaces = new Set(
+                (durableTrace.workplaces ?? [])
+                  .filter(w => String(w.workplace_ref).includes('development-implementation'))
+                  .map(w => w.workplace_ref));
+              const repairGates = (durableTrace.gateDecisions ?? [])
+                .filter(g => g.verdict === 'repair_required'
+                  && implWorkplaces.has(g.workplace_ref));
+              const failedReceipts = (durableTrace.checkReceipts ?? [])
+                .filter(r => r.outcome !== 'passed'
+                  && String(r.subject_candidate_set_ref).includes('development-implementation')
+                  && /implementation-(scope|claim-monotonicity)\.v1$/.test(String(r.provider_id)));
+              return {
+                passed: repairGates.length > 0 && failedReceipts.length > 0,
+                evidenceRefs: [
+                  ...repairGates.map(g => `gate:${g.decision_key}`),
+                  ...failedReceipts.map(r => `check:${r.check_receipt_ref}`),
+                ],
+                details: {
+                  repairRequiredGateDecisions: repairGates.length,
+                  failedImplFenceReceipts: failedReceipts.length,
+                  providers: [...new Set(failedReceipts.map(r => r.provider_id))],
+                },
+              };
+            },
+          },
+          {
+            // The repair converged: EVERY implementation workplace (including
+            // the one that went rogue) ends final-accepted.
+            id: 'development.impl-scope.repaired-to-acceptance',
+            evaluate({ durableTrace }) {
+              const implWorkplaces = new Set(
+                (durableTrace.workplaces ?? [])
+                  .filter(w => String(w.workplace_ref).includes('development-implementation'))
+                  .map(w => w.workplace_ref));
+              const accepted = new Set(
+                (durableTrace.finalAcceptances ?? [])
+                  .filter(row => implWorkplaces.has(row.workplace_ref))
+                  .map(row => row.workplace_ref));
+              const missing = [...implWorkplaces].filter(ref => !accepted.has(ref));
+              return {
+                passed: implWorkplaces.size > 0 && missing.length === 0,
+                evidenceRefs: [...accepted].map(ref => `workplace:${ref}`),
+                details: {
+                  implementationWorkplaces: implWorkplaces.size,
+                  accepted: accepted.size,
+                  missing,
                 },
               };
             },

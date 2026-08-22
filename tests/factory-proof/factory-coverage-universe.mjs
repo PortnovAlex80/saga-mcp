@@ -7,6 +7,12 @@
 //   coverage universe + pending universe + platform fault edges (K4-owned),
 //   each token namespaced by workshop.
 //
+//   MONOTONICITY (operator review 2026-08-22): the universe U never shrinks.
+//   Landing an obligation MOVES its token pending → required (demonstrated);
+//   the token never leaves U. Shrinking U to shrink "uncovered" is the
+//   coverage-model defect this layer must make impossible: a landed token
+//   that vanished from the denominator would silently inflate coverage.
+//
 //   Workshop closure status is DATA, derived from set-equality of what the
 //   packs DECLARE — never from prose:
 //     CLOSED  the declared required universe is fully covered by declared
@@ -34,10 +40,12 @@ import {
 import { FORMALIZATION_PLATFORM_FAULT_EDGES } from './formalization-scenario-pack.mjs';
 import {
   DEVELOPMENT_SCENARIOS,
+  DEVELOPMENT_REQUIRED_UNIVERSE,
   DEVELOPMENT_PENDING_UNIVERSE,
 } from './development-scenario-pack.mjs';
 import {
   DELIVERY_SCENARIOS,
+  DELIVERY_REQUIRED_UNIVERSE,
   DELIVERY_PENDING_UNIVERSE,
 } from './delivery-scenario-pack.mjs';
 import { buildScenarioCoverageMatrix } from './coverage-kernel.mjs';
@@ -60,14 +68,14 @@ const WORKSHOPS = Object.freeze([
   {
     id: 'development',
     scenarios: DEVELOPMENT_SCENARIOS,
-    requiredUniverse: [],
+    requiredUniverse: DEVELOPMENT_REQUIRED_UNIVERSE,
     pendingUniverse: DEVELOPMENT_PENDING_UNIVERSE,
     platformFaultEdges: [],
   },
   {
     id: 'delivery',
     scenarios: DELIVERY_SCENARIOS,
-    requiredUniverse: [],
+    requiredUniverse: DELIVERY_REQUIRED_UNIVERSE,
     pendingUniverse: DELIVERY_PENDING_UNIVERSE,
     platformFaultEdges: [],
   },

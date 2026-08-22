@@ -490,7 +490,14 @@ function developmentPlan({ handlers, assignment, meta }) {
   return { kind: 'worker-done-accepted' };
 }
 
-function developmentImplement({ handlers, assignment, meta, context, db }) {
+/** Parameterizable implementation author: filePathFor(safe, workItemKey)
+ * decides the written path (and declared changedFiles follow it); dropFor
+ * optionally supplies the LAWFUL repair disposition — snapshot.droppedFiles
+ * entries with non-empty reasons (claim-monotonicity's documented exit).
+ * The default is the in-scope src/w9 path; fault scenarios override it on
+ * chosen invocations to drive the production implementation-scope fence. */
+export function makeDevelopmentImplementHandler(filePathFor, dropFor) {
+  return function developmentImplement({ handlers, assignment, meta, context, db }) {
   const item = meta.cell_input_item || findObject(meta.process_node_input, x => x.kind === 'implementation');
   if (!item?.key) throw new Error('implementation work item not found');
   const workItemKey = String(item.key);
@@ -514,7 +521,7 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   // and commit. The branch ref MUST point at the commit (the integration effect
   // reads refs/heads/<sourceBranch> to verify the source commit).
   git(repoPath, 'checkout', '-B', branch, integrationBranch);
-  const filePath = `src/w9/${safe}.ts`;
+  const filePath = filePathFor(safe, workItemKey);
   writeRepoFile(repoPath, filePath,
     `// deterministic implementation for ${workItemKey}\nexport const ${safe.replace(/[^a-zA-Z0-9_]/g, '_')} = true;\n`);
   git(repoPath, 'add', filePath);
@@ -546,7 +553,10 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
       workItemKey,
       terminalStatus: 'complete',
       source: { branch, commitSha, workItemKey },
-      snapshot: { commitSha, treeSha, files: [filePath], changedFiles: [filePath] },
+      snapshot: {
+        commitSha, treeSha, files: [filePath], changedFiles: [filePath],
+        ...(dropFor ? { droppedFiles: dropFor() } : {}),
+      },
       repository: {
         projectRepositoryId,
         integrationBranch,
@@ -564,6 +574,7 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   });
   done(handlers, assignment, `implemented ${workItemKey}`);
   return { kind: 'worker-done-accepted' };
+};
 }
 
 function developmentReview({ handlers, assignment, meta }) {
@@ -694,7 +705,9 @@ export const W9_HAPPY_HANDLERS = Object.freeze({
 
   // Development
   [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
-  [`${DEV}/implement-work-items/author/*`]: developmentImplement,
+  [`${DEV}/implement-work-items/author/*`]: makeDevelopmentImplementHandler(
+    safe => `src/w9/${safe}.ts`,
+  ),
   [`${DEV}/implement-work-items/reviewer/*`]: developmentReview,
   [`${DEV}/certify-product-readiness/author/singleton`]: developmentReadinessCertification,
   [`${DEV}/verify-acceptance/author/*`]: developmentVerify,

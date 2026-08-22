@@ -96,8 +96,23 @@ function noStrandedExecutionOracle() {
   };
 }
 
+// DEMONSTRATED (landed) Delivery obligations — these MOVED here from the
+// pending universe as their scenarios passed through the unified kernel.
+// The universe is monotonic: a landed token never leaves U, it only moves
+// from pending to required (factory-coverage-universe ratchet).
+export const DELIVERY_REQUIRED_UNIVERSE = Object.freeze([
+  'L:approval:binds-candidate+preflight+policy-hash',
+  'L:candidate-immutability:drift-after-certification-blocks',
+  'L:observe-before-retry:no-duplicate-non-idempotent-effect',
+]);
+
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
   'K4:crash-after-effect-before-receipt',
+  // NOT proven — the three-start proof found the Development git-change
+  // desk-replay seam first. Status: BLOCKED_BY the Development prerequisite
+  // 'restart:development:git-change-desk-replay'. Discovering an upstream
+  // obligation does NOT discharge the Delivery one — the token stays.
+  'restart:delivery:idempotent-settlement',
 ]);
 
 export const DELIVERY_SCENARIOS = Object.freeze([
