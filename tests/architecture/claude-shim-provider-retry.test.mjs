@@ -118,6 +118,50 @@ test('T1: pre-first-tool death (exit≠0, no marker, no text) → retry, full la
   assert.equal(v.class, 'pre-tool-death');
 });
 
+// F-C (Elite-3 post-mortem): the provider's DEFINITIVE rejection must fail
+// fast — never the full ladder. Evidence class (task13-evidence): the API
+// answered 400 / "Prompt exceeds max length" / isRetryable:false and the old
+// pre-tool-death catch-all retried the same oversized request ×8 per spawn.
+const PROVIDER_REJECTED_CASES = [
+  ['Error: Prompt exceeds max length (435929 bytes)', 'plain oversized-prompt text'],
+  ['{"type":"error","statusCode":400,"isRetryable":false}', 'JSON statusCode 400 + isRetryable false'],
+  ['API error: status: 400 Bad Request', 'status: 400 compact'],
+  ['opencode: statusCode=400', 'statusCode=400 form'],
+  ['HTTP 413 payload too large', '413 payload too large'],
+  ['request too large for model context', 'request too large'],
+];
+
+for (const [text, label] of PROVIDER_REJECTED_CASES) {
+  test(`T1: provider DEFINITIVE rejection pre-tool → NEVER retry (fail fast): ${label}`, () => {
+    const v = classifyFailure({ exitCode: 1, signal: null, stdout: '', stderr: `${text}\n` });
+    assert.equal(v.retry, false, `must fail fast on "${text}"`);
+    assert.equal(v.class, 'provider-rejected');
+    assert.ok(v.detail, 'records the rejecting line for the typed diagnosis');
+  });
+}
+
+test('T1: definitive rejection beats stale retryable residue in the same capture', () => {
+  const v = classifyFailure({
+    exitCode: 1,
+    signal: null,
+    stdout: '',
+    stderr: 'earlier: 429 rate limit\nnow: {"statusCode":400,"isRetryable":false,"error":"Prompt exceeds max length"}\n',
+  });
+  assert.equal(v.retry, false);
+  assert.equal(v.class, 'provider-rejected');
+});
+
+test('T1: provider rejection on stdout tail also fails fast', () => {
+  const v = classifyFailure({
+    exitCode: 1,
+    signal: null,
+    stdout: '...stream... {"type":"error","statusCode":400}\n',
+    stderr: '',
+  });
+  assert.equal(v.retry, false);
+  assert.equal(v.class, 'provider-rejected');
+});
+
 test('T1: death by signal counts as exit≠0 → retry (pre-tool)', () => {
   const v = classifyFailure({ exitCode: null, signal: 'SIGKILL', stdout: '', stderr: '' });
   assert.equal(v.retry, true);
