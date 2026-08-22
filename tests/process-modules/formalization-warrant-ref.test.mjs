@@ -323,12 +323,14 @@ function manifest(warrantRef) {
   };
 }
 
-test('readiness manifest contract accepts a well-formed warrantRef', () => {
+test('readiness manifest contract accepts a well-formed warrantRef (complete cross-bind)', () => {
   const errors = developmentReadinessManifestPayloadContract.validate(manifest({
     constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
     constraintRegisterDigest: 'c'.repeat(64),
     dispositionsDigest: 'd'.repeat(64),
     dispositions: { 'ord-c-001': { disposition: 'accepted' } },
+    discoveryCertificateHash: 'a'.repeat(64),
+    formalizationCaseDigest: 'e'.repeat(64),
   }));
   assert.deepEqual(errors, []);
 });
@@ -343,6 +345,137 @@ test('readiness manifest contract rejects a malformed warrantRef', () => {
   assert.ok(developmentReadinessManifestPayloadContract.validate(manifest({
     nope: true,
   })).some(error => error.includes('warrantRef')));
+});
+
+// ---- ADR-090 (CC-IC-1 focused repair): the m7 CONSUMER boundary --------------
+
+/**
+ * A manifest warrant must not carry a forged or PARTIAL
+ * discoveryCertificateHash/formalizationCaseDigest cross-bind: both identities
+ * are required at the submission boundary, and the warrant consumer verifies
+ * the values against the DevelopmentCase's authoritative expected identities
+ * (frozen solution-contract payload).
+ */
+test('m7 consumer: a partial or malformed warrantRef cross-bind is a typed submission error', () => {
+  const complete = manifest({
+    constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
+    constraintRegisterDigest: 'c'.repeat(64),
+    dispositionsDigest: 'd'.repeat(64),
+    dispositions: {},
+    discoveryCertificateHash: 'a'.repeat(64),
+    formalizationCaseDigest: 'e'.repeat(64),
+  });
+  assert.deepEqual(developmentReadinessManifestPayloadContract.validate(complete), []);
+
+  // The MUTATION (partial cross-bind): the certificate identity is stripped.
+  const noCertificate = structuredClone(complete);
+  delete noCertificate.warrantRef.discoveryCertificateHash;
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(noCertificate)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+  // The MUTATION (partial cross-bind): the case identity is stripped.
+  const noCase = structuredClone(complete);
+  delete noCase.warrantRef.formalizationCaseDigest;
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(noCase)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+  // The MUTATION (forged shape): a non-64-hex identity.
+  const badHex = structuredClone(complete);
+  badHex.warrantRef.discoveryCertificateHash = 'nothex';
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(badHex)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+});
+
+test('m7 consumer: the manifest warrant is verified against the case\'s authoritative expected identities', async () => {
+  const {
+    resolveExpectedWarrantCrossBind,
+    verifyReadinessManifestWarrantCrossBind,
+  } = await import('../../dist/modules/development/domain/development-schemas.js');
+  const {
+    formalizationCaseIdentityDigest,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+
+  const theCase = formalizationCase(ORDER_CONSTRAINTS);
+  const expected = {
+    discoveryCertificateHash: theCase.discoveryCertificateHash,
+    formalizationCaseDigest: formalizationCaseIdentityDigest(theCase),
+  };
+  const developmentCase = {
+    solutionContractPayload: {
+      discoveryCertificateRef: theCase.discoveryCertificateRef,
+      discoveryCertificateHash: expected.discoveryCertificateHash,
+      formalizationCaseDigest: expected.formalizationCaseDigest,
+    },
+  };
+  assert.deepEqual(resolveExpectedWarrantCrossBind(developmentCase), expected);
+
+  const warrant = {
+    constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
+    constraintRegisterDigest: 'c'.repeat(64),
+    dispositionsDigest: 'd'.repeat(64),
+    dispositions: {},
+    discoveryCertificateHash: expected.discoveryCertificateHash,
+    formalizationCaseDigest: expected.formalizationCaseDigest,
+  };
+  // The honest warrant verifies (no throw).
+  verifyReadinessManifestWarrantCrossBind(developmentCase, manifest(warrant));
+
+  // The MUTATION (forged certificate identity).
+  const forgedCertificate = manifest({
+    ...warrant,
+    discoveryCertificateHash: 'b'.repeat(64),
+  });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, forgedCertificate),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+  // The MUTATION (forged case identity).
+  const forgedCase = manifest({
+    ...warrant,
+    formalizationCaseDigest: 'f'.repeat(64),
+  });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, forgedCase),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+  // The MUTATION (partial cross-bind at the consumer).
+  const partial = manifest({ ...warrant, formalizationCaseDigest: undefined });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, partial),
+    /WARRANT_CROSS_BIND_INCOMPLETE/,
+  );
+  // A case with NO authoritative expectation cannot verify a present warrant
+  // at all — a typed red, never a silent unverifiable accept.
+  const legacyCase = {
+    solutionContractPayload: { discoveryCertificateHash: expected.discoveryCertificateHash },
+  };
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(legacyCase, manifest(warrant)),
+    /WARRANT_CROSS_BIND_EXPECTATION_MISSING/,
+  );
+  // An ABSENT manifest warrantRef stays legal (retro-compat).
+  verifyReadinessManifestWarrantCrossBind(legacyCase, manifest());
+});
+
+test('m7 consumer: formalization settlement freezes the formalizationCaseDigest beside the certificate hash (expected-input seam)', async () => {
+  const {
+    formalizationCaseIdentityDigest,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+  const { persisted } = settlementFixture({ dispositions: DISPOSITIONS });
+  assert.equal(persisted.length, 1);
+  const contract = persisted[0];
+  // The frozen solution contract is the authoritative expected-input seam the
+  // Development warrant consumer resolves BOTH cross-bind identities from.
+  assert.equal(contract.discoveryCertificateHash, 'a'.repeat(64));
+  assert.match(contract.formalizationCaseDigest, /^[a-f0-9]{64}$/);
+  assert.equal(
+    contract.formalizationCaseDigest,
+    formalizationCaseIdentityDigest(formalizationCase(ORDER_CONSTRAINTS)),
+  );
 });
 
 test('readiness manifest without warrantRef still validates (retro-compat)', () => {

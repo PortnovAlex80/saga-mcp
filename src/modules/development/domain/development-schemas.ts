@@ -645,6 +645,102 @@ export interface DevelopmentReadinessManifest {
   warrantRef?: VerificationWarrantRef;
 }
 
+/**
+ * ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): the authoritative
+ * expected warrant cross-bind of a DevelopmentCase — resolved from the FROZEN
+ * formalization solution-contract payload the case carries (never re-derived,
+ * never worker-supplied). Structural mirror of the formalization-side
+ * expectation (same discipline as VerificationWarrantRef — no cross-module
+ * domain import).
+ */
+export interface DevelopmentWarrantCrossBindExpectation {
+  readonly discoveryCertificateHash: string;
+  readonly formalizationCaseDigest: string;
+}
+
+/**
+ * Resolve the expected warrant cross-bind identities from the case's frozen
+ * solution-contract payload. Returns null when the frozen payload carries no
+ * verifiable expectation (legacy payloads frozen before the seam, or a case
+ * with no payload at all) — a PRESENT manifest warrantRef against such a case
+ * is then a typed red at the consumer, never a silent unverifiable accept.
+ */
+export function resolveExpectedWarrantCrossBind(
+  developmentCase: DevelopmentCase,
+): DevelopmentWarrantCrossBindExpectation | null {
+  const payload = developmentCase.solutionContractPayload;
+  if (!payload || typeof payload !== 'object') return null;
+  const discoveryCertificateHash = payload['discoveryCertificateHash'];
+  const formalizationCaseDigest = payload['formalizationCaseDigest'];
+  if (typeof discoveryCertificateHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(discoveryCertificateHash)) {
+    return null;
+  }
+  if (typeof formalizationCaseDigest !== 'string'
+    || !/^[a-f0-9]{64}$/.test(formalizationCaseDigest)) {
+    return null;
+  }
+  return { discoveryCertificateHash, formalizationCaseDigest };
+}
+
+/**
+ * ADR-090 (CC-IC-1 focused repair, mutation m7 CONSUMER boundary: a
+ * Development readiness manifest must not accept a forged or partial
+ * `discoveryCertificateHash`/`formalizationCaseDigest` cross-bind.
+ *
+ * Fail-closed rules, in order:
+ *  1. an ABSENT manifest warrantRef is legal (retro-compat — the warrant
+ *     phases are not yet mandatory);
+ *  2. a PRESENT warrantRef must carry BOTH cross-bind identities as 64-hex
+ *     strings — a partial cross-bind (one field stripped) is a typed red;
+ *  3. the values must equal the case's AUTHORITATIVE expected identities
+ *     resolved from the frozen solution-contract payload — a forged
+ *     re-targeted warrant is a typed red;
+ *  4. a case whose frozen payload carries no verifiable expectation cannot
+ *     verify a present warrantRef at all — a typed red, never a silent
+ *     unverifiable accept.
+ */
+export function verifyReadinessManifestWarrantCrossBind(
+  developmentCase: DevelopmentCase,
+  manifest: DevelopmentReadinessManifest,
+): void {
+  const warrant = manifest.warrantRef;
+  if (warrant === undefined) return;
+  const certificateHash = warrant.discoveryCertificateHash;
+  const caseDigest = warrant.formalizationCaseDigest;
+  if (
+    typeof certificateHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(certificateHash)
+    || typeof caseDigest !== 'string'
+    || !/^[a-f0-9]{64}$/.test(caseDigest)
+  ) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_INCOMPLETE: a present readiness-manifest warrantRef must carry '
+      + 'BOTH the discoveryCertificateHash and the formalizationCaseDigest as 64-hex '
+      + 'cross-bind identities — a partial cross-bind is a typed red',
+    );
+  }
+  const expected = resolveExpectedWarrantCrossBind(developmentCase);
+  if (!expected) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_EXPECTATION_MISSING: the DevelopmentCase carries no authoritative '
+      + 'warrant cross-bind expectation (discoveryCertificateHash/formalizationCaseDigest on '
+      + 'the frozen solution-contract payload) to verify a present warrantRef against — '
+      + 'never a silent unverifiable accept',
+    );
+  }
+  if (
+    certificateHash !== expected.discoveryCertificateHash
+    || caseDigest !== expected.formalizationCaseDigest
+  ) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_MISMATCH: the readiness-manifest warrantRef cross-bind does not '
+      + 'match the authoritative certificate/case identities of this DevelopmentCase '
+      + `(warrant certificate ${certificateHash} / case ${caseDigest})`,
+    );
+  }
+}
+
 export type VerificationOutcome =
   | 'passed'
   | 'failed'

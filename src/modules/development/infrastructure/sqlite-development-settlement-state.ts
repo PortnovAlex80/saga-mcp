@@ -28,6 +28,7 @@ import {
   INTEGRATED_CANDIDATE_SCHEMA,
   INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
   DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  verifyReadinessManifestWarrantCrossBind,
   type AcceptanceVerificationWorkset,
   type CandidateVerificationEvidence,
   type ContentAddressedReference,
@@ -374,6 +375,23 @@ export class SqliteDevelopmentModuleStore implements
         || manifest.targets.length !== 1
         || manifest.targets[0]?.key !== 'primary') {
       return { status: 'failed', reasonCodes: ['readiness-manifest-source-mismatch'] };
+    }
+    // ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): a PRESENT
+    // manifest warrantRef is verified against the case's AUTHORITATIVE
+    // expected cross-bind identities (frozen solution-contract payload) — a
+    // forged or partial discoveryCertificateHash/formalizationCaseDigest
+    // cross-bind is a typed failed state, never a silently accepted
+    // re-targeted warrant. An absent warrantRef stays legal (retro-compat).
+    try {
+      verifyReadinessManifestWarrantCrossBind(input.developmentCase, manifest);
+    } catch (error) {
+      return {
+        status: 'failed',
+        reasonCodes: [
+          'readiness-manifest-warrant-cross-bind-invalid',
+          error instanceof Error ? error.message : String(error),
+        ],
+      };
     }
     const receipt = this.readExactReadinessReceipt(presentation.candidateSetRef);
     if (!receipt) {

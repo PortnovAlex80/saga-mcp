@@ -474,6 +474,12 @@ export function buildSolutionContractPayload(
     formalizationEpicId: requireEpicId(ctx),
     discoveryCertificateRef: formalizationCase.discoveryCertificateRef,
     discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
+    // ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): freeze the case
+    // identity digest the issued warrantRef is cross-bound to, beside the
+    // discovery certificate hash — the authoritative expected identities the
+    // Development warrant consumer verifies a present manifest warrantRef
+    // against (the smallest typed expected-input seam at its source).
+    formalizationCaseDigest: formalizationCaseIdentityDigest(formalizationCase),
     bundle,
     artifactHashes,
     traceIds: traces.map(trace => trace.id),

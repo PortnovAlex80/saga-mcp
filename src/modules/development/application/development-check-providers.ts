@@ -475,8 +475,13 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
     }
   }
   // AC-drift network 3 seam: optional warrantRef — when present it must be
-  // the exact typed shape (digest-pinned register + dispositions). Absent is
-  // legal until the warrant phases land (retro-compat).
+  // the exact typed shape (digest-pinned register + dispositions) AND carry
+  // the COMPLETE certificate/case cross-bind (ADR-090 focused repair, m7
+  // consumer boundary): both discoveryCertificateHash and
+  // formalizationCaseDigest as 64-hex strings. A partial cross-bind (one
+  // identity stripped) is a typed submission error — never silently accepted.
+  // Absent warrantRef remains legal until the warrant phases land
+  // (retro-compat).
   const warrant = payload.warrantRef;
   if (warrant !== undefined) {
     if (
@@ -489,10 +494,15 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
       || warrant.constraintRegisterRef
         !== `constraint-register:${warrant.constraintRegisterDigest}`
       || !isRecordValue(warrant.dispositions)
+      || typeof warrant.discoveryCertificateHash !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrant.discoveryCertificateHash)
+      || typeof warrant.formalizationCaseDigest !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrant.formalizationCaseDigest)
     ) {
       errors.push(
         'warrantRef must carry constraintRegisterRef (constraint-register:<64-hex digest>), '
-        + 'constraintRegisterDigest (64-hex), dispositionsDigest (64-hex) and a dispositions object',
+        + 'constraintRegisterDigest (64-hex), dispositionsDigest (64-hex), a dispositions object, '
+        + 'and BOTH cross-bind identities discoveryCertificateHash + formalizationCaseDigest (64-hex)',
       );
     }
   }

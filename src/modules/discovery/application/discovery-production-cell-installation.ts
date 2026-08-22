@@ -524,6 +524,29 @@ function classifyPinnedLifecycle(
   const terminalClassifications = terminalClassificationsOf(pinned.definition);
   const applicable = input.lifecycleInjectionDeclarations
     .filter(declaration => terminalClassifications.includes(declaration.table.classification));
+  // A table cannot be replayed twice: two applicable declarations for the
+  // SAME classification (or the same tableRef twice) would inject the mapped
+  // obligations twice — a typed settlement red, never a silently duplicated
+  // injected block (ADR-090 focused repair).
+  const seenClassifications = new Set<string>();
+  const seenTableRefs = new Set<string>();
+  for (const declaration of applicable) {
+    const classification = declaration.table.classification;
+    if (seenClassifications.has(classification)) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_DUPLICATE: classification '${classification}' is mapped `
+        + 'by more than one declared injection table — a table cannot be replayed twice',
+      );
+    }
+    if (seenTableRefs.has(declaration.tableRef)) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_DUPLICATE: injection table ref '${declaration.tableRef}' `
+        + 'is declared more than once — a table cannot be replayed twice',
+      );
+    }
+    seenClassifications.add(classification);
+    seenTableRefs.add(declaration.tableRef);
+  }
   for (const requiredClassification of input.lifecycleInjectionRequiredClassifications) {
     if (
       terminalClassifications.includes(requiredClassification)

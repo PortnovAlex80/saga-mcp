@@ -95,6 +95,31 @@ export const ORDER_CONSTRAINT_KINDS = [
 ] as const;
 export type OrderConstraintKind = (typeof ORDER_CONSTRAINT_KINDS)[number];
 
+/**
+ * ADR-090 (CC-IC-1 focused repair): the kinds a proposal/worker DRAFT may
+ * author. The reserved kinds are kernel-only authorities — `open-question` is
+ * created only by the deterministic 1:1/positional unknown lifting, and
+ * `synthesis`/`ordered-smoke` only by the declared, digest-pinned lifecycle
+ * injection table. A draft row carrying a reserved kind is a typed red at the
+ * submission boundary and again at the v2 builder — never a worker-forged
+ * authority (a drafted open-question could otherwise stand in for a dropped
+ * proposal unknown, and a drafted synthesis/ordered-smoke row would bypass
+ * the injection table entirely).
+ */
+export const ORDER_CONSTRAINT_DRAFT_KINDS = [
+  'scope',
+  'mechanics',
+  'quality',
+] as const;
+export type OrderConstraintDraftKind = (typeof ORDER_CONSTRAINT_DRAFT_KINDS)[number];
+
+/** The kernel-only kinds (see ORDER_CONSTRAINT_DRAFT_KINDS). */
+export const ORDER_CONSTRAINT_RESERVED_KINDS = [
+  'open-question',
+  'synthesis',
+  'ordered-smoke',
+] as const;
+
 /** Kinds that only the declared lifecycle injection table may supply. */
 export const ORDER_CONSTRAINT_INJECTED_KINDS = ['synthesis', 'ordered-smoke'] as const;
 
@@ -223,6 +248,73 @@ function digestEntries(entries: readonly OrderConstraintEntry[]): string {
 
 function padIndex(index: number): string {
   return String(index + 1).padStart(3, '0');
+}
+
+/**
+ * The closed canonical field vocabulary of a persisted register entry, per
+ * schema version. The register digest pins EXACTLY this vocabulary: an extra
+ * authority-bearing field on a stored row is silently DROPPED by the parse
+ * (the digest is recomputed over the canonical subset), so the read-back
+ * verifier must reject unknown fields instead of accepting a register whose
+ * stored row carries content the digest never pinned (ADR-090 focused repair).
+ */
+const CANONICAL_REGISTER_ENTRY_FIELDS_V1: readonly string[] = [
+  'id',
+  'class',
+  'text',
+  'evidenceRef',
+  'entrypointFiles',
+];
+const CANONICAL_REGISTER_ENTRY_FIELDS_V2: readonly string[] = [
+  ...CANONICAL_REGISTER_ENTRY_FIELDS_V1,
+  'kind',
+  'measurability',
+  'lifecycleSynthesis',
+];
+
+/**
+ * The worker-facing snake_case ingress names that must NEVER ride a persisted
+ * canonical register — the read-back boundary validates the camelCase shape
+ * only, and a row carrying both spellings (or only the draft spelling beside
+ * a recomputed digest) is a typed rejection, never a silently merged alias.
+ */
+const SNAKE_CASE_INGRESS_ENTRY_FIELDS: readonly string[] = [
+  'evidence_ref',
+  'entrypoint_files',
+  'lifecycle_synthesis',
+];
+
+/**
+ * Fail-closed unknown/alias field rejection for one stored record. A known
+ * snake_case ingress alias gets the dedicated alias reason; any other field
+ * outside the closed vocabulary is an unknown authority-bearing field.
+ */
+function rejectUnknownRecordFields(
+  raw: Record<string, unknown>,
+  options: {
+    readonly label: string;
+    readonly allowedFields: readonly string[];
+    readonly aliasFields?: readonly string[];
+    readonly aliasReason?: string;
+  },
+): void {
+  const { label, allowedFields, aliasFields, aliasReason } = options;
+  for (const field of Object.keys(raw)) {
+    if (aliasFields?.includes(field)) {
+      throw new Error(
+        `${aliasReason ?? 'ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED'}: ${label} carries the `
+        + `snake_case ingress field '${field}' — the read-back boundary validates the `
+        + 'canonical camelCase shape only, never a silently merged alias',
+      );
+    }
+    if (!allowedFields.includes(field)) {
+      throw new Error(
+        `ORDER_CONSTRAINT_REGISTER_FIELD_REJECTED: ${label} carries unknown field '${field}' — `
+        + 'the register digest pins a closed entry vocabulary; extra authority-bearing '
+        + 'fields are never silently dropped',
+      );
+    }
+  }
 }
 
 /**
@@ -358,6 +450,12 @@ function parseCanonicalMeasurability(
         `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability of state 'measurable' requires a non-empty interpretationRef`,
       );
     }
+    rejectUnknownRecordFields(raw, {
+      label: `v2 register entry ord-c-${padIndex(index)} measurability`,
+      allowedFields: ['state', 'interpretationRef'],
+      aliasFields: ['interpretation_ref'],
+      aliasReason: 'ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED',
+    });
     return { state: 'measurable', interpretationRef };
   }
   if (raw['state'] === 'deferred') {
@@ -367,6 +465,10 @@ function parseCanonicalMeasurability(
         `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability of state 'deferred' requires a non-empty reason`,
       );
     }
+    rejectUnknownRecordFields(raw, {
+      label: `v2 register entry ord-c-${padIndex(index)} measurability`,
+      allowedFields: ['state', 'reason'],
+    });
     return { state: 'deferred', reason };
   }
   throw new Error(
@@ -462,6 +564,20 @@ function buildDraftEntry(
     kind = draft['kind'];
   } else {
     kind = 'scope';
+  }
+  // ADR-090 (CC-IC-1 focused repair): the reserved kinds are kernel-only
+  // authorities. A draft may declare only scope|mechanics|quality —
+  // open-question is drafted by the kernel from the payload unknowns, and
+  // synthesis|ordered-smoke are injected from the declared, digest-pinned
+  // lifecycle injection table. A reserved kind on a draft is a typed red,
+  // never a silently accepted worker-forged authority.
+  if ((ORDER_CONSTRAINT_RESERVED_KINDS as readonly string[]).includes(kind)) {
+    throw new Error(
+      `ORDER_CONSTRAINT_KIND_RESERVED: order_constraints[${index}].kind '${kind}' is `
+      + 'kernel-reserved (open-question is drafted 1:1 from the proposal unknowns; '
+      + 'synthesis|ordered-smoke are injected from the declared lifecycle injection '
+      + `table) — a draft may declare only ${ORDER_CONSTRAINT_DRAFT_KINDS.join('|')}`,
+    );
   }
   if (carriesLifecycleSynthesis) {
     throw new Error(
@@ -579,8 +695,28 @@ export function buildOrderConstraintRegisterV2(source: {
   // The injected block is APPENDED after the whole proposal-derived block, in
   // the declared table order — never interleaved among proposal-derived rows
   // (the verifier enforces the strict suffix layout; mutation m4a).
+  // A table cannot be replayed twice: a second declared table for the SAME
+  // classification (or the same tableRef twice) is a typed red, never a
+  // silently duplicated injection block (ADR-090 focused repair).
+  const seenInjectionClassifications = new Set<string>();
+  const seenInjectionTableRefs = new Set<string>();
   for (const injection of injections ?? []) {
     validateInjectionTable(injection.table);
+    const classification = injection.table.classification;
+    if (seenInjectionClassifications.has(classification)) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_DUPLICATE: classification '${classification}' is `
+        + 'mapped by more than one declared injection table — a table cannot be replayed twice',
+      );
+    }
+    if (seenInjectionTableRefs.has(injection.tableRef)) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_DUPLICATE: injection table ref '${injection.tableRef}' `
+        + 'is declared more than once — a table cannot be replayed twice',
+      );
+    }
+    seenInjectionClassifications.add(classification);
+    seenInjectionTableRefs.add(injection.tableRef);
     for (const entry of injection.table.entries) {
       entries.push({
         id: `ord-c-${padIndex(entries.length)}`,
@@ -738,6 +874,13 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
     );
   }
   const isV2 = schemaVersion === ORDER_CONSTRAINT_REGISTER_SCHEMA_V2;
+  // The stored register object itself carries a closed vocabulary: a forged
+  // register with extra top-level fields is a typed red, never a partially
+  // parsed authority (the digest covers only the constraints array).
+  rejectUnknownRecordFields(value, {
+    label: 'register',
+    allowedFields: ['schemaVersion', 'constraints', 'registerDigest'],
+  });
   const stored = value.constraints;
   if (!Array.isArray(stored) || stored.length === 0) {
     throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register carries no constraints');
@@ -813,6 +956,12 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
             'ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry lifecycleSynthesis requires classification and injectionTableRef',
           );
         }
+        rejectUnknownRecordFields(rawSynthesis, {
+          label: `v2 register entry ord-c-${padIndex(index)} lifecycleSynthesis`,
+          allowedFields: ['classification', 'injectionTableRef'],
+          aliasFields: ['injection_table_ref'],
+          aliasReason: 'ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED',
+        });
         lifecycleSynthesis = {
           classification: rawSynthesis['classification'],
           injectionTableRef: rawSynthesis['injectionTableRef'],
@@ -827,7 +976,43 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
           'ORDER_CONSTRAINT_REGISTER_BLOCK_LAYOUT_INVALID: injected entries must form a strict suffix after the proposal-derived block',
         );
       }
+      // Provenance conjunction (ADR-090 focused repair): the injected kinds
+      // exist ONLY through the declared, digest-pinned injection table, so a
+      // v2 entry of kind synthesis|ordered-smoke MUST carry its
+      // lifecycleSynthesis provenance, and lifecycleSynthesis may ride ONLY
+      // injected-kind entries — a forged injected entry without table
+      // provenance is a typed red at read-back, never a silently accepted
+      // worker/manufactured obligation.
+      const isInjectedKind = (ORDER_CONSTRAINT_INJECTED_KINDS as readonly string[])
+        .includes(kind);
+      if (isInjectedKind && !carriesLifecycleSynthesis) {
+        throw new Error(
+          `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} of kind `
+          + `'${kind}' carries no lifecycleSynthesis provenance — injected kinds exist only `
+          + 'through the declared, digest-pinned lifecycle injection table',
+        );
+      }
+      if (!isInjectedKind && carriesLifecycleSynthesis) {
+        throw new Error(
+          `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} of kind '${kind}' `
+          + 'carries lifecycleSynthesis — the provenance rides injected synthesis|ordered-smoke entries only',
+        );
+      }
     }
+    // Closed canonical entry vocabulary + snake_case ingress alias rejection
+    // (ADR-090 focused repair), AFTER the required-field and version-branch
+    // checks so the more specific typed reasons keep precedence: mixed
+    // canonical/draft spellings and unknown authority-bearing fields are
+    // typed reds — the parse must never silently drop stored content the
+    // digest did not pin.
+    rejectUnknownRecordFields(raw, {
+      label: `register entry ord-c-${padIndex(index)}`,
+      allowedFields: isV2
+        ? CANONICAL_REGISTER_ENTRY_FIELDS_V2
+        : CANONICAL_REGISTER_ENTRY_FIELDS_V1,
+      aliasFields: SNAKE_CASE_INGRESS_ENTRY_FIELDS,
+      aliasReason: 'ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED',
+    });
     entries.push({
       id: `ord-c-${padIndex(index)}`,
       class: constraintClass as OrderConstraintClass,

@@ -21,6 +21,8 @@ import {
   ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
   ORDER_CONSTRAINT_CLASSES,
   ORDER_CONSTRAINT_KINDS,
+  ORDER_CONSTRAINT_DRAFT_KINDS,
+  ORDER_CONSTRAINT_RESERVED_KINDS,
   buildOrderConstraintRegister,
   buildOrderConstraintRegisterV2,
   assertOrderConstraintUnknownsLifted,
@@ -329,8 +331,10 @@ test('a draft row carrying a kind MUST carry one of the six closed values (build
   assert.equal(boundary.valid, false);
   assert.ok(boundary.errors.some(error => error.includes('order_constraints[0].kind must be one of')));
 
-  const six = buildOrderConstraintRegisterV2({
-    drafts: ORDER_CONSTRAINT_KINDS.map(kind => ({
+  // The DRAFT-AUTHORABLE kinds (scope|mechanics|quality) build valid v2
+  // registers — after the reserved-kind defect is removed, valid drafts pass.
+  const authored = buildOrderConstraintRegisterV2({
+    drafts: ORDER_CONSTRAINT_DRAFT_KINDS.map(kind => ({
       ...DOCKER_DRAFT,
       kind,
       ...(kind === 'quality'
@@ -338,8 +342,45 @@ test('a draft row carrying a kind MUST carry one of the six closed values (build
         : {}),
     })),
   });
-  assert.ok(six);
-  assert.deepEqual(six.constraints.map(entry => entry.kind), [...ORDER_CONSTRAINT_KINDS]);
+  assert.ok(authored);
+  assert.deepEqual(authored.constraints.map(entry => entry.kind), [...ORDER_CONSTRAINT_DRAFT_KINDS]);
+});
+
+test('reserved kinds are kernel-only authorities — a draft carrying one is a typed red at the boundary AND the v2 builder', () => {
+  for (const kind of ORDER_CONSTRAINT_RESERVED_KINDS) {
+    // The MUTATION: a proposal/worker draft deliberately carries a reserved
+    // kind. Proposal validation must fail with a typed submission error…
+    const boundary = validateDiscoveryProposal(baseProposal({
+      order_constraints: [{ ...DOCKER_DRAFT, kind }],
+    }));
+    assert.equal(boundary.valid, false, `boundary must reject reserved kind '${kind}'`);
+    assert.ok(
+      boundary.errors.some(error =>
+        error.includes(`order_constraints[0].kind '${kind}' is kernel-reserved`)),
+      `boundary error must name the reserved kind '${kind}': ${boundary.errors.join('; ')}`,
+    );
+    // …and the v2 register builder must repeat the check fail-closed.
+    assert.throws(
+      () => buildOrderConstraintRegisterV2({ drafts: [{ ...DOCKER_DRAFT, kind }] }),
+      /ORDER_CONSTRAINT_KIND_RESERVED/,
+    );
+  }
+  // After removing the defect (dropping the reserved kind), valid drafts pass.
+  const valid = buildOrderConstraintRegisterV2({
+    drafts: [{ ...DOCKER_DRAFT, kind: 'mechanics' }],
+  });
+  assert.ok(valid);
+  assert.equal(valid.constraints[0].kind, 'mechanics');
+  // A worker cannot forge the unknown lift either: a drafted open-question
+  // whose text matches a real proposal unknown is still the typed reserved
+  // red — only the kernel lifts unknowns (1:1, positional).
+  assert.throws(
+    () => buildOrderConstraintRegisterV2({
+      drafts: [{ ...DOCKER_DRAFT, kind: 'open-question', text: PRICING_UNKNOWN }],
+      unknowns: [PRICING_UNKNOWN],
+    }),
+    /ORDER_CONSTRAINT_KIND_RESERVED/,
+  );
 });
 
 test('a kind-less v1-shaped draft under a NEW v2 settlement defaults deterministically to kind scope', () => {
@@ -545,6 +586,170 @@ test('an undeclared/ad-hoc injection table fails closed at the builder', () => {
       }],
     }),
     /ORDER_CONSTRAINT_INJECTION_TABLE_INVALID/,
+  );
+});
+
+test('a declared injection table cannot be replayed twice — duplicate classifications/refs are a typed builder red', () => {
+  // The MUTATION: the SAME declared table is injected twice (composition
+  // replay) — the mapped obligations must not silently double.
+  assert.throws(
+    () => buildOrderConstraintRegisterV2({
+      injections: [
+        { table: INJECTION_TABLE, tableRef: INJECTION_REF },
+        { table: INJECTION_TABLE, tableRef: INJECTION_REF },
+      ],
+    }),
+    /ORDER_CONSTRAINT_INJECTION_TABLE_DUPLICATE/,
+  );
+  // Two DIFFERENT tables for ONE classification (a revised table replayed
+  // beside the pinned original) — still one classification mapped twice.
+  const revisedTable = {
+    ...INJECTION_TABLE,
+    entries: [
+      INJECTION_TABLE.entries[0],
+      { ...INJECTION_TABLE.entries[1], text: 'install, then start, then reach the product (revised)' },
+    ],
+  };
+  assert.throws(
+    () => buildOrderConstraintRegisterV2({
+      injections: [
+        { table: INJECTION_TABLE, tableRef: INJECTION_REF },
+        { table: revisedTable, tableRef: `lifecycle-obligation-injection:${'f'.repeat(64)}` },
+      ],
+    }),
+    /ORDER_CONSTRAINT_INJECTION_TABLE_DUPLICATE/,
+  );
+  // Distinct classifications still coexist lawfully (one table each).
+  const otherClassification = {
+    ...INJECTION_TABLE,
+    classification: 'served-remote',
+  };
+  const two = buildOrderConstraintRegisterV2({
+    injections: [
+      { table: INJECTION_TABLE, tableRef: INJECTION_REF },
+      { table: otherClassification, tableRef: `lifecycle-obligation-injection:${'e'.repeat(64)}` },
+    ],
+  });
+  assert.ok(two);
+  assert.equal(two.constraints.length, 4);
+});
+
+// ---- ADR-090 focused repair: strict read-back verification -------------------
+
+test('the read-back verifier rejects mixed canonical/snake_case aliases — never a silently merged row', () => {
+  const register = buildOrderConstraintRegisterV2({ drafts: [{ ...DOCKER_DRAFT }, { ...TS_DRAFT }] });
+  assert.ok(register);
+  // The MUTATION: a stored row carries BOTH the canonical field and its
+  // snake_case ingress alias. The parse used to silently drop the alias and
+  // verify the digest over the canonical subset — the strict verifier rejects.
+  const mixed = JSON.parse(JSON.stringify(register));
+  mixed.constraints[0].evidence_ref = 'order.forged_alias';
+  assert.throws(
+    () => verifyOrderConstraintRegister(mixed),
+    /ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED/,
+  );
+  // A snake_case lifecycle_synthesis alias on a v2 entry is the same typed
+  // rejection — the kernel-assigned provenance has one canonical spelling.
+  const withInjection = buildOrderConstraintRegisterV2({
+    drafts: [{ ...DOCKER_DRAFT }],
+    injections: [{ table: INJECTION_TABLE, tableRef: INJECTION_REF }],
+  });
+  assert.ok(withInjection);
+  const aliased = JSON.parse(JSON.stringify(withInjection));
+  aliased.constraints[1].lifecycle_synthesis = {
+    classification: 'runnable-local',
+    injection_table_ref: INJECTION_REF,
+  };
+  assert.throws(
+    () => verifyOrderConstraintRegister(aliased),
+    /ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED/,
+  );
+  // The same discipline inside the typed sub-objects: an interpretation_ref
+  // alias beside the canonical interpretationRef is rejected, never merged.
+  const quality = buildOrderConstraintRegisterV2({
+    drafts: [{
+      ...DOCKER_DRAFT,
+      kind: 'quality',
+      measurability: { state: 'measurable', interpretation_ref: 'p95 under 200ms on loopback' },
+    }],
+  });
+  const aliasedSub = JSON.parse(JSON.stringify(quality));
+  aliasedSub.constraints[0].measurability.interpretation_ref = 'p95 under 200ms on loopback';
+  assert.throws(
+    () => verifyOrderConstraintRegister(aliasedSub),
+    /ORDER_CONSTRAINT_REGISTER_ALIAS_REJECTED/,
+  );
+});
+
+test('the read-back verifier rejects unknown authority-bearing fields — the digest pins a closed vocabulary', () => {
+  const register = buildOrderConstraintRegisterV2({ drafts: [{ ...DOCKER_DRAFT }] });
+  assert.ok(register);
+  // The MUTATION: a forged stored row carries an extra authority-bearing
+  // field. The parse used to drop it silently and the recomputed-over-subset
+  // digest still matched — the closed-vocabulary rejection closes the bypass
+  // even when the stored digest is NOT recomputed by the forger.
+  const forged = JSON.parse(JSON.stringify(register));
+  forged.constraints[0].waived = true;
+  assert.throws(
+    () => verifyOrderConstraintRegister(forged),
+    /ORDER_CONSTRAINT_REGISTER_FIELD_REJECTED/,
+  );
+  // Unknown fields are rejected at the register level too (the digest covers
+  // only the constraints array — extra top-level authority content is red).
+  const forgedTop = JSON.parse(JSON.stringify(register));
+  forgedTop.forgedTopLevel = true;
+  assert.throws(
+    () => verifyOrderConstraintRegister(forgedTop),
+    /ORDER_CONSTRAINT_REGISTER_FIELD_REJECTED/,
+  );
+  // And inside the typed sub-objects (a smuggled waiver reason on a
+  // measurability binding).
+  const deferred = buildOrderConstraintRegisterV2({
+    drafts: [{
+      ...DOCKER_DRAFT,
+      kind: 'quality',
+      measurability: { state: 'deferred', reason: 'operator study pending' },
+    }],
+  });
+  const smuggledSub = JSON.parse(JSON.stringify(deferred));
+  smuggledSub.constraints[0].measurability.waivedBy = 'worker';
+  assert.throws(
+    () => verifyOrderConstraintRegister(smuggledSub),
+    /ORDER_CONSTRAINT_REGISTER_FIELD_REJECTED/,
+  );
+});
+
+test('injected kinds carry verifiable table provenance at read-back — a forged injected entry is a typed red', () => {
+  const register = buildOrderConstraintRegisterV2({ drafts: [{ ...DOCKER_DRAFT }] });
+  assert.ok(register);
+  // The MUTATION: a forged v2 register claims a synthesis obligation with NO
+  // injection-table provenance (the digest is recomputed honestly over the
+  // forged content) — synthesis|ordered-smoke exist only through the
+  // declared, digest-pinned table, so read-back is a typed red.
+  const forged = {
+    schemaVersion: ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
+    constraints: [{ ...register.constraints[0], kind: 'synthesis' }],
+    registerDigest: '',
+  };
+  forged.registerDigest = createHash('sha256')
+    .update(canonicalJson(forged.constraints)).digest('hex');
+  assert.throws(
+    () => verifyOrderConstraintRegister(forged),
+    /carries no lifecycleSynthesis provenance/,
+  );
+  // The converse: provenance may not ride a proposal-derived kind either.
+  const withInjection = buildOrderConstraintRegisterV2({
+    drafts: [{ ...DOCKER_DRAFT }],
+    injections: [{ table: INJECTION_TABLE, tableRef: INJECTION_REF }],
+  });
+  assert.ok(withInjection);
+  const smuggled = JSON.parse(JSON.stringify(withInjection));
+  smuggled.constraints[0].lifecycleSynthesis = { ...smuggled.constraints[1].lifecycleSynthesis };
+  smuggled.registerDigest = createHash('sha256')
+    .update(canonicalJson(smuggled.constraints)).digest('hex');
+  assert.throws(
+    () => verifyOrderConstraintRegister(smuggled),
+    /the provenance rides injected synthesis\|ordered-smoke entries only/,
   );
 });
 

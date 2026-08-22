@@ -371,6 +371,17 @@ export interface FormalizationSolutionContractPayload {
   traceDigest: string;
   baselineSnapshotRef: string;
   baselineSnapshotHash: string;
+  /**
+   * ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): the FormalizationCase
+   * identity digest the settlement-issued warrantRef is cross-bound to
+   * (formalizationCaseIdentityDigest of the case this contract froze). Frozen
+   * here — beside the discoveryCertificateHash already carried — so the
+   * Development warrant consumer has BOTH authoritative expected identities on
+   * the case it inherits. Optional: payloads frozen before this repair carry
+   * none, and a warrant-bearing manifest against such a case fails closed at
+   * the consumer (never a silent unverifiable accept).
+   */
+  formalizationCaseDigest?: string;
   srs: {
     schema: typeof FORMALIZATION_SRS_SCHEMA;
     ref: string;

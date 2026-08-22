@@ -15,6 +15,8 @@
 import {
   ORDER_CONSTRAINT_CLASSES,
   ORDER_CONSTRAINT_KINDS,
+  ORDER_CONSTRAINT_DRAFT_KINDS,
+  ORDER_CONSTRAINT_RESERVED_KINDS,
   type OrderConstraintDraft,
 } from '../../../shared/constraint-register.js';
 
@@ -62,11 +64,14 @@ export interface DiscoveryProposalPayload {
    * retro-compatibility: absent field → no register → empty downstream
    * diffs → all existing gates stay green.
    *
-   * ADR-090 (CC-IC-1): a draft row MAY carry a `kind` from the closed
-   * six-value vocabulary (`scope|open-question|mechanics|synthesis|
-   * ordered-smoke|quality`) and a kind `quality` row MAY carry a typed
-   * `measurability` binding. `lifecycle_synthesis` is NEVER
-   * worker-declarable (kernel-assigned on injected entries only).
+   * ADR-090 (CC-IC-1): a draft row MAY carry a `kind` from the
+   * DRAFT-AUTHORABLE subset of the closed six-value vocabulary
+   * (`scope|mechanics|quality`) and a kind `quality` row MAY carry a typed
+   * `measurability` binding. The reserved kinds (`open-question`,
+   * `synthesis`, `ordered-smoke`) are kernel-only — created by the
+   * deterministic unknown lifting and the declared lifecycle injection table
+   * respectively — and `lifecycle_synthesis` is NEVER worker-declarable
+   * (kernel-assigned on injected entries only).
    */
   order_constraints?: readonly OrderConstraintDraft[];
 }
@@ -185,6 +190,22 @@ export function validateDiscoveryProposal(payload: unknown): DiscoveryProposalVa
             || !(ORDER_CONSTRAINT_KINDS as readonly string[]).includes(kind))) {
           errors.push(
             `order_constraints[${index}].kind must be one of ${ORDER_CONSTRAINT_KINDS.join('|')}`,
+          );
+        }
+        // ADR-090 (CC-IC-1 focused repair): the reserved kinds are kernel-only
+        // authorities — open-question is created only by the deterministic
+        // unknown lifting at settlement, and synthesis|ordered-smoke only by
+        // the declared, digest-pinned lifecycle injection table. A draft row
+        // carrying a reserved kind is a typed submission error here and again
+        // at the v2 register builder (never a worker-forged authority).
+        if (kindPresent
+          && typeof kind === 'string'
+          && (ORDER_CONSTRAINT_RESERVED_KINDS as readonly string[]).includes(kind)) {
+          errors.push(
+            `order_constraints[${index}].kind '${kind}' is kernel-reserved (open-question is `
+            + 'drafted 1:1 from the proposal unknowns; synthesis|ordered-smoke are injected '
+            + `from the declared lifecycle injection table) — a draft may declare only `
+            + ORDER_CONSTRAINT_DRAFT_KINDS.join('|'),
           );
         }
         // ADR-090 (CC-IC-1): typed measurability binds ONLY kind `quality`

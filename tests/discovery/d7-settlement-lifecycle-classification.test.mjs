@@ -306,6 +306,80 @@ test('d7: a definition-hash mismatch on the pinned row fails closed (never a sub
   }
 });
 
+test('d7: an unparseable pinned definition snapshot fails closed with a typed error (never a substitute)', () => {
+  const { temp } = fixture();
+  try {
+    const db = getDb();
+    db.prepare(`UPDATE factory_lifecycle_runs SET definition_snapshot='not-json' WHERE id=1`).run();
+    const repo = new SqliteLifecycleRunRepository(db);
+    assert.throws(
+      () => repo.readDefinitionByProcessRun(100),
+      /LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID.*unparseable/,
+    );
+  } finally {
+    cleanup(temp);
+  }
+});
+
+test('d7: a non-object pinned definition snapshot (JSON array) fails closed with a typed error', () => {
+  const { temp } = fixture();
+  try {
+    const db = getDb();
+    db.prepare(`UPDATE factory_lifecycle_runs SET definition_snapshot='[1,2,3]' WHERE id=1`).run();
+    const repo = new SqliteLifecycleRunRepository(db);
+    assert.throws(
+      () => repo.readDefinitionByProcessRun(100),
+      /LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID.*non-object/,
+    );
+  } finally {
+    cleanup(temp);
+  }
+});
+
+test('d7: settlement with NO pinned lifecycle row for the process run fails closed with the typed error in bindings', () => {
+  const { temp, db } = fixture();
+  try {
+    // Process run 101 exists but is bound to no stage run / lifecycle run.
+    db.prepare(
+      `INSERT INTO factory_process_runs
+         (id,project_id,epic_id,module_name,module_version,module_ref_key,idempotency_key,
+          executor_kind,input_schema,input_snapshot,input_hash,status)
+       VALUES (101,1,10,'discovery','1.0.0','discovery@1.0.0','d7-process-101','generic-flow','x','{}',?, 'running')`,
+    ).run(sha256({}));
+    const proposalProduct = seedSubmission(db, { id: 511, processRunId: 101, schema: DISCOVERY_PROPOSAL_SCHEMA, payload: PROPOSAL_PAYLOAD_BASE });
+    const readinessProduct = seedSubmission(db, { id: 512, processRunId: 101, schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: readinessPayload(proposalProduct.digest) });
+    const { result } = settle(db, { processRunId: 101, proposalProduct, readinessProduct });
+    assert.equal(result.event, 'failed');
+    assert.match(result.production.bindings.error, /LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_MISSING/);
+  } finally {
+    cleanup(temp);
+  }
+});
+
+test('d7: a declared table cannot be replayed twice — duplicate runnable-local declarations are a typed settlement red', () => {
+  const { temp, db } = fixture();
+  try {
+    const proposalProduct = seedSubmission(db, { id: 501, processRunId: 100, schema: DISCOVERY_PROPOSAL_SCHEMA, payload: PROPOSAL_PAYLOAD_BASE });
+    const readinessProduct = seedSubmission(db, { id: 502, processRunId: 100, schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: readinessPayload(proposalProduct.digest) });
+    // The MUTATION wiring: the SAME declared, digest-pinned table arrives
+    // twice through composition — the injected block must not silently double.
+    const { handlers } = makeHandlers(db, {
+      declarations: [RUNNABLE_LOCAL_DECLARATION, RUNNABLE_LOCAL_DECLARATION],
+    });
+    const result = handlers['discovery-settlement-policy']({
+      projectId: 1, epicId: 10, processRunId: 100,
+      node: { id: 'settle-discovery' },
+      input: cellManifest(readinessProduct),
+      frame: { productions: { 'produce-proposal': cellManifest(proposalProduct) } },
+      heartbeat: () => {}, initiatedBy: 'd7',
+    });
+    assert.equal(result.event, 'failed');
+    assert.match(result.production.bindings.error, /LIFECYCLE_INJECTION_TABLE_DUPLICATE/);
+  } finally {
+    cleanup(temp);
+  }
+});
+
 test('d7: the settlement DI is fail-closed — no injected reader, no handlers', () => {
   const { temp, db } = fixture();
   try {
