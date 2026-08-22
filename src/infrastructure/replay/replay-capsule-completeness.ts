@@ -44,8 +44,16 @@ function readPersistedProduct(
  * members into the REVIEWER capsule made replay re-submit the author
  * product under the reviewer WorkIntent (MANAGED_NODE_SUBMISSION_SCHEMA_
  * MISMATCH, formalization/restart-idempotency). A member belongs to a
- * capsule only if the capsule's OWN source execution produced it; foreign
- * members stay certified by their own cell's capsule.
+ * capsule only if the capsule's OWN cell produced it; foreign members stay
+ * certified by their own cell's capsule.
+ *
+ * "Own cell" is the TASK, not the execution (2026-08-22 packaging defect):
+ * a retry/repair successor execution of the SAME task accepts a cumulative
+ * CandidateSet whose implementation product was submitted by a predecessor
+ * execution of that task (P18 cross-execution repair). Skipping it as
+ * foreign left the accepted capsule without the implementation product and
+ * its Git recipe — REPLAY_CAPTURE_GIT_RECIPE_MISSING, nondeterministic
+ * whenever the retry path fired. Foreign means another TASK's material.
  */
 export function isForeignManagedSubmission(
   db: Database.Database,
@@ -56,10 +64,15 @@ export function isForeignManagedSubmission(
   const id = Number(productRef.slice('managed-node-submission:'.length));
   if (!Number.isSafeInteger(id) || id < 1) return false;
   const row = db.prepare(
-    'SELECT execution_id FROM factory_managed_node_submissions WHERE id=?',
-  ).get(id) as { execution_id: string } | undefined;
+    'SELECT execution_id, task_id FROM factory_managed_node_submissions WHERE id=?',
+  ).get(id) as { execution_id: string; task_id: number } | undefined;
   if (!row) return false;
-  return row.execution_id !== executionRef;
+  if (row.execution_id === executionRef) return false;
+  const own = db.prepare(
+    'SELECT task_id FROM worker_executions WHERE execution_id=?',
+  ).get(executionRef) as { task_id: number } | undefined;
+  if (own && row.task_id === own.task_id) return false;
+  return true;
 }
 
 /**
@@ -187,9 +200,21 @@ export function assertReplayCapsuleComplete(
        FROM worker_executions we JOIN tasks t ON t.id=we.task_id
       WHERE we.execution_id=?`,
   ).get(executionRef) as { execution_mode: string } | undefined;
-  if (execution?.execution_mode === 'git_change' && record.payload.git === null) {
+  // Carry-forward capsules (presentedBy) certify KERNEL-presented
+  // carried-forward material — never a worker execution's git production.
+  // git: null is their DESIGNED shape even when bound to a git_change
+  // execution; demanding a recipe from kernel-presented material killed
+  // whole stages non-deterministically (2026-08-22, 50/50 repro).
+  const isCarryForward = typeof record.payload.presentedBy === 'string';
+  if (!isCarryForward
+    && execution?.execution_mode === 'git_change' && record.payload.git === null) {
+    const hasImplementation = record.payload.typedProducts.some(item =>
+      item.schema === 'factory.development-implementation-result.v1');
     throw new Error(
-      'REPLAY_CAPTURE_GIT_RECIPE_MISSING: git_change execution has no exact Git recipe',
+      `REPLAY_CAPTURE_GIT_RECIPE_MISSING: git_change execution has no exact Git recipe `
+      + `(implementation product ${hasImplementation
+        ? 'present but recipe unresolved'
+        : 'ABSENT from capsule typed products'})`,
     );
   }
 }

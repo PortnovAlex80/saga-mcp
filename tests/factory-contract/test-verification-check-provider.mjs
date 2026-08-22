@@ -85,14 +85,14 @@ export function createTestVerificationCheckProviderFactory() {
         // Same lineage validation as the production provider:
         const metadata = JSON.parse(row.metadata);
         const item = metadata.cell_input_item;
-        const criterionIds = item?.acceptanceCriterionIds;
+        const criterionKeys = item?.acceptanceCriterionKeys;
         const frozenHash = metadata.process_node_input?.upstream?.bindings
           ?.candidate?.candidateHash;
 
         if (decoded.value.verificationItemKey !== item?.key
-            || !Array.isArray(criterionIds)
-            || criterionIds.length !== 1
-            || decoded.value.acceptanceCriterionId !== criterionIds[0]
+            || !Array.isArray(criterionKeys)
+            || criterionKeys.length !== 1
+            || decoded.value.acceptanceCriterionKey !== criterionKeys[0]
             || decoded.value.acceptanceCriterionId
                !== row.verification_target_artifact_id
             || decoded.value.acceptedCriterionHash !== row.accepted_hash

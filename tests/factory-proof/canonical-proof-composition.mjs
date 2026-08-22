@@ -66,6 +66,9 @@ export const CANONICAL_OVERLAY_ALLOWLIST = Object.freeze([
   'delivery.providers',
   'delivery.providers.preflight',
   'delivery.providers.actionProviders',
+  // The human-approval double (denied/approved scenario pair) — same class
+  // of trusted test-double as preflight/actionProviders.
+  'delivery.providers.approval',
   'delivery.providers.observeCurrentCandidateHash',
 ]);
 
@@ -84,6 +87,7 @@ const CANONICAL_OVERLAY_TREE = Object.freeze({
       preflight: LEAF,
       actionProviders: LEAF,
       observeCurrentCandidateHash: LEAF,
+      approval: LEAF,
     }),
   }),
 });
@@ -159,6 +163,17 @@ export const CANONICAL_TEST_PROVIDERS = Object.freeze({
     determinism: 'partial',
     role: 'test-double',
   }),
+  // The human-approval double: identity matches the harness-seeded trusted
+  // row (category authorized_decision), so resolveTrustedProvider accepts it
+  // and the settlement can lawfully consume its decision.
+  approval: Object.freeze({
+    providerId: 8,
+    name: 'factory.authorized-verification-observer.v1',
+    version: '1.0.0',
+    category: 'authorized_decision',
+    determinism: 'partial',
+    role: 'test-double',
+  }),
 });
 
 function providerEvidence(prefix, body) {
@@ -166,11 +181,34 @@ function providerEvidence(prefix, body) {
   return { schema: `factory.proof.${prefix}.v1`, ref: `proof:${prefix}:${hash}`, hash };
 }
 
-export function buildCanonicalDeliveryProviders({ repoPath }) {
+// Live telemetry for a built provider set — oracles read the REAL mutation
+// count through this, never through trust. (WeakMap so the providers object
+// stays exactly the production-expected shape.)
+const providerTelemetry = new WeakMap();
+export function deliveryProviderTelemetry(providers) {
+  return providerTelemetry.get(providers) ?? null;
+}
+
+export function buildCanonicalDeliveryProviders({
+  repoPath, approvalStatus, observeMismatch = false, executeUncertain = false,
+  driftCandidate = false, worldAlreadyApplied = false,
+} = {}) {
   const markerRoot = path.join(repoPath, '.git');
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
   );
+  // Candidate-drift fault lives IN THE WORLD (not in knowledge of production
+  // internals): the deployment itself mutates the external world beyond the
+  // certified material — the release writes a state marker AND a drift
+  // marker. The candidate observer reads the world; a world carrying
+  // post-certification mutations yields a DIVERGED current candidate hash.
+  const driftMarkerPath = path.join(markerRoot, '.proof-candidate-drift.json');
+
+  // REAL-mutation telemetry: every provider.execute() that actually touches
+  // the external world increments this. Oracles pin no-duplicate contracts
+  // against it (deliveryProviderTelemetry).
+  let realExecutions = 0;
+  let worldPreseeded = false;
 
   const preflight = {
     identity: CANONICAL_TEST_PROVIDERS.preflight,
@@ -192,6 +230,12 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
     namespace: 'proof-deployment',
     identity: CANONICAL_TEST_PROVIDERS.deployment,
     async execute({ action, actionKey }) {
+      // publication-unknown scenario: the provider cannot confirm the
+      // mutation — the receipt is 'uncertain' and the runtime must route to
+      // authoritative observation instead of trusting or denying blindly.
+      if (executeUncertain) {
+        return { outcome: 'uncertain', externalRef: null, resultHash: null };
+      }
       const marker = markerPath(actionKey);
       const state = {
         actionKey,
@@ -199,6 +243,15 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
         desiredStateHash: action.desiredStateHash,
       };
       writeFileSync(marker, JSON.stringify(state), 'utf8');
+      // The drift fault is a WORLD mutation: the deployment changed the
+      // external world beyond the certified candidate material.
+      if (driftCandidate) {
+        writeFileSync(driftMarkerPath, JSON.stringify({
+          mutatedBy: 'deployment-execute',
+          actionKey,
+        }), 'utf8');
+      }
+      realExecutions += 1;
       return {
         outcome: 'succeeded',
         externalRef: `proof-deployment:${sha256Hex(actionKey)}`,
@@ -207,6 +260,19 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
     },
     async observe({ action, actionKey }) {
       const marker = markerPath(actionKey);
+      // observe-before-retry scenario: model the PRIOR run — the external
+      // world already holds the desired state before this run's first
+      // pre-mutation observation. The runtime must skip the mutation; any
+      // provider.execute() after this is a duplicate non-idempotent effect.
+      if (worldAlreadyApplied && !worldPreseeded) {
+        worldPreseeded = true;
+        const seeded = {
+          actionKey,
+          target: action.target,
+          desiredStateHash: action.desiredStateHash,
+        };
+        writeFileSync(marker, JSON.stringify(seeded), 'utf8');
+      }
       let observedStateHash = 'proof-deployment:not-applied';
       if (existsSync(marker)) {
         try {
@@ -218,7 +284,14 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
           observedStateHash = 'proof-deployment:corrupt-state';
         }
       }
-      const matched = observedStateHash === action.desiredStateHash;
+      let matched = observedStateHash === action.desiredStateHash;
+      // observation-mismatch scenario: the authoritative state provider
+      // reports a DIVERGENT external state after execution — settlement must
+      // fail the release closed instead of trusting the execute receipt.
+      if (observeMismatch && matched) {
+        observedStateHash = sha256Hex({ divergent: actionKey, mode: 'mismatch' });
+        matched = false;
+      }
       const body = { actionKey, target: action.target, observedStateHash, matched };
       return {
         outcome: matched ? 'matched' : 'mismatched',
@@ -228,13 +301,58 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
     },
   };
 
-  return {
+  // Candidate-immutability seam (world-driven, operator review 2026-08-22:
+  // no stack-trace knowledge of production internals). Drift present in the
+  // world by observation time fails the observe-release node at the
+  // install-layer lineage check (typed 'invalid publication/candidate
+  // lineage') — the release never settles on mutated material. The
+  // settlement 'candidate-drifted' TOCTOU branch (drift landing in the
+  // window BETWEEN the observation-store read and the settlement read — a
+  // window with no external-world event) stays UNPINNED by conformance and
+  // is honestly documented as such.
+  const providers = {
     preflight,
     actionProviders: { deployment },
     observeCurrentCandidateHash(deliveryCase) {
+      // Pure world read: while the world carries no post-certification
+      // mutations the current candidate is the certified one; once the drift
+      // marker exists the observed candidate has DIVERGED. No knowledge of
+      // production internals — the double sees only the external world.
+      if (driftCandidate && existsSync(driftMarkerPath)) {
+        return sha256Hex({
+          drifted: deliveryCase.integratedCandidate.hash,
+          worldMutation: 'deployment-execute',
+        });
+      }
       return deliveryCase.integratedCandidate.hash;
     },
+    ...(approvalStatus ? {
+      approval: {
+        identity: CANONICAL_TEST_PROVIDERS.approval,
+        async decide({ deliveryCase, preflightHash }) {
+          const status = approvalStatus;
+          const body = {
+            status,
+            candidateHash: deliveryCase.integratedCandidate.hash,
+            preflightHash,
+          };
+          return {
+            status,
+            decision: status === 'approved'
+              ? providerEvidence('approval-decision', body)
+              : null,
+            provider: CANONICAL_TEST_PROVIDERS.approval,
+          };
+        },
+      },
+    } : {}),
   };
+  providerTelemetry.set(providers, {
+    kind: 'canonical-delivery-provider-double',
+    get realExecutions() { return realExecutions; },
+    get worldPreseeded() { return worldPreseeded; },
+  });
+  return providers;
 }
 
 // ---------------------------------------------------------------------------

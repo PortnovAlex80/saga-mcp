@@ -439,10 +439,10 @@ function readCoveredAcceptanceCriteria(
     throw new Error('DEVELOPMENT_ADOPTION_PROJECTED_ITEM_DRIFT');
   }
   if (
-    !Array.isArray(items[0]!.acceptanceCriterionIds)
-    || items[0]!.acceptanceCriterionIds.length === 0
+    !Array.isArray(items[0]!.sourceArtifactIds)
+    || items[0]!.sourceArtifactIds.length === 0
   ) throw new Error('DEVELOPMENT_ADOPTION_COVERAGE_EMPTY');
-  return [...new Set(items[0]!.acceptanceCriterionIds.map(value =>
+  return [...new Set(items[0]!.sourceArtifactIds.map(value =>
     requirePositiveInteger(value, 'coverage id')))].sort((a, b) => a - b);
 }
 

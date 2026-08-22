@@ -107,7 +107,7 @@ test('managed continuation deterministically emits one repair item and fresh ver
   });
   assert.equal(result.event, 'valid');
   assert.equal(persisted.implementationItems.length, 1);
-  assert.deepEqual(persisted.implementationItems[0].acceptanceCriterionIds, [14, 15]);
+  assert.deepEqual(persisted.implementationItems[0].acceptanceCriterionKeys, ['14:AC-1', '15:AC-2']);
   assert.equal(persisted.implementationItems[0].executionMode, 'artifact_change');
   assert.equal(persisted.verificationItems.length, 2);
   assert.equal(persisted.integrationTargets[0].expectedBaseCommit, 'a'.repeat(40));

@@ -302,16 +302,26 @@ function requireExactDiscoveryProposal(
        FROM factory_process_products
       WHERE process_run_id=? AND schema_id=?`,
   ).all(processRunId, DISCOVERY_PROPOSAL_SCHEMA) as DiscoveryProductRow[];
-  if (rows.length !== 1) {
-    throw new Error(`discovery output: expected one proposal for process_run ${processRunId}`);
+  // A repair round appends a NEW immutable product row for the same schema —
+  // after reject → repair the run carries the rejected original AND the
+  // accepted repair. Exact-authority selection is by the expected content
+  // hash (ADR-053: exact ref, never count-uniqueness or recency); demanding
+  // exactly one row per run turned every repaired Discovery into a stage
+  // failure (2026-08-21 discovery proposal-feedback-exact finding: both
+  // workplaces terminal accepted, stage dead on 'expected one proposal').
+  const exact = rows.filter(row => row.schema_id === expected.schema
+    && row.product_hash === expected.contentHash
+    && (expected.artifactRef === undefined || row.artifact_ref === expected.artifactRef));
+  if (exact.length !== 1) {
+    throw new Error(
+      `discovery output: expected exactly one proposal matching the accepted digest `
+      + `for process_run ${processRunId}, got ${exact.length} matching of ${rows.length} total`,
+    );
   }
-  const row = rows[0]!;
+  const row = exact[0]!;
   const payload = JSON.parse(row.payload_snapshot) as DiscoveryProposalPayload;
   const payloadHash = sha256Hex(payload);
-  if (row.schema_id !== expected.schema
-    || (expected.artifactRef !== undefined && row.artifact_ref !== expected.artifactRef)
-    || row.product_hash !== expected.contentHash
-    || row.payload_hash !== payloadHash
+  if (row.payload_hash !== payloadHash
     || row.product_hash !== payloadHash) {
     throw new Error(
       `discovery output: '${expected.artifactRef}' does not resolve to the exact proposal `

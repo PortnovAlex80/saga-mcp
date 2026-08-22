@@ -91,14 +91,20 @@ export interface DevelopmentImplementationResultProduct {
 export interface DevelopmentVerificationEvidenceProduct {
   schemaVersion: typeof DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA;
   verificationItemKey: string;
-  acceptanceCriterionId: number;
+  /**
+   * ATOMIC criterion identity — `${artifactId}:${code}`. Provenance stays on
+   * acceptedCriterionHash (the artifact's accepted content). Never a bare
+   * artifactId: several criteria share one artifact and each carries its own
+   * verification obligation.
+   */
+  acceptanceCriterionKey: string;
   acceptedCriterionHash: string;
   candidateHash: string;
   /**
    * AC-drift relay: the constraint IDs pinned by the verification card.
    * When the card (cell_input_item) carries coveredConstraintIds, the
    * evidence must echo the exact same set — lineage pins them together
-   * with criterionId. Absent when the card pins none (retro-compat).
+   * with the criterion key. Absent when the card pins none (retro-compat).
    */
   coveredConstraintIds?: readonly string[];
   outcome: VerificationOutcome;
@@ -175,18 +181,31 @@ export interface AcceptanceCriterionBinding {
 }
 
 /**
- * The canonical identity of an acceptance criterion for cross-stage handoff.
+ * The canonical identity of an ATOMIC acceptance criterion for cross-stage
+ * handoff: `${artifactId}:${code}`.
  *
- * ADR-053: this MUST be the DB artifact ID — the same ID the acceptance
- * verification query uses to check `SELECT ... FROM artifacts WHERE id = ?`.
- * The previous criterionId experiment (48-bit truncated hash) produced IDs
- * that did not match the artifacts table, causing
- * PRODUCTION_CELL_SOURCE_ARTIFACT_INVALID under scripted E2E.
+ * Two identities, deliberately separated (2026-08-22 Elite-4 incident):
+ *   — ATOMIC criterion identity: this key. One per criterion, stable across
+ *     packaging. 16 criteria in one lawful artifact stay SIXTEEN identities.
+ *   — PROVENANCE artifact identity: `artifactId` — the DB row that holds the
+ *     accepted content. Several criteria may share it; it is used ONLY where
+ *     a real artifact row is read (content, acceptedHash).
+ *
+ * The old equality `identity === artifactId` collapsed multi-criterion
+ * artifacts into one semantic id downstream (verification coverage,
+ * constraint relay, settlement worksets) — the exact defect the operator
+ * review ordered removed. A criterion with a null code keys on the bare
+ * artifact id (legacy single-criterion documents with no code).
  */
 export function acceptanceCriterionIdentity(
   criterion: AcceptanceCriterionBinding,
-): number {
-  return criterion.artifactId;
+): string {
+  return criterionKey(criterion.artifactId, criterion.code);
+}
+
+/** `${artifactId}:${code}` — the atomic criterion key constructor. */
+export function criterionKey(artifactId: number, code: string | null): string {
+  return `${artifactId}:${code ?? ''}`;
 }
 
 export interface DevelopmentRepositoryBinding {
@@ -222,7 +241,14 @@ export interface DevelopmentTaskGraphItem {
   executionSkill: string;
   executionMode: string;
   projectRepositoryId: number;
-  acceptanceCriterionIds: readonly number[];
+  /** ATOMIC criterion identities this item serves — criterionKeys, NOT artifact ids. */
+  acceptanceCriterionKeys: readonly string[];
+  /**
+   * PROVENANCE artifact ids — KERNEL-inherited from the frozen case (unique
+   * artifactIds of the referenced criteria), never proposed by the planner.
+   * Task materialization and adoption read this for DB artifact rows.
+   */
+  sourceArtifactIds: readonly number[];
   dependsOnKeys: readonly string[];
   /** Repository-local ownership units used to prevent unsafe parallel edits. */
   changeScopes: readonly string[];
@@ -252,10 +278,17 @@ export interface CandidateIntegrationTarget {
  * validates all ids, dependencies, repository bindings and coverage, fills the
  * immutable lineage fields, computes graphHash, and persists TaskGraphSnapshot.
  */
+/** The planner-PROPOSED item shape: criterion keys only. The kernel stamps
+ * provenance (sourceArtifactIds) and inherited relay fields at
+ * canonicalization — the planner cannot propose them. */
+export type DevelopmentTaskGraphProposalItem = Omit<
+  DevelopmentTaskGraphItem, 'sourceArtifactIds' | 'coveredConstraintIds'
+> & { coveredConstraintIds?: readonly string[] };
+
 export interface DevelopmentTaskGraphProposal {
   schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
-  implementationItems: readonly DevelopmentTaskGraphItem[];
-  verificationItems: readonly DevelopmentTaskGraphItem[];
+  implementationItems: readonly DevelopmentTaskGraphProposalItem[];
+  verificationItems: readonly DevelopmentTaskGraphProposalItem[];
   integrationTargets: readonly CandidateIntegrationTarget[];
 }
 
@@ -505,7 +538,8 @@ export interface VerificationProviderBinding {
 export interface CandidateVerificationEvidence {
   verificationItemKey: string;
   taskId: number;
-  acceptanceCriterionId: number;
+  /** ATOMIC criterion identity `${artifactId}:${code}` — never a bare artifactId. */
+  acceptanceCriterionKey: string;
   acceptedCriterionHash: string;
   /** Exact frozen target. Evidence for any other value is inadmissible. */
   candidateHash: string;

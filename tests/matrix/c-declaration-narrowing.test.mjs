@@ -954,7 +954,7 @@ function verificationRun({ coveredConstraintIds, declaredOutcome }) {
   const payload = {
     schemaVersion: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
     verificationItemKey: 'item-v',
-    acceptanceCriterionId: 77,
+    acceptanceCriterionKey: '77:AC-1',
     acceptedCriterionHash: acceptedHash,
     candidateHash: frozenHash,
     ...(coveredConstraintIds !== undefined ? { coveredConstraintIds } : {}),
@@ -981,7 +981,7 @@ function verificationRun({ coveredConstraintIds, declaredOutcome }) {
       role: 'author',
       cell_input_item: {
         key: 'item-v',
-        acceptanceCriterionIds: [77],
+        acceptanceCriterionKeys: ['77:AC-1'],
         coveredConstraintIds: ['zzz-c1', 'aaa-c2'],
       },
       process_node_input: { upstream: { bindings: { candidate: { candidateHash: frozenHash } } } },

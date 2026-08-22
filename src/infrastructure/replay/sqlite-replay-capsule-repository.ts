@@ -521,8 +521,35 @@ export function readArtifactBytes(
   return { encoding: 'base64', bytes: readFileSync(resolved).toString('base64') };
 }
 
-function gitText(repo: string, args: string[]): string {
-  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trimEnd();
+/**
+ * Git reads for replay capture are OBJECT reads (absolute SHAs) but they
+ * still traverse .git — where concurrent worker checkouts/commits flip refs
+ * and hold locks. A transient failure here used to be swallowed into
+ * `git: null` and later masquerade as REPLAY_CAPTURE_GIT_RECIPE_MISSING,
+ * killing whole stages non-deterministically (50/50 repro, 2026-08-22).
+ * Bounded retry + explicit maxBuffer (a >1MB binary diff also blew the
+ * default 1MB execFileSync buffer); persistent failures throw TYPED with
+ * the real git error instead of a silent null.
+ */
+function gitExecWithRetry(repo: string, args: string[], attempts = 3): Buffer {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return execFileSync('git', ['-C', repo, ...args], {
+        maxBuffer: 32 * 1024 * 1024,
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+      }
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `REPLAY_CAPTURE_GIT_RECIPE_FAILED: git ${args[0]} failed after ${attempts} `
+    + `attempt(s) on ${repo}: ${detail}`,
+  );
 }
 
 function captureGitRecipe(
@@ -531,11 +558,18 @@ function captureGitRecipe(
 ): ReplayGitRecipe | null {
   const implementation = typedContents.find(item =>
     item.schema === 'factory.development-implementation-result.v1');
-  const content = asRecord(implementation?.content);
+  if (!implementation) return null;
+  const content = asRecord(implementation.content);
   const source = asRecord(content?.source);
   const snapshot = asRecord(content?.snapshot);
   const repository = asRecord(content?.repository);
-  if (!source || !snapshot || !repository) return null;
+  if (!source || !snapshot || !repository) {
+    throw new Error(
+      `REPLAY_CAPTURE_GIT_RECIPE_PAYLOAD_INCOMPLETE: implementation result `
+      + `fields missing (source=${source !== undefined}, snapshot=${snapshot !== undefined}, `
+      + `repository=${repository !== undefined})`,
+    );
+  }
   const projectRepositoryId = Number(repository.projectRepositoryId);
   const baseCommit = typeof repository.baseCommit === 'string' ? repository.baseCommit : '';
   const sourceCommit = typeof source.commitSha === 'string' ? source.commitSha : '';
@@ -543,7 +577,13 @@ function captureGitRecipe(
   const sourceBranch = typeof source.branch === 'string' ? source.branch : '';
   const integrationBranch = typeof repository.integrationBranch === 'string'
     ? repository.integrationBranch : '';
-  if (!Number.isSafeInteger(projectRepositoryId) || !baseCommit || !sourceCommit || !sourceTree) return null;
+  if (!Number.isSafeInteger(projectRepositoryId) || !baseCommit || !sourceCommit || !sourceTree) {
+    throw new Error(
+      `REPLAY_CAPTURE_GIT_RECIPE_IDS_INVALID: projectRepositoryId=${projectRepositoryId} `
+      + `baseCommit=${baseCommit.slice(0, 16)} sourceCommit=${sourceCommit.slice(0, 16)} `
+      + `sourceTree=${sourceTree.slice(0, 16)}`,
+    );
+  }
   const repo = db.prepare(
     `SELECT COALESCE(rc.local_path,pr.local_path) AS local_path
        FROM project_repositories pr
@@ -551,31 +591,44 @@ function captureGitRecipe(
          ON rc.project_repository_id=pr.id AND rc.status='active'
       WHERE pr.id=?`,
   ).get(projectRepositoryId) as { local_path: string | null } | undefined;
-  if (!repo?.local_path) return null;
-  try {
-    const patchBytes = execFileSync('git', [
-      '-C', repo.local_path, 'diff', '--binary', `${baseCommit}..${sourceCommit}`,
-    ]);
-    const format = '%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B';
-    const parts = gitText(repo.local_path, ['show', '-s', `--format=${format}`, sourceCommit]).split('\u0000');
-    if (parts.length < 7) return null;
-    return {
-      projectRepositoryId,
-      integrationBranch,
-      baseCommit,
-      sourceCommit,
-      sourceTree,
-      sourceBranch,
-      patchBase64: patchBytes.toString('base64'),
-      commit: {
-        authorName: parts[0]!, authorEmail: parts[1]!, authorDate: parts[2]!,
-        committerName: parts[3]!, committerEmail: parts[4]!, committerDate: parts[5]!,
-        message: parts.slice(6).join('\u0000'),
-      },
-    };
-  } catch {
-    return null;
+  if (!repo?.local_path) {
+    throw new Error(
+      `REPLAY_CAPTURE_GIT_RECIPE_REPO_UNRESOLVED: no local checkout for `
+      + `project_repository=${projectRepositoryId} (row=${repo ? 'present' : 'absent'}, `
+      + `local_path=${repo?.local_path ?? 'null'})`,
+    );
   }
+  // No swallowing catch: a git failure here must surface its REAL cause
+  // (typed REPLAY_CAPTURE_GIT_RECIPE_FAILED with the git stderr), never
+  // degrade into a misleading 'no exact Git recipe' at completeness time.
+  const patchBytes = gitExecWithRetry(repo.local_path, [
+    'diff', '--binary', `${baseCommit}..${sourceCommit}`,
+  ]);
+  const format = '%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B';
+  const parts = gitExecWithRetry(repo.local_path, [
+    'show', '-s', `--format=${format}`, sourceCommit,
+  ]).toString('utf8').trimEnd().split('\u0000');
+  if (parts.length < 7) {
+    throw new Error(
+      `REPLAY_CAPTURE_GIT_RECIPE_COMMIT_UNPARSEABLE: git show -s on `
+      + `${sourceCommit.slice(0, 16)} returned ${parts.length} NUL-separated field(s), `
+      + `expected >=7`,
+    );
+  }
+  return {
+    projectRepositoryId,
+    integrationBranch,
+    baseCommit,
+    sourceCommit,
+    sourceTree,
+    sourceBranch,
+    patchBase64: patchBytes.toString('base64'),
+    commit: {
+      authorName: parts[0]!, authorEmail: parts[1]!, authorDate: parts[2]!,
+      committerName: parts[3]!, committerEmail: parts[4]!, committerDate: parts[5]!,
+      message: parts.slice(6).join('\u0000'),
+    },
+  };
 }
 
 interface CandidateMemberRow {

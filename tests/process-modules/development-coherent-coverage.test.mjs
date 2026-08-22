@@ -81,7 +81,7 @@ function proposal(coveredIds = [11, 12]) {
       executionSkill: 'saga-worker',
       executionMode: 'git_change',
       projectRepositoryId: 7,
-      acceptanceCriterionIds: coveredIds,
+      acceptanceCriterionKeys: coveredIds.map(id => ({ 11: '11:AC-1', 12: '12:AC-2' }[id] ?? `${id}:AC-${id}`)),
       dependsOnKeys: [],
       changeScopes: ['product'],
       required: true,
@@ -94,7 +94,7 @@ function proposal(coveredIds = [11, 12]) {
       executionSkill: 'saga-verifier',
       executionMode: 'read_only_evidence',
       projectRepositoryId: 7,
-      acceptanceCriterionIds: [id],
+      acceptanceCriterionKeys: [{ 11: '11:AC-1', 12: '12:AC-2' }[id] ?? `${id}:AC-${id}`],
       dependsOnKeys: [implementationKey],
       changeScopes: [],
       required: true,
@@ -127,8 +127,8 @@ function validateScopes(leftScopes, rightScopes, rightDependsOn = []) {
   const input = developmentCase();
   const proposalValue = proposal([11, 12]);
   proposalValue.implementationItems = [
-    { ...proposalValue.implementationItems[0], key: 'left', acceptanceCriterionIds: [11], changeScopes: leftScopes },
-    { ...proposalValue.implementationItems[0], key: 'right', acceptanceCriterionIds: [12], changeScopes: rightScopes, dependsOnKeys: rightDependsOn },
+    { ...proposalValue.implementationItems[0], key: 'left', acceptanceCriterionKeys: ['11:AC-1'], changeScopes: leftScopes },
+    { ...proposalValue.implementationItems[0], key: 'right', acceptanceCriterionKeys: ['12:AC-2'], changeScopes: rightScopes, dependsOnKeys: rightDependsOn },
   ];
   proposalValue.verificationItems[0].dependsOnKeys = ['left'];
   proposalValue.verificationItems[1].dependsOnKeys = ['right'];
@@ -196,8 +196,8 @@ test('implementation-coverage-gap message serializes the missing/extra AC diff',
   const missingMessage = missingOnly.errors
     .find(error => error.includes('required implementation coverage does not equal'));
   assert.ok(missingMessage, 'the enriched coverage-gap message exists');
-  assert.match(missingMessage, /missing AC artifact ids: \[12\]/);
-  assert.match(missingMessage, /extra AC artifact ids: \[\]/);
+  assert.match(missingMessage, /missing AC criterion keys: \[12:AC-2\]/);
+  assert.match(missingMessage, /extra AC criterion keys: \[\]/);
 
   // Covering a NON-accepted AC must be listed as extra.
   const input = developmentCase();
@@ -212,8 +212,8 @@ test('implementation-coverage-gap message serializes the missing/extra AC diff',
   const extraMessage = extra.errors
     .find(error => error.includes('required implementation coverage does not equal'));
   assert.ok(extraMessage);
-  assert.match(extraMessage, /missing AC artifact ids: \[\]/);
-  assert.match(extraMessage, /extra AC artifact ids: \[99\]/);
+  assert.match(extraMessage, /missing AC criterion keys: \[\]/);
+  assert.match(extraMessage, /extra AC criterion keys: \[99:AC-99\]/);
 });
 
 test('verification-plan-coverage-gap message serializes the missing AC diff', () => {
@@ -231,8 +231,8 @@ test('verification-plan-coverage-gap message serializes the missing AC diff', ()
   const message = result.errors
     .find(error => error.includes('verification work for every accepted AC'));
   assert.ok(message, 'the enriched verification-gap message exists');
-  assert.match(message, /missing AC artifact ids: \[12\]/);
-  assert.match(message, /extra AC artifact ids: \[\]/);
+  assert.match(message, /missing AC criterion keys: \[12:AC-2\]/);
+  assert.match(message, /extra AC criterion keys: \[\]/);
 });
 
 test('directory and descendant file scopes overlap and require dependency order', () => {

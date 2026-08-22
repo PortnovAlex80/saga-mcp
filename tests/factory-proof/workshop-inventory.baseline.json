@@ -125,7 +125,7 @@
         "L:approval:pending-holds-publication",
         "L:approval:denied-blocked",
         "L:approval:binds-candidate+preflight+policy-hash",
-        "L:publication:unknown-failure-routes-to-observation",
+        "L:publication:unknown-fails-closed-effect-nonterminal",
         "L:observation:mismatch-prevents-released",
         "L:observe-before-retry:no-duplicate-non-idempotent-effect",
         "L:candidate-immutability:drift-after-certification-blocks",

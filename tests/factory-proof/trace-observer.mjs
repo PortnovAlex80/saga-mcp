@@ -58,11 +58,12 @@ export function observeDurableTrace(dbPath) {
       processRuns: all(
         `SELECT id,module_name,module_version,status,local_outcome,authority,input_hash,
                 output_schema,output_ref,output_hash,
-                certificate_schema,certificate_ref,certificate_hash
+                certificate_schema,certificate_ref,certificate_hash,error
            FROM factory_process_runs ORDER BY id`,
       ),
       processOutcomeCertificates: all(
-        `SELECT id,module_ref_key,decision,reason_codes,rationale
+        `SELECT id,module_name,module_ref_key,decision,reason_codes,rationale,
+                issued_at,certificate_payload
            FROM factory_process_outcome_certificates ORDER BY id`,
       ),
       // Exact worker-submitted authority rows. This is needed for idempotency
@@ -98,7 +99,7 @@ export function observeDurableTrace(dbPath) {
            FROM artifact_traces ORDER BY id`,
       ),
       workIntents: all(
-        'SELECT id, task_kind, status, workplace_ref FROM tasks ORDER BY id',
+        'SELECT id, task_kind, status, workplace_ref, title, created_at FROM tasks ORDER BY id',
       ),
       workplaces: all(
         'SELECT workplace_ref, process_run_id, kanban_phase, loop_state, terminal_reason, revision, next_role FROM factory_workplaces ORDER BY workplace_ref',
@@ -113,7 +114,8 @@ export function observeDurableTrace(dbPath) {
         'SELECT check_receipt_ref, subject_candidate_set_ref, provider_id, provider_version, outcome FROM factory_check_receipts ORDER BY check_receipt_ref',
       ),
       finalAcceptances: all(
-        'SELECT workplace_ref, candidate_set_ref, gate_decision_key FROM factory_cell_final_acceptances ORDER BY workplace_ref',
+        `SELECT workplace_ref, candidate_set_ref, gate_decision_key, accepted_at
+           FROM factory_cell_final_acceptances ORDER BY workplace_ref`,
       ),
       acceptedAuthorityHeads: all(
         'SELECT workplace_ref, accepted_author_candidate_set_ref, accepted_author_task_id FROM factory_accepted_authority_head ORDER BY workplace_ref',
@@ -157,7 +159,17 @@ export function observeDurableTrace(dbPath) {
         'SELECT workplace_ref, role, epoch, exhausted_attempts, max_attempts, last_diagnosis FROM factory_workplace_recovery_epochs ORDER BY rowid',
       ),
       workerExecutions: all(
-        'SELECT execution_id AS execution_ref, task_id, state, voided_at FROM worker_executions ORDER BY execution_id',
+        `SELECT execution_id AS execution_ref, task_id, state, voided_at,
+                started_at, finished_at
+           FROM worker_executions ORDER BY execution_id`,
+      ),
+      // D2 temporal spine: process products carry created_at — the settlement
+      // product of a development run timestamps the fan-in moment, so oracles
+      // can prove no early fan-in occurred.
+      processProducts: all(
+        `SELECT id, process_run_id, product_kind, product_key, node_id,
+                product_hash, created_at
+           FROM factory_process_products ORDER BY id`,
       ),
     };
   } finally {

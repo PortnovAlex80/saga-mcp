@@ -238,8 +238,8 @@ export function buildPrompt({
     } catch {
       semanticInline = `(Could not read semantic skill file at ${reviewerInlineSkillPath}. Follow the protocol above.)`;
     }
-    protocolInlineBytes = protocolInline.length;
-    semanticInlineBytes = semanticInline.length;
+    protocolInlineBytes = Buffer.byteLength(protocolInline, 'utf8');
+    semanticInlineBytes = Buffer.byteLength(semanticInline, 'utf8');
     const semanticSectionTitle = effectiveReviewerSkill
       ? '--- REVIEWER SKILL BEGIN (review role — what to verify) ---'
       : '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---';
@@ -272,9 +272,9 @@ export function buildPrompt({
   const protocolSkillBytes = protocolInlineBytes;
   const semanticSkillBytes = semanticInlineBytes;
   const priorDeathsBytes = processWorkspace?.priorAttempts
-    ? JSON.stringify(processWorkspace.priorAttempts).length : 0;
+    ? Buffer.byteLength(JSON.stringify(processWorkspace.priorAttempts), 'utf8') : 0;
   const workspaceBlockBytes = processWorkspace
-    ? JSON.stringify(processWorkspace).length : 0;
+    ? Buffer.byteLength(JSON.stringify(processWorkspace), 'utf8') : 0;
 
   const prompt = [
     // WORKER-NAMES-DESIGN: the factory callsign opens the system part of the
@@ -529,17 +529,32 @@ export function buildPrompt({
 
   // F-A: prompt-composition telemetry. Elite-3 died guessing where 436KB came
   // from; the next incident reads one greppable line per spawn instead.
+  // Byte metrics are REAL UTF-8 bytes (Buffer.byteLength) — .length counts
+  // UTF-16 code units and under-reports any prompt with non-ASCII content.
+  const promptBytes = Buffer.byteLength(prompt, 'utf8');
   try {
     process.stderr.write(
-      `[prompt-budget] task=${task.id} total=${prompt.length}`
+      `[prompt-budget] task=${task.id} total=${promptBytes}`
       + ` protocolSkill=${protocolSkillBytes} semanticSkill=${semanticSkillBytes}`
-      + ` taskProjection=${taskProjectionJson.length}`
-      + ` currentFeedback=${recoveryMemoryBlock ? recoveryMemoryBlock.length : 0}`
+      + ` taskProjection=${Buffer.byteLength(taskProjectionJson, 'utf8')}`
+      + ` currentFeedback=${recoveryMemoryBlock ? Buffer.byteLength(recoveryMemoryBlock, 'utf8') : 0}`
       + ` priorDeaths=${priorDeathsBytes}`
       + ` workspaceBlock=${workspaceBlockBytes}\n`,
     );
   } catch {
     // observability only — never gate the spawn
+  }
+  // F-A completion: an opt-in hard cap. Telemetry diagnoses after the fact;
+  // SAGA_PROMPT_MAX_BYTES refuses to spawn a known-oversized prompt at all
+  // (fail closed with the byte ledger, not a silent oversized spawn).
+  const promptMaxBytes = Number(process.env.SAGA_PROMPT_MAX_BYTES ?? 0);
+  if (Number.isSafeInteger(promptMaxBytes) && promptMaxBytes > 0 && promptBytes > promptMaxBytes) {
+    throw new Error(
+      `PROMPT_BUDGET_EXCEEDED: task=${task.id} prompt=${promptBytes}B `
+      + `cap=${promptMaxBytes}B (protocolSkill=${protocolSkillBytes} `
+      + `semanticSkill=${semanticSkillBytes} priorDeaths=${priorDeathsBytes} `
+      + `workspaceBlock=${workspaceBlockBytes}) — fix the composition, not the cap`,
+    );
   }
   return prompt;
 }

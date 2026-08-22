@@ -310,6 +310,43 @@ function formalizationUseCases({ handlers, assignment, context, db }) {
   return { kind: 'worker-done-accepted' };
 }
 
+/** Metamorphic packaging variant: ONE container AC artifact whose document
+ * carries BOTH atomic criteria as level-2 headings — the lawful producer
+ * shape that collapsed under the old artifactId identity (Elite-4). The
+ * default W9 map keeps the N-documents shape; the contract-partition
+ * scenario overrides with this handler. */
+export function makeOneContainerAcceptanceHandler() {
+  return function formalizationAcceptance({ handlers, assignment, context, db }) {
+    const { projectId, epicId } = taskScope(db, assignment.taskId);
+    const repoPath = context.workspaceRoot;
+    const frs = findAcceptedArtifacts(db, epicId, 'FR');
+    const nfrs = findAcceptedArtifacts(db, epicId, 'NFR');
+    const ucs = findAcceptedArtifacts(db, epicId, 'UC');
+    if (!frs.length) throw new Error('No accepted FR for acceptance');
+    const marker = ucs.length
+      ? proposalMarkerFromFile(repoPath, ucs[0].path)
+      : proposalMarkerFromFile(repoPath, frs[0].path);
+    const markerSuffix = marker ? ` [proposal ${marker}]` : '';
+    const artifactPath = 'docs/formalization/AC.md';
+    // Container document: two ATOMIC level-2 AC headings (the leaf grammar
+    // of acceptance-criterion-document.ts). One provenance artifact, TWO
+    // atomic criteria.
+    writeRepoFile(repoPath, artifactPath,
+      `## AC-1: Pipeline Completes\n\nDeterministic AC artifact for AC-1.${markerSuffix}\n\n`
+      + `## AC-2: NFR Compliance\n\nDeterministic AC artifact for AC-2.${markerSuffix}\n`);
+    const container = handlers.artifact_create({
+      project_id: projectId, epic_id: epicId, type: 'AC', code: 'AC',
+      title: 'Acceptance Contract (container)', path: artifactPath,
+      status: 'accepted',
+    });
+    addTrace(handlers, container.id, frs[0].id, 'derived_from');
+    if (ucs.length) addTrace(handlers, container.id, ucs[0].id, 'derived_from');
+    if (nfrs.length) addTrace(handlers, container.id, nfrs[0].id, 'derived_from');
+    done(handlers, assignment, 'formalization acceptance: one container AC document');
+    return { kind: 'worker-done-accepted' };
+  };
+}
+
 function formalizationAcceptance({ handlers, assignment, context, db }) {
   const { projectId, epicId } = taskScope(db, assignment.taskId);
   const repoPath = context.workspaceRoot;
@@ -425,7 +462,15 @@ function formalizationApprovedReview({ handlers, assignment, meta }) {
 // Development
 // ---------------------------------------------------------------------------
 
-function developmentPlan({ handlers, assignment, meta }) {
+/** Parameterized development planner. Default: the W9 dependency chain
+ * (impl-N depends on impl-N-1) with shared mandated scopes made safe by the
+ * chain. parallelBurst: N extra siblings after the FIRST implementation
+ * item, each with a DISJOINT single-file scope (no overlap → no forced
+ * dependency) and all depending on the first item only — so B/C/D are
+ * simultaneously runnable and the factory concurrency cap is the ONLY thing
+ * that can limit their peak parallelism (the D2 cap proof). */
+export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
+  return function developmentPlan({ handlers, assignment, meta }) {
   const developmentCase = findObject(
     meta.process_node_input ?? meta.cell_input_item ?? meta,
     value => value.schemaVersion === 'factory.development-case.v1',
@@ -437,17 +482,55 @@ function developmentPlan({ handlers, assignment, meta }) {
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
   const criterionId = ac => ac.artifactId;
-  const implementationItems = implementationCriteria.map((ac, index) => ({
-    key: `impl-${criterionId(ac)}`,
+  const criterionKeyOf = ac => `${ac.artifactId}:${ac.code ?? ''}`;
+  // Item keys are per-ATOMIC-criterion: several criteria may share one
+  // provenance artifact, and keys derived from artifactId would collide.
+  const itemCode = ac => (ac.code ?? String(ac.artifactId)).replace(/[^A-Za-z0-9._-]/g, '-');
+  let implementationItems;
+  if (parallelBurst > 0 && implementationCriteria.length >= 1) {
+    // Cap-proof topology: item A carries the mandated shared scopes; every
+    // later sibling (real criteria + burst extras) owns ONE disjoint file and
+    // depends on A only — so B/C/D are simultaneously runnable and the
+    // factory concurrency cap is the ONLY limiter of their peak.
+    const [first] = implementationCriteria;
+    const own = key => [`src/w9/${key}.ts`];
+    const item = (key, acKeys, scopes, dependsOn) => ({
+      key,
+      kind: 'implementation',
+      taskKind: 'development.code',
+      executionSkill: 'saga-worker',
+      executionMode: 'git_change',
+      projectRepositoryId: repo.projectRepositoryId,
+      acceptanceCriterionKeys: acKeys,
+      dependsOnKeys: dependsOn,
+      changeScopes: scopes,
+      required: true,
+      criticality: 'blocker',
+    });
+    const firstKey = `impl-${itemCode(first)}`;
+    implementationItems = [
+      item(firstKey, [criterionKeyOf(first)],
+        [`src/w9/${firstKey}.ts`, 'package.json', 'tests/'], []),
+      ...implementationCriteria.slice(1).map(ac => item(
+        `impl-${itemCode(ac)}`, [criterionKeyOf(ac)],
+        own(`impl-${itemCode(ac)}`), [firstKey],
+      )),
+      ...Array.from({ length: parallelBurst }, (_, i) => item(
+        `impl-burst-${i + 1}`, [], own(`impl-burst-${i + 1}`), [firstKey],
+      )),
+    ];
+  } else {
+  implementationItems = implementationCriteria.map((ac, index) => ({
+    key: `impl-${itemCode(ac)}`,
     kind: 'implementation',
     taskKind: 'development.code',
     executionSkill: 'saga-worker',
     executionMode: 'git_change',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [criterionId(ac)],
+    acceptanceCriterionKeys: [criterionKeyOf(ac)],
     dependsOnKeys: index === 0
       ? []
-      : [`impl-${criterionId(implementationCriteria[index - 1])}`],
+      : [`impl-${itemCode(implementationCriteria[index - 1])}`],
     // Cover the requiredChangeScopes ('package.json', 'tests/') that
     // assembleProductLifecycleInput mandates for bootstrap material, plus the
     // item's own source file. The change scope MUST match the file path the
@@ -458,14 +541,15 @@ function developmentPlan({ handlers, assignment, meta }) {
     required: true,
     criticality: ac.criticality || 'blocker',
   }));
+  }
   const verificationItems = criteria.map(ac => ({
-    key: `verify-${criterionId(ac)}`,
+    key: `verify-${itemCode(ac)}`,
     kind: 'verification',
     taskKind: 'verification.ac',
     executionSkill: 'saga-worker',
     executionMode: 'read_only_evidence',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [criterionId(ac)],
+    acceptanceCriterionKeys: [criterionKeyOf(ac)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,
@@ -488,9 +572,17 @@ function developmentPlan({ handlers, assignment, meta }) {
   done(handlers, assignment,
     `planned ${implementationItems.length} implementation + ${verificationItems.length} verification items`);
   return { kind: 'worker-done-accepted' };
+  };
 }
 
-function developmentImplement({ handlers, assignment, meta, context, db }) {
+/** Parameterizable implementation author: filePathFor(safe, workItemKey)
+ * decides the written path (and declared changedFiles follow it); dropFor
+ * optionally supplies the LAWFUL repair disposition — snapshot.droppedFiles
+ * entries with non-empty reasons (claim-monotonicity's documented exit).
+ * The default is the in-scope src/w9 path; fault scenarios override it on
+ * chosen invocations to drive the production implementation-scope fence. */
+export function makeDevelopmentImplementHandler(filePathFor, dropFor) {
+  return function developmentImplement({ handlers, assignment, meta, context, db }) {
   const item = meta.cell_input_item || findObject(meta.process_node_input, x => x.kind === 'implementation');
   if (!item?.key) throw new Error('implementation work item not found');
   const workItemKey = String(item.key);
@@ -514,11 +606,23 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   // and commit. The branch ref MUST point at the commit (the integration effect
   // reads refs/heads/<sourceBranch> to verify the source commit).
   git(repoPath, 'checkout', '-B', branch, integrationBranch);
-  const filePath = `src/w9/${safe}.ts`;
+  const filePath = filePathFor(safe, workItemKey);
   writeRepoFile(repoPath, filePath,
     `// deterministic implementation for ${workItemKey}\nexport const ${safe.replace(/[^a-zA-Z0-9_]/g, '_')} = true;\n`);
   git(repoPath, 'add', filePath);
-  git(repoPath, 'commit', '-m', `w9: implement ${workItemKey}`);
+  // Replay idempotency (§16): on a restart the SAME material is already
+  // committed on this branch — `git commit` then exits non-zero ("nothing
+  // to commit") and the replayed execution dies. Observe-before-commit: a
+  // failed commit with a CLEAN tree means the commit already happened and
+  // the branch ref already points at it — skip, like the production
+  // external-effect short-circuit. A dirty tree is a real failure.
+  try {
+    git(repoPath, 'commit', '-m', `w9: implement ${workItemKey}`);
+  } catch (error) {
+    // -uno: untracked files (e.g. other cells' docs/ artifacts in the shared
+    // repo) are not this commit's concern; only TRACKED/staged state decides.
+    if (git(repoPath, 'status', '--porcelain', '-uno').trim() !== '') throw error;
+  }
   const commitSha = git(repoPath, 'rev-parse', 'HEAD');
   const treeSha = git(repoPath, 'rev-parse', `${commitSha}^{tree}`);
   const baseCommit = git(repoPath, 'merge-base', integrationBranch, branch) ||
@@ -534,7 +638,10 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
       workItemKey,
       terminalStatus: 'complete',
       source: { branch, commitSha, workItemKey },
-      snapshot: { commitSha, treeSha, files: [filePath], changedFiles: [filePath] },
+      snapshot: {
+        commitSha, treeSha, files: [filePath], changedFiles: [filePath],
+        ...(dropFor ? { droppedFiles: dropFor() } : {}),
+      },
       repository: {
         projectRepositoryId,
         integrationBranch,
@@ -552,6 +659,7 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   });
   done(handlers, assignment, `implemented ${workItemKey}`);
   return { kind: 'worker-done-accepted' };
+};
 }
 
 function developmentReview({ handlers, assignment, meta }) {
@@ -592,8 +700,9 @@ function developmentVerify({ handlers, assignment, meta, db }) {
       && typeof value.candidateHash === 'string',
   );
   if (!candidate) throw new Error('frozen candidate not found in verification input');
-  const acId = Number(item.acceptanceCriterionIds?.[0] || meta.verification_target_artifact_id || 0);
-  if (!acId) throw new Error('verification acceptanceCriterionId missing');
+  const acKey = String(item.acceptanceCriterionKeys?.[0] ?? '');
+  const acId = Number(acKey.split(':')[0]) || meta.verification_target_artifact_id || 0;
+  if (!acKey || !acId) throw new Error('verification acceptanceCriterionKey missing');
   // Read the AC's accepted_hash directly from the DB.
   const acRow = db.prepare(
     'SELECT accepted_hash, content_hash FROM artifacts WHERE id=?',
@@ -606,7 +715,7 @@ function developmentVerify({ handlers, assignment, meta, db }) {
     content: {
       schemaVersion: 'factory.candidate-verification-evidence-product.v2',
       verificationItemKey: item.key,
-      acceptanceCriterionId: acId,
+      acceptanceCriterionKey: acKey,
       acceptedCriterionHash,
       candidateHash: candidate.candidateHash,
       outcome: 'passed',
@@ -681,8 +790,10 @@ export const W9_HAPPY_HANDLERS = Object.freeze({
   [`${FRM}/define-architecture-contract/reviewer/singleton`]: formalizationApprovedReview,
 
   // Development
-  [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
-  [`${DEV}/implement-work-items/author/*`]: developmentImplement,
+  [`${DEV}/plan-task-graph/author/singleton`]: makeDevelopmentPlanHandler(),
+  [`${DEV}/implement-work-items/author/*`]: makeDevelopmentImplementHandler(
+    safe => `src/w9/${safe}.ts`,
+  ),
   [`${DEV}/implement-work-items/reviewer/*`]: developmentReview,
   [`${DEV}/certify-product-readiness/author/singleton`]: developmentReadinessCertification,
   [`${DEV}/verify-acceptance/author/*`]: developmentVerify,

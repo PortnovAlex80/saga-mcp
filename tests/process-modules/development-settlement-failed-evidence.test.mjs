@@ -94,7 +94,7 @@ function buildInput(mutate) {
       executionSkill: 'saga-developer',
       executionMode: 'git_change',
       projectRepositoryId: 5,
-      acceptanceCriterionIds: [101],
+      acceptanceCriterionKeys: ['101:AC-1'],
       changeScopes: ['src/'],
       dependsOnKeys: [],
       required: true,
@@ -107,7 +107,7 @@ function buildInput(mutate) {
         executionSkill: 'saga-verifier',
         executionMode: 'read_only_evidence',
         projectRepositoryId: 5,
-        acceptanceCriterionIds: [101],
+        acceptanceCriterionKeys: ['101:AC-1'],
         dependsOnKeys: ['implement-ac-1'],
         required: true,
       },
@@ -118,7 +118,7 @@ function buildInput(mutate) {
         executionSkill: 'saga-verifier',
         executionMode: 'read_only_evidence',
         projectRepositoryId: 5,
-        acceptanceCriterionIds: [102],
+        acceptanceCriterionKeys: ['102:AC-2'],
         dependsOnKeys: ['implement-ac-1'],
         required: true,
       },
@@ -182,7 +182,7 @@ function buildInput(mutate) {
   const evidenceFor = (itemKey, taskId, criterionId, criterionHash, candidateHash, outcome, evidenceHash) => ({
     verificationItemKey: itemKey,
     taskId,
-    acceptanceCriterionId: criterionId,
+    acceptanceCriterionKey: criterionId === 101 ? '101:AC-1' : '102:AC-2',
     acceptedCriterionHash: criterionHash,
     candidateHash,
     outcome,
@@ -304,7 +304,7 @@ test('X3: readiness receipt failed for a DIFFERENT candidate stays local-readine
 
 test('X3: failed AC verification evidence yields verification-failed naming the AC and its evidence', () => {
   const input = buildInput(x => {
-    const failed = x.acceptanceVerification.evidence.find(e => e.acceptanceCriterionId === 102);
+    const failed = x.acceptanceVerification.evidence.find(e => e.acceptanceCriterionKey === '102:AC-2');
     failed.outcome = 'failed';
     failed.evidence = ref(
       'factory.verification-evidence.v1',

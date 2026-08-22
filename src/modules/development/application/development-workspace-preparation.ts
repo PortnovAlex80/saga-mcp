@@ -86,7 +86,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
 
   const implementationItems: Record<string, unknown>[] = [];
   const verificationItems = criteria.map(criterion => ({
-    key: `verify-${keySuffix(criterion.code, acceptanceCriterionIdentity(criterion))}`,
+    key: `verify-${keySuffix(criterion.code, criterion.artifactId)}`,
     kind: 'verification',
     taskKind: 'verification.ac',
     executionSkill: 'saga-verifier',
@@ -94,7 +94,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
     projectRepositoryId: repositories.length === 1
       ? repositories[0]!.projectRepositoryId
       : 0,
-    acceptanceCriterionIds: [acceptanceCriterionIdentity(criterion)],
+    acceptanceCriterionKeys: [acceptanceCriterionIdentity(criterion)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,
@@ -128,6 +128,11 @@ function numberSet(values: unknown): Set<number> | null {
   return new Set(values as number[]);
 }
 
+function keySet(values: unknown): Set<string> | null {
+  if (!Array.isArray(values) || !values.every(v => typeof v === 'string')) return null;
+  return new Set(values as string[]);
+}
+
 function sameSet<T>(left: Set<T>, right: Set<T>): boolean {
   return left.size === right.size && [...left].every(value => right.has(value));
 }
@@ -153,24 +158,24 @@ export function isReusableDevelopmentTaskGraphCall(
     || !Array.isArray(product.integrationTargets)
   ) return false;
 
-  const acceptedIds = new Set(
+  const acceptedKeys = new Set(
     developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity),
   );
-  const implementationRequiredIds = new Set(
+  const implementationRequiredKeys = new Set(
     developmentCase.acceptanceCriteria
       .filter(item => item.implementationRequired)
       .map(acceptanceCriterionIdentity),
   );
-  const implementationIds = numberSet(
+  const implementationKeys = keySet(
     product.implementationItems.flatMap(item =>
       item && typeof item === 'object' && !Array.isArray(item)
-        ? (item as Record<string, unknown>).acceptanceCriterionIds as unknown[] ?? []
+        ? (item as Record<string, unknown>).acceptanceCriterionKeys as unknown[] ?? []
         : []),
   );
-  const verificationIds = numberSet(
+  const verificationKeys = keySet(
     product.verificationItems.flatMap(item =>
       item && typeof item === 'object' && !Array.isArray(item)
-        ? (item as Record<string, unknown>).acceptanceCriterionIds as unknown[] ?? []
+        ? (item as Record<string, unknown>).acceptanceCriterionKeys as unknown[] ?? []
         : []),
   );
   const repositoryIds = numberSet(
@@ -182,12 +187,12 @@ export function isReusableDevelopmentTaskGraphCall(
   const expectedRepositoryIds = new Set(
     developmentCase.repositories.map(item => item.projectRepositoryId),
   );
-  return implementationIds !== null
-    && verificationIds !== null
+  return implementationKeys !== null
+    && verificationKeys !== null
     && repositoryIds !== null
-    && [...implementationRequiredIds].every(id => implementationIds.has(id))
-    && [...implementationIds].every(id => acceptedIds.has(id))
-    && sameSet(verificationIds, acceptedIds)
+    && [...implementationRequiredKeys].every(key => implementationKeys.has(key))
+    && [...implementationKeys].every(key => acceptedKeys.has(key))
+    && sameSet(verificationKeys, acceptedKeys)
     && sameSet(repositoryIds, expectedRepositoryIds);
 }
 

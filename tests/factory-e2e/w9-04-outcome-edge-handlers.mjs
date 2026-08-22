@@ -276,7 +276,8 @@ export function buildDevelopmentBlockedHandlers() {
       }
     }
 
-    const acId = Number(found.acceptanceCriterionIds?.[0] || meta.verification_target_artifact_id || 0);
+    const acKey = String(found.acceptanceCriterionKeys?.[0] ?? '');
+    const acId = Number(acKey.split(':')[0]) || meta.verification_target_artifact_id || 0;
     const acRow = db.prepare(
       'SELECT accepted_hash, content_hash FROM artifacts WHERE id=?',
     ).get(acId);
@@ -287,7 +288,7 @@ export function buildDevelopmentBlockedHandlers() {
       content: {
         schemaVersion: 'factory.candidate-verification-evidence-product.v2',
         verificationItemKey: found.key,
-        acceptanceCriterionId: acId,
+        acceptanceCriterionKey: acKey,
         acceptedCriterionHash,
         candidateHash: candidate.candidateHash,
         outcome: 'passed',

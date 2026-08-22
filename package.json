@@ -54,7 +54,9 @@
     "workshop:inventory": "node tests/factory-proof/workshop-inventory.mjs --json",
     "workshop:inventory:check": "node tests/factory-proof/workshop-inventory.mjs --check",
     "workshop:inventory:baseline": "node tests/factory-proof/workshop-inventory.mjs --baseline",
-    "coverage:factory": "node tests/factory-proof/factory-coverage-universe.mjs"
+    "coverage:factory": "node tests/factory-proof/factory-coverage-universe.mjs",
+    "conformance:v1": "node tests/factory-proof/conformance-engine.mjs",
+    "conformance:harvest": "node tests/factory-proof/conformance-engine.mjs --harvest"
   },
   "keywords": [
     "mcp",

@@ -84,8 +84,8 @@ test('seed machine-fills lineage but leaves semantic implementation decompositio
 
   assert.deepEqual(payload.implementationItems, []);
   assert.deepEqual(
-    payload.verificationItems.flatMap(item => item.acceptanceCriterionIds),
-    [15, 16],
+    payload.verificationItems.flatMap(item => item.acceptanceCriterionKeys),
+    ['15:AC-15', '16:AC-16'],
     'every accepted criterion must still be verified',
   );
   assert.equal(payload.integrationTargets[0].projectRepositoryId, 65);
@@ -96,18 +96,20 @@ test('seed machine-fills lineage but leaves semantic implementation decompositio
 });
 
 test('atomic criterion identity preserves multiple criteria from one document container', () => {
-  // ADR-053: each criterion has its own DB artifact ID — even criteria from
-  // the same document container get distinct atomic artifact rows. The
-  // identity is the artifactId (the DB row the acceptance check queries by).
+  // 2026-08-22 identity separation: criteria from ONE container artifact
+  // share the provenance artifactId and are distinguished by their CODE —
+  // the atomic identity is the composite key, so a container of N criteria
+  // keeps N DISTINCT verification obligations (the Elite-4 defect collapsed
+  // them to one artifactId).
   const sharedDocumentCase = structuredClone(developmentCase);
   sharedDocumentCase.acceptanceCriteria = [
-    { ...sharedDocumentCase.acceptanceCriteria[0], criterionId: 1501, artifactId: 15 },
-    { ...sharedDocumentCase.acceptanceCriteria[1], criterionId: 1502, artifactId: 16 },
+    { ...sharedDocumentCase.acceptanceCriteria[0], artifactId: 15 },
+    { ...sharedDocumentCase.acceptanceCriteria[1], artifactId: 15 },
   ];
   const payload = buildDevelopmentTaskGraphSubmitCallFromCase(sharedDocumentCase).content;
   assert.deepEqual(
-    payload.verificationItems.flatMap(item => item.acceptanceCriterionIds),
-    [15, 16],
+    payload.verificationItems.flatMap(item => item.acceptanceCriterionKeys),
+    ['15:AC-15', '15:AC-16'],
   );
 });
 
@@ -151,7 +153,7 @@ test('preparer preserves a reusable semantic draft scoped to the frozen case', (
     executionSkill: 'saga-worker',
     executionMode: 'git_change',
     projectRepositoryId: 65,
-    acceptanceCriterionIds: [15],
+    acceptanceCriterionKeys: ['15:AC-15'],
     dependsOnKeys: [],
     changeScopes: ['product-foundation'],
     required: true,
