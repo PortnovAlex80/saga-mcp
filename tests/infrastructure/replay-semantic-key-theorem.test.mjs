@@ -38,6 +38,7 @@ import {
   makeTask,
   taskMetadata,
   insertCapsule,
+  divergentPayloadSnapshot,
 } from './lib/replay-binder-fixture.mjs';
 
 const PKG = 'pkg-digest-stable';
@@ -204,8 +205,16 @@ test('K8/C: divergent payloads for one key throw REPLAY_KEY_PAYLOAD_CONFLICT - n
   const db = freshDb();
   seedProcessRun(db, 300, 7, PKG);
   const key = authorKeyFor(300);
-  insertCapsule(db, { capsuleRef: 'old', replayKey: key, projectId: 7, payloadHash: 'pay-old' });
-  insertCapsule(db, { capsuleRef: 'new', replayKey: key, projectId: 7, payloadHash: 'pay-new' });
+  // Divergence must be SEMANTIC (2fee5c6e): raw-hash-only divergence over
+  // run-scoped identity is a legal alias, not a conflict.
+  insertCapsule(db, {
+    capsuleRef: 'old', replayKey: key, projectId: 7, payloadHash: 'pay-old',
+    payloadSnapshot: divergentPayloadSnapshot('approved'),
+  });
+  insertCapsule(db, {
+    capsuleRef: 'new', replayKey: key, projectId: 7, payloadHash: 'pay-new',
+    payloadSnapshot: divergentPayloadSnapshot('rejected'),
+  });
 
   seedExecution(db, 'exec-c', 31, 7);
   assert.throws(
