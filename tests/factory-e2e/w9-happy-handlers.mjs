@@ -86,17 +86,27 @@ const RUNNABLE_STATIC_READINESS = Object.freeze({
 // Discovery
 // ---------------------------------------------------------------------------
 
-function discoveryProposal({ handlers, assignment }) {
+function discoveryProposal({ handlers, assignment, meta }) {
+  // Proposal content must derive from the ENTRY semantic input (the
+  // initiative subject). Replay identity is content-addressed (ADR-079):
+  // a restart with a DIFFERENT idea must yield a different proposal digest,
+  // otherwise downstream cells legitimately replay the earlier run's
+  // capsules (byte-identical material = correct reuse, not contamination).
+  const subject = String(
+    meta?.process_node_input?.subject
+    ?? meta?.process_node_input?.objective
+    ?? 'unspecified initiative',
+  );
   handlers.product_submit({
     schema: 'factory.discovery-proposal.v1',
     content: {
-      problem_statement: 'The current pipeline lacks automated end-to-end validation.',
+      problem_statement: `[${subject}] The current pipeline lacks automated end-to-end validation.`,
       observed_context: 'Unit tests cover pure domain logic. No full factory test exists.',
       stakeholders_or_actors: ['Platform team', 'Module authors', 'CI reviewers'],
       assumptions: ['Factory physics is correct in isolation.', 'Deterministic workers can substitute LLM.'],
       unknowns: ['None blocking.'],
       risks: ['Fixture drift risk.'],
-      candidate_scope: 'Run Product Delivery through the real Factory with deterministic physical workers.',
+      candidate_scope: `[${subject}] Run Product Delivery through the real Factory with deterministic physical workers.`,
       evidence_refs: ['CONVEYOR-MENTAL-MODEL.md', 'factory-e2e harness'],
       recommended_outcome: 'go',
       rationale: 'Concrete gap, bounded scope and deterministic verification path.',

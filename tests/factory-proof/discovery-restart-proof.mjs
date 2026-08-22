@@ -32,16 +32,18 @@ async function runStart({ bootstrap, launchRef, handlers, label, concurrencyCap 
     composition,
     ...(launchRef ? { launchRef } : {}),
     scenarioConcurrencyCap: concurrencyCap,
-    maxCycles: 320,
+    maxCycles: 90,
     pollMs: 5,
     maxEmptyDispatchStreak: 12,
-    // Scope-guard honesty (night triage 2026-08-22): stopping at the 'go'
-    // stage boundary left the lifecycle non-terminal, and every launch uses
-    // a fresh idempotency key — the next requestFreshHarnessLaunch hit the
-    // LIFECYCLE_SCOPE_ALREADY_ACTIVE guard and the process died with an
-    // empty evidence file. Drive each lifecycle to its NATURAL terminal;
-    // the oracles still read the initial-discovery 'go' outcome from the
-    // durable stage runs.
+    // Stage-boundary proof (harness contract): stop the DRIVE at the
+    // discovery 'go' outcome. The lifecycle itself would route into
+    // solution-formalization, which this proof has no actors for — so the
+    // run is closed between starts via the PRODUCTION abandon API (below),
+    // which frees the lifecycle scope for the next launch. Driving to a
+    // "natural" terminal is impossible here and merely burns cycles into a
+    // formalization dead-end whose non-terminal scope then fails launches
+    // B/C with LIFECYCLE_SCOPE_ALREADY_ACTIVE.
+    stopOnStageOutcome: 'go',
     scriptedObserver: observer,
   });
   return {
@@ -69,6 +71,20 @@ export async function runDiscoveryRestartProof({
     pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href
   );
   const { requestFreshHarnessLaunch } = harness;
+  const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
+  const { abandonLifecycleRun } = await import(
+    pathToFileURL(path.resolve(REPO_ROOT, 'dist/app/factory-start.js')).href
+  );
+  // Production typed close (scripts/factory.mjs abandon path): terminalizes
+  // the active lifecycle run, buries workplaces and cancels tasks — the
+  // fail-closed operator semantics. The scope guard then allows the next
+  // launch; durable stage runs (the oracle's evidence) are preserved.
+  const closeActiveRun = label =>
+    abandonLifecycleRun(getDb(), {
+      projectId: bootstrap.projectId,
+      actorId: 'discovery-restart-proof',
+      reason: `stage-boundary close after ${label}`,
+    });
 
   const runA = await runStart({
     bootstrap,
@@ -77,6 +93,7 @@ export async function runDiscoveryRestartProof({
     label: 'A-cold',
     concurrencyCap,
   });
+  closeActiveRun('A-cold');
   const launchB = requestFreshHarnessLaunch(bootstrap, { idea: IDEA_A });
   const runB = await runStart({
     bootstrap,
@@ -85,6 +102,7 @@ export async function runDiscoveryRestartProof({
     label: 'B-same-semantic-input',
     concurrencyCap,
   });
+  closeActiveRun('B-same-semantic-input');
   const launchC = requestFreshHarnessLaunch(bootstrap, { idea: IDEA_B });
   const runC = await runStart({
     bootstrap,
@@ -95,7 +113,13 @@ export async function runDiscoveryRestartProof({
   });
 
   const durableTrace = observeDurableTrace(bootstrap.dbPath);
-  const progress = classifyPostDrainProgress(durableTrace);
+  // Boundary honesty: the LAST start stops at the discovery 'go' outcome, so
+  // the handoff-created formalization cells are BOUNDARY-UNDRIVEN facts, not
+  // stalls (earlier starts' cells are buried typed by the abandon close).
+  const progress = classifyPostDrainProgress(durableTrace, {
+    stoppedByStageOutcome: runC.driven.result.stoppedByStageOutcome === true,
+    stageOutcome: 'go',
+  });
   const discoveryStages = (durableTrace.stageRuns ?? [])
     .filter(row => row.stage_id === 'initial-discovery' && row.local_outcome === 'go');
   const lifecycleIds = [...new Set(discoveryStages.map(row => row.lifecycle_run_id))];
