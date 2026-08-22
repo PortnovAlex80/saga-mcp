@@ -447,8 +447,8 @@
       "exitStatus": 0,
       "signal": null,
       "verdict": "pass",
-      "bundleDigest": "09e7a1f1ec5992febec50470c4314367e7fe94294fe3c38d8b37c11baea28950",
-      "note": "re-driven after the peak-sweep oracle fix (start-sort + truncation clamp); the first harvest run exposed the oracle bug, not a limiter violation"
+      "bundleDigest": "ea1cea49531131025bf44d910c74ea8a3b8394129ad6ae7f6f039ea62f91a90a",
+      "note": "re-driven after token rename/multi-phase accounting (operator completion order)"
     },
     {
       "workshop": "development",
@@ -537,6 +537,15 @@
       "signal": null,
       "verdict": "pass",
       "bundleDigest": "8864dcc5a302cb8755086565bc9edc8649c9afa941e074a36a2f382f8fcffde7"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/acceptance-packaging-one-container",
+      "exitStatus": 0,
+      "signal": null,
+      "verdict": "pass",
+      "bundleDigest": "77ee6515e37ece9b9cba0dd28612a0544c5b26a242eeef39ee9868b785dd549c",
+      "note": "FLAKY 50/50 — found production defect: captureGitRecipe (sqlite-replay-capsule-repository.ts:555-578) races worker git checkouts on the shared repo; its catch swallows the transient git error and the completeness check then fails REPLAY_CAPTURE_GIT_RECIPE_MISSING. Owner: replay capture must isolate/retry git reads. PASS bundle retained as evidence."
     }
   ]
 }

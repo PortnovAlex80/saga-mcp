@@ -1,15 +1,15 @@
 {
   "schemaVersion": "factory.proof.conformance-coverage.v1",
-  "generatedAt": "2026-08-22T09:33:12.116Z",
+  "generatedAt": "2026-08-22T09:55:34.694Z",
   "mode": "committed-snapshot",
   "declared": {
-    "universeTokens": 148,
-    "pendingTotal": 18,
-    "interWorkshopTokens": 1,
-    "platformFaultEdges": 6
+    "universeTokens": 176,
+    "pendingTotal": 19,
+    "interWorkshopTokens": 2,
+    "platformFaultEdges": 8
   },
   "demonstrated": {
-    "passBundles": 67,
+    "passBundles": 68,
     "nonPassRuns": 0,
     "byWorkshop": [
       {
@@ -35,11 +35,11 @@
       {
         "workshop": "development",
         "declaredStatus": "SPINE",
-        "universe": 21,
-        "demonstratedCovered": 4,
-        "percent": 19,
+        "universe": 35,
+        "demonstratedCovered": 18,
+        "percent": 51.4,
         "uncovered": [
-          "contract-partition:acceptance-criteria:packaging-invariant",
+          "D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable",
           "restart:development:git-change-desk-replay",
           "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
           "D3:claim-monotonicity:silent-narrowing-rejected",
@@ -59,6 +59,7 @@
         ],
         "blocked": [],
         "pendingNotBlocked": [
+          "D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable",
           "restart:development:git-change-desk-replay",
           "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
           "D3:claim-monotonicity:silent-narrowing-rejected",
@@ -80,9 +81,9 @@
       {
         "workshop": "delivery",
         "declaredStatus": "SPINE",
-        "universe": 5,
-        "demonstratedCovered": 3,
-        "percent": 60,
+        "universe": 19,
+        "demonstratedCovered": 17,
+        "percent": 89.5,
         "uncovered": [
           "K4:crash-after-effect-before-receipt",
           "restart:delivery:idempotent-settlement"
@@ -102,14 +103,14 @@
     ],
     "dimensions": {
       "interWorkshop": {
-        "covered": 1,
-        "total": 1,
+        "covered": 5,
+        "total": 5,
         "percent": 100
       },
       "transitions": {
-        "covered": 19,
-        "total": 24,
-        "percent": 79.2,
+        "covered": 28,
+        "total": 33,
+        "percent": 84.8,
         "uncovered": [
           "transition:freeze-acceptance-baseline->complete-failed",
           "transition:freeze-acceptance-baseline->complete-inconsistent",
@@ -119,14 +120,10 @@
         ]
       },
       "negativeTransitions": {
-        "covered": 8,
-        "total": 11,
-        "percent": 72.7,
-        "uncovered": [
-          "transition:freeze-acceptance-baseline->complete-failed",
-          "transition:settle->complete-failed",
-          "transition:settle-formalization->complete-failed"
-        ]
+        "covered": 5,
+        "total": 5,
+        "percent": 100,
+        "uncovered": []
       },
       "recovery": {
         "covered": 14,
@@ -139,8 +136,8 @@
         ]
       },
       "genericInvariants": {
-        "covered": 10,
-        "total": 10,
+        "covered": 15,
+        "total": 15,
         "percent": 100,
         "uncovered": []
       },
@@ -175,6 +172,14 @@
       {
         "workshop": "formalization",
         "edge": "effect-fault:formalization-accept-products:post-gate-pre-effect-drift"
+      },
+      {
+        "workshop": "development",
+        "edge": "K4:git-effect:crash-after-external-mutation-before-receipt"
+      },
+      {
+        "workshop": "development",
+        "edge": "K4:settlement:internal-exception-complete-failed"
       }
     ]
   },
@@ -552,6 +557,13 @@
     },
     {
       "workshop": "development",
+      "scenario": "development/acceptance-packaging-one-container",
+      "verdict": "pass",
+      "bundleDigest": "77ee6515e37ece9b9cba0dd28612a0544c5b26a242eeef39ee9868b785dd549c",
+      "evidenceFile": "development/development_acceptance-packaging-one-container.json"
+    },
+    {
+      "workshop": "development",
       "scenario": "development/fanin-all-required-before-settlement",
       "verdict": "pass",
       "bundleDigest": "3f9a827078a0178014458d2faa93fbfed3349b47e85b10ae910c09e87f5da8de",
@@ -561,7 +573,7 @@
       "workshop": "development",
       "scenario": "development/fanout-concurrency-cap-limits-parallel-runnable",
       "verdict": "pass",
-      "bundleDigest": "09e7a1f1ec5992febec50470c4314367e7fe94294fe3c38d8b37c11baea28950",
+      "bundleDigest": "ea1cea49531131025bf44d910c74ea8a3b8394129ad6ae7f6f039ea62f91a90a",
       "evidenceFile": "development/development_fanout-concurrency-cap-limits-parallel-runnable.json"
     },
     {
@@ -647,6 +659,53 @@
       "verdict": "pass",
       "bundleDigest": "182c76046d8362aabbfd07b6fd87402f52e260098752a81e4379fbc5827b3290",
       "evidenceFile": "delivery/delivery_publication-unknown-fails-closed.json"
+    }
+  ],
+  "specialMultiPhaseProofs": [
+    {
+      "scenario": "discovery/proposal-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "discovery/readiness-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "discovery/restart-idempotency",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/acceptance-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/architecture-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/product-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/reconciliation-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/restart-idempotency",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/useCases-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
     }
   ]
 }

@@ -281,8 +281,12 @@ const report = {
     nonPassRuns: manifestRuns.filter(r => r.verdict !== 'pass').length,
     byWorkshop: perWorkshop,
     dimensions: {
+      // ACTUAL lifecycle handoffs (operator completion order): the
+      // inter-workshop aggregate is the handoff:* obligations — the seams
+      // one workshop's terminal outcome hands to the next workshop — not
+      // merely tokens that happen to be multi-owned.
       interWorkshop: (() => {
-        const tokens = crossCutting(allUniverseTokens);
+        const tokens = allUniverseTokens.filter(t => t.startsWith('handoff:'));
         const covered = tokens.filter(t => anyWorkshopCovered.has(t));
         return {
           covered: covered.length,
@@ -296,7 +300,7 @@ const report = {
         demonstratedByWorkshop,
       ),
       negativeTransitions: dimension(
-        t => t.startsWith('transition:') && /blocked|failed|deny|reject|mismatch|invalid/.test(t),
+        t => t.startsWith('negative-transition:'),
         allUniverseTokens,
         demonstratedByWorkshop,
       ),
@@ -327,6 +331,23 @@ const report = {
       w.platformFaultEdges.map(edge => ({ workshop: w.workshop, edge }))),
   },
   runs: manifestRuns,
+  // HONEST DISCLOSURE (operator completion order): multi-phase proofs
+  // (restart idempotency, retry exhaustion) run through their dedicated
+  // multi-phase proof runners — they drive the REAL Factory and emit valid
+  // ScenarioEvidenceBundles, but not through the single-run runScenario
+  // path. Unifying them into one multi-phase kernel is a Conformance
+  // Closure item; the report must not silently claim 'every scenario →
+  // runScenario'.
+  specialMultiPhaseProofs: [
+    ...manifestRuns
+      .filter(run => /restart-idempotency|retry-exhaustion/.test(run.scenario))
+      .map(run => ({
+        scenario: run.scenario,
+        runner: 'multi-phase proof runner (runDiscoveryRestartProof/'
+          + 'runFormalizationRestartProof family)',
+        bundle: run.verdict,
+      })),
+  ],
 };
 
 // ── Rendering ─────────────────────────────────────────────────────────────

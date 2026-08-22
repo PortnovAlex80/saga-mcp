@@ -96,15 +96,7 @@ function noStrandedExecutionOracle() {
   };
 }
 
-// DEMONSTRATED (landed) Delivery obligations — these MOVED here from the
-// pending universe as their scenarios passed through the unified kernel.
-// The universe is monotonic: a landed token never leaves U, it only moves
-// from pending to required (factory-coverage-universe ratchet).
-export const DELIVERY_REQUIRED_UNIVERSE = Object.freeze([
-  'L:approval:binds-candidate+preflight+policy-hash',
-  'L:candidate-immutability:drift-after-certification-blocks',
-  'L:observe-before-retry:no-duplicate-non-idempotent-effect',
-]);
+
 
 /** Blocked obligations as DATA (not prose): token → the upstream obligation
  * that must be demonstrated first. Blocked tokens stay in U and stay
@@ -254,6 +246,20 @@ export const DELIVERY_SCENARIOS = Object.freeze([
       coverageToken.transition('settle-delivery', 'complete-released'),
     ],
   }),
+]);
+
+// EXHAUSTIVE by construction (operator completion order 2026-08-22): the
+// union of EVERY declared scenario's coverageItems PLUS the tokens that
+// landed from the pending universe. A landed obligation can never silently
+// fall out of the denominator; the demonstrated layer decides coverage from
+// PASS bundles only.
+export const DELIVERY_REQUIRED_UNIVERSE = Object.freeze([
+  ...[...new Set([
+    ...DELIVERY_SCENARIOS.flatMap(scenario => scenario.coverageItems ?? []),
+    'L:approval:binds-candidate+preflight+policy-hash',
+    'L:candidate-immutability:drift-after-certification-blocks',
+    'L:observe-before-retry:no-duplicate-non-idempotent-effect',
+  ])].sort(),
 ]);
 
 const byId = new Map(DELIVERY_SCENARIOS.map(scenario => [scenario.id, scenario]));

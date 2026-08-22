@@ -42,6 +42,7 @@ import {
   DEVELOPMENT_SCENARIOS,
   DEVELOPMENT_REQUIRED_UNIVERSE,
   DEVELOPMENT_PENDING_UNIVERSE,
+  DEVELOPMENT_PLATFORM_FAULT_EDGES,
 } from './development-scenario-pack.mjs';
 import {
   DELIVERY_SCENARIOS,
@@ -70,7 +71,7 @@ const WORKSHOPS = Object.freeze([
     scenarios: DEVELOPMENT_SCENARIOS,
     requiredUniverse: DEVELOPMENT_REQUIRED_UNIVERSE,
     pendingUniverse: DEVELOPMENT_PENDING_UNIVERSE,
-    platformFaultEdges: [],
+    platformFaultEdges: DEVELOPMENT_PLATFORM_FAULT_EDGES,
   },
   {
     id: 'delivery',
