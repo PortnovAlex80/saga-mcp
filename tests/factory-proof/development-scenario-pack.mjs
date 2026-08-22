@@ -202,6 +202,28 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
     ],
     coverageItems: positiveSpineCoverage(),
   }),
+  // D2 fan-out scheduling: the W9 graph chains every implementation item
+  // (impl-N depends on impl-N-1). The scheduler must start each dependent
+  // execution only after its dependency's final acceptance, and the number
+  // of concurrently running implementations must respect the concurrency cap.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'development/fanout-scheduling-order-capped',
+    kind: 'positive',
+    proves: ['dev.task-graph'],
+    coverageItems: ['D2:fanout-scheduling:dependency-order-and-concurrency-cap'],
+  }),
+  // D2 fan-in discipline: settlement is ALL-required — the development run
+  // may not settle (its final product may not exist) before EVERY required
+  // work-item workplace (implementation AND verification) holds a final
+  // acceptance. Early fan-in is blocked.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'development/fanin-all-required-before-settlement',
+    kind: 'positive',
+    proves: ['dev.task-graph'],
+    coverageItems: ['D2:fanin:completion-policy-all-blocks-early-fanin'],
+  }),
 ]);
 
 // --- Planned (not yet demonstrated) universe — honest tranche boundary ---
@@ -214,8 +236,6 @@ export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
   // lifecycle replay semantics for desk-bound git-change cells is an open
   // Development-universe item, NOT a delivery concern.
   'restart:development:git-change-desk-replay',
-  'D2:fanout-scheduling:dependency-order-and-concurrency-cap',
-  'D2:fanin:completion-policy-all-blocks-early-fanin',
   'D2:sibling-isolation:accepted-sibling-conserved-during-repair',
   'D3:impl-scope:file-outside-effective-scope-rejected',
   'D3:claim-monotonicity:silent-narrowing-rejected',
@@ -238,6 +258,23 @@ export const DEVELOPMENT_PLATFORM_FAULT_EDGES = Object.freeze([
   'K4:git-effect:crash-after-external-mutation-before-receipt',
   'K4:settlement:internal-exception-complete-failed',
 ]);
+
+// Normalize the trace's mixed timestamp formats (SQLite UTC
+// 'YYYY-MM-DD HH:MM:SS' vs ISO-8601 '...Z') to epoch ms so ordering
+// oracles compare real instants, not string shapes.
+function traceTimeToMs(value) {
+  if (value === null || value === undefined) return null;
+  const s = String(value);
+  const sqlite = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(s);
+  if (sqlite) {
+    return Date.UTC(
+      Number(sqlite[1]), Number(sqlite[2]) - 1, Number(sqlite[3]),
+      Number(sqlite[4]), Number(sqlite[5]), Number(sqlite[6]),
+    );
+  }
+  const parsed = Date.parse(s);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 const byId = new Map(DEVELOPMENT_SCENARIOS.map(scenario => [scenario.id, scenario]));
 
@@ -264,6 +301,144 @@ export function buildDevelopmentRuntimeCase(id) {
           cellAcceptedOracle('development-readiness-certification'),
           cellAcceptedOracle('development-verification'),
           certificateOracle(),
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'development/fanout-scheduling-order-capped':
+      return {
+        scenario,
+        // Same W9 chain graph as the spine: impl-N depends on impl-N-1.
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 320, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
+          {
+            // Dependency order: each implementation execution starts only
+            // after the PREVIOUS chain item's final acceptance, and at no
+            // instant do more implementations run than the drive's
+            // concurrency cap allows.
+            id: 'development.fanout.dependency-order-and-cap',
+            evaluate({ durableTrace, result }) {
+              const tasks = durableTrace.workIntents ?? [];
+              const implTasks = tasks
+                .filter(t => t.task_kind === 'development.code')
+                .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+              const executions = durableTrace.workerExecutions ?? [];
+              const acceptances = new Map(
+                (durableTrace.finalAcceptances ?? [])
+                  .map(row => [row.workplace_ref, String(row.accepted_at)]));
+              const byTask = new Map(executions.map(e => [e.task_id, e]));
+              const violations = [];
+              for (let i = 1; i < implTasks.length; i += 1) {
+                const prev = implTasks[i - 1];
+                const next = implTasks[i];
+                const prevAccepted = acceptances.get(prev.workplace_ref);
+                const nextExec = byTask.get(next.id);
+                if (!prevAccepted || !nextExec?.started_at) {
+                  violations.push({ pair: [prev.id, next.id], missing: true });
+                } else if (String(nextExec.started_at) < prevAccepted) {
+                  violations.push({
+                    pair: [prev.id, next.id],
+                    startedAt: nextExec.started_at,
+                    prevAccepted,
+                  });
+                }
+              }
+              const cap = result?.effectiveConcurrency ?? Infinity;
+              let peak = 0;
+              const implExecs = implTasks
+                .map(t => byTask.get(t.id))
+                .filter(Boolean)
+                .map(e => ({ start: String(e.started_at), end: String(e.finished_at ?? e.started_at) }))
+                .sort((a, b) => a.start.localeCompare(b.start));
+              const open = [];
+              for (const e of implExecs) {
+                while (open.length > 0 && open[0] <= e.start) open.shift();
+                open.push(e.end);
+                open.sort();
+                peak = Math.max(peak, open.length);
+              }
+              return {
+                passed: violations.length === 0 && peak <= cap,
+                evidenceRefs: implTasks.map(t => `task:${t.id}`),
+                details: {
+                  chainLength: implTasks.length,
+                  violations,
+                  peakConcurrentImplementations: peak,
+                  cap,
+                },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'development/fanin-all-required-before-settlement':
+      return {
+        scenario,
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 320, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
+          {
+            // Fan-in is ALL-required, pinned through the FROZEN candidate
+            // chain (certificate timestamps are second-truncated; sub-second
+            // ordering vs the last acceptances is not observable): the
+            // integrated-candidate product (the freeze) may only exist after
+            // every implementation workplace is accepted, and the settlement
+            // certificate must bind EXACTLY that frozen candidate hash.
+            id: 'development.fanin.settlement-binds-all-accepted-candidate',
+            evaluate({ durableTrace }) {
+              const devWorkplaces = new Set(
+                (durableTrace.workplaces ?? [])
+                  .filter(w => String(w.workplace_ref).includes('solution-development'))
+                  .map(w => w.workplace_ref));
+              const acceptances = new Map(
+                (durableTrace.finalAcceptances ?? [])
+                  .filter(row => devWorkplaces.has(row.workplace_ref))
+                  .map(row => [row.workplace_ref, traceTimeToMs(row.accepted_at)]));
+              const implAcc = [...acceptances.entries()]
+                .filter(([ref]) => ref.includes('development-implementation'));
+              const freeze = (durableTrace.processProducts ?? [])
+                .find(p => p.product_kind === 'development.integrated-candidate');
+              // +999ms: created_at truncates to seconds, accepted_at keeps ms.
+              const freezeAtMs = freeze ? traceTimeToMs(freeze.created_at) : null;
+              const implsBeforeFreeze = freezeAtMs !== null
+                && implAcc.length > 0
+                && implAcc.every(([, at]) => at !== null && at <= freezeAtMs + 999);
+              const cert = (durableTrace.processOutcomeCertificates ?? [])
+                .find(row => String(row.module_name).includes('development'));
+              let bindsFrozenCandidate = false;
+              try {
+                const payload = cert ? JSON.parse(String(cert.certificate_payload)) : null;
+                bindsFrozenCandidate = payload !== null
+                  && payload?.payload?.candidateHash === freeze?.product_hash
+                  && payload?.decision === 'verified';
+              } catch {
+                bindsFrozenCandidate = false;
+              }
+              const notAccepted = [...devWorkplaces]
+                .filter(ref => !acceptances.has(ref));
+              return {
+                passed: notAccepted.length === 0
+                  && implsBeforeFreeze
+                  && bindsFrozenCandidate,
+                evidenceRefs: [
+                  ...implAcc.map(([ref]) => `workplace:${ref}`),
+                  ...(freeze ? [`process-product:${freeze.id}`] : []),
+                  ...(cert ? [`outcome-certificate:${cert.id}`] : []),
+                ],
+                details: {
+                  developmentWorkplaces: devWorkplaces.size,
+                  accepted: acceptances.size,
+                  notAccepted,
+                  implementationsAcceptedBeforeFreeze: implsBeforeFreeze,
+                  settlementBindsFrozenCandidate: bindsFrozenCandidate,
+                  frozenCandidateHash: freeze?.product_hash ?? null,
+                },
+              };
+            },
+          },
           noStrandedExecutionOracle(),
         ],
       };
