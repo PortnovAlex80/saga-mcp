@@ -63,7 +63,20 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // CLI-missing keeps LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE). No new outcome
 // class, no retry-policy change — the digest bump re-checks every prior
 // receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.12.0';
+// 1.13.0 — K19 (ADR-083 §2.1, image/dependency identity remainder): the
+// environment identity is AUTHORITATIVE. A docker-substrate check resolves
+// the declared image to its OCI REGISTRY MANIFEST DIGEST (RepoDigests —
+// never a floating tag, never the local image id) and fails closed typed
+// ENVIRONMENT_IMAGE_IDENTITY_{MISSING,MALFORMED,REPO_MISMATCH,AMBIGUOUS,
+// PIN_MISMATCH} on bad evidence BEFORE any build; the derivation binds the
+// dependency lock identity (dependencyLockDigest over the sealed tree's
+// exact lock material — lock drift is a different environmentDigest); both
+// identities ride every observation and bind the deterministic receipt
+// digest. Identity failures are product `failed` (K19 owns identity), never
+// the ADR-089 substrate unknown (ADR-091/089 own availability; ADR-083 §6
+// split) and consume no substrate retry — the digest bump re-checks every
+// prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.13.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -86,4 +99,8 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'bounded-deterministic-in-check-substrate-retry-frozen-attempt-bound-and-schedule-for-docker-unavailable-and-docker-not-linux-only-then-typed-unknown-warrant-blocked-environment-with-attempt-evidence-no-seam-repair-issue-unknown-receipts-never-replayed-never-poison-a-later-pass-v1',
   midCheckReprobePolicy:
     'on-mid-check-executor-or-compose-step-failure-invalidate-the-cached-availability-probe-and-mechanically-re-probe-only-observed-unavailable-or-not-linux-routes-into-the-adr-089-bounded-retry-and-typed-unknown-observed-available-plus-linux-keeps-the-original-product-failure-never-classify-from-stderr-text-compose-down-stays-best-effort-distinct-from-invalid-config-enoent-cli-missing-keeps-compose-unavailable-v1',
+  imageIdentityPolicy:
+    'declared-docker-image-resolves-to-its-oci-registry-manifest-digest-from-repodigests-never-a-floating-tag-never-the-local-image-id-fail-closed-typed-before-any-build-on-missing-malformed-repo-mismatched-ambiguous-or-pin-mismatched-evidence-identity-failures-are-product-failed-never-the-substrate-unknown-and-consume-no-substrate-retry-k19-owns-identity-adr-091-owns-availability-v1',
+  dependencyLockPolicy:
+    'dependency-lock-identity-is-the-sha256-over-the-sealed-trees-exact-resolved-lock-material-and-binds-the-derived-environment-digest-and-every-receipt-lock-drift-is-a-different-environment-an-empty-lock-list-is-reported-honestly-never-fabricated-v1',
 });

@@ -24,6 +24,20 @@ import {
  * of the declared base plus the verbatim install command. Test mutations then
  * cannot prepare the separately-created serve container.
  *
+ * K19 / ADR-083 §2.1 base image IDENTITY (the image/dependency digest
+ * remainder): the AUTHORITATIVE identity of the declared base image is the OCI
+ * REGISTRY MANIFEST DIGEST — `sha256:<64hex>` observed from the pulled
+ * image's RepoDigests. NEVER the declared (floating) tag, and NEVER the local
+ * image id (`docker image inspect {{.Id}}` reports the local config digest;
+ * it stays in `resolvedBaseImageId` as PROVENANCE only). An image with no
+ * registry provenance (built or loaded locally) has NO registry manifest
+ * digest — that is missing identity evidence and fails closed with a typed
+ * ENVIRONMENT_IMAGE_IDENTITY_* code BEFORE any build. Identity failures are
+ * the declaration's defect (K19 owns identity); they are NOT substrate
+ * preconditions — ADR-091/ADR-089 own availability, and a daemon fault during
+ * the identity inspect still throws a plain error so the provider's mid-check
+ * classifier routes it by OBSERVATION.
+ *
  * Fail-closed policy (CC-GAP-9 / ADR-089): when the profile declares an image
  * but docker is unavailable (daemon down, not linux), the executor throws
  * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE / LOCAL_RUNNABILITY_DOCKER_NOT_LINUX.
@@ -43,6 +57,9 @@ import {
  * never a classification input. Host-executor steps (the sibling substrate in
  * the provider) have no daemon dependency and are never re-probed.
  */
+
+/** A well-formed OCI digest: the algorithm docker pins for manifests, 64 lowercase hex. */
+const OCI_DIGEST_RE = /^sha256:[a-f0-9]{64}$/u;
 
 /** `docker info` availability probe timeout (bounded so a hung daemon does not stall the gate). */
 const DOCKER_INFO_TIMEOUT_MS = 8_000;
@@ -223,6 +240,126 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Split an image reference (or a RepoDigest repository part) into its
+ * normalized repository name and optional digest pin. Normalization mirrors
+ * what `docker image inspect` reports in RepoDigests: the implicit registry
+ * docker.io collapses away, a bare name gains the `library/` namespace, and
+ * fully-qualified foreign registries (ghcr.io/…) keep their host. A tag
+ * (a `:` after the last `/`) is stripped — a tag is never identity.
+ */
+function repositoryOfReference(reference: string): { repository: string; digest: string | null } {
+  const at = reference.indexOf('@');
+  const digest = at >= 0 ? reference.slice(at + 1) : null;
+  const named = (at >= 0 ? reference.slice(0, at) : reference).toLowerCase();
+  const lastSlash = named.lastIndexOf('/');
+  const lastColon = named.lastIndexOf(':');
+  const untagged = lastColon > lastSlash ? named.slice(0, lastColon) : named;
+  if (untagged === '') {
+    return { repository: untagged, digest };
+  }
+  const firstSlash = untagged.indexOf('/');
+  const host = firstSlash === -1 ? '' : untagged.slice(0, firstSlash);
+  const hasHost = host === 'localhost' || host.includes('.') || host.includes(':');
+  if (!hasHost) {
+    return { repository: untagged.includes('/') ? untagged : `library/${untagged}`, digest };
+  }
+  if (host === 'docker.io' || host === 'index.docker.io') {
+    const rest = untagged.slice(firstSlash + 1);
+    return { repository: rest.includes('/') ? rest : `library/${rest}`, digest };
+  }
+  return { repository: untagged, digest };
+}
+
+/**
+ * K19 / ADR-083 §2.1 — resolve the AUTHORITATIVE base image identity: the OCI
+ * REGISTRY MANIFEST DIGEST observed for the declared reference, from the
+ * pulled image's RepoDigests. Pure over the observed evidence — the caller
+ * supplies what `docker image inspect --format '{{json .RepoDigests}}'`
+ * reported, so the authority is hermetically provable.
+ *
+ * Fail-closed, typed, BEFORE any build (ADR-083 §3 floating-tag prohibition):
+ *
+ *   - ENVIRONMENT_IMAGE_IDENTITY_MISSING — no RepoDigests at all: the image
+ *     exists only locally (built/loaded); it has no registry manifest digest,
+ *     and neither the tag nor the local image id may stand in for one;
+ *   - ENVIRONMENT_IMAGE_IDENTITY_MALFORMED — the evidence (or a declared
+ *     digest pin) is not `repo@sha256:<64hex>`;
+ *   - ENVIRONMENT_IMAGE_IDENTITY_REPO_MISMATCH — the evidence names only
+ *     OTHER repositories: substituted evidence for the declared reference;
+ *   - ENVIRONMENT_IMAGE_IDENTITY_AMBIGUOUS — divergent digests recorded for
+ *     the declared repository (stale/multi-pull history): identity is never
+ *     a pick-one guess;
+ *   - ENVIRONMENT_IMAGE_IDENTITY_PIN_MISMATCH — the reference was pinned to
+ *     a digest and the registry observed DIFFERENT content under it
+ *     (substitution under a pin).
+ *
+ * These are identity verdicts, not substrate preconditions: K19 owns identity,
+ * ADR-091/ADR-089 own availability (ADR-083 §6 split), so none of these codes
+ * enters the ADR-089 bounded substrate retry.
+ */
+export function resolveRegistryManifestDigest(
+  imageReference: string,
+  repoDigests: unknown,
+): string {
+  const declared = repositoryOfReference(imageReference);
+  const malformed = (detail: string): ReadinessExecutionError => new ReadinessExecutionError(
+    'ENVIRONMENT_IMAGE_IDENTITY_MALFORMED',
+    `the registry manifest digest evidence for the declared image "${imageReference}" is malformed: ${detail}. Expected RepoDigests entries of the form <repository>@sha256:<64 hex>.`,
+  );
+  if (declared.digest !== null && !OCI_DIGEST_RE.test(declared.digest)) {
+    throw malformed(
+      `the reference pins "${declared.digest}", which is not a well-formed OCI digest`,
+    );
+  }
+  if (!Array.isArray(repoDigests)) {
+    throw malformed('the RepoDigests observation is not an array');
+  }
+  const observed: Array<{ repository: string; digest: string }> = [];
+  for (const entry of repoDigests) {
+    if (typeof entry !== 'string' || entry.length === 0) {
+      throw malformed(`entry ${JSON.stringify(entry)}`);
+    }
+    const at = entry.indexOf('@');
+    if (at <= 0 || at === entry.length - 1) {
+      throw malformed(`entry "${entry}" carries no <repository>@<digest> split`);
+    }
+    const digest = entry.slice(at + 1);
+    if (!OCI_DIGEST_RE.test(digest)) {
+      throw malformed(`entry "${entry}" does not end in a well-formed sha256 digest`);
+    }
+    observed.push({ repository: repositoryOfReference(entry.slice(0, at)).repository, digest });
+  }
+  const matches = observed.filter(entry => entry.repository === declared.repository);
+  if (matches.length === 0) {
+    if (observed.length === 0) {
+      throw new ReadinessExecutionError(
+        'ENVIRONMENT_IMAGE_IDENTITY_MISSING',
+        `the declared image "${imageReference}" has NO registry manifest digest (RepoDigests is empty — a locally built or loaded image). The floating tag and the local image id are NOT environment identity (ADR-083 §2.1/§3); pull the image from its registry or declare a digest-pinned reference, then re-run.`,
+      );
+    }
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_REPO_MISMATCH',
+      `the registry digest evidence for the declared image "${imageReference}" names only other repositories (${observed.map(entry => entry.repository).sort().join(', ')}); evidence substituted for the declared reference fails closed.`,
+    );
+  }
+  const distinct = [...new Set(matches.map(entry => entry.digest))];
+  if (distinct.length > 1) {
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_AMBIGUOUS',
+      `the declared image "${imageReference}" carries divergent registry manifest digests (${distinct.sort().join(', ')}); stale or ambiguous identity evidence fails closed — re-pull the exact reference.`,
+    );
+  }
+  const resolved = distinct[0]!;
+  if (declared.digest !== null && declared.digest !== resolved) {
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_PIN_MISMATCH',
+      `the declared image reference pins ${declared.digest} but the registry manifest digest observed for it is ${resolved}; content substituted under a pinned digest fails closed.`,
+    );
+  }
+  return resolved;
+}
+
 export class DockerReadinessExecutor implements ReadinessExecutor {
   private readonly sessionId = randomBytes(8).toString('hex');
   private readonly preparedTag: string;
@@ -230,6 +367,12 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
   private readonly servedContainerName: string;
   private preparedImageId: string | null = null;
   private resolvedBaseImageId: string | null = null;
+  /**
+   * The AUTHORITATIVE base image identity (K19 / ADR-083 §2.1): the OCI
+   * registry manifest digest resolved from RepoDigests. Null only before
+   * prepare(); prepare() fails closed typed rather than leaving it null.
+   */
+  private baseImageDigest: string | null = null;
 
   constructor(
     private readonly contextDirectory: string,
@@ -309,6 +452,29 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       );
     }
     this.ensureDockerAvailable();
+    // K19 / ADR-083 §2.1 — resolve the AUTHORITATIVE base image identity
+    // BEFORE any build cost: the OCI REGISTRY MANIFEST DIGEST from the pulled
+    // image's RepoDigests. Never the tag, never the local image id. A daemon
+    // fault here (inspect fails) throws a PLAIN error so the provider's
+    // ADR-091 mid-check classifier routes it by observation — an identity
+    // verdict is only ever made over successfully observed evidence.
+    let repoDigests: unknown;
+    try {
+      repoDigests = JSON.parse(execFileSync(
+        'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', this.image],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
+          windowsHide: true, encoding: 'utf8',
+        },
+      ).trim()) as unknown;
+    } catch (error) {
+      throw new Error(commandFailureDetail(
+        'docker image inspect',
+        ['--format', '{{json .RepoDigests}}', this.image],
+        error,
+      ));
+    }
+    this.baseImageDigest = resolveRegistryManifestDigest(this.image, repoDigests);
     try {
       this.resolvedBaseImageId = execFileSync(
         'docker', ['image', 'inspect', '--format', '{{.Id}}', this.image],
@@ -462,6 +628,9 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
     return {
       substrate: 'docker',
       image: this.image,
+      // The AUTHORITATIVE identity (K19 / ADR-083 §2.1): the OCI registry
+      // manifest digest. The local image id below is PROVENANCE only.
+      ...(this.baseImageDigest !== null ? { baseImageDigest: this.baseImageDigest } : {}),
       ...(this.resolvedBaseImageId ? { resolvedImageId: this.resolvedBaseImageId } : {}),
       phaseModel: 'prepared-oci-image',
     };
@@ -473,6 +642,7 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
     this.removeImage(this.baseTag);
     this.preparedImageId = null;
     this.resolvedBaseImageId = null;
+    this.baseImageDigest = null;
   }
 
   private requirePreparedImage(): string {

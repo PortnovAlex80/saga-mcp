@@ -30,11 +30,14 @@
 //      never masks the up failure or its class; ENOENT CLI-missing stays
 //      LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE (never re-classified, never
 //      re-probed into the substrate route);
-//   f. version/digest fence: the provider presents `1.12.0`; the
-//      trusted_providers row migrates from the exact `1.11.0` baseline with
+//   f. version/digest fence: the provider presents `1.13.0` (moved from the
+//      ADR-091 `1.12.0` landing by the K19 image/dependency identity
+//      remainder — the fence property is unchanged, the pin moves with the
+//      deliberate bump); the trusted_providers row migrates from the exact
+//      `1.12.0` baseline (the recorded lineage still reaches `1.11.0`) with
 //      the `built-in:<provider digest>` trust basis; an unmigrated trust row
 //      and a receipt from a foreign provider digest are both rejected; the
-//      obligation compiler pins `factory.local-runnability.v1` @ `1.12.0`.
+//      obligation compiler pins `factory.local-runnability.v1` @ `1.13.0`.
 //
 // Repair arms (2026-08-22 audit):
 //   (a) not-linux arm — a mid-check re-probe observing available:true,
@@ -1080,22 +1083,25 @@ test('BLOCKING MUTATION (e): ENOENT CLI-missing stays LOCAL_RUNNABILITY_COMPOSE_
 });
 
 // ---------------------------------------------------------------------------
-// BLOCKING MUTATION (f) — version/digest fence at 1.12.0: provider version,
-// trusted_providers migration from the exact 1.11.0 baseline, foreign-digest
-// receipt rejection, unmigrated trust row rejection, and the obligation
-// compiler pin factory.local-runnability.v1 @ 1.12.0.
+// BLOCKING MUTATION (f) — version/digest fence at 1.13.0: provider version,
+// trusted_providers migration from the exact 1.12.0 baseline (ADR-091; the
+// recorded lineage still accepts 1.11.0), foreign-digest receipt rejection,
+// unmigrated trust row rejection, and the obligation compiler pin
+// factory.local-runnability.v1 @ 1.13.0. The ADR-091 fence property is
+// unchanged: every deliberate bump moves the pin, the baseline, and the
+// obligation norm in the SAME change.
 // ---------------------------------------------------------------------------
 
-test('BLOCKING MUTATION (f): the provider presents 1.12.0 with the digest fence intact', async () => {
-  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.12.0',
-    'the ADR-091 landing pins the provider at 1.12.0');
+test('BLOCKING MUTATION (f): the provider presents 1.13.0 with the digest fence intact', async () => {
+  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.13.0',
+    'the current landing (K19 image/dependency identity) pins the provider at 1.13.0');
   const db = new Database(':memory:');
   db.pragma('foreign_keys = OFF');
   db.exec(SCHEMA_SQL);
   try {
     const candidateSets = { read: () => null };
     const provider = createLocalRunnabilityCheckProvider({ db, candidateSets });
-    assert.equal(provider.version, '1.12.0');
+    assert.equal(provider.version, '1.13.0');
     assert.equal(provider.providerDigest, LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST);
     assert.equal(provider.providerId, 'factory.local-runnability.v1');
   } finally {
@@ -1103,37 +1109,45 @@ test('BLOCKING MUTATION (f): the provider presents 1.12.0 with the digest fence 
   }
 });
 
-test('BLOCKING MUTATION (f): the trusted_providers migration accepts the exact 1.11.0 baseline and installs 1.12.0 with the built-in digest basis', () => {
-  const db = new Database(':memory:');
-  db.exec(`
-    CREATE TABLE trusted_providers(
-      id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
-      category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
-    );
-  `);
-  // The recorded trustworthy baseline: a row last migrated by the 1.11.0
-  // landing (its recorded digest basis), category/determinism/scope/status
-  // exactly as the trusted policy demands.
-  db.prepare(
-    `INSERT INTO trusted_providers
-       (project_id,name,version,category,trust_basis,determinism,scope,status)
-     VALUES(NULL,'factory.local-runnability.v1','1.11.0','deterministic_evidence',
-       'built-in:legacy-1.11.0-digest','full','local-runnability','active')`,
-  ).run();
-  try {
-    ensureLocalRunnabilityProviderTrust(db);
-    const row = db.prepare(
-      'SELECT version, trust_basis, category, determinism, scope, status FROM trusted_providers WHERE name=?',
-    ).get('factory.local-runnability.v1');
-    assert.equal(row.version, '1.12.0', 'the row migrates 1.11.0 → 1.12.0 in place');
-    assert.equal(row.trust_basis, `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
-      'the trust basis is the CURRENT provider digest — the digest fence stands');
-    assert.equal(row.status, 'active');
-    // Idempotent: re-running over the migrated row is a no-op.
-    ensureLocalRunnabilityProviderTrust(db);
-  } finally {
-    db.close();
-  }
+test('BLOCKING MUTATION (f): the trusted_providers migration accepts the exact prior baselines (1.11.0 ADR-091 lineage, 1.12.0 immediate predecessor) and installs 1.13.0 with the built-in digest basis', () => {
+  // The recorded trustworthy baselines, one row per database (two rows for
+  // one name is the ambiguity guard, not a migration case): a row last
+  // migrated by the 1.11.0 CC-GAP-9 landing (the ADR-091 lineage) and one
+  // last migrated by the 1.12.0 ADR-091 landing (this change's immediate
+  // predecessor) — each with its recorded digest basis,
+  // category/determinism/scope/status exactly as the trusted policy demands.
+  const migrateFrom = baseline => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE trusted_providers(
+        id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+        category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+      );
+    `);
+    db.prepare(
+      `INSERT INTO trusted_providers
+         (project_id,name,version,category,trust_basis,determinism,scope,status)
+       VALUES(NULL,'factory.local-runnability.v1',?,'deterministic_evidence',
+         ?,'full','local-runnability','active')`,
+    ).run(baseline, `built-in:legacy-${baseline}-digest`);
+    try {
+      ensureLocalRunnabilityProviderTrust(db);
+      const row = db.prepare(
+        'SELECT version, trust_basis, status FROM trusted_providers WHERE name=?',
+      ).get('factory.local-runnability.v1');
+      assert.equal(row.version, '1.13.0',
+        `the ${baseline} row migrates → 1.13.0 in place`);
+      assert.equal(row.trust_basis, `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
+        'the trust basis is the CURRENT provider digest — the digest fence stands');
+      assert.equal(row.status, 'active');
+      // Idempotent: re-running over the migrated row is a no-op.
+      ensureLocalRunnabilityProviderTrust(db);
+    } finally {
+      db.close();
+    }
+  };
+  migrateFrom('1.11.0');
+  migrateFrom('1.12.0');
 });
 
 test('BLOCKING MUTATION (f): an unmigrated/foreign trust row is rejected (fail closed)', () => {
@@ -1157,7 +1171,7 @@ test('BLOCKING MUTATION (f): an unmigrated/foreign trust row is rejected (fail c
     assert.throws(
       () => ensureLocalRunnabilityProviderTrust(db),
       /LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT/u,
-      'an unmigrated trust row fails closed — the 1.12.0 ship without the migration is fenced out',
+      'an unmigrated trust row fails closed — a ship without the migration is fenced out',
     );
   } finally {
     db.close();
@@ -1216,14 +1230,14 @@ test('BLOCKING MUTATION (f): a receipt from a foreign provider digest is rejecte
   }
 });
 
-test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnability.v1 @ 1.12.0 (norm and manifest move together)', async () => {
+test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnability.v1 @ 1.13.0 (norm and manifest move together)', async () => {
   const contract = ACCEPTANCE_OBLIGATION_CONTRACTS
     .find(entry => entry.obligationId === 'factory.local-runnability');
   assert.ok(contract, 'the factory.local-runnability obligation exists');
-  assert.equal(contract.version, '1.12.0', 'the obligation pin is 1.12.0');
+  assert.equal(contract.version, '1.13.0', 'the obligation pin is 1.13.0');
   assert.equal(contract.expectedProtection.logicalId, 'factory.local-runnability.v1');
-  assert.equal(contract.expectedProtection.version, '1.12.0',
-    'the expected protection pins the installed provider at 1.12.0');
+  assert.equal(contract.expectedProtection.version, '1.13.0',
+    'the expected protection pins the installed provider at 1.13.0');
   assert.match(contract.protectedProperty, /mechanical daemon re-probe/u,
     'the protected property states the ADR-091 contract');
   // The compiler reconciles the norm against the INSTALLED protection
@@ -1231,10 +1245,10 @@ test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnabil
   // PROTECTION_VERSION_DIVERGENCE — the atomic-bump guard.
   const installed = await readInstalledProtections();
   assert.doesNotThrow(() => assertProtectionSetEquality(ACCEPTANCE_OBLIGATION_CONTRACTS, installed),
-    'the obligation pin and the installed 1.12.0 provider move in the SAME change');
+    'the obligation pin and the installed 1.13.0 provider move in the SAME change');
   const installedRunnability = installed.find(
     protection => protection.kind === 'check-provider'
       && protection.logicalId === 'factory.local-runnability.v1',
   );
-  assert.equal(installedRunnability.version, '1.12.0');
+  assert.equal(installedRunnability.version, '1.13.0');
 });

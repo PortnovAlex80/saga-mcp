@@ -471,9 +471,21 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // re-probe (observed unavailable/not-linux rides the ADR-089 path;
     // observed available+linux keeps the original product failure; never
     // stderr text) — the same three-class contract, no new outcome class.
+    // 1.13 (K19 / ADR-083 §2.1, image/dependency identity remainder) makes
+    // the environment identity AUTHORITATIVE: a docker-substrate check
+    // resolves the declared image to its OCI REGISTRY MANIFEST DIGEST
+    // (RepoDigests — never a floating tag, never the local image id) and
+    // fails closed typed (ENVIRONMENT_IMAGE_IDENTITY_*) on missing,
+    // malformed, repo-mismatched, ambiguous or pin-mismatched evidence; the
+    // derivation binds the dependency lock identity (dependencyLockDigest
+    // over the sealed tree's exact lock material); both identities bind the
+    // deterministic receipt digest. Identity stays with K19; availability
+    // stays with ADR-089/091 (ADR-083 §6 split — identity failures are
+    // product `failed`, never the substrate unknown, and consume no
+    // substrate retry).
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -872,13 +884,29 @@ function runLocalReadiness(
       directory,
       installCommand: profile.commands.installCommand,
     });
-    const environmentObservation: Record<string, unknown> = {
+    // K19 remainder (ADR-083 §2.1) — the identity evidence that rides every
+    // outcome and binds the deterministic receipt fence: the derived
+    // environment digest AND the dependency lock identity of the exact
+    // resolved lock material (an empty lock list is the honest statement that
+    // the artefact pins nothing).
+    const environmentIdentityEvidence = {
       environmentDigest: environment.environmentDigest,
+      dependencyLockDigest: environment.dependencyLock.dependencyLockDigest,
+    };
+    const environmentObservation: Record<string, unknown> = {
+      ...environmentIdentityEvidence,
+      ...(environment.dependencyLock.files.length > 0
+        ? { dependencyLockFiles: environment.dependencyLock.files.map(file => file.file) }
+        : {}),
       ...(environment.undeclaredImports.length > 0
         ? { undeclaredImports: [...environment.undeclaredImports] }
         : {}),
     };
     const environmentMessage = 'derived environment ' + environment.environmentDigest.slice(0, 16)
+      + (environment.dependencyLock.files.length > 0
+        ? '; dependency lock ' + environment.dependencyLock.dependencyLockDigest.slice(0, 16)
+          + ' (' + environment.dependencyLock.files.map(file => file.file).join(', ') + ')'
+        : '; no lock material in the sealed tree')
       + (environment.undeclaredImports.length > 0
         ? '; undeclared import(s) the derived environment must provide: '
           + environment.undeclaredImports.join(', ')
@@ -1011,6 +1039,12 @@ function runLocalReadiness(
           const substrateEvidence: Record<string, unknown> = {
             substrate: desc.substrate,
             ...(desc.image !== undefined ? { image: desc.image } : {}),
+            // K19 / ADR-083 §2.1 — the receipt binds the AUTHORITATIVE image
+            // identity (the OCI registry manifest digest the executor
+            // observed), never just the declared tag.
+            ...(desc.baseImageDigest !== undefined
+              ? { baseImageDigest: desc.baseImageDigest }
+              : {}),
             ...(desc.detectedBuildSystem !== undefined
               ? { detectedBuildSystem: desc.detectedBuildSystem }
               : {}),
@@ -1046,6 +1080,7 @@ function runLocalReadiness(
               steps,
               readinessKind: 'served',
               ...substrateEvidence,
+              ...environmentIdentityEvidence,
               ...serveEvidence,
               ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
               ...(coverage ? { testCoverage: coverage.observation } : {}),
@@ -1060,6 +1095,7 @@ function runLocalReadiness(
             steps,
             readinessKind: 'static',
             ...substrateEvidence,
+            ...environmentIdentityEvidence,
             ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
             ...(coverage ? { testCoverage: coverage.observation } : {}),
             note: 'runnability proven by the profile-stated install/test commands',
@@ -1079,6 +1115,9 @@ function runLocalReadiness(
         substrate.attempts,
         subject,
         {
+          // K19 — the derived identity binds the unknown receipt too: the
+          // environment the check WOULD have certified under stays named.
+          ...environmentIdentityEvidence,
           ...(coverage ? { testCoverage: coverage.observation } : {}),
         },
         coverage?.message,

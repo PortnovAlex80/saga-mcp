@@ -20,14 +20,37 @@
 // not languages — whatever the sealed tree's source files import as a
 // non-relative name is a derived tool claim; the builtins whitelist is the
 // runtime's own list, not a domain judgement.
+//
+// K19 image/dependency identity remainder (ADR-083 §2.1): the derived
+// identity additionally binds the EXACT resolved lock material
+// (`dependencyLockDigest`). Two artefacts that differ only in lock bytes are
+// DIFFERENT environments — a drifted lock never reuses an identity.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { builtinModules } from 'node:module';
 import { sha256Hex } from '../../shared/canonical-json.js';
 
 /** Source file suffixes the import scanner reads. */
 const SCANNABLE_RE = /\.(?:mjs|cjs|js|mts|cts|ts)$/u;
+
+/**
+ * The frozen v1 lock-material universe (ADR-083 §2.1 `dependencyLockDigest`):
+ * the standard resolved-lock files of the ecosystems the readiness flow
+ * installs (npm/pnpm/yarn/poetry/uv/pip). A registry-name list, not a domain
+ * judgement — the derivation hashes whatever EXACT lock bytes the sealed tree
+ * states, for whatever ecosystem produced them. Files NOT in this universe
+ * simply do not contribute lock identity (the tree honestly reports less).
+ */
+const LOCK_FILES = [
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'poetry.lock',
+  'uv.lock',
+  'requirements.txt',
+] as const;
 
 /** The runtime's own modules — never environment claims. */
 const BUILTINS = new Set<string>(builtinModules);
@@ -39,6 +62,18 @@ const IMPORT_PATTERNS = [
   /require\s*\(\s*['"]([^'"]+)['"]\s*\)/gu,
   /require\.resolve\s*\(\s*['"]([^'"]+)['"]\s*\)/gu,
 ];
+
+/**
+ * The dependency lock identity (ADR-083 §2.1): `dependencyLockDigest` is the
+ * content digest over the EXACT resolved lock material the sealed tree
+ * states. `files` names each lock file with its individual content digest —
+ * an empty list is the honest statement "this artefact pins no lock
+ * material", never a fabricated lock.
+ */
+export interface DependencyLockIdentity {
+  readonly files: readonly { readonly file: string; readonly digest: string }[];
+  readonly dependencyLockDigest: string;
+}
 
 export interface DerivedEnvironment {
   /** Every bare module specifier the sealed tree's sources import. */
@@ -53,6 +88,12 @@ export interface DerivedEnvironment {
    * hidden) at run time — the GDesign class.
    */
   readonly undeclaredImports: readonly string[];
+  /**
+   * The dependency lock identity of the exact resolved lock material. A tree
+   * whose lock bytes differ is a DIFFERENT environment — the identity never
+   * reuses across lock drift (K19 remainder, ADR-083 §2.1).
+   */
+  readonly dependencyLock: DependencyLockIdentity;
   /** The one immutable identity of this derived environment. */
   readonly environmentDigest: string;
 }
@@ -146,6 +187,31 @@ export function installCommandPackages(installCommand: string): string[] {
 }
 
 /**
+ * Read the dependency lock identity from the EXACT sealed tree. Pure over the
+ * directory's bytes — no network, no spawn, no resolution: the identity binds
+ * what the artefact STATES, it does not resolve anything. A lock file that
+ * exists but cannot be read is MISSING identity evidence and fails closed
+ * (typed) rather than silently computing an identity without it.
+ */
+function readDependencyLockIdentity(directory: string): DependencyLockIdentity {
+  const files: Array<{ file: string; digest: string }> = [];
+  for (const file of LOCK_FILES) {
+    const lockPath = join(directory, file);
+    if (!existsSync(lockPath)) continue;
+    let bytes: string;
+    try {
+      bytes = readFileSync(lockPath, 'utf8');
+    } catch (error) {
+      throw new Error(
+        `ENVIRONMENT_DEPENDENCY_LOCK_UNREADABLE: the sealed tree states lock material "${file}" but its bytes cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    files.push({ file, digest: sha256Hex(bytes) });
+  }
+  return { files, dependencyLockDigest: sha256Hex(files) };
+}
+
+/**
  * Derive the execution environment from the EXACT sealed tree (already
  * extracted) and the declared install command. Pure over the directory's
  * bytes — no network, no spawn, no registry: the derivation names what the
@@ -160,6 +226,7 @@ export function deriveExecutionEnvironment(input: {
   const declaredInstallPackages = input.installCommand !== null
     ? installCommandPackages(input.installCommand)
     : [];
+  const dependencyLock = readDependencyLockIdentity(input.directory);
   const covered = new Set([...manifestPackages, ...declaredInstallPackages]);
   const undeclaredImports = scannedImports.filter(pkg => !covered.has(pkg));
   return {
@@ -167,11 +234,13 @@ export function deriveExecutionEnvironment(input: {
     manifestPackages,
     declaredInstallPackages,
     undeclaredImports,
+    dependencyLock,
     environmentDigest: sha256Hex({
       scannedImports,
       manifestPackages,
       declaredInstallPackages,
       installCommand: input.installCommand,
+      dependencyLock,
     }),
   };
 }

@@ -299,30 +299,42 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     requiredCorpus: corpus('factory.authorized-observer'),
     allowedTerminalKinds: ['repair_required', 'failed'],
   }),
-  // v1.12.0 (2026-08-22, CC-GAP-9 residual / ADR-091): the runnability
+  // v1.13.0 (2026-08-23, K19 / ADR-083 §2.1 image/dependency identity
+  // remainder): the runnability provider's identity bumped 1.12.0 → 1.13.0 —
+  // a docker-substrate check resolves the declared image to its OCI REGISTRY
+  // MANIFEST DIGEST (RepoDigests; never a floating tag, never the local image
+  // id) and fails closed typed on missing/malformed/repo-mismatched/
+  // ambiguous/pin-mismatched evidence; the derivation binds the dependency
+  // lock identity (dependencyLockDigest over the sealed tree's exact lock
+  // material — lock drift is a different environmentDigest); both identities
+  // ride every observation and bind the deterministic receipt digest.
+  // Identity stays with K19 (ADR-083 §6): identity failures are product
+  // `failed`, never the ADR-089 substrate unknown, and consume no substrate
+  // retry. The obligation pin moves in the SAME change — a deliberate
+  // provider migration must update the norm and the manifest together or the
+  // compiler fires PROTECTION_VERSION_DIVERGENCE.
+  // (v1.12.0, 2026-08-22, CC-GAP-9 residual / ADR-091): the runnability
   // provider's identity bumped 1.11.0 → 1.12.0 (mid-check TOCTOU re-probe —
   // on an executor/compose step failure the cached availability probe is
   // invalidated and the daemon mechanically re-probed; only the OBSERVED
   // result routes: unavailable/not-linux rides the ADR-089 bounded retry and
   // typed unknown, available+linux keeps the original product `failed`;
   // classification never reads stderr text; compose `down` stays best-effort
-  // and distinct from invalid config). The obligation pin moves in the SAME
-  // change — a deliberate provider migration must update the norm and the
-  // manifest together or the compiler fires PROTECTION_VERSION_DIVERGENCE.
+  // and distinct from invalid config).
   // (v1.11.0, 2026-08-22, CC-GAP-9 / ADR-089: bounded in-check substrate
   // retry; typed unknown `warrant-blocked-environment` on exhaustion; unknown
   // receipts never replayed, never poison a later pass.)
   Object.freeze({
     obligationId: 'factory.local-runnability',
-    version: '1.12.0',
-    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-089 substrate retry', 'ADR-091 mid-check re-probe'],
+    version: '1.13.0',
+    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-083 environment identity', 'ADR-089 substrate retry', 'ADR-091 mid-check re-probe'],
     subjectKind: 'local-runnability-receipt',
-    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict; a mid-check executor/compose failure is classified only by a mechanical daemon re-probe — observed unavailable/not-linux rides the bounded retry and typed unknown, observed available+linux keeps the original product failure, and stderr text is never a classification input.',
+    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict; a mid-check executor/compose failure is classified only by a mechanical daemon re-probe — observed unavailable/not-linux rides the bounded retry and typed unknown, observed available+linux keeps the original product failure, and stderr text is never a classification input; the environment identity is authoritative — the declared image resolves to its OCI registry manifest digest (never a floating tag, never the local image id; bad identity evidence fails closed typed), the dependency lock identity binds the derived environment digest, and both bind the deterministic receipt digest (identity failures are product failed, never the substrate unknown).',
     constraints: [
       { kind: 'digestOf', field: 'subjectCandidateSetRef', of: 'sealed integrated candidate' },
       { kind: 'equality', field: 'probeOutcome', value: 'passed' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.12.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.13.0' },
     faultClasses: ['derived-evidence', 'effect-external'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),

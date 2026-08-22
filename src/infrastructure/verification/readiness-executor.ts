@@ -33,7 +33,20 @@ export interface ExecutorDescription {
   readonly substrate: 'host' | 'docker';
   /** Docker image reference, present only for the docker substrate. */
   readonly image?: string;
-  /** Exact local base-image id observed before Docker preparation. */
+  /**
+   * K19 / ADR-083 §2.1 — the AUTHORITATIVE base image identity: the OCI
+   * REGISTRY MANIFEST DIGEST (`sha256:<64hex>`) observed from the pulled
+   * image's RepoDigests. Never the declared (floating) tag and never the
+   * local image id. Present after prepare(); prepare() fails closed typed
+   * (ENVIRONMENT_IMAGE_IDENTITY_*) when the image has no registry manifest
+   * digest, so a docker receipt never exists without one.
+   */
+  readonly baseImageDigest?: string;
+  /**
+   * Exact local base-image id observed before Docker preparation. PROVENANCE
+   * ONLY (K19): the local config digest is NOT environment identity —
+   * `baseImageDigest` above is the authority.
+   */
   readonly resolvedImageId?: string;
   /** Physical phase model used to conserve install/test/serve semantics. */
   readonly phaseModel?: 'prepared-oci-image';
