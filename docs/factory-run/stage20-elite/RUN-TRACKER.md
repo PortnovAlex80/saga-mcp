@@ -297,3 +297,26 @@ resume path re-stamps the catalog limit).
   total=25334) — only the claude-runner spawn path emits it; the board-runs
   worker path (tasks 2+) does not. Post-mortem: telemetry belongs at the
   prompt-composition seam ALL spawn paths cross.
+
+=== 08:31Z — ELITE-4 TERMINAL failed@planner; ROOT CAUSE FIXED; ELITE-5 LIVE
+- **Elite-4 ended typed-failed@planner** (workplace
+  development-plan-task-graph terminal_reason=failed): the retry-exhaustion
+  path worked, F-A bounded the loop (12 attempts × 1-4 min, no prompt
+  snowball, no provider blowup — the run died lawfully).
+- **ROOT CAUSE (real production defect, fixed in 1dac22af):** the model
+  lawfully wrote ONE acceptance-contract artifact carrying 16 atomic
+  criteria (AC-1..16); the baseline flattens them to a shared artifactId;
+  `invalidCase` demanded artifactId-only UNIQUENESS and rejected the
+  PRODUCTION-BUILT INPUT on every planner gate — unrepairable by the model
+  (the input is not its submission). The type itself documents "several
+  criteria may share" the provenance artifact. Fix: uniqueness on the
+  composite (artifactId, code); regression test pins the Elite-4 shape
+  (16 codes on artifact 14) green + genuine duplicates red.
+- **Why our suite missed it:** every fixture (W9 + all 67 conformance
+  scenarios) emits one-artifact-per-AC; the handoff token was demonstrated
+  with a single producer shape. Class lesson: handoff contracts need
+  adversarial producer-diversity fixtures.
+- **ELITE-5 launched 08:30:52Z** on the FIXED dist (same DB, rerun,
+  launch-4b078e8a, pid 25360, controls 4/4 glm-4.6 preserved). Watch: the
+  planner gate must now pass the input contract and judge the graph on its
+  merits.
