@@ -27,11 +27,13 @@
       "files": [
         "src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts",
         "src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts",
+        "src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts",
         "src/infrastructure/workplace/sqlite-scope-widening-ledger.ts",
         "src/modules/development/infrastructure/sqlite-development-verification-adoption.ts",
         "src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts",
         "src/process-modules/persistence/sqlite-managed-node-submission-repository.ts",
         "src/process-modules/persistence/sqlite-node-run-repository.ts",
+        "src/process-modules/persistence/sqlite-process-product-repository-v2.ts",
         "src/process-modules/persistence/sqlite-protocol-run-repository.ts",
         "src/process-modules/persistence/sqlite-recovery-case-repository.ts"
       ]
