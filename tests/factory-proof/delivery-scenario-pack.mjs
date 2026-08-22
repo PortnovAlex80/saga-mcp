@@ -104,7 +104,6 @@ export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
   'L:observation:mismatch-prevents-released',
   'L:observe-before-retry:no-duplicate-non-idempotent-effect',
   'L:candidate-immutability:drift-after-certification-blocks',
-  'restart:delivery:idempotent-settlement',
   'K4:crash-after-effect-before-receipt',
 ]);
 
@@ -135,6 +134,16 @@ export const DELIVERY_SCENARIOS = Object.freeze([
     coverageItems: [
       'L:deferred:approval-required-without-external-action',
       coverageToken.transition('settle-delivery', 'complete-approval-required'),
+    ],
+  }),
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/restart-idempotent-settlement',
+    kind: 'recovery',
+    proves: ['effect.replay-capture', 'effect.deploy'],
+    coverageItems: [
+      'restart:delivery:idempotent-settlement',
+      'L:observe-before-retry:no-duplicate-non-idempotent-effect',
     ],
   }),
 ]);
@@ -186,6 +195,15 @@ export function buildDeliveryRuntimeCase(id) {
           },
           noStrandedExecutionOracle(),
         ],
+      };
+    case 'delivery/restart-idempotent-settlement':
+      // Driven by runDeliveryRestartProof (multi-start; see the drive).
+      return {
+        scenario,
+        launchMode: 'restart-proof',
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: {},
+        oracles: [],
       };
     default:
       throw new Error(`DELIVERY_SCENARIO_UNMAPPED: ${id}`);
