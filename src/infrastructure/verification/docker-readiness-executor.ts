@@ -33,6 +33,13 @@ import {
  * `failed`. This is deliberate: the product declared a docker substrate, so
  * the provider refuses to silently fall back to host; and a missing
  * environment precondition is not a product verdict.
+ *
+ * Mid-check TOCTOU (ADR-091): a daemon that dies AFTER the start-of-check
+ * probe passed surfaces as a failing executor step (pull, build, run, serve).
+ * The provider does NOT classify such failures from their text: it calls
+ * reprobeDockerAvailabilityAfterFailure() and only the OBSERVED result routes
+ * (unavailable/not-linux → the ADR-089 machinery above; available+linux → the
+ * original product `failed`). Stderr is never a classification input.
  */
 
 /** `docker info` availability probe timeout (bounded so a hung daemon does not stall the gate). */
@@ -65,9 +72,23 @@ const PROBE_ATTEMPT_TIMEOUT_MS = 600;
  * process would mask a down daemon as LOCAL_RUNNABILITY_DOCKER_PULL_FAILED,
  * recreating the Elite-6 failed-for-a-machine-fault shape, and a stale
  * negative would be replayed as attempt-1 evidence without any probe), again
- * between CC-GAP-9 in-check substrate retry attempts, and by process restart.
+ * between CC-GAP-9 in-check substrate retry attempts, by the ADR-091 mid-check
+ * re-probe (every executor/compose step failure invalidates and re-observes
+ * before classification), and by process restart.
  */
 let dockerAvailabilityCache: { available: boolean; linux: boolean } | null = null;
+
+/**
+ * TEST-ONLY seam for the `docker info` observation (ADR-091): when installed
+ * and returning a non-null observation, checkDockerAvailable reports it
+ * instead of spawning the docker CLI. This makes the mid-check re-probe
+ * CLASSIFICATION hermetically provable — the probe MECHANICS (bounded
+ * `docker info`, cache invalidation, typed observation) stay frozen in
+ * production code; only the observed RESULT is controllable, exactly like
+ * seedDockerAvailabilityCacheForTests controls the cached entry. Production
+ * never installs a probe.
+ */
+let dockerInfoProbeForTests: (() => { available: boolean; linux: boolean } | null) | null = null;
 
 /**
  * Invalidate the process-level docker availability cache. Called by the
@@ -105,6 +126,20 @@ export function seedDockerAvailabilityCacheForTests(
 }
 
 /**
+ * Install/remove the TEST-ONLY `docker info` observation override (ADR-091).
+ * Pass null to uninstall. The override sees EVERY genuine probe — the
+ * start-of-check probe, the between-attempt probes, and the mid-check
+ * re-probe — so tests can script the daemon's observed lifecycle
+ * (healthy-at-start, gone-at-failure) without any docker daemon. The bounded
+ * probe mechanics themselves are not injectable.
+ */
+export function installDockerInfoProbeForTests(
+  probe: (() => { available: boolean; linux: boolean } | null) | null,
+): void {
+  dockerInfoProbeForTests = probe;
+}
+
+/**
  * Probe whether the docker daemon is reachable and running a linux runtime.
  * Memoized per readiness-check attempt (invalidated at the start of every
  * check and between in-check substrate retry attempts — see
@@ -117,23 +152,47 @@ export function seedDockerAvailabilityCacheForTests(
 function checkDockerAvailable(): { available: boolean; linux: boolean } {
   if (dockerAvailabilityCache) return dockerAvailabilityCache;
   let result = { available: false, linux: false };
-  try {
-    const osType = execFileSync(
-      'docker',
-      ['info', '--format', '{{.OSType}}'],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: DOCKER_INFO_TIMEOUT_MS,
-        windowsHide: true,
-        encoding: 'utf8',
-      },
-    ).trim();
-    result = { available: true, linux: osType === 'linux' };
-  } catch {
-    result = { available: false, linux: false };
+  const overridden = dockerInfoProbeForTests !== null ? dockerInfoProbeForTests() : null;
+  if (overridden !== null) {
+    // TEST-ONLY observation override (see installDockerInfoProbeForTests):
+    // the mechanics (cache invalidation, typed observation) are production;
+    // only the observed result is scripted.
+    result = { available: overridden.available, linux: overridden.linux };
+  } else {
+    try {
+      const osType = execFileSync(
+        'docker',
+        ['info', '--format', '{{.OSType}}'],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: DOCKER_INFO_TIMEOUT_MS,
+          windowsHide: true,
+          encoding: 'utf8',
+        },
+      ).trim();
+      result = { available: true, linux: osType === 'linux' };
+    } catch {
+      result = { available: false, linux: false };
+    }
   }
   dockerAvailabilityCache = result;
   return result;
+}
+
+/**
+ * ADR-091 — the mid-check mechanical re-probe. Invalidates the process-level
+ * availability cache and re-observes the daemon with the SAME bounded probe
+ * (`docker info`, DOCKER_INFO_TIMEOUT_MS). Called by the provider on every
+ * executor/compose step failure: the returned OBSERVATION — never the failed
+ * command's stderr — is the sole classification input (observed unavailable /
+ * not-linux routes the failure into the ADR-089 bounded substrate retry;
+ * observed available+linux leaves the original product failure standing). A
+ * probe failure observes `unavailable` (fail-closed observation, never an
+ * exception path).
+ */
+export function reprobeDockerAvailabilityAfterFailure(): { available: boolean; linux: boolean } {
+  dockerAvailabilityCache = null;
+  return checkDockerAvailable();
 }
 
 /**

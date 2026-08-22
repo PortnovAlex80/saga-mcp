@@ -55,8 +55,10 @@ import {
 import {
   DockerReadinessExecutor,
   resetDockerAvailabilityCache,
+  reprobeDockerAvailabilityAfterFailure,
 } from './docker-readiness-executor.js';
 import {
+  isSubstratePreconditionError,
   runBoundedSubstrateRetry,
   substrateRetryMessage,
   substrateRetryObservation,
@@ -464,9 +466,14 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // environment-precondition codes from 'failed' to bounded in-check retry
     // then typed unknown `warrant-blocked-environment` — an honest outcome
     // semantics change on exactly that class; all other outcomes unchanged.
+    // 1.12 (CC-GAP-9 residual / ADR-091) adds the mid-check TOCTOU re-probe:
+    // executor/compose step failures are classified by a mechanical daemon
+    // re-probe (observed unavailable/not-linux rides the ADR-089 path;
+    // observed available+linux keeps the original product failure; never
+    // stderr text) — the same three-class contract, no new outcome class.
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0'].includes(existing.version ?? '')
+    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0'].includes(existing.version ?? '')
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -758,7 +765,6 @@ function runLocalReadiness(
 ): CheckProviderResult {
   const directory = mkdtempSync(join(tmpdir(), 'saga-local-readiness-'));
   const archive = join(directory, 'candidate.tar');
-  let executor: ReadinessExecutor | null = null;
   // M2-2 — ADDITIVE coverage evidence (report only, never enforcing): which
   // test files the sealed tree's canonical set contains vs which the declared
   // testCommand runs. Computed as soon as the profile validates; rides BOTH
@@ -766,6 +772,10 @@ function runLocalReadiness(
   let coverage: { observation: Record<string, unknown>; message: string } | null = null;
   // K19 — the derived-environment message, set inside try, read by catch.
   let finalEnvironmentMessage: string | undefined;
+  // ADR-091 — the substrate of the most recent attempt's executor, read by
+  // catch for the seam-issue localization (each attempt disposes its own
+  // executor, so the executor object itself does not outlive the attempt).
+  let lastExecutorSubstrate: 'host' | 'docker' | null = null;
   // SEAM-ARCHITECT Layer 2 (b) — which seam is being verified RIGHT NOW. On
   // failure this tracker (not a boolean) determines the typed SeamRepairIssue:
   // seamKind by phase, localization (phase/command/substrate), owner resolved
@@ -908,19 +918,6 @@ function runLocalReadiness(
     // (host or docker). When the profile declares environment.image, the docker
     // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
     // host path).
-    const phases: string[] = [];
-    // Typed per-step results (SEAM Layer 2 (a)): every step of the assembled
-    // whole's verification records a typed entry — never a bare boolean.
-    const steps: Array<{ step: string; status: 'passed' }> = [];
-    const step = (name: string): void => {
-      phases.push(name);
-      steps.push({ step: name, status: 'passed' });
-    };
-    // Prepare one environment from the exact candidate and the profile-stated
-    // install command. Docker freezes post-install state as a disposable OCI
-    // image; host uses its disposable tree/venv. prepare runs even when the
-    // profile states NO install command: the docker executor's prepare(null)
-    // still builds the prepared image (substrate preparation is not optional).
     if (effectiveInstallCommand !== null) {
       seam.seamKind = 'install-command';
       seam.phase = 'profile-install';
@@ -944,17 +941,135 @@ function runLocalReadiness(
     // (command failures, pull failures, product failures) propagate
     // unchanged and keep their 'failed' + typed seam repair-issue semantics
     // in the catch below.
+    //
+    // ADR-091 — MID-CHECK TOCTOU RE-PROBE. One attempt runs the ENTIRE
+    // substrate-dependent body (prepare → test → serve → compose), and every
+    // docker-executor/compose step failure inside it is classified by
+    // classifyMidCheckFailureByReprobe: a fresh mechanical observation of the
+    // daemon (never the failure's stderr). Observed unavailable/not-linux
+    // throws the typed precondition code FROM INSIDE the attempt, so the
+    // mid-check death re-enters this SAME bounded ADR-089 retry — no new
+    // retry policy, no new outcome class; observed available+linux rethrows
+    // the ORIGINAL error, which is not a precondition error and propagates
+    // out of the loop immediately with the unchanged product-failure
+    // semantics. Host-executor steps (no daemon dependency) are never
+    // re-probed.
     resetDockerAvailabilityCache();
     const substrate = runBoundedSubstrateRetry({
-      attempt: () => {
+      attempt: (): Record<string, unknown> => {
+        const phases: string[] = [];
+        // Typed per-step results (SEAM Layer 2 (a)): every step of the
+        // assembled whole's verification records a typed entry — never a
+        // bare boolean. Attempt-local: a retried attempt never accumulates
+        // phantom steps from the failed one.
+        const steps: Array<{ step: string; status: 'passed' }> = [];
+        const step = (name: string): void => {
+          phases.push(name);
+          steps.push({ step: name, status: 'passed' });
+        };
         const attemptExecutor = substrateOptions.selectExecutor(directory, profile);
+        const executorSubstrate = attemptExecutor.describe().substrate;
+        lastExecutorSubstrate = executorSubstrate;
+        // ADR-091 — wrap every docker-executor step: on failure, the
+        // mechanical re-probe classifies. The two frozen precondition codes
+        // are already observations — they pass through un-wrapped so the
+        // retry loop sees them directly.
+        const isDockerStep = executorSubstrate === 'docker';
+        const classified = <T>(operation: () => T): T => {
+          try {
+            return operation();
+          } catch (error) {
+            if (isDockerStep && !isSubstratePreconditionError(error)) {
+              classifyMidCheckFailureByReprobe(error);
+            }
+            throw error;
+          }
+        };
         try {
-          attemptExecutor.prepare(effectiveInstallCommand, 240_000);
-        } catch (error) {
+          // Prepare one environment from the exact candidate and the
+          // profile-stated install command. Docker freezes post-install state
+          // as a disposable OCI image; host uses its disposable tree/venv.
+          // prepare runs even when the profile states NO install command: the
+          // docker executor's prepare(null) still builds the prepared image
+          // (substrate preparation is not optional).
+          classified(() => attemptExecutor.prepare(effectiveInstallCommand, 240_000));
+          if (profile.commands.installCommand !== null) {
+            step('profile-install');
+          }
+          // Test (deterministic, from the profile) — the runnability
+          // authority. M1-b: when the declaration fell short of the canonical
+          // set, the EXECUTED command is the gate-derived one (same runner,
+          // canonical files included); otherwise it is the declared command
+          // verbatim.
+          seam.seamKind = 'test-command';
+          seam.phase = 'profile-test';
+          seam.command = effectiveTestCommand;
+          classified(() => attemptExecutor.runCommand(effectiveTestCommand, 600_000));
+          step('profile-test');
+          // Additive substrate evidence (free in the digest).
+          const desc = attemptExecutor.describe();
+          const substrateEvidence: Record<string, unknown> = {
+            substrate: desc.substrate,
+            ...(desc.image !== undefined ? { image: desc.image } : {}),
+            ...(desc.detectedBuildSystem !== undefined
+              ? { detectedBuildSystem: desc.detectedBuildSystem }
+              : {}),
+          };
+          if (profile.kind === 'served') {
+            // LR-04 — the SERVED profile states how the product serves. The
+            // provider starts the stated serve command, probes loopback, and
+            // shuts it down. The serve command comes from the explicit
+            // profile, NOT from package.json.scripts.start. ADDITIVE evidence
+            // only — runnability was already proven by the test command
+            // above; this proves the exact sealed object can also be started,
+            // answer on loopback, and stop.
+            const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
+            seam.seamKind = 'serve-start';
+            seam.phase = 'profile-serve';
+            seam.command = profile.serve.startCommand;
+            const serveEvidence = classified(
+              () => attemptExecutor.runServed(profile.serve.startCommand, 15_000, port),
+            );
+            step('profile-serve');
+            step('loopback-http-probe');
+            step('clean-shutdown');
+            // Compose verification of the assembled whole (SEAM Layer 2
+            // (a)). The declaration is TYPED on the frozen profile — never
+            // an inference from compose files incidentally present in the
+            // tree.
+            const composeObservation = runDeclaredCompose(
+              directory, profile, composeRunner, seam,
+            );
+            for (const name of composeObservation.phases) step(name);
+            return {
+              phases,
+              steps,
+              readinessKind: 'served',
+              ...substrateEvidence,
+              ...serveEvidence,
+              ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
+              ...(coverage ? { testCoverage: coverage.observation } : {}),
+            };
+          }
+          const composeObservation = runDeclaredCompose(
+            directory, profile, composeRunner, seam,
+          );
+          for (const name of composeObservation.phases) step(name);
+          return {
+            phases,
+            steps,
+            readinessKind: 'static',
+            ...substrateEvidence,
+            ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
+            ...(coverage ? { testCoverage: coverage.observation } : {}),
+            note: 'runnability proven by the profile-stated install/test commands',
+          };
+        } finally {
+          // The attempt owns its executor; release substrate resources
+          // (docker images/containers) when the attempt ends, success or
+          // failure. Best-effort: a dispose failure must not mask the result.
           try { attemptExecutor.dispose(); } catch { /* best-effort cleanup */ }
-          throw error;
         }
-        return attemptExecutor;
       },
       betweenAttempts: resetDockerAvailabilityCache,
       ...(substrateOptions.sleep ? { sleep: substrateOptions.sleep } : {}),
@@ -970,83 +1085,30 @@ function runLocalReadiness(
         finalEnvironmentMessage,
       );
     }
-    executor = substrate.result;
-    if (profile.commands.installCommand !== null) {
-      step('profile-install');
-    }
-    // Test (deterministic, from the profile) — the runnability authority.
-    // M1-b: when the declaration fell short of the canonical set, the
-    // EXECUTED command is the gate-derived one (same runner, canonical files
-    // included); otherwise it is the declared command verbatim.
-    seam.seamKind = 'test-command';
-    seam.phase = 'profile-test';
-    seam.command = effectiveTestCommand;
-    executor.runCommand(effectiveTestCommand, 600_000);
-    step('profile-test');
-    // Additive substrate evidence (free in the digest).
-    const desc = executor.describe();
-    const substrateEvidence: Record<string, unknown> = {
-      substrate: desc.substrate,
-      ...(desc.image !== undefined ? { image: desc.image } : {}),
-      ...(desc.detectedBuildSystem !== undefined
-        ? { detectedBuildSystem: desc.detectedBuildSystem }
-        : {}),
-    };
-    if (profile.kind === 'served') {
-      // LR-04 — the SERVED profile states how the product serves. The provider
-      // starts the stated serve command, probes loopback, and shuts it down.
-      // The serve command comes from the explicit profile, NOT from
-      // package.json.scripts.start. ADDITIVE evidence only — runnability was
-      // already proven by the test command above; this proves the exact sealed
-      // object can also be started, answer on loopback, and stop.
-      const port = 20_000 + (Number.parseInt(subject.candidateHash.slice(0, 6), 16) % 20_000);
-      seam.seamKind = 'serve-start';
-      seam.phase = 'profile-serve';
-      seam.command = profile.serve.startCommand;
-      const serveEvidence = executor.runServed(profile.serve.startCommand, 15_000, port);
-      step('profile-serve');
-      step('loopback-http-probe');
-      step('clean-shutdown');
-      // Compose verification of the assembled whole (SEAM Layer 2 (a)). The
-      // declaration is TYPED on the frozen profile — never an inference from
-      // compose files incidentally present in the tree.
-      const composeObservation = runDeclaredCompose(
-        directory, profile, composeRunner, seam,
-      );
-      for (const name of composeObservation.phases) step(name);
-      return evidence('passed', subject, {
-        phases,
-        steps,
-        readinessKind: 'served',
-        ...substrateEvidence,
-        ...serveEvidence,
-        ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
-        ...(coverage ? { testCoverage: coverage.observation } : {}),
-      }, undefined, undefined, coverage?.message, finalEnvironmentMessage);
-    }
-    const composeObservation = runDeclaredCompose(
-      directory, profile, composeRunner, seam,
+    return evidence(
+      'passed',
+      subject,
+      substrate.result,
+      undefined,
+      undefined,
+      coverage?.message,
+      finalEnvironmentMessage,
     );
-    for (const name of composeObservation.phases) step(name);
-    return evidence('passed', subject, {
-      phases,
-      steps,
-      readinessKind: 'static',
-      ...substrateEvidence,
-      ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
-      ...(coverage ? { testCoverage: coverage.observation } : {}),
-      note: 'runnability proven by the profile-stated install/test commands',
-    }, undefined, undefined, coverage?.message, finalEnvironmentMessage);
   } catch (error) {
     // A ReadinessExecutionError carries a specific diagnostic code (e.g.
     // LOCAL_RUNNABILITY_DOCKER_PULL_FAILED) that the evidence function encodes
     // into a decodable check-diagnostic so the verifier's recovery feedback
-    // names the exact substrate failure. CC-GAP-9 / ADR-089: the two
-    // environment-precondition codes (DOCKER_UNAVAILABLE / DOCKER_NOT_LINUX)
-    // never reach this catch — the bounded in-check retry above returns the
-    // typed unknown `warrant-blocked-environment` outcome on exhaustion, so a
-    // missing environment precondition is never recorded as a product
-    // 'failed' verdict (the Elite-6 CC-00C F8/F10 defect).
+    // names the exact substrate failure. CC-GAP-9 / ADR-089 + ADR-091: the
+    // two environment-precondition codes (DOCKER_UNAVAILABLE /
+    // DOCKER_NOT_LINUX) never reach this catch — whether observed at the
+    // start-of-check probe or by the mid-check mechanical re-probe, the
+    // bounded in-check retry above returns the typed unknown
+    // `warrant-blocked-environment` outcome on exhaustion, so a missing
+    // environment precondition is never recorded as a product 'failed'
+    // verdict (the Elite-6 CC-00C F8/F10 defect). A mid-check failure whose
+    // re-probe observed the daemon AVAILABLE+LINUX is rethrown here as the
+    // ORIGINAL error (classifyMidCheckFailureByReprobe) — the substrate was
+    // healthy, so the failure is the product's or its declaration's.
     const isSubstrateError = error instanceof ReadinessExecutionError;
     const code = isSubstrateError ? error.code : undefined;
     const seamKind: SeamKind = isSubstrateError ? 'substrate-unavailable' : seam.seamKind;
@@ -1062,7 +1124,7 @@ function runLocalReadiness(
       buildSeamIssue(db, {
         seamKind: refined,
         phase: seam.phase,
-        substrate: executor?.describe().substrate ?? 'host',
+        substrate: lastExecutorSubstrate ?? 'host',
         command: seam.command,
         fileHints: extractFileHints(errorMessage(error)),
         summary: errorMessage(error).slice(0, 2000),
@@ -1071,11 +1133,72 @@ function runLocalReadiness(
       finalEnvironmentMessage,
     );
   } finally {
-    // Release substrate resources (docker volumes) before removing the temp
-    // directory. Best-effort: a dispose failure must not mask the real result.
-    try { executor?.dispose(); } catch { /* best-effort cleanup */ }
+    // Remove the disposable extraction tree. Substrate resources (docker
+    // images/containers) are released per-attempt inside the retry body
+    // above; a dispose failure there must not mask the real result.
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+/**
+ * ADR-091 — classify a mid-check executor/compose step failure by MECHANICAL
+ * RE-OBSERVATION of the daemon, never by reading the failure's text.
+ *
+ * Called at the existing executor/compose failure sites (the classified step
+ * wrappers in runLocalReadiness's retry attempt and the failed compose step
+ * branches in runDeclaredCompose). It invalidates the process-level docker
+ * availability cache and re-probes with the SAME bounded probe
+ * (reprobeDockerAvailabilityAfterFailure). ONLY the observation routes:
+ *
+ *   - observed UNAVAILABLE (probe failure observes unavailable) or NOT-LINUX:
+ *     throws the typed precondition code, which re-enters the EXISTING
+ *     ADR-089 bounded in-check substrate retry and, on exhaustion, the typed
+ *     unknown `warrant-blocked-environment` outcome — never product-failed;
+ *   - observed AVAILABLE+LINUX: rethrows the ORIGINAL error (bad image/tag,
+ *     invalid compose config, failing product install/test/serve command —
+ *     the substrate was healthy at classification time, so the failure is the
+ *     product's or its declaration's and REMAINS product `failed`; never
+ *     re-routed to unknown, never retried as substrate).
+ *
+ * The failed command's stderr is recorded as human-facing detail only — the
+ * class decision reads exactly two booleans of the observation. The
+ * observation and timestamp ride the evidence in BOTH directions (ADR-091
+ * pre-mortem #1: the failed-step evidence records the step failure AND the
+ * re-probe observation).
+ */
+function classifyMidCheckFailureByReprobe(error: unknown): never {
+  const observedAt = new Date().toISOString();
+  const observation = reprobeDockerAvailabilityAfterFailure();
+  const originalDetail = errorMessage(error).slice(0, 600);
+  if (!observation.available) {
+    throw new ReadinessExecutionError(
+      'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
+      'mid-check substrate failure re-classified by mechanical re-probe '
+        + `(observed at ${observedAt}: docker daemon UNAVAILABLE — the substrate `
+        + 'vanished after the availability probe passed; a machine fault, never a '
+        + 'product verdict). Original failing-step detail (human-facing only, '
+        + `never a classification input): ${originalDetail}`,
+    );
+  }
+  if (!observation.linux) {
+    throw new ReadinessExecutionError(
+      'LOCAL_RUNNABILITY_DOCKER_NOT_LINUX',
+      'mid-check substrate failure re-classified by mechanical re-probe '
+        + `(observed at ${observedAt}: docker daemon reachable but OSType is NOT `
+        + 'linux). Original failing-step detail (human-facing only, never a '
+        + `classification input): ${originalDetail}`,
+    );
+  }
+  // Observed available + linux: the failure stands as the ORIGINAL product
+  // failure. The observation is appended to the evidence (race detection per
+  // the ADR-091 pre-mortem); it never changes the class, and no retry is
+  // spent on it.
+  if (error instanceof Error) {
+    error.message += ` | ADR-091 mid-check re-probe observed docker available + linux `
+      + `at ${observedAt}; the substrate was healthy — the failure stands as the `
+      + 'original product failure';
+  }
+  throw error;
 }
 
 /**
@@ -1085,6 +1208,14 @@ function runLocalReadiness(
  * typed result; a failed step throws a plain Error whose message is the typed
  * detail (the seam tracker has already been set to the compose phase by the
  * caller). `down` always runs after `up` — clean shutdown even on failure.
+ *
+ * ADR-091: a failed compose step (config/up) is classified by the mechanical
+ * daemon re-probe — observed unavailable/not-linux rides the ADR-089 path;
+ * observed available+linux keeps the failure product `failed`. The ENOENT
+ * CLI-missing ReadinessExecutionError (LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE)
+ * is already typed and is NOT re-classified: the missing CLI keeps its own
+ * typed substrate code (ADR-091 §5). `down` is best-effort with no outcome: a
+ * failed down never masks the up result or its classification.
  */
 function runDeclaredCompose(
   directory: string,
@@ -1106,7 +1237,12 @@ function runDeclaredCompose(
   seam.command = `docker compose -f ${declared.file} config`;
   const config = composeRunner.configValidate(directory, declared);
   if (config.status === 'failed') {
-    throw new Error(config.detail ?? 'docker compose config validation failed');
+    // ADR-091 — classify by mechanical re-probe: an invalid compose config
+    // with the CLI present and the daemon observed healthy stays product
+    // `failed`; a daemon observed gone rides the ADR-089 substrate path.
+    classifyMidCheckFailureByReprobe(
+      new Error(config.detail ?? 'docker compose config validation failed'),
+    );
   }
   phases.push('compose-config-validate');
   if (composeModeFromEnvironment() === 'up') {
@@ -1123,7 +1259,11 @@ function runDeclaredCompose(
       } catch { /* best-effort; must not mask the up failure */ }
     }
     if (up.status === 'failed') {
-      throw new Error(up.detail ?? 'docker compose up failed');
+      // ADR-091 — classify by mechanical re-probe AFTER down has run: a
+      // failed down never masks the up failure or its classification.
+      classifyMidCheckFailureByReprobe(
+        new Error(up.detail ?? 'docker compose up failed'),
+      );
     }
     phases.push('compose-up-wait', 'compose-down');
   }

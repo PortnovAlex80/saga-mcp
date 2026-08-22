@@ -49,6 +49,7 @@ import { createDevelopmentReadinessMonotonicityCheckProvider } from '../../dist/
 import { createGitPort } from '../../dist/infrastructure/process-modules/git-machine-ports.js';
 import { ReadinessExecutionError } from '../../dist/infrastructure/verification/readiness-executor.js';
 import {
+  installDockerInfoProbeForTests,
   isDockerAvailableForReadiness,
   peekDockerAvailabilityCacheForTests,
   resetDockerAvailabilityCache,
@@ -436,6 +437,11 @@ test('provider: genuine non-precondition failures stay product-`failed` with the
   const { manifestDigest, submissionId } = insertDockerManifest(db);
   const candidateSets = manifestCandidateSets({ submissionId, manifestDigest });
   const prepareCalls = [];
+  // ADR-091: a non-precondition executor failure is classified by the
+  // mechanical re-probe — pin the observed daemon HEALTHY so this proof
+  // pins the available+linux direction (bad image/tag stays product
+  // `failed`) on every machine, daemon or no daemon.
+  installDockerInfoProbeForTests(() => ({ available: true, linux: true }));
   try {
     const provider = createLocalRunnabilityCheckProvider({
       db,
@@ -444,17 +450,22 @@ test('provider: genuine non-precondition failures stay product-`failed` with the
       substrateRetrySleep: () => {},
     });
     const result = await provider.run(RUN_ARGS(candidateSets.subjectRef));
-    // A pull failure is a deterministic substrate-config failure, NOT a
-    // missing environment precondition: the existing fail-closed 'failed'
-    // semantics are preserved exactly (single attempt, seam issue rides).
+    // A pull failure with the daemon OBSERVED healthy is a deterministic
+    // substrate-config failure, NOT a missing environment precondition: the
+    // existing fail-closed 'failed' semantics are preserved exactly (single
+    // attempt, seam issue rides).
     assert.equal(result.outcome, 'failed');
     assert.equal(prepareCalls.length, 1,
       'only the two frozen precondition codes are retried');
     const diagnostics = decodeDiagnostics(result);
     assert.equal(diagnostics[0].code, 'LOCAL_RUNNABILITY_DOCKER_PULL_FAILED');
+    assert.match(diagnostics[0].message, /ADR-091 mid-check re-probe observed docker available \+ linux/u,
+      'the healthy re-probe observation rides the failure evidence');
     assert.ok(result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
       'genuine failures keep their typed seam repair issue');
   } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
     db.close();
     rmSync(root, { recursive: true, force: true });
   }
@@ -687,6 +698,11 @@ test('control: a genuine product failure still escalates failed (upstream) throu
   const db = substrateStore(root);
   const { manifestDigest, submissionId } = insertDockerManifest(db);
   const candidateSets = manifestCandidateSets({ submissionId, manifestDigest });
+  // ADR-091: the failing docker-executor test step is classified by the
+  // mechanical re-probe — pin the observed daemon HEALTHY so this control
+  // pins the product-failure direction (available+linux → original failure)
+  // on every machine, daemon or no daemon.
+  installDockerInfoProbeForTests(() => ({ available: true, linux: true }));
   try {
     const failing = {
       prepare() {},
@@ -725,6 +741,8 @@ test('control: a genuine product failure still escalates failed (upstream) throu
     assert.equal(result.decision.verdict, 'failed',
       'genuine product failures keep the upstream failed → complete-failed route');
   } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
     db.close();
     rmSync(root, { recursive: true, force: true });
   }

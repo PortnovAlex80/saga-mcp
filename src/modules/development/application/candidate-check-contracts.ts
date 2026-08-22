@@ -53,7 +53,17 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // and NO seam repair issue. Outcome semantics change honestly: a missing
 // environment precondition is no longer a 'failed' product verdict — the
 // digest bump re-checks every prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.11.0';
+// 1.12.0 — CC-GAP-9 residual / ADR-091: readiness-substrate TOCTOU re-probe.
+// On a mid-check executor/compose step failure the cached availability probe
+// is invalidated and the daemon mechanically re-probed; ONLY the observed
+// result routes (observed unavailable/not-linux re-enters the ADR-089 bounded
+// retry/typed unknown path; observed available+linux keeps the ORIGINAL
+// product `failed`); classification never reads the failed command's stderr;
+// compose `down` stays best-effort and distinct from invalid config (ENOENT
+// CLI-missing keeps LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE). No new outcome
+// class, no retry-policy change — the digest bump re-checks every prior
+// receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.12.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -74,4 +84,6 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'receipts-bound-to-exact-candidate-bytes-candidatehash-commitsha-treehash-replay-across-manifests-conflict-on-failed-plus-passed-same-bytes-v1',
   substrateRetryPolicy:
     'bounded-deterministic-in-check-substrate-retry-frozen-attempt-bound-and-schedule-for-docker-unavailable-and-docker-not-linux-only-then-typed-unknown-warrant-blocked-environment-with-attempt-evidence-no-seam-repair-issue-unknown-receipts-never-replayed-never-poison-a-later-pass-v1',
+  midCheckReprobePolicy:
+    'on-mid-check-executor-or-compose-step-failure-invalidate-the-cached-availability-probe-and-mechanically-re-probe-only-observed-unavailable-or-not-linux-routes-into-the-adr-089-bounded-retry-and-typed-unknown-observed-available-plus-linux-keeps-the-original-product-failure-never-classify-from-stderr-text-compose-down-stays-best-effort-distinct-from-invalid-config-enoent-cli-missing-keeps-compose-unavailable-v1',
 });
