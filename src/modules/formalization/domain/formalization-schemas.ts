@@ -7,6 +7,7 @@ import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/p
 import {
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
+  type OrderConstraintClass,
   type OrderConstraintRegister,
 } from '../../../shared/constraint-register.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
@@ -119,6 +120,80 @@ export interface AcceptanceBaselineSnapshotPayload {
 
 export type AcceptanceCriticality = 'blocker' | 'degradable' | 'nice_to_have';
 
+/**
+ * ADR-088 (CC-GAP-6): the frozen constraint-coverage requirement relayed to
+ * Development inside the solution contract. Formalization owns the
+ * classification; the planner and the task-graph gate only inherit and
+ * enforce it. Carries exactly what the Development-side reverse diff and
+ * entrypoint-ownership conjunction need — register ids, classes,
+ * execution-class entrypoint files, and the TYPED waivers (brief
+ * dispositions with disposition='waived' and a non-empty reason).
+ *
+ * Present if and only if the case carries a (non-empty) constraint register;
+ * a registerless corpus freezes no block and stays grandfathered.
+ */
+export interface SolutionContractConstraintCoverage {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  readonly constraintRegisterRef: string;
+  readonly constraintRegisterDigest: string;
+  readonly entries: readonly {
+    readonly id: string;
+    readonly class: OrderConstraintClass;
+    /** Execution-class only (see OrderConstraintEntry.entrypointFiles). */
+    readonly entrypointFiles?: readonly string[];
+  }[];
+  /** Typed waivers — the only lawful escape hatch from the reverse diff. */
+  readonly waivedIds: readonly string[];
+}
+
+/**
+ * The A1 waiver rule shared by every consumer of the brief's constraint
+ * dispositions: a waiver counts ONLY with disposition='waived' AND a
+ * non-empty reason. Anything else is a reaction defect the A1 gate owns —
+ * never a coverage free pass.
+ */
+export function waivedConstraintIdsFromDispositions(
+  dispositions: Readonly<Record<string, unknown>> | undefined | null,
+): string[] {
+  if (!dispositions) return [];
+  const waivedIds: string[] = [];
+  for (const [id, value] of Object.entries(dispositions)) {
+    if (
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+      && (value as Record<string, unknown>).disposition === 'waived'
+      && typeof (value as Record<string, unknown>).reason === 'string'
+      && ((value as Record<string, unknown>).reason as string).trim().length > 0
+    ) {
+      waivedIds.push(id);
+    }
+  }
+  return waivedIds;
+}
+
+/**
+ * Build the frozen coverage block for the solution contract from the case's
+ * constraint-register binding and the accepted brief's dispositions (both
+ * already resolved by the settlement kernel — no new authority, no re-read
+ * of the order prose).
+ */
+export function buildSolutionContractConstraintCoverage(
+  binding: FormalizationConstraintRegisterBinding,
+  briefDispositions: Readonly<Record<string, unknown>> | undefined | null,
+): SolutionContractConstraintCoverage {
+  return {
+    constraintRegisterRef: binding.constraintRegisterRef,
+    constraintRegisterDigest: binding.constraintRegisterDigest,
+    entries: binding.constraintRegister.constraints.map(entry => ({
+      id: entry.id,
+      class: entry.class,
+      ...(entry.entrypointFiles && entry.entrypointFiles.length > 0
+        ? { entrypointFiles: [...entry.entrypointFiles] }
+        : {}),
+    })),
+    waivedIds: waivedConstraintIdsFromDispositions(briefDispositions),
+  };
+}
+
 export interface FormalizationSolutionContractPayload {
   schemaVersion: typeof SOLUTION_CONTRACT_CERTIFICATE_SCHEMA;
   processRunId: number;
@@ -136,6 +211,13 @@ export interface FormalizationSolutionContractPayload {
     ref: string;
     hash: string;
   };
+  /**
+   * ADR-088 (CC-GAP-6): the frozen constraint-coverage requirement
+   * Development inherits and enforces (reverse diff + entrypoint
+   * ownership). Absent when the corpus carries no constraint register —
+   * the sole grandfather condition. @see SolutionContractConstraintCoverage.
+   */
+  constraintRegisterCoverage?: SolutionContractConstraintCoverage;
   /** Exact immutable hand-off to Development. */
   acceptanceCriteria: readonly {
     /** Stable atomic criterion identity; distinct from its document container. */

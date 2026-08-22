@@ -402,6 +402,14 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         srs: '$.stages.solution-formalization.solutionContractPayload.srs',
         acceptanceCriteria:
           '$.stages.solution-formalization.solutionContractPayload.acceptanceCriteria',
+        // ADR-088 (CC-GAP-6): the WHOLE contract payload rides the case so
+        // Development can resolve the optional constraintRegisterCoverage
+        // block lazily (the strict JSON-path resolver cannot map optional
+        // source paths — same reason FormalizationCase carries the whole
+        // discoveryProposalPayload). The payload key always exists for a
+        // formalized stage, so in-flight upgrades keep resolving.
+        solutionContractPayload:
+          '$.stages.solution-formalization.solutionContractPayload',
         repositories: '$.development.repositories',
         policy: '$.development.policy',
         initiatedBy: { runtime: 'initiatedBy' },

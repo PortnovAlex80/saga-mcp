@@ -214,6 +214,102 @@ export interface DevelopmentRepositoryBinding {
   expectedBaseCommit: string;
 }
 
+/**
+ * ADR-088 (CC-GAP-6): the constraint-coverage requirement Development
+ * inherits from Formalization. Structural mirror of the solution contract's
+ * `constraintRegisterCoverage` block — re-declared here (never imported
+ * across workshop trees; same discipline as VerificationWarrantRef) and
+ * resolved lazily from the case's frozen `solutionContractPayload` by
+ * {@link resolveDevelopmentConstraintRegisterCoverage}.
+ */
+export interface DevelopmentConstraintRegisterCoverage {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  readonly constraintRegisterRef: string;
+  readonly constraintRegisterDigest: string;
+  readonly entries: readonly {
+    readonly id: string;
+    readonly class: 'execution' | 'material' | 'human';
+    /** Execution-class only — the product entrypoint files this constraint owns. */
+    readonly entrypointFiles?: readonly string[];
+  }[];
+  /** Typed waivers (disposition='waived' with a non-empty reason). */
+  readonly waivedIds: readonly string[];
+}
+
+/**
+ * Resolve the constraint-coverage requirement from the case's frozen
+ * solution-contract payload. Returns null when the corpus carries no
+ * register (the SOLE grandfather condition — empty diffs, typed legacy
+ * skips, green gates) or when the frozen payload predates the relay
+ * (legacy case; frozen evidence is never rewritten). Throws on a present
+ * but malformed block — a claimed register the gate cannot evaluate is a
+ * fail-closed contract violation, never a silent return to grandfathering.
+ */
+export function resolveDevelopmentConstraintRegisterCoverage(
+  developmentCase: DevelopmentCase,
+): DevelopmentConstraintRegisterCoverage | null {
+  const payload = developmentCase.solutionContractPayload;
+  if (!payload || typeof payload !== 'object') return null;
+  if (!Object.hasOwn(payload, 'constraintRegisterCoverage')) return null;
+  const raw = payload['constraintRegisterCoverage'];
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(
+      'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage must be an object',
+    );
+  }
+  const block = raw as Record<string, unknown>;
+  const constraintRegisterRef = block['constraintRegisterRef'];
+  const constraintRegisterDigest = block['constraintRegisterDigest'];
+  const entries = block['entries'];
+  const waivedIds = block['waivedIds'];
+  if (typeof constraintRegisterRef !== 'string' || constraintRegisterRef.trim() === ''
+    || typeof constraintRegisterDigest !== 'string' || constraintRegisterDigest.trim() === ''
+    || !Array.isArray(entries) || entries.length === 0
+    || !Array.isArray(waivedIds)
+    || waivedIds.some(id => typeof id !== 'string')) {
+    throw new Error(
+      'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage requires constraintRegisterRef, constraintRegisterDigest, a non-empty entries array and a string waivedIds array',
+    );
+  }
+  const parsedEntries = entries.map(entry => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage entries must be objects',
+      );
+    }
+    const row = entry as Record<string, unknown>;
+    const id = row['id'];
+    const entryClass = row['class'];
+    const classOk = entryClass === 'execution'
+      || entryClass === 'material' || entryClass === 'human';
+    if (typeof id !== 'string' || id.trim() === '' || !classOk) {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage entries require id and class execution|material|human',
+      );
+    }
+    const constraintClass = entryClass as 'execution' | 'material' | 'human';
+    const entrypointFiles = row['entrypointFiles'];
+    if (entrypointFiles === undefined || entrypointFiles === null) {
+      return { id, class: constraintClass };
+    }
+    if (!Array.isArray(entrypointFiles)
+      || entrypointFiles.some(file => typeof file !== 'string' || file.trim() === '')
+      || constraintClass !== 'execution') {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: entrypointFiles must be a non-empty-string array declared by execution-class entries only',
+      );
+    }
+    return { id, class: constraintClass, entrypointFiles: entrypointFiles as readonly string[] };
+  });
+  return {
+    constraintRegisterRef,
+    constraintRegisterDigest,
+    entries: parsedEntries,
+    waivedIds: waivedIds as readonly string[],
+  };
+}
+
 export interface DevelopmentCase {
   schemaVersion: typeof DEVELOPMENT_CASE_SCHEMA;
   projectId: number;
@@ -222,6 +318,15 @@ export interface DevelopmentCase {
     decision: 'formalized';
   };
   solutionContract: ContentAddressedReference;
+  /**
+   * ADR-088 (CC-GAP-6): the frozen formalization solution-contract payload,
+   * mapped whole (optional source paths cannot be mapped by the strict
+   * resolver). Development resolves the optional `constraintRegisterCoverage`
+   * block from it — the planner inherits the frozen classification; it never
+   * reads the register itself. Optional: legacy cases predate the relay and
+   * stay grandfathered (registerless semantics).
+   */
+  solutionContractPayload?: Readonly<Record<string, unknown>>;
   acceptanceBaselineHash: string;
   srs: ContentAddressedReference;
   acceptanceCriteria: readonly AcceptanceCriterionBinding[];
@@ -278,12 +383,17 @@ export interface CandidateIntegrationTarget {
  * validates all ids, dependencies, repository bindings and coverage, fills the
  * immutable lineage fields, computes graphHash, and persists TaskGraphSnapshot.
  */
-/** The planner-PROPOSED item shape: criterion keys only. The kernel stamps
- * provenance (sourceArtifactIds) and inherited relay fields at
- * canonicalization — the planner cannot propose them. */
+/**
+ * The planner-PROPOSED item shape: criterion keys only. The kernel stamps
+ * provenance (sourceArtifactIds) and the constraint relay
+ * (coveredConstraintIds) at canonicalization — the planner can neither
+ * propose nor forge either field (ADR-088 CC-GAP-6: the proposal shape MUST
+ * NOT re-admit `coveredConstraintIds`; decode trims and canonicalization
+ * derives it unconditionally from the frozen criteria).
+ */
 export type DevelopmentTaskGraphProposalItem = Omit<
   DevelopmentTaskGraphItem, 'sourceArtifactIds' | 'coveredConstraintIds'
-> & { coveredConstraintIds?: readonly string[] };
+>;
 
 export interface DevelopmentTaskGraphProposal {
   schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
@@ -653,6 +763,8 @@ export type DevelopmentReasonCode =
   | 'implementation-scope-overlap'
   | 'integration-source-partition-invalid'
   | 'verification-plan-coverage-gap'
+  | 'constraint-register-uncovered'
+  | 'constraint-entrypoint-unowned'
   | 'implementation-workset-missing'
   | 'implementation-workset-hash-invalid'
   | 'implementation-failed'

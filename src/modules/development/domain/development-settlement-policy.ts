@@ -11,6 +11,7 @@ import { decodeCheckDiagnostic } from '../../../process-modules/domain/workplace
 import {
   parseRepositoryScope,
   repositoryScopeCovers,
+  repositoryScopeContainsPath,
   repositoryScopesOverlap as sharedRepositoryScopesOverlap,
 } from '../../../shared/repository-scope.js';
 import {
@@ -25,6 +26,7 @@ import {
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
+  resolveDevelopmentConstraintRegisterCoverage,
   type AcceptanceVerificationWorkset,
   type ContentAddressedReference,
   type DevelopmentCase,
@@ -537,6 +539,73 @@ implements DevelopmentTaskGraphPolicyPort {
       );
     }
 
+    // ADR-088 (CC-GAP-6) — register-conditional planning admission. The sole
+    // grandfather condition is the registerless corpus (null resolution:
+    // empty diffs, green gates). When the frozen case carries a non-empty
+    // constraint register:
+    //   1. the reverse diff — register ids minus the union of KERNEL-DERIVED
+    //      coveredConstraintIds over the graph's items minus typed waivers —
+    //      must be empty (typed red `constraint-register-uncovered`, never a
+    //      skip); nominal criterion attachment satisfies nothing;
+    //   2. every entrypoint file declared by an execution-class register
+    //      entry must lie inside the frozen changeScopes of at least one
+    //      item whose kernel-derived coveredConstraintIds include that same
+    //      entry — the CONJUNCTION on one item (typed red
+    //      `constraint-entrypoint-unowned`): a wide decoy item that merely
+    //      contains the file while covering no such constraint does not
+    //      satisfy it, and a covering item owning none of the declared
+    //      entrypoint files does not satisfy it either.
+    const constraintRegisterCoverage
+      = resolveDevelopmentConstraintRegisterCoverage(developmentCase);
+    if (constraintRegisterCoverage) {
+      const waivedConstraints = new Set(constraintRegisterCoverage.waivedIds);
+      const coveredConstraints = new Set(
+        allItems.flatMap(item => item.coveredConstraintIds ?? []),
+      );
+      const uncoveredEntries = constraintRegisterCoverage.entries
+        .filter(entry => !waivedConstraints.has(entry.id)
+          && !coveredConstraints.has(entry.id));
+      if (uncoveredEntries.length > 0) {
+        pushIssue(
+          reasonCodes,
+          errors,
+          'constraint-register-uncovered',
+          'constraint register ids minus kernel-derived coveredConstraintIds minus typed waivers is non-empty'
+          + `; uncovered constraint ids: [${uncoveredEntries.map(entry => entry.id).sort().join(', ')}]`
+          + ' (the constraint register is the order\'s counted deliverable claim;'
+          + ' cover each constraint from a frozen criterion via SRS §D2 covered_constraint_ids'
+          + ' or waive it in the brief with a non-empty reason)',
+        );
+      }
+      const unownedEntrypoints: string[] = [];
+      for (const entry of constraintRegisterCoverage.entries) {
+        // A typed waiver subtracts the whole entry from enforcement (ADR-088
+        // pre-mortem 5: a fully waived register is empty for enforcement) —
+        // never a contradictory red.
+        if (entry.class !== 'execution' || !entry.entrypointFiles
+          || waivedConstraints.has(entry.id)) continue;
+        for (const file of entry.entrypointFiles) {
+          const owned = allItems.some(item =>
+            (item.coveredConstraintIds ?? []).includes(entry.id)
+            && item.changeScopes.some(scope => itemScopeContainsFile(scope, file)));
+          if (!owned) unownedEntrypoints.push(`${entry.id}:${file}`);
+        }
+      }
+      if (unownedEntrypoints.length > 0) {
+        pushIssue(
+          reasonCodes,
+          errors,
+          'constraint-entrypoint-unowned',
+          'execution-class entrypoint files not owned by an item covering the same constraint'
+          + `: [${unownedEntrypoints.sort().join(', ')}]`
+          + '; every declared entrypoint file must lie inside the frozen changeScopes of an item whose'
+          + ' kernel-derived coveredConstraintIds include that same constraint'
+          + ' (a wide item that merely contains the file while covering no such constraint does not'
+          + ' satisfy it — the owning item must both cover the constraint and contain the file)',
+        );
+      }
+    }
+
     const repositoryById = new Map(
       developmentCase.repositories.map(repository => [
         repository.projectRepositoryId,
@@ -596,6 +665,21 @@ export function repositoryScopesOverlap(left: string, right: string): boolean {
 
 function repositoryScopeContains(scope: string, requiredPath: string): boolean {
   return repositoryScopeCovers(scope, requiredPath);
+}
+
+/**
+ * ADR-088 (CC-GAP-6): does one frozen change scope CONTAIN a declared
+ * repository file (path containment, not scope equality)? Malformed scopes
+ * contain nothing — the dependency/scope validation above already rejects
+ * them; this helper must never become a second crash surface inside the
+ * entrypoint-ownership conjunction.
+ */
+function itemScopeContainsFile(scope: string, file: string): boolean {
+  try {
+    return repositoryScopeContainsPath(parseRepositoryScope(scope), file);
+  } catch {
+    return false;
+  }
 }
 
 function dependsTransitivelyOn(

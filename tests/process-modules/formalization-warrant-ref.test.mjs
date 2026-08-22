@@ -93,7 +93,7 @@ function srsContent() {
   ].join('\n');
 }
 
-function settlementFixture({ dispositions }) {
+function settlementFixture({ dispositions, orderConstraints = ORDER_CONSTRAINTS }) {
   const issued = [];
   const persisted = [];
   const deps = {
@@ -175,7 +175,7 @@ function settlementFixture({ dispositions }) {
     epicId: 1,
     processRunId: 2,
     input: {},
-    frame: { runInput: formalizationCase(ORDER_CONSTRAINTS) },
+    frame: { runInput: formalizationCase(orderConstraints) },
     heartbeat: () => {},
     initiatedBy: 'operator',
     node: { id: 'settle-formalization' },
@@ -267,4 +267,75 @@ test('readiness manifest contract rejects a malformed warrantRef', () => {
 
 test('readiness manifest without warrantRef still validates (retro-compat)', () => {
   assert.deepEqual(developmentReadinessManifestPayloadContract.validate(manifest()), []);
+});
+
+// ---- ADR-088 (CC-GAP-6): the frozen coverage block on the solution contract ---
+
+test('solution contract freezes the constraint-coverage block (entries + typed waivers)', () => {
+  const { persisted } = settlementFixture({ dispositions: DISPOSITIONS });
+  assert.equal(persisted.length, 1);
+  const coverage = persisted[0].constraintRegisterCoverage;
+  assert.ok(coverage, 'a register-bearing case must freeze constraintRegisterCoverage');
+  assert.equal(
+    coverage.constraintRegisterRef,
+    `constraint-register:${coverage.constraintRegisterDigest}`,
+  );
+  assert.deepEqual(
+    coverage.entries.map(entry => entry.id),
+    ['ord-c-001', 'ord-c-002', 'ord-c-003'],
+  );
+  assert.deepEqual(
+    coverage.entries.map(entry => entry.class),
+    ['execution', 'material', 'human'],
+  );
+  // The A1 waiver rule: only disposition='waived' WITH a non-empty reason counts.
+  assert.deepEqual(coverage.waivedIds, ['ord-c-003']);
+});
+
+test('solution contract carries execution-class entrypoint declarations into the coverage block', () => {
+  const withEntrypoints = [
+    {
+      class: 'execution',
+      text: 'npm start leads to an accessible running browser product',
+      evidence_ref: 'order.source_body',
+      entrypoint_files: ['index.html'],
+    },
+    ...ORDER_CONSTRAINTS.slice(1),
+  ];
+  const { persisted } = settlementFixture({
+    dispositions: DISPOSITIONS,
+    orderConstraints: withEntrypoints,
+  });
+  const coverage = persisted[0].constraintRegisterCoverage;
+  assert.ok(coverage);
+  assert.deepEqual(coverage.entries[0].entrypointFiles, ['index.html']);
+  assert.equal('entrypointFiles' in coverage.entries[1], false);
+});
+
+test('solution contract freezes NO coverage block without a register (sole grandfather condition)', () => {
+  const { deps } = settlementFixture({ dispositions: DISPOSITIONS });
+  const persistedRegisterless = [];
+  const handlers = createFormalizationProductionCellKernelHandlers({
+    ...deps,
+    solutionContractRepository: {
+      ...deps.solutionContractRepository,
+      persist: (payload) => {
+        persistedRegisterless.push(payload);
+        return deps.solutionContractRepository.persist(payload);
+      },
+    },
+  });
+  const result = handlers[FORMALIZATION_KERNEL_HANDLER_IDS.settle]({
+    projectId: 1,
+    epicId: 1,
+    processRunId: 2,
+    input: {},
+    frame: { runInput: formalizationCase(undefined) },
+    heartbeat: () => {},
+    initiatedBy: 'operator',
+    node: { id: 'settle-formalization' },
+  });
+  assert.equal(result.event, 'formalized');
+  assert.equal(persistedRegisterless.length, 1);
+  assert.equal('constraintRegisterCoverage' in persistedRegisterless[0], false);
 });

@@ -223,10 +223,14 @@ function canonicalItems(
   items: readonly DevelopmentTaskGraphProposalItem[],
   developmentCase: DevelopmentCase,
 ): DevelopmentTaskGraphItem[] {
-  // AC-drift relay: the kernel derives each item's coveredConstraintIds as
-  // the union over the FROZEN criteria the item references — the planner
-  // proposes acceptanceCriterionKeys only; coverage is inherited, never
-  // proposed, so it cannot be forged or silently dropped at the handoff.
+  // AC-drift relay (ADR-088 CC-GAP-6): the kernel derives each item's
+  // coveredConstraintIds UNCONDITIONALLY as the union over the FROZEN
+  // criteria the item references — the planner proposes
+  // acceptanceCriterionKeys only; coverage is inherited, never proposed, so
+  // it cannot be forged or silently dropped at the handoff. The proposal
+  // TYPE no longer re-admits the field; this strip also discards any
+  // runtime-supplied value on items that bypassed the decode boundary, so a
+  // forged set can never survive the spread into the frozen item.
   const criterionByKey = new Map(developmentCase.acceptanceCriteria
     .map(criterion => [acceptanceCriterionIdentity(criterion), criterion]));
   const coverageByCriterionKey = new Map<string, readonly string[]>();
@@ -250,8 +254,16 @@ function canonicalItems(
         .map(key => criterionByKey.get(key)?.artifactId)
         .filter((id): id is number => id !== undefined),
     )].sort((left, right) => left - right);
+    // Kernel-only relay authority: strip any planner-supplied value BEFORE
+    // the spread (decode already trims; this is the second, structural
+    // guard for directly-constructed proposal values).
+    const {
+      coveredConstraintIds: plannerSuppliedCoverage,
+      ...plannerItem
+    } = item as DevelopmentTaskGraphProposalItem & { coveredConstraintIds?: unknown };
+    void plannerSuppliedCoverage;
     return {
-      ...item,
+      ...plannerItem,
       acceptanceCriterionKeys: [...item.acceptanceCriterionKeys].sort(),
       sourceArtifactIds,
       dependsOnKeys: [...item.dependsOnKeys].sort(),

@@ -39,6 +39,7 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
+  buildSolutionContractConstraintCoverage,
   resolveFormalizationCaseConstraintRegister,
   type FormalizationCase,
   type FormalizationSolutionContractPayload,
@@ -246,15 +247,15 @@ function createSettlementHandler(
       // oracle): warrant phases diff against this frozen citation. Absent
       // entirely when the case carries no register (retro-compat).
       const constraintBinding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+      const briefDispositions
+        = deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
+          ?? {} as Readonly<Record<string, unknown>>;
       const warrantRef = constraintBinding
         ? {
             constraintRegisterRef: constraintBinding.constraintRegisterRef,
             constraintRegisterDigest: constraintBinding.constraintRegisterDigest,
-            dispositionsDigest: sha256Hex(
-              deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId) ?? {},
-            ),
-            dispositions: deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
-              ?? {} as Readonly<Record<string, unknown>>,
+            dispositionsDigest: sha256Hex(briefDispositions),
+            dispositions: briefDispositions,
           }
         : undefined;
       const certificatePayload = {
@@ -281,6 +282,7 @@ function createSettlementHandler(
           bundle,
           baseline.artifactRef,
           baseline.snapshotHash,
+          briefDispositions,
         );
         const persisted = deps.solutionContractRepository.persist(payload);
         productionRef = persisted.record.artifactRef;
@@ -366,6 +368,13 @@ export function buildSolutionContractPayload(
   bundle: SolutionContractBundle,
   baselineSnapshotRef: string,
   baselineSnapshotHash: string,
+  /**
+   * ADR-088 (CC-GAP-6): the accepted brief's constraint dispositions (the
+   * same lifecycle-scoped read the settlement's warrantRef uses) — the typed
+   * waivers frozen into the coverage block. Undefined when the port does not
+   * expose the read (no dispositions → nothing waived).
+   */
+  briefConstraintDispositions?: Readonly<Record<string, unknown>>,
 ): FormalizationSolutionContractPayload {
   const ids = [
     ...(bundle.prdArtifactId ? [bundle.prdArtifactId] : []),
@@ -395,6 +404,14 @@ export function buildSolutionContractPayload(
   );
   const criticalityByCode = parseD2CriticalityByAc(srsContent);
   const coveredIdsByCode = parseD2CoveredConstraintIdsByAc(srsContent);
+  // ADR-088 (CC-GAP-6): freeze the constraint-coverage requirement (register
+  // ids + classes + execution entrypoints + typed waivers) into the contract
+  // Development inherits. Present iff the case carries a register — the
+  // registerless corpus freezes nothing and stays grandfathered.
+  const constraintBinding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+  const constraintRegisterCoverage = constraintBinding
+    ? buildSolutionContractConstraintCoverage(constraintBinding, briefConstraintDispositions)
+    : undefined;
   const frozen = deps.baselineRepository.readByProcessRun(ctx.processRunId);
   if (!frozen) throw new Error('formalized contract has no frozen acceptance baseline');
   const criteria = frozen.payload.acceptanceCriteria ?? artifacts
@@ -424,6 +441,7 @@ export function buildSolutionContractPayload(
       ref: `artifact:${srs.id}`,
       hash: acceptedHash(srs),
     },
+    ...(constraintRegisterCoverage ? { constraintRegisterCoverage } : {}),
     acceptanceCriteria: criteria.map(artifact => {
       if (!artifact.code) {
         throw new Error(`accepted AC member ${artifact.artifactId} has no stable code`);

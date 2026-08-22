@@ -142,6 +142,31 @@ export function validateDiscoveryProposal(payload: unknown): DiscoveryProposalVa
         if (typeof row['evidence_ref'] !== 'string' || row['evidence_ref'].trim() === '') {
           errors.push(`order_constraints[${index}].evidence_ref must be a non-empty string`);
         }
+        // ADR-088 (CC-GAP-6): entrypoint declarations are execution-class
+        // only and must be repository-relative file paths — fail at the
+        // submission boundary, exactly like every other draft field (the
+        // register builder repeats the check fail-closed).
+        if (row['entrypoint_files'] !== undefined && row['entrypoint_files'] !== null) {
+          if (typeof row['class'] === 'string' && row['class'] !== 'execution') {
+            errors.push(
+              `order_constraints[${index}].entrypoint_files may only be declared by execution-class constraints`,
+            );
+          }
+          if (!Array.isArray(row['entrypoint_files'])) {
+            errors.push(
+              `order_constraints[${index}].entrypoint_files must be an array of repository-relative file paths`,
+            );
+          } else if (row['entrypoint_files'].length > 0) {
+            for (const file of row['entrypoint_files']) {
+              if (typeof file !== 'string' || file.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].entrypoint_files entries must be non-empty repository-relative file paths`,
+                );
+                break;
+              }
+            }
+          }
+        }
       });
     }
   }

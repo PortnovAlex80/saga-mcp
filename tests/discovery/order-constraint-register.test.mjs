@@ -18,6 +18,7 @@ import {
   ORDER_CONSTRAINT_CLASSES,
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
+  verifyOrderConstraintRegister,
 } from '../../dist/shared/constraint-register.js';
 import {
   validateDiscoveryProposal,
@@ -176,4 +177,108 @@ test('proposal without order_constraints still validates (retro-compat monotonic
 
 test('ORDER_CONSTRAINT_CLASSES is the closed class vocabulary', () => {
   assert.deepEqual([...ORDER_CONSTRAINT_CLASSES], ['execution', 'material', 'human']);
+});
+
+// ---- ADR-088 (CC-GAP-6): execution-class entrypoint declarations ---------
+
+const START_DRAFT = {
+  class: 'execution',
+  text: 'npm install plus npm start lead to an accessible running browser product',
+  evidence_ref: 'order.source_body',
+  entrypoint_files: ['index.html', 'server.js'],
+};
+
+test('execution-class drafts carry declared entrypoint files into the register entries', () => {
+  const register = buildOrderConstraintRegister([{ ...START_DRAFT }, { ...TS_DRAFT }]);
+  assert.ok(register);
+  assert.deepEqual(register.constraints[0].entrypointFiles, ['index.html', 'server.js']);
+  assert.equal('entrypointFiles' in (register.constraints[1] ?? {}), false);
+});
+
+test('entrypoint declarations are part of the register content identity', () => {
+  const withEntrypoints = buildOrderConstraintRegister([{ ...START_DRAFT }]);
+  const withoutEntrypoints = buildOrderConstraintRegister([{
+    class: START_DRAFT.class,
+    text: START_DRAFT.text,
+    evidence_ref: START_DRAFT.evidence_ref,
+  }]);
+  assert.ok(withEntrypoints && withoutEntrypoints);
+  assert.notEqual(withEntrypoints.registerDigest, withoutEntrypoints.registerDigest);
+});
+
+test('entrypoint declarations on non-execution classes fail closed with a typed error', () => {
+  assert.throws(
+    () => buildOrderConstraintRegister([{
+      ...TS_DRAFT,
+      entrypoint_files: ['index.html'],
+    }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID/,
+  );
+});
+
+test('malformed entrypoint declarations fail closed with typed errors', () => {
+  assert.throws(
+    () => buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: 'index.html' }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_FILES_INVALID/,
+  );
+  assert.throws(
+    () => buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: ['/abs/index.html'] }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID/,
+  );
+  assert.throws(
+    () => buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: ['../escape.js'] }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID/,
+  );
+  assert.throws(
+    () => buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: [42] }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID/,
+  );
+  assert.throws(
+    () => buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: ['a.js', 'a.js'] }]),
+    /ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID/,
+  );
+});
+
+test('an empty entrypoint_files list declares nothing (absent, not empty)', () => {
+  const register = buildOrderConstraintRegister([{ ...START_DRAFT, entrypoint_files: [] }]);
+  assert.ok(register);
+  assert.equal('entrypointFiles' in register.constraints[0], false);
+});
+
+test('verifyOrderConstraintRegister round-trips a built register (incl. entrypoints)', () => {
+  const register = buildOrderConstraintRegister([{ ...START_DRAFT }, { ...TS_DRAFT }]);
+  assert.ok(register);
+  const verified = verifyOrderConstraintRegister(JSON.parse(JSON.stringify(register)));
+  assert.deepEqual(verified, register);
+
+  assert.equal(verifyOrderConstraintRegister(undefined), null);
+  assert.equal(verifyOrderConstraintRegister(null), null);
+
+  const tampered = JSON.parse(JSON.stringify(register));
+  tampered.constraints[0].text = 'quietly changed';
+  assert.throws(
+    () => verifyOrderConstraintRegister(tampered),
+    /ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH/,
+  );
+});
+
+test('proposal validation rejects entrypoint_files on non-execution classes at the submission boundary', () => {
+  const result = validateDiscoveryProposal(baseProposal({
+    order_constraints: [{ ...TS_DRAFT, entrypoint_files: ['index.html'] }],
+  }));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some(error =>
+    error.includes('order_constraints[0].entrypoint_files may only be declared by execution-class')));
+
+  const nonArray = validateDiscoveryProposal(baseProposal({
+    order_constraints: [{ ...TS_DRAFT, entrypoint_files: 'index.html' }],
+  }));
+  assert.equal(nonArray.valid, false);
+  assert.ok(nonArray.errors.some(error =>
+    error.includes('order_constraints[0].entrypoint_files must be an array')));
+
+  const valid = validateDiscoveryProposal(baseProposal({
+    order_constraints: [{ ...START_DRAFT }, { ...TS_DRAFT }],
+  }));
+  assert.equal(valid.valid, true, valid.errors.join('; '));
 });

@@ -37,6 +37,7 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from './canonical-json.js';
+import { parseRepositoryFilePath } from './repository-scope.js';
 
 /** Schema version of the serialized register. */
 export const ORDER_CONSTRAINT_REGISTER_SCHEMA = 'factory.order-constraint-register.v1';
@@ -59,6 +60,17 @@ export interface OrderConstraintDraft {
   readonly class: OrderConstraintClass;
   readonly text: string;
   readonly evidence_ref: string;
+  /**
+   * ADR-088 (CC-GAP-6): repository-relative files an EXECUTION-class
+   * constraint declares as its product entrypoints (install -> start ->
+   * accessible running product). Optional; execution-class only. The
+   * Development planning gate requires every declared file to lie inside the
+   * frozen change scopes of an item whose kernel-derived
+   * `coveredConstraintIds` include this entry — a wide decoy item that merely
+   * contains the file does not satisfy it. Absent on legacy registers (no
+   * entrypoint obligation).
+   */
+  readonly entrypoint_files?: readonly string[];
 }
 
 /** The canonical, ID-assigned register entry (kernel-assigned camelCase). */
@@ -68,6 +80,8 @@ export interface OrderConstraintEntry {
   readonly class: OrderConstraintClass;
   readonly text: string;
   readonly evidenceRef: string;
+  /** @see OrderConstraintDraft.entrypoint_files — execution-class only. */
+  readonly entrypointFiles?: readonly string[];
 }
 
 /** The immutable, digest-pinned register. */
@@ -94,6 +108,45 @@ function digestEntries(entries: readonly OrderConstraintEntry[]): string {
 
 function padIndex(index: number): string {
   return String(index + 1).padStart(3, '0');
+}
+
+/**
+ * Validate one execution-class entrypoint declaration. Fail-closed: an
+ * entrypoint is a repository-relative FILE path inside the product tree —
+ * absolute paths, traversal and empty segments are typed errors, never
+ * silently trimmed (ADR-088: the ownership conjunction must be mechanical).
+ */
+function parseEntrypointFiles(
+  raw: unknown,
+  index: number,
+): readonly string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      `ORDER_CONSTRAINT_ENTRYPOINT_FILES_INVALID: order_constraints[${index}].entrypoint_files must be an array of file paths`,
+    );
+  }
+  if (raw.length === 0) return undefined;
+  const files = raw.map(file => {
+    if (typeof file !== 'string') {
+      throw new Error(
+        `ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID: order_constraints[${index}].entrypoint_files entries must be non-empty repository-relative file paths`,
+      );
+    }
+    try {
+      return parseRepositoryFilePath(file);
+    } catch {
+      throw new Error(
+        `ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID: order_constraints[${index}].entrypoint_files entry '${file}' is not a repository-relative file path`,
+      );
+    }
+  });
+  if (new Set(files).size !== files.length) {
+    throw new Error(
+      `ORDER_CONSTRAINT_ENTRYPOINT_FILE_INVALID: order_constraints[${index}].entrypoint_files declares duplicate paths`,
+    );
+  }
+  return files;
 }
 
 /**
@@ -138,11 +191,21 @@ export function buildOrderConstraintRegister(drafts: unknown): OrderConstraintRe
         `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED: order_constraints[${index}].evidence_ref must be a non-empty string`,
       );
     }
+    // ADR-088 (CC-GAP-6): entrypoint declarations are EXECUTION-class only.
+    // A material/human constraint naming product files is a typed draft
+    // defect at the submission boundary — never silently ignored.
+    const entrypointFiles = parseEntrypointFiles(draft['entrypoint_files'], index);
+    if (entrypointFiles && constraintClass !== 'execution') {
+      throw new Error(
+        `ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID: order_constraints[${index}].entrypoint_files may only be declared by execution-class constraints (got '${constraintClass}')`,
+      );
+    }
     entries.push({
       id: `ord-c-${padIndex(index)}`,
       class: constraintClass as OrderConstraintClass,
       text,
       evidenceRef,
+      ...(entrypointFiles ? { entrypointFiles } : {}),
     });
   }
   return {
@@ -166,6 +229,14 @@ export function orderConstraintRegisterRef(register: OrderConstraintRegister): s
  * register when the shape and digest hold, null when the value carries no
  * register (retro-compat), and throws on a digest mismatch (tampering —
  * fail closed, never re-derive silently).
+ *
+ * CC-GAP-6 (ADR-088): the canonical entry shape (camelCase
+ * `OrderConstraintEntry`, optionally carrying execution-class
+ * `entrypointFiles`) is validated DIRECTLY here. The previous implementation
+ * round-tripped the entries through the snake_case draft builder, which
+ * would have rejected any canonical register (`evidence_ref` vs
+ * `evidenceRef`) — latent because the function had no callers; it becomes
+ * load-bearing the moment Development consumes persisted registers.
  */
 export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRegister | null {
   if (value === undefined || value === null) return null;
@@ -177,22 +248,58 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
       `ORDER_CONSTRAINT_REGISTER_INVALID: schemaVersion '${String(value.schemaVersion)}' is not ${ORDER_CONSTRAINT_REGISTER_SCHEMA}`,
     );
   }
-  const register = buildOrderConstraintRegister(value.constraints);
-  if (!register) {
+  const stored = value.constraints;
+  if (!Array.isArray(stored) || stored.length === 0) {
     throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register carries no constraints');
   }
+  const entries: OrderConstraintEntry[] = [];
+  stored.forEach((raw, index) => {
+    if (!isRecord(raw)) {
+      throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register entries must be objects');
+    }
+    const constraintClass = raw['class'];
+    if (
+      typeof constraintClass !== 'string'
+      || !(ORDER_CONSTRAINT_CLASSES as readonly string[]).includes(constraintClass)
+    ) {
+      throw new Error(
+        'ORDER_CONSTRAINT_REGISTER_INVALID: register entry class must be one of '
+        + `${ORDER_CONSTRAINT_CLASSES.join('|')}`,
+      );
+    }
+    if (typeof raw['text'] !== 'string' || raw['text'].trim().length === 0) {
+      throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register entry text must be a non-empty string');
+    }
+    if (typeof raw['evidenceRef'] !== 'string' || raw['evidenceRef'].trim().length === 0) {
+      throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register entry evidenceRef must be a non-empty string');
+    }
+    const entrypointFiles = parseEntrypointFiles(raw['entrypointFiles'], index);
+    if (entrypointFiles && constraintClass !== 'execution') {
+      throw new Error(
+        'ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID: register entry entrypointFiles may only be declared by execution-class constraints',
+      );
+    }
+    entries.push({
+      id: `ord-c-${padIndex(index)}`,
+      class: constraintClass as OrderConstraintClass,
+      text: raw['text'],
+      evidenceRef: raw['evidenceRef'],
+      ...(entrypointFiles ? { entrypointFiles } : {}),
+    });
+  });
+  // IDs are positional content identities; the stored rows must round-trip them.
+  if (stored.some((raw, index) =>
+    !isRecord(raw) || raw['id'] !== entries[index]!.id)) {
+    throw new Error('ORDER_CONSTRAINT_REGISTER_ID_MISMATCH');
+  }
+  const register: OrderConstraintRegister = {
+    schemaVersion: ORDER_CONSTRAINT_REGISTER_SCHEMA,
+    constraints: entries,
+    registerDigest: digestEntries(entries),
+  };
   const storedDigest = value.registerDigest;
   if (typeof storedDigest !== 'string' || storedDigest !== register.registerDigest) {
     throw new Error('ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH');
-  }
-  // IDs are positional content identities; the rebuild must round-trip them.
-  const stored = value.constraints as readonly unknown[];
-  if (
-    !Array.isArray(stored)
-    || stored.some((entry, index) =>
-      !isRecord(entry) || entry['id'] !== register.constraints[index]?.id)
-  ) {
-    throw new Error('ORDER_CONSTRAINT_REGISTER_ID_MISMATCH');
   }
   return register;
 }
