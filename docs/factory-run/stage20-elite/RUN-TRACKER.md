@@ -254,3 +254,10 @@ resume path re-stamps the catalog limit).
   RESULT: discovery 27/27, formalization 26/26 — both workshops FULLY GREEN
   on the rebuilt dist. Full suite + delivery/development spine re-runs in
   flight; then merge w0-waves → saga4.
+- **⛔ WATCHDOG GUARD (02:3xZ): the Elite-3 run is TERMINAL (failed@planner,
+  00:09:09Z) — do NOT restart it.** The night now belongs to the POST-ELITE
+  BATCH (verify → suite green → merge w0-waves → saga4 → push); a new factory
+  run would re-forbid builds and block the merge. The 20-min automation should
+  check BATCH progress (this file + git log in the worktree), not factory
+  liveness. Post-mortem owners: F-A planner prompt-snowball (bound the
+  accumulated gate feedback), F-B untaught overlap-ordering rule.
