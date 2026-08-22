@@ -136,16 +136,6 @@ export const DELIVERY_SCENARIOS = Object.freeze([
       coverageToken.transition('settle-delivery', 'complete-approval-required'),
     ],
   }),
-  Object.freeze({
-    schemaVersion: 'factory.proof.kernel-scenario.v1',
-    id: 'delivery/restart-idempotent-settlement',
-    kind: 'recovery',
-    proves: ['effect.replay-capture', 'effect.deploy'],
-    coverageItems: [
-      'restart:delivery:idempotent-settlement',
-      'L:observe-before-retry:no-duplicate-non-idempotent-effect',
-    ],
-  }),
 ]);
 
 const byId = new Map(DELIVERY_SCENARIOS.map(scenario => [scenario.id, scenario]));
@@ -195,15 +185,6 @@ export function buildDeliveryRuntimeCase(id) {
           },
           noStrandedExecutionOracle(),
         ],
-      };
-    case 'delivery/restart-idempotent-settlement':
-      // Driven by runDeliveryRestartProof (multi-start; see the drive).
-      return {
-        scenario,
-        launchMode: 'restart-proof',
-        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
-        driveOptions: {},
-        oracles: [],
       };
     default:
       throw new Error(`DELIVERY_SCENARIO_UNMAPPED: ${id}`);

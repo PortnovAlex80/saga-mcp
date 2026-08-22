@@ -39,12 +39,12 @@ test('CLOSED means set-equality: zero uncovered, zero pending', () => {
 
 test('SPINE means an honest pending ledger — the exact global uncovered set is ratcheted', () => {
   assert.equal(universe.totals.pendingTotal, 27,
-    '27 pending universe items across development (18) + delivery (9)');
+    '27 pending universe items across development (19, incl. the desk-replay seam) + delivery (8)');
   assert.equal(universe.globalUncovered.length, 27);
   const dev = universe.perWorkshop.find(w => w.workshop === 'development');
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
-  assert.equal(dev.pendingSize, 18, 'D2–D10 development universe');
-  assert.equal(dl.pendingSize, 9, 'delivery pending universe (deferred boundary covered)');
+  assert.equal(dev.pendingSize, 19, 'D2–D10 + the git-change desk-replay seam');
+  assert.equal(dl.pendingSize, 8, 'delivery pending universe (deferred covered; restart moved to the development seam)');
 });
 
 test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {

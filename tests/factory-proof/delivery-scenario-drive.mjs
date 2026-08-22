@@ -21,7 +21,6 @@ import { randomUUID } from 'node:crypto';
 import { runScenario } from './scenario-runner.mjs';
 import { buildCanonicalDeliveryProviders } from './canonical-proof-composition.mjs';
 import { buildDeliveryRuntimeCase } from './delivery-scenario-pack.mjs';
-import { runDeliveryRestartProof } from './delivery-restart-proof.mjs';
 
 const REPO_ROOT = process.cwd();
 const scenarioId = process.env.DELIVERY_SCENARIO ?? process.argv[2] ?? '';
@@ -146,16 +145,6 @@ try {
   // ── THE UNIFIED KERNEL ──
   const { productDeliveryLifecycle } = await import(pathToFileURL(path.resolve(
     REPO_ROOT, 'dist/process-modules/lifecycles/product-delivery-lifecycle.js')).href);
-  if (runtime.launchMode === 'restart-proof') {
-    const bundle = await runDeliveryRestartProof({
-      scenario: runtime.scenario,
-      bootstrap,
-      concurrencyCap: HARNESS_CONCURRENCY_CEILING,
-    });
-    process.stdout.write(JSON.stringify(bundle) + '\n');
-    await bootstrap.cleanup();
-    process.exit(bundle.verdict === 'pass' ? 0 : 1);
-  }
   const bundle = await runScenario({
     scenario: runtime.scenario,
     bootstrap,

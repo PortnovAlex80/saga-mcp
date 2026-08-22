@@ -207,6 +207,13 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
 // --- Planned (not yet demonstrated) universe — honest tranche boundary ---
 
 export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
+  // Found live by the delivery restart proof (2026-08-22): a replayed
+  // git-change work item carries the capsule's original commitSha, but the
+  // fresh execution's desk froze a NEW effective base — the implementation-
+  // scope check's merge-base discipline then rejects the replay. Cross-
+  // lifecycle replay semantics for desk-bound git-change cells is an open
+  // Development-universe item, NOT a delivery concern.
+  'restart:development:git-change-desk-replay',
   'D2:fanout-scheduling:dependency-order-and-concurrency-cap',
   'D2:fanin:completion-policy-all-blocks-early-fanin',
   'D2:sibling-isolation:accepted-sibling-conserved-during-repair',
