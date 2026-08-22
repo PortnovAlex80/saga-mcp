@@ -143,10 +143,14 @@ the only coverage mechanism, use existing RULE artifacts as the
 mechanics-spec carrier with typed binding, make `runnable-local` a frozen
 lifecycle classification that deterministically injects whole-product
 synthesis plus ordered smoke obligations, keep the LM archaeologist
-strictly advisory, and compile the five proof tokens into the single
-ADR-084 `AcceptanceObligationContract` family. Implementation is four
-bounded serialized packets (CC-IC-1..4) that start only after the CC-GAP-6
-seam lands.
+ strictly advisory, and compile FOUR new proof tokens into the single
+ ADR-084 `AcceptanceObligationContract` family while realizing
+ epic-clause coverage by correcting the direction of the existing
+ `frm.submission.acceptance-contract` (and the analogous
+ `frm.submission.srs-contract`) tokens. Implementation is four
+ bounded serialized packets (CC-IC-1..4) that start only after the CC-GAP-6
+ seam lands, with CC-IC-1 opening through a prerequisite v1 read-back
+ verifier repair stage.
 
 Pros:
 
@@ -299,7 +303,17 @@ Choose Option B. Normatively:
    content-addressed digest/ref. The v2 typed fields are entry content, so
    adding measurability/synthesis semantics to an entry produces a new
    digest — a new register revision, never an in-place mutation. v1
-   registers verify unchanged under their schema version.
+   registers verify unchanged under their schema version — CONDITIONAL on
+   the prerequisite read-back repair recorded in the implementation plan
+   (CC-IC-1 stage 0, mutation m0): the existing
+   `verifyOrderConstraintRegister` in `src/shared/constraint-register.ts`
+   is BROKEN today — it feeds persisted canonical camelCase entries
+   (`evidenceRef`) into `buildOrderConstraintRegister`, which validates the
+   worker-facing snake_case draft shape (`evidence_ref`), so verifying any
+   genuine persisted v1 register throws
+   `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED`; it is dead code (no production
+   caller) with no test. That repair must land before any v2 field is
+   added — v2 read-back may not be built on a broken v1 verifier.
 3. **Typed measurability — qualitative/experience obligations only.**
    Measurability semantics bind ONLY qualitative/experience obligations
    (kind `quality`): each such entry carries either a measurable
@@ -309,13 +323,22 @@ Choose Option B. Normatively:
    are not qualitative/experience obligations carry no measurability
    requirement; the obligation is not applied to every entry.
 4. **Runnable-local is a frozen lifecycle classification with
-   deterministic injection.** When the lifecycle classification is
+   deterministic, declared injection.** When the lifecycle classification is
    `runnable-local` (the product-build terminal), Discovery settlement
    deterministically injects the whole-product-synthesis obligation and the
-   ordered-smoke obligation as register entries. The engine never infers
-   obligations by rereading order or SRS prose; browser/canvas/any frontend
-   specifics arrive only through workshop-declared data (Conveyor Mental
-   Model §3; master plan §4).
+   ordered-smoke obligation as register entries. The injection rides a
+   DECLARED, DIGEST-PINNED injection table — an immutable, versioned,
+   content-addressed data declaration mapping the frozen classification to
+   the exact injected entry payloads, cited by digest from the settlement
+   record — with a NORMATIVE INTERLEAVE ORDER: proposal-derived entries
+   occupy `ord-c-001..NNN` in payload order and injected entries are
+   appended AFTER them in the declared table order (synthesis, then
+   ordered-smoke), never interleaved among proposal-derived rows, so
+   proposal-derived positional ids stay stable across injection-table
+   revisions and any reordering is a digest change (an honest revision).
+   The engine never infers obligations by rereading order or SRS prose;
+   browser/canvas/any frontend specifics arrive only through
+   workshop-declared data (Conveyor Mental Model §3; master plan §4).
 5. **Open questions are obligations with owners.** Settlement drafts
    kind `open-question` entries 1:1 and positionally from the proposal
    `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
@@ -325,22 +348,44 @@ Choose Option B. Normatively:
    waiver only — an author or model may at most propose a waiver; a mass
    author waiver is a typed red). Undisposed open questions are a typed red
    (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
-   strings.
+   strings. Dispositions are DIGEST-PINNED to the register they were
+   authored against: the disposition freeze carries the `registerDigest` it
+   disposes, and a disposition set authored against one register digest
+   applied to another is a typed red — positional `ord-c-NNN` dispositions
+   are never reusable across register revisions (today
+   `constraint_dispositions` is keyed positionally with no register-digest
+   binding; closing that gap is CC-IC-2, mutation m2d). And the arithmetic
+   stays honest: `resolved` and `deferred` are disposition STATES, not
+   coverage discharges — only the loud per-entry operator-attributed typed
+   waiver subtracts an entry from the required set, so a resolved or
+   deferred open-question entry REMAINS in (register minus typed waivers
+   ⊆ covered) until it is covered or loudly waived; resolution and
+   deferral never become silent waivers.
 6. **Coverage stays the ADR-088 mechanism.** v2 entries join the same
    kernel-derived `coveredConstraintIds` relay and the same SRS §D2 and
    §2.2 reverse diff (register ids minus union of covered ids minus typed
    waivers = empty set). The production requirement direction is
    (register ids minus typed waivers) ⊆ covered — NEVER the converse;
    surplus covered ids are not a conservation failure. Found production
-   defect recorded against the single proof-token family: the existing
+   defects recorded against the single proof-token family, BOTH owed
+   correction by the CC-IC implementation (CC-IC-4): (a) the existing
    `frm.submission.acceptance-contract` token in
    `tests/factory-proof/obligation-contracts.mjs` encodes the INVERSE
-   subset (`coveredConstraintIds` ⊆ `registerIds-minus-waived`);
-   correcting that token's direction is owed by the CC-IC implementation
-   (CC-IC-4), and the five new tokens must encode the production
-   direction above. Injected synthesis/smoke obligations are enforced
-   by the same planning-admission fail-close and entrypoint-ownership
-   conjunction; a nominal attachment remains non-coverage.
+   subset (`coveredConstraintIds` ⊆ `registerIds-minus-waived`); (b) the
+   analogous `frm.submission.srs-contract` direction defect — that token
+   carries NO register-coverage constraint at all, while the production
+   validator `srs-contract-validator.ts` enforces the production direction
+   (register minus waived ⊆ union of §D2 `covered_constraint_ids`), so the
+   token under-represents the installed protection. Both corrections
+   produce the UNCOVERED-RESIDUE-SUBSET-EMPTY form
+   (`member: registerIds-minus-waived` ⊆ the respective covered set), and
+   the new conservation tokens must encode the production
+   direction above. The corrections' acceptance is mutation-killable
+   (the direction-flip mutant dies on the register-side subset mutants),
+   never a blind operand flip. Injected synthesis/smoke obligations are
+   enforced by the same planning-admission fail-close and
+   entrypoint-ownership conjunction; a nominal attachment remains
+   non-coverage.
 7. **RULE artifacts are the mechanics-spec carrier.** A mechanics-bearing
    entry is CREATED at Discovery settlement as kind `mechanics` with NO
    `mechanicsRef` — the RULE artifact does not exist yet at that point,
@@ -352,13 +397,26 @@ Choose Option B. Normatively:
    trace-bound within the current lifecycle, and the binding's absence at
    coverage time is the typed red. No new mechanics-spec product
    family is created.
-8. **One proof-token family.** The five conservation obligations
-   (epic-clause coverage; unknowns owned; mechanics-spec required;
-   integration/synthesis AC for runnable-local; qualitative quantified)
-   compile as proof tokens into the single ADR-084
+8. **One proof-token family — FOUR new tokens plus two corrected existing
+   tokens.** The conservation obligations compile as follows: epic-clause
+   coverage (post-mortem item A) is realized by the CORRECTED EXISTING
+   `frm.submission.acceptance-contract` token — it already carries the
+   register-coverage constraint over the protection
+   `factory.submission-validator.formalization.acceptance-contract.v1`,
+   so correcting its direction IS the epic-trace obligation; no fifth
+   token is compiled for it, because a second obligation over an
+   already-claimed protection key throws `PROTECTION_OWNER_AMBIGUOUS` at
+   set-equality (`tests/factory-proof/installed-protection-reader.mjs`)
+   and a second parallel protection for the same enforced property
+   violates the no-parallel-vocabulary rule. The four NEW tokens are
+   `formalization.unknowns-owned`, `formalization.mechanics-spec-required`,
+   `formalization.integration-ac-for-runnable-lifecycle`, and
+   `formalization.qualitative-quantified`, compiled into the single ADR-084
    `AcceptanceObligationContract` family
    (`tests/factory-proof/obligation-contracts.mjs`) with mutants from the
-   existing mutation algebra. No second obligation registry.
+   existing mutation algebra; the analogous `frm.submission.srs-contract`
+   direction defect is corrected in the same CC-IC-4 landing. No second
+   obligation registry.
 9. **The LM archaeologist is advisory only.** Its reports are evidence for
    promotion decisions and may be stored as ordinary artifacts, but they
    never gate, never mutate the register, and never write authority. The
@@ -376,9 +434,23 @@ Choose Option B. Normatively:
     obligation-free order — an explicit typed no-obligations attestation
     emitted by settlement (a digest-pinned, distinctly-typed attestation,
     never a silent null binding). An absent required register binding on a
-    new v2 start is a typed red, never green. Continuations inherit the
-    original register ref and never re-extract. Any present register fails
-    closed on its obligations.
+     new v2 start is a typed red, never green. The certificate-to-
+     Formalization handoff carries exactly ONE register binding: every NEW
+     v2 FormalizationCase carries the register binding mapped from the
+     discovery certificate payload (which already carries the built
+     register), NEVER a rebuild from proposal text/payload as the v2
+     source of truth — the deterministic rebuild fallback in
+     `resolveFormalizationCaseConstraintRegister` is frozen-legacy-v1-only,
+     and a v2 case with a missing binding and no typed no-obligations
+     attestation is a typed red at case admission. The verification
+     warrant CROSS-BINDS the certificate/case digest it was issued against:
+     `VerificationWarrantRef` carries the `discoveryCertificateHash` (and
+     case identity) beside the register and dispositions digests, so a
+     warrant cannot be silently re-targeted at a different
+     certificate/case — register+dispositions self-consistency alone is
+     not identity (CC-IC-1 mutations m6b/m7). Continuations inherit the
+     original register ref and never re-extract. Any present register
+     fails closed on its obligations.
 11. **The corrected diagnosis is normative.** The post-mortem's
     transit-loss framing ("four things vanished at the bridge") is
     superseded: the full Discovery payload rides into Formalization, FR-9
@@ -398,7 +470,13 @@ Choose Option B. Normatively:
     (`docs/plans/CONFORMANCE-CLOSURE-PLAN.md` §7A), serialized after the
     CC-GAP-6 seam lands, through the single-writer
     `Constraint register and warrant seam` row, with exact files, tests,
-    and blocking mutations per packet and an explicit finish condition. It
+    and blocking mutations per packet and an explicit finish condition.
+    CC-IC-1 opens with a PREREQUISITE repair stage: the broken v1
+    read-back verifier (`verifyOrderConstraintRegister` in
+    `src/shared/constraint-register.ts` — persisted camelCase entries
+    validated against the snake_case draft shape; dead code, untested
+    today) is repaired and proven (mutation m0) BEFORE any v2 schema field
+    lands. It
     is not a vague parallel implementation program and not a permanently
     open architecture cycle. CC-IC is NOT required for CC-00C exit (the
     frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
@@ -417,7 +495,7 @@ Choose Option B. Normatively:
 | D. Mechanics/dynamics first-class | new mechanics-spec artifact family | Existing RULE artifacts are the mechanics-spec carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by`; no new product family |
 | E. Runnable lifecycle auto-requires integration + ordered smoke AC | inferred at Formalization | `runnable-local` frozen lifecycle classification; Discovery settlement deterministically injects whole-product-synthesis + ordered-smoke obligation entries; engine never infers by rereading prose |
 | F. Qualitative adjectives quantified | new measurable-translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral with reason; other entries carry no measurability requirement |
-| G. Five new conformance obligations | new obligation family | Compiled proof tokens in the single ADR-084 `AcceptanceObligationContract`; existing mutation algebra; blocking via existing CC-10B/CC-80 floors |
+| G. Five new conformance obligations | new obligation family | FOUR new proof tokens in the single ADR-084 `AcceptanceObligationContract` (unknowns-owned, mechanics-spec-required, integration-ac-for-runnable-lifecycle, qualitative-quantified); the fifth (epic-clause coverage) is realized by correcting the direction of the existing `frm.submission.acceptance-contract` token — and correcting the analogous `frm.submission.srs-contract` under-encoding in the same landing — rather than compiling a fifth token over an already-claimed protection key (`PROTECTION_OWNER_AMBIGUOUS`); existing mutation algebra; blocking via existing CC-10B/CC-80 floors |
 
 ## SMART goal and honest boundary
 
@@ -508,22 +586,31 @@ scope stays frozen.
 **Ex-ante expectations — IF this decision was right, I expect:**
 
 - At CC-IC-1 landing: a frozen legacy registerless corpus and a
-  v1-register corpus stay green in CI; every proposal unknown appears as
+  v1-register corpus stay green in CI, and a genuine persisted v1 register
+  round-trips through the repaired read-back verifier (the prerequisite
+  stage; digest tamper and id reorder stay typed reds); every proposal
+  unknown appears as
   an open-question register entry or settlement is red; a runnable-local
   declaration carries the injected synthesis/smoke entries or settlement
   is red; a new v2 Factory Start without non-null typed authority (a
   built register or an explicit typed no-obligations attestation) is red;
+  a v2 FormalizationCase whose register binding is supplied by the
+  proposal-payload rebuild fallback, or that carries no binding and no
+  attestation, is red; a warrant re-targeted across certificate/case
+  digests is red;
   a continuation that re-extracts a register instead of inheriting the
   original ref is red.
 - At CC-IC-2 landing: an undisposed open-question entry fails the
   disposition gate with per-ID guidance; a deferral without owner or
-  unblock criterion is red.
+  unblock criterion is red; dispositions carried across a registerDigest
+  change (positional ord-c reuse) are red.
 - At CC-IC-3 landing: removing a RULE binding from a mechanics-bearing
   constraint turns the coverage diff red.
-- At CC-IC-4 landing: the five tokens are set-equal with installed
-  protections, their mutants are killed, an archaeologist report cannot
-  alter the register/digest/relay/gates, and the blocking group includes
-  them.
+- At CC-IC-4 landing: the four new tokens are set-equal with installed
+  protections, their mutants are killed, the direction-flip mutants of
+  both corrected existing tokens are killed, an archaeologist report
+  cannot alter the register/digest/relay/gates, and the blocking group
+  includes them.
 - Within 90 days of CC-IC exit: a recurrence of the Elite-6 unknown-loss
   shape (an uncounted unknown reaching terminal) is mechanically red in a
   regression proof.
@@ -555,10 +642,33 @@ are advisory rather than binding.
 - `docs/plans/CONFORMANCE-CLOSURE-PLAN.md` — §3.2, §4.3, §5, §7A (CC-IC-1..4),
   CC-10B, CC-80, CC-81, §13
 - `docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md` — §3, §8
-- `src/shared/constraint-register.ts` — the register vocabulary
+- `src/shared/constraint-register.ts` — the register vocabulary, and the
+  recorded broken read-back verifier
+  (`verifyOrderConstraintRegister`: persisted camelCase entries validated
+  against the snake_case draft shape) repaired as the CC-IC-1 prerequisite
 - `src/modules/discovery/domain/discovery-domain-contracts.ts` —
   `DiscoveryProposalPayload.unknowns` (opaque `string[]` today)
+- `src/modules/discovery/application/discovery-production-cell-installation.ts`
+  — settlement builds the register onto the certificate payload (the
+  certificate-to-case binding source)
+- `src/modules/formalization/domain/formalization-schemas.ts` —
+  `FormalizationConstraintRegisterBinding` and the
+  `resolveFormalizationCaseConstraintRegister` rebuild fallback (frozen
+  legacy-v1-only under this decision)
+- `src/modules/formalization/application/formalization-contract-validator.ts`
+  — `constraint_dispositions` keyed positionally by `ord-c-NNN` with no
+  register-digest binding today (the m2d gap)
+- `src/modules/formalization/application/srs-contract-validator.ts` — the
+  production-direction §D2 register coverage that the
+  `frm.submission.srs-contract` token currently under-represents
+- `src/modules/development/domain/development-schemas.ts` —
+  `VerificationWarrantRef` (gains the certificate/case cross-bind)
 - `src/process-modules/lifecycles/product-build-lifecycle.ts` — the frozen
   `runnable-local` terminal classification
 - `tests/factory-proof/obligation-contracts.mjs` — the single
-  AcceptanceObligationContract family the CC-IC tokens join
+  AcceptanceObligationContract family the CC-IC tokens join; the inverted
+  `frm.submission.acceptance-contract` subset constraint and the
+  register-coverage-free `frm.submission.srs-contract` constraints
+- `tests/factory-proof/installed-protection-reader.mjs` —
+  `assertProtectionSetEquality` and `PROTECTION_OWNER_AMBIGUOUS` (why a
+  fifth token over an already-claimed protection key cannot compile)
