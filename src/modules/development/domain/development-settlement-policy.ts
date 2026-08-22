@@ -687,6 +687,17 @@ function acCodeLegend(
 }
 
 function invalidCase(developmentCase: DevelopmentCase): boolean {
+  // 2026-08-22 Elite-4 planner dead-end: formalization may lawfully accept
+  // ONE acceptance-contract artifact carrying MANY atomic criteria (codes
+  // AC-1..N) — the baseline flattens them all to the same artifactId, and an
+  // artifactId-only uniqueness demand rejected the PRODUCTION-built input on
+  // every planner attempt (invalid-input-contract loop the model cannot
+  // repair: the input is not its submission). Identity for the numeric
+  // criterion matching stays artifactId; UNIQUENESS is the composite
+  // (artifactId, code) — the same composite workspace-preparation already
+  // keys verification targets by.
+  const criterionKeys = developmentCase.acceptanceCriteria.map(
+    criterion => `${criterion.artifactId}:${criterion.code ?? ''}`);
   return developmentCase.schemaVersion !== DEVELOPMENT_CASE_SCHEMA
     || developmentCase.projectId <= 0
     || developmentCase.epicId <= 0
@@ -697,7 +708,7 @@ function invalidCase(developmentCase: DevelopmentCase): boolean {
     || !developmentCase.acceptanceBaselineHash
     || !validRef(developmentCase.srs)
     || developmentCase.acceptanceCriteria.length === 0
-    || !unique(developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity))
+    || !unique(criterionKeys)
     || developmentCase.acceptanceCriteria.some(criterion =>
       acceptanceCriterionIdentity(criterion) <= 0
       || criterion.artifactId <= 0

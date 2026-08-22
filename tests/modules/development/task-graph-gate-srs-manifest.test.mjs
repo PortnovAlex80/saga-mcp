@@ -298,3 +298,63 @@ test('task-graph gate merges manifest findings with policy failures for one-shot
   assert.equal(diagnostics.some(d => d.code === 'implementation-coverage-gap'), true);
   assert.equal(diagnostics.some(d => d.code === 'srs-module-uncovered'), true);
 });
+
+// ---------------------------------------------------------------------------
+// Elite-4 planner dead-end regression (2026-08-22): formalization may
+// lawfully accept ONE acceptance artifact carrying MANY atomic criteria
+// (the baseline flattens them to a shared artifactId). The artifactId-only
+// uniqueness demand rejected the PRODUCTION-built input on every planner
+// attempt — an unrepairable loop, because the input is not the model's
+// submission. Uniqueness is the composite (artifactId, code); identity for
+// numeric criterion matching stays artifactId.
+// ---------------------------------------------------------------------------
+
+test('policy ACCEPTS many atomic criteria sharing one provenance artifact (Elite-4 shape)', () => {
+  const input = developmentCase();
+  input.acceptanceCriteria = [
+    { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
+    { artifactId: 14, code: 'AC-2', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
+    { artifactId: 14, code: 'AC-3', acceptedHash: '5'.repeat(64), implementationRequired: false, criticality: 'blocker' },
+  ];
+  const items = [implementationItem('impl', { acceptanceCriterionIds: [14] })];
+  const withSharedArtifactVerification = {
+    ...proposal(items),
+    verificationItems: [14].map(id => ({
+      key: `verify-${id}`,
+      kind: 'verification',
+      taskKind: 'verification.ac',
+      executionSkill: 'saga-verifier',
+      executionMode: 'read_only_evidence',
+      projectRepositoryId: 1,
+      acceptanceCriterionIds: [id],
+      dependsOnKeys: ['impl'],
+      changeScopes: [],
+      required: true,
+      criticality: 'blocker',
+    })),
+  };
+  const graph = buildCanonicalDevelopmentTaskGraph(
+    input, withSharedArtifactVerification, {
+      schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+      ref: 'planner-submission:1',
+      hash: '7'.repeat(64),
+    });
+  const valid = new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
+  assert.equal(valid.valid, true,
+    'a multi-criterion artifact is a lawful formalization output: '
+    + valid.errors.join('; '));
+  assert.equal(
+    valid.reasonCodes.includes('invalid-input-contract'), false,
+    'the case itself must not be called invalid');
+});
+
+test('policy still REJECTS genuinely duplicate criteria (same artifact AND same code)', () => {
+  const input = developmentCase();
+  input.acceptanceCriteria = [
+    { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
+    { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
+  ];
+  const result = validateProposal(input, [implementationItem('impl', { acceptanceCriterionIds: [14] })]);
+  assert.equal(result.valid, false);
+  assert.equal(result.reasonCodes.includes('invalid-input-contract'), true);
+});
