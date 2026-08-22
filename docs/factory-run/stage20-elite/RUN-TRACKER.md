@@ -200,3 +200,27 @@ resume path re-stamps the catalog limit).
   the prompt may not surface the pairwise-overlap rule the validator
   enforces; (2) shim exit code 1 on Task 13 spawns (long-prompt crash?)
   — capture the worker log before recycling the sandbox.
+- **00:12Z — TERMINAL: Elite-3 completed with terminal_status=failed at
+  00:09:09Z. Typed, honest, budget-owned — the engine exited on its own
+  (no engine process remains; run-watchdog still sampling, harmless).**
+  Final: Discovery go → Formalization FORMALIZED (first night-build run to
+  clear formalization) → Development 12/13 cards done → the 13th (the
+  PLANNER re-run, development-plan-task-graph author) exhausted the
+  recovery budget and the lifecycle typed-failed. ROOT CAUSE CHAIN (evidence
+  in task13-evidence/, 3 worker logs preserved): (1) epochs 1–3 burned 9
+  gate rejections — graph closure/acyclicity first, then pairwise
+  "implementation items X and Y overlap without a dependency order";
+  (2) retry prompts accumulate rejection feedback UNBOUNDEDLY → prompt hit
+  436,283 bytes → opencode/Z.AI API rejects pre-tool: 8 shim retries, all
+  class=pre-tool-death (exit=1), ~3 min per spawn, 3 lost executions
+  00:00:31/00:03:23/00:06:16; (3) supervision respawned each time until the
+  budget terminalized the run. TWO PRODUCTION FINDINGS for the kernel
+  backlog: F-A "planner retry prompt must bound accumulated gate feedback
+  (summarize/trim) or the cell dies by API payload limit — unrecoverable
+  snowball"; F-B "overlap-ordering rule is enforced by the validator but
+  apparently not taught in the planner prompt — glm-4.6 cannot guess it in
+  9 attempts". An EARLIER planner submission was accepted in this same run
+  (Submission #20, digest 4c6d1a52…, 16 impl + 16 verification items) —
+  the failure mode is retry-loop-specific, not a hard capability wall.
+  Post-Elite batch UNBLOCKED: build → verify batch → coverage drives →
+  merge. Tripwire clean at terminal (2d6176e8…).
