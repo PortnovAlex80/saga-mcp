@@ -1,5 +1,11 @@
 import type { LifecycleDefinition } from '../domain/lifecycle.js';
 import { productDeliveryLifecycle } from './product-delivery-lifecycle.js';
+import {
+  sha256Hex,
+} from '../../shared/canonical-json.js';
+import type {
+  OrderConstraintInjectionTable,
+} from '../../shared/constraint-register.js';
 
 /**
  * MVP product-construction lifecycle.
@@ -37,3 +43,49 @@ export const productBuildLifecycle: LifecycleDefinition = {
           ],
         }),
 };
+
+/**
+ * ADR-090 (CC-IC-1): the frozen `runnable-local` terminal classification this
+ * lifecycle owns, and the DECLARED, DIGEST-PINNED obligation injection table
+ * mapped from it. The lifecycle that freezes the classification owns its
+ * injection declaration — this is DATA, not engine inference:
+ *
+ *  - immutable and versioned: the table is content-addressed by
+ *    RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST; a changed table is a
+ *    new digest (an honest revision), and Discovery settlement cites the
+ *    digest from the settlement record;
+ *  - consumed READ-ONLY by Discovery settlement, which appends the mapped
+ *    entries AFTER the proposal-derived block in the declared table order
+ *    (whole-product synthesis first, then ordered smoke) — never interleaved;
+ *  - domain-free (Conveyor Mental Model §3; master plan §4): no browser,
+ *    canvas, frontend or any workshop-specific vocabulary lives here; the
+ *    engine never infers obligations by rereading order or SRS prose.
+ */
+export const RUNNABLE_LOCAL_CLASSIFICATION = 'runnable-local';
+
+export const RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE: OrderConstraintInjectionTable = {
+  schemaVersion: 'factory.lifecycle-obligation-injection.v1',
+  classification: RUNNABLE_LOCAL_CLASSIFICATION,
+  entries: [
+    {
+      class: 'execution',
+      kind: 'synthesis',
+      text: 'the delivered product is synthesized and assembled as one whole that is runnable locally',
+      evidence_ref: 'lifecycle.classification.runnable-local',
+    },
+    {
+      class: 'execution',
+      kind: 'ordered-smoke',
+      text: 'an ordered smoke test performs the install step, then the start step, then reaches the running product',
+      evidence_ref: 'lifecycle.classification.runnable-local',
+    },
+  ],
+};
+
+/** Content-addressed identity of the declared table (stable for this content). */
+export const RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST: string = sha256Hex(
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+);
+
+/** Content-addressed ref cited by Discovery settlement records. */
+export const RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF = `lifecycle-obligation-injection:${RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST}`;

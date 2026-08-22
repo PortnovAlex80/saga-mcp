@@ -62,6 +62,12 @@ import {
   productDeliveryLifecycle,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import { productBuildLifecycle } from '../process-modules/lifecycles/product-build-lifecycle.js';
+import {
+  RUNNABLE_LOCAL_CLASSIFICATION,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+} from '../process-modules/lifecycles/product-build-lifecycle.js';
 import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
 import {
   canonicalizeProductDeliveryLifecycleInput,
@@ -862,7 +868,33 @@ export function createProductLifecycleRuntime(
   // `WORKSHOP_PAYLOAD_CONTRACTS` source — there is no hand-list to drift.
   installWorkshopPayloadContracts();
 
-  const discoveryExecutor = registerDiscovery(registries, sharedDeps);
+  const discoveryExecutor = registerDiscovery(registries, sharedDeps, {
+    // ADR-090 (CC-IC-1): the lifecycle classification reaches Discovery
+    // settlement ONLY through the pinned per-run read — the typed
+    // readDefinitionByProcessRun port/repository owned by
+    // SqliteLifecycleRunRepository, injected HERE (composition/DI of exactly
+    // that one port; no repository construction inside Discovery, no
+    // ambient/default lifecycleDefinition substitute; a missing row or
+    // definition-hash mismatch fails closed with a typed error).
+    lifecycleDefinitionReader: {
+      readDefinitionByProcessRun: processRunId =>
+        lifecycleRunRepo.readDefinitionByProcessRun(processRunId),
+    },
+    // The declared, digest-pinned obligation injection tables owned by the
+    // lifecycles that freeze their classifications (data, not engine
+    // inference): product-build's frozen `runnable-local` terminal maps to
+    // the whole-product-synthesis + ordered-smoke entries. A pinned
+    // definition that freezes a required classification without its table is
+    // a typed settlement red.
+    lifecycleInjectionDeclarations: [
+      {
+        table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+        tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+        tableDigest: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+      },
+    ],
+    lifecycleInjectionRequiredClassifications: [RUNNABLE_LOCAL_CLASSIFICATION],
+  });
   const formalization = registerFormalization(registries, sharedDeps);
   const development = registerDevelopment(
     registries,

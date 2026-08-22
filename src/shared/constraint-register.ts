@@ -39,8 +39,23 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json.js';
 import { parseRepositoryFilePath } from './repository-scope.js';
 
-/** Schema version of the serialized register. */
+/** Schema version of the legacy (frozen) serialized register. */
 export const ORDER_CONSTRAINT_REGISTER_SCHEMA = 'factory.order-constraint-register.v1';
+
+/**
+ * ADR-090 (CC-IC-1): the additive v2 schema version. The closed source-class
+ * vocabulary is PRESERVED unchanged; v2 adds the orthogonal per-entry `kind`
+ * vocabulary, typed `measurability` on kind `quality` entries only, and
+ * kernel-assigned `lifecycleSynthesis` declarations on injected entries.
+ * v1 registers verify unchanged under the v1 schema version; the absence of
+ * `kind` on v1 data is not a defect.
+ */
+export const ORDER_CONSTRAINT_REGISTER_SCHEMA_V2 = 'factory.order-constraint-register.v2';
+
+export const ORDER_CONSTRAINT_REGISTER_SCHEMA_VERSIONS = [
+  ORDER_CONSTRAINT_REGISTER_SCHEMA,
+  ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
+] as const;
 
 /**
  * The closed class vocabulary. WHAT the order demands, not how to test it:
@@ -51,6 +66,79 @@ export const ORDER_CONSTRAINT_REGISTER_SCHEMA = 'factory.order-constraint-regist
  */
 export const ORDER_CONSTRAINT_CLASSES = ['execution', 'material', 'human'] as const;
 export type OrderConstraintClass = (typeof ORDER_CONSTRAINT_CLASSES)[number];
+
+/**
+ * ADR-090 (CC-IC-1): the orthogonal per-entry kind vocabulary — HOW the
+ * obligation is conserved. `open-question` is a KIND, never a class; the
+ * class vocabulary above is NOT overloaded.
+ *   - scope:         the ordinary reading of an order clause (v2 default for
+ *                    a kind-less v1-shaped draft row under a NEW v2
+ *                    settlement — kernel-side assignment, no guessing).
+ *   - open-question: drafted 1:1 and positionally from the proposal payload
+ *                    `unknowns` by the kernel (never worker-authored here).
+ *   - mechanics:     business-rule/dynamics obligation; the RULE artifact is
+ *                    the spec carrier and the typed binding is established at
+ *                    disposition/binding time (CC-IC-3) — an at-Discovery
+ *                    `mechanicsRef` is never required.
+ *   - synthesis:     whole-product-synthesis obligation (injected).
+ *   - ordered-smoke: ordered smoke obligation (injected).
+ *   - quality:       qualitative/experience obligation — the ONLY kind that
+ *                    carries a typed measurability binding.
+ */
+export const ORDER_CONSTRAINT_KINDS = [
+  'scope',
+  'open-question',
+  'mechanics',
+  'synthesis',
+  'ordered-smoke',
+  'quality',
+] as const;
+export type OrderConstraintKind = (typeof ORDER_CONSTRAINT_KINDS)[number];
+
+/** Kinds that only the declared lifecycle injection table may supply. */
+export const ORDER_CONSTRAINT_INJECTED_KINDS = ['synthesis', 'ordered-smoke'] as const;
+
+/**
+ * ADR-090 (CC-IC-1): typed measurability binding — carried ONLY by
+ * qualitative/experience (kind `quality`) entries. Either a measurable
+ * interpretation reference, or an explicit typed deferral with a reason.
+ */
+export type OrderConstraintMeasurability =
+  | { readonly state: 'measurable'; readonly interpretationRef: string }
+  | { readonly state: 'deferred'; readonly reason: string };
+
+/**
+ * Kernel-assigned provenance on injected entries: the frozen lifecycle
+ * classification that demanded the entry and the digest-pinned injection
+ * table it was injected from. Never worker-declarable (a draft carrying
+ * `lifecycle_synthesis` is a typed submission defect).
+ */
+export interface OrderConstraintLifecycleSynthesis {
+  readonly classification: string;
+  readonly injectionTableRef: string;
+}
+
+/**
+ * ADR-090 (CC-IC-1): one injected entry payload of a declared, digest-pinned
+ * lifecycle obligation injection table. Data declared beside the frozen
+ * lifecycle classification (product-build-lifecycle.ts) — never engine
+ * inference, never workshop-name branching, never browser/canvas specifics
+ * that did not arrive through declared data.
+ */
+export interface OrderConstraintInjectionEntry {
+  readonly class: OrderConstraintClass;
+  readonly kind: (typeof ORDER_CONSTRAINT_INJECTED_KINDS)[number];
+  readonly text: string;
+  readonly evidence_ref: string;
+}
+
+export interface OrderConstraintInjectionTable {
+  readonly schemaVersion: 'factory.lifecycle-obligation-injection.v1';
+  /** The frozen lifecycle classification this table maps (e.g. runnable-local). */
+  readonly classification: string;
+  /** Declared table order is normative: synthesis first, then ordered-smoke. */
+  readonly entries: readonly OrderConstraintInjectionEntry[];
+}
 
 /**
  * The worker-facing draft shape (snake_case — matches the proposal payload
@@ -71,6 +159,23 @@ export interface OrderConstraintDraft {
    * entrypoint obligation).
    */
   readonly entrypoint_files?: readonly string[];
+  /**
+   * ADR-090 (CC-IC-1): the orthogonal kind declaration. Optional: a kind-less
+   * v1-shaped draft row under a NEW v2 settlement is defaulted
+   * deterministically to kind `scope` (kernel-side assignment). When present
+   * it MUST be one of the six closed kind values (ORDER_CONSTRAINT_KINDS) —
+   * anything else is a typed error at the submission boundary and again here.
+   */
+  readonly kind?: OrderConstraintKind;
+  /**
+   * ADR-090 (CC-IC-1): typed measurability — ONLY kind `quality` entries may
+   * carry it, and every kind `quality` entry MUST carry it (a measurable
+   * interpretation or a typed deferral). Snake_case ingress form; the builder
+   * canonicalizes to OrderConstraintMeasurability.
+   */
+  readonly measurability?:
+    | { readonly state: 'measurable'; readonly interpretation_ref: string }
+    | { readonly state: 'deferred'; readonly reason: string };
 }
 
 /** The canonical, ID-assigned register entry (kernel-assigned camelCase). */
@@ -82,11 +187,21 @@ export interface OrderConstraintEntry {
   readonly evidenceRef: string;
   /** @see OrderConstraintDraft.entrypoint_files — execution-class only. */
   readonly entrypointFiles?: readonly string[];
+  /**
+   * ADR-090 (CC-IC-1): the orthogonal kind. Present on every v2 register
+   * entry; absent on frozen v1 data (absence on v1 is not a defect).
+   */
+  readonly kind?: OrderConstraintKind;
+  /** @see OrderConstraintMeasurability — kind `quality` entries only. */
+  readonly measurability?: OrderConstraintMeasurability;
+  /** @see OrderConstraintLifecycleSynthesis — kernel-assigned on injected entries only. */
+  readonly lifecycleSynthesis?: OrderConstraintLifecycleSynthesis;
 }
 
 /** The immutable, digest-pinned register. */
 export interface OrderConstraintRegister {
-  readonly schemaVersion: typeof ORDER_CONSTRAINT_REGISTER_SCHEMA;
+  readonly schemaVersion: typeof ORDER_CONSTRAINT_REGISTER_SCHEMA
+    | typeof ORDER_CONSTRAINT_REGISTER_SCHEMA_V2;
   readonly constraints: readonly OrderConstraintEntry[];
   /** SHA-256 over the canonical JSON of the constraint entries. */
   readonly registerDigest: string;
@@ -149,6 +264,226 @@ function parseEntrypointFiles(
   return files;
 }
 
+function isOrderConstraintKind(value: unknown): value is OrderConstraintKind {
+  return typeof value === 'string'
+    && (ORDER_CONSTRAINT_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Validate one draft row's typed measurability declaration (snake_case ingress
+ * form) and canonicalize it. Kind `quality` entries MUST carry one; entries of
+ * any other kind MUST NOT.
+ */
+function parseMeasurability(
+  raw: unknown,
+  index: number,
+  kind: OrderConstraintKind | undefined,
+): OrderConstraintMeasurability | undefined {
+  if (raw === undefined || raw === null) {
+    if (kind === 'quality') {
+      throw new Error(
+        `ORDER_CONSTRAINT_MEASURABILITY_REQUIRED: order_constraints[${index}] of kind 'quality' `
+        + 'must carry a measurability binding ({ measurable interpretation_ref } or { deferred reason })',
+      );
+    }
+    return undefined;
+  }
+  if (kind !== 'quality') {
+    throw new Error(
+      `ORDER_CONSTRAINT_MEASURABILITY_KIND_INVALID: order_constraints[${index}].measurability may only be declared by kind 'quality' constraints (got kind '${kind ?? 'scope'}')`,
+    );
+  }
+  if (!isRecord(raw)) {
+    throw new Error(
+      `ORDER_CONSTRAINT_MEASURABILITY_INVALID: order_constraints[${index}].measurability must be `
+      + "{ state: 'measurable', interpretation_ref } or { state: 'deferred', reason }",
+    );
+  }
+  if (raw['state'] === 'measurable') {
+    const interpretationRef = raw['interpretation_ref'];
+    if (typeof interpretationRef !== 'string' || interpretationRef.trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_MEASURABILITY_INVALID: order_constraints[${index}].measurability of state 'measurable' requires a non-empty interpretation_ref`,
+      );
+    }
+    return { state: 'measurable', interpretationRef };
+  }
+  if (raw['state'] === 'deferred') {
+    const reason = raw['reason'];
+    if (typeof reason !== 'string' || reason.trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_MEASURABILITY_INVALID: order_constraints[${index}].measurability of state 'deferred' requires a non-empty reason`,
+      );
+    }
+    return { state: 'deferred', reason };
+  }
+  throw new Error(
+    `ORDER_CONSTRAINT_MEASURABILITY_INVALID: order_constraints[${index}].measurability.state must be 'measurable' or 'deferred'`,
+  );
+}
+
+interface DraftCoreOptions {
+  /**
+   * v2 semantics: kind defaults to `scope` when absent and the closed kind
+   * vocabulary is enforced; measurability rides; drafts carrying
+   * `lifecycle_synthesis` are rejected (kernel-assigned only).
+   */
+  readonly v2: boolean;
+}
+
+/**
+ * Validate the CANONICAL (camelCase) measurability of a persisted v2 entry —
+ * the read-back counterpart of parseMeasurability. A snake_case ingress form
+ * arriving here is a typed rejection, never a silent reinterpretation.
+ */
+function parseCanonicalMeasurability(
+  raw: unknown,
+  index: number,
+  kind: OrderConstraintKind | undefined,
+): OrderConstraintMeasurability {
+  if (kind !== 'quality') {
+    throw new Error(
+      `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} carries measurability on kind '${String(kind)}' (quality only)`,
+    );
+  }
+  if (!isRecord(raw)) {
+    throw new Error(
+      `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability must be { state, interpretationRef } or { state, reason }`,
+    );
+  }
+  if (raw['state'] === 'measurable') {
+    const interpretationRef = raw['interpretationRef'];
+    if (typeof interpretationRef !== 'string' || interpretationRef.trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability of state 'measurable' requires a non-empty interpretationRef`,
+      );
+    }
+    return { state: 'measurable', interpretationRef };
+  }
+  if (raw['state'] === 'deferred') {
+    const reason = raw['reason'];
+    if (typeof reason !== 'string' || reason.trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability of state 'deferred' requires a non-empty reason`,
+      );
+    }
+    return { state: 'deferred', reason };
+  }
+  throw new Error(
+    `ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry ord-c-${padIndex(index)} measurability.state must be 'measurable' or 'deferred'`,
+  );
+}
+
+/**
+ * Shared fail-closed draft-row core used by BOTH schema builders. Deterministic,
+ * no guessing, no prose rereading — it only assigns identities to typed rows.
+ */
+function buildDraftEntry(
+  draft: Record<string, unknown>,
+  index: number,
+  options: DraftCoreOptions,
+): OrderConstraintEntry {
+  const constraintClass = draft['class'];
+  if (
+    typeof constraintClass !== 'string'
+    || !(ORDER_CONSTRAINT_CLASSES as readonly string[]).includes(constraintClass)
+  ) {
+    throw new Error(
+      `ORDER_CONSTRAINT_CLASS_INVALID: order_constraints[${index}].class must be one of `
+      + `${ORDER_CONSTRAINT_CLASSES.join('|')}`,
+    );
+  }
+  const text = draft['text'];
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new Error(
+      `ORDER_CONSTRAINT_TEXT_REQUIRED: order_constraints[${index}].text must be a non-empty string`,
+    );
+  }
+  const evidenceRef = draft['evidence_ref'];
+  if (typeof evidenceRef !== 'string' || evidenceRef.trim().length === 0) {
+    throw new Error(
+      `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED: order_constraints[${index}].evidence_ref must be a non-empty string`,
+    );
+  }
+  // ADR-088 (CC-GAP-6): entrypoint declarations are EXECUTION-class only.
+  // A material/human constraint naming product files is a typed draft
+  // defect at the submission boundary — never silently ignored.
+  const entrypointFiles = parseEntrypointFiles(draft['entrypoint_files'], index);
+  if (entrypointFiles && constraintClass !== 'execution') {
+    throw new Error(
+      `ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID: order_constraints[${index}].entrypoint_files may only be declared by execution-class constraints (got '${constraintClass}')`,
+    );
+  }
+  const carriesKindField = draft['kind'] !== undefined && draft['kind'] !== null;
+  const carriesMeasurability = draft['measurability'] !== undefined
+    && draft['measurability'] !== null;
+  const carriesLifecycleSynthesis = draft['lifecycle_synthesis'] !== undefined
+    && draft['lifecycle_synthesis'] !== null;
+  if (!options.v2) {
+    // Frozen v1 semantics: v2 typed fields never ride a v1 register. A draft
+    // carrying them through the v1 builder is a typed defect — silently
+    // DROPPING typed conservation content is the exact loss class ADR-090
+    // exists to close, so the v1 builder fails closed instead.
+    if (carriesKindField) {
+      throw new Error(
+        `ORDER_CONSTRAINT_KIND_REQUIRES_V2: order_constraints[${index}].kind is v2 vocabulary; the v1 builder must never silently drop it`,
+      );
+    }
+    if (carriesMeasurability) {
+      throw new Error(
+        `ORDER_CONSTRAINT_MEASURABILITY_REQUIRES_V2: order_constraints[${index}].measurability is v2 vocabulary; the v1 builder must never silently drop it`,
+      );
+    }
+    if (carriesLifecycleSynthesis) {
+      throw new Error(
+        `ORDER_CONSTRAINT_LIFECYCLE_SYNTHESIS_KERNEL_ONLY: order_constraints[${index}].lifecycle_synthesis is kernel-assigned on injected entries only`,
+      );
+    }
+    return {
+      id: `ord-c-${padIndex(index)}`,
+      class: constraintClass as OrderConstraintClass,
+      text,
+      evidenceRef,
+      ...(entrypointFiles ? { entrypointFiles } : {}),
+    };
+  }
+  // ADR-090 (CC-IC-1): a draft row carrying a `kind` MUST carry one of the six
+  // closed values; a kind-less v1-shaped draft row under a NEW v2 settlement
+  // is defaulted deterministically to kind `scope` (kernel-side assignment,
+  // no guessing, no prose rereading).
+  let kind: OrderConstraintKind;
+  if (carriesKindField) {
+    if (!isOrderConstraintKind(draft['kind'])) {
+      throw new Error(
+        `ORDER_CONSTRAINT_KIND_INVALID: order_constraints[${index}].kind must be one of `
+        + `${ORDER_CONSTRAINT_KINDS.join('|')}`,
+      );
+    }
+    kind = draft['kind'];
+  } else {
+    kind = 'scope';
+  }
+  if (carriesLifecycleSynthesis) {
+    throw new Error(
+      `ORDER_CONSTRAINT_LIFECYCLE_SYNTHESIS_KERNEL_ONLY: order_constraints[${index}].lifecycle_synthesis is kernel-assigned on injected entries only`,
+    );
+  }
+  const measurability = parseMeasurability(
+    carriesMeasurability ? draft['measurability'] : undefined,
+    index,
+    kind,
+  );
+  return {
+    id: `ord-c-${padIndex(index)}`,
+    class: constraintClass as OrderConstraintClass,
+    text,
+    evidenceRef,
+    ...(entrypointFiles ? { entrypointFiles } : {}),
+    kind,
+    ...(measurability ? { measurability } : {}),
+  };
+}
+
 /**
  * Build the register from typed drafts. Fail-closed on malformed input (a
  * malformed draft reaching this builder means the proposal validation
@@ -169,50 +504,189 @@ export function buildOrderConstraintRegister(drafts: unknown): OrderConstraintRe
     if (!isRecord(draft)) {
       throw new Error(`ORDER_CONSTRAINT_DRAFT_INVALID: order_constraints[${index}] must be an object`);
     }
-    const constraintClass = draft['class'];
-    if (
-      typeof constraintClass !== 'string'
-      || !(ORDER_CONSTRAINT_CLASSES as readonly string[]).includes(constraintClass)
-    ) {
-      throw new Error(
-        `ORDER_CONSTRAINT_CLASS_INVALID: order_constraints[${index}].class must be one of `
-        + `${ORDER_CONSTRAINT_CLASSES.join('|')}`,
-      );
-    }
-    const text = draft['text'];
-    if (typeof text !== 'string' || text.trim().length === 0) {
-      throw new Error(
-        `ORDER_CONSTRAINT_TEXT_REQUIRED: order_constraints[${index}].text must be a non-empty string`,
-      );
-    }
-    const evidenceRef = draft['evidence_ref'];
-    if (typeof evidenceRef !== 'string' || evidenceRef.trim().length === 0) {
-      throw new Error(
-        `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED: order_constraints[${index}].evidence_ref must be a non-empty string`,
-      );
-    }
-    // ADR-088 (CC-GAP-6): entrypoint declarations are EXECUTION-class only.
-    // A material/human constraint naming product files is a typed draft
-    // defect at the submission boundary — never silently ignored.
-    const entrypointFiles = parseEntrypointFiles(draft['entrypoint_files'], index);
-    if (entrypointFiles && constraintClass !== 'execution') {
-      throw new Error(
-        `ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID: order_constraints[${index}].entrypoint_files may only be declared by execution-class constraints (got '${constraintClass}')`,
-      );
-    }
-    entries.push({
-      id: `ord-c-${padIndex(index)}`,
-      class: constraintClass as OrderConstraintClass,
-      text,
-      evidenceRef,
-      ...(entrypointFiles ? { entrypointFiles } : {}),
-    });
+    entries.push(buildDraftEntry(draft, index, { v2: false }));
   }
   return {
     schemaVersion: ORDER_CONSTRAINT_REGISTER_SCHEMA,
     constraints: entries,
     registerDigest: digestEntries(entries),
   };
+}
+
+/**
+ * ADR-090 (CC-IC-1): build a v2 register at Discovery settlement. Additive
+ * over the v1 builder:
+ *
+ *  - the closed kind vocabulary (a carried `kind` MUST be one of the six
+ *    values; a kind-less draft is defaulted deterministically to `scope`);
+ *  - typed measurability on kind `quality` entries ONLY (required there,
+ *    forbidden elsewhere);
+ *  - kind `open-question` entries drafted 1:1 and positionally from the
+ *    proposal payload `unknowns` (kernel-side; text = the unknown string,
+ *    evidenceRef = the payload field) — never worker-authored here;
+ *  - declared-injection-table entries APPENDED AFTER the proposal-derived
+ *    block in the declared table order (synthesis, then ordered-smoke) with
+ *    kernel-assigned `lifecycleSynthesis` provenance — never interleaved
+ *    among proposal-derived rows, so proposal-derived positional ids stay
+ *    stable across injection-table revisions.
+ *
+ * Returns null only when NOTHING is counted (no drafts, no unknowns, no
+ * injected entries): new v2 Factory Starts then carry the explicit typed
+ * no-obligations attestation at settlement — never a silent null register.
+ */
+export function buildOrderConstraintRegisterV2(source: {
+  drafts?: unknown;
+  unknowns?: readonly unknown[];
+  injections?: readonly {
+    readonly table: OrderConstraintInjectionTable;
+    /** Content-addressed ref of the declared table (cited by the settlement record). */
+    readonly tableRef: string;
+  }[];
+}): OrderConstraintRegister | null {
+  const { drafts, unknowns, injections } = source;
+  if (drafts !== undefined && drafts !== null && !Array.isArray(drafts)) {
+    throw new Error('ORDER_CONSTRAINT_DRAFTS_INVALID: order_constraints must be an array');
+  }
+  const draftRows = (drafts ?? []) as readonly unknown[];
+  const unknownRows = unknowns ?? [];
+  const entries: OrderConstraintEntry[] = [];
+  for (const [index, draft] of draftRows.entries()) {
+    if (!isRecord(draft)) {
+      throw new Error(`ORDER_CONSTRAINT_DRAFT_INVALID: order_constraints[${index}] must be an object`);
+    }
+    entries.push(buildDraftEntry(draft, index, { v2: true }));
+  }
+  // Deterministic open-question lifting: 1:1 and positional from the payload
+  // unknowns. The class vocabulary stays closed (execution|material|human);
+  // `open-question` is a KIND. The kernel assigns `material` — the
+  // conservative closed-vocabulary default for a question whose demand class
+  // is genuinely unknown; the disposition/coverage networks own what happens
+  // next (CC-IC-2), and no guessing happens here.
+  for (const [index, unknown] of unknownRows.entries()) {
+    if (typeof unknown !== 'string' || unknown.trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_UNKNOWN_INVALID: unknowns[${index}] must be a non-empty string`,
+      );
+    }
+    entries.push({
+      id: `ord-c-${padIndex(entries.length)}`,
+      class: 'material',
+      kind: 'open-question',
+      text: unknown,
+      evidenceRef: 'proposal.unknowns',
+    });
+  }
+  // The injected block is APPENDED after the whole proposal-derived block, in
+  // the declared table order — never interleaved among proposal-derived rows
+  // (the verifier enforces the strict suffix layout; mutation m4a).
+  for (const injection of injections ?? []) {
+    validateInjectionTable(injection.table);
+    for (const entry of injection.table.entries) {
+      entries.push({
+        id: `ord-c-${padIndex(entries.length)}`,
+        class: entry.class,
+        kind: entry.kind,
+        text: entry.text,
+        evidenceRef: entry.evidence_ref,
+        lifecycleSynthesis: {
+          classification: injection.table.classification,
+          injectionTableRef: injection.tableRef,
+        },
+      });
+    }
+  }
+  if (entries.length === 0) return null;
+  return {
+    schemaVersion: ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
+    constraints: entries,
+    registerDigest: digestEntries(entries),
+  };
+}
+
+/**
+ * ADR-090 (CC-IC-1), mutation m1: prove the 1:1 positional conservation of
+ * the proposal unknowns inside the built register. The builder drafts the
+ * rows, so equality holds by construction; this assertion makes the mutation
+ * (settlement dropping an unknown from the lift) a TYPED RED instead of a
+ * silent under-count.
+ */
+export function assertOrderConstraintUnknownsLifted(
+  register: OrderConstraintRegister | null,
+  unknowns: readonly unknown[],
+): void {
+  const lifted = register === null
+    ? []
+    : register.constraints
+      .filter(entry => entry.kind === 'open-question')
+      .map(entry => entry.text);
+  for (const [index, unknown] of unknowns.entries()) {
+    if (lifted[index] !== unknown) {
+      throw new Error(
+        `ORDER_CONSTRAINT_UNKNOWN_NOT_LIFTED: proposal unknowns[${index}] ('${String(unknown)}') `
+        + 'is absent from the register open-question entries — settlement red',
+      );
+    }
+  }
+  if (lifted.length !== unknowns.length) {
+    throw new Error(
+      `ORDER_CONSTRAINT_UNKNOWN_NOT_LIFTED: register carries ${lifted.length} open-question `
+      + `entries for ${unknowns.length} proposal unknowns — settlement red`,
+    );
+  }
+}
+
+/** Fail-closed validation of a declared injection table (data, not engine inference). */
+function validateInjectionTable(table: unknown): void {
+  if (!isRecord(table)) {
+    throw new Error('ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: table must be an object');
+  }
+  if (table['schemaVersion'] !== 'factory.lifecycle-obligation-injection.v1') {
+    throw new Error(
+      `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: unsupported schemaVersion '${String(table['schemaVersion'])}'`,
+    );
+  }
+  if (typeof table['classification'] !== 'string' || (table['classification'] as string).trim().length === 0) {
+    throw new Error('ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: classification must be a non-empty string');
+  }
+  const entries = table['entries'];
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error(
+      `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: table for '${String(table['classification'])}' declares no entries`,
+    );
+  }
+  for (const [index, entry] of entries.entries()) {
+    if (!isRecord(entry)) {
+      throw new Error(`ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: entries[${index}] must be an object`);
+    }
+    if (
+      typeof entry['class'] !== 'string'
+      || !(ORDER_CONSTRAINT_CLASSES as readonly string[]).includes(entry['class'])
+    ) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: entries[${index}].class must be one of `
+        + `${ORDER_CONSTRAINT_CLASSES.join('|')}`,
+      );
+    }
+    if (
+      typeof entry['kind'] !== 'string'
+      || !(ORDER_CONSTRAINT_INJECTED_KINDS as readonly string[]).includes(entry['kind'])
+    ) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: entries[${index}].kind must be one of `
+        + `${ORDER_CONSTRAINT_INJECTED_KINDS.join('|')}`,
+      );
+    }
+    if (typeof entry['text'] !== 'string' || (entry['text'] as string).trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: entries[${index}].text must be a non-empty string`,
+      );
+    }
+    if (typeof entry['evidence_ref'] !== 'string' || (entry['evidence_ref'] as string).trim().length === 0) {
+      throw new Error(
+        `ORDER_CONSTRAINT_INJECTION_TABLE_INVALID: entries[${index}].evidence_ref must be a non-empty string`,
+      );
+    }
+  }
 }
 
 /**
@@ -237,22 +711,39 @@ export function orderConstraintRegisterRef(register: OrderConstraintRegister): s
  * would have rejected any canonical register (`evidence_ref` vs
  * `evidenceRef`) — latent because the function had no callers; it becomes
  * load-bearing the moment Development consumes persisted registers.
+ *
+ * ADR-090 (CC-IC-1): v1 registers verify unchanged under the v1 schema
+ * version (absence of `kind` on v1 data is not a defect; PRESENCE of v2
+ * typed fields on a v1 register is a typed defect — v1 semantics never carry
+ * them). v2 registers enforce the closed kind vocabulary, the
+ * quality-only/quality-required measurability binding, the kernel-only
+ * lifecycleSynthesis provenance, and the NORMATIVE BLOCK LAYOUT: injected
+ * entries (those carrying `lifecycleSynthesis`) form a strict SUFFIX —
+ * injected rows interleaved among proposal-derived rows are a typed red
+ * (mutation m4a), never a reinterpreted layout.
  */
 export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRegister | null {
   if (value === undefined || value === null) return null;
   if (!isRecord(value)) {
     throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register must be an object');
   }
-  if (value.schemaVersion !== ORDER_CONSTRAINT_REGISTER_SCHEMA) {
+  const schemaVersion = value.schemaVersion;
+  if (
+    typeof schemaVersion !== 'string'
+    || !(ORDER_CONSTRAINT_REGISTER_SCHEMA_VERSIONS as readonly string[]).includes(schemaVersion)
+  ) {
     throw new Error(
-      `ORDER_CONSTRAINT_REGISTER_INVALID: schemaVersion '${String(value.schemaVersion)}' is not ${ORDER_CONSTRAINT_REGISTER_SCHEMA}`,
+      `ORDER_CONSTRAINT_REGISTER_INVALID: schemaVersion '${String(schemaVersion)}' is not one of `
+      + `${ORDER_CONSTRAINT_REGISTER_SCHEMA_VERSIONS.join('|')}`,
     );
   }
+  const isV2 = schemaVersion === ORDER_CONSTRAINT_REGISTER_SCHEMA_V2;
   const stored = value.constraints;
   if (!Array.isArray(stored) || stored.length === 0) {
     throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register carries no constraints');
   }
   const entries: OrderConstraintEntry[] = [];
+  let injectedBlockStarted = false;
   stored.forEach((raw, index) => {
     if (!isRecord(raw)) {
       throw new Error('ORDER_CONSTRAINT_REGISTER_INVALID: register entries must be objects');
@@ -279,12 +770,73 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
         'ORDER_CONSTRAINT_ENTRYPOINT_CLASS_INVALID: register entry entrypointFiles may only be declared by execution-class constraints',
       );
     }
+    let kind: OrderConstraintKind | undefined;
+    let measurability: OrderConstraintMeasurability | undefined;
+    let lifecycleSynthesis: OrderConstraintLifecycleSynthesis | undefined;
+    const carriesKind = raw['kind'] !== undefined && raw['kind'] !== null;
+    const carriesMeasurability = raw['measurability'] !== undefined
+      && raw['measurability'] !== null;
+    const carriesLifecycleSynthesis = raw['lifecycleSynthesis'] !== undefined
+      && raw['lifecycleSynthesis'] !== null;
+    if (!isV2) {
+      if (carriesKind || carriesMeasurability || carriesLifecycleSynthesis) {
+        throw new Error(
+          'ORDER_CONSTRAINT_REGISTER_INVALID: v1 register entries carry no v2 typed fields '
+          + '(kind/measurability/lifecycleSynthesis)',
+        );
+      }
+    } else {
+      if (!isOrderConstraintKind(raw['kind'])) {
+        throw new Error(
+          'ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry kind must be one of '
+          + `${ORDER_CONSTRAINT_KINDS.join('|')}`,
+        );
+      }
+      kind = raw['kind'];
+      if (carriesMeasurability) {
+        measurability = parseCanonicalMeasurability(raw['measurability'], index, kind);
+      } else if (kind === 'quality') {
+        throw new Error(
+          `ORDER_CONSTRAINT_MEASURABILITY_REQUIRED: v2 register entry ord-c-${padIndex(index)} of kind 'quality' must carry a measurability binding`,
+        );
+      }
+      if (carriesLifecycleSynthesis) {
+        const rawSynthesis = raw['lifecycleSynthesis'];
+        if (
+          !isRecord(rawSynthesis)
+          || typeof rawSynthesis['classification'] !== 'string'
+          || rawSynthesis['classification'].trim().length === 0
+          || typeof rawSynthesis['injectionTableRef'] !== 'string'
+          || rawSynthesis['injectionTableRef'].trim().length === 0
+        ) {
+          throw new Error(
+            'ORDER_CONSTRAINT_REGISTER_INVALID: v2 register entry lifecycleSynthesis requires classification and injectionTableRef',
+          );
+        }
+        lifecycleSynthesis = {
+          classification: rawSynthesis['classification'],
+          injectionTableRef: rawSynthesis['injectionTableRef'],
+        };
+        injectedBlockStarted = true;
+      } else if (injectedBlockStarted) {
+        // Normative interleave order (ADR-090): proposal-derived entries
+        // occupy ord-c-001..NNN and injected entries are APPENDED after them
+        // — an injected row followed by a proposal-derived row is a typed
+        // block-layout violation (mutation m4a), never a silent reorder.
+        throw new Error(
+          'ORDER_CONSTRAINT_REGISTER_BLOCK_LAYOUT_INVALID: injected entries must form a strict suffix after the proposal-derived block',
+        );
+      }
+    }
     entries.push({
       id: `ord-c-${padIndex(index)}`,
       class: constraintClass as OrderConstraintClass,
       text: raw['text'],
       evidenceRef: raw['evidenceRef'],
       ...(entrypointFiles ? { entrypointFiles } : {}),
+      ...(kind ? { kind } : {}),
+      ...(measurability ? { measurability } : {}),
+      ...(lifecycleSynthesis ? { lifecycleSynthesis } : {}),
     });
   });
   // IDs are positional content identities; the stored rows must round-trip them.
@@ -293,7 +845,7 @@ export function verifyOrderConstraintRegister(value: unknown): OrderConstraintRe
     throw new Error('ORDER_CONSTRAINT_REGISTER_ID_MISMATCH');
   }
   const register: OrderConstraintRegister = {
-    schemaVersion: ORDER_CONSTRAINT_REGISTER_SCHEMA,
+    schemaVersion: schemaVersion as OrderConstraintRegister['schemaVersion'],
     constraints: entries,
     registerDigest: digestEntries(entries),
   };

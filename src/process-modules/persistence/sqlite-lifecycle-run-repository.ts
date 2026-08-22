@@ -23,6 +23,24 @@ import { lifecycleRefKey } from './lifecycle-run.js';
 import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 import { classifyLifecycleDefinitionCompatibility } from '../application/lifecycle-definition-compatibility.js';
 
+/**
+ * ADR-090 (CC-IC-1): the pinned per-run lifecycle definition read. The
+ * lifecycle-classification reaches Discovery settlement ONLY through this
+ * typed port — `ctx.processRunId` → join `factory_stage_runs.process_run_id`
+ * → `lifecycle_run_id` → the pinned `factory_lifecycle_runs`
+ * `definition_snapshot` + `definition_hash`. A missing row or a definition
+ * hash mismatch fails closed with a typed error — never an ambient or
+ * default `lifecycleDefinition` binding.
+ */
+export interface PinnedLifecycleDefinitionRead {
+  readonly lifecycleRunId: number;
+  readonly lifecycleRefKey: string;
+  /** The pinned definition snapshot (parsed JSON of the persisted canonical text). */
+  readonly definition: Readonly<Record<string, unknown>>;
+  /** sha256 over the canonical definition snapshot, as persisted at start(). */
+  readonly definitionHash: string;
+}
+
 export function ensureFactoryLifecycleRunSchema(db: Database.Database): void {
   ensureFactoryProcessRunSchema(db);
   db.exec(`
@@ -504,6 +522,65 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       'SELECT * FROM factory_lifecycle_runs WHERE id=?',
     ).get(id) as LifecycleRunRow | undefined;
     return row ? runRowToRecord(row) : null;
+  }
+
+  /**
+   * ADR-090 (CC-IC-1): the typed pinned-definition read consumed (read-only)
+   * by Discovery settlement through composition-root wiring — the ONLY
+   * normative path the lifecycle classification takes into settlement.
+   * Fail-closed: a process run bound to no stage run / no lifecycle run is a
+   * typed error, and the persisted definition hash is re-derived and
+   * compared before the definition is returned (a mismatch is tampering or
+   * corruption — never a silent substitute).
+   */
+  readDefinitionByProcessRun(processRunId: number): PinnedLifecycleDefinitionRead {
+    if (!Number.isSafeInteger(processRunId) || processRunId < 1) {
+      throw new Error(`LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_MISSING: invalid process run ${processRunId}`);
+    }
+    const row = this.db.prepare(
+      `SELECT lr.id AS lifecycle_run_id,
+              lr.lifecycle_ref_key AS lifecycle_ref_key,
+              lr.definition_snapshot AS definition_snapshot,
+              lr.definition_hash AS definition_hash
+         FROM factory_stage_runs sr
+         JOIN factory_lifecycle_runs lr ON lr.id=sr.lifecycle_run_id
+        WHERE sr.process_run_id=?`,
+    ).get(processRunId) as {
+      lifecycle_run_id: number;
+      lifecycle_ref_key: string;
+      definition_snapshot: string;
+      definition_hash: string;
+    } | undefined;
+    if (!row) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_MISSING: process run ${processRunId} is bound to no lifecycle run`,
+      );
+    }
+    let definition: unknown;
+    try {
+      definition = JSON.parse(row.definition_snapshot);
+    } catch {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID: lifecycle run ${row.lifecycle_run_id} carries an unparseable definition snapshot`,
+      );
+    }
+    if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID: lifecycle run ${row.lifecycle_run_id} carries a non-object definition snapshot`,
+      );
+    }
+    const derivedHash = sha256Hex(definition);
+    if (derivedHash !== row.definition_hash) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_HASH_MISMATCH: lifecycle run ${row.lifecycle_run_id} pins ${row.definition_hash}, snapshot hashes ${derivedHash}`,
+      );
+    }
+    return {
+      lifecycleRunId: row.lifecycle_run_id,
+      lifecycleRefKey: row.lifecycle_ref_key,
+      definition: definition as Readonly<Record<string, unknown>>,
+      definitionHash: row.definition_hash,
+    };
   }
 
   readByIdempotencyKey(

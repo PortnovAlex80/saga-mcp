@@ -616,6 +616,14 @@ export interface IntegratedSourceCandidate {
  * Formalization settlement certificate. The future warrant-coverage phases in
  * the readiness provider consume exactly this shape (register + dispositions,
  * both digest-pinned) — no new oracle, no re-reading of the order prose.
+ *
+ * ADR-090 (CC-IC-1), mutation m7: the warrant CROSS-BINDS the certificate/case
+ * it was issued against — `discoveryCertificateHash` and
+ * `formalizationCaseDigest` name the exact identities, so a warrant silently
+ * re-targeted at a different certificate/case is a typed red
+ * (verifyWarrantCrossBind at the issuing boundary; the readiness manifest
+ * contract carries the same fields). Register+dispositions self-consistency
+ * alone is not identity.
  */
 export interface VerificationWarrantRef {
   /** Content-addressed register ref: constraint-register:<digest>. */
@@ -623,6 +631,10 @@ export interface VerificationWarrantRef {
   constraintRegisterDigest: string;
   dispositionsDigest: string;
   dispositions: Readonly<Record<string, unknown>>;
+  /** @see ADR-090 (CC-IC-1) — the certificate cross-bind. */
+  discoveryCertificateHash?: string;
+  /** @see ADR-090 (CC-IC-1) — the FormalizationCase identity cross-bind. */
+  formalizationCaseDigest?: string;
 }
 
 export interface DevelopmentReadinessManifest {

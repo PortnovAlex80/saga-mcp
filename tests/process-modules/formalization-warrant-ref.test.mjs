@@ -166,6 +166,24 @@ function settlementFixture({ dispositions, orderConstraints = ORDER_CONSTRAINTS 
           },
         };
       },
+      // ADR-090 (CC-IC-1): settlement reads the discovery certificate by the
+      // exact ref the case carries (hash-verified). This legacy-v1 fixture
+      // certificate carries NO register and NO no-obligations attestation, so
+      // the frozen-legacy-v1 deterministic rebuild fallback remains the
+      // supplier and every pre-existing expectation is unchanged.
+      read: (id) => ({
+        id,
+        processRunId: 1,
+        certificateHash: 'a'.repeat(64),
+        certificatePayload: {
+          schemaVersion: 'factory.discovery-outcome-certificate.v1',
+          decision: 'go',
+          reasonCodes: [],
+          rationale: 'legacy',
+          inputHash: 'i'.repeat(64),
+          payload: {},
+        },
+      }),
     },
     readArtifactContent: (id) => (id === 40 ? srsContent() : 'x'.repeat(10)),
   };
@@ -193,6 +211,11 @@ test('settlement certificate cites the register + dispositions as warrantRef', (
   assert.match(warrantRef.constraintRegisterDigest, /^[a-f0-9]{64}$/);
   assert.deepEqual(warrantRef.dispositions, DISPOSITIONS);
   assert.match(warrantRef.dispositionsDigest, /^[a-f0-9]{64}$/);
+  // ADR-090 (CC-IC-1) m7: the warrant CROSS-BINDS the certificate/case it was
+  // issued against — register+dispositions self-consistency alone is not
+  // identity.
+  assert.equal(warrantRef.discoveryCertificateHash, 'a'.repeat(64));
+  assert.match(warrantRef.formalizationCaseDigest, /^[a-f0-9]{64}$/);
 });
 
 test('settlement certificate carries no warrantRef without a register (retro-compat)', () => {
@@ -223,6 +246,63 @@ test('settlement certificate carries no warrantRef without a register (retro-com
 });
 
 // ---- readiness manifest type seam ---------------------------------------------
+
+/**
+ * ADR-090 (CC-IC-1), mutation m7: a warrant re-targeted at a different
+ * certificate/case digest than the one it was issued against is a typed red.
+ * The issuing settlement verifies the cross-bind at construction; consumers
+ * (the readiness manifest contract and the future warrant phases) verify the
+ * same fields.
+ */
+test('m7: a warrant re-targeted at a different certificate/case digest is a cross-bind red', async () => {
+  const {
+    formalizationCaseIdentityDigest,
+    verifyWarrantCrossBind,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+
+  const { issued } = settlementFixture({ dispositions: DISPOSITIONS });
+  const warrant = issued[0].payload.payload.warrantRef;
+  const theCase = formalizationCase(ORDER_CONSTRAINTS);
+  const expected = {
+    discoveryCertificateHash: theCase.discoveryCertificateHash,
+    formalizationCaseDigest: formalizationCaseIdentityDigest(theCase),
+  };
+  // The issued warrant verifies against ITS OWN case.
+  verifyWarrantCrossBind(warrant, expected);
+
+  // The MUTATION (re-target at a different certificate): same register +
+  // dispositions self-consistency, different certificate hash.
+  const retargetedCertificate = {
+    ...warrant,
+    discoveryCertificateHash: 'b'.repeat(64),
+  };
+  assert.throws(
+    () => verifyWarrantCrossBind(retargetedCertificate, expected),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+
+  // The MUTATION (re-target at a different case): a later case digest
+  // (e.g. a re-mapped proposal) silently re-using an old warrant.
+  const retargetedCase = {
+    ...warrant,
+    formalizationCaseDigest: 'c'.repeat(64),
+  };
+  assert.throws(
+    () => verifyWarrantCrossBind(retargetedCase, expected),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+
+  // The case identity digest is honest content: a different certificate hash
+  // on the case produces a different case digest.
+  const driftedCase = {
+    ...theCase,
+    discoveryCertificateHash: 'b'.repeat(64),
+  };
+  assert.notEqual(
+    formalizationCaseIdentityDigest(driftedCase),
+    expected.formalizationCaseDigest,
+  );
+});
 
 function manifest(warrantRef) {
   return {

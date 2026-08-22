@@ -14,6 +14,7 @@
 
 import {
   ORDER_CONSTRAINT_CLASSES,
+  ORDER_CONSTRAINT_KINDS,
   type OrderConstraintDraft,
 } from '../../../shared/constraint-register.js';
 
@@ -60,6 +61,12 @@ export interface DiscoveryProposalPayload {
    * constraint register (see constraint-register.ts). Optional for
    * retro-compatibility: absent field → no register → empty downstream
    * diffs → all existing gates stay green.
+   *
+   * ADR-090 (CC-IC-1): a draft row MAY carry a `kind` from the closed
+   * six-value vocabulary (`scope|open-question|mechanics|synthesis|
+   * ordered-smoke|quality`) and a kind `quality` row MAY carry a typed
+   * `measurability` binding. `lifecycle_synthesis` is NEVER
+   * worker-declarable (kernel-assigned on injected entries only).
    */
   order_constraints?: readonly OrderConstraintDraft[];
 }
@@ -166,6 +173,68 @@ export function validateDiscoveryProposal(payload: unknown): DiscoveryProposalVa
               }
             }
           }
+        }
+        // ADR-090 (CC-IC-1): the closed kind vocabulary at the submission
+        // boundary — a draft row carrying a `kind` MUST carry one of the six
+        // closed values; anything else is a typed submission error at the
+        // same boundary that already checks class/text/evidence_ref.
+        const kind = row['kind'];
+        const kindPresent = kind !== undefined && kind !== null;
+        if (kindPresent
+          && (typeof kind !== 'string'
+            || !(ORDER_CONSTRAINT_KINDS as readonly string[]).includes(kind))) {
+          errors.push(
+            `order_constraints[${index}].kind must be one of ${ORDER_CONSTRAINT_KINDS.join('|')}`,
+          );
+        }
+        // ADR-090 (CC-IC-1): typed measurability binds ONLY kind `quality`
+        // rows; when present it must be the measurable-interpretation form or
+        // the typed-deferral form. The completeness rule (a quality row MUST
+        // carry one) is enforced fail-closed by the register builder — the
+        // boundary checks shape and kind-binding here.
+        if (row['measurability'] !== undefined && row['measurability'] !== null) {
+          const measurability = row['measurability'];
+          if (kindPresent && kind !== 'quality') {
+            errors.push(
+              `order_constraints[${index}].measurability may only be declared by kind 'quality' constraints`,
+            );
+          }
+          if (typeof measurability !== 'object' || measurability === null
+            || Array.isArray(measurability)) {
+            errors.push(
+              `order_constraints[${index}].measurability must be { state: 'measurable', interpretation_ref } or { state: 'deferred', reason }`,
+            );
+          } else {
+            const binding = measurability as Record<string, unknown>;
+            const state = binding['state'];
+            if (state === 'measurable') {
+              const interpretationRef = binding['interpretation_ref'];
+              if (typeof interpretationRef !== 'string' || interpretationRef.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].measurability of state 'measurable' requires a non-empty interpretation_ref`,
+                );
+              }
+            } else if (state === 'deferred') {
+              const reason = binding['reason'];
+              if (typeof reason !== 'string' || reason.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].measurability of state 'deferred' requires a non-empty reason`,
+                );
+              }
+            } else {
+              errors.push(
+                `order_constraints[${index}].measurability.state must be 'measurable' or 'deferred'`,
+              );
+            }
+          }
+        }
+        // ADR-090 (CC-IC-1): lifecycle_synthesis is kernel-assigned on
+        // injected entries only — a worker declaring it is a typed defect at
+        // the submission boundary (the register builder repeats the check).
+        if (row['lifecycle_synthesis'] !== undefined && row['lifecycle_synthesis'] !== null) {
+          errors.push(
+            `order_constraints[${index}].lifecycle_synthesis is kernel-assigned on injected entries only`,
+          );
         }
       });
     }

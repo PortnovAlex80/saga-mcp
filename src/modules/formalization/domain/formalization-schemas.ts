@@ -7,9 +7,11 @@ import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/p
 import {
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
+  verifyOrderConstraintRegister,
   type OrderConstraintClass,
   type OrderConstraintRegister,
 } from '../../../shared/constraint-register.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'factory.formalization-settlement-input.v1';
 export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'factory.formalization-product-bundle.v1';
@@ -84,6 +86,169 @@ export function resolveFormalizationCaseConstraintRegister(
     constraintRegisterDigest: register.registerDigest,
     constraintRegister: register,
   };
+}
+
+/**
+ * ADR-090 (CC-IC-1): the typed no-obligations attestation a NEW v2 Factory
+ * Start carries when its discovery certificate counted nothing. A v2 case
+ * with NEITHER a certificate binding NOR this attestation is a typed red at
+ * case admission — never a silent null/rebuild.
+ */
+export interface FormalizationNoObligationsAttestation {
+  readonly schemaVersion: string;
+  readonly attestationDigest: string;
+}
+
+/** The resolved register authority of a FormalizationCase (one or the other, never both). */
+export interface FormalizationCaseRegisterAuthority {
+  readonly binding: FormalizationConstraintRegisterBinding | null;
+  readonly attestation: FormalizationNoObligationsAttestation | null;
+}
+
+/**
+ * ADR-090 (CC-IC-1), mutation m6b: resolve the case's ONE register authority
+ * from the DISCOVERY CERTIFICATE payload — the v2 source of truth — never a
+ * rebuild from proposal text/payload.
+ *
+ * Resolution order:
+ *   1. the certificate carries a built register (v1 or v2): verify it through
+ *      the repaired read-back verifier and use exactly that binding. A case
+ *      whose explicit `constraintRegister` binding DIVERGES from the
+ *      certificate register (e.g. a proposal-payload rebuild) is a typed red
+ *      — the fallback must never be the supplying path for a v2 case;
+ *   2. the certificate carries the typed no-obligations attestation: the
+ *      lawful null (binding null, attestation pinned);
+ *   3. neither (frozen legacy v1 certificates): the deterministic
+ *      `resolveFormalizationCaseConstraintRegister` rebuild fallback —
+ *      frozen-legacy-v1-only, bit-identical for v1 data.
+ */
+export function resolveFormalizationCaseRegisterAuthority(
+  formalizationCase: FormalizationCase,
+  discoveryCertificatePayload: unknown,
+): FormalizationCaseRegisterAuthority {
+  if (
+    !discoveryCertificatePayload
+    || typeof discoveryCertificatePayload !== 'object'
+    || Array.isArray(discoveryCertificatePayload)
+  ) {
+    throw new Error(
+      'FORMALIZATION_DISCOVERY_CERTIFICATE_PAYLOAD_INVALID: the discovery certificate payload must be an object',
+    );
+  }
+  const certificate = discoveryCertificatePayload as Record<string, unknown>;
+  const certificateRegister = certificate['constraintRegister'] === undefined
+    || certificate['constraintRegister'] === null
+    ? null
+    : verifyOrderConstraintRegister(certificate['constraintRegister']);
+  if (certificateRegister !== null) {
+    if (
+      formalizationCase.constraintRegister
+      && formalizationCase.constraintRegister.constraintRegisterDigest
+        !== certificateRegister.registerDigest
+    ) {
+      throw new Error(
+        'FORMALIZATION_REGISTER_BINDING_BYPASSED: the case register binding diverges from '
+        + 'the discovery certificate register — the certificate binding is the v2 source of '
+        + 'truth, never a proposal-payload rebuild',
+      );
+    }
+    return {
+      binding: {
+        constraintRegisterRef: orderConstraintRegisterRef(certificateRegister),
+        constraintRegisterDigest: certificateRegister.registerDigest,
+        constraintRegister: certificateRegister,
+      },
+      attestation: null,
+    };
+  }
+  const rawAttestation = certificate['noObligationsAttestation'];
+  if (rawAttestation !== undefined && rawAttestation !== null) {
+    if (
+      !rawAttestation
+      || typeof rawAttestation !== 'object'
+      || Array.isArray(rawAttestation)
+      || (rawAttestation as Record<string, unknown>)['schemaVersion']
+        !== 'factory.discovery-no-obligations.v1'
+      || typeof (rawAttestation as Record<string, unknown>)['attestationDigest'] !== 'string'
+      || !/^[a-f0-9]{64}$/.test(
+        (rawAttestation as Record<string, unknown>)['attestationDigest'] as string,
+      )
+    ) {
+      throw new Error(
+        'FORMALIZATION_NO_OBLIGATIONS_ATTESTATION_INVALID: malformed typed no-obligations attestation',
+      );
+    }
+    return {
+      binding: null,
+      attestation: {
+        schemaVersion: 'factory.discovery-no-obligations.v1',
+        attestationDigest: (rawAttestation as Record<string, unknown>)['attestationDigest'] as string,
+      },
+    };
+  }
+  // Frozen legacy v1 certificate (no register, no attestation): the
+  // deterministic rebuild fallback stays the supplier — bit-identical for
+  // v1 data. A kind-carrying (v2-shaped) proposal payload is rejected by the
+  // v1 builder rather than silently dropped.
+  return { binding: resolveFormalizationCaseConstraintRegister(formalizationCase), attestation: null };
+}
+
+/**
+ * ADR-090 (CC-IC-1), mutation m7: the case identity a verification warrant is
+ * cross-bound to. Register+dispositions self-consistency alone is not
+ * identity — the warrant names the exact certificate/case digests it was
+ * issued against, so a silently re-targeted warrant is a typed red.
+ */
+export function formalizationCaseIdentityDigest(formalizationCase: FormalizationCase): string {
+  return sha256Hex({
+    discoveryEpicId: formalizationCase.discoveryEpicId,
+    formalizationEpicId: formalizationCase.formalizationEpicId,
+    discoveryCertificateRef: formalizationCase.discoveryCertificateRef,
+    discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
+    discoveryProposalRef: formalizationCase.discoveryProposalRef,
+    discoveryProposalHash: formalizationCase.discoveryProposalHash,
+    initiativeSubject: formalizationCase.initiativeSubject,
+  });
+}
+
+/** Structural cross-bind view of a VerificationWarrantRef (no cross-module domain import). */
+export interface WarrantCrossBindView {
+  readonly constraintRegisterRef: string;
+  readonly constraintRegisterDigest: string;
+  readonly dispositionsDigest: string;
+  readonly dispositions: Readonly<Record<string, unknown>>;
+  readonly discoveryCertificateHash?: string;
+  readonly formalizationCaseDigest?: string;
+}
+
+export interface WarrantCrossBindExpectation {
+  readonly discoveryCertificateHash: string;
+  readonly formalizationCaseDigest: string;
+}
+
+/**
+ * ADR-090 (CC-IC-1), mutation m7: verify a warrant's certificate/case
+ * cross-bind. A warrant re-targeted at a different certificate or case digest
+ * than the one it was issued against is a typed red — never a silent
+ * re-issue. The issuing settlement verifies at construction; consumers of the
+ * warrant (the readiness manifest contract and future warrant phases) verify
+ * the same fields.
+ */
+export function verifyWarrantCrossBind(
+  warrant: WarrantCrossBindView,
+  expected: WarrantCrossBindExpectation,
+): void {
+  if (
+    warrant.discoveryCertificateHash !== expected.discoveryCertificateHash
+    || warrant.formalizationCaseDigest !== expected.formalizationCaseDigest
+  ) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_MISMATCH: the warrantRef cross-bind does not match the '
+      + 'certificate/case it was presented against '
+      + `(warrant certificate ${String(warrant.discoveryCertificateHash)} / case `
+      + `${String(warrant.formalizationCaseDigest)})`,
+    );
+  }
 }
 
 export interface SolutionContractBundle {
