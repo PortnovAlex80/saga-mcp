@@ -1,6 +1,40 @@
+import { sha256Hex } from '../../shared/canonical-json.js';
+
 export interface ReplayCapsuleAlias {
   readonly capsule_ref: string;
   readonly payload_hash: string;
+  /**
+   * SHA-256 over the SEMANTIC projection of the payload snapshot (see
+   * semanticReplayPayloadHash). When present, conflict detection compares
+   * THIS digest instead of the raw payload_hash: the raw product digest in
+   * typedProducts[].contentHash hashes run-scoped identity (the subject
+   * CandidateSet ref pinned by reviewer payload contracts) and would flag
+   * byte-equal semantic material as divergent.
+   */
+  readonly semantic_payload_hash?: string;
+}
+
+/**
+ * Semantic payload identity for conflict detection: the canonical payload
+ * with typedProducts[].contentHash normalized away. That field is the RAW
+ * product digest — it legitimately hashes run-scoped identity (the reviewer
+ * verdict contract pins the subject CandidateSet ref inside the content), so
+ * two capsules of BYTE-EQUAL semantic material carry different raw digests.
+ * Everything else in the payload is already canonical (input binding values
+ * are identity-nulled at capture; templated content is run-agnostic).
+ */
+export function semanticReplayPayloadHash(payloadSnapshotJson: string): string {
+  const payload = JSON.parse(payloadSnapshotJson) as {
+    typedProducts?: Array<{ contentHash?: string | null }>;
+  };
+  if (Array.isArray(payload.typedProducts)) {
+    for (const product of payload.typedProducts) {
+      if (product && typeof product === 'object' && 'contentHash' in product) {
+        product.contentHash = null;
+      }
+    }
+  }
+  return sha256Hex(payload);
 }
 
 /**
@@ -53,7 +87,8 @@ export function selectReplayCapsule<T extends ReplayCapsuleAlias>(
   capsules: readonly T[],
 ): ReplayCapsuleSelection<T> {
   if (capsules.length === 0) return { outcome: 'miss' };
-  const distinctPayloads = new Set(capsules.map(capsule => capsule.payload_hash));
+  const distinctPayloads = new Set(capsules.map(capsule =>
+    capsule.semantic_payload_hash ?? capsule.payload_hash));
   if (distinctPayloads.size > 1) return { outcome: 'conflict', capsules };
   // Pure aliases: identical material under one semantic key. Pick by stable
   // ref ordering so two hosts observing the same rows in any insertion order

@@ -27,22 +27,25 @@ async function runStart({ bootstrap, launchRef, handlers, label, concurrencyCap 
     sagaRepoRoot: bootstrap.sagaRepoRoot,
     handlers,
   });
-      const driven = await driveCanonicalProof({
-        bootstrap,
-        composition,
-        ...(launchRef ? { launchRef } : {}),
-        scenarioConcurrencyCap: concurrencyCap,
-        maxCycles: 220,
-        pollMs: 5,
-        maxEmptyDispatchStreak: 12,
-        // Scope-guard honesty (2026-08-21): each lifecycle runs to its
-        // NATURAL terminal — the LIFECYCLE_SCOPE_ALREADY_ACTIVE guard
-        // correctly refuses a second launch on a non-terminal scope, so a
-        // stopOnStageOutcome mid-flight stop would deadlock launches B/C.
-        // B must replay the FULL lifecycle with zero inference calls — a
-        // strictly stronger §16 statement than a boundary-only replay.
-        scriptedObserver: observer,
-      });
+  const driven = await driveCanonicalProof({
+    bootstrap,
+    composition,
+    ...(launchRef ? { launchRef } : {}),
+    scenarioConcurrencyCap: concurrencyCap,
+    maxCycles: 220,
+    pollMs: 5,
+    maxEmptyDispatchStreak: 12,
+    // Stage-boundary proof (harness contract): stop the DRIVE at the
+    // formalization 'formalized' outcome. The lifecycle would continue into
+    // solution-development, which this proof has no actors for — each run is
+    // closed between starts via the PRODUCTION abandon API (in the caller),
+    // freeing the lifecycle scope for the next launch. A "natural terminal"
+    // is unreachable here: the drive would drain into a development dead-end
+    // whose non-terminal scope fails launches B/C with
+    // LIFECYCLE_SCOPE_ALREADY_ACTIVE.
+    stopOnStageOutcome: 'formalized',
+    scriptedObserver: observer,
+  });
   return {
     label,
     observer,
@@ -68,6 +71,19 @@ export async function runFormalizationRestartProof({
     pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href
   );
   const { requestFreshHarnessLaunch } = harness;
+  const { getDb } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/db.js')).href);
+  const { abandonLifecycleRun } = await import(
+    pathToFileURL(path.resolve(REPO_ROOT, 'dist/app/factory-start.js')).href
+  );
+  // Production typed close (scripts/factory.mjs abandon path): frees the
+  // lifecycle scope between starts; durable stage runs — the oracles'
+  // evidence — are preserved.
+  const closeActiveRun = label =>
+    abandonLifecycleRun(getDb(), {
+      projectId: bootstrap.projectId,
+      actorId: 'formalization-restart-proof',
+      reason: `stage-boundary close after ${label}`,
+    });
 
   const runA = await runStart({
     bootstrap,
@@ -76,6 +92,7 @@ export async function runFormalizationRestartProof({
     label: 'A-cold',
     concurrencyCap,
   });
+  closeActiveRun('A-cold');
   const launchB = requestFreshHarnessLaunch(bootstrap, { idea: IDEA_A });
   const runB = await runStart({
     bootstrap,
@@ -84,6 +101,7 @@ export async function runFormalizationRestartProof({
     label: 'B-same-semantic-input',
     concurrencyCap,
   });
+  closeActiveRun('B-same-semantic-input');
   const launchC = requestFreshHarnessLaunch(bootstrap, { idea: IDEA_B });
   const runC = await runStart({
     bootstrap,
@@ -94,7 +112,13 @@ export async function runFormalizationRestartProof({
   });
 
   const durableTrace = observeDurableTrace(bootstrap.dbPath);
-  const progress = classifyPostDrainProgress(durableTrace);
+  // Boundary honesty: the LAST start stops at 'formalized', so the
+  // handoff-created development cells are BOUNDARY-UNDRIVEN facts, not
+  // stalls (earlier starts' cells are buried typed by the abandon close).
+  const progress = classifyPostDrainProgress(durableTrace, {
+    stoppedByStageOutcome: runC.driven.result.stoppedByStageOutcome === true,
+    stageOutcome: 'formalized',
+  });
   const stages = (durableTrace.stageRuns ?? [])
     .filter(row => row.stage_id === 'solution-formalization' && row.local_outcome === 'formalized');
   const lifecycleIds = [...new Set(stages.map(row => row.lifecycle_run_id))];

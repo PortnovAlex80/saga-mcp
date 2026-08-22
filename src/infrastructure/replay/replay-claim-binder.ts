@@ -19,7 +19,10 @@ import {
   readWorkplaceRefForTask,
   resolveReplayKeyMaterial,
 } from './replay-key-material.js';
-import { selectReplayCapsule } from './replay-capsule-selection.js';
+import {
+  selectReplayCapsule,
+  semanticReplayPayloadHash,
+} from './replay-capsule-selection.js';
 import { journalEvent } from '../../observability/run-journal.js';
 
 export { resolveReplayKeyMaterial };
@@ -367,14 +370,23 @@ export function bindReplayToClaim(
   certifyAcceptedReplayCapsules(db, keyMaterial.projectId);
 
   const replayKey = computeReplayKey(keyMaterial);
-  const capsules = db.prepare(
-    `SELECT capsule_ref,payload_hash
+  const capsuleRows = db.prepare(
+    `SELECT capsule_ref,payload_hash,payload_snapshot
        FROM factory_replay_capsules
       WHERE project_id=? AND replay_key=?`,
   ).all(keyMaterial.projectId, replayKey) as Array<{
     capsule_ref: string;
     payload_hash: string;
+    payload_snapshot: string;
   }>;
+  // Semantic payload identity (§15/ADR-080): the raw payload_hash carries the
+  // run-scoped product digest; conflict detection must compare the semantic
+  // projection so byte-equal material under one key stays a pure alias.
+  const capsules = capsuleRows.map(row => ({
+    capsule_ref: row.capsule_ref,
+    payload_hash: row.payload_hash,
+    semantic_payload_hash: semanticReplayPayloadHash(row.payload_snapshot),
+  }));
   // ADR-080 §2 payload-conflict: divergent payloads under one semantic key are
   // PERSISTED as evidence first — one append-only row per conflicting capsule,
   // binding both divergent payload hashes, the observing claim, and (when

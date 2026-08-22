@@ -25,7 +25,10 @@ import {
 import { isWorkplaceProductionSnapshot } from '../../process-modules/shared/workplace-production-snapshot.js';
 import { isForeignManagedSubmission } from './replay-capsule-completeness.js';
 import { SqliteSealedProductMaterialRepository } from '../workplace/sqlite-sealed-product-material-repository.js';
-import { selectReplayCapsule } from './replay-capsule-selection.js';
+import {
+  selectReplayCapsule,
+  semanticReplayPayloadHash,
+} from './replay-capsule-selection.js';
 
 interface ExecutionEnvelope {
   execution_context?: {
@@ -405,6 +408,10 @@ function replayIdentityCandidate(value: unknown): boolean {
     || value.startsWith('candidate-set:')
     || value.startsWith('workplace/')
     || value.startsWith('product:')
+    // Typed run-scoped handles of the form prefix:counter (e.g.
+    // formalization-baseline:2) are opaque local refs — identity candidates
+    // just like candidate-set:/workplace/ refs, never semantic content.
+    || /^[a-z][a-z0-9-]*:[0-9]+$/.test(value)
     || value.length >= 32;
 }
 
@@ -622,15 +629,24 @@ export class SqliteReplayCapsuleRepository {
       return { replayKey, capsuleRef: null, capsulePayloadHash: null };
     }
     const replayKey = computeReplayKey(keyMaterial);
-    const capsules = this.db.prepare(
-      `SELECT capsule_ref,payload_hash
+    const capsuleRows = this.db.prepare(
+      `SELECT capsule_ref,payload_hash,payload_snapshot
          FROM factory_replay_capsules
         WHERE project_id=? AND replay_key=?
         ORDER BY id`,
     ).all(keyMaterial.projectId, replayKey) as Array<{
       capsule_ref: string;
       payload_hash: string;
+      payload_snapshot: string;
     }>;
+    // Semantic payload identity — same projection as the authoritative claim
+    // path (replay-claim-binder): raw product digests are run-scoped, so the
+    // conflict check must not treat byte-equal material as divergent.
+    const capsules = capsuleRows.map(row => ({
+      capsule_ref: row.capsule_ref,
+      payload_hash: row.payload_hash,
+      semantic_payload_hash: semanticReplayPayloadHash(row.payload_snapshot),
+    }));
     // A `conflict` resolves as a miss on this read path; the authoritative
     // claim path (replay-claim-binder) is what persists ADR-080 §2 evidence,
     // so this stays a pure read.
@@ -740,7 +756,19 @@ export class SqliteReplayCapsuleRepository {
       taskMetadata = parseJsonObject(execution.task_metadata);
     }
     const inputValue = taskMetadata.process_node_input ?? taskMetadata.cell_input_item ?? {};
-    const sourceInputBindings = collectIdentityBindings(inputValue);
+    // The reviewer's verdict content pins the run-scoped subject CandidateSet
+    // ref (payload contract factory.review-verdict.v1 / development-review-
+    // verdict). That ref is frozen at TOP-LEVEL task metadata — invisible to
+    // the cell-input binding walk — so without this synthetic binding every
+    // cross-lifecycle acceptance of semantically identical reviewed material
+    // captures a divergent payload under one replay key and §15 fails the
+    // next claim closed (REPLAY_KEY_PAYLOAD_CONFLICT). Templatized here, the
+    // re-derivation is byte-stable; the replay executor resolves the path
+    // against the CURRENT run's subject ref (mirroring the rebinder).
+    const bindingSource = typeof taskMetadata.subject_candidate_set_ref === 'string'
+      ? { subject_candidate_set_ref: taskMetadata.subject_candidate_set_ref, ...inputValue }
+      : inputValue;
+    const sourceInputBindings = collectIdentityBindings(bindingSource);
     const inputBindings = canonicalReplayInputBindings(sourceInputBindings);
 
     const candidate = readCandidateMembers(this.db, input.candidateSetRef);
@@ -780,6 +808,13 @@ export class SqliteReplayCapsuleRepository {
         if (isForeignManagedSubmission(this.db, member.product_ref, input.executionRef)) {
           continue;
         }
+        // The content is templated against the input bindings so the capsule
+        // is byte-stable across lifecycles under one replay key; the RAW
+        // product digest stays as contentHash because the completeness proof
+        // cross-checks it against the real submission. Payload identity for
+        // conflict detection is computed on the semantic projection (see
+        // replay-capsule-selection.ts), which normalizes that run-scoped
+        // digest away.
         typedProducts.push({
           schema: member.product_schema,
           content: templateAgainstInput(content, sourceInputBindings),
