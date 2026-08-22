@@ -19,6 +19,7 @@ import {
   W9_HAPPY_HANDLERS,
   makeDevelopmentImplementHandler,
   makeDevelopmentPlanHandler,
+  makeOneContainerAcceptanceHandler,
 } from '../factory-e2e/w9-happy-handlers.mjs';
 import { coverageToken } from './coverage-kernel.mjs';
 
@@ -252,6 +253,18 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
     proves: ['dev.impl-scope'],
     coverageItems: ['D3:impl-scope:file-outside-effective-scope-rejected'],
   }),
+  // U_contract_partitions: the SAME atomic AC set packaged as ONE container
+  // document (the lawful formalization shape that killed Elite-4) must
+  // preserve criterion cardinality downstream — TWO atomic criteria, TWO
+  // verification workplaces, TWO distinct identities — and the lifecycle
+  // still reaches verified.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'development/acceptance-packaging-one-container',
+    kind: 'positive',
+    proves: ['dev.task-graph'],
+    coverageItems: ['contract-partition:acceptance-criteria:packaging-invariant'],
+  }),
 ]);
 
 // --- Planned (not yet demonstrated) universe — honest tranche boundary ---
@@ -261,15 +274,15 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
 // The universe is monotonic: a landed token never leaves U (operator
 // review 2026-08-22 — the denominator must not shrink as coverage grows).
 export const DEVELOPMENT_REQUIRED_UNIVERSE = Object.freeze([
-  // SPLIT (operator review 2026-08-22): dependency-order and concurrency-cap
-  // are SEPARATE obligations. The chain graph proves order (peak is
-  // structurally 1 there — it proves nothing about the limiter); the cap is
-  // proven by the parallel-burst graph where 3 siblings are simultaneously
-  // runnable and the observed peak MUST equal the cap.
   'D2:fanout-scheduling:dependency-order-respected',
   'D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable',
   'D2:fanin:completion-policy-all-blocks-early-fanin',
   'D3:impl-scope:file-outside-effective-scope-rejected',
+  // U_contract_partitions (operator review 2026-08-22): lawful producer
+  // data-shape equivalence classes across the handoff. The Elite-4 defect
+  // lived exactly here — the N-documents shape was proven, the 1-container
+  // shape collapsed three atomic criteria into one identity.
+  'contract-partition:acceptance-criteria:packaging-invariant',
 ]);
 
 export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
@@ -317,6 +330,17 @@ function traceTimeToMs(value) {
   }
   const parsed = Date.parse(s);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+// One-container packaging map: W9 happy everywhere EXCEPT the formalization
+// acceptance cell, which writes ONE AC document carrying BOTH atomic
+// criteria (the lawful container shape of the Elite-4 incident).
+function buildOneContainerHandlers() {
+  const handlers = { ...W9_HAPPY_HANDLERS };
+  const acceptanceKey = Object.keys(handlers)
+    .find(key => key.includes('define-acceptance-contract/author'));
+  handlers[acceptanceKey] = makeOneContainerAcceptanceHandler();
+  return handlers;
 }
 
 // Cap-proof handler map: W9 happy everywhere EXCEPT the planner, which
@@ -649,6 +673,44 @@ export function buildDevelopmentRuntimeCase(id) {
                   implementationWorkplaces: implWorkplaces.size,
                   accepted: accepted.size,
                   missing,
+                },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'development/acceptance-packaging-one-container':
+      return {
+        scenario,
+        // ONE container AC document (two atomic level-2 headings) instead of
+        // the N-documents W9 default — the lawful producer shape that
+        // collapsed under artifactId identity. The kernel must preserve
+        // criterion cardinality end-to-end.
+        handlers: Object.freeze(buildOneContainerHandlers()),
+        driveOptions: { maxCycles: 320, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
+          {
+            // PACKAGING INVARIANT: two atomic criteria in one container
+            // yield TWO verification workplaces with distinct identities —
+            // never one collapsed card — and both reach final acceptance.
+            id: 'development.packaging.cardinality-preserved',
+            evaluate({ durableTrace }) {
+              const verifyWorkplaces = (durableTrace.workplaces ?? [])
+                .filter(w => String(w.workplace_ref).includes('development-verification'));
+              const acceptedVerify = new Set(
+                (durableTrace.finalAcceptances ?? [])
+                  .filter(row => String(row.workplace_ref).includes('development-verification'))
+                  .map(row => row.workplace_ref));
+              return {
+                passed: verifyWorkplaces.length === 2
+                  && verifyWorkplaces.every(w => acceptedVerify.has(w.workplace_ref)),
+                evidenceRefs: verifyWorkplaces.map(w => `workplace:${w.workplace_ref}`),
+                details: {
+                  verificationWorkplaces: verifyWorkplaces.length,
+                  accepted: acceptedVerify.size,
+                  distinctRefs: new Set(verifyWorkplaces.map(w => w.workplace_ref)).size,
                 },
               };
             },

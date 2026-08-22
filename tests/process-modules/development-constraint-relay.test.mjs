@@ -82,7 +82,7 @@ function proposal(items) {
       executionSkill: 'saga-verifier',
       executionMode: 'read_only_evidence',
       projectRepositoryId: 1,
-      acceptanceCriterionIds: [30],
+      acceptanceCriterionKeys: ['30:AC-1'],
       dependsOnKeys: [],
       changeScopes: [],
       required: true,
@@ -105,7 +105,7 @@ function implementationItem(overrides = {}) {
     executionSkill: 'saga-worker',
     executionMode: 'tracker_only',
     projectRepositoryId: 1,
-    acceptanceCriterionIds: [30],
+    acceptanceCriterionKeys: ['30:AC-1'],
     dependsOnKeys: [],
     changeScopes: ['work-item:impl-1'],
     required: true,
@@ -275,7 +275,7 @@ function lineageFixture({ cardConstraintIds, evidenceConstraintIds }) {
   const candidateHash = hash('candidate');
   const card = {
     key: 'verify-ac-1',
-    acceptanceCriterionIds: [30],
+    acceptanceCriterionKeys: ['30:AC-1'],
     ...(cardConstraintIds === null ? {} : { coveredConstraintIds: cardConstraintIds }),
   };
   db.prepare(
@@ -307,7 +307,7 @@ function evidenceProduct(overrides = {}) {
   return {
     schemaVersion: 'factory.candidate-verification-evidence-product.v2',
     verificationItemKey: 'verify-ac-1',
-    acceptanceCriterionId: 30,
+    acceptanceCriterionKey: '30:AC-1',
     acceptedCriterionHash: hash('criterion'),
     candidateHash: hash('candidate'),
     outcome: 'passed',

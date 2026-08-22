@@ -269,7 +269,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             workKeySelector: 'items',
             dependencySelector: 'dependsOnKeys',
             completionPolicy: 'all',
-            taskProvenance: { sourceArtifactIdsSelector: 'acceptanceCriterionIds' },
+            taskProvenance: { sourceArtifactIdsSelector: 'sourceArtifactIds' },
           },
           author: {
             skillRef: 'development-implementation-worker',
@@ -378,8 +378,8 @@ export const developmentProcessModule: ProcessModuleDefinition = {
             workKeySelector: 'verificationItems',
             completionPolicy: 'all',
             taskProvenance: {
-              sourceArtifactIdsSelector: 'acceptanceCriterionIds',
-              verificationTargetArtifactIdSelector: 'acceptanceCriterionIds',
+              sourceArtifactIdsSelector: 'sourceArtifactIds',
+              verificationTargetArtifactIdSelector: 'sourceArtifactIds',
             },
           },
           author: {

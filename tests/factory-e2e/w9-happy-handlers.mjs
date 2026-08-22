@@ -310,6 +310,43 @@ function formalizationUseCases({ handlers, assignment, context, db }) {
   return { kind: 'worker-done-accepted' };
 }
 
+/** Metamorphic packaging variant: ONE container AC artifact whose document
+ * carries BOTH atomic criteria as level-2 headings — the lawful producer
+ * shape that collapsed under the old artifactId identity (Elite-4). The
+ * default W9 map keeps the N-documents shape; the contract-partition
+ * scenario overrides with this handler. */
+export function makeOneContainerAcceptanceHandler() {
+  return function formalizationAcceptance({ handlers, assignment, context, db }) {
+    const { projectId, epicId } = taskScope(db, assignment.taskId);
+    const repoPath = context.workspaceRoot;
+    const frs = findAcceptedArtifacts(db, epicId, 'FR');
+    const nfrs = findAcceptedArtifacts(db, epicId, 'NFR');
+    const ucs = findAcceptedArtifacts(db, epicId, 'UC');
+    if (!frs.length) throw new Error('No accepted FR for acceptance');
+    const marker = ucs.length
+      ? proposalMarkerFromFile(repoPath, ucs[0].path)
+      : proposalMarkerFromFile(repoPath, frs[0].path);
+    const markerSuffix = marker ? ` [proposal ${marker}]` : '';
+    const artifactPath = 'docs/formalization/AC.md';
+    // Container document: two ATOMIC level-2 AC headings (the leaf grammar
+    // of acceptance-criterion-document.ts). One provenance artifact, TWO
+    // atomic criteria.
+    writeRepoFile(repoPath, artifactPath,
+      `## AC-1: Pipeline Completes\n\nDeterministic AC artifact for AC-1.${markerSuffix}\n\n`
+      + `## AC-2: NFR Compliance\n\nDeterministic AC artifact for AC-2.${markerSuffix}\n`);
+    const container = handlers.artifact_create({
+      project_id: projectId, epic_id: epicId, type: 'AC', code: 'AC',
+      title: 'Acceptance Contract (container)', path: artifactPath,
+      status: 'accepted',
+    });
+    addTrace(handlers, container.id, frs[0].id, 'derived_from');
+    if (ucs.length) addTrace(handlers, container.id, ucs[0].id, 'derived_from');
+    if (nfrs.length) addTrace(handlers, container.id, nfrs[0].id, 'derived_from');
+    done(handlers, assignment, 'formalization acceptance: one container AC document');
+    return { kind: 'worker-done-accepted' };
+  };
+}
+
 function formalizationAcceptance({ handlers, assignment, context, db }) {
   const { projectId, epicId } = taskScope(db, assignment.taskId);
   const repoPath = context.workspaceRoot;
@@ -445,6 +482,10 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
   const criterionId = ac => ac.artifactId;
+  const criterionKeyOf = ac => `${ac.artifactId}:${ac.code ?? ''}`;
+  // Item keys are per-ATOMIC-criterion: several criteria may share one
+  // provenance artifact, and keys derived from artifactId would collide.
+  const itemCode = ac => (ac.code ?? String(ac.artifactId)).replace(/[^A-Za-z0-9._-]/g, '-');
   let implementationItems;
   if (parallelBurst > 0 && implementationCriteria.length >= 1) {
     // Cap-proof topology: item A carries the mandated shared scopes; every
@@ -453,26 +494,26 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
     // factory concurrency cap is the ONLY limiter of their peak.
     const [first] = implementationCriteria;
     const own = key => [`src/w9/${key}.ts`];
-    const item = (key, acIds, scopes, dependsOn) => ({
+    const item = (key, acKeys, scopes, dependsOn) => ({
       key,
       kind: 'implementation',
       taskKind: 'development.code',
       executionSkill: 'saga-worker',
       executionMode: 'git_change',
       projectRepositoryId: repo.projectRepositoryId,
-      acceptanceCriterionIds: acIds,
+      acceptanceCriterionKeys: acKeys,
       dependsOnKeys: dependsOn,
       changeScopes: scopes,
       required: true,
       criticality: 'blocker',
     });
-    const firstKey = `impl-${criterionId(first)}`;
+    const firstKey = `impl-${itemCode(first)}`;
     implementationItems = [
-      item(firstKey, [criterionId(first)],
+      item(firstKey, [criterionKeyOf(first)],
         [`src/w9/${firstKey}.ts`, 'package.json', 'tests/'], []),
       ...implementationCriteria.slice(1).map(ac => item(
-        `impl-${criterionId(ac)}`, [criterionId(ac)],
-        own(`impl-${criterionId(ac)}`), [firstKey],
+        `impl-${itemCode(ac)}`, [criterionKeyOf(ac)],
+        own(`impl-${itemCode(ac)}`), [firstKey],
       )),
       ...Array.from({ length: parallelBurst }, (_, i) => item(
         `impl-burst-${i + 1}`, [], own(`impl-burst-${i + 1}`), [firstKey],
@@ -480,16 +521,16 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
     ];
   } else {
   implementationItems = implementationCriteria.map((ac, index) => ({
-    key: `impl-${criterionId(ac)}`,
+    key: `impl-${itemCode(ac)}`,
     kind: 'implementation',
     taskKind: 'development.code',
     executionSkill: 'saga-worker',
     executionMode: 'git_change',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [criterionId(ac)],
+    acceptanceCriterionKeys: [criterionKeyOf(ac)],
     dependsOnKeys: index === 0
       ? []
-      : [`impl-${criterionId(implementationCriteria[index - 1])}`],
+      : [`impl-${itemCode(implementationCriteria[index - 1])}`],
     // Cover the requiredChangeScopes ('package.json', 'tests/') that
     // assembleProductLifecycleInput mandates for bootstrap material, plus the
     // item's own source file. The change scope MUST match the file path the
@@ -502,13 +543,13 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
   }));
   }
   const verificationItems = criteria.map(ac => ({
-    key: `verify-${criterionId(ac)}`,
+    key: `verify-${itemCode(ac)}`,
     kind: 'verification',
     taskKind: 'verification.ac',
     executionSkill: 'saga-worker',
     executionMode: 'read_only_evidence',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [criterionId(ac)],
+    acceptanceCriterionKeys: [criterionKeyOf(ac)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,
@@ -659,8 +700,9 @@ function developmentVerify({ handlers, assignment, meta, db }) {
       && typeof value.candidateHash === 'string',
   );
   if (!candidate) throw new Error('frozen candidate not found in verification input');
-  const acId = Number(item.acceptanceCriterionIds?.[0] || meta.verification_target_artifact_id || 0);
-  if (!acId) throw new Error('verification acceptanceCriterionId missing');
+  const acKey = String(item.acceptanceCriterionKeys?.[0] ?? '');
+  const acId = Number(acKey.split(':')[0]) || meta.verification_target_artifact_id || 0;
+  if (!acKey || !acId) throw new Error('verification acceptanceCriterionKey missing');
   // Read the AC's accepted_hash directly from the DB.
   const acRow = db.prepare(
     'SELECT accepted_hash, content_hash FROM artifacts WHERE id=?',
@@ -673,7 +715,7 @@ function developmentVerify({ handlers, assignment, meta, db }) {
     content: {
       schemaVersion: 'factory.candidate-verification-evidence-product.v2',
       verificationItemKey: item.key,
-      acceptanceCriterionId: acId,
+      acceptanceCriterionKey: acKey,
       acceptedCriterionHash,
       candidateHash: candidate.candidateHash,
       outcome: 'passed',

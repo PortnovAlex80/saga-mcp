@@ -49,14 +49,14 @@ test('task-graph provider preserves exact policy failures as content-addressed d
     implementationItems: ['left', 'right'].map(key => ({
       key, kind: 'implementation', taskKind: 'development.code',
       executionSkill: 'saga-worker', executionMode: 'git_change',
-      projectRepositoryId: 1, acceptanceCriterionIds: [10],
+      projectRepositoryId: 1, acceptanceCriterionKeys: ['10:AC-1'],
       dependsOnKeys: [], changeScopes: ['src/shared/'], required: true,
       criticality: 'blocker',
     })),
     verificationItems: [{
       key: 'verify', kind: 'verification', taskKind: 'verification.ac',
       executionSkill: 'saga-verifier', executionMode: 'read_only_evidence',
-      projectRepositoryId: 1, acceptanceCriterionIds: [10],
+      projectRepositoryId: 1, acceptanceCriterionKeys: ['10:AC-1'],
       dependsOnKeys: ['left', 'right'], changeScopes: [], required: true,
       criticality: 'blocker',
     }],
@@ -126,18 +126,18 @@ test('computeUnorderedOverlapPairs returns every scope-overlapping unordered pai
     implementationItems: [
       // a<->b overlap (src/ dir vs src/a.ts), no dependency edge — conflict.
       { key: 'a', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
-        projectRepositoryId: 1, changeScopes: ['src/'], acceptanceCriterionIds: [1],
+        projectRepositoryId: 1, changeScopes: ['src/'], acceptanceCriterionKeys: ['10:AC-1'],
         required: true, dependsOnKeys: [] },
       { key: 'b', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
-        projectRepositoryId: 1, changeScopes: ['src/a.ts'], acceptanceCriterionIds: [1],
+        projectRepositoryId: 1, changeScopes: ['src/a.ts'], acceptanceCriterionKeys: ['10:AC-1'],
         required: true, dependsOnKeys: [] },
       // c overlaps a but depends on it — ordered, NOT a conflict.
       { key: 'c', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
-        projectRepositoryId: 1, changeScopes: ['src/b.ts', 'src/'], acceptanceCriterionIds: [1],
+        projectRepositoryId: 1, changeScopes: ['src/b.ts', 'src/'], acceptanceCriterionKeys: ['10:AC-1'],
         required: true, dependsOnKeys: ['a'] },
       // d: different repository — never a same-repo conflict.
       { key: 'd', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
-        projectRepositoryId: 2, changeScopes: ['src/'], acceptanceCriterionIds: [1],
+        projectRepositoryId: 2, changeScopes: ['src/'], acceptanceCriterionKeys: ['10:AC-1'],
         required: true, dependsOnKeys: [] },
     ],
     verificationItems: [],

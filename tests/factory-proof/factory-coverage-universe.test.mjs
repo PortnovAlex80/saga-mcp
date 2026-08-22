@@ -59,7 +59,7 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
   // exact pins the 2026-08-22 operator review restored — do NOT shrink them:
   // landing new scenarios may only MOVE tokens (pending→required) or ADD
   // tokens, never delete.
-  assert.equal(universe.totals.universeTokens, 147,
+  assert.equal(universe.totals.universeTokens, 148,
     'U restored + split: 6 restored tokens (3 delivery landed, 2 development landed, 1 delivery restart) + the D2 bundle split into dependency-order and concurrency-cap (-1 +2)');
   for (const w of universe.perWorkshop) {
     // every required token must be declared by a scenario — else landing
@@ -83,8 +83,8 @@ test('SPINE means an honest pending ledger — the exact global uncovered set is
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
   assert.equal(dev.pendingSize, 16,
     'D2 sibling-isolation, D3 claim-monotonicity, D4–D10, restarts, feedback + the desk-replay seam');
-  assert.equal(dev.requiredUniverseSize, 4,
-    'landed: D2 dependency-order, D2 concurrency-cap (parallel burst, peak==cap), D2 fanin, D3 impl-scope — moved to required, still in U');
+  assert.equal(dev.requiredUniverseSize, 5,
+    'landed: D2 order, D2 cap, D2 fanin, D3 impl-scope, contract-partition packaging-invariant — moved to required, still in U');
   assert.equal(dl.pendingSize, 2,
     'K4 crash-after-effect + restart:delivery:idempotent-settlement '
     + '(BLOCKED_BY restart:development:git-change-desk-replay — an upstream '
@@ -102,7 +102,7 @@ test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
 });
 
 test('universe totals are ratcheted', () => {
-  assert.equal(universe.totals.universeTokens, 147);
+  assert.equal(universe.totals.universeTokens, 148);
   assert.equal(universe.totals.platformFaultEdges, 6,
     'K4-owned platform fault edges (1 discovery + 5 formalization)');
 });

@@ -236,6 +236,7 @@ const developmentPlan = async ({ client, task, prompt }) => {
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
   const criterionId = ac => ac.artifactId;
+  const criterionKeyOf = ac => `${ac.artifactId}:${ac.code ?? ''}`;
   const implementationItems = implementationCriteria.map((ac, index) => ({
       key: `impl-${criterionId(ac)}`,
       kind: 'implementation',
@@ -243,7 +244,7 @@ const developmentPlan = async ({ client, task, prompt }) => {
       executionSkill: 'saga-worker',
       executionMode: 'git_change',
       projectRepositoryId: repo.projectRepositoryId,
-      acceptanceCriterionIds: [criterionId(ac)],
+      acceptanceCriterionKeys: [criterionKeyOf(ac)],
       // Exercise the real dependency/admission/base-propagation path. A
       // deterministic chain is deliberately used here: scripted production
       // must test the same non-empty DAG physics that real planners can emit,
@@ -262,7 +263,7 @@ const developmentPlan = async ({ client, task, prompt }) => {
     executionSkill: 'saga-worker',
     executionMode: 'read_only_evidence',
     projectRepositoryId: repo.projectRepositoryId,
-    acceptanceCriterionIds: [criterionId(ac)],
+    acceptanceCriterionKeys: [criterionKeyOf(ac)],
     dependsOnKeys: [],
     changeScopes: [],
     required: true,
@@ -378,7 +379,8 @@ const developmentVerify = async ({ client, task, prompt }) => {
       && typeof value.candidateHash === 'string',
   );
   if (!candidate) throw new Error('frozen candidate not found in verification input');
-  const acId = Number(item.acceptanceCriterionIds?.[0] || task.verification_target_artifact_id || 0);
+  const acKey = String(item.acceptanceCriterionKeys?.[0] ?? '');
+  const acId = Number(acKey.split(':')[0]) || task.verification_target_artifact_id || 0;
   if (!acId) throw new Error('verification acceptanceCriterionId missing');
   const acResp = await client.callJson('artifact_get', { id: acId });
   const ac = acResp.artifact || acResp;
@@ -386,7 +388,7 @@ const developmentVerify = async ({ client, task, prompt }) => {
   if (!acceptedCriterionHash) throw new Error(`accepted hash missing for AC ${acId}`);
   const evidenceBody = {
     verificationItemKey: item.key,
-    acceptanceCriterionId: acId,
+    acceptanceCriterionKey: acKey,
     candidateHash: candidate.candidateHash,
     result: 'passed',
   };
@@ -394,7 +396,7 @@ const developmentVerify = async ({ client, task, prompt }) => {
   await actions.submitProduct(client, 'factory.candidate-verification-evidence-product.v2', {
     schemaVersion: 'factory.candidate-verification-evidence-product.v2',
     verificationItemKey: item.key,
-    acceptanceCriterionId: acId,
+    acceptanceCriterionKey: acKey,
     acceptedCriterionHash,
     candidateHash: candidate.candidateHash,
     outcome: 'passed',

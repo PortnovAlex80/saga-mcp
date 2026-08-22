@@ -71,10 +71,10 @@ export function createDevelopmentContinuationTaskGraphHandler(
     ) {
       throw new Error('DEVELOPMENT_CONTINUATION_REPOSITORY_MISMATCH');
     }
-    const acceptanceCriterionIds = developmentCase.acceptanceCriteria
+    const acceptanceCriterionKeys = developmentCase.acceptanceCriteria
       .map(acceptanceCriterionIdentity)
-      .sort((left, right) => left - right);
-    if (acceptanceCriterionIds.length === 0) {
+      .sort();
+    if (acceptanceCriterionKeys.length === 0) {
       throw new Error('DEVELOPMENT_CONTINUATION_ACCEPTANCE_EMPTY');
     }
     const criticality = highestCriticality(
@@ -89,7 +89,7 @@ export function createDevelopmentContinuationTaskGraphHandler(
         executionSkill: 'saga-managed-source-author',
         executionMode: 'artifact_change',
         projectRepositoryId: adoption.project_repository_id,
-        acceptanceCriterionIds,
+        acceptanceCriterionKeys,
         dependsOnKeys: [],
         changeScopes,
         required: true,
@@ -102,7 +102,7 @@ export function createDevelopmentContinuationTaskGraphHandler(
         executionSkill: 'saga-verifier',
         executionMode: 'read_only_evidence',
         projectRepositoryId: adoption.project_repository_id,
-        acceptanceCriterionIds: [acceptanceCriterionIdentity(criterion)],
+        acceptanceCriterionKeys: [acceptanceCriterionIdentity(criterion)],
         dependsOnKeys: [],
         changeScopes: [],
         required: true,

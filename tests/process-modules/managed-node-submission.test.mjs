@@ -191,7 +191,7 @@ test('pinned task-graph contract rejects Run028 shape errors before storage and 
       executionSkill: 'saga-worker',
       executionMode: 'git_change',
       projectRepositoryId: 1,
-      acceptanceCriterionIds: [14],
+      acceptanceCriterionKeys: ['14:AC-1'],
       dependsOnKeys: [],
       changeScopes: ['src/'],
       required: true,
@@ -219,7 +219,7 @@ test('pinned task-graph contract rejects Run028 shape errors before storage and 
 
     for (const malformed of [
       { ...proposal, implementationItems: [{ ...baseItem, required: 'true' }] },
-      { ...proposal, verificationItems: [{ ...proposal.verificationItems[0], acceptanceCriterionIds: ['accepted-hash'] }] },
+      { ...proposal, verificationItems: [{ ...proposal.verificationItems[0], acceptanceCriterionKeys: ['accepted-hash'] }] },
       { ...proposal, implementationItems: [{ ...baseItem, criticality: 'critical' }] },
     ]) {
       assert.throws(
@@ -436,7 +436,7 @@ test('registered executable product contract rejects malformed verification JSON
         payload: {
           schemaVersion: schema,
           verificationItemKey: 'verify-ac-1',
-          acceptanceCriterionId: 14,
+          acceptanceCriterionKey: '14:AC-1',
           acceptedCriterionHash: 'a'.repeat(64),
           candidateHash: 'b'.repeat(64),
           outcome: 'pass',
@@ -455,7 +455,7 @@ test('registered executable product contract rejects malformed verification JSON
       payload: {
         schemaVersion: schema,
         verificationItemKey: 'verify-ac-1',
-        acceptanceCriterionId: 14,
+        acceptanceCriterionKey: '14:AC-1',
         acceptedCriterionHash: 'a'.repeat(64),
         candidateHash: 'b'.repeat(64),
         outcome: 'passed',
@@ -490,7 +490,7 @@ test('durable WorkIntent payload-contract pin rejects ambient registry drift', (
         payload: {
           schemaVersion: schema,
           verificationItemKey: 'verify-ac-1',
-          acceptanceCriterionId: 14,
+          acceptanceCriterionKey: '14:AC-1',
           acceptedCriterionHash: 'a'.repeat(64),
           candidateHash: 'b'.repeat(64),
           outcome: 'passed',

@@ -56,7 +56,7 @@ function implementationItem(key, extra = {}) {
     executionSkill: 'saga-worker',
     executionMode: 'git_change',
     projectRepositoryId: 1,
-    acceptanceCriterionIds: [11, 12],
+    acceptanceCriterionKeys: ['11:AC-1', '12:AC-2'],
     dependsOnKeys: [],
     changeScopes: ['data/', 'engine/', 'ui/', 'app.js'],
     required: true,
@@ -69,14 +69,14 @@ function proposal(implementationItems) {
   return {
     schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
     implementationItems,
-    verificationItems: [11, 12].map(id => ({
+    verificationItems: ['11:AC-1', '12:AC-2'].map(id => ({
       key: `verify-${id}`,
       kind: 'verification',
       taskKind: 'verification.ac',
       executionSkill: 'saga-verifier',
       executionMode: 'read_only_evidence',
       projectRepositoryId: 1,
-      acceptanceCriterionIds: [id],
+      acceptanceCriterionKeys: [id],
       dependsOnKeys: ['impl'],
       changeScopes: [],
       required: true,
@@ -115,7 +115,7 @@ test('policy rejects a NON-required implementation item carrying a foreign AC id
     implementationItem('optional', {
       key: 'optional',
       required: false,
-      acceptanceCriterionIds: [999],
+      acceptanceCriterionKeys: ['999:AC-X'],
       changeScopes: ['vendor/'],
     }),
   ]);
@@ -124,20 +124,20 @@ test('policy rejects a NON-required implementation item carrying a foreign AC id
   const message = withBlindSpot.errors
     .find(error => error.includes('every implementation item (required or not)'));
   assert.ok(message, 'the non-required extra-id finding exists');
-  assert.match(message, /extra AC artifact ids: \[999\]/);
+  assert.match(message, /extra AC criterion keys: \[999:AC-X\]/);
 });
 
 test('policy keeps the required-coverage arithmetic unchanged', () => {
   const result = validateProposal(
     developmentCase(),
-    [implementationItem('impl', { acceptanceCriterionIds: [11] })],
+    [implementationItem('impl', { acceptanceCriterionKeys: ['11:AC-1'] })],
   );
   assert.equal(result.valid, false);
   const message = result.errors
     .find(error => error.includes('required implementation coverage does not equal'));
   assert.ok(message);
-  // E: codes ride alongside the raw ids.
-  assert.match(message, /missing AC artifact ids: \[12\] \(codes: AC-2\)/);
+  // E: codes ride alongside the raw keys.
+  assert.match(message, /missing AC criterion keys: \[12:AC-2\] \(codes: AC-2\)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ test('task-graph gate merges manifest findings with policy failures for one-shot
     .run(DEVELOPMENT_CASE_SCHEMA, JSON.stringify(input));
   db.prepare('INSERT INTO factory_managed_node_submissions VALUES (1,1,?,?,?,?)')
     .run('execution:1', DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
-      JSON.stringify(proposal([implementationItem('impl', { acceptanceCriterionIds: [11] })])),
+      JSON.stringify(proposal([implementationItem('impl', { acceptanceCriterionKeys: ['11:AC-1'] })])),
       'a'.repeat(64));
   const provider = createDevelopmentTaskGraphCheckProvider({
     db,
@@ -300,52 +300,79 @@ test('task-graph gate merges manifest findings with policy failures for one-shot
 });
 
 // ---------------------------------------------------------------------------
-// Elite-4 planner dead-end regression (2026-08-22): formalization may
-// lawfully accept ONE acceptance artifact carrying MANY atomic criteria
-// (the baseline flattens them to a shared artifactId). The artifactId-only
-// uniqueness demand rejected the PRODUCTION-built input on every planner
-// attempt — an unrepairable loop, because the input is not the model's
-// submission. Uniqueness is the composite (artifactId, code); identity for
-// numeric criterion matching stays artifactId.
+// Elite-4 planner dead-end regression (2026-08-22) + operator review:
+// formalization may lawfully accept ONE acceptance artifact carrying MANY
+// atomic criteria. ATOMIC criterion identity is the composite key
+// `${artifactId}:${code}` — N criteria in one container stay N DISTINCT
+// obligations downstream (verification coverage counts them individually).
 // ---------------------------------------------------------------------------
 
-test('policy ACCEPTS many atomic criteria sharing one provenance artifact (Elite-4 shape)', () => {
+const key14 = code => `14:${code}`;
+
+function verificationItem(key, criterionKey, dependsOn = 'impl') {
+  return {
+    key,
+    kind: 'verification',
+    taskKind: 'verification.ac',
+    executionSkill: 'saga-verifier',
+    executionMode: 'read_only_evidence',
+    projectRepositoryId: 1,
+    acceptanceCriterionKeys: [criterionKey],
+    dependsOnKeys: [dependsOn],
+    changeScopes: [],
+    required: true,
+    criticality: 'blocker',
+  };
+}
+
+test('three atomic criteria on ONE artifact demand THREE verification obligations', () => {
   const input = developmentCase();
   input.acceptanceCriteria = [
     { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
     { artifactId: 14, code: 'AC-2', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
     { artifactId: 14, code: 'AC-3', acceptedHash: '5'.repeat(64), implementationRequired: false, criticality: 'blocker' },
   ];
-  const items = [implementationItem('impl', { acceptanceCriterionIds: [14] })];
-  const withSharedArtifactVerification = {
-    ...proposal(items),
-    verificationItems: [14].map(id => ({
-      key: `verify-${id}`,
-      kind: 'verification',
-      taskKind: 'verification.ac',
-      executionSkill: 'saga-verifier',
-      executionMode: 'read_only_evidence',
-      projectRepositoryId: 1,
-      acceptanceCriterionIds: [id],
-      dependsOnKeys: ['impl'],
-      changeScopes: [],
-      required: true,
-      criticality: 'blocker',
-    })),
-  };
-  const graph = buildCanonicalDevelopmentTaskGraph(
-    input, withSharedArtifactVerification, {
+  const items = [implementationItem('impl', {
+    acceptanceCriterionKeys: [key14('AC-1'), key14('AC-2')],
+  })];
+  const build = verificationItems => buildCanonicalDevelopmentTaskGraph(
+    input,
+    { ...proposal(items), verificationItems },
+    {
       schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
       ref: 'planner-submission:1',
       hash: '7'.repeat(64),
-    });
-  const valid = new ReferenceDevelopmentTaskGraphPolicy().validate(input, graph);
-  assert.equal(valid.valid, true,
-    'a multi-criterion artifact is a lawful formalization output: '
-    + valid.errors.join('; '));
+    },
+  );
+
+  // ONE verification item keyed to the SHARED artifact must FAIL: three
+  // atomic criteria exist, verification is mandatory for every criterion —
+  // packaging must not collapse them (operator review 2026-08-22).
+  const collapsed = new ReferenceDevelopmentTaskGraphPolicy().validate(
+    input,
+    build([verificationItem('verify-14', key14('AC-1'))]),
+  );
+  assert.equal(collapsed.valid, false,
+    'a single verification item for three atomic criteria must be rejected');
   assert.equal(
-    valid.reasonCodes.includes('invalid-input-contract'), false,
-    'the case itself must not be called invalid');
+    collapsed.reasonCodes.includes('verification-plan-coverage-gap'), true,
+    'the failure is the verification coverage gap itself');
+
+  // THREE verification items — one per ATOMIC criterion — validate clean.
+  const perCriterion = new ReferenceDevelopmentTaskGraphPolicy().validate(
+    input,
+    build([
+      verificationItem('verify-ac-1', key14('AC-1')),
+      verificationItem('verify-ac-2', key14('AC-2')),
+      verificationItem('verify-ac-3', key14('AC-3')),
+    ]),
+  );
+  assert.equal(perCriterion.valid, true,
+    'one verification obligation per atomic criterion is the lawful graph: '
+    + perCriterion.errors.join('; '));
+  assert.equal(
+    perCriterion.reasonCodes.includes('invalid-input-contract'), false,
+    'the multi-criterion case itself must not be called invalid');
 });
 
 test('policy still REJECTS genuinely duplicate criteria (same artifact AND same code)', () => {
@@ -354,7 +381,89 @@ test('policy still REJECTS genuinely duplicate criteria (same artifact AND same 
     { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
     { artifactId: 14, code: 'AC-1', acceptedHash: '5'.repeat(64), implementationRequired: true, criticality: 'blocker' },
   ];
-  const result = validateProposal(input, [implementationItem('impl', { acceptanceCriterionIds: [14] })]);
+  const result = validateProposal(input,
+    [implementationItem('impl', { acceptanceCriterionKeys: [key14('AC-1')] })]);
   assert.equal(result.valid, false);
   assert.equal(result.reasonCodes.includes('invalid-input-contract'), true);
+});
+
+// ---------------------------------------------------------------------------
+// METAMORPHIC (operator review 2026-08-22): packaging must not change
+// semantics. The SAME atomic AC set packaged as N separate documents and as
+// ONE container document must yield the SAME criterion cardinality, the
+// SAME criterion identities modulo container, the SAME verification
+// obligations and the SAME settlement semantics.
+// ---------------------------------------------------------------------------
+
+test('METAMORPHIC: N documents ≡ 1 container document for Development semantics', async () => {
+  const { acceptanceCriterionIdentity } = await import(
+    '../../../dist/modules/development/domain/development-schemas.js'
+  );
+  const ac = (artifactId, code, impl) => ({
+    artifactId, code, acceptedHash: '5'.repeat(64),
+    implementationRequired: impl, criticality: 'blocker',
+  });
+  const threeDocs = developmentCase();
+  threeDocs.acceptanceCriteria = [
+    ac(21, 'AC-1', true), ac(22, 'AC-2', true), ac(23, 'AC-3', false),
+  ];
+  const oneDoc = developmentCase();
+  oneDoc.acceptanceCriteria = [
+    ac(14, 'AC-1', true), ac(14, 'AC-2', true), ac(14, 'AC-3', false),
+  ];
+
+  // 1. Criterion cardinality is packaging-invariant: THREE identities both
+  //    ways (the Elite-4 defect collapsed oneDoc to a single identity).
+  assert.equal(new Set(threeDocs.acceptanceCriteria.map(acceptanceCriterionIdentity)).size, 3);
+  assert.equal(new Set(oneDoc.acceptanceCriteria.map(acceptanceCriterionIdentity)).size, 3);
+
+  // 2. The same lawful plan SHAPE (impl covers impl-required criteria;
+  //    one verification item per ATOMIC criterion) validates under BOTH
+  //    packagings.
+  const planFor = c => {
+    const implKeys = c.acceptanceCriteria
+      .filter(x => x.implementationRequired)
+      .map(x => acceptanceCriterionIdentity(x));
+    const items = [implementationItem('impl', { acceptanceCriterionKeys: implKeys })];
+    return {
+      ...proposal(items),
+      verificationItems: c.acceptanceCriteria
+        .map(x => verificationItem(
+          `verify-${x.code}`, acceptanceCriterionIdentity(x))),
+    };
+  };
+  const validate = c => new ReferenceDevelopmentTaskGraphPolicy().validate(
+    c,
+    buildCanonicalDevelopmentTaskGraph(c, planFor(c), {
+      schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+      ref: 'planner-submission:1',
+      hash: '7'.repeat(64),
+    }),
+  );
+  const threeDocsResult = validate(threeDocs);
+  const oneDocResult = validate(oneDoc);
+  assert.equal(threeDocsResult.valid, true,
+    threeDocsResult.errors.join('; '));
+  assert.equal(oneDocResult.valid, true,
+    oneDocResult.errors.join('; '));
+
+  // 3. Coverage degeneracy is packaging-invariant: dropping ONE verification
+  //    obligation fails BOTH packagings identically.
+  const degenerate = c => {
+    const plan = planFor(c);
+    plan.verificationItems = plan.verificationItems.slice(0, 2);
+    return new ReferenceDevelopmentTaskGraphPolicy().validate(
+      c,
+      buildCanonicalDevelopmentTaskGraph(c, plan, {
+        schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+        ref: 'planner-submission:1',
+        hash: '7'.repeat(64),
+      }),
+    );
+  };
+  assert.equal(degenerate(threeDocs).valid, false);
+  assert.equal(degenerate(oneDoc).valid, false);
+  assert.equal(
+    degenerate(oneDoc).reasonCodes.includes('verification-plan-coverage-gap'),
+    true);
 });

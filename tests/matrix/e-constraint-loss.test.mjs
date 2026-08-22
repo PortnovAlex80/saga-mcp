@@ -575,19 +575,19 @@ test(`space E — E3.B4 AC→task graph: a dropped AC IS detected; the '${TOKEN}
   const implItem = {
     key: 'imp-1', kind: 'implementation', taskKind: 'development.code',
     executionSkill: 'saga-worker', executionMode: 'git_change', projectRepositoryId: 5,
-    acceptanceCriterionIds: [101, 102], dependsOnKeys: [], changeScopes: ['zzz/'],
+    acceptanceCriterionKeys: ['101:AC-1', '102:AC-2'], dependsOnKeys: [], changeScopes: ['zzz/'],
     required: true, criticality: 'blocker',
   };
   const verifyItem = id => ({
-    key: `verify-${id}`, kind: 'verification', taskKind: 'verification.ac',
+    key: `verify-${id.split(':')[1]}`, kind: 'verification', taskKind: 'verification.ac',
     executionSkill: 'saga-verifier', executionMode: 'read_only_evidence', projectRepositoryId: 5,
-    acceptanceCriterionIds: [id], dependsOnKeys: [], changeScopes: [],
+    acceptanceCriterionKeys: [id], dependsOnKeys: [], changeScopes: [],
     required: true, criticality: 'blocker',
   });
   const completeProposal = {
     schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
     implementationItems: [implItem],
-    verificationItems: [101, 102, 103].map(verifyItem),
+    verificationItems: ['101:AC-1', '102:AC-2', '103:AC-3'].map(verifyItem),
     integrationTargets: [{ projectRepositoryId: 5, sourceWorkItemKeys: ['imp-1'], targetBranch: 'b', expectedBaseCommit: 'c0' }],
   };
   const submission = { schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA, ref: 'managed-node-submission:9', hash: sha256('sub') };
@@ -604,15 +604,15 @@ test(`space E — E3.B4 AC→task graph: a dropped AC IS detected; the '${TOKEN}
 
   // LOSS: the planner drops the verification item for AC-3 (artifactId 103).
   const lossy = structuredClone(completeProposal);
-  lossy.verificationItems = lossy.verificationItems.filter(item => item.key !== 'verify-103');
+  lossy.verificationItems = lossy.verificationItems.filter(item => item.key !== 'verify-AC-3');
   const verdict = policy.validate(devCase, build(lossy));
   assert.equal(verdict.valid, false, 'a dropped AC is detected');
   assert.ok(verdict.reasonCodes.includes('verification-plan-coverage-gap'));
-  assert.match(verdict.errors.join('; '), /missing AC artifact ids: \[103\]/);
+  assert.match(verdict.errors.join('; '), /missing AC criterion keys: \[103:AC-3\]/);
 
   // LOSS: an implementation item quietly stops carrying an implementationRequired AC.
   const narrowed = structuredClone(completeProposal);
-  narrowed.implementationItems[0].acceptanceCriterionIds = [102];
+  narrowed.implementationItems[0].acceptanceCriterionKeys = ['102:AC-2'];
   const narrowedVerdict = policy.validate(devCase, build(narrowed));
   assert.equal(narrowedVerdict.valid, false);
   assert.ok(narrowedVerdict.reasonCodes.includes('implementation-coverage-gap'));
@@ -623,7 +623,7 @@ test(`space E — E3.B4 AC→task graph: a dropped AC IS detected; the '${TOKEN}
   const canonical = build(completeProposal);
   assert.deepEqual(canonical.implementationItems[0].coveredConstraintIds, ['ord-c-001']);
   assert.deepEqual(
-    canonical.verificationItems.find(item => item.key === 'verify-101').coveredConstraintIds,
+    canonical.verificationItems.find(item => item.key === 'verify-AC-1').coveredConstraintIds,
     ['ord-c-001'],
   );
 });
@@ -632,7 +632,7 @@ test(`space E — E3.B4 AC→task graph: a dropped AC IS detected; the '${TOKEN}
 
 test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOKEN}' silently (finding E-F3); the verification card echo IS detected`, () => {
   const card = {
-    key: 'imp-1', acceptanceCriterionIds: [101], changeScopes: ['zzz/'],
+    key: 'imp-1', acceptanceCriterionKeys: ['101:AC-1'], changeScopes: ['zzz/'],
     coveredConstraintIds: ['ord-c-001'], // CONSTRAINT-ALPHA rides the card
   };
 
@@ -668,7 +668,7 @@ test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOK
     const evidence = {
       schemaVersion: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
       verificationItemKey: 'verify-101',
-      acceptanceCriterionId: 101,
+      acceptanceCriterionKey: '101:AC-1',
       acceptedCriterionHash: sha256('ac1'),
       candidateHash: sha256('cand'),
       ...(coveredConstraintIds ? { coveredConstraintIds } : {}),
@@ -676,7 +676,7 @@ test(`space E — E3.B5 task graph→cards: the implementation card loses '${TOK
       evidence: { summary: 's', observations: ['o'], limitations: [] },
     };
     const taskMetadata = {
-      cell_input_item: { key: 'verify-101', acceptanceCriterionIds: [101], coveredConstraintIds: ['ord-c-001'] },
+      cell_input_item: { key: 'verify-101', acceptanceCriterionKeys: ['101:AC-1'], coveredConstraintIds: ['ord-c-001'] },
       process_node_input: { upstream: { bindings: { candidate: { candidateHash: sha256('cand') } } } },
     };
     const row = {

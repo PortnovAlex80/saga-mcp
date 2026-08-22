@@ -146,7 +146,7 @@ export function hashAcceptanceVerification(
     candidateHash: verification.candidateHash,
     evidence: verification.evidence.map(item => ({
       verificationItemKey: item.verificationItemKey,
-      acceptanceCriterionId: item.acceptanceCriterionId,
+      acceptanceCriterionKey: item.acceptanceCriterionKey,
       acceptedCriterionHash: item.acceptedCriterionHash,
       candidateHash: item.candidateHash,
       outcome: item.outcome,
@@ -328,7 +328,7 @@ implements DevelopmentTaskGraphPolicyPort {
         || !item.executionSkill.trim()
         || !item.executionMode.trim()
         || typeof item.required !== 'boolean'
-        || !unique(item.acceptanceCriterionIds)
+        || !unique(item.acceptanceCriterionKeys)
         || !unique(item.dependsOnKeys)
         || !unique(item.changeScopes)
         || item.changeScopes.some(scope => {
@@ -418,7 +418,7 @@ implements DevelopmentTaskGraphPolicyPort {
     if (
       graph.verificationItems.some(item =>
         item.kind !== 'verification'
-        || item.acceptanceCriterionIds.length !== 1
+        || item.acceptanceCriterionKeys.length !== 1
         || !item.required
         || item.taskKind !== 'verification.ac'
         || item.executionMode !== 'read_only_evidence'
@@ -454,7 +454,7 @@ implements DevelopmentTaskGraphPolicyPort {
       );
     }
 
-    const acceptedCriterionIds = new Set(
+    const acceptedCriterionKeys = new Set(
       developmentCase.acceptanceCriteria.map(acceptanceCriterionIdentity),
     );
     const implementationRequired = new Set(
@@ -465,75 +465,75 @@ implements DevelopmentTaskGraphPolicyPort {
     const implementationCovered = new Set(
       graph.implementationItems
         .filter(item => item.required)
-        .flatMap(item => item.acceptanceCriterionIds),
+        .flatMap(item => item.acceptanceCriterionKeys),
     );
     const verificationCovered = new Set(
-      graph.verificationItems.flatMap(item => item.acceptanceCriterionIds),
+      graph.verificationItems.flatMap(item => item.acceptanceCriterionKeys),
     );
 
     if (
-      [...implementationCovered].some(id => !acceptedCriterionIds.has(id))
-      || ![...implementationRequired].every(id => implementationCovered.has(id))
+      [...implementationCovered].some(key => !acceptedCriterionKeys.has(key))
+      || ![...implementationRequired].every(key => implementationCovered.has(key))
     ) {
       // The diff is computable at the source — serialize it into the message.
       // A generic "coverage gap" forces the repair worker to re-derive the
       // missing AC set from scratch on every attempt (observed: P01/counter).
-      const missingIds = [...implementationRequired]
-        .filter(id => !implementationCovered.has(id));
-      const extraIds = [...implementationCovered]
-        .filter(id => !acceptedCriterionIds.has(id));
+      const missingKeys = [...implementationRequired]
+        .filter(key => !implementationCovered.has(key));
+      const extraKeys = [...implementationCovered]
+        .filter(key => !acceptedCriterionKeys.has(key));
       pushIssue(
         reasonCodes,
         errors,
         'implementation-coverage-gap',
         'required implementation coverage does not equal the accepted AC scope'
-        + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
-        + acCodeLegend(developmentCase, missingIds)
-        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`
-        + acCodeLegend(developmentCase, extraIds),
+        + `; missing AC criterion keys: [${missingKeys.sort().join(', ')}]`
+        + acCodeLegend(developmentCase, missingKeys)
+        + `; extra AC criterion keys: [${extraKeys.sort().join(', ')}]`
+        + acCodeLegend(developmentCase, extraKeys),
       );
     }
     // Workshop fix: close the non-required blind spot. Coverage arithmetic
-    // above filters by item.required BEFORE the extra-id membership check, so
-    // a NON-required item carrying a foreign/invalid AC id passed the gate
+    // above filters by item.required BEFORE the extra-key membership check, so
+    // a NON-required item carrying a foreign/invalid AC key passed the gate
     // and only exploded later at kernel materialization
     // (PRODUCTION_CELL_SOURCE_ARTIFACT_INVALID) — violating the cell's own
     // invariant that graph semantics are settled in-cell. ALL implementation
-    // items must carry only accepted-case AC ids; the required-coverage
+    // items must carry only accepted-case AC keys; the required-coverage
     // arithmetic itself is unchanged.
     const implementationDeclared = new Set(
-      graph.implementationItems.flatMap(item => item.acceptanceCriterionIds),
+      graph.implementationItems.flatMap(item => item.acceptanceCriterionKeys),
     );
-    const declaredExtraIds = [...implementationDeclared]
-      .filter(id => !acceptedCriterionIds.has(id))
-      .sort((left, right) => left - right);
-    if (declaredExtraIds.length > 0) {
+    const declaredExtraKeys = [...implementationDeclared]
+      .filter(key => !acceptedCriterionKeys.has(key))
+      .sort();
+    if (declaredExtraKeys.length > 0) {
       pushIssue(
         reasonCodes,
         errors,
         'implementation-coverage-gap',
-        'every implementation item (required or not) must carry only accepted-case AC ids'
-        + `; extra AC artifact ids: [${declaredExtraIds.join(', ')}]`
-        + acCodeLegend(developmentCase, declaredExtraIds),
+        'every implementation item (required or not) must carry only accepted-case AC keys'
+        + `; extra AC criterion keys: [${declaredExtraKeys.join(', ')}]`
+        + acCodeLegend(developmentCase, declaredExtraKeys),
       );
     }
     if (
-      [...verificationCovered].some(id => !acceptedCriterionIds.has(id))
-      || !sameNumberSet(verificationCovered, acceptedCriterionIds)
+      [...verificationCovered].some(key => !acceptedCriterionKeys.has(key))
+      || !sameStringSet(verificationCovered, acceptedCriterionKeys)
     ) {
-      const missingIds = [...acceptedCriterionIds]
-        .filter(id => !verificationCovered.has(id));
-      const extraIds = [...verificationCovered]
-        .filter(id => !acceptedCriterionIds.has(id));
+      const missingKeys = [...acceptedCriterionKeys]
+        .filter(key => !verificationCovered.has(key));
+      const extraKeys = [...verificationCovered]
+        .filter(key => !acceptedCriterionKeys.has(key));
       pushIssue(
         reasonCodes,
         errors,
         'verification-plan-coverage-gap',
         'the task graph must contain verification work for every accepted AC'
-        + `; missing AC artifact ids: [${missingIds.sort((left, right) => left - right).join(', ')}]`
-        + acCodeLegend(developmentCase, missingIds)
-        + `; extra AC artifact ids: [${extraIds.sort((left, right) => left - right).join(', ')}]`
-        + acCodeLegend(developmentCase, extraIds),
+        + `; missing AC criterion keys: [${missingKeys.sort().join(', ')}]`
+        + acCodeLegend(developmentCase, missingKeys)
+        + `; extra AC criterion keys: [${extraKeys.sort().join(', ')}]`
+        + acCodeLegend(developmentCase, extraKeys),
       );
     }
 
@@ -667,18 +667,18 @@ function sameStringSet(left: Set<string>, right: Set<string>): boolean {
 }
 
 /**
- * Render AC codes (AC-18) alongside raw artifact ids in coverage findings so
- * the repair worker reads the same identifiers the SRS/§D2 documents use.
- * Ids without a known code (foreign/invalid ids, exactly the ones a repair
- * targets) are simply absent from the legend; the raw id list stays complete.
+ * Render AC codes (AC-18) alongside raw criterion keys in coverage findings
+ * so the repair worker reads the same identifiers the SRS/§D2 documents use.
+ * Keys without a known code (foreign/invalid keys, exactly the ones a repair
+ * targets) are simply absent from the legend; the raw key list stays complete.
  */
 function acCodeLegend(
   developmentCase: DevelopmentCase,
-  ids: readonly number[],
+  keys: readonly string[],
 ): string {
-  const codes = ids
-    .map(id => developmentCase.acceptanceCriteria.find(criterion =>
-      acceptanceCriterionIdentity(criterion) === id))
+  const codes = keys
+    .map(key => developmentCase.acceptanceCriteria.find(criterion =>
+      acceptanceCriterionIdentity(criterion) === key))
     .filter((criterion): criterion is NonNullable<typeof criterion> =>
       criterion !== undefined && typeof criterion.code === 'string'
       && criterion.code.trim() !== '')
@@ -687,17 +687,14 @@ function acCodeLegend(
 }
 
 function invalidCase(developmentCase: DevelopmentCase): boolean {
-  // 2026-08-22 Elite-4 planner dead-end: formalization may lawfully accept
-  // ONE acceptance-contract artifact carrying MANY atomic criteria (codes
-  // AC-1..N) — the baseline flattens them all to the same artifactId, and an
-  // artifactId-only uniqueness demand rejected the PRODUCTION-built input on
-  // every planner attempt (invalid-input-contract loop the model cannot
-  // repair: the input is not its submission). Identity for the numeric
-  // criterion matching stays artifactId; UNIQUENESS is the composite
-  // (artifactId, code) — the same composite workspace-preparation already
-  // keys verification targets by.
-  const criterionKeys = developmentCase.acceptanceCriteria.map(
-    criterion => `${criterion.artifactId}:${criterion.code ?? ''}`);
+  // 2026-08-22 Elite-4 planner dead-end + operator review: formalization may
+  // lawfully accept ONE acceptance-contract artifact carrying MANY atomic
+  // criteria (codes AC-1..N). ATOMIC criterion identity is the composite key
+  // `${artifactId}:${code}` (acceptanceCriterionIdentity); the PROVENANCE
+  // artifactId is several-criteria-shared by design. Uniqueness is demanded
+  // on the atomic identity — N criteria in one container stay N obligations.
+  const keys = developmentCase.acceptanceCriteria
+    .map(acceptanceCriterionIdentity);
   return developmentCase.schemaVersion !== DEVELOPMENT_CASE_SCHEMA
     || developmentCase.projectId <= 0
     || developmentCase.epicId <= 0
@@ -708,9 +705,9 @@ function invalidCase(developmentCase: DevelopmentCase): boolean {
     || !developmentCase.acceptanceBaselineHash
     || !validRef(developmentCase.srs)
     || developmentCase.acceptanceCriteria.length === 0
-    || !unique(criterionKeys)
+    || !unique(keys)
     || developmentCase.acceptanceCriteria.some(criterion =>
-      acceptanceCriterionIdentity(criterion) <= 0
+      acceptanceCriterionIdentity(criterion).trim().length === 0
       || criterion.artifactId <= 0
       || !criterion.acceptedHash.trim()
       || typeof criterion.implementationRequired !== 'boolean')
@@ -1129,15 +1126,15 @@ implements DevelopmentSettlementPolicyPort {
     }
 
     for (const evidence of verification.evidence) {
-      const criterion = criterionById.get(evidence.acceptanceCriterionId);
+      const criterion = criterionById.get(evidence.acceptanceCriterionKey);
       const verificationItem = verificationItemByKey.get(
         evidence.verificationItemKey,
       );
       if (
         !criterion
         || !verificationItem
-        || verificationItem.acceptanceCriterionIds[0]
-          !== evidence.acceptanceCriterionId
+        || verificationItem.acceptanceCriterionKeys[0]
+          !== evidence.acceptanceCriterionKey
         || evidence.acceptedCriterionHash !== criterion.acceptedHash
         || evidence.candidateHash !== candidate.candidateHash
       ) {
@@ -1169,7 +1166,7 @@ implements DevelopmentSettlementPolicyPort {
         return result(
           'blocked',
           ['verification-inconclusive'],
-          `Acceptance verification is ${evidence.outcome} for AC ${evidence.acceptanceCriterionId}.`,
+          `Acceptance verification is ${evidence.outcome} for AC ${evidence.acceptanceCriterionKey}.`,
           inputHash,
         );
       }
@@ -1193,13 +1190,13 @@ implements DevelopmentSettlementPolicyPort {
     );
     if (failedVerificationEvidence.length > 0) {
       const failures = failedVerificationEvidence.map(evidence => {
-        const criterion = criterionById.get(evidence.acceptanceCriterionId);
+        const criterion = criterionById.get(evidence.acceptanceCriterionKey);
         const code = criterion
           && typeof criterion.code === 'string'
           && criterion.code.trim() !== ''
           ? criterion.code
-          : `artifact-${evidence.acceptanceCriterionId}`;
-        return `${code} (artifact ${evidence.acceptanceCriterionId}, item `
+          : `criterion-${evidence.acceptanceCriterionKey}`;
+        return `${code} (criterion ${evidence.acceptanceCriterionKey}, item `
           + `'${evidence.verificationItemKey}') failed with evidence `
           + `${evidence.evidence.schema}:${evidence.evidence.ref}@${evidence.evidence.hash}`;
       }).join('; ');

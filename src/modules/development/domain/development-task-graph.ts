@@ -16,6 +16,7 @@ import {
   type DevelopmentCase,
   type DevelopmentTaskGraphItem,
   type DevelopmentTaskGraphProposal,
+  type DevelopmentTaskGraphProposalItem,
   type DevelopmentTaskGraphSnapshot,
 } from './development-schemas.js';
 
@@ -89,12 +90,12 @@ function decodeItems(
   raw: unknown,
   label: string,
   errors: string[],
-): DevelopmentTaskGraphItem[] | null {
+): DevelopmentTaskGraphProposalItem[] | null {
   if (!Array.isArray(raw)) {
     errors.push(`${label} must be an array`);
     return null;
   }
-  const result: DevelopmentTaskGraphItem[] = [];
+  const result: DevelopmentTaskGraphProposalItem[] = [];
   raw.forEach((value, index) => {
     const path = `${label}[${index}]`;
     if (!isRecord(value)) {
@@ -103,9 +104,9 @@ function decodeItems(
     }
     const kind = value.kind;
     const projectRepositoryId = value.projectRepositoryId;
-    const acceptanceCriterionIds = integerArray(
-      value.acceptanceCriterionIds,
-      `${path}.acceptanceCriterionIds`,
+    const acceptanceCriterionKeys = criterionKeyArray(
+      value.acceptanceCriterionKeys,
+      `${path}.acceptanceCriterionKeys`,
       errors,
     );
     const dependsOnKeys = stringArray(
@@ -139,7 +140,7 @@ function decodeItems(
       && typeof value.executionSkill === 'string'
       && typeof value.executionMode === 'string'
       && Number.isInteger(projectRepositoryId)
-      && acceptanceCriterionIds
+      && acceptanceCriterionKeys
       && dependsOnKeys
       && changeScopes
       && typeof value.required === 'boolean'
@@ -161,7 +162,7 @@ function decodeItems(
         executionSkill: value.executionSkill,
         executionMode: value.executionMode,
         projectRepositoryId: projectRepositoryId as number,
-        acceptanceCriterionIds,
+        acceptanceCriterionKeys,
         dependsOnKeys,
         changeScopes,
         required: value.required,
@@ -219,17 +220,19 @@ function decodeTargets(
 }
 
 function canonicalItems(
-  items: readonly DevelopmentTaskGraphItem[],
+  items: readonly DevelopmentTaskGraphProposalItem[],
   developmentCase: DevelopmentCase,
 ): DevelopmentTaskGraphItem[] {
   // AC-drift relay: the kernel derives each item's coveredConstraintIds as
   // the union over the FROZEN criteria the item references — the planner
-  // proposes acceptanceCriterionIds only; coverage is inherited, never
+  // proposes acceptanceCriterionKeys only; coverage is inherited, never
   // proposed, so it cannot be forged or silently dropped at the handoff.
-  const coverageByCriterionId = new Map<number, readonly string[]>();
+  const criterionByKey = new Map(developmentCase.acceptanceCriteria
+    .map(criterion => [acceptanceCriterionIdentity(criterion), criterion]));
+  const coverageByCriterionKey = new Map<string, readonly string[]>();
   for (const criterion of developmentCase.acceptanceCriteria) {
     if (criterion.coveredConstraintIds && criterion.coveredConstraintIds.length > 0) {
-      coverageByCriterionId.set(
+      coverageByCriterionKey.set(
         acceptanceCriterionIdentity(criterion),
         criterion.coveredConstraintIds,
       );
@@ -237,13 +240,20 @@ function canonicalItems(
   }
   return items.map(item => {
     const inherited = [...new Set(
-      item.acceptanceCriterionIds
-        .flatMap(id => coverageByCriterionId.get(id) ?? []),
+      item.acceptanceCriterionKeys
+        .flatMap(key => coverageByCriterionKey.get(key) ?? []),
     )].sort();
+    // Provenance artifact ids are INHERITED from the case per referenced
+    // criterion — the planner proposes keys, the kernel resolves the rows.
+    const sourceArtifactIds = [...new Set(
+      item.acceptanceCriterionKeys
+        .map(key => criterionByKey.get(key)?.artifactId)
+        .filter((id): id is number => id !== undefined),
+    )].sort((left, right) => left - right);
     return {
       ...item,
-      acceptanceCriterionIds: [...item.acceptanceCriterionIds]
-        .sort((left, right) => left - right),
+      acceptanceCriterionKeys: [...item.acceptanceCriterionKeys].sort(),
+      sourceArtifactIds,
       dependsOnKeys: [...item.dependsOnKeys].sort(),
       changeScopes: [...(item.changeScopes
         ?? (item.kind === 'implementation' ? [`work-item:${item.key}`] : []))].sort(),
@@ -262,17 +272,7 @@ function canonicalTargets(
     left.projectRepositoryId - right.projectRepositoryId);
 }
 
-function integerArray(
-  raw: unknown,
-  label: string,
-  errors: string[],
-): number[] | null {
-  if (!Array.isArray(raw) || !raw.every(Number.isInteger)) {
-    errors.push(`${label} must be an integer array`);
-    return null;
-  }
-  return raw as number[];
-}
+
 
 function stringArray(
   raw: unknown,
@@ -284,6 +284,28 @@ function stringArray(
     return null;
   }
   return raw as string[];
+}
+
+/** Criterion keys carry the atomic identity grammar `${artifactId}:${code}` —
+ * fail closed at the decode boundary, before durable submission: a malformed
+ * key (bare word, missing provenance segment) can never reach the coverage
+ * arithmetic. */
+function criterionKeyArray(
+  raw: unknown,
+  label: string,
+  errors: string[],
+): string[] | null {
+  const values = stringArray(raw, label, errors);
+  if (values === null) return null;
+  const invalid = values.filter(value => !/^[1-9]\d*:.+$/.test(value));
+  if (invalid.length > 0) {
+    errors.push(
+      `${label} entries must be criterion keys \`\${artifactId}:\${code}\` `
+      + `(offending: ${invalid.slice(0, 3).join(', ')})`,
+    );
+    return null;
+  }
+  return values;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

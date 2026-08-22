@@ -725,12 +725,12 @@ export class SqliteDevelopmentModuleStore implements
     for (const item of taskGraph.verificationItems) {
       const product = byKey.get(item.key);
       if (!product) continue;
-      const criterionId = item.acceptanceCriterionIds[0];
-      if (criterionId === undefined) continue;
-      const criterion = criterionById.get(criterionId);
+      const criterionKey = item.acceptanceCriterionKeys[0];
+      if (criterionKey === undefined) continue;
+      const criterion = criterionById.get(criterionKey);
       if (!criterion) continue;
       if (
-        product.payload.acceptanceCriterionId !== criterionId
+        product.payload.acceptanceCriterionKey !== criterionKey
         || product.payload.acceptedCriterionHash !== criterion.acceptedHash
         || product.payload.candidateHash !== candidate.candidateHash
       ) continue;
@@ -742,7 +742,7 @@ export class SqliteDevelopmentModuleStore implements
       evidence.push({
         verificationItemKey: item.key,
         taskId: product.taskId,
-        acceptanceCriterionId: criterionId,
+        acceptanceCriterionKey: criterionKey,
         acceptedCriterionHash: product.payload.acceptedCriterionHash,
         candidateHash: product.payload.candidateHash,
         // Outcome and authority come from the immutable executable provider

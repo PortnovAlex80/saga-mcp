@@ -1,9 +1,9 @@
 {
   "schemaVersion": "factory.proof.conformance-coverage.v1",
-  "generatedAt": "2026-08-22T08:06:56.784Z",
+  "generatedAt": "2026-08-22T09:33:12.116Z",
   "mode": "committed-snapshot",
   "declared": {
-    "universeTokens": 147,
+    "universeTokens": 148,
     "pendingTotal": 18,
     "interWorkshopTokens": 1,
     "platformFaultEdges": 6
@@ -35,10 +35,11 @@
       {
         "workshop": "development",
         "declaredStatus": "SPINE",
-        "universe": 20,
+        "universe": 21,
         "demonstratedCovered": 4,
-        "percent": 20,
+        "percent": 19,
         "uncovered": [
+          "contract-partition:acceptance-criteria:packaging-invariant",
           "restart:development:git-change-desk-replay",
           "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
           "D3:claim-monotonicity:silent-narrowing-rejected",

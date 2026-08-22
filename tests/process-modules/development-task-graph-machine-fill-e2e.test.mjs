@@ -150,8 +150,8 @@ test('pinned workspace machine-fills the exact call file read by the reviewer', 
       65,
     );
     assert.deepEqual(
-      call.content.verificationItems[0].acceptanceCriterionIds,
-      [101],
+      call.content.verificationItems[0].acceptanceCriterionKeys,
+      ['101:AC-1'],
     );
     assert.ok(!JSON.stringify(call).includes('FILL_'));
   } finally {

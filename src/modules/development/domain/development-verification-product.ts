@@ -24,7 +24,7 @@ export function decodeDevelopmentVerificationProduct(
   const allowed = new Set([
     'schemaVersion',
     'verificationItemKey',
-    'acceptanceCriterionId',
+    'acceptanceCriterionKey',
     'acceptedCriterionHash',
     'candidateHash',
     'coveredConstraintIds',
@@ -37,9 +37,9 @@ export function decodeDevelopmentVerificationProduct(
     errors.push(`schemaVersion must equal ${DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA}`);
   }
   if (!text(payload.verificationItemKey)) errors.push('verificationItemKey is required');
-  if (!Number.isSafeInteger(payload.acceptanceCriterionId)
-      || Number(payload.acceptanceCriterionId) < 1) {
-    errors.push('acceptanceCriterionId must be a positive integer');
+  if (!text(payload.acceptanceCriterionKey)
+      || !/^[1-9]\d*:.+$/.test(String(payload.acceptanceCriterionKey))) {
+    errors.push('acceptanceCriterionKey must be the atomic criterion key `${artifactId}:${code}`');
   }
   if (!text(payload.acceptedCriterionHash)
       || !HASH.test(String(payload.acceptedCriterionHash))) {

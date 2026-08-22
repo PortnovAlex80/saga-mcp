@@ -158,7 +158,7 @@ async function main() {
     const processRunId = meta.process_run_id;
     const workItemKey = meta.work_key || meta.cell_input_item?.key || `verify-${taskId}`;
     const acId = taskData.verification_target_artifact_id
-      || meta.cell_input_item?.acceptanceCriterionIds?.[0]
+      || Number(String(meta.cell_input_item?.acceptanceCriterionKeys?.[0] ?? '').split(':')[0])
       || 0;
 
     process.stderr.write(`[dev-verify] processRunId=${processRunId} workItemKey=${workItemKey} acId=${acId}\n`);
@@ -219,7 +219,7 @@ async function main() {
     const evidence = {
       schemaVersion: 'factory.candidate-verification-evidence-product.v2',
       verificationItemKey: workItemKey,
-      acceptanceCriterionId: acId,
+      acceptanceCriterionKey: String(meta.cell_input_item?.acceptanceCriterionKeys?.[0] ?? `${acId}:`),
       acceptedCriterionHash,
       candidateHash,
       outcome: 'passed',

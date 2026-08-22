@@ -569,7 +569,7 @@ export const DEVELOPMENT_VERIFICATION_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   additionalProperties: false,
   required: [
-    'schemaVersion', 'verificationItemKey', 'acceptanceCriterionId',
+    'schemaVersion', 'verificationItemKey', 'acceptanceCriterionKey',
     'acceptedCriterionHash', 'candidateHash', 'outcome', 'evidence',
   ],
   outcome: ['passed', 'failed', 'unknown', 'error'],
@@ -1123,7 +1123,7 @@ export function createDevelopmentVerificationCheckProvider(input: {
         const metadata = JSON.parse(row.metadata) as {
           cell_input_item?: {
             key?: unknown;
-            acceptanceCriterionIds?: unknown;
+            acceptanceCriterionKeys?: unknown;
             coveredConstraintIds?: unknown;
           };
           process_node_input?: {
@@ -1132,31 +1132,34 @@ export function createDevelopmentVerificationCheckProvider(input: {
           trusted_provider_bindings?: unknown;
         };
         const item = metadata.cell_input_item;
-        const criterionIds = item?.acceptanceCriterionIds;
+        const criterionKeys = item?.acceptanceCriterionKeys;
         const frozenHash = metadata.process_node_input?.upstream?.bindings
           ?.candidate?.candidateHash;
         // AC-drift relay: when the verification card pins
         // coveredConstraintIds, the evidence must echo the exact same set —
-        // lineage pins the constraint IDs together with criterionId. Cards
-        // without coverage (legacy / no register) keep the previous check.
+        // lineage pins the constraint IDs together with the criterion key.
+        // Cards without coverage (legacy / no register) keep the previous check.
         const cardConstraintIds = item?.coveredConstraintIds;
         const constraintLineageOk = !Array.isArray(cardConstraintIds)
           || (Array.isArray(decoded.value.coveredConstraintIds)
             && sameStringSet(cardConstraintIds, decoded.value.coveredConstraintIds));
+        // The key's provenance segment must still match the task's
+        // verification_target_artifact_id (the DB artifact row).
+        const keyProvenanceArtifactId = Number(
+          String(decoded.value.acceptanceCriterionKey).split(':')[0]);
         if (
           decoded.value.verificationItemKey !== item?.key
-          || !Array.isArray(criterionIds)
-          || criterionIds.length !== 1
-          || decoded.value.acceptanceCriterionId !== criterionIds[0]
-          || decoded.value.acceptanceCriterionId
-            !== row.verification_target_artifact_id
+          || !Array.isArray(criterionKeys)
+          || criterionKeys.length !== 1
+          || decoded.value.acceptanceCriterionKey !== criterionKeys[0]
+          || keyProvenanceArtifactId !== row.verification_target_artifact_id
           || decoded.value.acceptedCriterionHash !== row.accepted_hash
           || decoded.value.candidateHash !== frozenHash
           || !constraintLineageOk
         ) {
           return scopeFailure(subjectCandidateSetRef, 'verification-lineage-mismatch',
             'The verification evidence does not match its frozen lineage: verificationItemKey must equal the work item key,'
-            + ' acceptanceCriterionId must equal the single cell-input criterion id and the AC artifact id,'
+            + ' acceptanceCriterionKey must equal the single cell-input criterion key and its provenance artifact id,'
             + ' acceptedCriterionHash must equal the accepted artifact hash, candidateHash must equal the frozen upstream candidate hash,'
             + ' and coveredConstraintIds must equal the card-pinned constraint set when the card pins one.');
         }
