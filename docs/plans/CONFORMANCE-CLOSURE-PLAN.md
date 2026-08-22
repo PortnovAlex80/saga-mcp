@@ -19,14 +19,19 @@ unknown `warrant-blocked-environment` and human_required blocked/resumable
 continuation — never product-failed; unknown receipts never poison a later
 pass). ADR-090 is Accepted and governs the Idea Authority Conservation
 program (§7A): the single Order Constraint Register vocabulary is extended
-at Discovery settlement — source classes including `open-question`, typed
-measurability, deterministic `runnable-local` synthesis injection — with
+at Discovery settlement — the closed class vocabulary
+(`execution|material|human`) is preserved unchanged and an orthogonal kind
+vocabulary (`scope|open-question|mechanics|synthesis|ordered-smoke|quality`)
+is added, with typed measurability binding only qualitative/experience
+entries, and deterministic `runnable-local` synthesis injection — with
 one digest/ref, one disposition network, the existing ADR-088 coverage
-relay and reverse diff, existing RULE artifacts as the mechanics-spec
+relay and reverse diff (production direction: register minus waived ⊆
+covered), existing RULE artifacts as the mechanics-spec
 carrier, an advisory-only archaeologist, and proof tokens compiled into
 the single ADR-084 AcceptanceObligationContract family; implementation is
 the bounded serialized packets CC-IC-1..4, which start only after the
-CC-GAP-6 seam lands. ADR-053 is a Proposed architectural
+CC-GAP-6 seam lands and are a mandatory overall qualification dependency.
+ADR-053 is a Proposed architectural
 diagnosis. ADR-085 and ADR-086 are Proposed and remain blocked by the
 Structural Refactor Qualification Gate. A green gate makes their implementation
 eligible; it does not adopt or authorize either proposal by itself.
@@ -301,24 +306,40 @@ and `QUALIFICATION_GREEN` cannot be emitted.
 
 Idea authority conservation (ADR-090) extends this guardrail upstream
 without parallel vocabulary: no scope-clause ledger and no unknown ledger
-beside the register; the register's source classes include `open-question`
-entries drafted 1:1 from proposal unknowns at Discovery settlement; every
-open-question entry reaches `resolved` or `deferred`/`waived` with reason,
-owner, and unblock criterion through the existing disposition network;
-every entry carries typed measurability (measurable interpretation or
+beside the register; the register's closed class vocabulary
+(`execution|material|human`) is preserved unchanged and an orthogonal
+kind vocabulary (`scope|open-question|mechanics|synthesis|ordered-smoke|
+quality`) is added, with `open-question` entries drafted 1:1 from proposal
+unknowns at Discovery settlement; every
+open-question entry reaches `resolved`, or `deferred` (reason, owner,
+unblock criterion), or a loud per-entry operator-attributed `waived`
+(never a mass author waiver) through the existing disposition network;
+qualitative/experience (kind `quality`) entries carry typed measurability
+(measurable interpretation or
 typed deferral); the frozen `runnable-local` lifecycle classification
 deterministically injects the whole-product-synthesis and ordered-smoke
 obligations — the engine never infers by rereading prose; existing RULE
-artifacts are the mechanics-spec carrier with typed binding/coverage; the
+artifacts are the mechanics-spec carrier, with the typed binding
+established at disposition/binding time against the accepted RULE
+artifact (a mechanics entry is created at Discovery with no ref); the
 LM archaeologist is advisory only (promotion produces a new register
 revision/digest, never a gate or authority mutation); and the five
 conservation proof tokens compile into the single ADR-084
-AcceptanceObligationContract family. The registerless corpus keeps exactly
-the current green behavior (ADR-088 sole grandfather condition); any
-present register fails closed. This extension is implemented by the
-serialized CC-IC-1..4 packets (§7A), which are not required for CC-00C
-exit; once a packet's proof tokens land, they join the CC-10B/CC-80
-blocking floors and CC-81 records their state.
+AcceptanceObligationContract family (production coverage direction:
+register minus typed waivers ⊆ covered). Null-binding grandfathering
+applies only to frozen legacy v1 data (ADR-088 sole grandfather
+condition; frozen evidence never rewritten); every NEW v2 Factory Start
+carries non-null typed authority — a built register, or an explicit typed
+no-obligations attestation if the architecture truly permits an
+obligation-free order — and an absent required binding on a new v2 start
+is red; continuations inherit the original register ref and never
+re-extract; any present register fails closed. This extension is
+implemented by the serialized CC-IC-1..4 packets (§7A), which are not
+required for CC-00C exit (frozen CC-00C scope: CC-GAP-6..10) but ARE a
+mandatory overall qualification dependency: until CC-IC is implemented
+and proven, the CC-10B blocking group, the CC-80 qualification command,
+and overall K qualification (CC-81/CC-82) remain RED — the unproven
+CC-IC set is recorded as an open mandatory dependency, never skipped.
 
 ---
 
@@ -461,8 +482,12 @@ CC-GAP-6 exit -> CC-IC-1 -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
 
 They are not required for CC-00C exit (CC-GAP-6..10 scope is frozen), they
 are bounded packets with an explicit finish condition rather than a
-standing parallel implementation program, and once their proof tokens land
-they join the CC-10B/CC-80 blocking floors and CC-81 records their state.
+standing parallel implementation program — and they ARE a mandatory
+overall qualification dependency: until CC-IC-1..4 are implemented and
+proven, the CC-10B blocking group, the CC-80 qualification command, and
+overall K qualification (CC-81/CC-82) remain RED, with the unproven CC-IC
+set recorded as an open mandatory dependency (never skipped, never
+recorded as PASS).
 
 ---
 
@@ -1227,14 +1252,22 @@ Checklist:
   passes; never product-failed), and role projection (board/detail role
   display, rendering-only) (CC-GAP-6..10
   wiring).
-- [ ] Once CC-IC-4 (ADR-090) lands its tokens, include the
-      idea-authority-conservation blocking mutations in the group:
+- [ ] The idea-authority-conservation blocking mutations are a MANDATORY
+      part of this group (ADR-090):
       open-question count integrity (every proposal unknown is a register
-      entry), open-question disposition closure (resolved or
-      deferred/waived with reason, owner, and unblock criterion), RULE
-      mechanics binding, deterministic runnable-local synthesis/smoke
-      injection, typed measurability, and the advisory-archaeologist
-      non-authority mutation (CC-IC-1..4 wiring).
+      entry), open-question disposition closure (resolved; deferred with
+      reason, owner, and unblock criterion; or loud per-entry
+      operator-attributed waived — no mass author waiver), RULE
+      mechanics binding (established at disposition time against the
+      accepted RULE artifact), deterministic runnable-local synthesis/smoke
+      injection, typed measurability on qualitative/experience entries,
+      new-v2-start non-null typed authority (never a silent null
+      register; continuations inherit the original ref), and the
+      advisory-archaeologist
+      non-authority mutation. Until CC-IC-1..4 are implemented and these
+      mutations are proven green, this group cannot pass: record the
+      unproven CC-IC set as an open mandatory dependency (RED), never as
+      satisfied or skipped (CC-IC-1..4 wiring).
 - [ ] Repeat complete group three times in fresh environments.
 
 Exit checklist:
@@ -1474,11 +1507,17 @@ Exit checklist:
 ## 7A. Idea Authority Conservation packets (ADR-090)
 
 Program: Idea Authority Conservation, governed by ADR-090 and correcting
-the proposed A–G package in `.research/IDEA-TRACEABILITY-POSTMORTEM.md`
-(evidence copy, unchanged; the ADR carries the corrected diagnosis: the
-full Discovery payload rides into Formalization and FR-9/SRS retained
-browser/canvas/smoke, but no normative AC/set-equality/owner was created
-and the proposal unknowns are opaque, unconsumed `string[]`). This is a
+the proposed A–G package of the external Elite-6 idea-traceability
+post-mortem (produced in the Elite-6 product repository; not a repository
+artifact here and never a citation — the durable in-repo evidence is
+CC-00B/CC-00C plus production source/tests, and ADR-090 records the A–G
+proposal in substance). The ADR carries the corrected diagnosis: the full
+Discovery payload rides into Formalization, FR-9/SRS retained
+browser/canvas/smoke, and AC-22 existed as a normative acceptance
+criterion (install -> start -> accessible running game) — what was
+under-typed is whole-product synthesis ownership, task binding, anchors,
+and the end-to-end oracle around that existing criterion, and the
+proposal unknowns are opaque, unconsumed `string[]`. This is a
 bounded packet set with an explicit finish condition — not a standing
 parallel implementation program.
 
@@ -1489,26 +1528,35 @@ parallel implementation program.
 - Depends on: CC-GAP-6 exit (the four ADR-088 blocking mutations green);
   CC-IC-2 and CC-IC-3 depend on CC-IC-1; CC-IC-4 depends on CC-IC-1..3
 - Objective (SMART, ADR-090): by CC-IC exit, for every new Factory Start
-  whose Discovery settlement builds a register, each of five blocking
+  under the v2 vocabulary (each carrying non-null typed authority — a
+  built register, or an explicit typed no-obligations attestation if the
+  architecture truly permits an obligation-free order; never a silent
+  null), each of five blocking
   mutations — (m1) a proposal unknown absent from the register's
   open-question entries; (m2) an open-question entry without a
-  resolved-or-deferred/waived disposition carrying reason, owner, and
-  unblock criterion; (m3) a mechanics-bearing constraint whose RULE binding
-  is removed or untrace-bound; (m4) a runnable-local lifecycle
+  resolved-or-deferred disposition (reason, owner, and unblock criterion)
+  or a loud per-entry operator-attributed waiver; (m3) a mechanics-bearing
+  constraint whose RULE binding is removed or
+  untrace-bound; (m4) a runnable-local lifecycle
   classification without the injected whole-product-synthesis and
-  ordered-smoke obligations; (m5) a qualitative entry without a measurable
-  interpretation or typed deferral — turns the blocking group red when
-  reversed, and a registerless legacy corpus stays green. Measured solely
+  ordered-smoke obligations; (m5) a qualitative/experience entry without
+  a measurable interpretation or typed deferral — turns the blocking
+  group red when reversed, and a frozen legacy registerless (v1) corpus
+  stays green. Measured solely
   by the compiled obligation-contract mutants and the blocking acceptance
   group, never by prose. This goal explicitly does not promise semantic
   perfection: extraction quality remains the Discovery assessor's boundary
-  and the archaeologist is advisory (ADR-084 honest proof boundary).
+  and the archaeologist is advisory (ADR-084 honest proof boundary —
+  conservation of the counted typed set, not semantic completeness of
+  free-text extraction or truthfulness of tagging).
 - Non-goals: any parallel scope-clause or unknown ledger; any new
   mechanics-spec product family beside RULE/SPEC; any gating or
   authority-mutating LM archaeologist; any second obligation registry
   beside the ADR-084 AcceptanceObligationContract family; editing frozen
-  Elite-6 evidence; changing the registerless grandfather behavior
-  (ADR-088 sole grandfather condition)
+  Elite-6 evidence; changing the registerless grandfather behavior for
+  frozen legacy v1 corpora (ADR-088 sole grandfather condition), or
+  widening null-binding grandfathering to new v2 starts; requiring an
+  at-Discovery `mechanicsRef` (the RULE artifact does not exist yet)
 
 ### CC-IC-1 - Register v2 vocabulary at Discovery settlement
 
@@ -1529,13 +1577,17 @@ parallel implementation program.
 Checklist:
 
 - [ ] Extend the register schema additively to
-      `factory.order-constraint-register.v2`: add `open-question` to the
-      closed source-class vocabulary (`execution|material|human|
-      open-question`); add per-entry typed `measurability`
-      (`measurable` + interpretationRef, or `deferred` + reason); add
-      per-entry `lifecycleSynthesis` declarations consumed only from the
+      `factory.order-constraint-register.v2`: PRESERVE the closed
+      source-class vocabulary unchanged (`execution|material|human` —
+      `open-question` is NOT a class and the class vocabulary is not
+      overloaded) and add the orthogonal per-entry `kind` vocabulary
+      (`scope|open-question|mechanics|synthesis|ordered-smoke|quality`);
+      add typed `measurability` binding ONLY qualitative/experience
+      (kind `quality`) entries (`measurable` + interpretationRef, or
+      `deferred` + reason); add per-entry
+      `lifecycleSynthesis` declarations consumed only from the
       frozen lifecycle classification.
-- [ ] Draft `open-question` entries 1:1 and positionally from
+- [ ] Draft kind `open-question` entries 1:1 and positionally from
       `DiscoveryProposalPayload.unknowns` (text = the unknown string;
       evidenceRef = the payload field) — kernel-side, deterministic, no
       guessing, no prose rereading (the builder's existing no-guess rule).
@@ -1548,19 +1600,32 @@ Checklist:
 - [ ] Digest semantics: v2 typed fields are entry content — adding them
       produces a new registerDigest (an honest revision, never an in-place
       mutation); v1 registers verify unchanged under their schema version.
-- [ ] Keep the registerless path exactly as today: no `order_constraints`
-      and no v2 fields builds no register (null binding, empty diffs,
-      gates green).
+- [ ] New v2 starts never silently build a null register: null-binding
+      grandfathering applies only to frozen legacy v1 corpora (their
+      behavior is exactly as today — no `order_constraints` builds no
+      register: null binding, empty diffs, gates green; frozen evidence
+      never rewritten). Every NEW Factory Start under the v2 vocabulary
+      carries non-null typed authority from Discovery settlement — a
+      built register, or an explicit typed no-obligations attestation if
+      (and only if) the architecture truly permits an obligation-free
+      order; an absent required register binding on a new v2 start is a
+      typed red, never green. Continuations inherit the original register
+      ref and never re-extract at continuation settlement.
 
 Blocking mutations: m1 (drop a proposal unknown from the open-question
 entries — settlement red); m4 (runnable-local declared without the injected
-synthesis/smoke entries — settlement red); m5 (a qualitative entry carrying
-neither a measurable interpretation nor a typed deferral — red);
-legacy-green control (registerless and v1 corpora stay green).
+synthesis/smoke entries — settlement red); m5 (a qualitative/experience
+(kind `quality`) entry carrying neither a measurable interpretation nor a
+typed deferral — red); m6 (a new v2 Factory Start whose settlement
+produces a silent null register — red; a no-obligation order must carry
+the explicit typed no-obligations attestation); m6a (a continuation that
+re-extracts a register instead of inheriting the original ref — red);
+legacy-green control (frozen legacy registerless and v1 corpora stay
+green).
 
 Exit checklist:
 
-- [ ] All four mutations above make the blocking group red when reversed;
+- [ ] All six mutations above make the blocking group red when reversed;
       the legacy-green controls stay green.
 - [ ] A v2 register is digest-pinned, positionally stable, and verifiable;
       v1 registers round-trip unchanged.
@@ -1582,28 +1647,33 @@ Exit checklist:
 
 Checklist:
 
-- [ ] Extend the disposition grammar for `open-question` entries on the
-      existing network: `resolved` (evidenceRef required) or
-      `deferred`/`waived` (non-empty reason + owner + unblockCriterion);
-      per-ID gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
+- [ ] Extend the disposition grammar for kind `open-question` entries on
+      the existing network: `resolved` (evidenceRef required), or
+      `deferred` (non-empty reason + owner + unblockCriterion), or
+      `waived` (loud, per-entry, operator-attributed only — an author or
+      model may at most propose a waiver; a mass author waiver is a typed
+      red); per-ID gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
       message shape.
 - [ ] Dispositions freeze into the baseline payload and ride the
       `warrantRef` projection (one source, three projections — no new
       carrier).
 - [ ] Keep registerless and v1-register corpora green: the extension binds
-      only entries whose class is `open-question`.
+      only entries whose kind is `open-question`.
 
 Blocking mutations: m2 (an undisposed open-question entry —
 `FORMALIZATION_CONSTRAINT_UNDISPOSED` with per-ID guidance); m2a (a
 deferral without owner or unblockCriterion — red); m2b (a `resolved`
-without evidenceRef — red).
+without evidenceRef — red); m2c (a waiver authored by the worker/author —
+in particular a mass waiver of all open questions in one act — red;
+waivers are loud, per-entry, operator-attributed only).
 
 Exit checklist:
 
 - [ ] Every open-question entry of every register-bearing corpus is
-      resolved or deferred/waived with reason, owner, and unblock
-      criterion, or the gate is typed red.
-- [ ] Registerless corpora keep exactly the current green behavior.
+      resolved, deferred (reason, owner, unblock criterion), or waived by
+      a loud per-entry operator attribution — or the gate is typed red.
+- [ ] Frozen legacy registerless corpora keep exactly the current green
+      behavior.
 
 ### CC-IC-3 - RULE mechanics-spec typed binding and coverage
 
@@ -1622,20 +1692,27 @@ Exit checklist:
 
 Checklist:
 
-- [ ] Mechanics-bearing register entries carry a typed `mechanicsRef` to a
-      RULE artifact.
+- [ ] A mechanics-bearing register entry is CREATED at Discovery
+      settlement as kind `mechanics` with NO `mechanicsRef` — the RULE
+      artifact does not exist yet, and an impossible at-Discovery
+      `mechanicsRef` must never be required. The typed `mechanicsRef`
+      binding is established later, at disposition/binding time,
+      referencing the accepted RULE artifact.
 - [ ] Covering such an entry requires the referenced RULE artifact to be
       accepted and trace-bound (`implements_spec`/`verified_by`) to the
       covering AC/SPEC within the current lifecycle; the entry joins the
       same ADR-088 reverse diff (register ids minus union of kernel-derived
-      `coveredConstraintIds` minus typed waivers = empty set).
+      `coveredConstraintIds` minus typed waivers = empty set; production
+      direction: register minus typed waivers ⊆ covered — never the
+      converse).
 - [ ] Keep the SRS §D2 and §2.2 seams unchanged in semantics: v2 entries
       are ordinary register lines to them.
 
 Blocking mutations: m3 (remove the RULE binding from a mechanics-bearing
-constraint — coverage red); m3a (`mechanicsRef` pointing at a missing or
-unaccepted RULE artifact — red); m3b (RULE present but not trace-bound to
-the covering AC/SPEC — red).
+constraint at/after binding time — coverage red); m3a (a bound
+`mechanicsRef` pointing at a missing or unaccepted RULE artifact — red);
+m3b (RULE present but not trace-bound to the
+covering AC/SPEC — red).
 
 Exit checklist:
 
@@ -1669,6 +1746,15 @@ Checklist:
 - [ ] Set equality both directions with the installed protections from
       CC-IC-1..3; mutant families from the existing algebra; wire the
       blocking group per CC-10B.
+- [ ] Correct the inverted subset constraint of the existing
+      `frm.submission.acceptance-contract` token in
+      `tests/factory-proof/obligation-contracts.mjs` (it currently encodes
+      `coveredConstraintIds` ⊆ `registerIds-minus-waived` — the INVERSE of
+      the production requirement). The production requirement is
+      (register ids minus typed waivers) ⊆ covered — i.e. the ADR-088
+      reverse diff (register − covered − waived = ∅). The five new tokens
+      encode the production direction; the inversion must not be
+      replicated.
 - [ ] The LM archaeologist is advisory only: its reports are ordinary
       evidence artifacts; the sole promotion path is a new register
       revision with a new digest through Discovery settlement
@@ -1701,10 +1787,10 @@ Exit checklist:
 |---|---|---|
 | A. Epic-as-authority trace gate | new scope-clause coverage gate | Reused: register ids + kernel-derived `coveredConstraintIds` + SRS §D2/§2.2 reverse diff (ADR-088); v2 entries join the same diff; no parallel scope-clause ledger |
 | B. Requirements archaeologist | gating second model | Advisory only; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority (CC-IC-4) |
-| C. Unknowns are obligations | new OPEN ledger | `open-question` register class drafted 1:1 from proposal unknowns (CC-IC-1); `resolved` or `deferred`/`waived` with reason, owner, unblock criterion on the existing disposition network (CC-IC-2) |
-| D. Mechanics first-class | new mechanics-spec family | Existing RULE artifacts are the carrier; typed `mechanicsRef` binding/coverage, trace-bound via `implements_spec`/`verified_by` (CC-IC-3) |
+| C. Unknowns are obligations | new OPEN ledger | kind `open-question` register entries (class vocabulary `execution|material|human` unchanged) drafted 1:1 from proposal unknowns (CC-IC-1); `resolved`, or `deferred` (reason, owner, unblock criterion), or loud per-entry operator-attributed `waived` on the existing disposition network (CC-IC-2) |
+| D. Mechanics first-class | new mechanics-spec family | Existing RULE artifacts are the carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by` (CC-IC-3) |
 | E. Runnable lifecycle auto-requires integration + ordered smoke | inferred at Formalization | Frozen `runnable-local` classification; deterministic injection at Discovery settlement; engine never infers by rereading prose (CC-IC-1) |
-| F. Qualitative quantified | new translation requirement | Typed measurability on every register entry: measurable interpretation or typed deferral (CC-IC-1) |
+| F. Qualitative quantified | new translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral (CC-IC-1) |
 | G. Five conformance obligations | new obligation family | Compiled tokens in the single ADR-084 AcceptanceObligationContract; existing mutation algebra; blocking via CC-10B/CC-80 floors (CC-IC-4) |
 
 ---
@@ -1733,12 +1819,16 @@ Checklist:
   blocked/resumable; no-poison; never product-failed), and
   role-projection clarity,
   with their blocking mutations.
-- [ ] When CC-IC-4 (ADR-090) has landed, include the idea-authority-
-      conservation checks: the register-v2 conservation diff (every
+- [ ] The idea-authority-conservation checks are a MANDATORY dependency of
+      this command (ADR-090): the register-v2 conservation diff (every
       proposal unknown present as an open-question entry; injected
       synthesis/smoke obligations under a runnable-local classification;
-      typed measurability on every entry), open-question disposition
+      typed measurability on every qualitative/experience entry; new v2
+      starts carry non-null typed authority), open-question disposition
       closure, and RULE mechanics binding, with their blocking mutations.
+      Until CC-IC-1..4 are implemented and proven, this command is
+      incomplete and its result is RED: the unproven CC-IC set is an open
+      mandatory dependency, never a skip.
 - [ ] Fail on missing fixtures, empty scans, zero tests, or skipped groups.
 
 Exit checklist:
@@ -1746,7 +1836,10 @@ Exit checklist:
 - [ ] Command is documented, non-vacuous, and deterministic.
 - [ ] One known mutation in each required class makes it red.
 - [ ] No CC-GAP-6..10 is open; the CC-00C product-claim blocking proofs are
-  included and green.
+      included and green.
+- [ ] No CC-IC packet (ADR-090) is unimplemented or unproven: the CC-IC
+      mandatory qualification dependency is closed and its blocking
+      mutations are green.
 
 ### CC-81 - Read-only qualification audit
 
@@ -1764,15 +1857,19 @@ Checklist:
   for each of CC-GAP-2..5. Any open CC-GAP-2..5 keeps this audit RED.
 - [ ] Verify the CC-00C exit checklist explicitly: record PASS or an open gap
   for each of CC-GAP-6..10. Any open CC-GAP-6..10 keeps this audit RED.
-- [ ] Record the state of every landed CC-IC packet (ADR-090): a landed
-  CC-IC obligation whose blocking mutation is not green keeps this audit
-  RED; unlanded packets are recorded as not started, never as PASS.
+- [ ] Record the state of every CC-IC packet (ADR-090), landed or not:
+      any packet not implemented-and-proven — including every not-started
+      packet — keeps this audit RED (CC-IC is a mandatory overall
+      qualification dependency, while the frozen CC-00C scope stays
+      CC-GAP-6..10); unlanded packets are recorded as not started, never
+      as PASS.
 
 Exit checklist:
 
 - [ ] Every item is evidenced PASS or audit remains RED.
 - [ ] `QUALIFICATION_GREEN` emits only with no open gap, including no open
-  CC-GAP-2..5 and no open CC-GAP-6..10.
+      CC-GAP-2..5, no open CC-GAP-6..10, and no unimplemented or unproven
+      CC-IC packet (ADR-090).
 
 ### CC-82 - Clean-clone reproduction and evidence freeze
 
@@ -1789,7 +1886,10 @@ Checklist:
 - [ ] Include the CC-00B terminal-integrity evidence in the frozen set; do not
   emit `QUALIFICATION_GREEN` with any CC-GAP-2..5 open.
 - [ ] Include the CC-00C product-claim-integrity evidence in the frozen set;
-  do not emit `QUALIFICATION_GREEN` with any CC-GAP-6..10 open.
+      do not emit `QUALIFICATION_GREEN` with any CC-GAP-6..10 open.
+- [ ] Include the CC-IC idea-authority-conservation evidence in the frozen
+      set; do not emit `QUALIFICATION_GREEN` with any CC-IC packet
+      (ADR-090) unimplemented or unproven.
 - [ ] Capture pre-cutover normalized evidence.
 
 Exit checklist:
@@ -1798,6 +1898,8 @@ Exit checklist:
 - [ ] Pre-cutover evidence/floors are frozen.
 - [ ] CC-00B evidence is frozen and every CC-GAP-2..5 is closed.
 - [ ] CC-00C evidence is frozen and every CC-GAP-6..10 is closed.
+- [ ] CC-IC evidence is frozen and every CC-IC packet is implemented and
+      proven (ADR-090 mandatory qualification dependency closed).
 - [ ] Result states `QUALIFICATION_GREEN` and
   `STRUCTURAL_IMPLEMENTATION_AUTHORIZED = false`.
 
@@ -2001,8 +2103,14 @@ Pre-mortem controls:
       mechanics-spec product family, a gating LM archaeologist, or a second
       obligation registry are all prohibited (ADR-090). CC-IC-1..4 are
       bounded packets serialized after the CC-GAP-6 seam through the
-      single-writer `Constraint register and warrant seam` row; their proof
-      tokens join the single ADR-084 contract family; the program closes
-      when its exit checklists are green; and order unknowns become owned
-      obligations on the register (resolved or deferred/waived with
-      reason, owner, and unblock criterion), never opaque strings.
+      single-writer `Constraint register and warrant seam` row, and a
+      mandatory overall qualification dependency (until implemented and
+      proven, CC-10B/CC-80 and overall K qualification stay RED); their
+      proof tokens join the single ADR-084 contract family; the program
+      closes when its exit checklists are green; and order unknowns become
+      owned obligations on the register (resolved; deferred with reason,
+      owner, and unblock criterion; or loudly waived per-entry by the
+      operator — never a mass author waiver), never opaque strings.
+      Null-binding grandfathering stays frozen-legacy-v1-only: a new v2
+      Factory Start that silently builds a null register and passes green
+      is itself the drift this item guards against.

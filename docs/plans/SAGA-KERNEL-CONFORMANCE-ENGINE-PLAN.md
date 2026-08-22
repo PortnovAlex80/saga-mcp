@@ -320,11 +320,16 @@ Required generic properties:
 - [ ] Every nonterminal scope has a live owner, runnable command, typed wait,
       or transition due.
 - [ ] Idea authority conservation: every non-empty register line is covered,
-      dispositioned, or typed-waived; open-question entries reach resolved
-      or deferred/waived with reason, owner, and unblock criterion;
+      dispositioned, or typed-waived; open-question entries reach resolved,
+      deferred (reason, owner, and unblock criterion), or a loud per-entry
+      operator-attributed waiver; and every qualitative/experience entry
+      carries a measurable interpretation or typed deferral;
       runnable-local synthesis and ordered-smoke obligations are injected
-      deterministically at Discovery settlement — never inferred from prose
-      (ADR-090).
+      deterministically at Discovery settlement — never inferred from prose;
+      null-binding grandfathering applies only to frozen legacy v1 data,
+      every new v2 Factory Start carries non-null typed authority (a built
+      register or an explicit typed no-obligations attestation), and
+      continuations inherit the original register ref (ADR-090).
 
 ## 9. Generic scenario corpus
 
