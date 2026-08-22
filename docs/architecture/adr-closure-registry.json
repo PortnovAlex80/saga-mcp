@@ -1212,6 +1212,23 @@
         "docs/plans/CONFORMANCE-CLOSURE-PLAN.md — sections 3.2, CC-00C, CC-10B, CC-80, 13",
         "docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md — CC-GAP-9 record refined by this ADR"
       ]
+    },
+    {
+      "adr": "090",
+      "file": "090-idea-authority-conservation.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "CC-IC blocking mutations (ADR-090): a proposal unknown absent from the register's open-question entries fails settlement; an open-question entry without a resolved-or-deferred/waived disposition carrying reason, owner, and unblock criterion fails the disposition gate; a mechanics-bearing constraint whose RULE binding is removed or untrace-bound fails coverage; a runnable-local lifecycle classification without the injected whole-product-synthesis and ordered-smoke obligations fails admission; a qualitative entry without a measurable interpretation or typed deferral fails admission; an archaeologist report cannot alter the register, digest, relay, reverse diff, or any gate outcome; a registerless legacy corpus stays green",
+      "successor": null,
+      "notes": "Accepted 2026-08-22 (MCDA Option B, 475/500). Corrects the proposed A-G package in .research/IDEA-TRACEABILITY-POSTMORTEM.md (evidence copy, unchanged): no parallel scope-clause or unknown ledgers; the single Order Constraint Register is extended additively at Discovery settlement (source classes execution|material|human|open-question, typed measurability, deterministic runnable-local synthesis injection), one digest/ref and one disposition network, coverage via the existing ADR-088 relay and SRS D2/2.2 reverse diff, existing RULE artifacts as the mechanics-spec carrier, an advisory-only LM archaeologist whose sole promotion path is a new register revision/digest, and proof tokens compiled into the single ADR-084 AcceptanceObligationContract family. Normative corrected diagnosis: the full Discovery payload rides into Formalization and FR-9/SRS retained browser/canvas/smoke, but no normative AC/set-equality/owner existed and the proposal unknowns are opaque unconsumed strings. This landing is documentation only — not implemented. Implementation owned by CC-IC-1..4 serialized after the CC-GAP-6 seam in docs/plans/CONFORMANCE-CLOSURE-PLAN.md (section 7A).",
+      "evidence": [
+        "docs/plans/CONFORMANCE-CLOSURE-PLAN.md — sections 3.2, 4.3, 5, 7A (CC-IC-1..4), CC-10B, CC-80, CC-81, 13",
+        ".research/IDEA-TRACEABILITY-POSTMORTEM.md — the A-G proposal corrected by this ADR (read-only evidence copy)"
+      ]
     }
   ]
 }

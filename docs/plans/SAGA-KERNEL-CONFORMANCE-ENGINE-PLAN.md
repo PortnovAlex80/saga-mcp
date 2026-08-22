@@ -82,6 +82,9 @@ Agents must read these documents before implementation:
 11. `docs/testing/CAUSAL-PROOF-IMPLEMENTATION-BRIEFS.md`
 12. `docs/plans/WORKSHOP-MODULARIZATION-REFACTORING-PLAN.md`
 13. `tests/factory-proof/MIGRATION-MAP.md`
+14. `docs/architecture/decisions/090-idea-authority-conservation.md`, when
+    any Idea Authority Conservation packet (CC-IC-1..4 in
+    `docs/plans/CONFORMANCE-CLOSURE-PLAN.md` §7A) is active
 
 If this plan conflicts with an accepted ADR, the ADR wins. Update this plan in
 the same change that resolves the conflict.
@@ -316,6 +319,12 @@ Required generic properties:
 - [ ] Projection rebuild preserves authority and progress.
 - [ ] Every nonterminal scope has a live owner, runnable command, typed wait,
       or transition due.
+- [ ] Idea authority conservation: every non-empty register line is covered,
+      dispositioned, or typed-waived; open-question entries reach resolved
+      or deferred/waived with reason, owner, and unblock criterion;
+      runnable-local synthesis and ordered-smoke obligations are injected
+      deterministically at Discovery settlement — never inferred from prose
+      (ADR-090).
 
 ## 9. Generic scenario corpus
 
