@@ -294,3 +294,33 @@ resume path re-stamps the catalog limit).
   impl item replays fine; second does not — likely desk/branch state or
   member-shape difference in the replayed candidate), fix, re-run
   delivery/restart-idempotent-settlement.
+
+## PROD FIX — packaging flake root-caused and killed (2026-08-22, commit 1a6fc2a5)
+- SYMPTOM: `development/acceptance-packaging-one-container` died
+  nondeterministically (50/50 initially, 4/6 on the final instrumented loop)
+  with REPLAY_CAPTURE_GIT_RECIPE_MISSING; zero capsule rows for ANY task-14
+  implementation execution while the accepted CandidateSet demonstrably
+  carried the implementation product.
+- METHOD: deterministic reproduction of `captureAcceptedExecution` on the kept
+  failing DB (.proof-kd1) captured CLEAN — proving the defect was
+  live-run-transient; then every silent null path in captureGitRecipe was
+  converted to a TYPED throw and RECIPE_MISSING itself got a discriminator
+  ("implementation product ABSENT from capsule typed products"). One 6-run
+  live loop named the culprit outright.
+- ROOT CAUSE: `isForeignManagedSubmission` (F-R1) ruled on EXECUTION identity.
+  A retry/repair successor execution of the SAME task accepts a cumulative
+  CandidateSet whose implementation product was submitted by a predecessor
+  execution of that task (ADR-053 C14, P18 cross-execution repair). The skip
+  left the accepting capsule without the implementation product — and without
+  it there is no Git recipe. Whether the retry path fired varied run-to-run:
+  the coin flip.
+- FIX: the capsule cell identity is the TASK. Same-task predecessor material
+  is OWN material (certified with its Git recipe); another task's material
+  stays foreign — F-R1's reviewer protection is intact (carry-forward suite
+  13 pass; new regression replay-foreign-submission-cell 4/4 pins all four
+  shapes).
+- STABILITY: 6/6 on the fixed build.
+- F-A COMPLETED in the same commit: [prompt-budget] telemetry now reports
+  real UTF-8 bytes (Buffer.byteLength, was UTF-16 code units) and
+  SAGA_PROMPT_MAX_BYTES is an opt-in fail-closed spawn gate with the byte
+  ledger in the error (tracker-view/claude-runner.mjs).
