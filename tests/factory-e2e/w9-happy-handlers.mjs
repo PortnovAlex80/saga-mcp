@@ -527,7 +527,9 @@ function developmentImplement({ handlers, assignment, meta, context, db }) {
   try {
     git(repoPath, 'commit', '-m', `w9: implement ${workItemKey}`);
   } catch (error) {
-    if (git(repoPath, 'status', '--porcelain').trim() !== '') throw error;
+    // -uno: untracked files (e.g. other cells' docs/ artifacts in the shared
+    // repo) are not this commit's concern; only TRACKED/staged state decides.
+    if (git(repoPath, 'status', '--porcelain', '-uno').trim() !== '') throw error;
   }
   const commitSha = git(repoPath, 'rev-parse', 'HEAD');
   const treeSha = git(repoPath, 'rev-parse', `${commitSha}^{tree}`);

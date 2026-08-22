@@ -280,3 +280,17 @@ resume path re-stamps the catalog limit).
   fail in seconds instead of 8×backoff per spawn.
 === watchdog note
 - 05:50Z: the first watchdog instance carried a TRUNCATED --settings-sha baseline (24 chars, copied from the old launch note) and false-tripped SETTINGS_DRIFT; the file was verified unchanged (full sha 2d6176e8…45c6d0) and the watchdog restarted with the full sha — clean samples since.
+- 06:4xZ B-DRAIN DIAGNOSIS (delivery restart proof, WIP): layer 1 FIXED
+  (cf065cff — idempotent impl commit; then -uno for untracked docs/). Layer 2:
+  B's replay of the SECOND impl work item fails the author gate — check
+  provider development.implementation-scope.v1 returns outcome=ERROR (receipt
+  outcome=error, empty evidence; finding
+  'error::Check development.implementation-scope.v1 returned error',
+  workplace/7/.../development-implementation/3d6f0dc…, check plan digest
+  4fabc555…). Evidence DBs: .tmp-dr2/ and .tmp-dr3/ fresh-harness.db.
+  NEXT: find the implementation-scope provider's catch/error branch in
+  src/modules/development/application/development-check-providers.ts
+  (v2.0.0, line ~538+), reproduce WHY B's replayed candidate errors (first
+  impl item replays fine; second does not — likely desk/branch state or
+  member-shape difference in the replayed candidate), fix, re-run
+  delivery/restart-idempotent-settlement.
