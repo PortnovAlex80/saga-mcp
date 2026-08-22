@@ -1847,8 +1847,10 @@ Exit checklist:
 
 - Owner role: obligation/mutation owner with the CI owner for group wiring
 - Depends on: CC-IC-1, CC-IC-2, CC-IC-3
-- Editable files: `tests/factory-proof/obligation-contracts.mjs` (five new
-  contracts in the single ADR-084 family); the installed-protection reader
+- Editable files: `tests/factory-proof/obligation-contracts.mjs` (FOUR new
+  tokens in the single ADR-084 family, plus correction of the two existing
+  `frm.submission.acceptance-contract` and `frm.submission.srs-contract`
+  tokens); the installed-protection reader
   manifest keys; blocking-group registry via the CC-10B wiring; an
   advisory archaeologist report seam under the discovery assessor surface
   (report artifact only, no gate wiring)
