@@ -66,6 +66,9 @@ export const CANONICAL_OVERLAY_ALLOWLIST = Object.freeze([
   'delivery.providers',
   'delivery.providers.preflight',
   'delivery.providers.actionProviders',
+  // The human-approval double (denied/approved scenario pair) — same class
+  // of trusted test-double as preflight/actionProviders.
+  'delivery.providers.approval',
   'delivery.providers.observeCurrentCandidateHash',
 ]);
 
@@ -84,6 +87,7 @@ const CANONICAL_OVERLAY_TREE = Object.freeze({
       preflight: LEAF,
       actionProviders: LEAF,
       observeCurrentCandidateHash: LEAF,
+      approval: LEAF,
     }),
   }),
 });
@@ -159,6 +163,17 @@ export const CANONICAL_TEST_PROVIDERS = Object.freeze({
     determinism: 'partial',
     role: 'test-double',
   }),
+  // The human-approval double: identity matches the harness-seeded trusted
+  // row (category authorized_decision), so resolveTrustedProvider accepts it
+  // and the settlement can lawfully consume its decision.
+  approval: Object.freeze({
+    providerId: 8,
+    name: 'factory.authorized-verification-observer.v1',
+    version: '1.0.0',
+    category: 'authorized_decision',
+    determinism: 'partial',
+    role: 'test-double',
+  }),
 });
 
 function providerEvidence(prefix, body) {
@@ -166,7 +181,7 @@ function providerEvidence(prefix, body) {
   return { schema: `factory.proof.${prefix}.v1`, ref: `proof:${prefix}:${hash}`, hash };
 }
 
-export function buildCanonicalDeliveryProviders({ repoPath }) {
+export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus } = {}) {
   const markerRoot = path.join(repoPath, '.git');
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
@@ -234,6 +249,26 @@ export function buildCanonicalDeliveryProviders({ repoPath }) {
     observeCurrentCandidateHash(deliveryCase) {
       return deliveryCase.integratedCandidate.hash;
     },
+    ...(approvalStatus ? {
+      approval: {
+        identity: CANONICAL_TEST_PROVIDERS.approval,
+        async decide({ deliveryCase, preflightHash }) {
+          const status = approvalStatus;
+          const body = {
+            status,
+            candidateHash: deliveryCase.integratedCandidate.hash,
+            preflightHash,
+          };
+          return {
+            status,
+            decision: status === 'approved'
+              ? providerEvidence('approval-decision', body)
+              : null,
+            provider: CANONICAL_TEST_PROVIDERS.approval,
+          };
+        },
+      },
+    } : {}),
   };
 }
 

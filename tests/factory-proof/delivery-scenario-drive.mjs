@@ -85,7 +85,7 @@ try {
   const releasePolicy = {
     id: 'proof-release-policy', version: '1.0.0', contentHash: '',
     channel: 'test', releaseVersion: '1.0.0', releaseTag: 'proof-delivery-v1',
-    humanApprovalRequired: false,
+    humanApprovalRequired: runtime.humanApprovalRequired === true,
     requiredPreflightCheckIds: ['candidate-integrity'],
     actions: [releaseAction],
   };
@@ -152,7 +152,10 @@ try {
     handlers: runtime.handlers,
     oracles: runtime.oracles,
     actorEvidence: runtime.actorEvidence ?? [],
-    deliveryProviders: buildCanonicalDeliveryProviders({ repoPath: bootstrap.repoPath }),
+    deliveryProviders: buildCanonicalDeliveryProviders({
+      repoPath: bootstrap.repoPath,
+      ...(runtime.approvalStatus ? { approvalStatus: runtime.approvalStatus } : {}),
+    }),
     // The production launch above is INPUT construction (factory_orders +
     // launch rows) — it wrote no authority tables; the kernel's clean-bootstrap
     // assertion stays meaningful for the authority surfaces it guards.

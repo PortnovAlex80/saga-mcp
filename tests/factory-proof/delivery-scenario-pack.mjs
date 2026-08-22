@@ -97,8 +97,6 @@ function noStrandedExecutionOracle() {
 }
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
-  'L:approval:pending-holds-publication',
-  'L:approval:denied-blocked',
   'L:approval:binds-candidate+preflight+policy-hash',
   'L:publication:unknown-failure-routes-to-observation',
   'L:observation:mismatch-prevents-released',
@@ -136,6 +134,32 @@ export const DELIVERY_SCENARIOS = Object.freeze([
       coverageToken.transition('settle-delivery', 'complete-approval-required'),
     ],
   }),
+  // The human gate: an explicit DENIAL by the trusted approval provider must
+  // end the lifecycle at the typed 'blocked' terminal — no publication, no
+  // external effect. The release authorization alone is not enough.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/denied-blocked',
+    kind: 'positive',
+    proves: ['handoff.route-lifecycle'],
+    coverageItems: [
+      'L:approval:denied-blocked',
+      coverageToken.transition('settle-delivery', 'complete-blocked'),
+    ],
+  }),
+  // The human gate, pending arm: the trusted approver has NOT decided yet —
+  // the lifecycle must end at the typed 'approval-required' terminal with
+  // zero effects. Publication is HELD, never assumed.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/pending-holds-publication',
+    kind: 'positive',
+    proves: ['handoff.route-lifecycle'],
+    coverageItems: [
+      'L:approval:pending-holds-publication',
+      coverageToken.transition('settle-delivery', 'complete-approval-required'),
+    ],
+  }),
 ]);
 
 const byId = new Map(DELIVERY_SCENARIOS.map(scenario => [scenario.id, scenario]));
@@ -154,6 +178,78 @@ export function buildDeliveryRuntimeCase(id) {
           terminalOracle('released'),
           deliveryStageOutcomeOracle('released'),
           releaseEffectReceiptOracle(),
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/denied-blocked':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        humanApprovalRequired: true,
+        approvalStatus: 'denied',
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          // outcomeRoutes: blocked -> terminal STATUS 'delivery-blocked'.
+          terminalOracle('delivery-blocked'),
+          deliveryStageOutcomeOracle('blocked'),
+          {
+            id: 'delivery.denied.zero-effects',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              return {
+                passed: actions.length === 0,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                details: { count: actions.length, actions },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/pending-holds-publication':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        humanApprovalRequired: true,
+        approvalStatus: 'pending',
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          // An undecided approval HOLDS the flow open (lifecycle paused, no
+          // stage outcome, no terminal) — publication waits for the human,
+          // it is never assumed. The hold IS the contract.
+          {
+            id: 'delivery.pending.holds-open',
+            evaluate({ durableTrace }) {
+              const run = (durableTrace.lifecycleRuns ?? [])[0];
+              const stage = (durableTrace.stageRuns ?? [])
+                .find(row => row.stage_id === 'delivery-release');
+              const held = run && run.status === 'paused'
+                && run.terminal_status === null
+                && stage && stage.local_outcome === null;
+              return {
+                passed: Boolean(held),
+                evidenceRefs: run ? [`lifecycle-run:${run.id}`] : [],
+                details: { run: run ?? null, stageOutcome: stage?.local_outcome ?? null },
+              };
+            },
+          },
+          {
+            id: 'delivery.pending.zero-effects',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              return {
+                passed: actions.length === 0,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                details: { count: actions.length, actions },
+              };
+            },
+          },
           noStrandedExecutionOracle(),
         ],
       };
