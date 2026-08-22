@@ -8,7 +8,7 @@
 // repair/recovery state machine must detect the missing receipt and
 // requeue the Workplace so the lifecycle can converge.
 //
-// These scenarios are imported by tests/factory-temporal/worker-boundary.test.mjs
+// These scenarios are imported by the worker-boundary-[1-4]-*.test.mjs split files
 // and dispatched through the SAME production scenario-dispatcher used by the
 // foundation and crash-recovery tests. The only production port replaced is the
 // worker inference port (workerExecutorFactory) — exactly as in the golden path.
