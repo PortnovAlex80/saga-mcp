@@ -77,7 +77,7 @@ test('Discovery forwards every outcome to Formalization (permissive gate; risks 
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery);
-  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
+  for (const outcome of ['go', 'clarify', 'reject']) {
     const route = routeProcessOutcome(discovery, outcome);
     assert.deepEqual(
       route.target,
@@ -87,6 +87,14 @@ test('Discovery forwards every outcome to Formalization (permissive gate; risks 
     assert.equal(route.target.status, undefined,
       `${outcome} must not be terminal (no status)`);
   }
+  // 'failed' is runtime-only (§15 budget terminal / kernel failure, 9d37a9e1):
+  // a failed Discovery produced no certificate and no proposal, so
+  // Formalization's entry conditions are unsatisfiable — it ends honestly.
+  assert.deepEqual(
+    routeProcessOutcome(discovery, 'failed').target,
+    { type: 'terminal', status: 'failed' },
+    "outcome 'failed' must be the honest terminal (no forwardable material)",
+  );
 });
 
 // W13-A3: routing is now purely declarative. The runtime product-delivery
@@ -116,15 +124,20 @@ test('declarative routing is invariant: same stage+outcome always yields the sam
     routeProcessOutcome(discovery, 'clarify'),
     routeProcessOutcome(discovery, 'clarify'),
   );
-  // saga4: every Discovery outcome routes forward to Formalization (permissive
-  // gate — risks are carried by the discovery certificate, not by blocking).
-  for (const outcome of ['go', 'clarify', 'reject', 'failed']) {
+  // saga4: every idea-strength Discovery outcome routes forward to
+  // Formalization (permissive gate — risks are carried by the discovery
+  // certificate, not by blocking); runtime-only 'failed' ends honestly.
+  for (const outcome of ['go', 'clarify', 'reject']) {
     assert.deepEqual(
       routeProcessOutcome(discovery, outcome).target,
       { type: 'stage', stageId: 'solution-formalization' },
       `${outcome} must route forward to solution-formalization`,
     );
   }
+  assert.deepEqual(
+    routeProcessOutcome(discovery, 'failed').target,
+    { type: 'terminal', status: 'failed' },
+  );
 });
 
 test('routeProcessOutcome accepts no resolver/rootInput override arguments', () => {

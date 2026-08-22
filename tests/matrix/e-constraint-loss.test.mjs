@@ -363,8 +363,8 @@ test('space E — E1: the restatement boundaries are enumerated from the process
   // the citation (and this test), never the reader's trust.
   assert.equal(lineOf(discovery, "id: 'produce-proposal'"), 71);
   assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
-  assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 150);
-  assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 180);
+  assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 164);
+  assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 194);
   assert.equal(lineOf(development, "id: 'plan-task-graph'"), 223);
   assert.equal(lineOf(development, "id: 'implement-work-items'"), 259);
   assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');

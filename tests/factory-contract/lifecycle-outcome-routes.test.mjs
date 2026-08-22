@@ -33,16 +33,23 @@ test('Lifecycle has 4 stages: discovery, formalization, development, delivery', 
 });
 
 // Discovery outcome routes — permissive by design
-test('Discovery outcome routes: ALL outcomes forward to formalization (permissive gate)', () => {
+test('Discovery outcome routes: idea-strength outcomes forward to formalization (permissive gate)', () => {
   const disc = stages.get('initial-discovery');
   assert.ok(disc.outcomeRoutes);
-  // Discovery is an idea-STRENGTH gate, not a build gate. Every outcome
-  // forwards to Formalization, which is the real go/no-go gate.
-  for (const code of ['go', 'clarify', 'reject', 'failed']) {
+  // Discovery is an idea-STRENGTH gate, not a build gate. Every idea-strength
+  // outcome forwards to Formalization, which is the real go/no-go gate.
+  for (const code of ['go', 'clarify', 'reject']) {
     assert.ok(disc.outcomeRoutes[code], `Discovery route for '${code}' exists`);
     assert.equal(disc.outcomeRoutes[code].type, 'stage', `${code} forwards to formalization`);
     assert.equal(disc.outcomeRoutes[code].stageId, 'solution-formalization');
   }
+  // 'failed' is runtime-only (§15, 9d37a9e1): no certificate/proposal to
+  // forward — the honest terminal, exactly as Formalization's own failed route.
+  assert.deepEqual(
+    disc.outcomeRoutes.failed,
+    { type: 'terminal', status: 'failed' },
+    "outcome 'failed' must be the honest terminal",
+  );
 });
 
 // Discovery module declares matching outcomes
