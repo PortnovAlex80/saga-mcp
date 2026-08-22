@@ -1,6 +1,9 @@
 # ADR-083: Capability and readiness fingerprint contract (K19 commit 1 — the frozen contract)
 
-- **Status:** Accepted (contract frozen; implementation is the K19 commit train, commits 2–6)
+- **Status:** Accepted (contract frozen at `f05dd37e`; implementation is
+  the K19 commit train — the commits 2-3 derivation CORE landed at
+  `5e39946a`; the image/dependency digest remainder and commits 4-6
+  remain open; K19 is not complete)
 - **Date:** 2026-08-20
 - **Owner:** K19 — Readiness and Toolchain Package Identity (SAGA-CORE-RENEWAL-PLAN §K19, milestone M5)
 - **Extends:** ADR-077 (canonical runtime package fingerprint — extension rule: later
@@ -139,24 +142,68 @@ content-addressed artifacts.
 
 | # | Commit | Builds | Status |
 |---|---|---|---|
-| 1 | `docs(architecture): freeze capability and readiness fingerprint contract` | THIS ADR | **landed** |
-| 2 | `refactor(readiness): isolate readiness in ephemeral environments` | §2.7 | **core landed (stage-14)** — per-attempt isolation already held (temp-dir extraction + disposable venv per check, no shared mutable state); stage-14 added the derivation core below. The full ephemeral-OCI substrate matrix remains open. |
-| 3 | `refactor(environment): one exact environment per pinned package, digests persisted` | §2.1/2.2/2.3 | **core landed (stage-14)** — `environment-derivation.ts`: the environment is DERIVED from the sealed artefact (import scan vs manifests vs declared install), the declaration is additive (install augmented with the gap, same runner), undeclared needs with no install to augment fail closed typed (`ENVIRONMENT_DERIVATION_UNDECLARED_NEED`) BEFORE any spawn, and `environmentDigest` rides every outcome as a decodable diagnostic (preparation and certification hold one identity). NOT done: per-package OCI image/dependency digest persistence in the package store, and the ADR-077 fingerprint's keyed `toolchainDigests` component. |
+| 1 | `docs(architecture): freeze capability and readiness fingerprint contract` | THIS ADR | **landed (`f05dd37e`, stage-13)** |
+| 2 | `refactor(readiness): isolate readiness in ephemeral environments` | §2.7 | **core landed (`5e39946a`, stage-14)** — per-attempt isolation already held (temp-dir extraction + disposable venv per check, no shared mutable state); `5e39946a` added the derivation core below. The full ephemeral-OCI substrate matrix remains open. |
+| 3 | `refactor(environment): one exact environment per pinned package, digests persisted` | §2.1/2.2/2.3 | **core landed (`5e39946a`, stage-14)** — `environment-derivation.ts`: the environment is DERIVED from the sealed artefact (import scan vs manifests vs declared install), the declaration is additive (install augmented with the gap, same runner), undeclared needs with no install to augment fail closed typed (`ENVIRONMENT_DERIVATION_UNDECLARED_NEED`) BEFORE any spawn, and `environmentDigest` rides every outcome as a decodable diagnostic (preparation and certification hold one identity). NOT done: per-package OCI image/dependency digest persistence in the package store, and the ADR-077 fingerprint's keyed `toolchainDigests` component. DIGEST PRECISION (seventh pass): what exists today freezes a declared tag to a LOCAL image identity (`resolvedBaseImageId`/`preparedImageId` in `docker-readiness-executor.ts`) — a local image ID is NOT an OCI registry manifest digest, so the contract's `baseImageDigest` field (a registry manifest digest, §2.1) is NOT yet realized anywhere; the image/dependency digest remainder stays open. |
 | 4 | `refactor(certification): make post-integration readiness a Production Cell` | §2.6 | not started |
-| 5 | `test(readiness): prove environment drift invalidates compatibility` | §2.3/2.4 | partial — the domain-free GDesign negative (derivation catches the undeclared import pre-spawn) landed with the stage-14 core; image/digest drift invalidation not started |
+| 5 | `test(readiness): prove environment drift invalidates compatibility` | §2.3/2.4 | partial — the domain-free GDesign negative (derivation catches the undeclared import pre-spawn) landed with the `5e39946a` stage-14 core (`tests/infrastructure/environment-derivation.test.mjs`); image/digest drift invalidation not started |
 | 6 | `docs(core): close readiness ADR cohort` | registry closure | not started |
 
 Release-discipline budget (plan §3): ≤ 25 production files, ≤ 6 per commit,
 ≤ 1 schema migration family — applies to the train as a whole.
 
-## 5. Boundary statement (stage-13 TASK 3, updated by stage-14 TASK 1)
+## 5. Boundary statement (stage-13 TASK 3, updated by stage-14 TASK 1; commit-grounded seventh pass)
 
-Stage 13 executed the train in order and stopped at commit 1. Stage 14
-landed the CORE of commits 2–3 (derivation, additive declarations,
-fail-closed undeclared needs, the one identity riding every outcome — see
-the table above for exactly what that core includes and what it does not).
-Commits 4–6 are not started; the OCI digest-persistence surface of commit 3
-and the ADR-077 `toolchainDigests` extension remain open. A fraction is not
+Stage 13 executed the train in order and stopped at commit 1
+(`f05dd37e` — THIS contract freeze, the only K19 commit it landed).
+Stage 14 landed the CORE of commits 2–3 in ONE commit (`5e39946a`,
+"K19 commits 2-3 core — the derived execution environment": derivation,
+additive declarations, fail-closed undeclared needs, the one identity
+riding every outcome — see the table above for exactly what that core
+includes and what it does not). Commits 4–6 are not started; the OCI
+digest-persistence surface of commit 3 and the ADR-077
+`toolchainDigests` extension remain open, and the image identity that
+exists today is a LOCAL image ID frozen from the declared tag — a local
+image ID is not an OCI registry manifest digest, so `baseImageDigest`
+as specified is not yet produced by anything. A fraction is not
 presented as the whole: the negative test that decides the core
 (the domain-free GDesign reproduction — `orbital-mechanics`, an invented
 package, no Python, no pyyaml) passes, and everything not done is named.
+**K19 is NOT complete** — `f05dd37e` + `5e39946a` are commit 1 plus the
+commits 2-3 core only; the image/dependency digest remainder and commits
+4-6 remain open work.
+
+## 6. Boundary note — environment identity vs availability vs receipt-binding (2026-08-22, conformance-closure sixth pass)
+
+The Conformance Closure substrate seams (CC-GAP-7/CC-GAP-9, ADR-089)
+must not drift into this contract's ownership. The split is normative:
+
+- **ADR-083/K19 owns environment IDENTITY — declared, observed, and
+  authorized.** The `DerivedExecutionEnvironment`, `environmentDigest`,
+  `baseImageDigest`, toolchain `implementationDigest` identities, and
+  the floating-tag prohibition (§3) are defined and authorized here and
+  nowhere else.
+- **CC-GAP-9 owns environment AVAILABILITY only.** Whether the
+  declared/authorized environment can be materialized (for example
+  Docker unavailable) is a CC-GAP-9/ADR-089 concern: bounded
+  deterministic in-check substrate retry, then the typed unknown
+  `warrant-blocked-environment` and a `human_required`
+  blocked/resumable continuation. CC-GAP-9 never defines, redefines, or
+  authorizes environment identity.
+- **CC-GAP-7 CONSUMES and receipt-binds; it never authorizes.** Warrant
+  execution consumes the `environmentDigest` and the readiness receipt
+  binds the digest it ran under (§2.6 exact-subject receipts). CC-GAP-7
+  never issues, blesses, or substitutes an environment identity.
+
+Sequencing and honest fallback: the K19 image/digest remainder (the
+open items of train commits 3 and 5 — per-package OCI image/dependency
+digest persistence in the package store and the ADR-077 keyed
+`toolchainDigests` component) is sequenced BEFORE CC-GAP-7
+receipt-binding. If it has not landed when CC-GAP-7 starts, the honest
+fallback applies: CC-GAP-7 binds the `environmentDigest` the stage-14
+derivation core already produces (it rides every outcome as a decodable
+diagnostic) and records honestly in the receipt and its evidence that
+image and dependency digest persistence is not yet available. The
+fallback never fabricates a digest, never treats an unauthorized
+identity as authorized, and never admits a floating tag (§3 stands
+unconditionally).
