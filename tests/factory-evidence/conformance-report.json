@@ -1,0 +1,651 @@
+{
+  "schemaVersion": "factory.proof.conformance-coverage.v1",
+  "generatedAt": "2026-08-22T08:06:56.784Z",
+  "mode": "committed-snapshot",
+  "declared": {
+    "universeTokens": 147,
+    "pendingTotal": 18,
+    "interWorkshopTokens": 1,
+    "platformFaultEdges": 6
+  },
+  "demonstrated": {
+    "passBundles": 67,
+    "nonPassRuns": 0,
+    "byWorkshop": [
+      {
+        "workshop": "discovery",
+        "declaredStatus": "CLOSED",
+        "universe": 47,
+        "demonstratedCovered": 47,
+        "percent": 100,
+        "uncovered": [],
+        "blocked": [],
+        "pendingNotBlocked": []
+      },
+      {
+        "workshop": "formalization",
+        "declaredStatus": "CLOSED",
+        "universe": 70,
+        "demonstratedCovered": 70,
+        "percent": 100,
+        "uncovered": [],
+        "blocked": [],
+        "pendingNotBlocked": []
+      },
+      {
+        "workshop": "development",
+        "declaredStatus": "SPINE",
+        "universe": 20,
+        "demonstratedCovered": 4,
+        "percent": 20,
+        "uncovered": [
+          "restart:development:git-change-desk-replay",
+          "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
+          "D3:claim-monotonicity:silent-narrowing-rejected",
+          "D4:review:changes-returns-to-same-workplace-author",
+          "D4:git-effect:integration-only-after-final-acceptance",
+          "D4:git-effect:redrive-idempotent",
+          "D5:freeze:frozen-candidate-content-addressed-and-immutable",
+          "D6:readiness:declared-source-mismatch-rejected",
+          "D7:bind:stale-readiness-hash-failed",
+          "D8:verification:evidence-pins-exact-candidate-hash",
+          "D8:verification:upstream-defect-routes-to-settlement",
+          "D9:settlement:blocked-and-failed-outcomes",
+          "D10:continuation:managed-source-author-no-git-authority",
+          "D10:replan:superseded-tasks-not-claimable",
+          "restart:development:idempotent-redrive",
+          "feedback:development:exact-repairs-and-absent-does-not"
+        ],
+        "blocked": [],
+        "pendingNotBlocked": [
+          "restart:development:git-change-desk-replay",
+          "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
+          "D3:claim-monotonicity:silent-narrowing-rejected",
+          "D4:review:changes-returns-to-same-workplace-author",
+          "D4:git-effect:integration-only-after-final-acceptance",
+          "D4:git-effect:redrive-idempotent",
+          "D5:freeze:frozen-candidate-content-addressed-and-immutable",
+          "D6:readiness:declared-source-mismatch-rejected",
+          "D7:bind:stale-readiness-hash-failed",
+          "D8:verification:evidence-pins-exact-candidate-hash",
+          "D8:verification:upstream-defect-routes-to-settlement",
+          "D9:settlement:blocked-and-failed-outcomes",
+          "D10:continuation:managed-source-author-no-git-authority",
+          "D10:replan:superseded-tasks-not-claimable",
+          "restart:development:idempotent-redrive",
+          "feedback:development:exact-repairs-and-absent-does-not"
+        ]
+      },
+      {
+        "workshop": "delivery",
+        "declaredStatus": "SPINE",
+        "universe": 5,
+        "demonstratedCovered": 3,
+        "percent": 60,
+        "uncovered": [
+          "K4:crash-after-effect-before-receipt",
+          "restart:delivery:idempotent-settlement"
+        ],
+        "blocked": [
+          {
+            "token": "restart:delivery:idempotent-settlement",
+            "blockedBy": "restart:development:git-change-desk-replay",
+            "since": "2026-08-22",
+            "note": "the three-start proof dies in Development desk replay before Delivery settlement can be exercised a second time"
+          }
+        ],
+        "pendingNotBlocked": [
+          "K4:crash-after-effect-before-receipt"
+        ]
+      }
+    ],
+    "dimensions": {
+      "interWorkshop": {
+        "covered": 1,
+        "total": 1,
+        "percent": 100
+      },
+      "transitions": {
+        "covered": 19,
+        "total": 24,
+        "percent": 79.2,
+        "uncovered": [
+          "transition:freeze-acceptance-baseline->complete-failed",
+          "transition:freeze-acceptance-baseline->complete-inconsistent",
+          "transition:settle->complete-failed",
+          "transition:settle-formalization->complete-failed",
+          "transition:settle-formalization->complete-inconsistent"
+        ]
+      },
+      "negativeTransitions": {
+        "covered": 8,
+        "total": 11,
+        "percent": 72.7,
+        "uncovered": [
+          "transition:freeze-acceptance-baseline->complete-failed",
+          "transition:settle->complete-failed",
+          "transition:settle-formalization->complete-failed"
+        ]
+      },
+      "recovery": {
+        "covered": 14,
+        "total": 17,
+        "percent": 82.4,
+        "uncovered": [
+          "restart:delivery:idempotent-settlement",
+          "restart:development:git-change-desk-replay",
+          "restart:development:idempotent-redrive"
+        ]
+      },
+      "genericInvariants": {
+        "covered": 10,
+        "total": 10,
+        "percent": 100,
+        "uncovered": []
+      },
+      "mutationKillRate": {
+        "measured": false,
+        "note": "mutation kills are K4-owned (fault scheduler not landed); measuring them is the Conformance Closure iteration, not v1"
+      }
+    }
+  },
+  "platform": {
+    "k4Edges": [
+      {
+        "workshop": "discovery",
+        "edge": "transition:settle->complete-failed"
+      },
+      {
+        "workshop": "formalization",
+        "edge": "transition:freeze-acceptance-baseline->complete-inconsistent"
+      },
+      {
+        "workshop": "formalization",
+        "edge": "transition:freeze-acceptance-baseline->complete-failed"
+      },
+      {
+        "workshop": "formalization",
+        "edge": "transition:settle-formalization->complete-inconsistent"
+      },
+      {
+        "workshop": "formalization",
+        "edge": "transition:settle-formalization->complete-failed"
+      },
+      {
+        "workshop": "formalization",
+        "edge": "effect-fault:formalization-accept-products:post-gate-pre-effect-drift"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/happy-clarify",
+      "verdict": "pass",
+      "bundleDigest": "9f2dedf2a34de23a8c0609c95218bbd30a1d9c593869d08d7f37c2afa238094f",
+      "evidenceFile": "discovery/discovery_happy-clarify.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/happy-go",
+      "verdict": "pass",
+      "bundleDigest": "84f712518721369e0539ec530b9f323a4eb2e45a2feecfbfcb1c961044f99458",
+      "evidenceFile": "discovery/discovery_happy-go.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/happy-reject",
+      "verdict": "pass",
+      "bundleDigest": "d9631b616db9cc0d2346ebbdb240da5dbe87b6c23a7585ebeb4ef46a792f5e01",
+      "evidenceFile": "discovery/discovery_happy-reject.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-deleted-outcome",
+      "verdict": "pass",
+      "bundleDigest": "f282aa461fd1e460d3780857ae94721ff9db0cdbd9379d58de53006960a95dfd",
+      "evidenceFile": "discovery/discovery_proposal-deleted-outcome.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-duplicate-submit",
+      "verdict": "pass",
+      "bundleDigest": "31473c0b9e0e13157c33cc05f1b631dba222dec7afb5acd99a5233a48761bed2",
+      "evidenceFile": "discovery/discovery_proposal-duplicate-submit.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-absent",
+      "verdict": "pass",
+      "bundleDigest": "4f113a93fac092fc39cc6650ecf360bf4555fc6a2cc346325f1a49d984ba9dfd",
+      "evidenceFile": "discovery/discovery_proposal-feedback-absent.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-corrupted",
+      "verdict": "pass",
+      "bundleDigest": "69adb204e331db95e26ae21bd74accf1891ecf8fe1397134cab12accdf57967d",
+      "evidenceFile": "discovery/discovery_proposal-feedback-corrupted.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-exact",
+      "verdict": "pass",
+      "bundleDigest": "cf7bf08a0d99b2db18baeb7cb0c161e2baf56be78ffc26069d224cd91704f4d7",
+      "evidenceFile": "discovery/discovery_proposal-feedback-exact.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-stale",
+      "verdict": "pass",
+      "bundleDigest": "6296a5fc616c07bde9ab450b38a5b7108df2fda32016e5f21b2fcf6e53321d6e",
+      "evidenceFile": "discovery/discovery_proposal-feedback-stale.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-late-tool-call",
+      "verdict": "pass",
+      "bundleDigest": "99f1cd660dcb364d0c018d76d306bae7ace3f974f6e081dd3a63b73f7e060722",
+      "evidenceFile": "discovery/discovery_proposal-late-tool-call.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-missing-required-field",
+      "verdict": "pass",
+      "bundleDigest": "6df83f1b4abb709bbafb7ba85bb49989644763e99c0f9bfed905502637de2792",
+      "evidenceFile": "discovery/discovery_proposal-missing-required-field.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "ae9169a3bab4c131d189dca9cb9d767a505b8176b006149dfcc815bfc326f323",
+      "evidenceFile": "discovery/discovery_proposal-retry-exhaustion.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-stale-execution-fence",
+      "verdict": "pass",
+      "bundleDigest": "1f42c918a058d47534c6d529ec9d32239e24f9ab902cd6958a1614519c68b2eb",
+      "evidenceFile": "discovery/discovery_proposal-stale-execution-fence.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "9d6602dcede91eba49e1b2247560d438a844cf09e461a26b6380706a4719bb6a",
+      "evidenceFile": "discovery/discovery_proposal-worker-crash.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-duplicate-submit",
+      "verdict": "pass",
+      "bundleDigest": "b02525343e1944e6331167535b097c72b07a81c2fe6afccbfede748e1d6684e7",
+      "evidenceFile": "discovery/discovery_readiness-duplicate-submit.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-absent",
+      "verdict": "pass",
+      "bundleDigest": "b569cab160e18d2fec4785f3d7cd082c1fced6c655e9212dcce3c0bbb3081135",
+      "evidenceFile": "discovery/discovery_readiness-feedback-absent.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-corrupted",
+      "verdict": "pass",
+      "bundleDigest": "2df186032c2d617ae1e9f49f281dcbe97c5aea258f847f30cd1b89d4d5974ec7",
+      "evidenceFile": "discovery/discovery_readiness-feedback-corrupted.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-exact",
+      "verdict": "pass",
+      "bundleDigest": "9550f6aab561d067762c83aa3481ab77677444c1b62ba380fd4137fd85a00467",
+      "evidenceFile": "discovery/discovery_readiness-feedback-exact.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-stale",
+      "verdict": "pass",
+      "bundleDigest": "0bc3e09706a04bedf62eee45a23026e6838b6b3c67df9344f48988b4b5c1502b",
+      "evidenceFile": "discovery/discovery_readiness-feedback-stale.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-invented-source-ref",
+      "verdict": "pass",
+      "bundleDigest": "e0a1c035169a74a54205e753cff0119d5b99a42937ee2c9484df3b5a9f078874",
+      "evidenceFile": "discovery/discovery_readiness-invented-source-ref.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-late-tool-call",
+      "verdict": "pass",
+      "bundleDigest": "6e5eb4bdb46700b35d7a6cdde35566179d5848cef08bee00022a275f24dd51e8",
+      "evidenceFile": "discovery/discovery_readiness-late-tool-call.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-missing-dimension",
+      "verdict": "pass",
+      "bundleDigest": "1600a564934a88daf92cddc7ad34b6bb84e917754434709ebaf5cb89e5d9733f",
+      "evidenceFile": "discovery/discovery_readiness-missing-dimension.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "e667bde31e548e7e8484a815e0babe76af693fa7b3167fa559fbe108a2b1555d",
+      "evidenceFile": "discovery/discovery_readiness-retry-exhaustion.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-stale-execution-fence",
+      "verdict": "pass",
+      "bundleDigest": "78872851b2e5666c9fcd36f328997e53f25a7b5de85aeb04ec97619c31bc9ab3",
+      "evidenceFile": "discovery/discovery_readiness-stale-execution-fence.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "194e276d109a4b75efcb6e66f3f62dda43e000d55c10d10f4fb6806372bb5981",
+      "evidenceFile": "discovery/discovery_readiness-worker-crash.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-wrong-proposal-hash",
+      "verdict": "pass",
+      "bundleDigest": "9a287cc2d8768d56222b9ede06cf3e3af106602b57d077069be5b0507ea18520",
+      "evidenceFile": "discovery/discovery_readiness-wrong-proposal-hash.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/restart-idempotency",
+      "verdict": "pass",
+      "bundleDigest": "3c8261087ffc1adafc19c82ae94243be0057d86677d04a5efc9209f6932636c3",
+      "evidenceFile": "discovery/discovery_restart-idempotency.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/acceptance-heading-mismatch-repair",
+      "verdict": "pass",
+      "bundleDigest": "e72587aa1d1b6f4436ca1e737c25ca3a001437cbd2ef72199258a5f9bba80b0b",
+      "evidenceFile": "formalization/formalization_acceptance-heading-mismatch-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/acceptance-missing-trace-repair",
+      "verdict": "pass",
+      "bundleDigest": "21b7b220d2aa7413e0b18d5a11f9f53e1fabc4f613916c2246b1560b3d55439c",
+      "evidenceFile": "formalization/formalization_acceptance-missing-trace-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/acceptance-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "6531853869e3f18ad3e80408e7e329d837ecba1bb1fbc207779f355de416c8a9",
+      "evidenceFile": "formalization/formalization_acceptance-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/acceptance-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "436b0a8065024d36a64cec947e7cc68474a94c5879b5f4c1c9189a8bdde87fee",
+      "evidenceFile": "formalization/formalization_acceptance-worker-crash.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/architecture-invalid-d2-repair",
+      "verdict": "pass",
+      "bundleDigest": "c0679d9948dd42234b1beb4a7a49d14b572b6a7ca1591535226b17041d99d1e9",
+      "evidenceFile": "formalization/formalization_architecture-invalid-d2-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/architecture-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "b9db0d42fc61863c11bcac0755f2995ae09ff6b67e27772f561afa659c96bc8c",
+      "evidenceFile": "formalization/formalization_architecture-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/architecture-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "c24a60594bd079c4343161074af38a9256a7b86b5c0bb3a1820010bf8365018d",
+      "evidenceFile": "formalization/formalization_architecture-worker-crash.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/happy-formalized",
+      "verdict": "pass",
+      "bundleDigest": "bdbea853b252ecaa887f7d56ab21d357de3458f61118487bc62ec765c3b1d312",
+      "evidenceFile": "formalization/formalization_happy-formalized.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-missing-brief-lineage-repair",
+      "verdict": "pass",
+      "bundleDigest": "ce825d32194193744b9979810c1cd462c384d0408ea7bde2434203aad4b4d13c",
+      "evidenceFile": "formalization/formalization_product-missing-brief-lineage-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "091dce4332785a08c71757522a427e2c16d443c050c4b3e40466f109589932a7",
+      "evidenceFile": "formalization/formalization_product-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-stale-execution-fence",
+      "verdict": "pass",
+      "bundleDigest": "b5f3b5d7bfa83d2fc9ca8d17893ee8539acccd2d3c1b5cfbc80b410efef00180",
+      "evidenceFile": "formalization/formalization_product-stale-execution-fence.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "9ae6aa609ee79a180e135ce1c34627c644837837a9ab5db687b9fcac10a454f2",
+      "evidenceFile": "formalization/formalization_product-worker-crash.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-duplicate-submit",
+      "verdict": "pass",
+      "bundleDigest": "8cc5461da5d6160ec39eca05605d6bcf9a882c90866cf4c7da3eb0ee267a5d0e",
+      "evidenceFile": "formalization/formalization_reconciliation-duplicate-submit.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-late-tool-call",
+      "verdict": "pass",
+      "bundleDigest": "5b773e5b4ac9c24d0da75de26786161bf151d2fd719376293e0e489c92715028",
+      "evidenceFile": "formalization/formalization_reconciliation-late-tool-call.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-malformed-report-rejected",
+      "verdict": "pass",
+      "bundleDigest": "965fd53e2634c03b32d02d9cef97523cfb58655378e10386f4c46facfb9657ef",
+      "evidenceFile": "formalization/formalization_reconciliation-malformed-report-rejected.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "31f1945d9985b3644864b70e02f5da7b851d56e6547f65165ac85f174ff07d34",
+      "evidenceFile": "formalization/formalization_reconciliation-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "7e906208f36ce26a3a223c0d8063384112f6bc0e350cea7362065d8e1c98b83c",
+      "evidenceFile": "formalization/formalization_reconciliation-worker-crash.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/restart-idempotency",
+      "verdict": "pass",
+      "bundleDigest": "5f34f079ee39e62bb46acbaea02cbb1b6496b956a3308d4a0442316aed85a7ae",
+      "evidenceFile": "formalization/formalization_restart-idempotency.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-absent",
+      "verdict": "pass",
+      "bundleDigest": "37189610e12afc6721d12dd8c88a7ef1ec64cfa7aff29f705a826a057cbd3d75",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-absent.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-corrupted",
+      "verdict": "pass",
+      "bundleDigest": "c4e24dc116bf5670298f579920e5eabf3e601fe0e317b80782925d7761b544a0",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-corrupted.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-exact",
+      "verdict": "pass",
+      "bundleDigest": "c527cc8ae95971cc6cc066b42f7b98bacbc1166ff183556d1aae4697b6c93342",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-exact.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-stale",
+      "verdict": "pass",
+      "bundleDigest": "fed26c6163e342483cae7a24624edae1d31c710cc49e08638e109dc06c927e61",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-stale.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-foreign-subject",
+      "verdict": "pass",
+      "bundleDigest": "33d9eacde2e151b4b702acd535770afcf2efd6df2f10bef0da68e32052c26f34",
+      "evidenceFile": "formalization/formalization_reviewer-foreign-subject.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/use-cases-missing-fr-coverage-repair",
+      "verdict": "pass",
+      "bundleDigest": "a7d91902628f7231f9cae165f4f904f3bb9b6134b077b27f4e88d34fc4fecbd0",
+      "evidenceFile": "formalization/formalization_use-cases-missing-fr-coverage-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/useCases-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "e12390438f7d6047909e288e01db36da61865ece9376bbd3b49ae1a516c7d345",
+      "evidenceFile": "formalization/formalization_useCases-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/useCases-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "d6f76e55a8951c4f27f845b04e95e1049ef27cdd1b53c294a7f57631cef22cf9",
+      "evidenceFile": "formalization/formalization_useCases-worker-crash.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/fanin-all-required-before-settlement",
+      "verdict": "pass",
+      "bundleDigest": "3f9a827078a0178014458d2faa93fbfed3349b47e85b10ae910c09e87f5da8de",
+      "evidenceFile": "development/development_fanin-all-required-before-settlement.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/fanout-concurrency-cap-limits-parallel-runnable",
+      "verdict": "pass",
+      "bundleDigest": "09e7a1f1ec5992febec50470c4314367e7fe94294fe3c38d8b37c11baea28950",
+      "evidenceFile": "development/development_fanout-concurrency-cap-limits-parallel-runnable.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/fanout-scheduling-order-capped",
+      "verdict": "pass",
+      "bundleDigest": "f474a5233e2e50b1c0cba2b09c929a64af2bb917bb135b0a028aa20b64c68859",
+      "evidenceFile": "development/development_fanout-scheduling-order-capped.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/happy-verified",
+      "verdict": "pass",
+      "bundleDigest": "f540df88da5ad06a700b3d233330390750c4d19b901a3f06a19eb27301fa9368",
+      "evidenceFile": "development/development_happy-verified.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/impl-scope-outside-rejected-repaired",
+      "verdict": "pass",
+      "bundleDigest": "99b22a9560963b5153f5a025d9952d1f370a68f1e68e9070147eae4c80326eea",
+      "evidenceFile": "development/development_impl-scope-outside-rejected-repaired.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/candidate-immutability-drift-fails-closed",
+      "verdict": "pass",
+      "bundleDigest": "e92ba389a7166544865f4d2d1750d1387e252934826aec277394ea61f4aaa1ea",
+      "evidenceFile": "delivery/delivery_candidate-immutability-drift-fails-closed.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/deferred-approval-required",
+      "verdict": "pass",
+      "bundleDigest": "2eca13688f974c7b3eac78f2e86965c1ea048ab21cef55e950a535dac5a2a5f9",
+      "evidenceFile": "delivery/delivery_deferred-approval-required.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/denied-blocked",
+      "verdict": "pass",
+      "bundleDigest": "afb8b9ee75058028568d1725bc75bcb126729f76f6a5212fe85bfe9501b9aaac",
+      "evidenceFile": "delivery/delivery_denied-blocked.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/grant-policy-hash-mismatch-blocked",
+      "verdict": "pass",
+      "bundleDigest": "ed2fb348a9ec72594dbb6d0d43e77cdc25ddd50efe5f7713b3f8a8fbd6bcbe95",
+      "evidenceFile": "delivery/delivery_grant-policy-hash-mismatch-blocked.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/happy-released-authorized",
+      "verdict": "pass",
+      "bundleDigest": "f5aeead1462cfc67c96a6d25d24908cac6a12ee8ad1fae4d299f2d85167747a7",
+      "evidenceFile": "delivery/delivery_happy-released-authorized.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/observation-mismatch-blocked",
+      "verdict": "pass",
+      "bundleDigest": "36de35a0486c0a3d930f0b70d11d8abf1c0819a4d4fbd081cde70623941db4db",
+      "evidenceFile": "delivery/delivery_observation-mismatch-blocked.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/observe-before-retry-no-duplicate-effect",
+      "verdict": "pass",
+      "bundleDigest": "8864dcc5a302cb8755086565bc9edc8649c9afa941e074a36a2f382f8fcffde7",
+      "evidenceFile": "delivery/delivery_observe-before-retry-no-duplicate-effect.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/pending-holds-publication",
+      "verdict": "pass",
+      "bundleDigest": "384fb4e901482194333e84f1183503f7ca4b467b1360da0354ec15e496042cdc",
+      "evidenceFile": "delivery/delivery_pending-holds-publication.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/publication-unknown-fails-closed",
+      "verdict": "pass",
+      "bundleDigest": "182c76046d8362aabbfd07b6fd87402f52e260098752a81e4379fbc5827b3290",
+      "evidenceFile": "delivery/delivery_publication-unknown-fails-closed.json"
+    }
+  ]
+}

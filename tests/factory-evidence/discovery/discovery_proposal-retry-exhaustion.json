@@ -1,0 +1,419 @@
+{
+  "schemaVersion": "factory.proof.scenario-evidence-bundle.v1",
+  "scenario": {
+    "id": "discovery/proposal-retry-exhaustion",
+    "digest": "862104394a0cfeaac20d74b42978d29d6bcef9561359462df585a9a313453e7c",
+    "kind": "causal-fault",
+    "faultClass": "contract-shape",
+    "proves": [
+      "discovery.proposal-contract"
+    ],
+    "injectionBoundary": null,
+    "detectorRef": null,
+    "repairOwner": null,
+    "counterfactualFeedback": [],
+    "coverageItems": [
+      "recovery:discovery-proposal:retry-exhaustion-terminal",
+      "transition:produce-proposal->complete-failed"
+    ]
+  },
+  "proofModes": [
+    "Durable",
+    "CanonicalFast"
+  ],
+  "composition": {
+    "fingerprint": "42431dbbdebfd9c1f012d3354921097080960f2c024768f97706f38aa0df69ac",
+    "overlayKeys": [
+      "delivery.providers",
+      "resolveWorkerContext",
+      "workerExecutorFactory"
+    ],
+    "sections": {
+      "lifecycle": "078d01b30ac5eceff1b16b8c2b3d88966a7f1df1b54c7101b5b8ed90553bb7ff",
+      "modules": "9f920b96567f58e8d17c08f8f87a9acf228b5908ff56c895e8f0e0d74696a874",
+      "providers": "e9a5a60ea2d588d73f9dc79514d2a14d81cb09225f13400e90a293f9846dc54f",
+      "overlay": "25dc717b8eb00d51a8f5725e28227da8bf496855e450147531008e9226692f4f"
+    }
+  },
+  "installationFingerprint": "d8da7a17d828a1e5efefda8332246f773e5c2369abdb431571cb463fb61feeb3",
+  "durableTraceDigest": "2433e51265a61fc90a128502e368d18609e142fbfcbef0210f3fbc6407e4ff07",
+  "normalizedTrace": {
+    "acceptedAuthorityHeads": [],
+    "artifacts": [],
+    "artifactTraces": [],
+    "candidateSets": [
+      {
+        "candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author",
+        "role": "author",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      }
+    ],
+    "cellEffectAttempts": [],
+    "cellEffectReceipts": [],
+    "cellEffectRepairIssues": [],
+    "checkReceipts": [
+      {
+        "check_receipt_ref": "receipt:gate-run:09e6d4579642504b14a75806d6094b2109564de28b2beb98b557f8819834f879:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:09e6d4579642504b14a75806d6094b2109564de28b2beb98b557f8819834f879:1:discovery.proposal-contract.v1",
+        "outcome": "failed",
+        "provider_id": "discovery.proposal-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:1cf1100329761ce4c25508f39421080902bf217fa53a48292b7c9bef1f78383a:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:1cf1100329761ce4c25508f39421080902bf217fa53a48292b7c9bef1f78383a:1:discovery.proposal-contract.v1",
+        "outcome": "failed",
+        "provider_id": "discovery.proposal-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:32d377417450b42c88275530bca9633daf9da0c1bf379adece03901d72c1bc67:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:32d377417450b42c88275530bca9633daf9da0c1bf379adece03901d72c1bc67:1:discovery.proposal-contract.v1",
+        "outcome": "failed",
+        "provider_id": "discovery.proposal-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author"
+      }
+    ],
+    "deliveryEffectActions": [],
+    "effectReceipts": [],
+    "finalAcceptances": [],
+    "gateDecisions": [
+      {
+        "decision_key": "decision:gate-run:09e6d4579642504b14a75806d6094b2109564de28b2beb98b557f8819834f879",
+        "gate_phase": "final",
+        "verdict": "repair_required",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:32d377417450b42c88275530bca9633daf9da0c1bf379adece03901d72c1bc67",
+        "gate_phase": "final",
+        "verdict": "repair_required",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:1cf1100329761ce4c25508f39421080902bf217fa53a48292b7c9bef1f78383a",
+        "gate_phase": "final",
+        "verdict": "repair_required",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      }
+    ],
+    "lifecycleRuns": [
+      {
+        "current_stage_id": null,
+        "id": 1,
+        "input_hash": "c55f53a72066181dfdb18ba4500a2f3f9638ba4702ca3d6d4206c7d3e148103c",
+        "status": "completed",
+        "terminal_status": "failed"
+      }
+    ],
+    "managedSubmissions": [
+      {
+        "content_hash": "4716bb081e902f0894a245e63ae49bd845bd7d1e0c5b8b5a6ba7c6ec7910b625",
+        "execution_id": "worker-execution:82ed7419-45ae-4f4e-92ca-c4932ede7041",
+        "id": 1,
+        "intent_id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "schema_version": "factory.discovery-proposal.v1",
+        "submitted_at": "2026-08-22 07:50:25",
+        "task_id": 1
+      },
+      {
+        "content_hash": "4716bb081e902f0894a245e63ae49bd845bd7d1e0c5b8b5a6ba7c6ec7910b625",
+        "execution_id": "worker-execution:bd3e1bf3-2e07-4c0c-8672-a0bd5faeb6b6",
+        "id": 2,
+        "intent_id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "schema_version": "factory.discovery-proposal.v1",
+        "submitted_at": "2026-08-22 07:50:26",
+        "task_id": 1
+      },
+      {
+        "content_hash": "4716bb081e902f0894a245e63ae49bd845bd7d1e0c5b8b5a6ba7c6ec7910b625",
+        "execution_id": "worker-execution:7d3fd3a1-4e56-4f44-8245-32ab8b3fac41",
+        "id": 3,
+        "intent_id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "schema_version": "factory.discovery-proposal.v1",
+        "submitted_at": "2026-08-22 07:51:27",
+        "task_id": 1
+      }
+    ],
+    "processOutcomeCertificates": [],
+    "processProducts": [
+      {
+        "id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "4716bb081e902f0894a245e63ae49bd845bd7d1e0c5b8b5a6ba7c6ec7910b625",
+        "product_key": "content:4716bb081e902f0894a245e63ae49bd845bd7d1e0c5b8b5a6ba7c6ec7910b625",
+        "product_kind": "factory.discovery-proposal.v1"
+      },
+      {
+        "id": 2,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "cce9039b959d5c74704ca4ca2ce5852efe6092dfd0925833d639b0f632b054f3",
+        "product_key": "proposal:1",
+        "product_kind": "factory.discovery-proposal-ref.v1"
+      },
+      {
+        "id": 3,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "59c0571025be884fae5d85ca42f16c25f778974109f50078662baaaa998cb955",
+        "product_key": "proposal:2",
+        "product_kind": "factory.discovery-proposal-ref.v1"
+      },
+      {
+        "id": 4,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "4ff51adde2ab3b3489e8cfcd3a30626b1d76943f270b79dfb5b99660fbf8507a",
+        "product_key": "proposal:3",
+        "product_kind": "factory.discovery-proposal-ref.v1"
+      }
+    ],
+    "processRuns": [
+      {
+        "authority": null,
+        "certificate_hash": null,
+        "certificate_ref": null,
+        "certificate_schema": null,
+        "error": null,
+        "id": 1,
+        "input_hash": "3960d683e732f94a3eb6b8344f83c674ce1ed14db8bd2c44ea0cadbfadf8c5c2",
+        "local_outcome": "failed",
+        "module_name": "product-discovery",
+        "module_version": "3.0.2",
+        "output_hash": null,
+        "output_ref": null,
+        "output_schema": null,
+        "status": "completed"
+      }
+    ],
+    "processTransitions": [
+      {
+        "decision_hash": "c554014e4b962588ea64b1e2c66e39b46cfa20bef2fc9455c226b3ef430e99d1",
+        "from_stage_run_id": 1,
+        "handoff_hash": "889f5a7934bc03ca2b71c09653ca8b859dd901886eeb65cac2f28b6e464a59ca",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"69a709c759a78a31a64c1ed11aa475958d0ec6d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/proposal-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"69a709c759a78a31a64c1ed11aa475958d0ec6d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/proposal-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":1,\"stageRunId\":1}}}",
+        "id": 1,
+        "lifecycle_run_id": 1,
+        "outcome": "failed",
+        "target_stage_id": null,
+        "target_type": "terminal",
+        "terminal_status": "failed",
+        "to_stage_run_id": null,
+        "transition_key": "lifecycle:1:stage-run:1:outcome"
+      }
+    ],
+    "recoveryEpochs": [
+      {
+        "epoch": 1,
+        "exhausted_attempts": 2,
+        "last_diagnosis": "Recovery budget exhausted: 2 unsuccessful attempt(s) for role 'author' (maxAttempts=2); the budget rolls over into a new recovery epoch (no human required). Last rejection at gate 'gate:1:final' (decision:gate-run:32d377417450b42c88275530bca9633daf9da0c1bf379adece03901d72c1bc67): field 'rationale' must be a non-empty string",
+        "max_attempts": 2,
+        "role": "author",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      }
+    ],
+    "stageRuns": [
+      {
+        "attempt": 1,
+        "authority": null,
+        "binding_hash": "8726ce8951b1e2692f78280ad98b5a7882aa28362f06af01c85a3e00f6db11eb",
+        "binding_snapshot": "{\"displayName\":\"Initial Discovery\",\"entryConditions\":[\"initiative.subject exists\"],\"exitConditions\":[\"Discovery has an immutable local outcome and certificate lineage\"],\"id\":\"initial-discovery\",\"inputMapping\":{\"constraints\":\"$.initiative.constraints\",\"context\":\"$.initiative.context\",\"epicId\":{\"runtime\":\"epicId\"},\"evidence\":\"$.initiative.evidence\",\"initiatedBy\":{\"runtime\":\"initiatedBy\"},\"objective\":\"$.initiative.subject\",\"projectId\":{\"runtime\":\"projectId\"},\"subject\":\"$.initiative.subject\"},\"moduleRef\":{\"name\":\"product-discovery\",\"version\":\"3.0.2\"},\"outcomeRoutes\":{\"clarify\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"failed\":{\"status\":\"failed\",\"type\":\"terminal\"},\"go\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"reject\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"}},\"outputMapping\":{\"authority\":\"$.processOutcome.authority\",\"certificate.hash\":\"$.processOutcome.certificateHash\",\"certificate.ref\":\"$.processOutcome.certificateRef\",\"certificate.schema\":\"$.processOutcome.certificateSchema\",\"decision\":\"$.processOutcome.code\",\"proposal.hash\":\"$.processOutcome.outputHash\",\"proposal.ref\":\"$.processOutcome.outputRef\",\"proposal.schema\":\"$.processOutcome.outputSchema\",\"proposalPayload\":\"$.processOutcome.outputPayload\"}}",
+        "certificate_hash": null,
+        "certificate_ref": null,
+        "certificate_schema": null,
+        "id": 1,
+        "input_hash": "3960d683e732f94a3eb6b8344f83c674ce1ed14db8bd2c44ea0cadbfadf8c5c2",
+        "input_schema": "factory.discovery-case.v1",
+        "input_snapshot": "{\"constraints\":{},\"context\":{},\"epicId\":1,\"evidence\":{},\"initiatedBy\":\"fresh-harness\",\"objective\":\"Unified Discovery proof scenario: discovery/proposal-retry-exhaustion\",\"projectId\":1,\"subject\":\"Unified Discovery proof scenario: discovery/proposal-retry-exhaustion\"}",
+        "lifecycle_run_id": 1,
+        "local_outcome": "failed",
+        "mapped_output_snapshot": "{}",
+        "module_name": "product-discovery",
+        "module_ref_key": "product-discovery@3.0.2",
+        "module_version": "3.0.2",
+        "ordinal": 1,
+        "output_hash": null,
+        "output_ref": null,
+        "output_schema": null,
+        "process_run_id": 1,
+        "result_snapshot": "{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null}",
+        "stage_id": "initial-discovery",
+        "status": "completed"
+      }
+    ],
+    "submissionValidationRejections": [],
+    "transitionObligations": [
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/b23de80491678848be7001fe52c6c0565110cf3a065f2077cdd64e5062b15c5e/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "route-lifecycle",
+        "last_error": null,
+        "obligation_key": "process-settled:process-run:1:route-lifecycle",
+        "source_kind": "process-settled",
+        "source_ref": "process-run:1",
+        "state": "completed"
+      }
+    ],
+    "workerExecutions": [
+      {
+        "execution_ref": "worker-execution:7d3fd3a1-4e56-4f44-8245-32ab8b3fac41",
+        "finished_at": "2026-08-22 07:51:27",
+        "state": "exited",
+        "task_id": 1,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:82ed7419-45ae-4f4e-92ca-c4932ede7041",
+        "finished_at": "2026-08-22 07:50:25",
+        "state": "exited",
+        "task_id": 1,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:bd3e1bf3-2e07-4c0c-8672-a0bd5faeb6b6",
+        "finished_at": "2026-08-22 07:50:26",
+        "state": "exited",
+        "task_id": 1,
+        "voided_at": null
+      }
+    ],
+    "workIntents": [
+      {
+        "id": 1,
+        "status": "done",
+        "task_kind": "discovery.work",
+        "title": "discovery-proposal/author: Investigate the bounded subject and submit one canonical typed DiscoveryProposal",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      }
+    ],
+    "workplaces": [
+      {
+        "kanban_phase": "failed",
+        "loop_state": "terminal",
+        "next_role": "author",
+        "process_run_id": 1,
+        "revision": 13,
+        "terminal_reason": "failed",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      }
+    ]
+  },
+  "progress": {
+    "rows": [
+      {
+        "workplace": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton",
+        "classification": "typed-terminal",
+        "evidence": "failed"
+      }
+    ],
+    "stalls": [],
+    "ok": true
+  },
+  "actorEvidence": [
+    {
+      "kind": "retry-exhaustion-phase-a",
+      "invocations": 2,
+      "replays": 0
+    },
+    {
+      "kind": "retry-exhaustion-phase-b",
+      "invocations": 1,
+      "replays": 0
+    }
+  ],
+  "faultJournal": [
+    {
+      "class": "retry-exhaustion",
+      "boundary": "discovery-proposal",
+      "crossedRealBackoffMs": 61000
+    }
+  ],
+  "externalWorldJournal": [],
+  "oracleResults": [
+    {
+      "id": "proposal.retry-exhaustion.epoch-recorded",
+      "passed": true,
+      "evidenceRefs": [
+        "recovery-epoch:workplace/1/product-discovery@3.0.2/discovery-proposal/singleton:1"
+      ],
+      "details": {
+        "epochs": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "proposal.retry-exhaustion.terminal-failed",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "failedStage": true,
+        "terminalWorkplace": true
+      }
+    },
+    {
+      "id": "proposal.retry-exhaustion.never-accepted",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "accepted": 0
+      }
+    },
+    {
+      "id": "proposal.retry-exhaustion.no-stranded-execution",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "stranded": 0
+      }
+    }
+  ],
+  "verdict": "pass",
+  "terminal": {
+    "reachedTerminal": true,
+    "terminalReason": "completed",
+    "cycles": 19,
+    "stoppedByCycleBound": false,
+    "strandedActiveExecutions": 0,
+    "effectiveConcurrency": 2,
+    "scriptedInvocationCount": 3
+  },
+  "mutationCoverage": null,
+  "counterexample": null,
+  "bundleDigest": "ae9169a3bab4c131d189dca9cb9d767a505b8176b006149dfcc815bfc326f323"
+}

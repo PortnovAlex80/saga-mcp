@@ -106,6 +106,18 @@ export const DELIVERY_REQUIRED_UNIVERSE = Object.freeze([
   'L:observe-before-retry:no-duplicate-non-idempotent-effect',
 ]);
 
+/** Blocked obligations as DATA (not prose): token → the upstream obligation
+ * that must be demonstrated first. Blocked tokens stay in U and stay
+ * pending; they are never counted as covered and never deleted. */
+export const DELIVERY_BLOCKED_OBLIGATIONS = Object.freeze({
+  'restart:delivery:idempotent-settlement': {
+    blockedBy: 'restart:development:git-change-desk-replay',
+    since: '2026-08-22',
+    note: 'the three-start proof dies in Development desk replay before '
+      + 'Delivery settlement can be exercised a second time',
+  },
+});
+
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
   'K4:crash-after-effect-before-receipt',
   // NOT proven — the three-start proof found the Development git-change

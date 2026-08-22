@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "factory.proof.scenario-evidence-bundle.v1",
+  "scenario": {
+    "id": "delivery/grant-policy-hash-mismatch-blocked",
+    "digest": "5a45b708bff35ffc50637b10323cb121eb6b75fbe32291e9b07f1f6982983d5e",
+    "kind": "positive",
+    "faultClass": null,
+    "proves": [
+      "handoff.route-lifecycle"
+    ],
+    "injectionBoundary": null,
+    "detectorRef": null,
+    "repairOwner": null,
+    "counterfactualFeedback": [],
+    "coverageItems": [
+      "L:approval:binds-candidate+preflight+policy-hash",
+      "transition:settle-delivery->complete-blocked"
+    ]
+  },
+  "proofModes": [
+    "Durable",
+    "CanonicalFast"
+  ],
+  "composition": {
+    "fingerprint": "371a6d30319da22bee219b3299f39ee7d792253a5de0333babe2456c35c3acf8",
+    "overlayKeys": [
+      "delivery.providers",
+      "lifecycleDefinition",
+      "resolveWorkerContext",
+      "workerExecutorFactory"
+    ],
+    "sections": {
+      "lifecycle": "afd751e1a90ab593b6d20d4bd7741262f0481e37f01b3c4f149a1ae7a840aef4",
+      "modules": "9f920b96567f58e8d17c08f8f87a9acf228b5908ff56c895e8f0e0d74696a874",
+      "providers": "e9a5a60ea2d588d73f9dc79514d2a14d81cb09225f13400e90a293f9846dc54f",
+      "overlay": "e77d79560ea8ecd8ca47c3b558ebe3245060ad7b63f72af7edfe55ae4bce6fb8"
+    }
+  },
+  "installationFingerprint": "3ff10ecc5256b1abb650f852cfd2632e64bf2d21b0397f0906458e5421a3ea18",
+  "durableTraceDigest": "abd45b7dabe1107f4fbc6217dafb2ba7b2074cbd3c931fdf193ef24ffbc42712",
+  "normalizedTrace": {
+    "acceptedAuthorityHeads": [],
+    "artifacts": [],
+    "artifactTraces": [],
+    "candidateSets": [],
+    "cellEffectAttempts": [],
+    "cellEffectReceipts": [],
+    "cellEffectRepairIssues": [],
+    "checkReceipts": [],
+    "deliveryEffectActions": [],
+    "effectReceipts": [],
+    "finalAcceptances": [],
+    "gateDecisions": [],
+    "lifecycleRuns": [],
+    "managedSubmissions": [],
+    "processOutcomeCertificates": [],
+    "processProducts": [],
+    "processRuns": [],
+    "processTransitions": [],
+    "recoveryEpochs": [],
+    "stageRuns": [],
+    "submissionValidationRejections": [],
+    "transitionObligations": [],
+    "workerExecutions": [],
+    "workIntents": [],
+    "workplaces": []
+  },
+  "progress": null,
+  "actorEvidence": [
+    {
+      "kind": "scripted-observer-summary",
+      "invocationCount": 0,
+      "replayCount": 0,
+      "maxConcurrency": 0,
+      "activeAtObservation": 0,
+      "outcomeCount": 0
+    }
+  ],
+  "faultJournal": [],
+  "externalWorldJournal": [],
+  "oracleResults": [
+    {
+      "id": "kernel.fail-closed-typed-error",
+      "passed": true,
+      "evidenceRefs": [
+        "typed-error:PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID"
+      ],
+      "details": {
+        "expected": "PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID",
+        "observed": "PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID"
+      }
+    },
+    {
+      "id": "delivery.grant-mismatch.zero-lifecycle-zero-effects",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "lifecycleRuns": 0,
+        "deliveryEffectActions": 0
+      }
+    }
+  ],
+  "verdict": "pass",
+  "terminal": {
+    "reachedTerminal": null,
+    "terminalReason": null,
+    "cycles": null,
+    "stoppedByCycleBound": null,
+    "strandedActiveExecutions": null,
+    "effectiveConcurrency": null,
+    "scriptedInvocationCount": null
+  },
+  "mutationCoverage": null,
+  "counterexample": null,
+  "bundleDigest": "ed2fb348a9ec72594dbb6d0d43e77cdc25ddd50efe5f7713b3f8a8fbd6bcbe95"
+}

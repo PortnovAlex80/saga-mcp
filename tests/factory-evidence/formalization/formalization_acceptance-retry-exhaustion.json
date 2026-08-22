@@ -1,0 +1,1318 @@
+{
+  "schemaVersion": "factory.proof.scenario-evidence-bundle.v1",
+  "scenario": {
+    "id": "formalization/acceptance-retry-exhaustion",
+    "digest": "babb6650e67aa8c66b6848b992b83e9a2fb5fd0d6c956f16d19e3a99dd56c4f7",
+    "kind": "causal-fault",
+    "faultClass": "authored-semantic",
+    "proves": [
+      "factory.review-verdict"
+    ],
+    "injectionBoundary": null,
+    "detectorRef": null,
+    "repairOwner": null,
+    "counterfactualFeedback": [],
+    "coverageItems": [
+      "recovery:formalization-acceptance-contract:retry-exhaustion-terminal",
+      "transition:define-acceptance-contract->complete-failed"
+    ]
+  },
+  "proofModes": [
+    "Durable",
+    "CanonicalFast"
+  ],
+  "composition": {
+    "fingerprint": "42431dbbdebfd9c1f012d3354921097080960f2c024768f97706f38aa0df69ac",
+    "overlayKeys": [
+      "delivery.providers",
+      "resolveWorkerContext",
+      "workerExecutorFactory"
+    ],
+    "sections": {
+      "lifecycle": "078d01b30ac5eceff1b16b8c2b3d88966a7f1df1b54c7101b5b8ed90553bb7ff",
+      "modules": "9f920b96567f58e8d17c08f8f87a9acf228b5908ff56c895e8f0e0d74696a874",
+      "providers": "e9a5a60ea2d588d73f9dc79514d2a14d81cb09225f13400e90a293f9846dc54f",
+      "overlay": "25dc717b8eb00d51a8f5725e28227da8bf496855e450147531008e9226692f4f"
+    }
+  },
+  "installationFingerprint": "d8da7a17d828a1e5efefda8332246f773e5c2369abdb431571cb463fb61feeb3",
+  "durableTraceDigest": "7c515473be72a8d229fc41113469c917fcbd6fc8e8ec0c86affb68d95b96ebce",
+  "normalizedTrace": {
+    "acceptedAuthorityHeads": [
+      {
+        "accepted_author_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author",
+        "accepted_author_task_id": "1",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "accepted_author_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author",
+        "accepted_author_task_id": "2",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "accepted_author_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
+        "accepted_author_task_id": "7",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "accepted_author_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "accepted_author_task_id": "3",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "accepted_author_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "accepted_author_task_id": "5",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ],
+    "artifacts": [
+      {
+        "accepted_hash": "56becc2185b6b12e41a3922326a4265d562c9bd915a12f42a1f36c1c601ed3d1",
+        "code": "BRIEF-1",
+        "content_hash": "56becc2185b6b12e41a3922326a4265d562c9bd915a12f42a1f36c1c601ed3d1",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 1,
+        "path": "docs/formalization/BRIEF-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Product Brief",
+        "type": "brief"
+      },
+      {
+        "accepted_hash": "9e66fed5c5c8f5991dc3058b8aae1cea6b2c3e12dd42fbd1816b43b9d567597b",
+        "code": "PRD",
+        "content_hash": "9e66fed5c5c8f5991dc3058b8aae1cea6b2c3e12dd42fbd1816b43b9d567597b",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 2,
+        "path": "docs/formalization/PRD.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Product Requirements",
+        "type": "PRD"
+      },
+      {
+        "accepted_hash": "11b4a808a9379f096dddc517c224c2667ffb75dba72a76115330087ba5c90b7d",
+        "code": "FR-1",
+        "content_hash": "11b4a808a9379f096dddc517c224c2667ffb75dba72a76115330087ba5c90b7d",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 3,
+        "path": "docs/formalization/FR-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Functional Requirement 1",
+        "type": "FR"
+      },
+      {
+        "accepted_hash": "b9c165cca229158ade3e85e2f791025f05750c4bc03ff0b50f46560a4a31543c",
+        "code": "NFR-1",
+        "content_hash": "b9c165cca229158ade3e85e2f791025f05750c4bc03ff0b50f46560a4a31543c",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 4,
+        "path": "docs/formalization/NFR-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Non-Functional Requirement 1",
+        "type": "NFR"
+      },
+      {
+        "accepted_hash": "23b2cafd6887090d234efecce66f4411a1daa7c96aa84abd82d598f854f5daed",
+        "code": "RULE-1",
+        "content_hash": "23b2cafd6887090d234efecce66f4411a1daa7c96aa84abd82d598f854f5daed",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 5,
+        "path": "docs/formalization/RULE-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Business Rule 1",
+        "type": "RULE"
+      },
+      {
+        "accepted_hash": "5a63ee8c8ea569d6e0b23d62876ea3cfd57913edf353648816b92a63ba706c94",
+        "code": "UC-1",
+        "content_hash": "5a63ee8c8ea569d6e0b23d62876ea3cfd57913edf353648816b92a63ba706c94",
+        "drift_state": "clean",
+        "epic_id": 1,
+        "id": 6,
+        "path": "docs/formalization/UC-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "accepted",
+        "title": "Use Case 1",
+        "type": "UC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-1",
+        "content_hash": "71b43400238560e652fe8b777a78a4211edf6c6bc6c7cabe7d8fd5118e42843a",
+        "drift_state": "unknown",
+        "epic_id": 1,
+        "id": 7,
+        "path": "docs/formalization/AC-1.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "draft",
+        "title": "AC-1: Pipeline Completes",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-2",
+        "content_hash": "078dde9195b24f28c2713b128bf38e4f21281e8f59100ca26da92aa43724b2f3",
+        "drift_state": "unknown",
+        "epic_id": 1,
+        "id": 8,
+        "path": "docs/formalization/AC-2.md",
+        "project_id": 1,
+        "project_repository_id": 1,
+        "status": "draft",
+        "title": "AC-2: NFR Compliance",
+        "type": "AC"
+      }
+    ],
+    "artifactTraces": [
+      {
+        "id": 1,
+        "link_type": "derived_from",
+        "source_id": 2,
+        "target_id": 1,
+        "target_type": "artifact"
+      },
+      {
+        "id": 2,
+        "link_type": "derived_from",
+        "source_id": 3,
+        "target_id": 2,
+        "target_type": "artifact"
+      },
+      {
+        "id": 3,
+        "link_type": "derived_from",
+        "source_id": 6,
+        "target_id": 2,
+        "target_type": "artifact"
+      },
+      {
+        "id": 4,
+        "link_type": "covers",
+        "source_id": 6,
+        "target_id": 3,
+        "target_type": "artifact"
+      },
+      {
+        "id": 5,
+        "link_type": "derived_from",
+        "source_id": 7,
+        "target_id": 3,
+        "target_type": "artifact"
+      },
+      {
+        "id": 6,
+        "link_type": "derived_from",
+        "source_id": 7,
+        "target_id": 6,
+        "target_type": "artifact"
+      },
+      {
+        "id": 7,
+        "link_type": "derived_from",
+        "source_id": 8,
+        "target_id": 4,
+        "target_type": "artifact"
+      }
+    ],
+    "candidateSets": [
+      {
+        "candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author",
+        "role": "author",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author",
+        "role": "author",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/c488cebe810d19ae7b4313abc1c6823fe1f1d5c5b4e0e970dad9f65726a26854/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
+        "role": "reviewer",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
+        "role": "author",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "role": "author",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/c615d58517102760b80ef250cedbd67a566792e97b507426f47445061dfd354a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "role": "reviewer",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "role": "author",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/813484952a2e71a2b14414b4e823bb6e5beb2b1d4bce95538a14ab74284976d6/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "role": "reviewer",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ],
+    "cellEffectAttempts": [
+      {
+        "attempt_no": 1,
+        "attempt_ref": "effect-attempt:1a152089a310119cb45d2e4cce299fa06201597632f9e3099974e4c388e16f41",
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "effect_id": "formalization.accept-exact-products.v1",
+        "gate_decision_key": "decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc",
+        "idempotency_key": "6532007fdee6e06d83b63ce8e61190733fa80a0636df442439e5d969f2d0e648",
+        "outcome": "succeeded",
+        "provider_receipt_ref": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "reason": null,
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "attempt_no": 1,
+        "attempt_ref": "effect-attempt:c1560bae84d2b85084702adce7054e50a57c35a9d8a29bbd7251fb94d6bf02f0",
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "effect_id": "formalization.accept-exact-products.v1",
+        "gate_decision_key": "decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924",
+        "idempotency_key": "a091b7ee5134daa2ee16cded2c1fb21fc2a743b6ad5b4aecb780871c4684904f",
+        "outcome": "succeeded",
+        "provider_receipt_ref": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "reason": null,
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ],
+    "cellEffectReceipts": [
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "effect_id": "formalization.accept-exact-products.v1",
+        "effect_receipt_ref": "cell-effect-receipt:23dc545c7c41dadc4d0faddd6fc8c4d25aec555cd84629afd9e44ba95c994a5b",
+        "gate_decision_key": "decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc",
+        "provider_receipt_digest": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "provider_receipt_ref": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "receipt_digest": "23dc545c7c41dadc4d0faddd6fc8c4d25aec555cd84629afd9e44ba95c994a5b",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "effect_id": "formalization.accept-exact-products.v1",
+        "effect_receipt_ref": "cell-effect-receipt:38a053917cb98ae1f2f9fd859ff803552e4ecdc0c321806c250444cb76e63e65",
+        "gate_decision_key": "decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924",
+        "provider_receipt_digest": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "provider_receipt_ref": "effect-receipt:formalization.accept-exact-products.v1:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "receipt_digest": "38a053917cb98ae1f2f9fd859ff803552e4ecdc0c321806c250444cb76e63e65",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ],
+    "cellEffectRepairIssues": [],
+    "checkReceipts": [
+      {
+        "check_receipt_ref": "receipt:gate-run:04da08b5d8c4e7d80be2f3aebbe1b52a8089206dfcb55c3c649aed06e4861f40:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:04da08b5d8c4e7d80be2f3aebbe1b52a8089206dfcb55c3c649aed06e4861f40:1:factory.submission-validator.formalization.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.submission-validator.formalization.product-contract.v1",
+        "provider_version": "2.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:0ca814e94b5e6ab82f9104a1a6db2e831565b5c131eabcd515f6510ae77e9e89:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:0ca814e94b5e6ab82f9104a1a6db2e831565b5c131eabcd515f6510ae77e9e89:1:factory.submission-validator.formalization.acceptance-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.submission-validator.formalization.acceptance-contract.v1",
+        "provider_version": "2.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc:1:factory.review-verdict.v1",
+        "outcome": "passed",
+        "provider_id": "factory.review-verdict.v1",
+        "provider_version": "1.1.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:4e197338706708afac747b56232ab89c22b95a89d450ca7ce764430238924538:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:4e197338706708afac747b56232ab89c22b95a89d450ca7ce764430238924538:1:factory.review-verdict.v1",
+        "outcome": "failed",
+        "provider_id": "factory.review-verdict.v1",
+        "provider_version": "1.1.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec:1:discovery.proposal-contract.v1",
+        "outcome": "passed",
+        "provider_id": "discovery.proposal-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924:1:factory.review-verdict.v1",
+        "outcome": "passed",
+        "provider_id": "factory.review-verdict.v1",
+        "provider_version": "1.1.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:d6c462a9d407b51e8f0378253517461d938e56ac5716d38e2126e5588702772f:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:d6c462a9d407b51e8f0378253517461d938e56ac5716d38e2126e5588702772f:1:factory.submission-validator.formalization.use-cases.v1",
+        "outcome": "passed",
+        "provider_id": "factory.submission-validator.formalization.use-cases.v1",
+        "provider_version": "2.0.0",
+        "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc:0:factory.product-contract.v1",
+        "outcome": "passed",
+        "provider_id": "factory.product-contract.v1",
+        "provider_version": "1.0.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author"
+      },
+      {
+        "check_receipt_ref": "receipt:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc:1:discovery.readiness-contract.v1",
+        "outcome": "passed",
+        "provider_id": "discovery.readiness-contract.v1",
+        "provider_version": "1.1.0",
+        "subject_candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author"
+      }
+    ],
+    "deliveryEffectActions": [],
+    "effectReceipts": [],
+    "finalAcceptances": [
+      {
+        "candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author",
+        "gate_decision_key": "decision:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author",
+        "gate_decision_key": "decision:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "gate_decision_key": "decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "gate_decision_key": "decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ],
+    "gateDecisions": [
+      {
+        "decision_key": "decision:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec",
+        "gate_phase": "final",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc",
+        "gate_phase": "final",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:04da08b5d8c4e7d80be2f3aebbe1b52a8089206dfcb55c3c649aed06e4861f40",
+        "gate_phase": "author",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc",
+        "gate_phase": "final",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:d6c462a9d407b51e8f0378253517461d938e56ac5716d38e2126e5588702772f",
+        "gate_phase": "author",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924",
+        "gate_phase": "final",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:0ca814e94b5e6ab82f9104a1a6db2e831565b5c131eabcd515f6510ae77e9e89",
+        "gate_phase": "author",
+        "verdict": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "decision_key": "decision:gate-run:4e197338706708afac747b56232ab89c22b95a89d450ca7ce764430238924538",
+        "gate_phase": "final",
+        "verdict": "repair_required",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      }
+    ],
+    "lifecycleRuns": [
+      {
+        "current_stage_id": null,
+        "id": 1,
+        "input_hash": "928422efe9c217acab31aa3a296bb42840dea9b33559ceeb4e07f63ab6e0d97e",
+        "status": "completed",
+        "terminal_status": "failed"
+      }
+    ],
+    "managedSubmissions": [
+      {
+        "content_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "execution_id": "worker-execution:0ec56708-139e-421e-9707-e8d827d84cfc",
+        "id": 1,
+        "intent_id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "schema_version": "factory.discovery-proposal.v1",
+        "submitted_at": "2026-08-22 07:55:49",
+        "task_id": 1
+      },
+      {
+        "content_hash": "415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
+        "execution_id": "worker-execution:65bfc1c6-e162-42a0-be8a-ba86c07afa77",
+        "id": 2,
+        "intent_id": 2,
+        "node_id": "assess-readiness",
+        "process_run_id": 1,
+        "schema_version": "factory.discovery-readiness-assessment.v2",
+        "submitted_at": "2026-08-22 07:55:49",
+        "task_id": 2
+      },
+      {
+        "content_hash": "e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
+        "execution_id": "worker-execution:79210ffd-f6b3-4d87-9266-6fec2245853b",
+        "id": 3,
+        "intent_id": 4,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "schema_version": "factory.review-verdict.v1",
+        "submitted_at": "2026-08-22 07:55:50",
+        "task_id": 4
+      },
+      {
+        "content_hash": "77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
+        "execution_id": "worker-execution:2ff19694-4635-4692-8647-c9c1988b905f",
+        "id": 4,
+        "intent_id": 6,
+        "node_id": "model-use-cases",
+        "process_run_id": 2,
+        "schema_version": "factory.review-verdict.v1",
+        "submitted_at": "2026-08-22 07:55:50",
+        "task_id": 6
+      },
+      {
+        "content_hash": "75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
+        "execution_id": "worker-execution:55364b21-1783-4a49-8efc-3bf3e0e8fba9",
+        "id": 5,
+        "intent_id": 8,
+        "node_id": "define-acceptance-contract",
+        "process_run_id": 2,
+        "schema_version": "factory.review-verdict.v1",
+        "submitted_at": "2026-08-22 07:55:50",
+        "task_id": 8
+      }
+    ],
+    "processOutcomeCertificates": [
+      {
+        "certificate_payload": "{\"decision\":\"go\",\"inputHash\":\"c1c47bfd3088f217f5954d8dd9ce2e36fd11a2aeeb6aff36ff9447954dee5891\",\"payload\":{\"policyHash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"policyVersion\":\"factory.discovery-settlement-policy.v1\",\"processInputHash\":\"2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1\",\"proposalProductRef\":{\"digest\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"managed-node-submission:1\",\"schemaId\":\"factory.discovery-proposal.v1\"},\"readinessProductRef\":{\"digest\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"ref\":\"managed-node-submission:2\",\"schemaId\":\"factory.discovery-readiness-assessment.v2\"},\"settlementInput\":{\"captured_at\":\"2026-08-22 07:55:49\",\"epic_id\":1,\"policy\":{\"content_hash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"version\":\"factory.discovery-settlement-policy.v1\"},\"proposal\":{\"content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"id\":1,\"normalization_proposal_id\":null,\"payload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"source_intent_id\":1,\"source_submission_id\":1},\"readiness\":{\"assessment_id\":2,\"content_hash\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"payload\":{\"blocking_gaps\":[],\"confidence\":0.95,\"dimension_assessments\":{\"assumption_visibility\":{\"rationale\":\"Explicit.\",\"source_refs\":[\"$.assumptions\"],\"status\":\"sufficient\"},\"evidence_grounding\":{\"rationale\":\"Grounded.\",\"source_refs\":[\"$.evidence_refs\"],\"status\":\"sufficient\"},\"problem_clarity\":{\"rationale\":\"Clear.\",\"source_refs\":[\"$.problem_statement\"],\"status\":\"sufficient\"},\"risk_visibility\":{\"rationale\":\"Visible.\",\"source_refs\":[\"$.risks\"],\"status\":\"sufficient\"},\"scope_boundedness\":{\"rationale\":\"Bounded.\",\"source_refs\":[\"$.candidate_scope\"],\"status\":\"sufficient\"},\"stakeholder_coverage\":{\"rationale\":\"Identified.\",\"source_refs\":[\"$.stakeholders_or_actors\"],\"status\":\"sufficient\"},\"unknowns_manageability\":{\"rationale\":\"No blocker.\",\"source_refs\":[\"$.unknowns\"],\"status\":\"sufficient\"}},\"non_blocking_gaps\":[],\"overall_readiness\":\"ready\",\"proposal_content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"rationale\":\"Ready for deterministic formalization.\",\"recommended_next_action\":\"proceed_to_settlement\"},\"status\":\"accepted_by_kernel\"},\"schema_version\":\"factory.discovery-settlement-input.v1\"},\"settlementInputHash\":\"c1c47bfd3088f217f5954d8dd9ce2e36fd11a2aeeb6aff36ff9447954dee5891\"},\"rationale\":\"Proposal is ready, grounded, and confident enough to proceed\",\"reasonCodes\":[\"GO_READY_AND_GROUNDED\"],\"schemaVersion\":\"factory.discovery-outcome-certificate.v1\"}",
+        "decision": "go",
+        "id": 1,
+        "issued_at": "2026-08-22 07:55:49",
+        "module_name": "product-discovery",
+        "module_ref_key": "product-discovery@3.0.2",
+        "rationale": "Proposal is ready, grounded, and confident enough to proceed",
+        "reason_codes": "[\"GO_READY_AND_GROUNDED\"]"
+      }
+    ],
+    "processProducts": [
+      {
+        "id": 1,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "product_key": "content:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "product_kind": "factory.discovery-proposal.v1"
+      },
+      {
+        "id": 2,
+        "node_id": "produce-proposal",
+        "process_run_id": 1,
+        "product_hash": "9272268b5a58ee70781a5172ea1e8e4bda0e8a69982672eec4e1711bb4e8b8fd",
+        "product_key": "proposal:1",
+        "product_kind": "factory.discovery-proposal-ref.v1"
+      },
+      {
+        "id": 3,
+        "node_id": "assess-readiness",
+        "process_run_id": 1,
+        "product_hash": "415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
+        "product_key": "content:415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
+        "product_kind": "factory.discovery-readiness-assessment.v2"
+      },
+      {
+        "id": 4,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "fcf7db143d74e9e08195fd8e34a404a68e01dd655884651a445043f8d08d3be5",
+        "product_key": "artifact:1",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 5,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "ca1cc498d2fe3aec4af3fe36a0f88e58e44a4db790db45824a5dbc2768a69273",
+        "product_key": "artifact:2",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 6,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "f0d2e86f70fc4a3a3eba1a30cd5217d6adca52c9a02ea8705d1758b86a23b536",
+        "product_key": "artifact:3",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 7,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "108050f537e230627fd7f377f01faeed7241add09e3b1646e0088164005d2162",
+        "product_key": "artifact:4",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 8,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "cebf027bdb86b8112a40f5ef19d472615f5b29b887aa8646ecb0f5496c546ba9",
+        "product_key": "artifact:5",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 9,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "db43fe7ede631f7772083607229a80820d3e3330f7d7262f418299ce51863948",
+        "product_key": "workplace:solution-formalization@1.0.0:define-product-contract:db43fe7ede631f7772083607229a80820d3e3330f7d7262f418299ce51863948",
+        "product_kind": "factory.formalization-product-bundle.v1"
+      },
+      {
+        "id": 10,
+        "node_id": "define-product-contract",
+        "process_run_id": 2,
+        "product_hash": "e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
+        "product_key": "content:e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
+        "product_kind": "factory.review-verdict.v1"
+      },
+      {
+        "id": 11,
+        "node_id": "model-use-cases",
+        "process_run_id": 2,
+        "product_hash": "1ef9c35cd1ff593c861c908906ddcffe06da71f68bb7821c9400ac8db3c52d98",
+        "product_key": "artifact:6",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 12,
+        "node_id": "model-use-cases",
+        "process_run_id": 2,
+        "product_hash": "86f7f0e0bfbb2d69ffb69f9232fff64643e2866d82dcea6608d544199298592b",
+        "product_key": "workplace:solution-formalization@1.0.0:model-use-cases:86f7f0e0bfbb2d69ffb69f9232fff64643e2866d82dcea6608d544199298592b",
+        "product_kind": "factory.formalization-use-case-bundle.v1"
+      },
+      {
+        "id": 13,
+        "node_id": "model-use-cases",
+        "process_run_id": 2,
+        "product_hash": "77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
+        "product_key": "content:77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
+        "product_kind": "factory.review-verdict.v1"
+      },
+      {
+        "id": 14,
+        "node_id": "define-acceptance-contract",
+        "process_run_id": 2,
+        "product_hash": "77dbf658b262bdb04f7338d598d988acaaad7fe938b7103b67cfba9773f9b39b",
+        "product_key": "artifact:7",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 15,
+        "node_id": "define-acceptance-contract",
+        "process_run_id": 2,
+        "product_hash": "950093e4103b45d8b80ca349c9ed5e90c6aba3a1bfe666f00f025f8dd02a342d",
+        "product_key": "artifact:8",
+        "product_kind": "factory.artifact-ref.v1"
+      },
+      {
+        "id": 16,
+        "node_id": "define-acceptance-contract",
+        "process_run_id": 2,
+        "product_hash": "fbd2931a6d317992a04d23bc6461c16c541f56585921b0b24751588c0f014257",
+        "product_key": "workplace:solution-formalization@1.0.0:define-acceptance-contract:fbd2931a6d317992a04d23bc6461c16c541f56585921b0b24751588c0f014257",
+        "product_kind": "factory.formalization-acceptance-bundle.v1"
+      },
+      {
+        "id": 17,
+        "node_id": "define-acceptance-contract",
+        "process_run_id": 2,
+        "product_hash": "75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
+        "product_key": "content:75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
+        "product_kind": "factory.review-verdict.v1"
+      }
+    ],
+    "processRuns": [
+      {
+        "authority": "discovery-settlement-policy",
+        "certificate_hash": "b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12",
+        "certificate_ref": "certificate:1",
+        "certificate_schema": "factory.discovery-outcome-certificate.v1",
+        "error": null,
+        "id": 1,
+        "input_hash": "2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1",
+        "local_outcome": "go",
+        "module_name": "product-discovery",
+        "module_version": "3.0.2",
+        "output_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "output_ref": "product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "output_schema": "factory.discovery-proposal.v1",
+        "status": "completed"
+      },
+      {
+        "authority": null,
+        "certificate_hash": null,
+        "certificate_ref": null,
+        "certificate_schema": null,
+        "error": null,
+        "id": 2,
+        "input_hash": "bc73d9a376b0f076cc6597d4fe8d0439e382096857aa0239553b0c87ac037119",
+        "local_outcome": "failed",
+        "module_name": "solution-formalization",
+        "module_version": "1.0.0",
+        "output_hash": null,
+        "output_ref": null,
+        "output_schema": null,
+        "status": "completed"
+      }
+    ],
+    "processTransitions": [
+      {
+        "decision_hash": "0044c3ee052b0184e64a71a8a21bb078c4120bafe1bca6dd1eb328e9bd1bc617",
+        "from_stage_run_id": 1,
+        "handoff_hash": "37add98b0a8b7a752a7844b54df1df4222a40715627f274383aa609ff0cd53a0",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"130f07afeda35cebee5fe50ac2369b26fce342c7\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"130f07afeda35cebee5fe50ac2369b26fce342c7\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1}}}",
+        "id": 1,
+        "lifecycle_run_id": 1,
+        "outcome": "go",
+        "target_stage_id": "solution-formalization",
+        "target_type": "stage",
+        "terminal_status": null,
+        "to_stage_run_id": 2,
+        "transition_key": "lifecycle:1:stage-run:1:outcome"
+      },
+      {
+        "decision_hash": "b4b3d623579030367806c718491fc3c56ad8484089aba3f01058c452c17fea2f",
+        "from_stage_run_id": 2,
+        "handoff_hash": "1d46f02bd1be0240d946ccb2a436fcc13e86a50c9e7693b79d344f8d6ef092e5",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"130f07afeda35cebee5fe50ac2369b26fce342c7\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"d1074126e67327e5b7e24cac28e7210e85b2dc7398f1a49389c923f323568438\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[\"package.json\",\"tests/\"],\"version\":\"1.1.0\"},\"repositories\":[{\"expectedBaseCommit\":\"130f07afeda35cebee5fe50ac2369b26fce342c7\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1},\"solution-formalization\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":2,\"stageRunId\":2}}}",
+        "id": 2,
+        "lifecycle_run_id": 1,
+        "outcome": "failed",
+        "target_stage_id": null,
+        "target_type": "terminal",
+        "terminal_status": "failed",
+        "to_stage_run_id": null,
+        "transition_key": "lifecycle:1:stage-run:2:outcome"
+      }
+    ],
+    "recoveryEpochs": [
+      {
+        "epoch": 1,
+        "exhausted_attempts": 5,
+        "last_diagnosis": "Recovery budget exhausted: 5 unsuccessful attempt(s) for role 'author' (maxAttempts=5); the budget rolls over into a new recovery epoch (no human required). Last rejection at gate 'gate:2:final' (decision:gate-run:4e197338706708afac747b56232ab89c22b95a89d450ca7ce764430238924538): formalization-acceptance-retry-exhaustion-stable-finding",
+        "max_attempts": 5,
+        "role": "author",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      }
+    ],
+    "stageRuns": [
+      {
+        "attempt": 1,
+        "authority": "discovery-settlement-policy",
+        "binding_hash": "8726ce8951b1e2692f78280ad98b5a7882aa28362f06af01c85a3e00f6db11eb",
+        "binding_snapshot": "{\"displayName\":\"Initial Discovery\",\"entryConditions\":[\"initiative.subject exists\"],\"exitConditions\":[\"Discovery has an immutable local outcome and certificate lineage\"],\"id\":\"initial-discovery\",\"inputMapping\":{\"constraints\":\"$.initiative.constraints\",\"context\":\"$.initiative.context\",\"epicId\":{\"runtime\":\"epicId\"},\"evidence\":\"$.initiative.evidence\",\"initiatedBy\":{\"runtime\":\"initiatedBy\"},\"objective\":\"$.initiative.subject\",\"projectId\":{\"runtime\":\"projectId\"},\"subject\":\"$.initiative.subject\"},\"moduleRef\":{\"name\":\"product-discovery\",\"version\":\"3.0.2\"},\"outcomeRoutes\":{\"clarify\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"failed\":{\"status\":\"failed\",\"type\":\"terminal\"},\"go\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"reject\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"}},\"outputMapping\":{\"authority\":\"$.processOutcome.authority\",\"certificate.hash\":\"$.processOutcome.certificateHash\",\"certificate.ref\":\"$.processOutcome.certificateRef\",\"certificate.schema\":\"$.processOutcome.certificateSchema\",\"decision\":\"$.processOutcome.code\",\"proposal.hash\":\"$.processOutcome.outputHash\",\"proposal.ref\":\"$.processOutcome.outputRef\",\"proposal.schema\":\"$.processOutcome.outputSchema\",\"proposalPayload\":\"$.processOutcome.outputPayload\"}}",
+        "certificate_hash": "b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12",
+        "certificate_ref": "certificate:1",
+        "certificate_schema": "factory.discovery-outcome-certificate.v1",
+        "id": 1,
+        "input_hash": "2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1",
+        "input_schema": "factory.discovery-case.v1",
+        "input_snapshot": "{\"constraints\":{},\"context\":{},\"epicId\":1,\"evidence\":{},\"initiatedBy\":\"fresh-harness\",\"objective\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"projectId\":1,\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}",
+        "lifecycle_run_id": 1,
+        "local_outcome": "go",
+        "mapped_output_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]}}",
+        "module_name": "product-discovery",
+        "module_ref_key": "product-discovery@3.0.2",
+        "module_version": "3.0.2",
+        "ordinal": 1,
+        "output_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "output_ref": "product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
+        "output_schema": "factory.discovery-proposal.v1",
+        "process_run_id": 1,
+        "result_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"}",
+        "stage_id": "initial-discovery",
+        "status": "completed"
+      },
+      {
+        "attempt": 1,
+        "authority": null,
+        "binding_hash": "1bded168e886e1ac4c6a2264c88971be055757cc7c0baac6e38a6e3845365dc5",
+        "binding_snapshot": "{\"displayName\":\"Solution Formalization\",\"entryConditions\":[\"Discovery certificate ref and hash exist\"],\"exitConditions\":[\"Formalization has a frozen content-addressed Solution Contract\"],\"id\":\"solution-formalization\",\"inputMapping\":{\"discoveryCertificateHash\":\"$.stages.initial-discovery.certificate.hash\",\"discoveryCertificateRef\":\"$.stages.initial-discovery.certificate.ref\",\"discoveryEpicId\":{\"runtime\":\"epicId\"},\"discoveryOutcome\":\"$.stages.initial-discovery.decision\",\"discoveryProposalHash\":\"$.stages.initial-discovery.proposal.hash\",\"discoveryProposalPayload\":\"$.stages.initial-discovery.proposalPayload\",\"discoveryProposalRef\":\"$.stages.initial-discovery.proposal.ref\",\"formalizationEpicId\":{\"runtime\":\"epicId\"},\"initiatedBy\":{\"runtime\":\"initiatedBy\"},\"initiativeSubject\":\"$.initiative.subject\",\"schemaVersion\":{\"literal\":\"factory.formalization-case.v1\"}},\"moduleRef\":{\"name\":\"solution-formalization\",\"version\":\"1.0.0\"},\"outcomeRoutes\":{\"failed\":{\"status\":\"failed\",\"type\":\"terminal\"},\"formalized\":{\"stageId\":\"solution-development\",\"type\":\"stage\"},\"inconsistent\":{\"status\":\"formalization-inconsistent\",\"type\":\"terminal\"}},\"outputMapping\":{\"authority\":\"$.processOutcome.authority\",\"certificate.hash\":\"$.processOutcome.certificateHash\",\"certificate.ref\":\"$.processOutcome.certificateRef\",\"certificate.schema\":\"$.processOutcome.certificateSchema\",\"decision\":\"$.processOutcome.code\",\"solutionContract.hash\":\"$.processOutcome.outputHash\",\"solutionContract.ref\":\"$.processOutcome.outputRef\",\"solutionContract.schema\":\"$.processOutcome.outputSchema\",\"solutionContractPayload\":\"$.processOutcome.outputPayload\"}}",
+        "certificate_hash": null,
+        "certificate_ref": null,
+        "certificate_schema": null,
+        "id": 2,
+        "input_hash": "bc73d9a376b0f076cc6597d4fe8d0439e382096857aa0239553b0c87ac037119",
+        "input_schema": "factory.formalization-case.v1",
+        "input_snapshot": "{\"discoveryCertificateHash\":\"b5fee6125351195cee22d3b81481b7d778b3fd92f0cfacbaf182afed8dd4be12\",\"discoveryCertificateRef\":\"certificate:1\",\"discoveryEpicId\":1,\"discoveryOutcome\":\"go\",\"discoveryProposalHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"discoveryProposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"discoveryProposalRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"formalizationEpicId\":1,\"initiatedBy\":\"fresh-harness\",\"initiativeSubject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"schemaVersion\":\"factory.formalization-case.v1\"}",
+        "lifecycle_run_id": 1,
+        "local_outcome": "failed",
+        "mapped_output_snapshot": "{}",
+        "module_name": "solution-formalization",
+        "module_ref_key": "solution-formalization@1.0.0",
+        "module_version": "1.0.0",
+        "ordinal": 2,
+        "output_hash": null,
+        "output_ref": null,
+        "output_schema": null,
+        "process_run_id": 2,
+        "result_snapshot": "{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null}",
+        "stage_id": "solution-formalization",
+        "status": "completed"
+      }
+    ],
+    "submissionValidationRejections": [],
+    "transitionObligations": [
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/945c189e5239254b082a3e9cfa4d1a5c25541f3754bc6e9334fc1b5d6ba4bfc2/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/609b30b707d4e751ffe6c91ff48cd78b6681c6e5e233609416a649c9502428ce/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/c488cebe810d19ae7b4313abc1c6823fe1f1d5c5b4e0e970dad9f65726a26854/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/c488cebe810d19ae7b4313abc1c6823fe1f1d5c5b4e0e970dad9f65726a26854/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/c615d58517102760b80ef250cedbd67a566792e97b507426f47445061dfd354a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/c615d58517102760b80ef250cedbd67a566792e97b507426f47445061dfd354a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-gate",
+        "last_error": null,
+        "obligation_key": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/813484952a2e71a2b14414b4e823bb6e5beb2b1d4bce95538a14ab74284976d6/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author:run-gate",
+        "source_kind": "candidate-set-sealed",
+        "source_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/813484952a2e71a2b14414b4e823bb6e5beb2b1d4bce95538a14ab74284976d6/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "record-final-acceptance",
+        "last_error": null,
+        "obligation_key": "effects-settled:cell-effect-receipt:23dc545c7c41dadc4d0faddd6fc8c4d25aec555cd84629afd9e44ba95c994a5b:record-final-acceptance",
+        "source_kind": "effects-settled",
+        "source_ref": "cell-effect-receipt:23dc545c7c41dadc4d0faddd6fc8c4d25aec555cd84629afd9e44ba95c994a5b",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "record-final-acceptance",
+        "last_error": null,
+        "obligation_key": "effects-settled:cell-effect-receipt:38a053917cb98ae1f2f9fd859ff803552e4ecdc0c321806c250444cb76e63e65:record-final-acceptance",
+        "source_kind": "effects-settled",
+        "source_ref": "cell-effect-receipt:38a053917cb98ae1f2f9fd859ff803552e4ecdc0c321806c250444cb76e63e65",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "close-presentation",
+        "last_error": null,
+        "obligation_key": "final-presentation-committed:final-presentation:074a583176e90e39ebbadd74c7a1e142958940d0ec34287361bd07d4a3d66214:close-presentation",
+        "source_kind": "final-presentation-committed",
+        "source_ref": "final-presentation:074a583176e90e39ebbadd74c7a1e142958940d0ec34287361bd07d4a3d66214",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "close-presentation",
+        "last_error": null,
+        "obligation_key": "final-presentation-committed:final-presentation:3f5ddd454f73a39df2595a4618af1a696bdf88bacdef2bfd1b5b596e7b0e776a:close-presentation",
+        "source_kind": "final-presentation-committed",
+        "source_ref": "final-presentation:3f5ddd454f73a39df2595a4618af1a696bdf88bacdef2bfd1b5b596e7b0e776a",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "close-presentation",
+        "last_error": null,
+        "obligation_key": "final-presentation-committed:final-presentation:e2423a77fb192b448231b9e547816d78760520b1b354cab57c9c9755bdbf0e97:close-presentation",
+        "source_kind": "final-presentation-committed",
+        "source_ref": "final-presentation:e2423a77fb192b448231b9e547816d78760520b1b354cab57c9c9755bdbf0e97",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-effects",
+        "last_error": null,
+        "obligation_key": "gate-accepted:decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc:run-effects",
+        "source_kind": "gate-accepted",
+        "source_ref": "decision:gate-run:12a5e2cdba8f84ff264927e385cbb54c54b9e76b84bb57c6227e596db7ac03dc",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-effects",
+        "last_error": null,
+        "obligation_key": "gate-accepted:decision:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec:run-effects",
+        "source_kind": "gate-accepted",
+        "source_ref": "decision:gate-run:63ce718273d577272d893ddfa0f53d53293733dcd0412ef7e6418cf0407980ec",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-effects",
+        "last_error": null,
+        "obligation_key": "gate-accepted:decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924:run-effects",
+        "source_kind": "gate-accepted",
+        "source_ref": "decision:gate-run:93b93d61eafd8a58b210e49307592085939ae6f9c7d72873b375813a7c9f6924",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "run-effects",
+        "last_error": null,
+        "obligation_key": "gate-accepted:decision:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc:run-effects",
+        "source_kind": "gate-accepted",
+        "source_ref": "decision:gate-run:df092c24892a5919ab0d61befa688f33e70670656b6b530671f63ca40dc2d7dc",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "route-lifecycle",
+        "last_error": null,
+        "obligation_key": "process-settled:process-run:1:route-lifecycle",
+        "source_kind": "process-settled",
+        "source_ref": "process-run:1",
+        "state": "completed"
+      },
+      {
+        "handoff_kind": "route-lifecycle",
+        "last_error": null,
+        "obligation_key": "process-settled:process-run:2:route-lifecycle",
+        "source_kind": "process-settled",
+        "source_ref": "process-run:2",
+        "state": "completed"
+      }
+    ],
+    "workerExecutions": [
+      {
+        "execution_ref": "worker-execution:0ec56708-139e-421e-9707-e8d827d84cfc",
+        "finished_at": "2026-08-22 07:55:49",
+        "state": "exited",
+        "task_id": 1,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:138e113c-8db4-4e3a-8ee9-a4268341d3df",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:2d23fa26-1511-475d-be8a-249286275061",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:2ff19694-4635-4692-8647-c9c1988b905f",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 6,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:55364b21-1783-4a49-8efc-3bf3e0e8fba9",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 8,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:65bfc1c6-e162-42a0-be8a-ba86c07afa77",
+        "finished_at": "2026-08-22 07:55:49",
+        "state": "exited",
+        "task_id": 2,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:68b8faa1-e34b-4fe6-8976-1148e98d3dcd",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:79210ffd-f6b3-4d87-9266-6fec2245853b",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 4,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:825afb8c-3545-438e-b69e-5667d8bb9211",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:83d6ce7c-05f9-4dd9-974d-e8769ffb242d",
+        "finished_at": "2026-08-22 07:56:51",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:af45d423-d475-42fa-a6ce-8509be073006",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 3,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:c1e79bbf-5f18-4d87-841a-dd0202a44f7e",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:f0bed1b4-789d-4f1d-9f9b-e455835805fb",
+        "finished_at": "2026-08-22 07:55:50",
+        "state": "exited",
+        "task_id": 5,
+        "voided_at": null
+      }
+    ],
+    "workIntents": [
+      {
+        "id": 1,
+        "status": "done",
+        "task_kind": "discovery.work",
+        "title": "discovery-proposal/author: Investigate the bounded subject and submit one canonical typed DiscoveryProposal",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "id": 2,
+        "status": "done",
+        "task_kind": "discovery.assess",
+        "title": "discovery-readiness/author: Read the exact accepted Proposal product and submit one source-bound readiness a",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "id": 3,
+        "status": "done",
+        "task_kind": "formalization.product",
+        "title": "formalization-product-contract/author: Produce PRD plus FR/NFR/RULE artifacts and root lineage.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "id": 4,
+        "status": "done",
+        "task_kind": "formalization.review",
+        "title": "formalization-product-contract/reviewer: Produce PRD plus FR/NFR/RULE artifacts and root lineage.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "id": 5,
+        "status": "done",
+        "task_kind": "formalization.use-cases",
+        "title": "formalization-use-cases/author: Produce accepted use cases covering the product requirements.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      },
+      {
+        "id": 6,
+        "status": "done",
+        "task_kind": "formalization.review",
+        "title": "formalization-use-cases/reviewer: Produce accepted use cases covering the product requirements.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      },
+      {
+        "id": 7,
+        "status": "done",
+        "task_kind": "formalization.acceptance",
+        "title": "formalization-acceptance-contract/author: Produce acceptance criteria derived from UC/FR/NFR.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "id": 8,
+        "status": "done",
+        "task_kind": "formalization.review",
+        "title": "formalization-acceptance-contract/reviewer: Produce acceptance criteria derived from UC/FR/NFR.",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      }
+    ],
+    "workplaces": [
+      {
+        "kanban_phase": "done",
+        "loop_state": "terminal",
+        "next_role": "author",
+        "process_run_id": 1,
+        "revision": 4,
+        "terminal_reason": "accepted",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton"
+      },
+      {
+        "kanban_phase": "done",
+        "loop_state": "terminal",
+        "next_role": "author",
+        "process_run_id": 1,
+        "revision": 4,
+        "terminal_reason": "accepted",
+        "workplace_ref": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton"
+      },
+      {
+        "kanban_phase": "failed",
+        "loop_state": "terminal",
+        "next_role": "author",
+        "process_run_id": 2,
+        "revision": 28,
+        "terminal_reason": "failed",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+      },
+      {
+        "kanban_phase": "done",
+        "loop_state": "terminal",
+        "next_role": "reviewer",
+        "process_run_id": 2,
+        "revision": 8,
+        "terminal_reason": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+      },
+      {
+        "kanban_phase": "done",
+        "loop_state": "terminal",
+        "next_role": "reviewer",
+        "process_run_id": 2,
+        "revision": 8,
+        "terminal_reason": "accepted",
+        "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton"
+      }
+    ]
+  },
+  "progress": {
+    "rows": [
+      {
+        "workplace": "workplace/1/product-discovery@3.0.2/discovery-proposal/singleton",
+        "classification": "typed-terminal",
+        "evidence": "accepted"
+      },
+      {
+        "workplace": "workplace/1/product-discovery@3.0.2/discovery-readiness/singleton",
+        "classification": "typed-terminal",
+        "evidence": "accepted"
+      },
+      {
+        "workplace": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
+        "classification": "typed-terminal",
+        "evidence": "failed"
+      },
+      {
+        "workplace": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
+        "classification": "typed-terminal",
+        "evidence": "accepted"
+      },
+      {
+        "workplace": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
+        "classification": "typed-terminal",
+        "evidence": "accepted"
+      }
+    ],
+    "stalls": [],
+    "ok": true
+  },
+  "actorEvidence": [
+    {
+      "kind": "formalization-retry-exhaustion-phase-a",
+      "targetName": "acceptance",
+      "invocations": 12,
+      "replays": 0
+    },
+    {
+      "kind": "formalization-retry-exhaustion-phase-b",
+      "targetName": "acceptance",
+      "invocations": 1,
+      "replays": 0
+    }
+  ],
+  "faultJournal": [
+    {
+      "class": "retry-exhaustion",
+      "targetName": "acceptance",
+      "boundary": "formalization-acceptance-contract",
+      "crossedRealBackoffMs": 61000
+    }
+  ],
+  "externalWorldJournal": [],
+  "oracleResults": [
+    {
+      "id": "acceptance.retry-exhaustion.epoch-recorded",
+      "passed": true,
+      "evidenceRefs": [
+        "recovery-epoch:workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton:1"
+      ],
+      "details": {
+        "epochs": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "acceptance.retry-exhaustion.terminal-failed",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "failedStage": true,
+        "terminalWorkplace": true
+      }
+    },
+    {
+      "id": "acceptance.retry-exhaustion.never-final-accepted",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "finalAccepted": 0
+      }
+    },
+    {
+      "id": "acceptance.retry-exhaustion.no-stranded-execution",
+      "passed": true,
+      "evidenceRefs": [],
+      "details": {
+        "stranded": 0
+      }
+    }
+  ],
+  "verdict": "pass",
+  "terminal": {
+    "reachedTerminal": true,
+    "terminalReason": "completed",
+    "cycles": 46,
+    "stoppedByCycleBound": false,
+    "strandedActiveExecutions": 0,
+    "effectiveConcurrency": 2,
+    "scriptedInvocationCount": 13
+  },
+  "mutationCoverage": null,
+  "counterexample": null,
+  "bundleDigest": "6531853869e3f18ad3e80408e7e329d837ecba1bb1fbc207779f355de416c8a9"
+}

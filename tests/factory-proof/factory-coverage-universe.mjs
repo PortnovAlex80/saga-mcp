@@ -102,6 +102,9 @@ export function buildFactoryCoverageUniverse() {
       status: workshopStatus(workshop),
       scenarioCount: workshop.scenarios.length,
       requiredUniverseSize: workshop.requiredUniverse.length,
+      // The full required list (the demonstrated layer maps PASS bundles
+      // onto these tokens — C/U needs the items, not just the size).
+      requiredUniverseItems: [...workshop.requiredUniverse],
       uncoveredRequired: matrix.uncovered ?? [],
       pendingSize: workshop.pendingUniverse.length,
       pendingItems: [...workshop.pendingUniverse],
