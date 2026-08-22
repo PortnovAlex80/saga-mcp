@@ -2,6 +2,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFi
 import os from 'node:os';
 import path from 'node:path';
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createRepeatedToolLoopDetector } from './repeated-tool-loop.mjs';
 
@@ -214,6 +215,8 @@ export function buildPrompt({
   // universal execution physics FIRST, then the domain workflow. Strong models
   // can still Read the files for the canonical version.
   let skillInline = '';
+  let protocolInlineBytes = 0;
+  let semanticInlineBytes = 0;
   if (protocolSkillName) {
     const protocolSkillPath = resolvePinnedSkillPath(protocolSkillName);
     let protocolInline = '';
@@ -235,6 +238,8 @@ export function buildPrompt({
     } catch {
       semanticInline = `(Could not read semantic skill file at ${reviewerInlineSkillPath}. Follow the protocol above.)`;
     }
+    protocolInlineBytes = protocolInline.length;
+    semanticInlineBytes = semanticInline.length;
     const semanticSectionTitle = effectiveReviewerSkill
       ? '--- REVIEWER SKILL BEGIN (review role — what to verify) ---'
       : '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---';
@@ -260,7 +265,18 @@ export function buildPrompt({
     || profileAllowedTools.has('Write')
     || profileAllowedTools.has('Edit');
 
-  return [
+  // F-A: named sections so the composition telemetry below measures real
+  // layers, not post-hoc guesses.
+  const recoveryMemoryBlock = buildRecoveryMemoryBlock(task);
+  const taskProjectionJson = JSON.stringify(projectTaskForPrompt(task), null, 2);
+  const protocolSkillBytes = protocolInlineBytes;
+  const semanticSkillBytes = semanticInlineBytes;
+  const priorDeathsBytes = processWorkspace?.priorAttempts
+    ? JSON.stringify(processWorkspace.priorAttempts).length : 0;
+  const workspaceBlockBytes = processWorkspace
+    ? JSON.stringify(processWorkspace).length : 0;
+
+  const prompt = [
     // WORKER-NAMES-DESIGN: the factory callsign opens the system part of the
     // prompt — the worker KNOWS its own name (self-presentation in logs and
     // commits). The authority identity lines below (worker_id/execution_id
@@ -505,11 +521,27 @@ export function buildPrompt({
     // time) must reach the worker as a LOUD directive, not as JSON buried in
     // the task payload below. Workers previously started every retry from a
     // blank context while the failure history sat unread in the DB.
-    buildRecoveryMemoryBlock(task),
+    recoveryMemoryBlock,
     '',
-    'Assigned task payload:',
-    JSON.stringify(task, null, 2),
+    'Assigned task payload (projected — see metadata.__history_pointer for the durable history):',
+    taskProjectionJson,
   ].filter(line => line !== null).join('\n');
+
+  // F-A: prompt-composition telemetry. Elite-3 died guessing where 436KB came
+  // from; the next incident reads one greppable line per spawn instead.
+  try {
+    process.stderr.write(
+      `[prompt-budget] task=${task.id} total=${prompt.length}`
+      + ` protocolSkill=${protocolSkillBytes} semanticSkill=${semanticSkillBytes}`
+      + ` taskProjection=${taskProjectionJson.length}`
+      + ` currentFeedback=${recoveryMemoryBlock ? recoveryMemoryBlock.length : 0}`
+      + ` priorDeaths=${priorDeathsBytes}`
+      + ` workspaceBlock=${workspaceBlockBytes}\n`,
+    );
+  } catch {
+    // observability only — never gate the spawn
+  }
+  return prompt;
 }
 
 /**
@@ -540,6 +572,15 @@ export function buildWriteAuthorityBlock(task) {
  * (fresh tasks get no recovery noise) or when the metadata is unreadable
  * (fail-soft: prompt assembly must never break on a corrupt column).
  */
+// F-A (Elite-3 post-mortem): per-layer prompt budget. The verbatim failure
+// log is bounded to the most recent entries; the FULL history stays durable
+// on the task row (task_get → metadata) and is represented inline by counts
+// + a content digest, so an incident is traceable without shipping the
+// bytes. Elite-3 measured 20×2000-char failures + 50×2000-char history
+// double-delivered (loud block AND the raw task JSON) snowballing a planner
+// prompt to 436KB — past the provider limit, unrecoverable.
+export const MAX_INLINE_PREVIOUS_FAILURES = 5;
+
 export function buildRecoveryMemoryBlock(task) {
   let metadata = task?.metadata;
   if (typeof metadata === 'string') {
@@ -563,19 +604,71 @@ export function buildRecoveryMemoryBlock(task) {
   const hint = typeof metadata.hint === 'string' && metadata.hint.trim() !== ''
     ? metadata.hint
     : null;
+  const inlineFailures = failures.slice(-MAX_INLINE_PREVIOUS_FAILURES);
+  const omitted = failures.length - inlineFailures.length;
+  const historyDigest = failures.length > 0
+    ? createHash('sha256').update(failures.join('\n---\n'), 'utf8').digest('hex').slice(0, 16)
+    : null;
   return [
     '--- ⚠️ PRIOR ATTEMPTS — EPISODIC MEMORY (machine-materialized) ---',
     `This task was already in work: ${attemptCount} previous attempt(s). DO NOT start from a blank context and DO NOT repeat failed approaches.`,
     ...(hint ? [`hint=${hint}`] : []),
-    ...(failures.length
+    ...(inlineFailures.length
       ? [
-          'previous_failures (verbatim; each approach below already failed):',
-          ...failures.map((entry, index) => `   ${index + 1}. ${entry}`),
+          `previous_failures (most recent ${inlineFailures.length} of ${failures.length}, verbatim; each approach below already failed):`,
+          ...inlineFailures.map((entry, index) => `   ${index + 1}. ${entry}`),
         ]
+      : []),
+    ...(omitted > 0
+      ? [`   (+${omitted} earlier failure(s) omitted from the prompt; digest=${historyDigest})`]
       : []),
     'Full attempt log: task_get({ id }) → metadata.attempt_history (entries carry recovery_summary, kind recovery_note|submission_rejection, durable source_ref).',
     '--- END PRIOR ATTEMPTS ---',
   ].join('\n');
+}
+
+/**
+ * F-A: the task payload delivered inline is a PROJECTION. The durable history
+ * arrays (metadata.attempt_history — up to 50×2000 chars, metadata.previous_failures
+ * — up to 20×2000) and the machine workspace block (metadata.process_workspace —
+ * already delivered in full by the MACHINE-PROVISIONED section above) are
+ * dropped: they double-deliver the loud recovery block and the workspace
+ * section. A small pointer (counts + content digest) preserves traceability;
+ * the full history remains on the task row via task_get.
+ */
+export function projectTaskForPrompt(task) {
+  if (!task || typeof task !== 'object') return task;
+  let metadata = task.metadata;
+  if (typeof metadata === 'string') {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch {
+      return task; // fail-soft: corrupt metadata keeps the legacy payload
+    }
+  }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return task;
+  }
+  const previousFailures = Array.isArray(metadata.previous_failures)
+    ? metadata.previous_failures.filter(entry => typeof entry === 'string')
+    : [];
+  const attemptHistoryCount = Array.isArray(metadata.attempt_history)
+    ? metadata.attempt_history.length
+    : 0;
+  const historyDigest = previousFailures.length > 0
+    ? createHash('sha256').update(previousFailures.join('\n---\n'), 'utf8').digest('hex').slice(0, 16)
+    : null;
+  const projectedMetadata = { ...metadata };
+  delete projectedMetadata.attempt_history;
+  delete projectedMetadata.previous_failures;
+  delete projectedMetadata.process_workspace;
+  projectedMetadata.__history_pointer = {
+    previous_failures_total: previousFailures.length,
+    attempt_history_entries: attemptHistoryCount,
+    ...(historyDigest ? { digest: historyDigest } : {}),
+    note: 'full durable history: task_get({ id }) → metadata (omitted from the prompt by the prompt budget)',
+  };
+  return { ...task, metadata: projectedMetadata };
 }
 
 export class ClaudeBoardRunner {

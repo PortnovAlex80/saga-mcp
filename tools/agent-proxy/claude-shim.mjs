@@ -521,6 +521,18 @@ const CAPTURE_WINDOW_BYTES = 2 * 1024 * 1024;
 //   fetch failed                — undici's generic transport failure
 export const RETRYABLE_ERROR_RE = /429|rate.?limit|overloaded|too many requests|status[: ]5\d\d|socket connection was closed|ECONNRESET|ETIMEDOUT|fetch failed/i;
 
+// A provider's DEFINITIVE request rejection — checked BEFORE any retryable
+// text and before the pre/post-tool-death catch-alls. Elite-3 evidence
+// (task13-evidence): the provider answered `400 / "Prompt exceeds max
+// length" / "isRetryable":false` while the old classifier retried the SAME
+// oversized request through the full 1s..64s ×8 ladder on every spawn (~3
+// min per execution), then supervision respawned a new execution with the
+// same prompt — burning the recovery budget on infrastructure. A permanent
+// rejection is not transient: fail fast, let the typed factory recovery own
+// the outcome. Statuses: 400 malformed/oversized request, 413 payload too
+// large, 422 unprocessable — 429/408 stay with the retryable class above.
+export const PROVIDER_REJECTED_RE = /Prompt exceeds max length|request too large|payload too large|"isRetryable"\s*:\s*false|"statusCode"\s*:\s*(400|413|422)|\bstatus(code)?[: =]+(400|413|422)\b/i;
+
 // A "tool ran" marker in the captured child output:
 //   ⚙                    — opencode TUI renders tool calls as `⚙ saga_<tool> {json}`
 //                          lines on stdout (the factory's failure-log parses these)
@@ -581,6 +593,9 @@ export function classifyFailure({ exitCode, signal, stdout, stderr, attemptStdou
   const textOut = attemptStdout !== undefined ? String(attemptStdout) : out;
   const textErr = attemptStderr !== undefined ? String(attemptStderr) : err;
   const tail = `${tailText(textErr, CAPTURE_TAIL_BYTES)}\n${tailText(textOut, CAPTURE_TAIL_BYTES)}`;
+  // Definitive provider rejection beats everything transient: the request
+  // itself is unacceptable and a retry re-sends the same bytes.
+  const rejected = PROVIDER_REJECTED_RE.test(tail);
   // Take the LAST match in the tail and report its whole line: the proximate
   // cause of this death, in operator-readable form for the retry summary.
   let match = null;
@@ -588,6 +603,22 @@ export function classifyFailure({ exitCode, signal, stdout, stderr, attemptStdou
   // Markers accumulate across attempts (capture is not reset): if ANY attempt
   // ran a tool, every later attempt is treated as post-tool — conservative.
   const postTool = TOOL_MARKER_RE.test(out) || TOOL_MARKER_RE.test(err);
+  if (rejected) {
+    const rejectedLine = (() => {
+      const idx = tail.search(PROVIDER_REJECTED_RE);
+      if (idx < 0) return '';
+      const lineStart = tail.lastIndexOf('\n', idx) + 1;
+      const lineEndRaw = tail.indexOf('\n', idx);
+      const lineEnd = lineEndRaw === -1 ? tail.length : lineEndRaw;
+      return tail.slice(lineStart, lineEnd).trim().slice(0, 200);
+    })();
+    return {
+      retry: false,
+      class: 'provider-rejected',
+      postTool,
+      detail: rejectedLine || 'provider definitively rejected the request (non-retryable)',
+    };
+  }
   if (match) {
     const lineStart = tail.lastIndexOf('\n', match.index) + 1;
     const lineEndRaw = tail.indexOf('\n', match.index);

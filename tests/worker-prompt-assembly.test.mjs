@@ -632,3 +632,51 @@ test('STAGE-18 R1 negative: a task WITH scopes must never produce a prompt empty
     rmSync(bare.skillDir, { recursive: true, force: true });
   }
 });
+
+// F-A (Elite-3 post-mortem): per-layer prompt budget — the durable history
+// stays on the task row, the prompt carries a bounded projection.
+test('F-A: projectTaskForPrompt drops the history arrays, keeps the semantics, adds a digest pointer', async () => {
+  const { projectTaskForPrompt } = await import('../tracker-view/claude-runner.mjs');
+  const task = {
+    id: 13,
+    title: 'planner',
+    metadata: JSON.stringify({
+      process_node_input: { keep: 'me' },
+      attempt_count: 2,
+      hint: 'h',
+      previous_failures: ['failure-one', 'failure-two'],
+      attempt_history: [{ attempt: 1 }, { attempt: 2 }],
+      process_workspace: { workspace_files: ['a'] },
+    }),
+  };
+  const projected = projectTaskForPrompt(task);
+  const meta = projected.metadata;
+  assert.equal(meta.process_node_input.keep, 'me', 'semantic material is untouched');
+  assert.equal(meta.hint, 'h');
+  assert.equal('previous_failures' in meta, false, 'verbatim failures are not double-delivered');
+  assert.equal('attempt_history' in meta, false, 'the 50x2000 history array is dropped');
+  assert.equal('process_workspace' in meta, false, 'the workspace block is not re-delivered');
+  assert.equal(meta.__history_pointer.previous_failures_total, 2);
+  assert.equal(meta.__history_pointer.attempt_history_entries, 2);
+  assert.match(meta.__history_pointer.digest, /^[0-9a-f]{16}$/, 'content digest preserves traceability');
+  // The original task object is never mutated (pure projection).
+  assert.ok(JSON.parse(task.metadata).previous_failures.length === 2);
+  // Corrupt metadata fails soft: the legacy payload passes through.
+  assert.equal(projectTaskForPrompt({ id: 1, metadata: '{nope' }).metadata, '{nope');
+});
+
+test('F-A: buildRecoveryMemoryBlock bounds verbatim failures to the most recent entries with a digest', async () => {
+  const { buildRecoveryMemoryBlock, MAX_INLINE_PREVIOUS_FAILURES } = await import('../tracker-view/claude-runner.mjs');
+  const failures = Array.from({ length: 12 }, (_, i) => `failure-${i}`);
+  const block = buildRecoveryMemoryBlock({
+    metadata: JSON.stringify({ attempt_count: 12, previous_failures: failures }),
+  });
+  assert.ok(block.includes(`failure-${11}`) && block.includes(`failure-${7}`),
+    `the most recent ${MAX_INLINE_PREVIOUS_FAILURES} failures stay verbatim`);
+  assert.ok(!block.includes('failure-6'), 'older failures are omitted from the prompt');
+  assert.ok(block.includes(`of 12`), 'the total count is delivered');
+  assert.match(block, /\+7 earlier failure\(s\) omitted/, 'the omission count is explicit');
+  assert.match(block, /digest=[0-9a-f]{16}/, 'the omitted history is digest-traceable');
+  assert.ok(block.includes('Full attempt log: task_get'),
+    'the durable path to the complete history stays in the block');
+});
