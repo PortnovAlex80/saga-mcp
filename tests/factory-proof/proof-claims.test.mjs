@@ -28,13 +28,35 @@ function groupFiles() {
 
 test('K1-D: every blocking factory-proof file declares honest proof modes', () => {
   const files = groupFiles();
-  assert.ok(files.length >= 6, `expected the group file set, got ${files.length}`);
+  // CC-10A provisional floor: the v1 measuring surface is blocking (23 files).
+  // Final K5 floors (self-mutations, vacuity, budgets) land at CC-10B.
+  assert.ok(files.length >= 23, `expected the CC-10A 23-file floor, got ${files.length}`);
   const errors = validateProofClaims(files);
   assert.deepEqual(errors, [],
     `proof-claim registry violations:\n${errors.join('\n')}`);
   for (const file of Object.keys(PROOF_CLAIMS)) {
     assert.ok(existsSync(path.join(REPO_ROOT, file)), `${file} claimed but missing`);
   }
+});
+
+test('CC-10A negative: a group file WITHOUT a claim fails validation', () => {
+  const files = groupFiles();
+  const ghost = 'tests/factory-proof/ghost-unclaimed.test.mjs';
+  const errors = validateProofClaims([...files, ghost]);
+  assert.ok(
+    errors.some(e => e.includes(ghost) && e.includes('WITHOUT a proof claim')),
+    `an unclaimed group file must fail:\n${errors.join('\n')}`);
+});
+
+test('CC-10A negative: a registry entry ABSENT from the group fails validation (bidirectional closure)', () => {
+  const files = groupFiles();
+  const dropped = 'tests/factory-proof/k0-baseline.test.mjs';
+  const errors = validateProofClaims(files.filter(f => f !== dropped));
+  assert.ok(
+    errors.some(e => e.includes(dropped) && e.includes('ABSENT from the blocking group')),
+    `a claimed file missing from the group must fail:\n${errors.join('\n')}`);
+  // The negative direction must not smear: with the file restored, closure is clean.
+  assert.deepEqual(validateProofClaims(files), []);
 });
 
 test('K1-D: the claim summary is published (no proof exceeds its seam)', () => {

@@ -95,8 +95,24 @@ const GROUPS = {
       'tests/factory-proof/k2-strict-formalization.test.mjs',
       'tests/factory-proof/proof-claims.test.mjs',
       'tests/factory-proof/k0-baseline.test.mjs',
+      // CC-10A provisional 23-file floor: the Conformance Engine v1 measuring
+      // surface. All Contract-level closure checks (packs validated as data,
+      // evidence/universe algebra, registry honesty) — the drives with the
+      // multi-phase 61s proofs stay in the manual harvest path, NOT here.
+      'tests/factory-proof/conformance-engine.test.mjs',
+      'tests/factory-proof/coverage-kernel.test.mjs',
+      'tests/factory-proof/delivery-kernel-unification.test.mjs',
+      'tests/factory-proof/development-scenario-pack.test.mjs',
+      'tests/factory-proof/discovery-resilience-pack.test.mjs',
+      'tests/factory-proof/discovery-scenario-pack.test.mjs',
+      'tests/factory-proof/factory-coverage-universe.test.mjs',
+      'tests/factory-proof/formalization-resilience-pack.test.mjs',
+      'tests/factory-proof/scenario-evidence.test.mjs',
+      'tests/factory-proof/scenario-runner.test.mjs',
+      'tests/factory-proof/workshop-descriptor.test.mjs',
+      'tests/factory-proof/workshop-inventory.test.mjs',
     ],
-    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) + W1-4 two-lifecycle composition (ADR-078) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof. BLOCKING: no quarantine, no continue-on-error.',
+    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) + W1-4 two-lifecycle composition (ADR-078) + the Conformance Engine v1 measuring surface (CC-10A provisional ratchet; final K5 lands at CC-10B) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof, pack/evidence/universe closure. BLOCKING: no quarantine, no continue-on-error.',
   },
 };
 
