@@ -97,7 +97,6 @@ function noStrandedExecutionOracle() {
 }
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
-  'L:approval:binds-candidate+preflight+policy-hash',
   'L:observe-before-retry:no-duplicate-non-idempotent-effect',
   'L:candidate-immutability:drift-after-certification-blocks',
   'K4:crash-after-effect-before-receipt',
@@ -182,6 +181,19 @@ export const DELIVERY_SCENARIOS = Object.freeze([
     coverageItems: [
       'L:publication:unknown-failure-routes-to-observation',
       'external:observation:authoritative-state',
+    ],
+  }),
+  // The grant binds the EXACT release policy: an operatorAuthorization whose
+  // releasePolicyHash does not match the policy's contentHash is invalid —
+  // settlement blocks, nothing is authorized by a stale/diverted grant.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/grant-policy-hash-mismatch-blocked',
+    kind: 'positive',
+    proves: ['handoff.route-lifecycle'],
+    coverageItems: [
+      'L:approval:binds-candidate+preflight+policy-hash',
+      coverageToken.transition('settle-delivery', 'complete-blocked'),
     ],
   }),
 ]);
@@ -341,6 +353,39 @@ export function buildDeliveryRuntimeCase(id) {
             },
           },
           noStrandedExecutionOracle(),
+        ],
+      };
+    case 'delivery/grant-policy-hash-mismatch-blocked':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        corruptGrantPolicyHash: true,
+        // The binding is enforced at the EARLIEST boundary: the lifecycle
+        // input validator rejects a grant whose releasePolicyHash does not
+        // match the submitted policy's contentHash — no lifecycle run, no
+        // settlement, no effects. The typed refusal IS the contract.
+        expectError: 'PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID',
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          {
+            id: 'delivery.grant-mismatch.zero-lifecycle-zero-effects',
+            evaluate({ durableTrace }) {
+              const runs = durableTrace.lifecycleRuns ?? [];
+              const actions = durableTrace.deliveryEffectActions ?? [];
+              return {
+                passed: runs.length === 0 && actions.length === 0,
+                evidenceRefs: [
+                  ...runs.map(run => `lifecycle-run:${run.id}:${run.status}`),
+                  ...actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                ],
+                details: {
+                  lifecycleRuns: runs.length,
+                  deliveryEffectActions: actions.length,
+                },
+              };
+            },
+          },
         ],
       };
     case 'delivery/deferred-approval-required':

@@ -207,18 +207,50 @@ export async function runScenario(input, dependencies = {}) {
     ...(input.lifecycleDefinition ? { lifecycleDefinition: input.lifecycleDefinition } : {}),
   });
 
-  const driven = await canonical.driveCanonicalProof({
-    bootstrap,
-    composition,
-    ...(input.driveOptions ?? {}),
-    scriptedObserver: observer,
-  });
+  let failClosed = null;
+  let driven;
+  try {
+    driven = await canonical.driveCanonicalProof({
+      bootstrap,
+      composition,
+      ...(input.driveOptions ?? {}),
+      scriptedObserver: observer,
+    });
+  } catch (error) {
+    if (typeof input.expectError !== 'string' || input.expectError.length === 0) {
+      throw error;
+    }
+    // Fail-closed scenarios: the engine refuses the input at a typed boundary
+    // (e.g. a grant whose releasePolicyHash does not bind the submitted
+    // policy). Identity/fingerprint still bind the composed lifecycle (§10.2)
+    // so the refusal bundle carries the same proof keys a drained run would;
+    // the typed refusal itself is the pinned contract.
+    const observed = error instanceof Error ? error.message : String(error);
+    const identity = canonical.assertInstalledIdentity(
+      bootstrap,
+      await canonical.readInstalledIdentity(bootstrap, {
+        lifecycleDefinition: composition.lifecycleDefinition ?? null,
+      }),
+    );
+    driven = {
+      result: null,
+      identity,
+      fingerprint: canonical.computeCanonicalProofFingerprint(
+        bootstrap, composition, identity,
+      ),
+    };
+    failClosed = { expected: input.expectError, observed };
+  }
 
   const durableTrace = traceApi.observeDurableTrace(bootstrap.dbPath);
-  const progress = traceApi.classifyPostDrainProgress(durableTrace, {
-    stoppedByStageOutcome: driven.result.stoppedByStageOutcome === true,
-    stageOutcome: input.driveOptions?.stopOnStageOutcome ?? null,
-  });
+  // A refused input never drains a run — post-drain progress classification
+  // is meaningless there; the typed-error oracle replaces it below.
+  const progress = failClosed
+    ? null
+    : traceApi.classifyPostDrainProgress(durableTrace, {
+      stoppedByStageOutcome: driven.result.stoppedByStageOutcome === true,
+      stageOutcome: input.driveOptions?.stopOnStageOutcome ?? null,
+    });
   const oracleContext = Object.freeze({
     scenario,
     bootstrap,
@@ -230,14 +262,21 @@ export async function runScenario(input, dependencies = {}) {
     observer,
   });
 
-  const oracleResults = [{
-    id: 'kernel.post-drain-progress',
-    passed: progress.ok,
-    evidenceRefs: progress.stalls.map(stall => `workplace:${stall.workplace}`),
-    details: progress.ok
-      ? { classifications: progress.rows.length }
-      : { stalls: progress.stalls },
-  }];
+  const oracleResults = failClosed
+    ? [{
+        id: 'kernel.fail-closed-typed-error',
+        passed: failClosed.observed === failClosed.expected,
+        evidenceRefs: [`typed-error:${failClosed.observed}`],
+        details: { expected: failClosed.expected, observed: failClosed.observed },
+      }]
+    : [{
+        id: 'kernel.post-drain-progress',
+        passed: progress.ok,
+        evidenceRefs: progress.stalls.map(stall => `workplace:${stall.workplace}`),
+        details: progress.ok
+          ? { classifications: progress.rows.length }
+          : { stalls: progress.stalls },
+      }];
   for (const [index, oracle] of (input.oracles ?? []).entries()) {
     oracleResults.push(await evaluateOracle(oracle, oracleContext, index));
   }

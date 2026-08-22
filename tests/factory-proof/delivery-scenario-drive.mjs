@@ -92,7 +92,11 @@ try {
   releasePolicy.contentHash = deliveryPolicyMod.hashDeliveryReleasePolicy(releasePolicy);
   const grantBody = {
     requestedBy: 'proof-delivery-night',
-    releasePolicyHash: releasePolicy.contentHash,
+    // grant-mismatch scenario: the grant pins a policy hash that does NOT
+    // match the submitted policy's contentHash — settlement must reject it.
+    releasePolicyHash: runtime.corruptGrantPolicyHash
+      ? shaMod.sha256Hex({ stale: 'diverted-policy' })
+      : releasePolicy.contentHash,
     candidateScope: { mode: 'lifecycle-output' },
   };
   const operatorAuthorization = {
@@ -152,6 +156,7 @@ try {
     handlers: runtime.handlers,
     oracles: runtime.oracles,
     actorEvidence: runtime.actorEvidence ?? [],
+    ...(runtime.expectError ? { expectError: runtime.expectError } : {}),
     deliveryProviders: buildCanonicalDeliveryProviders({
       repoPath: bootstrap.repoPath,
       ...(runtime.approvalStatus ? { approvalStatus: runtime.approvalStatus } : {}),
