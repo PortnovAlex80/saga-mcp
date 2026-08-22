@@ -16,6 +16,25 @@
 //   node tools/run-watchdog.mjs --db <factory.sqlite> --out <logs-dir> \
 //     [--journal <run-journal.jsonl>] [--interval-seconds 60] \
 //     [--stagnation-minutes 45] [--settings-sha <sha256>] [--max-hours 12]
+//   node tools/run-watchdog.mjs --help
+//
+// ARGUMENT CONTRACT (single source of truth: OPTIONS below). The sampling
+// interval flag is `--interval-seconds <seconds>` — NOT `--interval` (that is
+// `tools/saga-status.mjs watch`'s own flag, `--interval=S`). A drifted flag is
+// rejected with a remediation hint, never silently accepted; a value slot
+// whose next token begins with `--` is rejected as missing (flag-shaped) for
+// every option, string-valued ones included; the contract is locked from the
+// outside by tests/factory-contract/run-watchdog-cli.test.mjs
+// (launches --help, the parser error paths and an isolated live fixture).
+//
+// DO NOT CONFLATE with the built-in panel supervisor: this tool is the
+// EXTERNAL observation-only sampler (CLI flags, separate process, never
+// repairs/kills anything). `tracker-view/engine-supervisor.mjs` is the
+// BUILT-IN tracker supervisor (antifreeze layer C): in-process, configured by
+// env (SAGA_ENGINE_SUPERVISOR_INTERVAL_MS / _STALE_MS), durable events in
+// factory_engine_watchdog_events, and it MAY brake+restart a frozen engine.
+// Different mechanism, different config surface, own test coverage
+// (tests/app/engine-supervisor.test.mjs + the migration-smoke suite).
 //
 // Output: <out>/watchdog.jsonl, one line per sample. Trip lines carry a
 // non-empty `trips` array; the observed outcome carries `outcome`:
@@ -42,25 +61,95 @@ import { appendFileSync, readFileSync, statSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+/* ---------------------------------------------------------------------------
+ * Argument contract — the ONE place this tool's CLI is defined. Usage text,
+ * parsing and validation all derive from this table. External launch surfaces
+ * (ЗАВОД-ЗАПУСК.md §13, night briefs) must use these exact flags.
+ * ------------------------------------------------------------------------- */
+const OPTIONS = Object.freeze([
+  { flag: '--db', key: 'db', kind: 'string', required: true, placeholder: '<factory.sqlite>' },
+  { flag: '--out', key: 'out', kind: 'string', required: true, placeholder: '<logs-dir>' },
+  { flag: '--journal', key: 'journal', kind: 'string', default: null, placeholder: '<run-journal.jsonl>' },
+  { flag: '--interval-seconds', key: 'intervalSeconds', kind: 'positive-int', default: 60, placeholder: '<seconds>' },
+  { flag: '--stagnation-minutes', key: 'stagnationMinutes', kind: 'positive-int', default: 45, placeholder: '<minutes>' },
+  { flag: '--settings-sha', key: 'settingsSha', kind: 'string', default: null, placeholder: '<sha256>' },
+  { flag: '--max-hours', key: 'maxHours', kind: 'positive-int', default: 12, placeholder: '<hours>' },
+]);
+
+/** Sibling-tool flags that drift toward this CLI. Rejected with a pointed
+ * remediation (one interval flag must mean one thing across the observation
+ * tool family) — never aliased, never accepted. */
+const DRIFT_REMEDIATIONS = Object.freeze({
+  '--interval': '--interval-seconds <seconds>',
+  '--interval-ms': '--interval-seconds <seconds>',
+  '--interval-secs': '--interval-seconds <seconds>',
+});
+
+function usageLine() {
+  const optional = OPTIONS.filter((o) => !o.required).map((o) => `[${o.flag} ${o.default ?? o.placeholder}]`);
+  return `usage: node tools/run-watchdog.mjs --db <sqlite> --out <dir> ${optional.join(' ')}`;
+}
+
+function helpText() {
+  const rows = OPTIONS.map((o) => `  ${o.flag.padEnd(20)} ${o.required ? 'required' : `default ${o.default ?? 'none'}`}${o.kind === 'positive-int' ? '  (positive integer)' : ''}  ${o.placeholder}`);
+  return [
+    'run-watchdog — external observation-only sampler for a factory run.',
+    'Writes <out>/watchdog.jsonl: one record per sample; never repairs,',
+    'never kills, never opens the DB read-write (the built-in panel',
+    'supervisor tracker-view/engine-supervisor.mjs is the separate',
+    'freeze-treatment mechanism — do not conflate the two).',
+    '',
+    usageLine(),
+    '',
+    'Options:',
+    ...rows,
+    '',
+    'The interval flag is --interval-seconds. There is no --interval here',
+    '(that spelling belongs to tools/saga-status.mjs watch).',
+    '',
+  ].join('\n');
+}
+
+function die(msg) { process.stderr.write(`run-watchdog: ${msg}\n`); process.exit(2); }
+
 function parseArgs(argv) {
-  const out = { db: null, out: null, journal: null, intervalSeconds: 60, stagnationMinutes: 45, settingsSha: null, maxHours: 12 };
+  const out = {};
+  for (const o of OPTIONS) out[o.key] = o.default;
+  const byFlag = new Map(OPTIONS.map((o) => [o.flag, o]));
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
+    if (a === '--help' || a === '-h') { process.stdout.write(helpText()); process.exit(0); }
+    const drift = DRIFT_REMEDIATIONS[a];
+    if (drift) die(`unknown option ${a} — the sampling interval flag of this tool is ${drift}`);
+    const opt = byFlag.get(a);
+    if (!opt) die(`unknown option ${a}\n${usageLine()}`);
     const value = argv[i + 1];
-    const need = () => { if (!value) die(`${a} requires a value`); i += 1; return value; };
-    if (a === '--db') out.db = need();
-    else if (a === '--out') out.out = need();
-    else if (a === '--journal') out.journal = need();
-    else if (a === '--interval-seconds') { out.intervalSeconds = Number(need()); }
-    else if (a === '--stagnation-minutes') { out.stagnationMinutes = Number(need()); }
-    else if (a === '--settings-sha') out.settingsSha = need();
-    else if (a === '--max-hours') { out.maxHours = Number(need()); }
-    else die(`unknown option ${a}`);
+    // A value slot must never swallow the next flag. `--out --journal` used
+    // to accept the literal string "--journal" as the logs dir, mkdir it and
+    // START the watchdog on a garbage contract. Any next token beginning
+    // with "--" is missing/flag-shaped for EVERY option kind — string options
+    // included (numeric ones only failed afterwards on the NaN check, with a
+    // misleading "positive integer" message).
+    const flagShaped = typeof value === 'string' && value.startsWith('--');
+    if (!value || flagShaped) {
+      die(flagShaped
+        ? `${a} requires a value (${opt.placeholder}); "${value}" looks like another flag, not a value`
+        : `${a} requires a value (${opt.placeholder})`);
+    }
+    i += 1;
+    if (opt.kind === 'positive-int') {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n <= 0) die(`${a} requires a positive integer, got "${value}"`);
+      out[opt.key] = n;
+    } else {
+      out[opt.key] = value;
+    }
   }
-  if (!out.db || !out.out) die('usage: node tools/run-watchdog.mjs --db <sqlite> --out <dir> [--journal <jsonl>] [--interval-seconds 60] [--stagnation-minutes 45] [--settings-sha <sha>] [--max-hours 12]');
+  for (const o of OPTIONS) {
+    if (o.required && !out[o.key]) die(usageLine());
+  }
   return out;
 }
-function die(msg) { process.stderr.write(`run-watchdog: ${msg}\n`); process.exit(2); }
 
 function sha256File(path) {
   try { return createHash('sha256').update(readFileSync(path)).digest('hex'); } catch { return null; }
@@ -154,6 +243,11 @@ function fingerprint(sample) {
 }
 
 const args = parseArgs(process.argv);
+// Fail fast on a mistyped --db path: an absent DB would otherwise spin the
+// sampling loop on sample_error records forever while looking alive.
+if (!statSync(args.db, { throwIfNoEntry: false })?.isFile()) {
+  die(`database not found: ${args.db}`);
+}
 mkdirSync(args.out, { recursive: true });
 const outPath = join(args.out, 'watchdog.jsonl');
 const settingsPath = join(homedir(), '.claude', 'settings.json');
