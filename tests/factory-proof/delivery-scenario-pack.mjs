@@ -98,7 +98,6 @@ function noStrandedExecutionOracle() {
 
 export const DELIVERY_PENDING_UNIVERSE = Object.freeze([
   'L:observe-before-retry:no-duplicate-non-idempotent-effect',
-  'L:candidate-immutability:drift-after-certification-blocks',
   'K4:crash-after-effect-before-receipt',
 ]);
 
@@ -193,6 +192,21 @@ export const DELIVERY_SCENARIOS = Object.freeze([
     proves: ['handoff.route-lifecycle'],
     coverageItems: [
       'L:approval:binds-candidate+preflight+policy-hash',
+      coverageToken.transition('settle-delivery', 'complete-blocked'),
+    ],
+  }),
+  // Candidate immutability: the material Development certified is the ONLY
+  // material a release may settle on. When the current candidate hash has
+  // drifted from the certified one — the world changed after certification —
+  // settlement blocks on 'candidate-drifted': no release settles on mutated
+  // material, even though the effects already fired.
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'delivery/candidate-immutability-drift-blocked',
+    kind: 'positive',
+    proves: ['handoff.route-lifecycle'],
+    coverageItems: [
+      'L:candidate-immutability:drift-after-certification-blocks',
       coverageToken.transition('settle-delivery', 'complete-blocked'),
     ],
   }),
@@ -386,6 +400,62 @@ export function buildDeliveryRuntimeCase(id) {
               };
             },
           },
+        ],
+      };
+    case 'delivery/candidate-immutability-drift-blocked':
+      return {
+        scenario,
+        launchMode: 'authorized',
+        driftCandidate: true,
+        handlers: Object.freeze({ ...W9_HAPPY_HANDLERS }),
+        driveOptions: { maxCycles: 420, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          terminalOracle('delivery-blocked'),
+          deliveryStageOutcomeOracle('blocked'),
+          // The block reason is the DRIFT itself: the settle node's outcome
+          // certificate carries reason code 'candidate-drifted' — not a
+          // generic failure.
+          {
+            id: 'delivery.drift.reason-candidate-drifted',
+            evaluate({ durableTrace }) {
+              const cert = (durableTrace.processOutcomeCertificates ?? [])
+                .find(row => JSON.stringify(row.reason_codes ?? row.certificate_payload ?? {})
+                  .includes('candidate-drifted'));
+              return {
+                passed: Boolean(cert),
+                evidenceRefs: cert
+                  ? [`outcome-certificate:${cert.certificate_ref ?? cert.id}`]
+                  : [],
+                details: {
+                  certificate: cert?.certificate_ref ?? cert?.id ?? null,
+                  reasonCodes: cert?.reason_codes ?? null,
+                },
+              };
+            },
+          },
+          // The effects DID fire before settlement — and the release is still
+          // denied: drift blocks the settlement, it does not un-publish.
+          {
+            id: 'delivery.drift.effect-fired-release-denied',
+            evaluate({ durableTrace }) {
+              const actions = (durableTrace.deliveryEffectActions ?? [])
+                .filter(a => String(a.node_id).startsWith('publish')
+                  || String(a.provider_namespace).startsWith('proof-deployment'));
+              const fired = actions.some(a => a.execution_attempts >= 1);
+              const released = (durableTrace.lifecycleRuns ?? [])
+                .some(run => run.terminal_status === 'released');
+              return {
+                passed: fired && !released,
+                evidenceRefs: actions.map(a => `${a.provider_namespace}:${a.action_key}`),
+                details: {
+                  deliveryActions: actions.length,
+                  fired,
+                  releasedTerminal: released,
+                },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
         ],
       };
     case 'delivery/deferred-approval-required':

@@ -181,7 +181,10 @@ function providerEvidence(prefix, body) {
   return { schema: `factory.proof.${prefix}.v1`, ref: `proof:${prefix}:${hash}`, hash };
 }
 
-export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus, observeMismatch = false, executeUncertain = false } = {}) {
+export function buildCanonicalDeliveryProviders({
+  repoPath, approvalStatus, observeMismatch = false, executeUncertain = false,
+  driftCandidate = false,
+} = {}) {
   const markerRoot = path.join(repoPath, '.git');
   const markerPath = actionKey => path.join(
     markerRoot, `.proof-release-marker-${sha256Hex(actionKey)}.json`,
@@ -256,10 +259,24 @@ export function buildCanonicalDeliveryProviders({ repoPath, approvalStatus, obse
     },
   };
 
+  // candidate-immutability seam. The production runtime reads the current
+  // candidate hash from TWO places: inside SqliteDeliveryRuntime.observe
+  // (the observation store — its snapshot is lineage-validated by
+  // delivery-installation the moment it is written) and inside
+  // buildSettlementInput (every settlement/routing read). Drift detected at
+  // the observation store fails the process; drift BETWEEN the stored
+  // observation and the settlement read is the TOCTOU window the
+  // 'candidate-drifted' settlement branch guards. The double discriminates
+  // by the immediate caller frame — if the internals rename, this scenario
+  // fails loudly (wrong terminal), never silently passes.
   return {
     preflight,
     actionProviders: { deployment },
     observeCurrentCandidateHash(deliveryCase) {
+      if (driftCandidate
+        && !/SqliteDeliveryRuntime\.observe\b/.test(new Error().stack ?? '')) {
+        return sha256Hex({ drifted: deliveryCase.integratedCandidate.hash });
+      }
       return deliveryCase.integratedCandidate.hash;
     },
     ...(approvalStatus ? {

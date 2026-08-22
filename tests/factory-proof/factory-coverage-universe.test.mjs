@@ -38,13 +38,13 @@ test('CLOSED means set-equality: zero uncovered, zero pending', () => {
 });
 
 test('SPINE means an honest pending ledger — the exact global uncovered set is ratcheted', () => {
-  assert.equal(universe.totals.pendingTotal, 22,
-    '22 pending: development 19 + delivery 3');
-  assert.equal(universe.globalUncovered.length, 22);
+  assert.equal(universe.totals.pendingTotal, 21,
+    '21 pending: development 19 + delivery 2');
+  assert.equal(universe.globalUncovered.length, 21);
   const dev = universe.perWorkshop.find(w => w.workshop === 'development');
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
   assert.equal(dev.pendingSize, 19, 'D2–D10 + the git-change desk-replay seam');
-  assert.equal(dl.pendingSize, 3, 'delivery pending (grant-mismatch landed as a typed fail-closed refusal)');
+  assert.equal(dl.pendingSize, 2, 'delivery pending (candidate-immutability drift landed as settlement candidate-drifted)');
 });
 
 test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
@@ -54,7 +54,7 @@ test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
 });
 
 test('universe totals are ratcheted', () => {
-  assert.equal(universe.totals.universeTokens, 144);
+  assert.equal(universe.totals.universeTokens, 143);
   assert.equal(universe.totals.platformFaultEdges, 6,
     'K4-owned platform fault edges (1 discovery + 5 formalization)');
 });
@@ -64,5 +64,5 @@ test('report renders the honest table', () => {
   assert.match(text, /\| discovery \| CLOSED \|/);
   assert.match(text, /\| development \| SPINE \|/);
   assert.match(text, /\| delivery \| SPINE \|/);
-  assert.match(text, /global uncovered: 22/);
+  assert.match(text, /global uncovered: 21/);
 });
