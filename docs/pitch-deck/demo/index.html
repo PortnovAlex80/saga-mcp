@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga · Завод изнутри — демо</title>
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="brand">SAGA<span>ЗАВОД ИЗНУТРИ</span></div>
+  <div id="levels">
+    <div class="lv" data-lv="0">ЗАВОД</div><i></i>
+    <div class="lv" data-lv="1">ЦЕХ</div><i></i>
+    <div class="lv" data-lv="2">СТОЛ</div>
+  </div>
+  <div id="badges"></div>
+</div>
+
+<!-- журнал событий (живая лента завода) -->
+<div id="log"></div>
+
+<!-- субтитры -->
+<div id="cap"><div id="cap-k"></div><div id="cap-t"></div></div>
+
+<!-- центральные титры -->
+<div id="card"></div>
+
+<!-- нижняя панель управления -->
+<div id="bar">
+  <div id="acts"></div>
+  <div id="track"><div id="prog"></div></div>
+  <div id="btns">
+    <button id="b-play" title="пауза / пуск (space)">⏸</button>
+    <button id="b-free" title="свободный режим: колесо — масштаб, drag — панорама, клик по столам">✈ свободный режим</button>
+    <button id="b-restart" title="заново">⟲ кинотеатр</button>
+  </div>
+</div>
+
+<script src="demo.js"></script>
+</body>
+</html>

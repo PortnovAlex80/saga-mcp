@@ -1,0 +1,72 @@
+/* Saga factory demo — палитра питч-дека: navy #0A0F1E + янтарь #FFB020 */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0A0F1E; }
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #F4F7FF; user-select: none; }
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
+#stage.free { cursor: crosshair; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; top: 0; left: 0; right: 0; padding: 18px 26px 0;
+  display: flex; align-items: flex-start; pointer-events: none; z-index: 5; }
+#brand { font-size: 22px; font-weight: 800; letter-spacing: 5px; color: #F4F7FF; }
+#brand span { display: block; font-size: 10px; font-weight: 700; letter-spacing: 4px;
+  color: #FFB020; margin-top: 3px; }
+#levels { display: flex; align-items: center; gap: 10px; margin: 2px auto 0; }
+#levels .lv { font-size: 11px; font-weight: 700; letter-spacing: 3px; color: #66799F;
+  padding: 6px 14px; border: 1px solid #223052; border-radius: 999px; background: rgba(20,30,56,.55); }
+#levels .lv.on { color: #FFD97A; border-color: #FFB020; box-shadow: 0 0 14px rgba(255,176,32,.25); }
+#levels i { width: 26px; height: 1px; background: #33436E; }
+#badges { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 120px; }
+.badge { font-family: Consolas, monospace; font-size: 11px; color: #93A5CE;
+  border: 1px solid #2A3B66; background: rgba(20,30,56,.7); border-radius: 6px; padding: 4px 10px; }
+.badge.hot { color: #FFD97A; border-color: #FFB020; }
+.badge.red { color: #FF5D6C; border-color: #FF5D6C; }
+
+/* ---------- журнал ---------- */
+#log { position: fixed; left: 26px; bottom: 96px; width: 400px; z-index: 5;
+  font-family: Consolas, monospace; font-size: 11.5px; line-height: 1.7; pointer-events: none; }
+#log div { color: #93A5CE; opacity: 0; animation: lg 7s forwards; white-space: nowrap; overflow: hidden; }
+#log div b { color: #FFD97A; font-weight: 400; }
+#log div.err b { color: #FF5D6C; }
+#log div.ok b { color: #3DDC97; }
+@keyframes lg { 4% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---------- субтитры ---------- */
+#cap { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%);
+  max-width: 860px; text-align: center; z-index: 6; pointer-events: none;
+  opacity: 0; transition: opacity .35s; }
+#cap.show { opacity: 1; }
+#cap-k { font-size: 11px; font-weight: 700; letter-spacing: 4px; color: #FFB020;
+  text-transform: uppercase; margin-bottom: 7px; text-shadow: 0 2px 8px #000; }
+#cap-t { font-size: 19px; font-weight: 600; color: #F4F7FF; text-shadow: 0 2px 12px #000, 0 0 30px #000;
+  line-height: 1.35; }
+
+/* ---------- центральные титры ---------- */
+#card { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 18px;
+  align-items: center; justify-content: center; z-index: 7; pointer-events: none;
+  opacity: 0; transition: opacity .6s; text-align: center; }
+#card.show { opacity: 1; }
+#card .big { font-size: 58px; font-weight: 800; letter-spacing: 6px; color: #F4F7FF;
+  text-shadow: 0 4px 30px rgba(0,0,0,.8); }
+#card .mid { font-size: 30px; font-weight: 700; letter-spacing: 2px; color: #FFD97A;
+  text-shadow: 0 4px 24px rgba(0,0,0,.8); }
+#card .sub { font-size: 16px; color: #93A5CE; letter-spacing: 1px; }
+#card .cta { font-family: Consolas, monospace; font-size: 14px; color: #FFD97A;
+  border: 1px solid #FFB020; border-radius: 9px; padding: 12px 22px; background: rgba(20,30,56,.7); }
+
+/* ---------- нижняя панель ---------- */
+#bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8;
+  padding: 10px 26px 14px; display: flex; flex-direction: column; gap: 8px;
+  background: linear-gradient(transparent, rgba(10,15,30,.9) 40%); }
+#acts { display: flex; gap: 14px; font-size: 10px; font-weight: 700; letter-spacing: 2.5px;
+  color: #66799F; }
+#acts span.on { color: #FFD97A; }
+#track { height: 6px; border-radius: 4px; background: #1B2547; cursor: pointer; }
+#prog { height: 100%; width: 0; border-radius: 4px;
+  background: linear-gradient(90deg, #FFB020, #FFD97A); }
+#btns { display: flex; gap: 10px; }
+#btns button { font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: 600;
+  color: #C7D3EE; background: rgba(20,30,56,.8); border: 1px solid #2A3B66; border-radius: 8px;
+  padding: 7px 14px; cursor: pointer; letter-spacing: .5px; }
+#btns button:hover { color: #FFD97A; border-color: #FFB020; }
+#btns button.on { color: #FFD97A; border-color: #FFB020; box-shadow: 0 0 12px rgba(255,176,32,.25); }
