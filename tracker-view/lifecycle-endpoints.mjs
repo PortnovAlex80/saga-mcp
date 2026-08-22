@@ -23,6 +23,35 @@ const require = createRequire(import.meta.url);
 // display_name column value) — COALESCE(display_name, hashName(worker_id)).
 import { hashName } from '../dist/worker-names.js';
 
+/**
+ * CC-GAP-2 — last-launch status as ONE read-only projection with separated
+ * channels (pure; exported for direct testing against a temp DB).
+ *
+ * launch_state/order_state are OPERATIONAL facts about the engine host and
+ * the order's run ('completed' = the engine settled the launch after the
+ * lifecycle reached a terminal state — ANY business verdict). The business
+ * verdict travels in the joined lifecycle columns (status vs terminal_status)
+ * and is never implied by launch/order 'completed'. The lifecycle join is
+ * COALESCE(launch.lifecycle_run_id, order.lifecycle_run_id): markFactoryLaunch
+ * Running stamps the launch row; older rows may only carry the order pointer.
+ */
+export function readLastLaunchStatus(db, epicId) {
+  return db.prepare(
+    `SELECT l.state AS launch_state, l.error AS launch_error,
+            l.completed_at AS launch_finished_at,
+            o.state AS order_state, o.last_error AS order_error,
+            lr.id AS lifecycle_run_id, lr.status AS lifecycle_status,
+            lr.terminal_status AS lifecycle_terminal_status,
+            lr.current_stage_id AS lifecycle_stage_id
+       FROM factory_launch_requests l
+       JOIN factory_orders o ON o.order_ref=l.order_ref
+       LEFT JOIN factory_lifecycle_runs lr
+         ON lr.id = COALESCE(l.lifecycle_run_id, o.lifecycle_run_id)
+      WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
+      ORDER BY l.rowid DESC LIMIT 1`,
+  ).get(epicId) ?? null;
+}
+
 export function createLifecycleEndpointsApi({
   sagaApplication,
   repositoryHandlers,
@@ -640,15 +669,7 @@ export function createLifecycleEndpointsApi({
       // TB-3: a dead engine leaves its reason ONLY in
       // factory_launch_requests/factory_orders — surface the last failure so
       // the board shows WHY the factory is silent instead of a bare toggle.
-      const launch = withDb(db => db.prepare(
-        `SELECT l.state AS launch_state, l.error AS launch_error,
-                l.completed_at AS launch_finished_at,
-                o.state AS order_state, o.last_error AS order_error
-           FROM factory_launch_requests l
-           JOIN factory_orders o ON o.order_ref=l.order_ref
-          WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
-          ORDER BY l.rowid DESC LIMIT 1`,
-      ).get(state.epicId));
+      const launch = withDb(db => readLastLaunchStatus(db, state.epicId));
       // Antifreeze layer C: the raw engine_state (incl. 'failed_watchdog'),
       // its last_error, and the newest watchdog verdict — so the board shows
       // WHY a factory went silent after the supervisor exhausted its budget.
@@ -685,6 +706,18 @@ export function createLifecycleEndpointsApi({
           error: launch.launch_error ?? launch.order_error ?? null,
           finished_at: launch.launch_finished_at,
           order_state: launch.order_state,
+          // CC-GAP-2: launch/order 'completed' is an OPERATIONAL fact — the
+          // engine settled this launch after the run reached a lifecycle
+          // terminal state. The business verdict is exposed separately and is
+          // never implied by it: terminal_status (e.g. 'released',
+          // 'development-blocked', 'approval-required') plus the lifecycle
+          // machine status remain visible next to every 'completed'.
+          lifecycle: launch.lifecycle_run_id != null ? {
+            run_id: launch.lifecycle_run_id,
+            status: launch.lifecycle_status ?? null,
+            terminal_status: launch.lifecycle_terminal_status ?? null,
+            stage_id: launch.lifecycle_stage_id ?? null,
+          } : null,
         } : null,
       });
     } catch (error) {

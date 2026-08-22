@@ -89,6 +89,28 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
     // orchestrator's commits — never inside a transaction a rollback could
     // falsify. Observation only.
     //
+    // CC-GAP-2 — four SEPARATED channels in one payload; none implies another:
+    //   outcome/status        operational: the engine reached a terminal state
+    //                         ('completed' = a routed business terminal, ANY
+    //                         verdict — never product success by itself)
+    //   terminal_status       lifecycle business verdict (terminal_status).
+    //                         The repository stamps it on EVERY terminal path
+    //                         (routed terminal → its declared status, fail()
+    //                         → 'failed', cancel() → 'cancelled'); it is null
+    //                         only while the run is non-terminal.
+    //   stage_outcome         the final stage/process LOCAL outcome code, with
+    //   stage_outcome_authority  the authority that settled THAT stage —
+    //                         stage-level provenance only; it does not vouch
+    //                         for terminal_status or product_outcome.
+    //   product_outcome       the engine-projected final outcome
+    //                         (terminalStatus ?? last stage localOutcome).
+    // Terminal statuses are declarative per lifecycle package; this projection
+    // carries them verbatim and classifies NOTHING (workshop-agnostic).
+    // The enriched payload is carried ONLY by the CC-GAP-4 claim winner below:
+    // a replayed crossing (claimed:false), a fail-closed null claim, or a
+    // swallowed claim error appends NOTHING — enrichment never widens the
+    // exactly-once envelope.
+    //
     // CC-GAP-4 — the status guard above is NOT an exactly-once gate: a
     // replayed terminal run returns the same terminal result, and the two
     // competing terminal paths (dispatch + obligation re-drive) both do
@@ -122,6 +144,10 @@ export class LifecycleOrchestrationEngineAdapter implements OrchestrationEngine 
           }, {
             outcome: reason,
             status: result.status,
+            terminal_status: result.terminalStatus,
+            stage_outcome: lastStage?.localOutcome ?? null,
+            product_outcome: result.terminalStatus ?? lastStage?.localOutcome ?? null,
+            stage_outcome_authority: lastStage?.authority ?? null,
             final_stage: result.lifecycleRun.currentStageId
               ?? lastStage?.stageId
               ?? definition.entryStageId,

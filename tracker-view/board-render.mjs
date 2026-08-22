@@ -941,6 +941,19 @@ export function createBoardRenderApi({
             runnerStatus.textContent = (panelSeesEngine ? 'работает' : 'остановлен')
               + ' · concurrency=' + state.concurrency
               + (effective !== state.concurrency ? ' (effective ' + effective + ')' : '');
+            // CC-GAP-2: launch/order 'completed' and engine exit 0 are
+            // OPERATIONAL facts ("the engine settled this launch after the
+            // run reached a lifecycle terminal state") — never product
+            // success. When the engine is not running and the last launch
+            // settled completed, render the lifecycle's business verdict
+            // (terminal_status) next to the status so no reader can take the
+            // bare label as a success claim.
+            if (!panelSeesEngine && state.last_launch && state.last_launch.state === 'completed' && state.last_launch.lifecycle) {
+              const verdict = state.last_launch.lifecycle.terminal_status
+                || state.last_launch.lifecycle.status
+                || 'unknown';
+              runnerStatus.textContent += ' · ран завершён, вердикт: ' + verdict;
+            }
           }
           if (runnerConcurrency && state.concurrency) {
             runnerConcurrency.value = String(state.concurrency);

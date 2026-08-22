@@ -68,6 +68,8 @@ import { developmentContinuationPackageManifest } from '../process-modules/modul
 import { developmentVerificationContinuationPackageManifest } from '../process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from '../process-modules/modules/delivery/package/manifest.js';
 import { assembleProductLifecycleInput } from '../app/start-product-lifecycle-from-idea.js';
+import { settleLaunchFromRunResult } from '../app/launch-terminal-settlement.js';
+import type { OrchestrationRunResult } from '../application/ports/orchestration-engine.js';
 import {
   assertProductDeliveryLifecycleInput,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
@@ -578,6 +580,7 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
   let cycles = 0;
   let lastReason = 'unknown';
   let lastStage = '';
+  let lastResult: OrchestrationRunResult | null = null;
   let lifecycleRunId: number | null = null;
   let stoppedByCycleBound = false;
   let stoppedByStageOutcome = false;
@@ -603,6 +606,7 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
       });
       cycles += 1;
       isFirstCycle = false;
+      lastResult = result;
       lastReason = result.reason;
       lastStage = result.finalStage;
       if (result.lifecycleRun?.id) {
@@ -684,14 +688,22 @@ export async function driveFreshHarness(opts: DriveFreshHarnessOptions): Promise
     ).get(bootstrap.projectId, bootstrap.epicId) as { n: number }
   ).n;
 
+  // CC-GAP-2: the drive settles its launch through the SAME pure settlement
+  // projection as orchestrate-cli (settleLaunchFromRunResult) — one mapping,
+  // not two divergent copies. Operational mapping is unchanged; the verdict
+  // channels ride along on the returned settlement for callers that project
+  // them (reachedTerminal stays the operational fact it always was).
   const isTerminal = lastReason !== 'paused';
   try {
+    const settlement = lastResult !== null
+      ? settleLaunchFromRunResult(lastResult)
+      : null;
     finishFactoryLaunch(
       driveLaunchRef,
       claimToken,
-      isTerminal ? (lastReason === 'failed' ? 'failed' : 'completed') : 'paused',
-      null,
-      isTerminal ? (lastReason === 'failed' ? 'start_failed' : 'completed') : 'paused',
+      settlement ? settlement.launchState : 'paused',
+      settlement ? settlement.launchError : null,
+      settlement ? settlement.orderState : 'paused',
     );
   } catch {
     /* finishing the launch is best-effort at drive end */

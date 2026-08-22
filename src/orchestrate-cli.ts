@@ -55,6 +55,7 @@ import { developmentContinuationPackageManifest } from './process-modules/module
 import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
 import { journalEvent } from './observability/run-journal.js';
+import { settleLaunchFromRunResult } from './app/launch-terminal-settlement.js';
 import {
   acquireFactoryLaunchController,
   assertFactoryControllerFence,
@@ -134,6 +135,12 @@ async function main() {
   // STAGE-11 TASK 5 — set by the exit sites, read by the exit hook for the
   // one-shot engine.exit journal line ('boot' until the main flow decides).
   let exitReason: string = 'boot';
+  // CC-GAP-2 — the business verdict channels travel WITH the exit code so an
+  // `engine.exit {code: 0}` line can never be read as product success on its
+  // own: code/reason stay operational, terminal_status/product_outcome carry
+  // the lifecycle verdict (null on fatal paths where it is genuinely unknown).
+  let exitTerminalStatus: string | null = null;
+  let exitProductOutcome: string | null = null;
   const controllerHeartbeat = setInterval(() => {
     try {
       // Antifreeze B3: the lease renewal is a hot engine write on the SHARED
@@ -225,10 +232,15 @@ async function main() {
     // appendFileSync is synchronous and legal in an exit handler.
     journalEvent('engine.exit', {
       epic_id: epicId ?? undefined,
-      run_id: ticket.lifecycleRunId != null ? String(ticket.lifecycleRunId) : undefined,
+      run_id: ticket.lifecycleRunId !== null ? String(ticket.lifecycleRunId) : undefined,
     }, {
       code,
       reason: exitReason,
+      // CC-GAP-2: separated verdict channels — exit code 0 ("the engine
+      // reached a lifecycle terminal state") never implies product success;
+      // the verdict is on the same evidence line.
+      terminal_status: exitTerminalStatus,
+      product_outcome: exitProductOutcome,
     });
   });
 
@@ -642,8 +654,18 @@ async function main() {
     // the launch nor the order is marked 'completed' — both record 'paused' so
     // status readers cannot mistake this for convergence. The exit code is 2
     // (distinct from 0=success and 1=failure).
-    const isTerminal = result.reason !== 'paused';
-    if (!isTerminal) {
+    //
+    // CC-GAP-2: for the TERMINAL branch, launch/order 'completed' and exit 0
+    // are OPERATIONAL facts only — "the engine brought the run to a lifecycle
+    // terminal state", whatever that terminal's business verdict is
+    // (`terminal_status`: released, development-blocked, approval-required,
+    // ...). The engine has no workshop-agnostic success classification for
+    // terminal statuses and must not invent one, so the verdict is carried
+    // alongside (engine.exit journal fields + durable
+    // factory_lifecycle_runs.terminal_status) instead of being flattened into
+    // the exit code. Exit 0 / 'completed' therefore never implies product
+    // success.
+    if (result.reason === 'paused') {
       engineLog(
         `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}`,
       );
@@ -651,19 +673,29 @@ async function main() {
         `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}\n`,
       );
     }
+    const settlement = settleLaunchFromRunResult(result);
+    exitTerminalStatus = settlement.lifecycleTerminalStatus;
+    exitProductOutcome = settlement.productOutcome;
+    engineLog(
+      `[orchestrate-cli] launch settlement: ${JSON.stringify({
+        launch_state: settlement.launchState,
+        order_state: settlement.orderState,
+        exit_code: settlement.exitCode,
+        lifecycle_status: settlement.lifecycleStatus,
+        terminal_status: settlement.lifecycleTerminalStatus,
+        stage_outcome: settlement.stageOutcome,
+        product_outcome: settlement.productOutcome,
+      })}`,
+    );
     finishFactoryLaunch(
       launchRef,
       claimToken,
-      isTerminal
-        ? (result.reason === 'failed' ? 'failed' : 'completed')
-        : 'paused',
-      result.reason === 'failed' ? JSON.stringify(result) : null,
-      isTerminal
-        ? (result.reason === 'failed' ? 'start_failed' : 'completed')
-        : 'paused',
+      settlement.launchState,
+      settlement.launchError,
+      settlement.orderState,
     );
-    exitReason = isTerminal ? result.reason : 'paused';
-    process.exit(isTerminal ? (result.reason === 'failed' ? 1 : 0) : 2);
+    exitReason = settlement.exitReason;
+    process.exit(settlement.exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     engineLog(`[orchestrate-cli] fatal: ${msg}`);
