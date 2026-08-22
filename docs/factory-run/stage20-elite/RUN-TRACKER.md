@@ -261,3 +261,20 @@ resume path re-stamps the catalog limit).
   check BATCH progress (this file + git log in the worktree), not factory
   liveness. Post-mortem owners: F-A planner prompt-snowball (bound the
   accumulated gate feedback), F-B untaught overlap-ordering rule.
+- **05:44Z (08:44 local) — ELITE-4 LAUNCHED on the F-series build.** Pre-flight:
+  HEAD `fbb7338b` (F-A prompt budget + telemetry, F-B deterministic overlap
+  assistance, F-C provider-rejected fail-fast — the first Elite run with all
+  three), build exit 0, fresh `elite4-db/`+`elite4/`+`elite4-logs/`, settings
+  sha anchored `2d6176e8…`. Engine detached pid 26984, launch
+  `launch-f443c896-87d9-46e1-a1a9-e6da2a70fc5d`, idea = the Elite-3 game
+  spec verbatim. Controls raised to concurrency 4 / model_concurrency_limit 4
+  immediately after start (re-apply after any resume). Watchdog live
+  (60 s samples, 45-min stagnation, 12-h max). First card claimed
+  (task 1 discovery-proposal, in_progress, 1 running execution).
+  Fronts up: docs-graph :4322 (200), workshop-designer :4324 (200) —
+  duplicates from earlier manual starts were cleaned (11 stale node
+  processes killed, incl. the old Elite-3 watchdog). WHAT TO WATCH: the
+  planner repair loop — with F-A the retry prompt stays bounded
+  ([prompt-budget] lines in worker logs), with F-B rejections now carry the
+  computed unordered-overlap pair set, with F-C an oversized prompt would
+  fail in seconds instead of 8×backoff per spawn.
