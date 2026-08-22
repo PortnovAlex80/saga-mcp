@@ -1161,20 +1161,34 @@ function runLocalReadiness(
  *     re-routed to unknown, never retried as substrate).
  *
  * The failed command's stderr is recorded as human-facing detail only — the
- * class decision reads exactly two booleans of the observation. The
- * observation and timestamp ride the evidence in BOTH directions (ADR-091
- * pre-mortem #1: the failed-step evidence records the step failure AND the
- * re-probe observation).
+ * class decision reads exactly two booleans of the observation.
+ *
+ * DETERMINISM (trusted_providers.determinism='full'): the recorded
+ * classification evidence is the TYPED OBSERVATION ITSELF (the
+ * available/linux booleans) plus the original failing-step detail — never a
+ * wall-clock timestamp. This function's output rides the receipt bytes in
+ * BOTH directions: the typed precondition message becomes attempt evidence in
+ * the unknown receipt's warrant diagnostic, and the healthy-note append
+ * becomes observation.reason inside the content-addressed
+ * `local-readiness:<digest>` evidence ref of the failed receipt. A wall-clock
+ * stamp there would make the provider's own evidence bytes a function of the
+ * clock — nondeterministic output from a provider trusted as
+ * deterministic_evidence. The ADR-091 pre-mortem race-detection intent (the
+ * failed-step evidence records BOTH the step failure and the re-probe
+ * observation) is served deterministically: the observation booleans, the
+ * original failure detail, and the retry-loop attempt ordinals
+ * (substrateRetryObservation) together identify the exact probe in the
+ * sequence without any clock.
  */
 function classifyMidCheckFailureByReprobe(error: unknown): never {
-  const observedAt = new Date().toISOString();
   const observation = reprobeDockerAvailabilityAfterFailure();
+  const observed = `available=${observation.available}, linux=${observation.linux}`;
   const originalDetail = errorMessage(error).slice(0, 600);
   if (!observation.available) {
     throw new ReadinessExecutionError(
       'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
       'mid-check substrate failure re-classified by mechanical re-probe '
-        + `(observed at ${observedAt}: docker daemon UNAVAILABLE — the substrate `
+        + `(observed ${observed}: docker daemon UNAVAILABLE — the substrate `
         + 'vanished after the availability probe passed; a machine fault, never a '
         + 'product verdict). Original failing-step detail (human-facing only, '
         + `never a classification input): ${originalDetail}`,
@@ -1184,18 +1198,18 @@ function classifyMidCheckFailureByReprobe(error: unknown): never {
     throw new ReadinessExecutionError(
       'LOCAL_RUNNABILITY_DOCKER_NOT_LINUX',
       'mid-check substrate failure re-classified by mechanical re-probe '
-        + `(observed at ${observedAt}: docker daemon reachable but OSType is NOT `
+        + `(observed ${observed}: docker daemon reachable but OSType is NOT `
         + 'linux). Original failing-step detail (human-facing only, never a '
         + `classification input): ${originalDetail}`,
     );
   }
   // Observed available + linux: the failure stands as the ORIGINAL product
   // failure. The observation is appended to the evidence (race detection per
-  // the ADR-091 pre-mortem); it never changes the class, and no retry is
-  // spent on it.
+  // the ADR-091 pre-mortem, as the typed booleans — never a wall clock); it
+  // never changes the class, and no retry is spent on it.
   if (error instanceof Error) {
     error.message += ` | ADR-091 mid-check re-probe observed docker available + linux `
-      + `at ${observedAt}; the substrate was healthy — the failure stands as the `
+      + `(${observed}); the substrate was healthy — the failure stands as the `
       + 'original product failure';
   }
   throw error;

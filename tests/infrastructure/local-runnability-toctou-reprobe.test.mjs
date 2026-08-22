@@ -36,6 +36,17 @@
 //      and a receipt from a foreign provider digest are both rejected; the
 //      obligation compiler pins `factory.local-runnability.v1` @ `1.12.0`.
 //
+// Repair arms (2026-08-22 audit):
+//   (a) not-linux arm — a mid-check re-probe observing available:true,
+//      linux:false routes DOCKER_NOT_LINUX through the SAME bounded
+//      typed-unknown path, never conflated with DOCKER_UNAVAILABLE;
+//   host-executor control — a failing HOST runCommand triggers ZERO docker
+//      probes (no start probe, no re-probe) and stays product `failed` even
+//      on a daemon-less machine (host steps have no daemon dependency);
+//   determinism — the mid-check classification evidence carries NO
+//      wall-clock: identical runs produce byte-equal receipts in both
+//      directions (trusted_providers determinism='full').
+//
 // Hermeticity: the daemon OBSERVATION is scripted through the TEST-ONLY
 // installDockerInfoProbeForTests seam (the probe mechanics — bounded
 // `docker info`, cache invalidation, typed observation — stay frozen in
@@ -249,18 +260,27 @@ function scriptDaemonObservations(observations) {
 /**
  * A docker-executor fake faithful to the DockerReadinessExecutor contract:
  * prepare genuinely probes availability (the test seam observes the script)
- * and throws the typed precondition when the substrate is gone — exactly
- * what the production executor's ensureDockerAvailable does. The mid-check
- * step behavior is scripted per test.
+ * and throws the typed precondition the OBSERVATION dictates — mirroring the
+ * production executor's ensureDockerAvailable two-code split (!available →
+ * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE; available+not-linux →
+ * LOCAL_RUNNABILITY_DOCKER_NOT_LINUX; the two codes never conflate). The
+ * mid-check step behavior is scripted per test.
  */
 function dockerExecutorFake(calls, { prepareError, runCommandError } = {}) {
   return {
     prepare() {
       calls.prepare += 1;
-      if (!isDockerAvailableForReadiness()) {
+      const ready = isDockerAvailableForReadiness();
+      const observed = peekDockerAvailabilityCacheForTests();
+      if (!ready) {
+        const notLinux = observed !== null && observed.available;
         throw new ReadinessExecutionError(
-          'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
-          'environment.image is declared but the docker daemon is not available (probe)',
+          notLinux
+            ? 'LOCAL_RUNNABILITY_DOCKER_NOT_LINUX'
+            : 'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
+          notLinux
+            ? 'environment.image is declared but the docker daemon OSType is not linux (probe)'
+            : 'environment.image is declared but the docker daemon is not available (probe)',
         );
       }
       if (prepareError) throw prepareError;
@@ -275,11 +295,14 @@ function dockerExecutorFake(calls, { prepareError, runCommandError } = {}) {
   };
 }
 
-/** A passing host-substrate executor fake (no daemon dependency). */
-function hostExecutorFake(calls) {
+/** A host-substrate executor fake (no daemon dependency). */
+function hostExecutorFake(calls, { runCommandError } = {}) {
   return {
     prepare() { calls.prepare += 1; },
-    runCommand() { calls.runCommand += 1; },
+    runCommand() {
+      calls.runCommand += 1;
+      if (runCommandError) throw runCommandError;
+    },
     runServed() { return { port: 1, stdoutDigest: '0'.repeat(64), stderrDigest: '0'.repeat(64) }; },
     describe() { return { substrate: 'host' }; },
     dispose() {},
@@ -451,6 +474,90 @@ test('BLOCKING MUTATION (a), compose arm: a mid-check compose up failure with an
 });
 
 // ---------------------------------------------------------------------------
+// BLOCKING MUTATION (a), not-linux arm — the mid-check re-probe observes the
+// daemon REACHABLE but on a NON-LINUX runtime (available:true, linux:false):
+// the failure routes DOCKER_NOT_LINUX through the SAME bounded typed-unknown
+// path, never conflated with DOCKER_UNAVAILABLE, never product `failed`.
+// ---------------------------------------------------------------------------
+
+test('BLOCKING MUTATION (a), not-linux arm: mid-check re-probe observing available+not-linux → DOCKER_NOT_LINUX rides the bounded typed-unknown path, never conflated with unavailable', { timeout: 60_000 }, async () => {
+  const calls = { prepare: 0, runCommand: 0, dispose: 0, compose: [] };
+  // The observed daemon lifecycle: healthy at the start-of-check probe
+  // (attempt-1 prepare), reachable-but-not-linux at the mid-check re-probe
+  // (the runtime flipped after the probe passed — the second TOCTOU truth),
+  // and still not-linux at the attempt-2/3 prepare probes.
+  const probes = scriptDaemonObservations([
+    { available: true, linux: true },
+    { available: true, linux: false },
+    { available: true, linux: false },
+    { available: true, linux: false },
+  ]);
+  try {
+    const { result, db } = await runToctouCase({
+      executorFactory: () => dockerExecutorFake(calls, {
+        runCommandError: new Error(
+          'docker run 3f2a... sh -c npm test failed: operating system is not supported',
+        ),
+      }),
+    });
+    try {
+      // THE not-linux assertion: an observed available+not-linux re-probe
+      // rides the ADR-089 machinery as DOCKER_NOT_LINUX — the typed unknown,
+      // never the product `failed` the flattening would record.
+      assert.equal(result.outcome, 'unknown',
+        'a runtime flip mid-check must never write a product verdict');
+
+      // The bounded retry genuinely re-entered: exactly the frozen bound of
+      // attempts; the mid-check step failed exactly once (never re-run).
+      assert.equal(calls.prepare, SUBSTRATE_RETRY_POLICY.maxAttempts);
+      assert.equal(calls.runCommand, 1);
+
+      // The probe sequence is the runtime-flip story: healthy → (step fails)
+      // → available+not-linux → not-linux → not-linux.
+      assert.equal(probes.length, 4);
+      assert.deepEqual(probes[0], { available: true, linux: true });
+      assert.deepEqual(probes[1], { available: true, linux: false },
+        'the mid-check mechanical re-probe observed the daemon reachable but not linux');
+      assert.deepEqual(probes.slice(2), [
+        { available: true, linux: false },
+        { available: true, linux: false },
+      ]);
+
+      const warrant = decodeDiagnostics(result)
+        .find(diag => diag.code === SUBSTRATE_PRECONDITION_DIAGNOSTIC);
+      assert.ok(warrant, 'the warrant-blocked-environment diagnostic rides the receipt');
+      // NOT-LINUX is its own typed truth — never conflated with unavailable:
+      // the warrant names exactly the not-linux code and never the
+      // unavailable code.
+      assert.match(warrant.message, /LOCAL_RUNNABILITY_DOCKER_NOT_LINUX/u);
+      assert.ok(
+        !warrant.message.includes('LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE'),
+        'available+not-linux must never be recorded as DOCKER_UNAVAILABLE (distinct typed truths)',
+      );
+      assert.match(warrant.message, new RegExp(`${SUBSTRATE_RETRY_POLICY.maxAttempts} in-check attempts`, 'u'));
+      // The rendered attempt detail is the not-linux TRUTH (the retry
+      // prepares observed the daemon reachable but not linux) — never the
+      // unavailable text. The mid-check classifier's own typed observation
+      // message ('observed available=true, linux=false') is attempt-1
+      // evidence; the warrant renders the last attempt's detail.
+      assert.match(warrant.message, /OSType is not linux/u);
+      assert.ok(!warrant.message.includes('not available'),
+        'the not-linux arm never records the unavailable truth');
+      assert.ok(!result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
+        'no seam repair issue: a substrate runtime flip is not a product defect');
+
+      const receipts = db.prepare('SELECT COUNT(*) AS n FROM factory_check_receipts').get();
+      assert.equal(receipts.n, 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // BLOCKING MUTATION (b) — the SAME failing step with an observed
 // available+linux re-probe stays product `failed`: never unknown, never
 // retried as substrate.
@@ -515,6 +622,71 @@ test('BLOCKING MUTATION (b), product command arm: failing product test step + he
       assert.equal(calls.runCommand, 1, 'never retried as substrate');
       assert.ok(!decodeDiagnostics(result).some(diag => diag.code === SUBSTRATE_PRECONDITION_DIAGNOSTIC),
         'a failing product command is never routed to unknown');
+    } finally {
+      db.close();
+    }
+  } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// HOST-EXECUTOR CONTROL — the ADR-091 re-probe is a DOCKER-executor/compose
+// mechanism only. A failing HOST runCommand has no daemon dependency: it must
+// trigger ZERO docker probes (no start probe, no re-probe — the daemon is
+// never consulted at all) and stay product `failed` even on a daemon-less
+// machine, where any wrongly-added re-probe would observe `unavailable` and
+// misroute the host product failure into the substrate unknown path.
+// ---------------------------------------------------------------------------
+
+test('HOST-EXECUTOR CONTROL: a failing host runCommand triggers ZERO docker re-probes and stays product `failed` on a daemon-less machine', { timeout: 60_000 }, async () => {
+  const calls = { prepare: 0, runCommand: 0, dispose: 0, compose: [] };
+  // The standing observation a daemon-less machine would give IF probed.
+  // The counting probe seam proves the daemon is NEVER consulted: zero
+  // probes, and the process-level availability cache is never even
+  // populated.
+  const probes = scriptDaemonObservations([{ available: false, linux: false }]);
+  try {
+    const { result, db } = await runToctouCase({
+      // A HOST profile: no environment.image, no compose declaration.
+      readiness: {
+        kind: 'static',
+        commands: { installCommand: null, testCommand: 'npm test' },
+      },
+      executorFactory: () => hostExecutorFake(calls, {
+        runCommandError: new Error('npm test exited 1: host product is red'),
+      }),
+    });
+    try {
+      // THE control assertion: the host failure is a product verdict…
+      assert.equal(result.outcome, 'failed',
+        'a failing host product command stays product `failed` — no daemon involved');
+      const diagnostics = decodeDiagnostics(result);
+      assert.equal(diagnostics[0].code, 'local-runnability',
+        'the plain host command failure keeps its default typed code');
+      assert.ok(!diagnostics.some(diag => diag.code === SUBSTRATE_PRECONDITION_DIAGNOSTIC),
+        'a host failure must never be re-routed to the substrate unknown path');
+      // …and ZERO docker probes ran: no start-of-check probe (host substrate
+      // never consults the daemon), no mid-check re-probe (host steps have no
+      // daemon dependency). An implementation re-probing "every executor
+      // failure" would consult the scripted daemon-less observation here and
+      // misroute this product failure to unknown — red.
+      assert.equal(probes.length, 0,
+        'a failing host step triggers ZERO docker info observations — no re-probe, no start probe');
+      assert.equal(peekDockerAvailabilityCacheForTests(), null,
+        'no docker availability observation was ever cached for a host-substrate check');
+      // Single attempt: the host failure is never retried as substrate.
+      assert.equal(calls.prepare, 1);
+      assert.equal(calls.runCommand, 1);
+      // The product failure keeps its typed seam repair issue, localized to
+      // the HOST substrate.
+      const issue = result.evidenceRefs
+        .map(ref => decodeSeamRepairIssue(ref))
+        .find(decoded => decoded !== null);
+      assert.ok(issue, 'the product failure keeps its typed seam repair issue');
+      assert.equal(issue.localization.substrate, 'host',
+        'the seam issue is localized to the host substrate, never docker');
     } finally {
       db.close();
     }
@@ -594,6 +766,94 @@ test('BLOCKING MUTATION (c), mirror arm: clean stderr + observed-unavailable re-
   } finally {
     installDockerInfoProbeForTests(null);
     resetDockerAvailabilityCache();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// BLOCKING MUTATION (determinism) — the mid-check re-probe evidence carries
+// NO wall-clock clock reading. The provider is trusted as
+// deterministic_evidence with determinism='full'; the classification evidence
+// rides the receipt bytes in BOTH directions (the healthy-note append is
+// hashed into the failed receipt's content-addressed `local-readiness:`
+// digest; the typed precondition message rides the unknown receipt's warrant
+// diagnostic). Two identical runs over the SAME sealed subject must produce
+// BYTE-EQUAL receipts in both directions, and no evidence ref may contain an
+// ISO-8601 timestamp.
+// ---------------------------------------------------------------------------
+
+test('BLOCKING MUTATION (determinism): identical mid-check classified runs produce byte-equal receipts — no wall-clock in the evidence (determinism=full)', { timeout: 120_000 }, async () => {
+  const ISO_TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u;
+  // One sealed subject (same fixture repo, same store): two genuinely
+  // executed checks with identical scripts must agree byte-for-byte.
+  const root = fixtureRepo();
+  const db = toctouStore(root);
+  try {
+    const { manifestDigest, submissionId } = insertManifest(db);
+    const candidateSets = manifestCandidateSets({ submissionId, manifestDigest });
+    const runTwice = async observations => {
+      const calls = { prepare: 0, runCommand: 0, dispose: 0, compose: [] };
+      scriptDaemonObservations(observations);
+      try {
+        const provider = createLocalRunnabilityCheckProvider({
+          db,
+          candidateSets,
+          executorSelector: () => dockerExecutorFake(calls, {
+            runCommandError: new Error('docker run sh -c npm test exited 1: product test output'),
+          }),
+          substrateRetrySleep: () => { /* hermetic instant schedule */ },
+        });
+        const first = await provider.run(RUN_ARGS(candidateSets.subjectRef));
+        const second = await provider.run(RUN_ARGS(candidateSets.subjectRef));
+        return { first, second, calls };
+      } finally {
+        installDockerInfoProbeForTests(null);
+        resetDockerAvailabilityCache();
+      }
+    };
+
+    // Healthy direction (product `failed`): the re-probe observation is
+    // appended to the failure reason that feeds the content-addressed
+    // digest — the two receipts must be byte-equal.
+    const healthy = await runTwice([
+      { available: true, linux: true },
+      { available: true, linux: true },
+      { available: true, linux: true },
+      { available: true, linux: true },
+    ]);
+    assert.equal(healthy.first.outcome, 'failed');
+    assert.deepEqual(healthy.second.evidenceRefs, healthy.first.evidenceRefs,
+      'two identical healthy-reprobe runs must produce byte-equal failed receipts'
+        + ' — a wall-clock stamp in the classification note would fork the digest');
+
+    // Unavailable direction (typed `unknown`): the typed message rides the
+    // warrant diagnostic — the two receipts must again be byte-equal. The
+    // script carries TWO full lifecycles (healthy start, gone re-probe, two
+    // gone retry prepares) so both runs classify the SAME mid-check failure.
+    const gone = await runTwice([
+      { available: true, linux: true },
+      { available: false, linux: false },
+      { available: false, linux: false },
+      { available: false, linux: false },
+      { available: true, linux: true },
+      { available: false, linux: false },
+      { available: false, linux: false },
+      { available: false, linux: false },
+    ]);
+    assert.equal(gone.first.outcome, 'unknown');
+    assert.deepEqual(gone.second.evidenceRefs, gone.first.evidenceRefs,
+      'two identical unavailable-reprobe runs must produce byte-equal unknown receipts');
+
+    // And no receipt byte carries an ISO-8601 wall-clock stamp in either
+    // direction.
+    for (const receipt of [healthy.first, healthy.second, gone.first, gone.second]) {
+      for (const ref of receipt.evidenceRefs) {
+        assert.ok(!ISO_TIMESTAMP.test(ref),
+          `wall-clock timestamp leaked into protected deterministic evidence: ${ref.slice(0, 120)}`);
+      }
+    }
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

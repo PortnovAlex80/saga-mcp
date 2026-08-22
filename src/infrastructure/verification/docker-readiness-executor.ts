@@ -35,11 +35,13 @@ import {
  * environment precondition is not a product verdict.
  *
  * Mid-check TOCTOU (ADR-091): a daemon that dies AFTER the start-of-check
- * probe passed surfaces as a failing executor step (pull, build, run, serve).
- * The provider does NOT classify such failures from their text: it calls
- * reprobeDockerAvailabilityAfterFailure() and only the OBSERVED result routes
- * (unavailable/not-linux → the ADR-089 machinery above; available+linux → the
- * original product `failed`). Stderr is never a classification input.
+ * probe passed surfaces as a failing Docker-executor step (pull, build, run,
+ * serve) or a failed compose step. The provider does NOT classify such
+ * failures from their text: it calls reprobeDockerAvailabilityAfterFailure()
+ * and only the OBSERVED result routes (unavailable/not-linux → the ADR-089
+ * machinery above; available+linux → the original product `failed`). Stderr is
+ * never a classification input. Host-executor steps (the sibling substrate in
+ * the provider) have no daemon dependency and are never re-probed.
  */
 
 /** `docker info` availability probe timeout (bounded so a hung daemon does not stall the gate). */
@@ -73,8 +75,9 @@ const PROBE_ATTEMPT_TIMEOUT_MS = 600;
  * recreating the Elite-6 failed-for-a-machine-fault shape, and a stale
  * negative would be replayed as attempt-1 evidence without any probe), again
  * between CC-GAP-9 in-check substrate retry attempts, by the ADR-091 mid-check
- * re-probe (every executor/compose step failure invalidates and re-observes
- * before classification), and by process restart.
+ * re-probe (every DOCKER-executor/compose step failure invalidates and
+ * re-observes before classification — host-executor steps have no daemon
+ * dependency and are never re-probed), and by process restart.
  */
 let dockerAvailabilityCache: { available: boolean; linux: boolean } | null = null;
 
