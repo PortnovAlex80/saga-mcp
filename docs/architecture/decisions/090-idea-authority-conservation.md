@@ -13,7 +13,9 @@
   unknown ledger, new mechanics-spec product family, gating archaeologist,
   and new conformance-obligation family are all rejected
 - **Implementation plan:** `docs/plans/CONFORMANCE-CLOSURE-PLAN.md`
-  (§7A, packets CC-IC-1..4, serialized after the CC-GAP-6 seam lands;
+  (§7A, packets CC-IC-1..4, serialized after the CC-GAP-6 seam, which
+  landed in integration at commit `50824c6a`; the CC-IC v2 vocabulary
+  work remains open —
   CC-IC is a mandatory overall qualification dependency — CC-10B, CC-80,
   and overall K qualification stay RED until CC-IC is implemented and
   proven, while the frozen CC-00C scope stays CC-GAP-6..10)
@@ -148,9 +150,11 @@ synthesis plus ordered smoke obligations, keep the LM archaeologist
  epic-clause coverage by correcting the direction of the existing
  `frm.submission.acceptance-contract` (and the analogous
  `frm.submission.srs-contract`) tokens. Implementation is four
- bounded serialized packets (CC-IC-1..4) that start only after the CC-GAP-6
- seam lands, with CC-IC-1 opening through a prerequisite v1 read-back
- verifier repair stage.
+  bounded serialized packets (CC-IC-1..4) that start after the CC-GAP-6
+  seam (landed in integration at commit `50824c6a`), with CC-IC-1 opening
+  through a prerequisite v1 read-back
+  verifier repair stage (satisfied by that same landing — CC-IC-1
+  verifies the repair at its base, never re-implements it).
 
 Pros:
 
@@ -296,24 +300,46 @@ Choose Option B. Normatively:
    is NOT a class and the class vocabulary is not overloaded. v2 adds an
    orthogonal per-entry `kind` vocabulary —
    `scope|open-question|mechanics|synthesis|ordered-smoke|quality` — and
-   unknowns are drafted as kind `open-question` entries. No parallel
+   unknowns are drafted as kind `open-question` entries. The worker-facing
+   carrier/validator is the Discovery submission boundary
+   (`src/modules/discovery/domain/discovery-proposal.ts`,
+   `validateDiscoveryProposal`, where every other draft field is already
+   checked fail-closed): a draft row carrying a `kind` MUST carry one of
+   the six closed values — anything else is a typed submission error, and
+   the register builder (`src/shared/constraint-register.ts`) repeats the
+   check fail-closed. A kind-less v1-shaped draft row under a NEW v2
+   settlement is defaulted deterministically to kind `scope` (the ordinary
+   reading of an order clause; kernel-side assignment, no guessing, no
+   prose rereading) — the specialization kinds are always explicit
+   declarations or kernel drafts (open-question from payload `unknowns`,
+   synthesis/ordered-smoke from the declared injection table). The
+   legacy boundary: frozen legacy v1 drafts and registers carry no `kind`
+   at all, verify unchanged under the v1 schema, and the absence of
+   `kind` on v1 data is not a defect; the deterministic default applies
+   only to new v2 settlements. No parallel
    scope-clause ledger and no parallel unknown ledger may be created;
    every conservation rule rides this register.
 2. **One digest/ref, honest revisions.** The register keeps exactly one
    content-addressed digest/ref. The v2 typed fields are entry content, so
    adding measurability/synthesis semantics to an entry produces a new
    digest — a new register revision, never an in-place mutation. v1
-   registers verify unchanged under their schema version — CONDITIONAL on
-   the prerequisite read-back repair recorded in the implementation plan
-   (CC-IC-1 stage 0, mutation m0): the existing
-   `verifyOrderConstraintRegister` in `src/shared/constraint-register.ts`
-   is BROKEN today — it feeds persisted canonical camelCase entries
-   (`evidenceRef`) into `buildOrderConstraintRegister`, which validates the
-   worker-facing snake_case draft shape (`evidence_ref`), so verifying any
-   genuine persisted v1 register throws
-   `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED`; it is dead code (no production
-   caller) with no test. That repair must land before any v2 field is
-   added — v2 read-back may not be built on a broken v1 verifier.
+   registers verify unchanged under their schema version — the
+   prerequisite read-back repair recorded in the implementation plan
+   (CC-IC-1 stage 0, mutation m0) is SATISFIED: the recorded production
+   defect (the pre-repair `verifyOrderConstraintRegister` in
+   `src/shared/constraint-register.ts` fed persisted canonical camelCase
+   entries (`evidenceRef`) into `buildOrderConstraintRegister`, which
+   validates the worker-facing snake_case draft shape (`evidence_ref`), so
+   verifying any genuine persisted v1 register threw
+   `ORDER_CONSTRAINT_EVIDENCE_REF_REQUIRED`; it was dead code with no
+   test) is closed by the integrated CC-GAP-6 landing (commit `50824c6a`),
+   which validates the canonical camelCase entry shape directly in the
+   verifier and proves build -> verify round-trip identity, digest tamper
+   (`ORDER_CONSTRAINT_REGISTER_DIGEST_MISMATCH`), and id reorder
+   (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`) in
+   `tests/discovery/order-constraint-register.test.mjs`. CC-IC-1 VERIFIES
+   that repair is present at its base and must not duplicate or
+   re-implement it — v2 read-back builds on the repaired v1 verifier.
 3. **Typed measurability — qualitative/experience obligations only.**
    Measurability semantics bind ONLY qualitative/experience obligations
    (kind `quality`): each such entry carries either a measurable
@@ -330,7 +356,15 @@ Choose Option B. Normatively:
    DECLARED, DIGEST-PINNED injection table — an immutable, versioned,
    content-addressed data declaration mapping the frozen classification to
    the exact injected entry payloads, cited by digest from the settlement
-   record — with a NORMATIVE INTERLEAVE ORDER: proposal-derived entries
+   record — OWNED by
+   `src/process-modules/lifecycles/product-build-lifecycle.ts` (declared
+   beside the frozen `runnable-local` terminal classification that file
+   owns; the lifecycle that freezes the classification owns its injection
+   declaration — data, not engine inference) and consumed READ-ONLY by
+   Discovery settlement
+   (`src/modules/discovery/application/discovery-production-cell-installation.ts`,
+   which cites the table digest in the settlement record) — with a
+   NORMATIVE INTERLEAVE ORDER: proposal-derived entries
    occupy `ord-c-001..NNN` in payload order and injected entries are
    appended AFTER them in the declared table order (synthesis, then
    ordered-smoke), never interleaved among proposal-derived rows, so
@@ -420,6 +454,11 @@ Choose Option B. Normatively:
 9. **The LM archaeologist is advisory only.** Its reports are evidence for
    promotion decisions and may be stored as ordinary artifacts, but they
    never gate, never mutate the register, and never write authority. The
+   report artifact carrier is an APPEND-ONLY ADVISORY record in
+   `src/modules/discovery/domain/discovery-settlement-records.ts`
+   (content-addressed, keyed to the exact proposal/register digest it read,
+   stored beside the settlement lineage it informs) — an ordinary evidence
+   record with no gate, register, relay, or authority consumer. The
    sole promotion path is a new register revision with a new digest through
    Discovery settlement; a blocking mutation proves an archaeologist report
    cannot alter the register, relay, reverse diff, or any gate outcome.
@@ -468,15 +507,20 @@ Choose Option B. Normatively:
 12. **Implementation is bounded and serialized, not a standing program.**
     The program lands as packets CC-IC-1..4
     (`docs/plans/CONFORMANCE-CLOSURE-PLAN.md` §7A), serialized after the
-    CC-GAP-6 seam lands, through the single-writer
+    CC-GAP-6 seam (landed in integration at commit `50824c6a`), through
+    the single-writer
     `Constraint register and warrant seam` row, with exact files, tests,
     and blocking mutations per packet and an explicit finish condition.
-    CC-IC-1 opens with a PREREQUISITE repair stage: the broken v1
+    CC-IC-1 opened with a PREREQUISITE repair stage — the broken v1
     read-back verifier (`verifyOrderConstraintRegister` in
     `src/shared/constraint-register.ts` — persisted camelCase entries
-    validated against the snake_case draft shape; dead code, untested
-    today) is repaired and proven (mutation m0) BEFORE any v2 schema field
-    lands. It
+    validated against the snake_case draft shape; dead code, untested when
+    recorded) — which is SATISFIED by that integrated CC-GAP-6 landing
+    (`50824c6a` repairs the verifier and proves it in
+    `tests/discovery/order-constraint-register.test.mjs`, mutation m0):
+    CC-IC-1 VERIFIES the repaired verifier is present at its base and must
+    not duplicate or re-implement it; the v2 vocabulary work (mutations
+    m1..m7 and their lettered variants) remains open. It
     is not a vague parallel implementation program and not a permanently
     open architecture cycle. CC-IC is NOT required for CC-00C exit (the
     frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
@@ -548,7 +592,11 @@ Negative:
 
 - register schema v2 churn on a live seam, serialized behind CC-GAP-6;
 - more semantics per register entry raises extraction burden on Discovery;
-- five more blocking mutations owed in the CC-IC set;
+- a multi-family blocking-mutation set owed in the CC-IC packets (the
+  m1..m7 mutation families with lettered variants across CC-IC-1..3, plus
+  the CC-IC-4 token and archaeologist mutants; the m0 read-back
+  prerequisite is already satisfied by the integrated CC-GAP-6 landing —
+  see Decision 2);
 - open-question friction: deferring is cheap but never free.
 
 Neutral / follow-ups:
@@ -577,7 +625,9 @@ established at disposition time against the accepted RULE artifact,
 deterministic runnable-local synthesis/smoke injection, an
 advisory-only LM archaeologist, and proof tokens compiled into the single
 ADR-084 AcceptanceObligationContract — implemented as the bounded,
-serialized CC-IC-1..4 packets after the CC-GAP-6 seam lands, with
+serialized CC-IC-1..4 packets after the CC-GAP-6 seam (landed in
+integration at commit `50824c6a`, which already satisfies the CC-IC-1
+read-back prerequisite m0), with
 null-binding grandfathering frozen-legacy-v1-only (new v2 starts carry
 non-null typed authority; continuations inherit the original register
 ref) and CC-IC a mandatory overall qualification dependency while CC-00C
@@ -587,8 +637,10 @@ scope stays frozen.
 
 - At CC-IC-1 landing: a frozen legacy registerless corpus and a
   v1-register corpus stay green in CI, and a genuine persisted v1 register
-  round-trips through the repaired read-back verifier (the prerequisite
-  stage; digest tamper and id reorder stay typed reds); every proposal
+  round-trips through the repaired read-back verifier (prerequisite m0 —
+  SATISFIED by the integrated CC-GAP-6 landing `50824c6a`; CC-IC-1
+  verifies it holds at its base, never re-implements it; digest tamper and
+  id reorder stay typed reds); every proposal
   unknown appears as
   an open-question register entry or settlement is red; a runnable-local
   declaration carries the injected synthesis/smoke entries or settlement
@@ -643,18 +695,29 @@ are advisory rather than binding.
   CC-10B, CC-80, CC-81, §13
 - `docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md` — §3, §8
 - `src/shared/constraint-register.ts` — the register vocabulary, and the
-  recorded broken read-back verifier
-  (`verifyOrderConstraintRegister`: persisted camelCase entries validated
-  against the snake_case draft shape) repaired as the CC-IC-1 prerequisite
+  read-back verifier
+  (`verifyOrderConstraintRegister`: the recorded camelCase-into-snake_case
+  breakage) repaired and tested by the integrated CC-GAP-6 landing
+  (`50824c6a`) — the SATISFIED CC-IC-1 prerequisite (m0)
 - `src/modules/discovery/domain/discovery-domain-contracts.ts` —
   `DiscoveryProposalPayload.unknowns` (opaque `string[]` today)
+- `src/modules/discovery/domain/discovery-proposal.ts` — the worker-facing
+  draft carrier/validator (`validateDiscoveryProposal`): where the v2
+  `kind` vocabulary is checked fail-closed at the submission boundary
+- `src/modules/discovery/domain/discovery-settlement-records.ts` — the
+  durable settlement/certificate records; the append-only advisory
+  archaeologist report carrier (CC-IC-4)
 - `src/modules/discovery/application/discovery-production-cell-installation.ts`
   — settlement builds the register onto the certificate payload (the
-  certificate-to-case binding source)
+  certificate-to-case binding source; the open-question lifting and
+  injection-table consumption site)
 - `src/modules/formalization/domain/formalization-schemas.ts` —
   `FormalizationConstraintRegisterBinding` and the
   `resolveFormalizationCaseConstraintRegister` rebuild fallback (frozen
   legacy-v1-only under this decision)
+- `src/modules/formalization/application/formalization-production-cell-installation.ts`
+  — the baseline-payload disposition freeze and `warrantRef` projection
+  (the one-source-three-projections site; CC-IC-2 limited ownership)
 - `src/modules/formalization/application/formalization-contract-validator.ts`
   — `constraint_dispositions` keyed positionally by `ord-c-NNN` with no
   register-digest binding today (the m2d gap)
@@ -664,7 +727,8 @@ are advisory rather than binding.
 - `src/modules/development/domain/development-schemas.ts` —
   `VerificationWarrantRef` (gains the certificate/case cross-bind)
 - `src/process-modules/lifecycles/product-build-lifecycle.ts` — the frozen
-  `runnable-local` terminal classification
+  `runnable-local` terminal classification; owner of the declared
+  digest-pinned injection table (CC-IC-1)
 - `tests/factory-proof/obligation-contracts.mjs` — the single
   AcceptanceObligationContract family the CC-IC tokens join; the inverted
   `frm.submission.acceptance-contract` subset constraint and the
