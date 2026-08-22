@@ -15,8 +15,11 @@
 // continuations) is DECLARED below but not yet authored — Development is
 // NOT closed until every required item has PASS evidence (§13 closure rule).
 
-import { W9_HAPPY_HANDLERS, makeDevelopmentImplementHandler }
-  from '../factory-e2e/w9-happy-handlers.mjs';
+import {
+  W9_HAPPY_HANDLERS,
+  makeDevelopmentImplementHandler,
+  makeDevelopmentPlanHandler,
+} from '../factory-e2e/w9-happy-handlers.mjs';
 import { coverageToken } from './coverage-kernel.mjs';
 
 export const DEVELOPMENT_STAGE = 'solution-development';
@@ -203,16 +206,28 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
     ],
     coverageItems: positiveSpineCoverage(),
   }),
-  // D2 fan-out scheduling: the W9 graph chains every implementation item
-  // (impl-N depends on impl-N-1). The scheduler must start each dependent
-  // execution only after its dependency's final acceptance, and the number
-  // of concurrently running implementations must respect the concurrency cap.
+  // D2 fan-out scheduling, ORDER half (split from the cap): the W9 graph
+  // chains every implementation item (impl-N depends on impl-N-1). The
+  // scheduler must start each dependent execution only after its dependency's
+  // final acceptance. (The chain's peak is structurally 1 — the concurrency
+  // CAP is proven by the parallel-burst scenario, not here.)
   Object.freeze({
     schemaVersion: 'factory.proof.kernel-scenario.v1',
     id: 'development/fanout-scheduling-order-capped',
     kind: 'positive',
     proves: ['dev.task-graph'],
-    coverageItems: ['D2:fanout-scheduling:dependency-order-and-concurrency-cap'],
+    coverageItems: ['D2:fanout-scheduling:dependency-order-respected'],
+  }),
+  // D2 fan-out scheduling, CAP half: A → {B, C, D} with three simultaneously
+  // runnable siblings and the factory cap at 2 — the observed peak MUST be
+  // exactly 2. Removing the concurrency limiter would yield peak 3 and kill
+  // this oracle (the chain graph could never detect that mutation).
+  Object.freeze({
+    schemaVersion: 'factory.proof.kernel-scenario.v1',
+    id: 'development/fanout-concurrency-cap-limits-parallel-runnable',
+    kind: 'positive',
+    proves: ['dev.task-graph'],
+    coverageItems: ['D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable'],
   }),
   // D2 fan-in discipline: settlement is ALL-required — the development run
   // may not settle (its final product may not exist) before EVERY required
@@ -246,7 +261,13 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
 // The universe is monotonic: a landed token never leaves U (operator
 // review 2026-08-22 — the denominator must not shrink as coverage grows).
 export const DEVELOPMENT_REQUIRED_UNIVERSE = Object.freeze([
-  'D2:fanout-scheduling:dependency-order-and-concurrency-cap',
+  // SPLIT (operator review 2026-08-22): dependency-order and concurrency-cap
+  // are SEPARATE obligations. The chain graph proves order (peak is
+  // structurally 1 there — it proves nothing about the limiter); the cap is
+  // proven by the parallel-burst graph where 3 siblings are simultaneously
+  // runnable and the observed peak MUST equal the cap.
+  'D2:fanout-scheduling:dependency-order-respected',
+  'D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable',
   'D2:fanin:completion-policy-all-blocks-early-fanin',
   'D3:impl-scope:file-outside-effective-scope-rejected',
 ]);
@@ -296,6 +317,17 @@ function traceTimeToMs(value) {
   }
   const parsed = Date.parse(s);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+// Cap-proof handler map: W9 happy everywhere EXCEPT the planner, which
+// emits the parallel-burst topology (root A with mandated shared scopes;
+// N extra single-file siblings all depending on A only).
+function buildParallelBurstHandlers(burstSize) {
+  const handlers = { ...W9_HAPPY_HANDLERS };
+  const planKey = Object.keys(handlers)
+    .find(key => key.includes('plan-task-graph/author'));
+  handlers[planKey] = makeDevelopmentPlanHandler({ parallelBurst: burstSize });
+  return handlers;
 }
 
 // D3 fault map: the FIRST implementation-author invocation writes outside
@@ -375,59 +407,100 @@ export function buildDevelopmentRuntimeCase(id) {
         oracles: [
           stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
           {
-            // Dependency order: each implementation execution starts only
-            // after the PREVIOUS chain item's final acceptance, and at no
-            // instant do more implementations run than the drive's
-            // concurrency cap allows.
-            id: 'development.fanout.dependency-order-and-cap',
-            evaluate({ durableTrace, result }) {
+            // Dependency order (ORDER half of the D2 split): each
+            // implementation execution starts only after the PREVIOUS chain
+            // item's final acceptance. All comparisons run through
+            // traceTimeToMs — the trace mixes ISO-Z and SQLite timestamps.
+            id: 'development.fanout.dependency-order',
+            evaluate({ durableTrace }) {
               const tasks = durableTrace.workIntents ?? [];
               const implTasks = tasks
                 .filter(t => t.task_kind === 'development.code')
-                .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+                .sort((a, b) => (traceTimeToMs(a.created_at) ?? 0)
+                  - (traceTimeToMs(b.created_at) ?? 0));
               const executions = durableTrace.workerExecutions ?? [];
               const acceptances = new Map(
                 (durableTrace.finalAcceptances ?? [])
-                  .map(row => [row.workplace_ref, String(row.accepted_at)]));
+                  .map(row => [row.workplace_ref, traceTimeToMs(row.accepted_at)]));
               const byTask = new Map(executions.map(e => [e.task_id, e]));
               const violations = [];
               for (let i = 1; i < implTasks.length; i += 1) {
                 const prev = implTasks[i - 1];
                 const next = implTasks[i];
                 const prevAccepted = acceptances.get(prev.workplace_ref);
-                const nextExec = byTask.get(next.id);
-                if (!prevAccepted || !nextExec?.started_at) {
+                const nextStart = traceTimeToMs(byTask.get(next.id)?.started_at);
+                if (prevAccepted === undefined || nextStart === null) {
                   violations.push({ pair: [prev.id, next.id], missing: true });
-                } else if (String(nextExec.started_at) < prevAccepted) {
+                } else if (nextStart < prevAccepted) {
                   violations.push({
                     pair: [prev.id, next.id],
-                    startedAt: nextExec.started_at,
+                    startedAt: nextStart,
                     prevAccepted,
                   });
                 }
               }
-              const cap = result?.effectiveConcurrency ?? Infinity;
+              return {
+                passed: violations.length === 0,
+                evidenceRefs: implTasks.map(t => `task:${t.id}`),
+                details: { chainLength: implTasks.length, violations },
+              };
+            },
+          },
+          noStrandedExecutionOracle(),
+        ],
+      };
+    case 'development/fanout-concurrency-cap-limits-parallel-runnable':
+      return {
+        scenario,
+        // Cap-proof topology: A → {B, C, D} (one mandated-scope root, three
+        // disjoint single-file siblings). After A is accepted, THREE
+        // implementations are simultaneously runnable while the factory cap
+        // is 2 — the limiter is the only possible bound on the peak.
+        handlers: Object.freeze(buildParallelBurstHandlers(2)),
+        driveOptions: { maxCycles: 320, maxEmptyDispatchStreak: 15 },
+        oracles: [
+          stageOutcomeOracle(DEVELOPMENT_STAGE, 'verified'),
+          {
+            // The cap is the ONLY limiter: with 3 runnable siblings and
+            // cap=2 the observed peak MUST be exactly 2. Remove the
+            // concurrency limiter and the peak becomes 3 — this oracle dies.
+            id: 'development.fanout.cap-limits-parallel-runnable',
+            evaluate({ durableTrace, result }) {
+              const implExecs = (durableTrace.workerExecutions ?? [])
+                .filter(e => {
+                  const task = (durableTrace.workIntents ?? [])
+                    .find(t => t.id === e.task_id);
+                  return task?.task_kind === 'development.code';
+                })
+                .map(e => ({
+                  start: traceTimeToMs(e.started_at),
+                  end: traceTimeToMs(e.finished_at) ?? traceTimeToMs(e.started_at),
+                }))
+                .filter(e => e.start !== null);
+              const cap = result?.effectiveConcurrency ?? null;
               let peak = 0;
-              const implExecs = implTasks
-                .map(t => byTask.get(t.id))
-                .filter(Boolean)
-                .map(e => ({ start: String(e.started_at), end: String(e.finished_at ?? e.started_at) }))
-                .sort((a, b) => a.start.localeCompare(b.start));
+              let concurrentSiblingsObserved = 0;
               const open = [];
               for (const e of implExecs) {
                 while (open.length > 0 && open[0] <= e.start) open.shift();
                 open.push(e.end);
-                open.sort();
+                open.sort((a, b) => a - b);
                 peak = Math.max(peak, open.length);
+                if (open.length >= 2) concurrentSiblingsObserved = peak;
               }
+              const siblingsRunnable = implExecs.length >= 3;
               return {
-                passed: violations.length === 0 && peak <= cap,
-                evidenceRefs: implTasks.map(t => `task:${t.id}`),
+                passed: cap !== null
+                  && siblingsRunnable
+                  && peak >= 2
+                  && peak <= cap,
+                evidenceRefs: implExecs.map((_, i) => `impl-execution:${i}`),
                 details: {
-                  chainLength: implTasks.length,
-                  violations,
+                  implementationExecutions: implExecs.length,
+                  threeSiblingsRunnable: siblingsRunnable,
                   peakConcurrentImplementations: peak,
                   cap,
+                  concurrentSiblingsObserved,
                 },
               };
             },

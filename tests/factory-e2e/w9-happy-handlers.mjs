@@ -425,7 +425,15 @@ function formalizationApprovedReview({ handlers, assignment, meta }) {
 // Development
 // ---------------------------------------------------------------------------
 
-function developmentPlan({ handlers, assignment, meta }) {
+/** Parameterized development planner. Default: the W9 dependency chain
+ * (impl-N depends on impl-N-1) with shared mandated scopes made safe by the
+ * chain. parallelBurst: N extra siblings after the FIRST implementation
+ * item, each with a DISJOINT single-file scope (no overlap → no forced
+ * dependency) and all depending on the first item only — so B/C/D are
+ * simultaneously runnable and the factory concurrency cap is the ONLY thing
+ * that can limit their peak parallelism (the D2 cap proof). */
+export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
+  return function developmentPlan({ handlers, assignment, meta }) {
   const developmentCase = findObject(
     meta.process_node_input ?? meta.cell_input_item ?? meta,
     value => value.schemaVersion === 'factory.development-case.v1',
@@ -437,7 +445,41 @@ function developmentPlan({ handlers, assignment, meta }) {
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
   const criterionId = ac => ac.artifactId;
-  const implementationItems = implementationCriteria.map((ac, index) => ({
+  let implementationItems;
+  if (parallelBurst > 0 && implementationCriteria.length >= 1) {
+    // Cap-proof topology: item A carries the mandated shared scopes; every
+    // later sibling (real criteria + burst extras) owns ONE disjoint file and
+    // depends on A only — so B/C/D are simultaneously runnable and the
+    // factory concurrency cap is the ONLY limiter of their peak.
+    const [first] = implementationCriteria;
+    const own = key => [`src/w9/${key}.ts`];
+    const item = (key, acIds, scopes, dependsOn) => ({
+      key,
+      kind: 'implementation',
+      taskKind: 'development.code',
+      executionSkill: 'saga-worker',
+      executionMode: 'git_change',
+      projectRepositoryId: repo.projectRepositoryId,
+      acceptanceCriterionIds: acIds,
+      dependsOnKeys: dependsOn,
+      changeScopes: scopes,
+      required: true,
+      criticality: 'blocker',
+    });
+    const firstKey = `impl-${criterionId(first)}`;
+    implementationItems = [
+      item(firstKey, [criterionId(first)],
+        [`src/w9/${firstKey}.ts`, 'package.json', 'tests/'], []),
+      ...implementationCriteria.slice(1).map(ac => item(
+        `impl-${criterionId(ac)}`, [criterionId(ac)],
+        own(`impl-${criterionId(ac)}`), [firstKey],
+      )),
+      ...Array.from({ length: parallelBurst }, (_, i) => item(
+        `impl-burst-${i + 1}`, [], own(`impl-burst-${i + 1}`), [firstKey],
+      )),
+    ];
+  } else {
+  implementationItems = implementationCriteria.map((ac, index) => ({
     key: `impl-${criterionId(ac)}`,
     kind: 'implementation',
     taskKind: 'development.code',
@@ -458,6 +500,7 @@ function developmentPlan({ handlers, assignment, meta }) {
     required: true,
     criticality: ac.criticality || 'blocker',
   }));
+  }
   const verificationItems = criteria.map(ac => ({
     key: `verify-${criterionId(ac)}`,
     kind: 'verification',
@@ -488,6 +531,7 @@ function developmentPlan({ handlers, assignment, meta }) {
   done(handlers, assignment,
     `planned ${implementationItems.length} implementation + ${verificationItems.length} verification items`);
   return { kind: 'worker-done-accepted' };
+  };
 }
 
 /** Parameterizable implementation author: filePathFor(safe, workItemKey)
@@ -704,7 +748,7 @@ export const W9_HAPPY_HANDLERS = Object.freeze({
   [`${FRM}/define-architecture-contract/reviewer/singleton`]: formalizationApprovedReview,
 
   // Development
-  [`${DEV}/plan-task-graph/author/singleton`]: developmentPlan,
+  [`${DEV}/plan-task-graph/author/singleton`]: makeDevelopmentPlanHandler(),
   [`${DEV}/implement-work-items/author/*`]: makeDevelopmentImplementHandler(
     safe => `src/w9/${safe}.ts`,
   ),
