@@ -199,6 +199,12 @@ export async function runScenario(input, dependencies = {}) {
     crashPoint: input.crashPoint,
     workerSpawn: input.workerSpawn,
     deliveryProviders: input.deliveryProviders,
+    // §10.2: the canonical lifecycle identity must derive from the lifecycle
+    // actually driven — product-build by default, product-delivery for
+    // Delivery scenarios. The runner is the ONE place this is threaded, so
+    // every workshop drives through the same kernel (no per-workshop
+    // mini-runners).
+    ...(input.lifecycleDefinition ? { lifecycleDefinition: input.lifecycleDefinition } : {}),
   });
 
   const driven = await canonical.driveCanonicalProof({
