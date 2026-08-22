@@ -179,3 +179,24 @@ resume path re-stamps the catalog limit).
   23:45:59Z (phase executing), 23 total, 0 lost, tripwire unchanged.
   Per protocol no mid-run action: the §15/ADR-075 budget owns the outcome —
   convergence, or a typed terminal failed at the total cap.
+- **00:06–00:09Z watchdog — planner epochs ALL exhausted (9/30 total cap);
+  first 2 lost executions; run ALIVE and rolling into new epochs.** All
+  three recovery epochs show 3/3 exhausted attempts — but the counter is
+  cumulative: 9 of total_attempts_cap 30 spent, and the run auto-rolls new
+  epochs (diagnosis text: "the budget rolls over into a new recovery epoch
+  (no human required)"). Lifecycle paused at node 'plan-task-graph' with
+  worker_active — a fresh execution started 00:06:16Z, heartbeat 00:09:05Z
+  (14 s fresh at check time). Rejection diagnosis is SPECIFIC and evolving:
+  epoch 1 = task-graph not closed/acyclic + SRS §2.2 test-file declarations;
+  epoch 3 = pairwise "implementation items X and Y overlap without a
+  dependency order" (validator demands explicit ordering between
+  file-overlapping items — actionable feedback glm-4.6 has not yet
+  satisfied). 2 lost executions, both Task 13: "Claude process exited with
+  code 1 before terminal worker_done" (opencode shim exit; supervision
+  respawned within ~2 s both times). 27 executions total. Tripwire
+  unchanged. No mid-run action: budget owns the outcome — convergence or a
+  typed terminal failed at 30/30. MORNING POST-MORTEM ITEMS: (1) planner
+  gate feedback loop vs glm-4.6 — 9 rejections on overlap-ordering suggests
+  the prompt may not surface the pairwise-overlap rule the validator
+  enforces; (2) shim exit code 1 on Task 13 spawns (long-prompt crash?)
+  — capture the worker log before recycling the sandbox.
