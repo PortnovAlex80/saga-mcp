@@ -771,7 +771,7 @@ test('product lifecycle forwards every Discovery idea-strength outcome to Formal
   }
   // 'failed' is runtime-only (§15) and must END the lifecycle honestly —
   // there is no certificate or proposal to forward.
-  assert.equal(
+  assert.deepEqual(
     discovery.outcomeRoutes.failed,
     { type: 'terminal', status: 'failed' },
     "outcome 'failed' must be the honest terminal (no forwardable material)",
