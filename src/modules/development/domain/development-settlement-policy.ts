@@ -393,25 +393,27 @@ implements DevelopmentTaskGraphPolicyPort {
       }
     }
 
-    for (let leftIndex = 0; leftIndex < graph.implementationItems.length; leftIndex += 1) {
-      const left = graph.implementationItems[leftIndex]!;
-      for (let rightIndex = leftIndex + 1; rightIndex < graph.implementationItems.length; rightIndex += 1) {
-        const right = graph.implementationItems[rightIndex]!;
-        if (
-          left.projectRepositoryId !== right.projectRepositoryId
-          || !left.changeScopes.some(leftScope =>
-            right.changeScopes.some(rightScope => repositoryScopesOverlap(leftScope, rightScope)))
-        ) continue;
-        if (!dependsTransitivelyOn(left, right, graph.implementationItems)
-          && !dependsTransitivelyOn(right, left, graph.implementationItems)) {
-          pushIssue(
-            reasonCodes,
-            errors,
-            'implementation-scope-overlap',
-            `implementation items '${left.key}' and '${right.key}' overlap without a dependency order`,
-          );
-        }
-      }
+    // F-B (Elite-3 post-mortem, operator-corrected): the overlap-ordering
+    // RULE is already taught in the planner skill — what failed was the
+    // model re-deriving the pairwise matrix over dozens of scopes. Same idiom
+    // as the coverage-gap diff: serialize the COMPUTED conflict set so the
+    // repair attempt receives every unordered pair (with its overlapping
+    // scopes) in one shot instead of discovering pairs one rejection at a
+    // time.
+    const unorderedOverlapPairs = computeUnorderedOverlapPairs(graph);
+    if (unorderedOverlapPairs.length > 0) {
+      const pairLines = unorderedOverlapPairs
+        .slice(0, 30)
+        .map(pair => `'${pair.leftKey}' <-> '${pair.rightKey}' (overlapping scopes: left [${pair.leftScopes.join(', ')}], right [${pair.rightScopes.join(', ')}])`)
+        .join('; ');
+      const overflowNote = unorderedOverlapPairs.length > 30
+        ? `; and ${unorderedOverlapPairs.length - 30} more pair(s)` : '';
+      pushIssue(
+        reasonCodes,
+        errors,
+        'implementation-scope-overlap',
+        `${unorderedOverlapPairs.length} same-repository implementation item pair(s) overlap without a dependency order — add a dependency path in ONE direction for each computed pair: ${pairLines}${overflowNote}`,
+      );
     }
     if (
       graph.verificationItems.some(item =>
@@ -612,6 +614,52 @@ function dependsTransitivelyOn(
     pending.push(...(byKey.get(key)?.dependsOnKeys ?? []));
   }
   return false;
+}
+
+/**
+ * F-B — deterministic repair assistance: the complete set of same-repository
+ * implementation item pairs whose change scopes overlap while neither
+ * transitively depends on the other. The validator serializes this computed
+ * conflict set into the rejection so a repair attempt receives every
+ * unordered pair in one shot (same idiom as the coverage-gap diff) instead
+ * of the model re-deriving the pairwise matrix over dozens of scopes.
+ */
+export function computeUnorderedOverlapPairs(
+  graph: DevelopmentTaskGraphSnapshot,
+): Array<{
+  leftKey: string;
+  rightKey: string;
+  leftScopes: readonly string[];
+  rightScopes: readonly string[];
+}> {
+  const pairs: Array<{
+    leftKey: string;
+    rightKey: string;
+    leftScopes: readonly string[];
+    rightScopes: readonly string[];
+  }> = [];
+  for (let leftIndex = 0; leftIndex < graph.implementationItems.length; leftIndex += 1) {
+    const left = graph.implementationItems[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < graph.implementationItems.length; rightIndex += 1) {
+      const right = graph.implementationItems[rightIndex]!;
+      if (left.projectRepositoryId !== right.projectRepositoryId) continue;
+      const leftOverlapping = left.changeScopes.filter((leftScope: string) =>
+        right.changeScopes.some((rightScope: string) =>
+          repositoryScopesOverlap(leftScope, rightScope)));
+      if (leftOverlapping.length === 0) continue;
+      if (dependsTransitivelyOn(left, right, graph.implementationItems)
+        || dependsTransitivelyOn(right, left, graph.implementationItems)) continue;
+      pairs.push({
+        leftKey: left.key,
+        rightKey: right.key,
+        leftScopes: leftOverlapping,
+        rightScopes: right.changeScopes.filter((rightScope: string) =>
+          left.changeScopes.some((leftScope: string) =>
+            repositoryScopesOverlap(leftScope, rightScope))),
+      });
+    }
+  }
+  return pairs;
 }
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {

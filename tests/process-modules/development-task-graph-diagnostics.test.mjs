@@ -87,7 +87,13 @@ test('task-graph provider preserves exact policy failures as content-addressed d
   const diagnostics = result.evidenceRefs.map(decodeCheckDiagnostic);
   assert.equal(diagnostics.every(Boolean), true);
   assert.equal(diagnostics.some(item => item.code === 'implementation-scope-overlap'), true);
-  assert.equal(diagnostics.some(item => item.message.includes("'left' and 'right'")), true);
+  // F-B: the rejection serializes the COMPUTED unordered-overlap pair set
+  // (deterministic repair assistance) — pair keys plus the overlapping scopes.
+  assert.equal(diagnostics.some(item =>
+    item.code === 'implementation-scope-overlap'
+    && item.message.includes("'left' <-> 'right'")
+    && item.message.includes('overlapping scopes:')
+    && /add a dependency path in ONE direction for each computed pair/.test(item.message)), true);
   assert.equal(diagnostics.every(item => item.subjectRef === 'candidate-set/1'), true);
 
   const malformed = structuredClone(proposal);
@@ -104,4 +110,43 @@ test('task-graph provider preserves exact policy failures as content-addressed d
     item.code === 'task-graph-decode-invalid'
     && item.message === 'implementationItems[0].required must be a boolean'), true);
   db.close();
+});
+
+// F-B — deterministic repair assistance: the factory computes the complete
+// unordered-overlap set so the planner receives every conflicting pair (with
+// scopes) in one shot instead of re-deriving the pairwise matrix.
+test('computeUnorderedOverlapPairs returns every scope-overlapping unordered pair', async () => {
+  const { computeUnorderedOverlapPairs } = await import(
+    '../../dist/modules/development/domain/development-settlement-policy.js');
+  const pairs = computeUnorderedOverlapPairs({
+    schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    graphHash: 'x',
+    developmentCaseRef: { schema: 's', hash: 'h', ref: 'r' },
+    integrationTargets: [],
+    implementationItems: [
+      // a<->b overlap (src/ dir vs src/a.ts), no dependency edge — conflict.
+      { key: 'a', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
+        projectRepositoryId: 1, changeScopes: ['src/'], acceptanceCriterionIds: [1],
+        required: true, dependsOnKeys: [] },
+      { key: 'b', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
+        projectRepositoryId: 1, changeScopes: ['src/a.ts'], acceptanceCriterionIds: [1],
+        required: true, dependsOnKeys: [] },
+      // c overlaps a but depends on it — ordered, NOT a conflict.
+      { key: 'c', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
+        projectRepositoryId: 1, changeScopes: ['src/b.ts', 'src/'], acceptanceCriterionIds: [1],
+        required: true, dependsOnKeys: ['a'] },
+      // d: different repository — never a same-repo conflict.
+      { key: 'd', kind: 'implementation', taskKind: 'development.impl', executionMode: 'git_change',
+        projectRepositoryId: 2, changeScopes: ['src/'], acceptanceCriterionIds: [1],
+        required: true, dependsOnKeys: [] },
+    ],
+    verificationItems: [],
+  });
+  assert.deepEqual(
+    pairs.map(pair => [pair.leftKey, pair.rightKey]),
+    [['a', 'b'], ['b', 'c']],
+    'exactly the unordered same-repo scope overlaps: a<->b and b<->c (c is ordered against a via dependency, but b<->c is not)');
+  const ab = pairs[0];
+  assert.deepEqual([...ab.leftScopes], ['src/']);
+  assert.deepEqual([...ab.rightScopes], ['src/a.ts']);
 });
