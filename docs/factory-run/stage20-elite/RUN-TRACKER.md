@@ -280,3 +280,20 @@ resume path re-stamps the catalog limit).
   fail in seconds instead of 8×backoff per spawn.
 === watchdog note
 - 05:50Z: the first watchdog instance carried a TRUNCATED --settings-sha baseline (24 chars, copied from the old launch note) and false-tripped SETTINGS_DRIFT; the file was verified unchanged (full sha 2d6176e8…45c6d0) and the watchdog restarted with the full sha — clean samples since.
+
+=== 08:1xZ conformance-v1 window note (w02 worktree session)
+- **Mid-run dist swap (contained):** the w02 rebuild at ~06:38Z replaced the
+  dist the live engine lazily imports. Diff fbb7338b..e64631ab in src/ = ONE
+  file (discovery exact-authority selection); the discovery stage was already
+  terminal — no behavior change reachable. The lesson stands: no builds in
+  the Elite-4 home worktree until its engine exits.
+- **Planner repair loop (task 13, development-plan-task-graph author):** 12
+  attempts since 07:15Z, gate `final` verdict repair_required every ~1-4 min,
+  failing check `development.task-graph-contract.v1`. Not terminal; the
+  watchdog is clean (heartbeats fresh). POST-MORTEM OWNERS: is the graph
+  contract feedback actionable for the model (F-B-style computed assistance
+  for the CONTRACT check, not just overlaps)?
+- **F-A telemetry gap:** [prompt-budget] fired exactly once (task=1,
+  total=25334) — only the claude-runner spawn path emits it; the board-runs
+  worker path (tasks 2+) does not. Post-mortem: telemetry belongs at the
+  prompt-composition seam ALL spawn paths cross.
