@@ -1178,6 +1178,23 @@
         "docs/plans/PROJECT-STRUCTURAL-CLEANUP-PLAN.md — implementation plan",
         "docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md §12 — ADR-086 coordination block"
       ]
+    },
+    {
+      "adr": "088",
+      "file": "088-register-conditional-synthesis-coverage.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "CC-GAP-6 blocking mutations: reverse-diff red on an uncovered non-waived register line; srs-module-manifest-missing red for a manifest-less SRS under a non-empty register; constraint-entrypoint-unowned red for a wide decoy item; kernel-derived coveredConstraintIds unchanged by a forged planner proposal",
+      "successor": null,
+      "notes": "Accepted 2026-08-22 (MCDA Option B, 460/500). Corrects the CC-GAP-6 grandfathering clause per the 2026-08-22 adversarial review: only the registerless corpus is grandfathered; a non-empty register makes missing coverage and a missing/file-less SRS §2.2 manifest typed red; execution-class entrypoint ownership is the per-constraint conjunction of file ownership and coverage on one item; coveredConstraintIds is strictly kernel-derived. Implementation owned by CC-00C/CC-GAP-6 in docs/plans/CONFORMANCE-CLOSURE-PLAN.md.",
+      "evidence": [
+        "docs/plans/CONFORMANCE-CLOSURE-PLAN.md — sections 3.2, CC-00C, CC-10B, CC-80, 13",
+        "docs/factory-run/conformance-closure/CC-00C-ELITE6-PRODUCT-CLAIM-INTEGRITY.md — CC-GAP-6 record corrected by this ADR"
+      ]
     }
   ]
 }

@@ -10,7 +10,10 @@
 
 This plan is subordinate to
 `docs/plans/SAGA-KERNEL-CONFORMANCE-ENGINE-PLAN.md`. ADR-084 is Accepted and is
-the governing conformance decision. ADR-053 is a Proposed architectural
+the governing conformance decision. ADR-088 is Accepted and governs the
+CC-GAP-6 coverage contract (register-conditional grandfathering,
+execution-entrypoint ownership, kernel-only `coveredConstraintIds`
+derivation). ADR-053 is a Proposed architectural
 diagnosis. ADR-085 and ADR-086 are Proposed and remain blocked by the
 Structural Refactor Qualification Gate. A green gate makes their implementation
 eligible; it does not adopt or authorize either proposal by itself.
@@ -225,15 +228,22 @@ criterion-to-item attachment is not coverage, and the exit criterion is
 mechanical: for a non-empty register, register ids minus the union of
 `coveredConstraintIds` minus typed waivers equals the empty set (the
 AC-drift network-2 reverse diff), every §2.2 manifest-declared file lies
-inside some item's frozen change scopes, and a buildable/integrator
+inside some item's frozen change scopes, every entrypoint file declared by
+an execution-class register entry lies inside the frozen change scopes of
+an item whose kernel-derived `coveredConstraintIds` include that same
+entry — a wide item that merely contains the file while covering no such
+constraint does not satisfy it — and a buildable/integrator
 criterion with no item owning whole-product synthesis
 (bootstrap/static-page/serving integration or a declared equivalent) fails
-planning admission with a typed reason. Legacy corpora are versioned and
-grandfathered monotonically: proposals without `order_constraints`,
-criteria without `coveredConstraintIds`, and SRS documents without a §2.2
-manifest build no register, produce an empty diff or a typed legacy skip,
-and keep existing gates green — enforcement binds new registers and never
-rewrites frozen evidence. A generic loopback health oracle cannot discharge
+planning admission with a typed reason. `coveredConstraintIds` is
+kernel-derived from frozen criteria; planner output can neither propose
+nor forge it. Grandfathering is register-conditional (ADR-088): only a
+corpus with no constraint register (proposal without `order_constraints`,
+null register binding) is grandfathered — its diffs are empty, its skips
+typed, its gates green, and frozen evidence is never rewritten; when a
+non-empty register exists, missing coverage (a non-empty reverse diff) and
+a missing or file-less SRS §2.2 manifest are typed red, never a legacy
+skip. A generic loopback health oracle cannot discharge
 a browser-product claim; the end-to-end oracle is warrant execution over
 the `VerificationWarrantRef` through package-level, workshop-declared
 oracle adapters, with no universal engine or test-engine branch on
@@ -523,8 +533,11 @@ green.
 - Objective (SMART): by CC-00C exit, every non-empty versioned Order
   Constraint Register from a new Factory Start is mechanically closed —
   register ids minus union(coveredConstraintIds) minus typed waivers is
-  empty, SRS §2.2 module-manifest scope coverage holds, and warrant
-  execution over `VerificationWarrantRef` routes substrate failures to
+  empty, SRS §2.2 module-manifest scope coverage holds
+  (register-conditional grandfathering, execution-entrypoint ownership,
+  and kernel-only `coveredConstraintIds` derivation per ADR-088), and
+  warrant execution over `VerificationWarrantRef` routes substrate
+  failures to
   repair or `human_required`, deferred verification obligations remain
   first-class pending entries until executed after readiness recovery, and
   author/reviewer role projections are distinguishable in status surfaces
@@ -566,11 +579,19 @@ Stable gaps and owners:
   ownership by a bootstrap/static-page/serving integration item or a declared
   equivalent, or planning fails closed with a typed reason. Mechanical exit
   criterion: for a non-empty register, register ids minus
-  union(coveredConstraintIds) minus typed waivers equals the empty set, and
-  every §2.2 manifest-declared file lies inside some frozen item change
-  scope. Legacy corpora are versioned and grandfathered: no register, no
-  `coveredConstraintIds`, or no §2.2 section is an empty diff or a typed
-  legacy skip, never a red gate; frozen evidence is never rewritten.
+  union(coveredConstraintIds) minus typed waivers equals the empty set, every
+  §2.2 manifest-declared file lies inside some frozen item change scope, and
+  every entrypoint file declared by an execution-class register entry lies
+  inside the frozen change scopes of an item whose kernel-derived
+  `coveredConstraintIds` include that same entry — a wide decoy item
+  containing the file while covering no such constraint does not satisfy it.
+  `coveredConstraintIds` is kernel-derived from frozen criteria; planner
+  proposals can neither carry nor forge it. Grandfathering is
+  register-conditional (ADR-088): only a corpus with no constraint register
+  is grandfathered (empty diff, typed legacy skip, gates green; frozen
+  evidence untouched); when a non-empty register exists, missing coverage
+  and a missing or file-less SRS §2.2 manifest are typed red, never a
+  legacy skip.
 - CC-GAP-7 deliverable-aware end-to-end oracle — verification owner; lands
   after CC-GAP-9 outcome/routing. Finish AC-drift network 3 on the existing
   seam: the readiness provider executes warrant phases over the
@@ -616,14 +637,22 @@ Checklist:
   module-manifest scope coverage — and the planner only inherits the frozen
   classification and fails closed. Mechanical exit criterion: for a
   non-empty register, register ids minus union(coveredConstraintIds) minus
-  typed waivers equals the empty set, and every §2.2 manifest-declared file
-  lies inside some frozen item change scope; a buildable/integrator
+  typed waivers equals the empty set, every §2.2 manifest-declared file
+  lies inside some frozen item change scope, and every entrypoint file
+  declared by an execution-class register entry lies inside the frozen
+  change scopes of an item whose kernel-derived `coveredConstraintIds`
+  include that same entry — a wide decoy item containing the file while
+  covering no such constraint must not satisfy it; a buildable/integrator
   criterion with no whole-product synthesis owner
   (bootstrap/static-page/serving entrypoint or declared equivalent) fails
-  planning admission with a typed reason. Version and grandfather legacy
-  corpora: no register, no `coveredConstraintIds`, or no §2.2 section is an
-  empty diff or a typed legacy skip, never a red gate; frozen evidence is
-  untouched.
+  planning admission with a typed reason. Enforce register-conditional
+  grandfathering (ADR-088): only a corpus with no constraint register is
+  grandfathered (empty diff, typed legacy skip, gates green); when a
+  non-empty register exists, missing coverage (a non-empty reverse diff)
+  and a missing or file-less §2.2 manifest are typed red, never a legacy
+  skip. Make `coveredConstraintIds` strictly kernel-derived from frozen
+  criteria so planner output can neither propose nor forge it; frozen
+  evidence is untouched.
 - [ ] CC-GAP-9 (before CC-GAP-7 warrant execution): classify substrate
   failure with the typed `warrant-blocked-environment` outcome, preserving
   product-failed vs oracle-insufficient vs substrate-unavailable; readiness
@@ -662,7 +691,12 @@ Checklist:
 - [ ] Add blocking regression proofs, one per gap: dropping whole-product
   synthesis ownership — an uncovered non-waived register line behind a
   nominally attached criterion — fails planning admission on the mechanical
-  diff (CC-GAP-6); routing substrate failure to terminal product failure,
+  diff; with a non-empty register, a missing or file-less §2.2 manifest is
+  typed red (never a legacy skip), a wide decoy item containing an
+  execution entrypoint file without covering that constraint fails
+  ownership, and a planner proposal carrying `coveredConstraintIds` cannot
+  alter the kernel-derived relay (CC-GAP-6, per ADR-088); routing
+  substrate failure to terminal product failure,
   or collapsing product-failed/oracle-insufficient/substrate-unavailable
   into one outcome, fails routing (CC-GAP-9, proven before CC-GAP-7);
   substituting loopback health for the package-level browser oracle yields
@@ -682,9 +716,14 @@ Exit checklist:
 - [ ] For every non-empty versioned Order Constraint Register, the
   mechanical reverse diff (register ids minus union(coveredConstraintIds)
   minus typed waivers) is empty, SRS §2.2 module-manifest scope coverage
-  holds, and whole-product synthesis ownership is explicit where a criterion
-  requires it; legacy corpora are grandfathered with typed skips and frozen
-  evidence is untouched; the CC-GAP-6 blocking proof is green.
+  holds — a missing or file-less §2.2 manifest is typed red, never a
+  legacy skip — every execution-class entrypoint file is owned by an item
+  whose kernel-derived `coveredConstraintIds` include that same constraint
+  (no wide decoy item satisfies it), and whole-product synthesis ownership
+  is explicit where a criterion requires it; only registerless corpora are
+  grandfathered with typed skips, planner output cannot forge
+  `coveredConstraintIds`, and frozen evidence is untouched; the CC-GAP-6
+  blocking proof is green.
 - [ ] Substrate unavailability routes to deterministic repair or
   `human_required` continuation with a repair round, not terminal product
   failure; product-failed, oracle-insufficient, and substrate-unavailable
@@ -1041,7 +1080,9 @@ Checklist:
   fence/receipt/effect, and route omission.
 - [ ] Include the CC-00C product-claim-integrity blocking mutations in the
   blocking group: constraint-register coverage (coveredConstraintIds reverse
-  diff plus SRS §2.2 module-manifest scope coverage), warrant execution over
+  diff plus SRS §2.2 module-manifest scope coverage, register-conditional
+  grandfathering, execution-entrypoint ownership, and kernel-only
+  coveredConstraintIds derivation per ADR-088), warrant execution over
   `VerificationWarrantRef` through package-level oracle adapters,
   deferred-verification accounting, substrate outcome/routing
   (`warrant-blocked-environment`), and role projection (CC-GAP-6..10
@@ -1296,7 +1337,9 @@ Checklist:
   and zero-authority-write ratchets.
 - [ ] Include the CC-00C product-claim-integrity checks: the mechanical
   constraint-register coverage diff (register ids minus
-  union(coveredConstraintIds) minus typed waivers), warrant execution over
+  union(coveredConstraintIds) minus typed waivers; register-conditional
+  grandfathering, execution-entrypoint ownership, and kernel-only relay
+  derivation per ADR-088), warrant execution over
   `VerificationWarrantRef` with package-level oracle adapters,
   deferred-verification accounting, substrate outcome classification and
   routing (`warrant-blocked-environment`), and role-projection clarity,
@@ -1531,14 +1574,19 @@ Pre-mortem controls:
   qualification.
 - [ ] Nominal criterion attachment can masquerade as coverage: a
   buildable/integrator AC attached to a semantically insufficient item passes
-  planning while no item owns whole-product synthesis, a generic loopback
-  oracle cannot prove a browser-product claim, deferred verification can
-  silently vanish from accounting, substrate unavailability can be flattened
-  into product failure, and reviewer projections can read as duplicate work.
-  CC-00C blocks the critical path until all five are enforced; no
-  CC-GAP-6..10 may stay open at qualification. The remedy reuses the
-  existing Order Constraint Register, `coveredConstraintIds`, SRS §2.2
-  module-manifest coverage, and `VerificationWarrantRef` seam — it invents
-  no parallel deliverable-claim vocabulary — keeps product-failed,
+  planning while no item owns whole-product synthesis, a register-bearing
+  corpus can dodge the coverage diff by omitting §2.2 or coverage metadata,
+  a wide decoy item can contain declared files without owning their
+  constraint, planner output can forge the `coveredConstraintIds` relay, a
+  generic loopback oracle cannot prove a browser-product claim, deferred
+  verification can silently vanish from accounting, substrate unavailability
+  can be flattened into product failure, and reviewer projections can read
+  as duplicate work. CC-00C blocks the critical path until all five are
+  enforced; no CC-GAP-6..10 may stay open at qualification. The remedy
+  reuses the existing Order Constraint Register, `coveredConstraintIds`,
+  SRS §2.2 module-manifest coverage, and `VerificationWarrantRef` seam —
+  it invents no parallel deliverable-claim vocabulary — makes
+  grandfathering strictly register-conditional with entrypoint ownership
+  and kernel-only relay derivation (ADR-088), keeps product-failed,
   oracle-insufficient, and substrate-unavailable distinct, and serializes
   CC-GAP-9 outcome/routing before CC-GAP-7 warrant execution.
