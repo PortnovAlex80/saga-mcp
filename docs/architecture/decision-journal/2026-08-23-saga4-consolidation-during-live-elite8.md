@@ -1,7 +1,8 @@
 # saga4 consolidation during live Elite-8: isolated staging worktree with Git-only invariants and an atomic CAS (ADR-094, Option C)
 
 - **Status:** Accepted (operator-selected before this record; recorded here
-  with options, MCDA, pre-mortem, and independent challenge)
+  with options, MCDA, pre-mortem, and independent challenge; the CAS has
+  executed — see the Post-CAS execution record below)
 - **Date:** 2026-08-23
 - **Context:** `saga4` @ `611c35e0` carries none of the accepted
   conformance-closure integration truth (`905f5940`), the 2026-08-23
@@ -142,6 +143,40 @@ the CAS (then normal isolated-worktree validation becomes available and
 this record's Git-only invariant is superseded), or evidence that the live
 Elite-8 run consumes `saga4` directly (then the CAS window must be
 re-examined).
+
+## Post-CAS execution record (2026-08-23)
+
+Recorded by the separately authorized post-CAS truth-repair follow-up
+(branch `docs/post-cas-truth-2026-08-23`, worktree
+`D:\Development\saga-mcp-POSTCAS`), fulfilling the ADR-094 record-only
+exit check. Facts observed/re-verified on 2026-08-23 with Git-only
+checks:
+
+- before (this decision's CAS expected-old value, corroborated by the
+  first-parent merge base and by `refs/remotes/origin/saga4`, which
+  still resolves to it): `refs/heads/saga4` = `611c35e0`;
+- after (observed): `refs/heads/saga4` =
+  `586871adfeae77da0ca8af96232ef96d6b0ee7e4`;
+- `origin/saga4` remains `611c35e071de9dacfd06c3e73a6ea0301f11f16e` —
+  no push occurred and none is claimed;
+- staging history shape re-verified post-hoc: the first-parent chain
+  `611c35e0..586871ad` is exactly `87b97e11` (closure integration
+  through `905f5940`) + `37b75b01` (plan snapshot `58b8656a`) +
+  `ab397ff7` (Elite line through `91af2982`) + the staging ADR-094
+  docs commit `586871ad` — no other first-parent commits;
+- the staging branch ref `refs/heads/cc/saga4-consolidation-2026-08-23`
+  no longer exists and the staging worktree is removed
+  (`git worktree list` census, 2026-08-23);
+- the exact archive
+  `D:\Development\saga-mcp-branch-archives\pre-saga4-consolidation-2026-08-23.bundle`
+  exists (34,769,506 bytes) and was verified with `git bundle verify`:
+  "is okay", complete history, 120 refs.
+
+Deliberately NOT claimed by the CAS or by this record: any remote push,
+any build, dist rebuild, test, full-suite, or factory evidence —
+post-CAS heavy validation remains a separately authorized quiet-machine
+step. Pre-CAS precondition attestation belongs to the CAS execution;
+this record attests only the post-state observations listed above.
 
 ## References
 
