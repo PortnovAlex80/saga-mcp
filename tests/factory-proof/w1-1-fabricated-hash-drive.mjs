@@ -45,7 +45,7 @@ const { HARNESS_CONCURRENCY_CEILING } = await import(
 const { buildCanonicalProofComposition, driveCanonicalProof, createScriptedObserver }
   = await import('./canonical-proof-composition.mjs');
 const { createScriptedActor, projectFeedbackVariant } = await import('./scripted-actor.mjs');
-const { W9_HAPPY_HANDLERS } = await import('../factory-e2e/w9-happy-handlers.mjs');
+const { W9_HAPPY_HANDLERS, coveredConstraintIdsFromBriefDb } = await import('../factory-e2e/w9-happy-handlers.mjs');
 
 const sha256 = t => createHash('sha256').update(t, 'utf8').digest('hex');
 // Module-scope record of the fabricated first attempt: the in-process worker
@@ -111,6 +111,7 @@ function acceptanceActorHandler({ handlers, assignment, context, db }) {
   const nfrs = accepted('NFR');
   const ucs = accepted('UC');
   if (!frs.length) throw new Error('w1-1: no accepted FR for acceptance');
+  const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
 
   const writeDoc = (p, title) => {
     const full = path.join(repoPath, p);
@@ -123,6 +124,11 @@ function acceptanceActorHandler({ handlers, assignment, context, db }) {
       project_id: projectId, epic_id: epicId, type: 'AC', code, title,
       path: p, status: 'accepted',
       ...(withDigest ? { content_hash: withDigest } : {}),
+      // ELITE-7 run-scoped register repair: the acceptance coverage gate now
+      // fires for every formalization node, so the corpus closes coverage
+      // exactly like the migrated golden path (the relay read back from the
+      // accepted brief's dispositions — every non-waived id).
+      ...(coveredIds.length > 0 ? { metadata: { covered_constraint_ids: coveredIds } } : {}),
     });
   };
   const trace = (sid, tid, lt) => handlers.trace_add({

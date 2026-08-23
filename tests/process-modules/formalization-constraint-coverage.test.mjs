@@ -31,6 +31,7 @@ import {
 } from '../../dist/modules/formalization/application/formalization-contract-analysis.js';
 import { createAcceptanceContractValidator } from '../../dist/modules/formalization/application/acceptance-contract-validator.js';
 import { createFormalizationContractValidator } from '../../dist/modules/formalization/application/formalization-contract-validator.js';
+import { readConstraintCoverageRequirement } from '../../dist/modules/formalization/application/constraint-coverage.js';
 import {
   createFormalizationProductionCellKernelHandlers,
   FORMALIZATION_KERNEL_HANDLER_IDS,
@@ -513,4 +514,61 @@ test('baseline payload omits coveredConstraints when no AC carries any (retro-co
   assert.equal(result.event, 'frozen');
   assert.equal(frozen.length, 1);
   assert.equal(frozen[0].coveredConstraints, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// ELITE-7 seam regression (2026-08-23): the FormalizationCase rides the run's
+// FIRST formalization node; later nodes' desk inputs (the SRS node carries the
+// acceptance-baseline snapshot) are not cases. Before the run-scoped repair
+// the reader returned null for every non-first node, so a run WITH a register
+// was treated as registerless — the SRS froze uncovered and the Development
+// planner died unreparably (constraint-register-uncovered, all ids).
+// ---------------------------------------------------------------------------
+
+const BASELINE_SNAPSHOT_INPUT = {
+  process_run_id: 2,
+  process_node_input: {
+    schema: 'factory.acceptance-baseline-snapshot.v1',
+    artifactRef: 'formalization-baseline:1',
+  },
+};
+
+function seedSiblingCaseTask(db, processRunId) {
+  db.prepare(
+    `INSERT INTO tasks (id, epic_id, title, status, metadata)
+     VALUES (6, 1, 'define product contract', 'done', ?)`,
+  ).run(JSON.stringify({ process_run_id: processRunId, process_node_input: formalizationCase() }));
+}
+
+test('ELITE-7 seam: the register resolves for a node whose own desk input is not the case', () => {
+  const db = freshDb();
+  seedSiblingCaseTask(db, 2);
+  seedTask(db, BASELINE_SNAPSHOT_INPUT);
+  const requirement = readConstraintCoverageRequirement(db, 5, 2);
+  assert.notEqual(requirement, null,
+    'the register MUST resolve through the sibling case — the ELITE-7 run-scoped repair');
+  assert.deepEqual(requirement.constraintIds, ['ord-c-001', 'ord-c-002', 'ord-c-003']);
+});
+
+test('ELITE-7 seam: a case from ANOTHER process run never leaks into this gate', () => {
+  const db = freshDb();
+  seedSiblingCaseTask(db, 99);
+  seedTask(db, BASELINE_SNAPSHOT_INPUT);
+  assert.equal(readConstraintCoverageRequirement(db, 5, 2), null,
+    'run-scoping: a foreign run\'s case must not blind- or blind-open this gate');
+});
+
+test('ELITE-7 seam: the worker_done gate fires on the uncovered corpus through the sibling case', () => {
+  const db = freshDb();
+  seedSiblingCaseTask(db, 2);
+  seedTask(db, BASELINE_SNAPSHOT_INPUT);
+  seedCompleteAcceptanceContract(db, {
+    briefMetadata: BRIEF_WITH_WAIVER,
+    acMetadata: {}, // no covered_constraint_ids anywhere — the ELITE-7 corpus
+  });
+  const result = createAcceptanceContractValidator(db).validate(INPUT);
+  assert.equal(result.accepted, false,
+    'the acceptance gate must reject the coverage-less corpus for a non-case desk input');
+  assert.equal(result.code, 'FORMALIZATION_CONSTRAINT_UNCOVERED');
+  assert.equal(result.gaps.length, 2); // ord-c-001, ord-c-002 (003 waived)
 });

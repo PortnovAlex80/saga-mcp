@@ -253,8 +253,13 @@ function constraintDispositionsOf(register) {
  * accepted AND resolved/deferred alike (on v2 resolved/deferred remain
  * obligations the AC/SRS work must cover; nothing subtracts on v2). Legacy
  * v1 reasoned waivers are the only lawful exclusion.
+ *
+ * Exported for the proof drives (W1-1): the ELITE-7 run-scoped register
+ * repair made the acceptance coverage gate fire for EVERY formalization
+ * node, so scripted corpora must close coverage exactly like the golden
+ * path does.
  */
-function coveredConstraintIdsFromBriefDb(db, epicId) {
+export function coveredConstraintIdsFromBriefDb(db, epicId) {
   const brief = db.prepare(
     `SELECT metadata FROM artifacts
       WHERE epic_id=? AND type='brief' AND status='accepted'
