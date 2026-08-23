@@ -101,6 +101,16 @@ const GROUPS = {
       // matched by NO group glob, so CI never executed it. Exact file on
       // purpose: no directory glob, the surface cannot silently widen.
       'tests/worker-prompt-assembly.test.mjs',
+      // The 2026-08-23 desk-coverage audit found SIX more orphans of the
+      // same class (committed by the closure program, hosted by nobody):
+      // the planner-desk GAP-6 suites and the readiness-desk substrate
+      // suites. Exact files, same GAP-8 hosting pattern.
+      'tests/modules/development/task-graph-register-conditional-coverage.test.mjs',
+      'tests/modules/development/task-graph-gate-srs-manifest.test.mjs',
+      'tests/infrastructure/local-runnability-substrate-retry.test.mjs',
+      'tests/infrastructure/local-runnability-toctou-reprobe.test.mjs',
+      'tests/infrastructure/environment-identity.test.mjs',
+      'tests/infrastructure/local-runnability-seam-compose.test.mjs',
     ],
     concurrency: 1,
     note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts',
