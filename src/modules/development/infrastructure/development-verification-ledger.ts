@@ -434,20 +434,22 @@ export function recordVerificationTerminalRoute(
   const entryState = terminalRouteEventState(input.route);
   const graphHash = readLedgerGraphHash(db, input.processRunId);
   if (graphHash === null) return; // legacy run: never partially accounted
-  const rows = db.prepare(
-    `SELECT criterion_key,
-            (SELECT entry_state FROM ${LEDGER_TABLE} inner_row
-              WHERE inner_row.process_run_id=outer_row.process_run_id
-                AND inner_row.criterion_key=outer_row.criterion_key
-              ORDER BY inner_row.id DESC LIMIT 1) AS latest_state
-       FROM ${LEDGER_TABLE} outer_row
-      WHERE process_run_id=?
-      GROUP BY criterion_key
-      ORDER BY criterion_key`,
+  // EXACT-KEY FULL-CHAIN derivation (no newest-wins SQL selector): read the
+  // COMPLETE append chain of the run in authoritative append order and fold
+  // the current per-criterion state in code. The fold consumes every event —
+  // it is the same full-chain reduction the domain projection performs, not a
+  // chronology-picked winner row; the append ordinal only sequences the fold.
+  const chain = db.prepare(
+    `SELECT criterion_key,entry_state FROM ${LEDGER_TABLE}
+      WHERE process_run_id=? ORDER BY id`,
   ).all(input.processRunId) as Array<{
     criterion_key: string;
-    latest_state: VerificationLedgerEvent['entryState'];
+    entry_state: VerificationLedgerEvent['entryState'];
   }>;
+  const latestStateByKey = new Map<string, VerificationLedgerEvent['entryState']>();
+  for (const event of chain) {
+    latestStateByKey.set(event.criterion_key, event.entry_state);
+  }
   const closable = new Set(['proposed', 'pending', 'terminal-unknown', 'terminal-blocked', 'terminal-human-required']);
   const insert = db.prepare(
     `INSERT INTO ${LEDGER_TABLE}
@@ -464,14 +466,14 @@ export function recordVerificationTerminalRoute(
             AND terminal_provenance_ref=?
        )`,
   );
-  for (const row of rows) {
-    if (!closable.has(row.latest_state)) continue; // executed/waived: never overwritten
+  for (const criterionKey of [...latestStateByKey.keys()].sort()) {
+    if (!closable.has(latestStateByKey.get(criterionKey)!)) continue; // executed/waived: never overwritten
     const opened = db.prepare(
       `SELECT verification_item_key,required FROM ${LEDGER_TABLE}
         WHERE process_run_id=? AND criterion_key=?
           AND entry_state IN ('proposed','pending')
         ORDER BY id LIMIT 1`,
-    ).get(input.processRunId, row.criterion_key) as {
+    ).get(input.processRunId, criterionKey) as {
       verification_item_key: string;
       required: number;
     } | undefined;
@@ -481,7 +483,7 @@ export function recordVerificationTerminalRoute(
       input.processRunId,
       input.processRunId,
       graphHash,
-      row.criterion_key,
+      criterionKey,
       opened.verification_item_key,
       opened.required,
       entryState,
@@ -490,7 +492,7 @@ export function recordVerificationTerminalRoute(
       input.provenanceRef,
       JSON.stringify(attributedTo),
       input.processRunId,
-      row.criterion_key,
+      criterionKey,
       entryState,
       input.provenanceRef,
     );

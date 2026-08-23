@@ -108,10 +108,6 @@ const CLASSIFICATION = Object.freeze({
     release: 'ADR-075-§15',
     verdict: 'kept (9d37a9e1): append-only repair-desk frontier — the latest repair_required FINAL gate decision per EXACT workplace_ref (rowid is the append ordinal of the gate-decisions chain, never wall-clock chronology; the verdict filter narrows to the repair-target class); the picked row itself carries the material (candidate set ref + decision key) that the repair desk re-projects, and the desk re-projects an ALREADY-ACCEPTED exact product — chronology selects a repair-cycle boundary, not a material subject',
   },
-  'src/modules/development/infrastructure/development-verification-ledger.ts': {
-    release: 'CC-GAP-8',
-    verdict: 'kept: append-only criterion-key ledger frontier — recordVerificationTerminalRoute reads the latest event state per EXACT (process_run_id, criterion_key) to decide which entries are still closable (the ledger is append-only with UPDATE/DELETE triggers; row id is the append ordinal, never wall-clock chronology). The picked state never selects material: it only routes an ACCOUNTING transition (terminal fact vs skip), and discharge truth flows exclusively through the full-event projection (projectCriterionLedgerAccounting reduces the complete append chain). Same class as the gate-finding-set-chain append-only audit frontier.',
-  },
   'src/process-modules/persistence/sqlite-process-product-repository-v2.ts': {
     release: 'PROCESS-PRODUCT-V2',
     verdict: 'kept: exact-logical-key revision tiebreak — readRowByLogicalKey reads the latest row OF ONE EXACT (process_run_id, product_kind, product_key) triple (id is the insert ordinal among revisions of the same logical key); recency never chooses between different subjects, it picks the current revision of an already-exactly-named product',
@@ -195,4 +191,23 @@ test('K7: the deleted latest-wins readers stay deleted', () => {
   ));
   assert.match(projection, /PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE/u);
   assert.doesNotMatch(projection, /order by id desc limit 1/iu);
+
+  // CC-GAP-8 independent audit (B2): development-verification-ledger.ts was
+  // broadened INTO this allowlist without ADR authority (d58ee94a). The
+  // allowlist rule says broadening requires a new ADR; instead of granting
+  // one, the newest-wins selector was CUT: recordVerificationTerminalRoute
+  // now reads the COMPLETE append chain of the exact run
+  // (`ORDER BY id`, ascending, no LIMIT) and folds the per-criterion current
+  // state in code — the same full-chain reduction the domain projection
+  // performs. The file left the freeze scope the only legal way: by removing
+  // the pattern. This pin keeps it out.
+  const verificationLedger = stripComments(readFileSync(
+    path.join(REPO_ROOT, 'src/modules/development/infrastructure/development-verification-ledger.ts'),
+    'utf8',
+  ));
+  assert.doesNotMatch(
+    verificationLedger,
+    /order by[^;]*desc[^;]*limit 1/iu,
+    'development-verification-ledger.ts must derive per-criterion state from the full append chain, never a newest-wins SQL selector',
+  );
 });
