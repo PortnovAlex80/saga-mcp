@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
-import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
+import { releaseExecutionAtomically, type ReleaseOutcome } from './lifecycle/atomic-release.js';
 import {
   decideStuckAction,
   FINISH_GRACE_MS,
@@ -346,16 +346,20 @@ export function markExecutionExited(
   executionId: string,
   exitCode: number | null,
   state: 'exited' | 'terminated' = 'exited',
-): void {
+): ReleaseOutcome {
   const db = openRuntimeDb(dbPath);
-  withBusyRetry(() => {
-    releaseExecutionAtomically(db, {
-      executionId,
-      terminalState: state,
-      exitCode,
-      reason: `process exited (state=${state}, exitCode=${exitCode ?? 'null'})`,
-    });
-  });
+  // CC-GAP-3: the outcome is returned so the caller (the runner's close
+  // callback) can tell whether ITS write won the durable terminal transition.
+  // A supervision sweep may have converged the row first (lost close callback,
+  // engine restart); the runner must then NOT emit its worker.exit
+  // observation — the sweep that terminalized the row already emitted it
+  // (exactly-once ownership keyed on the durable transition).
+  return withBusyRetry(() => releaseExecutionAtomically(db, {
+    executionId,
+    terminalState: state,
+    exitCode,
+    reason: `process exited (state=${state}, exitCode=${exitCode ?? 'null'})`,
+  }));
 }
 
 export function updateExecutionPhase(
@@ -605,6 +609,14 @@ export interface ReconcileResult {
    * sweep keeps + renews per the OLD behavior — fail toward conservatism.
    */
   pidIdentityUnverifiable?: boolean;
+  /**
+   * ADR-087 physical-tail truthfulness: whether the OS PID was STILL ALIVE
+   * when this sweep classified the row (false after a verified kill; null
+   * when no liveness fact applies). Rides reaped projections so the
+   * worker.exit observation can state it — `state='exited'` is semantic
+   * protocol completion, never proof of physical process death.
+   */
+  pidAlive?: boolean | null;
 }
 
 export function reconcileWorkerExecutions(
@@ -717,6 +729,7 @@ export function reconcileWorkerExecutions(
             action: outcome.effectiveTerminal === 'exited' ? 'exited' : 'lost',
             released: outcome.taskReleased, reason,
             lostViaDeadPid: outcome.effectiveTerminal !== 'exited',
+            pidAlive: isAlive,
           });
           continue;
         }
@@ -828,6 +841,7 @@ export function reconcileWorkerExecutions(
           // release even when the kill was legitimate (stale closer).
           action: outcome.effectiveTerminal === 'exited' ? 'exited' : 'terminated',
           released: outcome.taskReleased, reason: action.reason,
+          pidAlive: false,
         });
         break;
       }
@@ -850,6 +864,7 @@ export function reconcileWorkerExecutions(
           action: cleanExit ? 'exited' : 'lost',
           released: outcome.taskReleased, reason: action.reason,
           lostViaDeadPid: !cleanExit && row.state !== 'reserved' && !isAlive,
+          pidAlive: isAlive,
         });
         break;
       }

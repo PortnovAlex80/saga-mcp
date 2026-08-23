@@ -35,7 +35,9 @@ import {
   type DiscoverySettlementInputSnapshot,
 } from '../domain/discovery-settlement-input.js';
 import {
-  buildOrderConstraintRegister,
+  assertOrderConstraintUnknownsLifted,
+  buildOrderConstraintRegisterV2,
+  type OrderConstraintInjectionTable,
   type OrderConstraintRegister,
 } from '../../../shared/constraint-register.js';
 import {
@@ -44,6 +46,74 @@ import {
 
 export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA =
   'factory.discovery-outcome-certificate.v1';
+
+/**
+ * ADR-090 (CC-IC-1): the typed no-obligations attestation a NEW v2 Factory
+ * Start carries when (and only when) the order truly counts nothing — no
+ * order_constraints drafts, no proposal unknowns, no injected obligations.
+ * Null-binding grandfathering is frozen-legacy-v1-only: a new v2 settlement
+ * NEVER silently produces a null register (mutation m6).
+ */
+export const DISCOVERY_NO_OBLIGATIONS_ATTESTATION_SCHEMA =
+  'factory.discovery-no-obligations.v1';
+
+/**
+ * ADR-090 (CC-IC-1): the pinned per-run lifecycle definition read — the ONLY
+ * normative path the frozen lifecycle classification takes into Discovery
+ * settlement (`ctx.processRunId` → `factory_stage_runs.process_run_id` →
+ * `lifecycle_run_id` → pinned `factory_lifecycle_runs` `definition_snapshot`
+ * + `definition_hash`). Declared HERE as a structural port: Discovery
+ * imports no lifecycle internals and constructs no repository — the typed
+ * `readDefinitionByProcessRun` port/repository is implemented in
+ * `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts` and
+ * injected through `src/app/product-lifecycle-runtime.ts` /
+ * `src/app/composition-root.ts` DI wiring. A missing row or definition hash
+ * mismatch fails closed with a typed error — never an ambient/default
+ * `lifecycleDefinition` fallback, never prose re-derivation.
+ */
+export interface LifecycleDefinitionClassificationRead {
+  readonly lifecycleRunId: number;
+  readonly lifecycleRefKey: string;
+  /** The pinned definition snapshot (parsed JSON), consumed READ-ONLY. */
+  readonly definition: Readonly<Record<string, unknown>>;
+  readonly definitionHash: string;
+}
+
+export interface LifecycleDefinitionByProcessRunReader {
+  readDefinitionByProcessRun(processRunId: number): LifecycleDefinitionClassificationRead;
+}
+
+/**
+ * One declared, digest-pinned lifecycle obligation injection table delivered
+ * by composition. The lifecycle that freezes a classification owns its
+ * injection declaration (data, not engine inference) — e.g. the frozen
+ * `runnable-local` terminal of the product-build lifecycle declares the
+ * whole-product-synthesis + ordered-smoke table beside it.
+ */
+export interface LifecycleObligationInjectionDeclaration {
+  readonly table: OrderConstraintInjectionTable;
+  /** Content-addressed ref cited by the settlement record. */
+  readonly tableRef: string;
+  /** sha256 over the table — settlement verifies the digest pins what it consumed. */
+  readonly tableDigest: string;
+}
+
+export interface DiscoveryProductionCellInstallationDeps {
+  readonly db: SqlDatabasePort;
+  readonly certificates: ProcessOutcomeCertificateRepository;
+  /**
+   * REQUIRED (fail-closed): the pinned per-run lifecycle definition reader.
+   * No ambient default exists; the composition must inject it.
+   */
+  readonly lifecycleDefinitionReader: LifecycleDefinitionByProcessRunReader;
+  /**
+   * The declared injection tables + the classifications that REQUIRE one,
+   * delivered by composition from the lifecycle owners (data only).
+   */
+  readonly lifecycleInjectionDeclarations: readonly LifecycleObligationInjectionDeclaration[];
+  /** Classifications whose terminal presence REQUIRES a declared table (m4 red). */
+  readonly lifecycleInjectionRequiredClassifications: readonly string[];
+}
 
 interface SubmissionRow {
   id: number;
@@ -58,19 +128,26 @@ interface SubmissionRow {
   submitted_at: string;
 }
 
-export function createDiscoveryProductionCellKernelHandlers(input: {
-  db: SqlDatabasePort;
-  certificates: ProcessOutcomeCertificateRepository;
-}): Record<string, KernelHandler> {
+export function createDiscoveryProductionCellKernelHandlers(
+  input: DiscoveryProductionCellInstallationDeps,
+): Record<string, KernelHandler> {
+  // ADR-090 (CC-IC-1): the pinned classification read is REQUIRED — a
+  // composition that forgets it fails loudly here, before any settlement can
+  // silently fall back to an ambient lifecycle definition.
+  if (!input.lifecycleDefinitionReader
+    || typeof input.lifecycleDefinitionReader.readDefinitionByProcessRun !== 'function') {
+    throw new Error(
+      'DISCOVERY_SETTLEMENT_LIFECYCLE_READER_REQUIRED: the pinned per-run lifecycle definition reader must be injected (no ambient default)',
+    );
+  }
   return {
     'discovery-settlement-policy': createSettlementHandler(input),
   };
 }
 
-function createSettlementHandler(input: {
-  db: SqlDatabasePort;
-  certificates: ProcessOutcomeCertificateRepository;
-}): KernelHandler {
+function createSettlementHandler(
+  input: DiscoveryProductionCellInstallationDeps,
+): KernelHandler {
   const policy = new DiscoverySettlementPolicyV1();
   return ctx => {
     try {
@@ -133,22 +210,65 @@ function createSettlementHandler(input: {
       };
       const snapshotHash = buildSettlementInputHash(snapshot);
       const decision = policy.settle(snapshot);
-      // AC-drift remedy (network 0): build the digest-pinned constraint
-      // register ONCE, here, while the constraints are still visible. The
-      // register rides the immutable certificate payload (covered by
-      // certificateHash), so it is frozen with the decision it belongs to.
-      // Null when the proposal carried no constraints (retro-compat).
+      // AC-drift remedy (network 0) + ADR-090 (CC-IC-1): build the
+      // digest-pinned constraint register ONCE, here, while the constraints
+      // are still visible. The register rides the immutable certificate
+      // payload (covered by certificateHash), so it is frozen with the
+      // decision it belongs to.
+      //
+      // The lifecycle classification reaches settlement ONLY through the
+      // pinned per-run read (fail-closed typed errors — never an ambient
+      // lifecycleDefinition); the classification is derived deterministically
+      // from the pinned definition's terminal statuses (data, no prose
+      // rereading, no workshop-name branch); the injected obligations are
+      // consumed READ-ONLY from the declared, digest-pinned injection table
+      // and APPENDED after the proposal-derived block in declared table
+      // order; and every proposal unknown is drafted 1:1/positionally as a
+      // kind `open-question` entry (asserted conserved below — m1 red).
+      const proposalPayload
+        = JSON.parse(proposal.payload_snapshot) as DiscoveryProposalPayload;
+      const lifecycle = classifyPinnedLifecycle(input, ctx.processRunId);
       const constraintRegister: OrderConstraintRegister | null =
-        buildOrderConstraintRegister(
-          (JSON.parse(proposal.payload_snapshot) as DiscoveryProposalPayload).order_constraints,
-        );
+        buildOrderConstraintRegisterV2({
+          drafts: proposalPayload.order_constraints,
+          unknowns: proposalPayload.unknowns,
+          injections: lifecycle.injections,
+        });
+      // m1: a proposal unknown absent from the register's open-question
+      // entries is a typed settlement red, never a silent under-count.
+      assertOrderConstraintUnknownsLifted(constraintRegister, proposalPayload.unknowns ?? []);
+      // The settlement record cites the classification read + every consumed
+      // injection table digest; a new v2 Factory Start carries non-null typed
+      // authority — the built register, or the explicit typed no-obligations
+      // attestation (never a silent null binding — m6 red).
+      const lifecycleBinding = {
+        lifecycleRunId: lifecycle.pinned.lifecycleRunId,
+        terminalClassifications: lifecycle.terminalClassifications,
+        definitionHash: lifecycle.pinned.definitionHash,
+        ...(lifecycle.consumedTableRefs.length > 0
+          ? { injectionTableRefs: lifecycle.consumedTableRefs }
+          : {}),
+      } as const;
       const payload = {
         schemaVersion: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
         decision: decision.decision,
         reasonCodes: decision.reason_codes,
         rationale: decision.rationale,
         inputHash: snapshotHash,
-        ...(constraintRegister === null ? {} : { constraintRegister }),
+        ...(constraintRegister === null
+          ? {
+              noObligationsAttestation: {
+                schemaVersion: DISCOVERY_NO_OBLIGATIONS_ATTESTATION_SCHEMA,
+                attestation: 'no-obligations',
+                lifecycleBinding,
+                attestationDigest: sha256Hex({
+                  schemaVersion: DISCOVERY_NO_OBLIGATIONS_ATTESTATION_SCHEMA,
+                  attestation: 'no-obligations',
+                  lifecycleBinding,
+                }),
+              },
+            }
+          : { constraintRegister, lifecycleBinding }),
         payload: {
           processInputHash: run.input_hash,
           settlementInput: snapshot,
@@ -379,4 +499,120 @@ function requireEpicId(ctx: KernelHandlerContext): number {
     throw new Error('DISCOVERY_EPIC_REQUIRED');
   }
   return ctx.epicId as number;
+}
+
+/**
+ * ADR-090 (CC-IC-1): resolve the pinned lifecycle definition for THIS
+ * process run and derive the frozen classification deterministically from
+ * the definition's declared terminal statuses — pure data inspection of the
+ * pinned snapshot (no lifecycle module import, no prose rereading, no
+ * workshop-name branch, no ambient default). When a REQUIRED classification
+ * is present but no declared injection table matches, settlement fails
+ * closed: a runnable-local classification without its injected
+ * whole-product-synthesis + ordered-smoke obligations is a typed red (m4).
+ */
+function classifyPinnedLifecycle(
+  input: DiscoveryProductionCellInstallationDeps,
+  processRunId: number,
+): {
+  pinned: LifecycleDefinitionClassificationRead;
+  terminalClassifications: readonly string[];
+  injections: readonly { table: OrderConstraintInjectionTable; tableRef: string }[];
+  consumedTableRefs: readonly string[];
+} {
+  const pinned = input.lifecycleDefinitionReader.readDefinitionByProcessRun(processRunId);
+  const terminalClassifications = terminalClassificationsOf(pinned.definition);
+  const applicable = input.lifecycleInjectionDeclarations
+    .filter(declaration => terminalClassifications.includes(declaration.table.classification));
+  // A table cannot be replayed twice: two applicable declarations for the
+  // SAME classification (or the same tableRef twice) would inject the mapped
+  // obligations twice — a typed settlement red, never a silently duplicated
+  // injected block (ADR-090 focused repair).
+  const seenClassifications = new Set<string>();
+  const seenTableRefs = new Set<string>();
+  for (const declaration of applicable) {
+    const classification = declaration.table.classification;
+    if (seenClassifications.has(classification)) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_DUPLICATE: classification '${classification}' is mapped `
+        + 'by more than one declared injection table — a table cannot be replayed twice',
+      );
+    }
+    if (seenTableRefs.has(declaration.tableRef)) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_DUPLICATE: injection table ref '${declaration.tableRef}' `
+        + 'is declared more than once — a table cannot be replayed twice',
+      );
+    }
+    seenClassifications.add(classification);
+    seenTableRefs.add(declaration.tableRef);
+  }
+  for (const requiredClassification of input.lifecycleInjectionRequiredClassifications) {
+    if (
+      terminalClassifications.includes(requiredClassification)
+      && !applicable.some(d => d.table.classification === requiredClassification)
+    ) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_MISSING: the pinned lifecycle definition freezes terminal `
+        + `classification '${requiredClassification}' but no declared injection table maps it `
+        + '(a runnable-local classification without the injected whole-product-synthesis and '
+        + 'ordered-smoke obligations is a settlement red)',
+      );
+    }
+  }
+  for (const declaration of applicable) {
+    const derivedDigest = sha256Hex(declaration.table);
+    if (
+      derivedDigest !== declaration.tableDigest
+      || declaration.tableRef !== `lifecycle-obligation-injection:${declaration.tableDigest}`
+    ) {
+      throw new Error(
+        `LIFECYCLE_INJECTION_TABLE_DIGEST_MISMATCH: declared table for `
+        + `'${declaration.table.classification}' is not pinned by its digest `
+        + `(${declaration.tableRef}) — ad-hoc tables are never injected`,
+      );
+    }
+  }
+  return {
+    pinned,
+    terminalClassifications,
+    injections: applicable.map(d => ({ table: d.table, tableRef: d.tableRef })),
+    consumedTableRefs: applicable.map(d => d.tableRef),
+  };
+}
+
+/**
+ * Deterministic terminal-classification projection of a pinned lifecycle
+ * definition: every outcomeRoute of every stage whose target is
+ * `{ type: 'terminal', status }` contributes `status`. Data-only, ordered by
+ * stage declaration then route key (both pinned by the definition hash).
+ */
+function terminalClassificationsOf(
+  definition: Readonly<Record<string, unknown>>,
+): readonly string[] {
+  const stages = definition['stages'];
+  if (!Array.isArray(stages)) {
+    throw new Error(
+      'DISCOVERY_LIFECYCLE_DEFINITION_INVALID: the pinned definition snapshot carries no stages array',
+    );
+  }
+  const classifications: string[] = [];
+  for (const stage of stages) {
+    if (!stage || typeof stage !== 'object' || Array.isArray(stage)) {
+      throw new Error('DISCOVERY_LIFECYCLE_DEFINITION_INVALID: stage entries must be objects');
+    }
+    const routes = (stage as Record<string, unknown>)['outcomeRoutes'];
+    if (routes === undefined || routes === null) continue;
+    if (typeof routes !== 'object' || Array.isArray(routes)) {
+      throw new Error('DISCOVERY_LIFECYCLE_DEFINITION_INVALID: outcomeRoutes must be an object');
+    }
+    for (const route of Object.values(routes as Record<string, unknown>)) {
+      if (!route || typeof route !== 'object' || Array.isArray(route)) continue;
+      const target = route as Record<string, unknown>;
+      if (target['type'] === 'terminal' && typeof target['status'] === 'string') {
+        classifications.push(target['status']);
+      }
+    }
+  }
+  return classifications;
 }

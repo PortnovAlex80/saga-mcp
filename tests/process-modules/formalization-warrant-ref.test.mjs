@@ -93,7 +93,7 @@ function srsContent() {
   ].join('\n');
 }
 
-function settlementFixture({ dispositions }) {
+function settlementFixture({ dispositions, orderConstraints = ORDER_CONSTRAINTS }) {
   const issued = [];
   const persisted = [];
   const deps = {
@@ -166,6 +166,24 @@ function settlementFixture({ dispositions }) {
           },
         };
       },
+      // ADR-090 (CC-IC-1): settlement reads the discovery certificate by the
+      // exact ref the case carries (hash-verified). This legacy-v1 fixture
+      // certificate carries NO register and NO no-obligations attestation, so
+      // the frozen-legacy-v1 deterministic rebuild fallback remains the
+      // supplier and every pre-existing expectation is unchanged.
+      read: (id) => ({
+        id,
+        processRunId: 1,
+        certificateHash: 'a'.repeat(64),
+        certificatePayload: {
+          schemaVersion: 'factory.discovery-outcome-certificate.v1',
+          decision: 'go',
+          reasonCodes: [],
+          rationale: 'legacy',
+          inputHash: 'i'.repeat(64),
+          payload: {},
+        },
+      }),
     },
     readArtifactContent: (id) => (id === 40 ? srsContent() : 'x'.repeat(10)),
   };
@@ -175,7 +193,7 @@ function settlementFixture({ dispositions }) {
     epicId: 1,
     processRunId: 2,
     input: {},
-    frame: { runInput: formalizationCase(ORDER_CONSTRAINTS) },
+    frame: { runInput: formalizationCase(orderConstraints) },
     heartbeat: () => {},
     initiatedBy: 'operator',
     node: { id: 'settle-formalization' },
@@ -193,6 +211,11 @@ test('settlement certificate cites the register + dispositions as warrantRef', (
   assert.match(warrantRef.constraintRegisterDigest, /^[a-f0-9]{64}$/);
   assert.deepEqual(warrantRef.dispositions, DISPOSITIONS);
   assert.match(warrantRef.dispositionsDigest, /^[a-f0-9]{64}$/);
+  // ADR-090 (CC-IC-1) m7: the warrant CROSS-BINDS the certificate/case it was
+  // issued against — register+dispositions self-consistency alone is not
+  // identity.
+  assert.equal(warrantRef.discoveryCertificateHash, 'a'.repeat(64));
+  assert.match(warrantRef.formalizationCaseDigest, /^[a-f0-9]{64}$/);
 });
 
 test('settlement certificate carries no warrantRef without a register (retro-compat)', () => {
@@ -224,6 +247,63 @@ test('settlement certificate carries no warrantRef without a register (retro-com
 
 // ---- readiness manifest type seam ---------------------------------------------
 
+/**
+ * ADR-090 (CC-IC-1), mutation m7: a warrant re-targeted at a different
+ * certificate/case digest than the one it was issued against is a typed red.
+ * The issuing settlement verifies the cross-bind at construction; consumers
+ * (the readiness manifest contract and the future warrant phases) verify the
+ * same fields.
+ */
+test('m7: a warrant re-targeted at a different certificate/case digest is a cross-bind red', async () => {
+  const {
+    formalizationCaseIdentityDigest,
+    verifyWarrantCrossBind,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+
+  const { issued } = settlementFixture({ dispositions: DISPOSITIONS });
+  const warrant = issued[0].payload.payload.warrantRef;
+  const theCase = formalizationCase(ORDER_CONSTRAINTS);
+  const expected = {
+    discoveryCertificateHash: theCase.discoveryCertificateHash,
+    formalizationCaseDigest: formalizationCaseIdentityDigest(theCase),
+  };
+  // The issued warrant verifies against ITS OWN case.
+  verifyWarrantCrossBind(warrant, expected);
+
+  // The MUTATION (re-target at a different certificate): same register +
+  // dispositions self-consistency, different certificate hash.
+  const retargetedCertificate = {
+    ...warrant,
+    discoveryCertificateHash: 'b'.repeat(64),
+  };
+  assert.throws(
+    () => verifyWarrantCrossBind(retargetedCertificate, expected),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+
+  // The MUTATION (re-target at a different case): a later case digest
+  // (e.g. a re-mapped proposal) silently re-using an old warrant.
+  const retargetedCase = {
+    ...warrant,
+    formalizationCaseDigest: 'c'.repeat(64),
+  };
+  assert.throws(
+    () => verifyWarrantCrossBind(retargetedCase, expected),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+
+  // The case identity digest is honest content: a different certificate hash
+  // on the case produces a different case digest.
+  const driftedCase = {
+    ...theCase,
+    discoveryCertificateHash: 'b'.repeat(64),
+  };
+  assert.notEqual(
+    formalizationCaseIdentityDigest(driftedCase),
+    expected.formalizationCaseDigest,
+  );
+});
+
 function manifest(warrantRef) {
   return {
     schemaVersion: 'factory.development-readiness-manifest.v1',
@@ -243,12 +323,14 @@ function manifest(warrantRef) {
   };
 }
 
-test('readiness manifest contract accepts a well-formed warrantRef', () => {
+test('readiness manifest contract accepts a well-formed warrantRef (complete cross-bind)', () => {
   const errors = developmentReadinessManifestPayloadContract.validate(manifest({
     constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
     constraintRegisterDigest: 'c'.repeat(64),
     dispositionsDigest: 'd'.repeat(64),
     dispositions: { 'ord-c-001': { disposition: 'accepted' } },
+    discoveryCertificateHash: 'a'.repeat(64),
+    formalizationCaseDigest: 'e'.repeat(64),
   }));
   assert.deepEqual(errors, []);
 });
@@ -265,6 +347,208 @@ test('readiness manifest contract rejects a malformed warrantRef', () => {
   })).some(error => error.includes('warrantRef')));
 });
 
+// ---- ADR-090 (CC-IC-1 focused repair): the m7 CONSUMER boundary --------------
+
+/**
+ * A manifest warrant must not carry a forged or PARTIAL
+ * discoveryCertificateHash/formalizationCaseDigest cross-bind: both identities
+ * are required at the submission boundary, and the warrant consumer verifies
+ * the values against the DevelopmentCase's authoritative expected identities
+ * (frozen solution-contract payload).
+ */
+test('m7 consumer: a partial or malformed warrantRef cross-bind is a typed submission error', () => {
+  const complete = manifest({
+    constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
+    constraintRegisterDigest: 'c'.repeat(64),
+    dispositionsDigest: 'd'.repeat(64),
+    dispositions: {},
+    discoveryCertificateHash: 'a'.repeat(64),
+    formalizationCaseDigest: 'e'.repeat(64),
+  });
+  assert.deepEqual(developmentReadinessManifestPayloadContract.validate(complete), []);
+
+  // The MUTATION (partial cross-bind): the certificate identity is stripped.
+  const noCertificate = structuredClone(complete);
+  delete noCertificate.warrantRef.discoveryCertificateHash;
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(noCertificate)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+  // The MUTATION (partial cross-bind): the case identity is stripped.
+  const noCase = structuredClone(complete);
+  delete noCase.warrantRef.formalizationCaseDigest;
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(noCase)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+  // The MUTATION (forged shape): a non-64-hex identity.
+  const badHex = structuredClone(complete);
+  badHex.warrantRef.discoveryCertificateHash = 'nothex';
+  assert.ok(
+    developmentReadinessManifestPayloadContract.validate(badHex)
+      .some(error => error.includes('warrantRef must carry')),
+  );
+});
+
+test('m7 consumer: the manifest warrant is verified against the case\'s authoritative expected identities', async () => {
+  const {
+    resolveExpectedWarrantCrossBind,
+    verifyReadinessManifestWarrantCrossBind,
+  } = await import('../../dist/modules/development/domain/development-schemas.js');
+  const {
+    formalizationCaseIdentityDigest,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+
+  const theCase = formalizationCase(ORDER_CONSTRAINTS);
+  const expected = {
+    discoveryCertificateHash: theCase.discoveryCertificateHash,
+    formalizationCaseDigest: formalizationCaseIdentityDigest(theCase),
+  };
+  const developmentCase = {
+    solutionContractPayload: {
+      discoveryCertificateRef: theCase.discoveryCertificateRef,
+      discoveryCertificateHash: expected.discoveryCertificateHash,
+      formalizationCaseDigest: expected.formalizationCaseDigest,
+    },
+  };
+  assert.deepEqual(resolveExpectedWarrantCrossBind(developmentCase), expected);
+
+  const warrant = {
+    constraintRegisterRef: `constraint-register:${'c'.repeat(64)}`,
+    constraintRegisterDigest: 'c'.repeat(64),
+    dispositionsDigest: 'd'.repeat(64),
+    dispositions: {},
+    discoveryCertificateHash: expected.discoveryCertificateHash,
+    formalizationCaseDigest: expected.formalizationCaseDigest,
+  };
+  // The honest warrant verifies (no throw).
+  verifyReadinessManifestWarrantCrossBind(developmentCase, manifest(warrant));
+
+  // The MUTATION (forged certificate identity).
+  const forgedCertificate = manifest({
+    ...warrant,
+    discoveryCertificateHash: 'b'.repeat(64),
+  });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, forgedCertificate),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+  // The MUTATION (forged case identity).
+  const forgedCase = manifest({
+    ...warrant,
+    formalizationCaseDigest: 'f'.repeat(64),
+  });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, forgedCase),
+    /WARRANT_CROSS_BIND_MISMATCH/,
+  );
+  // The MUTATION (partial cross-bind at the consumer).
+  const partial = manifest({ ...warrant, formalizationCaseDigest: undefined });
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(developmentCase, partial),
+    /WARRANT_CROSS_BIND_INCOMPLETE/,
+  );
+  // A case with NO authoritative expectation cannot verify a present warrant
+  // at all — a typed red, never a silent unverifiable accept.
+  const legacyCase = {
+    solutionContractPayload: { discoveryCertificateHash: expected.discoveryCertificateHash },
+  };
+  assert.throws(
+    () => verifyReadinessManifestWarrantCrossBind(legacyCase, manifest(warrant)),
+    /WARRANT_CROSS_BIND_EXPECTATION_MISSING/,
+  );
+  // An ABSENT manifest warrantRef stays legal (retro-compat).
+  verifyReadinessManifestWarrantCrossBind(legacyCase, manifest());
+});
+
+test('m7 consumer: formalization settlement freezes the formalizationCaseDigest beside the certificate hash (expected-input seam)', async () => {
+  const {
+    formalizationCaseIdentityDigest,
+  } = await import('../../dist/modules/formalization/domain/formalization-schemas.js');
+  const { persisted } = settlementFixture({ dispositions: DISPOSITIONS });
+  assert.equal(persisted.length, 1);
+  const contract = persisted[0];
+  // The frozen solution contract is the authoritative expected-input seam the
+  // Development warrant consumer resolves BOTH cross-bind identities from.
+  assert.equal(contract.discoveryCertificateHash, 'a'.repeat(64));
+  assert.match(contract.formalizationCaseDigest, /^[a-f0-9]{64}$/);
+  assert.equal(
+    contract.formalizationCaseDigest,
+    formalizationCaseIdentityDigest(formalizationCase(ORDER_CONSTRAINTS)),
+  );
+});
+
 test('readiness manifest without warrantRef still validates (retro-compat)', () => {
   assert.deepEqual(developmentReadinessManifestPayloadContract.validate(manifest()), []);
+});
+
+// ---- ADR-088 (CC-GAP-6): the frozen coverage block on the solution contract ---
+
+test('solution contract freezes the constraint-coverage block (entries + typed waivers)', () => {
+  const { persisted } = settlementFixture({ dispositions: DISPOSITIONS });
+  assert.equal(persisted.length, 1);
+  const coverage = persisted[0].constraintRegisterCoverage;
+  assert.ok(coverage, 'a register-bearing case must freeze constraintRegisterCoverage');
+  assert.equal(
+    coverage.constraintRegisterRef,
+    `constraint-register:${coverage.constraintRegisterDigest}`,
+  );
+  assert.deepEqual(
+    coverage.entries.map(entry => entry.id),
+    ['ord-c-001', 'ord-c-002', 'ord-c-003'],
+  );
+  assert.deepEqual(
+    coverage.entries.map(entry => entry.class),
+    ['execution', 'material', 'human'],
+  );
+  // The A1 waiver rule: only disposition='waived' WITH a non-empty reason counts.
+  assert.deepEqual(coverage.waivedIds, ['ord-c-003']);
+});
+
+test('solution contract carries execution-class entrypoint declarations into the coverage block', () => {
+  const withEntrypoints = [
+    {
+      class: 'execution',
+      text: 'npm start leads to an accessible running browser product',
+      evidence_ref: 'order.source_body',
+      entrypoint_files: ['index.html'],
+    },
+    ...ORDER_CONSTRAINTS.slice(1),
+  ];
+  const { persisted } = settlementFixture({
+    dispositions: DISPOSITIONS,
+    orderConstraints: withEntrypoints,
+  });
+  const coverage = persisted[0].constraintRegisterCoverage;
+  assert.ok(coverage);
+  assert.deepEqual(coverage.entries[0].entrypointFiles, ['index.html']);
+  assert.equal('entrypointFiles' in coverage.entries[1], false);
+});
+
+test('solution contract freezes NO coverage block without a register (sole grandfather condition)', () => {
+  const { deps } = settlementFixture({ dispositions: DISPOSITIONS });
+  const persistedRegisterless = [];
+  const handlers = createFormalizationProductionCellKernelHandlers({
+    ...deps,
+    solutionContractRepository: {
+      ...deps.solutionContractRepository,
+      persist: (payload) => {
+        persistedRegisterless.push(payload);
+        return deps.solutionContractRepository.persist(payload);
+      },
+    },
+  });
+  const result = handlers[FORMALIZATION_KERNEL_HANDLER_IDS.settle]({
+    projectId: 1,
+    epicId: 1,
+    processRunId: 2,
+    input: {},
+    frame: { runInput: formalizationCase(undefined) },
+    heartbeat: () => {},
+    initiatedBy: 'operator',
+    node: { id: 'settle-formalization' },
+  });
+  assert.equal(result.event, 'formalized');
+  assert.equal(persistedRegisterless.length, 1);
+  assert.equal('constraintRegisterCoverage' in persistedRegisterless[0], false);
 });

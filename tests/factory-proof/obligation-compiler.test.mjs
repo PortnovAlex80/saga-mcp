@@ -171,7 +171,10 @@ test('T6: cardinality(min:1) → zero-member; unique → duplicate; grammar → 
 
   const grammar = relationalMutants(
     { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$' },
-    { acHeading: '## AC-1: Pipeline Completes' },
+    // Minimal-title witness: every emitted transform genuinely violates —
+    // the pattern guard suppresses a truncation that would still match the
+    // grammar (a long-title witness produced non-violating "mutants").
+    { acHeading: '## AC-1: T' },
     'probe.grammar',
   );
   const ops = new Set(grammar.map(m => m.operatorId));
@@ -181,8 +184,22 @@ test('T6: cardinality(min:1) → zero-member; unique → duplicate; grammar → 
     'the grammar family is exactly malformed/truncated/near-miss',
   );
   const nearMiss = grammar.find(m => m.operatorId === 'grammar-near-miss');
-  assert.equal(nearMiss.mutant.acHeading, '## AC-01: Pipeline Completes',
+  assert.equal(nearMiss.mutant.acHeading, '## AC-01: T',
     'near-miss is the zero-padded sudoku class');
+  // The pattern guard: a text whose truncation still satisfies the declared
+  // grammar derives NO truncated mutant (a non-violating transform is not a
+  // mutant), and a text with no colon to break derives no malformed mutant.
+  const longTitle = relationalMutants(
+    { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$' },
+    { acHeading: '## AC-1: Pipeline Completes' },
+    'probe.grammar',
+  );
+  assert.deepEqual(
+    longTitle.map(m => m.operatorId).sort(),
+    ['grammar-malformed', 'grammar-near-miss'],
+    'a pattern-satisfying truncation is suppressed; near-miss (killed by the '
+      + 'deeper resolution check, not the pattern) still derives',
+  );
 });
 
 test('T6b: structural schema operators derive from the descriptor', () => {
@@ -208,9 +225,15 @@ test('T6b: structural schema operators derive from the descriptor', () => {
 // T7 — the kill matrix vertical: REAL acceptance-contract validator.
 //
 // Boundary: createAcceptanceContractValidator(db).validate(input) over a real
-// in-memory DB (SCHEMA_SQL) with real repository-backed AC bytes. The mutants
-// rewrite the AC document; the v2.0.0 gate (heading resolution + coverage)
-// must kill every violating one.
+// in-memory DB (SCHEMA_SQL) with real repository-backed AC bytes. Every
+// GENERATED operator gets exactly ONE honest document-level materialization
+// and must be killed by the real gate. NO synthetic rejections and NO blanket
+// member-* mapping: the v2.0.0 adapter materialized every member mutant as
+// `covered = []`, masking that the declared subset direction
+// (covered ⊆ register−waived) was the opposite of the enforced reverse diff.
+// The v2.1.0 contract declares the uncovered RESIDUE, so the single generated
+// member mutant (residue gains one id) materializes as the register line
+// covered by no AC — the exact production rejection.
 // ---------------------------------------------------------------------------
 
 const AC_DOC_DIR = mkdtempSync(path.join(tmpdir(), 'w02-kill-matrix-'));
@@ -312,67 +335,82 @@ async function seedAcceptanceState({ SCHEMA_SQL, createAcceptanceContractValidat
   return { validator, input, db };
 }
 
+test('T7 prelude: the retired declaration direction was unenforceable — an extra covered id is ACCEPTED', async () => {
+  // Independent verification of the reported direction defect, enshrined as
+  // a regression: v2.0.0 declared `coveredConstraintIds ⊆
+  // registerIds-minus-waived`. Its honest member-extra materialization (a
+  // covered id the register never issued) is ACCEPTED by the real boundary —
+  // production enforces only the reverse diff (register − covered − waived
+  // = ∅). That is why the repair is the uncovered-residue algebra, not a
+  // member/of flip: the flipped declaration would still name a direction
+  // this boundary does not enforce.
+  const mods = await acceptanceBoundaryModules();
+  const validDoc = '# AC Doc\n\n## AC-1: T\n\nBody.\n';
+  const { validator, input } = await seedAcceptanceState(mods, validDoc, ['ord-c-001', 'ord-c-999']);
+  const result = validator.validate(input);
+  assert.equal(result.accepted, true,
+    `an unknown covered id must pass the reverse diff (got ${result.code})`);
+}, { timeout: 60_000 });
+
 test('T7: kill matrix on the REAL acceptance validator — every violating mutant dies, control passes', async () => {
   const mods = await acceptanceBoundaryModules();
   const contract = ACCEPTANCE_OBLIGATION_CONTRACTS
     .find(c => c.obligationId === 'frm.submission.acceptance-contract');
 
-  // The valid witness: a conforming AC document + full coverage.
-  const validDoc = '# AC Doc\n\n## AC-1: Pipeline Completes\n\nBody.\n';
+  // The valid witness: a conforming AC document + empty uncovered residue.
+  const validDoc = '# AC Doc\n\n## AC-1: T\n\nBody.\n';
   {
     const { validator, input } = await seedAcceptanceState(mods, validDoc, ['ord-c-001']);
     const control = validator.validate(input);
     assert.equal(control.accepted, true, 'positive control must pass the real gate');
   }
 
-  // Compile the relational family from the contract's constraints over the
-  // witness shapes the validator consumes.
+  // Compile the relational family from the contract's declared constraints
+  // over the witness shapes the validator consumes. No subjectSchema is
+  // injected: the structural operators would describe an intake envelope
+  // this validator does not consume, and their kills were synthetic
+  // (`STRUCTURAL_INTAKE_REJECTED`), never produced by the real boundary.
   const witness = {
     atomicCriteria: [
-      { code: 'AC-1', heading: '## AC-1: Pipeline Completes' },
+      { code: 'AC-1', heading: '## AC-1: T' },
     ],
-    acHeading: '## AC-1: Pipeline Completes',
-    coveredConstraintIds: ['ord-c-001'],
+    acHeading: '## AC-1: T',
+    uncoveredConstraintResidue: [],
   };
-  const family = compileObligationMutants({
-    ...contract,
-    subjectSchema: {
-      required: ['schemaVersion'],
-      properties: { schemaVersion: { type: 'string', example: 'factory.acceptance-bundle.v1' } },
-    },
-  }, witness);
-  assert.ok(family.length >= 8, `expected a rich family, got ${family.length}`);
+  const family = compileObligationMutants(contract, witness);
+  assert.deepEqual(
+    [...family.map(m => m.operatorId)].sort(),
+    ['cardinality-zero', 'duplicate-key', 'grammar-malformed', 'grammar-near-miss', 'grammar-truncated', 'member-extra'],
+    'the compiled family is exactly the six honestly-materializable operators',
+  );
 
-  // Boundary: materialize each mutant on the REAL validator. Grammar /
-  // cardinality / unique mutants rewrite the document; coverage mutants
-  // rewrite covered_constraint_ids.
+  // ONE honest materialization per generated operator — the document-level
+  // realization of the violated constraint, keyed by operator (the family is
+  // unambiguous: one subset member, one residue constraint).
+  const MATERIALIZE = {
+    // cardinality(min:1) zero: no AC criteria in the document.
+    'cardinality-zero': { doc: '# AC Doc\n\nNo criteria here.\n', covered: ['ord-c-001'] },
+    // unique(by criterionCode): one criterion heading code parsed twice.
+    'duplicate-key': { doc: '# AC Doc\n\n## AC-2: First\n\nb\n\n## AC-2: Duplicate\n\nb\n', covered: ['ord-c-001'] },
+    // grammar over the heading text: the exact algebra transforms of the
+    // minimal witness heading, mirrored into the document bytes.
+    'grammar-malformed': { doc: '# AC Doc\n\n## AC-1  T\n\nb\n', covered: ['ord-c-001'] },
+    'grammar-truncated': { doc: '# AC Doc\n\n## AC-1\n', covered: ['ord-c-001'] },
+    'grammar-near-miss': { doc: '# AC Doc\n\n## AC-01: T\n\nb\n', covered: ['ord-c-001'] },
+    // subset(uncoveredConstraintResidue ⊆ empty) member-extra: the residue
+    // gains one id — materialized as the register line covered by no AC.
+    'member-extra': { doc: validDoc, covered: [] },
+  };
+
+  // Honesty ratchet: an operator compiled without a materialization entry is
+  // a red test, never a silent fall-through default.
+  const unmaterialized = family.filter(m => !MATERIALIZE[m.operatorId]);
+  assert.deepEqual(unmaterialized.map(m => m.operatorId), [],
+    'every generated operator must declare an honest materialization');
+
   const boundary = async (mutantCase) => {
-    const op = mutantCase.operatorId;
-    let doc = validDoc;
-    let covered = ['ord-c-001'];
-    if (op === 'cardinality-zero') {
-      doc = '# AC Doc\n\nNo criteria here.\n';
-    } else if (op === 'duplicate-key') {
-      doc = '# AC Doc\n\n## AC-2: First\n\nb\n\n## AC-2: Duplicate\n\nb\n';
-    } else if (op === 'grammar-malformed') {
-      doc = '# AC Doc\n\n## AC-1 Pipeline Completes\n\nb\n';
-    } else if (op === 'grammar-truncated') {
-      doc = '# AC Doc\n\n## AC-1: Pipe\n';
-    } else if (op === 'grammar-near-miss') {
-      doc = '# AC Doc\n\n## AC-01: Pipeline Completes\n\nb\n';
-    } else if (op.startsWith('member-')) {
-      covered = [];
-    } else if (op === 'projection-empty' || op === 'projection-ambiguous') {
-      covered = [];
-    } else if (op.startsWith('missing-required') || op.startsWith('wrong-type')
-      || op.startsWith('empty-value') || op.startsWith('enum-invalid')
-      || op === 'malformed-payload' || op === 'unknown-field'
-      || op === 'version-incompatible') {
-      // structural mutants: feed the malformed payload through the intake
-      // shape — the validator receives a broken bundle object.
-      return { accepted: false, code: 'STRUCTURAL_INTAKE_REJECTED' };
-    }
-    const { validator, input } = await seedAcceptanceState(mods, doc, covered);
+    const m = MATERIALIZE[mutantCase.operatorId];
+    const { validator, input } = await seedAcceptanceState(mods, m.doc, m.covered);
     return validator.validate(input);
   };
 
@@ -389,7 +427,289 @@ test('T7: kill matrix on the REAL acceptance validator — every violating mutan
     assert.ok(o === 'KILLED_TYPED' || o === 'KILLED_THROW',
       `unexpected outcome ${o}`);
   }
+  // The direction repair is load-bearing: the residue mutant is killed by
+  // the coverage reverse diff, not by an incidental structural gap.
+  const residueKill = matrix.find(r => r.operatorId === 'member-extra');
+  assert.equal(residueKill.outcome, 'KILLED_TYPED');
+  assert.equal(residueKill.signal, 'FORMALIZATION_CONSTRAINT_UNCOVERED');
 }, { timeout: 60_000 });
+
+// ---------------------------------------------------------------------------
+// T7b — the kill matrix vertical: REAL SRS-contract validator (D2 residues).
+//
+// The v2.1.0 srs-contract declares the two §D2 residues (unrepresented frozen
+// AC; foreign §D2 code) plus stanza uniqueness and the ac_kind grammar. Every
+// generated operator gets one honest §D2-document materialization and must be
+// killed by the real gate — including both member-extra residues, which the
+// retired `d2Stanzas ⊆ frozenAcCodes` declaration could not even express.
+// ---------------------------------------------------------------------------
+
+const SRS_DOC_DIR = mkdtempSync(path.join(tmpdir(), 'w02-srs-kill-matrix-'));
+process.on('exit', () => {
+  try { rmSync(SRS_DOC_DIR, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+
+let srsCaseCounter = 0;
+
+async function srsBoundaryModules() {
+  const { SCHEMA_SQL } = await import(pathToFileURL(path.resolve(process.cwd(), 'dist/schema.js')).href);
+  const { ensureFactoryProcessRunSchema } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/process-modules/persistence/sqlite-process-run-repository.js',
+  )).href);
+  const { ensureManagedProductionLedgerSchema } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/process-modules/persistence/sqlite-managed-production-ledger.js',
+  )).href);
+  const { ensureFormalizationPersistenceSchema } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/modules/formalization/infrastructure/formalization-persistence.js',
+  )).href);
+  const { createSrsContractValidator } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/modules/formalization/application/srs-contract-validator.js',
+  )).href);
+  const { SRS_CONTRACT } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/modules/formalization/domain/srs-contract.js',
+  )).href);
+  const { FORMALIZATION_CASE_SCHEMA } = await import(pathToFileURL(path.resolve(
+    process.cwd(), 'dist/process-modules/lifecycles/product-delivery-module-contracts.js',
+  )).href);
+  return {
+    SCHEMA_SQL, ensureFactoryProcessRunSchema, ensureManagedProductionLedgerSchema,
+    ensureFormalizationPersistenceSchema, createSrsContractValidator, SRS_CONTRACT,
+    FORMALIZATION_CASE_SCHEMA,
+  };
+}
+
+/** One valid §D2 stanza block for `ac` (defaults: canonical enum values). */
+function srsStanzaBlock(SRS_CONTRACT, ac, { acKind } = {}) {
+  return [
+    `- ac: ${ac}`,
+    '  title: "Feature"',
+    '  module: core',
+    '  files: [src/core.ts]',
+    '  invariants: []',
+    '  test_layers: [L0]',
+    `  pattern: ${SRS_CONTRACT.d2EnumFields.pattern[0]}`,
+    '  depends_on: []',
+    `  ac_kind: ${acKind ?? SRS_CONTRACT.d2EnumFields.ac_kind[0]}`,
+    `  criticality: ${SRS_CONTRACT.d2EnumFields.criticality[0]}`,
+    // Full register coverage on every stanza keeps the §7b back-edge green so
+    // each mutant is killed by ITS constraint, not by an unrelated gap.
+    '  covered_constraint_ids: ord-c-001, ord-c-002',
+  ].join('\n');
+}
+
+function srsDoc(SRS_CONTRACT, stanzaBlocks) {
+  const cols = SRS_CONTRACT.decisionLogColumns.join(' | ');
+  return [
+    '# SRS',
+    '',
+    '## §12 Decision Log',
+    '',
+    `| ${cols} |`,
+    `| ${SRS_CONTRACT.decisionLogColumns.map(() => '---').join(' | ')} |`,
+    '| 1 | KISS | inherited | none | simplicity | 2026-01-01 |',
+    '',
+    '### §D2. AC Map',
+    '',
+    '```yaml',
+    ...stanzaBlocks,
+    '```',
+    '',
+  ].join('\n');
+}
+
+/** Seed a real in-memory DB for the SRS validator over `srsContent`. */
+async function seedSrsState(mods, srsContent) {
+  const Database = (await import('better-sqlite3')).default;
+  const db = new Database(':memory:');
+  db.exec(mods.SCHEMA_SQL);
+  mods.ensureFactoryProcessRunSchema(db);
+  mods.ensureManagedProductionLedgerSchema(db);
+  mods.ensureFormalizationPersistenceSchema(db);
+  db.prepare('INSERT INTO projects (id, name) VALUES (1, ?)').run('fixture');
+  db.prepare('INSERT INTO epics (id, project_id, name) VALUES (1, 1, ?)').run('REQ-001');
+  db.prepare(
+    `INSERT INTO factory_process_runs
+       (id, project_id, module_name, module_version, module_ref_key,
+        idempotency_key, executor_kind, input_schema, input_snapshot,
+        input_hash, status)
+     VALUES (2, 1, 'sf', '1.0.0', 'sf@1', 'k', 'generic-flow', 's', '{}', 'h', 'running')`,
+  ).run();
+  const acHash = sha256('AC-1');
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status,
+       content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
+     VALUES (3, 1, 1, 'AC', 'AC-1', 'AC-1', 'ac-1.md', 'accepted', ?, ?,
+             'clean', 'db_native', '[]', '{}')`,
+  ).run(acHash, acHash);
+  const baselinePayload = {
+    schemaVersion: 'factory.acceptance-baseline-snapshot.v1',
+    processRunId: 2,
+    formalizationEpicId: 1,
+    sourceReconciliationRef: 'test:reconciliation',
+    sourceReconciliationHash: sha256('reconciliation'),
+    acArtifactIds: [3],
+    acArtifactHashes: { 3: acHash },
+    baselineHash: sha256('baseline'),
+  };
+  db.prepare(
+    `INSERT INTO factory_formalization_acceptance_baselines
+       (process_run_id, formalization_epic_id, schema_version, payload,
+        baseline_hash, snapshot_hash)
+     VALUES (2, 1, ?, ?, ?, ?)`,
+  ).run(
+    baselinePayload.schemaVersion,
+    JSON.stringify(baselinePayload),
+    baselinePayload.baselineHash,
+    sha256(JSON.stringify(baselinePayload)),
+  );
+  const repoDir = path.join(SRS_DOC_DIR, `case-${++srsCaseCounter}`);
+  mkdirSync(repoDir, { recursive: true });
+  db.prepare('INSERT INTO repositories (id, name) VALUES (1, ?)').run('fixture');
+  db.prepare(
+    'INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (1, 1, 1, ?, ?, ?, ?)',
+  ).run('component', repoDir, 'dev', 'active');
+  const prdHash = sha256('PRD');
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, storage_kind, tags, metadata)
+     VALUES (2, 1, 1, 'PRD', null, 'PRD', 'prd.md', 'accepted', ?, ?, 'clean', 1, 'file_backed', '[]', '{}')`,
+  ).run(prdHash, prdHash);
+  const srsHash = sha256(srsContent);
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, storage_kind, tags, metadata)
+     VALUES (42, 1, 1, 'SRS', null, 'SRS', '01-SRS.md', 'draft', ?, ?, 'clean', 1, 'file_backed', '[]', '{}')`,
+  ).run(srsHash, srsHash);
+  db.prepare(
+    `INSERT INTO factory_managed_artifact_productions (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, artifact_status, content_hash, operation)
+     VALUES (2, 'sf@1', 'define-architecture-contract', 7, 7, 'exec', 42, 'SRS', 'draft', ?, 'create')`,
+  ).run(srsHash);
+  db.prepare(
+    'INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (42, \'artifact\', 2, \'derived_from\')',
+  ).run();
+  writeFileSync(path.join(repoDir, '01-SRS.md'), srsContent, 'utf8');
+  // The brief carries the waiver dispositions and must be a managed
+  // production of this run for the coverage reader to see it.
+  const briefHash = sha256('brief');
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
+     VALUES (1, 1, 1, 'brief', 'BRIEF-1', 'Brief', 'brief.md', 'accepted', ?, ?, 'clean', 'db_native', '[]', ?)`,
+  ).run(briefHash, briefHash, JSON.stringify({
+    constraint_dispositions: {
+      'ord-c-001': { disposition: 'accepted' },
+      'ord-c-002': { disposition: 'accepted' },
+      'ord-c-003': { disposition: 'waived', reason: 'human check deferred to operator' },
+    },
+  }));
+  db.prepare(
+    `INSERT INTO factory_managed_artifact_productions (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, artifact_status, content_hash, operation)
+     VALUES (2, 'sf@1', 'define-product-contract', 5, 5, 'exec', 1, 'brief', 'draft', ?, 'create')`,
+  ).run(briefHash);
+  db.prepare(
+    'INSERT INTO tasks (id, epic_id, title, status, metadata) VALUES (7, 1, \'t\', \'in_progress\', ?)',
+  ).run(JSON.stringify({ process_node_input: {
+    schemaVersion: mods.FORMALIZATION_CASE_SCHEMA,
+    discoveryProposalPayload: {
+      order_constraints: [
+        { class: 'execution', text: 'ord-c-001 must hold', evidence_ref: 'order.source_body' },
+        { class: 'material', text: 'ord-c-002 must hold', evidence_ref: 'order.source_body' },
+        { class: 'human', text: 'ord-c-003 must hold', evidence_ref: 'order.source_body' },
+      ],
+    },
+  } }));
+  const validator = mods.createSrsContractValidator(db);
+  const input = {
+    processRunId: 2, moduleRef: 'sf@1', nodeId: 'define-architecture-contract',
+    executionId: 'exec', taskId: 7,
+  };
+  return { validator, input, db };
+}
+
+test('T7b: kill matrix on the REAL SRS validator — every D2 mutant dies, control passes', async () => {
+  const mods = await srsBoundaryModules();
+  const contract = ACCEPTANCE_OBLIGATION_CONTRACTS
+    .find(c => c.obligationId === 'frm.submission.srs-contract');
+
+  // Positive control: the canonical document (one stanza per frozen AC, full
+  // register coverage, valid enums) passes the real gate.
+  const canonical = () => srsDoc(mods.SRS_CONTRACT, [srsStanzaBlock(mods.SRS_CONTRACT, 'AC-1')]);
+  {
+    const { validator, input } = await seedSrsState(mods, canonical());
+    const control = validator.validate(input);
+    assert.equal(control.accepted, true, `positive control must pass the real gate (got ${control.code}: ${JSON.stringify(control.gaps?.map(g => g.missing?.relation))})`);
+  }
+
+  // Witness: the residues are empty on the valid document; the unique
+  // fallback array carries the stanza codes; acKind carries the enum text.
+  const witness = {
+    stanzaCodes: ['AC-1'],
+    acKind: 'implementation',
+    unrepresentedFrozenAcResidue: [],
+    foreignD2AcResidue: [],
+  };
+  const family = compileObligationMutants(contract, witness);
+  assert.deepEqual(
+    family.map(m => `${m.violatedConstraint}|${m.operatorId}`).sort(),
+    [
+      'grammar:acKind|grammar-truncated',
+      'subset:foreignD2AcResidue|member-extra',
+      'subset:unrepresentedFrozenAcResidue|member-extra',
+      'unique:|duplicate-key',
+    ],
+    'the compiled family is exactly the four honestly-materializable operators',
+  );
+
+  // ONE honest §D2-document materialization per generated operator, keyed by
+  // violatedConstraint+operator (two subset residues both derive
+  // member-extra; they are DIFFERENT mutants and must not collapse into one
+  // materialization — that is the masking this repair removes).
+  const MATERIALIZE = {
+    // Residue frozen−§D2 gains one id: the frozen AC-1 is represented by no
+    // stanza (the stanza now answers a different code).
+    'subset:unrepresentedFrozenAcResidue|member-extra': () => srsDoc(
+      mods.SRS_CONTRACT, [srsStanzaBlock(mods.SRS_CONTRACT, 'AC-2')]),
+    // Residue §D2−frozen gains one id: a well-formed stanza for a code the
+    // baseline never froze (AC-1 stays represented).
+    'subset:foreignD2AcResidue|member-extra': () => srsDoc(
+      mods.SRS_CONTRACT,
+      [srsStanzaBlock(mods.SRS_CONTRACT, 'AC-1'), srsStanzaBlock(mods.SRS_CONTRACT, 'AC-9')]),
+    // unique(by stanzaAcCode): the frozen AC answered twice.
+    'unique:|duplicate-key': () => srsDoc(
+      mods.SRS_CONTRACT,
+      [srsStanzaBlock(mods.SRS_CONTRACT, 'AC-1'), srsStanzaBlock(mods.SRS_CONTRACT, 'AC-1')]),
+    // grammar over acKind: the algebra's truncated enum token ('implementation'
+    // → 'implementat') mirrored into the stanza bytes.
+    'grammar:acKind|grammar-truncated': () => srsDoc(
+      mods.SRS_CONTRACT,
+      [srsStanzaBlock(mods.SRS_CONTRACT, 'AC-1', { acKind: 'implementat' })]),
+  };
+  const unmaterialized = family.filter(m => !MATERIALIZE[`${m.violatedConstraint}|${m.operatorId}`]);
+  assert.deepEqual(unmaterialized.map(m => `${m.violatedConstraint}|${m.operatorId}`), [],
+    'every generated operator must declare an honest materialization');
+
+  const boundary = async (mutantCase) => {
+    const build = MATERIALIZE[`${mutantCase.violatedConstraint}|${mutantCase.operatorId}`];
+    const { validator, input } = await seedSrsState(mods, build());
+    return validator.validate(input);
+  };
+
+  const { matrix, failures } = await runKillMatrix(family, boundary, {
+    obligationId: contract.obligationId,
+    detector: 'factory.submission-validator.formalization.srs-contract.v1',
+  });
+  assert.equal(failures.length, 0,
+    `violating mutants reached acceptance or produced no verdict:\n${
+      failures.map(f => `${f.obligationId}/${f.operatorId} → ${f.outcome}`).join('\n')}`);
+  assert.equal(matrix.length, family.length);
+  for (const row of matrix) {
+    assert.ok(row.outcome === 'KILLED_TYPED' || row.outcome === 'KILLED_THROW',
+      `unexpected outcome ${row.outcome}`);
+  }
+  // Each residue is killed by its own production gap, proving the direction
+  // repair binds the declared residues to the enforced seams.
+  const unrepresentedKill = matrix.find(r => r.violatedConstraint === 'subset:unrepresentedFrozenAcResidue');
+  assert.equal(unrepresentedKill.signal, 'FORMALIZATION_SRS_INCOMPLETE');
+  const foreignKill = matrix.find(r => r.violatedConstraint === 'subset:foreignD2AcResidue');
+  assert.equal(foreignKill.signal, 'FORMALIZATION_SRS_INCOMPLETE');
+}, { timeout: 120_000 });
 
 // ---------------------------------------------------------------------------
 // T8 — accepted-mutant self-proof.

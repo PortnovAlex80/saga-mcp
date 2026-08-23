@@ -26,6 +26,12 @@ const {
   '../../dist/infrastructure/verification/local-runnability-check-provider.js'
 );
 const {
+  installDockerInfoProbeForTests,
+  resetDockerAvailabilityCache,
+} = await import(
+  '../../dist/infrastructure/verification/docker-readiness-executor.js'
+);
+const {
   INTEGRATED_CANDIDATE_SCHEMA,
 } = await import('../../dist/modules/development/domain/development-schemas.js');
 const { decodeSeamRepairIssue } = await import(
@@ -33,6 +39,9 @@ const { decodeSeamRepairIssue } = await import(
 );
 const { decodeCheckDiagnostic } = await import(
   '../../dist/process-modules/domain/workplace/check-diagnostic.js'
+);
+const { HISTORICAL_DIGEST_BY_VERSION } = await import(
+  './local-runnability-provider-history.mjs'
 );
 
 const PROCESS_RUN_ID = 1;
@@ -451,6 +460,11 @@ test('SAGA_LOCAL_RUNNABILITY_COMPOSE=config restricts to config validation', { t
 });
 
 test('compose config validation failure fails closed with seam compose-config', { timeout: 30000 }, async () => {
+  // ADR-091: a failed compose step is classified by the mechanical daemon
+  // re-probe — pin the observed daemon HEALTHY so this proof pins the
+  // available+linux direction (invalid config stays product `failed`) on
+  // every machine, daemon or no daemon.
+  installDockerInfoProbeForTests(() => ({ available: true, linux: true }));
   const runner = recordingComposeRunner({
     configValidate: () => ({
       step: 'compose-config', status: 'failed', detail: 'service "web" has no image',
@@ -469,11 +483,17 @@ test('compose config validation failure fails closed with seam compose-config', 
     assert.equal(issue.localization.phase, 'compose-config');
     assert.match(issue.evidence.summary, /no image/u);
   } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
     db.close();
   }
 });
 
 test('compose up failure fails closed with seam compose-up and down still runs', { timeout: 30000 }, async () => {
+  // ADR-091: pin the observed daemon HEALTHY — a failed up with a healthy
+  // substrate stays product `failed`; the classification test for the
+  // unavailable direction lives in local-runnability-toctou-reprobe.test.mjs.
+  installDockerInfoProbeForTests(() => ({ available: true, linux: true }));
   const runner = recordingComposeRunner({
     up: () => ({ step: 'compose-up', status: 'failed', detail: 'timeout waiting for health' }),
   });
@@ -492,6 +512,8 @@ test('compose up failure fails closed with seam compose-up and down still runs',
       'compose down must still run after a failed up (clean shutdown)',
     );
   } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
     db.close();
   }
 });
@@ -548,7 +570,7 @@ test('malformed compose declaration (traversal / absolute) invalidates the profi
   }
 });
 
-test('provider version bump migrates the 1.5.0 trust row in place', () => {
+test('provider version bump migrates the 1.5.0 trust row in place (exact authentic basis)', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE trusted_providers(
@@ -560,8 +582,8 @@ test('provider version bump migrates the 1.5.0 trust row in place', () => {
     `INSERT INTO trusted_providers
        (project_id,name,version,category,trust_basis,determinism,scope,status)
      VALUES(NULL,'factory.local-runnability.v1','1.5.0','deterministic_evidence',
-       'built-in:old','full','local-runnability','active')`,
-  ).run();
+       ?,'full','local-runnability','active')`,
+  ).run(`built-in:${HISTORICAL_DIGEST_BY_VERSION['1.5.0']}`);
   try {
     ensureLocalRunnabilityProviderTrust(db);
     const row = db.prepare(

@@ -1063,3 +1063,218 @@ test('binding: authority WorkIntent projected task mismatch -> rejected', async 
     cleanup(temp);
   }
 });
+
+// ---------------------------------------------------------------------------
+// ADR-090 (CC-IC-1), mutation m6a — a continuation (or recovery replay) of a
+// register-bearing Discovery settlement INHERITS the original register
+// (byte-identical digest from the SAME pinned inputs) and never re-extracts
+// from a drifted proposal product: the exact-ref, content-hash-pinned read
+// fails closed with a typed error instead of silently building a new
+// register from different material.
+// ---------------------------------------------------------------------------
+
+const {
+  createDiscoveryProductionCellKernelHandlers,
+} = await import('../../dist/modules/discovery/application/discovery-production-cell-installation.js');
+const {
+  SqliteLifecycleRunRepository,
+  ensureFactoryLifecycleRunSchema,
+} = await import('../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js');
+const { productBuildLifecycle } = await import('../../dist/process-modules/lifecycles/product-build-lifecycle.js');
+const {
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+} = await import('../../dist/process-modules/lifecycles/product-build-lifecycle.js');
+const { sha256Hex } = await import('../../dist/shared/canonical-json.js');
+
+const M6A_PROPOSAL = {
+  problem_statement: 'p', observed_context: 'o', stakeholders_or_actors: ['a'],
+  assumptions: [], unknowns: ['the pricing algorithm is not yet chosen'], risks: [],
+  candidate_scope: 's', evidence_refs: ['e'], recommended_outcome: 'go', rationale: 'r',
+};
+
+function m6aSeedRun(db, { lifecycleRunId, processRunId }) {
+  const definitionHash = sha256Hex(productBuildLifecycle);
+  db.prepare(
+    `INSERT INTO factory_lifecycle_runs
+       (id,lifecycle_name,lifecycle_version,lifecycle_ref_key,display_name,description,
+        definition_snapshot,definition_hash,project_id,epic_id,initiated_by,idempotency_key,
+        input_schema,input_snapshot,input_hash,status,entry_stage_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'created',?)`,
+  ).run(
+    lifecycleRunId, 'product-build', '1.2.0', 'product-build@1.2.0', 'd', 'd',
+    canonicalJson(productBuildLifecycle), definitionHash, 1, 10, 'm6a',
+    `m6a-${lifecycleRunId}`, 's', '{}', sha256Hex({}), 'initial-discovery',
+  );
+  db.prepare(
+    `INSERT INTO factory_process_runs
+       (id,project_id,epic_id,module_name,module_version,module_ref_key,idempotency_key,
+        executor_kind,input_schema,input_snapshot,input_hash,status)
+     VALUES (?,1,10,'discovery','1.0.0','discovery@1.0.0',?,'generic-flow','x','{}',?,'running')`,
+  ).run(processRunId, `m6a-${processRunId}`, sha256Hex({}));
+  db.prepare(
+    `INSERT INTO factory_stage_runs
+       (id,lifecycle_run_id,ordinal,stage_id,attempt,module_name,module_version,module_ref_key,
+        binding_snapshot,binding_hash,input_schema,input_snapshot,input_hash,status,process_run_id)
+     VALUES (?,?,1,'initial-discovery',1,'discovery','1.0.0','discovery@1.0.0','{}',?,
+             's','{}',?,'created',?)`,
+  ).run(lifecycleRunId * 10, lifecycleRunId, sha256Hex({}), sha256Hex({}), processRunId);
+}
+
+function m6aReadinessId(processRunId) {
+  return 2000 + processRunId;
+}
+
+function m6aSeedSubmissions(db, { processRunId, proposal }) {
+  const proposalHash = sha256Hex(proposal);
+  const dims = {};
+  for (const d of READINESS_DIMENSIONS) {
+    dims[d] = { status: 'sufficient', rationale: 'g', source_refs: ['$.problem_statement'] };
+  }
+  const readiness = {
+    proposal_content_hash: proposalHash, overall_readiness: 'ready',
+    dimension_assessments: dims, blocking_gaps: [], non_blocking_gaps: [],
+    recommended_next_action: 'proceed_to_settlement', confidence: 0.9, rationale: 'g',
+  };
+  const readinessHash = sha256Hex(readiness);
+  const proposalSubmissionId = 1000 + processRunId;
+  db.prepare(
+    `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (?,10,'S','done','discovery.work')`,
+  ).run(proposalSubmissionId);
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,state,phase)
+     VALUES (?,?,?,?,?,'w','m','terminated','executing')`,
+  ).run(`exec-m6a-${processRunId}`, `run-${processRunId}`, 1, proposalSubmissionId, proposalSubmissionId);
+  db.prepare(
+    `INSERT INTO factory_managed_node_submissions
+       (id,process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
+        schema_version,payload_snapshot,content_hash)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    proposalSubmissionId, processRunId, 'discovery@1.0.0', 'produce-proposal',
+    proposalSubmissionId, proposalSubmissionId, `exec-m6a-${processRunId}`,
+    DISCOVERY_PROPOSAL_SCHEMA, JSON.stringify(proposal), proposalHash,
+  );
+  db.prepare(
+    `INSERT INTO factory_managed_node_submissions
+       (id,process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
+        schema_version,payload_snapshot,content_hash)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    m6aReadinessId(processRunId), processRunId, 'discovery@1.0.0', 'produce-readiness',
+    proposalSubmissionId, proposalSubmissionId, `exec-m6a-${processRunId}`,
+    DISCOVERY_READINESS_ASSESSMENT_SCHEMA, JSON.stringify(readiness), readinessHash,
+  );
+  return { schemaId: DISCOVERY_PROPOSAL_SCHEMA, ref: `managed-node-submission:${proposalSubmissionId}`, digest: proposalHash };
+}
+
+function m6aSettle(db, { processRunId, product }) {
+  const repo = new SqliteLifecycleRunRepository(db);
+  const issued = [];
+  const handlers = createDiscoveryProductionCellKernelHandlers({
+    db,
+    certificates: {
+      issue: command => {
+        issued.push(command);
+        return { record: { id: 900 + issued.length, certificateHash: command.certificateHash } };
+      },
+    },
+    lifecycleDefinitionReader: {
+      readDefinitionByProcessRun: id => repo.readDefinitionByProcessRun(id),
+    },
+    lifecycleInjectionDeclarations: [{
+      table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+      tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+      tableDigest: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+    }],
+    lifecycleInjectionRequiredClassifications: ['runnable-local'],
+  });
+  const manifest = p => ({
+    schema: 'factory.production-cell-output-manifest.v1',
+    bindings: {
+      final: true,
+      items: [{
+        accepted: true, id: 'i', workKey: 'w', workplaceRef: 'wp', candidateSetRef: 'cs',
+        execution: { intentId: 1, taskId: 1, executionRef: `exec-${p.ref}` },
+        products: [p],
+      }],
+    },
+  });
+  const readinessRow = db.prepare(
+    'SELECT content_hash FROM factory_managed_node_submissions WHERE id=?',
+  ).get(m6aReadinessId(processRunId));
+  const result = handlers['discovery-settlement-policy']({
+    projectId: 1, epicId: 10, processRunId,
+    node: { id: 'settle-discovery' },
+    input: manifest({
+      schemaId: DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
+      ref: `managed-node-submission:${m6aReadinessId(processRunId)}`,
+      digest: readinessRow.content_hash,
+    }),
+    frame: { productions: { 'produce-proposal': manifest(product) } },
+    heartbeat: () => {}, initiatedBy: 'm6a',
+  });
+  return { result, issued };
+}
+
+test('m6a: a continuation inherits the ORIGINAL register (same pinned inputs → byte-identical digest); re-extraction from drifted material is a typed red', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d4-m6a-'));
+  process.env.DB_PATH = path.join(temp, 'd4m6a.db');
+  try {
+    const db = getDb();
+    db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
+    db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')`).run();
+    ensureFactoryLifecycleRunSchema(db);
+
+    // Run A (the original): lifecycle 1 / process run 100, accepted proposal P.
+    m6aSeedRun(db, { lifecycleRunId: 1, processRunId: 100 });
+    const productA = m6aSeedSubmissions(db, { processRunId: 100, proposal: M6A_PROPOSAL });
+    const runA = m6aSettle(db, { processRunId: 100, product: productA });
+    assert.ok(['go', 'clarify', 'reject'].includes(runA.result.event), `original settlement failed: ${runA.result.production?.bindings?.error}`);
+    const original = runA.issued[0].payload.constraintRegister;
+    assert.ok(original, 'the original register-bearing certificate');
+
+    // The CONTINUATION (a new run identity whose stage input maps the SAME
+    // accepted Discovery output — the inherited-prefix shape): the parent
+    // run is terminalized first (append-only continuation grammar), and the
+    // register is INHERITED — the deterministic rebuild over the same pinned
+    // proposal product and the same pinned definition yields the
+    // byte-identical digest (continuations inherit the original register
+    // ref, never re-extract).
+    db.prepare(`UPDATE factory_lifecycle_runs SET status='completed' WHERE id=1`).run();
+    m6aSeedRun(db, { lifecycleRunId: 2, processRunId: 200 });
+    const productContinuation = m6aSeedSubmissions(db, { processRunId: 200, proposal: M6A_PROPOSAL });
+    const continuation = m6aSettle(db, { processRunId: 200, product: productContinuation });
+    assert.ok(['go', 'clarify', 'reject'].includes(continuation.result.event));
+    const inherited = continuation.issued[0].payload.constraintRegister;
+    assert.ok(inherited);
+    assert.equal(inherited.registerDigest, original.registerDigest);
+
+    // The MUTANT (re-extract from drifted material): a settlement pointed at
+    // a proposal product whose content drifted (the re-extraction source).
+    // The exact-ref, content-hash-pinned read fails closed with a typed
+    // error — a new register is never silently built from different material.
+    const driftedProposal = {
+      ...M6A_PROPOSAL,
+      unknowns: [], // the drift: the pricing unknown silently disappeared
+      order_constraints: [{ class: 'material', text: 'a re-extracted constraint', evidence_ref: 'order.source_body' }],
+    };
+    db.prepare(`UPDATE factory_lifecycle_runs SET status='completed' WHERE id=2`).run();
+    m6aSeedRun(db, { lifecycleRunId: 3, processRunId: 300 });
+    m6aSeedSubmissions(db, { processRunId: 300, proposal: driftedProposal });
+    // The continuation wiring still pins the ORIGINAL product ref/digest —
+    // re-extraction would have to substitute drifted material under that ref,
+    // and the content-hash pinning refuses it.
+    const reextract = m6aSettle(db, {
+      processRunId: 300,
+      product: { schemaId: productA.schemaId, ref: productA.ref, digest: sha256Hex(driftedProposal) },
+    });
+    assert.equal(reextract.result.event, 'failed');
+    assert.match(reextract.result.production.bindings.error, /DISCOVERY_PRODUCT_MISSING/);
+    assert.equal(reextract.issued.length, 0, 'no certificate is issued from re-extracted material');
+  } finally {
+    cleanup(temp);
+  }
+});

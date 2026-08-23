@@ -214,6 +214,102 @@ export interface DevelopmentRepositoryBinding {
   expectedBaseCommit: string;
 }
 
+/**
+ * ADR-088 (CC-GAP-6): the constraint-coverage requirement Development
+ * inherits from Formalization. Structural mirror of the solution contract's
+ * `constraintRegisterCoverage` block — re-declared here (never imported
+ * across workshop trees; same discipline as VerificationWarrantRef) and
+ * resolved lazily from the case's frozen `solutionContractPayload` by
+ * {@link resolveDevelopmentConstraintRegisterCoverage}.
+ */
+export interface DevelopmentConstraintRegisterCoverage {
+  /** Content-addressed register ref: constraint-register:<digest>. */
+  readonly constraintRegisterRef: string;
+  readonly constraintRegisterDigest: string;
+  readonly entries: readonly {
+    readonly id: string;
+    readonly class: 'execution' | 'material' | 'human';
+    /** Execution-class only — the product entrypoint files this constraint owns. */
+    readonly entrypointFiles?: readonly string[];
+  }[];
+  /** Typed waivers (disposition='waived' with a non-empty reason). */
+  readonly waivedIds: readonly string[];
+}
+
+/**
+ * Resolve the constraint-coverage requirement from the case's frozen
+ * solution-contract payload. Returns null when the corpus carries no
+ * register (the SOLE grandfather condition — empty diffs, typed legacy
+ * skips, green gates) or when the frozen payload predates the relay
+ * (legacy case; frozen evidence is never rewritten). Throws on a present
+ * but malformed block — a claimed register the gate cannot evaluate is a
+ * fail-closed contract violation, never a silent return to grandfathering.
+ */
+export function resolveDevelopmentConstraintRegisterCoverage(
+  developmentCase: DevelopmentCase,
+): DevelopmentConstraintRegisterCoverage | null {
+  const payload = developmentCase.solutionContractPayload;
+  if (!payload || typeof payload !== 'object') return null;
+  if (!Object.hasOwn(payload, 'constraintRegisterCoverage')) return null;
+  const raw = payload['constraintRegisterCoverage'];
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(
+      'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage must be an object',
+    );
+  }
+  const block = raw as Record<string, unknown>;
+  const constraintRegisterRef = block['constraintRegisterRef'];
+  const constraintRegisterDigest = block['constraintRegisterDigest'];
+  const entries = block['entries'];
+  const waivedIds = block['waivedIds'];
+  if (typeof constraintRegisterRef !== 'string' || constraintRegisterRef.trim() === ''
+    || typeof constraintRegisterDigest !== 'string' || constraintRegisterDigest.trim() === ''
+    || !Array.isArray(entries) || entries.length === 0
+    || !Array.isArray(waivedIds)
+    || waivedIds.some(id => typeof id !== 'string')) {
+    throw new Error(
+      'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage requires constraintRegisterRef, constraintRegisterDigest, a non-empty entries array and a string waivedIds array',
+    );
+  }
+  const parsedEntries = entries.map(entry => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage entries must be objects',
+      );
+    }
+    const row = entry as Record<string, unknown>;
+    const id = row['id'];
+    const entryClass = row['class'];
+    const classOk = entryClass === 'execution'
+      || entryClass === 'material' || entryClass === 'human';
+    if (typeof id !== 'string' || id.trim() === '' || !classOk) {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: constraintRegisterCoverage entries require id and class execution|material|human',
+      );
+    }
+    const constraintClass = entryClass as 'execution' | 'material' | 'human';
+    const entrypointFiles = row['entrypointFiles'];
+    if (entrypointFiles === undefined || entrypointFiles === null) {
+      return { id, class: constraintClass };
+    }
+    if (!Array.isArray(entrypointFiles)
+      || entrypointFiles.some(file => typeof file !== 'string' || file.trim() === '')
+      || constraintClass !== 'execution') {
+      throw new Error(
+        'DEVELOPMENT_CONSTRAINT_COVERAGE_INVALID: entrypointFiles must be a non-empty-string array declared by execution-class entries only',
+      );
+    }
+    return { id, class: constraintClass, entrypointFiles: entrypointFiles as readonly string[] };
+  });
+  return {
+    constraintRegisterRef,
+    constraintRegisterDigest,
+    entries: parsedEntries,
+    waivedIds: waivedIds as readonly string[],
+  };
+}
+
 export interface DevelopmentCase {
   schemaVersion: typeof DEVELOPMENT_CASE_SCHEMA;
   projectId: number;
@@ -222,6 +318,15 @@ export interface DevelopmentCase {
     decision: 'formalized';
   };
   solutionContract: ContentAddressedReference;
+  /**
+   * ADR-088 (CC-GAP-6): the frozen formalization solution-contract payload,
+   * mapped whole (optional source paths cannot be mapped by the strict
+   * resolver). Development resolves the optional `constraintRegisterCoverage`
+   * block from it — the planner inherits the frozen classification; it never
+   * reads the register itself. Optional: legacy cases predate the relay and
+   * stay grandfathered (registerless semantics).
+   */
+  solutionContractPayload?: Readonly<Record<string, unknown>>;
   acceptanceBaselineHash: string;
   srs: ContentAddressedReference;
   acceptanceCriteria: readonly AcceptanceCriterionBinding[];
@@ -278,12 +383,17 @@ export interface CandidateIntegrationTarget {
  * validates all ids, dependencies, repository bindings and coverage, fills the
  * immutable lineage fields, computes graphHash, and persists TaskGraphSnapshot.
  */
-/** The planner-PROPOSED item shape: criterion keys only. The kernel stamps
- * provenance (sourceArtifactIds) and inherited relay fields at
- * canonicalization — the planner cannot propose them. */
+/**
+ * The planner-PROPOSED item shape: criterion keys only. The kernel stamps
+ * provenance (sourceArtifactIds) and the constraint relay
+ * (coveredConstraintIds) at canonicalization — the planner can neither
+ * propose nor forge either field (ADR-088 CC-GAP-6: the proposal shape MUST
+ * NOT re-admit `coveredConstraintIds`; decode trims and canonicalization
+ * derives it unconditionally from the frozen criteria).
+ */
 export type DevelopmentTaskGraphProposalItem = Omit<
   DevelopmentTaskGraphItem, 'sourceArtifactIds' | 'coveredConstraintIds'
-> & { coveredConstraintIds?: readonly string[] };
+>;
 
 export interface DevelopmentTaskGraphProposal {
   schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
@@ -383,15 +493,17 @@ export interface RunnabilityCommands {
  *     states only its runnability commands; runnability is proven by the test
  *     command alone, with no serve/probe phase.
  *
- * Phase-1 dockerization: both kinds may optionally carry an `environment.image`
- * stating the Docker image the product must execute in. When present, the
- * local-runnability provider runs the sealed tree's install/test/serve commands
- * inside that image (via the docker CLI) instead of on the host. The image is
- * part of the frozen profile, so it is covered by `candidateHash` — a changed
- * image is a different candidate. When docker is unavailable but an image is
- * declared, the provider fails closed ('failed', NOT 'error') with
- * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE rather than silently falling back to host.
- */
+  * Phase-1 dockerization: both kinds may optionally carry an `environment.image`
+  * stating the Docker image the product must execute in. When present, the
+  * local-runnability provider runs the sealed tree's install/test/serve commands
+  * inside that image (via the docker CLI) instead of on the host. The image is
+  * part of the frozen profile, so it is covered by `candidateHash` — a changed
+  * image is a different candidate. When the docker environment precondition is
+  * missing but an image is declared, the provider retries the precondition
+  * inside the check up to the frozen bound and on exhaustion emits the typed
+  * unknown `warrant-blocked-environment` outcome (CC-GAP-9 / ADR-089) rather
+  * than silently falling back to host or recording a product 'failed'.
+  */
 export type ReadinessProfile = ServedReadinessProfile | StaticReadinessProfile;
 
 /**
@@ -504,6 +616,14 @@ export interface IntegratedSourceCandidate {
  * Formalization settlement certificate. The future warrant-coverage phases in
  * the readiness provider consume exactly this shape (register + dispositions,
  * both digest-pinned) — no new oracle, no re-reading of the order prose.
+ *
+ * ADR-090 (CC-IC-1), mutation m7: the warrant CROSS-BINDS the certificate/case
+ * it was issued against — `discoveryCertificateHash` and
+ * `formalizationCaseDigest` name the exact identities, so a warrant silently
+ * re-targeted at a different certificate/case is a typed red
+ * (verifyWarrantCrossBind at the issuing boundary; the readiness manifest
+ * contract carries the same fields). Register+dispositions self-consistency
+ * alone is not identity.
  */
 export interface VerificationWarrantRef {
   /** Content-addressed register ref: constraint-register:<digest>. */
@@ -511,6 +631,10 @@ export interface VerificationWarrantRef {
   constraintRegisterDigest: string;
   dispositionsDigest: string;
   dispositions: Readonly<Record<string, unknown>>;
+  /** @see ADR-090 (CC-IC-1) — the certificate cross-bind. */
+  discoveryCertificateHash?: string;
+  /** @see ADR-090 (CC-IC-1) — the FormalizationCase identity cross-bind. */
+  formalizationCaseDigest?: string;
 }
 
 export interface DevelopmentReadinessManifest {
@@ -519,6 +643,102 @@ export interface DevelopmentReadinessManifest {
   targets: readonly [{ key: 'primary'; readiness: ReadinessProfile }];
   /** @see VerificationWarrantRef — optional until warrant phases land. */
   warrantRef?: VerificationWarrantRef;
+}
+
+/**
+ * ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): the authoritative
+ * expected warrant cross-bind of a DevelopmentCase — resolved from the FROZEN
+ * formalization solution-contract payload the case carries (never re-derived,
+ * never worker-supplied). Structural mirror of the formalization-side
+ * expectation (same discipline as VerificationWarrantRef — no cross-module
+ * domain import).
+ */
+export interface DevelopmentWarrantCrossBindExpectation {
+  readonly discoveryCertificateHash: string;
+  readonly formalizationCaseDigest: string;
+}
+
+/**
+ * Resolve the expected warrant cross-bind identities from the case's frozen
+ * solution-contract payload. Returns null when the frozen payload carries no
+ * verifiable expectation (legacy payloads frozen before the seam, or a case
+ * with no payload at all) — a PRESENT manifest warrantRef against such a case
+ * is then a typed red at the consumer, never a silent unverifiable accept.
+ */
+export function resolveExpectedWarrantCrossBind(
+  developmentCase: DevelopmentCase,
+): DevelopmentWarrantCrossBindExpectation | null {
+  const payload = developmentCase.solutionContractPayload;
+  if (!payload || typeof payload !== 'object') return null;
+  const discoveryCertificateHash = payload['discoveryCertificateHash'];
+  const formalizationCaseDigest = payload['formalizationCaseDigest'];
+  if (typeof discoveryCertificateHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(discoveryCertificateHash)) {
+    return null;
+  }
+  if (typeof formalizationCaseDigest !== 'string'
+    || !/^[a-f0-9]{64}$/.test(formalizationCaseDigest)) {
+    return null;
+  }
+  return { discoveryCertificateHash, formalizationCaseDigest };
+}
+
+/**
+ * ADR-090 (CC-IC-1 focused repair, mutation m7 CONSUMER boundary: a
+ * Development readiness manifest must not accept a forged or partial
+ * `discoveryCertificateHash`/`formalizationCaseDigest` cross-bind.
+ *
+ * Fail-closed rules, in order:
+ *  1. an ABSENT manifest warrantRef is legal (retro-compat — the warrant
+ *     phases are not yet mandatory);
+ *  2. a PRESENT warrantRef must carry BOTH cross-bind identities as 64-hex
+ *     strings — a partial cross-bind (one field stripped) is a typed red;
+ *  3. the values must equal the case's AUTHORITATIVE expected identities
+ *     resolved from the frozen solution-contract payload — a forged
+ *     re-targeted warrant is a typed red;
+ *  4. a case whose frozen payload carries no verifiable expectation cannot
+ *     verify a present warrantRef at all — a typed red, never a silent
+ *     unverifiable accept.
+ */
+export function verifyReadinessManifestWarrantCrossBind(
+  developmentCase: DevelopmentCase,
+  manifest: DevelopmentReadinessManifest,
+): void {
+  const warrant = manifest.warrantRef;
+  if (warrant === undefined) return;
+  const certificateHash = warrant.discoveryCertificateHash;
+  const caseDigest = warrant.formalizationCaseDigest;
+  if (
+    typeof certificateHash !== 'string'
+    || !/^[a-f0-9]{64}$/.test(certificateHash)
+    || typeof caseDigest !== 'string'
+    || !/^[a-f0-9]{64}$/.test(caseDigest)
+  ) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_INCOMPLETE: a present readiness-manifest warrantRef must carry '
+      + 'BOTH the discoveryCertificateHash and the formalizationCaseDigest as 64-hex '
+      + 'cross-bind identities — a partial cross-bind is a typed red',
+    );
+  }
+  const expected = resolveExpectedWarrantCrossBind(developmentCase);
+  if (!expected) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_EXPECTATION_MISSING: the DevelopmentCase carries no authoritative '
+      + 'warrant cross-bind expectation (discoveryCertificateHash/formalizationCaseDigest on '
+      + 'the frozen solution-contract payload) to verify a present warrantRef against — '
+      + 'never a silent unverifiable accept',
+    );
+  }
+  if (
+    certificateHash !== expected.discoveryCertificateHash
+    || caseDigest !== expected.formalizationCaseDigest
+  ) {
+    throw new Error(
+      'WARRANT_CROSS_BIND_MISMATCH: the readiness-manifest warrantRef cross-bind does not '
+      + 'match the authoritative certificate/case identities of this DevelopmentCase '
+      + `(warrant certificate ${certificateHash} / case ${caseDigest})`,
+    );
+  }
 }
 
 export type VerificationOutcome =
@@ -653,6 +873,8 @@ export type DevelopmentReasonCode =
   | 'implementation-scope-overlap'
   | 'integration-source-partition-invalid'
   | 'verification-plan-coverage-gap'
+  | 'constraint-register-uncovered'
+  | 'constraint-entrypoint-unowned'
   | 'implementation-workset-missing'
   | 'implementation-workset-hash-invalid'
   | 'implementation-failed'

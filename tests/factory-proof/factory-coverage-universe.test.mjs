@@ -59,8 +59,8 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
   // exact pins the 2026-08-22 operator review restored — do NOT shrink them:
   // landing new scenarios may only MOVE tokens (pending→required) or ADD
   // tokens, never delete.
-  assert.equal(universe.totals.universeTokens, 176,
-    'U restored + split: 6 restored tokens (3 delivery landed, 2 development landed, 1 delivery restart) + the D2 bundle split into dependency-order and concurrency-cap (-1 +2)');
+  assert.equal(universe.totals.universeTokens, 178,
+    'U restored + split: 6 restored tokens (3 delivery landed, 2 development landed, 1 delivery restart) + the D2 bundle split into dependency-order and concurrency-cap (-1 +2) + 2 CC-GAP-8 terminal-accounting tokens (unknown, human-required) declared pending');
   for (const w of universe.perWorkshop) {
     // every required token must be declared by a scenario — else landing
     // claims are lies
@@ -76,13 +76,13 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
 });
 
 test('SPINE means an honest pending ledger — the exact global uncovered set is ratcheted', () => {
-  assert.equal(universe.totals.pendingTotal, 19,
-    '19 pending: development 17 (incl. the STRONG cap invariant, honestly undemonstrated) + delivery 2');
-  assert.equal(universe.globalUncovered.length, 19);
+  assert.equal(universe.totals.pendingTotal, 21,
+    '21 pending: development 19 (incl. the STRONG cap invariant and the 2 CC-GAP-8 terminal-accounting tokens, honestly undemonstrated) + delivery 2');
+  assert.equal(universe.globalUncovered.length, 21);
   const dev = universe.perWorkshop.find(w => w.workshop === 'development');
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
-  assert.equal(dev.pendingSize, 17,
-    'D2 sibling-isolation, D3 claim-monotonicity, D4–D10, restarts, feedback + the desk-replay seam');
+  assert.equal(dev.pendingSize, 19,
+    'D2 sibling-isolation, D3 claim-monotonicity, D4–D10, restarts, feedback + the desk-replay seam + the 2 CC-GAP-8 terminal-accounting tokens');
   assert.equal(dev.requiredUniverseSize, 18,
     'landed: D2 order, D2 cap, D2 fanin, D3 impl-scope, contract-partition packaging-invariant — moved to required, still in U');
   assert.equal(dl.pendingSize, 2,
@@ -102,7 +102,7 @@ test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
 });
 
 test('universe totals are ratcheted', () => {
-  assert.equal(universe.totals.universeTokens, 176);
+  assert.equal(universe.totals.universeTokens, 178);
   assert.equal(universe.totals.platformFaultEdges, 8,
     'K4-owned platform fault edges (1 discovery + 5 formalization + 2 development)');
 });
@@ -112,5 +112,5 @@ test('report renders the honest table', () => {
   assert.match(text, /\| discovery \| CLOSED \|/);
   assert.match(text, /\| development \| SPINE \|/);
   assert.match(text, /\| delivery \| SPINE \|/);
-  assert.match(text, /global uncovered: 19/);
+  assert.match(text, /global uncovered: 21/);
 });

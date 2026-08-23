@@ -8,10 +8,17 @@
 //         timestamps/paths; ANY semantic mutation changes the digest
 //         (observer non-vacuity, one mutation per evidence class);
 //   K0-C: the recorded floors match the live registry counts.
+//   K0-E: committed-evidence digest identity — the CC-00 ledger and
+//         CC-00-BASELINE.md digest pins equal SHA-256 over the RAW committed
+//         git blob bytes (git cat-file) at the recorded base SHA; checkout
+//         bytes (Windows CRLF materialization) are a different digest domain
+//         and must never satisfy the pins (K0 baseline-identity repair).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -102,4 +109,110 @@ test('K0-C: the recorded floors match the live kernel registries', () => {
   const proofTests = readdirSync(HERE).filter(f => f.endsWith('.test.mjs')).length;
   assert.ok(proofTests >= K0_FLOORS.blockingFactoryProofFiles,
     `factory-proof test files shrank below the floor (${proofTests} < ${K0_FLOORS.blockingFactoryProofFiles})`);
+});
+
+// ---------------------------------------------------------------------------
+// K0-E — committed-evidence digest identity (CC-00 baseline-identity repair).
+//
+// The authority for the CC-00 baseline digest pins is the RAW committed git
+// blob byte sequence — read through `git cat-file blob` with binary-safe
+// stdout capture (encoding 'buffer'), never through working-tree/checkout
+// bytes and never through a shell pipeline (PowerShell pipelines re-encode
+// LF to CRLF; core.autocrlf checkouts materialize CRLF — both produce a
+// different, non-authoritative digest domain).
+//
+// The pins are verified unconditionally at HEAD (its tree is present even in
+// a depth-1 CI clone), and additionally at the ledger's recorded baseSha
+// whenever that commit object is present (every full clone and the CC-82
+// clean-checkout gates) — the recorded gitBlobOids pin the base==HEAD blob
+// identity the ledger claims.
+// ---------------------------------------------------------------------------
+
+const LEDGER_PATH = 'docs/factory-run/conformance-closure/CC-00-baseline-ledger.json';
+const BASELINE_MD_PATH = 'docs/factory-run/conformance-closure/CC-00-BASELINE.md';
+const EVIDENCE_FILES = [
+  'tests/factory-evidence/conformance-report.json',
+  'tests/factory-evidence/harvest-manifest.json',
+];
+const HEX64 = /^[0-9a-f]{64}$/;
+
+function gitOk(args, { binary = false } = {}) {
+  const res = spawnSync('git', args, {
+    cwd: REPO_ROOT,
+    encoding: binary ? 'buffer' : 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  assert.ok(res.error === undefined, `git "${args.join(' ')}" could not run: ${res.error}`);
+  assert.equal(res.status, 0,
+    `git "${args.join(' ')}" failed: ${res.stderr ? res.stderr.toString().trim() : 'no stderr'}`);
+  return res.stdout;
+}
+
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+
+function mdDigestPins(md) {
+  const pins = {};
+  for (const file of EVIDENCE_FILES) {
+    const re = new RegExp('`' + file.replace(/\//g, '\\/') + '` sha256[^\\n]*\\n[^\\n]*`([0-9a-f]{64})`');
+    const m = md.match(re);
+    assert.ok(m, `CC-00-BASELINE.md digest pin missing for ${file} — every pinned evidence file needs a \`<path>\` sha256 line with a 64-hex value`);
+    pins[file] = m[1];
+  }
+  return pins;
+}
+
+test('K0-E: ledger and baseline-doc digest pins equal SHA-256 of the raw committed git blob', () => {
+  const ledger = JSON.parse(readFileSync(path.join(REPO_ROOT, LEDGER_PATH), 'utf8'));
+  const md = readFileSync(path.join(REPO_ROOT, BASELINE_MD_PATH), 'utf8');
+  const mdPins = mdDigestPins(md);
+
+  // Ledger shape: pins present and well-formed (fail on missing/invalid 64-hex).
+  const reportPin = ledger?.baselineRuns?.conformanceV1?.committedReportSha256;
+  assert.match(reportPin ?? '', HEX64,
+    'ledger baselineRuns.conformanceV1.committedReportSha256 must be a 64-hex sha256');
+  const digestBlock = ledger?.committedEvidenceDigests;
+  assert.ok(digestBlock, 'ledger committedEvidenceDigests block missing (digest domain/method statement)');
+  for (const file of EVIDENCE_FILES) {
+    const entry = digestBlock?.files?.[file];
+    assert.match(entry?.sha256 ?? '', HEX64, `ledger committedEvidenceDigests.files['${file}'].sha256 must be 64-hex`);
+    assert.match(entry?.gitBlobOid ?? '', /^[0-9a-f]{40}$/, `ledger committedEvidenceDigests.files['${file}'].gitBlobOid must be a 40-hex git oid`);
+  }
+  const baseSha = ledger?.baseSha;
+  assert.match(baseSha ?? '', /^[0-9a-f]{7,40}$/, 'ledger baseSha must be a hex git commit id');
+
+  // Cross-source equality: the ledger, its digest block, and the baseline doc
+  // must carry ONE identical pin per file.
+  assert.equal(reportPin, digestBlock.files[EVIDENCE_FILES[0]].sha256,
+    'ledger conformanceV1 pin and committedEvidenceDigests report pin disagree');
+  for (const file of EVIDENCE_FILES) {
+    assert.equal(digestBlock.files[file].sha256, mdPins[file],
+      `ledger pin and CC-00-BASELINE.md pin disagree for ${file}`);
+  }
+
+  // Authority check: raw committed git-blob bytes (never checkout bytes).
+  for (const file of EVIDENCE_FILES) {
+    const { sha256: pin, gitBlobOid } = digestBlock.files[file];
+
+    const headOid = gitOk(['rev-parse', `HEAD:${file}`]).toString().trim();
+    assert.equal(headOid, gitBlobOid,
+      `${file}: HEAD blob oid ${headOid} != pinned ${gitBlobOid} — frozen evidence bytes drifted`);
+    const headDigest = sha256(gitOk(['cat-file', 'blob', `HEAD:${file}`], { binary: true }));
+    assert.equal(headDigest, pin,
+      `${file}: sha256(raw git blob at HEAD) ${headDigest} != pin ${pin} — the pin must be the raw committed-blob digest, not a checkout/EOL-normalized digest`);
+
+    // Where full history is present, verify the ledger's own domain claim
+    // (digests AT THE RECORDED BASE SHA). A depth-1 CI clone lacks the base
+    // commit; the HEAD check above still fully enforces the pinned bytes.
+    const have = spawnSync('git', ['cat-file', '-e', `${baseSha}^{commit}`], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (have.status === 0) {
+      const baseOid = gitOk(['rev-parse', `${baseSha}:${file}`]).toString().trim();
+      assert.equal(baseOid, gitBlobOid,
+        `${file}: base-SHA blob oid ${baseOid} != pinned ${gitBlobOid} — the pinned bytes are not the base-SHA blob`);
+      const baseDigest = sha256(gitOk(['cat-file', 'blob', `${baseSha}:${file}`], { binary: true }));
+      assert.equal(baseDigest, pin,
+        `${file}: sha256(raw git blob at ${baseSha}) ${baseDigest} != pin ${pin}`);
+    } else {
+      console.log(`[k0-E] note: base commit ${baseSha} not in this clone (shallow?) — pins verified at HEAD blob only`);
+    }
+  }
 });

@@ -18,6 +18,9 @@ tracker-view/.tracker-view.pid
 # temp test/build logs
 *.log
 
+# worktree-local test scratch (TEMP/TMP for test runs; never committed)
+.test-tmp/
+
 # Wave 0 hygiene (W0-A8): leftover SQLite DBs + per-epic/orchestrate run logs
 # should never be checked in. APPEND only — do not remove prior entries.
 tests/planner-ac9/.tmp-*.db*

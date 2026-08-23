@@ -18,6 +18,7 @@ import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
+  resolveDevelopmentConstraintRegisterCoverage,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
 import {
@@ -474,8 +475,13 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
     }
   }
   // AC-drift network 3 seam: optional warrantRef — when present it must be
-  // the exact typed shape (digest-pinned register + dispositions). Absent is
-  // legal until the warrant phases land (retro-compat).
+  // the exact typed shape (digest-pinned register + dispositions) AND carry
+  // the COMPLETE certificate/case cross-bind (ADR-090 focused repair, m7
+  // consumer boundary): both discoveryCertificateHash and
+  // formalizationCaseDigest as 64-hex strings. A partial cross-bind (one
+  // identity stripped) is a typed submission error — never silently accepted.
+  // Absent warrantRef remains legal until the warrant phases land
+  // (retro-compat).
   const warrant = payload.warrantRef;
   if (warrant !== undefined) {
     if (
@@ -488,10 +494,15 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
       || warrant.constraintRegisterRef
         !== `constraint-register:${warrant.constraintRegisterDigest}`
       || !isRecordValue(warrant.dispositions)
+      || typeof warrant.discoveryCertificateHash !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrant.discoveryCertificateHash)
+      || typeof warrant.formalizationCaseDigest !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrant.formalizationCaseDigest)
     ) {
       errors.push(
         'warrantRef must carry constraintRegisterRef (constraint-register:<64-hex digest>), '
-        + 'constraintRegisterDigest (64-hex), dispositionsDigest (64-hex) and a dispositions object',
+        + 'constraintRegisterDigest (64-hex), dispositionsDigest (64-hex), a dispositions object, '
+        + 'and BOTH cross-bind identities discoveryCertificateHash + formalizationCaseDigest (64-hex)',
       );
     }
   }
@@ -730,16 +741,24 @@ export function createDevelopmentTaskGraphCheckProvider(input: {
           },
         );
         const validation = policy.validate(developmentCase, graph);
+        // ADR-088 (CC-GAP-6): the manifest assessor consults the register
+        // before any skip. Sole grandfather condition = registerless corpus
+        // (null resolution): skips stay typed notes, gates stay green. Under
+        // a non-empty register, an unavailable SRS, an absent §2.2 section
+        // or a file-less manifest is a typed RED, never a skip.
+        const constraintRegisterCoverage
+          = resolveDevelopmentConstraintRegisterCoverage(developmentCase);
         // SRS §2.2 module-manifest coverage: nothing previously compared the
         // accepted plan back to the SRS's declared modules, so a planner
         // under rejection pressure could drop whole SRS modules (todo lost
         // renderer/events/index.html) while passing every id-coverage gate.
-        // Fail-open ONLY for an absent/unreadable manifest (legacy SRS);
-        // enforced when the manifest declares files.
+        // Registerless legacy SRS keeps the typed skip; a register-bearing
+        // corpus must produce the manifest (or a typed waiver).
         const manifestAssessment = assessSrsModuleManifestCoverage(
           subjectCandidateSetRef,
           () => readSrsContent(input.db, developmentCase.srs),
           graph.implementationItems.map(item => ({ changeScopes: item.changeScopes })),
+          constraintRegisterCoverage !== null,
         );
         if (validation.valid && manifestAssessment.failure === null) {
           return manifestAssessment.note === null
@@ -979,12 +998,20 @@ function scopeFailure(
 /**
  * Assess the SRS §2.2 module-manifest coverage for one task-graph gate run.
  * Returns a typed failure diagnostic (fail closed), an informational note
- * (fail open, legacy SRS), or neither (enforced and covered).
+ * (fail open, registerless legacy SRS), or neither (enforced and covered).
+ *
+ * ADR-088 (CC-GAP-6) — register-conditional: when a non-empty constraint
+ * register exists, an unavailable SRS artifact, an absent §2.2 section, or a
+ * file-less manifest is a typed RED (`srs-module-manifest-missing`), never a
+ * skip — a register-bearing corpus cannot dodge the coverage exit criterion
+ * by omitting a document section. The typed legacy skip survives ONLY for
+ * the registerless corpus (the sole grandfather condition).
  */
 function assessSrsModuleManifestCoverage(
   subjectRef: string,
   readContent: () => DevelopmentSrsContentResult,
   implementationItems: readonly { changeScopes: readonly string[] }[],
+  registerActive: boolean,
 ): { failure: string | null; note: string | null } {
   const srs = readContent();
   if (srs.status === 'drifted') {
@@ -999,6 +1026,18 @@ function assessSrsModuleManifestCoverage(
     };
   }
   if (srs.status === 'unavailable') {
+    if (registerActive) {
+      return {
+        failure: encodeCheckDiagnostic({
+          code: 'srs-module-manifest-missing',
+          message: `The SRS artifact is unavailable (${srs.reason}) while a non-empty constraint register exists: `
+            + 'the §2.2 module manifest is required synthesis-ownership evidence and cannot be skipped. '
+            + 'Restore the exact accepted SRS artifact or waive the uncovered constraints in the brief with reasons.',
+          subjectRef,
+        }),
+        note: null,
+      };
+    }
     return {
       failure: null,
       note: encodeCheckDiagnostic({
@@ -1010,6 +1049,23 @@ function assessSrsModuleManifestCoverage(
   }
   const manifest: SrsModuleManifest = parseSrsModuleManifest(srs.content);
   if (manifest.status !== 'present') {
+    if (registerActive) {
+      return {
+        failure: encodeCheckDiagnostic({
+          code: 'srs-module-manifest-missing',
+          message: manifest.status === 'absent'
+            ? 'The SRS has no §2.2 Module Manifest section while a non-empty constraint register exists: '
+              + 'the manifest is required synthesis-ownership evidence and cannot be skipped. '
+              + 'Add the §2.2 Module Manifest declaring the product\'s module files, or waive the uncovered '
+              + 'constraints in the brief with reasons.'
+            : 'The §2.2 Module Manifest declares no machine-readable files while a non-empty constraint '
+              + 'register exists: a file-less manifest is missing synthesis-ownership evidence, not a skip. '
+              + 'Declare the module files in §2.2, or waive the uncovered constraints in the brief with reasons.',
+          subjectRef,
+        }),
+        note: null,
+      };
+    }
     return {
       failure: null,
       note: encodeCheckDiagnostic({

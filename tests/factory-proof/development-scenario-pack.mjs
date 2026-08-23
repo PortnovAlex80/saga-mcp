@@ -312,6 +312,13 @@ export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
   'D7:bind:stale-readiness-hash-failed',
   'D8:verification:evidence-pins-exact-candidate-hash',
   'D8:verification:upstream-defect-routes-to-settlement',
+  // CC-GAP-8 terminal accounting (declared, honest-pending): the criterion-key
+  // ledger must record explicit terminal facts with provenance on terminal
+  // routes — environment uncertainty (unknown, ADR-089) and explicit
+  // human-required attribution stay mechanically distinct from product
+  // failure and never masquerade as executed.
+  'D8:verification:terminal-accounting-unknown',
+  'D8:verification:terminal-accounting-human-required',
   'D9:settlement:blocked-and-failed-outcomes',
   'D10:continuation:managed-source-author-no-git-authority',
   'D10:replan:superseded-tasks-not-claimable',

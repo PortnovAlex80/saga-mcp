@@ -6,6 +6,7 @@ import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
   CompleteLifecycleStageResult,
   LifecycleRunRepository,
+  RunTerminalEventClaim,
 } from './lifecycle-run-repository.js';
 import type {
   CompleteLifecycleStageCommand,
@@ -21,6 +22,24 @@ import type {
 import { lifecycleRefKey } from './lifecycle-run.js';
 import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 import { classifyLifecycleDefinitionCompatibility } from '../application/lifecycle-definition-compatibility.js';
+
+/**
+ * ADR-090 (CC-IC-1): the pinned per-run lifecycle definition read. The
+ * lifecycle-classification reaches Discovery settlement ONLY through this
+ * typed port — `ctx.processRunId` → join `factory_stage_runs.process_run_id`
+ * → `lifecycle_run_id` → the pinned `factory_lifecycle_runs`
+ * `definition_snapshot` + `definition_hash`. A missing row or a definition
+ * hash mismatch fails closed with a typed error — never an ambient or
+ * default `lifecycleDefinition` binding.
+ */
+export interface PinnedLifecycleDefinitionRead {
+  readonly lifecycleRunId: number;
+  readonly lifecycleRefKey: string;
+  /** The pinned definition snapshot (parsed JSON of the persisted canonical text). */
+  readonly definition: Readonly<Record<string, unknown>>;
+  /** sha256 over the canonical definition snapshot, as persisted at start(). */
+  readonly definitionHash: string;
+}
 
 export function ensureFactoryLifecycleRunSchema(db: Database.Database): void {
   ensureFactoryProcessRunSchema(db);
@@ -147,6 +166,21 @@ export function ensureFactoryLifecycleRunSchema(db: Database.Database): void {
       classification TEXT NOT NULL CHECK (classification IN ('exact','metadata_only','incompatible')),
       reason_json TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- CC-GAP-4 — the durable exactly-once gate for the run.terminal
+    -- journal boundary. One row per terminalized lifecycle run: the FIRST
+    -- claim wins and every later replay/re-drive of the same terminal fact
+    -- (dispatch loop, obligation re-drive, resume relaunch, a second engine
+    -- process) reads the row and stays silent. Purely additive — historical
+    -- runs (Elite-6 evidence included) simply have no row until and unless
+    -- a future replay claims them; nothing existing is rewritten.
+    CREATE TABLE IF NOT EXISTS factory_run_terminal_event_receipts (
+      lifecycle_run_id INTEGER PRIMARY KEY
+        REFERENCES factory_lifecycle_runs(id) ON DELETE CASCADE,
+      status          TEXT NOT NULL,
+      terminal_status TEXT,
+      claimed_at      TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
   const lifecycleColumns = db.prepare(
@@ -488,6 +522,65 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       'SELECT * FROM factory_lifecycle_runs WHERE id=?',
     ).get(id) as LifecycleRunRow | undefined;
     return row ? runRowToRecord(row) : null;
+  }
+
+  /**
+   * ADR-090 (CC-IC-1): the typed pinned-definition read consumed (read-only)
+   * by Discovery settlement through composition-root wiring — the ONLY
+   * normative path the lifecycle classification takes into settlement.
+   * Fail-closed: a process run bound to no stage run / no lifecycle run is a
+   * typed error, and the persisted definition hash is re-derived and
+   * compared before the definition is returned (a mismatch is tampering or
+   * corruption — never a silent substitute).
+   */
+  readDefinitionByProcessRun(processRunId: number): PinnedLifecycleDefinitionRead {
+    if (!Number.isSafeInteger(processRunId) || processRunId < 1) {
+      throw new Error(`LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_MISSING: invalid process run ${processRunId}`);
+    }
+    const row = this.db.prepare(
+      `SELECT lr.id AS lifecycle_run_id,
+              lr.lifecycle_ref_key AS lifecycle_ref_key,
+              lr.definition_snapshot AS definition_snapshot,
+              lr.definition_hash AS definition_hash
+         FROM factory_stage_runs sr
+         JOIN factory_lifecycle_runs lr ON lr.id=sr.lifecycle_run_id
+        WHERE sr.process_run_id=?`,
+    ).get(processRunId) as {
+      lifecycle_run_id: number;
+      lifecycle_ref_key: string;
+      definition_snapshot: string;
+      definition_hash: string;
+    } | undefined;
+    if (!row) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_MISSING: process run ${processRunId} is bound to no lifecycle run`,
+      );
+    }
+    let definition: unknown;
+    try {
+      definition = JSON.parse(row.definition_snapshot);
+    } catch {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID: lifecycle run ${row.lifecycle_run_id} carries an unparseable definition snapshot`,
+      );
+    }
+    if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_FOR_PROCESS_RUN_INVALID: lifecycle run ${row.lifecycle_run_id} carries a non-object definition snapshot`,
+      );
+    }
+    const derivedHash = sha256Hex(definition);
+    if (derivedHash !== row.definition_hash) {
+      throw new Error(
+        `LIFECYCLE_DEFINITION_HASH_MISMATCH: lifecycle run ${row.lifecycle_run_id} pins ${row.definition_hash}, snapshot hashes ${derivedHash}`,
+      );
+    }
+    return {
+      lifecycleRunId: row.lifecycle_run_id,
+      lifecycleRefKey: row.lifecycle_ref_key,
+      definition: definition as Readonly<Record<string, unknown>>,
+      definitionHash: row.definition_hash,
+    };
   }
 
   readByIdempotencyKey(
@@ -1129,6 +1222,45 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
               updated_at=datetime('now')
         WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?`,
     ).run(lifecycleRunId, lease.owner, lease.fence);
+  }
+
+  claimRunTerminalEvent(lifecycleRunId: number): RunTerminalEventClaim | null {
+    return this.transaction(() => {
+      // The authority check comes first and is fail-closed: a missing or
+      // non-terminal row claims NOTHING. A premature probe (e.g. a reader
+      // racing the terminalizing commit) must never burn the one claim the
+      // real terminalization needs.
+      const row = this.db.prepare(
+        `SELECT status, terminal_status FROM factory_lifecycle_runs WHERE id=?`,
+      ).get(lifecycleRunId) as
+        | { status: LifecycleRunStatus; terminal_status: string | null }
+        | undefined;
+      if (
+        !row
+        || (
+          row.status !== 'completed'
+          && row.status !== 'failed'
+          && row.status !== 'cancelled'
+        )
+      ) {
+        return null;
+      }
+      // INSERT OR IGNORE on the run-id primary key is the atomic claim.
+      // SQLite serializes writers, so across processes, restarts, and any
+      // interleaving of the competing terminal paths exactly one caller
+      // observes changes=1 — deterministically the same single winner
+      // outcome, whoever it happens to be.
+      const claimed = this.db.prepare(
+        `INSERT OR IGNORE INTO factory_run_terminal_event_receipts
+            (lifecycle_run_id, status, terminal_status)
+          VALUES (?, ?, ?)`,
+      ).run(lifecycleRunId, row.status, row.terminal_status);
+      return {
+        claimed: claimed.changes === 1,
+        status: row.status,
+        terminalStatus: row.terminal_status,
+      };
+    });
   }
 
   private verifyStageCommand(command: EnsureLifecycleStageRunCommand): void {

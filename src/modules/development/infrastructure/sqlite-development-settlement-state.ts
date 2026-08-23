@@ -28,6 +28,7 @@ import {
   INTEGRATED_CANDIDATE_SCHEMA,
   INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
   DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
+  verifyReadinessManifestWarrantCrossBind,
   type AcceptanceVerificationWorkset,
   type CandidateVerificationEvidence,
   type ContentAddressedReference,
@@ -49,6 +50,13 @@ import {
   hashIntegratedCandidate,
   hashIntegratedSourceCandidate,
 } from '../domain/development-settlement-policy.js';
+import type { VerificationTerminalRouteKind } from '../domain/verification-accounting.js';
+import {
+  openVerificationLedgerAtGraphMaterialization,
+  recordVerificationExecuted,
+  recordVerificationTerminalRoute,
+  ensureDevelopmentVerificationLedgerSchema,
+} from './development-verification-ledger.js';
 import {
   LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
   LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
@@ -130,6 +138,17 @@ export class SqliteDevelopmentModuleStore implements
         productHash: input.graph.graphHash,
         payload: input.graph,
         artifactRefPrefix: 'development-task-graph',
+      });
+      // CC-GAP-8: open the append-only criterion-key accounting ledger in
+      // the SAME transaction as the graph product — every verification
+      // obligation is a first-class pending entry from materialization on,
+      // surviving readiness failure and continuation. Replay of an already
+      // stored graph never re-opens (and never back-fills legacy graphs).
+      openVerificationLedgerAtGraphMaterialization(this.db, {
+        processRunId: input.processRunId,
+        projectId: input.developmentCase.projectId,
+        epicId: input.developmentCase.epicId,
+        graph: input.graph,
       });
       return stored.record;
     })();
@@ -359,6 +378,23 @@ export class SqliteDevelopmentModuleStore implements
         || manifest.targets[0]?.key !== 'primary') {
       return { status: 'failed', reasonCodes: ['readiness-manifest-source-mismatch'] };
     }
+    // ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): a PRESENT
+    // manifest warrantRef is verified against the case's AUTHORITATIVE
+    // expected cross-bind identities (frozen solution-contract payload) — a
+    // forged or partial discoveryCertificateHash/formalizationCaseDigest
+    // cross-bind is a typed failed state, never a silently accepted
+    // re-targeted warrant. An absent warrantRef stays legal (retro-compat).
+    try {
+      verifyReadinessManifestWarrantCrossBind(input.developmentCase, manifest);
+    } catch (error) {
+      return {
+        status: 'failed',
+        reasonCodes: [
+          'readiness-manifest-warrant-cross-bind-invalid',
+          error instanceof Error ? error.message : String(error),
+        ],
+      };
+    }
     const receipt = this.readExactReadinessReceipt(presentation.candidateSetRef);
     if (!receipt) {
       // X3 (SEAM L2): distinguish FAILED from not-yet-run. A failed readiness
@@ -506,6 +542,24 @@ export class SqliteDevelopmentModuleStore implements
       openHumanGateIds,
       localReadinessReceipt,
     };
+  }
+
+  // ----- CC-GAP-8 terminal accounting ----------------------------------
+
+  /**
+   * Append terminal-route facts for every still-unexecuted criterion-key
+   * obligation of this run, with the settlement certificate as provenance.
+   * Delegates to the module-local append-only ledger; never a discharge and
+   * never a poison for a later executed/waived append (latest event wins).
+   */
+  recordVerificationTerminalRoute(input: {
+    processRunId: number;
+    route: VerificationTerminalRouteKind;
+    reasonCodes: readonly string[];
+    provenanceRef: string;
+    attributedTo?: readonly string[];
+  }): void {
+    recordVerificationTerminalRoute(this.db, input);
   }
 
   /**
@@ -756,6 +810,23 @@ export class SqliteDevelopmentModuleStore implements
     const requiredCount = taskGraph.verificationItems
       .filter(item => item.required).length;
     const complete = evidence.length === requiredCount;
+    // CC-GAP-8: append the executed facts to the criterion-key ledger —
+    // outcome and authority are the exact trusted-receipt facts already
+    // validated above (criterion key + acceptedCriterionHash + candidateHash
+    // + trusted provider). Executed-FAILED is recorded but never discharges;
+    // only this exact-passed receipt (or an operator waiver) can. Legacy
+    // runs without ledger rows are skipped whole by the recorder.
+    for (const item of evidence) {
+      recordVerificationExecuted(this.db, {
+        processRunId,
+        criterionKey: item.acceptanceCriterionKey,
+        verificationItemKey: item.verificationItemKey,
+        outcome: item.outcome === 'passed' ? 'passed' : 'failed',
+        receiptRef: item.evidence.ref,
+        receiptDigest: item.evidence.hash,
+        candidateHash: item.candidateHash,
+      });
+    }
     const body: Omit<AcceptanceVerificationWorkset, 'verificationHash'> = {
       schemaVersion: ACCEPTANCE_VERIFICATION_SCHEMA,
       acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,
@@ -1330,6 +1401,7 @@ function stringValue(value: unknown): string {
 }
 
 export function ensureDevelopmentStoreSchema(db: Database.Database): void {
+  ensureDevelopmentVerificationLedgerSchema(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_development_task_projections (
       process_run_id INTEGER NOT NULL

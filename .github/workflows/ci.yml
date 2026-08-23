@@ -105,6 +105,16 @@ jobs:
         # this into the acceptance matrix (per COMPLETION-EVIDENCE-CONTRACT.md).
         run: node tools/validate-completion-evidence.mjs
 
+      - name: Matrix — CC proof-hosting registry (CC-U1 / ADR-092)
+        # Blocking proof-hosting closure: the CC closure proof-hosting manifest
+        # (tests/infrastructure/cc-proof-hosting-manifest.mjs) is validated in
+        # BOTH directions against the machine-readable matrix export and this
+        # file's --group invocations — a critical CC proof that is committed
+        # but not hosted in a CI-invoked group (the CC-GAP-8 orphan class), a
+        # group rename, a quarantine reclassification, or a stale pending row
+        # each fail closed.
+        run: node tools/run-acceptance-matrix.mjs --group cc-proof-registry
+
       - name: Matrix — coverage & no-hidden-failure guard
         # CI-02 self-check (runs last): asserts the matrix covers every required
         # deterministic suite, quarantines the flaky / pre-existing-red files

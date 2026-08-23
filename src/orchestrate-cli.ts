@@ -55,6 +55,7 @@ import { developmentContinuationPackageManifest } from './process-modules/module
 import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
 import { journalEvent } from './observability/run-journal.js';
+import { settleLaunchFromRunResult } from './app/launch-terminal-settlement.js';
 import {
   acquireFactoryLaunchController,
   assertFactoryControllerFence,
@@ -134,6 +135,12 @@ async function main() {
   // STAGE-11 TASK 5 — set by the exit sites, read by the exit hook for the
   // one-shot engine.exit journal line ('boot' until the main flow decides).
   let exitReason: string = 'boot';
+  // CC-GAP-2 — the business verdict channels travel WITH the exit code so an
+  // `engine.exit {code: 0}` line can never be read as product success on its
+  // own: code/reason stay operational, terminal_status/product_outcome carry
+  // the lifecycle verdict (null on fatal paths where it is genuinely unknown).
+  let exitTerminalStatus: string | null = null;
+  let exitProductOutcome: string | null = null;
   const controllerHeartbeat = setInterval(() => {
     try {
       // Antifreeze B3: the lease renewal is a hot engine write on the SHARED
@@ -225,10 +232,15 @@ async function main() {
     // appendFileSync is synchronous and legal in an exit handler.
     journalEvent('engine.exit', {
       epic_id: epicId ?? undefined,
-      run_id: ticket.lifecycleRunId != null ? String(ticket.lifecycleRunId) : undefined,
+      run_id: ticket.lifecycleRunId !== null ? String(ticket.lifecycleRunId) : undefined,
     }, {
       code,
       reason: exitReason,
+      // CC-GAP-2: separated verdict channels — exit code 0 ("the engine
+      // reached a lifecycle terminal state") never implies product success;
+      // the verdict is on the same evidence line.
+      terminal_status: exitTerminalStatus,
+      product_outcome: exitProductOutcome,
     });
   });
 
@@ -600,6 +612,88 @@ async function main() {
     engineLog(`[orchestrate-cli] done: ${JSON.stringify(result)}`);
     // Structured log — write pipeline result to engine log for debugging
     engineLog(`[${new Date().toISOString()}] PIPELINE RESULT: ${JSON.stringify(result)}`);
+    // ADR-087 — receipt-authoritative terminal drain (CC-GAP-3, CONVEYOR §23
+    // edge "OS worker exits → terminalize the exact WorkerExecution"). The
+    // loop above can break on a terminal lifecycle result while executions
+    // are still durably active (worker_done already settled the Workplace;
+    // the runner close callback that would terminalize the row can be lost or
+    // lag behind this exit — including the alive-PID form, where a live
+    // receipt-backed closer is lawfully kept by the stuck policy but a
+    // terminal epic has no future engine sweep). Settle BEFORE the launch is
+    // finished: a short bounded natural-drain courtesy, then the ordinary
+    // supervision reconcile, then receipt-authoritative settlement of every
+    // remaining active execution through the existing fenced atomic release
+    // (semantic `exited`, no kill, exit_code null for the late backfill, CAS
+    // winner alone emits worker.exit), then a final active recount. Any
+    // non-receipt/unverifiable/failed residual raises a typed operational
+    // settlement failure so this launch and the engine exit cannot be
+    // presented as clean operational success. Not run for `paused` — the
+    // engine keeps supervising on its next cycle.
+    let terminalSettlementFailure: string | null = null;
+    if (result.reason !== 'paused') {
+      const settlementModule = await import(
+        './infrastructure/work/worker-supervision-service.js'
+      );
+      try {
+        const settlement = await settlementModule.settleWorkerExecutionsAtTerminalRun(
+          supervisionHandle,
+          { projectId, epicId, log: engineLog },
+        );
+        engineLog(
+          `[orchestrate-cli] terminal settlement (ADR-087): ${JSON.stringify({
+            drainMs: settlement.drainMs,
+            activeBeforeDrain: settlement.activeBeforeDrain,
+            drainedToZero: settlement.drainedToZero,
+            settled: settlement.settled.length,
+            activeRemaining: settlement.activeRemaining,
+          })}`,
+        );
+      } catch (settlementError) {
+        // Fail-closed branch (ADR-087): the launch is settled 'failed' and
+        // the engine exits 1 — never a clean success over an unaccounted
+        // active execution. This is operational telemetry, not a domain
+        // recovery mechanism.
+        terminalSettlementFailure = settlementError instanceof Error
+          ? `${settlementError.name}: ${settlementError.message}`
+          : String(settlementError);
+        engineLog(`[orchestrate-cli] terminal settlement FAILED: ${terminalSettlementFailure}`);
+        process.stderr.write(
+          `[orchestrate-cli] terminal settlement FAILED: ${terminalSettlementFailure}\n`,
+        );
+        // Run-journal evidence: the typed code and the itemized residual
+        // summary must survive as correlated evidence, not only as the
+        // generic engine.exit reason string ('terminal-settlement-failed').
+        // The residuals are described AS residual active executions — no
+        // closed domain outcome is invented for them here (they remain
+        // truthfully active in their own authority tables).
+        const typed = settlementError instanceof settlementModule.TerminalWorkerSettlementError
+          ? settlementError
+          : null;
+        journalEvent('terminal_settlement.failed', {
+          epic_id: epicId ?? undefined,
+          run_id: ticket.lifecycleRunId !== null ? String(ticket.lifecycleRunId) : undefined,
+        }, {
+          error_name: typed?.name ?? (settlementError instanceof Error
+            ? settlementError.name
+            : typeof settlementError),
+          code: typed?.code ?? 'UNTYPED',
+          message: settlementError instanceof Error
+            ? settlementError.message
+            : String(settlementError),
+          residual_count: typed?.residuals.length ?? 0,
+          residuals: typed
+            ? typed.residuals.map(residual => ({
+              execution_id: residual.executionId,
+              task_id: residual.taskId,
+              code: residual.code,
+              detail: residual.detail,
+            }))
+            : [],
+          launch_settlement: 'failed',
+          engine_exit_code: 1,
+        });
+      }
+    }
     // Crash/reconciliation fallback: the direct post-terminal capture effect
     // (replay-capture) is the normal certification path, but if it was skipped
     // (process crash between transition and capture, or an effect error that
@@ -642,8 +736,18 @@ async function main() {
     // the launch nor the order is marked 'completed' — both record 'paused' so
     // status readers cannot mistake this for convergence. The exit code is 2
     // (distinct from 0=success and 1=failure).
-    const isTerminal = result.reason !== 'paused';
-    if (!isTerminal) {
+    //
+    // CC-GAP-2: for the TERMINAL branch, launch/order 'completed' and exit 0
+    // are OPERATIONAL facts only — "the engine brought the run to a lifecycle
+    // terminal state", whatever that terminal's business verdict is
+    // (`terminal_status`: released, development-blocked, approval-required,
+    // ...). The engine has no workshop-agnostic success classification for
+    // terminal statuses and must not invent one, so the verdict is carried
+    // alongside (engine.exit journal fields + durable
+    // factory_lifecycle_runs.terminal_status) instead of being flattened into
+    // the exit code. Exit 0 / 'completed' therefore never implies product
+    // success.
+    if (result.reason === 'paused') {
       engineLog(
         `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}`,
       );
@@ -651,19 +755,39 @@ async function main() {
         `[orchestrate-cli] lifecycle paused (not terminal): ${JSON.stringify(result)}\n`,
       );
     }
+    const settlement = settleLaunchFromRunResult(result);
+    // ADR-087 fail-closed (CC-GAP-3): a typed terminal-settlement failure
+    // settles the launch as failed (exit 1) even when the lifecycle itself
+    // completed — the run must not be presented as clean operational success.
+    // CC-GAP-2 is preserved: only the OPERATIONAL channels (launch/order
+    // state, exit code, reason, error payload) are overridden by the drain
+    // failure; the verdict channels below stay truthful to the lifecycle
+    // machine's own terminal state (never fabricated, never flattened).
+    const settlementFailed = settlement.operationalTerminal && terminalSettlementFailure !== null;
+    exitTerminalStatus = settlement.lifecycleTerminalStatus;
+    exitProductOutcome = settlement.productOutcome;
+    engineLog(
+      `[orchestrate-cli] launch settlement: ${JSON.stringify({
+        launch_state: settlementFailed ? 'failed' : settlement.launchState,
+        order_state: settlementFailed ? 'start_failed' : settlement.orderState,
+        exit_code: settlementFailed ? 1 : settlement.exitCode,
+        lifecycle_status: settlement.lifecycleStatus,
+        terminal_status: settlement.lifecycleTerminalStatus,
+        stage_outcome: settlement.stageOutcome,
+        product_outcome: settlement.productOutcome,
+      })}`,
+    );
     finishFactoryLaunch(
       launchRef,
       claimToken,
-      isTerminal
-        ? (result.reason === 'failed' ? 'failed' : 'completed')
-        : 'paused',
-      result.reason === 'failed' ? JSON.stringify(result) : null,
-      isTerminal
-        ? (result.reason === 'failed' ? 'start_failed' : 'completed')
-        : 'paused',
+      settlementFailed ? 'failed' : settlement.launchState,
+      terminalSettlementFailure ?? settlement.launchError,
+      settlementFailed ? 'start_failed' : settlement.orderState,
     );
-    exitReason = isTerminal ? result.reason : 'paused';
-    process.exit(isTerminal ? (result.reason === 'failed' ? 1 : 0) : 2);
+    exitReason = settlementFailed
+      ? 'terminal-settlement-failed'
+      : settlement.exitReason;
+    process.exit(settlementFailed ? 1 : settlement.exitCode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     engineLog(`[orchestrate-cli] fatal: ${msg}`);

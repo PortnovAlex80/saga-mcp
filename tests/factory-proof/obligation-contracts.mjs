@@ -299,17 +299,54 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     requiredCorpus: corpus('factory.authorized-observer'),
     allowedTerminalKinds: ['repair_required', 'failed'],
   }),
+  // v1.14.0 (2026-08-23, K19 repair after REJECT): the runnability
+  // provider's identity bumped 1.13.0 → 1.14.0 — the base image identity is
+  // observed ATOMICALLY (ONE docker image inspect snapshot pairs RepoDigests
+  // and the local Id from the SAME response, then tags only the immutable
+  // Id; a tag switch between two resolutions of the mutable tag can no
+  // longer pair A's manifest digest with B's local id), the provider
+  // boundary fails closed typed when a docker describe reaches the receipt
+  // without a well-formed sha256 baseImageDigest (product failed, never
+  // passed/unknown/retried), and the trusted_providers migration requires
+  // the EXACT version→built-in-digest pair (a forged basis on a known
+  // legacy version is drift, never laundered). The obligation pin moves in
+  // the SAME change — a deliberate provider migration must update the norm
+  // and the manifest together or the compiler fires
+  // PROTECTION_VERSION_DIVERGENCE.
+  // v1.13.0 (2026-08-23, K19 / ADR-083 §2.1 image/dependency identity
+  // remainder): the runnability provider's identity bumped 1.12.0 → 1.13.0 —
+  // a docker-substrate check resolves the declared image to its OCI REGISTRY
+  // MANIFEST DIGEST (RepoDigests; never a floating tag, never the local
+  // image id) and fails closed typed on missing/malformed/repo-mismatched/
+  // ambiguous/pin-mismatched evidence; the derivation binds the dependency
+  // lock identity (dependencyLockDigest over the sealed tree's exact lock
+  // material — lock drift is a different environmentDigest); both identities
+  // ride every observation and bind the deterministic receipt digest.
+  // Identity stays with K19 (ADR-083 §6): identity failures are product
+  // `failed`, never the ADR-089 substrate unknown, and consume no substrate
+  // retry.
+  // (v1.12.0, 2026-08-22, CC-GAP-9 residual / ADR-091): the runnability
+  // provider's identity bumped 1.11.0 → 1.12.0 (mid-check TOCTOU re-probe —
+  // on an executor/compose step failure the cached availability probe is
+  // invalidated and the daemon mechanically re-probed; only the OBSERVED
+  // result routes: unavailable/not-linux rides the ADR-089 bounded retry and
+  // typed unknown, available+linux keeps the original product `failed`;
+  // classification never reads stderr text; compose `down` stays best-effort
+  // and distinct from invalid config).
+  // (v1.11.0, 2026-08-22, CC-GAP-9 / ADR-089: bounded in-check substrate
+  // retry; typed unknown `warrant-blocked-environment` on exhaustion; unknown
+  // receipts never replayed, never poison a later pass.)
   Object.freeze({
     obligationId: 'factory.local-runnability',
-    version: '1.10.0',
-    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification'],
+    version: '1.14.0',
+    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-083 environment identity', 'ADR-089 substrate retry', 'ADR-091 mid-check re-probe'],
     subjectKind: 'local-runnability-receipt',
-    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe.',
+    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict; a mid-check executor/compose failure is classified only by a mechanical daemon re-probe — observed unavailable/not-linux rides the bounded retry and typed unknown, observed available+linux keeps the original product failure, and stderr text is never a classification input; the environment identity is authoritative — the declared image resolves to its OCI registry manifest digest (never a floating tag, never the local image id; bad identity evidence fails closed typed), observed ATOMICALLY from one docker image inspect snapshot whose RepoDigests and local Id are paired facts of the same response and whose immutable Id alone is tagged (a tag switch between two resolutions of the mutable tag can never split the receipt identity from the executed image), a docker-substrate description without a well-formed sha256 baseImageDigest fails typed at the provider boundary as a product failure (never passed, never unknown, never retried), the dependency lock identity binds the derived environment digest, both bind the deterministic receipt digest (identity failures are product failed, never the substrate unknown), and the trusted-provider migration accepts a legacy row only on the exact version→built-in-digest pair — a forged trust basis on a known version is drift, never laundered.',
     constraints: [
       { kind: 'digestOf', field: 'subjectCandidateSetRef', of: 'sealed integrated candidate' },
       { kind: 'equality', field: 'probeOutcome', value: 'passed' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.10.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.14.0' },
     faultClasses: ['derived-evidence', 'effect-external'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),
@@ -387,15 +424,29 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'frm.submission.acceptance-contract',
-    version: '2.0.0',
-    sourceRefs: ['acceptance-contract-validator v1.2.0/v2.0.0', '3cf4819a heading gate', 'ADR-053 §3 (DocumentContainer/AtomicContractMember)', 'constraint-coverage remedy'],
+    // v2.1.0 (2026-08-22, proof-subset direction repair): the coverage
+    // constraint is declared as the UNCOVERED RESIDUE (register ids minus
+    // union of covered minus validly waived = empty) — the reverse diff the
+    // validator actually enforces (constraintCoverageGapIdList →
+    // FORMALIZATION_CONSTRAINT_UNCOVERED). The v2.0.0 declaration
+    // (`coveredConstraintIds ⊆ registerIds-minus-waived`) named the opposite
+    // direction: production never rejects an extra unknown covered id, so the
+    // declared member-side family was unenforceable at this boundary, and a
+    // bare member/of flip would only swap which side a mutant rewrites. The
+    // residue form keeps the mutated member on the worker-authored coverage
+    // side and compiles a mutation-killable family. The grammar constraint
+    // drops its inert `member` binding: `atomicCriteria` entries are objects,
+    // so the member-bound grammar operator could never derive a text mutant;
+    // the field form compiles the live heading family.
+    version: '2.1.0',
+    sourceRefs: ['acceptance-contract-validator v1.2.0/v2.0.0', '3cf4819a heading gate', 'ADR-053 §3 (DocumentContainer/AtomicContractMember)', 'constraint-coverage remedy', 'ADR-084 reverse-diff oracle', 'ADR-088 §2 register-conditional red'],
     subjectKind: 'formalization-acceptance-bundle',
-    protectedProperty: 'Every /^AC-/ artifact code resolves to exactly one level-2/3 document heading (exact accepted bytes); criterion codes are unique; the constraint register is covered or waived.',
+    protectedProperty: 'Every /^AC-/ artifact code resolves to exactly one level-2/3 document heading (exact accepted bytes); criterion codes are unique; the uncovered register residue — register ids minus union of AC covered_constraint_ids minus validly waived ids — is empty.',
     constraints: [
       { kind: 'cardinality', min: 1, member: 'atomicCriteria' },
       { kind: 'unique', by: 'criterionCode' },
-      { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$', member: 'atomicCriteria' },
-      { kind: 'subset', member: 'coveredConstraintIds', of: 'registerIds-minus-waived' },
+      { kind: 'grammar', field: 'acHeading', pattern: '^#{2,3} AC-[A-Za-z0-9.-]+:\\s+.+$' },
+      { kind: 'subset', member: 'uncoveredConstraintResidue', of: 'empty' },
     ],
     expectedProtection: { kind: 'check-provider', logicalId: 'factory.submission-validator.formalization.acceptance-contract.v1', version: '2.0.0' },
     faultClasses: ['contract-shape', 'authority-binding', 'derived-evidence'],
@@ -428,12 +479,24 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'frm.submission.srs-contract',
-    version: '2.0.0',
-    sourceRefs: ['srs-contract-validator', 'FORMALIZATION_SRS_INCOMPLETE gate', 'srs-d2-parser enums'],
+    // v2.1.0 (2026-08-22, proof-subset direction repair): the §D2 coverage
+    // constraints are declared as RESIDUES, not as `d2Stanzas ⊆
+    // frozenAcCodes`. The old direction named only the foreign-code half;
+    // the protected property ("covers every frozen AC code exactly once")
+    // lives in the opposite half the declaration never mentioned. A bare
+    // member/of flip would mutate the FROZEN baseline — the authority side a
+    // worker cannot author — so the mutant family could never be
+    // materialized at the worker boundary. Residue form keeps every mutated
+    // member on the worker-authored §D2 document: an unrepresented frozen AC
+    // (validator gap `represented_by`) and a foreign §D2 code (validator gap
+    // `exact-frozen-ac-code`) are each an empty-set obligation on the SRS.
+    version: '2.1.0',
+    sourceRefs: ['srs-contract-validator', 'FORMALIZATION_SRS_INCOMPLETE gate', 'srs-d2-parser enums', 'ADR-088 §2 register-conditional red'],
     subjectKind: 'srs-contract',
-    protectedProperty: 'The §D2 decomposition covers every frozen AC code exactly once with a valid ac_kind; enum fields hold declared values.',
+    protectedProperty: 'The §D2 decomposition represents the frozen AC set exactly: every frozen AC code appears in §D2 (unrepresented-frozen-AC residue empty), every §D2 code is a frozen AC code (foreign-D2-code residue empty), each exactly once with a valid ac_kind; enum fields hold declared values.',
     constraints: [
-      { kind: 'subset', member: 'd2Stanzas', of: 'frozenAcCodes' },
+      { kind: 'subset', member: 'unrepresentedFrozenAcResidue', of: 'empty' },
+      { kind: 'subset', member: 'foreignD2AcResidue', of: 'empty' },
       { kind: 'unique', by: 'stanzaAcCode' },
       { kind: 'grammar', field: 'acKind', pattern: '^(implementation|verification)$' },
     ],

@@ -39,8 +39,17 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
+  ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
+  buildSolutionContractConstraintCoverage,
+  checkConstraintDispositionsForRegister,
+  constraintDispositionsDigest,
+  formalizationCaseIdentityDigest,
   resolveFormalizationCaseConstraintRegister,
+  resolveFormalizationCaseRegisterAuthority,
+  verifyWarrantCrossBind,
+  verifyWarrantDispositionsBinding,
   type FormalizationCase,
+  type FormalizationConstraintRegisterBinding,
   type FormalizationSolutionContractPayload,
   type FormalizationSettlementInput,
   type SolutionContractBundle,
@@ -240,23 +249,77 @@ function createSettlementHandler(
         bundle,
         settlementInput,
       );
-      // AC-drift network 3 seam: cite the constraint register + the accepted
-      // brief's dispositions as the verification warrant reference. The
-      // endgame certifier consumes this WITHOUT re-reading the order (no new
-      // oracle): warrant phases diff against this frozen citation. Absent
-      // entirely when the case carries no register (retro-compat).
-      const constraintBinding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+      // AC-drift network 3 seam + ADR-090 (CC-IC-1): cite the constraint
+      // register + the accepted brief's dispositions as the verification
+      // warrant reference. The endgame certifier consumes this WITHOUT
+      // re-reading the order (no new oracle): warrant phases diff against
+      // this frozen citation. Absent entirely when the case carries no
+      // register (retro-compat).
+      //
+      // CC-IC-1: the register binding is resolved FROM THE DISCOVERY
+      // CERTIFICATE (the v2 source of truth — read by exact ref, hash-verified
+      // against the case; a v2 case whose binding is supplied by the
+      // proposal-payload rebuild fallback, or that carries no binding and no
+      // typed no-obligations attestation, is a typed red here — mutation
+      // m6b), and the warrant CROSS-BINDS the certificate/case it was issued
+      // against (mutation m7): register+dispositions self-consistency alone
+      // is not identity.
+      const registerAuthority = resolveCaseRegisterAuthority(
+        deps,
+        formalizationCase,
+      );
+      const constraintBinding = registerAuthority.binding;
+      const briefDispositions
+        = deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
+          ?? {} as Readonly<Record<string, unknown>>;
+      // ADR-090 (CC-IC-2): frozen read-back of the disposition freeze. A v2
+      // register's dispositions are verified AGAIN at the freeze — the gate
+      // owns the authored-against registerDigest pin (m2d); settlement owns
+      // never freezing an invalid set (exact kind/state grammar + exact set
+      // equality; a v2 waived record — including a perfectly shaped operator
+      // attribution fake — never reaches the warrant: the waiver state is
+      // typed unavailable per the 2026-08-23 waiver-authority decision).
+      // v1 registers keep the frozen legacy behavior bit-identically.
+      if (constraintBinding !== null
+        && constraintBinding.constraintRegister.schemaVersion
+          === ORDER_CONSTRAINT_REGISTER_SCHEMA_V2) {
+        const checked = checkConstraintDispositionsForRegister({
+          register: constraintBinding.constraintRegister,
+          dispositions: briefDispositions,
+        });
+        if (checked.gaps.length > 0) {
+          throw new Error(
+            'FORMALIZATION_DISPOSITION_FREEZE_INVALID: '
+            + checked.gaps.map(gap => `${gap.targetId}: ${gap.reason}`).join('; '),
+          );
+        }
+      }
+      const formalizationCaseDigest = formalizationCaseIdentityDigest(formalizationCase);
       const warrantRef = constraintBinding
         ? {
             constraintRegisterRef: constraintBinding.constraintRegisterRef,
             constraintRegisterDigest: constraintBinding.constraintRegisterDigest,
-            dispositionsDigest: sha256Hex(
-              deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId) ?? {},
-            ),
-            dispositions: deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
-              ?? {} as Readonly<Record<string, unknown>>,
+            // ADR-090 (CC-IC-2): deterministic dispositions digest — canonical
+            // over the frozen map, so authoring/read-back key order can never
+            // drift the warrant binding.
+            dispositionsDigest: constraintDispositionsDigest(briefDispositions),
+            dispositions: briefDispositions,
+            // ADR-090 (CC-IC-1) m7: the cross-bind — the warrant names the
+            // exact discovery certificate hash and FormalizationCase
+            // identity digest it was issued against; consumers verify.
+            discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
+            formalizationCaseDigest,
           }
         : undefined;
+      if (warrantRef) {
+        verifyWarrantCrossBind(warrantRef, {
+          discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
+          formalizationCaseDigest,
+        });
+        // ADR-090 (CC-IC-2): bind registerDigest + deterministic
+        // dispositionsDigest at the frozen read-back — drift is a typed red.
+        verifyWarrantDispositionsBinding(warrantRef);
+      }
       const certificatePayload = {
         schemaVersion: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
         decision: decision.decision,
@@ -281,6 +344,10 @@ function createSettlementHandler(
           bundle,
           baseline.artifactRef,
           baseline.snapshotHash,
+          briefDispositions,
+          // ADR-090 (CC-IC-1): the certificate-resolved binding is the ONE
+          // register the coverage relay freezes — never a divergent rebuild.
+          constraintBinding ?? undefined,
         );
         const persisted = deps.solutionContractRepository.persist(payload);
         productionRef = persisted.record.artifactRef;
@@ -366,6 +433,20 @@ export function buildSolutionContractPayload(
   bundle: SolutionContractBundle,
   baselineSnapshotRef: string,
   baselineSnapshotHash: string,
+  /**
+   * ADR-088 (CC-GAP-6): the accepted brief's constraint dispositions (the
+   * same lifecycle-scoped read the settlement's warrantRef uses) — the typed
+   * waivers frozen into the coverage block. Undefined when the port does not
+   * expose the read (no dispositions → nothing waived).
+   */
+  briefConstraintDispositions?: Readonly<Record<string, unknown>>,
+  /**
+   * ADR-090 (CC-IC-1): the certificate-resolved register binding. When
+   * supplied, the coverage relay freezes exactly this ONE register (the v2
+   * source of truth). When omitted (legacy callers/tests), the frozen v1
+   * deterministic case resolution applies unchanged.
+   */
+  resolvedConstraintBinding?: FormalizationConstraintRegisterBinding,
 ): FormalizationSolutionContractPayload {
   const ids = [
     ...(bundle.prdArtifactId ? [bundle.prdArtifactId] : []),
@@ -395,6 +476,18 @@ export function buildSolutionContractPayload(
   );
   const criticalityByCode = parseD2CriticalityByAc(srsContent);
   const coveredIdsByCode = parseD2CoveredConstraintIdsByAc(srsContent);
+  // ADR-088 (CC-GAP-6): freeze the constraint-coverage requirement (register
+  // ids + classes + execution entrypoints + typed waivers) into the contract
+  // Development inherits. Present iff the case carries a register — the
+  // registerless corpus freezes nothing and stays grandfathered.
+  // ADR-090 (CC-IC-1): when the settlement resolved the certificate binding,
+  // THAT register (v1 or v2, open-question/injected entries included) joins
+  // the same reverse-diff relay — never a divergent rebuild.
+  const constraintBinding = resolvedConstraintBinding
+    ?? resolveFormalizationCaseConstraintRegister(formalizationCase);
+  const constraintRegisterCoverage = constraintBinding
+    ? buildSolutionContractConstraintCoverage(constraintBinding, briefConstraintDispositions)
+    : undefined;
   const frozen = deps.baselineRepository.readByProcessRun(ctx.processRunId);
   if (!frozen) throw new Error('formalized contract has no frozen acceptance baseline');
   const criteria = frozen.payload.acceptanceCriteria ?? artifacts
@@ -413,6 +506,12 @@ export function buildSolutionContractPayload(
     formalizationEpicId: requireEpicId(ctx),
     discoveryCertificateRef: formalizationCase.discoveryCertificateRef,
     discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
+    // ADR-090 (CC-IC-1 focused repair, m7 consumer boundary): freeze the case
+    // identity digest the issued warrantRef is cross-bound to, beside the
+    // discovery certificate hash — the authoritative expected identities the
+    // Development warrant consumer verifies a present manifest warrantRef
+    // against (the smallest typed expected-input seam at its source).
+    formalizationCaseDigest: formalizationCaseIdentityDigest(formalizationCase),
     bundle,
     artifactHashes,
     traceIds: traces.map(trace => trace.id),
@@ -424,6 +523,7 @@ export function buildSolutionContractPayload(
       ref: `artifact:${srs.id}`,
       hash: acceptedHash(srs),
     },
+    ...(constraintRegisterCoverage ? { constraintRegisterCoverage } : {}),
     acceptanceCriteria: criteria.map(artifact => {
       if (!artifact.code) {
         throw new Error(`accepted AC member ${artifact.artifactId} has no stable code`);
@@ -545,6 +645,48 @@ function requireFormalizationCase(value: unknown): FormalizationCase {
     throw new Error('invalid FormalizationCase');
   }
   return value as unknown as FormalizationCase;
+}
+
+/**
+ * ADR-090 (CC-IC-1), mutation m6b: resolve the case's ONE register authority
+ * from the discovery CERTIFICATE payload — read by the exact ref the case
+ * carries, hash-verified against the case's pinned discoveryCertificateHash
+ * (a mismatch is tampering/corruption — fail closed). The certificate binding
+ * is the v2 source of truth; the proposal-payload rebuild fallback is
+ * frozen-legacy-v1-only (reached only when a legacy v1 certificate carries
+ * neither a register nor the typed no-obligations attestation).
+ */
+function resolveCaseRegisterAuthority(
+  deps: FormalizationProductionCellInstallationDeps,
+  formalizationCase: FormalizationCase,
+): ReturnType<typeof resolveFormalizationCaseRegisterAuthority> {
+  const ref = formalizationCase.discoveryCertificateRef;
+  const match = /^certificate:(\d+)$/.exec(ref);
+  if (!match) {
+    throw new Error(
+      `FORMALIZATION_DISCOVERY_CERTIFICATE_REF_INVALID: '${ref}' is not a certificate ref`,
+    );
+  }
+  const certificateId = Number(match[1]);
+  if (!Number.isSafeInteger(certificateId) || certificateId < 1) {
+    throw new Error(`FORMALIZATION_DISCOVERY_CERTIFICATE_REF_INVALID: '${ref}'`);
+  }
+  const record = deps.certificateRepository.read(certificateId);
+  if (!record) {
+    throw new Error(
+      `FORMALIZATION_DISCOVERY_CERTIFICATE_MISSING: ${ref} does not resolve`,
+    );
+  }
+  if (record.certificateHash !== formalizationCase.discoveryCertificateHash) {
+    throw new Error(
+      `FORMALIZATION_DISCOVERY_CERTIFICATE_HASH_MISMATCH: ${ref} hashes `
+      + `${record.certificateHash}, the case pins ${formalizationCase.discoveryCertificateHash}`,
+    );
+  }
+  return resolveFormalizationCaseRegisterAuthority(
+    formalizationCase,
+    record.certificatePayload,
+  );
 }
 
 function requireEpicId(ctx: KernelHandlerContext): number {

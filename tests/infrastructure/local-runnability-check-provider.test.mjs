@@ -19,6 +19,7 @@ import {
 } from '../../dist/modules/development/domain/development-schemas.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import { isDockerAvailableForReadiness } from '../../dist/infrastructure/verification/docker-readiness-executor.js';
+import { HISTORICAL_DIGEST_BY_VERSION } from './local-runnability-provider-history.mjs';
 
 const PROCESS_RUN_ID = 1;
 const PRODUCT_KIND = 'development.integrated-candidate';
@@ -1074,14 +1075,25 @@ test('valid profile without environment.image uses the host substrate (backwards
 });
 
 // ---------------------------------------------------------------------------
-// Trust migration: 1.0.0 → 1.1.0 (additive docker bump, not a policy drift).
+// Trust migration: legacy baselines migrate ONLY on the exact
+// version→built-in-digest pair (K19 exact trust migration). The digests come
+// from ./local-runnability-provider-history.mjs — the checked, independently
+// reconstructed expected-history vector (provenance: the git commit that
+// introduced each version); never copied from the production table. A forged
+// basis on a known version is policy drift — the exact-pair battery lives in
+// local-runnability-toctou-reprobe.test.mjs (f) and the full-history
+// conformance battery in local-runnability-trust-history.test.mjs.
 // ---------------------------------------------------------------------------
 
-test('trust migration: existing 1.0.0 row with correct attributes is migrated to the current version', () => {
-  // A prior run installed the provider at version 1.0.0 (correct category,
-  // determinism=full, status=active). The Phase-1 bump to 1.1.0 is additive
-  // (docker is opt-in; host path unchanged), so the trust row is UPDATED in
-  // place rather than treated as drift.
+const AUTHENTIC_1_0_0 = HISTORICAL_DIGEST_BY_VERSION['1.0.0'];
+const AUTHENTIC_1_1_0 = HISTORICAL_DIGEST_BY_VERSION['1.1.0'];
+const AUTHENTIC_1_4_0 = HISTORICAL_DIGEST_BY_VERSION['1.4.0'];
+
+test('trust migration: existing 1.0.0 row with the exact authentic basis is migrated to the current version', () => {
+  // A prior run installed the provider at version 1.0.0 with the EXACT
+  // built-in digest 1.0.0 presented (correct category, determinism=full,
+  // status=active). Additive bumps UPDATE the trust row in place rather
+  // than treating it as drift — but only on the exact version→digest pair.
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE trusted_providers(
     id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
@@ -1090,16 +1102,16 @@ test('trust migration: existing 1.0.0 row with correct attributes is migrated to
   db.prepare(`INSERT INTO trusted_providers
     (project_id,name,version,category,trust_basis,determinism,scope,status)
     VALUES(NULL,'factory.local-runnability.v1','1.0.0','deterministic_evidence',
-      'built-in:olddigest','full','local-runnability','active')`).run();
+      ?,'full','local-runnability','active')`).run(`built-in:${AUTHENTIC_1_0_0}`);
   ensureLocalRunnabilityProviderTrust(db);
   const row = db.prepare(`SELECT version FROM trusted_providers WHERE name=?`)
     .get('factory.local-runnability.v1');
   assert.equal(row.version, LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
-    '1.0.0 row must be migrated to the current version');
+    'the authentic 1.0.0 row must be migrated to the current version');
   db.close();
 });
 
-test('trust migration: existing 1.1.0 row with correct attributes is migrated in place', () => {
+test('trust migration: existing 1.1.0 row with the exact authentic basis is migrated in place', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE trusted_providers(
     id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
@@ -1108,7 +1120,7 @@ test('trust migration: existing 1.1.0 row with correct attributes is migrated in
   db.prepare(`INSERT INTO trusted_providers
     (project_id,name,version,category,trust_basis,determinism,scope,status)
     VALUES(NULL,'factory.local-runnability.v1','1.1.0','deterministic_evidence',
-      'built-in:d','full','local-runnability','active')`).run();
+      ?,'full','local-runnability','active')`).run(`built-in:${AUTHENTIC_1_1_0}`);
   ensureLocalRunnabilityProviderTrust(db);
   const row = db.prepare(`SELECT version FROM trusted_providers WHERE name=?`)
     .get('factory.local-runnability.v1');
@@ -1116,7 +1128,7 @@ test('trust migration: existing 1.1.0 row with correct attributes is migrated in
   db.close();
 });
 
-test('trust migration: existing 1.4.0 row advances to prepared-OCI provider trust', () => {
+test('trust migration: existing 1.4.0 row with the exact authentic basis advances to the current provider trust', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE trusted_providers(
     id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
@@ -1125,7 +1137,7 @@ test('trust migration: existing 1.4.0 row advances to prepared-OCI provider trus
   db.prepare(`INSERT INTO trusted_providers
     (project_id,name,version,category,trust_basis,determinism,scope,status)
     VALUES(NULL,'factory.local-runnability.v1','1.4.0','deterministic_evidence',
-      'built-in:prior-implementation','full','local-runnability','active')`).run();
+      ?,'full','local-runnability','active')`).run(`built-in:${AUTHENTIC_1_4_0}`);
   ensureLocalRunnabilityProviderTrust(db);
   const row = db.prepare(`SELECT version,trust_basis FROM trusted_providers WHERE name=?`)
     .get('factory.local-runnability.v1');
@@ -1133,6 +1145,28 @@ test('trust migration: existing 1.4.0 row advances to prepared-OCI provider trus
     version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
     trust_basis: `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
   });
+  db.close();
+});
+
+test('trust migration: a known legacy version carrying a FORGED basis is drift, never laundered', () => {
+  // The laundering shape the exact-pair requirement removes: a 1.1.0 row
+  // whose trust_basis is not the digest 1.1.0 actually presented. The
+  // version is known, the metadata is perfect — the pair is foreign, so
+  // the row drifts instead of being silently re-trusted.
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE trusted_providers(
+    id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, version TEXT,
+    category TEXT, trust_basis TEXT, determinism TEXT, scope TEXT, status TEXT
+  )`);
+  db.prepare(`INSERT INTO trusted_providers
+    (project_id,name,version,category,trust_basis,determinism,scope,status)
+    VALUES(NULL,'factory.local-runnability.v1','1.1.0','deterministic_evidence',
+      'built-in:foreign-forged-digest','full','local-runnability','active')`).run();
+  assert.throws(
+    () => ensureLocalRunnabilityProviderTrust(db),
+    /LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT/u,
+    'a forged basis on a known legacy version fails closed — never migrated, never re-trusted',
+  );
   db.close();
 });
 
@@ -1162,14 +1196,17 @@ test('trust migration: 1.0.0 row with tampered determinism still drifts (not mig
 
 const DOCKER_AVAILABLE = isDockerAvailableForReadiness();
 
-test('image declared + docker unavailable → failed (fail closed, NOT error)', {
+test('image declared + docker precondition missing → bounded in-check retry, then typed unknown (CC-GAP-9 / ADR-089)', {
   timeout: 30_000,
   skip: DOCKER_AVAILABLE ? 'docker daemon is available — covered by the e2e test' : false,
 }, async () => {
-  // The profile declares environment.image=alpine. Docker is NOT running. The
-  // provider MUST fail closed with outcome 'failed' (not 'error', which the
-  // gate would retry indefinitely) and a LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE
-  // diagnostic code so the verifier tells the worker exactly what happened.
+  // The profile declares environment.image=alpine. Docker is NOT running.
+  // CC-GAP-9 / ADR-089: the provider retries the environment precondition
+  // inside the check up to the frozen bound (3 attempts, 1000ms schedule),
+  // then emits the typed unknown `warrant-blocked-environment` outcome —
+  // never 'failed' (the product was never exercised) and never 'error'
+  // (which the gate would retry forever). Hermetic per-code proofs and the
+  // blocking mutations live in local-runnability-substrate-retry.test.mjs.
   const root = fixture({ passing: true });
   const { db, provider } = buildProvider({
     root,
@@ -1181,13 +1218,18 @@ test('image declared + docker unavailable → failed (fail closed, NOT error)', 
   });
   try {
     const result = await provider.run(RUN_ARGS);
-    assert.equal(result.outcome, 'failed',
-      'docker unavailable + image declared must be failed (not error)');
+    assert.equal(result.outcome, 'unknown',
+      'docker precondition missing after the frozen retry bound must be typed unknown');
     const code = decodeFailedDiagnosticCode(result);
-    assert.equal(code, 'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
-      'diagnostic must name the docker-unavailable failure');
-  } finally {
+    assert.equal(code, 'warrant-blocked-environment',
+      'diagnostic must carry the frozen ADR-089 unknown vocabulary');
+    assert.ok(!result.evidenceRefs.some(ref => ref.startsWith('factory-seam-repair-issue/')),
+      'a substrate precondition is not a product defect — no seam repair issue');
     db.close();
+  } catch (error) {
+    db.close();
+    throw error;
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });

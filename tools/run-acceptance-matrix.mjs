@@ -19,11 +19,18 @@
 // Usage:
 //   node tools/run-acceptance-matrix.mjs                 # run every group (blocking)
 //   node tools/run-acceptance-matrix.mjs --group architecture
-//   node tools/run-acceptance-matrix.mjs --list          # coverage proof, run nothing
+//   node tools/run-acceptance-matrix.mjs --list          # coverage proof, run nothing (human)
+//   node tools/run-acceptance-matrix.mjs --list-json     # machine-readable export (ADR-092)
 //
 // Mirrors the directory-scan + --list style of run-process-module-tests.mjs.
 // The quarantine table below is the single source of truth; the coverage test
 // tests/infrastructure/acceptance-matrix-coverage.test.mjs asserts it.
+//
+// ADR-092 (CC-U1 proof registration): --list-json is the STRUCTURED group
+// registry consumed by validation and tests (acceptance-matrix-coverage,
+// cc-proof-hosting). Consumers MUST NOT regex-parse the human --list text:
+// the JSON export is the only supported machine surface, so notes/prose can
+// change without breaking a validator.
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync, existsSync } from 'node:fs';
@@ -74,13 +81,36 @@ const GROUPS = {
     note: 'C5 carry-forward adversarial matrix + production-cell transitions',
   },
   'process-modules': {
-    globs: ['tests/process-modules/*.test.mjs'],
+    globs: [
+      'tests/process-modules/*.test.mjs',
+      // CC-GAP-8: the criterion-key verification-accounting ledger suite
+      // (terminal-route facts, no-poison, blocking mutations) is a BLOCKING
+      // development-module acceptance proof — not blanket-`npm test` material.
+      'tests/modules/development/verification-ledger.test.mjs',
+      // CC-GAP-8 proof hosting: the terminal-exit accounting structural
+      // oracle (every reachable Development terminal exit is settlement-
+      // accounted or provably pre-ledger; RED/GREEN on the rejected
+      // df7359fa edges) was committed but orphaned — no group ran it, so CI
+      // never executed it. Exact file on purpose: no directory glob, so the
+      // hosted CC-GAP-8 proof surface cannot silently widen. The coverage
+      // test (G2g) fails if this entry is removed.
+      'tests/modules/development/development-terminal-exit-accounting.test.mjs',
+    ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
+  },
+  // ADR-092 / CC-U1: the CC closure proof-hosting registry. EXACT FILE on
+  // purpose (no directory glob): the run-set of this group must equal the
+  // manifest's blocking rows pinned to it (tools/cc-proof-hosting-registry.mjs
+  // proves the bijection), so the hosted CC proof-registry surface cannot
+  // silently widen or shrink.
+  'cc-proof-registry': {
+    globs: ['tests/infrastructure/cc-proof-hosting.test.mjs'],
+    note: 'CC-U1/ADR-092 proof-hosting registry — bidirectional closure between the CC critical proof manifest and the CI-invoked blocking matrix groups',
   },
   'factory-proof': {
     globs: [
@@ -95,8 +125,24 @@ const GROUPS = {
       'tests/factory-proof/k2-strict-formalization.test.mjs',
       'tests/factory-proof/proof-claims.test.mjs',
       'tests/factory-proof/k0-baseline.test.mjs',
+      // CC-10A provisional 23-file floor: the Conformance Engine v1 measuring
+      // surface. All Contract-level closure checks (packs validated as data,
+      // evidence/universe algebra, registry honesty) — the drives with the
+      // multi-phase 61s proofs stay in the manual harvest path, NOT here.
+      'tests/factory-proof/conformance-engine.test.mjs',
+      'tests/factory-proof/coverage-kernel.test.mjs',
+      'tests/factory-proof/delivery-kernel-unification.test.mjs',
+      'tests/factory-proof/development-scenario-pack.test.mjs',
+      'tests/factory-proof/discovery-resilience-pack.test.mjs',
+      'tests/factory-proof/discovery-scenario-pack.test.mjs',
+      'tests/factory-proof/factory-coverage-universe.test.mjs',
+      'tests/factory-proof/formalization-resilience-pack.test.mjs',
+      'tests/factory-proof/scenario-evidence.test.mjs',
+      'tests/factory-proof/scenario-runner.test.mjs',
+      'tests/factory-proof/workshop-descriptor.test.mjs',
+      'tests/factory-proof/workshop-inventory.test.mjs',
     ],
-    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) + W1-4 two-lifecycle composition (ADR-078) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof. BLOCKING: no quarantine, no continue-on-error.',
+    note: 'W0 proof kernel + W1-1 reference causal vertical (ADR-084) + W1-4 two-lifecycle composition (ADR-078) + the Conformance Engine v1 measuring surface (CC-10A provisional ratchet; final K5 lands at CC-10B) — canonical composition, obligation contracts, mutation algebra/kill matrix, scenario DSL/actor/observer, self-mutations, fabricated-derived-evidence causal proof, pack/evidence/universe closure. BLOCKING: no quarantine, no continue-on-error.',
   },
 };
 
@@ -213,6 +259,39 @@ function printList() {
   console.log(`[summary] groups=${groupNames.length} run-files=${totalRun} quarantined-files=${qExisting.length}`);
 }
 
+// --- --list-json: machine-readable matrix export (ADR-092) ------------------
+// The structured group registry consumed by validation/tests. Same truth as
+// --list (identical expansion, identical quarantine), stable shape:
+//   { schemaVersion, groups: { <name>: { files[], concurrency, note } },
+//     quarantine: [{ path, kind, reason }], quarantineEmptyGlobs: [...] }
+// Globs stay INTERNAL: only the expanded run-set is exported, so a consumer
+// can never mistake a declared glob for a proof that CI actually runs.
+function buildMatrixExport() {
+  const groups = {};
+  for (const name of Object.keys(GROUPS)) {
+    groups[name] = {
+      files: groupFiles(name).map(toPosix),
+      concurrency: GROUPS[name].concurrency ?? null,
+      note: GROUPS[name].note,
+    };
+  }
+  const quarantine = [];
+  for (const [abs, q] of quarantinedAbs) {
+    if (existsSync(abs)) {
+      quarantine.push({ path: toPosix(abs), kind: q.kind, reason: q.reason });
+    }
+  }
+  const quarantineEmptyGlobs = QUARANTINE
+    .filter((q) => expandGlob(q.glob).length === 0)
+    .map((q) => ({ glob: q.glob, kind: q.kind, reason: q.reason }));
+  return {
+    schemaVersion: 1,
+    groups,
+    quarantine,
+    quarantineEmptyGlobs,
+  };
+}
+
 // --- run --------------------------------------------------------------------
 function runGroup(name) {
   const files = groupFiles(name);
@@ -236,6 +315,10 @@ function runGroup(name) {
 const args = process.argv.slice(2);
 if (args.includes('--list')) {
   printList();
+  process.exit(0);
+}
+if (args.includes('--list-json')) {
+  console.log(JSON.stringify(buildMatrixExport(), null, 2));
   process.exit(0);
 }
 

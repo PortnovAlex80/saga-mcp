@@ -23,6 +23,11 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { buildOrderConstraintRegisterV2 } from '../../dist/shared/constraint-register.js';
+import {
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+} from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 
 const DISC = 'product-discovery@3.0.2';
 const FRM = 'solution-formalization@1.0.0';
@@ -191,6 +196,84 @@ function writeRepoFile(repoPath, filePath, content) {
   writeFileSync(fullPath, content, 'utf8');
 }
 
+// ---------------------------------------------------------------------------
+// ADR-090 (CC-IC-2) v2 register disposition helpers (same lawful shape the
+// golden-path corpus uses): the deterministic author computes the SAME
+// register the Discovery settlement froze (proposal drafts + unknowns + the
+// DECLARED, digest-pinned lifecycle injection table — all public data the
+// author can read from its own task input) and disposes EVERY entry in the
+// strict v2 grammar, pinning the register digest the dispositions were
+// authored against. Coverage ids flow from the brief's accepted entries.
+// ---------------------------------------------------------------------------
+
+function constraintRegisterOf(meta) {
+  const formalizationCase = findObject(
+    meta?.process_node_input ?? meta,
+    value => value.schemaVersion === 'factory.formalization-case.v1',
+  );
+  if (!formalizationCase) return null;
+  const payload = formalizationCase.discoveryProposalPayload ?? {};
+  return buildOrderConstraintRegisterV2({
+    drafts: payload.order_constraints,
+    unknowns: payload.unknowns,
+    injections: [{
+      table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+      tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+    }],
+  });
+}
+
+function constraintDispositionsOf(register) {
+  if (!register) return null;
+  const dispositions = {};
+  for (const entry of register.constraints) {
+    // The 2026-08-23 waiver-authority decision: v2 `waived` is TYPED
+    // UNAVAILABLE (brief metadata is worker-authored — no operator
+    // attribution a worker writes carries authority). The open question is
+    // RESOLVED citing the authentic corpus evidence: the Discovery
+    // readiness assessment's unknowns_manageability dimension (sufficient).
+    // Resolution is a disposition state, NOT a coverage discharge.
+    dispositions[entry.id] = entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' };
+  }
+  return {
+    constraint_dispositions: dispositions,
+    constraint_dispositions_register_digest: register.registerDigest,
+  };
+}
+
+/**
+ * The §D2/AC covered_constraint_ids relay read back from the ACCEPTED brief's
+ * authored dispositions (the worker-visible disposition source — the same
+ * read golden-path performs through artifact_list): EVERY non-waived id —
+ * accepted AND resolved/deferred alike (on v2 resolved/deferred remain
+ * obligations the AC/SRS work must cover; nothing subtracts on v2). Legacy
+ * v1 reasoned waivers are the only lawful exclusion.
+ */
+function coveredConstraintIdsFromBriefDb(db, epicId) {
+  const brief = db.prepare(
+    `SELECT metadata FROM artifacts
+      WHERE epic_id=? AND type='brief' AND status='accepted'
+      ORDER BY id DESC LIMIT 1`,
+  ).get(epicId);
+  if (!brief?.metadata) return [];
+  try {
+    const parsed = JSON.parse(brief.metadata);
+    const dispositions = parsed?.constraint_dispositions;
+    if (!dispositions || typeof dispositions !== 'object') return [];
+    return Object.entries(dispositions)
+      .filter(([, value]) => value && value.disposition !== 'waived')
+      .map(([id]) => id)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 // ADR-079 replay identity is CONTENT-addressed: authored artifacts must
 // derive from the upstream semantic material, or every restart's downstream
 // cells legitimately replay the earlier run's capsules (byte-equal material
@@ -237,12 +320,18 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
     scaffold_artifacts: [], shared_mutation_risk: false,
     completeness: 'high', degraded: false,
   };
+  // ADR-090 (CC-IC-2): dispose every register entry in the strict v2 grammar
+  // and pin the register digest the dispositions were authored against.
+  const constraintDispositions = constraintDispositionsOf(constraintRegisterOf(meta));
   writeRepoFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md',
     status: 'accepted',
-    metadata: { brief_payload: briefPayload },
+    metadata: {
+      brief_payload: briefPayload,
+      ...(constraintDispositions ?? {}),
+    },
   });
   const prd = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'PRD', code: 'PRD', title: 'Product Requirements',
@@ -269,7 +358,7 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
 
 function createFormalizationArtifact(handlers, {
   projectId, epicId, type, code, title, artifactPath, repoPath, status = 'accepted',
-  marker = null,
+  marker = null, metadata,
 }) {
   if (repoPath && artifactPath) {
     // AC documents follow the conveyor heading grammar (acceptance-criterion-
@@ -284,6 +373,7 @@ function createFormalizationArtifact(handlers, {
   return handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type, code, title,
     path: artifactPath, status,
+    ...(metadata ? { metadata } : {}),
   });
 }
 
@@ -334,10 +424,16 @@ export function makeOneContainerAcceptanceHandler() {
     writeRepoFile(repoPath, artifactPath,
       `## AC-1: Pipeline Completes\n\nDeterministic AC artifact for AC-1.${markerSuffix}\n\n`
       + `## AC-2: NFR Compliance\n\nDeterministic AC artifact for AC-2.${markerSuffix}\n`);
+    // ADR-090 (CC-IC-2): the container AC carries the covered_constraint_ids
+    // relay read back from the accepted brief — EVERY non-waived id (on v2:
+    // all of them; metadata coverage is per-AC artifact regardless of the
+    // container/atomic shape).
+    const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
     const container = handlers.artifact_create({
       project_id: projectId, epic_id: epicId, type: 'AC', code: 'AC',
       title: 'Acceptance Contract (container)', path: artifactPath,
       status: 'accepted',
+      ...(coveredIds.length > 0 ? { metadata: { covered_constraint_ids: coveredIds } } : {}),
     });
     addTrace(handlers, container.id, frs[0].id, 'derived_from');
     if (ucs.length) addTrace(handlers, container.id, ucs[0].id, 'derived_from');
@@ -357,9 +453,16 @@ function formalizationAcceptance({ handlers, assignment, context, db }) {
   const marker = ucs.length
     ? proposalMarkerFromFile(repoPath, ucs[0].path)
     : proposalMarkerFromFile(repoPath, frs[0].path);
+  // ADR-090 (CC-IC-2): the e2e AC-1 artifact carries the covered_constraint_ids
+  // relay read back from the accepted brief — EVERY non-waived id. The
+  // acceptance coverage gate diffs the v2 register (which never subtracts —
+  // resolved/deferred stay obligations) against exactly this metadata, and
+  // the baseline freeze projects it downstream.
+  const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
   const ac1 = createFormalizationArtifact(handlers, {
     projectId, epicId, type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes',
     artifactPath: 'docs/formalization/AC-1.md', repoPath, marker,
+    ...(coveredIds.length > 0 ? { metadata: { covered_constraint_ids: coveredIds } } : {}),
   });
   addTrace(handlers, ac1.id, frs[0].id, 'derived_from');
   if (ucs.length) addTrace(handlers, ac1.id, ucs[0].id, 'derived_from');
@@ -390,6 +493,16 @@ function formalizationArchitecture({ handlers, assignment, context, db }) {
   const prds = findAcceptedArtifacts(db, epicId, 'PRD');
   if (!prds.length) throw new Error('No accepted PRD for architecture');
 
+  // ADR-090 (CC-IC-2): the e2e AC-1 stanza carries the covered_constraint_ids
+  // relay (read back from the accepted brief — never authored from prose):
+  // EVERY non-waived id — the resolved open-question obligation included.
+  // The §2.2 Module Manifest declares the module files the plan's
+  // implementation scopes own (package.json is a mandated scope of every
+  // implementation item, so the declared file is covered write authority).
+  const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
+  const coveredField = coveredIds.length > 0
+    ? `\n  covered_constraint_ids: ${coveredIds.join(', ')}`
+    : '';
   const srsContent = [
     '# SRS',
     '',
@@ -405,7 +518,7 @@ function formalizationArchitecture({ handlers, assignment, context, db }) {
     '  pattern: A',
     '  depends_on: []',
     '  ac_kind: implementation',
-    '  criticality: blocker',
+    `  criticality: blocker${coveredField}`,
     '- ac: AC-2',
     '  title: NFR Compliance',
     '  module: src/factory-e2e',
@@ -417,6 +530,12 @@ function formalizationArchitecture({ handlers, assignment, context, db }) {
     '  ac_kind: implementation',
     '  criticality: degradable',
     '```',
+    '',
+    '### 2.2 Module Manifest',
+    '',
+    '| Module | Files |',
+    '|---|---|',
+    '| w9-harness | `package.json` |',
     '',
     '## §12 Decision Log',
     '',
@@ -718,6 +837,12 @@ function developmentVerify({ handlers, assignment, meta, db }) {
       acceptanceCriterionKey: acKey,
       acceptedCriterionHash,
       candidateHash: candidate.candidateHash,
+      // ADR-090 (CC-IC-2): when the verification card pins coveredConstraintIds
+      // (the AC-drift relay from the frozen criterion), the evidence echoes the
+      // exact same set — lineage pins the constraint IDs to the criterion.
+      ...(Array.isArray(item.coveredConstraintIds)
+        ? { coveredConstraintIds: [...item.coveredConstraintIds] }
+        : {}),
       outcome: 'passed',
       evidence: {
         summary: `W9 scripted verification passed for ${item.key}`,

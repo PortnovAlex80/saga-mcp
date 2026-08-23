@@ -23,11 +23,41 @@ const require = createRequire(import.meta.url);
 // display_name column value) — COALESCE(display_name, hashName(worker_id)).
 import { hashName } from '../dist/worker-names.js';
 
+/**
+ * CC-GAP-2 — last-launch status as ONE read-only projection with separated
+ * channels (pure; exported for direct testing against a temp DB).
+ *
+ * launch_state/order_state are OPERATIONAL facts about the engine host and
+ * the order's run ('completed' = the engine settled the launch after the
+ * lifecycle reached a terminal state — ANY business verdict). The business
+ * verdict travels in the joined lifecycle columns (status vs terminal_status)
+ * and is never implied by launch/order 'completed'. The lifecycle join is
+ * COALESCE(launch.lifecycle_run_id, order.lifecycle_run_id): markFactoryLaunch
+ * Running stamps the launch row; older rows may only carry the order pointer.
+ */
+export function readLastLaunchStatus(db, epicId) {
+  return db.prepare(
+    `SELECT l.state AS launch_state, l.error AS launch_error,
+            l.completed_at AS launch_finished_at,
+            o.state AS order_state, o.last_error AS order_error,
+            lr.id AS lifecycle_run_id, lr.status AS lifecycle_status,
+            lr.terminal_status AS lifecycle_terminal_status,
+            lr.current_stage_id AS lifecycle_stage_id
+       FROM factory_launch_requests l
+       JOIN factory_orders o ON o.order_ref=l.order_ref
+       LEFT JOIN factory_lifecycle_runs lr
+         ON lr.id = COALESCE(l.lifecycle_run_id, o.lifecycle_run_id)
+      WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
+      ORDER BY l.rowid DESC LIMIT 1`,
+  ).get(epicId) ?? null;
+}
+
 export function createLifecycleEndpointsApi({
   sagaApplication,
   repositoryHandlers,
   workerLogRoots,
   isProcessAlive,
+  readBirthToken,
 }) {
   // WORKER_LOG_ROOTS is computed once in tracker-view.mjs (canonical list of
   // allowed board-runs roots derived from runtimeConfig + the platform
@@ -404,6 +434,17 @@ export function createLifecycleEndpointsApi({
   // active tasks (status in_progress/review_in_progress with assigned_to),
   // and resolve each worker's JSONL log path by convention.
   //
+  // ADR-087 companion observability: the response ALSO carries semantically
+  // exited but PHYSICALLY ALIVE local tails — rows settled to
+  // `state='exited'` by the receipt-authoritative terminal drain while their
+  // OS process kept running (`exit_code IS NULL`: no physical close was ever
+  // observed). Without them every consumer of this endpoint (board blindLive,
+  // the two-phase drain line) would claim an EMPTY HOST while an
+  // authority-dead process still consumes it. The tail objects carry explicit
+  // distinguishing evidence (`semantic_exited`, `exit_code: null`,
+  // `pid_alive`, birth-safe `pid_identity`) so no consumer can mistake
+  // semantic completion for physical death or vice versa.
+  //
   // Log path convention (claude-runner.mjs:313):
   //   <logRoot>/board-<projectId>-<timestamp>/task-<taskId>-<workerId>.jsonl
   // logRoot default: ~/.zcode/cli/board-runs
@@ -424,16 +465,48 @@ export function createLifecycleEndpointsApi({
       const rows = withDb(db => db.prepare(
         `SELECT we.execution_id, we.task_id AS id, we.worker_id AS assigned_to,
                 ${nameColumn},
-                we.pid, we.machine_id, we.phase, we.started_at AS worker_started_at,
+                we.pid, we.machine_id, we.phase, we.state, we.exit_code,
+                we.process_birth_token,
+                we.started_at AS worker_started_at,
                 we.log_path, t.title, t.status, t.task_kind, t.updated_at,
-                e.name AS epic_name
+                e.name AS epic_name,
+                EXISTS(
+                  SELECT 1 FROM command_receipts cr
+                   WHERE cr.execution_id=we.execution_id
+                     AND cr.command_kind IN ('worker_done','presentation_close')
+                     AND cr.accepted=1
+                ) AS accepted_receipt
          FROM worker_executions we
          LEFT JOIN tasks t ON t.id=we.task_id
          LEFT JOIN epics e ON e.id=we.epic_id
-         WHERE we.project_id=? AND we.state IN ('running','cancel_requested')
+         WHERE we.project_id=?
+           AND (we.state IN ('running','cancel_requested')
+                OR (we.state='exited' AND we.exit_code IS NULL))
          ORDER BY worker_started_at`,
       ).all(projectId))
-        .filter(r => r.machine_id === os.hostname() && isProcessAlive(r.pid))
+        .filter(r => r.machine_id === os.hostname())
+        .map(r => {
+          // ADR-087 tail (semantic exited, physical exit unobserved):
+          // birth-safe liveness — when the row carries a process birth token
+          // and a token reader is available, the PID counts as ours ONLY if
+          // the live token still matches (a recycled PID is NOT our tail,
+          // Sign 010). Without a stored token the row is reported with
+          // pid_identity 'pid_only_unverified' — visible (an operator must
+          // see a possible live tail) but explicitly not identity-proven.
+          // Ordinary running rows keep the historical bare-PID filter.
+          if (r.state === 'exited') {
+            if (r.pid === null || !isProcessAlive(r.pid)) return null;
+            const tokenReadable = r.process_birth_token !== null && typeof readBirthToken === 'function';
+            if (tokenReadable) {
+              const liveToken = readBirthToken(r.pid);
+              if (liveToken === null || liveToken !== r.process_birth_token) return null;
+              return { ...r, pid_identity: 'birth_token_verified' };
+            }
+            return { ...r, pid_identity: 'pid_only_unverified' };
+          }
+          return isProcessAlive(r.pid) ? { ...r, pid_identity: null } : null;
+        })
+        .filter(r => r !== null)
         .map(r => ({ ...r, display_name: r.display_name || hashName(r.assigned_to) }));
       // Resolve JSONL log path by scanning board-runs for a matching filename.
       // The newest matching file wins (workers reuse IDs across runs).
@@ -555,6 +628,13 @@ export function createLifecycleEndpointsApi({
             }
           } catch { /* stat/read fail */ }
         }
+        // ADR-087 truthfulness on EVERY row: `state` is the durable execution
+        // state ('exited' = SEMANTIC protocol completion), `exit_code` is the
+        // physical-exit evidence (null = physical death NOT yet observed),
+        // and `semantic_exited` separates the two concepts for consumers.
+        // Every returned row is a locally live process by construction
+        // (pid_alive true) — for tails that is exactly the "semantically
+        // done, physically alive" distinction the ADR requires.
         return {
           task_id: r.id,
           title: r.title,
@@ -565,6 +645,13 @@ export function createLifecycleEndpointsApi({
           execution_id: r.execution_id,
           pid: r.pid,
           process_phase: r.phase,
+          state: r.state,
+          exit_code: r.exit_code === undefined ? null : r.exit_code,
+          semantic_exited: r.state === 'exited',
+          pid_alive: true,
+          pid_identity: r.pid_identity,
+          accepted_receipt: r.accepted_receipt === 1,
+          physical_exit_observed: r.state === 'exited' ? false : null,
           epic_name: r.epic_name,
           started_at: startedIso,
           log_mtime_ms,
@@ -575,7 +662,11 @@ export function createLifecycleEndpointsApi({
           log_path: logPath,
         };
       });
-      respondJson(res, 200, { ok:true, project_id: projectId, workers });
+      // Summary count of the ADR-087 physical tails in this response — the
+      // one-field truth for "is this host actually empty of factory
+      // processes?" that board blindLive / drain lines consume.
+      const physical_tails = workers.filter(w => w.semantic_exited).length;
+      respondJson(res, 200, { ok:true, project_id: projectId, workers, physical_tails });
     } catch (e) {
       respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
     }
@@ -640,15 +731,7 @@ export function createLifecycleEndpointsApi({
       // TB-3: a dead engine leaves its reason ONLY in
       // factory_launch_requests/factory_orders — surface the last failure so
       // the board shows WHY the factory is silent instead of a bare toggle.
-      const launch = withDb(db => db.prepare(
-        `SELECT l.state AS launch_state, l.error AS launch_error,
-                l.completed_at AS launch_finished_at,
-                o.state AS order_state, o.last_error AS order_error
-           FROM factory_launch_requests l
-           JOIN factory_orders o ON o.order_ref=l.order_ref
-          WHERE l.project_id=(SELECT project_id FROM epics WHERE id=?)
-          ORDER BY l.rowid DESC LIMIT 1`,
-      ).get(state.epicId));
+      const launch = withDb(db => readLastLaunchStatus(db, state.epicId));
       // Antifreeze layer C: the raw engine_state (incl. 'failed_watchdog'),
       // its last_error, and the newest watchdog verdict — so the board shows
       // WHY a factory went silent after the supervisor exhausted its budget.
@@ -685,6 +768,18 @@ export function createLifecycleEndpointsApi({
           error: launch.launch_error ?? launch.order_error ?? null,
           finished_at: launch.launch_finished_at,
           order_state: launch.order_state,
+          // CC-GAP-2: launch/order 'completed' is an OPERATIONAL fact — the
+          // engine settled this launch after the run reached a lifecycle
+          // terminal state. The business verdict is exposed separately and is
+          // never implied by it: terminal_status (e.g. 'released',
+          // 'development-blocked', 'approval-required') plus the lifecycle
+          // machine status remain visible next to every 'completed'.
+          lifecycle: launch.lifecycle_run_id != null ? {
+            run_id: launch.lifecycle_run_id,
+            status: launch.lifecycle_status ?? null,
+            terminal_status: launch.lifecycle_terminal_status ?? null,
+            stage_id: launch.lifecycle_stage_id ?? null,
+          } : null,
         } : null,
       });
     } catch (error) {

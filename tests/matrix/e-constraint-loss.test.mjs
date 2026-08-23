@@ -40,8 +40,28 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildOrderConstraintRegister } from '../../dist/shared/constraint-register.js';
+import {
+  buildOrderConstraintRegister,
+  buildOrderConstraintRegisterV2,
+  assertOrderConstraintUnknownsLifted,
+} from '../../dist/shared/constraint-register.js';
+import { canonicalJson } from '../../dist/shared/canonical-json.js';
+import {
+  createDiscoveryProductionCellKernelHandlers,
+} from '../../dist/modules/discovery/application/discovery-production-cell-installation.js';
+import {
+  productBuildLifecycle,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+} from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
+import {
+  createFormalizationProductionCellKernelHandlers,
+  FORMALIZATION_KERNEL_HANDLER_IDS,
+} from '../../dist/modules/formalization/application/formalization-production-cell-installation.js';
+import { resolveFormalizationCaseConstraintRegister } from '../../dist/modules/formalization/domain/formalization-schemas.js';
 import { validateDiscoveryProposal } from '../../dist/modules/discovery/domain/discovery-proposal.js';
+import { READINESS_DIMENSIONS } from '../../dist/modules/discovery/domain/discovery-readiness-assessment.js';
 import { createFormalizationContractValidator } from '../../dist/modules/formalization/application/formalization-contract-validator.js';
 import { createAcceptanceContractValidator } from '../../dist/modules/formalization/application/acceptance-contract-validator.js';
 import {
@@ -129,7 +149,7 @@ const BOUNDARIES = [
     boundary: 'AC → task graph (Development, plan-task-graph)',
     upstream: 'the frozen acceptance baseline / DevelopmentCase.acceptanceCriteria',
     restatement: 'the typed task-graph proposal (acceptanceCriterionIds per item; constraint relay is kernel-derived, never proposed)',
-    node: `${DEVELOPMENT_MODULE}:205-230 (node 'plan-task-graph')`,
+    node: `${DEVELOPMENT_MODULE}:248-282 (node 'plan-task-graph')`,
     promptAssembly: 'machine-filled card: src/modules/development/application/development-workspace-preparation.ts:78-124; gate semantics: src/modules/development/domain/development-settlement-policy.ts:250-589; relay derivation: src/modules/development/domain/development-task-graph.ts:221-253',
   },
   {
@@ -137,7 +157,7 @@ const BOUNDARIES = [
     boundary: 'task graph → workplace cards (Development, implement-work-items / verify-acceptance)',
     upstream: 'the canonical task graph item (cell_input_item: key, acceptanceCriterionIds, changeScopes, coveredConstraintIds)',
     restatement: 'the implementation result product (workItemKey + git snapshot) and the verification evidence product',
-    node: `${DEVELOPMENT_MODULE}:241-302 (node 'implement-work-items'; verification fan-out :348-398)`,
+    node: `${DEVELOPMENT_MODULE}:284-403 (node 'implement-work-items'; verification fan-out :404-454)`,
     promptAssembly: `card projection: ${CARD_EXECUTOR}:1744 (cell_input_item: workplace.item) and :1751-1753 (nodeInput = { upstream, item }); implementation scope provider: src/modules/development/application/development-check-providers.ts:717-917; verification echo check: :1089-1112`,
   },
 ];
@@ -365,8 +385,8 @@ test('space E — E1: the restatement boundaries are enumerated from the process
   assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
   assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 164);
   assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 194);
-  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 223);
-  assert.equal(lineOf(development, "id: 'implement-work-items'"), 259);
+  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 248);
+  assert.equal(lineOf(development, "id: 'implement-work-items'"), 284);
   assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');
   assert.equal(BOUNDARIES.length, 5, 'the E1 boundary list is fixed at five');
   for (const row of BOUNDARIES) {
@@ -951,6 +971,316 @@ test(`space E — E7 silent surrender: a card whose criteria require an artefact
 });
 
 // ── E5 + E6 ─────────────────────────────────────────────────────────────────
+
+// ── CC-IC-1 (ADR-090): m1 + m6b across the live settlement paths ────────────
+//
+// The CC-IC-1 packets add two LIVE detectors to this sweep's boundary set:
+//   m1  — B1's unknown channel: proposal `unknowns` are lifted 1:1/positionally
+//         into kind `open-question` register entries by the REAL production-cell
+//         settlement (kernel-side, no guessing); a dropped unknown is a typed
+//         settlement red (ORDER_CONSTRAINT_UNKNOWN_NOT_LIFTED), never a silent
+//         under-count.
+//   m6b — the certificate→case handoff: a v2 FormalizationCase resolves its
+//         ONE register binding from the DISCOVERY CERTIFICATE (the v2 source
+//         of truth); the proposal-payload rebuild fallback is frozen-legacy-
+//         v1-only — a v2 case whose binding diverges from the certificate
+//         register is a typed red (FORMALIZATION_REGISTER_BINDING_BYPASSED).
+
+/** Canonical sha256 over an object (the settlement's content-hash convention). */
+const sha256Canonical = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
+
+/** A parseable SRS §D2 (one AC-1 stanza) + §12 decision log, warrant-ref shape. */
+function eSrsContent() {
+  const { SRS_CONTRACT } = globalThis.__eSrsContract ?? {};
+  const cols = SRS_CONTRACT?.decisionLogColumns ?? ['id', 'decision', 'status', 'alternatives', 'rationale', 'date'];
+  return [
+    '# SRS',
+    '',
+    '## §12 Decision Log',
+    '',
+    `| ${cols.join(' | ')} |`,
+    `| ${cols.map(() => '---').join(' | ')} |`,
+    '| 1 | KISS | inherited | none | simplicity | 2026-01-01 |',
+    '',
+    '### §D2. AC Map',
+    '',
+    '```yaml',
+    '- ac: AC-1',
+    '  title: "Feature"',
+    '  module: core',
+    '  files: [src/core.ts]',
+    '  invariants: []',
+    '  test_layers: [L0]',
+    '  pattern: A',
+    '  depends_on: []',
+    '  ac_kind: implementation',
+    '  criticality: blocker',
+    '```',
+    '',
+  ].join('\n');
+}
+
+const D7_PROPOSAL = {
+  problem_statement: `x mentions ${TOKEN} in prose only`,
+  observed_context: 'o', stakeholders_or_actors: ['a'], assumptions: [],
+  unknowns: [`the ${TOKEN} pricing algorithm is not yet chosen`],
+  risks: [], candidate_scope: 's', evidence_refs: ['e'],
+  recommended_outcome: 'go', rationale: 'r',
+  order_constraints: [
+    { class: 'material', text: 'an unrelated second constraint', evidence_ref: 'order.source_body' },
+  ],
+};
+
+function readinessBodyFor(proposalHash) {
+  const dims = {};
+  for (const d of READINESS_DIMENSIONS) {
+    dims[d] = { status: 'sufficient', rationale: 'g', source_refs: ['$.problem_statement'] };
+  }
+  return {
+    proposal_content_hash: proposalHash,
+    overall_readiness: 'ready',
+    dimension_assessments: dims,
+    blocking_gaps: [],
+    non_blocking_gaps: [],
+    recommended_next_action: 'proceed_to_settlement',
+    confidence: 0.9,
+    rationale: 'g',
+  };
+}
+
+/** In-memory façade routing the exact statements the discovery settlement issues. */
+function discoverySettlementDbFaçade({ proposalPayload, readinessPayloadBody }) {
+  const proposalHash = sha256Canonical(proposalPayload);
+  const readinessHash = sha256Canonical(readinessPayloadBody);
+  const row = (id, nodeId, schema, payload, hash) => ({
+    id, process_run_id: 1, node_id: nodeId, intent_id: 1, task_id: 1,
+    execution_id: 'exec-1', schema_version: schema,
+    payload_snapshot: JSON.stringify(payload), content_hash: hash,
+    submitted_at: '2026-01-01T00:00:00Z',
+  });
+  const submissions = new Map([
+    [501, row(501, 'produce-proposal', 'factory.discovery-proposal.v1', proposalPayload, proposalHash)],
+    [502, row(502, 'produce-readiness', 'factory.discovery-readiness-assessment.v2', readinessPayloadBody, readinessHash)],
+  ]);
+  return {
+    prepare(sql) {
+      if (sql.includes('FROM factory_managed_node_submissions')) {
+        return { get: id => submissions.get(Number(id)), all: () => [...submissions.values()] };
+      }
+      if (sql.includes('SELECT input_hash,started_at FROM factory_process_runs')) {
+        return { get: () => ({ input_hash: 'i'.repeat(64), started_at: '2026-01-01T00:00:00Z' }), all: () => [] };
+      }
+      throw new Error(`discoverySettlementDbFaçade: unrouted SQL: ${sql.replace(/\s+/g, ' ').slice(0, 80)}`);
+    },
+  };
+}
+
+/**
+ * Drive the REAL production-cell settlement handler with the REAL declared
+ * injection wiring the composition (product-lifecycle-runtime.ts) injects —
+ * the same code path a live Factory Start drives.
+ */
+function driveDiscoverySettlement({ proposalPayload }) {
+  const readinessBody = readinessBodyFor(sha256Canonical(proposalPayload));
+  const db = discoverySettlementDbFaçade({ proposalPayload, readinessPayloadBody: readinessBody });
+  const issued = [];
+  const handlers = createDiscoveryProductionCellKernelHandlers({
+    db,
+    certificates: {
+      issue: command => {
+        issued.push(command);
+        return { record: { id: 600, certificateHash: command.certificateHash } };
+      },
+    },
+    lifecycleDefinitionReader: {
+      // The pinned per-run read (ADR-090 wiring path): the product-build
+      // definition pinned by definition_hash, exactly as the repository join
+      // returns it.
+      readDefinitionByProcessRun: () => ({
+        lifecycleRunId: 7,
+        lifecycleRefKey: 'product-build@1.2.0',
+        definition: JSON.parse(JSON.stringify(productBuildLifecycle)),
+        definitionHash: sha256Canonical(productBuildLifecycle),
+      }),
+    },
+    lifecycleInjectionDeclarations: [{
+      table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+      tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+      tableDigest: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_DIGEST,
+    }],
+    lifecycleInjectionRequiredClassifications: ['runnable-local'],
+  });
+  const manifest = product => ({
+    schema: 'factory.production-cell-output-manifest.v1',
+    bindings: {
+      final: true,
+      items: [{
+        accepted: true, id: 'i', workKey: 'w', workplaceRef: 'wp', candidateSetRef: 'cs',
+        execution: { intentId: 1, taskId: 1, executionRef: 'exec-1' },
+        products: [product],
+      }],
+    },
+  });
+  const result = handlers['discovery-settlement-policy']({
+    projectId: 1, epicId: 8, processRunId: 1,
+    node: { id: 'settle-discovery' },
+    input: manifest({ schemaId: 'factory.discovery-readiness-assessment.v2', ref: 'managed-node-submission:502', digest: sha256Canonical(readinessBody) }),
+    frame: { productions: { 'produce-proposal': manifest({ schemaId: 'factory.discovery-proposal.v1', ref: 'managed-node-submission:501', digest: sha256Canonical(proposalPayload) }) } },
+    heartbeat: () => {},
+    initiatedBy: 'matrix',
+  });
+  return { result, issued };
+}
+
+test(`space E — CC-IC-1 m1 at B1: proposal unknown '${TOKEN}' survives settlement as an open-question entry; dropping it is a typed red`, () => {
+  const { result, issued } = driveDiscoverySettlement({ proposalPayload: D7_PROPOSAL });
+  assert.ok(['go', 'clarify', 'reject'].includes(result.event), `settlement failed: ${result.production?.bindings?.error}`);
+  const register = issued[0].payload.constraintRegister;
+  assert.ok(register, 'the unknown + drafts + injected obligations build a v2 register');
+  assert.equal(register.schemaVersion, 'factory.order-constraint-register.v2');
+  const openQuestions = register.constraints.filter(entry => entry.kind === 'open-question');
+  assert.deepEqual(openQuestions.map(entry => entry.text), D7_PROPOSAL.unknowns);
+  assert.ok(register.constraints.some(entry => entry.text === D7_PROPOSAL.order_constraints[0].text));
+  assert.deepEqual(
+    register.constraints.slice(-2).map(entry => entry.kind),
+    ['synthesis', 'ordered-smoke'],
+    'the runnable-local injected block is appended after the proposal-derived block',
+  );
+  // The conservation assert holds for the honest build…
+  assertOrderConstraintUnknownsLifted(register, D7_PROPOSAL.unknowns);
+  // …and the MUTANT (settlement lifting that dropped the unknown) is red:
+  const mutant = { ...register, constraints: register.constraints.filter(entry => entry.kind !== 'open-question') };
+  assert.throws(
+    () => assertOrderConstraintUnknownsLifted(mutant, D7_PROPOSAL.unknowns),
+    /ORDER_CONSTRAINT_UNKNOWN_NOT_LIFTED/,
+  );
+});
+
+test('space E — CC-IC-1 m6b: a v2 FormalizationCase takes its ONE register binding from the discovery certificate; a rebuild-supplied binding is a typed red', () => {
+  // A REAL v2 discovery certificate: register built from unknowns + the
+  // declared injection table (exactly what settlement issues).
+  const certificateRegister = buildOrderConstraintRegisterV2({
+    drafts: D7_PROPOSAL.order_constraints,
+    unknowns: D7_PROPOSAL.unknowns,
+    injections: [{ table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE, tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF }],
+  });
+  assert.ok(certificateRegister);
+  // CC-IC-2: the brief must dispose EVERY v2 register entry in the exact
+  // kind/state grammar — the settlement freeze re-verifies the set (missing
+  // entry = FORMALIZATION_DISPOSITION_FREEZE_INVALID/UNDISPOSED). Mirrors the
+  // migrated corpora's lawful shape: the ONE open question (ord-c-002, the
+  // proposal's unknown) resolves with the authentic discovery evidence this
+  // same file drives at m1 (the readiness assessment's unknowns_manageability
+  // dimension assessed 'sufficient'); every other kind accepts. `waived` is
+  // typed-unavailable on v2 — never a waiver here.
+  const lawfulV2Dispositions = Object.fromEntries(
+    certificateRegister.constraints.map(entry => [entry.id, entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' }]),
+  );
+  const certificatePayload = {
+    schemaVersion: 'factory.discovery-outcome-certificate.v1',
+    decision: 'go', reasonCodes: [], rationale: 'r', inputHash: 'i'.repeat(64),
+    constraintRegister: certificateRegister,
+    payload: {},
+  };
+  const certificateHash = sha256Canonical(certificatePayload);
+
+  const caseWithCertificate = {
+    schemaVersion: FORMALIZATION_CASE_SCHEMA,
+    discoveryEpicId: 8, formalizationEpicId: 8,
+    discoveryCertificateRef: 'certificate:1',
+    discoveryCertificateHash: certificateHash,
+    discoveryOutcome: 'go',
+    discoveryProposalRef: 'proposal:1',
+    discoveryProposalHash: 'b'.repeat(64),
+    discoveryProposalPayload: D7_PROPOSAL,
+    initiativeSubject: 'matrix', initiatedBy: 'matrix',
+  };
+
+  const formalizationGraph = () => ({
+    readAcceptedArtifactsForLifecycle: () => ({ prd: 2, frs: [3], nfrs: [], rules: [], ucs: [26], acs: [29], srs: 40 }),
+    readAcceptanceBaselineHashForLifecycle: () => ({ hash: 'b'.repeat(64), clean: true, dirty: [] }),
+    readArtifactsByIds: ids => ids.map(id => ({
+      id, projectId: 1, epicId: 8, type: id === 29 ? 'AC' : 'PRD', code: id === 29 ? 'AC-1' : null,
+      status: 'accepted', contentHash: sha256(`artifact-${id}`), acceptedHash: sha256(`artifact-${id}`),
+      driftState: 'clean', tags: '[]', metadata: {},
+    })),
+    readOutgoingArtifactTraces: () => [],
+    findFirstTraceabilityGapForLifecycle: () => null,
+    areTasksReady: () => ({ ready: true, blockingTaskIds: [] }),
+    readOwningLifecycleRunId: () => 7,
+    readBriefConstraintDispositionsForLifecycle: () => lawfulV2Dispositions,
+  });
+
+  const drive = (theCase, readCertificate) => {
+    const issued = [];
+    const persisted = [];
+    const handlers = createFormalizationProductionCellKernelHandlers({
+      graph: formalizationGraph(),
+      baselineRepository: {
+        readByProcessRun: () => ({
+          artifactRef: 'baseline:ref', snapshotHash: 's'.repeat(64), baselineHash: 'b'.repeat(64),
+          payload: { acceptanceCriteria: [{ artifactId: 29, code: 'AC-1', title: 'F', contentHash: sha256('ac') }] },
+        }),
+      },
+      solutionContractRepository: {
+        persist: payload => {
+          persisted.push(payload);
+          return { replayed: false, record: { artifactRef: 'solution-contract:x', contentHash: sha256('sc'), payload } };
+        },
+      },
+      settlementPolicy: { settle: () => ({ decision: 'formalized', reasonCodes: [], rationale: 'c', inputHash: 'i'.repeat(64) }) },
+      certificateRepository: {
+        read: readCertificate,
+        issue: command => { issued.push(command); return { record: { id: 91, certificateHash: command.certificateHash } }; },
+      },
+      readArtifactContent: id => (id === 40 ? eSrsContent() : 'x'.repeat(10)),
+    });
+    const result = handlers[FORMALIZATION_KERNEL_HANDLER_IDS.settle]({
+      projectId: 1, epicId: 8, processRunId: 2, input: {},
+      frame: { runInput: theCase }, heartbeat: () => {}, initiatedBy: 'matrix',
+      node: { id: 'settle-formalization' },
+    });
+    return { result, issued, persisted };
+  };
+
+  const readCertificate = () => ({ id: 1, processRunId: 1, certificateHash, certificatePayload });
+
+  // Honest carry: the warrant cites the CERTIFICATE register (unknowns +
+  // injected entries included), and the coverage relay freezes the same ONE
+  // register.
+  const honest = drive(caseWithCertificate, readCertificate);
+  assert.equal(honest.result.event, 'formalized', honest.result.production?.bindings?.settlementError);
+  const warrant = honest.issued[0].payload.payload.warrantRef;
+  assert.ok(warrant);
+  assert.equal(warrant.constraintRegisterDigest, certificateRegister.registerDigest);
+  assert.deepEqual(
+    honest.persisted[0].constraintRegisterCoverage.entries.map(entry => entry.id),
+    certificateRegister.constraints.map(entry => entry.id),
+  );
+
+  // The MUTANT (m6b): the case's register binding is supplied by the
+  // proposal-payload rebuild (a divergent digest) instead of the one
+  // certificate binding — a typed red at case admission.
+  const rebuilt = resolveFormalizationCaseConstraintRegister(caseWithCertificate);
+  assert.ok(rebuilt, 'the v1 fallback rebuild still resolves a DIFFERENT register from the payload drafts');
+  assert.notEqual(rebuilt.constraintRegisterDigest, certificateRegister.registerDigest);
+  const bypassed = drive({ ...caseWithCertificate, constraintRegister: rebuilt }, readCertificate);
+  assert.equal(bypassed.result.event, 'failed');
+  assert.match(bypassed.result.production.bindings.settlementError, /FORMALIZATION_REGISTER_BINDING_BYPASSED/);
+
+  // A v2 certificate hash mismatch (a re-targeted certificate) is also a red.
+  const hashMismatch = drive(
+    caseWithCertificate,
+    () => ({ id: 1, processRunId: 1, certificateHash: 'c'.repeat(64), certificatePayload }),
+  );
+  assert.equal(hashMismatch.result.event, 'failed');
+  assert.match(hashMismatch.result.production.bindings.settlementError, /FORMALIZATION_DISCOVERY_CERTIFICATE_HASH_MISMATCH/);
+});
 
 test('space E — E5: the findings registry is well-formed and every uncovered boundary is registered', () => {
   assert.equal(FINDINGS.length, 5);

@@ -9,6 +9,7 @@ import {
 import {
   createDiscoveryOutputResolver,
   createDiscoveryProductionCellKernelHandlers,
+  type DiscoveryProductionCellInstallationDeps,
 } from './application/discovery-production-cell-installation.js';
 import { discoveryProcessModule } from '../../process-modules/modules/discovery/discovery-process-module.js';
 import type {
@@ -16,12 +17,24 @@ import type {
   ModuleSharedDeps,
 } from '../module-registration.js';
 
-export interface RegisterDiscoveryOptions {}
+/**
+ * ADR-090 (CC-IC-1): the DI pass-through of the pinned lifecycle-definition
+ * reader and the declared injection tables into Discovery settlement. Pure
+ * composition threading — the port/repository itself is implemented in
+ * `src/process-modules/persistence/sqlite-lifecycle-run-repository.ts` and
+ * injected by `src/app/product-lifecycle-runtime.ts`; Discovery constructs
+ * no repository and holds no ambient default.
+ */
+export interface RegisterDiscoveryOptions {
+  lifecycleDefinitionReader?: DiscoveryProductionCellInstallationDeps['lifecycleDefinitionReader'];
+  lifecycleInjectionDeclarations?: DiscoveryProductionCellInstallationDeps['lifecycleInjectionDeclarations'];
+  lifecycleInjectionRequiredClassifications?: DiscoveryProductionCellInstallationDeps['lifecycleInjectionRequiredClassifications'];
+}
 
 export function registerDiscovery(
   registries: ModuleRegistries,
   sharedDeps: ModuleSharedDeps,
-  _options?: RegisterDiscoveryOptions,
+  options: RegisterDiscoveryOptions = {},
 ): GenericFlowExecutor {
   registerWorkshopCheckProvider(createDiscoveryProposalCheckProvider({
     db: sharedDeps.db,
@@ -36,6 +49,11 @@ export function registerDiscovery(
     createDiscoveryProductionCellKernelHandlers({
       db: sharedDeps.db,
       certificates: sharedDeps.certificateRepo,
+      lifecycleDefinitionReader: options.lifecycleDefinitionReader
+        ?? failClosedLifecycleReader(),
+      lifecycleInjectionDeclarations: options.lifecycleInjectionDeclarations ?? [],
+      lifecycleInjectionRequiredClassifications:
+        options.lifecycleInjectionRequiredClassifications ?? [],
     }),
   );
 
@@ -59,4 +77,18 @@ export function registerDiscovery(
   } as Parameters<typeof registries.installationRegistry.register>[0]);
 
   return executor;
+}
+
+/**
+ * ADR-090 (CC-IC-1): there is NO ambient/default fallback for the pinned
+ * lifecycle-definition reader. A composition that registers Discovery
+ * settlement without injecting the typed port fails loudly at registration
+ * time (fail-closed wiring), never silently at run time.
+ */
+function failClosedLifecycleReader(): never {
+  throw new Error(
+    'DISCOVERY_SETTLEMENT_LIFECYCLE_READER_REQUIRED: registerDiscovery was called '
+    + 'without options.lifecycleDefinitionReader — inject the typed pinned-read port '
+    + '(no ambient default exists)',
+  );
 }

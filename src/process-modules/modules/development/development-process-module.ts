@@ -160,7 +160,20 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
   // provider joins the plan BEFORE the runnability provider, so a narrowed or
   // changed readiness declaration escalates (human_required) even when the
   // narrowed command itself would pass.
-  'development.readiness-certification.final.v2',
+  // v3 — CC-GAP-9 / ADR-089: the runnability entry's indeterminate outcomes
+  // (the typed unknown `warrant-blocked-environment` emitted after the
+  // bounded in-check substrate retry is exhausted) route human_required —
+  // the cell's humanRequiredTransition (complete-blocked, a truthful typed
+  // wait with a wake source) — instead of author repair. A substrate
+  // condition alone never produces a failed verdict; deterministic product
+  // failures keep failureOwnership:'upstream' → gate verdict 'failed'. The
+  // cell's failed transition routes that verdict through settle-development
+  // (CC-GAP-8: the criterion ledger is already open, so only the settlement
+  // seam may terminalize the run), where the X3 failed-receipt read settles
+  // blocked / candidate-missing / local-readiness-failed — the
+  // continuation-acceptable certificate that re-routes the producer defect
+  // to the producing workshop.
+  'development.readiness-certification.final.v3',
   [{
     providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,
@@ -195,7 +208,19 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
     failureOwnership: 'upstream',
     expectedSubjectSchemaRef: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
     subjectScope: 'cell-product',
-    repairTargetRoleOnIndeterminate: 'author',
+    // CC-GAP-9 / ADR-089: this provider's indeterminate outcome is exactly
+    // the typed unknown `warrant-blocked-environment` — an exhausted
+    // in-check substrate retry (docker daemon down / not linux; frozen
+    // bound + schedule inside the check; no model, no WorkerExecution, no
+    // CandidateSet, no repair budget). A missing environment precondition
+    // is NOT a worker defect: an author repair round would charge the
+    // worker repair budget for a machine fault (§15 budgets charge spin,
+    // not work) and no product defect exists to remove. 'unknown' +
+    // fail-closed + human-required disposition reduces to a human_required
+    // verdict → complete-blocked (resumable: after the substrate recovers,
+    // the same criterion executes again under current authority, and the
+    // earlier unknown receipt never poisons the later pass).
+    indeterminateDisposition: 'human-required',
   }],
 );
 
@@ -313,7 +338,14 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           transitions: {
             accepted: 'freeze-integrated-candidate',
             humanRequired: 'complete-blocked',
-            failed: 'complete-failed',
+            // CC-GAP-8 terminal accounting: the graph (and therefore the
+            // criterion-key ledger) is already materialized when this cell
+            // runs, so its terminal failure MUST route through settlement —
+            // the only seam that appends the terminal-route facts. Settlement
+            // reconstructs the workset from accepted cell products and settles
+            // blocked/implementation-incomplete (required work unavailable),
+            // which the continuation boundary accepts.
+            failed: 'settle-development',
           },
         },
       },
@@ -348,7 +380,14 @@ export const developmentProcessModule: ProcessModuleDefinition = {
           onExhausted: 'requeue',
           checkPlan: READINESS_CERTIFICATION_PLAN,
           acceptedTransition: 'bind-runnable-candidate',
-          failedTransition: 'complete-failed',
+          // CC-GAP-8 terminal accounting: the ledger is open when this cell
+          // runs, so a terminal failure routes through settlement — never a
+          // bare outcome emitter. Settlement's X3 seam reads the FAILED
+          // local-runnability receipt run-wide and settles blocked /
+          // candidate-missing / local-readiness-failed with the decoded
+          // producer-defect text — the durable certificate the continuation
+          // reads to re-route the defect to the producing workshop.
+          failedTransition: 'settle-development',
           humanRequiredTransition: 'complete-blocked',
         }),
       },
@@ -439,21 +478,38 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       { from: 'resolve-task-graph', to: 'implement-work-items', on: 'domain.valid' },
       { from: 'resolve-task-graph', to: 'settle-development', on: 'domain.failed' },
       { from: 'implement-work-items', to: 'freeze-integrated-candidate', on: 'domain.accepted' },
-      { from: 'implement-work-items', to: 'complete-failed', on: 'domain.failed' },
+      // CC-GAP-8 terminal accounting (review counterexample repair): the
+      // criterion-key ledger opened at resolve-task-graph, so this post-ledger
+      // cell failure may NOT exit through the bare complete-failed emitter —
+      // that left every unexecuted obligation a forever-pending row with no
+      // terminal fact. Route through settlement like every other failed node:
+      // it settles blocked/implementation-incomplete, records the terminal
+      // facts with the certificate as provenance, and leaves a
+      // continuation-acceptable boundary.
+      { from: 'implement-work-items', to: 'settle-development', on: 'domain.failed' },
       { from: 'freeze-integrated-candidate', to: 'certify-product-readiness', on: 'domain.frozen' },
       { from: 'freeze-integrated-candidate', to: 'settle-development', on: 'domain.failed' },
       { from: 'certify-product-readiness', to: 'bind-runnable-candidate', on: 'domain.accepted' },
-      { from: 'certify-product-readiness', to: 'complete-failed', on: 'domain.failed' },
+      // CC-GAP-8 terminal accounting (review counterexample repair): same
+      // seam discipline as implement-work-items above. The failed verdict is
+      // unchanged at the gate (failureOwnership 'upstream'); only the FLOW
+      // target changes — settlement, not the bare emitter — so the X3 failed
+      // readiness receipt becomes a blocked / candidate-missing /
+      // local-readiness-failed certificate and the ledger gets its terminal
+      // facts instead of unexplained pending rows.
+      { from: 'certify-product-readiness', to: 'settle-development', on: 'domain.failed' },
       { from: 'bind-runnable-candidate', to: 'verify-acceptance', on: 'domain.bound' },
       { from: 'bind-runnable-candidate', to: 'settle-development', on: 'domain.failed' },
       { from: 'verify-acceptance', to: 'settle-development', on: 'domain.accepted' },
       // Upstream-defect escalation: a failed verification verdict refuted the
       // FROZEN integrated candidate (failureOwnership:'upstream'). Route the
-      // failure through the settlement kernel — exactly like the other
-      // failed-cell transitions above — so it issues an explicit
-      // ModuleCompletion and a terminal conveyor outcome the Development
-      // continuation service accepts (blocked on missing verification
-      // evidence, rework-required on failed evidence).
+      // failure through the settlement kernel — exactly like every other
+      // failed-node transition in this flow (post-ledger cell failures
+      // included; see the implement-work-items / certify-product-readiness
+      // edges above) — so it issues an explicit ModuleCompletion and a
+      // terminal conveyor outcome the Development continuation service
+      // accepts (blocked on missing verification evidence, rework-required on
+      // failed evidence).
       { from: 'verify-acceptance', to: 'settle-development', on: 'domain.failed' },
       ...['verified', 'blocked', 'failed']
         .map(code => ({

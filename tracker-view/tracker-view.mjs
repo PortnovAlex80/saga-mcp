@@ -21,7 +21,7 @@ import {
   artifactFallbackDocument,
   orderedArtifactTypes,
 } from './artifact-presentation.mjs';
-import { isProcessAlive } from '../dist/worker-executions.js';
+import { isProcessAlive, readProcessBirthToken } from '../dist/worker-executions.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import {
   initShared,
@@ -144,6 +144,14 @@ const lifecyclePipelineApi = createLifecyclePipelineApi({
     return row ? row.project_id : null;
   }),
 });
+
+// --- CC-GAP-8 verification accounting (Development criterion-key ledger) ----
+// Truthful per-epic projection of verification obligations, guarded by the
+// ledger render guard before publication (never fabricates executed
+// verification). Route-only adapter; the projection/integrity/guard live in
+// the Development module.
+import { createVerificationAccountingApi } from './verification-accounting-endpoints.mjs';
+const verificationAccountingApi = createVerificationAccountingApi({ withDb, respondJson });
 
 // esc / DEV_ROOT / PROJECT_REPO_MAP / projectFolderTag / resolveProjectWorkspace
 // live in ./shared.mjs now (imported above).
@@ -283,6 +291,9 @@ const lifecycleApi = createLifecycleEndpointsApi({
   repositoryHandlers,
   workerLogRoots: WORKER_LOG_ROOTS,
   isProcessAlive,
+  // ADR-087 tail visibility: birth-safe PID identity for semantically
+  // exited, physically alive local tails (/api/workers/active).
+  readBirthToken: readProcessBirthToken,
 });
 
 // T10 step 6: artifact rendering (renderMarkdown / renderArtifacts /
@@ -345,6 +356,10 @@ const server = http.createServer((req, res) => {
   // Saga 3 lifecycle pipeline (process-modules).
   if (req.method === 'GET' && url.pathname === '/api/lifecycle/pipeline') {
     return lifecyclePipelineApi.handlePipeline(req, res, url);
+  }
+  // CC-GAP-8: truthful verification accounting projection (render-guarded).
+  if (req.method === 'GET' && url.pathname === '/api/development/verification-accounting') {
+    return verificationAccountingApi.handleVerificationAccounting(req, res, url);
   }
   // Static client assets for the lifecycle-pipeline widget (CSS/JS/HTML).
   if (req.method === 'GET' && url.pathname.startsWith('/lifecycle-pipeline/')) {

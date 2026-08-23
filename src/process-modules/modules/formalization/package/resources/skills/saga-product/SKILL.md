@@ -60,6 +60,36 @@ Seeing the constraints is not enough — you MUST react to every ID:
    `FORMALIZATION_CONSTRAINT_UNDISPOSED` listing the exact IDs — fix and
    resubmit; never exit with an undisposed constraint.
 
+### v2 registers (exact kind/state grammar, ADR-090 CC-IC-2)
+
+New registers carry an orthogonal per-entry `kind`
+(`scope|open-question|mechanics|synthesis|ordered-smoke|quality`) and use the
+STRICT grammar — the state set depends on the kind:
+
+- kind `open-question` (drafted 1:1 from the proposal `unknowns`) — an
+  obligation you must resolve or own a deferral for:
+  - `{"disposition": "resolved", "evidenceRef": "<the resolution evidence>"}`, or
+  - `{"disposition": "deferred", "reason": "<why>", "owner": "<who owns it>", "unblockCriterion": "<what unblocks it>"}`.
+  `accepted` is INVALID here (a question is not an order clause).
+- every other kind — an order clause the work either carries or does not:
+  `{"disposition": "accepted"}` ONLY. `resolved`/`deferred` are INVALID here.
+- `waived` is TYPED UNAVAILABLE on v2 entries: brief metadata is
+  worker-authored, so even a perfectly shaped operator-attribution record is
+  your own string, not an operator act — there is no operator-owned waiver
+  channel. Every v2 waiver record rejects (`WAIVER_UNAVAILABLE`), never
+  subtracts from coverage, and never reaches the warrant. You may PROPOSE a
+  waiver in prose only; a proposal never removes the obligation — dispose
+  `resolved`/`deferred`/`accepted` and cover it.
+- Dispose exactly the register's IDs — no missing key, no extra key.
+- Beside `constraint_dispositions`, write the register digest you disposed
+  against into the brief metadata:
+  `"constraint_dispositions_register_digest": "<registerDigest>"`.
+  A disposition set carried across a register digest change (positional
+  `ord-c` reuse) rejects with `FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID`.
+- Unknown fields and snake_case spellings inside a disposition record
+  (`evidence_ref`, `unblock_criterion`, …) reject — the record vocabulary is
+  closed camelCase.
+
 Only constraints that exist in the register count. Do not invent or renumber
 IDs; copy them verbatim.
 

@@ -544,6 +544,9 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       acceptanceBaselineHash:
         solutionContractPayload.bundle.acceptanceBaselineHash,
       srs: solutionContractPayload.srs,
+      // ADR-088 (CC-GAP-6): the whole contract payload rides the case so
+      // Development resolves the optional constraintRegisterCoverage block.
+      solutionContractPayload,
       acceptanceCriteria: solutionContractPayload.acceptanceCriteria,
       repositories: rootInput.development.repositories,
       policy: rootInput.development.policy,

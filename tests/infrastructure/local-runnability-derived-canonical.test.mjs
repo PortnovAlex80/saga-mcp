@@ -262,6 +262,57 @@ test('M1-b step 4: additive declarations are honored — enumerating all 9 passe
   }
 });
 
+test('CC-GLOB-SURFACE: a whole-tree tests glob declaration is honored verbatim — directory coverage, executed 21 of 21, NO duplicate explicit appends', { timeout: 120000 }, async () => {
+  // The Elite-6 shape, live: the declaration AND the sealed package.json
+  // scripts.test both state `node --test tests/**/*.test.js`; the sealed
+  // tree holds 21 green test files under tests/. The glob already denotes
+  // the whole tests tree, so:
+  //   - the declaration resolves to whole-directory coverage (never a
+  //     phantom literal nonexistent file),
+  //   - the durable coverage observation is truthful: executed 21 of 21,
+  //     not-executed (none) — pre-fix this rode as the durable lie
+  //     "executed 1 of 22",
+  //   - the executed command is the declaration VERBATIM: no canonical file
+  //     is appended after the glob as a duplicate explicit addition.
+  const root = mkdtempSync(join(tmpdir(), 'saga-readiness-glob-surface-'));
+  git(root, 'init');
+  git(root, 'config', 'user.email', 'factory@example.test');
+  git(root, 'config', 'user.name', 'Factory Test');
+  mkdirSync(join(root, 'tests'), { recursive: true });
+  for (let i = 1; i <= 21; i += 1) {
+    const name = `gs-${String(i).padStart(2, '0')}.test.js`;
+    writeFileSync(join(root, 'tests', name), greenTestFile(name));
+  }
+  writeFileSync(join(root, 'package.json'), JSON.stringify({
+    name: 'glob-surface-candidate', version: '1.0.0',
+    scripts: { test: 'node --test tests/**/*.test.js' },
+  }, null, 2));
+  git(root, 'add', '.');
+  git(root, 'commit', '-m', 'glob-surface fixture candidate');
+  const db = minimalDb(root, 'd'.repeat(64), {
+    kind: 'static',
+    commands: { installCommand: null, testCommand: 'node --test tests/**/*.test.js' },
+  });
+  try {
+    const result = await withScrubbedTestContext(() => createLocalRunnabilityCheckProvider({
+      db, candidateSets: readerFor('d'.repeat(64)),
+    }).run(RUN_ARGS));
+    assert.equal(result.outcome, 'passed',
+      'a whole-tree glob over green bytes passes on its real output');
+    const coverage = coverageDiagnostic(result);
+    assert.ok(coverage, 'the coverage diagnostic must ride the evidence');
+    assert.match(coverage.message, /executed 21 of 21/u,
+      'the durable coverage observation must be truthful, not "executed 1 of 22"');
+    assert.match(coverage.message, /not executed: \(none\)/u,
+      'every canonical file underneath the tree glob is covered');
+    assert.doesNotMatch(coverage.message, /gate DERIVED/u,
+      'directory coverage needs no derivation — and no phantom literal');
+  } finally {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('M1-b step 4: an npm-test declaration whose SEALED script enumerates 7 of 9 is derived too — the artefact cannot smuggle a narrow script', { timeout: 120000 }, async () => {
   // The hole one level deeper: the candidate declares opaque `npm test` (no
   // direct surface to narrow) but the SEALED package.json scripts.test

@@ -86,6 +86,53 @@ function readWorkerDisplayNames() {
   }
 }
 
+// CC-GAP-10 (rendering-only): the durable author/reviewer projection identity
+// already lives on every production-cell task — `tasks.workplace_ref` plus
+// `tasks.metadata.$.role` ('author' | 'reviewer'). The board and task-detail
+// surfaces below expose that identity AS-IS: two tasks over one Workplace are
+// two ROLES of one production cell in one sealed graph. A reviewer projection
+// is QC over the sealed author candidate — never duplicate implementation
+// work and never a second graph. This code only READS what the sealed graph
+// already persists: no deduplication, no data rewrite, no fabrication of a
+// role where the durable record carries none.
+const ROLE_PROJECTION_NOTE = {
+  author:
+    'author projection — production role of this Workplace (writes the sealed material)',
+  reviewer:
+    'reviewer projection — QC role over the same Workplace and its sealed author candidate; distinct role, not duplicate implementation work',
+};
+const WORKPLACE_BADGE_NOTE =
+  'shared Workplace identity: author and reviewer tasks over this one Workplace are distinct roles of one production cell — not duplicate work';
+
+/**
+ * Pure projection-identity reader for one task row. Accepts any shape the
+ * board/detail queries return (loadProjectBoard does `SELECT t.*`, so both
+ * `workplace_ref` and the JSON `metadata` string are present). Returns
+ * `{ role, workplaceRef }` with `null`s when the durable record carries no
+ * projection identity — the renderers must then show NO role badge, never a
+ * guessed one.
+ */
+export function taskProjectionIdentity(task) {
+  let meta = null;
+  try { meta = JSON.parse(task?.metadata || '{}'); } catch { meta = null; }
+  const rawRole = meta?.role ?? null;
+  const role = rawRole === 'author' || rawRole === 'reviewer' ? rawRole : null;
+  const workplaceRef = task?.workplace_ref || (meta ? meta.workplace_ref : null) || null;
+  return { role, workplaceRef };
+}
+
+/**
+ * Short display form of a serialized WorkplaceRef
+ * (`workplace/<run>/<module>/<cell>/<workKey>`): keeps `<cell>/<workKey>`,
+ * the parts a human matches across author/reviewer cards. The full ref always
+ * rides along in the element title for exact correlation.
+ */
+export function shortWorkplaceRef(ref) {
+  const parts = String(ref).split('/');
+  if (parts.length < 5 || parts[0] !== 'workplace') return String(ref);
+  return `${parts[3]}/${parts.slice(4).join('/')}`;
+}
+
 export function createBoardRenderApi({
   RELOAD_SEC,
   loadBoard,
@@ -395,12 +442,17 @@ export function createBoardRenderApi({
       // needs-human флаг — задача ждёт ответа человека, мигает красным
       let needsHuman = false;
       try { needsHuman = JSON.parse(t.tags || '[]').includes('needs-human'); } catch {}
+      // CC-GAP-10: durable author/reviewer projection identity (rendering
+      // reads it as-is; nulls mean no identity in the durable record).
+      const { role, workplaceRef } = taskProjectionIdentity(t);
       return {
         t, e,
         epicName: e ? e.name : '?',
         epicId: t.epic_id,
         prio: PRIO[t.priority] || '#95a5a6',
         needsHuman,
+        role,
+        workplaceRef,
         workerName: t.current_execution_id
           ? workerNamesByExec.get(t.current_execution_id) || null
           : null,
@@ -412,7 +464,7 @@ export function createBoardRenderApi({
     const columnsHtml = COLS.map(col => {
       const items = byStatus[col.key] || [];
       const cardsHtml = items.map(c => `
-        <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" style="border-left:6px solid ${proj.color}">
+        <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" data-role="${esc(c.role || '')}" data-workplace="${esc(c.workplaceRef || '')}" style="border-left:6px solid ${proj.color}">
           <div class="card-head">
             <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
             ${c.t.assigned_to ? `<span class="assigned" title="${esc(c.t.assigned_to)}">@${esc(c.workerName || c.t.assigned_to)}</span>` : ''}
@@ -428,6 +480,8 @@ export function createBoardRenderApi({
             ${c.t.repository_name ? `<span class="task-badge repo">${esc(c.t.repository_name)}</span>` : ''}
             ${c.t.workflow_stage ? `<span class="task-badge stage">${esc(c.t.workflow_stage)}</span>` : ''}
             ${c.t.task_kind ? `<span class="task-badge kind">${esc(c.t.task_kind)}</span>` : ''}
+            ${c.role ? `<span class="task-badge role role-${c.role}" title="${esc(ROLE_PROJECTION_NOTE[c.role])}">${c.role}</span>` : ''}
+            ${c.workplaceRef ? `<span class="task-badge wp" title="${esc(WORKPLACE_BADGE_NOTE)} · ${esc(c.workplaceRef)}">wp:${esc(shortWorkplaceRef(c.workplaceRef))}</span>` : ''}
             ${c.t.generated_from_task_id ? `<a class="task-badge" href="/?task=${c.t.generated_from_task_id}">from #${c.t.generated_from_task_id}</a>` : ''}
             ${c.t.integration_state && c.t.integration_state !== 'not_required' ? `<span class="task-badge">${esc(c.t.integration_state)}</span>` : ''}
           </div>
@@ -445,6 +499,10 @@ export function createBoardRenderApi({
         <div class="bp-title">Pipeline</div>
         <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
       </div>
+      <details class="board-verification-accounting" id="verification-accounting-block">
+        <summary>Verification accounting (CC-GAP-8 criterion-key ledger) — <span id="vac-summary">…</span></summary>
+        <div id="verification-accounting"><div class="worker-empty">выбери эпик</div></div>
+      </details>
       <div class="episode-progress-bar">${episodeProgress}</div>
       <details class="board-ops">
         <summary>Repository and episode operations</summary>
@@ -909,12 +967,23 @@ export function createBoardRenderApi({
           // spawn a duplicate engine (lease collision), Stop would kill the
           // live workers. The user WILL press the button — it must be dead,
           // not merely discouraged.
+          // B-006 guard + ADR-087: the host is not empty while EITHER real
+          // active workers run OR semantically-exited physical tails are
+          // still alive (settlement converged the execution; the OS process
+          // kept running). blindLive counts BOTH so Play/drain can never
+          // claim an empty host; liveTails is reported SEPARATELY so the
+          // labels keep semantic completion (state=exited) distinct from
+          // physical death (exit_code observed).
           let blindLive = 0;
+          let liveTails = 0;
           try {
             const w = await fetch('/api/workers/active?project_id=' + (window.__sagaProjectId || ${projectId}));
             const wj = await w.json();
             if (wj.ok && Array.isArray(wj.workers)) {
-              blindLive = wj.workers.filter(x => x.phase !== 'exited').length;
+              blindLive = wj.workers.filter(x => x.semantic_exited !== true).length;
+              liveTails = typeof wj.physical_tails === 'number'
+                ? wj.physical_tails
+                : wj.workers.filter(x => x.semantic_exited === true).length;
             }
           } catch { /* workers probe unavailable — fall through to controls */ }
           const panelSeesEngine = state.running && state.alive;
@@ -931,7 +1000,11 @@ export function createBoardRenderApi({
             engineToggle.classList.add('engine-running');
             engineToggle.title = 'Пауза-дожин: ограда очереди держится в БД и не зависит от панели. Движок сам припаркуется после дожина; для убийства — CLI: node scripts/factory.mjs stop <db> --project N';
             runnerStatus.textContent = 'завод работает (вне панели) · воркеров: ' + blindLive
-              + ' · ⏸ доступен (дожин): движок сам припаркуется после дожина; для убийства — CLI';
+              + ' · ⏸ доступен (дожин): движок сам припаркуется после дожина; для убийства — CLI'
+              + (liveTails > 0
+                ? ' · ⚠ живые хвосты ADR-087: ' + liveTails
+                  + ' (семантически завершены [state=exited], процесс жив, физический выход не наблюдён [exit_code=null])'
+                : '');
           } else {
             engineToggle.disabled = false;
             syncEngineToggleButton(panelSeesEngine);
@@ -941,6 +1014,26 @@ export function createBoardRenderApi({
             runnerStatus.textContent = (panelSeesEngine ? 'работает' : 'остановлен')
               + ' · concurrency=' + state.concurrency
               + (effective !== state.concurrency ? ' (effective ' + effective + ')' : '');
+            // CC-GAP-2: launch/order 'completed' and engine exit 0 are
+            // OPERATIONAL facts ("the engine settled this launch after the
+            // run reached a lifecycle terminal state") — never product
+            // success. When the engine is not running and the last launch
+            // settled completed, render the lifecycle's business verdict
+            // (terminal_status) next to the status so no reader can take the
+            // bare label as a success claim.
+            if (!panelSeesEngine && state.last_launch && state.last_launch.state === 'completed' && state.last_launch.lifecycle) {
+              const verdict = state.last_launch.lifecycle.terminal_status
+                || state.last_launch.lifecycle.status
+                || 'unknown';
+              runnerStatus.textContent += ' · ран завершён, вердикт: ' + verdict;
+            }
+            if (liveTails > 0) {
+              // The engine is NOT running, but the host is NOT empty:
+              // semantically completed processes are still physically alive.
+              runnerStatus.textContent += ' · ⚠ живые хвосты ADR-087: ' + liveTails
+                + ' (воркеры семантически завершены [state=exited], но их процессы ещё живы; '
+                + 'физический выход не наблюдён [exit_code=null] — хост не пуст)';
+            }
           }
           if (runnerConcurrency && state.concurrency) {
             runnerConcurrency.value = String(state.concurrency);
@@ -955,13 +1048,89 @@ export function createBoardRenderApi({
         epicSelect.addEventListener('change', () => {
           window.__sagaEpicId = Number(epicSelect.value) || null;
           fetchEngineStatus();
+          fetchVerificationAccounting();
           // Remount the lifecycle controller for the newly-selected epic. If the
-          // module is still loading or absent, this is a safe no-op (mount is a
+          // module is still loading or absent, this is a safe no-op (mount is
+          // idempotent per mount.js).
           if (window.__lifecyclePipeline) {
             window.__lifecyclePipeline.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
           }
         });
       }
+      // CC-GAP-8: truthful verification accounting projection. The endpoint
+      // publishes ONLY render-guarded ledger rows; this renderer displays the
+      // state strings EXACTLY as the ledger holds them — it never derives,
+      // upgrades or fabricates a verdict (no executed/discharged rendering
+      // unless the ledger entry is literally discharged).
+      function vacStateBadge(entry) {
+        const styles = {
+          'executed': entry.outcome === 'passed' ? '#3fb950' : '#f85149',
+          'pending': '#f39c12',
+          'proposed': '#f39c12',
+          'terminal-unknown': '#58a6ff',
+          'terminal-blocked': '#e67e22',
+          'terminal-human-required': '#a371f7',
+          'waived': '#3fb950',
+          'legacy-unaccounted': '#8b949e',
+        };
+        const color = styles[entry.state] || '#8b949e';
+        let label = entry.state;
+        if (entry.state === 'executed') label += '/' + (entry.outcome || '?');
+        const title = entry.state === 'terminal-unknown'
+          ? 'environment/readiness uncertainty — the product was never exercised; NOT a product failure'
+          : entry.state === 'terminal-human-required'
+            ? 'waiting on an explicit human decision: ' + (entry.terminalAttributedTo || []).join(', ')
+            : entry.state;
+        return '<span class="task-badge" style="color:' + color + '" title="' + esc(title) + '">' + esc(label) + '</span>'
+          + (entry.discharged ? ' <span class="task-badge" style="color:#3fb950" title="exact passed receipt or operator-attributed waiver">✓ discharged</span>' : '');
+      }
+      async function fetchVerificationAccounting() {
+        const block = document.getElementById('verification-accounting-block');
+        const container = document.getElementById('verification-accounting');
+        const summaryEl = document.getElementById('vac-summary');
+        if (!block || !container) return;
+        const epicId = window.__sagaEpicId;
+        if (!epicId) {
+          container.innerHTML = '<div class="worker-empty">выбери эпик</div>';
+          if (summaryEl) summaryEl.textContent = 'нет эпика';
+          return;
+        }
+        try {
+          const r = await fetch('/api/development/verification-accounting?epic_id=' + epicId);
+          const data = await r.json();
+          if (!r.ok || !data.ok) throw new Error(data.error || 'unavailable');
+          if (!Array.isArray(data.runs) || data.runs.length === 0) {
+            container.innerHTML = '<div class="worker-empty">нет учтённых обязательств верификации</div>';
+            if (summaryEl) summaryEl.textContent = 'нет данных';
+            return;
+          }
+          const html = data.runs.map(run => {
+            const rows = (run.entries || []).map(e => '<tr>'
+              + '<td class="muted small">' + esc(e.criterionKey) + '</td>'
+              + '<td>' + vacStateBadge(e) + '</td>'
+              + '<td class="muted small">' + esc((e.terminalReasonCodes || []).join(', ') || (e.gatedBy ? 'deferred by ' + e.gatedBy : '—')) + '</td>'
+              + '<td class="muted small" title="' + esc(e.terminalProvenanceRef || '') + '">' + esc(e.terminalProvenanceRef ? e.terminalProvenanceRef.slice(0, 48) : (e.unblockCondition ? 'unblock: readiness-recovery' : '—')) + '</td>'
+              + '</tr>').join('');
+            const s = run.summary || {};
+            const summaryLine = 'run #' + run.processRunId
+              + ' · open ' + (s.open ?? '?') + '/' + (s.total ?? '?')
+              + ' · discharged ' + (s.discharged ?? '?')
+              + (run.accountingType === 'legacy-unaccounted' ? ' · legacy-unaccounted (pre-ledger, frozen)' : '');
+            return '<div style="margin-bottom:10px"><div class="muted small" style="margin:2px 0">' + esc(summaryLine) + '</div>'
+              + '<table class="registry" style="font-size:11px"><thead><tr><th>criterion</th><th>state</th><th>reason</th><th>provenance</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+          }).join('');
+          container.innerHTML = html;
+          const first = data.runs[data.runs.length - 1];
+          const s = first && first.summary ? first.summary : {};
+          if (summaryEl) summaryEl.textContent = (data.runs.length) + ' run(s)'
+            + ' · open ' + (s.open ?? '?') + '/' + (s.total ?? '?')
+            + ' · discharged ' + (s.discharged ?? '?');
+        } catch (e) {
+          container.innerHTML = '<div class="worker-empty">учёт верификации недоступен: ' + esc(String(e && e.message || e)) + '</div>';
+          if (summaryEl) summaryEl.textContent = 'ошибка';
+        }
+      }
+      fetchVerificationAccounting();
       // Concurrency selector — on change, restart engine with new value.
       // Engine state (tasks, artifacts, episode stage) is preserved across
       // restart because everything lives in the shared SQLite DB.
@@ -1016,15 +1185,33 @@ export function createBoardRenderApi({
         const projectId = window.__sagaProjectId || ${projectId};
         const tick = async () => {
           let active = lastActive;
+          let tails = 0;
           try {
             const w = await fetch('/api/workers/active?project_id=' + projectId);
             const wj = await w.json();
             if (wj.ok && Array.isArray(wj.workers)) {
-              active = wj.workers.filter(x => x.phase !== 'exited').length;
+              active = wj.workers.filter(x => x.semantic_exited !== true).length;
+              tails = typeof wj.physical_tails === 'number'
+                ? wj.physical_tails
+                : wj.workers.filter(x => x.semantic_exited === true).length;
             }
           } catch { /* probe unavailable — keep the last count */ }
           if (active > 0) {
-            runnerStatus.textContent = '⏳ дожидаемся ' + active + ' воркер(ов) — новых наймов нет (ограда очереди)';
+            runnerStatus.textContent = '⏳ дожидаемся ' + active + ' воркер(ов) — новых наймов нет (ограда очереди)'
+              + (tails > 0 ? ' · ⚠ живые хвосты ADR-087: ' + tails : '');
+            drainTimer = setTimeout(tick, ${RELOAD_SEC * 1000});
+            return;
+          }
+          if (tails > 0) {
+            // ADR-087: the drain line may NOT claim an empty host while
+            // semantically-exited processes are still physically alive. They
+            // are NOT working workers (state=exited — semantic completion
+            // stands) and nothing waits on them operationally, but the host
+            // is truthfully not empty until their physical exit is observed
+            // (exit_code backfill) or an operator cleans them up.
+            runnerStatus.textContent = '⏳ активных воркеров нет · живые хвосты ADR-087: ' + tails
+              + ' (семантически завершены [state=exited], процессы живы, физический выход не наблюдён'
+              + ' [exit_code=null]) — хост не пуст';
             drainTimer = setTimeout(tick, ${RELOAD_SEC * 1000});
             return;
           }
@@ -1056,7 +1243,13 @@ export function createBoardRenderApi({
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось поставить паузу');
-              drainModePoll(d.active_workers ?? 0, d.queued_cards ?? 0);
+              // Seed the drain line with BOTH counts (workers + ADR-087
+              // physical tails) so the first paint cannot claim an empty
+              // host before the first /api/workers/active probe refines it.
+              drainModePoll(
+                (d.active_workers ?? 0) + (d.physical_tails ?? 0),
+                d.queued_cards ?? 0,
+              );
             } catch (e) {
               alert('Пауза: ' + e.message);
               runnerStatus.textContent = 'ошибка';
@@ -1290,11 +1483,27 @@ export function createBoardRenderApi({
     worktree = meta && meta.worktree ? meta.worktree : null;
     try { tagsArr = JSON.parse(task.tags || '[]'); } catch {}
 
+    // CC-GAP-10 (rendering-only): durable author/reviewer projection identity
+    // of THIS task — read from tasks.workplace_ref + tasks.metadata.$.role,
+    // never guessed. A null role renders no role badge.
+    const { role: taskRole, workplaceRef } = taskProjectionIdentity(task);
+
     // один проход по БД: comments + subtasks + зависимости + обратные traces.
     const extra = withDb(db => {
-      let comments = [], subtasks = [], dependsOn = [], blocks = [], reverseTraces = [];
+      let comments = [], subtasks = [], dependsOn = [], blocks = [], reverseTraces = [], workplaceSiblings = [];
       try { comments = db.prepare('SELECT * FROM comments WHERE task_id=? ORDER BY created_at').all(taskId); } catch {}
       try { subtasks = db.prepare('SELECT * FROM subtasks WHERE task_id=? ORDER BY sort_order, id').all(taskId); } catch {}
+      // CC-GAP-10: read-only sibling lookup over the SAME durable workplace_ref.
+      // Author and reviewer projections of one Workplace are listed side by
+      // side with their roles — never merged, never deduplicated, never
+      // rewritten. The query cannot mutate anything (plain SELECT).
+      if (workplaceRef) {
+        try {
+          workplaceSiblings = db.prepare(
+            'SELECT id, title, status, workplace_ref, metadata FROM tasks WHERE workplace_ref=? ORDER BY id',
+          ).all(workplaceRef);
+        } catch { workplaceSiblings = []; }
+      }
       // task_dependencies(task_id, depends_on_task_id): task_id=N → «зависит от»,
       // depends_on_task_id=N → «блокирует».
       try {
@@ -1316,7 +1525,7 @@ export function createBoardRenderApi({
            WHERE t.target_type='task' AND t.target_id = ?
            ORDER BY t.link_type, a.code`).all(taskId);
       } catch {}
-      return { comments, subtasks, dependsOn, blocks, reverseTraces };
+      return { comments, subtasks, dependsOn, blocks, reverseTraces, workplaceSiblings };
     });
 
     const statusColor = (s) => s === 'done' ? '#3fb950'
@@ -1404,6 +1613,35 @@ export function createBoardRenderApi({
       tracesHtml = '<div class="muted small">нет связанных артефактов</div>';
     }
 
+    // CC-GAP-10 (rendering-only): workplace projection section. Lists THIS
+    // task and its sibling projections over the same durable workplace_ref,
+    // each with its own role badge. The durable rows are rendered as distinct
+    // projections — one row per task, exactly as persisted: no deduplication,
+    // no merge, no rewrite of the sealed graph.
+    let workplaceProjectionHtml = '';
+    if (workplaceRef) {
+      const projectionRows = extra.workplaceSiblings.map(s => {
+        const { role: siblingRole } = taskProjectionIdentity(s);
+        const self = String(s.id) === String(task.id);
+        return `<div class="tc-proj-row${self ? ' tc-proj-self' : ''}">
+          ${siblingRole
+            ? `<span class="task-badge role role-${siblingRole}" title="${esc(ROLE_PROJECTION_NOTE[siblingRole])}">${siblingRole}</span>`
+            : '<span class="task-badge role">role not recorded</span>'}
+          ${self
+            ? `<span class="tc-proj-title">#${s.id} ${esc(s.title)}</span> <span class="muted small">(this task)</span>`
+            : `<a class="tc-proj-title" href="/?task=${s.id}">#${s.id} ${esc(s.title)}</a>`}
+        </div>`;
+      }).join('');
+      workplaceProjectionHtml = `
+          <div class="tc-section">
+            <div class="tc-sec-title">Workplace projection</div>
+            <div class="tc-meta-row"><span class="wm-label">Workplace</span><span class="mono" title="${esc(workplaceRef)}">${esc(shortWorkplaceRef(workplaceRef))}</span></div>
+            ${taskRole ? `<div class="tc-meta-row"><span class="wm-label">Role</span><span class="task-badge role role-${taskRole}" title="${esc(ROLE_PROJECTION_NOTE[taskRole])}">${taskRole}</span></div>` : ''}
+            <div class="muted small tc-proj-note">Author and reviewer tasks over one Workplace are distinct roles of one production cell in one sealed graph. A reviewer projection is QC over the sealed author candidate — not duplicate implementation work.</div>
+            ${projectionRows}
+          </div>`;
+    }
+
     const header = `
       <div class="board-head">
         <a href="/?project=${task.project_id}" class="back">← ${esc(task.project_name)}</a>
@@ -1435,6 +1673,8 @@ export function createBoardRenderApi({
             <div class="tc-meta-grid">
               <div class="tc-meta-row"><span class="wm-label">Проект</span><a href="/?project=${task.project_id}" style="color:${projColor}">${esc(task.project_name)}</a></div>
               <div class="tc-meta-row"><span class="wm-label">Эпик</span><span>${esc(task.epic_name || '—')}</span></div>
+              ${taskRole ? `<div class="tc-meta-row"><span class="wm-label">Role</span><span class="task-badge role role-${taskRole}" title="${esc(ROLE_PROJECTION_NOTE[taskRole])}">${taskRole}</span></div>` : ''}
+              ${workplaceRef ? `<div class="tc-meta-row"><span class="wm-label">Workplace</span><span class="mono" title="${esc(workplaceRef)}">${esc(shortWorkplaceRef(workplaceRef))}</span></div>` : ''}
               <div class="tc-meta-row"><span class="wm-label">Создана</span><span>${esc((task.created_at||'').slice(0,16))}</span></div>
               <div class="tc-meta-row"><span class="wm-label">Обновлена</span><span>${esc((task.updated_at||'').slice(0,16))}</span></div>
               ${task.due_date ? `<div class="tc-meta-row"><span class="wm-label">Дедлайн</span><span>${esc(task.due_date)}</span></div>` : ''}
@@ -1443,6 +1683,7 @@ export function createBoardRenderApi({
               ${tagsArr.length ? `<div class="tc-meta-row"><span class="wm-label">Теги</span><span class="tc-tags">${tagsArr.map(t=>`<span class="tc-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
             </div>
           </div>
+          ${workplaceProjectionHtml}
           <div class="tc-section">
             <div class="tc-sec-title">Связанные артефакты</div>
             ${tracesHtml}
@@ -1541,6 +1782,18 @@ export function createBoardRenderApi({
       .task-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
       .task-badge{font-size:9px;padding:2px 5px;border-radius:8px;background:#21262d;color:#8b949e;border:1px solid #30363d}
       .task-badge.repo{color:#58a6ff}.task-badge.stage{color:#a371f7}.task-badge.kind{color:#3fb950}
+      /* CC-GAP-10: author/reviewer projection identity badges. Author is green
+         (production), reviewer is purple (QC) — the same palette as the kind
+         badge family. The wp badge is monospace: it is a durable identity. */
+      .task-badge.role-author{color:#3fb950;border-color:#238636}
+      .task-badge.role-reviewer{color:#a371f7;border-color:#6e40c9}
+      .task-badge.wp{color:#d29922;font-family:ui-monospace,Consolas,monospace}
+      .tc-proj-note{margin-top:6px;line-height:1.45}
+      .tc-proj-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px}
+      .tc-proj-row .tc-proj-title{color:#e6edf3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .tc-proj-row a.tc-proj-title:hover{color:#58a6ff;text-decoration:underline}
+      .tc-proj-self .tc-proj-title{font-weight:600}
+      .mono{font-family:ui-monospace,Consolas,monospace}
       .filter-bar select{background:#21262d;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:4px 7px;font-size:11px}
 
       /* фильтр-бар */

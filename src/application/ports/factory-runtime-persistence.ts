@@ -53,6 +53,14 @@ export interface ExecutionReconcileProjection {
    * the sweep keeps + renews per the OLD behavior and logs the degradation.
    */
   pidIdentityUnverifiable?: boolean;
+  /**
+   * ADR-087 physical-tail truthfulness: whether the OS PID was STILL ALIVE
+   * when this sweep classified the row (false after a verified kill; null
+   * when no liveness fact applies). Rides reaped projections so the
+   * worker.exit observation can state it — `state='exited'` is semantic
+   * protocol completion, never proof of physical process death.
+   */
+  pidAlive?: boolean | null;
 }
 
 export interface ConcurrencyAdmissionSnapshot {

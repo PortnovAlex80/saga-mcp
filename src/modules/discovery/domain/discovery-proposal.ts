@@ -14,6 +14,9 @@
 
 import {
   ORDER_CONSTRAINT_CLASSES,
+  ORDER_CONSTRAINT_KINDS,
+  ORDER_CONSTRAINT_DRAFT_KINDS,
+  ORDER_CONSTRAINT_RESERVED_KINDS,
   type OrderConstraintDraft,
 } from '../../../shared/constraint-register.js';
 
@@ -60,6 +63,15 @@ export interface DiscoveryProposalPayload {
    * constraint register (see constraint-register.ts). Optional for
    * retro-compatibility: absent field → no register → empty downstream
    * diffs → all existing gates stay green.
+   *
+   * ADR-090 (CC-IC-1): a draft row MAY carry a `kind` from the
+   * DRAFT-AUTHORABLE subset of the closed six-value vocabulary
+   * (`scope|mechanics|quality`) and a kind `quality` row MAY carry a typed
+   * `measurability` binding. The reserved kinds (`open-question`,
+   * `synthesis`, `ordered-smoke`) are kernel-only — created by the
+   * deterministic unknown lifting and the declared lifecycle injection table
+   * respectively — and `lifecycle_synthesis` is NEVER worker-declarable
+   * (kernel-assigned on injected entries only).
    */
   order_constraints?: readonly OrderConstraintDraft[];
 }
@@ -141,6 +153,109 @@ export function validateDiscoveryProposal(payload: unknown): DiscoveryProposalVa
         }
         if (typeof row['evidence_ref'] !== 'string' || row['evidence_ref'].trim() === '') {
           errors.push(`order_constraints[${index}].evidence_ref must be a non-empty string`);
+        }
+        // ADR-088 (CC-GAP-6): entrypoint declarations are execution-class
+        // only and must be repository-relative file paths — fail at the
+        // submission boundary, exactly like every other draft field (the
+        // register builder repeats the check fail-closed).
+        if (row['entrypoint_files'] !== undefined && row['entrypoint_files'] !== null) {
+          if (typeof row['class'] === 'string' && row['class'] !== 'execution') {
+            errors.push(
+              `order_constraints[${index}].entrypoint_files may only be declared by execution-class constraints`,
+            );
+          }
+          if (!Array.isArray(row['entrypoint_files'])) {
+            errors.push(
+              `order_constraints[${index}].entrypoint_files must be an array of repository-relative file paths`,
+            );
+          } else if (row['entrypoint_files'].length > 0) {
+            for (const file of row['entrypoint_files']) {
+              if (typeof file !== 'string' || file.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].entrypoint_files entries must be non-empty repository-relative file paths`,
+                );
+                break;
+              }
+            }
+          }
+        }
+        // ADR-090 (CC-IC-1): the closed kind vocabulary at the submission
+        // boundary — a draft row carrying a `kind` MUST carry one of the six
+        // closed values; anything else is a typed submission error at the
+        // same boundary that already checks class/text/evidence_ref.
+        const kind = row['kind'];
+        const kindPresent = kind !== undefined && kind !== null;
+        if (kindPresent
+          && (typeof kind !== 'string'
+            || !(ORDER_CONSTRAINT_KINDS as readonly string[]).includes(kind))) {
+          errors.push(
+            `order_constraints[${index}].kind must be one of ${ORDER_CONSTRAINT_KINDS.join('|')}`,
+          );
+        }
+        // ADR-090 (CC-IC-1 focused repair): the reserved kinds are kernel-only
+        // authorities — open-question is created only by the deterministic
+        // unknown lifting at settlement, and synthesis|ordered-smoke only by
+        // the declared, digest-pinned lifecycle injection table. A draft row
+        // carrying a reserved kind is a typed submission error here and again
+        // at the v2 register builder (never a worker-forged authority).
+        if (kindPresent
+          && typeof kind === 'string'
+          && (ORDER_CONSTRAINT_RESERVED_KINDS as readonly string[]).includes(kind)) {
+          errors.push(
+            `order_constraints[${index}].kind '${kind}' is kernel-reserved (open-question is `
+            + 'drafted 1:1 from the proposal unknowns; synthesis|ordered-smoke are injected '
+            + `from the declared lifecycle injection table) — a draft may declare only `
+            + ORDER_CONSTRAINT_DRAFT_KINDS.join('|'),
+          );
+        }
+        // ADR-090 (CC-IC-1): typed measurability binds ONLY kind `quality`
+        // rows; when present it must be the measurable-interpretation form or
+        // the typed-deferral form. The completeness rule (a quality row MUST
+        // carry one) is enforced fail-closed by the register builder — the
+        // boundary checks shape and kind-binding here.
+        if (row['measurability'] !== undefined && row['measurability'] !== null) {
+          const measurability = row['measurability'];
+          if (kindPresent && kind !== 'quality') {
+            errors.push(
+              `order_constraints[${index}].measurability may only be declared by kind 'quality' constraints`,
+            );
+          }
+          if (typeof measurability !== 'object' || measurability === null
+            || Array.isArray(measurability)) {
+            errors.push(
+              `order_constraints[${index}].measurability must be { state: 'measurable', interpretation_ref } or { state: 'deferred', reason }`,
+            );
+          } else {
+            const binding = measurability as Record<string, unknown>;
+            const state = binding['state'];
+            if (state === 'measurable') {
+              const interpretationRef = binding['interpretation_ref'];
+              if (typeof interpretationRef !== 'string' || interpretationRef.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].measurability of state 'measurable' requires a non-empty interpretation_ref`,
+                );
+              }
+            } else if (state === 'deferred') {
+              const reason = binding['reason'];
+              if (typeof reason !== 'string' || reason.trim() === '') {
+                errors.push(
+                  `order_constraints[${index}].measurability of state 'deferred' requires a non-empty reason`,
+                );
+              }
+            } else {
+              errors.push(
+                `order_constraints[${index}].measurability.state must be 'measurable' or 'deferred'`,
+              );
+            }
+          }
+        }
+        // ADR-090 (CC-IC-1): lifecycle_synthesis is kernel-assigned on
+        // injected entries only — a worker declaring it is a typed defect at
+        // the submission boundary (the register builder repeats the check).
+        if (row['lifecycle_synthesis'] !== undefined && row['lifecycle_synthesis'] !== null) {
+          errors.push(
+            `order_constraints[${index}].lifecycle_synthesis is kernel-assigned on injected entries only`,
+          );
         }
       });
     }
