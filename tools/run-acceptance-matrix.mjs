@@ -111,9 +111,42 @@ const GROUPS = {
       'tests/infrastructure/local-runnability-toctou-reprobe.test.mjs',
       'tests/infrastructure/environment-identity.test.mjs',
       'tests/infrastructure/local-runnability-seam-compose.test.mjs',
+      // ADR-095 Phase-2A (blocker (b) resolution): the migration-conformance
+      // suite was unhosted AND hard-pins legacy Discovery surfaces — the
+      // dist imports of the dead discovery-settlement-repository.js /
+      // discovery-outcome-certificate-projection.js plus the fresh-DB
+      // factory_proposals INSERT seed. It does NOT assert the six-handler
+      // count/IDs (its package-isolation lane validates the manifest
+      // structurally only; handler shape is owned by the
+      // handler-digest-runtime-consistency suite + the Phase-4 hard
+      // ratchet). It is GREEN on the current legacy baseline (35/35,
+      // 2026-08-24) and hosted here WITHOUT repinning — the production
+      // surface has not changed yet. The mandatory SAME-COMMIT Phase-4
+      // migration is recorded in
+      // tests/infrastructure/adr-095-removal-inventory.mjs
+      // (mandatoryPhase4Repins) and pinned by coverage guard G2j. Exact file
+      // on purpose: no directory glob, the surface cannot silently widen.
+      'tests/execution/migration-conformance.test.mjs',
     ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts + ADR-095 migration-conformance (green on legacy baseline, Phase-4 repin owed)',
+  },
+  // ADR-095 Phase-2A (blocker (a) resolution): the four proven LIVE Discovery
+  // v2 oracles were CI orphans — no blocking run-set and no quarantine hosted
+  // them, so ratchet 6 ("live v2 behavior") had no hosted executor. Narrowly
+  // justified EXACT-FILE group (no directory globs — the hosted live-v2
+  // surface cannot silently widen). Per-file removal guards G2i in
+  // tests/infrastructure/acceptance-matrix-coverage.test.mjs make deletion or
+  // de-hosting fail the coverage suite. ADR-095 Decision 5 preserves these
+  // suites untouched through the whole removal.
+  'discovery-live-v2': {
+    globs: [
+      'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
+      'tests/discovery/order-constraint-register.test.mjs',
+      'tests/matrix/e-constraint-loss.test.mjs',
+      'tests/modules/discovery/discovery-check-providers.test.mjs',
+    ],
+    note: 'ADR-095 Phase-2A live-v2 hosting — settlement lifecycle classification (m1-m6), order-constraint register round-trip, E constraint-loss boundary matrix, live check providers. Ratchet-6 executor surface; never weakened, never quarantined.',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

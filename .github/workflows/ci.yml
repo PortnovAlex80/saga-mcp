@@ -77,6 +77,14 @@ jobs:
       - name: Matrix — process modules (LR-07 readiness binding)
         run: node tools/run-acceptance-matrix.mjs --group process-modules
 
+      - name: Matrix — Discovery live v2 (ADR-095 Phase-2 hosting)
+        # ADR-095 Phase-2 blocker (a): the four proven LIVE Discovery v2
+        # suites were CI orphans (no blocking run-set, no quarantine), so
+        # ratchet 6 ("live v2 behavior") had no hosted executor. Hosting is a
+        # Phase-2 precondition. Exact-file group; removal guards G2i in the
+        # matrix-coverage step make de-hosting/deletion fail closed.
+        run: node tools/run-acceptance-matrix.mjs --group discovery-live-v2
+
       - name: Dispatcher race gate (concurrency safety)
         # Concurrent worker_next must never double-claim a card. These are plain
         # .mjs scripts (not auto-discovered by `node --test`), so they have their

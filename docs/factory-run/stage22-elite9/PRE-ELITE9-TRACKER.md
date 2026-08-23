@@ -270,30 +270,119 @@ boot baseline) are executed under this point.
      correction applied: the proof binds to `installProductionModules`
      (the engine boot entry), NOT the partial-lifecycle
      `installModulePackages` — an earlier draft overclaimed and was
-     rejected. The spawned-engine exit-0 boot smoke on a real
-     retired-installation DB stays OPEN as the Phase-4 (ratchet 7)
-     STOP-SHIP proof, not claimed here. STILL OPEN: the full
-     live-v2/dead-legacy/shared inventory + legacy-only test deletion
-     list.
-  2. Ratchets first — author the eight ratchets + mutation proofs;
-     demonstrate RED on the legacy-present tree (no red consolidated tip).
-     **Phase-2 blockers (red-team discoveries 2026-08-24, OPEN):** (a) four
-     LIVE Discovery suites are CI orphans —
-     `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`,
-     `tests/discovery/order-constraint-register.test.mjs`,
-     `tests/matrix/e-constraint-loss.test.mjs`, and
-     `tests/modules/discovery/discovery-check-providers.test.mjs` are in
-     NO blocking run-set and NO quarantine (matrix `--list-json` verified),
-     so ratchet 6 ("live v2 behavior") currently has no hosted executor;
-     hosting them is a Phase-2 precondition, not a nicety. (b)
-     `tests/execution/migration-conformance.test.mjs` is unhosted AND
-     imports legacy surfaces (it lazily pins `discoveryPackageManifest`
-     from the discovery package manifest and imports
-     `discoveryProcessModule`), so hosting it before the Phase-4 cutover
-     would pin CI to the legacy six-handler manifest shape, while
-     migrating it unhosted proves nothing — its hosting + its
-     re-pinning to the post-removal surface must land ATOMICALLY with the
-     ADR-095 phase that changes the surface it observes.
+      rejected. The spawned-engine exit-0 boot smoke on a real
+      retired-installation DB stays OPEN as the Phase-4 (ratchet 7)
+      STOP-SHIP proof, not claimed here. STILL OPEN: the full
+      live-v2/dead-legacy/shared inventory + legacy-only test deletion
+       list. **Phase-2A inventory step (2026-08-24, this commit):** the
+       EXACT machine-consumed CLASSIFIED BASELINE now exists as
+       `tests/infrastructure/adr-095-removal-inventory.mjs` (self-validating:
+       uniqueness, dead∩kept=∅, all present-today paths resolve, the exact
+       ten-table + nineteen-index phase-5 closure checked against
+       `src/schema.ts`, retired-handler set = six-handler baseline minus the
+       live `discovery-settlement-policy`; consumed blocking by
+       `tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs`). It is
+       the exact CLASSIFIED baseline, NOT a complete inventory while
+       `unresolved` is non-empty. 35 dead paths (26 phase-4 files + 9
+       dead-lane resources; phase 3 contributes code-blocks only) + the
+       phase-3 live-write blocks + the phase-5 schema closure are classified
+       with per-entry same-commit obligations (including every
+       BLOCKING-hosted test that imports a dead surface); the kept baseline
+       is exact too (20 fully-kept production files + 4 partial-live
+       containers + 10 live resources + 9 live test files = 43). Honest
+       boundary: the package `contributions/{tool-contributions,
+       output-contracts,acceptance-capabilities,reviewer-skills}.ts` data
+       files are KEPT AS CONTAINERS (modeled as
+       `keptLive.partialLiveFilesWithUnresolvedRows`) — row-level
+       repoint/removal inside them is allowed while whole-file deletion is
+       forbidden until their row classification closes — and the per-file
+       migrate-vs-delete decisions of the legacy-only test list are open;
+       both are recorded as `unresolved` entries at the exact MONOTONE
+       baseline of 5 (may only shrink; growth is rejected by the
+       validator) behind the `phase4BlockedByUnresolved` machine gate:
+       Phase 4 cannot land until `unresolved` is empty AND the flag is
+       cleared atomically in the same commit. The Phase-1 "full inventory"
+       item stays OPEN until `unresolved` is empty.
+       `factory_work_intents` is classified KEPT (live shared protocol
+       entity) with its indexes and trigger.
+   2. Ratchets first — author the eight ratchets + mutation proofs;
+      demonstrate RED on the legacy-present tree (no red consolidated tip).
+      **Phase-2 blockers (red-team discoveries 2026-08-24):** (a) four
+      LIVE Discovery suites are CI orphans —
+      `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`,
+      `tests/discovery/order-constraint-register.test.mjs`,
+      `tests/matrix/e-constraint-loss.test.mjs`, and
+      `tests/modules/discovery/discovery-check-providers.test.mjs` are in
+      NO blocking run-set and NO quarantine (matrix `--list-json` verified),
+      so ratchet 6 ("live v2 behavior") currently has no hosted executor;
+      hosting them is a Phase-2 precondition, not a nicety. (b)
+       `tests/execution/migration-conformance.test.mjs` is unhosted AND
+       hard-pins legacy Discovery surfaces — the dist imports of the dead
+       `discovery-settlement-repository.js` (restart lane) and
+       `discovery-outcome-certificate-projection.js` (exact-output lane)
+       plus the fresh-DB `factory_proposals` INSERT seed. It does NOT
+       assert the six-handler count/IDs (its package-isolation lane
+       validates `discoveryPackageManifest` structurally only — handler
+       shape is owned by `handler-digest-runtime-consistency` + the
+       Phase-4 hard ratchet), so hosting it before the Phase-4 cutover
+       pins CI to those legacy surfaces, while migrating it unhosted
+       proves nothing — its hosting + its re-pinning to the post-removal
+       surface must land ATOMICALLY with the ADR-095 phase that changes
+       the surface it observes.
+      **Phase-2A DONE 2026-08-24 (this commit, branch
+      `stage22/discovery-phase2`) — blockers (a)/(b) RESOLVED, ratchet
+      authoring continues:**
+      - (a) resolved: new narrowly justified exact-file matrix group
+        `discovery-live-v2` (four suites, no directory globs) + its CI step
+        in `.github/workflows/ci.yml`; all four re-run green in isolation
+        first (15/39/13/5), then green as the group (72 tests). Per-file
+        removal guards G2i in
+        `tests/infrastructure/acceptance-matrix-coverage.test.mjs` make
+        deletion or de-hosting fail the coverage suite; nothing was
+        quarantined or weakened.
+       - (b) resolved by hosting GREEN on the current legacy baseline
+         WITHOUT repinning (the production surface has NOT changed; the
+         suite truthfully pins the legacy surfaces it observes — the dead
+         settlement-repository + certificate-projection dist imports and
+         the `factory_proposals` seed, NOT any six-handler count/ID):
+         migration-conformance re-run green in isolation (35/35) and inside
+         the `process-modules` group (exact-file entry, group green 1461
+         tests); removal guard G2j added. Its MANDATORY same-commit Phase-4
+         migration is recorded machine-readably in
+         `tests/infrastructure/adr-095-removal-inventory.mjs`
+         (`mandatoryPhase4Repins`): at the cutover commit the imports of
+         the dead `discovery-settlement-repository.js` /
+         `discovery-outcome-certificate-projection.js` migrate or delete
+         per the legacy-only list (the `discoveryPackageManifest` pin needs
+         no handler-shape edit — its lane validates the manifest
+         structurally and stays green across the one-handler repin, whose
+         truth is enforced by `handler-digest-runtime-consistency` + the
+         Phase-4 hard ratchet); at Phase 5 its fresh-DB `factory_proposals`
+         INSERT follows the schema closure removal.
+      - Phase-2A bridge ratchets (additive, green-today, non-vacuous;
+        hosted BLOCKING in the architecture group):
+         `tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs` —
+         BR1 inventory self-validation with EXACT pinned counts (dead 35 =
+         26 phase-4 files + 9 dead-lane resources; kept 43 = 20 + 4
+         partial-live containers + 10 + 9); BR2 unresolved monotonicity +
+         Phase-4 atomic gate (exact baseline 5, growth rejected;
+         `phase4BlockedByUnresolved` true exactly while `unresolved` is
+         non-empty — decoupled mutated clones fail validation, and the
+         bidirectional dead-file presence counter stays deferred until
+         closure: no counter over an unproven baseline); BR3
+         dependency-direction allowlist DENIES any ADR-095 dead-file edge
+         (bounded to the KNOWN_VIOLATIONS array block + its discoveryLeaks
+         append site; zero such entries today); BR4 live
+         composition registers EXACTLY one settlement handler
+         (`createDiscoveryProductionCellKernelHandlers` returns exactly
+         `discovery-settlement-policy`; `src/modules/discovery/index.ts`
+         never touches the dead six-handler factory; fail-closed reader
+         contract intact); BR5 the five retired handler IDs cannot fan out
+         beyond the exact known legacy files (discovery-installation.ts,
+         handler-adapter.ts, manifest.ts — machine-verified across src/).
+         NOT duplicated: the same-version six→one drift negative stays
+         owned by the Phase-1 boot-regression suite (G2h). The eight-ratchet
+         set + mutation proofs (Phase 2 proper) remain OPEN.
   3. Live side effects removed + v2 E2E — projection/proposal-ref/
      `discovery_proposal_id`/settlement-debug legacy query gone;
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
@@ -327,8 +416,11 @@ boot baseline) are executed under this point.
 `BRIDGE_MATRIX.md:§4`; Discovery removal decided by ADR-095
 (`docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md`;
 journal `docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete-removal.md`;
-registry entry in `docs/architecture/adr-closure-registry.json`); no fix
-commits yet.
+registry entry in `docs/architecture/adr-closure-registry.json`); Phase-1
+census + boot baseline `58d7ce4d`; Phase-2A (this commit, branch
+`stage22/discovery-phase2`): inventory module + live-v2/migration-conformance
+hosting + bridge ratchets + this refinement. No production legacy was
+deleted; no oracle quarantined or weakened.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

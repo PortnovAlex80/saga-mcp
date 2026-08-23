@@ -155,6 +155,53 @@ test('G2h: ADR-095 Phase-1 Discovery legacy-removal boot regression is covered (
   );
 });
 
+test('G2i: the four LIVE Discovery v2 suites are hosted blocking (ADR-095 Phase-2 ratchet-6 executor surface)', () => {
+  // ADR-095 Phase-2 blocker (a): these four proven-live oracles were CI
+  // orphans — committed, green in isolation, executed by nobody. They are the
+  // hosted executor surface for ratchet 6 ("live v2 behavior") and ADR-095
+  // Decision 5 preserves them untouched through the entire removal. Removing
+  // any exact file (deletion OR de-hosting from the discovery-live-v2 group)
+  // must fail HERE. Asserted against runSet only: quarantining a live-v2
+  // oracle is not an honest way to drop it.
+  const required = [
+    'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
+    'tests/discovery/order-constraint-register.test.mjs',
+    'tests/matrix/e-constraint-loss.test.mjs',
+    'tests/modules/discovery/discovery-check-providers.test.mjs',
+  ];
+  for (const f of required) {
+    assert.ok(
+      runSet.has(f),
+      `${f} must stay in a blocking run-set (ADR-095 Phase-2 live-v2 hosting; ratchet 6)`,
+    );
+  }
+});
+
+test('G2j: migration-conformance is hosted blocking green-on-legacy-baseline (ADR-095 Phase-2 blocker (b) resolution)', () => {
+  // tests/execution/migration-conformance.test.mjs was unhosted. What it
+  // actually hard-pins on the Discovery side (red-team F2 scope correction):
+  // the dist imports of the DEAD discovery-settlement-repository.js
+  // (restart lane) and discovery-outcome-certificate-projection.js
+  // (exact-output lane), plus the fresh-DB factory_proposals INSERT seed.
+  // It does NOT assert the six-handler count/IDs — its package-isolation
+  // lane validates discoveryPackageManifest structurally only; handler
+  // shape is owned by
+  // tests/architecture/handler-digest-runtime-consistency.test.mjs + the
+  // Phase-4 hard ratchet (same-commit repin to the one-handler
+  // production-cell digest). It is green on exactly that legacy baseline
+  // (35/35, 2026-08-24) WITHOUT repinning (the production surface has not
+  // changed yet). Its MANDATORY same-commit Phase-4 migration (the two dead
+  // imports + the factory_proposals seed) is recorded machine-readably in
+  // tests/infrastructure/adr-095-removal-inventory.mjs
+  // (mandatoryPhase4Repins). Removing the exact file or dropping it from the
+  // process-modules run-set must fail HERE — an unhosted migration proof
+  // proves nothing.
+  assert.ok(
+    runSet.has('tests/execution/migration-conformance.test.mjs'),
+    'migration-conformance must stay in a blocking run-set (ADR-095 Phase-2 hosting; Phase-4 same-commit repin owed)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [
