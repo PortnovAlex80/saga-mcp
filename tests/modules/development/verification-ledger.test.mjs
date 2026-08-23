@@ -44,6 +44,9 @@
 //     pinned by the pure-classifier test;
 //   - executed facts carry the opening obligation truth (an optional ledger
 //     item records required=false — never a hardcoded required=true);
+//   - executed facts fail closed on a caller-supplied verificationItemKey
+//     that contradicts the opening fact for the exact criterion (typed
+//     ITEM_KEY_MISMATCH; NO executed row is appended);
 //   - the render guard never fabricates executed verification (BLOCKING
 //     MUTATION: rendering terminal-unknown as executed/discharged fails).
 import { test } from 'node:test';
@@ -1840,6 +1843,52 @@ test('executed facts carry the opening obligation truth: an optional ledger item
     assert.equal(optional.state, 'executed');
     assert.equal(optional.discharged, true,
       'the exact passed receipt still discharges an optional obligation');
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+test('executed facts fail closed on a mismatched verificationItemKey: no executed row is appended', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 48);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 48, developmentCase, graph });
+
+    const before = readDevelopmentVerificationLedgerEvents(db, 48);
+    assert.equal(before.length, 4, 'two criterion keys x (proposed + pending)');
+
+    // The caller attributes the executed fact of 14:AC-1 to the WRONG
+    // verification item (verify-ac-2 — the item that owns 15:AC-2). The
+    // guard must refuse BEFORE any append, typed and fail-closed.
+    assert.throws(
+      () => recordVerificationExecuted(db, {
+        processRunId: 48, criterionKey: '14:AC-1', verificationItemKey: 'verify-ac-2',
+        outcome: 'passed', receiptRef: 'check-receipt:mismatch',
+        receiptDigest: sha256Hex('mismatch'), candidateHash: CANDIDATE_HASH,
+      }),
+      /DEVELOPMENT_VERIFICATION_LEDGER_ITEM_KEY_MISMATCH/,
+      'an executed fact cannot be re-attributed to a different verification item',
+    );
+
+    // Fail-closed: the refusal appended NOTHING — the ledger is unchanged.
+    const after = readDevelopmentVerificationLedgerEvents(db, 48);
+    assert.deepEqual(after, before,
+      'the mismatch refusal leaves the raw event history untouched');
+    assert.equal(after.filter(e => e.entryState === 'executed').length, 0,
+      'no executed row appeared');
+
+    // The exact criterion stays an open pending obligation — the refusal
+    // neither discharges nor closes it.
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 48 });
+    const mismatched = projection.entries.find(e => e.criterionKey === '14:AC-1');
+    assert.equal(mismatched.state, 'pending');
+    assert.equal(mismatched.discharged, false);
+    assert.equal(mismatched.verificationItemKey, 'verify-ac-1',
+      'the opening item attribution is intact');
     assertVerificationAccountingIntegrity(projection);
   } finally {
     db.close();

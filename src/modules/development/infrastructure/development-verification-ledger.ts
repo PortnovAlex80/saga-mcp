@@ -274,7 +274,10 @@ export function openVerificationLedgerAtGraphMaterialization(
  * truth as the opening proposed/pending fact (read from the ledger, never
  * re-asserted by the caller): an optional obligation (`required=false`) must
  * not morph into a required one in the raw event history just because it
- * executed.
+ * executed. The caller-supplied `verificationItemKey` is therefore COMPARED
+ * against the opening fact for the exact criterion — a mismatch is a typed
+ * fail-closed refusal thrown BEFORE any append (the executed fact can never
+ * be silently re-attributed to a different verification item).
  */
 export function recordVerificationExecuted(
   db: Database.Database,
@@ -303,6 +306,16 @@ export function recordVerificationExecuted(
   if (!opened) {
     throw new Error(
       `DEVELOPMENT_VERIFICATION_LEDGER_ENTRY_UNKNOWN: ${input.processRunId}/${input.criterionKey}`,
+    );
+  }
+  if (opened.verification_item_key !== input.verificationItemKey) {
+    // Fail closed BEFORE the append: the caller asserts a different
+    // verification item than the one that opened this exact criterion —
+    // a seam defect, never a silently re-attributed executed fact.
+    throw new Error(
+      `DEVELOPMENT_VERIFICATION_LEDGER_ITEM_KEY_MISMATCH: ${input.processRunId}/${input.criterionKey}`
+        + ` opened=${opened.verification_item_key}`
+        + ` caller=${input.verificationItemKey}`,
     );
   }
   db.prepare(
