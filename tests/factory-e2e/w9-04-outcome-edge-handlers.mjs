@@ -291,6 +291,12 @@ export function buildDevelopmentBlockedHandlers() {
         acceptanceCriterionKey: acKey,
         acceptedCriterionHash,
         candidateHash: candidate.candidateHash,
+        // ADR-090 (CC-IC-2): echo the card-pinned coveredConstraintIds when
+        // present (lineage) — this scenario's fault stimulus is the
+        // out-of-band DRIFT, not a constraint-lineage defect.
+        ...(Array.isArray(found.coveredConstraintIds)
+          ? { coveredConstraintIds: [...found.coveredConstraintIds] }
+          : {}),
         outcome: 'passed',
         evidence: {
           summary: `W9-04 scripted verification passed for ${found.key}`,

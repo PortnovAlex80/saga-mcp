@@ -423,32 +423,52 @@ Choose Option B. Normatively:
    browser/canvas/any frontend specifics arrive only through
    workshop-declared data (Conveyor Mental Model §3; master plan §4).
 5. **Open questions are obligations with owners.** Settlement drafts
-   kind `open-question` entries 1:1 and positionally from the proposal
-    `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
-    must reach, through the existing disposition network, either `resolved`
-    (with evidence) or `deferred` (with non-empty reason, owner, and
-    unblock criterion) or `waived` — every waiver on a new-v2 entry
-    requires TRUSTED OPERATOR ATTRIBUTION (a recorded operator identity on
-    the per-entry waiver; an author or model may at most propose one), and
-    ANY author-attributed waiver — a single entry or many entries in one
-    act — is a typed red; no separate "mass waiver" category is defined
-    beside the per-entry rule (an attempted multi-entry author waiver is
-    simply a set of red per-entry waivers). Undisposed open questions are a
-    typed red
-   (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
-   strings. Dispositions are DIGEST-PINNED to the register they were
-   authored against: the disposition freeze carries the `registerDigest` it
-   disposes, and a disposition set authored against one register digest
-   applied to another is a typed red — positional `ord-c-NNN` dispositions
-   are never reusable across register revisions (today
-   `constraint_dispositions` is keyed positionally with no register-digest
-   binding; closing that gap is CC-IC-2, mutation m2d). And the arithmetic
-    stays honest: `resolved` and `deferred` are disposition STATES, not
-    coverage discharges — only the trusted-operator-attributed typed
-    waiver subtracts an entry from the required set, so a resolved or
-    deferred open-question entry REMAINS in (register minus typed waivers
-    ⊆ covered) until it is covered or waived by the operator; resolution
-    and deferral never become silent waivers.
+    kind `open-question` entries 1:1 and positionally from the proposal
+     `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
+     must reach, through the existing disposition network, either `resolved`
+     (with evidence) or `deferred` (with non-empty reason, owner, and
+     unblock criterion) or `waived` — every waiver on a new-v2 entry
+     requires TRUSTED OPERATOR ATTRIBUTION (a recorded operator identity on
+     the per-entry waiver; an author or model may at most propose one), and
+     ANY author-attributed waiver — a single entry or many entries in one
+     act — is a typed red; no separate "mass waiver" category is defined
+     beside the per-entry rule (an attempted multi-entry author waiver is
+     simply a set of red per-entry waivers). Undisposed open questions are a
+     typed red
+    (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
+    strings. Dispositions are DIGEST-PINNED to the register they were
+    authored against: the disposition freeze carries the `registerDigest` it
+    disposes, and a disposition set authored against one register digest
+    applied to another is a typed red — positional `ord-c-NNN` dispositions
+    are never reusable across register revisions (today
+    `constraint_dispositions` is keyed positionally with no register-digest
+    binding; closing that gap is CC-IC-2, mutation m2d). And the arithmetic
+     stays honest: `resolved` and `deferred` are disposition STATES, not
+     coverage discharges — only the trusted-operator-attributed typed
+     waiver subtracts an entry from the required set, so a resolved or
+     deferred open-question entry REMAINS in (register minus typed waivers
+     ⊆ covered) until it is covered or waived by the operator; resolution
+     and deferral never become silent waivers.
+     IMPLEMENTATION AMENDMENT (2026-08-23, CC-IC-2 — decision journal
+     `docs/architecture/decision-journal/2026-08-23-cc-ic2-waiver-authority.md`,
+     Option A): the reserved v2 waiver capability is INTENTIONALLY
+     UNAVAILABLE until a trusted channel lands. V2 brief metadata is
+     worker-authored, so ANY attribution record carried inside it —
+     including a perfectly shaped operator-identity record — is
+     worker-authored by construction and cannot carry operator authority;
+     no operator-owned channel (command / append-only ledger) exists yet.
+     Accordingly CC-IC-2 lands fail-closed: the v2 grammar is exactly
+     resolved+evidenceRef | deferred+reason+owner+unblockCriterion on kind
+     `open-question` and `accepted` on every other kind, and EVERY v2
+     `waived` record — whatever its shape — is the `WAIVER_UNAVAILABLE`
+     typed red at the A1 gate and the settlement freeze, never enters
+     `waivedIds`, and never subtracts from the coverage reverse diff (so on
+     v2 the required set is the full register: register ⊆ covered). Workers
+     may propose waivers in prose only; proposals never subtract
+     obligations. Re-opening `waived` for v2 requires an operator-owned
+     command/append-only ledger channel through a new decision record —
+     never a widening of the brief-metadata grammar. The v1 frozen waiver
+     semantics are untouched.
  6. **Coverage stays the ADR-088 mechanism.** v2 entries join the same
     kernel-derived `coveredConstraintIds` relay and the same SRS §D2 and
     §2.2 reverse diff (register ids minus union of covered ids minus typed

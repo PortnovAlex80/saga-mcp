@@ -42,6 +42,33 @@ const { W9_HAPPY_HANDLERS } = await import('../factory-e2e/w9-happy-handlers.mjs
 
 const FRM = 'solution-formalization@1.0.0';
 
+// ADR-090 (CC-IC-2): the covered_constraint_ids relay read back from the
+// ACCEPTED brief's authored dispositions (this drive's DB is the harness DB —
+// the same read the W9 corpus performs through artifact_list): EVERY
+// non-waived id — accepted AND resolved/deferred alike. On v2,
+// resolved/deferred are disposition states, never coverage discharges, so
+// the open-question entries stay obligations the AC/SRS work must cover;
+// legacy v1 reasoned waivers are the only lawful exclusion.
+function coveredConstraintIdsFromBriefDb(db, epicId) {
+  const brief = db.prepare(
+    `SELECT metadata FROM artifacts
+      WHERE epic_id=? AND type='brief' AND status='accepted'
+      ORDER BY id DESC LIMIT 1`,
+  ).get(epicId);
+  if (!brief?.metadata) return [];
+  try {
+    const parsed = JSON.parse(brief.metadata);
+    const dispositions = parsed?.constraint_dispositions;
+    if (!dispositions || typeof dispositions !== 'object') return [];
+    return Object.entries(dispositions)
+      .filter(([, value]) => value && value.disposition !== 'waived')
+      .map(([id]) => id)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 // --- Material B handlers: three criteria, different sections --------------
 function acceptanceAuthorB({ handlers, assignment, context, db }) {
   const taskRow = db.prepare(
@@ -60,6 +87,11 @@ function acceptanceAuthorB({ handlers, assignment, context, db }) {
   const nfrs = accepted('NFR');
   const ucs = accepted('UC');
   if (!frs.length) throw new Error('w1-4: no accepted FR for acceptance B');
+  // ADR-090 (CC-IC-2): the first B criterion carries the covered_constraint_ids
+  // relay read back from B's accepted brief — EVERY non-waived id (the
+  // acceptance coverage gate diffs the v2 register, which never subtracts,
+  // against it).
+  const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
 
   const specs = [
     ['AC-B1', 'AC-B1: Hyperspace Fuel Model'],
@@ -75,6 +107,9 @@ function acceptanceAuthorB({ handlers, assignment, context, db }) {
     const ac = handlers.artifact_create({
       project_id: projectId, epic_id: epicId, type: 'AC', code, title,
       path: p, status: 'accepted',
+      ...(code === 'AC-B1' && coveredIds.length > 0
+        ? { metadata: { covered_constraint_ids: coveredIds } }
+        : {}),
     });
     handlers.trace_add({ source_id: ac.id, target_type: 'artifact', target_id: frs[0].id, link_type: 'derived_from' });
     if (ucs.length) handlers.trace_add({ source_id: ac.id, target_type: 'artifact', target_id: ucs[0].id, link_type: 'derived_from' });
@@ -100,14 +135,22 @@ function architectureAuthorB({ handlers, assignment, context, db }) {
     `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' AND status='accepted' ORDER BY id LIMIT 1`,
   ).all(epicId);
   if (!prds.length) throw new Error('w1-4: no accepted PRD for architecture B');
-  const stanza = (ac, title, files, kind) => [
-    `- ac: ${ac}`, `  title: ${title}`, `  module: src/material-b`,
+  // ADR-090 (CC-IC-2): the first §D2 stanza carries the covered_constraint_ids
+  // relay read back from B's accepted brief — EVERY non-waived id. The SRS
+  // coverage diff requires the union over stanzas to cover register B
+  // (which never subtracts on v2 — resolved/deferred stay obligations).
+  const coveredIds = coveredConstraintIdsFromBriefDb(db, epicId);
+  const coveredField = coveredIds.length > 0
+    ? `\n  covered_constraint_ids: ${coveredIds.join(', ')}`
+    : '';
+  const stanza = (ac, title, files, kind, extra = '') => [
+    `- ac: ${ac}`, `  title: ${title}`, '  module: src/material-b',
     `  files: ["${files}"]`, "  invariants: ['Deterministic']", "  test_layers: ['contract']",
-    '  pattern: A', '  depends_on: []', `  ac_kind: ${kind}`, '  criticality: blocker',
+    '  pattern: A', '  depends_on: []', `  ac_kind: ${kind}`, `  criticality: blocker${extra}`,
   ].join('\n');
   const srsContent = [
     '# SRS B', '', '## §D2 Acceptance Criteria Decomposition', '', '```yaml',
-    stanza('AC-B1', 'Hyperspace Fuel Model', 'src/material-b/fuel.js', 'implementation'),
+    stanza('AC-B1', 'Hyperspace Fuel Model', 'src/material-b/fuel.js', 'implementation', coveredField),
     stanza('AC-B2', 'Market Price Spread', 'src/material-b/market.js', 'implementation'),
     stanza('AC-B3', 'Pirate Encounter Risk', 'src/material-b/risk.js', 'implementation'),
     // ADR-078 F-1 (pinned semantics): the freeze conserves EVERY accepted AC
@@ -145,7 +188,7 @@ function architectureAuthorB({ handlers, assignment, context, db }) {
 // cells lawfully replay A's capsules (observed: capsule B carried A's
 // AC-1/AC-2). A real second product has a different brief and PRD.
 function productContractAuthorWithDecoy(base) {
-  return function withDecoy({ handlers, assignment, context, db }) {
+  return function withDecoy({ handlers, assignment, meta, context, db }) {
     const mutated = new Set();
     const upstreamCreate = handlers.artifact_create;
     const diffHandlers = {
@@ -162,7 +205,9 @@ function productContractAuthorWithDecoy(base) {
         return upstreamCreate(input);
       },
     };
-    const out = base({ handlers: diffHandlers, assignment, context, db });
+    // meta MUST forward: the CC-IC-2 disposition helper inside the base reads
+    // the FormalizationCase from the task's own process_node_input.
+    const out = base({ handlers: diffHandlers, assignment, meta, context, db });
     try {
       const taskRow = db.prepare(
         'SELECT t.epic_id, e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?',

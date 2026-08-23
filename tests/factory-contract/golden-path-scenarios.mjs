@@ -6,6 +6,11 @@
 
 import { spawnSync } from 'node:child_process';
 import { actions } from './scenario-engine.mjs';
+import { buildOrderConstraintRegisterV2 } from '../../dist/shared/constraint-register.js';
+import {
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+} from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 
 const FRM = 'solution-formalization@1.0.0';
 const DISC = 'product-discovery@3.0.2';
@@ -15,6 +20,89 @@ function metaOf(task) {
   return typeof task.metadata === 'string'
     ? JSON.parse(task.metadata || '{}')
     : (task.metadata || {});
+}
+
+/**
+ * ADR-090 (CC-IC-2) corpus migration: the deterministic author computes the
+ * SAME register the Discovery settlement froze (proposal drafts + unknowns +
+ * the DECLARED, digest-pinned lifecycle injection table — all public data the
+ * author can read) and disposes EVERY entry in the strict v2 grammar, pinning
+ * the register digest the dispositions were authored against. The worker_done
+ * disposition gate and the settlement freeze verify both.
+ */
+function constraintRegisterOf(task) {
+  const formalizationCase = findObject(
+    metaOf(task).process_node_input ?? metaOf(task),
+    value => value.schemaVersion === 'factory.formalization-case.v1',
+  );
+  if (!formalizationCase) return null;
+  const payload = formalizationCase.discoveryProposalPayload ?? {};
+  return buildOrderConstraintRegisterV2({
+    drafts: payload.order_constraints,
+    unknowns: payload.unknowns,
+    injections: [{
+      table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+      tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+    }],
+  });
+}
+
+/**
+ * The honest per-kind disposition set of this corpus (the 2026-08-23
+ * waiver-authority decision: v2 `waived` is TYPED UNAVAILABLE — brief
+ * metadata is worker-authored, so no operator attribution a worker writes
+ * can carry authority; workers may PROPOSE waivers in prose only):
+ *  - open-question entries ('None blocking.'): `resolved` citing the
+ *    AUTHENTIC resolution evidence of this corpus — the Discovery readiness
+ *    assessment's unknowns_manageability dimension (sufficient), the product
+ *    that adjudicated the unknown. Resolution is a disposition state, NOT a
+ *    coverage discharge: the entry stays an obligation;
+ *  - every other entry (injected synthesis/ordered-smoke, any draft):
+ *    the brief/PRD/AC work carries it — accepted.
+ */
+function constraintDispositionsOf(register) {
+  if (!register) return null;
+  const dispositions = {};
+  for (const entry of register.constraints) {
+    dispositions[entry.id] = entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' };
+  }
+  return {
+    constraint_dispositions: dispositions,
+    constraint_dispositions_register_digest: register.registerDigest,
+  };
+}
+
+/**
+ * The SRS §D2 covered_constraint_ids the e2e AC-1 stanza carries: EVERY
+ * non-waived register id — accepted AND resolved/deferred alike. On v2,
+ * resolved/deferred are disposition states, never coverage discharges, so
+ * the open-question entries REMAIN obligations the AC/SRS work must cover
+ * (the acceptance/SRS coverage gates diff the v2 register — which never
+ * subtracts — against exactly this relay). Read from the accepted brief's
+ * metadata: the worker-visible disposition source (the architecture task
+ * input carries the frozen baseline, not the FormalizationCase). Legacy v1
+ * reasoned waivers are the only lawful exclusion.
+ */
+async function coveredConstraintIdsFromBrief(client, epicId) {
+  const briefs = await actions.findAcceptedArtifacts(client, epicId, 'brief');
+  for (const brief of briefs) {
+    let metadata = brief.metadata;
+    if (typeof metadata === 'string') {
+      try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+    }
+    const dispositions = metadata?.constraint_dispositions;
+    if (!dispositions || typeof dispositions !== 'object') continue;
+    return Object.entries(dispositions)
+      .filter(([, value]) => value && value.disposition !== 'waived')
+      .map(([id]) => id)
+      .sort();
+  }
+  return [];
 }
 
 function findObject(value, predicate, seen = new Set()) {
@@ -113,12 +201,19 @@ const formalizationProduct = async ({ client, task, prompt, repoPath }) => {
     scaffold_artifacts: [], shared_mutation_risk: false,
     completeness: 'high', degraded: false,
   };
+  // ADR-090 (CC-IC-2): dispose every register entry in the strict v2 grammar
+  // and pin the register digest the dispositions were authored against.
+  const register = constraintRegisterOf(task);
+  const constraintDispositions = constraintDispositionsOf(register);
   if (repoPath) actions.writeFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = await client.callJson('artifact_create', {
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md',
     status: 'accepted',
-    metadata: { brief_payload: briefPayload },
+    metadata: {
+      brief_payload: briefPayload,
+      ...(constraintDispositions ?? {}),
+    },
   });
   const prd = await actions.createArtifact(client, {
     projectId, epicId, type: 'PRD', code: 'PRD', title: 'Product Requirements',
@@ -165,9 +260,23 @@ const formalizationAcceptance = async ({ client, task, prompt, repoPath }) => {
   const nfrs = await actions.findAcceptedArtifacts(client, epicId, 'NFR');
   const ucs = await actions.findAcceptedArtifacts(client, epicId, 'UC');
   if (!frs.length) throw new Error('No accepted FR for acceptance');
-  const ac1 = await actions.createArtifact(client, {
-    projectId, epicId, type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes',
-    artifactPath: 'docs/formalization/AC-1.md', repoPath,
+  // ADR-090 (CC-IC-2): the e2e AC-1 artifact carries the covered_constraint_ids
+  // relay for EVERY non-waived register entry (on v2: all of them —
+  // resolved/deferred stay obligations) — the acceptance coverage gate diffs
+  // the v2 register (which never subtracts) against exactly this metadata,
+  // and the baseline freeze projects it into the Development handoff. Never
+  // copied from task prose: read back from the accepted brief's dispositions.
+  const coveredIds = await coveredConstraintIdsFromBrief(client, epicId);
+  // Same file bytes + heading grammar as actions.createArtifact for an AC.
+  if (repoPath) {
+    actions.writeFile(repoPath, 'docs/formalization/AC-1.md',
+      `## AC-1: Pipeline Completes\n\nDeterministic AC artifact for AC-1.\n`);
+  }
+  const ac1 = await client.callJson('artifact_create', {
+    project_id: projectId, epic_id: epicId, type: 'AC', code: 'AC-1',
+    title: 'AC-1: Pipeline Completes', path: 'docs/formalization/AC-1.md',
+    status: 'draft',
+    metadata: coveredIds.length > 0 ? { covered_constraint_ids: coveredIds } : {},
   });
   await actions.addTrace(client, ac1.id, frs[0].id, 'derived_from');
   if (ucs.length) await actions.addTrace(client, ac1.id, ucs[0].id, 'derived_from');
@@ -195,7 +304,22 @@ const formalizationArchitecture = async ({ client, task, prompt, repoPath }) => 
   const prds = await actions.findAcceptedArtifacts(client, epicId, 'PRD');
   if (!prds.length) throw new Error('No accepted PRD for architecture');
 
-  const srsContent = `# SRS\n\n## §D2 Acceptance Criteria Decomposition\n\n\`\`\`yaml\n- ac: AC-1\n  title: Pipeline Completes\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Factory reaches terminal']\n  test_layers: ['e2e']\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n- ac: AC-2\n  title: NFR Compliance\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Deterministic']\n  test_layers: ['contract']\n  pattern: B\n  depends_on: []\n  ac_kind: implementation\n  criticality: degradable\n\`\`\`\n\n## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|---------------|------------------------|-----------|------|\n| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-08 |\n`;
+  // ADR-090 (CC-IC-2): the e2e AC-1 stanza carries the covered_constraint_ids
+  // relay for EVERY non-waived register entry — the injected
+  // whole-product-synthesis + ordered-smoke obligations AND the resolved
+  // open-question obligation (a resolution is a disposition state, never a
+  // coverage discharge — the entry stays covered by the AC/SRS work).
+  const coveredIds = await coveredConstraintIdsFromBrief(client, epicId);
+  const coveredField = coveredIds.length > 0
+    ? `\n  covered_constraint_ids: ${coveredIds.join(', ')}`
+    : '';
+  const ac1Stanza = `- ac: AC-1\n  title: Pipeline Completes\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Factory reaches terminal']\n  test_layers: ['e2e']\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker${coveredField}`;
+  // ADR-090 (CC-IC-2): the §2.2 Module Manifest — the required
+  // synthesis-ownership evidence once the register is non-empty. The declared
+  // module files must sit inside the plan's implementation change scopes
+  // (the planner declares the module directory scope, so every declared
+  // file is owned write authority for the chain).
+  const srsContent = `# SRS\n\n## §D2 Acceptance Criteria Decomposition\n\n\`\`\`yaml\n${ac1Stanza}\n- ac: AC-2\n  title: NFR Compliance\n  module: src/factory-contract\n  files: ['src/factory-contract/']\n  invariants: ['Deterministic']\n  test_layers: ['contract']\n  pattern: B\n  depends_on: []\n  ac_kind: implementation\n  criticality: degradable\n\`\`\`\n\n### 2.2 Module Manifest\n\n| Module | Files |\n|---|---|\n| factory-contract | \`src/factory-contract/index.ts\` |\n\n## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|---------------|------------------------|-----------|------|\n| 1 | Scripted workers | CONVEYOR §16 | Real LLM | Deterministic | 2026-08-08 |\n`;
   const srsPath = 'docs/formalization/SRS.md';
   actions.writeFile(repoPath, srsPath, srsContent);
   const srs = await client.callJson('artifact_create', {
@@ -252,7 +376,11 @@ const developmentPlan = async ({ client, task, prompt }) => {
       dependsOnKeys: index === 0
         ? []
         : [`impl-${criterionId(implementationCriteria[index - 1])}`],
-      changeScopes: [`src/factory-contract/impl-${criterionId(ac)}.ts`],
+      // ADR-090 (CC-IC-2): the SRS §2.2 Module Manifest declares the module
+      // directory's files — the chain root owns the whole directory scope,
+      // so every declared file is covered write authority; the dependency
+      // chain supplies the required ordering for the overlap.
+      changeScopes: ['src/factory-contract/'],
       required: true,
       criticality: ac.criticality || 'blocker',
     }));
@@ -399,6 +527,12 @@ const developmentVerify = async ({ client, task, prompt }) => {
     acceptanceCriterionKey: acKey,
     acceptedCriterionHash,
     candidateHash: candidate.candidateHash,
+    // ADR-090 (CC-IC-2): when the verification card pins coveredConstraintIds
+    // (the AC-drift relay from the frozen criterion), the evidence must echo
+    // the exact same set — lineage pins the constraint IDs to the criterion.
+    ...(Array.isArray(item.coveredConstraintIds)
+      ? { coveredConstraintIds: [...item.coveredConstraintIds] }
+      : {}),
     outcome: 'passed',
     evidence: {
       summary: `Factory contract verification passed for ${item.key}`,

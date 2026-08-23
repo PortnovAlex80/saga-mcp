@@ -5,12 +5,15 @@ export {
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import {
+  ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
   buildOrderConstraintRegister,
   orderConstraintRegisterRef,
   verifyOrderConstraintRegister,
   type OrderConstraintClass,
   type OrderConstraintRegister,
 } from '../../../shared/constraint-register.js';
+/** The v2 register schema version constant (re-exported for the freeze seam). */
+export { ORDER_CONSTRAINT_REGISTER_SCHEMA_V2 };
 import { sha256Hex } from '../../../shared/canonical-json.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'factory.formalization-settlement-input.v1';
@@ -307,7 +310,13 @@ export interface SolutionContractConstraintCoverage {
     /** Execution-class only (see OrderConstraintEntry.entrypointFiles). */
     readonly entrypointFiles?: readonly string[];
   }[];
-  /** Typed waivers — the only lawful escape hatch from the reverse diff. */
+  /**
+   * Typed waivers — the only lawful escape hatch from the reverse diff.
+   * ADR-090 (CC-IC-2) + the 2026-08-23 waiver-authority decision: per
+   * schema version — v1 keeps the frozen legacy reasoned-waiver rule; on
+   * v2 the waiver state is TYPED UNAVAILABLE, so this is ALWAYS empty
+   * (resolved/deferred never discharge coverage; nothing subtracts on v2).
+   */
   readonly waivedIds: readonly string[];
 }
 
@@ -316,6 +325,14 @@ export interface SolutionContractConstraintCoverage {
  * dispositions: a waiver counts ONLY with disposition='waived' AND a
  * non-empty reason. Anything else is a reaction defect the A1 gate owns —
  * never a coverage free pass.
+ *
+ * LEGACY (v1) RULE ONLY: this predicate dates from ADR-088, when every
+ * register was v1 and a reasoned author waiver was the accepted discharge.
+ * Under ADR-090 (CC-IC-2) + the 2026-08-23 waiver-authority decision the
+ * rule is FROZEN-LEGACY-V1-ONLY — use {@link waivedConstraintIdsForRegister},
+ * which applies this legacy rule to v1 registers and returns the empty set
+ * for v2 registers (the v2 waiver state is typed unavailable; nothing
+ * subtracts on v2).
  */
 export function waivedConstraintIdsFromDispositions(
   dispositions: Readonly<Record<string, unknown>> | undefined | null,
@@ -333,6 +350,470 @@ export function waivedConstraintIdsFromDispositions(
     }
   }
   return waivedIds;
+}
+
+// ---------------------------------------------------------------------------
+// ADR-090 (CC-IC-2): kind-aware closed dispositions on the existing network
+// ---------------------------------------------------------------------------
+
+/**
+ * ADR-090 (CC-IC-2): the brief metadata field carrying the register digest the
+ * authored `constraint_dispositions` were disposed AGAINST. Positional
+ * `ord-c-NNN` ids are never reusable across register revisions: a disposition
+ * set without a pin, or pinned to a different register digest, is a typed red
+ * (mutation m2d) — never a silent positional re-application.
+ */
+export const CONSTRAINT_DISPOSITIONS_REGISTER_DIGEST_FIELD =
+  'constraint_dispositions_register_digest';
+
+/**
+ * ADR-090 (CC-IC-2) + the 2026-08-23 waiver-authority decision journal
+ * (docs/architecture/decision-journal/2026-08-23-cc-ic2-waiver-authority.md):
+ * `waived` is TYPED UNAVAILABLE on v2 registers. V2 brief metadata is
+ * authored by the WORKER, so any attribution record carried inside it —
+ * including a perfectly shaped `{ kind: 'operator-waiver', operator, reason,
+ * provenanceRef }` fake — is worker-authored by construction; there is no
+ * operator-owned channel (command / append-only ledger) whose bytes the
+ * gates could trust instead. Until such a channel lands, every v2 `waived`
+ * record is a typed red (`WAIVER_UNAVAILABLE`), never enters `waivedIds`,
+ * never subtracts from the coverage reverse diff, and never reaches the
+ * warrant. Workers may PROPOSE waivers in prose only; proposals never
+ * subtract obligations. There is accordingly NO v2 waiver record type.
+ *
+ * A parsed, valid v2 disposition for one register entry — the exact
+ * kind/state grammar: kind `open-question` disposes `resolved` or
+ * `deferred` ONLY; every other kind disposes `accepted` ONLY.
+ */
+export type ParsedConstraintDisposition =
+  | { readonly disposition: 'accepted' }
+  | { readonly disposition: 'resolved'; readonly evidenceRef: string }
+  | {
+    readonly disposition: 'deferred';
+    readonly reason: string;
+    readonly owner: string;
+    readonly unblockCriterion: string;
+  };
+
+/** One per-ID (or set-level) disposition defect, rendered as repair guidance. */
+export interface ConstraintDispositionGap {
+  /**
+   * The entry id the gap belongs to, or 'constraint_dispositions' for
+   * set-level defects (register-digest pin, key-set equality).
+   */
+  readonly targetId: string;
+  /** Stable machine-readable reason (typed, never prose-only). */
+  readonly reason: string;
+  /** Exact repair guidance for the author. */
+  readonly guidance: string;
+}
+
+const DISPOSITION_REASON_PREFIX = 'FORMALIZATION_CONSTRAINT_DISPOSITION_';
+
+function dispositionGap(
+  targetId: string,
+  reason: string,
+  guidance: string,
+): ConstraintDispositionGap {
+  return { targetId, reason: DISPOSITION_REASON_PREFIX + reason, guidance };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * The closed per-state field vocabularies of a v2 disposition record. The
+ * `waived` state has NO entry: it is typed-unavailable on v2 (see
+ * ParsedConstraintDisposition) — every waiver record, whatever its shape,
+ * is the WAIVER_UNAVAILABLE red.
+ */
+const V2_DISPOSITION_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  accepted: ['disposition'],
+  resolved: ['disposition', 'evidenceRef'],
+  deferred: ['disposition', 'reason', 'owner', 'unblockCriterion'],
+};
+
+/**
+ * The closed per-KIND state vocabulary of a v2 disposition: kind
+ * `open-question` (an obligation that must be resolved or owned-deferred)
+ * allows `resolved|deferred` ONLY; every other kind (an order clause the
+ * work either carries or does not) allows `accepted` ONLY. Cross-kind
+ * states are the STATE_INVALID_FOR_KIND red — never reinterpreted.
+ */
+function v2StatesForKind(entryKind: string): readonly string[] {
+  return entryKind === 'open-question'
+    ? ['resolved', 'deferred']
+    : ['accepted'];
+}
+
+/** snake_case ingress aliases never silently merged into a stored record. */
+const DISPOSITION_SNAKE_CASE_ALIASES: readonly string[] = [
+  'evidence_ref',
+  'unblock_criterion',
+  'operator_attribution',
+  'waiver_operator',
+  'waiver_reason',
+  'waiver_provenance_ref',
+];
+
+/**
+ * The typed reason every v2 `waived` record carries — rendered regardless of
+ * record shape. The 2026-08-23 waiver-authority decision (Option A): there
+ * is NO valid operator attribution inside worker-authored brief metadata,
+ * so the state itself is unavailable; see ParsedConstraintDisposition.
+ */
+function waiverUnavailableGap(targetId: string): ConstraintDispositionGap {
+  return dispositionGap(
+    targetId,
+    'WAIVER_UNAVAILABLE',
+    'the v2 waiver state is TYPED UNAVAILABLE: brief metadata is worker-authored, '
+      + 'so even a perfectly shaped operator-attribution record is a worker string, '
+      + 'not an operator act — there is no operator-owned waiver channel (command/'
+      + 'append-only ledger) to read trust from. Workers may PROPOSE a waiver in '
+      + 'prose only; a proposal never subtracts the obligation. Dispose '
+      + 'resolved+evidenceRef or deferred+reason+owner+unblockCriterion instead '
+      + '(open-question), or accepted (other kinds)',
+  );
+}
+
+/**
+ * Parse one v2 disposition record fail-closed in the EXACT kind/state
+ * grammar. Unknown states, kind-crossing states, the typed-unavailable
+ * `waived` state (any shape — including perfectly shaped operator-attribution
+ * records), missing required fields, unknown fields and snake_case aliases
+ * are typed gaps — never silently dropped or reinterpreted.
+ */
+function parseV2DispositionRecord(
+  targetId: string,
+  raw: unknown,
+  entryKind: string,
+): { parsed?: ParsedConstraintDisposition; gap?: ConstraintDispositionGap } {
+  if (!isRecord(raw)) {
+    return {
+      gap: dispositionGap(
+        targetId,
+        'RECORD_INVALID',
+        `disposition must be an object — got ${Array.isArray(raw) ? 'array' : typeof raw}`,
+      ),
+    };
+  }
+  const state = raw['disposition'];
+  // Option A of the 2026-08-23 waiver-authority decision: the v2 waiver
+  // state is typed unavailable WHATEVER the record carries — checked before
+  // any field inspection so the perfectly shaped fake operator record gets
+  // the waiver-specific typed red, not a generic field red.
+  if (state === 'waived') {
+    return { gap: waiverUnavailableGap(targetId) };
+  }
+  const allowed = V2_DISPOSITION_FIELDS[String(state)] ?? null;
+  if (!allowed) {
+    return {
+      gap: dispositionGap(
+        targetId,
+        'STATE_INVALID',
+        `disposition '${String(state)}' is not in the closed v2 grammar for this entry `
+          + `(kind '${entryKind}'); an unknown enum value is never a silent pass`,
+      ),
+    };
+  }
+  // The exact kind/state grammar: open-question disposes resolved|deferred
+  // ONLY (an unresolved obligation); every other kind disposes accepted
+  // ONLY (an order clause the work either carries or does not). Crossing
+  // the kinds is a typed red — an accepted open-question is a rubber stamp;
+  // a resolved/deferred order clause is a state the clause grammar never
+  // defined.
+  const statesForKind = v2StatesForKind(entryKind);
+  if (!statesForKind.includes(String(state))) {
+    return {
+      gap: dispositionGap(
+        targetId,
+        'STATE_INVALID_FOR_KIND',
+        `disposition '${String(state)}' is not in the closed grammar for kind `
+          + `'${entryKind}' (allowed: ${statesForKind.join(' | ')}) — the kind/state `
+          + `grammar is exact; a state is never reinterpreted across kinds`,
+      ),
+    };
+  }
+  for (const field of Object.keys(raw)) {
+    if (DISPOSITION_SNAKE_CASE_ALIASES.includes(field)) {
+      return {
+        gap: dispositionGap(
+          targetId,
+          'ALIAS_REJECTED',
+          `disposition record carries the snake_case ingress field '${field}' — `
+            + `the disposition vocabulary is closed camelCase; a silently merged alias `
+            + `is never accepted`,
+        ),
+      };
+    }
+    if (!allowed.includes(field)) {
+      return {
+        gap: dispositionGap(
+          targetId,
+          'FIELD_REJECTED',
+          `disposition record carries unknown field '${field}' — the closed `
+            + `${String(state)} vocabulary is { ${allowed.join(', ')} }; extra `
+            + `authority-bearing fields are never silently dropped`,
+        ),
+      };
+    }
+  }
+  if (state === 'accepted') return { parsed: { disposition: 'accepted' } };
+  if (state === 'resolved') {
+    const evidenceRef = raw['evidenceRef'];
+    if (!nonEmptyString(evidenceRef)) {
+      return {
+        gap: dispositionGap(
+          targetId,
+          'RESOLVED_EVIDENCE_REF_REQUIRED',
+          'resolved requires a non-empty evidenceRef naming the resolution evidence',
+        ),
+      };
+    }
+    return { parsed: { disposition: 'resolved', evidenceRef } };
+  }
+  // state === 'deferred'
+  const reason = raw['reason'];
+  const owner = raw['owner'];
+  const unblockCriterion = raw['unblockCriterion'];
+  const missing: string[] = [];
+  if (!nonEmptyString(reason)) missing.push('reason');
+  if (!nonEmptyString(owner)) missing.push('owner');
+  if (!nonEmptyString(unblockCriterion)) missing.push('unblockCriterion');
+  if (missing.length > 0) {
+    return {
+      gap: dispositionGap(
+        targetId,
+        'DEFERRED_INCOMPLETE',
+        `deferred requires non-empty ${missing.join(', ')} — a deferral without an `
+          + `owner or an unblock criterion is an opaque string, not an owned obligation`,
+      ),
+    };
+  }
+  return {
+    parsed: {
+      disposition: 'deferred',
+      reason: reason as string,
+      owner: owner as string,
+      unblockCriterion: unblockCriterion as string,
+    },
+  };
+}
+
+/** Parse one v1 (legacy) disposition record — the frozen ADR-088 grammar. */
+function parseV1DispositionRecord(
+  raw: unknown,
+): { valid: boolean; waived: boolean; reasonMissing: boolean } {
+  if (!isRecord(raw)) return { valid: false, waived: false, reasonMissing: false };
+  if (raw['disposition'] === 'accepted') return { valid: true, waived: false, reasonMissing: false };
+  if (raw['disposition'] === 'waived') {
+    const reason = raw['reason'];
+    const reasonMissing = !(typeof reason === 'string' && reason.trim().length > 0);
+    return { valid: !reasonMissing, waived: !reasonMissing, reasonMissing };
+  }
+  return { valid: false, waived: false, reasonMissing: false };
+}
+
+export interface CheckedConstraintDispositions {
+  /** null when every entry is validly disposed; otherwise the typed gaps. */
+  readonly gaps: readonly ConstraintDispositionGap[];
+  /** Parsed valid records by entry id (best effort; gaps take precedence). */
+  readonly parsed: Readonly<Record<string, ParsedConstraintDisposition>>;
+}
+
+/**
+ * ADR-090 (CC-IC-2): check a brief's authored `constraint_dispositions`
+ * against the register they dispose.
+ *
+ * v2 registers (strict semantics — the EXACT kind/state grammar of the
+ * 2026-08-23 waiver-authority decision):
+ *  - every entry must be disposed in its KIND-AWARE grammar — kind
+ *    `open-question`: `resolved`+evidenceRef | `deferred`+reason+owner+
+ *    unblockCriterion, NOTHING else (`accepted` is a typed red — an
+ *    open question is an obligation, not an order clause); every other
+ *    kind: `accepted`, NOTHING else (`resolved`/`deferred` are typed
+ *    reds); `waived` is TYPED UNAVAILABLE on v2 — every waiver record,
+ *    including a perfectly shaped operator-attribution fake, is the
+ *    WAIVER_UNAVAILABLE red (brief metadata is worker-authored; there is
+ *    no operator-owned channel to read trust from);
+ *  - EXACT key-set equality with the register entry ids (missing and EXTRA
+ *    keys are both red — an extra key is a disposition authored against a
+ *    different register);
+ *  - when `requireRegisterDigestPin` is set (the A1 gate — the m2d host) and
+ *    any disposition is present, the authored-against register digest pin
+ *    ({@link CONSTRAINT_DISPOSITIONS_REGISTER_DIGEST_FIELD}) is REQUIRED and
+ *    MUST equal the register digest (positional ord-c dispositions are never
+ *    reusable across register revisions). The freeze does not re-evaluate the
+ *    pin (the kernel port carries the map only): it binds registerDigest +
+ *    deterministic dispositionsDigest into the warrant instead;
+ *  - unknown fields and snake_case aliases inside records fail closed.
+ *
+ * v1 registers: the frozen ADR-088 grammar (accepted | waived+reason), subset
+ * semantics — bit-identical legacy behavior, no pin, no set equality.
+ */
+export function checkConstraintDispositionsForRegister(input: {
+  readonly register: OrderConstraintRegister;
+  readonly dispositions: Readonly<Record<string, unknown>>;
+  readonly authoredRegisterDigest?: unknown;
+  /** The A1 gate (m2d host) requires the authored-against pin; the freeze binds the warrant instead. */
+  readonly requireRegisterDigestPin?: boolean;
+}): CheckedConstraintDispositions {
+  const { register, dispositions, authoredRegisterDigest, requireRegisterDigestPin } = input;
+  const isV2 = register.schemaVersion === ORDER_CONSTRAINT_REGISTER_SCHEMA_V2;
+  const gaps: ConstraintDispositionGap[] = [];
+  const parsed: Record<string, ParsedConstraintDisposition> = {};
+  const registerIds = new Set(register.constraints.map(entry => entry.id));
+  if (isV2) {
+    // m2d: the authored-against pin (gate-owned). Required the moment
+    // anything is disposed; must equal the register digest being disposed.
+    if (requireRegisterDigestPin && Object.keys(dispositions).length > 0) {
+      if (authoredRegisterDigest === undefined || authoredRegisterDigest === null) {
+        gaps.push(dispositionGap(
+          'constraint_dispositions',
+          'REGISTER_DIGEST_PIN_MISSING',
+          `the brief metadata must carry '${CONSTRAINT_DISPOSITIONS_REGISTER_DIGEST_FIELD}' `
+            + `(<registerDigest>) beside constraint_dispositions — positional ord-c `
+            + `dispositions are never reusable across register revisions`,
+        ));
+      } else if (
+        typeof authoredRegisterDigest !== 'string'
+        || authoredRegisterDigest !== register.registerDigest
+      ) {
+        gaps.push(dispositionGap(
+          'constraint_dispositions',
+          'REGISTER_DIGEST_PIN_MISMATCH',
+          `dispositions were authored against register digest `
+            + `'${String(authoredRegisterDigest)}' but the case carries `
+            + `'${register.registerDigest}' — a disposition set carried across a `
+            + `registerDigest change (positional ord-c reuse) is red; re disposing `
+            + `against the current register is required`,
+        ));
+      }
+    }
+    // Exact set equality: extra keys are dispositions for ids this register
+    // never counted.
+    const extraIds = Object.keys(dispositions)
+      .filter(id => !registerIds.has(id))
+      .sort();
+    if (extraIds.length > 0) {
+      gaps.push(dispositionGap(
+        'constraint_dispositions',
+        'ID_SET_MISMATCH',
+        `disposition keys must equal the register entry ids exactly; extra ids not in `
+          + `the register: [${extraIds.join(', ')}] — a disposition authored against a `
+          + `different register is never silently applied`,
+      ));
+    }
+    for (const entry of register.constraints) {
+      if (!Object.hasOwn(dispositions, entry.id)) {
+        const grammar = entry.kind === 'open-question'
+          ? 'resolved+evidenceRef | deferred+reason+owner+unblockCriterion '
+            + '(waived is typed-unavailable on v2 — propose in prose only)'
+          : 'accepted (waived is typed-unavailable on v2 — propose in prose only)';
+        gaps.push(dispositionGap(
+          entry.id,
+          'UNDISPOSED',
+          `kind '${entry.kind ?? 'scope'}' entry is not disposed — react per ID with `
+            + `{ "disposition": ... } from the grammar: ${grammar}`,
+        ));
+        continue;
+      }
+      const result = parseV2DispositionRecord(entry.id, dispositions[entry.id], entry.kind ?? 'scope');
+      if (result.gap) gaps.push(result.gap);
+      else if (result.parsed) parsed[entry.id] = result.parsed;
+    }
+    return { gaps, parsed };
+  }
+  // Frozen v1 semantics — bit-identical with the pre-CC-IC-2 gate. No v2
+  // records are parsed here: the legacy grammar has no kinds, and the
+  // freeze's v1 waiver arithmetic stays on the frozen legacy rule through
+  // waivedConstraintIdsForRegister (v2 returns the empty set — the waiver
+  // state is typed unavailable there).
+  for (const entry of register.constraints) {
+    const record = parseV1DispositionRecord(dispositions[entry.id]);
+    if (record.valid) continue;
+    const reason = record.reasonMissing
+      ? ' (waived requires a non-empty reason)'
+      : '';
+    gaps.push(dispositionGap(
+      entry.id,
+      'UNDISPOSED',
+      `Constraint ${entry.id} (${entry.class}) "${entry.text}" is not disposed`
+        + ` in the brief artifact metadata constraint_dispositions${reason}.`
+        + ` React per ID: {"${entry.id}": {"disposition": "accepted"}} or`
+        + ` {"disposition": "waived", "reason": "<why>"}.`,
+    ));
+  }
+  return { gaps, parsed };
+}
+
+/**
+ * ADR-090 (CC-IC-2) honest required-coverage arithmetic, per the 2026-08-23
+ * waiver-authority decision: the set of ids a waiver subtracts from the
+ * reverse diff. v1 registers keep the frozen legacy rule (waived +
+ * non-empty reason). v2 registers return the EMPTY set ALWAYS — the v2
+ * waiver state is typed unavailable (brief metadata is worker-authored; no
+ * operator-owned channel exists), so NOTHING subtracts: `resolved` and
+ * `deferred` are disposition STATES, never coverage discharges, and a
+ * resolved or deferred open-question entry REMAINS in (register ⊆ covered)
+ * until it is covered — a future operator-owned waiver channel is the only
+ * lawful re-opening path.
+ */
+export function waivedConstraintIdsForRegister(
+  register: OrderConstraintRegister,
+  dispositions: Readonly<Record<string, unknown>> | undefined | null,
+): string[] {
+  if (register.schemaVersion !== ORDER_CONSTRAINT_REGISTER_SCHEMA_V2) {
+    return waivedConstraintIdsFromDispositions(dispositions);
+  }
+  // v2: no waiver exists, so nothing can be lawfully waived — ignore the
+  // authored dispositions entirely (an attempted waived record is the A1
+  // gate's red; here it simply never subtracts).
+  void dispositions;
+  return [];
+}
+
+/**
+ * Deterministic dispositions digest for the freeze/warrant: SHA-256 over the
+ * canonical JSON of the disposition map (keys sorted recursively), so the
+ * same disposition SET yields the same digest regardless of authoring or
+ * read-back key order. Bind beside the register digest at the warrant.
+ */
+export function constraintDispositionsDigest(
+  dispositions: Readonly<Record<string, unknown>> | undefined | null,
+): string {
+  return sha256Hex(dispositions ?? {});
+}
+
+/**
+ * ADR-090 (CC-IC-2) frozen read-back: verify a warrant's dispositions digest
+ * against the disposition set it froze. Read-back drift (the frozen map
+ * edited, or the digest computed over different content) is a typed red —
+ * never a silent re-issue.
+ */
+export function verifyWarrantDispositionsBinding(warrant: {
+  readonly constraintRegisterDigest: string;
+  readonly dispositionsDigest: string;
+  readonly dispositions: Readonly<Record<string, unknown>>;
+}): void {
+  if (!/^[a-f0-9]{64}$/.test(warrant.constraintRegisterDigest)) {
+    throw new Error(
+      'WARRANT_DISPOSITIONS_BINDING_INVALID: the warrant carries no valid '
+      + 'constraintRegisterDigest (64-hex) to pin the dispositions against',
+    );
+  }
+  const recomputed = constraintDispositionsDigest(warrant.dispositions);
+  if (recomputed !== warrant.dispositionsDigest) {
+    throw new Error(
+      'WARRANT_DISPOSITIONS_DIGEST_DRIFT: the warrant dispositionsDigest '
+      + `'${warrant.dispositionsDigest}' does not match the deterministic digest of `
+      + `the frozen dispositions ('${recomputed}') — read-back drift, never a silent re-issue`,
+    );
+  }
 }
 
 /**
@@ -355,7 +836,15 @@ export function buildSolutionContractConstraintCoverage(
         ? { entrypointFiles: [...entry.entrypointFiles] }
         : {}),
     })),
-    waivedIds: waivedConstraintIdsFromDispositions(briefDispositions),
+    // ADR-090 (CC-IC-2) honest waiver arithmetic per schema version — v1
+    // keeps the frozen legacy reasoned-waiver rule; v2 ALWAYS freezes an
+    // empty set (the v2 waiver state is typed unavailable — resolved and
+    // deferred are disposition states, never coverage discharges, and no
+    // worker-authored record can ever subtract on v2).
+    waivedIds: waivedConstraintIdsForRegister(
+      binding.constraintRegister,
+      briefDispositions,
+    ),
   };
 }
 

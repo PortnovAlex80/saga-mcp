@@ -39,11 +39,15 @@ import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   FORMALIZATION_SRS_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
+  ORDER_CONSTRAINT_REGISTER_SCHEMA_V2,
   buildSolutionContractConstraintCoverage,
+  checkConstraintDispositionsForRegister,
+  constraintDispositionsDigest,
   formalizationCaseIdentityDigest,
   resolveFormalizationCaseConstraintRegister,
   resolveFormalizationCaseRegisterAuthority,
   verifyWarrantCrossBind,
+  verifyWarrantDispositionsBinding,
   type FormalizationCase,
   type FormalizationConstraintRegisterBinding,
   type FormalizationSolutionContractPayload,
@@ -268,12 +272,37 @@ function createSettlementHandler(
       const briefDispositions
         = deps.graph.readBriefConstraintDispositionsForLifecycle?.(epicId, lifecycleRunId)
           ?? {} as Readonly<Record<string, unknown>>;
+      // ADR-090 (CC-IC-2): frozen read-back of the disposition freeze. A v2
+      // register's dispositions are verified AGAIN at the freeze — the gate
+      // owns the authored-against registerDigest pin (m2d); settlement owns
+      // never freezing an invalid set (exact kind/state grammar + exact set
+      // equality; a v2 waived record — including a perfectly shaped operator
+      // attribution fake — never reaches the warrant: the waiver state is
+      // typed unavailable per the 2026-08-23 waiver-authority decision).
+      // v1 registers keep the frozen legacy behavior bit-identically.
+      if (constraintBinding !== null
+        && constraintBinding.constraintRegister.schemaVersion
+          === ORDER_CONSTRAINT_REGISTER_SCHEMA_V2) {
+        const checked = checkConstraintDispositionsForRegister({
+          register: constraintBinding.constraintRegister,
+          dispositions: briefDispositions,
+        });
+        if (checked.gaps.length > 0) {
+          throw new Error(
+            'FORMALIZATION_DISPOSITION_FREEZE_INVALID: '
+            + checked.gaps.map(gap => `${gap.targetId}: ${gap.reason}`).join('; '),
+          );
+        }
+      }
       const formalizationCaseDigest = formalizationCaseIdentityDigest(formalizationCase);
       const warrantRef = constraintBinding
         ? {
             constraintRegisterRef: constraintBinding.constraintRegisterRef,
             constraintRegisterDigest: constraintBinding.constraintRegisterDigest,
-            dispositionsDigest: sha256Hex(briefDispositions),
+            // ADR-090 (CC-IC-2): deterministic dispositions digest — canonical
+            // over the frozen map, so authoring/read-back key order can never
+            // drift the warrant binding.
+            dispositionsDigest: constraintDispositionsDigest(briefDispositions),
             dispositions: briefDispositions,
             // ADR-090 (CC-IC-1) m7: the cross-bind — the warrant names the
             // exact discovery certificate hash and FormalizationCase
@@ -287,6 +316,9 @@ function createSettlementHandler(
           discoveryCertificateHash: formalizationCase.discoveryCertificateHash,
           formalizationCaseDigest,
         });
+        // ADR-090 (CC-IC-2): bind registerDigest + deterministic
+        // dispositionsDigest at the frozen read-back — drift is a typed red.
+        verifyWarrantDispositionsBinding(warrantRef);
       }
       const certificatePayload = {
         schemaVersion: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,

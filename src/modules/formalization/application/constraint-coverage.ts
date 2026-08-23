@@ -14,6 +14,9 @@ import type { FormalizationCase } from '../domain/formalization-schemas.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   resolveFormalizationCaseConstraintRegister,
+  resolveFormalizationCaseRegisterAuthority,
+  waivedConstraintIdsForRegister,
+  type FormalizationCaseRegisterAuthority,
 } from '../domain/formalization-schemas.js';
 import type {
   ConstraintCoverageRequirement,
@@ -28,11 +31,135 @@ interface DbHandle {
 }
 
 /**
+ * ADR-090 (CC-IC-2): resolve the register authority a formalization gate
+ * diffs against, CERTIFICATE-FIRST — the same v2 source of truth the
+ * settlement resolves (`resolveFormalizationCaseRegisterAuthority`). One
+ * resolution site shared by the A1 disposition gate and the A2 coverage
+ * readers, so the gates can never diff against different registers.
+ *
+ * Resolution:
+ *  - the discovery certificate row resolves and hash-verifies against the
+ *    case pin → the certificate register binding (or the typed no-obligations
+ *    attestation — the lawful null);
+ *  - the certificate TABLE does not exist on this host (legacy corpus
+ *    fixtures seed v1 cases with certificate-shaped refs on hosts whose
+ *    schema never created the table — the frozen-legacy exception; a missing
+ *    table is indistinguishable from a legacy host) → the frozen-legacy-v1
+ *    deterministic rebuild, bit-identical with the pre-CC-IC-2 gate;
+ *  - the table exists but the pinned ROW is missing → a typed red. A
+ *    certificate-shaped ref names a specific row; when that row is absent
+ *    the pinned authority does not resolve, and the gate must NEVER fall
+ *    back to a rebuild it cannot verify (the settlement-side resolver
+ *    `resolveCaseRegisterAuthority` already fails closed the same way with
+ *    FORMALIZATION_DISCOVERY_CERTIFICATE_MISSING);
+ *  - the row exists but diverges from the case pin (hash mismatch / binding
+ *    bypass / malformed payload) → a typed red — never a silent fallback that
+ *    would diff against a different register than the one the freeze rides.
+ */
+export function resolveRegisterAuthorityForCoverage(
+  db: DbHandle,
+  formalizationCase: FormalizationCase,
+): { ok: true; authority: FormalizationCaseRegisterAuthority | null }
+| { ok: false; code: string; message: string } {
+  const ref = formalizationCase.discoveryCertificateRef;
+  const match = /^certificate:(\d+)$/.exec(ref);
+  if (!match) {
+    return {
+      ok: true,
+      authority: {
+        binding: resolveFormalizationCaseConstraintRegister(formalizationCase),
+        attestation: null,
+      },
+    };
+  }
+  const certificateId = Number(match[1]);
+  let row: { certificate_payload?: unknown; certificate_hash?: unknown } | undefined;
+  try {
+    row = db.prepare(
+      `SELECT certificate_payload, certificate_hash
+         FROM factory_process_outcome_certificates WHERE id=?`,
+    ).get(certificateId) as { certificate_payload?: unknown; certificate_hash?: unknown }
+      | undefined;
+  } catch {
+    // No certificate table on this host (legacy corpus): frozen-legacy-v1
+    // rebuild fallback — bit-identical with the pre-CC-IC-2 gate.
+    return {
+      ok: true,
+      authority: {
+        binding: resolveFormalizationCaseConstraintRegister(formalizationCase),
+        attestation: null,
+      },
+    };
+  }
+  if (!row) {
+    // CC-IC-2 fail-closed review: the certificate table EXISTS but the
+    // pinned row is missing. A certificate-shaped ref names a specific
+    // authority row; when it does not resolve, diffing against an
+    // unverifiable rebuild is exactly the silent-fallback hole — typed red
+    // (mirrors the settlement resolver's FORMALIZATION_DISCOVERY_CERTIFICATE_
+    // MISSING). The only lawful legacy fallback is the missing-TABLE branch
+    // above (frozen v1 fixtures on hosts that never created the table).
+    return {
+      ok: false,
+      code: 'FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID',
+      message: `the discovery certificate ${ref} pinned by the case does not resolve `
+        + `(the certificate table exists but row ${certificateId} is missing) — the `
+        + 'gate never diffs against a register authority it cannot verify',
+    };
+  }
+  if (
+    typeof row.certificate_hash !== 'string'
+    || row.certificate_hash !== formalizationCase.discoveryCertificateHash
+  ) {
+    return {
+      ok: false,
+      code: 'FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID',
+      message: `the discovery certificate ${ref} hashes '${String(row.certificate_hash)}' `
+        + `but the case pins '${formalizationCase.discoveryCertificateHash}' — the `
+        + 'disposition gate never diffs against an unverified register authority',
+    };
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(String(row.certificate_payload));
+  } catch {
+    return {
+      ok: false,
+      code: 'FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID',
+      message: `the discovery certificate ${ref} payload is not parseable JSON`,
+    };
+  }
+  try {
+    return {
+      ok: true,
+      authority: resolveFormalizationCaseRegisterAuthority(formalizationCase, payload),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
  * Resolve the coverage requirement for a task. Returns null when the case
  * carries no register (retro-compat: empty diff, gate stays green).
  *
- * Waivers count ONLY when they carry a non-empty reason — an invalid waiver
- * is an A1 reaction defect, never a coverage free pass.
+ * ADR-090 (CC-IC-2): the register is resolved CERTIFICATE-FIRST through the
+ * same shared authority as the A1 disposition gate
+ * (`resolveRegisterAuthorityForCoverage`) — a v2 corpus (unknowns lifted to
+ * open-question entries + declared lifecycle injections) can never silently
+ * lose its coverage gates to the legacy v1 proposal-payload rebuild, and a
+ * certificate/case divergence is a typed red, never a silent skip.
+ *
+ * Waivers follow the per-schema-version rule
+ * (`waivedConstraintIdsForRegister`): v1 keeps the frozen legacy
+ * waived+non-empty-reason rule; a v2 register NEVER subtracts — the v2
+ * waiver state is typed unavailable (the 2026-08-23 waiver-authority
+ * decision), so `resolved` and `deferred` are disposition states, never
+ * coverage discharges.
  */
 export function readConstraintCoverageRequirement(
   db: DbHandle,
@@ -60,7 +187,13 @@ export function readConstraintCoverageRequirement(
     return null;
   }
   const formalizationCase = caseCandidate as unknown as FormalizationCase;
-  const binding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+  const authority = resolveRegisterAuthorityForCoverage(db, formalizationCase);
+  if (!authority.ok) {
+    // Certificate/case divergence: fail closed with the typed reason — the
+    // coverage gates never silently skip on an unverified authority.
+    throw new Error(`${authority.code}: ${authority.message}`);
+  }
+  const binding = authority.authority?.binding ?? null;
   if (!binding) return null;
 
   const briefRow = db.prepare(
@@ -70,23 +203,14 @@ export function readConstraintCoverageRequirement(
       WHERE p.process_run_id=? AND a.type='brief'
       ORDER BY a.id DESC LIMIT 1`,
   ).get(processRunId) as { metadata: string | null } | undefined;
-  const waivedIds: string[] = [];
+  let dispositions: Readonly<Record<string, unknown>> | null = null;
   if (briefRow && typeof briefRow.metadata === 'string') {
     try {
       const parsed = JSON.parse(briefRow.metadata) as unknown;
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-        const dispositions = (parsed as Record<string, unknown>).constraint_dispositions;
-        if (typeof dispositions === 'object' && dispositions !== null && !Array.isArray(dispositions)) {
-          for (const [id, value] of Object.entries(dispositions as Record<string, unknown>)) {
-            if (
-              typeof value === 'object' && value !== null && !Array.isArray(value)
-              && (value as Record<string, unknown>).disposition === 'waived'
-              && typeof (value as Record<string, unknown>).reason === 'string'
-              && ((value as Record<string, unknown>).reason as string).trim().length > 0
-            ) {
-              waivedIds.push(id);
-            }
-          }
+        const carried = (parsed as Record<string, unknown>).constraint_dispositions;
+        if (typeof carried === 'object' && carried !== null && !Array.isArray(carried)) {
+          dispositions = carried as Record<string, unknown>;
         }
       }
     } catch {
@@ -94,6 +218,10 @@ export function readConstraintCoverageRequirement(
       // disposition-validity defect; here it just means nothing is waived.
     }
   }
+  const waivedIds = waivedConstraintIdsForRegister(
+    binding.constraintRegister,
+    dispositions,
+  );
 
   const registerTexts: Record<string, string> = {};
   for (const entry of binding.constraintRegister.constraints) {

@@ -28,12 +28,15 @@ import {
 import {
   constraintCoverageSubmissionGaps,
   readConstraintCoverageRequirement,
+  resolveRegisterAuthorityForCoverage,
 } from './constraint-coverage.js';
 import type { FormalizationArtifactSnapshot, FormalizationCanonicalGraphPort } from '../domain/formalization-kernel-ports.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
-  resolveFormalizationCaseConstraintRegister,
+  CONSTRAINT_DISPOSITIONS_REGISTER_DIGEST_FIELD,
+  checkConstraintDispositionsForRegister,
   type FormalizationCase,
+  type FormalizationCaseRegisterAuthority,
 } from '../domain/formalization-schemas.js';
 import type {
   NodeSubmissionValidationInput,
@@ -75,12 +78,12 @@ export function createFormalizationContractValidator(
       // order's constraints must be told THAT before any structural detail —
       // the forensic verdict named "no obligation to react" as the defect.
       if (required.constraintDispositions) {
-        const dispositionGaps = checkConstraintDispositions(db, input);
-        if (dispositionGaps !== null) {
+        const dispositionResult = checkConstraintDispositions(db, input);
+        if (dispositionResult !== null) {
           return {
             accepted: false,
-            code: 'FORMALIZATION_CONSTRAINT_UNDISPOSED',
-            gaps: dispositionGaps,
+            code: dispositionResult.code,
+            gaps: dispositionResult.gaps,
           };
         }
       }
@@ -134,16 +137,46 @@ interface BriefRow {
 }
 
 /**
- * The A1 enforcement heart: deterministic diff of register IDs (resolved from
- * the FormalizationCase that already rides the task's process_node_input)
- * minus valid dispositions in the brief artifact's
- * metadata.constraint_dispositions. Returns the per-ID gaps, or null when
- * every ID is disposed / no register exists (retro-compat empty diff).
+ * ADR-090 (CC-IC-2): resolve the register authority the disposition gate
+ * diffs against — the SHARED certificate-first resolver
+ * (`resolveRegisterAuthorityForCoverage` in constraint-coverage.ts), so the
+ * A1 disposition gate, the A2 coverage gates, and the settlement freeze can
+ * never diff against different registers. Closes the recorded production gap
+ * where the gates rebuilt a v1 register from the proposal payload while the
+ * settlement/warrant/coverage rode the certificate register, leaving
+ * `constraint_dispositions` keyed by POSITIONAL `ord-c-NNN` ids with no
+ * register-digest binding. Divergence semantics live at the shared resolver
+ * (typed red, never a silent fallback).
+ */
+function resolveGateRegisterAuthority(
+  db: DbHandle,
+  formalizationCase: FormalizationCase,
+): { ok: true; authority: FormalizationCaseRegisterAuthority | null }
+| { ok: false; code: string; message: string } {
+  return resolveRegisterAuthorityForCoverage(db, formalizationCase);
+}
+
+/**
+ * The A1 enforcement heart: deterministic diff of the register (resolved
+ * CERTIFICATE-FIRST from the FormalizationCase that already rides the task's
+ * process_node_input) against the brief artifact's
+ * metadata.constraint_dispositions. Returns the per-ID/set-level gaps with
+ * the typed code, or null when every entry is disposed / no register exists
+ * (retro-compat empty diff).
+ *
+ * ADR-090 (CC-IC-2) + the 2026-08-23 waiver-authority decision: v2
+ * registers are checked in the EXACT kind/state grammar (open-question:
+ * resolved+evidenceRef | deferred+reason+owner+unblockCriterion, waived
+ * TYPED UNAVAILABLE; other kinds: accepted ONLY, waived TYPED UNAVAILABLE),
+ * with EXACT disposition-key/register-id set equality and the
+ * authored-against registerDigest pin — positional ord-c dispositions are
+ * never reusable across register revisions (m2d). v1 registers keep the
+ * frozen legacy grammar bit-identically.
  */
 function checkConstraintDispositions(
   db: DbHandle,
   input: NodeSubmissionValidationInput,
-): SubmissionGap[] | null {
+): { code: string; gaps: SubmissionGap[] } | null {
   const taskRow = db.prepare(
     'SELECT metadata FROM tasks WHERE id=?',
   ).get(input.taskId) as { metadata: string | null } | undefined;
@@ -165,7 +198,14 @@ function checkConstraintDispositions(
     return null;
   }
   const formalizationCase = caseCandidate as unknown as FormalizationCase;
-  const binding = resolveFormalizationCaseConstraintRegister(formalizationCase);
+  const authority = resolveGateRegisterAuthority(db, formalizationCase);
+  if (!authority.ok) {
+    return {
+      code: authority.code,
+      gaps: [setLevelGap(authority.message)],
+    };
+  }
+  const binding = authority.authority?.binding ?? null;
   if (!binding) return null;
 
   const briefRow = db.prepare(
@@ -176,6 +216,7 @@ function checkConstraintDispositions(
       ORDER BY a.id DESC LIMIT 1`,
   ).get(input.processRunId) as BriefRow | undefined;
   let dispositions: Record<string, unknown> = {};
+  let authoredRegisterDigest: unknown;
   if (briefRow) {
     try {
       const parsed = JSON.parse(briefRow.metadata) as unknown;
@@ -184,46 +225,82 @@ function checkConstraintDispositions(
         if (typeof carried === 'object' && carried !== null && !Array.isArray(carried)) {
           dispositions = carried as Record<string, unknown>;
         }
+        authoredRegisterDigest = (parsed as Record<string, unknown>)[
+          CONSTRAINT_DISPOSITIONS_REGISTER_DIGEST_FIELD
+        ];
       }
     } catch {
       dispositions = {};
     }
   }
 
-  const gaps: SubmissionGap[] = [];
-  for (const entry of binding.constraintRegister.constraints) {
-    const disposition = dispositions[entry.id];
-    const accepted = isValidRecord(disposition)
-      && disposition.disposition === 'accepted';
-    const waivedWithReason = isValidRecord(disposition)
-      && disposition.disposition === 'waived'
-      && typeof disposition.reason === 'string'
-      && disposition.reason.trim().length > 0;
-    if (accepted || waivedWithReason) continue;
-    const reason = isValidRecord(disposition) && disposition.disposition === 'waived'
-      ? ` (waived requires a non-empty reason)`
-      : '';
-    gaps.push({
-      artifactId: briefRow?.id ?? -1,
-      artifactCode: entry.id,
-      artifactType: 'brief',
-      existingTargets: [],
-      missing: {
-        relation: 'covers_constraint',
-        requiredTargetTypes: [`${entry.id}: accepted | waived+reason`],
-        minimum: 1,
-      },
-      message: `Constraint ${entry.id} (${entry.class}) "${entry.text}" is not disposed`
-        + ` in the brief artifact metadata constraint_dispositions${reason}.`
-        + ` React per ID: {"${entry.id}": {"disposition": "accepted"}} or`
-        + ` {"disposition": "waived", "reason": "<why>"}.`,
-    });
-  }
-  return gaps.length > 0 ? gaps : null;
+  const checked = checkConstraintDispositionsForRegister({
+    register: binding.constraintRegister,
+    dispositions,
+    authoredRegisterDigest,
+    // The A1 gate is the m2d host: the authored-against pin is REQUIRED and
+    // must equal the certificate-resolved register digest.
+    requireRegisterDigestPin: true,
+  });
+  if (checked.gaps.length === 0) return null;
+  const perId = checked.gaps.every(gap => gap.targetId !== 'constraint_dispositions');
+  return {
+    // Per-entry defects keep the pinned reaction code (the per-ID guidance
+    // contract); set-level integrity defects (pin, set equality, malformed
+    // records) carry the dedicated typed code.
+    code: perId
+      ? 'FORMALIZATION_CONSTRAINT_UNDISPOSED'
+      : 'FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID',
+    gaps: checked.gaps.map(gap => dispositionGapToSubmissionGap(
+      gap,
+      binding.constraintRegister,
+      briefRow?.id ?? -1,
+    )),
+  };
 }
 
-function isValidRecord(value: unknown): value is { disposition?: unknown; reason?: unknown } {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function setLevelGap(message: string): SubmissionGap {
+  return {
+    artifactId: -1,
+    artifactCode: 'constraint_dispositions',
+    artifactType: 'brief',
+    existingTargets: [],
+    missing: {
+      relation: 'disposes_register',
+      requiredTargetTypes: ['constraint_dispositions'],
+      minimum: 1,
+    },
+    message,
+  };
+}
+
+function dispositionGapToSubmissionGap(
+  gap: { targetId: string; reason: string; guidance: string },
+  register: { constraints: readonly { id: string; class: string; text: string }[] },
+  briefArtifactId: number,
+): SubmissionGap {
+  if (gap.targetId === 'constraint_dispositions') {
+    return {
+      ...setLevelGap(`${gap.reason}: ${gap.guidance}`),
+      artifactId: briefArtifactId,
+    };
+  }
+  const entry = register.constraints.find(constraint => constraint.id === gap.targetId);
+  return {
+    artifactId: briefArtifactId,
+    artifactCode: gap.targetId,
+    artifactType: 'brief',
+    existingTargets: [],
+    missing: {
+      relation: 'covers_constraint',
+      requiredTargetTypes: [`${gap.targetId}: ${gap.reason}`],
+      minimum: 1,
+    },
+    message: entry
+      ? `${gap.reason}: Constraint ${gap.targetId} (${entry.class}) "${entry.text}" `
+        + `${gap.guidance}`
+      : `${gap.reason}: ${gap.guidance}`,
+  };
 }
 
 function graphPortFromDb(db: DbHandle): FormalizationCanonicalGraphPort {

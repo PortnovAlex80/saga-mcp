@@ -20,6 +20,23 @@
 //   fabricated-corrupt— same fault; the actor demands a structured nonce
 //                       (code+subject+evidence) the raw message cannot give →
 //                       no repair.
+//
+// ADR-090 (CC-IC-2): the brief disposes EVERY register entry in the strict
+// v2 grammar with the authored-against registerDigest pin, and the AC/SRS
+// carry the covered_constraint_ids relay — computed from the SAME public data
+// the Discovery settlement froze (proposal payload + the DECLARED,
+// digest-pinned lifecycle injection table), read from the actor's own
+// production-visible task input. Never authored from task prose.
+//
+// K2-C capability boundary: this actor imports NODE BUILTINS ONLY (the
+// import-ratchet enforces it). The register is therefore mirrored from the
+// PUBLIC declaration surface — the same canonical serialization
+// (sorted keys, no whitespace) and the same declared injection table —
+// so the pin the actor writes is exactly the digest the settlement froze.
+// A kernel-side change to the declaration or the canonicalization makes the
+// pin mismatch — a loud typed red, never a silent pass.
+
+import { createHash } from 'node:crypto';
 
 const FRM_NODES = new Set([
   'define-product-contract', 'model-use-cases', 'define-acceptance-contract',
@@ -32,6 +49,138 @@ const envelope = (prompt, key) => {
   const m = new RegExp(`^${key}=(.*)$`, 'm').exec(prompt);
   return m ? m[1].trim() : null;
 };
+
+function findObject(value, predicate, seen = new Set()) {
+  if (!value || typeof value !== 'object') return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+  if (!Array.isArray(value) && predicate(value)) return value;
+  const children = Array.isArray(value) ? value : Object.values(value);
+  for (const child of children) {
+    const found = findObject(child, predicate, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+// The canonical JSON serializer shared across the kernel (sorted keys, no
+// whitespace) — mirrored verbatim from the public src/shared declaration.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const obj = value;
+    return `{${Object.keys(obj).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(obj[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+const sha256Hex = value => createHash('sha256').update(canonicalJson(value)).digest('hex');
+
+// The DECLARED lifecycle obligation injection table (public immutable data
+// declared beside the frozen runnable-local classification; mirrored from
+// src/process-modules/lifecycles/product-build-lifecycle.ts).
+const RUNNABLE_LOCAL_INJECTION_TABLE = Object.freeze({
+  schemaVersion: 'factory.lifecycle-obligation-injection.v1',
+  classification: 'runnable-local',
+  entries: [
+    {
+      class: 'execution',
+      kind: 'synthesis',
+      text: 'the delivered product is synthesized and assembled as one whole that is runnable locally',
+      evidence_ref: 'lifecycle.classification.runnable-local',
+    },
+    {
+      class: 'execution',
+      kind: 'ordered-smoke',
+      text: 'an ordered smoke test performs the install step, then the start step, then reaches the running product',
+      evidence_ref: 'lifecycle.classification.runnable-local',
+    },
+  ],
+});
+const RUNNABLE_LOCAL_INJECTION_TABLE_REF
+  = `lifecycle-obligation-injection:${sha256Hex(RUNNABLE_LOCAL_INJECTION_TABLE)}`;
+
+const padIndex = index => String(index + 1).padStart(3, '0');
+
+/**
+ * The v2 register the settlement froze, mirrored from the actor's own
+ * production-visible FormalizationCase (proposal drafts + unknowns + the
+ * declared injection table). Supports the corpus proposal shape (unknowns,
+ * no drafts); any other shape fails loudly rather than guessing.
+ */
+function constraintRegisterOf(meta) {
+  const formalizationCase = findObject(
+    meta?.process_node_input ?? meta,
+    value => value.schemaVersion === 'factory.formalization-case.v1',
+  );
+  if (!formalizationCase) return null;
+  const payload = formalizationCase.discoveryProposalPayload ?? {};
+  const drafts = payload.order_constraints;
+  if (drafts !== undefined && drafts !== null && !Array.isArray(drafts)) {
+    throw new Error('k2-corpus: order_constraints must be an array');
+  }
+  if ((drafts ?? []).length > 0) {
+    throw new Error('k2-corpus: draft-carrying proposals are outside this mirror (extend it explicitly)');
+  }
+  const entries = [];
+  for (const unknown of payload.unknowns ?? []) {
+    if (typeof unknown !== 'string' || unknown.trim().length === 0) {
+      throw new Error('k2-corpus: unknowns must be non-empty strings');
+    }
+    entries.push({
+      id: `ord-c-${padIndex(entries.length)}`,
+      class: 'material',
+      kind: 'open-question',
+      text: unknown,
+      evidenceRef: 'proposal.unknowns',
+    });
+  }
+  for (const entry of RUNNABLE_LOCAL_INJECTION_TABLE.entries) {
+    entries.push({
+      id: `ord-c-${padIndex(entries.length)}`,
+      class: entry.class,
+      kind: entry.kind,
+      text: entry.text,
+      evidenceRef: entry.evidence_ref,
+      lifecycleSynthesis: {
+        classification: RUNNABLE_LOCAL_INJECTION_TABLE.classification,
+        injectionTableRef: RUNNABLE_LOCAL_INJECTION_TABLE_REF,
+      },
+    });
+  }
+  if (entries.length === 0) return null;
+  return {
+    schemaVersion: 'factory.order-constraint-register.v2',
+    constraints: entries,
+    registerDigest: createHash('sha256').update(canonicalJson(entries)).digest('hex'),
+  };
+}
+
+/**
+ * The lawful brief metadata: strict v2 dispositions + the digest pin. The
+ * open-question entry is RESOLVED citing the authentic corpus evidence (the
+ * Discovery readiness assessment's unknowns_manageability dimension — the
+ * product that adjudicated the unknown). The 2026-08-23 waiver-authority
+ * decision: v2 `waived` is TYPED UNAVAILABLE — brief metadata is
+ * worker-authored, so no operator attribution a worker writes carries
+ * authority; a waiver may be PROPOSED in prose only and never subtracts.
+ */
+function constraintDispositionsOf(register) {
+  if (!register) return null;
+  const dispositions = {};
+  for (const entry of register.constraints) {
+    dispositions[entry.id] = entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' };
+  }
+  return {
+    constraint_dispositions: dispositions,
+    constraint_dispositions_register_digest: register.registerDigest,
+  };
+}
 
 export async function run(a) {
   // task_get returns the task row: metadata is a JSON STRING.
@@ -55,7 +204,7 @@ export async function run(a) {
   switch (node) {
     case 'produce-proposal': return proposal(a);
     case 'assess-readiness': return readiness(a, meta);
-    case 'define-product-contract': return productContract(a);
+    case 'define-product-contract': return productContract(a, meta);
     case 'model-use-cases': return useCases(a);
     case 'define-acceptance-contract': return acceptance(a);
     case 'reconcile-what': return reconcile(a);
@@ -71,6 +220,34 @@ async function ids(a, type) {
   const epicId = a.firstTask.epic_id;
   const list = await a.call('artifact_list', { epic_id: epicId, type, status: 'accepted' });
   return (Array.isArray(list) ? list : list.artifacts ?? []).map(x => x.id);
+}
+
+/**
+ * The covered_constraint_ids relay read back from the ACCEPTED brief's
+ * authored dispositions (production-visible: the actor's own artifact_list
+ * result): EVERY non-waived id — accepted AND resolved alike. On v2,
+ * resolution is a disposition state, never a coverage discharge, so the
+ * open-question entry stays an obligation the AC/SRS work must cover;
+ * nothing subtracts on v2. Legacy v1 reasoned waivers are the only lawful
+ * exclusion.
+ */
+async function coveredConstraintIdsFromBrief(a) {
+  const epicId = a.firstTask.epic_id;
+  const list = await a.call('artifact_list', { epic_id: epicId, type: 'brief', status: 'accepted' });
+  const briefs = Array.isArray(list) ? list : list.artifacts ?? [];
+  for (const brief of briefs) {
+    let metadata = brief.metadata;
+    if (typeof metadata === 'string') {
+      try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+    }
+    const dispositions = metadata?.constraint_dispositions;
+    if (!dispositions || typeof dispositions !== 'object') continue;
+    return Object.entries(dispositions)
+      .filter(([, value]) => value && value.disposition !== 'waived')
+      .map(([id]) => id)
+      .sort();
+  }
+  return [];
 }
 
 async function finish(a, result) {
@@ -152,7 +329,7 @@ async function readiness(a, meta) {
   await finish(a, 'produced readiness assessment: ready');
 }
 
-async function productContract(a) {
+async function productContract(a, meta) {
   const briefPayload = {
     classification: 'product', complexity: { tshirt: 'M', risk_triggers: [] },
     decision: 'go', reasoning: 'Feasible and bounded.',
@@ -160,12 +337,18 @@ async function productContract(a) {
     scaffold_artifacts: [], shared_mutation_risk: false,
     completeness: 'high', degraded: false,
   };
+  // ADR-090 (CC-IC-2): dispose every register entry in the strict v2 grammar
+  // and pin the register digest the dispositions were authored against.
+  const constraintDispositions = constraintDispositionsOf(constraintRegisterOf(meta));
   a.write('docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const epic = a.firstTask.epic_id;
   const brief = await a.call('artifact_create', {
     project_id: a.firstTask.project_id, epic_id: epic, type: 'brief', code: 'BRIEF-1',
     title: 'Product Brief', path: 'docs/formalization/BRIEF-1.md', status: 'accepted',
-    metadata: { brief_payload: briefPayload },
+    metadata: {
+      brief_payload: briefPayload,
+      ...(constraintDispositions ?? {}),
+    },
   });
   const prd = await createDoc(a, { type: 'PRD', code: 'PRD', title: 'Product Requirements', rel: 'docs/formalization/PRD.md' });
   const fr = await createDoc(a, { type: 'FR', code: 'FR-1', title: 'Functional Requirement 1', rel: 'docs/formalization/FR-1.md' });
@@ -224,7 +407,17 @@ async function acceptance(a) {
     }
   }
 
-  const ac1 = await createDoc(a, { type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes', rel: 'docs/formalization/AC-1.md' });
+  // ADR-090 (CC-IC-2): the e2e AC-1 artifact carries the covered_constraint_ids
+  // relay read back from the accepted brief — the acceptance/SRS coverage
+  // gates diff the v2 register (which never subtracts) against exactly it.
+  const coveredIds = await coveredConstraintIdsFromBrief(a);
+  a.write('docs/formalization/AC-1.md', `## AC-1: Pipeline Completes\n\nDeterministic AC artifact for AC-1.\n`);
+  const ac1 = await a.call('artifact_create', {
+    project_id: a.firstTask.project_id, epic_id: a.firstTask.epic_id,
+    type: 'AC', code: 'AC-1', title: 'AC-1: Pipeline Completes',
+    path: 'docs/formalization/AC-1.md', status: 'accepted',
+    ...(coveredIds.length > 0 ? { metadata: { covered_constraint_ids: coveredIds } } : {}),
+  });
   await a.call('trace_add', { source_id: ac1.id, target_type: 'artifact', target_id: frs[0], link_type: 'derived_from' });
   if (ucs.length) await a.call('trace_add', { source_id: ac1.id, target_type: 'artifact', target_id: ucs[0], link_type: 'derived_from' });
   const ac2 = await createDoc(a, { type: 'AC', code: 'AC-2', title: 'AC-2: NFR Compliance', rel: 'docs/formalization/AC-2.md' });
@@ -242,15 +435,23 @@ async function reconcile(a) {
 
 async function architecture(a) {
   const prds = await ids(a, 'PRD');
-  const stanza = (ac, title, layer) => [
+  // ADR-090 (CC-IC-2): the e2e AC-1 stanza carries the covered_constraint_ids
+  // relay read back from the accepted brief — the SRS §D2 coverage diff
+  // requires the union over stanzas to cover the register (nothing
+  // subtracts on v2 — resolved open questions stay obligations).
+  const coveredIds = await coveredConstraintIdsFromBrief(a);
+  const stanza = (ac, title, layer, coveredField) => [
     `- ac: ${ac}`, `  title: ${title}`, '  module: src/factory-e2e',
     '  files: ["src/factory-e2e/"]', `  invariants: ['${layer}']`, `  test_layers: ['${layer}']`,
-    '  pattern: A', '  depends_on: []', '  ac_kind: implementation', '  criticality: blocker',
+    '  pattern: A', '  depends_on: []', '  ac_kind: implementation', `  criticality: blocker${coveredField}`,
   ].join('\n');
+  const coveredField = coveredIds.length > 0
+    ? `\n  covered_constraint_ids: ${coveredIds.join(', ')}`
+    : '';
   a.write('docs/formalization/SRS.md', [
     '# SRS', '', '## §D2 Acceptance Criteria Decomposition', '', '```yaml',
-    stanza('AC-1', 'Pipeline Completes', 'e2e'),
-    stanza('AC-2', 'NFR Compliance', 'contract'),
+    stanza('AC-1', 'Pipeline Completes', 'e2e', coveredField),
+    stanza('AC-2', 'NFR Compliance', 'contract', ''),
     '```', '', '## §12 Decision Log', '',
     '| # | Decision | Source/profile | Alternatives considered | Rationale | Date |',
     '|---|----------|----------------|--------------------------|-----------|------|',

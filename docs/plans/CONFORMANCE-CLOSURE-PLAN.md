@@ -2424,17 +2424,21 @@ Exit checklist:
 Checklist:
 
 - [ ] Extend the disposition grammar for kind `open-question` entries on
-       the existing network: `resolved` (evidenceRef required), or
-       `deferred` (non-empty reason + owner + unblockCriterion), or
-       `waived` — every waiver on a new-v2 entry requires TRUSTED
-       OPERATOR ATTRIBUTION (a recorded operator identity on the
-       per-entry waiver; an author or model may at most propose one, and
-       ANY author-attributed waiver — a single entry or many entries in
-       one act — is a typed red; no separate "mass waiver" category is
-       defined beside the per-entry rule, so an attempted multi-entry
-       author waiver is simply a set of red per-entry waivers); per-ID
-       gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
-       message shape.
+        the existing network: `resolved` (evidenceRef required), or
+        `deferred` (non-empty reason + owner + unblockCriterion). WAIVED
+        IS TYPED UNAVAILABLE ON V2 (2026-08-23 waiver-authority decision
+        journal, Option A — `docs/architecture/decision-journal/2026-08-23-cc-ic2-waiver-authority.md`):
+        v2 brief metadata is worker-authored, so every v2 `waived` record —
+        including a perfectly shaped operator-attribution fake — is the
+        `WAIVER_UNAVAILABLE` typed red at the A1 gate AND the settlement
+        freeze, never enters `waivedIds`, and never subtracts from the
+        coverage reverse diff; workers may propose waivers in prose only
+        (proposals never subtract obligations). The exact kind/state
+        grammar: `accepted` is typed-invalid on kind `open-question`;
+        `resolved`/`deferred` are typed-invalid on every other kind. The
+        v1 grammar (accepted | waived+reason) stays frozen bit-identically.
+        Per-ID gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
+        message shape.
 - [ ] Dispositions freeze into the baseline payload and ride the
       `warrantRef` projection (one source, three projections — no new
       carrier): the freeze is authored at the existing projection site in
@@ -2453,33 +2457,35 @@ Checklist:
       re-apply old positional dispositions to DIFFERENT entries. Positional
       `ord-c` dispositions must never be reused across register revisions.
 - [ ] Honest required-coverage arithmetic: `resolved` and `deferred` are
-      disposition STATES, not coverage discharges. Only the loud per-entry
-      operator-attributed typed waiver subtracts an entry from the required
-      set; a resolved or deferred open-question entry REMAINS in the
-      production coverage requirement (register ids minus typed waivers
-      ⊆ covered) — resolution/deferral never becomes a silent waiver, and
-      the reverse diff stays non-empty honestly until the entry is covered
-      or loudly waived.
+       disposition STATES, not coverage discharges. On v2 NOTHING subtracts
+       (the waiver state is typed unavailable — see the checklist item
+       above), so the required set is the FULL register: register ⊆
+       covered. A resolved or deferred open-question entry REMAINS in the
+       production coverage requirement — resolution/deferral never becomes
+       a silent waiver, and the reverse diff stays non-empty honestly
+       until the entry is covered.
 - [ ] Keep registerless and v1-register corpora green: the extension binds
       only entries whose kind is `open-question`.
 
 Blocking mutations: m2 (an undisposed open-question entry —
 `FORMALIZATION_CONSTRAINT_UNDISPOSED` with per-ID guidance); m2a (a
 deferral without owner or unblockCriterion — red); m2b (a `resolved`
-without evidenceRef — red); m2c (ANY waiver authored by the
-worker/author instead of a trusted operator — a single author-attributed
-entry waiver is red, and an author waiving many or all open questions in
-one act is simply that same red repeated per entry (no undefined
-"mass-waiver" concept is needed or defined); waivers are loud, per-entry,
-trusted-operator-attributed only); m2d (a disposition
+without evidenceRef — red); m2c (ANY waiver authored inside v2 brief
+metadata — the v1-shaped author waiver AND the perfectly shaped
+operator-attribution fake alike — red as `WAIVER_UNAVAILABLE`; a single
+forged entry waiver is red, and forged waivers on many or all open
+questions in one act are simply that same red repeated per entry; nothing
+ever subtracts on v2); m2d (a disposition
 set carried across a `registerDigest` change — positional `ord-c` reuse
 across register revisions — red).
 
 Exit checklist:
 
 - [ ] Every open-question entry of every register-bearing corpus is
-      resolved, deferred (reason, owner, unblock criterion), or waived by
-      a loud per-entry operator attribution — or the gate is typed red.
+       resolved (evidenceRef) or deferred (reason, owner, unblock
+       criterion) — v2 waiver capability is intentionally unavailable
+       until an operator-owned command/append-only ledger channel lands
+       (2026-08-23 waiver-authority decision) — or the gate is typed red.
 - [ ] Frozen legacy registerless corpora keep exactly the current green
       behavior.
 
