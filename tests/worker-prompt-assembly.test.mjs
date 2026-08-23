@@ -29,7 +29,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { buildPrompt } from '../tracker-view/claude-runner.mjs';
+import { buildPrompt, projectTaskForPrompt } from '../tracker-view/claude-runner.mjs';
 
 const GLOBAL_ROOT_THAT_MUST_NOT_APPEAR = 'C:/DEFINITELY-NOT-USED-GLOBAL-SKILL-ROOT';
 
@@ -679,4 +679,93 @@ test('F-A: buildRecoveryMemoryBlock bounds verbatim failures to the most recent 
   assert.match(block, /digest=[0-9a-f]{16}/, 'the omitted history is digest-traceable');
   assert.ok(block.includes('Full attempt log: task_get'),
     'the durable path to the complete history stays in the block');
+});
+
+// ---------------------------------------------------------------------------
+// G1.9 — ELITE-8 prompt snowball: recovery_feedback is summarized, never
+// projected whole.
+//
+// The Elite-8 acceptance-contract cell died 15 times to provider 400
+// ("Prompt exceeds max length") because one verbose review round put
+// 17 findings x ~10.7KB into task.metadata.recovery_feedback.issue.findings
+// (202KB total) and projectTaskForPrompt trimmed attempt_history /
+// previous_failures / process_workspace but projected recovery_feedback
+// WHOLE into every respawn prompt (taskProjection 21,732B in Elite-7 ->
+// 217,533B in Elite-8). The projection must bound this field the same way
+// the history is bounded: codes and bounded heads survive, the bulk rides
+// the durable pointer.
+// ---------------------------------------------------------------------------
+
+test('G1.9 — recovery_feedback is bounded in the task projection (ELITE-8 snowball shape)', () => {
+  const finding = i => ({
+    code: 'factory.review-verdict.v1:review-finding:unscoped',
+    severity: 'error',
+    message: `SYSTEMATIC ISSUE (finding ${i}): the acceptance criteria document's 'Derived From' sections `
+      + 'and traceability claims diverge from the recorded artifact traces. '.repeat(120),
+  });
+  const task = {
+    id: 7,
+    title: 'formalization-acceptance-contract/author',
+    metadata: {
+      workplace_ref: 'workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton',
+      recovery_feedback: {
+        schemaVersion: 'factory.production-cell-recovery-feedback.v1',
+        taskId: 7,
+        repairTargetRole: 'author',
+        attempt: 2,
+        maxAttempts: 5,
+        gateDecision: { verdict: 'repair_required', gate_phase: 'review' },
+        findingTrajectory: {
+          chain: Array.from({ length: 17 }, (_, i) => ({
+            count: i + 1,
+            keys: Array.from({ length: i + 1 }, (_, j) =>
+              `factory.review-verdict.v1:review-finding:unscoped::AC-${j + 1} claims derivation mismatch `.repeat(8)),
+          })),
+        },
+        issue: {
+          reasonCode: 'REVIEW_REJECTED',
+          summary: 'derived-from traceability mismatches across the acceptance criteria',
+          findings: Array.from({ length: 17 }, (_, i) => finding(i)),
+        },
+        rejectedCandidateSet: {
+          candidateSetRef: 'candidate-set/2/.../singleton',
+          candidateSetDigest: 'd'.repeat(64),
+          role: 'author',
+          subjectCandidateSetRef: 'candidate-set/2/.../subject',
+          productRefs: [],
+        },
+      },
+    },
+  };
+
+  const inputBytes = Buffer.byteLength(JSON.stringify(task.metadata.recovery_feedback), 'utf8');
+  assert.ok(inputBytes > 150_000, `fixture must reproduce the ELITE-8 scale (got ${inputBytes}B)`);
+
+  const projected = projectTaskForPrompt(task);
+  const rf = projected.metadata.recovery_feedback;
+  assert.ok(rf && typeof rf === 'object', 'recovery_feedback stays present (summarized, not dropped)');
+  const outBytes = Buffer.byteLength(JSON.stringify(rf), 'utf8');
+  assert.ok(outBytes < 12_000,
+    `the summarized recovery_feedback must be bounded (input ${inputBytes}B -> output ${outBytes}B)`);
+  // The essentials survive: what failed, why, and per-finding identity.
+  assert.equal(rf.reasonCode, 'REVIEW_REJECTED');
+  assert.equal(rf.attempt, 2);
+  assert.equal(rf.maxAttempts, 5);
+  assert.ok(Array.isArray(rf.findings) && rf.findings.length === 17, 'every finding stays identified');
+  for (const f of rf.findings) {
+    assert.equal(f.code, 'factory.review-verdict.v1:review-finding:unscoped');
+    assert.ok(f.message.length <= 300, 'finding messages ride as bounded heads only');
+  }
+  // The bulk is pointed at, not silently lost.
+  assert.match(JSON.stringify(rf), /task_get/,
+    'the summary must point at the durable full feedback');
+  // The other trims keep working.
+  assert.equal(projected.metadata.attempt_history, undefined);
+  assert.equal(projected.metadata.previous_failures, undefined);
+  assert.equal(projected.metadata.process_workspace, undefined);
+});
+
+test('G1.9-neg — absent recovery_feedback adds no summary block', () => {
+  const projected = projectTaskForPrompt({ id: 8, metadata: { workplace_ref: 'w/8' } });
+  assert.equal(projected.metadata.recovery_feedback, undefined);
 });

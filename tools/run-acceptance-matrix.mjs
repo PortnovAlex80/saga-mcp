@@ -95,9 +95,15 @@ const GROUPS = {
       // hosted CC-GAP-8 proof surface cannot silently widen. The coverage
       // test (G2g) fails if this entry is removed.
       'tests/modules/development/development-terminal-exit-accounting.test.mjs',
+      // ELITE-8 seam (same orphan class): the worker prompt-assembly suite
+      // (buildPrompt/projectTaskForPrompt contracts, incl. the G1.9
+      // recovery_feedback prompt-snowball bound) lived at tests/ root —
+      // matched by NO group glob, so CI never executed it. Exact file on
+      // purpose: no directory glob, the surface cannot silently widen.
+      'tests/worker-prompt-assembly.test.mjs',
     ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

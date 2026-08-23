@@ -677,6 +677,20 @@ export function projectTaskForPrompt(task) {
   delete projectedMetadata.attempt_history;
   delete projectedMetadata.previous_failures;
   delete projectedMetadata.process_workspace;
+  // ELITE-8 prompt snowball repair: one verbose review round put 17 findings
+  // x ~10.7KB into recovery_feedback (202KB) and every respawn projected it
+  // WHOLE (taskProjection 21KB -> 217KB -> provider 400 x15 -> lawful pause).
+  // The field is now bounded exactly like the history: codes + bounded heads
+  // + counts survive; the bulk rides the durable task_get pointer.
+  if (
+    metadata.recovery_feedback
+    && typeof metadata.recovery_feedback === 'object'
+    && !Array.isArray(metadata.recovery_feedback)
+  ) {
+    projectedMetadata.recovery_feedback = summarizeRecoveryFeedbackForPrompt(
+      metadata.recovery_feedback,
+    );
+  }
   projectedMetadata.__history_pointer = {
     previous_failures_total: previousFailures.length,
     attempt_history_entries: attemptHistoryCount,
@@ -684,6 +698,61 @@ export function projectTaskForPrompt(task) {
     note: 'full durable history: task_get({ id }) → metadata (omitted from the prompt by the prompt budget)',
   };
   return { ...task, metadata: projectedMetadata };
+}
+
+/** Bounded prompt summary of recovery_feedback (the ELITE-8 seam). */
+function summarizeRecoveryFeedbackForPrompt(feedback) {
+  const issue = feedback.issue && typeof feedback.issue === 'object' && !Array.isArray(feedback.issue)
+    ? feedback.issue
+    : {};
+  const findings = Array.isArray(issue.findings)
+    ? issue.findings
+        .filter(f => f && typeof f === 'object')
+        .slice(0, 25)
+        .map(f => ({
+          code: typeof f.code === 'string' ? f.code.slice(0, 120) : 'unknown-code',
+          severity: typeof f.severity === 'string' ? f.severity.slice(0, 24) : undefined,
+          message: typeof f.message === 'string' ? f.message.slice(0, 240) : undefined,
+        }))
+    : [];
+  const chain = feedback.findingTrajectory
+    && typeof feedback.findingTrajectory === 'object'
+    && Array.isArray(feedback.findingTrajectory.chain)
+    ? feedback.findingTrajectory.chain
+    : [];
+  const trajectory = chain.length === 0 ? undefined : {
+    chain_entries: chain.length,
+    latest_counts: chain.slice(-5).map(entry => ({
+      count: typeof entry?.count === 'number' ? entry.count : undefined,
+      keys: Array.isArray(entry?.keys)
+        ? entry.keys.slice(0, 3).map(key => (typeof key === 'string' ? key.slice(0, 160) : String(key).slice(0, 160)))
+        : [],
+    })),
+  };
+  const summary = {
+    schemaVersion: feedback.schemaVersion,
+    taskId: feedback.taskId,
+    repairTargetRole: feedback.repairTargetRole,
+    attempt: typeof feedback.attempt === 'number' ? feedback.attempt : undefined,
+    maxAttempts: typeof feedback.maxAttempts === 'number' ? feedback.maxAttempts : undefined,
+    verdict: feedback.gateDecision?.verdict,
+    reasonCode: typeof issue.reasonCode === 'string' ? issue.reasonCode : undefined,
+    summary: typeof issue.summary === 'string' ? issue.summary.slice(0, 500) : undefined,
+    findings_total: Array.isArray(issue.findings) ? issue.findings.length : 0,
+    findings,
+    ...(trajectory ? { trajectory } : {}),
+    ...(feedback.rejectedCandidateSet
+      && typeof feedback.rejectedCandidateSet === 'object'
+      && !Array.isArray(feedback.rejectedCandidateSet)
+      ? { rejectedCandidateSet: feedback.rejectedCandidateSet }
+      : {}),
+    __full_feedback_pointer:
+      'full verbatim findings/trajectory: task_get({ id }) → metadata.recovery_feedback (bounded here by the prompt budget)',
+  };
+  for (const key of Object.keys(summary)) {
+    if (summary[key] === undefined) delete summary[key];
+  }
+  return summary;
 }
 
 export class ClaudeBoardRunner {
