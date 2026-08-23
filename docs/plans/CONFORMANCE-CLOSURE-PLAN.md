@@ -6,9 +6,14 @@
 - Runtime base: `origin/saga4` @ `6ddcb107` (recorded in
   `docs/factory-run/conformance-closure/CC-00-BASELINE.md`)
 - 2026-08-23 refresh base: integration branch
-  `cc/CC-00B-terminal-integrity-integration` @ `aef699b4` (initially
+  `cc/CC-00B-terminal-integrity-integration` @ `905f5940` (initially
   recorded at `1f397348`; advanced by the accepted K19 landings
-  `bc6df0be` + `2b68b192` + `aef699b4`). Every SHA this
+  `bc6df0be` + `2b68b192` + `aef699b4`, then by the CC-GAP-8 terminal
+  repair landing `cbd7dfef` + its CI proof hosting `9301e8ff`, the
+  CC-IC-2 disposition-closure landing `906edf84`, the CC-U1/ADR-092
+  proof-hosting registry landing `54882e08` + same-day defense-in-depth
+  repair `808bbf27`, and the Space E matrix-maintenance landing
+  `905f5940`). Every SHA this
   plan records as "integrated" below is integration-branch truth ONLY:
   none of those commits is merged to `saga4`, and `saga4` still carries
   none of the CC-00B/CC-00C/CC-IC/CC-U work (section 2A records the
@@ -72,10 +77,18 @@ review-accepted on the integration branch (source `d1912c67` +
 `a03b5bf9`, integrated as `4c67f1d1` + `1f397348`; the focused
 integration build and the focused suite passed 75/75 (run-record
 provenance only — see the Run-record provenance note) — including
-closing the m0 residual verification at its named host), while CC-IC-2..4
-remain
-open and CC-IC-2 starts only after CC-IC-1 (branch prepared at `1f397348`,
-no CC-IC-2 code yet). The proof-contract subset direction repair
+closing the m0 residual verification at its named host), and CC-IC-2 is
+LANDED on the same integration branch (worker source `7429df54` on
+`cc/CC-IC2-DISPOSITIONS`, integrated as `906edf84`) with the fail-closed
+v2 disposition truth of the 2026-08-23 waiver-authority decision: every
+v2 `waived` record — including a perfectly shaped operator-attribution
+fake — is the `WAIVER_UNAVAILABLE` typed red, never enters `waivedIds`,
+and never subtracts from the coverage reverse diff, so on v2 the
+required set is the FULL register (register ⊆ covered); the v1 frozen
+reasoned-waiver semantics remain bit-identical. CC-IC-3 and CC-IC-4
+remain not started, and each CC-IC landing is branch truth only — never
+an exit claim: CC-81/CC-82 re-verify every CC-IC packet before
+qualification. The proof-contract subset direction repair
 (`3be7393d`, landed on the same integration branch) already corrected the
 `frm.submission.acceptance-contract` token (v2.1.0
 `uncoveredConstraintResidue ⊆ empty` form) and the SRS §D2↔AC residues
@@ -89,15 +102,22 @@ Structural Refactor Qualification Gate. A green gate makes their implementation
 eligible; it does not adopt or authorize either proposal by itself.
 
 **Run-record provenance (2026-08-23):** every `75/75` (CC-IC-1 focused
-suite) and `40/40` (K19) figure quoted in this plan and in the refreshed
-CC-00B/CC-00C factory-run records is a historical transient orchestrator
-run record from the landing session — observed once at landing time and
-reported forward since. No in-repo command transcript or output artifact
-backs any of them: they are not independently reproducible repo evidence
-and not qualification evidence. Before the exit that leans on such a
-figure, the exact focused commands must be rerun and their results
-recorded in-repo; every such figure below is chronology, not durable
-proof. Each occurrence is marked "run-record provenance only".
+suite), `40/40` (K19), `30/30` (CC-IC-2 focused disposition suite),
+`21/21`/`26/26` (CC-U1/ADR-092 proof-hosting battery), and
+`1309/1309`/`112/112`/`19/19`/`18/18` (CC-U1 landing session groups)
+figure quoted in this plan and in the refreshed CC-00B/CC-00C
+factory-run records is a historical transient orchestrator run record
+from the landing session — observed once at landing time and reported
+forward since. No in-repo command transcript or output artifact backs
+most of them: they are not independently reproducible repo evidence and
+not qualification evidence. (Exception: the Space E matrix suite count
+`13/13` was reproduced in an isolated worktree at `905f5940` during the
+2026-08-23 plan-truth refresh and is reproducible with
+`node --test tests/matrix/e-constraint-loss.test.mjs` after a build.)
+Before the exit that leans on such a figure, the exact focused commands
+must be rerun and their results recorded in-repo; every such figure
+below is chronology, not durable proof. Each occurrence is marked
+"run-record provenance only".
 
 The structural cutover is not implemented by this plan. It remains owned by:
 
@@ -212,15 +232,17 @@ CC-00 refreshed them at `6ddcb107`; see `CC-00-BASELINE.md` and
 | K8 | Four workshop packs use one kernel | Add post-catalog synthetic workshop, binding parity, L5 proofs, budgets, and canaries; CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | S | Not implemented | Add finite satisfiability before claiming full master-plan closure |
 | Environment identity (ADR-083/K19) | Bounded image/dependency identity slice + digest repair accepted by two reviewers and integrated (`bc6df0be` provider `1.13.0`; `2b68b192` provider `1.14.0` repair after REJECT — atomic image observation, provider-boundary identity fence, exact trust migration; `aef699b4` authentic `1.3.1`–`1.11.0` historical baselines with an independent history oracle; build + 40/40 green; run-record provenance only — see the Run-record provenance note; the first `1.14.0` attempt `f3a58a30` was REJECTED and superseded) | K19 overall remains incomplete beyond the bounded image/dependency identity slice: package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open; residuals stay honestly recorded |
-| Idea conservation (ADR-090 / CC-IC) | CC-IC-1 landed and accepted (`4c67f1d1` + `1f397348`, focused build + 75/75; run-record provenance only — see the Run-record provenance note); CC-IC-2..4 not started | Execute CC-IC-2..4 (§7A); all four remain a mandatory overall qualification dependency |
+| Idea conservation (ADR-090 / CC-IC) | CC-IC-1 landed and accepted (`4c67f1d1` + `1f397348`, focused build + 75/75; run-record provenance only — see the Run-record provenance note); CC-IC-2 landed (`906edf84`: v2 waivers typed-unavailable — `WAIVER_UNAVAILABLE`, never enters `waivedIds`, never subtracts; required set is the full v2 register; v1 frozen reasoned-waiver semantics remain; focused disposition suite 30/30, run-record provenance only); CC-IC-3 and CC-IC-4 not started. Landing is not exit: CC-81/CC-82 re-verify each packet | Execute CC-IC-3..4 (§7A); all four remain a mandatory overall qualification dependency |
 
 No `[x]` above is an exit gate. It records observed evidence only.
 
 ### 2A. Branch truth at the 2026-08-23 refresh (integration vs saga4)
 
 This subsection records factual branch truth at integration HEAD
-`aef699b4` (`cc/CC-00B-terminal-integrity-integration`; initially
-recorded at `1f397348` and advanced by the accepted K19 landings). It is
+`905f5940` (`cc/CC-00B-terminal-integrity-integration`; initially
+recorded at `1f397348` and advanced by the accepted K19 landings, then
+by the CC-GAP-8 terminal repair + CI hosting, CC-IC-2, CC-U1/ADR-092,
+and the Space E matrix maintenance). It is
 landing
 status, never exit status: no exit checklist below is claimed green by
 this table, and nothing here is merged to `saga4`.
@@ -228,19 +250,25 @@ this table, and nothing here is merged to `saga4`.
 | Work | Source (worker branch) | Integration truth | Residual truth |
 |---|---|---|---|
 | CC-GLOB-SURFACE (whole-tree tests glob is directory coverage, never a phantom literal) | `5f3201c4` on `cc/CC-GLOB-SURFACE`, accepted by two reviewers | integrated as `66d04178` | two REPORT-ONLY residuals remain open: the coverage report still mixes literal and glob test surfaces in one presentation, and a suffix-based reporting claim can overclaim coverage; the coverage-semantics fix itself is what landed |
-| CC-IC-1 register v2 vocabulary (ADR-090) | `d1912c67` + focused repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, accepted | integrated as `4c67f1d1` + `1f397348` | focused integration build and focused suite passed 75/75 (run-record provenance only — see the Run-record provenance note); CC-IC-2 starts after it (branch `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`, no code yet); CC-IC-3/CC-IC-4 not started |
+| CC-IC-1 register v2 vocabulary (ADR-090) | `d1912c67` + focused repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, accepted | integrated as `4c67f1d1` + `1f397348` | focused integration build and focused suite passed 75/75 (run-record provenance only — see the Run-record provenance note); CC-IC-3/CC-IC-4 not started |
+| CC-IC-2 open-question disposition closure (ADR-090 + 2026-08-23 waiver-authority decision) | `7429df54` on `cc/CC-IC2-DISPOSITIONS` (the first attempt's in-record operator-waiver attribution shape was rejected by independent review as a forgery surface) | integrated as `906edf84` | landed, not exited: exact v2 grammar (`resolved`+evidenceRef \| `deferred`+reason+owner+unblockCriterion on kind `open-question`; `accepted` on every other kind), every v2 `waived` record is the `WAIVER_UNAVAILABLE` typed red (never enters `waivedIds`, never subtracts — on v2 the required set is the FULL register), v1 frozen reasoned-waiver semantics remain; focused disposition suite 30/30 (run-record provenance only); CC-IC-3/CC-IC-4 not started; CC-81/CC-82 re-verify |
 | CC-GAP-9 bounded in-check substrate retry (ADR-089) | `736621af` + `d3026cbe` (post-REJECT repair) on `cc/CC-GAP-9-substrate-typed-unknown` | integrated as `830bce80` + post-REJECT repair `64c5fb81` | landed, not exited: the CC-00C re-audit and blocking-group wiring remain open |
 | CC-GAP-9 residual / ADR-091 TOCTOU re-probe | `00792891` + `634a7d94` (post-audit repair) on `cc/CC-ADR091-TOCTOU` | integrated as `61fccda7` + post-audit repair `417749f7`, which landed the provider `1.12.0` pin (later moved to `1.14.0` by the K19 landings below) | landed, not exited: re-audit and CC-10B/CC-80 wiring remain open; still owed BEFORE any production factory run and BEFORE CC-GAP-7 |
 | K19 environment image/dependency identity (ADR-083 remainder) | worker-branch sources on the K19 branches: bounded slice `2fbf0b9f`; the first `1.14.0` repair `f3a58a30` was REJECTED (corrupted 65-character `1.3.1`–`1.11.0` baselines; circular tests hid the corruption) | integrated as `bc6df0be` (bounded image/dependency identity slice, provider `1.13.0`) + `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`) + `aef699b4` (authentic, independently recomputed `1.3.1`–`1.11.0` historical baselines + independent history oracle); accepted by two reviewers; build + 40/40 green (run-record provenance only — see the Run-record provenance note) | landed, not exited: K19 overall remains INCOMPLETE beyond the bounded image/dependency identity slice — package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open |
-| CC-GAP-8 verification accounting | `8819e360` base patch | integrated — base ledger landed; EXIT OPEN | base ledger landed; EXIT OPEN — terminal repair in progress: terminal `unknown`/`human_required` projection and CI wiring are missing; a dedicated repair is in progress (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`); the exit is NOT claimed done |
+| CC-GAP-8 verification accounting | `8819e360` base patch; terminal repair `f2f48426` on `cc/CC-GAP8-TERMINAL-ACCOUNTING` (the `df7359fa` first attempt was REJECTED by independent state-machine review — two post-ledger terminal exits bypassed settlement) | base ledger + terminal repair integrated as `8819e360` + `cbd7dfef`; CI proof hosting `9301e8ff` (orphaned terminal-exit accounting suite hosted in the blocking `process-modules` matrix group + coverage G2g) | landed, not exited: EXIT RE-AUDIT OPEN — the CC-GAP-8 exit checklist below has NOT been re-audited green; landing is not exit |
+| CC-U1/ADR-092 CC proof-hosting registry | `54882e08` on `cc/CC-U1-PROOF-REGISTRY` + same-day defense-in-depth repair `808bbf27` on `cc/CC-U1-REPAIR` | integrated as `54882e08` + `808bbf27` | landed, not exited: the NARROW proof-registration checklist item is closed (manifest 4 blocking + 2 typed pending GAP-2 orphan rows; frozen PROOF_CLAIMS untouched); the U1 planning-graph mutations u1a/u1b/u1c and the U1 exit checklist remain OPEN; honest residual — matrix-coverage G5 guards coordinated removal of the registry group, but coordinated removal of the matrix-coverage group + its own CI step cannot self-guard |
+| Space E matrix maintenance (CC-E-LOSS-MAINT) | `905f5940` on `cc/CC-E-LOSS-MAINT` | integrated as `905f5940` (the integration HEAD of this refresh) | landed: the e-constraint-loss suite is 13/13 (reproduced in an isolated worktree at this refresh); the repair refreshed only two stale test EXPECTATIONS (the E1 citation line shift after `cbd7dfef` and the m6b v2 disposition fixture after `906edf84`) — the open seams E-F2/E-F3/E-F4 are unchanged current behavior, honestly pinned green as findings (section 7B maintenance note) |
 
 Additional refresh facts:
 
 - CC-GAP-7 (warrant execution) remains open — no warrant-execution
-  landing exists on any branch.
+  landing exists on any branch. Chosen direction only (2026-08-23):
+  Option A (warrant adapters); ADR-093 is upcoming and NOT yet present
+  in the repository; no implementation is claimed.
 - No production factory run is authorized now (section 7C records the
-  blocking conditions, including the OPEN CC-GAP-8 exit with its
-  terminal repair in progress and the ADR-091 residual exit re-audit;
+  blocking conditions, including the OPEN CC-GAP-8 exit RE-AUDIT — the
+  terminal repair itself is landed at `cbd7dfef` + `9301e8ff` — and the
+  ADR-091 residual exit re-audit;
   the K19 bounded repair is accepted and integrated, and K19's own
   residuals stay open).
 - `saga4` truth: none of the rows above is merged to `saga4`; the main
@@ -457,9 +485,15 @@ kind vocabulary (`scope|open-question|mechanics|synthesis|ordered-smoke|
 quality`) is added, with `open-question` entries drafted 1:1 from proposal
 unknowns at Discovery settlement; every
 open-question entry reaches `resolved`, or `deferred` (reason, owner,
-unblock criterion), or a `waived` with trusted operator attribution
-(any author-attributed waiver — single or en masse — is red; no
-undefined mass-waiver concept) through the existing disposition network;
+unblock criterion), through the existing disposition network — on v2 the
+waiver state is TYPED UNAVAILABLE (2026-08-23 waiver-authority decision,
+Option A, LANDED at `906edf84`: every v2 `waived` record, any shape
+including a perfectly shaped operator-attribution fake, is the
+`WAIVER_UNAVAILABLE` typed red; it never enters `waivedIds` and never
+subtracts, so the v2 required set is the FULL register — register ⊆
+covered — until an operator-owned command/append-only ledger channel
+lands through a new decision record; the v1 frozen reasoned-waiver
+semantics remain bit-identical);
 qualitative/experience (kind `quality`) entries carry typed measurability
 (measurable interpretation or
 typed deferral); the frozen `runnable-local` lifecycle classification
@@ -472,10 +506,7 @@ LM archaeologist is advisory only, produced solely by an
 operator-commissioned advisory producer with a recorded owner — no
 standing automatic producer, no gate, no authority path (promotion
 produces a new register
-revision/digest, never a gate or authority mutation); every waiver on a
-new-v2 entry requires trusted operator attribution — any
-author-attributed waiver, single or en masse, is a typed red, and no
-separate "mass waiver" concept is defined beside the per-entry rule; and
+revision/digest, never a gate or authority mutation); and
 FOUR new conservation proof tokens compile into the single ADR-084
 AcceptanceObligationContract family, while epic-clause coverage is
 realized on the two existing register-coverage tokens — the
@@ -504,7 +535,8 @@ self-consistency alone is not identity); dispositions are digest-pinned to
 the register they were authored against (positional `ord-c` dispositions
 cannot be reused across register revisions), and `resolved`/`deferred`
 are disposition states that never subtract from the required-coverage
-arithmetic (only the loud per-entry operator-attributed waiver does); the
+arithmetic (on v2 NOTHING subtracts — the waiver state is typed
+unavailable; on v1 the frozen reasoned-waiver subtraction remains); the
 runnable-local injection rides a declared digest-pinned injection table
 (owned by `src/process-modules/lifecycles/product-build-lifecycle.ts`,
 consumed read-only by Discovery settlement; the classification reaches
@@ -697,7 +729,7 @@ source `d1912c67` + `a03b5bf9`, integrated as `4c67f1d1` + `1f397348`,
 focused integration build and focused suite 75/75 green; run-record provenance only — see the Run-record provenance note):
 
 ```text
-CC-GAP-6 exit -> CC-IC-1 (landed) -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
+CC-GAP-6 exit -> CC-IC-1 (landed) -> CC-IC-2 (landed) -> CC-IC-3 -> CC-IC-4
 ```
 
 They are not required for CC-00C exit (CC-GAP-6..10 scope is frozen), they
@@ -716,8 +748,8 @@ their named dependencies and are likewise a mandatory overall
 qualification dependency:
 
 ```text
-CC-IC-1 + CC-GAP-6 exit + CC-GAP-8 repair -> CC-U1
-CC-GAP-9 exit re-audit + ADR-091 re-audit + CC-GAP-8 repair + K19 bounded repair (landed; residuals open) -> CC-U3
+CC-IC-1 + CC-GAP-6 exit + CC-GAP-8 repair (landed; exit re-audit open) -> CC-U1 (proof-registration item landed; planning-graph work open)
+CC-GAP-9 exit re-audit + ADR-091 re-audit + CC-GAP-8 repair (landed; exit re-audit open) + K19 bounded repair (landed; residuals open) -> CC-U3
 CC-GAP-7 + CC-U3 -> CC-U2
 CC-IC-1..4 + CC-U1 + CC-U2 + CC-U3 -> CC-80 may compose
 ```
@@ -729,9 +761,11 @@ the `f3a58a30` rejection for corrupted `1.3.1`–`1.11.0` baselines
 hidden by circular tests is exactly why the landed set carries
 independently recomputed, non-circular baselines; K19 residuals stay
 honestly open) — and the CC-GAP-8 terminal unknown/human-required
-projection/CI repair (base ledger landed; exit open; terminal repair in
-progress from `1f397348`). Until
-the CC-GAP-8 repair lands and passes re-audit — with the landed K19
+projection/CI repair — LANDED (worker `f2f48426`, integrated as
+`cbd7dfef`, plus CI proof hosting `9301e8ff`; the `df7359fa` first
+attempt was REJECTED by independent state-machine review), with its EXIT
+RE-AUDIT still open. Until
+the CC-GAP-8 exit checklist is re-audited green — with the landed K19
 repair's residuals kept honestly recorded — CC-U3 cannot exit and no
 production factory run is authorized
 (§7C).
@@ -778,25 +812,30 @@ Exit checklist:
 ### CC-00B - Elite-6 terminal-integrity closure
 
 - Status: EXECUTING 2026-08-22; truth refreshed 2026-08-23 at integration
-  HEAD `aef699b4` of `cc/CC-00B-terminal-integrity-integration`
+  HEAD `905f5940` of `cc/CC-00B-terminal-integrity-integration`
   (initially recorded at `1f397348`; branch
   truth only): CC-GAP-2 (`97dbc635`), CC-GAP-3 (`9c2253e2`
   receipt-authoritative terminal drain, plus the `f460ae84`
   journal-payload strictness fix), CC-GAP-4 (`dd89b40c`), and CC-GAP-5
   (`9205d9f5`) have all LANDED on that integration branch — as have the
   CC-00C-scope landings CC-GAP-6 (`50824c6a`), CC-GAP-8 (base ledger
-  landed at `8819e360`; EXIT OPEN — terminal repair in progress),
+  `8819e360` + terminal repair `cbd7dfef` + CI proof hosting
+  `9301e8ff` — all LANDED; the CC-GAP-8 EXIT RE-AUDIT remains OPEN),
   CC-GAP-10
   (`184b2c77`), the proof-subset token-direction repair (`3be7393d`),
   CC-GAP-9 (`830bce80` + post-REJECT repair `64c5fb81`), the ADR-091
   residual (`61fccda7` + post-audit repair `417749f7`, which landed
   provider `1.12.0`; the K19 landings later moved the pin to `1.14.0`),
-  CC-GLOB-SURFACE (`66d04178`), CC-IC-1 (`4c67f1d1` + `1f397348`), and
+  CC-GLOB-SURFACE (`66d04178`), CC-IC-1 (`4c67f1d1` + `1f397348`),
+  CC-IC-2 (`906edf84`), the CC-U1/ADR-092 CC proof-hosting registry
+  (`54882e08` + same-day defense-in-depth repair `808bbf27`), the Space
+  E matrix maintenance (`905f5940`), and
   the K19 bounded image/dependency identity slice + digest repair
   (`bc6df0be` + `2b68b192` + `aef699b4`, accepted by two reviewers;
   build + 40/40 green; run-record provenance only — see the Run-record
   provenance note; K19 remains incomplete beyond the bounded slice).
-  CC-GAP-7 is open.
+  CC-GAP-7 is open (chosen direction only: Option A; ADR-093 upcoming
+  and not yet present; no implementation claimed).
   Landing is not closure: the CC-00B exit gate has not been re-audited,
   none of these commits is merged to `saga4`, and neither the incident
   records nor this plan is merged — landing status recorded here is
@@ -884,14 +923,18 @@ green.
 ### CC-00C - Elite-6 product-claim integrity closure
 
 - Status: incident record landed 2026-08-22; truth refreshed 2026-08-23 at
-  integration HEAD `aef699b4` of `cc/CC-00B-terminal-integrity-integration`
+  integration HEAD `905f5940` of `cc/CC-00B-terminal-integrity-integration`
   (initially recorded at `1f397348`; branch truth only): CC-GAP-6
   (`50824c6a`, ADR-088 blocking mutations
   (a)-(d) proven bidirectionally), CC-GAP-10 (`184b2c77`, rendering-only),
   CC-GAP-9 (`830bce80` + post-REJECT repair `64c5fb81`), the CC-GAP-9
   residual / ADR-091 (`61fccda7` + post-audit repair `417749f7`; landed
   provider `1.12.0`, later moved to `1.14.0` by the K19 landings), the
-  CC-GAP-8 base ledger (`8819e360`), and the K19 bounded
+  CC-GAP-8 base ledger + terminal repair + CI hosting (`8819e360` +
+  `cbd7dfef` + `9301e8ff` — ALL LANDED; the CC-GAP-8 EXIT RE-AUDIT
+  remains OPEN), CC-IC-2 (`906edf84`), the CC-U1/ADR-092 CC
+  proof-hosting registry (`54882e08` + repair `808bbf27`), the Space E
+  matrix maintenance (`905f5940`), and the K19 bounded
   image/dependency identity slice + digest repair (`bc6df0be` provider
   `1.13.0`; `2b68b192` provider `1.14.0` repair after REJECT — atomic
   image observation, provider-boundary identity fence, exact trust
@@ -899,14 +942,13 @@ green.
   with an independent history oracle) have LANDED on that integration
   branch — the K19 repair set accepted by two reviewers, build + 40/40
   green (run-record provenance only — see the Run-record provenance
-  note). CC-GAP-8: base ledger landed; EXIT OPEN — terminal repair in
-  progress — terminal `unknown`/`human_required`
-  projection and CI wiring are missing, and a dedicated repair is in
-  progress (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`). K19
+  note). K19
   overall remains incomplete beyond its bounded image/dependency
   identity slice (package-store digest persistence, the ADR-077 keyed
   `toolchainDigests` component, and the remaining ADR-083 train commits
-  stay open). CC-GAP-7 is open (no warrant-execution landing). Landing is not closure:
+  stay open). CC-GAP-7 is open (no warrant-execution landing; chosen
+  direction only — Option A, ADR-093 upcoming and not yet present).
+  Landing is not closure:
   the CC-00C exit gate has not been re-audited, none of these commits is
   merged to `saga4`, and neither the incident records nor this plan is
   merged — this status line records branch truth only, never a claim that
@@ -1206,9 +1248,10 @@ Checklist:
   this receipt-binding, with the honest fallback recorded in the internal
   serialization above while they stay open (the bounded image/dependency
   identity slice itself is landed and accepted). (OPEN — no warrant-execution
-  landing.)
-- [ ] CC-GAP-8 — base ledger landed; EXIT OPEN — terminal repair in
-  progress: implement append-only criterion-key verification
+  landing. Chosen direction only, 2026-08-23: Option A (warrant adapters);
+  ADR-093 is upcoming and NOT yet present in the repository; no
+  implementation is claimed.)
+- [x] CC-GAP-8 — implement append-only criterion-key verification
   accounting: proposed but unmaterialized verification obligations become
   first-class ledger entries keyed by criterion, with owner and unblock
   condition, visible as pending; entries survive readiness failure and
@@ -1217,15 +1260,22 @@ Checklist:
   `executed(failed)` does not discharge; only a passed receipt or an
   operator-attributed waiver discharges; every entry displays its stage
   and order coordinates; the lifecycle transition obligation ledger is
-  not reused for this role. (Base ledger LANDED on the integration branch
-  at `8819e360` — module-local criterion-key ledger, trigger-enforced
-  append-only, integrity guard, blocking mutations (a)-(e) — but the
-  CC-GAP-8 EXIT IS OPEN: terminal `unknown`/`human_required`
-  projection and CI wiring are missing. A dedicated terminal repair is
-  in progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`; this
-  exit item stays OPEN until the repair lands and the exit checklist is
-  re-audited green — the repair is NOT claimed done. Landing is not
-  exit.)
+  not reused for this role. (LANDED on the integration branch in three
+  steps — base ledger `8819e360` (module-local criterion-key ledger,
+  trigger-enforced append-only, integrity guard, blocking mutations
+  (a)-(e)); terminal repair `cbd7dfef` (worker `f2f48426` on
+  `cc/CC-GAP8-TERMINAL-ACCOUNTING`, after the `df7359fa` first attempt
+  was REJECTED by independent state-machine review: the two reachable
+  post-ledger terminal exits — `implement-work-items --domain.failed-->
+  complete-failed` and `certify-product-readiness --domain.failed-->
+  complete-failed` — now route through settlement so no terminal exit
+  bypasses accounting, with every reachable terminal exit enumerated by
+  the new terminal-exit-accounting suite); and CI proof hosting
+  `9301e8ff` (the orphaned accounting suite hosted in the blocking
+  `process-modules` matrix group + coverage G2g). LANDING IS NOT EXIT:
+  the CC-GAP-8 EXIT RE-AUDIT remains OPEN — the exit checklist item
+  below has NOT been re-audited green, and this checklist mark records
+  the landed implementation only, never a closed exit.)
 - [x] CC-GAP-10: make role projections distinguishable — the defect is
   rendering-only (the durable author/reviewer projections are correct):
   board and task-detail surfaces expose author versus reviewer role for
@@ -1347,7 +1397,10 @@ Exit checklist:
   `executed(failed)` is not discharged, nothing is discharged without a
   passed receipt or an operator-attributed waiver, entries carry
   stage/order visibility, and the lifecycle transition obligation ledger
-  is not reused; the CC-GAP-8 blocking proof is green.
+  is not reused; the CC-GAP-8 blocking proof is green. (Implementation
+  LANDED — base ledger `8819e360` + terminal repair `cbd7dfef` + CI
+  hosting `9301e8ff`; this EXIT item stays OPEN until the exit checklist
+  is re-audited green: landing is not exit.)
 - [ ] Author/reviewer role is displayed on board and task-detail surfaces
   for tasks sharing one Workplace ref; the durable projections and the
   sealed graph are untouched — no deduplication, no data rewrite
@@ -2001,15 +2054,23 @@ parallel implementation program.
   provenance note), and the landing closed the m0 residual
   base-verification obligation at its named host — id-reorder and
   snake_case-at-verify reds added, the `50824c6a` source repair verified,
-  never re-implemented). CC-IC-2 starts after CC-IC-1 (branch
-  `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`; no CC-IC-2 code yet);
-  CC-IC-3 and CC-IC-4 are not started. The proof-subset landing
+  never re-implemented). CC-IC-2 is LANDED (worker source `7429df54` on
+  `cc/CC-IC2-DISPOSITIONS`, integrated as `906edf84`) with the exact v2
+  truth of the 2026-08-23 waiver-authority decision (Option A): every
+  v2 `waived` record — including a perfectly shaped operator-attribution
+  fake — is the `WAIVER_UNAVAILABLE` typed red, never enters `waivedIds`,
+  and never subtracts from the coverage reverse diff, so on v2 the
+  required set is the FULL register (register ⊆ covered); the v1 frozen
+  reasoned-waiver semantics remain bit-identical; focused disposition
+  suite 30/30 (run-record provenance only — see the Run-record
+  provenance note). CC-IC-3 and CC-IC-4 are not started. The proof-subset
+  landing
   `3be7393d` (same integration branch) already corrected the
   `frm.submission.acceptance-contract` direction (v2.1.0
   uncovered-residue form) and the SRS §D2↔AC residues — verify-only for
   CC-IC-4, which adds only the SRS register-coverage residue constraint.
   Landing is not exit: CC-81/CC-82 still re-verify every CC-IC packet
-  before qualification, and until CC-IC-2..4 are implemented and proven
+  before qualification, and until CC-IC-3..4 are implemented and proven
   the CC-IC mandatory qualification dependency stays open
 - Owner roles: named per packet below; all packets ride the single-writer
   `Constraint register and warrant seam` row (section 4.3)
@@ -2028,11 +2089,16 @@ parallel implementation program.
   under the v2 vocabulary (each carrying non-null typed authority — a
   built register, or an explicit typed no-obligations attestation if the
   architecture truly permits an obligation-free order; never a silent
-  null), each of five blocking
+   null), each of five blocking
   mutations — (m1) a proposal unknown absent from the register's
   open-question entries; (m2) an open-question entry without a
   resolved-or-deferred disposition (reason, owner, and unblock criterion)
-  or a loud per-entry operator-attributed waiver; (m3) a mechanics-bearing
+  or carrying a waiver (on v2 every `waived` record — any shape,
+  including a perfectly shaped operator-attribution fake — is itself the
+  `WAIVER_UNAVAILABLE` red: waiver capability is intentionally
+  unavailable until an operator-owned channel lands; the v1 frozen
+  reasoned-waiver semantics remain; 2026-08-23 waiver-authority
+  decision); (m3) a mechanics-bearing
   constraint whose RULE binding is removed or
   untrace-bound; (m4) a runnable-local lifecycle
   classification without the injected whole-product-synthesis and
@@ -2063,8 +2129,8 @@ parallel implementation program.
   focused integration build and focused suite passed 75/75 (run-record
   provenance only — see the Run-record provenance note); branch truth
   only (not merged to `saga4`). Landing is not exit: CC-81/CC-82
-  re-verify this packet's exit checklist at qualification. CC-IC-2 starts
-  from `1f397348` after this landing.
+  re-verify this packet's exit checklist at qualification. CC-IC-2
+  subsequently LANDED (integrated as `906edf84`; see its packet below).
 - Owner role: discovery settlement owner (execution-kernel seam, serialized
   through the single-writer row)
 - Depends on: CC-GAP-6 exit (seam integrated at `50824c6a`); the v1
@@ -2401,6 +2467,16 @@ Exit checklist:
 
 ### CC-IC-2 - Open-question disposition closure
 
+- Status: LANDED 2026-08-23 — worker source `7429df54` on
+  `cc/CC-IC2-DISPOSITIONS` (the first implementation attempt accepted a
+  typed in-record operator-waiver attribution shape; independent review
+  proved it a forgery surface, and the recorded 2026-08-23
+  waiver-authority decision chose the fail-closed Option A), integrated
+  as `906edf84` on `cc/CC-00B-terminal-integrity-integration`; focused
+  disposition suite 30/30 (run-record provenance only — see the
+  Run-record provenance note); branch truth only (not merged to
+  `saga4`). LANDING IS NOT EXIT: CC-81/CC-82 re-verify this packet's
+  exit checklist at qualification.
 - Owner role: formalization contract owner
 - Depends on: CC-IC-1
 - Editable files:
@@ -2423,7 +2499,7 @@ Exit checklist:
 
 Checklist:
 
-- [ ] Extend the disposition grammar for kind `open-question` entries on
+- [x] Extend the disposition grammar for kind `open-question` entries on
         the existing network: `resolved` (evidenceRef required), or
         `deferred` (non-empty reason + owner + unblockCriterion). WAIVED
         IS TYPED UNAVAILABLE ON V2 (2026-08-23 waiver-authority decision
@@ -2438,15 +2514,20 @@ Checklist:
         `resolved`/`deferred` are typed-invalid on every other kind. The
         v1 grammar (accepted | waived+reason) stays frozen bit-identically.
         Per-ID gate guidance in the `FORMALIZATION_CONSTRAINT_UNDISPOSED`
-        message shape.
-- [ ] Dispositions freeze into the baseline payload and ride the
+        message shape. (LANDED at `906edf84`; landing is not exit —
+        CC-81/CC-82 re-verify.)
+- [x] Dispositions freeze into the baseline payload and ride the
       `warrantRef` projection (one source, three projections — no new
       carrier): the freeze is authored at the existing projection site in
       `formalization-production-cell-installation.ts`, and the freeze
       schema fields it rides (including the `registerDigest` pin) live in
       `formalization-schemas.ts` — both under the LIMITED ownership
-      recorded in this packet's editable files.
-- [ ] Dispositions are digest-pinned to the register they were authored
+      recorded in this packet's editable files. (LANDED at `906edf84` —
+      the settlement freeze re-verifies every v2 register entry, with a
+      deterministic `dispositionsDigest` and
+      `verifyWarrantDispositionsBinding` at the freeze; landing is not
+      exit.)
+- [x] Dispositions are digest-pinned to the register they were authored
       against: the disposition freeze carries the `registerDigest` it
       disposes, and a disposition set authored against register digest X
       applied to a register with digest Y ≠ X is a typed red. Recorded
@@ -2456,18 +2537,29 @@ Checklist:
       `dispositions[entry.id]`), so a changed register digest would silently
       re-apply old positional dispositions to DIFFERENT entries. Positional
       `ord-c` dispositions must never be reused across register revisions.
-- [ ] Honest required-coverage arithmetic: `resolved` and `deferred` are
-       disposition STATES, not coverage discharges. On v2 NOTHING subtracts
-       (the waiver state is typed unavailable — see the checklist item
-       above), so the required set is the FULL register: register ⊆
-       covered. A resolved or deferred open-question entry REMAINS in the
-       production coverage requirement — resolution/deferral never becomes
-       a silent waiver, and the reverse diff stays non-empty honestly
-       until the entry is covered.
-- [ ] Keep registerless and v1-register corpora green: the extension binds
-      only entries whose kind is `open-question`.
+      (LANDED at `906edf84` — the m2d authored-against `registerDigest`
+      pin; landing is not exit.)
+- [x] Honest required-coverage arithmetic: `resolved` and `deferred` are
+        disposition STATES, not coverage discharges. On v2 NOTHING subtracts
+        (the waiver state is typed unavailable — see the checklist item
+        above), so the required set is the FULL register: register ⊆
+        covered. A resolved or deferred open-question entry REMAINS in the
+        production coverage requirement — resolution/deferral never becomes
+        a silent waiver, and the reverse diff stays non-empty honestly
+        until the entry is covered. (LANDED at `906edf84` — the AC/SRS
+        `covered_constraint_ids` relay carries every non-waived id, and
+        `waivedConstraintIdsForRegister` returns the v1 legacy rule for v1
+        registers and is always empty for v2; landing is not exit.)
+- [x] Keep registerless and v1-register corpora green: the extension binds
+      only entries whose kind is `open-question`. (LANDED at `906edf84` —
+      v1 fixtures keep the frozen ADR-088 grammar and reasoned-waiver
+      subtraction bit-identically, pinned green by focused tests; landing
+      is not exit.)
 
-Blocking mutations: m2 (an undisposed open-question entry —
+Blocking mutations (LANDED at `906edf84` with the focused disposition
+suite 30/30 — run-record provenance only — see the Run-record provenance
+note; they stay wired for CC-81/CC-82 re-verification): m2 (an undisposed
+open-question entry —
 `FORMALIZATION_CONSTRAINT_UNDISPOSED` with per-ID guidance); m2a (a
 deferral without owner or unblockCriterion — red); m2b (a `resolved`
 without evidenceRef — red); m2c (ANY waiver authored inside v2 brief
@@ -2486,6 +2578,8 @@ Exit checklist:
        criterion) — v2 waiver capability is intentionally unavailable
        until an operator-owned command/append-only ledger channel lands
        (2026-08-23 waiver-authority decision) — or the gate is typed red.
+       (Implementation landed at `906edf84`; this EXIT item stays OPEN
+       until re-audited green at CC-81/CC-82 — landing is not exit.)
 - [ ] Frozen legacy registerless corpora keep exactly the current green
       behavior.
 
@@ -2684,7 +2778,7 @@ Exit checklist:
 |---|---|---|
 | A. Epic-as-authority trace gate | new scope-clause coverage gate | Reused: register ids + kernel-derived `coveredConstraintIds` + SRS §D2/§2.2 reverse diff (ADR-088); v2 entries join the same diff; no parallel scope-clause ledger |
 | B. Requirements archaeologist | gating second model | Advisory only, operator-commissioned: a report exists only when the operator commissions an advisory producer with a recorded owner; no standing/automatic producer, no gate, no authority path; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority (CC-IC-4) |
-| C. Unknowns are obligations | new OPEN ledger | kind `open-question` register entries (class vocabulary `execution\|material\|human` unchanged) drafted 1:1 from proposal unknowns (CC-IC-1); `resolved`, or `deferred` (reason, owner, unblock criterion), or `waived` with trusted operator attribution — any author-attributed waiver, single or en masse, is red (no undefined mass-waiver concept) — on the existing disposition network (CC-IC-2) |
+| C. Unknowns are obligations | new OPEN ledger | kind `open-question` register entries (class vocabulary `execution\|material\|human` unchanged) drafted 1:1 from proposal unknowns (CC-IC-1); `resolved`, or `deferred` (reason, owner, unblock criterion), on the existing disposition network (CC-IC-2). Waiver truth per the 2026-08-23 waiver-authority decision, LANDED at `906edf84`: on v2 every `waived` record — any shape, including a perfectly shaped operator-attribution fake — is the `WAIVER_UNAVAILABLE` typed red; it never enters `waivedIds` and never subtracts, so the v2 required set is the FULL register; re-opening `waived` for v2 requires an operator-owned command/append-only ledger channel through a new decision record. The v1 frozen reasoned-waiver semantics remain |
 | D. Mechanics first-class | new mechanics-spec family | Existing RULE artifacts are the carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by` (CC-IC-3) |
 | E. Runnable lifecycle auto-requires integration + ordered smoke | inferred at Formalization | Frozen `runnable-local` classification; deterministic injection at Discovery settlement; engine never infers by rereading prose (CC-IC-1) |
 | F. Qualitative quantified | new translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral (CC-IC-1) |
@@ -2698,7 +2792,7 @@ The Elite-6 closure (CC-00B/CC-00C) and ADR-090 teach four invariant
 families that must hold for EVERY admitted workshop and product shape, not
 only for the incident's product. One family — idea conservation — is
 already the bounded CC-IC-1..4 program (§7A; CC-IC-1 landed and accepted,
-CC-IC-2 starts after it). This section adds the remaining three families
+CC-IC-2 landed). This section adds the remaining three families
 as bounded universal packets CC-U1..CC-U3.
 
 Two binding rules govern every CC-U packet:
@@ -2722,12 +2816,23 @@ qualification command, and overall K qualification (CC-81/CC-82) remain
 RED, with the unproven CC-U set recorded as an open mandatory dependency
 (never skipped, never recorded as PASS).
 
-- Status: not started (documentation only) at the 2026-08-23 refresh
+- Status (2026-08-23 truth refresh): CC-U1 is PARTIALLY LANDED — ADR-092
+  (the CC closure proof-hosting registry) LANDED at `54882e08` +
+  same-day defense-in-depth repair `808bbf27`, closing exactly ONE
+  checklist item of CC-U1 (the narrow bidirectional proof-registration
+  item below); the remaining CC-U1 planning-graph work (u1a/u1b/u1c
+  blocking mutations and the other checklist items) and the CC-U1 exit
+  checklist remain OPEN, and the landing is branch truth only (not
+  merged to `saga4`, not an exit claim — CC-81/CC-82 re-verify).
+  CC-U2 is not started. CC-U3 is not started (its CC-GAP-8 repair
+  dependency is now LANDED, but the CC-GAP-8 exit re-audit and the
+  ADR-091 residual exit re-audit remain open ahead of it).
 - Owner roles: named per packet below; each rides its named single-writer
   seam row (section 4.3)
 - Depends on: per packet below; CC-U3 additionally hard-depends on the
-  CC-GAP-8 terminal unknown/human-required projection/CI repair (in
-  progress) and on the K19 bounded image/dependency identity + digest
+  CC-GAP-8 terminal unknown/human-required projection/CI repair — LANDED
+  (`8819e360` + `cbd7dfef` + CI hosting `9301e8ff`; EXIT RE-AUDIT OPEN)
+  — and on the K19 bounded image/dependency identity + digest
   repair state (accepted by two reviewers and integrated as `bc6df0be` +
   `2b68b192` + `aef699b4`; build + 40/40 green; run-record provenance
   only — see the Run-record provenance note; K19 incomplete residuals
@@ -2740,10 +2845,27 @@ RED, with the unproven CC-U set recorded as an open mandatory dependency
 
 ### CC-U1 - Planning-graph completeness and mandatory synthesis/integration work
 
+- Status: PARTIALLY LANDED 2026-08-23 — exactly ONE checklist item (the
+  narrow bidirectional proof-registration item) is closed by ADR-092
+  (the CC closure proof-hosting registry, LANDED at `54882e08` + same-day
+  defense-in-depth repair `808bbf27`; manifest = 4 blocking rows + 2
+  typed pending GAP-2 orphan rows; the frozen
+  `tests/factory-proof/proof-claims.mjs` bijection is untouched;
+  landing-session figures 21/21, 26/26, 19/19, 18/18, 112/112,
+  1309/1309 are run-record provenance only — see the Run-record
+  provenance note). The planning-graph mutations u1a/u1b/u1c, every other
+  checklist item, and the CC-U1 exit checklist remain OPEN. Honest
+  residual of the landed registry (recorded in ADR-092): the
+  independently hosted matrix-coverage G5 cross-guard catches coordinated
+  removal of the registry group + its CI step, but a coordinated removal
+  of the matrix-coverage group + its OWN CI step cannot self-guard — a
+  guard cannot host itself, and no third layer was added. Landing is not
+  exit: CC-81/CC-82 re-verify.
 - Owner role: planning/coverage owner (CC-GAP-6/CC-IC-1 seam row)
 - Depends on: CC-IC-1 (landed — injected synthesis/ordered-smoke register
-  rows exist), CC-GAP-6 exit re-audit, CC-GAP-8 repair (executed-work
-  accounting)
+  rows exist), CC-GAP-6 exit re-audit, CC-GAP-8 repair (LANDED at
+  `8819e360` + `cbd7dfef` + `9301e8ff`; executed-work accounting; EXIT
+  RE-AUDIT OPEN)
 - Objective (SMART): by CC-U1 exit, for every register-bearing corpus of
   every admitted workshop and the synthetic workshop fixture, the sealed
   planning graph is mechanically complete over the closed register —
@@ -2783,11 +2905,24 @@ Checklist:
       ledger pending/executed states).
 - [ ] Prove blocking mutations u1a/u1b/u1c red in the blocking group; wire
       them into CC-10B/CC-80.
-- [ ] Register every new blocking proof file bidirectionally: it must
+- [x] Register every new blocking proof file bidirectionally: it must
       appear in the actual blocking group and floor that CI invokes AND
       in the recorded proof-claims set — a file missing in either
       direction (blocking but unclaimed, or claimed but not actually
-      blocking) is RED.
+      blocking) is RED. (CLOSED for the CC critical proof surface by
+      ADR-092, LANDED at `54882e08` + repair `808bbf27`: the
+      `tests/infrastructure/cc-proof-hosting-manifest.mjs` manifest — 4
+      blocking + 2 typed pending GAP-2 orphan rows — is the sole
+      authority, proven bidirectionally against the `--list-json`
+      machine export and the real CI invocations by
+      `tools/cc-proof-hosting-registry.mjs` +
+      `tests/infrastructure/cc-proof-hosting.test.mjs` (mutation battery
+      m1-m18) + the matrix-coverage G5 cross-guard, in its own exact-file
+      `cc-proof-registry` group with its own CI step; the frozen
+      `PROOF_CLAIMS` bijection is untouched byte-for-byte. Narrow closure
+      only: this marks the proof-registration sub-item, NOT the CC-U1
+      planning-graph work — u1a/u1b/u1c and the exit checklist stay
+      open; landing is not exit.)
 
 Exit checklist:
 
@@ -2847,7 +2982,8 @@ Exit checklist:
   (CC-GAP-9 seam row)
 - Depends on: CC-GAP-9 exit re-audit (integrated at `830bce80` +
   `64c5fb81`), ADR-091 residual re-audit (integrated at `61fccda7` +
-  `417749f7`), CC-GAP-8 repair (in progress from `1f397348`), K19
+  `417749f7`), CC-GAP-8 repair (LANDED — worker `f2f48426`, integrated
+  as `cbd7dfef` + CI hosting `9301e8ff`; EXIT RE-AUDIT OPEN), K19
   bounded image/dependency identity + digest repair (accepted by two
   reviewers and integrated as `bc6df0be` provider `1.13.0` +
   `2b68b192` provider `1.14.0` + `aef699b4` authentic historical
@@ -2882,7 +3018,11 @@ Checklist:
       provider path (one shared typed vocabulary, per-provider
       declarations).
 - [ ] Land the CC-GAP-8 terminal unknown/human-required projection/CI
-      repair and generalize it to every status surface.
+      repair and generalize it to every status surface. (Repair LANDED
+      at `cbd7dfef` + `9301e8ff`; the remaining OPEN work of this item
+      is the generalization to every status surface — the CC-U3
+      obligation that no surface renders terminal `unknown`/
+      `human_required` as failed or as passed.)
 - [ ] Require the environment-digest receipt binding on every warrant
       receipt: consume the environment identity state produced by the
       accepted, integrated K19 bounded repair (`bc6df0be` +
@@ -2915,6 +3055,59 @@ Exit checklist:
 - [ ] No new outcome class or retry vocabulary exists anywhere in the
       diff.
 
+### Space E maintenance note (2026-08-23, CC-E-LOSS-MAINT at `905f5940`)
+
+The Space E constraint-loss matrix
+(`tests/matrix/e-constraint-loss.test.mjs`) is LANDED at 13/13
+(reproduced in an isolated worktree at `905f5940` during this refresh).
+The maintenance commit `905f5940` repaired only two STALE TEST
+EXPECTATIONS — the E1 citation line shift after the CC-GAP-8 flow change
+(`cbd7dfef`) and the m6b fixture now supplying the lawful kind-aware v2
+disposition set after CC-IC-2 (`906edf84`; no waiver — v2
+`WAIVER_UNAVAILABLE` stays enforced) — it did NOT change any E-F2/E-F3/
+E-F4 behavior. All finding pins are GREEN precisely because they
+honestly demonstrate CURRENT gaps.
+
+Three generic planning/decomposition seams stay OPEN (recorded findings,
+not fixes; each is a defect of translating requirements into
+plans/tasks/results for ANY product — these are NOT the Elite
+browser-game special case, and they are NOT already solved by CC-U1:
+U1 owns planning-graph completeness and synthesis materialization, while
+these seams live at other translation boundaries):
+
+- **E-F2 (OPEN)** — the reverse orphan detector for plain FR/NFR
+  requirements exists in code
+  (`findContractGap({reconciliation:true})` at
+  `src/modules/formalization/application/formalization-contract-analysis.ts`)
+  but production never requests reconciliation: no wired call site
+  passes the flag, so a plain FR/NFR with no incoming UC-covers or
+  AC `derived_from` edge passes every wired gate. RULE artifacts are
+  excluded from the orphan check.
+- **E-F3 (OPEN)** — the implementation result product does not
+  mechanically bind or echo the card's acceptance-criterion and covered
+  constraint set: the implementation result consumer contract has no
+  criterion/constraint field at all, so a criterion-blind first attempt
+  can pass the implementation gate (the verification card's echo check
+  proves the VERIFIER saw the set, not the implementer).
+- **E-F4 (SPLIT/OPEN residual)** — file-claim narrowing across attempts
+  is now caught by claim monotonicity (E-F5, FIXED by stage-18 R2:
+  `development.implementation-claim-monotonicity.v1`), but three doors
+  remain open: (a) criterion-level silent surrender — after a scope-fence
+  rejection, a card may pass by simply no longer touching the paths its
+  criteria required, with no scope-insufficient declaration, no waiver,
+  and no disposition (the gate checks what was presented; nothing checks
+  what was NOT presented); (b) the `droppedFiles` disposition of the
+  monotonicity ratchet is a free-text `{path, reason}` without criterion
+  authority; (c) the criterion-blind first attempt (E-F3's pin) reaches
+  acceptance through the same door.
+
+These seams are recorded as current-repo truth for the conformance
+program: they generalize the constraint-loss shape (matrix S4) across
+the order→proposal→PRD→AC→graph→cards→results chain, are
+domain-free by construction (the matrix fixtures use arbitrary text,
+never a realistic product), and any future fix extends the existing
+gates/contracts — never a parallel vocabulary.
+
 ## 7C. Production-run boundary and post-qualification scope
 
 ### No production factory run now (normative)
@@ -2930,7 +3123,9 @@ Exit checklist:
       ADR-077 keyed `toolchainDigests` component, remaining train
       commits) stay honestly recorded and K19 remains incomplete beyond
       the bounded slice; the CC-GAP-8 terminal unknown/human-required
-      projection/CI repair lands and its exit is re-audited green; the
+      projection/CI repair — LANDED at `8819e360` + `cbd7dfef` + CI
+      hosting `9301e8ff` — has its EXIT RE-AUDIT green (landing is not
+      exit); the
       ADR-091 residual exit re-audit is green on the integration branch
       (already normative — BEFORE any production factory run); and the
       operator quiet-machine gates are respected for any heavy-validation
@@ -2938,6 +3133,26 @@ Exit checklist:
 - [ ] Monitored canaries remain permitted only under the plan's existing
       canary rules (isolated state, opencode shim); they are monitored
       evidence, never a production-run substitute and never a gate.
+
+### Critical-path dependency order (2026-08-23 truth refresh)
+
+CC-GAP-7 stays OPEN (chosen direction only: Option A — warrant adapters;
+ADR-093 is upcoming and NOT yet present in the repository; no
+implementation is claimed). The remaining conformance work executes in
+this order, and no step may be reordered around an unmet dependency:
+
+```text
+CC-GAP-7 (open; Option A direction; ADR-093 upcoming, not yet present)
+  -> CC-IC-3 -> CC-IC-4
+  -> remaining CC-U1 (planning-graph work) -> CC-U3 -> CC-U2 (where applicable)
+  -> K2-K8 qualification packages (CC-10B through CC-72)
+  -> CC-80 -> CC-81 -> CC-82 qualification
+  -> ONLY AFTER qualification: ProductRevision/ChangeRequest flow,
+     safe parallelism, and a generic Elite-like exam run (below)
+```
+
+No production factory run happens before qualification (the blocking
+conditions above hold throughout).
 
 ### Post-qualification scope (frozen out of qualification)
 
@@ -3064,8 +3279,10 @@ Checklist:
       `aef699b4`; independently recomputed, non-circular baselines) and
       never on the rejected `f3a58a30` attempt, that K19's incomplete
       residuals are recorded open, and that the CC-GAP-8 exit (base
-      ledger landed; terminal repair in progress) is
-      recorded as OPEN until its repair lands and re-audits.
+      ledger + terminal repair + CI hosting all landed at `8819e360` +
+      `cbd7dfef` + `9301e8ff`) is
+      recorded as OPEN until its exit checklist is re-audited green —
+      landing is not exit.
 
 Exit checklist:
 
@@ -3172,7 +3389,7 @@ Exit checklist:
 - [ ] CC-00C product-claim-integrity exit criteria pass; no CC-GAP-6..10 is
   open.
 - [ ] CC-IC idea-authority conservation is implemented and proven (ADR-090;
-  CC-IC-1 landed, CC-IC-2..4 closed).
+  CC-IC-1 and CC-IC-2 landed, CC-IC-3..4 closed).
 - [ ] CC-U1..CC-U3 universal invariant exit criteria pass; none is open,
   and none branches on product type (section 7B).
 - [ ] Blocking file and proof-claim sets are equal: every new blocking
@@ -3384,10 +3601,10 @@ Pre-mortem controls:
       the ADR-077 keyed `toolchainDigests` component, and the remaining
       train commits stay open), and no receipt-binding claim may lean on
       any baseline without that independent provenance.
-- [ ] Landing can be mistaken for exit. CC-GAP-8's base ledger landed
-      (`8819e360`) yet its EXIT stays OPEN (terminal
-      `unknown`/`human_required` projection and CI wiring missing;
-      terminal repair in progress). Landing notes in this plan are branch truth only;
+- [ ] Landing can be mistaken for exit. CC-GAP-8's base ledger, terminal
+      repair, and CI hosting all LANDED (`8819e360` + `cbd7dfef` +
+      `9301e8ff`) yet its EXIT RE-AUDIT stays OPEN — exactly the
+      landing-is-not-exit lesson. Landing notes in this plan are branch truth only;
       only the exit checklists — re-audited at CC-81/CC-82 — close a
       package, and CC-GLOB-SURFACE's two report-only residuals (mixed
       literal/glob presentation; suffix-overclaim) stay open until the

@@ -216,8 +216,10 @@ reopens the run.
 ### Integration status (2026-08-23 refresh — branch truth, not closure)
 
 Remediation commits have landed on the integration branch
-`cc/CC-00B-terminal-integrity-integration` (HEAD `aef699b4`; initially
-recorded at `1f397348` and advanced by the accepted K19 landings):
+`cc/CC-00B-terminal-integrity-integration` (HEAD `905f5940`; initially
+recorded at `1f397348` and advanced by the accepted K19 landings, the
+CC-GAP-8 terminal repair + CI hosting, CC-IC-2, CC-U1/ADR-092, and the
+Space E matrix maintenance):
 
 | Gap | Landing |
 |---|---|
@@ -225,17 +227,21 @@ recorded at `1f397348` and advanced by the accepted K19 landings):
 | CC-GAP-3 (stale `running` WorkerExecution) | `9c2253e2` (receipt-authoritative terminal drain) + `f460ae84` (journal-payload strictness) |
 | CC-GAP-4 (duplicate `run.terminal`) | `dd89b40c` |
 | CC-GAP-5 (watchdog CLI drift) | `9205d9f5` |
-| Related CC-00C-scope landings on the same branch | CC-GAP-6 `50824c6a`, CC-GAP-8 base ledger `8819e360` (base ledger landed; EXIT OPEN — terminal `unknown`/`human_required` projection/CI repair in progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING`), CC-GAP-10 `184b2c77`, proof-subset token-direction repair `3be7393d`, CC-GAP-1 test alignment `3ec49b6f`, CC-GAP-9 `830bce80` + post-REJECT repair `64c5fb81`, ADR-091 residual `61fccda7` + post-audit repair `417749f7` (landed provider `1.12.0`; the K19 landings later moved the current pin to `1.14.0`), CC-GLOB-SURFACE `66d04178` (source `5f3201c4`, accepted by two reviewers; two report-only residuals open: mixed literal/glob presentation and suffix-overclaim), CC-IC-1 `4c67f1d1` + `1f397348` (source `d1912c67` + `a03b5bf9`, accepted; focused integration build and focused suite 75/75 (run-record provenance only — see the Run-record provenance note) — including the id-reorder and snake_case-at-verify reds, landed and green at the named host) |
+| Related CC-00C-scope landings on the same branch | CC-GAP-6 `50824c6a`, CC-GAP-8 base ledger `8819e360` + terminal repair `cbd7dfef` (worker `f2f48426` on `cc/CC-GAP8-TERMINAL-ACCOUNTING`, after the `df7359fa` first attempt was REJECTED by independent state-machine review — the two reachable post-ledger terminal exits now route through settlement) + CI proof hosting `9301e8ff` (orphaned terminal-exit accounting suite hosted in the blocking `process-modules` matrix group; the CC-GAP-8 EXIT RE-AUDIT remains open — landing is not exit), CC-GAP-10 `184b2c77`, proof-subset token-direction repair `3be7393d`, CC-GAP-1 test alignment `3ec49b6f`, CC-GAP-9 `830bce80` + post-REJECT repair `64c5fb81`, ADR-091 residual `61fccda7` + post-audit repair `417749f7` (landed provider `1.12.0`; the K19 landings later moved the current pin to `1.14.0`), CC-GLOB-SURFACE `66d04178` (source `5f3201c4`, accepted by two reviewers; two report-only residuals open: mixed literal/glob presentation and suffix-overclaim), CC-IC-1 `4c67f1d1` + `1f397348` (source `d1912c67` + `a03b5bf9`, accepted; focused integration build and focused suite 75/75 (run-record provenance only — see the Run-record provenance note) — including the id-reorder and snake_case-at-verify reds, landed and green at the named host), CC-IC-2 `906edf84` (source `7429df54`; v2 waivers typed-unavailable — every v2 `waived` record is the `WAIVER_UNAVAILABLE` red, never enters `waivedIds`, never subtracts; the v1 frozen reasoned-waiver semantics remain; focused disposition suite 30/30, run-record provenance only), CC-U1/ADR-092 CC proof-hosting registry `54882e08` + same-day defense-in-depth repair `808bbf27` (manifest 4 blocking + 2 typed pending GAP-2 orphan rows; frozen PROOF_CLAIMS untouched; the narrow CC-U1 proof-registration item closed — u1a/u1b/u1c and the U1 exit remain open), CC-E-LOSS-MAINT `905f5940` (Space E matrix expectations refreshed after the `cbd7dfef` line shift and the `906edf84` v2 dispositions; suite 13/13, reproduced in an isolated worktree; E-F2/E-F3/E-F4 stay open as honestly pinned findings) |
 | K19 (ADR-083 environment identity) | bounded image/dependency identity slice + digest repair accepted by two reviewers and integrated: `bc6df0be` (registry manifest digest + dependency lock, provider `1.13.0`), `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`), `aef699b4` (authentic `1.3.1`–`1.11.0` historical baselines with an independent history oracle; build + 40/40 green; run-record provenance only — see the Run-record provenance note). The first `1.14.0` attempt `f3a58a30` was REJECTED (corrupted 65-character baseline values; circular tests hid the corruption) and was superseded by `2b68b192` + `aef699b4`; K19 remains incomplete beyond its bounded identity slice (package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining train commits stay open) |
-| CC-GAP-7 (CC-00C scope) | open — no warrant-execution landing |
+| CC-GAP-7 (CC-00C scope) | open — no warrant-execution landing. Chosen direction only (2026-08-23): Option A (warrant adapters); ADR-093 is upcoming and NOT yet present in the repository; no implementation is claimed |
 
 **Run-record provenance (2026-08-23):** the `75/75` (CC-IC-1 focused
-suite) and `40/40` (K19) figures in this record are historical transient
-orchestrator run records from the landing sessions — no in-repo command
-transcript or output artifact backs them. They are not independently
-reproducible repo evidence and not qualification evidence; before any
-exit leans on such a figure, the exact focused commands must be rerun
-and their results recorded in-repo (same note in the plan and in CC-00C).
+suite), `40/40` (K19), `30/30` (CC-IC-2 focused disposition suite), and
+the CC-U1/ADR-092 landing-session figures in this record are historical
+transient orchestrator run records from the landing sessions — no
+in-repo command transcript or output artifact backs them. They are not
+independently reproducible repo evidence and not qualification evidence;
+before any exit leans on such a figure, the exact focused commands must
+be rerun and their results recorded in-repo (same note in the plan and
+in CC-00C). The Space E `13/13` count was reproduced in an isolated
+worktree at `905f5940` and is reproducible with
+`node --test tests/matrix/e-constraint-loss.test.mjs` after a build.
 
 Landing is not closure, and this update marks nothing merged: none of
 these commits is merged to `saga4`, the CC-00B exit checklist (evidence
@@ -243,8 +249,8 @@ freeze, blocking regression proofs, deferred-run release) has not been
 re-audited, and neither this record, CC-00C, nor the plan is merged.
 The durable Elite-6 states described above remain exactly as frozen;
 CC-81/CC-82 must still verify each exit item before any gate passes. No
-production factory run is authorized while the CC-GAP-8 exit repair, the
-ADR-091 residual exit re-audit, and the K19 incomplete residuals are
+production factory run is authorized while the CC-GAP-8 exit re-audit,
+the ADR-091 residual exit re-audit, and the K19 incomplete residuals are
 open (plan section 7C) — no qualification exit is claimed here.
 
 The Elite-6 experiment is complete and immutable, and product
