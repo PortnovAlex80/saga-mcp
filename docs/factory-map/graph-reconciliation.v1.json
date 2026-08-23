@@ -1,0 +1,281 @@
+{
+  "schemaVersion": "factory.execution-map.reconciliation.v1",
+  "kind": "graph-reconciliation",
+  "baseCommits": {
+    "strataAndGraphs": "586871adfeae77da0ca8af96232ef96d6b0ee7e4",
+    "reconciliation": "12d46037e0e3d19033386102addc98cabc32461f",
+    "docsOnlyDelta": "586871ad..12d46037 touches only docs/factory-map/** (9 files, insertions only); all 586871ad production citations remain line-valid at the reconciliation base",
+    "sourceRefs": ["docs/factory-map/GRAPH_RECONCILIATION.md"]
+  },
+  "inputs": {
+    "forward": {
+      "file": "docs/factory-map/forward-graph.v1.json",
+      "schemaVersion": "factory.execution-map.forward.v1",
+      "nodes": 68,
+      "edges": 93,
+      "terminals": 13,
+      "uncertainties": 7,
+      "sourceRefs": ["docs/factory-map/FORWARD_GRAPH.md:3-9"]
+    },
+    "reverse": {
+      "file": "docs/factory-map/reverse-graph.v1.json",
+      "schemaVersion": "factory.execution-map.reverse.v1",
+      "rootClaims": 1,
+      "claims": 45,
+      "dependencies": 28,
+      "homelessClaims": 1,
+      "safetyClaims": 12,
+      "livenessClaims": 5,
+      "auditClaims": 5,
+      "uncertainties": 5,
+      "sourceRefs": ["docs/factory-map/REVERSE_GRAPH.md:3-9"]
+    },
+    "strata": [
+      "docs/factory-map/00_FACTORY_CONTRACT.md",
+      "docs/factory-map/01_DISCOVERY.md",
+      "docs/factory-map/02_FORMALIZATION.md",
+      "docs/factory-map/03_DEVELOPMENT.md",
+      "docs/factory-map/04_DELIVERY.md"
+    ]
+  },
+  "productionInstalledInventory": [
+    {
+      "id": "INV-1",
+      "fact": "exactly six package manifests installed per CLI composition: discovery, formalization, development, development-continuation, development-verification-continuation, delivery",
+      "sourceRefs": ["src/orchestrate-cli.ts:885-897"]
+    },
+    {
+      "id": "INV-2",
+      "fact": "exactly four workshop registrations in the runtime (registerDiscovery 871, registerFormalization 898, registerDevelopment 899, registerDelivery 904); payload contracts installed once from WORKSHOP_PAYLOAD_CONTRACTS",
+      "sourceRefs": ["src/app/product-lifecycle-runtime.ts:865-908"]
+    },
+    {
+      "id": "INV-3",
+      "fact": "lifecycle selection seam defaults to productBuildLifecycle; the production composition-root passes no lifecycleDefinition, so the installed default lifecycle is product-build (runnable-local), and productDeliveryLifecycle is passed in-repo only by factory-proof drivers",
+      "sourceRefs": [
+        "src/app/product-lifecycle-runtime.ts:991",
+        "src/app/product-lifecycle-runtime.ts:1006-1009",
+        "src/app/composition-root.ts:299-307",
+        "src/process-modules/lifecycles/product-build-lifecycle.ts:30-45",
+        "tests/factory-proof/delivery-scenario-drive.mjs:200"
+      ]
+    },
+    {
+      "id": "INV-4",
+      "fact": "SAGA_PRODUCT_LIFECYCLE_COMPOSITION is mandatory and environment-selected; default panel composition is local-dry-run (publish throws delivery-provider-not-configured); the only in-repo composition capable of a truthful released is product-delivery-local-release-composition (source-tag)",
+      "sourceRefs": [
+        "src/orchestrate-cli.ts:841-848",
+        "tracker-view/product-delivery-composition.mjs:64",
+        "tracker-view/product-delivery-local-release-composition.mjs"
+      ]
+    },
+    {
+      "id": "INV-5",
+      "fact": "acceptance matrix registry: 8 groups, 6 quarantine rows; every group an isolated blocking CI step on ubuntu-only runners for branches dev|main|saga2-refactoring|saga4",
+      "sourceRefs": [
+        "tools/run-acceptance-matrix.mjs:64-195",
+        ".github/workflows/ci.yml:65-126",
+        ".github/workflows/ci.yml:11"
+      ]
+    },
+    {
+      "id": "INV-6",
+      "fact": "start-from-idea always assembles delivery.mode='deferred' with a hashed profile; deferred settlement deterministically returns approval-required",
+      "sourceRefs": [
+        "src/app/start-product-lifecycle-from-idea.ts:301",
+        "src/modules/delivery/application/delivery-installation.ts:724-745"
+      ]
+    },
+    {
+      "id": "INV-7",
+      "fact": "decisive composition fact: start-from-idea settles at best runnable-local (product-build); released requires a delivery-containing definition AND an authorized delivery input whose only in-repo producer is prepareLocalReleaseContinuation from a truthful approval-required parent (or an external caller-supplied authorized input)",
+      "sourceRefs": [
+        "src/app/factory-release-continuation.ts:19-121",
+        "src/modules/delivery/domain/delivery-schemas.ts:93-124"
+      ]
+    }
+  ],
+  "roots": [
+    {
+      "id": "ROOT-RUNNABLE-LOCAL",
+      "meaning": "product-build terminal runnable-local, externally true",
+      "forwardCoverage": "terminal.runnable-local via e39; full topology",
+      "reverseCoverage": "outcome-contract boundary only (reverse uncertainties[2])",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-build-lifecycle.ts:30-45",
+        "docs/factory-run/stage20-elite/RUN-TRACKER.md:43-49",
+        "docs/factory-map/GRAPH_RECONCILIATION.md"
+      ]
+    },
+    {
+      "id": "ROOT-RELEASED",
+      "meaning": "product-delivery terminal released, truthful",
+      "forwardCoverage": "terminal.released via e50 under composition conditions",
+      "reverseCoverage": "full spine R-RELEASED-TERMINAL + 45 claims",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:479-484",
+        "docs/factory-map/REVERSE_GRAPH.md:22-39"
+      ]
+    },
+    {
+      "id": "ROOT-SAFETY",
+      "meaning": "no illegal transition, no authority leak, no unproven acceptance",
+      "forwardCoverage": "guards inside nodes/edges (implicit)",
+      "reverseCoverage": "safetyClaims SAFE-* (12, explicit)",
+      "sourceRefs": [
+        "docs/architecture/CONVEYOR-MENTAL-MODEL.md:1317-1401",
+        "docs/factory-map/reverse-graph.v1.json"
+      ]
+    },
+    {
+      "id": "ROOT-LIVENESS",
+      "meaning": "every nonterminal scope has live owner, runnable command, typed wait, or pending transition obligation",
+      "forwardCoverage": "factory.supervision, factory.obligation-reconciler, cell repair/epoch machinery (explicit)",
+      "reverseCoverage": "livenessClaims LIVE-* (5)",
+      "sourceRefs": ["docs/architecture/CONVEYOR-MENTAL-MODEL.md:1125-1152"]
+    },
+    {
+      "id": "ROOT-AUDITABILITY",
+      "meaning": "every durable transition has citable evidence/receipts",
+      "forwardCoverage": "factory.terminal-settlement, ledger/effect rows (implicit)",
+      "reverseCoverage": "auditClaims AUD-* (5, explicit)",
+      "sourceRefs": ["docs/architecture/CONVEYOR-TRANSITION-DIAGNOSTICS.md:34-96"]
+    }
+  ],
+  "intersection": [
+    { "id": "IS-1", "spine": "initiative -> Discovery case", "forward": ["e09"], "reverse": ["dep-26", "EXT-INITIATIVE-REPOSITORY-POLICY", "INPUT-LIFECYCLE-CONTRACT"], "bridge": "BM-1" },
+    { "id": "IS-2", "spine": "Discovery cells -> certificate/settlement", "forward": ["disc.produce-proposal", "disc.assess-readiness", "disc.settle", "e10", "e11", "e12", "e13", "e14"], "reverse": ["OUTC-DISCOVERY-FORWARD"], "bridge": "BM-2" },
+    { "id": "IS-3", "spine": "Discovery -> Formalization handoff (exact cert ref+hash)", "forward": ["e15"], "reverse": ["dep-25", "OUTC-FORMALIZATION-FORMALIZED"], "bridge": "BM-3" },
+    { "id": "IS-4", "spine": "Formalization spine -> frozen Solution Contract", "forward": ["form.define-product-contract", "form.model-use-cases", "form.define-acceptance-contract", "form.reconcile-what", "form.freeze-acceptance-baseline", "form.define-architecture-contract", "form.settle-formalization", "e17", "e18", "e19", "e20", "e21", "e22", "e23", "e24", "e25", "e26", "e27", "e28"], "reverse": ["OUTC-FORMALIZATION-FORMALIZED"], "bridge": "BM-4" },
+    { "id": "IS-5", "spine": "Formalization -> Development case relay", "forward": ["e29"], "reverse": ["dep-24"], "bridge": "BM-5" },
+    { "id": "IS-6", "spine": "Development plan -> canonical graph -> worksets", "forward": ["dev.plan-task-graph", "dev.resolve-task-graph", "e30", "e31"], "reverse": ["BRIDGE-DEVELOPMENT-SETTLEMENT-STATE"], "bridge": "BM-6" },
+    { "id": "IS-7", "spine": "Implementation cells -> git-integration -> integrated candidate", "forward": ["dev.implement-work-items", "dev.freeze-integrated-candidate", "e32", "cell.git-integration-effect"], "reverse": ["PROD-INTEGRATED-CANDIDATE"], "bridge": "BM-7" },
+    { "id": "IS-8", "spine": "Readiness certification -> deterministic receipt -> bind", "forward": ["dev.certify-product-readiness", "dev.bind-runnable-candidate", "e33", "e34"], "reverse": ["RECEIPT-LOCAL-READINESS"], "bridge": "BM-8" },
+    { "id": "IS-9", "spine": "Verification fan-out -> evidence products", "forward": ["dev.verify-acceptance", "e35"], "reverse": ["dep-22"], "bridge": "BM-9" },
+    { "id": "IS-10", "spine": "Development settlement -> certificate + verified bundle", "forward": ["dev.settle-development", "dev.complete-outcome", "e36", "e37"], "reverse": ["DECIDE-DEVELOPMENT-VERIFIED", "CERT-DEVELOPMENT-VERIFIED", "PROD-VERIFIED-INTEGRATION-BUNDLE"], "bridge": "BM-10" },
+    { "id": "IS-11", "spine": "verified -> (delivery lifecycle only) delivery-release stage", "forward": ["e38"], "reverse": ["dep-18", "dep-10", "STAGE-HANDOFF-DELIVERY"], "bridge": "BM-11" },
+    { "id": "IS-12", "spine": "Delivery preflight -> approval -> publish -> observe -> settle", "forward": ["del.preflight-release", "del.approve-release", "del.publish-deploy", "del.observe-release", "del.settle-delivery", "e42", "e43", "e44", "e45", "e46", "e47", "e48", "e49"], "reverse": ["dep-05", "dep-06", "dep-07", "dep-08", "dep-09", "dep-10", "dep-11", "dep-12", "dep-13", "dep-14", "dep-15", "dep-16", "dep-17"], "bridge": "BM-12" },
+    { "id": "IS-13", "spine": "released terminal stamp (write-once, lease-CAS)", "forward": ["e50"], "reverse": ["R-RELEASED-TERMINAL", "dep-01", "dep-02", "dep-03", "dep-04"], "bridge": "BM-13" },
+    { "id": "IS-14", "spine": "Cell loop: seal -> gates -> effects -> CellFinalAcceptance", "forward": ["cell.candidate-seal", "cell.author-gate", "cell.reviewer-desk", "cell.final-gate", "cell.effect-pending", "cell.final-acceptance", "e58", "e59", "e60", "e63", "e64", "e65", "e71", "e79"], "reverse": ["STATE-CELL-FINAL-ACCEPTANCE", "dep-22", "dep-23"], "bridge": "BM-14" },
+    { "id": "IS-15", "spine": "Launch claim fence + terminal settlement", "forward": ["launch.ticket", "factory.terminal-settlement", "factory.launch-settlement"], "reverse": ["STATE-LAUNCH-CLAIM", "PROJ-LAUNCH-SETTLEMENT"], "bridge": "BM-15" }
+  ],
+  "forwardOnly": [
+    { "id": "FO-1", "forwardIds": ["cell.repair-wait", "cell.recovery-epoch-rollover", "cell.scope-widening"], "classification": "recovery", "rationale": "repair topology orthogonal to the released proof; required by ROOT-LIVENESS", "sourceRefs": ["src/process-modules/application/node-executors/production-cell-node-executor.ts:783-916", "docs/factory-map/FORWARD_GRAPH.md:158-163"] },
+    { "id": "FO-2", "forwardIds": ["cell.human-park"], "classification": "recovery", "rationale": "generic typed human wait (warrant-blocked-environment, effect stasis) broader than the Delivery-only HUMAN-APPROVAL-DECISION", "sourceRefs": ["src/process-modules/application/node-executors/production-cell-node-executor.ts:545", "src/process-modules/application/node-executors/production-cell-node-executor.ts:1407"] },
+    { "id": "FO-3", "forwardIds": ["factory.dispatch-drain", "factory.supervision", "factory.engine-supervisor"], "classification": "support", "rationale": "engine-host machinery assumed live by B (LIVE-LEASES-HEARTBEATS names the invariant, not the machinery)", "sourceRefs": ["tracker-view/engine-supervisor.mjs:208-232", "src/app/dispatch-loop.ts"] },
+    { "id": "FO-4", "forwardIds": ["factory.replay-certification-sweep", "cell.replay-capture-effect"], "classification": "support+audit", "rationale": "replay capsules substitute worker production only; not a released prerequisite", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:374", "src/orchestrate-cli.ts:704"] },
+    { "id": "FO-5", "forwardIds": ["cont.release-continuation"], "classification": "alternate", "rationale": "actually F-and-B under different ids: B models it as SOURCE-AUTHORIZED-DELIVERY (dep-20), the only in-repo authorized-release producer", "sourceRefs": ["src/app/factory-release-continuation.ts:19-121"] },
+    { "id": "FO-6", "forwardIds": ["cont.development-continuation", "cont.development-redevelopment"], "classification": "recovery", "rationale": "accepted-prefix continuation / new order; liveness after terminal failed/blocked", "sourceRefs": ["src/app/factory-continuation.ts:47", "src/app/factory-redevelopment.ts:121"] },
+    { "id": "FO-7", "forwardIds": ["entry.operator-soft-stop", "entry.factory-cli"], "classification": "support", "rationale": "operator surface; B treats the operator as an external boundary", "sourceRefs": ["scripts/factory.mjs:91", "scripts/factory.mjs:235"] },
+    { "id": "FO-8", "forwardIds": ["excluded-strata"], "classification": "dead-candidate", "rationale": "root test composition, fresh-harness, scenario packages, diagnosis/normalizer skills, root diagnostic scripts, process-modules display registry: no goal root needs them as live surface; removal candidates WITH ADR + guard (Discovery legacy cluster owned by tracker point 5)", "sourceRefs": ["docs/factory-map/FORWARD_GRAPH.md:201-215", "docs/factory-map/01_DISCOVERY.md:172-217"] }
+  ],
+  "reverseOnly": [
+    { "id": "RO-1", "reverseIds": ["HOMELESS-REAL-PUBLISH-DEPLOY-PROVIDERS"], "classification": "missing-production-path", "rationale": "confirmed by INV-4: exactly one release provider kind (source-tag) exists; source-release/package-publish/deployment actions have no in-repo trusted provider, so such policies can never truthfully settle released", "sourceRefs": ["tracker-view/product-delivery-composition.mjs:64", "docs/factory-map/REVERSE_GRAPH.md:170-179"] },
+    { "id": "RO-2", "reverseIds": ["R-RELEASED-TERMINAL"], "classification": "wrong-root-partial", "rationale": "correct for released; wrong as the ONLY root: installed default lifecycle is product-build (INV-3); root set corrected to five roots; authorized fresh-launch input producer is external by design", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:991", "src/app/composition-root.ts:299-307"] },
+    { "id": "RO-3", "reverseIds": ["EXT-COMPOSITION-PROVIDERS", "EXT-RELEASE-POLICY-AND-GRANT", "EXT-INITIATIVE-REPOSITORY-POLICY"], "classification": "open-boundary-lawful", "rationale": "external by design; tracked in openBoundaryLedger, not as missing paths", "sourceRefs": ["docs/factory-map/reverse-graph.v1.json"] },
+    { "id": "RO-4", "reverseIds": ["PROVIDER-DRY-RUN-FAIL-CLOSED", "SAFE-DRY-RUN-CANNOT-RELEASE"], "classification": "support-negative-invariant", "rationale": "present in F as default composition behavior (forward u5); B names it as a safety claim", "sourceRefs": ["tracker-view/product-delivery-composition.mjs:64"] },
+    { "id": "RO-5", "reverseIds": ["safetyClaims", "livenessClaims", "auditClaims"], "classification": "lens-over-intersection", "rationale": "12+5+5 claims map onto forward nodes/edges; they carry ROOT-SAFETY/LIVENESS/AUDITABILITY content F holds only implicitly", "sourceRefs": ["docs/factory-map/REVERSE_GRAPH.md:181-193"] },
+    { "id": "RO-6", "reverseIds": ["STATE-PROCESSRUN-PINNED-REPLAY", "AUDIT-NODERUN-V2-DURABLE", "AUDIT-STAGE-TRANSITION-ROW"], "classification": "audit", "rationale": "durable-walk guarantees inside the flow executor/terminal settlement; F has the machinery, B names the audit obligation", "sourceRefs": ["docs/factory-map/reverse-graph.v1.json"] },
+    { "id": "RO-7", "reverseIds": ["reverse-uncertainty-3"], "classification": "coverage-gap-in-B-closed-by-F", "rationale": "Discovery/Formalization internals not expanded by B; the strata 01/02 provide them; reconciliation adopts them (BM-2..BM-5)", "sourceRefs": ["docs/factory-map/REVERSE_GRAPH.md:205-214"] }
+  ],
+  "bridges": [
+    { "id": "BM-1", "status": "PROVEN-DECLARED", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-2", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-3", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-4", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-5", "status": "PARTIAL", "note": "identity PROVEN; joint satisfiability FAILED at Elite-8 (srs-2.2 bare filenames vs d2/d3 full paths while SRS frozen)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-6", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-7", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-8", "status": "PARTIAL", "note": "semantics PROVEN; real-process substrate timing outside CI (quarantined FLAKY)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-9", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-10", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-11", "status": "PROVEN", "note": "composition-conditional: delivery-containing definition + authorized input only", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-12", "status": "PARTIAL", "note": "source-tag PROVEN; source-release/package-publish/deployment OPEN (no in-repo provider)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-13", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-14", "status": "PROVEN", "note": "acceptance path proven; budget-accounting path corrupted by task-shadow (SM-14)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-15", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" }
+  ],
+  "stateMachines": {
+    "doc": "docs/factory-map/STATE_MATRIX.md",
+    "rows": ["SM-1", "SM-2", "SM-3", "SM-4", "SM-5", "SM-6", "SM-7", "SM-8", "SM-9", "SM-10", "SM-11", "SM-12", "SM-13", "SM-14", "SM-15", "SM-16"],
+    "confirmedDefects": [
+      {
+        "id": "SM-14",
+        "name": "task-shadow binding (P0)",
+        "evidence": "readTaskForWorkplace selects ORDER BY id DESC LIMIT 1; in a singleton workplace the newest (reviewer) task shadows the author task for recovery-budget counting and scope-widening bindings; during Elite-8 the counter never engaged through 15 deaths",
+        "sourceRefs": [
+          "src/app/product-lifecycle-runtime.ts:587-593",
+          "src/process-modules/application/node-executors/production-cell-node-executor.ts:2317-2337",
+          "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:80-86"
+        ]
+      }
+    ]
+  },
+  "artifactLineage": {
+    "doc": "docs/factory-map/ARTIFACT_LINEAGE.md",
+    "rows": ["AL-1", "AL-2", "AL-3", "AL-4", "AL-5", "AL-6", "AL-7", "AL-8", "AL-9", "AL-10", "AL-11", "AL-12", "AL-13", "AL-14", "AL-15", "AL-16", "AL-17", "AL-18"]
+  },
+  "testCoverage": {
+    "doc": "docs/factory-map/TEST_COVERAGE.md",
+    "labelSet": ["declared", "test-file-exists", "demonstrated", "matrix-hosted", "CI-executed", "CI-blocking", "pending", "quarantine", "platform/fault-edge"],
+    "rows": ["TC-1", "TC-2", "TC-3", "TC-4", "TC-5", "TC-6", "TC-7", "TC-8", "TC-9", "TC-10", "TC-11", "TC-12", "TC-13", "TC-14", "TC-15"],
+    "census": {
+      "outsideCi": "234/503 (47%) = 219 unmanaged orphans + 15 quarantined",
+      "staleQuarantine": "16/16 autonomous runs green; both PRE-EXISTING-RED reasons falsified standalone",
+      "sourceRefs": ["docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:21-131"]
+    }
+  },
+  "openBoundaryLedger": [
+    { "id": "OPEN-MODEL", "outside": "worker/model cognition at production scale (monolithic docs, N-artifacts-one-hash, evolving multi-round feedback)", "disposition": "corpus gaps tracked; no closure claimed", "sourceRefs": ["docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:21-51"] },
+    { "id": "OPEN-HUMAN", "outside": "human approvals, operator grants for fresh authorized launches, human_park resume after live delay", "disposition": "inbox pending demonstrated; live-delay resume pending", "sourceRefs": ["docs/factory-map/04_DELIVERY.md:496-516"] },
+    { "id": "OPEN-EXTERNAL-EFFECTS", "outside": "git hosts, registries, deployment targets; three of four release action kinds have no provider", "disposition": "BM-12 PARTIAL; no-force proven against doubles only", "sourceRefs": ["tracker-view/product-delivery-composition.mjs:64"] },
+    { "id": "OPEN-CONCURRENCY", "outside": "multi-host dispatch/effect claims; single-host read-then-assign caveat", "disposition": "declared caveat, untested", "sourceRefs": ["docs/architecture/CONVEYOR-MENTAL-MODEL.md:1054-1057"] },
+    { "id": "OPEN-TIME", "outside": "real-process readiness timing, watchdog windows, lease expiry, backoff clocks, mixed persisted time formats", "disposition": "readiness real-process quarantined FLAKY", "sourceRefs": ["tools/run-acceptance-matrix.mjs:192-194", "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:70-76"] },
+    { "id": "OPEN-ENVIRONMENT", "outside": "windows host arms, win32 docker (readiness UNKNOWN), CI ubuntu-only while production hosts are win32", "disposition": "platform/fault-edge label; R5 pending", "sourceRefs": [".github/workflows/ci.yml:11", "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:70-76"] },
+    { "id": "OPEN-REPLAY-BOUNDARY", "outside": "newest-wins capsule binder on 3rd lifecycle, epic-scoped accumulation, resume compatibility without implementation digests", "disposition": "declared divergent residuals, unfixed", "sourceRefs": ["docs/architecture/CONVEYOR-MENTAL-MODEL.md:1599-1620"] }
+  ],
+  "decidableFragment": {
+    "claimed": [
+      "JSON parse + sourceRef non-emptiness + cross-file id resolution of this artifact set",
+      "matrix registry bijection (cc-proof-registry, ADR-092)",
+      "label honesty against tools/run-acceptance-matrix.mjs and .github/workflows/ci.yml",
+      "repository scope containment arithmetic (exact-string path semantics)",
+      "register/§2.2 coverage reverse diffs (ADR-088 decidable instances)"
+    ],
+    "notClaimed": [
+      "semantic AC satisfaction",
+      "model obedience at production scale",
+      "external-state truth",
+      "multi-host interleavings",
+      "timing-dependent substrate behavior"
+    ],
+    "sourceRefs": [
+      "docs/architecture/CONVEYOR-MENTAL-MODEL.md:1166-1179",
+      "docs/architecture/CONVEYOR-MENTAL-MODEL.md:1477-1486",
+      "src/shared/repository-scope.ts"
+    ]
+  },
+  "decisiveMismatches": [
+    { "id": "MM-1", "name": "root asymmetry", "detail": "B roots only at released; installed default is product-build/runnable-local; root set corrected to five", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:991", "src/app/composition-root.ts:299-307"] },
+    { "id": "MM-2", "name": "homeless release providers", "detail": "trusted providers for source-release/package-publish/deployment do not exist in-repo", "sourceRefs": ["tracker-view/product-delivery-composition.mjs:64"] },
+    { "id": "MM-3", "name": "task-shadow binding seam (P0)", "detail": "newest-task selection corrupts recovery-budget counting and scope-widening bindings; Elite-8: budget never engaged through 15 deaths", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:587-593", "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:80-86"] },
+    { "id": "MM-4", "name": "Elite-8 joint-satisfiability counterexample (BM-5)", "detail": "exact handoff preserved hashes but accepted SRS §2.2 bare filenames were unsatisfiable against §D2/§3 full paths while the SRS was frozen", "sourceRefs": [
+      "src/modules/development/domain/srs-module-manifest.ts:68",
+      "src/modules/development/domain/srs-module-manifest.ts:176-185",
+      "src/modules/development/domain/srs-module-manifest.ts:214-248",
+      "src/modules/development/domain/srs-derived-change-scopes.ts:22-31",
+      "src/shared/repository-scope.ts",
+      "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:65-68"
+    ] },
+    { "id": "MM-5", "name": "coverage-universe gap", "detail": "234/503 outside CI (219 orphans + 15 quarantine); quarantine staleness falsified both PRE-EXISTING-RED reasons", "sourceRefs": ["docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:95-115"] },
+    { "id": "MM-6", "name": "platform invisibility", "detail": "CI ubuntu-only while the factory's production hosts are win32", "sourceRefs": [".github/workflows/ci.yml:11"] },
+    { "id": "MM-7", "name": "ADR-053 residuals", "detail": "epic-scoped accumulation, newest-wins capsule binder, resume compatibility without implementation digests", "sourceRefs": ["docs/architecture/CONVEYOR-MENTAL-MODEL.md:1599-1620"] }
+  ],
+  "validation": {
+    "jsonParse": "node -e require() on both input graphs and this file",
+    "sourceRefs": "every array entry above carries non-empty sourceRefs or an explicit doc pointer (bridges/stateMachines/artifactLineage/testCoverage point to their matrix docs which carry full citations)",
+    "crossFileIds": "forward edge ids resolve in forward-graph.v1.json (e01-e93); reverse claim ids resolve in reverse-graph.v1.json; BM/SM/AL/TC ids resolve in their matrix docs",
+    "scopeGuard": "no src/, tests/, or dist/ changes; docs-only commit",
+    "sourceRefs": ["docs/factory-map/GRAPH_RECONCILIATION.md"]
+  }
+}
