@@ -263,7 +263,8 @@ Additional refresh facts:
 
 - CC-GAP-7 (warrant execution) remains open — no warrant-execution
   landing exists on any branch. Chosen direction only (2026-08-23):
-  Option A (warrant adapters); ADR-093 is upcoming and NOT yet present
+  A-prime — package-owned warrant catalogs with kernel-owned minimum
+  floors; ADR-093 is upcoming and NOT yet present
   in the repository; no implementation is claimed.
 - No production factory run is authorized now (section 7C records the
   blocking conditions, including the OPEN CC-GAP-8 exit RE-AUDIT — the
@@ -834,7 +835,8 @@ Exit checklist:
   (`bc6df0be` + `2b68b192` + `aef699b4`, accepted by two reviewers;
   build + 40/40 green; run-record provenance only — see the Run-record
   provenance note; K19 remains incomplete beyond the bounded slice).
-  CC-GAP-7 is open (chosen direction only: Option A; ADR-093 upcoming
+  CC-GAP-7 is open (chosen direction only: A-prime — package-owned
+  warrant catalogs with kernel-owned minimum floors; ADR-093 upcoming
   and not yet present; no implementation claimed).
   Landing is not closure: the CC-00B exit gate has not been re-audited,
   none of these commits is merged to `saga4`, and neither the incident
@@ -947,7 +949,8 @@ green.
   identity slice (package-store digest persistence, the ADR-077 keyed
   `toolchainDigests` component, and the remaining ADR-083 train commits
   stay open). CC-GAP-7 is open (no warrant-execution landing; chosen
-  direction only — Option A, ADR-093 upcoming and not yet present).
+  direction only — A-prime: package-owned warrant catalogs with
+  kernel-owned minimum floors, ADR-093 upcoming and not yet present).
   Landing is not closure:
   the CC-00C exit gate has not been re-audited, none of these commits is
   merged to `saga4`, and neither the incident records nor this plan is
@@ -1248,7 +1251,8 @@ Checklist:
   this receipt-binding, with the honest fallback recorded in the internal
   serialization above while they stay open (the bounded image/dependency
   identity slice itself is landed and accepted). (OPEN — no warrant-execution
-  landing. Chosen direction only, 2026-08-23: Option A (warrant adapters);
+  landing. Chosen direction only, 2026-08-23: A-prime — package-owned
+  warrant catalogs with kernel-owned minimum floors;
   ADR-093 is upcoming and NOT yet present in the repository; no
   implementation is claimed.)
 - [x] CC-GAP-8 — implement append-only criterion-key verification
@@ -3136,13 +3140,22 @@ gates/contracts — never a parallel vocabulary.
 
 ### Critical-path dependency order (2026-08-23 truth refresh)
 
-CC-GAP-7 stays OPEN (chosen direction only: Option A — warrant adapters;
+Three exit re-audits precede CC-GAP-7 and the rest of the chain: the
+CC-GAP-9 exit re-audit (implementation landed at `830bce80` +
+`64c5fb81`; re-audit and blocking-group wiring open), the ADR-091 exit
+re-audit (implementation landed at `61fccda7` + `417749f7`; re-audit
+and CC-10B/CC-80 wiring open), and the CC-GAP-8 exit re-audit (base
+ledger + terminal repair + CI hosting landed at `8819e360` +
+`cbd7dfef` + `9301e8ff`; exit checklist not re-audited green).
+CC-GAP-7 stays OPEN (chosen direction only: A-prime — package-owned
+warrant catalogs with kernel-owned minimum floors;
 ADR-093 is upcoming and NOT yet present in the repository; no
 implementation is claimed). The remaining conformance work executes in
 this order, and no step may be reordered around an unmet dependency:
 
 ```text
-CC-GAP-7 (open; Option A direction; ADR-093 upcoming, not yet present)
+CC-GAP-9 exit re-audit -> ADR-091 exit re-audit -> CC-GAP-8 exit re-audit
+  -> CC-GAP-7 (open; A-prime direction; ADR-093 upcoming, not yet present)
   -> CC-IC-3 -> CC-IC-4
   -> remaining CC-U1 (planning-graph work) -> CC-U3 -> CC-U2 (where applicable)
   -> K2-K8 qualification packages (CC-10B through CC-72)
