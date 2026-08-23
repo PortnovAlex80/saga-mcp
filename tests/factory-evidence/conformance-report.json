@@ -1,10 +1,10 @@
 {
   "schemaVersion": "factory.proof.conformance-coverage.v1",
-  "generatedAt": "2026-08-23T06:09:47.897Z",
+  "generatedAt": "2026-08-22T09:56:58.463Z",
   "mode": "committed-snapshot",
   "declared": {
-    "universeTokens": 178,
-    "pendingTotal": 21,
+    "universeTokens": 176,
+    "pendingTotal": 19,
     "interWorkshopTokens": 2,
     "platformFaultEdges": 8
   },
@@ -35,9 +35,9 @@
       {
         "workshop": "development",
         "declaredStatus": "SPINE",
-        "universe": 37,
+        "universe": 35,
         "demonstratedCovered": 18,
-        "percent": 48.6,
+        "percent": 51.4,
         "uncovered": [
           "D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable",
           "restart:development:git-change-desk-replay",
@@ -51,8 +51,6 @@
           "D7:bind:stale-readiness-hash-failed",
           "D8:verification:evidence-pins-exact-candidate-hash",
           "D8:verification:upstream-defect-routes-to-settlement",
-          "D8:verification:terminal-accounting-unknown",
-          "D8:verification:terminal-accounting-human-required",
           "D9:settlement:blocked-and-failed-outcomes",
           "D10:continuation:managed-source-author-no-git-authority",
           "D10:replan:superseded-tasks-not-claimable",
@@ -73,8 +71,6 @@
           "D7:bind:stale-readiness-hash-failed",
           "D8:verification:evidence-pins-exact-candidate-hash",
           "D8:verification:upstream-defect-routes-to-settlement",
-          "D8:verification:terminal-accounting-unknown",
-          "D8:verification:terminal-accounting-human-required",
           "D9:settlement:blocked-and-failed-outcomes",
           "D10:continuation:managed-source-author-no-git-authority",
           "D10:replan:superseded-tasks-not-claimable",
