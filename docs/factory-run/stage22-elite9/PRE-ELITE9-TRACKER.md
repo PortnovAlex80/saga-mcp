@@ -192,6 +192,10 @@ no behavioral edit to production physics (composition unchanged).
 ## Point 5 — Close proven defects and build the Elite-8-scale corpus
 
 **Status:** PENDING (defects proven and recorded; fixes NOT written here).
+Discovery legacy removal is DECIDED — ADR-095 accepted (docs-only:
+decision + journal + registry + this refinement; no implementation
+claimed); its phases 2-6 and the open half of phase 1 (inventory/census/
+boot baseline) are executed under this point.
 
 - [ ] **Task-shadow binding (P0, SM-14/MM-3):** fix `readTaskForWorkplace`
       newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
@@ -213,38 +217,93 @@ no behavioral edit to production physics (composition unchanged).
       worker_done; multi-round feedback evolution (fixtures today never loop
       more than once); 15-22 AC 15-20 KB document shapes (Team-1's measured
       gaps).
-- [ ] **FULL Discovery legacy ControlIntent/tools/handlers removal WITH ADR +
-      removal guard:** delete the dead six-handler factory
+- [ ] **FULL Discovery legacy ControlIntent/tools/handlers removal — decided
+      by ADR-095 (docs recorded; implementation PENDING):** complete removal
+      of the dead six-handler factory
       (`src/modules/discovery/application/discovery-installation.ts:122-141`),
       dead MCP discovery tools (`src/tools/discovery-proposal-tools.ts`,
       `discovery-normalization-tools.ts`, `discovery-readiness-tools.ts`,
       `discovery-tool-args.ts`), legacy settlement service
-      (`discovery-settlement-service.ts:158-159`), stale manifest pins
+      (`discovery-settlement-service.ts:158-159`), legacy
+      repositories/runtime/domain residue/contributions/dead-lane resources,
+      the LIVE `product_submit`→`factory_proposals` projection +
+      `proposal-ref-bridge` + `discovery_proposal_id` +
+      settlement-debug legacy query, the stale manifest pins
       (DISCOVERY_HANDLER_IDS/REFS + six-handler digest pin,
-      `src/process-modules/modules/discovery/package/manifest.ts:97-104,360-388`)
-      — resolving contradictions 01 §6.1-6.3/§CONTRADICTIONS 1-2; ADR records
-      the removal; guard = architecture test pinning handler-map set equality
-      (live handler set ONLY) + matrix row so reintroduction reddens CI;
-      tests referencing dead surfaces migrate to the live
-      `product_submit`/`process_node_submit` path first.
+      `src/process-modules/modules/discovery/package/manifest.ts:97-104,360-388`),
+      and `factory_proposals` + its full nine-table legacy FK closure +
+      indexes from fresh SCHEMA_SQL (never DROP existing tables; old DB
+      tables remain inert history; `factory_work_intents` stays — live
+      shared protocol entity) — resolving contradictions 01 §6.1-6.3/
+      §CONTRADICTIONS 1-2. Decision: ADR-095 corrected hybrid
+      (ratchet-first + vertical slices + atomic versioned manifest
+      boundary; MCDA 480/500 after Red Team ACCEPT-WITH-CORRECTIONS). The
+      STOP-SHIP correction is binding: the manifest cutover MUST atomically
+      bump the `product-discovery` module version, repin the digest to
+      `discovery-production-cell-installation.js`, retain old installations
+      for pinned runs, and prove an existing-DB boot regression. Six phases
+      in order:
+  1. ADR/inventory/census — ADR-095 + journal + registry + this refinement
+     (DONE in the ADR-095 docs commit); full live-v2/dead-legacy/shared
+     inventory + legacy-only test deletion list; census of nonterminal
+     pre-bump pinned runs; existing-DB boot baseline (OPEN).
+  2. Ratchets first — author the eight ratchets + mutation proofs;
+     demonstrate RED on the legacy-present tree (no red consolidated tip).
+  3. Live side effects removed + v2 E2E — projection/proposal-ref/
+     `discovery_proposal_id`/settlement-debug legacy query gone;
+     runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
+     + ensure*/lazy CREATE TABLE recreation removed BEFORE schema work;
+     live v2 E2E green on the still-existing schema.
+  4. Atomic version bump + manifest repin (one-handler, digest =
+     production-cell installation bytes) + code/resources deletion +
+     existing-DB boot test (retired old installation rehydrates pinned
+     runs; no `MODULE_INSTALLATION_INCOMPATIBLE_DRIFT`).
+  5. Atomic fresh-schema closure removal (no DROP) + fresh-DB absence
+     test.
+  6. Empty legacy allowlist + deliberate mutation RED/GREEN proofs + full
+     validation. Guards: eight ratchets (shrinking allowlist first; exact
+     one-handler manifest/digest; full src symbol/table absence;
+     dist-aware clean-build absence; fresh DB lacks the full closure; live
+     v2 behavior; existing-DB boot with retired old installation;
+     deliberate mutation RED/GREEN) + six existing blocker suites UPDATED,
+     not weakened (v4-target, handler-digest-runtime-consistency,
+     kernel-admission-distance, migration-conformance,
+     dependency-direction, discovery-package-contributions). Live v2
+     files/tests preserved (index, production-cell installation, check
+     providers, proposal/readiness/settlement policy/input/records, live
+     constants, live E2E/constraint/output suites). Legacy-only test
+     deletion is operator-approved (ADR-095 §7); tests also covering live
+     surfaces migrate FIRST.
 - [ ] Quarantine re-validation executed (R2): both PRE-EXISTING-RED rows
       re-run standalone; honest re-admission or fresh typed reasons.
 
 **Commit/evidence:** defects proven in `docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md`
 (91af2982) + `docs/factory-map/03_DEVELOPMENT.md:580-601` +
-`BRIDGE_MATRIX.md:§4`; no fix commits yet.
+`BRIDGE_MATRIX.md:§4`; Discovery removal decided by ADR-095
+(`docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md`;
+journal `docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete-removal.md`;
+registry entry in `docs/architecture/adr-closure-registry.json`); no fix
+commits yet.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the
 `development-plan-task-graph` cell are preserved in the Elite-8 DB/logs cited
 in the header); the saga4 CAS has executed. Remaining gates: the separately
 authorized post-CAS heavy-validation step, and corpus work still needs the
-Point-4 regression harness as its deterministic substrate.
+Point-4 regression harness as its deterministic substrate. The ADR-095
+removal additionally carries its own ordering gates (ratchets before
+deletion; live side effects before schema; atomic version bump before
+manifest repin) — these are sequence constraints, not external blockers.
 
 **Exit criteria:** each fix lands with RED/GREEN regression; corpus actors
-parameterized and hosted; Discovery legacy removal merged with ADR + guard
-green; task-shadow integration test green on real multi-task singleton
-workplace; no orphan left by the new suites (R1 check).
+parameterized and hosted; Discovery legacy removal merged per ADR-095 —
+all six phases landed in order, all eight ratchets green (including
+dist-aware clean-build absence, fresh-DB closure absence, and the
+existing-DB boot regression with a retired old installation), all six
+named blocker suites updated and green, empty discovery-legacy allowlist,
+mutation RED/GREEN proofs recorded; task-shadow integration test green on
+real multi-task singleton workplace; no orphan left by the new suites
+(R1 check).
 
 ## Point 6 — Clean preflight, safe parallelism/operational envelope, current-config readiness
 

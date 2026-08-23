@@ -1315,6 +1315,25 @@
         "Staging merge commits on cc/saga4-consolidation-2026-08-23 over base saga4 611c35e0: 87b97e11, 37b75b01, ab397ff7",
         "docs/plans/CONFORMANCE-CLOSURE-PLAN.md section 2A — the branch-vs-saga4 truth this consolidation canonicalizes"
       ]
+    },
+    {
+      "adr": "095",
+      "file": "095-complete-removal-of-dead-discovery-legacy.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "Complete Discovery legacy removal: exact one-handler manifest/digest pin over the executed discovery-production-cell-installation.js bytes; full src+dist symbol absence and fresh-DB absence of factory_proposals plus its nine-table legacy FK closure (factory_raw_submissions, factory_control_intents, factory_normalization_proposals, factory_readiness_control_intents, factory_readiness_assessments, factory_discovery_settlements, factory_discovery_outcome_certificates, factory_discovery_diagnosis_control_intents, factory_discovery_diagnosis_reports); existing-DB boot green with a retired old installation rehydrating pinned runs (no MODULE_INSTALLATION_INCOMPATIBLE_DRIFT); deliberate mutation RED/GREEN on every removed surface class; empty discovery-legacy allowlist",
+      "successor": null,
+      "notes": "Accepted 2026-08-23 (autonomous-decision loop: Cynefin Complicated; MCDA corrected hybrid H 480/500 over vertical-slices V 450 invalidated by the factory_proposals-retention constraint violation, ratchet-first B 430, atomic A 385; red-team ACCEPT-WITH-CORRECTIONS with the stop-ship same-version six-to-one drift correction adopted — atomic product-discovery module version bump, digest repin to discovery-production-cell-installation.js, retained old installations for pinned runs, phase-1 census of nonterminal pre-bump pinned runs, existing-DB boot regression; decision journal docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete-removal.md). Operator directive requires COMPLETE removal and approves deletion of legacy-ONLY tests (mixed tests migrate first; GUARDRAILS human-approval rule satisfied by the recorded directive). factory_work_intents is explicitly OUT of the removal (live shared protocol entity). Existing DB tables are never dropped or rewritten — inert history. Missing evidence: no implementation exists at acceptance; the six ordered phases (1 ADR/inventory/census, 2 ratchets, 3 live side effects removed + v2 E2E, 4 atomic version bump/manifest repin/code+resources deletion + existing-DB boot test, 5 atomic fresh-schema closure removal, 6 empty allowlist + mutation proofs + full validation) and all eight ratchets remain open, owned by pre-Elite-9 tracker Point 5 (docs/factory-run/stage22-elite9/PRE-ELITE9-TRACKER.md) on the K21 line; the entry closes only with the ADR's exit criteria green.",
+      "evidence": [
+        "docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md — the decision (Cynefin, options, MCDA arithmetic, pre-mortem F1-F7, red-team corrections, normative contract, phases, ratchets, rollback boundaries, operator test-deletion authority)",
+        "docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete-removal.md — journal record DJ-2026-08-23-DISCOVERY-LEGACY-REMOVAL (ex ante expectations, check trigger)",
+        "docs/factory-map/01_DISCOVERY.md — DEAD/DECLARATIVE-ONLY STRATA 1-7 + CONTRADICTIONS 1-2: the proven-dead evidence the removal executes",
+        "docs/factory-run/stage22-elite9/PRE-ELITE9-TRACKER.md — Point 5 refined with the ADR-095 phases (docs-only at acceptance)"
+      ]
     }
   ]
 }
