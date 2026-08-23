@@ -497,23 +497,45 @@ export function recordVerificationTerminalRoute(
   }
 }
 
-/** Read the ledger of one run in authoritative append order (by row id). */
+/**
+ * Read the ledger of one run in authoritative append order (by row id).
+ *
+ * READ PATH — this function NEVER creates or migrates the schema. Schema
+ * creation and the v1->v2 migration are owned by the WRITE path (graph
+ * materialization / executed / waiver / terminal-route recording), which runs
+ * on the engine's writable connection. A readonly caller (the tracker route
+ * `GET /api/development/verification-accounting` opens the shared DB with
+ * `readonly: true`) must receive a truthful answer, not an SQLITE_READONLY
+ * error:
+ *   - no ledger table at all  -> no events (nothing was ever accounted; the
+ *     per-run projection then applies its legacy/null classification);
+ *   - v1-shaped table (no terminal columns) -> rows are read with the
+ *     terminal facts projected as "none recorded" (truthful for a table that
+ *     predates terminal accounting); the writable engine path migrates the
+ *     table at its next write.
+ */
 export function readDevelopmentVerificationLedgerEvents(
   db: Database.Database,
   processRunId: number,
 ): VerificationLedgerEvent[] {
-  ensureDevelopmentVerificationLedgerSchema(db);
+  const columns = db.prepare(
+    `PRAGMA table_info(${LEDGER_TABLE})`,
+  ).all() as Array<{ name: string }>;
+  if (columns.length === 0) return [];
+  const hasTerminalColumns = columns.some(c => c.name === 'terminal_route');
+  const terminalColumns = hasTerminalColumns
+    ? 'terminal_route,terminal_reason_codes,terminal_provenance_ref,terminal_attributed_to,'
+    : '';
   const rows = db.prepare(
     `SELECT id,process_run_id,graph_hash,criterion_key,verification_item_key,
             required,criticality,entry_state,outcome,candidate_hash,
             receipt_ref,receipt_digest,waiver_operator,waiver_reason,
             waiver_provenance_ref,proposed_from_ref,
-            terminal_route,terminal_reason_codes,terminal_provenance_ref,
-            terminal_attributed_to,recorded_at
+            ${terminalColumns}recorded_at
        FROM ${LEDGER_TABLE}
       WHERE process_run_id=?
       ORDER BY id`,
-  ).all(processRunId) as Array<VerificationLedgerRow>;
+  ).all(processRunId) as Array<VerificationLedgerRow | VerificationLedgerRowV1>;
   return rows.map(rowToEvent);
 }
 
@@ -556,12 +578,21 @@ export function projectDevelopmentVerificationAccounting(
  * process-run order. Pending entries of earlier (readiness-failed) runs stay
  * visible next to their continuations — the obligation history never
  * disappears.
+ *
+ * READ PATH — never creates or migrates the schema (see
+ * `readDevelopmentVerificationLedgerEvents`): the tracker serves this through
+ * a readonly connection, where a fresh epic honestly projects `[]` (no
+ * development graph materialized under criterion-key accounting yet) instead
+ * of failing with SQLITE_READONLY.
  */
 export function listDevelopmentVerificationAccountingByEpic(
   db: Database.Database,
   input: { epicId: number },
 ): VerificationAccountingProjection[] {
-  ensureDevelopmentVerificationLedgerSchema(db);
+  const columns = db.prepare(
+    `PRAGMA table_info(${LEDGER_TABLE})`,
+  ).all() as Array<{ name: string }>;
+  if (columns.length === 0) return [];
   const runs = db.prepare(
     `SELECT DISTINCT process_run_id FROM ${LEDGER_TABLE}
       WHERE epic_id=? ORDER BY process_run_id`,
@@ -596,7 +627,29 @@ interface VerificationLedgerRow {
   recorded_at: string;
 }
 
-function rowToEvent(row: VerificationLedgerRow): VerificationLedgerEvent {
+/** v1 row shape: identical to v2 minus the four terminal-fact columns. */
+type VerificationLedgerRowV1 = Omit<
+  VerificationLedgerRow,
+  'terminal_route' | 'terminal_reason_codes' | 'terminal_provenance_ref' | 'terminal_attributed_to'
+>;
+
+/** Tolerates v1-shaped rows (no terminal columns) — they read as "no terminal
+ *  fact recorded", which is truthful for tables that predate terminal
+ *  accounting; the writable path migrates them at its next write. */
+function rowToEvent(
+  row: VerificationLedgerRow | VerificationLedgerRowV1,
+): VerificationLedgerEvent {
+  const terminal: Pick<
+    VerificationLedgerRow,
+    'terminal_route' | 'terminal_reason_codes' | 'terminal_provenance_ref' | 'terminal_attributed_to'
+  > | null = 'terminal_route' in row
+    ? {
+        terminal_route: row.terminal_route,
+        terminal_reason_codes: row.terminal_reason_codes,
+        terminal_provenance_ref: row.terminal_provenance_ref,
+        terminal_attributed_to: row.terminal_attributed_to,
+      }
+    : null;
   return {
     sequence: row.id,
     processRunId: row.process_run_id,
@@ -614,10 +667,10 @@ function rowToEvent(row: VerificationLedgerRow): VerificationLedgerEvent {
     waiverReason: row.waiver_reason,
     waiverProvenanceRef: row.waiver_provenance_ref,
     proposedFromRef: row.proposed_from_ref,
-    terminalRoute: row.terminal_route as VerificationLedgerEvent['terminalRoute'],
-    terminalReasonCodes: parseStringArray(row.terminal_reason_codes),
-    terminalProvenanceRef: row.terminal_provenance_ref,
-    terminalAttributedTo: parseStringArray(row.terminal_attributed_to),
+    terminalRoute: (terminal?.terminal_route ?? null) as VerificationLedgerEvent['terminalRoute'],
+    terminalReasonCodes: parseStringArray(terminal?.terminal_reason_codes ?? null),
+    terminalProvenanceRef: terminal?.terminal_provenance_ref ?? null,
+    terminalAttributedTo: parseStringArray(terminal?.terminal_attributed_to ?? null),
     recordedAt: row.recorded_at,
   };
 }

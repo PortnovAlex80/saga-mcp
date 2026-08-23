@@ -38,6 +38,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const { SqliteDevelopmentModuleStore } = await import(
   '../../../dist/modules/development/infrastructure/sqlite-development-settlement-state.js'
@@ -1578,5 +1581,139 @@ test('a pre-terminal-repair (v1) ledger table migrates preserving every append-o
     );
   } finally {
     db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// READ path never writes: the tracker route serves the epic-wide projection
+// through a READONLY connection (tracker-view shared.mjs `withDb` opens the
+// shared DB readonly). Schema creation and the v1->v2 migration belong to the
+// WRITABLE engine path. A read that attempted them would fail with
+// SQLITE_READONLY on every fresh epic (no ledger table yet — the common
+// board state before any development run) and on every pre-repair v1 table.
+// ---------------------------------------------------------------------------
+
+test('read path never writes: readonly projections stay truthful (no SQLITE_READONLY)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vac-readonly-'));
+  // Windows: an open sqlite handle blocks directory removal — every readonly
+  // connection is registered and closed in the finally even when an
+  // assertion fails, so the ORIGINAL failure is reported, not cleanup EPERM.
+  const openReadonly = [];
+  const respond = (res, code, obj) => { res.statusCode = code; res.body = obj; };
+  const { createVerificationAccountingApi } = await import(
+    '../../../tracker-view/verification-accounting-endpoints.mjs'
+  );
+  const call = async (api, res) => api.handleVerificationAccounting(
+    {}, res,
+    new URL('http://localhost/api/development/verification-accounting?epic_id=' + EPIC_ID),
+  );
+  try {
+    // (1) Fresh epic: the shared DB has no ledger table at all (nothing was
+    // ever materialized under criterion-key accounting). The honest answer is
+    // an empty projection — never a schema-creation write attempt.
+    const noneAbs = path.join(dir, 'none.db');
+    {
+      const w = makeDb(); // base schema, NO ledger table
+      await w.backup(noneAbs);
+      w.close();
+    }
+    const noneRo = new Database(noneAbs, { readonly: true, timeout: 2000 });
+    openReadonly.push(noneRo);
+    assert.deepEqual(readDevelopmentVerificationLedgerEvents(noneRo, 11), [],
+      'no ledger table -> no events (the read must not CREATE the table)');
+    assert.deepEqual(listDevelopmentVerificationAccountingByEpic(noneRo, { epicId: EPIC_ID }), [],
+      'no ledger table -> honest empty epic-wide projection');
+    const apiNone = createVerificationAccountingApi({
+      withDb: fn => fn(noneRo), respondJson: respond,
+    });
+    const resNone = { statusCode: 0, body: null };
+    await call(apiNone, resNone);
+    assert.equal(resNone.statusCode, 200, JSON.stringify(resNone.body));
+    assert.deepEqual(resNone.body.runs, [],
+      'the tracker route answers 200/empty on a fresh epic, not 500 SQLITE_READONLY');
+    noneRo.close();
+
+    // (2) Pre-repair v1 table (no terminal columns): rows stay readable and
+    // truthful on a readonly connection — no migration attempt, no
+    // fabricated discharge, terminal facts honestly absent.
+    const v1Abs = path.join(dir, 'v1.db');
+    {
+      const w = makeDb();
+      insertProcessRun(w, 41);
+      makeStore(w); // ensures the current (v2) shape, then rebuild the exact
+      // pre-repair v1 shape (mirrors the migration test above).
+      w.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_update`);
+      w.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_delete`);
+      w.exec(`DROP TABLE factory_development_verification_ledger`);
+      w.exec(`
+        CREATE TABLE factory_development_verification_ledger (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          process_run_id        INTEGER NOT NULL,
+          project_id            INTEGER NOT NULL,
+          epic_id               INTEGER NOT NULL,
+          graph_hash            TEXT NOT NULL,
+          criterion_key         TEXT NOT NULL,
+          verification_item_key TEXT NOT NULL,
+          required              INTEGER NOT NULL,
+          criticality           TEXT,
+          entry_state           TEXT NOT NULL
+                                CHECK (entry_state IN ('proposed','pending','executed','waived')),
+          outcome               TEXT,
+          candidate_hash        TEXT,
+          receipt_ref           TEXT,
+          receipt_digest        TEXT,
+          waiver_operator       TEXT,
+          waiver_reason         TEXT,
+          waiver_provenance_ref TEXT,
+          proposed_from_ref     TEXT,
+          recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+      for (const state of ['proposed', 'pending']) {
+        w.prepare(`INSERT INTO factory_development_verification_ledger
+                    (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+                     verification_item_key,required,entry_state)
+                   VALUES (?,?,?,?,?,?,?,?)`)
+          .run(41, PROJECT_ID, EPIC_ID, 'legacy-graph', '14:AC-1', 'verify-ac-1', 1, state);
+      }
+      await w.backup(v1Abs);
+      w.close();
+    }
+    const v1Ro = new Database(v1Abs, { readonly: true, timeout: 2000 });
+    openReadonly.push(v1Ro);
+    const epic = listDevelopmentVerificationAccountingByEpic(v1Ro, { epicId: EPIC_ID });
+    assert.equal(epic.length, 1, 'the accounted run stays visible');
+    assert.equal(epic[0].accountingType, 'criterion-key-ledger');
+    assert.equal(epic[0].terminalRouteRecorded, false,
+      'a v1 table honestly reports no terminal facts');
+    const v1Entry = epic[0].entries.find(e => e.criterionKey === '14:AC-1');
+    assert.ok(v1Entry, 'the criterion row is projected');
+    assert.equal(v1Entry.state, 'pending');
+    assert.equal(v1Entry.discharged, false);
+    assert.equal(v1Entry.terminalRoute, null);
+    const apiV1 = createVerificationAccountingApi({
+      withDb: fn => fn(v1Ro), respondJson: respond,
+    });
+    const resV1 = { statusCode: 0, body: null };
+    await call(apiV1, resV1);
+    assert.equal(resV1.statusCode, 200, JSON.stringify(resV1.body));
+    assert.equal(resV1.body.runs.length, 1);
+    assert.equal(resV1.body.runs[0].entries[0].discharged, false,
+      'the render-guarded route never fabricates a discharge from v1 rows');
+    v1Ro.close();
+
+    // (3) No write ever happened: the on-disk table is still v1-shaped (the
+    // readonly projection must not migrate anything).
+    const check = new Database(v1Abs, { readonly: true });
+    openReadonly.push(check);
+    const cols = check.prepare(
+      `PRAGMA table_info(factory_development_verification_ledger)`).all();
+    assert.ok(
+      !cols.some(c => c.name === 'terminal_route'),
+      'a readonly read must leave the v1 table untouched on disk');
+  } finally {
+    for (const handle of openReadonly) {
+      try { handle.close(); } catch { /* already closed */ }
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
