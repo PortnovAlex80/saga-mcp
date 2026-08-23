@@ -43,7 +43,13 @@
   `git bundle verify`; heavy validation and dist rebuild explicitly
   deferred). Canonical `origin/saga4` REMAINS `611c35e0` (verified in this
   worktree: `git rev-parse origin/saga4`) — no push occurred and none is
-  claimed.
+  claimed. **Refreshed 2026-08-24 (ADR-095 Phase-1 work):** LOCAL `saga4`
+  has since advanced from `586871ad` through the pre-Elite-9 docs line
+  (ADR-095 docs `2879c384`, post-CAS-truth merge `f29e570e`, reconciliation
+  merge `f696d31d`) and now reads
+  `f696d31d0c8492e2e1bd446b82b0adb433531c29` (verified in this worktree:
+  `git rev-parse saga4`); `origin/saga4` remains `611c35e0` — the no-push
+  rule still holds.
 
 ---
 
@@ -244,11 +250,50 @@ boot baseline) are executed under this point.
       for pinned runs, and prove an existing-DB boot regression. Six phases
       in order:
   1. ADR/inventory/census — ADR-095 + journal + registry + this refinement
-     (DONE in the ADR-095 docs commit); full live-v2/dead-legacy/shared
-     inventory + legacy-only test deletion list; census of nonterminal
-     pre-bump pinned runs; existing-DB boot baseline (OPEN).
+     (DONE in the ADR-095 docs commit); **census of nonterminal pre-bump
+     pinned runs DONE 2026-08-24** (19-DB strictly-read-only census:
+     `docs/factory-run/stage22-elite9/DISCOVERY-PHASE1-CENSUS.md` — every
+     DB carries exactly one active product-discovery@3.0.2 six-handler
+     installation; the machine's only nonterminal Discovery pin is
+     elite6-db run#1, paused, active installation row, store snapshot
+     present; Phase-1 exit criterion satisfied); **existing-DB boot
+     baseline DONE** as an in-process regression on the REAL engine install
+     chain
+     (`tests/process-modules/discovery-legacy-removal-boot-regression.test.mjs`,
+     blocking in the matrix `process-modules` group + removal guard G2h in
+     `tests/infrastructure/acceptance-matrix-coverage.test.mjs`):
+     same-version six-to-one handler flip = typed
+     `MODULE_INSTALLATION_INCOMPATIBLE_DRIFT` refusal leaving DB truth
+     untouched; the atomic module-version bump installs the one-handler
+     package while the legacy row stays retained and the pinned run
+     rehydrates its EXACT persisted legacy digest/snapshot. Red-team
+     correction applied: the proof binds to `installProductionModules`
+     (the engine boot entry), NOT the partial-lifecycle
+     `installModulePackages` — an earlier draft overclaimed and was
+     rejected. The spawned-engine exit-0 boot smoke on a real
+     retired-installation DB stays OPEN as the Phase-4 (ratchet 7)
+     STOP-SHIP proof, not claimed here. STILL OPEN: the full
+     live-v2/dead-legacy/shared inventory + legacy-only test deletion
+     list.
   2. Ratchets first — author the eight ratchets + mutation proofs;
      demonstrate RED on the legacy-present tree (no red consolidated tip).
+     **Phase-2 blockers (red-team discoveries 2026-08-24, OPEN):** (a) four
+     LIVE Discovery suites are CI orphans —
+     `tests/discovery/d7-settlement-lifecycle-classification.test.mjs`,
+     `tests/discovery/order-constraint-register.test.mjs`,
+     `tests/matrix/e-constraint-loss.test.mjs`, and
+     `tests/modules/discovery/discovery-check-providers.test.mjs` are in
+     NO blocking run-set and NO quarantine (matrix `--list-json` verified),
+     so ratchet 6 ("live v2 behavior") currently has no hosted executor;
+     hosting them is a Phase-2 precondition, not a nicety. (b)
+     `tests/execution/migration-conformance.test.mjs` is unhosted AND
+     imports legacy surfaces (it lazily pins `discoveryPackageManifest`
+     from the discovery package manifest and imports
+     `discoveryProcessModule`), so hosting it before the Phase-4 cutover
+     would pin CI to the legacy six-handler manifest shape, while
+     migrating it unhosted proves nothing — its hosting + its
+     re-pinning to the post-removal surface must land ATOMICALLY with the
+     ADR-095 phase that changes the surface it observes.
   3. Live side effects removed + v2 E2E — projection/proposal-ref/
      `discovery_proposal_id`/settlement-debug legacy query gone;
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`

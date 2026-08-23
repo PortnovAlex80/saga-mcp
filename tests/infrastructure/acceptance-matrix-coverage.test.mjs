@@ -139,6 +139,22 @@ test('G2g: CC-GAP-8 terminal-exit accounting oracle is covered (proof hosting)',
   );
 });
 
+test('G2h: ADR-095 Phase-1 Discovery legacy-removal boot regression is covered (proof hosting)', () => {
+  // tests/process-modules/discovery-legacy-removal-boot-regression.test.mjs
+  // is the ADR-095 F5 STOP-SHIP proof: same-version Discovery handler
+  // logical-ID drift fails closed (MODULE_INSTALLATION_INCOMPATIBLE_DRIFT)
+  // and the atomic module-version bump keeps the legacy installation
+  // retained while the pinned nonterminal run rehydrates its exact persisted
+  // package at boot. Removing the exact file (or dropping it from the
+  // process-modules run-set) must fail HERE, not silently orphan the proof.
+  // Asserted against runSet only: quarantining the drift proof is not an
+  // honest way to drop it.
+  assert.ok(
+    runSet.has('tests/process-modules/discovery-legacy-removal-boot-regression.test.mjs'),
+    'discovery-legacy-removal-boot-regression must stay in a blocking run-set (ADR-095 Phase-1 proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [
