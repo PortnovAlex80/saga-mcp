@@ -1,0 +1,1098 @@
+{
+  "schemaVersion": "factory.execution-map.reverse.v1",
+  "sourceCommit": "586871adfeae77da0ca8af96232ef96d6b0ee7e4",
+  "rootClaims": [
+    "R-RELEASED-TERMINAL"
+  ],
+  "claims": [
+    {
+      "id": "R-RELEASED-TERMINAL",
+      "kind": "terminal-status",
+      "authority": "product-delivery lifecycle declarative outcomeRoutes (lifecycle definition, not the Delivery module)",
+      "producer": "SqliteLifecycleRunRepository.completeStage — UPDATE factory_lifecycle_runs SET status='completed', terminal_status=? under execution-lease CAS",
+      "cardinality": "exactly-one per LifecycleRun (write-once, lease-fenced)",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:479-484",
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1073-1078",
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1123-1138"
+      ]
+    },
+    {
+      "id": "AUDIT-RUN-TERMINAL",
+      "kind": "journal-event",
+      "authority": "durable claimRunTerminalEvent exactly-once gate (CC-GAP-4); observation plane only",
+      "producer": "LifecycleOrchestrationEngineAdapter — journalEvent('run.terminal', { terminal_status, product_outcome, stage_outcome }) only for the single claim winner",
+      "cardinality": "0..1 per terminalized scope",
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestration-engine-adapter.ts:137-162",
+        "src/process-modules/application/lifecycle-orchestration-engine-adapter.ts:163-197"
+      ]
+    },
+    {
+      "id": "PROJ-LAUNCH-SETTLEMENT",
+      "kind": "observation",
+      "authority": "lifecycle terminal record; engine performs no workshop-agnostic success classification",
+      "producer": "orchestrate-cli settleLaunchFromRunResult — carries terminal_status verbatim; exit 0 is operational only, never product success",
+      "cardinality": "exactly-one per launch drain",
+      "sourceRefs": [
+        "src/orchestrate-cli.ts:740-774"
+      ]
+    },
+    {
+      "id": "ROUTE-RELEASED",
+      "kind": "state-transition",
+      "authority": "static outcomeRoutes table of the delivery-release stage binding",
+      "producer": "routeProcessOutcome(stage, outcome) — pure table lookup; a missing route for a declared module outcome throws",
+      "cardinality": "exactly-one route per declared outcome code",
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-router.ts:23-32",
+        "src/process-modules/application/lifecycle-router.ts:112-173"
+      ]
+    },
+    {
+      "id": "OBLIG-ROUTE-LIFECYCLE",
+      "kind": "obligation",
+      "authority": "ADR-053 fenced transition obligation (route-lifecycle handoff)",
+      "producer": "TransitionObligationIntegrator.onProcessSettled — settlement may route only while the obligation is in_progress; otherwise the stage pauses TRANSITION_OBLIGATION_PENDING",
+      "cardinality": "exactly-one per settled ProcessRun",
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestrator.ts:387-400"
+      ]
+    },
+    {
+      "id": "OUTC-DELIVERY-RELEASED",
+      "kind": "outcome-code",
+      "authority": "Delivery module outcome vocabulary; authority string 'delivery_settlement_policy' from settlement production bindings",
+      "producer": "GenericFlowExecutor.execute — drives settling→completed writing localOutcome='released', authority, output and certificate fields write-once on factory_process_runs",
+      "cardinality": "exactly-one per Delivery ProcessRun (terminal write-once)",
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:325-408",
+        "src/process-modules/persistence/process-run.ts:144-183"
+      ]
+    },
+    {
+      "id": "EMIT-COMPLETE-RELEASED",
+      "kind": "state-transition",
+      "authority": "Delivery flow definition (terminal node complete-released, emitsOutcome 'released')",
+      "producer": "process-outcome-emitter kernel handler — emits outcome:released and forwards the upstream settlement completion (certificate envelope) as bindings",
+      "cardinality": "exactly-one terminal node per outcome code",
+      "sourceRefs": [
+        "src/process-modules/application/handlers/process-outcome-emitter.ts:33-59",
+        "src/process-modules/modules/delivery/delivery-process-module.ts:120-127",
+        "src/process-modules/modules/delivery/delivery-process-module.ts:195-206",
+        "src/process-modules/application/generic-flow-executor.ts:930-956"
+      ]
+    },
+    {
+      "id": "FLOW-DELIVERY-WALK",
+      "kind": "state-transition",
+      "authority": "factory.delivery.standard flow: preflight-release -> approve-release -> publish-deploy -> observe-release -> settle-delivery -> complete-released",
+      "producer": "GenericFlowExecutor.walk under a ProcessRun execution lease, with crash-resume from durable NodeRuns and a bounded step budget",
+      "cardinality": "one node chain per ProcessRun attempt",
+      "sourceRefs": [
+        "src/process-modules/modules/delivery/delivery-process-module.ts:65-207",
+        "src/process-modules/application/generic-flow-executor.ts:286-323",
+        "src/process-modules/application/generic-flow-executor.ts:603-679",
+        "src/process-modules/application/generic-flow-executor.ts:958-972"
+      ]
+    },
+    {
+      "id": "DECIDE-SETTLEMENT-RELEASED",
+      "kind": "decision",
+      "authority": "ReferenceDeliverySettlementPolicy (deterministic, pure; validates immutable content-addressed snapshots only)",
+      "producer": "settle() returns decision 'released' with rationale 'Every required desired-state action is authoritatively observed for the approved certified candidate.'",
+      "cardinality": "exactly-one decision per settlement invocation (replayed deterministically)",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:423-430",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:925-986"
+      ]
+    },
+    {
+      "id": "PROD-RELEASE-RECORD",
+      "kind": "product",
+      "authority": "factory.release-record.v1 with recordHash = sha256 over the record body binding every lineage ref",
+      "producer": "deliverySettlementProduction — persists via DeliveryOutputRepository.persist (write-once, hash re-checked); a 'released' decision without a ReleaseRecord throws",
+      "cardinality": "exactly-one per Delivery ProcessRun",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:943-978",
+        "src/modules/delivery/application/delivery-installation.ts:549-593",
+        "src/modules/delivery/application/delivery-installation.ts:979-1022"
+      ]
+    },
+    {
+      "id": "PROD-RELEASE-OUTPUT-RESOLVED",
+      "kind": "reference-binding",
+      "authority": "ProcessModuleOutput for the terminal outcome, resolved only for terminalOutcome === 'released'",
+      "producer": "createDeliveryOutputResolver — re-reads the exact persisted ReleaseRecord by processRun/project/epic and schema/ref/hash; mismatch throws",
+      "cardinality": "exactly-one output envelope per Delivery ProcessRun",
+      "sourceRefs": [
+        "src/modules/delivery/application/delivery-installation.ts:95-123"
+      ]
+    },
+    {
+      "id": "CERT-DELIVERY",
+      "kind": "certificate",
+      "authority": "ProcessOutcomeCertificate issued in the kernel with authority 'delivery_settlement_policy'",
+      "producer": "issueDeliveryCertificate (certificateRepo.issue, idempotent on certificateHash) + buildDeliveryModuleCompletion certificateRef -> explicit ModuleCompletion",
+      "cardinality": "exactly-one per Delivery ProcessRun",
+      "sourceRefs": [
+        "src/modules/delivery/application/delivery-installation.ts:464-547",
+        "src/modules/delivery/application/delivery-installation.ts:595-638"
+      ]
+    },
+    {
+      "id": "CERT-COMPLETION-MANDATORY",
+      "kind": "validator",
+      "authority": "Wave 8.5 contract: a settled non-failed terminal node MUST carry an explicit ModuleCompletion",
+      "producer": "GenericFlowExecutor throws SETTLEMENT_COMPLETION_MISSING when a settled outcome lacks completion; certificateRef resolved only from the completion envelope",
+      "cardinality": "exactly-one completion chain per terminal walk",
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:336-381"
+      ]
+    },
+    {
+      "id": "INPUT-DELIVERY-CASE",
+      "kind": "input-contract",
+      "authority": "factory.delivery-release-case.v2; requireDeliveryCase validates projectId/epicId against the ProcessRun",
+      "producer": "StageRun input snapshot mapped by the lifecycle inputMapping (literal schemaVersion, literal developmentCertificate.decision='verified', frame paths)",
+      "cardinality": "exactly-one frozen input per StageRun",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-schemas.ts:81-117",
+        "src/modules/delivery/application/delivery-installation.ts:925-957",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:188-212",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:443-467"
+      ]
+    },
+    {
+      "id": "INPUT-AUTHORIZED-MODE",
+      "kind": "authorization",
+      "authority": "settlement policy invalidAuthorizedCase: grant ref valid, releasePolicyHash === policy.contentHash, candidateScope lifecycle-output|exact(candidateHash)",
+      "producer": "lifecycle input delivery block (mode 'authorized') mapped verbatim into the DeliveryReleaseCase",
+      "cardinality": "exactly-one grant per authorized case (deferred mode can never settle 'released')",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:222-255",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:450-465",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:206-259"
+      ]
+    },
+    {
+      "id": "INPUT-RELEASE-POLICY-VALID",
+      "kind": "input-contract",
+      "authority": "invalidPolicy: non-empty ids, valid contentHash, unique required preflight check ids, >=1 required action, unique actionIds, kinds within the four release kinds",
+      "producer": "caller-supplied policy snapshot, hash-bound by hashDeliveryReleasePolicy and re-verified at settlement",
+      "cardinality": "exactly-one policy per authorized case",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:160-186",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:112-116"
+      ]
+    },
+    {
+      "id": "PROD-PREFLIGHT",
+      "kind": "receipt",
+      "authority": "factory.delivery-preflight.v1; preflightHash binds candidate + developmentCertificate + policy hashes; ReferenceDeliveryPreflightPolicy must evaluate 'ready'",
+      "producer": "SqliteDeliveryRuntime.buildPreflightSnapshot — one check per requiredPreflightCheckId through the preflight provider, persisted as a process product",
+      "cardinality": "exactly-one snapshot per ProcessRun (1..N checks per policy)",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:112-182",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:268-403",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:486-520"
+      ]
+    },
+    {
+      "id": "PROD-APPROVAL",
+      "kind": "authorization",
+      "authority": "factory.delivery-approval-decision.v1; approvalHash binds candidate+preflight+policy; assertReleaseAuthorized admits only approved (with trusted authorized_decision provider) or not-required",
+      "producer": "SqliteDeliveryRuntime.decide — human-approval source decision or policy 'not-required', persisted with immutable replay",
+      "cardinality": "exactly-one final decision per ProcessRun (0..1 pending pause cycle)",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:184-276",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:522-623",
+        "src/modules/delivery/application/delivery-installation.ts:770-831"
+      ]
+    },
+    {
+      "id": "HUMAN-APPROVAL-DECISION",
+      "kind": "operator-input",
+      "authority": "factory_delivery_approval_requests/decisions; decision bound to candidateHash+preflightHash+releasePolicyHash; DELIVERY_APPROVAL_DECISION_IMMUTABLE on divergence",
+      "producer": "SqliteDeliveryApprovalInbox.recordDecision via the delivery_approval_decide MCP tool (decided_by, rationale, trusted authorized_decision provider_id)",
+      "cardinality": "exactly-one immutable decision per request",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:43-91",
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:93-201",
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:274-301",
+        "src/tools/delivery-approvals.ts:58-78"
+      ]
+    },
+    {
+      "id": "PROD-PUBLICATION",
+      "kind": "effect",
+      "authority": "factory.delivery-publication.v1; publicationHash binds candidate+preflight+approval; plannedActions must hash-match policy.actions; every required action has a receipt with exact actionKey and trusted authoritative_state provider",
+      "producer": "SqliteDeliveryRuntime.publishAndDeploy — executes each policy action through its provider, persisting receipts (including uncertain/blocked outcomes)",
+      "cardinality": "exactly-one snapshot per ProcessRun (1..N receipts, one per declared action)",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:278-336",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:625-733"
+      ]
+    },
+    {
+      "id": "EFFECT-ACTION-KEY",
+      "kind": "reference-binding",
+      "authority": "deliveryActionKey = delivery:<kind>:sha256(developmentCertificateHash, candidateHash, releasePolicyHash, actionId, kind, target, desiredStateHash, payloadHash) — cross-run stable, ProcessRun-free",
+      "producer": "settlement policy pure function; used by publication receipts, observation items and the effect ledger",
+      "cardinality": "exactly-one key per (case, action)",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:124-144"
+      ]
+    },
+    {
+      "id": "EFFECT-LEDGER-IDEMPOTENT",
+      "kind": "effect",
+      "authority": "external-effect ledger rows keyed by providerNamespace + actionKey:process-run; claim fence + lease; observe-before-execute on every mutation",
+      "producer": "SqliteDeliveryRuntime.executeAction — ledger.start replays terminal states; claim fences concurrent execution; provider.observe first skips mutation when desired state already matched",
+      "cardinality": "exactly-one effective external change per actionKey",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:455-608",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:533-570",
+        "src/modules/delivery/domain/delivery-kernel-ports.ts:278-305"
+      ]
+    },
+    {
+      "id": "PROD-OBSERVATION",
+      "kind": "observation",
+      "authority": "factory.delivery-observation.v1; every required action observed 'matched' with observedStateHash === desiredStateHash, receipt.externalRef present, currentCandidateHash === certified candidate, complete=true",
+      "producer": "SqliteDeliveryRuntime.observe — provider observation per action plus observeCurrentCandidateHash; mismatched/unknown/error outcomes settle blocked/failed, never released",
+      "cardinality": "exactly-one snapshot per ProcessRun (1..N observations)",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:338-411",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:611-685",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:735-923"
+      ]
+    },
+    {
+      "id": "PROVIDER-TRUST-RESOLUTION",
+      "kind": "provider-trust",
+      "authority": "trusted_providers active rows matched on id+name+category+version (project-scoped or global); untrusted binding blocks/failed the settlement",
+      "producer": "SqliteDeliveryRuntime.resolveTrustedProvider and approval-inbox readProvider (category authorized_decision)",
+      "cardinality": "one binding per provider use (preflight/execution/observation/decision)",
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:687-718",
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:274-301"
+      ]
+    },
+    {
+      "id": "EXT-COMPOSITION-PROVIDERS",
+      "kind": "external-input",
+      "authority": "composition root fail-closed: PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED; registerDelivery requireDeliveryPort — no default/fallback provider may perform release effects",
+      "producer": "SAGA_PRODUCT_LIFECYCLE_COMPOSITION module supplies preflight/approval/publication/observation/actionProviders into createProductLifecycleRuntime",
+      "cardinality": "one composition profile per engine process",
+      "sourceRefs": [
+        "src/app/composition-root.ts:281-308",
+        "src/modules/delivery/index.ts:95-169",
+        "src/app/product-lifecycle-runtime.ts:904-908",
+        "src/app/product-lifecycle-runtime.ts:1381"
+      ]
+    },
+    {
+      "id": "PROVIDER-LOCAL-GIT-SOURCE-TAG",
+      "kind": "effect",
+      "authority": "saga-local-git-release authoritative_state provider; git tag created without force via update-ref compare-and-set against the zero OID, observed before retry",
+      "producer": "createLocalGitReleaseProviders (source-tag execute/observe, candidate-integrity preflight, observeCurrentCandidateHash) wired by tracker-view/product-delivery-local-release-composition.mjs",
+      "cardinality": "one provider set per project (source-tag kind only)",
+      "sourceRefs": [
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:17-45",
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:47-142",
+        "tracker-view/product-delivery-local-release-composition.mjs:6-18"
+      ]
+    },
+    {
+      "id": "PROVIDER-DRY-RUN-FAIL-CLOSED",
+      "kind": "external-input",
+      "authority": "local-dry-run profile: publishAndDeploy throws delivery-provider-not-configured; the port return type admits only success shapes so throwing is the only fail-closed option",
+      "producer": "tracker-view/product-delivery-composition.mjs — the default composition bound by SAGA_PRODUCT_LIFECYCLE_COMPOSITION for start-from-idea; can NEVER resolve to released",
+      "cardinality": "one profile per engine process",
+      "sourceRefs": [
+        "tracker-view/product-delivery-composition.mjs:38-88"
+      ]
+    },
+    {
+      "id": "STAGE-HANDOFF-DELIVERY",
+      "kind": "handoff",
+      "authority": "lifecycle outputMapping/inputMapping over the durable stage frame; mappings read exact refs written by completeStage",
+      "producer": "LifecycleOrchestrator — resolveOutputPayload re-reads the verified bundle payload, re-checks canonical hash, then maps the DeliveryReleaseCase input for the delivery-release StageRun",
+      "cardinality": "exactly-one handoff frame per stage transition",
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestrator.ts:273-307",
+        "src/process-modules/application/lifecycle-orchestrator.ts:406-471",
+        "src/process-modules/application/lifecycle-orchestrator.ts:579-600",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:439-490"
+      ]
+    },
+    {
+      "id": "INPUT-LIFECYCLE-CONTRACT",
+      "kind": "input-contract",
+      "authority": "factory.product-delivery-lifecycle-input.v2; assertProductDeliveryLifecycleInput fail-closed (initiative/development/delivery blocks, policy and profile hashes, grant shape)",
+      "producer": "engine adapter resolveInput — caller-supplied or pinned-replay lifecycle input, canonicalized, repository-resolved, then asserted before any LifecycleRun start",
+      "cardinality": "exactly-one validated input per run invocation",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:73-110",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:128-260",
+        "src/app/product-lifecycle-runtime.ts:1011-1080"
+      ]
+    },
+    {
+      "id": "STATE-LAUNCH-CLAIM",
+      "kind": "state-transition",
+      "authority": "factory_launch_requests one-active-launch CAS (claim_token fence); spawn success acknowledged only by the durable lifecycle start receipt",
+      "producer": "createFactoryLaunchStarter — requestFactoryLaunch then orchestrate-cli --launch-ref; claimFactoryLaunch/markRunning bind the engine host to the launch",
+      "cardinality": "exactly-one active launch per order",
+      "sourceRefs": [
+        "src/app/product-lifecycle-run-starter.ts:79-184",
+        "src/app/product-lifecycle-run-starter.ts:194-254",
+        "src/infrastructure/factory/sqlite-factory-launch-repository.ts:289-322"
+      ]
+    },
+    {
+      "id": "SOURCE-AUTHORIZED-DELIVERY",
+      "kind": "operator-input",
+      "authority": "two lawful producers of an authorized delivery block: caller-supplied launch input, or the local release continuation minted from an approval-required parent terminal",
+      "producer": "(a) operator-provided lifecycleInput at launch; (b) prepareLocalReleaseContinuation — builds saga-local-source-tag policy + factory.delivery-operator-authorization.v1 grant (candidateScope exact) from the completed approval-required boundary, then authorizes an append-only child LifecycleRun with additive delivery-input stage overrides",
+      "cardinality": "one authorized source per release lineage",
+      "sourceRefs": [
+        "src/app/start-product-lifecycle-from-idea.ts:260-313",
+        "src/app/factory-release-continuation.ts:19-121"
+      ]
+    },
+    {
+      "id": "CERT-DEVELOPMENT-VERIFIED",
+      "kind": "certificate",
+      "authority": "factory.development-certificate.v1 with decision 'verified' — enforced by the Delivery case contract (invalidCommonCase) and the lifecycle literal mapping",
+      "producer": "Development settlement kernel (settle 'verified') issuing the development certificate referenced by the stage frame",
+      "cardinality": "exactly-one per Development ProcessRun",
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:188-212",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:48-50",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:447-453"
+      ]
+    },
+    {
+      "id": "DECIDE-DEVELOPMENT-VERIFIED",
+      "kind": "decision",
+      "authority": "ReferenceDevelopmentSettlementPolicy — 'verified' only when implementation, reviewed integration and acceptance evidence all bind to the unchanged frozen candidate",
+      "producer": "settle() validates: complete implementation workset (no blocking/incomplete items), frozen integrated candidate (hash, lineage, no drift, repository/build/intent match), complete acceptance verification (exact coverage, trusted deterministic_evidence, no failed/unknown), zero open human gates, passed local-readiness receipt bound to the exact candidate",
+      "cardinality": "exactly-one decision per Development settlement",
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1000-1015",
+        "src/modules/development/domain/development-settlement-policy.ts:1017-1081",
+        "src/modules/development/domain/development-settlement-policy.ts:1126-1293",
+        "src/modules/development/domain/development-settlement-policy.ts:1294-1301",
+        "src/modules/development/domain/development-settlement-policy.ts:1303-1336",
+        "src/modules/development/domain/development-settlement-policy.ts:1356-1381"
+      ]
+    },
+    {
+      "id": "PROD-VERIFIED-INTEGRATION-BUNDLE",
+      "kind": "product",
+      "authority": "factory.verified-integration-bundle.v1 with bundleHash; persisted write-once via DevelopmentOutputRepository",
+      "producer": "Development settlement — bundle body carries formalization certificate, solution contract, baseline hash and refs for taskGraph/workset/candidate/verification; lifecycle payload resolver exposes it (including integratedCandidate) to the Delivery handoff",
+      "cardinality": "exactly-one per Development ProcessRun",
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1356-1381",
+        "src/modules/development/domain/development-kernel-ports.ts:213-238",
+        "src/app/product-lifecycle-runtime.ts:921-928"
+      ]
+    },
+    {
+      "id": "PROD-INTEGRATED-CANDIDATE",
+      "kind": "candidate",
+      "authority": "factory.integrated-release-candidate.v1 with candidateHash; frozen=true; taskGraphHash and implementationWorksetHash lineage; repositories carry branch+commitSha+treeHash",
+      "producer": "DevelopmentSettlementStatePort.freezeIntegratedCandidate / bindRunnableCandidate; observedCandidateHash must still equal candidateHash at settlement (drift blocks)",
+      "cardinality": "exactly-one frozen candidate per Development ProcessRun",
+      "sourceRefs": [
+        "src/modules/development/domain/development-kernel-ports.ts:165-178",
+        "src/modules/development/domain/development-settlement-policy.ts:1039-1124",
+        "src/modules/development/domain/development-settlement-policy.ts:107-127"
+      ]
+    },
+    {
+      "id": "BRIDGE-DEVELOPMENT-SETTLEMENT-STATE",
+      "kind": "handoff",
+      "authority": "ADR-053 authority conservation: settlement input reconstructed exclusively from accepted sealed cell products by exact refs/hashes; tasks/cards are never settlement authority (ADR-030)",
+      "producer": "SqliteDevelopmentSettlementState.buildSettlementInput — reads task graph, adopted workset, integrated candidate and verification as inner data from sealed CandidateSets and process products; builds implementation workset from accepted cell products ('accepted-cell-product-missing' placeholder yields honest blocked)",
+      "cardinality": "exactly-one settlement input per Development settlement invocation",
+      "sourceRefs": [
+        "src/modules/development/domain/development-kernel-ports.ts:180-209",
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:474-545",
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:465-473",
+        "src/modules/development/domain/development-settlement-policy.ts:186-200"
+      ]
+    },
+    {
+      "id": "STATE-CELL-FINAL-ACCEPTANCE",
+      "kind": "state-transition",
+      "authority": "CellFinalAcceptance — accepted GateDecision on the exact CandidateSet, effect receipts settled, then final acceptance recorded; re-entry admissible only via the exact accepted-authority head, never recency",
+      "producer": "production-cell node executor — sealCandidateSet, driveGateRun, completeAcceptanceEffect (typed receipts + obligation), recordFinalAcceptanceAndCapture",
+      "cardinality": "exactly-one per Workplace acceptance",
+      "sourceRefs": [
+        "src/process-modules/application/node-executors/production-cell-node-executor.ts:649-674",
+        "src/process-modules/application/node-executors/production-cell-node-executor.ts:1420-1445",
+        "src/process-modules/application/node-executors/production-cell-node-executor.ts:1455-1503",
+        "src/process-modules/application/node-executors/production-cell-node-executor.ts:1967",
+        "src/process-modules/application/node-executors/production-cell-node-executor.ts:2156-2157"
+      ]
+    },
+    {
+      "id": "RECEIPT-LOCAL-READINESS",
+      "kind": "receipt",
+      "authority": "durable local-runnability receipt in factory_check_receipts keyed by the verification author's CandidateSet; outcome 'passed' and candidateHash === frozen candidate candidateHash",
+      "producer": "local-runnability check provider during Development verification; read back by readLocalReadinessReceipt with accepted-authority head proof",
+      "cardinality": "exactly-one accepted receipt per frozen candidate",
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1303-1336",
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:565-575"
+      ]
+    },
+    {
+      "id": "OUTC-FORMALIZATION-FORMALIZED",
+      "kind": "outcome-code",
+      "authority": "solution-formalization outcomeRoutes: 'formalized' -> solution-development; 'inconsistent'/'failed' terminal",
+      "producer": "Formalization module settlement ('formalized') with a frozen content-addressed Solution Contract (SRS + acceptance criteria + baseline hash) consumed by the Development input mapping",
+      "cardinality": "exactly-one formalized route per lifecycle",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:343-378",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:379-416"
+      ]
+    },
+    {
+      "id": "OUTC-DISCOVERY-FORWARD",
+      "kind": "outcome-code",
+      "authority": "initial-discovery outcomeRoutes: go/clarify/reject all forward to formalization (idea-strength recorded, not a build gate); failed is runtime-terminal",
+      "producer": "Discovery module settlement outcomes over the initiative input",
+      "cardinality": "exactly-one outcome per Discovery stage",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:289-342"
+      ]
+    },
+    {
+      "id": "EXT-INITIATIVE-REPOSITORY-POLICY",
+      "kind": "external-input",
+      "authority": "initiative.{subject,context,evidence,constraints} + development.repositories[].{repositoryRef,integrationBranch,expectedBaseCommit} + development.policy (hash-verified)",
+      "producer": "external operator/initiative input; repository binding resolved from project_repositories with the real git HEAD (REPOSITORY_HEAD_UNRESOLVABLE fails closed); expectedBaseCommit anchors the Development Git lineage",
+      "cardinality": "one initiative + >=1 repository binding + one development policy per lifecycle input",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:76-126",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:128-178",
+        "src/app/start-product-lifecycle-from-idea.ts:103-158",
+        "src/app/start-product-lifecycle-from-idea.ts:260-313"
+      ]
+    },
+    {
+      "id": "EXT-RELEASE-POLICY-AND-GRANT",
+      "kind": "external-input",
+      "authority": "release policy snapshot (channel, releaseVersion, releaseTag, humanApprovalRequired, requiredPreflightCheckIds, actions with desiredStateHash/payloadHash) + operator grant bound to policy.contentHash",
+      "producer": "external operator/release-policy authority: caller-supplied authorized lifecycle input, or the continuation grant minted by prepareLocalReleaseContinuation from the exact approval-required boundary and current repo head",
+      "cardinality": "one policy + one grant per authorized delivery",
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:206-259",
+        "src/app/factory-release-continuation.ts:57-88",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:160-186"
+      ]
+    },
+    {
+      "id": "STATE-PROCESSRUN-PINNED-REPLAY",
+      "kind": "state-transition",
+      "authority": "ProcessRun idempotency: same key + same input_hash replays the existing run; execution leased, heartbeated, resumed from durable NodeRuns",
+      "producer": "LifecycleOrchestrator.executeOrReplayProcess + GenericFlowExecutor lease/renew; completed runs project their recorded result without re-execution",
+      "cardinality": "exactly-one ProcessRun row per (project, module, key)",
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestrator.ts:307-366",
+        "src/process-modules/application/lifecycle-orchestrator.ts:507-577",
+        "src/process-modules/persistence/process-run.ts:10-26"
+      ]
+    },
+    {
+      "id": "AUDIT-STAGE-TRANSITION-ROW",
+      "kind": "journal-event",
+      "authority": "factory_process_transitions append-only row with outcome, target_type, terminal_status, handoff_snapshot/hash, decision_hash",
+      "producer": "SqliteLifecycleRunRepository.completeStage in the same transaction as the stage/lifecycle updates",
+      "cardinality": "exactly-one per stage transition",
+      "sourceRefs": [
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1044-1103"
+      ]
+    },
+    {
+      "id": "AUDIT-NODERUN-V2-DURABLE",
+      "kind": "journal-event",
+      "authority": "NodeRun v2 completion persists output ref/schema/hash/bindings plus execution/acceptance receipts and the explicit ModuleCompletion for crash-resume replay",
+      "producer": "GenericFlowExecutor node completion (completeV2) inside the run's lease/transaction seams",
+      "cardinality": "one durable row per node attempt",
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:840-902"
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "dep-01",
+      "claim": "R-RELEASED-TERMINAL",
+      "requires": ["ROUTE-RELEASED", "OBLIG-ROUTE-LIFECYCLE", "OUTC-DELIVERY-RELEASED"],
+      "relation": "terminal_status is stamped only when the declarative route for the settled local outcome targets terminal 'released', under a fenced obligation, inside the lease-CAS completeStage transaction",
+      "validator": "SqliteLifecycleRunRepository.completeStage (LIFECYCLE_STAGE_ALREADY_TERMINAL / LIFECYCLE_LEASE_LOST guards)",
+      "authorityBindings": ["outcomeRoutes['released'] = {type:'terminal', status:'released'}", "execution lease owner+fence"],
+      "sourceRefs": [
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1044-1150",
+        "src/process-modules/application/lifecycle-orchestrator.ts:401-471"
+      ]
+    },
+    {
+      "id": "dep-02",
+      "claim": "R-RELEASED-TERMINAL",
+      "requires": ["AUDIT-STAGE-TRANSITION-ROW"],
+      "relation": "the terminal transition is journaled atomically with the lifecycle terminalization",
+      "validator": "same-transaction insert of factory_process_transitions",
+      "authorityBindings": ["terminal_status column carries 'released' verbatim"],
+      "sourceRefs": [
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1073-1103"
+      ]
+    },
+    {
+      "id": "dep-03",
+      "claim": "AUDIT-RUN-TERMINAL",
+      "requires": ["R-RELEASED-TERMINAL"],
+      "relation": "run.terminal journal fires after the orchestrator commits, only for the durable claim winner (observation plane, never authority)",
+      "validator": "claimRunTerminalEvent exactly-once claim; fail-silent on observation errors",
+      "authorityBindings": ["terminal_status / product_outcome / stage_outcome channels kept separate (CC-GAP-2)"],
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestration-engine-adapter.ts:87-162"
+      ]
+    },
+    {
+      "id": "dep-04",
+      "claim": "PROJ-LAUNCH-SETTLEMENT",
+      "requires": ["R-RELEASED-TERMINAL", "STATE-LAUNCH-CLAIM"],
+      "relation": "launch/order settlement projects the lifecycle terminal verdict without inventing a success classification; exit 0 stays operational",
+      "validator": "settleLaunchFromRunResult + ADR-087 typed terminal-settlement failure override (operational channels only)",
+      "authorityBindings": ["terminal_status carried verbatim from factory_lifecycle_runs"],
+      "sourceRefs": [
+        "src/orchestrate-cli.ts:740-774"
+      ]
+    },
+    {
+      "id": "dep-05",
+      "claim": "OUTC-DELIVERY-RELEASED",
+      "requires": ["EMIT-COMPLETE-RELEASED", "FLOW-DELIVERY-WALK", "CERT-COMPLETION-MANDATORY", "PROD-RELEASE-OUTPUT-RESOLVED"],
+      "relation": "the ProcessRun terminal fields are written only after the terminal node emitted 'released' at the end of a complete flow walk with an explicit completion and a resolvable output",
+      "validator": "validateProcessModuleRunResult (Д7) + SETTLEMENT_COMPLETION_MISSING + exact-output resolver",
+      "authorityBindings": ["localOutcome='released'", "authority='delivery_settlement_policy'", "output=ReleaseRecord ref", "certificate=delivery certificate ref"],
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:317-408",
+        "src/modules/delivery/application/delivery-installation.ts:95-123"
+      ]
+    },
+    {
+      "id": "dep-06",
+      "claim": "EMIT-COMPLETE-RELEASED",
+      "requires": ["DECIDE-SETTLEMENT-RELEASED"],
+      "relation": "settle-delivery emits domain.released which the flow transitions map to complete-released; the emitter forwards the settlement completion envelope",
+      "validator": "delivery flow transitions settle-delivery --domain.released--> complete-released",
+      "authorityBindings": ["settlement event === decision string"],
+      "sourceRefs": [
+        "src/process-modules/modules/delivery/delivery-process-module.ts:129-206",
+        "src/modules/delivery/application/delivery-installation.ts:615-638"
+      ]
+    },
+    {
+      "id": "dep-07",
+      "claim": "DECIDE-SETTLEMENT-RELEASED",
+      "requires": ["INPUT-DELIVERY-CASE", "INPUT-AUTHORIZED-MODE", "INPUT-RELEASE-POLICY-VALID", "PROD-PREFLIGHT", "PROD-APPROVAL", "PROD-PUBLICATION", "PROD-OBSERVATION"],
+      "relation": "'released' requires every prior stage product: valid authorized case, ready preflight, admissible approval, complete action receipts and matched authoritative observations with durable references for all four products",
+      "validator": "ReferenceDeliverySettlementPolicy.settle branch chain (any gap returns blocked/failed/approval-required with typed reason codes)",
+      "authorityBindings": ["candidateHash === integratedCandidate.hash across preflight/approval/publication/observation and currentCandidateHash", "productReferences.{preflight,approval,publication,observation} all non-null and referenceMatches-verified"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:430-941"
+      ]
+    },
+    {
+      "id": "dep-08",
+      "claim": "DECIDE-SETTLEMENT-RELEASED",
+      "requires": ["PROD-RELEASE-RECORD"],
+      "relation": "the 'released' result carries the ReleaseRecord built from validated refs; non-released decisions must not expose one",
+      "validator": "settlement requires releaseRecord non-null for 'released'; deliverySettlementProduction throws otherwise",
+      "authorityBindings": ["recordHash = sha256(recordBody over certificate/bundle/candidate/policy + four product refs + destinations)"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:943-986",
+        "src/modules/delivery/application/delivery-installation.ts:556-593"
+      ]
+    },
+    {
+      "id": "dep-09",
+      "claim": "CERT-DELIVERY",
+      "requires": ["DECIDE-SETTLEMENT-RELEASED"],
+      "relation": "certificate payload is derived from the settlement result and full input lineage (hashes of preflight/approval/publication/observation/releaseRecord)",
+      "validator": "buildDeliveryCertificatePayload + certificateHash = sha256(certificatePayload); issue idempotent on hash",
+      "authorityBindings": ["authority='delivery_settlement_policy'", "certificateRef -> certificate:<id> row"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:990-1017",
+        "src/modules/delivery/application/delivery-installation.ts:475-547"
+      ]
+    },
+    {
+      "id": "dep-10",
+      "claim": "INPUT-DELIVERY-CASE",
+      "requires": ["STAGE-HANDOFF-DELIVERY", "CERT-DEVELOPMENT-VERIFIED", "PROD-VERIFIED-INTEGRATION-BUNDLE", "PROD-INTEGRATED-CANDIDATE"],
+      "relation": "the case is mapped from the stage frame: development certificate (decision literal 'verified'), verified bundle refs, integratedCandidate read from the bundle payload — exact refs, never latest",
+      "validator": "requireDeliveryCase (projectId/epicId/schema) + settlement invalidCommonCase (schemas + decision 'verified')",
+      "authorityBindings": ["developmentCertificate.schema === factory.development-certificate.v1", "verifiedIntegrationBundle.schema === factory.verified-integration-bundle.v1", "integratedCandidate.schema === factory.integrated-release-candidate.v1"],
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:443-467",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:188-212"
+      ]
+    },
+    {
+      "id": "dep-11",
+      "claim": "INPUT-AUTHORIZED-MODE",
+      "requires": ["EXT-RELEASE-POLICY-AND-GRANT", "SOURCE-AUTHORIZED-DELIVERY"],
+      "relation": "authorized mode (the only mode that can settle 'released') comes from the external policy+grant, carried verbatim from the lifecycle input through the stage mapping or the continuation overrides",
+      "validator": "invalidAuthorizedCase + assertProductDeliveryLifecycleInput authorized branch + validCandidateAuthorizationScope",
+      "authorityBindings": ["grant.releasePolicyHash === policy.contentHash", "candidateScope mode lifecycle-output | exact(candidateHash)"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:222-255",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:206-259",
+        "src/app/factory-release-continuation.ts:72-110"
+      ]
+    },
+    {
+      "id": "dep-12",
+      "claim": "PROD-PREFLIGHT",
+      "requires": ["EXT-COMPOSITION-PROVIDERS", "PROVIDER-TRUST-RESOLUTION", "INPUT-RELEASE-POLICY-VALID"],
+      "relation": "each requiredPreflightCheckId is evaluated by the injected preflight provider and recorded with a trusted binding; snapshot completeness equals the required id set",
+      "validator": "ReferenceDeliveryPreflightPolicy.evaluate must return 'ready' (blocked on missing/untrusted/inconclusive, failed on error/hash)",
+      "authorityBindings": ["check.subjectCandidateHash === integratedCandidate.hash", "provider category deterministic_evidence|authoritative_state, trusted=true"],
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:112-182",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:284-403"
+      ]
+    },
+    {
+      "id": "dep-13",
+      "claim": "PROD-APPROVAL",
+      "requires": ["HUMAN-APPROVAL-DECISION"],
+      "relation": "when policy.humanApprovalRequired the admissible 'approved' status must originate from the immutable inbox decision bound to the same candidate/preflight/policy; otherwise status 'not-required'",
+      "validator": "settlement approval branch + assertReleaseAuthorized + assertApprovalSnapshot",
+      "authorityBindings": ["approval.candidateHash/preflightHash/releasePolicyHash lineage", "provider category authorized_decision, trusted=true"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:522-623",
+        "src/modules/delivery/application/delivery-installation.ts:770-831",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:184-276"
+      ]
+    },
+    {
+      "id": "dep-14",
+      "claim": "HUMAN-APPROVAL-DECISION",
+      "requires": ["EXT-RELEASE-POLICY-AND-GRANT"],
+      "relation": "the human decision is requested only for the exact candidate/preflight/policy the policy declared; the operator decides through the MCP tool with a trusted authorized_decision provider",
+      "validator": "ensureRequest replay-mismatch check + DELIVERY_APPROVAL_DECISION_IMMUTABLE + readProvider trust check",
+      "authorityBindings": ["request keyed delivery-approval-request:<processRunId>", "decision ref/hash content-addressed"],
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:232-272",
+        "src/tools/delivery-approvals.ts:123-155"
+      ]
+    },
+    {
+      "id": "dep-15",
+      "claim": "PROD-PUBLICATION",
+      "requires": ["PROD-APPROVAL", "EFFECT-ACTION-KEY", "EFFECT-LEDGER-IDEMPOTENT", "EXT-COMPOSITION-PROVIDERS", "PROVIDER-TRUST-RESOLUTION"],
+      "relation": "publication executes only after authorization; each action receipt carries the deterministic key and a trusted authoritative_state provider; ledger + observe-before-execute make the external change idempotent",
+      "validator": "settlement publication branch (plan match, unique receipts, actionKey/kind/target/payload/desiredState equality, status vocabulary) + assertPublicationSnapshot in the observation/settlement kernels",
+      "authorityBindings": ["receipt.actionKey === deliveryActionKey(case, action)", "provider.category === authoritative_state, trusted=true"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:625-733",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:278-336",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:455-608"
+      ]
+    },
+    {
+      "id": "dep-16",
+      "claim": "PROD-OBSERVATION",
+      "requires": ["PROD-PUBLICATION", "PROVIDER-TRUST-RESOLUTION", "EXT-COMPOSITION-PROVIDERS"],
+      "relation": "observation reads authoritative target state after publication, including uncertain and failed responses; every required action must be 'matched' at its desired-state hash with an externalRef",
+      "validator": "settlement observation branch (lineage, duplicate keys, provider trust, matched-hash equality, mismatched/unknown/error routing to blocked/failed)",
+      "authorityBindings": ["observation.currentCandidateHash === integratedCandidate.hash", "matched.observedStateHash === action.desiredStateHash", "observation.publicationHash === publication.publicationHash"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:735-923",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:338-411"
+      ]
+    },
+    {
+      "id": "dep-17",
+      "claim": "EXT-COMPOSITION-PROVIDERS",
+      "requires": ["PROVIDER-LOCAL-GIT-SOURCE-TAG"],
+      "relation": "the only in-repo production composition capable of a truthful 'released' is the local-git source-tag profile (real CAS git tag effect + observation); the default local-dry-run profile fails closed",
+      "validator": "registerDelivery requireDeliveryPort (no defaults) + dry-run throw delivery-provider-not-configured",
+      "authorityBindings": ["provider identity saga-local-git-release @1.0.0, category authoritative_state, trusted_providers row"],
+      "sourceRefs": [
+        "src/modules/delivery/index.ts:95-169",
+        "tracker-view/product-delivery-local-release-composition.mjs:6-18",
+        "tracker-view/product-delivery-composition.mjs:38-88"
+      ]
+    },
+    {
+      "id": "dep-18",
+      "claim": "STAGE-HANDOFF-DELIVERY",
+      "requires": ["OUTC-DELIVERY-RELEASED-predecessor:DECIDE-DEVELOPMENT-VERIFIED"],
+      "relation": "the delivery stage is entered only via the development 'verified' route; the handoff re-reads the verified bundle payload and re-checks its canonical hash before mapping",
+      "validator": "resolveOutputPayload (development bundle resolver) + outputMapping/inputMapping strict JSON-path resolution (LIFECYCLE_MAPPING_SOURCE_MISSING on gaps)",
+      "authorityBindings": ["verifiedBundle.ref/hash + certificate.ref/hash flow into the DeliveryReleaseCase"],
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:379-467",
+        "src/process-modules/application/lifecycle-orchestrator.ts:406-445"
+      ]
+    },
+    {
+      "id": "dep-19",
+      "claim": "INPUT-LIFECYCLE-CONTRACT",
+      "requires": ["EXT-INITIATIVE-REPOSITORY-POLICY", "EXT-RELEASE-POLICY-AND-GRANT", "STATE-LAUNCH-CLAIM"],
+      "relation": "the validated lifecycle input is supplied by the launch (caller or pinned replay); repository refs canonicalized to runtime ids; assertions run before any run starts",
+      "validator": "assertProductDeliveryLifecycleInput + canonicalizeProductDeliveryLifecycleInput + resolveProductDeliveryRepositories",
+      "authorityBindings": ["input contentHash pinned on the LifecycleRun; pinned replay never re-invents initiatedBy"],
+      "sourceRefs": [
+        "src/app/product-lifecycle-runtime.ts:1011-1080",
+        "src/app/product-lifecycle-run-starter.ts:79-184"
+      ]
+    },
+    {
+      "id": "dep-20",
+      "claim": "SOURCE-AUTHORIZED-DELIVERY",
+      "requires": ["R-RELEASED-TERMINAL-predecessor:approval-required terminal"],
+      "relation": "continuation path: an approval-required terminal parent (truthful business outcome) is the lawful boundary from which prepareLocalReleaseContinuation mints the authorized source-tag policy/grant and an append-only child LifecycleRun that executes only the delivery suffix",
+      "validator": "LOCAL_RELEASE_PARENT_NOT_APPROVAL_REQUIRED + LOCAL_RELEASE_BOUNDARY_NOT_EXACT + continuation repository authorize/consume",
+      "authorityBindings": ["grant candidateScope exact(previous.integratedCandidate.hash)", "externalBaseline delivery block overrides stage input mapping"],
+      "sourceRefs": [
+        "src/app/factory-release-continuation.ts:19-121"
+      ]
+    },
+    {
+      "id": "dep-21",
+      "claim": "CERT-DEVELOPMENT-VERIFIED",
+      "requires": ["DECIDE-DEVELOPMENT-VERIFIED", "PROD-VERIFIED-INTEGRATION-BUNDLE"],
+      "relation": "the 'verified' decision emits the certificate and the bundle; both are required downstream refs",
+      "validator": "development settlement result + certificate payload (bundleHash included)",
+      "authorityBindings": ["certificate decision 'verified'; bundle refs content-addressed"],
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1356-1381",
+        "src/modules/development/domain/development-settlement-policy.ts:1429-1451"
+      ]
+    },
+    {
+      "id": "dep-22",
+      "claim": "DECIDE-DEVELOPMENT-VERIFIED",
+      "requires": ["BRIDGE-DEVELOPMENT-SETTLEMENT-STATE", "PROD-INTEGRATED-CANDIDATE", "RECEIPT-LOCAL-READINESS", "STATE-CELL-FINAL-ACCEPTANCE"],
+      "relation": "'verified' is decided over the settlement input reconstructed from accepted sealed cell products: workset completion derives from CellFinalAcceptance-projected cell products (execution ids are provenance only), the candidate must be frozen and undrifted, verification must exactly cover the required workset, no human gate may be open, and the local-readiness receipt must be passed and bound",
+      "validator": "ReferenceDevelopmentSettlementPolicy.settle full branch chain (blocked/failed reason codes on every gap)",
+      "authorityBindings": ["candidate.taskGraphHash === taskGraph.graphHash", "candidate.implementationWorksetHash === workset.worksetHash", "verification.acceptanceBaselineHash === case.acceptanceBaselineHash", "readiness.candidateHash === candidate.candidateHash"],
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1000-1381",
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:474-545"
+      ]
+    },
+    {
+      "id": "dep-23",
+      "claim": "BRIDGE-DEVELOPMENT-SETTLEMENT-STATE",
+      "requires": ["STATE-CELL-FINAL-ACCEPTANCE"],
+      "relation": "bridge/mapper relation (not direct schema inclusion): sealed author/reviewer CandidateSet members and accepted-authority heads are transformed into the settlement input's inner workset/candidate/verification data, preserving exact refs/hashes and cardinality; 'tasks' Kanban projection is excluded from authority",
+      "validator": "buildImplementationWorkset 'accepted-cell-product-missing' placeholder -> honest blocked; candidate seal required before gate/settlement can resolve runnability subject",
+      "authorityBindings": ["CandidateSetRef/digest + accepted GateDecision key + FinalAcceptance row digest preserved through the projection"],
+      "sourceRefs": [
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:465-545",
+        "src/modules/development/domain/development-kernel-ports.ts:180-209"
+      ]
+    },
+    {
+      "id": "dep-24",
+      "claim": "STATE-CELL-FINAL-ACCEPTANCE",
+      "requires": ["OUTC-FORMALIZATION-FORMALIZED"],
+      "relation": "development production cells exist only because formalization routed 'formalized' with a content-addressed Solution Contract and accepted baseline that freeze the Development case inputs",
+      "validator": "Development entry conditions + solutionContractPayload/acceptanceBaselineHash mappings",
+      "authorityBindings": ["formalizationCertificate.decision literal 'formalized' in the Development input mapping"],
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:379-438",
+        "src/process-modules/modules/development/development-process-module.ts:466-472"
+      ]
+    },
+    {
+      "id": "dep-25",
+      "claim": "OUTC-FORMALIZATION-FORMALIZED",
+      "requires": ["OUTC-DISCOVERY-FORWARD"],
+      "relation": "formalization consumes the discovery certificate/proposal handoff (entry conditions require the refs to exist)",
+      "validator": "inputMapping paths $.stages.initial-discovery.* strict resolution",
+      "authorityBindings": ["discoveryCertificateRef/hash + discoveryProposalPayload"],
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:343-378"
+      ]
+    },
+    {
+      "id": "dep-26",
+      "claim": "OUTC-DISCOVERY-FORWARD",
+      "requires": ["EXT-INITIATIVE-REPOSITORY-POLICY", "INPUT-LIFECYCLE-CONTRACT"],
+      "relation": "discovery reasons over the initiative subject/context/evidence/constraints mapped from the validated lifecycle input; the repository binding and development policy ride the frame for later stages",
+      "validator": "entry mapping + initiative.subject assertion",
+      "authorityBindings": ["initiative.subject non-empty; repositories/policy hash-bound"],
+      "sourceRefs": [
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:289-342"
+      ]
+    },
+    {
+      "id": "dep-27",
+      "claim": "FLOW-DELIVERY-WALK",
+      "requires": ["STATE-PROCESSRUN-PINNED-REPLAY", "AUDIT-NODERUN-V2-DURABLE"],
+      "relation": "every node completion is durable before the walk advances; crash-resume restores the chain input and pending completion from NodeRun rows and accounts for the failed crash window",
+      "validator": "lease renewal + resume cursor + RESUME-DEBRIS/RESUME_SPIN_DETECTED + bounded maxSteps seeded from durable failed attempts",
+      "authorityBindings": ["NodeRun output_bindings carry the exact lineage the next kernel re-reads from durable storage"],
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:603-679",
+        "src/process-modules/application/generic-flow-executor.ts:699-927"
+      ]
+    },
+    {
+      "id": "dep-28",
+      "claim": "PROVIDER-LOCAL-GIT-SOURCE-TAG",
+      "requires": ["EXT-INITIATIVE-REPOSITORY-POLICY"],
+      "relation": "the local provider resolves the single active project repository and pins commit/tree from the integration branch head; the tag target encodes repositoryId|tag|commit|tree",
+      "validator": "LOCAL_RELEASE_REPOSITORY_MISMATCH / LOCAL_RELEASE_CANDIDATE_DRIFT / LOCAL_RELEASE_TAG_CONFLICT typed outcomes; update-ref CAS against zero OID (no force)",
+      "authorityBindings": ["action.target parsing binds project-repository id, tag, commit, tree; desiredStateHash over the same"],
+      "sourceRefs": [
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:82-128",
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:145-169"
+      ]
+    }
+  ],
+  "homelessClaims": [
+    {
+      "id": "HOMELESS-REAL-PUBLISH-DEPLOY-PROVIDERS",
+      "claim": "authoritative_state action providers for the 'source-release', 'package-publish' and 'deployment' release kinds",
+      "requiredBy": "DECIDE-SETTLEMENT-RELEASED via PROD-PUBLICATION/PROD-OBSERVATION (settlement requires a trusted authoritative_state receipt+observation for EVERY required action of the declared policy kind)",
+      "gap": "missing product obligation, not missing test evidence: the repository ships exactly one production provider kind (source-tag via saga-local-git-release); the default composition explicitly throws delivery-provider-not-configured and documents that real publication must be supplied by a deployment-specific override that does not exist in this repository. A truthful 'released' whose policy declares source-release/package-publish/deployment actions therefore has no in-repo producer for its required effect/observation evidence.",
+      "sourceRefs": [
+        "tracker-view/product-delivery-composition.mjs:18-33",
+        "src/modules/delivery/domain/delivery-schemas.ts:47-51",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:690-723",
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:47-54"
+      ]
+    }
+  ],
+  "safetyClaims": [
+    {
+      "id": "SAFE-CANDIDATE-IMMUTABLE",
+      "claim": "candidate-drifted: settlement compares input.currentCandidateHash and observation.currentCandidateHash to the certified candidate; the local provider independently re-observes commit/tree; changed hash after certification blocks release",
+      "claimRefs": ["DECIDE-SETTLEMENT-RELEASED", "PROD-OBSERVATION"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:475-484",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:760-773",
+        "src/process-modules/modules/delivery/delivery-process-module.ts:313-317"
+      ]
+    },
+    {
+      "id": "SAFE-SNAPSHOT-HASH-INTEGRITY",
+      "claim": "every delivery snapshot is hash-verified against its self-declared hash and its durable reference (preflight/approval/publication/observation/releaseRecord/certificate); mismatch is terminal 'failed', never released",
+      "claimRefs": ["PROD-PREFLIGHT", "PROD-APPROVAL", "PROD-PUBLICATION", "PROD-OBSERVATION", "PROD-RELEASE-RECORD"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:284-307",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:531-558",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:634-661",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:744-772",
+        "src/modules/delivery/application/delivery-installation.ts:1005-1022"
+      ]
+    },
+    {
+      "id": "SAFE-PROVIDER-TRUST-FAIL-CLOSED",
+      "claim": "untrusted or unmatched providers (preflight/approval/action/observation) yield blocked verdicts; trust requires an active trusted_providers row matched on id+name+category+version; no default provider exists",
+      "claimRefs": ["PROVIDER-TRUST-RESOLUTION", "EXT-COMPOSITION-PROVIDERS"],
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:687-718",
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:341-358",
+        "src/modules/delivery/index.ts:95-105"
+      ]
+    },
+    {
+      "id": "SAFE-OBSERVE-BEFORE-EFFECT",
+      "claim": "every action execution observes the provider first and skips mutation when the desired state already matches; the effect ledger + deterministic actionKey make retries idempotent across runs; a push/command response alone never establishes release",
+      "claimRefs": ["EFFECT-LEDGER-IDEMPOTENT", "PROD-OBSERVATION"],
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:533-570",
+        "src/process-modules/modules/delivery/delivery-process-module.ts:295-305"
+      ]
+    },
+    {
+      "id": "SAFE-NO-FORCE-NO-BYPASS",
+      "claim": "release adapters must not force push, bypass branch protection, registry immutability or deployment policy; the local provider creates tags via compare-and-set update-ref against the zero OID",
+      "claimRefs": ["PROVIDER-LOCAL-GIT-SOURCE-TAG"],
+      "sourceRefs": [
+        "src/process-modules/modules/delivery/delivery-process-module.ts:307-311",
+        "src/infrastructure/delivery/local-git-tag-delivery-provider.ts:96-106"
+      ]
+    },
+    {
+      "id": "SAFE-APPROVAL-BINDS-AND-IMMUTABLE",
+      "claim": "human approval binds candidate+preflight+policy hashes and cannot float to a later revision; recorded decisions are immutable (replay-divergence throws); a pending approval pauses rather than fabricating consent",
+      "claimRefs": ["HUMAN-APPROVAL-DECISION", "PROD-APPROVAL"],
+      "sourceRefs": [
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:138-201",
+        "src/process-modules/modules/delivery/delivery-process-module.ts:283-287"
+      ]
+    },
+    {
+      "id": "SAFE-GRANT-SCOPE-BINDING",
+      "claim": "no externally-visible release action may begin without an explicit operator grant bound to the immutable policy hash and a candidate scope (lifecycle-output or exact hash); executeAction re-checks the grant",
+      "claimRefs": ["INPUT-AUTHORIZED-MODE", "PROD-PUBLICATION"],
+      "sourceRefs": [
+        "src/process-modules/modules/delivery/delivery-process-module.ts:276-281",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:461-465"
+      ]
+    },
+    {
+      "id": "SAFE-WRITE-ONCE-TERMINALS",
+      "claim": "terminal fields are write-once: ProcessRun outcome/output/certificate; LifecycleRun terminal_status (completeStage rejects already-terminal stages and enforces the lease CAS); ReleaseRecord persisted once with hash re-check; non-'released' decisions must not expose a record",
+      "claimRefs": ["OUTC-DELIVERY-RELEASED", "R-RELEASED-TERMINAL", "PROD-RELEASE-RECORD"],
+      "sourceRefs": [
+        "src/process-modules/persistence/process-run.ts:168-183",
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1046-1071",
+        "src/modules/delivery/application/delivery-installation.ts:556-592"
+      ]
+    },
+    {
+      "id": "SAFE-DRY-RUN-CANNOT-RELEASE",
+      "claim": "the default local-dry-run composition throws a typed failure at the publication boundary; the port type admits only success shapes so no code path can synthesize a released outcome from it",
+      "claimRefs": ["PROVIDER-DRY-RUN-FAIL-CLOSED"],
+      "sourceRefs": [
+        "tracker-view/product-delivery-composition.mjs:38-47",
+        "tracker-view/product-delivery-composition.mjs:63-78"
+      ]
+    },
+    {
+      "id": "SAFE-MODULE-DOES-NOT-ROUTE",
+      "claim": "Delivery emits a local outcome only; cross-module routing authority belongs to the lifecycle definition, preventing the release module from grading its own conveyor position",
+      "claimRefs": ["OUTC-DELIVERY-RELEASED", "ROUTE-RELEASED"],
+      "sourceRefs": [
+        "src/process-modules/modules/delivery/delivery-process-module.ts:319-323",
+        "src/process-modules/lifecycles/product-delivery-lifecycle.ts:479-484"
+      ]
+    },
+    {
+      "id": "SAFE-LAUNCH-CAS-FENCE",
+      "claim": "launch claim/running transitions are CAS-fenced by claim_token; one active launch per order; spawn is acknowledged only by the durable lifecycle start receipt, never by OS success",
+      "claimRefs": ["STATE-LAUNCH-CLAIM"],
+      "sourceRefs": [
+        "src/infrastructure/factory/sqlite-factory-launch-repository.ts:289-322",
+        "src/app/product-lifecycle-run-starter.ts:135-181"
+      ]
+    },
+    {
+      "id": "SAFE-AUTHORITY-CONSERVATION-DEV",
+      "claim": "development settlement reads only exact accepted CandidateSet/revision products; execution ids are provenance; Kanban tasks are never settlement authority — preventing latest-execution material selection from poisoning the certified candidate",
+      "claimRefs": ["BRIDGE-DEVELOPMENT-SETTLEMENT-STATE", "DECIDE-DEVELOPMENT-VERIFIED"],
+      "sourceRefs": [
+        "src/modules/development/domain/development-settlement-policy.ts:1001-1015",
+        "src/modules/development/infrastructure/sqlite-development-settlement-state.ts:485-494"
+      ]
+    }
+  ],
+  "livenessClaims": [
+    {
+      "id": "LIVE-HUMAN-APPROVAL-CYCLE",
+      "claim": "a pending approval pauses the ProcessRun/LifecycleRun truthfully; the operator records the immutable decision and resumes the SAME run, which re-enters the human node and replays the decision; approval-required is a terminal business outcome when never decided, with the continuation path as the lawful suffix",
+      "claimRefs": ["HUMAN-APPROVAL-DECISION", "PROD-APPROVAL", "SOURCE-AUTHORIZED-DELIVERY"],
+      "sourceRefs": [
+        "src/modules/delivery/application/delivery-installation.ts:218-264",
+        "src/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.ts:36-42",
+        "src/app/factory-release-continuation.ts:23-42"
+      ]
+    },
+    {
+      "id": "LIVE-OBLIGATION-REDRIVE",
+      "claim": "process settlement routes only under a fenced in_progress transition obligation; the reconciler re-drives idempotent lifecycle episodes so a committed child result is eventually routed or surfaces a typed pending pause",
+      "claimRefs": ["OBLIG-ROUTE-LIFECYCLE"],
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestrator.ts:387-400",
+        "src/app/product-lifecycle-runtime.ts:1083-1120"
+      ]
+    },
+    {
+      "id": "LIVE-TERMINAL-JOURNAL-EXACTLY-ONCE",
+      "claim": "competing terminal paths (dispatch and obligation re-drive) converge to one run.terminal event via a durable claim; a lost observation line never becomes a broken run",
+      "claimRefs": ["AUDIT-RUN-TERMINAL"],
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestration-engine-adapter.ts:108-162"
+      ]
+    },
+    {
+      "id": "LIVE-CRASH-RESUME-DELIVERY",
+      "claim": "delivery node completions are durable; crash-resume restores the chain from NodeRun rows, accounts for failed rows in the crash window, detects same-reason spin, and bounds the walk by a seeded step budget",
+      "claimRefs": ["FLOW-DELIVERY-WALK", "AUDIT-NODERUN-V2-DURABLE"],
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:629-679",
+        "src/process-modules/application/generic-flow-executor.ts:603-627"
+      ]
+    },
+    {
+      "id": "LIVE-LEASES-HEARTBEATS",
+      "claim": "ProcessRun and LifecycleRun execution leases are acquired/renewed with heartbeats; lost leases surface typed errors instead of silent double-ownership; the lifecycle transition budget fails cycles distinctly",
+      "claimRefs": ["STATE-PROCESSRUN-PINNED-REPLAY", "FLOW-DELIVERY-WALK"],
+      "sourceRefs": [
+        "src/process-modules/application/generic-flow-executor.ts:286-313",
+        "src/process-modules/application/lifecycle-orchestrator.ts:229-270"
+      ]
+    }
+  ],
+  "auditClaims": [
+    {
+      "id": "AUD-TRANSITION-LEDGER",
+      "claim": "factory_process_transitions stores every stage transition with outcome, target and terminal_status plus handoff/decision hashes — the durable routing evidence for the released verdict",
+      "claimRefs": ["AUDIT-STAGE-TRANSITION-ROW"],
+      "sourceRefs": [
+        "src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1085-1103"
+      ]
+    },
+    {
+      "id": "AUD-CERTIFICATE-ROWS",
+      "claim": "ProcessOutcomeCertificate rows (authority 'delivery_settlement_policy' / development settlement) are the content-addressed verdict records referenced by ModuleCompletion certificateRefs",
+      "claimRefs": ["CERT-DELIVERY", "CERT-DEVELOPMENT-VERIFIED"],
+      "sourceRefs": [
+        "src/modules/delivery/application/delivery-installation.ts:475-501",
+        "src/modules/development/domain/development-settlement-policy.ts:1429-1451"
+      ]
+    },
+    {
+      "id": "AUD-RUN-TERMINAL-CHANNELS",
+      "claim": "the run.terminal envelope separates outcome/status (operational), terminal_status (business verdict), stage_outcome(+authority) and product_outcome — no channel implies another; exit codes never flatten the verdict",
+      "claimRefs": ["AUDIT-RUN-TERMINAL", "PROJ-LAUNCH-SETTLEMENT"],
+      "sourceRefs": [
+        "src/process-modules/application/lifecycle-orchestration-engine-adapter.ts:87-112",
+        "src/orchestrate-cli.ts:740-749"
+      ]
+    },
+    {
+      "id": "AUD-RELEASE-RECORD-DESTINATIONS",
+      "claim": "the ReleaseRecord enumerates every observed destination (actionKey, kind, target, externalRef, observedStateHash) — the canonical released-state audit artifact, re-readable by exact process-run identity",
+      "claimRefs": ["PROD-RELEASE-RECORD"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-settlement-policy.ts:943-978",
+        "src/modules/delivery/application/delivery-installation.ts:979-1022"
+      ]
+    },
+    {
+      "id": "AUD-EFFECT-LEDGER-TRAIL",
+      "claim": "the external-effect ledger retains per-action execution/observation snapshots, attempts, fences and states — reconstructing the idempotency history behind each receipt",
+      "claimRefs": ["EFFECT-LEDGER-IDEMPOTENT"],
+      "sourceRefs": [
+        "src/modules/delivery/domain/delivery-kernel-ports.ts:219-305",
+        "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts:482-531"
+      ]
+    }
+  ],
+  "uncertainties": [
+    "No in-repo UI/API mints an authorized operator grant for a fresh launch: the direct path relies on a caller-supplied lifecycleInput (repo-root fixtures such as autism-buttons-lifecycle-input.json / hex-lifecycle-input.json demonstrate the shape); the in-repo producer is only prepareLocalReleaseContinuation. This is treated as the intended external operator boundary, not a homeless product obligation, because the input contract enforces the grant's presence and binding.",
+    "PROD-OBSERVATION completeness trusts providers.observeCurrentCandidateHash: a provider returning a stale-but-matching hash could weaken the drift check; the local-git provider re-derives it from the branch head, but other future providers must preserve that discipline (no production provider for non-source-tag kinds exists yet — see homelessClaims).",
+    "The reverse walk stops at module settlement boundaries for Discovery/Formalization internals: only their outcome contracts and handoff mappings are prerequisites of 'released'; their internal cell loops are structurally identical to Development's (same production-cell executor) but were not independently expanded.",
+    "tests/factory-evidence/delivery/delivery_happy-released-authorized.json records a complete durable 'released' run through the real product-delivery lifecycle (authorized mode, source-tag style deployment action) — used only as corroborating existence evidence; no live database was inspected (out of scope).",
+    "dep-18 names the Development 'verified' route as the predecessor of the delivery handoff; the id prefix 'OUTC-DELIVERY-RELEASED-predecessor:' is an annotation for the reverse ordering, not a claim id."
+  ]
+}
