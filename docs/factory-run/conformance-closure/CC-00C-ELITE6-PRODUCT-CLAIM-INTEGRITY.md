@@ -464,54 +464,56 @@ ownership belongs to the named gap owners under the plan's CC-00C
 checklists and exit criteria. The Elite-6 experiment is complete and
 immutable, and product qualification failed.
 
-### Integration status (2026-08-22, sixth-pass update — branch truth, not closure)
+### Integration status (2026-08-23 refresh — branch truth, not closure)
 
 Remediation commits on the integration branch
-`cc/CC-00B-terminal-integrity-integration` (HEAD `50824c6a`):
+`cc/CC-00B-terminal-integrity-integration` (HEAD `1f397348`):
 
 | Gap | Landing |
 |---|---|
 | CC-GAP-6 (semantic claim-to-work coverage) | `50824c6a` — ADR-088 contract: reverse diff `constraint-register-uncovered`, register-conditional `srs-module-manifest-missing`, entrypoint-ownership conjunction `constraint-entrypoint-unowned`, kernel-only `coveredConstraintIds` relay; blocking mutations (a)-(d) proven bidirectionally |
-| CC-GAP-8 (verification accounting) | `8819e360` — append-only criterion-key ledger with trigger-enforced UPDATE/DELETE rejection, integrity guard, blocking mutations (a)-(e) |
+| CC-GAP-8 (verification accounting) | base patch `8819e360` — append-only criterion-key ledger with trigger-enforced UPDATE/DELETE rejection, integrity guard, blocking mutations (a)-(e) — but the CC-GAP-8 EXIT IS REJECTED: terminal `unknown`/`human_required` projection and CI wiring are missing; a dedicated repair is in progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`; this exit stays OPEN |
 | CC-GAP-10 (role projection) | `184b2c77` — rendering-only board/detail author/reviewer role display |
 | Proof-token direction repairs (shared seam) | `3be7393d` — acceptance-contract v2.1.0 uncovered-residue repair + SRS §D2↔AC residues (see ADR-090) |
-| CC-GAP-9 (substrate classification/recovery) | implementation EXISTS at `736621af` + `d3026cbe` (post-REJECT repair: start-of-check docker cache invalidation, obligation pin 1.11.0) on `cc/CC-GAP-9-substrate-typed-unknown` — NOT integrated |
-| CC-GAP-9 residual (ADR-091 TOCTOU re-probe) | OPEN — NOT implemented, documentation only: ADR-091 (accepted 2026-08-22) prescribes the provider `1.12.0` mechanical re-probe (on mid-check executor/compose failure, invalidate the cached availability probe and re-probe; only the OBSERVED re-probe routes — never stderr guessing; blocking mutations (a)-(f) wired into CC-10B/CC-80). No ADR-091 landing commit exists on any branch. Owed BEFORE any production factory run and BEFORE CC-GAP-7 warrant execution |
+| CC-GAP-9 (substrate classification/recovery) | LANDED on the integration branch as `830bce80` + post-REJECT repair `64c5fb81` (worker-branch originals unintegrated) — re-audit and blocking-group wiring remain open |
+| CC-GAP-9 residual (ADR-091 TOCTOU re-probe) | LANDED on the integration branch as `61fccda7` + post-audit repair `417749f7` (host-executor control, not-linux arm, deterministic re-probe evidence; provider pins `1.12.0` with digest fence and trust migration; obligation compiler pin `factory.local-runnability.v1` @ `1.12.0`) — re-audit and CC-10B/CC-80 wiring remain open; still owed BEFORE any production factory run and BEFORE CC-GAP-7 until that re-audit is green |
+| CC-GLOB-SURFACE (Development coverage surface) | `66d04178` (source `5f3201c4`, accepted by two reviewers) — whole-tree tests glob is directory coverage, never a phantom literal; two REPORT-ONLY residuals open: mixed literal/glob presentation and suffix-overclaim in reporting |
+| CC-IC-1 (ADR-090 register v2 vocabulary) | `4c67f1d1` + `1f397348` (source `d1912c67` + focused repair `a03b5bf9`, accepted) — focused integration build and focused suite passed 75/75; CC-IC-2 starts after it |
+| K19 (ADR-083 environment identity remainder) | NOT integrated — no K19 commit is in `1f397348`; the bounded image/dependency identity slice (`2fbf0b9f`) stays on the K19 branches and the `1.14.0` repair `f3a58a30` is REJECTED: its `1.3.1`–`1.11.0` trusted-provider baseline values are corrupted 65-character strings and circular tests hid the corruption; a separate digest repair is in progress on `cc/CC-K19-DIGEST-REPAIR`; K19 remains incomplete beyond its bounded identity slice |
 | CC-GAP-7 (deliverable-aware oracle) | OPEN — no warrant-execution landing |
 
 Landing is not closure, and this update marks nothing merged: none of
 these commits is merged to `saga4`, the CC-00C exit checklist (evidence
-freeze, GAP-9 integration and re-audit, the ADR-091 residual landing and
-its blocking proofs, GAP-7 landing and its blocking proofs) has not
+freeze, the CC-GAP-9 and ADR-091 re-audits with their blocking proofs,
+the CC-GAP-8 exit repair, GAP-7 landing and its blocking proofs) has not
 passed, and neither this record, CC-00B, nor the plan is merged.
-CC-80/CC-81/CC-82 must still verify every exit item; with
-CC-GAP-7 open, CC-GAP-9 unintegrated, and the CC-GAP-9 residual
-(ADR-091) not implemented, CC-00C is NOT closed.
+CC-80/CC-81/CC-82 must still verify every exit item; with CC-GAP-7 open,
+the CC-GAP-8 exit rejected, and the ADR-091/CC-GAP-9 re-audits and
+blocking-group wiring outstanding, CC-00C is NOT closed. No production
+factory run is authorized while the K19 digest repair and the CC-GAP-8
+exit repair are open (plan section 7C).
 
-### CC-GAP-9 residual — ADR-091 TOCTOU re-probe (OPEN, seventh-pass note)
+### CC-GAP-9 residual — ADR-091 TOCTOU re-probe (landed 2026-08-23; re-audit open)
 
 ADR-091 (`docs/architecture/decisions/091-readiness-substrate-toctou-reprobe.md`,
-accepted 2026-08-22) is ACCEPTED BUT NOT IMPLEMENTED — it is a
-documentation landing only. The residual it names is OPEN on this record:
+accepted 2026-08-22) is IMPLEMENTED AND LANDED on the integration
+branch: `61fccda7` (re-probe, provider `1.12.0`, blocking mutations
+(a)-(f)) plus the post-audit repair `417749f7` (host-executor control —
+a failing host `runCommand` triggers zero docker observations and stays
+product `failed`; the explicit not-linux re-probe arm; wall-clock
+`observedAt` removed from protected receipt bytes for deterministic
+evidence). Landing is not exit:
 
-- **What is owed:** on a mid-check executor/compose failure, invalidate
-  the cached docker availability probe and mechanically re-probe the
-  daemon; classification rides ONLY the observed re-probe (observed
-  unavailable/not-linux → the existing ADR-089 bounded retry/typed
-  unknown `warrant-blocked-environment` + human_required
-  blocked/resumable; observed available+linux → a bad
-  image/tag/config/product stays product `failed`); no stderr text
-  guessing; compose `down` best-effort and distinct from invalid config;
-  collapse guard; provider pin `1.12.0` with the digest fence and trust
-  migration (this branch pins `1.10.0`; the unintegrated CC-GAP-9
-  landing pins `1.11.0`; the residual lands as `1.12.0` on top;
-  obligation compiler pin `factory.local-runnability.v1` @ `1.12.0` — a
-  TARGET after implementation, not a present-tense fact).
-- **When it must land:** BEFORE any production factory run and BEFORE
-  CC-GAP-7 warrant execution (normative sequencing; blocking mutations
-  (a)-(f) are wired into CC-10B/CC-80 and stay RED until it lands).
-- **Truth:** no implementation commit exists on any branch as of this
-  update; nothing here implies a landing or an integration.
+- **Still owed:** the CC-00C re-audit of this residual, and the
+  CC-10B/CC-80 blocking-group wiring of mutations (a)-(f).
+- **When it must be green:** BEFORE any production factory run and
+  BEFORE CC-GAP-7 warrant execution (normative sequencing unchanged).
+- **Truth:** the implementation exists only on the integration branch
+  (branch truth, not merged to `saga4`); nothing here implies a merged
+  or re-audited state, and the K19 trust-baseline corruption rejection
+  (`f3a58a30`) does not touch the ADR-091 `1.12.0` pin on this branch —
+  but K19-dependent identity claims must wait for the separate K19
+  digest repair.
 
 ### Substrate role split (ADR-083 boundary note, sixth pass)
 

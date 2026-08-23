@@ -1,10 +1,16 @@
 # Conformance Closure Execution Plan
 
 - Status: Ready for autonomous execution in isolated worktrees
-- Date: 2026-08-22
+- Date: 2026-08-22 (plan truth refreshed 2026-08-23)
 - Historical draft base: `saga4@53cf7c81`
 - Runtime base: `origin/saga4` @ `6ddcb107` (recorded in
   `docs/factory-run/conformance-closure/CC-00-BASELINE.md`)
+- 2026-08-23 refresh base: integration branch
+  `cc/CC-00B-terminal-integrity-integration` @ `1f397348`. Every SHA this
+  plan records as "integrated" below is integration-branch truth ONLY:
+  none of those commits is merged to `saga4`, and `saga4` still carries
+  none of the CC-00B/CC-00C/CC-IC/CC-U work (section 2A records the
+  branch-vs-saga4 truth).
 - Scope end: full Saga Kernel Conformance Engine closure and an explicit,
   evidence-backed handoff to the structural plans
 
@@ -48,8 +54,13 @@ round-trip identity and digest tamper — the id-reorder and
 snake_case-at-verify reds are NOT yet tested and remain explicit CC-IC-1
 base-verification work, so prerequisite m0 is landed-in-source with a
 residual verification obligation, never re-implemented) and are a
-mandatory overall qualification dependency; the CC-IC v2 vocabulary work
-itself remains open. The proof-contract subset direction repair
+mandatory overall qualification dependency; CC-IC-1 is LANDED and
+review-accepted on the integration branch (source `d1912c67` +
+`a03b5bf9`, integrated as `4c67f1d1` + `1f397348`; the focused
+integration build and the focused suite passed 75/75 — including closing
+the m0 residual verification at its named host), while CC-IC-2..4 remain
+open and CC-IC-2 starts only after CC-IC-1 (branch prepared at `1f397348`,
+no CC-IC-2 code yet). The proof-contract subset direction repair
 (`3be7393d`, landed on the same integration branch) already corrected the
 `frm.submission.acceptance-contract` token (v2.1.0
 `uncoveredConstraintResidue ⊆ empty` form) and the SRS §D2↔AC residues
@@ -174,8 +185,37 @@ CC-00 refreshed them at `6ddcb107`; see `CC-00-BASELINE.md` and
 | K7 | Not implemented | Add bounded explorer and deterministic promoted replay |
 | K8 | Four workshop packs use one kernel | Add post-catalog synthetic workshop, binding parity, L5 proofs, budgets, and canaries; CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | S | Not implemented | Add finite satisfiability before claiming full master-plan closure |
+| Environment identity (ADR-083/K19) | Bounded image/dependency identity slice exists on the K19 branches only; the `1.14.0` repair `f3a58a30` is REJECTED (corrupted `1.3.1`–`1.11.0` baseline values; circular tests hid it); nothing integrated | Land the separate K19 digest repair with independently recomputed, non-circular baselines; re-audit; K19 remains incomplete beyond its bounded image/dependency identity slice |
+| Idea conservation (ADR-090 / CC-IC) | CC-IC-1 landed and accepted (`4c67f1d1` + `1f397348`, focused build + 75/75); CC-IC-2..4 not started | Execute CC-IC-2..4 (§7A); all four remain a mandatory overall qualification dependency |
 
 No `[x]` above is an exit gate. It records observed evidence only.
+
+### 2A. Branch truth at the 2026-08-23 refresh (integration vs saga4)
+
+This subsection records factual branch truth at integration HEAD
+`1f397348` (`cc/CC-00B-terminal-integrity-integration`). It is landing
+status, never exit status: no exit checklist below is claimed green by
+this table, and nothing here is merged to `saga4`.
+
+| Work | Source (worker branch) | Integration truth | Residual truth |
+|---|---|---|---|
+| CC-GLOB-SURFACE (whole-tree tests glob is directory coverage, never a phantom literal) | `5f3201c4` on `cc/CC-GLOB-SURFACE`, accepted by two reviewers | integrated as `66d04178` | two REPORT-ONLY residuals remain open: the coverage report still mixes literal and glob test surfaces in one presentation, and a suffix-based reporting claim can overclaim coverage; the coverage-semantics fix itself is what landed |
+| CC-IC-1 register v2 vocabulary (ADR-090) | `d1912c67` + focused repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, accepted | integrated as `4c67f1d1` + `1f397348` | focused integration build and focused suite passed 75/75; CC-IC-2 starts after it (branch `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`, no code yet); CC-IC-3/CC-IC-4 not started |
+| CC-GAP-9 bounded in-check substrate retry (ADR-089) | `736621af` + `d3026cbe` (post-REJECT repair) on `cc/CC-GAP-9-substrate-typed-unknown` | integrated as `830bce80` + post-REJECT repair `64c5fb81` | landed, not exited: the CC-00C re-audit and blocking-group wiring remain open |
+| CC-GAP-9 residual / ADR-091 TOCTOU re-probe | `00792891` + `634a7d94` (post-audit repair) on `cc/CC-ADR091-TOCTOU` | integrated as `61fccda7` + post-audit repair `417749f7`; provider pins `1.12.0` on the branch | landed, not exited: re-audit and CC-10B/CC-80 wiring remain open; still owed BEFORE any production factory run and BEFORE CC-GAP-7 |
+| K19 environment image/dependency identity (ADR-083 remainder) | `2fbf0b9f` (bounded image/dependency identity slice, provider `1.13.0`) and repair `f3a58a30` (provider `1.14.0`) on the K19 branches | NOT integrated — no K19 commit is in `1f397348` | `f3a58a30` is REJECTED: the `1.3.1`–`1.11.0` trusted-provider baseline values it pinned are corrupted 65-character strings, and circular tests hid the corruption; a separate digest repair is in progress (`cc/CC-K19-DIGEST-REPAIR`). K19 overall remains INCOMPLETE beyond its bounded image/dependency identity slice |
+| CC-GAP-8 verification accounting | `8819e360` base patch | integrated | base patch integrated but the CC-GAP-8 EXIT is REJECTED: terminal `unknown`/`human_required` projection and CI wiring are missing; a dedicated repair is in progress (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`) |
+
+Additional refresh facts:
+
+- CC-GAP-7 (warrant execution) remains open — no warrant-execution
+  landing exists on any branch.
+- No production factory run is authorized now (section 7C records the
+  blocking conditions, including the REJECTED K19 repair and the rejected
+  CC-GAP-8 exit).
+- `saga4` truth: none of the rows above is merged to `saga4`; the main
+  checkout still carries only user-owned temporal-test work outside this
+  plan's ownership.
 
 ---
 
@@ -333,7 +373,15 @@ fallback applies — CC-GAP-7 binds the `environmentDigest` the stage-14
 derivation core already produces and records honestly that image and
 dependency digest persistence is not yet available; it must never
 fabricate a digest, never defer to an unauthorized one, and never
-authorize a floating tag. Verification accounting is an
+authorize a floating tag. REFRESH TRUTH (2026-08-23): no K19 commit is
+integrated at `1f397348`; the bounded image/dependency identity slice
+(`2fbf0b9f`) and the `1.14.0` repair `f3a58a30` live on the K19 branches
+only, `f3a58a30` is REJECTED (its `1.3.1`–`1.11.0` trusted-provider
+baseline values are corrupted 65-character strings and circular tests hid
+the corruption), a separate digest repair is in progress, and K19 remains
+incomplete beyond its bounded image/dependency identity slice — CC-GAP-7
+receipt-binding must consume an identity state produced by a non-rejected
+K19 landing, never the rejected `1.14.0` trust state. Verification accounting is an
 append-only criterion-key ledger: every required verification obligation
 is a first-class entry keyed by criterion, appending
 `proposed -> pending -> executed(passed|failed) | unknown | waived`
@@ -595,16 +643,18 @@ The Idea Authority Conservation packets CC-IC-1..4 (ADR-090, §7A) serialize
 after the CC-GAP-6 exit through the single-writer `Constraint register and
 warrant seam` row (the seam's register code is integrated at `50824c6a`;
 that landing repairs the v1 read-back verifier IN SOURCE and tests
-round-trip plus digest tamper — the CC-IC-1 prerequisite m0 is
-landed-in-source with the id-reorder and snake_case-at-verify reds still
-untested, an explicit CC-IC-1 base-verification obligation, never a
-re-implementation — the proof-subset landing `3be7393d` on the same branch
+round-trip plus digest tamper — the CC-IC-1 prerequisite m0 was
+landed-in-source, and the CC-IC-1 landing CLOSED its residual
+base-verification obligation by adding the id-reorder and
+snake_case-at-verify reds at the named host, never re-implementing the
+verifier — the proof-subset landing `3be7393d` on the same branch
 already corrected the acceptance-contract and SRS §D2↔AC token directions
-(verify-only for CC-IC-4), and the CC-IC v2 vocabulary work remains not
-started):
+(verify-only for CC-IC-4), and CC-IC-1 itself is LANDED and accepted:
+source `d1912c67` + `a03b5bf9`, integrated as `4c67f1d1` + `1f397348`,
+focused integration build and focused suite 75/75 green):
 
 ```text
-CC-GAP-6 exit -> CC-IC-1 -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
+CC-GAP-6 exit -> CC-IC-1 (landed) -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
 ```
 
 They are not required for CC-00C exit (CC-GAP-6..10 scope is frozen), they
@@ -615,6 +665,28 @@ proven, the CC-10B blocking group, the CC-80 qualification command, and
 overall K qualification (CC-81/CC-82) remain RED, with the unproven CC-IC
 set recorded as an open mandatory dependency (never skipped, never
 recorded as PASS).
+
+The universal invariant packets CC-U1..CC-U3 (§7B) generalize the Elite-6
+closure lessons as workshop-neutral invariants beside the CC-IC idea
+conservation family. They serialize on the proof and readiness seams after
+their named dependencies and are likewise a mandatory overall
+qualification dependency:
+
+```text
+CC-IC-1 + CC-GAP-6 exit + CC-GAP-8 repair -> CC-U1
+CC-GAP-9 exit re-audit + ADR-091 re-audit + CC-GAP-8 repair + K19 digest repair -> CC-U3
+CC-GAP-7 + CC-U3 -> CC-U2
+CC-IC-1..4 + CC-U1 + CC-U2 + CC-U3 -> CC-80 may compose
+```
+
+Two repairs serialize ahead of the readiness chain and ahead of any
+production factory run: the K19 digest repair (the `f3a58a30` rejection —
+corrupted `1.3.1`–`1.11.0` baselines hidden by circular tests — makes a
+non-rejected, independently recomputed baseline set a hard precondition)
+and the CC-GAP-8 terminal unknown/human-required projection/CI repair
+(exit rejected; in progress from `1f397348`). Until both land and pass
+re-audit, CC-U3 cannot exit and no production factory run is authorized
+(§7C).
 
 ---
 
@@ -657,21 +729,24 @@ Exit checklist:
 
 ### CC-00B - Elite-6 terminal-integrity closure
 
-- Status: EXECUTING 2026-08-22. Integration truth at `50824c6a` (HEAD of
-  `cc/CC-00B-terminal-integrity-integration`): CC-GAP-2 (`97dbc635`),
-  CC-GAP-3 (`9c2253e2` receipt-authoritative terminal drain, plus the
-  `f460ae84` journal-payload strictness fix), CC-GAP-4 (`dd89b40c`),
-  and CC-GAP-5 (`9205d9f5`) have all LANDED on that integration branch
-  — as have CC-GAP-6 (`50824c6a`), CC-GAP-8 (`8819e360`), CC-GAP-10
-  (`184b2c77`), and the proof-subset token-direction repair
-  (`3be7393d`), which belong to CC-00C scope. CC-GAP-7 is open. The
-  CC-GAP-9 repair exists on its own branch
-  (`cc/CC-GAP-9-substrate-typed-unknown`: `736621af` + `d3026cbe`
-  post-REJECT repair) and is NOT yet integrated. Landing is not closure:
-  the CC-00B exit gate has not been re-audited, none of these commits is
-  merged to `saga4`, and neither the incident records nor this plan is
-  merged — landing status recorded here is branch truth only, never a
-  claim that the packages exited.
+- Status: EXECUTING 2026-08-22; truth refreshed 2026-08-23 at integration
+  HEAD `1f397348` of `cc/CC-00B-terminal-integrity-integration` (branch
+  truth only): CC-GAP-2 (`97dbc635`), CC-GAP-3 (`9c2253e2`
+  receipt-authoritative terminal drain, plus the `f460ae84`
+  journal-payload strictness fix), CC-GAP-4 (`dd89b40c`), and CC-GAP-5
+  (`9205d9f5`) have all LANDED on that integration branch — as have the
+  CC-00C-scope landings CC-GAP-6 (`50824c6a`), CC-GAP-8 base patch
+  (`8819e360`; exit REJECTED, repair in progress), CC-GAP-10
+  (`184b2c77`), the proof-subset token-direction repair (`3be7393d`),
+  CC-GAP-9 (`830bce80` + post-REJECT repair `64c5fb81`), the ADR-091
+  residual (`61fccda7` + post-audit repair `417749f7`, provider
+  `1.12.0`), CC-GLOB-SURFACE (`66d04178`), and CC-IC-1 (`4c67f1d1` +
+  `1f397348`). No K19 commit is integrated (the `f3a58a30` repair is
+  REJECTED; separate digest repair in progress). CC-GAP-7 is open.
+  Landing is not closure: the CC-00B exit gate has not been re-audited,
+  none of these commits is merged to `saga4`, and neither the incident
+  records nor this plan is merged — landing status recorded here is
+  branch truth only, never a claim that the packages exited.
 - Owner role: integration owner; gap owners named below
 - Depends on: CC-00
 - Non-goals: reopening or replaying the terminal Elite-6 run, hand-editing
@@ -754,19 +829,27 @@ green.
 
 ### CC-00C - Elite-6 product-claim integrity closure
 
-- Status: incident record landed 2026-08-22. Integration truth at
-  `50824c6a` (HEAD of `cc/CC-00B-terminal-integrity-integration`):
-  CC-GAP-6 (`50824c6a`, ADR-088 blocking mutations (a)-(d) proven
-  bidirectionally), CC-GAP-8 (`8819e360`, append-only criterion-key
-  ledger with blocking mutations (a)-(e)), and CC-GAP-10 (`184b2c77`,
-  rendering-only) have LANDED on that integration branch. CC-GAP-7 is
-  open (no warrant-execution landing). The CC-GAP-9 repair exists on its
-  own branch (`cc/CC-GAP-9-substrate-typed-unknown`: `736621af` +
-  `d3026cbe` post-REJECT repair) and is NOT yet integrated. Landing is
-  not closure: the CC-00C exit gate has not been re-audited, none of
-  these commits is merged to `saga4`, and neither the incident records
-  nor this plan is merged — this status line records branch truth only,
-  never a claim that CC-00C exited.
+- Status: incident record landed 2026-08-22; truth refreshed 2026-08-23 at
+  integration HEAD `1f397348` of `cc/CC-00B-terminal-integrity-integration`
+  (branch truth only): CC-GAP-6 (`50824c6a`, ADR-088 blocking mutations
+  (a)-(d) proven bidirectionally), CC-GAP-10 (`184b2c77`, rendering-only),
+  CC-GAP-9 (`830bce80` + post-REJECT repair `64c5fb81`), the CC-GAP-9
+  residual / ADR-091 (`61fccda7` + post-audit repair `417749f7`; provider
+  pins `1.12.0` on the branch), and the CC-GAP-8 BASE patch (`8819e360`)
+  have LANDED on that integration branch. The CC-GAP-8 exit is REJECTED:
+  terminal `unknown`/`human_required` projection and CI wiring are
+  missing, and a dedicated repair is in progress
+  (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`). No K19 commit is
+  integrated: the bounded image/dependency identity slice (`2fbf0b9f`)
+  stays on the K19 branches and the `1.14.0` repair `f3a58a30` is
+  REJECTED (corrupted `1.3.1`–`1.11.0` trusted-provider baseline values;
+  circular tests hid the corruption); a separate digest repair is in
+  progress and K19 remains incomplete beyond its bounded identity slice.
+  CC-GAP-7 is open (no warrant-execution landing). Landing is not closure:
+  the CC-00C exit gate has not been re-audited, none of these commits is
+  merged to `saga4`, and neither the incident records nor this plan is
+  merged — this status line records branch truth only, never a claim that
+  CC-00C exited.
 - Owner role: integration owner; gap owners named below
 - Depends on: CC-00B
 - Internal serialization: CC-GAP-9 substrate outcome/routing lands before
@@ -976,13 +1059,13 @@ Checklist:
   classes; an earlier unknown receipt never poisons a later pass of the
   same criterion; legacy records are grandfathered, not reclassified.
   Scope boundary (ADR-083 split): CC-GAP-9 owns environment AVAILABILITY
-  only; environment identity stays with ADR-083/K19. (Implementation
-  EXISTS at `736621af` + `d3026cbe` post-REJECT repair on
-  `cc/CC-GAP-9-substrate-typed-unknown` — NOT yet integrated; integration
-  plus re-audit remains open.)
-- [ ] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
-  closes BEFORE any production factory run and BEFORE CC-GAP-7 warrant
-  execution): on a mid-check executor/compose failure, invalidate the
+  only; environment identity stays with ADR-083/K19. (LANDED on the
+  integration branch as `830bce80` + post-REJECT repair `64c5fb81` —
+  landing is not exit: the CC-00C re-audit and the blocking-group wiring
+  remain open.)
+- [x] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
+   closes BEFORE any production factory run and BEFORE CC-GAP-7 warrant
+   execution): on a mid-check executor/compose failure, invalidate the
   cached docker availability cache and mechanically re-probe the daemon
   with the existing bounded probe; classification rides ONLY the observed
   re-probe result — observed unavailable (probe failure observes
@@ -1024,7 +1107,12 @@ Checklist:
   `failed`) fails classification (collapse guard); (e) the compose
   down/config truths above; (f) the version/digest fence at `1.12.0`
   (a receipt from a foreign provider digest or an unmigrated trust row
-  is rejected).
+  is rejected). (LANDED on the integration branch as `61fccda7` + the
+  post-audit repair `417749f7` — the provider pins `1.12.0` there with
+  the digest fence and trust migration intact; landing is not exit: the
+  CC-00C re-audit and the CC-10B/CC-80 blocking-group wiring remain
+  open, and until that re-audit is green this residual stays recorded as
+  owed BEFORE any production factory run and BEFORE CC-GAP-7.)
 - [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
   the existing `VerificationWarrantRef` seam in the readiness provider
   through package-level, workshop-declared oracle adapters — no new oracle,
@@ -1048,10 +1136,14 @@ Checklist:
   `executed(failed)` does not discharge; only a passed receipt or an
   operator-attributed waiver discharges; every entry displays its stage
   and order coordinates; the lifecycle transition obligation ledger is
-  not reused for this role. (LANDED on the integration branch at
-  `8819e360` — module-local criterion-key ledger, trigger-enforced
-  append-only, integrity guard, blocking mutations (a)-(e); landing is
-  not exit.)
+  not reused for this role. (BASE patch LANDED on the integration branch
+  at `8819e360` — module-local criterion-key ledger, trigger-enforced
+  append-only, integrity guard, blocking mutations (a)-(e) — but the
+  CC-GAP-8 EXIT IS REJECTED: terminal `unknown`/`human_required`
+  projection and CI wiring are missing. A dedicated repair is in
+  progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`; this
+  exit item stays OPEN until the repair lands and the exit checklist is
+  re-audited green. Landing is not exit.)
 - [x] CC-GAP-10: make role projections distinguishable — the defect is
   rendering-only (the durable author/reviewer projections are correct):
   board and task-detail surfaces expose author versus reviewer role for
@@ -1813,19 +1905,23 @@ is a
 bounded packet set with an explicit finish condition — not a standing
 parallel implementation program.
 
-- Status: ADR-090 Accepted 2026-08-22; CC-IC-1..4 not started
-  (documentation only); the CC-GAP-6 seam is integrated (`50824c6a`) and
-  repairs the v1 read-back verifier IN SOURCE, tested there for
-  round-trip identity and digest tamper — the id-reorder
-  (`ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`) and snake_case-at-verify
-  typed-rejection reds are NOT yet tested, so the CC-IC-1 prerequisite
-  (m0) is landed-in-source with an explicit residual base-verification
-  obligation, not work to duplicate or re-implement; the proof-subset
-  landing `3be7393d` (same integration branch) already corrected the
+- Status: ADR-090 Accepted 2026-08-22; truth refreshed 2026-08-23 —
+  CC-IC-1 is LANDED and review-accepted (source `d1912c67` + focused
+  repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, integrated as
+  `4c67f1d1` + `1f397348`; the focused integration build and the focused
+  suite passed 75/75, and the landing closed the m0 residual
+  base-verification obligation at its named host — id-reorder and
+  snake_case-at-verify reds added, the `50824c6a` source repair verified,
+  never re-implemented). CC-IC-2 starts after CC-IC-1 (branch
+  `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`; no CC-IC-2 code yet);
+  CC-IC-3 and CC-IC-4 are not started. The proof-subset landing
+  `3be7393d` (same integration branch) already corrected the
   `frm.submission.acceptance-contract` direction (v2.1.0
   uncovered-residue form) and the SRS §D2↔AC residues — verify-only for
-  CC-IC-4, which adds only the SRS register-coverage residue constraint;
-  the v2 vocabulary work remains open
+  CC-IC-4, which adds only the SRS register-coverage residue constraint.
+  Landing is not exit: CC-81/CC-82 still re-verify every CC-IC packet
+  before qualification, and until CC-IC-2..4 are implemented and proven
+  the CC-IC mandatory qualification dependency stays open
 - Owner roles: named per packet below; all packets ride the single-writer
   `Constraint register and warrant seam` row (section 4.3)
 - Depends on: CC-GAP-6 exit (the four ADR-088 blocking mutations green;
@@ -1872,6 +1968,13 @@ parallel implementation program.
 
 ### CC-IC-1 - Register v2 vocabulary at Discovery settlement
 
+- Status: LANDED and review-accepted 2026-08-23 — source `d1912c67` +
+  focused repair `a03b5bf9` (`cc/CC-IC1-idea-authority`), integrated as
+  `4c67f1d1` + `1f397348` on `cc/CC-00B-terminal-integrity-integration`;
+  focused integration build and focused suite passed 75/75; branch truth
+  only (not merged to `saga4`). Landing is not exit: CC-81/CC-82
+  re-verify this packet's exit checklist at qualification. CC-IC-2 starts
+  from `1f397348` after this landing.
 - Owner role: discovery settlement owner (execution-kernel seam, serialized
   through the single-writer row)
 - Depends on: CC-GAP-6 exit (seam integrated at `50824c6a`); the v1
@@ -1960,23 +2063,27 @@ re-implements):
        there. Every "v1 registers verify (unchanged / in CI /
        round-trip)" statement in ADR-090 and this plan leans on that
        repaired path and on the CC-IC-1 base-verification item below.
-- [ ] CC-IC-1 BASE VERIFICATION (explicit packet work, not a
-       re-implementation): at packet start, verify the integrated source
-       repair is present at the CC-IC-1 base (rebase point at or after
-       `50824c6a`) and the round-trip and digest-tamper tests are green
-       there; then ADD the two missing verification cases to
-       `tests/discovery/order-constraint-register.test.mjs` (the named
-       CC-IC-1 test host for the verifier): (a) id reorder ->
-       `ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`, and (b) a snake_case
-       draft row arriving at the verify boundary is a typed rejection,
-       never a silent reinterpretation. Record the exact base SHA. No
-       CC-IC commit re-implements, rewrites, or re-derives the v1
-       verifier; this item only closes its residual verification
-       obligation.
+- [x] CC-IC-1 BASE VERIFICATION (explicit packet work, not a
+        re-implementation): at packet start, verify the integrated source
+        repair is present at the CC-IC-1 base (rebase point at or after
+        `50824c6a`) and the round-trip and digest-tamper tests are green
+        there; then ADD the two missing verification cases to
+        `tests/discovery/order-constraint-register.test.mjs` (the named
+        CC-IC-1 test host for the verifier): (a) id reorder ->
+        `ORDER_CONSTRAINT_REGISTER_ID_MISMATCH`, and (b) a snake_case
+        draft row arriving at the verify boundary is a typed rejection,
+        never a silent reinterpretation. Record the exact base SHA. No
+        CC-IC commit re-implements, rewrites, or re-derives the v1
+        verifier; this item only closes its residual verification
+        obligation. (CLOSED by the CC-IC-1 landing: the id-reorder and
+        snake_case-at-verify reds were added at the named host —
+        `d1912c67`, integrated as `4c67f1d1` — with the `50824c6a`
+        source repair verified at the base, never re-implemented; the
+        focused integration build and the focused suite passed 75/75.)
 
 Checklist:
 
-- [ ] Extend the register schema additively to
+- [x] Extend the register schema additively to
       `factory.order-constraint-register.v2`: PRESERVE the closed
       source-class vocabulary unchanged (`execution|material|human` —
       `open-question` is NOT a class and the class vocabulary is not
@@ -1987,7 +2094,7 @@ Checklist:
       `deferred` + reason); add per-entry
       `lifecycleSynthesis` declarations consumed only from the
       frozen lifecycle classification.
-- [ ] Kind carrier/validator and the default/legacy boundary: the
+- [x] Kind carrier/validator and the default/legacy boundary: the
       worker-facing draft carrier is `src/modules/discovery/domain/discovery-proposal.ts`
       (`validateDiscoveryProposal`) — a draft row carrying a `kind` MUST
       carry one of the six closed values, and anything else is a typed
@@ -2003,7 +2110,7 @@ Checklist:
       drafts and registers carry no `kind`, verify unchanged under the v1
       schema (absence of `kind` on v1 data is not a defect), and the
       deterministic default applies only to new v2 settlements.
-- [ ] Draft kind `open-question` entries 1:1 and positionally from
+- [x] Draft kind `open-question` entries 1:1 and positionally from
       `DiscoveryProposalPayload.unknowns` (declared in
       `src/modules/discovery/domain/discovery-domain-contracts.ts`,
       mirrored in the worker-facing shape in
@@ -2017,7 +2124,7 @@ Checklist:
       no guessing, no prose rereading (the builder's existing no-guess
       rule). (text = the unknown string;
       evidenceRef = the payload field.)
-- [ ] `runnable-local` is the frozen lifecycle classification
+- [x] `runnable-local` is the frozen lifecycle classification
        (`product-build-lifecycle.ts` verified terminal): the injection is
        realized by a DECLARED, DIGEST-PINNED injection table OWNED BY
        `src/process-modules/lifecycles/product-build-lifecycle.ts` — an
@@ -2062,7 +2169,7 @@ Checklist:
        changes the registerDigest (an honest revision, never an in-place
        shuffle). Ad-hoc table reconstruction or a different interleave order
        is a digest change and fails the m4a mutation below.
-- [ ] Digest semantics: v2 typed fields are entry content — adding them
+- [x] Digest semantics: v2 typed fields are entry content — adding them
        produces a new registerDigest (an honest revision, never an in-place
        mutation); v1 registers verify unchanged under their schema version
        THROUGH THE REPAIRED read-back verifier of the prerequisite stage
@@ -2071,7 +2178,7 @@ Checklist:
        is closed history; the id-reorder and snake_case-at-verify reds are
        added by the CC-IC-1 base-verification item, and every v2 claim
        leans on that repaired, fully verified baseline).
-- [ ] New v2 starts never silently build a null register: null-binding
+- [x] New v2 starts never silently build a null register: null-binding
       grandfathering applies only to frozen legacy v1 corpora (their
       behavior is exactly as today — no `order_constraints` builds no
       register: null binding, empty diffs, gates green; frozen evidence
@@ -2082,7 +2189,7 @@ Checklist:
       order; an absent required register binding on a new v2 start is a
       typed red, never green. Continuations inherit the original register
       ref and never re-extract at continuation settlement.
-- [ ] ONE register binding on the certificate-to-Formalization handoff: the
+- [x] ONE register binding on the certificate-to-Formalization handoff: the
       discovery certificate payload already carries the built
       `constraintRegister`
       (`discovery-production-cell-installation.ts`), and every NEW v2
@@ -2097,7 +2204,7 @@ Checklist:
       binding is missing — with no explicit typed no-obligations attestation
       carried from settlement — is a typed red at case admission, never a
       silent null/rebuild.
-- [ ] The warrant CROSS-BINDS the certificate/case it belongs to: the
+- [x] The warrant CROSS-BINDS the certificate/case it belongs to: the
       `warrantRef` constructed at Formalization settlement
       (`formalization-production-cell-installation.ts`) carries, besides the
       register and dispositions digests, the `discoveryCertificateHash` (and
@@ -2483,6 +2590,242 @@ Exit checklist:
 
 ---
 
+## 7B. Universal invariant packets (workshop-neutral generalization)
+
+The Elite-6 closure (CC-00B/CC-00C) and ADR-090 teach four invariant
+families that must hold for EVERY admitted workshop and product shape, not
+only for the incident's product. One family — idea conservation — is
+already the bounded CC-IC-1..4 program (§7A; CC-IC-1 landed and accepted,
+CC-IC-2 starts after it). This section adds the remaining three families
+as bounded universal packets CC-U1..CC-U3.
+
+Two binding rules govern every CC-U packet:
+
+1. **Universality — the game must not become the architecture.** No packet
+   may branch on workshop name, `moduleRef`, role profession, or product
+   type. Browser, canvas, game, CLI, or service specifics arrive ONLY
+   through workshop-declared package data (register lines, injection
+   tables, oracle adapters, served-surface declarations). "Whole-product
+   synthesis" and "served surface" are defined by declared data, never by
+   universal code recognizing a product shape.
+2. **Reuse.** Every packet rides the existing seams — the Order Constraint
+   Register, the kernel-derived `coveredConstraintIds` relay, the SRS §2.2
+   manifest, `VerificationWarrantRef`, the readiness providers, the
+   append-only criterion-key ledger, planning admission — and invents no
+   parallel vocabulary, ledger, oracle, or outcome class.
+
+Like CC-IC, CC-U1..CC-U3 are a mandatory overall qualification dependency:
+until implemented and proven, the CC-10B blocking group, the CC-80
+qualification command, and overall K qualification (CC-81/CC-82) remain
+RED, with the unproven CC-U set recorded as an open mandatory dependency
+(never skipped, never recorded as PASS).
+
+- Status: not started (documentation only) at the 2026-08-23 refresh
+- Owner roles: named per packet below; each rides its named single-writer
+  seam row (section 4.3)
+- Depends on: per packet below; CC-U3 additionally hard-depends on the two
+  in-progress repairs (K19 digest repair; CC-GAP-8 terminal
+  unknown/human-required projection/CI repair)
+- Non-goals (program-level): any parallel deliverable-claim vocabulary;
+  any product-type branch in universal code; any new outcome class beside
+  product-failed / oracle-insufficient / substrate-unavailable; any
+  widening of qualification scope into the post-qualification items of
+  §7C
+
+### CC-U1 - Planning-graph completeness and mandatory synthesis/integration work
+
+- Owner role: planning/coverage owner (CC-GAP-6/CC-IC-1 seam row)
+- Depends on: CC-IC-1 (landed — injected synthesis/ordered-smoke register
+  rows exist), CC-GAP-6 exit re-audit, CC-GAP-8 repair (executed-work
+  accounting)
+- Objective (SMART): by CC-U1 exit, for every register-bearing corpus of
+  every admitted workshop and the synthetic workshop fixture, the sealed
+  planning graph is mechanically complete over the closed register —
+  every non-waived register entry is covered by at least one planned item
+  through the kernel-derived relay (register minus typed waivers ⊆
+  covered), every injected or declared synthesis/ordered-smoke obligation
+  MATERIALIZES as a planned whole-product synthesis/integration item that
+  is executed through the normal lifecycle (injection as a register row
+  alone is not completion), and a graph that seals while a mandatory
+  synthesis/integration item is unexecuted is a typed red. Three blocking
+  mutations turn the blocking group red when reversed: (u1a) deleting the
+  only item covering a non-waived register entry still admits or seals the
+  graph; (u1b) a corpus whose register carries injected
+  synthesis/ordered-smoke entries seals a graph with no corresponding
+  synthesis/integration item; (u1c) a sealed graph reports completion with
+  a mandatory synthesis/integration item unexecuted. Measured solely by
+  the blocking acceptance group, never by prose.
+- Non-goals: no new ledger or coverage vocabulary; no planner or engine
+  branch on product type; no universal-code definition of "synthesis"
+  (it arrives from the frozen lifecycle classification and the declared
+  injection table — data)
+
+Checklist:
+
+- [ ] Verify the landed CC-GAP-6 planning-admission reverse-diff gate is
+      fail-closed for every register-bearing corpus of every admitted
+      workshop (admission-level enforcement, register-conditional
+      grandfathering intact; extend only where a workshop shape is
+      honestly outside the landed gate).
+- [ ] Make injected synthesis/ordered-smoke register rows require
+      corresponding planned synthesis/integration items at planning
+      admission (a workshop's declared-equivalent integration item
+      satisfies the same conjunction honestly; a nominal attachment does
+      not).
+- [ ] Make graph sealing typed-red while a mandatory synthesis/integration
+      item is planned but unexecuted (rides the CC-GAP-8 criterion-key
+      ledger pending/executed states).
+- [ ] Prove blocking mutations u1a/u1b/u1c red in the blocking group; wire
+      them into CC-10B/CC-80.
+
+Exit checklist:
+
+- [ ] u1a, u1b, and u1c are red in the blocking group.
+- [ ] Registerless legacy corpora keep exactly the current green behavior.
+- [ ] No universal file branches on workshop name, `moduleRef`, role
+      profession, or product type.
+
+### CC-U2 - Declared served-surface semantic probe
+
+- Owner role: verification owner (CC-GAP-7 seam row)
+- Depends on: CC-GAP-7, CC-U3
+- Objective (SMART): by CC-U2 exit, warrant execution probes the DECLARED
+  served surface of the product semantically: the workshop package
+  declares its served-surface contract (routes, commands, assets, and
+  semantic content predicates) as data; the warrant executor derives its
+  probe plan solely from that declaration and asserts declared semantic
+  content through the package-level oracle adapters — never a bare
+  transport-liveness check, never a probe of an undeclared surface. Three
+  blocking mutations turn the blocking group red when reversed: (u2a)
+  substituting a generic loopback/liveness probe for the declared
+  served-surface probe yields a pass; (u2b) a declared surface returning
+  transport success with wrong or empty semantic content passes; (u2c) a
+  probe against a surface absent from the declaration passes. Measured
+  solely by the blocking acceptance group.
+- Non-goals: no browser/canvas/game/HTTP specifics in universal engine or
+  test-engine files (all product specifics live in the package-declared
+  served-surface contract and oracle adapters); no second oracle registry;
+  no re-reading of order prose
+
+Checklist:
+
+- [ ] Define the package-level served-surface declaration shape as
+      workshop-declared data consumed read-only by warrant execution.
+- [ ] Derive the probe plan from the declaration; a generic liveness probe
+      against an undeclared surface is oracle-insufficient — never a pass
+      and never a product-failed verdict.
+- [ ] Prove blocking mutations u2a/u2b/u2c red in the blocking group; wire
+      them into CC-10B/CC-80.
+
+Exit checklist:
+
+- [ ] u2a, u2b, and u2c are red in the blocking group.
+- [ ] Oracle-insufficient stays honestly typed; product-failed,
+      oracle-insufficient, and substrate-unavailable remain distinct.
+- [ ] A new workshop's served surface requires zero universal
+      engine/test-engine edits.
+
+### CC-U3 - Readiness substrate warrant and typed unknown (universal projection)
+
+- Owner role: execution-kernel owner with the trace/evidence owner
+  (CC-GAP-9 seam row)
+- Depends on: CC-GAP-9 exit re-audit (integrated at `830bce80` +
+  `64c5fb81`), ADR-091 residual re-audit (integrated at `61fccda7` +
+  `417749f7`), CC-GAP-8 repair (in progress from `1f397348`), K19 digest
+  repair (in progress; `f3a58a30` is REJECTED)
+- Objective (SMART): by CC-U3 exit, EVERY readiness/warrant execution path
+  — not only the local-runnability provider that closed CC-GAP-9 —
+  classifies its substrate preconditions per ADR-089/091 (bounded
+  deterministic in-check retry, then exactly one typed unknown
+  `warrant-blocked-environment` and one human_required blocked/resumable
+  continuation; observed re-probe classification; no stderr guessing),
+  receipt-binds the consumed environment identity digest without
+  authorizing it (ADR-083 split), and every status surface and the
+  criterion-key ledger project terminal `unknown` and `human_required` as
+  first-class, honestly-labeled states (section 3.1: operational
+  completion is never a product verdict). Four blocking mutations turn
+  the blocking group red when reversed: (u3a) any warrant path routing
+  substrate exhaustion to terminal product failure; (u3b) any status or
+  accounting surface rendering terminal `unknown` or `human_required` as
+  failed or as passed; (u3c) a warrant receipt accepted without the
+  consumed environment digest binding; (u3d) any collapsing of the three
+  outcome classes. Measured solely by the blocking acceptance group.
+- Non-goals: no second retry or outcome vocabulary; no environment
+  identity decisions (ADR-083/K19 owns identity; CC-U3 consumes and binds
+  only); no new provider type beyond the declared readiness providers
+
+Checklist:
+
+- [ ] Extend the ADR-089/091 classification contract from the
+      local-runnability provider to every declared readiness/warrant
+      provider path (one shared typed vocabulary, per-provider
+      declarations).
+- [ ] Land the CC-GAP-8 terminal unknown/human-required projection/CI
+      repair and generalize it to every status surface.
+- [ ] Require the environment-digest receipt binding on every warrant
+      receipt (honest K19 fallback per section 3.2 until the K19 digest
+      repair lands; never the rejected `1.14.0` trust state, never a
+      floating tag).
+- [ ] Prove blocking mutations u3a/u3b/u3c/u3d red in the blocking group;
+      wire them into CC-10B/CC-80.
+
+Exit checklist:
+
+- [ ] u3a through u3d are red in the blocking group.
+- [ ] The K19 digest repair has landed and been re-audited (independently
+      recomputed, non-circular baselines) before any receipt-binding claim
+      depends on it.
+- [ ] No new outcome class or retry vocabulary exists anywhere in the
+      diff.
+
+## 7C. Production-run boundary and post-qualification scope
+
+### No production factory run now (normative)
+
+- [ ] No production factory run is authorized as of this refresh. All of
+      the following are required before any production run is scheduled:
+      the K19 digest repair lands and passes re-audit with independently
+      recomputed, non-circular trusted-provider baselines (the REJECTED
+      `f3a58a30` and the circular tests that hid the corruption are
+      exactly why); the CC-GAP-8 terminal unknown/human-required
+      projection/CI repair lands and its exit is re-audited green; the
+      ADR-091 residual exit re-audit is green on the integration branch
+      (already normative — BEFORE any production factory run); and the
+      operator quiet-machine gates are respected for any heavy-validation
+      release.
+- [ ] Monitored canaries remain permitted only under the plan's existing
+      canary rules (isolated state, opencode shim); they are monitored
+      evidence, never a production-run substitute and never a gate.
+
+### Post-qualification scope (frozen out of qualification)
+
+- [ ] ProductRevision/ChangeRequest flow work remains POST-QUALIFICATION:
+      it is not pulled into CC-80/CC-81/CC-82 scope and does not gate
+      `QUALIFICATION_GREEN`.
+- [ ] Safe parallelism remains POST-QUALIFICATION: widening worker or
+      factory parallelism is not part of any CC-80 command, and no
+      validation is weakened or concurrency widened to speed qualification.
+
+### New Elite-like run policy
+
+- [ ] A new Elite-like full product run happens ONLY AFTER qualification:
+      `QUALIFICATION_GREEN` recorded per CC-82 with no open CC-GAP-2..10,
+      no unimplemented or unproven CC-IC packet, and no unimplemented or
+      unproven CC-U packet.
+- [ ] The run must resemble the original product brief — the ordered
+      runnable, locally installable and startable, browser-served game
+      deliverable — while testing GENERIC invariants: idea conservation
+      (CC-IC), graph completeness with mandatory synthesis/integration
+      work (CC-U1), declared served-surface semantic probe (CC-U2), and
+      readiness substrate warrant/unknown (CC-U3).
+- [ ] The run must not make the game the architecture: zero universal
+      engine/test-engine branches on product type; browser/canvas/game
+      specifics arrive only through workshop-declared package data; the
+      run is evidence for the universal invariants, never a vehicle for
+      product-specific engine work.
+
+---
+
 ## 8. Qualification audit and handoff
 
 ### CC-80 - Complete qualification command
@@ -2523,6 +2866,15 @@ Checklist:
       Until CC-IC-1..4 are implemented and proven, this command is
       incomplete and its result is RED: the unproven CC-IC set is an open
       mandatory dependency, never a skip.
+- [ ] The universal invariant checks (section 7B) are a MANDATORY
+      dependency of this command: planning-graph completeness with
+      mandatory synthesis/integration execution (CC-U1), declared
+      served-surface semantic probes (CC-U2), and universal readiness
+      substrate warrant/unknown projection (CC-U3), with their blocking
+      mutations (u1a-u1c, u2a-u2c, u3a-u3d). Until CC-U1..CC-U3 are
+      implemented and proven, this command is incomplete and its result
+      is RED: the unproven CC-U set is an open mandatory dependency,
+      never a skip.
 - [ ] Fail on missing fixtures, empty scans, zero tests, or skipped groups.
 
 Exit checklist:
@@ -2532,6 +2884,9 @@ Exit checklist:
 - [ ] No CC-GAP-6..10 is open; the CC-00C product-claim blocking proofs are
       included and green.
 - [ ] No CC-IC packet (ADR-090) is unimplemented or unproven: the CC-IC
+      mandatory qualification dependency is closed and its blocking
+      mutations are green.
+- [ ] No CC-U packet (section 7B) is unimplemented or unproven: the CC-U
       mandatory qualification dependency is closed and its blocking
       mutations are green.
 
@@ -2557,13 +2912,20 @@ Checklist:
       qualification dependency, while the frozen CC-00C scope stays
       CC-GAP-6..10); unlanded packets are recorded as not started, never
       as PASS.
+- [ ] Record the state of every CC-U packet (section 7B), landed or not:
+      any packet not implemented-and-proven keeps this audit RED; unlanded
+      packets are recorded as not started, never as PASS. Verify
+      explicitly that no K19-dependent claim leans on the REJECTED
+      `f3a58a30` trust state and that the CC-GAP-8 exit rejection is
+      recorded as OPEN until its repair lands and re-audits.
 
 Exit checklist:
 
 - [ ] Every item is evidenced PASS or audit remains RED.
 - [ ] `QUALIFICATION_GREEN` emits only with no open gap, including no open
-      CC-GAP-2..5, no open CC-GAP-6..10, and no unimplemented or unproven
-      CC-IC packet (ADR-090).
+      CC-GAP-2..5, no open CC-GAP-6..10, no unimplemented or unproven
+      CC-IC packet (ADR-090), and no unimplemented or unproven CC-U packet
+      (section 7B).
 
 ### CC-82 - Clean-clone reproduction and evidence freeze
 
@@ -2584,6 +2946,9 @@ Checklist:
 - [ ] Include the CC-IC idea-authority-conservation evidence in the frozen
       set; do not emit `QUALIFICATION_GREEN` with any CC-IC packet
       (ADR-090) unimplemented or unproven.
+- [ ] Include the CC-U universal-invariant evidence in the frozen set;
+      do not emit `QUALIFICATION_GREEN` with any CC-U packet (section 7B)
+      unimplemented or unproven.
 - [ ] Capture pre-cutover normalized evidence.
 
 Exit checklist:
@@ -2594,6 +2959,8 @@ Exit checklist:
 - [ ] CC-00C evidence is frozen and every CC-GAP-6..10 is closed.
 - [ ] CC-IC evidence is frozen and every CC-IC packet is implemented and
       proven (ADR-090 mandatory qualification dependency closed).
+- [ ] CC-U evidence is frozen and every CC-U packet is implemented and
+      proven (section 7B mandatory qualification dependency closed).
 - [ ] Result states `QUALIFICATION_GREEN` and
   `STRUCTURAL_IMPLEMENTATION_AUTHORIZED = false`.
 
@@ -2656,6 +3023,10 @@ Exit checklist:
 - [ ] CC-00B terminal-integrity exit criteria pass; no CC-GAP-2..5 is open.
 - [ ] CC-00C product-claim-integrity exit criteria pass; no CC-GAP-6..10 is
   open.
+- [ ] CC-IC idea-authority conservation is implemented and proven (ADR-090;
+  CC-IC-1 landed, CC-IC-2..4 closed).
+- [ ] CC-U1..CC-U3 universal invariant exit criteria pass; none is open,
+  and none branches on product type (section 7B).
 - [ ] Blocking file and proof-claim sets are equal.
 - [ ] Required P0 mutants have zero survivors and monotonic floors.
 - [ ] Cutover fault schedules and minimization are blocking.
@@ -2721,6 +3092,19 @@ These are binding and must not reopen as operator questions.
 - [x] Use isolated worktrees; the main checkout is never required.
 - [x] Stop qualification at evidence; structural plans own implementation.
 - [x] Pause proof work during the authorized structural train, then run K8.
+- [x] The four universal invariant families are CC-IC (idea conservation,
+      ADR-090) plus CC-U1/CC-U2/CC-U3 (section 7B); all are mandatory
+      qualification dependencies, all stay workshop-neutral, and none may
+      make the game (or any single product shape) the architecture.
+- [x] ProductRevision/ChangeRequest flow work and safe parallelism stay
+      post-qualification (section 7C); they never gate
+      `QUALIFICATION_GREEN` and are not pulled into CC-80 scope.
+- [x] A new Elite-like run happens only after qualification, resembles
+      the original product brief, and tests generic invariants only
+      (section 7C).
+- [x] No production factory run before the section 7C blocking conditions
+      hold (K19 digest repair re-audited; CC-GAP-8 repair re-audited;
+      ADR-091 residual re-audit green).
 
 ### Decision record
 
@@ -2829,3 +3213,25 @@ Pre-mortem controls:
       Null-binding grandfathering stays frozen-legacy-v1-only: a new v2
       Factory Start that silently builds a null register and passes green
       is itself the drift this item guards against.
+- [ ] Circular tests can validate corrupted baselines. The REJECTED K19
+      repair (`f3a58a30`) pinned corrupted 65-character
+      `1.3.1`–`1.11.0` trusted-provider baseline values and its circular
+      tests hid the corruption. Every digest or trust baseline must be
+      independently recomputed from a source the test under change does
+      not itself produce; K19 stays incomplete beyond its bounded
+      image/dependency identity slice until the separate digest repair
+      lands and is re-audited, and no receipt-binding claim may lean on
+      the rejected `1.14.0` trust state.
+- [ ] Landing can be mistaken for exit. CC-GAP-8's base patch integrated
+      (`8819e360`) yet its exit was rejected (terminal
+      `unknown`/`human_required` projection and CI wiring missing; repair
+      in progress). Landing notes in this plan are branch truth only;
+      only the exit checklists — re-audited at CC-81/CC-82 — close a
+      package, and CC-GLOB-SURFACE's two report-only residuals (mixed
+      literal/glob presentation; suffix-overclaim) stay open until the
+      reporting surface is repaired.
+- [ ] A universal invariant can drift into a product shape. CC-U1..CC-U3
+      must stay workshop-neutral (declared data only, no product-type
+      branches); a new Elite-like run before qualification, or engine
+      work shaped by the game, re-creates the architecture capture this
+      plan forbids (sections 7B and 7C).
