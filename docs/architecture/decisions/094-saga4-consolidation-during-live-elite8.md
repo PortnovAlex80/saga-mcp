@@ -1,6 +1,7 @@
 # ADR-094: Consolidate saga4 through an isolated staging worktree during live Elite-8
 
-- **Status:** Accepted
+- **Status:** Accepted (CAS executed 2026-08-23: local `saga4` advanced
+  `611c35e0` → `586871ad`; `origin/saga4` remains `611c35e0`)
 - **Date:** 2026-08-23
 - **Decision-maker:** operator consolidation directive 2026-08-23 (Codex orchestration)
 - **Numbering note:** ADR-093 remains RESERVED for the still-open CC-GAP-7
@@ -21,10 +22,25 @@ exclusively on integration branches:
 
 | Line | Exact pin (2026-08-23) | Content |
 |---|---|---|
-| `saga4` | `611c35e0` | canonical integration branch of record — carries NONE of the CC-00B/CC-00C/CC-IC/CC-U/K19 work (plan §2A) |
+| `saga4` | `611c35e0` (pre-CAS pin; see the post-CAS note below) | canonical integration branch of record — carried NONE of the CC-00B/CC-00C/CC-IC/CC-U/K19 work at decision time (plan §2A) |
 | Accepted closure base | `905f5940` (`cc/CC-00B-terminal-integrity-integration`) | CC-GAP-2..6, 8, 9, 10, ADR-091 residual, CC-IC-1/2, CC-U1/ADR-092, K19 bounded slice, Space E maintenance |
 | Plan snapshot | `58b8656a` | the 2026-08-23 plan-truth refresh line |
 | Elite line snapshot | `91af2982` | the Elite-7/8 line carrying the 2026-08-23 red-team audit and the six-suite hosting commit `5d020f9f` |
+
+Post-CAS update (2026-08-23, follow-up branch
+`docs/post-cas-truth-2026-08-23`): the compare-and-swap EXECUTED.
+Local `saga4` now resolves to `586871ad`, whose first-parent chain over
+base `611c35e0` was re-verified as exactly the three recorded merges
+(`87b97e11`, `37b75b01`, `ab397ff7`) plus the staging ADR-094 docs
+commit. `origin/saga4` REMAINS `611c35e0` — no push occurred and none
+is claimed. The staging branch `cc/saga4-consolidation-2026-08-23` and
+its worktree are removed post-consolidation; the pre-cleanup ref state
+is archived at
+`D:\Development\saga-mcp-branch-archives\pre-saga4-consolidation-2026-08-23.bundle`
+(120 refs, complete history), which exists and passes `git bundle
+verify`. Heavy validation and the dist rebuild remain deliberately
+deferred; this update claims no build, test, full-suite, or
+remote-push evidence.
 
 Constraints that shape the decision:
 
@@ -204,11 +220,15 @@ Positive:
 Negative:
 
 - the corrected docs (including the staging-only operator rate-limit
-  directive) exist only on the staging branch until the CAS executes;
+  directive) existed only on the staging branch until the CAS executed
+  (post-CAS: they are carried by local `saga4` at `586871ad`);
 - no test or build evidence accompanies the consolidation during the live
   run — post-CAS heavy validation is a separately authorized step on a
   quiet machine, and this ADR explicitly does not claim it;
-- one more branch/worktree to keep honest until the CAS.
+- one more branch/worktree to keep honest until the CAS (post-CAS: the
+  staging branch and worktree are removed; their commits live on local
+  `saga4`, and the pre-cleanup refs are archived in the verified
+  bundle).
 
 Neutral:
 
@@ -219,7 +239,13 @@ Neutral:
 
 ## Exit checks
 
-Before the CAS may be executed (all must hold):
+Before the CAS may be executed (all must hold) — historical
+preconditions; the CAS has executed (see the post-CAS update above).
+Attestation of these preconditions at CAS time belongs to the CAS
+execution record; the 2026-08-23 post-CAS follow-up re-verified only
+the staging history shape (second item: first-parent
+`611c35e0..586871ad` = exactly `87b97e11` + `37b75b01` + `ab397ff7` +
+the staging ADR-094 docs commit) and did not re-attest the others:
 
 - [ ] `git status` in staging shows only the intended, explicitly staged
       files; the working tree is otherwise clean.
@@ -236,11 +262,16 @@ Before the CAS may be executed (all must hold):
 
 After the CAS (record-only, no further action authorized by this ADR):
 
-- [ ] Before/after `saga4` SHAs are recorded in the decision journal
-      (expected before: `611c35e0`).
+- [x] Before/after `saga4` SHAs are recorded in the decision journal
+      (expected before: `611c35e0`; observed after: `586871ad`; recorded
+      in the journal's "Post-CAS execution record" by the 2026-08-23
+      follow-up `docs/post-cas-truth-2026-08-23`).
 - [ ] The post-CAS branch-vs-`saga4` truth is restated in the plan §2A and
       the CC-00B/CC-00C records by a separate, explicitly authorized
-      follow-up — not silently by this ADR.
+      follow-up — not silently by this ADR. (2026-08-23 progress: the
+      plan header + §2A restatement landed with
+      `docs/post-cas-truth-2026-08-23`; the CC-00B/CC-00C factory-run
+      record restatements remain owed.)
 
 ## References
 

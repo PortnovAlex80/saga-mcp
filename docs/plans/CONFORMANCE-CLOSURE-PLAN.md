@@ -14,10 +14,17 @@
   proof-hosting registry landing `54882e08` + same-day defense-in-depth
   repair `808bbf27`, and the Space E matrix-maintenance landing
   `905f5940`). Every SHA this
-  plan records as "integrated" below is integration-branch truth ONLY:
-  none of those commits is merged to `saga4`, and `saga4` still carries
-  none of the CC-00B/CC-00C/CC-IC/CC-U work (section 2A records the
-  branch-vs-saga4 truth).
+  plan records as "integrated" below was integration-branch truth at
+  the 2026-08-23 refresh. Post-CAS truth (2026-08-23, ADR-094
+  follow-up branch `docs/post-cas-truth-2026-08-23`): the ADR-094
+  consolidation compare-and-swap advanced LOCAL `saga4` from
+  `611c35e0` to `586871ad`, so local `saga4` now carries the
+  integrated CC-00B/CC-00C/CC-IC/CC-U/K19 work recorded in section 2A;
+  `origin/saga4` REMAINS `611c35e0` — no push occurred and none is
+  claimed. Heavy validation and the dist rebuild remain deliberately
+  deferred post-CAS (separately authorized quiet-machine step); no
+  build, test, full-suite, or remote-push evidence is claimed
+  (section 2A records the branch-vs-saga4 truth).
 - Scope end: full Saga Kernel Conformance Engine closure and an explicit,
   evidence-backed handoff to the structural plans
 
@@ -245,7 +252,11 @@ by the CC-GAP-8 terminal repair + CI hosting, CC-IC-2, CC-U1/ADR-092,
 and the Space E matrix maintenance). It is
 landing
 status, never exit status: no exit checklist below is claimed green by
-this table, and nothing here is merged to `saga4`.
+this table. Post-CAS truth (2026-08-23): every row in this table is now
+merged to LOCAL `saga4` at `586871ad` (advanced atomically from
+`611c35e0` by the ADR-094 consolidation compare-and-swap), while
+`origin/saga4` REMAINS `611c35e0` — no push occurred and none is
+claimed.
 
 | Work | Source (worker branch) | Integration truth | Residual truth |
 |---|---|---|---|
@@ -272,9 +283,18 @@ Additional refresh facts:
   ADR-091 residual exit re-audit;
   the K19 bounded repair is accepted and integrated, and K19's own
   residuals stay open).
-- `saga4` truth: none of the rows above is merged to `saga4`; the main
-  checkout still carries only user-owned temporal-test work outside this
-  plan's ownership.
+- `saga4` truth (post-CAS, 2026-08-23): every row above is merged to
+  LOCAL `saga4`, advanced atomically from `611c35e0` to `586871ad` by
+  the ADR-094 consolidation compare-and-swap; `origin/saga4` REMAINS
+  `611c35e0` — no push occurred and none is claimed. The pre-cleanup
+  ref state is archived at
+  `D:\Development\saga-mcp-branch-archives\pre-saga4-consolidation-2026-08-23.bundle`
+  (120 refs, complete history); that exact file exists and was verified
+  with `git bundle verify` ("is okay") on 2026-08-23. Heavy validation
+  and the dist rebuild remain deliberately deferred post-CAS as a
+  separately authorized quiet-machine step; no build, test, full-suite,
+  or remote-push evidence is claimed. The main checkout still carries
+  only user-owned temporal-test work outside this plan's ownership.
 
 ---
 
