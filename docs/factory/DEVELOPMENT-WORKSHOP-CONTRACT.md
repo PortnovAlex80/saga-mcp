@@ -48,6 +48,25 @@ complete-failed              settle-development                │ frozen
 Каждая рабочая нода — production cell (author + reviewer циклы, recovery-бюджет
 эпох, human_required-парковка при исчерпании).
 
+## 2а. РАБОЧИЕ СТОЛЫ (production cells) — кто где сидит и что делает
+
+| Стол | Кардинальность | Работник (скилл/профиль) | Вход | Выход | Гейт |
+|---|---|---|---|---|---|
+| **development-plan-task-graph** | singleton | `development-task-graph-planner` (author+reviewer цикл) | development-case: 20 критериев × coveredConstraintIds, регистр 13, SRS §2.2/§D2 | предложение графа работ: пункты имплементации+верификации, файлы, зависимости, декларации тестов | `development.task-graph-contract.v1` (покрытие/порядок/манифест/entrypoint) |
+| **development-implementation/`<item-hash>`** | **по одному на пункт графа** (Elite-6: 12 столов) | `development-implementation-worker` + свой reviewer | карточка пункта: scope-файлы, критерий(и), скоуп-декларация | код+тесты в репо продукта, implementation product, Git-рецепт | `development-implementation-author` → `development-implementation-final` |
+| **development-readiness-certification** | singleton | `development-readiness-certifier` | замороженный интегрированный кандидат (freeze-узел) | readiness receipt: реальная установка/старт//healthz; digest образа+lock (K19 fence) | `factory.local-runnability.v1@1.14.0` (ADR-089/091 субстрат) |
+| **development-verification/`<criterion>`** | по одному на критерий AC (до 20) | `development-verification-worker` | замороженный AC + привязанный runnable-кандидат | verification evidence в criterion-key ledger | `development-verification-final` |
+
+**Ядерные узлы без столов** (система, не нанимает воркеров): `resolve-task-graph`
+(валидация+канонизация графа), `freeze-integrated-candidate` (заморозка
+кандидата), `bind-runnable-candidate` (привязка runnable к критериям),
+`settle-development` (расчёт, учёт ledger, терминальные факты).
+
+Живая Evidence: Elite-6 — 1 planner + 12 implementation + 1 readiness стол
+(verification не открылись — readiness-гейт убил ран); Elite-7 — 1 planner
+(умер на гейте покрытия). Параллельность столов имплементации ограничена
+контролами (сейчас 8/8).
+
 ## 3. ГЕЙТЫ ПРОВЕРКИ — что обязано пройти
 
 | Гейт / чек | Что проверяет | Код причины при отказе |
