@@ -80,9 +80,17 @@ const GROUPS = {
       // (terminal-route facts, no-poison, blocking mutations) is a BLOCKING
       // development-module acceptance proof — not blanket-`npm test` material.
       'tests/modules/development/verification-ledger.test.mjs',
+      // CC-GAP-8 proof hosting: the terminal-exit accounting structural
+      // oracle (every reachable Development terminal exit is settlement-
+      // accounted or provably pre-ledger; RED/GREEN on the rejected
+      // df7359fa edges) was committed but orphaned — no group ran it, so CI
+      // never executed it. Exact file on purpose: no directory glob, so the
+      // hosted CC-GAP-8 proof surface cannot silently widen. The coverage
+      // test (G2g) fails if this entry is removed.
+      'tests/modules/development/development-terminal-exit-accounting.test.mjs',
     ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

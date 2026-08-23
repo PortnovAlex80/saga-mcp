@@ -101,6 +101,21 @@ test('G2f: LR-07 development-local-readiness binding is covered', () => {
   );
 });
 
+test('G2g: CC-GAP-8 terminal-exit accounting oracle is covered (proof hosting)', () => {
+  // tests/modules/development/development-terminal-exit-accounting.test.mjs
+  // is the structural CC-GAP-8 proof (settlement-accounted vs pre-ledger
+  // terminal exits, with a RED/GREEN mutation oracle). It was committed but
+  // orphaned — no GROUPS entry ran it, so CI never executed the proof.
+  // Removing the exact file from the process-modules group must fail HERE,
+  // not silently orphan the proof again. Asserted against runSet only (not
+  // run-or-quarantined): reclassifying the proof as FLAKY/PRE-EXISTING-RED
+  // is not an honest way to drop it.
+  assert.ok(
+    runSet.has('tests/modules/development/development-terminal-exit-accounting.test.mjs'),
+    'development-terminal-exit-accounting must stay in a blocking run-set (CC-GAP-8 proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [
