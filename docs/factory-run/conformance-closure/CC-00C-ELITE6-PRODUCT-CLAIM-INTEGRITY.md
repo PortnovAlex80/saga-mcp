@@ -479,9 +479,17 @@ recorded at `1f397348` and advanced by the accepted K19 landings):
 | CC-GAP-9 (substrate classification/recovery) | LANDED on the integration branch as `830bce80` + post-REJECT repair `64c5fb81` (worker-branch originals unintegrated) — re-audit and blocking-group wiring remain open |
 | CC-GAP-9 residual (ADR-091 TOCTOU re-probe) | LANDED on the integration branch as `61fccda7` + post-audit repair `417749f7` (host-executor control, not-linux arm, deterministic re-probe evidence; landed provider `1.12.0` with digest fence and trust migration — obligation compiler pin `factory.local-runnability.v1` @ `1.12.0` at that landing; the accepted K19 landings `bc6df0be` + `2b68b192` + `aef699b4` later moved the current pin to `1.14.0` with those semantics unchanged) — re-audit and CC-10B/CC-80 wiring remain open; still owed BEFORE any production factory run and BEFORE CC-GAP-7 until that re-audit is green |
 | CC-GLOB-SURFACE (Development coverage surface) | `66d04178` (source `5f3201c4`, accepted by two reviewers) — whole-tree tests glob is directory coverage, never a phantom literal; two REPORT-ONLY residuals open: mixed literal/glob presentation and suffix-overclaim in reporting |
-| CC-IC-1 (ADR-090 register v2 vocabulary) | `4c67f1d1` + `1f397348` (source `d1912c67` + focused repair `a03b5bf9`, accepted) — focused integration build and focused suite passed 75/75; CC-IC-2 starts after it |
-| K19 (ADR-083 environment identity remainder) | accepted by two reviewers and integrated: `bc6df0be` (bounded image/dependency identity slice — registry manifest digest + dependency lock, provider `1.13.0`), `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`), `aef699b4` (authentic, independently recomputed `1.3.1`–`1.11.0` trusted-provider baselines with an independent history oracle; build + 40/40 green). The first `1.14.0` attempt `f3a58a30` was REJECTED (corrupted 65-character baseline values; circular tests hid the corruption) and was superseded by `2b68b192` + `aef699b4`; K19 remains incomplete beyond its bounded identity slice (package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining train commits stay open) |
+| CC-IC-1 (ADR-090 register v2 vocabulary) | `4c67f1d1` + `1f397348` (source `d1912c67` + focused repair `a03b5bf9`, accepted) — focused integration build and focused suite passed 75/75 (run-record provenance only — see the Run-record provenance note); CC-IC-2 starts after it |
+| K19 (ADR-083 environment identity remainder) | accepted by two reviewers and integrated: `bc6df0be` (bounded image/dependency identity slice — registry manifest digest + dependency lock, provider `1.13.0`), `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`), `aef699b4` (authentic, independently recomputed `1.3.1`–`1.11.0` trusted-provider baselines with an independent history oracle; build + 40/40 green; run-record provenance only — see the Run-record provenance note). The first `1.14.0` attempt `f3a58a30` was REJECTED (corrupted 65-character baseline values; circular tests hid the corruption) and was superseded by `2b68b192` + `aef699b4`; K19 remains incomplete beyond its bounded identity slice (package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining train commits stay open) |
 | CC-GAP-7 (deliverable-aware oracle) | OPEN — no warrant-execution landing |
+
+**Run-record provenance (2026-08-23):** the `75/75` (CC-IC-1 focused
+suite) and `40/40` (K19) figures in this record are historical transient
+orchestrator run records from the landing sessions — no in-repo command
+transcript or output artifact backs them. They are not independently
+reproducible repo evidence and not qualification evidence; before any
+exit leans on such a figure, the exact focused commands must be rerun
+and their results recorded in-repo (same note in the plan and in CC-00B).
 
 Landing is not closure, and this update marks nothing merged: none of
 these commits is merged to `saga4`, the CC-00C exit checklist (evidence
@@ -516,7 +524,8 @@ evidence). Landing is not exit:
   or re-audited state. Chronology: the rejected first K19 repair
   (`f3a58a30`) never touched the ADR-091 landing; the accepted K19
   landings (`bc6df0be` + `2b68b192` + `aef699b4`, two-reviewer
-  acceptance, build + 40/40 green) subsequently moved the current
+  acceptance, build + 40/40 green; run-record provenance only — see the
+  Run-record provenance note) subsequently moved the current
   provider/protection pin from the ADR-091 `1.12.0` to `1.14.0` with
   the ADR-091 fence semantics unchanged — K19-dependent identity claims
   may lean on that accepted integrated state, while K19's own

@@ -43,8 +43,9 @@ identity slice, `1.13.0`), `2b68b192` (repair after REJECT: atomic image
 observation, provider-boundary identity fence, exact trust migration,
 `1.14.0`), and `aef699b4` (authentic `1.3.1`–`1.11.0` historical
 baselines with an independent history oracle) — accepted by two
-reviewers, integrated, build + 40/40 green, with the ADR-091 fence
-semantics unchanged. The residual's exit re-audit and CC-10B/CC-80
+reviewers, integrated, build + 40/40 green (run-record
+provenance only — see the Run-record provenance note), with the ADR-091
+fence semantics unchanged. The residual's exit re-audit and CC-10B/CC-80
 wiring are owed BEFORE
 any production factory run and BEFORE CC-GAP-7 warrant execution. ADR-090 is
 Accepted and governs the Idea Authority Conservation
@@ -69,8 +70,10 @@ prerequisite m0 is fully closed, never re-implemented) and are a
 mandatory overall qualification dependency; CC-IC-1 is LANDED and
 review-accepted on the integration branch (source `d1912c67` +
 `a03b5bf9`, integrated as `4c67f1d1` + `1f397348`; the focused
-integration build and the focused suite passed 75/75 — including closing
-the m0 residual verification at its named host), while CC-IC-2..4 remain
+integration build and the focused suite passed 75/75 (run-record
+provenance only — see the Run-record provenance note) — including
+closing the m0 residual verification at its named host), while CC-IC-2..4
+remain
 open and CC-IC-2 starts only after CC-IC-1 (branch prepared at `1f397348`,
 no CC-IC-2 code yet). The proof-contract subset direction repair
 (`3be7393d`, landed on the same integration branch) already corrected the
@@ -84,6 +87,17 @@ ADR-053 is a Proposed architectural
 diagnosis. ADR-085 and ADR-086 are Proposed and remain blocked by the
 Structural Refactor Qualification Gate. A green gate makes their implementation
 eligible; it does not adopt or authorize either proposal by itself.
+
+**Run-record provenance (2026-08-23):** every `75/75` (CC-IC-1 focused
+suite) and `40/40` (K19) figure quoted in this plan and in the refreshed
+CC-00B/CC-00C factory-run records is a historical transient orchestrator
+run record from the landing session — observed once at landing time and
+reported forward since. No in-repo command transcript or output artifact
+backs any of them: they are not independently reproducible repo evidence
+and not qualification evidence. Before the exit that leans on such a
+figure, the exact focused commands must be rerun and their results
+recorded in-repo; every such figure below is chronology, not durable
+proof. Each occurrence is marked "run-record provenance only".
 
 The structural cutover is not implemented by this plan. It remains owned by:
 
@@ -197,8 +211,8 @@ CC-00 refreshed them at `6ddcb107`; see `CC-00-BASELINE.md` and
 | K7 | Not implemented | Add bounded explorer and deterministic promoted replay |
 | K8 | Four workshop packs use one kernel | Add post-catalog synthetic workshop, binding parity, L5 proofs, budgets, and canaries; CC-00C product-claim-integrity closure required (no open CC-GAP-6..10) |
 | S | Not implemented | Add finite satisfiability before claiming full master-plan closure |
-| Environment identity (ADR-083/K19) | Bounded image/dependency identity slice + digest repair accepted by two reviewers and integrated (`bc6df0be` provider `1.13.0`; `2b68b192` provider `1.14.0` repair after REJECT — atomic image observation, provider-boundary identity fence, exact trust migration; `aef699b4` authentic `1.3.1`–`1.11.0` historical baselines with an independent history oracle; build + 40/40 green; the first `1.14.0` attempt `f3a58a30` was REJECTED and superseded) | K19 overall remains incomplete beyond the bounded image/dependency identity slice: package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open; residuals stay honestly recorded |
-| Idea conservation (ADR-090 / CC-IC) | CC-IC-1 landed and accepted (`4c67f1d1` + `1f397348`, focused build + 75/75); CC-IC-2..4 not started | Execute CC-IC-2..4 (§7A); all four remain a mandatory overall qualification dependency |
+| Environment identity (ADR-083/K19) | Bounded image/dependency identity slice + digest repair accepted by two reviewers and integrated (`bc6df0be` provider `1.13.0`; `2b68b192` provider `1.14.0` repair after REJECT — atomic image observation, provider-boundary identity fence, exact trust migration; `aef699b4` authentic `1.3.1`–`1.11.0` historical baselines with an independent history oracle; build + 40/40 green; run-record provenance only — see the Run-record provenance note; the first `1.14.0` attempt `f3a58a30` was REJECTED and superseded) | K19 overall remains incomplete beyond the bounded image/dependency identity slice: package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open; residuals stay honestly recorded |
+| Idea conservation (ADR-090 / CC-IC) | CC-IC-1 landed and accepted (`4c67f1d1` + `1f397348`, focused build + 75/75; run-record provenance only — see the Run-record provenance note); CC-IC-2..4 not started | Execute CC-IC-2..4 (§7A); all four remain a mandatory overall qualification dependency |
 
 No `[x]` above is an exit gate. It records observed evidence only.
 
@@ -214,10 +228,10 @@ this table, and nothing here is merged to `saga4`.
 | Work | Source (worker branch) | Integration truth | Residual truth |
 |---|---|---|---|
 | CC-GLOB-SURFACE (whole-tree tests glob is directory coverage, never a phantom literal) | `5f3201c4` on `cc/CC-GLOB-SURFACE`, accepted by two reviewers | integrated as `66d04178` | two REPORT-ONLY residuals remain open: the coverage report still mixes literal and glob test surfaces in one presentation, and a suffix-based reporting claim can overclaim coverage; the coverage-semantics fix itself is what landed |
-| CC-IC-1 register v2 vocabulary (ADR-090) | `d1912c67` + focused repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, accepted | integrated as `4c67f1d1` + `1f397348` | focused integration build and focused suite passed 75/75; CC-IC-2 starts after it (branch `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`, no code yet); CC-IC-3/CC-IC-4 not started |
+| CC-IC-1 register v2 vocabulary (ADR-090) | `d1912c67` + focused repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, accepted | integrated as `4c67f1d1` + `1f397348` | focused integration build and focused suite passed 75/75 (run-record provenance only — see the Run-record provenance note); CC-IC-2 starts after it (branch `cc/CC-IC2-DISPOSITIONS` prepared at `1f397348`, no code yet); CC-IC-3/CC-IC-4 not started |
 | CC-GAP-9 bounded in-check substrate retry (ADR-089) | `736621af` + `d3026cbe` (post-REJECT repair) on `cc/CC-GAP-9-substrate-typed-unknown` | integrated as `830bce80` + post-REJECT repair `64c5fb81` | landed, not exited: the CC-00C re-audit and blocking-group wiring remain open |
 | CC-GAP-9 residual / ADR-091 TOCTOU re-probe | `00792891` + `634a7d94` (post-audit repair) on `cc/CC-ADR091-TOCTOU` | integrated as `61fccda7` + post-audit repair `417749f7`, which landed the provider `1.12.0` pin (later moved to `1.14.0` by the K19 landings below) | landed, not exited: re-audit and CC-10B/CC-80 wiring remain open; still owed BEFORE any production factory run and BEFORE CC-GAP-7 |
-| K19 environment image/dependency identity (ADR-083 remainder) | worker-branch sources on the K19 branches: bounded slice `2fbf0b9f`; the first `1.14.0` repair `f3a58a30` was REJECTED (corrupted 65-character `1.3.1`–`1.11.0` baselines; circular tests hid the corruption) | integrated as `bc6df0be` (bounded image/dependency identity slice, provider `1.13.0`) + `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`) + `aef699b4` (authentic, independently recomputed `1.3.1`–`1.11.0` historical baselines + independent history oracle); accepted by two reviewers; build + 40/40 green | landed, not exited: K19 overall remains INCOMPLETE beyond the bounded image/dependency identity slice — package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open |
+| K19 environment image/dependency identity (ADR-083 remainder) | worker-branch sources on the K19 branches: bounded slice `2fbf0b9f`; the first `1.14.0` repair `f3a58a30` was REJECTED (corrupted 65-character `1.3.1`–`1.11.0` baselines; circular tests hid the corruption) | integrated as `bc6df0be` (bounded image/dependency identity slice, provider `1.13.0`) + `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`) + `aef699b4` (authentic, independently recomputed `1.3.1`–`1.11.0` historical baselines + independent history oracle); accepted by two reviewers; build + 40/40 green (run-record provenance only — see the Run-record provenance note) | landed, not exited: K19 overall remains INCOMPLETE beyond the bounded image/dependency identity slice — package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining ADR-083 train commits stay open |
 | CC-GAP-8 verification accounting | `8819e360` base patch | integrated — base ledger landed; EXIT OPEN | base ledger landed; EXIT OPEN — terminal repair in progress: terminal `unknown`/`human_required` projection and CI wiring are missing; a dedicated repair is in progress (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`); the exit is NOT claimed done |
 
 Additional refresh facts:
@@ -403,7 +417,7 @@ provider-boundary identity fence, exact trust migration; `aef699b4`
 authentic, independently recomputed `1.3.1`–`1.11.0` historical
 baselines with a non-circular history oracle; the first `1.14.0`
 attempt `f3a58a30` was REJECTED for corrupted 65-character baselines
-and was superseded by these landings; build + 40/40 green). K19 remains
+and was superseded by these landings; build + 40/40 green; run-record provenance only — see the Run-record provenance note). K19 remains
 incomplete beyond its bounded image/dependency identity slice —
 package-store digest persistence, the ADR-077 keyed `toolchainDigests`
 component, and the remaining ADR-083 train commits stay open — so
@@ -680,7 +694,7 @@ verifier — the proof-subset landing `3be7393d` on the same branch
 already corrected the acceptance-contract and SRS §D2↔AC token directions
 (verify-only for CC-IC-4), and CC-IC-1 itself is LANDED and accepted:
 source `d1912c67` + `a03b5bf9`, integrated as `4c67f1d1` + `1f397348`,
-focused integration build and focused suite 75/75 green):
+focused integration build and focused suite 75/75 green; run-record provenance only — see the Run-record provenance note):
 
 ```text
 CC-GAP-6 exit -> CC-IC-1 (landed) -> CC-IC-2 -> CC-IC-3 -> CC-IC-4
@@ -780,7 +794,8 @@ Exit checklist:
   CC-GLOB-SURFACE (`66d04178`), CC-IC-1 (`4c67f1d1` + `1f397348`), and
   the K19 bounded image/dependency identity slice + digest repair
   (`bc6df0be` + `2b68b192` + `aef699b4`, accepted by two reviewers;
-  build + 40/40 green; K19 remains incomplete beyond the bounded slice).
+  build + 40/40 green; run-record provenance only — see the Run-record
+  provenance note; K19 remains incomplete beyond the bounded slice).
   CC-GAP-7 is open.
   Landing is not closure: the CC-00B exit gate has not been re-audited,
   none of these commits is merged to `saga4`, and neither the incident
@@ -883,7 +898,8 @@ green.
   migration; `aef699b4` authentic `1.3.1`–`1.11.0` historical baselines
   with an independent history oracle) have LANDED on that integration
   branch — the K19 repair set accepted by two reviewers, build + 40/40
-  green. CC-GAP-8: base ledger landed; EXIT OPEN — terminal repair in
+  green (run-record provenance only — see the Run-record provenance
+  note). CC-GAP-8: base ledger landed; EXIT OPEN — terminal repair in
   progress — terminal `unknown`/`human_required`
   projection and CI wiring are missing, and a dedicated repair is in
   progress (`cc/CC-GAP8-TERMINAL-ACCOUNTING` from `1f397348`). K19
@@ -1116,9 +1132,9 @@ Checklist:
   integration branch as `830bce80` + post-REJECT repair `64c5fb81` —
   landing is not exit: the CC-00C re-audit and the blocking-group wiring
   remain open.)
-- [x] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
-   closes BEFORE any production factory run and BEFORE CC-GAP-7 warrant
-   execution): on a mid-check executor/compose failure, invalidate the
+- [ ] CC-GAP-9 residual (ADR-091 readiness-substrate TOCTOU re-probe;
+  closes BEFORE any production factory run and BEFORE CC-GAP-7 warrant
+  execution): on a mid-check executor/compose failure, invalidate the
   cached docker availability cache and mechanically re-probe the daemon
   with the existing bounded probe; classification rides ONLY the observed
   re-probe result — observed unavailable (probe failure observes
@@ -1138,20 +1154,20 @@ Checklist:
   the up failure or its class); an invalid `compose config` with the CLI
   present and the daemon observed healthy is product `failed`; ENOENT
   CLI-missing stays `LOCAL_RUNNABILITY_COMPOSE_UNAVAILABLE`. Collapse
-          guard: product-failed, oracle-insufficient, and substrate-unavailable
-          stay distinct typed classes on every surface and route. Provider
-          pin chronology: ADR-091 landed the local-runnability check
-          provider at `1.12.0` (from branch `1.10.0` through the CC-GAP-9
-          landing `1.11.0`), the `trusted_providers` row
-          migrated with the trustworthy baseline extended (`1.11.0` before
-          `1.12.0`) and trust basis `built-in:<provider digest>` intact, the
-          receipt digest fence (provider id + provider digest) stood, and the
-          obligation compiler pinned `factory.local-runnability` at `1.12.0`
-          (protection `factory.local-runnability.v1` @ `1.12.0`); the
-          accepted K19 landings (`bc6df0be` `1.13.0`; `2b68b192` +
-          `aef699b4` `1.14.0`) subsequently moved the current provider and
-          protection pin to `1.14.0` with the fence and trust semantics
-          unchanged. Blocking
+  guard: product-failed, oracle-insufficient, and substrate-unavailable
+  stay distinct typed classes on every surface and route. Provider
+  pin chronology: ADR-091 landed the local-runnability check
+  provider at `1.12.0` (from branch `1.10.0` through the CC-GAP-9
+  landing `1.11.0`), the `trusted_providers` row
+  migrated with the trustworthy baseline extended (`1.11.0` before
+  `1.12.0`) and trust basis `built-in:<provider digest>` intact, the
+  receipt digest fence (provider id + provider digest) stood, and the
+  obligation compiler pinned `factory.local-runnability` at `1.12.0`
+  (protection `factory.local-runnability.v1` @ `1.12.0`); the
+  accepted K19 landings (`bc6df0be` `1.13.0`; `2b68b192` +
+  `aef699b4` `1.14.0`) subsequently moved the current provider and
+  protection pin to `1.14.0` with the fence and trust semantics
+  unchanged. Blocking
   mutations (ADR-091 exit tests, wired into CC-10B/CC-80): (a)
   daemon-death-mid-check + observed-unavailable re-probe yields the
   ADR-089 path — routing it to product `failed` is red; (b) the same
@@ -1162,19 +1178,19 @@ Checklist:
   re-probe classifies substrate — any stderr-sensitive routing is red;
   (d) routing every executor/compose failure to unknown (or all to
   `failed`) fails classification (collapse guard); (e) the compose
-   down/config truths above; (f) the version/digest fence at the current
-   integrated pin (ADR-091 landed it at `1.12.0`; the K19 landings moved
-   it to `1.14.0` — a receipt from a foreign provider digest or an
-   unmigrated trust row
-   is rejected). (LANDED on the integration branch as `61fccda7` + the
-   post-audit repair `417749f7` — the provider landed at `1.12.0` there
-   with the digest fence and trust migration intact, and the accepted
-   K19 landings `bc6df0be` + `2b68b192` + `aef699b4` later moved the
-   current pin to `1.14.0` with those semantics unchanged; landing is
-   not exit: the
-   CC-00C re-audit and the CC-10B/CC-80 blocking-group wiring remain
-   open, and until that re-audit is green this residual stays recorded as
-   owed BEFORE any production factory run and BEFORE CC-GAP-7.)
+  down/config truths above; (f) the version/digest fence at the current
+  integrated pin (ADR-091 landed it at `1.12.0`; the K19 landings moved
+  it to `1.14.0` — a receipt from a foreign provider digest or an
+  unmigrated trust row
+  is rejected). (LANDED on the integration branch as `61fccda7` + the
+  post-audit repair `417749f7` — the provider landed at `1.12.0` there
+  with the digest fence and trust migration intact, and the accepted
+  K19 landings `bc6df0be` + `2b68b192` + `aef699b4` later moved the
+  current pin to `1.14.0` with those semantics unchanged; landing is
+  not exit: the
+  CC-00C re-audit and the CC-10B/CC-80 blocking-group wiring remain
+  open, and until that re-audit is green this residual stays recorded as
+  owed BEFORE any production factory run and BEFORE CC-GAP-7.)
 - [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
   the existing `VerificationWarrantRef` seam in the readiness provider
   through package-level, workshop-declared oracle adapters — no new oracle,
@@ -1981,7 +1997,8 @@ parallel implementation program.
   CC-IC-1 is LANDED and review-accepted (source `d1912c67` + focused
   repair `a03b5bf9` on `cc/CC-IC1-idea-authority`, integrated as
   `4c67f1d1` + `1f397348`; the focused integration build and the focused
-  suite passed 75/75, and the landing closed the m0 residual
+  suite passed 75/75 (run-record provenance only — see the Run-record
+  provenance note), and the landing closed the m0 residual
   base-verification obligation at its named host — id-reorder and
   snake_case-at-verify reds added, the `50824c6a` source repair verified,
   never re-implemented). CC-IC-2 starts after CC-IC-1 (branch
@@ -2043,7 +2060,8 @@ parallel implementation program.
 - Status: LANDED and review-accepted 2026-08-23 — source `d1912c67` +
   focused repair `a03b5bf9` (`cc/CC-IC1-idea-authority`), integrated as
   `4c67f1d1` + `1f397348` on `cc/CC-00B-terminal-integrity-integration`;
-  focused integration build and focused suite passed 75/75; branch truth
+  focused integration build and focused suite passed 75/75 (run-record
+  provenance only — see the Run-record provenance note); branch truth
   only (not merged to `saga4`). Landing is not exit: CC-81/CC-82
   re-verify this packet's exit checklist at qualification. CC-IC-2 starts
   from `1f397348` after this landing.
@@ -2135,7 +2153,7 @@ re-implements):
       which the repaired source already throws) and the
       snake_case-draft-row-at-verify typed rejection are LANDED AND
       GREEN in CC-IC-1 at that same host (source `d1912c67`, integrated
-      as `4c67f1d1`; focused suite 75/75). Every "v1 registers verify
+      as `4c67f1d1`; focused suite 75/75; run-record provenance only — see the Run-record provenance note). Every "v1 registers verify
       (unchanged / in CI /
       round-trip)" statement in ADR-090 and this plan leans on that
       repaired path and on the closed CC-IC-1 base-verification item
@@ -2156,7 +2174,8 @@ re-implements):
       snake_case-at-verify reds were added at the named host —
       `d1912c67`, integrated as `4c67f1d1` — with the `50824c6a`
       source repair verified at the base, never re-implemented; the
-      focused integration build and the focused suite passed 75/75.)
+      focused integration build and the focused suite passed 75/75;
+      run-record provenance only — see the Run-record provenance note.)
 
 Checklist:
 
@@ -2704,7 +2723,8 @@ RED, with the unproven CC-U set recorded as an open mandatory dependency
   CC-GAP-8 terminal unknown/human-required projection/CI repair (in
   progress) and on the K19 bounded image/dependency identity + digest
   repair state (accepted by two reviewers and integrated as `bc6df0be` +
-  `2b68b192` + `aef699b4`; build + 40/40 green; K19 incomplete residuals
+  `2b68b192` + `aef699b4`; build + 40/40 green; run-record provenance
+  only — see the Run-record provenance note; K19 incomplete residuals
   and CC-GAP-7 stay open)
 - Non-goals (program-level): any parallel deliverable-claim vocabulary;
   any product-type branch in universal code; any new outcome class beside
@@ -2825,7 +2845,8 @@ Exit checklist:
   bounded image/dependency identity + digest repair (accepted by two
   reviewers and integrated as `bc6df0be` provider `1.13.0` +
   `2b68b192` provider `1.14.0` + `aef699b4` authentic historical
-  baselines; build + 40/40 green — K19 overall remains incomplete beyond
+  baselines; build + 40/40 green; run-record provenance only — see the
+  Run-record provenance note — K19 overall remains incomplete beyond
   the bounded slice, and CC-GAP-7 stays open)
 - Objective (SMART): by CC-U3 exit, EVERY readiness/warrant execution path
   — not only the local-runnability provider that closed CC-GAP-9 —
@@ -3351,7 +3372,8 @@ Pre-mortem controls:
       (`aef699b4`) does exactly that (all sixteen authentic digests
       re-derived from their introducing commits, a checked
       expected-history vector, and an independent history oracle; build
-      + 40/40 green). K19 stays incomplete beyond its bounded
+      + 40/40 green; run-record provenance only — see the Run-record
+      provenance note). K19 stays incomplete beyond its bounded
       image/dependency identity slice (package-store digest persistence,
       the ADR-077 keyed `toolchainDigests` component, and the remaining
       train commits stay open), and no receipt-binding claim may lean on
