@@ -42,6 +42,14 @@
 //     UNREACHABLE under the reference policies (non-required verification
 //     items settle failed/verification-plan-coverage-gap) — defensive-only,
 //     pinned by the pure-classifier test;
+//   - TERMINAL-EXIT ROUTING REPAIR (review counterexample): the flow's two
+//     post-ledger cell failures (implement-work-items / certify-product-
+//     readiness on domain.failed) route through settlement — driven from
+//     their REAL settlement-input shapes (no accepted implementation
+//     product; accepted implementation + failed readiness receipt); pauses
+//     stay honestly pending (no terminal fact while nothing terminalized);
+//     the pre-ledger exit (planner failure) has nothing to account; the
+//     v1->v2 migration enforces the exact fresh-v2 CHECK contract.
 //   - executed facts carry the opening obligation truth (an optional ledger
 //     item records required=false — never a hardcoded required=true);
 //   - executed facts fail closed on a caller-supplied verificationItemKey
@@ -2169,5 +2177,369 @@ test('read path never writes: readonly projections stay truthful (no SQLITE_READ
       try { handle.close(); } catch { /* already closed */ }
     }
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CC-GAP-8 TERMINAL-EXIT ROUTING REPAIR (independent-review counterexample):
+// the flow's two post-ledger cell failures — implement-work-items and
+// certify-product-readiness on domain.failed — used to exit through the bare
+// complete-failed emitter, bypassing settle-development: every still-pending
+// criterion row stayed pending forever with no terminal fact. They now route
+// through the settlement kernel; these tests drive the REAL settle handler
+// from both counterexample shapes and prove the accounting closes.
+// The structural enumeration of EVERY reachable terminal exit (all four
+// installed Development flows) lives in
+// tests/modules/development/development-terminal-exit-accounting.test.mjs.
+// ---------------------------------------------------------------------------
+
+/** Seed one ACCEPTED implementation cell product (terminalStatus 'complete')
+ *  bound to the graph's impl-1 item — the settlement-input shape after
+ *  implement-work-items succeeded its accepted part. */
+function seedAcceptedImplementation(db, processRunId) {
+  const workplaceRef = `workplace/${processRunId}/development-implementation/impl-1`;
+  const candidateSetRef = `candidate-set/${processRunId}/development-implementation/impl-1/author`;
+  const decisionKey = `decision/${candidateSetRef}/final`;
+  const gateRunRef = `gate-run/${candidateSetRef}`;
+  const taskId = 500 + processRunId;
+  const payload = {
+    workItemKey: 'impl-1',
+    terminalStatus: 'complete',
+    source: { branch: 'dev', commitSha: 'c'.repeat(40), workItemKey: 'impl-1' },
+    snapshot: { commitSha: 'c'.repeat(40), treeSha: 'd'.repeat(40), files: [] },
+    repository: {
+      projectRepositoryId: REPO_ID, integrationBranch: 'dev',
+      baseCommit: 'b'.repeat(40), name: 'repo',
+    },
+    buildProducts: [],
+    reasonCodes: [],
+  };
+  db.prepare(`INSERT INTO factory_workplaces VALUES (?,?,?,?,?)`)
+    .run(workplaceRef, processRunId, 'development-implementation', 'terminal', 'accepted');
+  db.prepare(`INSERT INTO factory_cell_final_acceptances VALUES (?,?,?)`)
+    .run(workplaceRef, candidateSetRef, decisionKey);
+  db.prepare(`INSERT INTO factory_accepted_authority_head VALUES (?,?,?)`)
+    .run(workplaceRef, candidateSetRef, String(taskId));
+  db.prepare(`INSERT INTO factory_candidate_sets (candidate_set_ref,workplace_ref,role)
+              VALUES (?,?,?)`).run(candidateSetRef, workplaceRef, 'author');
+  db.prepare(`INSERT INTO factory_candidate_set_members VALUES (?,?,?)`)
+    .run(candidateSetRef, 'factory.development-implementation-result.v1',
+      'managed-node-submission:701');
+  db.prepare(`INSERT INTO factory_managed_node_submissions
+              (id,process_run_id,task_id,execution_id,payload_snapshot,content_hash)
+              VALUES (?,?,?,?,?,?)`)
+    .run(701, processRunId, taskId, 'exec-701',
+      JSON.stringify(payload), sha256Hex(payload));
+  db.prepare(`INSERT INTO tasks VALUES (?,?,?)`)
+    .run(taskId, workplaceRef, JSON.stringify({
+      role: 'author',
+      cell_input_item: { key: 'impl-1' },
+    }));
+  db.prepare(`INSERT INTO factory_gate_decisions VALUES (?,?,?,?,?,?)`)
+    .run(decisionKey, gateRunRef, candidateSetRef, 'final', 'accepted', '[]');
+}
+
+/** Seed the PRODUCT-failure readiness shape: a FAILED local-readiness receipt
+ *  whose evidence is a plain test-output ref (NO substrate-precondition
+ *  diagnostic) — the deterministic producer defect the CC-GAP-9
+ *  failureOwnership:'upstream' verdict terminalizes. */
+function seedFailedProductReadiness(db, processRunId) {
+  const workplaceRef = `workplace/${processRunId}/development-readiness-certification/primary`;
+  const candidateSetRef = `candidate-set/${processRunId}/readiness/author`;
+  const manifest = {
+    schemaVersion: 'factory.development-readiness-manifest.v1',
+    sourceCandidate: { schema: 'factory.integrated-source-candidate.v1', ref: 'x', hash: CANDIDATE_HASH },
+    targets: [{ key: 'primary', readiness: {} }],
+  };
+  db.prepare(`INSERT INTO factory_workplaces VALUES (?,?,?,?,?)`)
+    .run(workplaceRef, processRunId, 'development-readiness-certification', 'terminal', 'failed');
+  db.prepare(`INSERT INTO factory_candidate_sets (candidate_set_ref,workplace_ref,role)
+              VALUES (?,?,?)`).run(candidateSetRef, workplaceRef, 'author');
+  db.prepare(`INSERT INTO factory_candidate_set_members VALUES (?,?,?)`)
+    .run(candidateSetRef, 'factory.development-readiness-manifest.v1', 'managed-node-submission:702');
+  db.prepare(`INSERT INTO factory_managed_node_submissions
+              (id,process_run_id,task_id,execution_id,payload_snapshot,content_hash)
+              VALUES (?,?,?,?,?,?)`)
+    .run(702, processRunId, 600 + processRunId, 'exec-702',
+      JSON.stringify(manifest), sha256Hex(manifest));
+  db.prepare(`INSERT INTO factory_check_receipts VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(
+      `check-receipt:product-fail-${processRunId}`,
+      `gate-run/${candidateSetRef}`, candidateSetRef,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+      'failed', sha256Hex({ r: processRunId, product: true }),
+      JSON.stringify(['evidence://run-command/npm-test-exit-1']),
+    );
+}
+
+test('counterexample repair, implement-work-items failed: settlement closes every pending row with an authoritative terminal fact', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 46);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 46, developmentCase, graph });
+    // The implement-work-items cell terminal-failed: NO accepted
+    // implementation product exists, so the workset reconstructs with the
+    // missing-product placeholder — the real settlement input of the repaired
+    // route (implement-work-items --domain.failed--> settle-development).
+
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(46, developmentCase, VALID_RESOLUTION));
+    assert.equal(result.event, 'blocked',
+      'settlement decides blocked/implementation-incomplete (required work unavailable)');
+    assert.ok(result.completion, 'an explicit ModuleCompletion carries the certificate');
+    assert.equal(result.completion.outcome, 'blocked');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 46 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, true);
+    assert.equal(projection.summary.pending, 0,
+      'the repaired route leaves NO unexplained pending row');
+    assert.equal(projection.summary.terminalBlocked, 2);
+    assert.equal(projection.summary.discharged, 0,
+      'an incomplete implementation never discharges a verification obligation');
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-blocked');
+      assert.equal(entry.terminalRoute, 'blocked');
+      assert.ok(entry.terminalReasonCodes.includes('implementation-incomplete'),
+        'the terminal fact names the settlement reason verbatim');
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:46:[0-9a-f]{64}$/,
+        'provenance is the exact settlement certificate');
+      assert.deepEqual(entry.terminalAttributedTo, []);
+    }
+    assertVerificationAccountingIntegrity(projection);
+
+    // Crash-resume replay of the same settlement appends nothing new.
+    settle(settleContext(46, developmentCase, VALID_RESOLUTION));
+    const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 46)
+      .filter(e => e.entryState === 'terminal-blocked');
+    assert.equal(terminalEvents.length, 2,
+      'terminal facts are idempotent per settlement certificate');
+    assertVerificationAccountingIntegrity(
+      projectDevelopmentVerificationAccounting(db, { processRunId: 46 }));
+  } finally {
+    db.close();
+  }
+});
+
+test('counterexample repair, certify-product-readiness failed: settlement records terminal-blocked with the failed readiness receipt', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 47);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 47, developmentCase, graph });
+    // Implementation completed and was accepted; the readiness cell then
+    // terminal-failed on a deterministic product defect (no candidate was
+    // ever bound) — the real settlement input of the repaired route
+    // (certify-product-readiness --domain.failed--> settle-development).
+    seedAcceptedImplementation(db, 47);
+    seedFailedProductReadiness(db, 47);
+
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(47, developmentCase, VALID_RESOLUTION));
+    assert.equal(result.event, 'blocked');
+    assert.equal(result.completion.outcome, 'blocked');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 47 });
+    assert.ok(projection);
+    assert.equal(projection.summary.pending, 0);
+    assert.equal(projection.summary.terminalBlocked, 2);
+    assert.equal(projection.summary.terminalUnknown, 0,
+      'a deterministic product failure is terminal-BLOCKED, never environment uncertainty');
+    assert.equal(projection.summary.terminalHumanRequired, 0);
+    assert.equal(projection.summary.discharged, 0);
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-blocked');
+      assert.ok(
+        entry.terminalReasonCodes.includes('candidate-missing')
+        && entry.terminalReasonCodes.includes('local-readiness-failed'),
+        'the terminal fact carries the X3 settlement verdict verbatim');
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:47:[0-9a-f]{64}$/);
+    }
+    assertVerificationAccountingIntegrity(projection);
+
+    // Idempotent replay appends nothing new.
+    settle(settleContext(47, developmentCase, VALID_RESOLUTION));
+    const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 47)
+      .filter(e => e.entryState === 'terminal-blocked');
+    assert.equal(terminalEvents.length, 2);
+    assertVerificationAccountingIntegrity(
+      projectDevelopmentVerificationAccounting(db, { processRunId: 47 }));
+  } finally {
+    db.close();
+  }
+});
+
+test('pauses stay honestly pending: no settlement decision means no terminal fact and no invariant violation', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 48);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 48, developmentCase, graph });
+    // A human park (workplace paused, human_required) — the run is PAUSED,
+    // not settled: the cell executor surfaces a runtime pause, no flow
+    // terminal edge fires, settlement never runs.
+    const gateRef = 'workplace/48/development-implementation/impl-1';
+    db.prepare(`INSERT INTO factory_workplaces VALUES (?,?,?,?,?)`)
+      .run(gateRef, 48, 'development-implementation', 'paused', 'human_required');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 48 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, false,
+      'a pause records no terminal route');
+    assert.equal(projection.summary.pending, 2,
+      'a paused run keeps its obligations honestly pending');
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'pending');
+      assert.equal(entry.stage.gatedBy, 'certify-product-readiness');
+      assert.ok(entry.unblockCondition, 'the deferral/unblock truth stays visible');
+    }
+    // The TERMINAL INVARIANT is not triggered — integrity holds WITHOUT any
+    // terminal fact, because nothing terminalized the run. A pause is a
+    // truthful typed wait, not an unexplained pending row at a terminal.
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+test('pre-ledger terminal exit has nothing to account: no graph, no rows, no terminal facts needed', () => {
+  const db = makeDb();
+  try {
+    // The planner cell failed BEFORE resolve-task-graph ever ran — the only
+    // remaining terminal exit that bypasses settlement, and lawfully so: the
+    // ledger opens at graph materialization, so the run has zero ledger rows
+    // and the terminal route recorder is a typed no-op.
+    insertProcessRun(db, 49);
+    makeStore(db);
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 49 });
+    assert.equal(projection, null,
+      'no materialized graph and no ledger rows -> nothing to account');
+
+    // The legacy guard: recording against a run with no rows appends nothing
+    // (a pre-ledger terminal exit cannot fabricate accounting rows).
+    recordVerificationTerminalRoute(db, {
+      processRunId: 49, route: 'blocked',
+      reasonCodes: ['planner-cell-failed'],
+      provenanceRef: 'outcome:failed',
+    });
+    assert.equal(readDevelopmentVerificationLedgerEvents(db, 49).length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('v1->v2 migration CHECK parity: a migrated table enforces the exact fresh-v2 column contract', () => {
+  const db = makeDb();
+  try {
+    // Build the exact pre-repair v1 shape (mirrors the migration test above).
+    makeStore(db);
+    insertProcessRun(db, 50);
+    db.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_update`);
+    db.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_delete`);
+    db.exec(`DROP TABLE factory_development_verification_ledger`);
+    db.exec(`
+      CREATE TABLE factory_development_verification_ledger (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id        INTEGER NOT NULL,
+        project_id            INTEGER NOT NULL,
+        epic_id               INTEGER NOT NULL,
+        graph_hash            TEXT NOT NULL,
+        criterion_key         TEXT NOT NULL,
+        verification_item_key TEXT NOT NULL,
+        required              INTEGER NOT NULL,
+        criticality           TEXT,
+        entry_state           TEXT NOT NULL
+                              CHECK (entry_state IN ('proposed','pending','executed','waived')),
+        outcome               TEXT,
+        candidate_hash        TEXT,
+        receipt_ref           TEXT,
+        receipt_digest        TEXT,
+        waiver_operator       TEXT,
+        waiver_reason         TEXT,
+        waiver_provenance_ref TEXT,
+        proposed_from_ref     TEXT,
+        recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+    db.prepare(`INSERT INTO factory_development_verification_ledger
+                 (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+                  verification_item_key,required,entry_state)
+                VALUES (?,?,?,?,?,?,?,?)`)
+      .run(50, PROJECT_ID, EPIC_ID, 'legacy-graph', '14:AC-1', 'verify-ac-1', 1, 'pending');
+    ensureDevelopmentVerificationLedgerSchema(db);
+
+    const shape = db.prepare(
+      `SELECT sql FROM sqlite_master
+        WHERE type='table' AND name='factory_development_verification_ledger'`,
+    ).get().sql
+      // The migrated table is created via __v2 + RENAME, so SQLite renders
+      // its own name quoted; normalize that away — the CONTRACT under
+      // comparison is the column/CHECK shape, not the identifier quoting.
+      .replace(/"factory_development_verification_ledger"/g, 'factory_development_verification_ledger')
+      .replace(/\s+/g, ' ').trim();
+
+    // The migrated table's CREATE statement is byte-identical (modulo
+    // whitespace) to the fresh-v2 shape — no CHECK may exist on one surface
+    // and not the other (the reviewer advisory drift).
+    const fresh = makeDb();
+    try {
+      ensureDevelopmentVerificationLedgerSchema(fresh);
+      const freshShape = fresh.prepare(
+        `SELECT sql FROM sqlite_master
+          WHERE type='table' AND name='factory_development_verification_ledger'`,
+      ).get().sql.replace(/\s+/g, ' ').trim();
+      assert.equal(shape, freshShape,
+        'a migrated v1 table enforces the exact fresh-v2 column CHECK contract');
+    } finally {
+      fresh.close();
+    }
+
+    // The drifted CHECKs bite on the migrated surface: a malformed
+    // criticality / terminal_reason_codes / terminal_attributed_to is
+    // rejected exactly like on a fresh v2 table.
+    const insert = `INSERT INTO factory_development_verification_ledger
+                      (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+                       verification_item_key,required,entry_state,criticality,
+                       terminal_reason_codes,terminal_provenance_ref,terminal_attributed_to)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
+    for (const [label, valueIndex] of [
+      ['criticality', 8],
+      ['terminal_reason_codes', 9],
+      ['terminal_attributed_to', 11],
+    ]) {
+      const row = [
+        50, PROJECT_ID, EPIC_ID, 'legacy-graph', '14:AC-1', 'verify-ac-1', 1,
+        'terminal-blocked', null, null, 'development-settlement:50:x', null,
+      ];
+      row[valueIndex] = valueIndex === 8 ? 'bogus-criticality' : 'not-json';
+      assert.throws(
+        () => db.prepare(insert).run(...row),
+        /CHECK constraint failed/,
+        `the migrated table enforces the fresh-v2 ${label} CHECK`,
+      );
+    }
+    // Sanity: the lawful terminal fact still appends on the migrated table.
+    recordVerificationTerminalRoute(db, {
+      processRunId: 50, route: 'human-required',
+      reasonCodes: ['human-decision-required'],
+      provenanceRef: 'development-settlement:50:proof',
+      attributedTo: ['workplace/50/gate/1'],
+    });
+    assert.equal(
+      readDevelopmentVerificationLedgerEvents(db, 50)
+        .filter(e => e.entryState === 'terminal-human-required').length,
+      1,
+    );
+  } finally {
+    db.close();
   }
 });

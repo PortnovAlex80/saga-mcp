@@ -149,7 +149,9 @@ function migrateLedgerV1ToV2(db: Database.Database): void {
         criterion_key         TEXT NOT NULL,
         verification_item_key TEXT NOT NULL,
         required              INTEGER NOT NULL,
-        criticality           TEXT,
+        criticality           TEXT
+                              CHECK (criticality IS NULL
+                                     OR criticality IN ('blocker','degradable','nice_to_have')),
         entry_state           TEXT NOT NULL
                                 CHECK (entry_state IN ('proposed','pending','executed','waived',
                                                        'terminal-unknown','terminal-blocked',
@@ -164,11 +166,15 @@ function migrateLedgerV1ToV2(db: Database.Database): void {
         waiver_provenance_ref TEXT,
         proposed_from_ref     TEXT,
         terminal_route        TEXT
-                                CHECK (terminal_route IS NULL
-                                       OR terminal_route IN ('unknown','blocked','human-required')),
-        terminal_reason_codes TEXT,
+                              CHECK (terminal_route IS NULL
+                                     OR terminal_route IN ('unknown','blocked','human-required')),
+        terminal_reason_codes TEXT
+                              CHECK (terminal_reason_codes IS NULL
+                                     OR terminal_reason_codes LIKE '[%'),
         terminal_provenance_ref TEXT,
-        terminal_attributed_to TEXT,
+        terminal_attributed_to TEXT
+                              CHECK (terminal_attributed_to IS NULL
+                                     OR terminal_attributed_to LIKE '[%'),
         recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);

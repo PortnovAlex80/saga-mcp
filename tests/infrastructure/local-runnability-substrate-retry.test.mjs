@@ -553,7 +553,7 @@ test('follow-up BLOCKING: a stale POSITIVE cache over a genuinely down daemon ne
     // has since gone down. Without the start-of-check invalidation the
     // precondition probe trusts the stale cache, the pull then fails against
     // the dead daemon, and the check records LOCAL_RUNNABILITY_DOCKER_
-    // PULL_FAILED → 'failed' (upstream → complete-failed) with zero retries.
+    // PULL_FAILED → 'failed' (upstream-owned verdict; the flow routes it through settlement) with zero retries.
     seedDockerAvailabilityCacheForTests({ available: true, linux: true });
     // The REAL production executor selector (no injection): the profile
     // declares environment.image, so DockerReadinessExecutor.prepare is the
@@ -597,7 +597,7 @@ const CERTIFY_NODE = developmentProcessModule.flow.nodes
   .find(node => node.id === 'certify-product-readiness');
 const CERTIFY_PLAN = CERTIFY_NODE.cellDefinition.authorGate.checkPlan;
 
-test('installed plan contract: runnability unknown routes human-required to complete-blocked; genuine failures stay upstream→complete-failed', () => {
+test('installed plan contract: runnability unknown routes human-required to complete-blocked; genuine failures stay upstream→failed verdict→settlement', () => {
   const runnabilityEntry = CERTIFY_PLAN.entries
     .find(entry => entry.check.providerId === 'factory.local-runnability.v1');
   assert.ok(runnabilityEntry, 'the readiness plan owns local runnability');
@@ -605,12 +605,26 @@ test('installed plan contract: runnability unknown routes human-required to comp
   // disposition (back to author repair, or to a failure route) fails here —
   // an unknown substrate receipt must STOP THE LINE, not repair, not fail.
   assert.equal(runnabilityEntry.indeterminateDisposition, 'human-required');
-  // Genuine product failures keep the upstream escalation route.
+  // Genuine product failures keep the upstream escalation at the GATE: a
+  // deterministic red check is a producer verdict ('failed'), never a
+  // workplace-local repair round.
   assert.equal(runnabilityEntry.failureOwnership, 'upstream');
   // The cell routes human_required to the blocked/resumable terminal.
   assert.equal(CERTIFY_NODE.cellDefinition.transitions.humanRequired, 'complete-blocked');
-  assert.equal(CERTIFY_NODE.cellDefinition.transitions.failed, 'complete-failed');
+  // CC-GAP-8 terminal accounting: the failed verdict routes through the
+  // settlement kernel (NOT the bare complete-failed emitter) — the ledger is
+  // open by then, so only settlement may terminalize the run. Settlement's
+  // X3 failed-receipt read decides blocked / candidate-missing /
+  // local-readiness-failed and records the terminal-route facts; the gate
+  // verdict 'failed' (asserted by the control test below) is what feeds it.
+  assert.equal(CERTIFY_NODE.cellDefinition.transitions.failed, 'settle-development');
   assert.equal(CERTIFY_NODE.cellDefinition.transitions.accepted, 'bind-runnable-candidate');
+  // The flow table agrees with the cell declaration — the post-ledger
+  // failure edge targets settlement on both surfaces.
+  assert.ok(developmentProcessModule.flow.transitions.some(transition =>
+    transition.from === 'certify-product-readiness'
+      && transition.on === 'domain.failed'
+      && transition.to === 'settle-development'));
   // The blocked outcome is a truthful non-failure terminal (Development
   // outcomes: verified | blocked | failed) — resumable through the
   // continuation machinery, distinct from the failed terminal.
@@ -695,11 +709,15 @@ test('BLOCKING MUTATION a: substrate-exhausted certification gate → human_requ
 });
 
 test('control: a genuine product failure still escalates failed (upstream) through the same gate', { timeout: 120_000 }, async () => {
-  // Preserve genuine product failures as failed/upstream/complete-failed:
-  // the runnability provider deterministically refutes the product (red
-  // test command output) → receipt 'failed' → verdict 'failed' → the cell's
-  // failedTransition (complete-failed). This control proves the CC-GAP-9
-  // routing change did not soften product-failure semantics.
+  // Preserve genuine product failures as failed/upstream: the runnability
+  // provider deterministically refutes the product (red test command output)
+  // → receipt 'failed' → verdict 'failed'. This control proves the CC-GAP-9
+  // routing change did not soften product-failure semantics AT THE GATE. The
+  // cell's failed transition then routes that verdict through
+  // settle-development (CC-GAP-8: only settlement terminalizes a post-ledger
+  // run), where the X3 failed-receipt read settles blocked /
+  // candidate-missing / local-readiness-failed — pinned by the
+  // verification-ledger suite's certify-failed settlement test.
   const root = fixtureRepo();
   const db = substrateStore(root);
   const { manifestDigest, submissionId } = insertDockerManifest(db);
@@ -745,7 +763,7 @@ test('control: a genuine product failure still escalates failed (upstream) throu
       presentationRef: 'worker-execution:product-failure-control',
     });
     assert.equal(result.decision.verdict, 'failed',
-      'genuine product failures keep the upstream failed → complete-failed route');
+      'genuine product failures keep the upstream failed verdict at the gate');
   } finally {
     installDockerInfoProbeForTests(null);
     resetDockerAvailabilityCache();
