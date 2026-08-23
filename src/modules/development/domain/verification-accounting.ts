@@ -628,6 +628,13 @@ export function assertVerificationAccountingIntegrity(
  *  - a `verified` settlement that left a non-required obligation unexecuted
  *    routes to `blocked` with the explicit `verification-item-not-required`
  *    reason (it was never required for settlement — still never discharged).
+ *    DEFENSIVE-ONLY (claim narrowed by the CC-GAP-8 independent audit): the
+ *    reference task-graph policy requires every verification item to be
+ *    `required` (a non-required item is `verification-plan-coverage-gap` and
+ *    settles `failed`), so under the installed reference policies a verified
+ *    settlement cannot leave an unexecuted obligation. The branch guards
+ *    future policy evolution / custom policy ports and is pinned by the
+ *    pure-classifier proof plus a real-seam unreachability test.
  */
 export function classifyVerificationTerminalRoute(input: {
   decision: string;

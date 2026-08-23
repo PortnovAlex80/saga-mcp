@@ -269,6 +269,12 @@ export function openVerificationLedgerAtGraphMaterialization(
  * recorded but is NOT a discharge. Legacy runs (no ledger rows at all) are
  * skipped silently — legacy typing must stay whole; a run WITH rows but no
  * entry for the criterion fails closed (partial accounting is a defect).
+ *
+ * The appended fact carries the SAME `verification_item_key` and `required`
+ * truth as the opening proposed/pending fact (read from the ledger, never
+ * re-asserted by the caller): an optional obligation (`required=false`) must
+ * not morph into a required one in the raw event history just because it
+ * executed.
  */
 export function recordVerificationExecuted(
   db: Database.Database,
@@ -286,11 +292,15 @@ export function recordVerificationExecuted(
   const graphHash = readLedgerGraphHash(db, input.processRunId);
   if (graphHash === null) return; // legacy run: never partially accounted
   const opened = db.prepare(
-    `SELECT COUNT(*) AS n FROM ${LEDGER_TABLE}
+    `SELECT verification_item_key,required FROM ${LEDGER_TABLE}
       WHERE process_run_id=? AND criterion_key=?
-        AND entry_state IN ('proposed','pending')`,
-  ).get(input.processRunId, input.criterionKey) as { n: number };
-  if (opened.n === 0) {
+        AND entry_state IN ('proposed','pending')
+      ORDER BY id LIMIT 1`,
+  ).get(input.processRunId, input.criterionKey) as {
+    verification_item_key: string;
+    required: number;
+  } | undefined;
+  if (!opened) {
     throw new Error(
       `DEVELOPMENT_VERIFICATION_LEDGER_ENTRY_UNKNOWN: ${input.processRunId}/${input.criterionKey}`,
     );
@@ -314,8 +324,8 @@ export function recordVerificationExecuted(
     input.processRunId,
     graphHash,
     input.criterionKey,
-    input.verificationItemKey,
-    1,
+    opened.verification_item_key,
+    opened.required,
     'executed',
     input.outcome,
     input.candidateHash,

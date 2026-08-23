@@ -33,6 +33,17 @@
 //     accounting of one criterion fails integrity);
 //   - the REAL settlement kernel seam records the classified terminal facts
 //     (Elite-6 readiness-failure shape -> terminal-unknown);
+//   - INDEPENDENT AUDIT (B1): the REAL settle handler is driven through
+//     EVERY terminal route — the exception path
+//     (terminal-blocked/settlement-infrastructure-error), the decision-failed
+//     route, the human-required attribution (exact open gate ids), and the
+//     never-overwrite rule for executed product verdicts; the
+//     verified/not-required leftover branch is proven STRUCTURALLY
+//     UNREACHABLE under the reference policies (non-required verification
+//     items settle failed/verification-plan-coverage-gap) — defensive-only,
+//     pinned by the pure-classifier test;
+//   - executed facts carry the opening obligation truth (an optional ledger
+//     item records required=false — never a hardcoded required=true);
 //   - the render guard never fabricates executed verification (BLOCKING
 //     MUTATION: rendering terminal-unknown as executed/discharged fails).
 import { test } from 'node:test';
@@ -1436,6 +1447,400 @@ test('settlement kernel seam: the REAL settle handler records terminal-unknown f
     const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 37)
       .filter(e => e.entryState === 'terminal-unknown');
     assert.equal(terminalEvents.length, 2, 'terminal facts are idempotent per settlement certificate');
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CC-GAP-8 INDEPENDENT AUDIT (B1): EVERY terminal route through the REAL
+// settlement kernel seam. d58ee94a claimed terminal facts on every terminal
+// route but only drove the readiness/unknown shape for real; these tests
+// drive the REAL settle handler through the exception path
+// (settlement-infrastructure-error), the decision-failed route, the
+// human-required attribution, the never-overwrite rule for executed product
+// verdicts, and prove the verified/not-required leftover branch is
+// structurally unreachable under the reference policies (claim narrowed —
+// see verification-accounting.ts).
+// ---------------------------------------------------------------------------
+
+/** Wire the REAL settle handler exactly like the installed module: real
+ *  settlement-state store seam, real reference settlement policy, in-memory
+ *  idempotent certificate repo. Only the resolver-side ports the settle node
+ *  never touches are inert stubs. */
+function makeSettleHandler(store) {
+  const handlers = createDevelopmentKernelHandlers({
+    plannerSubmissions: { readLatestForNode: () => null, readLatestForTask: () => null },
+    ledger: { listPresentations: () => [] },
+    graph: { readArtifactsByIds: () => [], readTracesByIds: () => [] },
+    taskGraph: store,
+    settlementState: store,
+    outputRepository: {
+      persist: () => { throw new Error('not reached'); },
+      readByProcessRun: () => null,
+    },
+    taskGraphPolicy: { validate: () => ({ valid: true, reasonCodes: [], errors: [] }) },
+    settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
+    certificateRepository: makeCertificateRepo(),
+  });
+  return handlers['development-settlement-policy'];
+}
+
+function settleContext(processRunId, runInput, productions) {
+  return {
+    projectId: PROJECT_ID,
+    epicId: EPIC_ID,
+    processRunId,
+    node: { id: 'settle-development' },
+    input: runInput,
+    frame: { runInput, productions },
+    heartbeat: () => {},
+    initiatedBy: 'operator',
+  };
+}
+
+const VALID_RESOLUTION = { 'resolve-task-graph': { bindings: { resolutionStatus: 'valid' } } };
+
+test('settlement kernel seam: the REAL exception path records terminal-blocked/settlement-infrastructure-error', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 42);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 42, developmentCase, graph });
+
+    // Drive the REAL handler through its exception path: a mismatched
+    // DevelopmentCase makes requireDevelopmentCase throw inside the try, so
+    // settlement terminalizes via developmentSettlementFailure — the
+    // production exception seam, not a hand-fed recorder call.
+    const settle = makeSettleHandler(store);
+    const brokenCase = { ...developmentCase, epicId: EPIC_ID + 1 };
+    const result = settle(settleContext(42, brokenCase, {}));
+    assert.equal(result.event, 'failed');
+    assert.ok(
+      result.production.bindings.settlementError.includes('DevelopmentCase'),
+      'the failure binding names the settlement error',
+    );
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 42 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, true);
+    assert.equal(projection.summary.terminalBlocked, 2);
+    assert.equal(projection.summary.pending, 0,
+      'no unexplained pending row may survive the terminal exception route');
+    assert.equal(projection.summary.discharged, 0,
+      'an infrastructure failure never discharges an obligation');
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-blocked');
+      assert.equal(entry.terminalRoute, 'blocked');
+      assert.deepEqual(entry.terminalReasonCodes, ['settlement-infrastructure-error'],
+        'the exception path carries its dedicated reason code');
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:42:[0-9a-f]{64}$/,
+        'provenance is the exact settlement failure certificate');
+      assert.deepEqual(entry.terminalAttributedTo, []);
+      assert.equal(entry.discharged, false);
+      assert.equal(entry.discharge, null);
+    }
+    assertVerificationAccountingIntegrity(projection);
+
+    // Crash-resume replay of the SAME failing settlement appends nothing new
+    // (deterministic certificate -> idempotent terminal facts).
+    const replay = settle(settleContext(42, brokenCase, {}));
+    assert.equal(replay.event, 'failed');
+    const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 42)
+      .filter(e => e.entryState === 'terminal-blocked');
+    assert.equal(terminalEvents.length, 2,
+      'terminal facts are idempotent per failure certificate');
+    assertVerificationAccountingIntegrity(
+      projectDevelopmentVerificationAccounting(db, { processRunId: 42 }));
+  } finally {
+    db.close();
+  }
+});
+
+test('settlement kernel seam: the REAL decision-failed route records terminal-blocked with the settlement reason codes', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 43);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 43, developmentCase, graph });
+
+    // A FAILED graph resolution terminates settlement without cell products:
+    // the real handler branch settles decision='failed' and must account
+    // every still-pending obligation as an explicit terminal fact.
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(43, developmentCase, {
+      'resolve-task-graph': {
+        bindings: {
+          resolutionStatus: 'failed',
+          error: 'planner submission rejected: schema mismatch',
+        },
+      },
+    }));
+    assert.equal(result.event, 'failed');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 43 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, true);
+    assert.equal(projection.summary.terminalBlocked, 2);
+    assert.equal(projection.summary.pending, 0);
+    assert.equal(projection.summary.discharged, 0);
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-blocked');
+      assert.deepEqual(entry.terminalReasonCodes, ['infrastructure-error'],
+        'the terminal fact carries the settlement reason codes verbatim');
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:43:[0-9a-f]{64}$/);
+      assert.equal(entry.discharged, false);
+    }
+    assertVerificationAccountingIntegrity(projection);
+
+    // Re-driving the same failed settlement (resume replay) appends nothing.
+    settle(settleContext(43, developmentCase, {
+      'resolve-task-graph': {
+        bindings: {
+          resolutionStatus: 'failed',
+          error: 'planner submission rejected: schema mismatch',
+        },
+      },
+    }));
+    const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 43)
+      .filter(e => e.entryState === 'terminal-blocked');
+    assert.equal(terminalEvents.length, 2, 'decision-failed terminal facts are idempotent');
+  } finally {
+    db.close();
+  }
+});
+
+test('settlement kernel seam: an open human gate routes terminal-human-required with exact attribution', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 44);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 44, developmentCase, graph });
+    // A paused human-gate workplace of this run: buildSettlementInput reads
+    // it as an open human decision (readPausedWorkplaces) — the real seam
+    // input for the human-required classification.
+    const gateRef = 'workplace/44/development-human-gate/approval-1';
+    db.prepare(`INSERT INTO factory_workplaces VALUES (?,?,?,?,?)`)
+      .run(gateRef, 44, 'development-human-gate', 'paused', 'human_required');
+
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(44, developmentCase, VALID_RESOLUTION));
+    assert.equal(result.event, 'blocked', 'no candidate was bound yet');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 44 });
+    assert.ok(projection);
+    assert.equal(projection.summary.terminalHumanRequired, 2);
+    assert.equal(projection.summary.pending, 0,
+      'an open human gate still closes every pending row with an explicit fact');
+    assert.equal(projection.summary.discharged, 0);
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-human-required');
+      assert.equal(entry.terminalRoute, 'human-required');
+      assert.deepEqual(entry.terminalAttributedTo, [gateRef],
+        'the fact names the exact open human gate');
+      assert.ok(entry.terminalReasonCodes.includes('human-decision-required'));
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:44:[0-9a-f]{64}$/);
+      assert.equal(entry.discharged, false);
+    }
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+test('settlement kernel seam: the terminal route never overwrites an executed product verdict', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 45);
+    const { store, products } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 45, developmentCase, graph });
+    // One criterion executed with a FAILED trusted receipt (recorded via the
+    // real settlement-state seam), the sibling still pending.
+    seedAcceptedVerification(db, {
+      processRunId: 45, criterionKey: '14:AC-1', itemKey: 'verify-ac-1',
+      criterionHash: HASH_1, outcome: 'failed', receiptRef: 'check-receipt:fail-45',
+    });
+    persistCandidate(products, 45);
+    store.buildSettlementInput({ processRunId: 45, developmentCase });
+
+    // Real settle: implementation never completed -> blocked. The terminal
+    // route must close ONLY the still-pending sibling; the executed FAILED
+    // product verdict stays an executed fact (never flattened, never
+    // discharged).
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(45, developmentCase, VALID_RESOLUTION));
+    assert.equal(result.event, 'blocked');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 45 });
+    assert.ok(projection);
+    const failed = projection.entries.find(e => e.criterionKey === '14:AC-1');
+    const terminal = projection.entries.find(e => e.criterionKey === '15:AC-2');
+    assert.equal(failed.state, 'executed',
+      'an executed product verdict is never overwritten by a terminal route');
+    assert.equal(failed.outcome, 'failed');
+    assert.equal(failed.discharged, false);
+    assert.equal(failed.terminalRoute, null);
+    assert.equal(terminal.state, 'terminal-blocked');
+    assert.ok(terminal.terminalReasonCodes.includes('implementation-incomplete'));
+    assert.equal(terminal.discharged, false);
+    assert.equal(projection.summary.executedFailed, 1);
+    assert.equal(projection.summary.terminalBlocked, 1);
+    assert.equal(projection.summary.pending, 0);
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+const HASH_3 = '3'.repeat(64);
+
+/** Case + graph carrying a THIRD, NON-REQUIRED verification item
+ *  (verify-ac-3 / 16:AC-3). The reference task-graph policy forbids
+ *  non-required verification items — this fixture exists to prove that
+ *  prohibition on the real seam and to exercise the ledger's optional-item
+ *  shape. */
+function makeOptionalVerificationCase() {
+  const developmentCase = makeDevelopmentCase();
+  return {
+    ...developmentCase,
+    acceptanceCriteria: [
+      ...developmentCase.acceptanceCriteria,
+      {
+        artifactId: 16, code: 'AC-3', acceptedHash: HASH_3,
+        implementationRequired: true, criticality: 'nice_to_have',
+      },
+    ],
+  };
+}
+
+function makeOptionalVerificationGraph(developmentCase) {
+  const proposal = {
+    schemaVersion: 'factory.development-task-graph-proposal.v1',
+    implementationItems: [{
+      key: 'impl-1', kind: 'implementation', taskKind: 'development.code',
+      executionSkill: 'saga-managed-source-author', executionMode: 'artifact_change',
+      projectRepositoryId: REPO_ID,
+      acceptanceCriterionKeys: ['14:AC-1', '15:AC-2', '16:AC-3'],
+      dependsOnKeys: [], changeScopes: ['src/'], required: true, criticality: 'blocker',
+    }],
+    verificationItems: [
+      {
+        key: 'verify-ac-1', kind: 'verification', taskKind: 'verification.ac',
+        executionSkill: 'saga-verifier', executionMode: 'read_only_evidence',
+        projectRepositoryId: REPO_ID, acceptanceCriterionKeys: ['14:AC-1'],
+        dependsOnKeys: ['impl-1'], changeScopes: [], required: true, criticality: 'blocker',
+      },
+      {
+        key: 'verify-ac-2', kind: 'verification', taskKind: 'verification.ac',
+        executionSkill: 'saga-verifier', executionMode: 'read_only_evidence',
+        projectRepositoryId: REPO_ID, acceptanceCriterionKeys: ['15:AC-2'],
+        dependsOnKeys: ['impl-1'], changeScopes: [], required: true, criticality: 'degradable',
+      },
+      {
+        key: 'verify-ac-3', kind: 'verification', taskKind: 'verification.ac',
+        executionSkill: 'saga-verifier', executionMode: 'read_only_evidence',
+        projectRepositoryId: REPO_ID, acceptanceCriterionKeys: ['16:AC-3'],
+        dependsOnKeys: ['impl-1'], changeScopes: [], required: false, criticality: 'nice_to_have',
+      },
+    ],
+    integrationTargets: [{
+      projectRepositoryId: REPO_ID, sourceWorkItemKeys: ['impl-1'],
+      targetBranch: 'dev', expectedBaseCommit: 'b'.repeat(40),
+    }],
+  };
+  return buildCanonicalDevelopmentTaskGraph(developmentCase, proposal, {
+    schema: 'factory.development-task-graph-proposal.v1',
+    ref: 'managed-node-submission:9003',
+    hash: '3'.repeat(64),
+  });
+}
+
+test('settlement kernel seam: a non-required verification item cannot reach verified — the reference policy fails it (claim narrowed)', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 46);
+    const { store } = makeStore(db);
+    db.prepare(`INSERT INTO artifacts VALUES
+      (16, 2, 'AC', 'AC-3', 'accepted', ?, ?, 'clean')`).run(HASH_3, HASH_3);
+    const developmentCase = makeOptionalVerificationCase();
+    const graph = makeOptionalVerificationGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 46, developmentCase, graph });
+
+    // REAL reference settlement policy: the optional verification item is a
+    // verification-plan-coverage-gap, so settlement decides failed BEFORE
+    // any verified/leftover state could exist. The classifier's
+    // verified/not-required branch (pinned by the pure-classifier test
+    // above) is therefore DEFENSIVE-ONLY under the installed policies — the
+    // d58ee94a claim is narrowed to exactly this.
+    const settle = makeSettleHandler(store);
+    const result = settle(settleContext(46, developmentCase, VALID_RESOLUTION));
+    assert.equal(result.event, 'failed');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 46 });
+    assert.ok(projection);
+    assert.equal(projection.summary.terminalBlocked, 3,
+      'all three obligations (including the optional one) get explicit terminal facts');
+    assert.equal(projection.summary.pending, 0);
+    assert.equal(projection.summary.discharged, 0);
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-blocked');
+      assert.ok(entry.terminalReasonCodes.includes('verification-plan-coverage-gap'),
+        'the reference policy rejects the optional verification item');
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:46:[0-9a-f]{64}$/);
+      assert.equal(entry.discharged, false);
+    }
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+test('executed facts carry the opening obligation truth: an optional ledger item records required=false', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 47);
+    const { store } = makeStore(db);
+    db.prepare(`INSERT INTO artifacts VALUES
+      (16, 2, 'AC', 'AC-3', 'accepted', ?, ?, 'clean')`).run(HASH_3, HASH_3);
+    const developmentCase = makeOptionalVerificationCase();
+    const graph = makeOptionalVerificationGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 47, developmentCase, graph });
+
+    // The opening facts record the optional obligation truthfully.
+    const opening = readDevelopmentVerificationLedgerEvents(db, 47)
+      .filter(e => e.criterionKey === '16:AC-3');
+    assert.equal(opening.length, 2, 'proposed + pending');
+    assert.ok(opening.every(e => e.required === false));
+    assert.ok(opening.every(e => e.verificationItemKey === 'verify-ac-3'));
+
+    recordVerificationExecuted(db, {
+      processRunId: 47, criterionKey: '16:AC-3', verificationItemKey: 'verify-ac-3',
+      outcome: 'passed', receiptRef: 'check-receipt:opt-pass',
+      receiptDigest: sha256Hex('opt-pass'), candidateHash: CANDIDATE_HASH,
+    });
+    const executed = readDevelopmentVerificationLedgerEvents(db, 47)
+      .filter(e => e.entryState === 'executed');
+    assert.equal(executed.length, 1);
+    assert.equal(executed[0].criterionKey, '16:AC-3');
+    assert.equal(executed[0].required, false,
+      'an executed fact must not morph an optional obligation into a required one');
+    assert.equal(executed[0].verificationItemKey, 'verify-ac-3');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 47 });
+    const optional = projection.entries.find(e => e.criterionKey === '16:AC-3');
+    assert.equal(optional.required, false);
+    assert.equal(optional.state, 'executed');
+    assert.equal(optional.discharged, true,
+      'the exact passed receipt still discharges an optional obligation');
+    assertVerificationAccountingIntegrity(projection);
   } finally {
     db.close();
   }
