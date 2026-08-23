@@ -216,7 +216,8 @@ reopens the run.
 ### Integration status (2026-08-23 refresh — branch truth, not closure)
 
 Remediation commits have landed on the integration branch
-`cc/CC-00B-terminal-integrity-integration` (HEAD `1f397348`):
+`cc/CC-00B-terminal-integrity-integration` (HEAD `aef699b4`; initially
+recorded at `1f397348` and advanced by the accepted K19 landings):
 
 | Gap | Landing |
 |---|---|
@@ -224,8 +225,8 @@ Remediation commits have landed on the integration branch
 | CC-GAP-3 (stale `running` WorkerExecution) | `9c2253e2` (receipt-authoritative terminal drain) + `f460ae84` (journal-payload strictness) |
 | CC-GAP-4 (duplicate `run.terminal`) | `dd89b40c` |
 | CC-GAP-5 (watchdog CLI drift) | `9205d9f5` |
-| Related CC-00C-scope landings on the same branch | CC-GAP-6 `50824c6a`, CC-GAP-8 base patch `8819e360` (exit REJECTED — terminal `unknown`/`human_required` projection/CI repair in progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING`), CC-GAP-10 `184b2c77`, proof-subset token-direction repair `3be7393d`, CC-GAP-1 test alignment `3ec49b6f`, CC-GAP-9 `830bce80` + post-REJECT repair `64c5fb81`, ADR-091 residual `61fccda7` + post-audit repair `417749f7` (provider `1.12.0`), CC-GLOB-SURFACE `66d04178` (source `5f3201c4`, accepted by two reviewers; two report-only residuals open: mixed literal/glob presentation and suffix-overclaim), CC-IC-1 `4c67f1d1` + `1f397348` (source `d1912c67` + `a03b5bf9`, accepted; focused integration build and focused suite 75/75) |
-| K19 (ADR-083 environment identity) | NOT integrated — no K19 commit is in `1f397348`; the bounded image/dependency identity slice (`2fbf0b9f`) stays on the K19 branches and the `1.14.0` repair `f3a58a30` is REJECTED (corrupted 65-character `1.3.1`–`1.11.0` trusted-provider baseline values; circular tests hid the corruption); a separate digest repair is in progress on `cc/CC-K19-DIGEST-REPAIR`; K19 remains incomplete beyond its bounded identity slice |
+| Related CC-00C-scope landings on the same branch | CC-GAP-6 `50824c6a`, CC-GAP-8 base ledger `8819e360` (base ledger landed; EXIT OPEN — terminal `unknown`/`human_required` projection/CI repair in progress on `cc/CC-GAP8-TERMINAL-ACCOUNTING`), CC-GAP-10 `184b2c77`, proof-subset token-direction repair `3be7393d`, CC-GAP-1 test alignment `3ec49b6f`, CC-GAP-9 `830bce80` + post-REJECT repair `64c5fb81`, ADR-091 residual `61fccda7` + post-audit repair `417749f7` (landed provider `1.12.0`; the K19 landings later moved the current pin to `1.14.0`), CC-GLOB-SURFACE `66d04178` (source `5f3201c4`, accepted by two reviewers; two report-only residuals open: mixed literal/glob presentation and suffix-overclaim), CC-IC-1 `4c67f1d1` + `1f397348` (source `d1912c67` + `a03b5bf9`, accepted; focused integration build and focused suite 75/75 — including the id-reorder and snake_case-at-verify reds, landed and green at the named host) |
+| K19 (ADR-083 environment identity) | bounded image/dependency identity slice + digest repair accepted by two reviewers and integrated: `bc6df0be` (registry manifest digest + dependency lock, provider `1.13.0`), `2b68b192` (repair after REJECT: atomic image observation, provider-boundary identity fence, exact trust migration, provider `1.14.0`), `aef699b4` (authentic `1.3.1`–`1.11.0` historical baselines with an independent history oracle; build + 40/40 green). The first `1.14.0` attempt `f3a58a30` was REJECTED (corrupted 65-character baseline values; circular tests hid the corruption) and was superseded by `2b68b192` + `aef699b4`; K19 remains incomplete beyond its bounded identity slice (package-store digest persistence, the ADR-077 keyed `toolchainDigests` component, and the remaining train commits stay open) |
 | CC-GAP-7 (CC-00C scope) | open — no warrant-execution landing |
 
 Landing is not closure, and this update marks nothing merged: none of
@@ -234,8 +235,9 @@ freeze, blocking regression proofs, deferred-run release) has not been
 re-audited, and neither this record, CC-00C, nor the plan is merged.
 The durable Elite-6 states described above remain exactly as frozen;
 CC-81/CC-82 must still verify each exit item before any gate passes. No
-production factory run is authorized while the K19 digest repair and the
-CC-GAP-8 exit repair are open (plan section 7C).
+production factory run is authorized while the CC-GAP-8 exit repair, the
+ADR-091 residual exit re-audit, and the K19 incomplete residuals are
+open (plan section 7C) — no qualification exit is claimed here.
 
 The Elite-6 experiment is complete and immutable, and product
 qualification failed. Product-claim integrity remediation (CC-GAP-6..10)
