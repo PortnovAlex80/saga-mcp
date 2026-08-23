@@ -8,11 +8,16 @@
 //       cutover gates, the C5 adversarial matrix, the LR-07 readiness binding);
 //   G3  the specific known flaky / pre-existing-red files are quarantined;
 //   G4  ci.yml has no hidden failures on blocking steps (no `|| true`, no
-//       continue-on-error) and the dispatcher-race step excludes the
-//       pre-existing-red worktree-isolation.mjs.
+//       continue-on-error), every matrix group is invoked by CI, and no CI
+//       step invokes a group the matrix no longer defines.
 //
 // This is the "small workflow-validation test" required by CI-02: it makes the
 // "no required deterministic suite is silently omitted" exit rule machine-checked.
+//
+// ADR-092: facts come from the MACHINE-READABLE matrix export
+// (run-acceptance-matrix.mjs --list-json) — the human --list text is never
+// parsed — and the required CI group set is DERIVED from that export (no
+// hardcoded group list can lag a rename or a new group).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -20,18 +25,25 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { extractInvokedGroups } from '../../tools/cc-proof-hosting-registry.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const runner = path.join(root, 'tools', 'run-acceptance-matrix.mjs');
 const ciPath = path.join(root, '.github', 'workflows', 'ci.yml');
 
-const list = spawnSync(process.execPath, [runner, '--list'], { cwd: root, encoding: 'utf8' });
-assert.equal(list.status, 0, `runner --list must exit 0 (got ${list.status})\n${list.stderr}`);
-const out = list.stdout;
+const list = spawnSync(process.execPath, [runner, '--list-json'], { cwd: root, encoding: 'utf8' });
+assert.equal(list.status, 0, `runner --list-json must exit 0 (got ${list.status})\n${list.stderr}`);
+let matrix;
+try {
+  matrix = JSON.parse(list.stdout);
+} catch (error) {
+  assert.fail(`--list-json must emit parseable JSON (ADR-092 machine surface): ${error.message}`);
+}
+assert.ok(matrix.groups && typeof matrix.groups === 'object', 'matrix export must carry a groups object');
+assert.ok(Array.isArray(matrix.quarantine), 'matrix export must carry a quarantine array');
 
-const runFiles = [...out.matchAll(/^\s*\[run\] (\S+)/gm)].map(m => m[1]);
-const quarantine = [...out.matchAll(/^\[quarantine\] (.+?) :: (.+?) :: (.+)$/gm)].map(
-  m => ({ path: m[1], kind: m[2], reason: m[3] }),
-);
+const runFiles = Object.values(matrix.groups).flatMap((g) => g.files);
+const quarantine = matrix.quarantine;
 
 const runSet = new Set(runFiles);
 const qSet = new Set(quarantine.map(q => q.path));
@@ -164,12 +176,27 @@ test('G4c: ci.yml does not run the blanket `npm test` step', () => {
   assert.ok(!/^\s*run:\s*npm\s+test\s*$/m.test(ci), 'ci.yml still runs blanket `npm test`');
 });
 
-test('G4d: ci.yml runs the acceptance-matrix runner for every required group', () => {
-  const requiredGroups = ['architecture', 'factory-model', 'readiness-fencing', 'factory-contract', 'process-modules', 'matrix-coverage'];
-  for (const g of requiredGroups) {
+test('G4d: ci.yml invokes EVERY acceptance-matrix group and no unknown group (derived from the machine-readable export)', () => {
+  // ADR-092: the required group set is DERIVED from the matrix export — a
+  // hardcoded list here could silently lag a group rename, a removal, or a
+  // newly added group (exactly how the CC-GAP-8 proof went orphaned).
+  // Direction 1: every matrix group must have a blocking CI step.
+  const matrixGroups = Object.keys(matrix.groups).sort();
+  assert.ok(matrixGroups.length >= 7, `expected at least 7 matrix groups, got ${matrixGroups.length}`);
+  for (const g of matrixGroups) {
     assert.ok(
       ci.includes(`--group ${g}`),
-      `ci.yml missing blocking step for group '${g}'`,
+      `ci.yml missing blocking step for matrix group '${g}'`,
+    );
+  }
+  // Direction 2: every `--group X` CI invokes must be a group the matrix
+  // still defines — a stale step after a rename/removal is dead wiring.
+  const invoked = [...new Set(extractInvokedGroups(ci))];
+  assert.ok(invoked.length >= 7, `expected ci.yml to invoke at least 7 groups, got ${invoked.length}`);
+  for (const g of invoked) {
+    assert.ok(
+      Object.hasOwn(matrix.groups, g),
+      `ci.yml invokes '--group ${g}' but the acceptance matrix defines no such group (stale wiring)`,
     );
   }
 });

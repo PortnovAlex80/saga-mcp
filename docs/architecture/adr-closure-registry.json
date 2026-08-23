@@ -1273,6 +1273,28 @@
         "src/infrastructure/verification/local-runnability-check-provider.ts and src/modules/development/application/candidate-check-contracts.ts — the trusted-provider digest fence, trust migration, and the provider version pin (1.10.0 here; 1.11.0 on the unintegrated CC-GAP-9 branch; 1.12.0 per this ADR)",
         "tests/factory-proof/obligation-contracts.mjs — the factory.local-runnability obligation: TARGET after the residual is implemented is compiled at 1.12.0 (this docs branch compiles at 1.10.0; the unintegrated CC-GAP-9 landing compiles at 1.11.0; no 1.12.0 compilation exists yet — never cited as present-tense evidence)"
       ]
+    },
+    {
+      "adr": "092",
+      "file": "092-cc-closure-proof-hosting-registry.md",
+      "decisionStatus": "accepted",
+      "closureState": "implemented",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "CC-U1/ADR-092 blocking mutations: a manifest blocking proof absent from its pinned acceptance-matrix group run-set is red (PROOF_NOT_HOSTED); a pinned group renamed/removed is red (GROUP_UNKNOWN) and its stale CI invocation is red (CI_INVOKES_UNKNOWN_GROUP); CI omitting a pinned group invocation is red (GROUP_NOT_INVOKED_BY_CI — a committed proof that proves nothing in CI, the CC-GAP-8 orphan class); quarantining a blocking proof is red (PROOF_QUARANTINED — reclassification is not an honest drop); a hosted proof typed pending is red (PENDING_ABSORBS_HOSTED — pending cannot absorb a blocking proof); pending rows without tracker/reason (or with a dangling tracker path) are red; a duplicate or missing file row is red; an unregistered file joining the cc-proof-registry group is red (REGISTRY_GROUP_WIDENED); an emptied manifest is red (MANIFEST_MALFORMED). Plus two real repo-level RED/GREEN cycles: removing the GAP-8 exact entry from process-modules fails both the cc-proof-registry group and coverage G2g; removing the CI step fails the validator with GROUP_NOT_INVOKED_BY_CI",
+      "successor": null,
+      "notes": "Accepted 2026-08-23 (MCDA Option C, 480/500 over A factory-proof wrapper 280 and B widening PROOF_CLAIMS 315; decision journal docs/architecture/decision-journal/2026-08-23-cc-u1-proof-hosting-registry.md). The CC closure proof-hosting manifest (tests/infrastructure/cc-proof-hosting-manifest.mjs) is the SOLE authority for the CC critical proof-hosting surface: typed blocking/pending rows, closed scope (CC-GAP-8 terminal accounting 2 files blocking; CC-GAP-2 terminal projection 1 hosted blocking + 2 orphans typed pending with tracker+reason), no marker scanning/auto-discovery (explicit exclusions). tests/factory-proof/proof-claims.mjs and its exact CC-10A bijection are preserved BYTE-FOR-BYTE (Option C exists so the frozen K1-D contract is never widened); coverage G2g and the GAP-8 exact hosting are preserved. Hardcoded CI group-invocation knowledge is replaced: tools/run-acceptance-matrix.mjs gains the machine-readable --list-json export consumed by validation/tests (human --list text never parsed), and coverage G4d derives its required CI group set from that export in BOTH directions (every matrix group invoked; every invoked group defined). Implementation landed same-commit: manifest + tools/cc-proof-hosting-registry.mjs validator + tests/infrastructure/cc-proof-hosting.test.mjs (21 assertions incl. the in-memory mutation battery m1-m13) in its own exact-file cc-proof-registry matrix group with its own CI step. Declared boundary: the manifest cannot detect a critical proof that never enters it — scope changes are reviewed manifest edits gated by the CC-U1 checklist item.",
+      "evidence": [
+        "tests/infrastructure/cc-proof-hosting-manifest.mjs — the sole-authority manifest (4 blocking + 2 typed pending rows)",
+        "tools/cc-proof-hosting-registry.mjs — the bidirectional fail-closed validator (pure core + repo facts loader + CLI)",
+        "tests/infrastructure/cc-proof-hosting.test.mjs — blocking proof: real-repo validation R1-R5 + mutation battery m1-m13 (21/21 green)",
+        "tools/run-acceptance-matrix.mjs — --list-json machine export + the exact-file cc-proof-registry group (GAP-8 exact hosting and QUARANTINE untouched)",
+        "tests/infrastructure/acceptance-matrix-coverage.test.mjs — JSON-export consumption; G2g preserved; G4d derived from the export both directions (18/18 green)",
+        ".github/workflows/ci.yml — the blocking cc-proof-registry CI step",
+        "docs/architecture/decision-journal/2026-08-23-cc-u1-proof-hosting-registry.md — MCDA 280/315/480, pre-mortem, independent challenge"
+      ]
     }
   ]
 }

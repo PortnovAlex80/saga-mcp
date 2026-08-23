@@ -19,11 +19,18 @@
 // Usage:
 //   node tools/run-acceptance-matrix.mjs                 # run every group (blocking)
 //   node tools/run-acceptance-matrix.mjs --group architecture
-//   node tools/run-acceptance-matrix.mjs --list          # coverage proof, run nothing
+//   node tools/run-acceptance-matrix.mjs --list          # coverage proof, run nothing (human)
+//   node tools/run-acceptance-matrix.mjs --list-json     # machine-readable export (ADR-092)
 //
 // Mirrors the directory-scan + --list style of run-process-module-tests.mjs.
 // The quarantine table below is the single source of truth; the coverage test
 // tests/infrastructure/acceptance-matrix-coverage.test.mjs asserts it.
+//
+// ADR-092 (CC-U1 proof registration): --list-json is the STRUCTURED group
+// registry consumed by validation and tests (acceptance-matrix-coverage,
+// cc-proof-hosting). Consumers MUST NOT regex-parse the human --list text:
+// the JSON export is the only supported machine surface, so notes/prose can
+// change without breaking a validator.
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync, existsSync } from 'node:fs';
@@ -95,6 +102,15 @@ const GROUPS = {
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
+  },
+  // ADR-092 / CC-U1: the CC closure proof-hosting registry. EXACT FILE on
+  // purpose (no directory glob): the run-set of this group must equal the
+  // manifest's blocking rows pinned to it (tools/cc-proof-hosting-registry.mjs
+  // proves the bijection), so the hosted CC proof-registry surface cannot
+  // silently widen or shrink.
+  'cc-proof-registry': {
+    globs: ['tests/infrastructure/cc-proof-hosting.test.mjs'],
+    note: 'CC-U1/ADR-092 proof-hosting registry — bidirectional closure between the CC critical proof manifest and the CI-invoked blocking matrix groups',
   },
   'factory-proof': {
     globs: [
@@ -243,6 +259,39 @@ function printList() {
   console.log(`[summary] groups=${groupNames.length} run-files=${totalRun} quarantined-files=${qExisting.length}`);
 }
 
+// --- --list-json: machine-readable matrix export (ADR-092) ------------------
+// The structured group registry consumed by validation/tests. Same truth as
+// --list (identical expansion, identical quarantine), stable shape:
+//   { schemaVersion, groups: { <name>: { files[], concurrency, note } },
+//     quarantine: [{ path, kind, reason }], quarantineEmptyGlobs: [...] }
+// Globs stay INTERNAL: only the expanded run-set is exported, so a consumer
+// can never mistake a declared glob for a proof that CI actually runs.
+function buildMatrixExport() {
+  const groups = {};
+  for (const name of Object.keys(GROUPS)) {
+    groups[name] = {
+      files: groupFiles(name).map(toPosix),
+      concurrency: GROUPS[name].concurrency ?? null,
+      note: GROUPS[name].note,
+    };
+  }
+  const quarantine = [];
+  for (const [abs, q] of quarantinedAbs) {
+    if (existsSync(abs)) {
+      quarantine.push({ path: toPosix(abs), kind: q.kind, reason: q.reason });
+    }
+  }
+  const quarantineEmptyGlobs = QUARANTINE
+    .filter((q) => expandGlob(q.glob).length === 0)
+    .map((q) => ({ glob: q.glob, kind: q.kind, reason: q.reason }));
+  return {
+    schemaVersion: 1,
+    groups,
+    quarantine,
+    quarantineEmptyGlobs,
+  };
+}
+
 // --- run --------------------------------------------------------------------
 function runGroup(name) {
   const files = groupFiles(name);
@@ -266,6 +315,10 @@ function runGroup(name) {
 const args = process.argv.slice(2);
 if (args.includes('--list')) {
   printList();
+  process.exit(0);
+}
+if (args.includes('--list-json')) {
+  console.log(JSON.stringify(buildMatrixExport(), null, 2));
   process.exit(0);
 }
 
