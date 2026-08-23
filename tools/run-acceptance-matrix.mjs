@@ -95,9 +95,25 @@ const GROUPS = {
       // hosted CC-GAP-8 proof surface cannot silently widen. The coverage
       // test (G2g) fails if this entry is removed.
       'tests/modules/development/development-terminal-exit-accounting.test.mjs',
+      // ELITE-8 seam (same orphan class): the worker prompt-assembly suite
+      // (buildPrompt/projectTaskForPrompt contracts, incl. the G1.9
+      // recovery_feedback prompt-snowball bound) lived at tests/ root —
+      // matched by NO group glob, so CI never executed it. Exact file on
+      // purpose: no directory glob, the surface cannot silently widen.
+      'tests/worker-prompt-assembly.test.mjs',
+      // The 2026-08-23 desk-coverage audit found SIX more orphans of the
+      // same class (committed by the closure program, hosted by nobody):
+      // the planner-desk GAP-6 suites and the readiness-desk substrate
+      // suites. Exact files, same GAP-8 hosting pattern.
+      'tests/modules/development/task-graph-register-conditional-coverage.test.mjs',
+      'tests/modules/development/task-graph-gate-srs-manifest.test.mjs',
+      'tests/infrastructure/local-runnability-substrate-retry.test.mjs',
+      'tests/infrastructure/local-runnability-toctou-reprobe.test.mjs',
+      'tests/infrastructure/environment-identity.test.mjs',
+      'tests/infrastructure/local-runnability-seam-compose.test.mjs',
     ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

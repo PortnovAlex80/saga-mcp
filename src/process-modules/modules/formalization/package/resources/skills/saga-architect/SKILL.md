@@ -77,7 +77,11 @@ Every stanza must contain all pinned fields:
 - `pattern`: `A` or `B`;
 - `depends_on`: real architectural prerequisites only;
 - `ac_kind`: **only** `implementation` or `verification`;
-- `criticality`: `blocker`, `degradable`, or `nice_to_have`.
+- `criticality`: `blocker`, `degradable`, or `nice_to_have`;
+- `covered_constraint_ids`: comma-separated order-constraint IDs this stanza
+  carries (`[]` when the order has no constraint register). See the
+  "Constraint coverage back-edge" section — the gate blocks the SRS when any
+  non-waived register ID is covered by no stanza.
 
 Canonical shape (repeat once per exact frozen AC):
 
@@ -92,6 +96,7 @@ Canonical shape (repeat once per exact frozen AC):
   depends_on: []
   ac_kind: implementation
   criticality: blocker
+  covered_constraint_ids: []
 ```
 
 Extra scalar fields such as `functions` or `public_protocol` may follow the
@@ -100,15 +105,19 @@ uses a deliberately strict, replayable line grammar.
 
 ### Constraint coverage back-edge (mandatory when a register exists)
 
-If your `process_node_input.discoveryProposalPayload` carries
-`order_constraints` (the order's typed constraint register, IDs like
-`ord-c-001`), the SRS must close every non-waived constraint through §D2: add
+Read the order's brief artifact (the accepted brief carries the typed constraint
+register — a list of `ord-c-NNN` entries, each with its class and text; Discovery
+also lifts open questions into `open-question` entries and injects `synthesis` /
+`ordered-smoke` entries). When ANY `ord-c-NNN` IDs exist, the SRS MUST close
+every non-waived constraint through §D2: add
 `covered_constraint_ids: ord-c-001,ord-c-002` (comma-separated typed IDs,
-copied verbatim) to the stanza of the AC that actually carries each
-constraint. Constraints validly waived in the brief (waived + reason) need no
-stanza coverage. Mentioning a constraint in HOW sections (§10/§11) without
-closing it in §D2 fails the gate with per-ID `covers_constraint` gaps listing
-the exact IDs — copy them verbatim, never invent or renumber.
+copied verbatim) to the stanza of the AC that actually carries each constraint —
+the gate enforces this even when your own task input does not surface the
+register (it is resolved for your whole run). Constraints validly waived in the
+brief (waived + reason) need no stanza coverage. Mentioning a constraint in HOW
+sections (§10/§11) without closing it in §D2 fails the gate with per-ID
+`covers_constraint` gaps listing the exact IDs — copy them verbatim, never
+invent or renumber.
 
 Do not use old pseudo-kinds such as `spike` or `merge_with`. Research uncertainty
 belongs in an explicit architectural decision/open question before the SRS is

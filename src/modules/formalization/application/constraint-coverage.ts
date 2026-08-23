@@ -1,8 +1,9 @@
 /**
  * Shared reader for the AC-drift coverage inputs: the constraint register
- * resolved from the FormalizationCase (which rides the task's frozen
- * process_node_input) plus the validly-waived IDs from the accepted brief's
- * constraint_dispositions metadata.
+ * resolved from the FormalizationCase (run-scoped: the case rides the frozen
+ * process_node_input of the FIRST formalization node's task — the ELITE-7
+ * seam repair resolves it for every node of the run) plus the validly-waived
+ * IDs from the accepted brief's constraint_dispositions metadata.
  *
  * One reader, three consumers (acceptance validator, reconciliation
  * validator, SRS validator) — the diff itself lives in
@@ -144,8 +145,20 @@ export function resolveRegisterAuthorityForCoverage(
 }
 
 /**
- * Resolve the coverage requirement for a task. Returns null when the case
- * carries no register (retro-compat: empty diff, gate stays green).
+ * Resolve the coverage requirement for a task. Returns null when the RUN
+ * carries no FormalizationCase at all (retro-compat: empty diff, gate stays
+ * green — the sole ADR-088 grandfather condition).
+ *
+ * ELITE-7 seam repair (2026-08-23): the case is a RUN-scoped fact, but only
+ * the FIRST formalization node's frozen desk input carries it — later nodes
+ * (SRS/acceptance/reconciliation) carry their own stage inputs (e.g. the
+ * acceptance-baseline snapshot), and reading the register from THIS task's
+ * metadata alone made every gate after the first node blind: a 13-entry v2
+ * register was treated as registerless ("No register -> empty diff -> green")
+ * and the uncovered corpus froze, only to die unreparably at the Development
+ * planner (constraint-register-uncovered, all ids). Resolution now: this
+ * task's desk input first; otherwise any sibling task of the same process
+ * run whose desk input IS the case (lowest id — the original ingress).
  *
  * ADR-090 (CC-IC-2): the register is resolved CERTIFICATE-FIRST through the
  * same shared authority as the A1 disposition gate
@@ -166,27 +179,9 @@ export function readConstraintCoverageRequirement(
   taskId: number,
   processRunId: number,
 ): (ConstraintCoverageRequirement & { registerTexts: Readonly<Record<string, string>> }) | null {
-  const taskRow = db.prepare(
-    'SELECT metadata FROM tasks WHERE id=?',
-  ).get(taskId) as { metadata: string | null } | undefined;
-  if (!taskRow || typeof taskRow.metadata !== 'string') return null;
-  let metadata: unknown;
-  try {
-    metadata = JSON.parse(taskRow.metadata);
-  } catch {
-    return null;
-  }
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
-  const caseCandidate = (metadata as Record<string, unknown>).process_node_input;
-  if (
-    typeof caseCandidate !== 'object'
-    || caseCandidate === null
-    || Array.isArray(caseCandidate)
-    || (caseCandidate as Record<string, unknown>).schemaVersion !== FORMALIZATION_CASE_SCHEMA
-  ) {
-    return null;
-  }
-  const formalizationCase = caseCandidate as unknown as FormalizationCase;
+  const formalizationCase = readFormalizationCaseForTask(db, taskId)
+    ?? readFormalizationCaseForProcessRun(db, processRunId);
+  if (!formalizationCase) return null;
   const authority = resolveRegisterAuthorityForCoverage(db, formalizationCase);
   if (!authority.ok) {
     // Certificate/case divergence: fail closed with the typed reason — the
@@ -232,6 +227,67 @@ export function readConstraintCoverageRequirement(
     waivedIds,
     registerTexts,
   };
+}
+
+/** This task's own frozen desk input, when it IS the FormalizationCase. */
+function readFormalizationCaseForTask(db: DbHandle, taskId: number): FormalizationCase | null {
+  const taskRow = db.prepare(
+    'SELECT metadata FROM tasks WHERE id=?',
+  ).get(taskId) as { metadata: string | null } | undefined;
+  if (!taskRow || typeof taskRow.metadata !== 'string') return null;
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(taskRow.metadata);
+  } catch {
+    return null;
+  }
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
+  const caseCandidate = (metadata as Record<string, unknown>).process_node_input;
+  if (!isFormalizationCaseEnvelope(caseCandidate)) return null;
+  return caseCandidate as unknown as FormalizationCase;
+}
+
+/**
+ * ELITE-7 seam repair: the FormalizationCase rides the run's FIRST
+ * formalization node. Later nodes' gates resolve the very same frozen case
+ * through this sibling lookup — scoped strictly to the task's own process
+ * run, so a formalization gate can never see another run's register.
+ */
+function readFormalizationCaseForProcessRun(
+  db: DbHandle,
+  processRunId: number,
+): FormalizationCase | null {
+  const rows = db.prepare(
+    `SELECT metadata FROM tasks
+      WHERE metadata LIKE '%formalization-case%'
+      ORDER BY id ASC`,
+  ).all() as Array<{ metadata: string | null } | undefined>;
+  for (const row of rows) {
+    if (!row || typeof row.metadata !== 'string') continue;
+    let metadata: unknown;
+    try {
+      metadata = JSON.parse(row.metadata);
+    } catch {
+      continue;
+    }
+    if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) continue;
+    const record = metadata as Record<string, unknown>;
+    if (record.process_run_id !== processRunId) continue;
+    const caseCandidate = record.process_node_input;
+    if (isFormalizationCaseEnvelope(caseCandidate)) {
+      return caseCandidate as unknown as FormalizationCase;
+    }
+  }
+  return null;
+}
+
+function isFormalizationCaseEnvelope(candidate: unknown): candidate is FormalizationCase {
+  return (
+    typeof candidate === 'object'
+    && candidate !== null
+    && !Array.isArray(candidate)
+    && (candidate as Record<string, unknown>).schemaVersion === FORMALIZATION_CASE_SCHEMA
+  );
 }
 
 /**
