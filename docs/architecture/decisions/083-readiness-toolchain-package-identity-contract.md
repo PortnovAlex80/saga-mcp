@@ -5,6 +5,11 @@
   `5e39946a`; the receipt-fence image/dependency identity remainder landed
   with provider `factory.local-runnability.v1` @ `1.13.0` (registry manifest
   digest + dependency lock identity bound into the receipt fence); the
+  post-REJECT repair landed as `1.14.0` — atomic one-snapshot image
+  observation (paired RepoDigests+Id facts, immutable-id tagging), the
+  provider-boundary baseImageDigest fence (typed product failure, never
+  passed/unknown/retried), and the exact version→digest trust migration (a
+  forged basis on a known legacy version is drift, never laundered); the
   package-store digest persistence, the ADR-077 keyed `toolchainDigests`
   component, and commits 4-6 remain open; K19 is not complete)
 - **Date:** 2026-08-20
@@ -155,7 +160,7 @@ content-addressed artifacts.
 Release-discipline budget (plan §3): ≤ 25 production files, ≤ 6 per commit,
 ≤ 1 schema migration family — applies to the train as a whole.
 
-## 5. Boundary statement (stage-13 TASK 3, updated by stage-14 TASK 1; commit-grounded seventh pass; eighth pass records the receipt-fence identity remainder)
+## 5. Boundary statement (stage-13 TASK 3, updated by stage-14 TASK 1; commit-grounded seventh pass; eighth pass records the receipt-fence identity remainder; ninth pass records the 1.14.0 post-REJECT repair)
 
 Stage 13 executed the train in order and stopped at commit 1
 (`f05dd37e` — THIS contract freeze, the only K19 commit it landed).
@@ -167,19 +172,34 @@ riding every outcome). The receipt-fence identity remainder (provider
 OCI registry manifest digest resolved from RepoDigests (fail-closed on
 missing/malformed/substituted/stale/pin-mismatched evidence, before any
 build) and the `dependencyLockDigest` over the sealed tree's exact lock
-material, both bound into the deterministic receipt digest. Commits 4–6
-are not started; per-package digest persistence in the package store and
-the ADR-077 `toolchainDigests` extension remain open, and the local image
-id remains provenance-only (`resolvedBaseImageId`), never identity. A
-fraction is not presented as the whole: the negative tests that decide
-each slice pass (the domain-free GDesign reproduction at
+material, both bound into the deterministic receipt digest. The `1.14.0`
+post-REJECT repair hardened that slice on three proven blockers: the
+base-image identity is now observed ATOMICALLY (ONE `docker image inspect`
+snapshot; RepoDigests and the local Id are paired facts of the same
+response; only the immutable Id of that snapshot is tagged — a tag switch
+between two resolutions of the mutable declared tag can no longer pair A's
+manifest digest with B's local id), the provider boundary fails closed
+typed when a docker description reaches the receipt without a well-formed
+sha256 `baseImageDigest` (product `failed`, never passed/unknown/retried),
+and the `trusted_providers` migration requires the exact
+version→built-in-digest pair of the shipped lineage (a forged basis on a
+known legacy version is `LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT`, never
+laundered). Commits 4–6 are not started; per-package digest persistence in
+the package store and the ADR-077 `toolchainDigests` extension remain
+open, and the local image id remains provenance-only
+(`resolvedBaseImageId`), never identity. A fraction is not presented as
+the whole: the negative tests that decide each slice pass (the domain-free
+GDesign reproduction at
 `tests/infrastructure/environment-derivation.test.mjs`; the identity
-battery at `tests/infrastructure/environment-identity.test.mjs`), and
+battery at `tests/infrastructure/environment-identity.test.mjs`; the
+atomic-observation battery at
+`tests/infrastructure/environment-image-observation.test.mjs`), and
 everything not done is named.
 **K19 is NOT complete** — `f05dd37e` + `5e39946a` + the `1.13.0`
-receipt-fence identity remainder are commit 1, the commits 2-3 core, and
-the digest slice of commits 3/5 only; package-store persistence, the
-ADR-077 `toolchainDigests` component, and commits 4-6 remain open work.
+receipt-fence identity remainder + the `1.14.0` post-REJECT repair are
+commit 1, the commits 2-3 core, and the digest/observation slices of
+commits 3/5 only; package-store persistence, the ADR-077
+`toolchainDigests` component, and commits 4-6 remain open work.
 
 ## 6. Boundary note — environment identity vs availability vs receipt-binding (2026-08-22, conformance-closure sixth pass)
 

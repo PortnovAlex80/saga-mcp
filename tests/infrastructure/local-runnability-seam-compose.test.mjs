@@ -567,7 +567,7 @@ test('malformed compose declaration (traversal / absolute) invalidates the profi
   }
 });
 
-test('provider version bump migrates the 1.5.0 trust row in place', () => {
+test('provider version bump migrates the 1.5.0 trust row in place (exact authentic basis)', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE trusted_providers(
@@ -579,8 +579,8 @@ test('provider version bump migrates the 1.5.0 trust row in place', () => {
     `INSERT INTO trusted_providers
        (project_id,name,version,category,trust_basis,determinism,scope,status)
      VALUES(NULL,'factory.local-runnability.v1','1.5.0','deterministic_evidence',
-       'built-in:old','full','local-runnability','active')`,
-  ).run();
+       ?,'full','local-runnability','active')`,
+  ).run('built-in:6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe23626677');
   try {
     ensureLocalRunnabilityProviderTrust(db);
     const row = db.prepare(

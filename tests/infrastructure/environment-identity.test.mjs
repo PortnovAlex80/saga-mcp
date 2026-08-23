@@ -414,6 +414,85 @@ test('K19 receipt fence: the derived environment identity (with its dependency l
 // observation — and it is not retried as a substrate precondition.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// K19 repair after REJECT — blocker 3: the PROVIDER-BOUNDARY identity fence.
+// A docker executor description that reaches the receipt boundary without a
+// well-formed sha256 baseImageDigest is a typed K19 PRODUCT failure — never
+// `passed` (a receipt without identity), never the ADR-089 `unknown`, never
+// retried as a substrate precondition. Exact outcome/reason/call-count
+// oracle.
+// ---------------------------------------------------------------------------
+
+test('K19 provider boundary: a docker describe WITHOUT baseImageDigest fails typed as a product failure — never passed, never unknown, never retried', { timeout: 60_000 }, async () => {
+  const calls = { prepare: 0, runCommand: 0, dispose: 0 };
+  try {
+    const receipt = await runIdentityCase({
+      executor: {
+        prepare() { calls.prepare += 1; },
+        runCommand() { calls.runCommand += 1; },
+        runServed() { throw new Error('unreachable in this proof'); },
+        // A docker executor whose description carries NO baseImageDigest —
+        // the shape a skipped/failed identity resolution (or a foreign
+        // executor) presents at the provider boundary.
+        describe() { return { substrate: 'docker', image: IMAGE }; },
+        dispose() { calls.dispose += 1; },
+      },
+    });
+    // ORACLE — outcome: product `failed`, never `passed` (the pre-fix
+    // behavior: a receipt with no image identity at all).
+    assert.equal(receipt.outcome, 'failed',
+      'a docker receipt never exists without a base image identity (ADR-083 §2.1/§3)');
+    // ORACLE — reason: the typed K19 identity code, decodable.
+    const diagnostics = receipt.evidenceRefs
+      .map(ref => decodeCheckDiagnostic(ref))
+      .filter(diag => diag !== null);
+    assert.ok(diagnostics.some(diag => diag.code === 'ENVIRONMENT_IMAGE_IDENTITY_MISSING'),
+      'the typed identity diagnostic names the missing boundary identity');
+    // ORACLE — never the substrate unknown, never `passed`:
+    assert.ok(!diagnostics.some(diag => diag.code === 'warrant-blocked-environment'),
+      'a boundary identity failure is NOT the ADR-089 typed-unknown substrate outcome');
+    // ORACLE — call-count: the substrate steps executed EXACTLY once — the
+    // boundary failure is terminal for the check, never retried as a
+    // substrate precondition (identity is K19-owned; ADR-083 §6 split).
+    assert.equal(calls.prepare, 1);
+    assert.equal(calls.runCommand, 1);
+    assert.equal(calls.dispose, 1);
+  } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
+  }
+});
+
+test('K19 provider boundary: a docker describe with a MALFORMED baseImageDigest fails typed ENVIRONMENT_IMAGE_IDENTITY_MALFORMED — same fence, same counts', { timeout: 60_000 }, async () => {
+  const calls = { prepare: 0, runCommand: 0, dispose: 0 };
+  try {
+    const receipt = await runIdentityCase({
+      executor: {
+        prepare() { calls.prepare += 1; },
+        runCommand() { calls.runCommand += 1; },
+        runServed() { throw new Error('unreachable in this proof'); },
+        // A digest-shaped string that is NOT a well-formed sha256:<64hex>.
+        describe() {
+          return { substrate: 'docker', image: IMAGE, baseImageDigest: 'sha256:not-a-digest' };
+        },
+        dispose() { calls.dispose += 1; },
+      },
+    });
+    assert.equal(receipt.outcome, 'failed');
+    const diagnostics = receipt.evidenceRefs
+      .map(ref => decodeCheckDiagnostic(ref))
+      .filter(diag => diag !== null);
+    assert.ok(diagnostics.some(diag => diag.code === 'ENVIRONMENT_IMAGE_IDENTITY_MALFORMED'),
+      'a malformed boundary digest gets its own typed identity code');
+    assert.ok(!diagnostics.some(diag => diag.code === 'warrant-blocked-environment'));
+    assert.equal(calls.prepare, 1);
+    assert.equal(calls.runCommand, 1);
+  } finally {
+    installDockerInfoProbeForTests(null);
+    resetDockerAvailabilityCache();
+  }
+});
+
 test('K19 identity failure is a product `failed` with the typed diagnostic — never substrate `unknown`, never retried (ADR-083 §6 split)', { timeout: 60_000 }, async () => {
   const calls = { prepare: 0, runCommand: 0, dispose: 0 };
   installDockerInfoProbeForTests(() => ({ available: true, linux: true }));

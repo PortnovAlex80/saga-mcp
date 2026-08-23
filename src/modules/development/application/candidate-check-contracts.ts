@@ -76,7 +76,20 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // the ADR-089 substrate unknown (ADR-091/089 own availability; ADR-083 §6
 // split) and consume no substrate retry — the digest bump re-checks every
 // prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.13.0';
+// 1.14.0 — K19 repair after REJECT: three proven blockers closed. (1) The
+// base image identity is observed ATOMICALLY: ONE docker image inspect
+// snapshot resolves ONE image object, RepoDigests and the local Id are
+// PAIRED facts of that same response, and only the immutable Id is tagged —
+// the pre-fix two-inspect read on the MUTABLE declared tag let a concurrent
+// tag switch pair A's manifest digest (the receipt identity) with B's local
+// id (the executed image). (2) The PROVIDER BOUNDARY fails closed typed
+// when a docker describe reaches the receipt without a well-formed sha256
+// baseImageDigest — a product failure, never passed, never the substrate
+// unknown, never retried. (3) The trusted_providers migration requires the
+// EXACT version→built-in-digest pair (a forged trust_basis on a known
+// legacy version is LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT, never laundered)
+// — the digest bump re-checks every prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.14.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -101,6 +114,10 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'on-mid-check-executor-or-compose-step-failure-invalidate-the-cached-availability-probe-and-mechanically-re-probe-only-observed-unavailable-or-not-linux-routes-into-the-adr-089-bounded-retry-and-typed-unknown-observed-available-plus-linux-keeps-the-original-product-failure-never-classify-from-stderr-text-compose-down-stays-best-effort-distinct-from-invalid-config-enoent-cli-missing-keeps-compose-unavailable-v1',
   imageIdentityPolicy:
     'declared-docker-image-resolves-to-its-oci-registry-manifest-digest-from-repodigests-never-a-floating-tag-never-the-local-image-id-fail-closed-typed-before-any-build-on-missing-malformed-repo-mismatched-ambiguous-or-pin-mismatched-evidence-identity-failures-are-product-failed-never-the-substrate-unknown-and-consume-no-substrate-retry-k19-owns-identity-adr-091-owns-availability-v1',
+  imageSnapshotPolicy:
+    'base-image-identity-is-observed-atomically-one-docker-image-inspect-snapshot-resolves-one-image-object-repodigests-and-the-local-id-are-paired-facts-of-the-same-response-and-only-the-immutable-id-of-that-snapshot-is-tagged-never-two-inspects-on-the-mutable-declared-tag-and-the-provider-boundary-fails-closed-typed-when-a-docker-describe-reaches-the-receipt-without-a-well-formed-sha256-baseimageDigest-product-failed-never-passed-never-unknown-never-retried-v1',
+  providerTrustPolicy:
+    'trusted-providers-migration-requires-the-exact-version-to-builtin-digest-pair-of-the-shipped-lineage-plus-exact-metadata-a-forged-trust-basis-on-a-known-legacy-version-is-local-runnability-trust-policy-drift-never-laundered-into-the-current-trust-v1',
   dependencyLockPolicy:
     'dependency-lock-identity-is-the-sha256-over-the-sealed-trees-exact-resolved-lock-material-and-binds-the-derived-environment-digest-and-every-receipt-lock-drift-is-a-different-environment-an-empty-lock-list-is-reported-honestly-never-fabricated-v1',
 });

@@ -38,6 +38,15 @@ import {
  * the identity inspect still throws a plain error so the provider's mid-check
  * classifier routes it by OBSERVATION.
  *
+ * K19 repair after REJECT (blocker 1) — ATOMIC observation: RepoDigests and
+ * the local Id are resolved as PAIRED FACTS from ONE `docker image inspect`
+ * snapshot (see resolveBaseImageIdentitySnapshot), and only the immutable Id
+ * of that same snapshot is tagged as the session base. Two inspects against
+ * the MUTABLE declared tag are forbidden: between them a concurrent
+ * pull/tag can re-point the tag from image A to image B, pairing A's
+ * manifest digest (the receipt identity) with B's local id (the image
+ * actually executed).
+ *
  * Fail-closed policy (CC-GAP-9 / ADR-089): when the profile declares an image
  * but docker is unavailable (daemon down, not linux), the executor throws
  * LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE / LOCAL_RUNNABILITY_DOCKER_NOT_LINUX.
@@ -58,8 +67,36 @@ import {
  * the provider) have no daemon dependency and are never re-probed.
  */
 
-/** A well-formed OCI digest: the algorithm docker pins for manifests, 64 lowercase hex. */
+/**
+ * A well-formed OCI digest: the algorithm docker pins for manifests, 64 lowercase hex.
+ */
 const OCI_DIGEST_RE = /^sha256:[a-f0-9]{64}$/u;
+
+/** A well-formed local docker image Id (`sha256:<64hex>` — the config digest). */
+const IMAGE_ID_RE = /^sha256:[a-f0-9]{64}$/u;
+
+/**
+ * Type guard over a value that must be a well-formed OCI digest
+ * (`sha256:<64 lowercase hex>`). Exported so the provider boundary can apply
+ * the SAME grammar to the `baseImageDigest` a docker executor description
+ * presents (K19 repair: one grammar, both sides of the boundary).
+ */
+export function isWellFormedOciDigest(value: unknown): value is string {
+  return typeof value === 'string' && OCI_DIGEST_RE.test(value);
+}
+
+/**
+ * K19 repair after REJECT (blocker 1) — the ONE atomic identity observation
+ * format: a SINGLE `docker image inspect` whose response carries BOTH
+ * `.RepoDigests` and `.Id` of ONE image object, separated by one literal
+ * tab. The pairing of the two facts inside one response is what makes a
+ * tag switch between two resolutions of the MUTABLE declared tag
+ * unrepresentable: pre-fix, RepoDigests and Id were read in two separate
+ * inspects, so a concurrent `docker pull`/`docker tag` between them paired
+ * image A's registry manifest digest (the receipt identity) with image B's
+ * local id (the image actually tagged, built FROM and run).
+ */
+const IMAGE_IDENTITY_SNAPSHOT_FORMAT = '{{json .RepoDigests}}\t{{.Id}}';
 
 /** `docker info` availability probe timeout (bounded so a hung daemon does not stall the gate). */
 const DOCKER_INFO_TIMEOUT_MS = 8_000;
@@ -157,6 +194,100 @@ export function installDockerInfoProbeForTests(
   probe: (() => { available: boolean; linux: boolean } | null) | null,
 ): void {
   dockerInfoProbeForTests = probe;
+}
+
+/**
+ * TEST-ONLY seam over the docker CLI invocations of the executor's
+ * PREPARATION path (K19 repair after REJECT, blocker 1): presence inspect,
+ * pull, the ONE identity snapshot inspect, base-tag freeze, prepared-image
+ * build and the prepared-image inspect. When installed and returning a
+ * non-null result for the given argv, that scripted result substitutes for
+ * the real CLI invocation (the call NEVER spawns docker); `null` falls
+ * through to the real CLI. Production never installs the seam. This makes
+ * the ATOMIC OBSERVATION contract hermetically provable: a test can observe
+ * (and count) every reference-resolution inspect the executor makes and
+ * script the tag's observed lifecycle (image A on resolution #1, image B on
+ * resolution #2 — a tag switch) without any docker daemon or CLI. The
+ * observation MECHANICS (one inspect, one snapshot format, typed
+ * fail-closed validation, immutable-id tagging) stay frozen in production
+ * code; only the CLI responses are scripted.
+ */
+export interface DockerCliScriptedResult {
+  /** Scripted stdout ('' when the invocation prints nothing). */
+  readonly stdout?: string;
+  /** Scripted stderr (failure detail only). */
+  readonly stderr?: string;
+  /** Scripted exit status; non-zero makes the invocation fail like the CLI would. */
+  readonly status?: number;
+}
+
+let dockerCliForTests:
+  ((args: readonly string[]) => DockerCliScriptedResult | null) | null = null;
+
+/** Install/remove the TEST-ONLY docker CLI seam. Pass null to uninstall. */
+export function installDockerImageCliForTests(
+  handler: ((args: readonly string[]) => DockerCliScriptedResult | null) | null,
+): void {
+  dockerCliForTests = handler;
+}
+
+/**
+ * Run one docker CLI invocation of the PREPARATION path (see
+ * installDockerImageCliForTests). Routes through the TEST-ONLY seam when
+ * installed, else spawns the real CLI. Always decodes stdout as utf8.
+ */
+function execDockerCliPrepare(
+  args: readonly string[],
+  timeout: number,
+  maxBuffer?: number,
+): string {
+  if (dockerCliForTests !== null) {
+    const scripted = dockerCliForTests(args);
+    if (scripted !== null) {
+      if (scripted.status !== undefined && scripted.status !== 0) {
+        throw new Error(
+          `command failed (docker ${args.join(' ')})`
+            + (scripted.stderr ? `--- stderr ---\n${scripted.stderr.slice(-3000)}` : ''),
+        );
+      }
+      return scripted.stdout ?? '';
+    }
+  }
+  return execFileSync('docker', [...args], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout,
+    windowsHide: true,
+    encoding: 'utf8',
+    ...(maxBuffer !== undefined ? { maxBuffer } : {}),
+  });
+}
+
+/**
+ * Run one docker BUILD invocation of the preparation path through the same
+ * TEST-ONLY seam (status/stdout/stderr shape identical to spawnSync).
+ */
+function spawnDockerBuildPrepare(
+  args: readonly string[],
+  input: string,
+  timeout: number,
+): { status: number | null; stdout: string; stderr: string; error?: Error } {
+  if (dockerCliForTests !== null) {
+    const scripted = dockerCliForTests(args);
+    if (scripted !== null) {
+      return {
+        status: scripted.status ?? 0,
+        stdout: scripted.stdout ?? '',
+        stderr: scripted.stderr ?? '',
+      };
+    }
+  }
+  return spawnSync('docker', [...args], {
+    input,
+    timeout,
+    windowsHide: true,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
 }
 
 /**
@@ -275,8 +406,9 @@ function repositoryOfReference(reference: string): { repository: string; digest:
  * K19 / ADR-083 §2.1 — resolve the AUTHORITATIVE base image identity: the OCI
  * REGISTRY MANIFEST DIGEST observed for the declared reference, from the
  * pulled image's RepoDigests. Pure over the observed evidence — the caller
- * supplies what `docker image inspect --format '{{json .RepoDigests}}'`
- * reported, so the authority is hermetically provable.
+ * supplies the RepoDigests half of ONE inspect snapshot (see
+ * resolveBaseImageIdentitySnapshot), so the authority is hermetically
+ * provable.
  *
  * Fail-closed, typed, BEFORE any build (ADR-083 §3 floating-tag prohibition):
  *
@@ -360,6 +492,85 @@ export function resolveRegistryManifestDigest(
   return resolved;
 }
 
+/** The paired base-image identity facts derived from ONE inspect snapshot. */
+export interface BaseImageIdentitySnapshot {
+  /**
+   * The AUTHORITATIVE identity (K19 / ADR-083 §2.1): the OCI registry
+   * manifest digest of the observed image object.
+   */
+  readonly baseImageDigest: string;
+  /**
+   * The local image id of the SAME observed image object. PROVENANCE ONLY —
+   * never environment identity; it is what the session base tag freezes.
+   */
+  readonly resolvedBaseImageId: string;
+}
+
+/**
+ * K19 repair after REJECT (blocker 1) — resolve the base-image identity as
+ * PAIRED FACTS from ONE `docker image inspect` snapshot. The caller supplies
+ * the raw stdout of the single inspect (format
+ * {@link IMAGE_IDENTITY_SNAPSHOT_FORMAT}); BOTH the registry manifest digest
+ * and the local image id derive from that ONE response, so a tag switch
+ * between two resolutions of the mutable declared tag can never split the
+ * receipt identity from the image actually executed.
+ *
+ * Fail-closed, typed, BEFORE any build:
+ *
+ *   - RepoDigests validation rides through resolveRegistryManifestDigest
+ *     (ENVIRONMENT_IMAGE_IDENTITY_MISSING / _MALFORMED / _REPO_MISMATCH /
+ *     _AMBIGUOUS / _PIN_MISMATCH) — including a RepoDigests half that does
+ *     not parse as JSON (malformed evidence, never an untyped crash);
+ *   - the Id half must be a well-formed local image id (`sha256:<64hex>`),
+ *     one object only — otherwise
+ *     LOCAL_RUNNABILITY_DOCKER_BASE_RESOLUTION_FAILED (the declared
+ *     reference cannot be frozen to one local image).
+ *
+ * Identity verdicts only: a CLI fault OBSERVING the snapshot is the CALLER's
+ * concern and stays a plain error there (ADR-091 routes it by observation).
+ */
+export function resolveBaseImageIdentitySnapshot(
+  imageReference: string,
+  inspectOutput: string,
+): BaseImageIdentitySnapshot {
+  const resolutionFailure = (detail: string): ReadinessExecutionError => new ReadinessExecutionError(
+    'LOCAL_RUNNABILITY_DOCKER_BASE_RESOLUTION_FAILED',
+    `could not freeze declared image "${imageReference}" from one inspect snapshot: ${detail}. `
+      + `Expected exactly one line '<RepoDigests json>\\t<Id>' from --format '${IMAGE_IDENTITY_SNAPSHOT_FORMAT.replace('\t', '\\t')}'.`,
+  );
+  const trimmed = inspectOutput.trim();
+  if (trimmed === '') {
+    throw resolutionFailure('the snapshot response is empty');
+  }
+  const tab = trimmed.indexOf('\t');
+  if (tab < 0) {
+    throw resolutionFailure('the snapshot carries no <RepoDigests>\\t<Id> split');
+  }
+  const repoDigestsJson = trimmed.slice(0, tab);
+  const id = trimmed.slice(tab + 1).trim();
+  if (id === '' || !IMAGE_ID_RE.test(id)) {
+    if (id.includes('\n') || trimmed.slice(tab + 1).includes('\t')) {
+      throw resolutionFailure(
+        'the snapshot matched multiple image objects (a multi-line response) — ambiguity never resolves to a pick-one guess',
+      );
+    }
+    throw resolutionFailure(`the snapshot's local image Id half (${JSON.stringify(id)}) is not a well-formed sha256:<64hex> image id`);
+  }
+  let repoDigests: unknown;
+  try {
+    repoDigests = JSON.parse(repoDigestsJson) as unknown;
+  } catch (error) {
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_MALFORMED',
+      `the registry manifest digest evidence for the declared image "${imageReference}" is malformed: the snapshot's RepoDigests half is not JSON (${error instanceof Error ? error.message : String(error)}). Expected a JSON array of <repository>@sha256:<64 hex> entries.`,
+    );
+  }
+  return {
+    baseImageDigest: resolveRegistryManifestDigest(imageReference, repoDigests),
+    resolvedBaseImageId: id,
+  };
+}
+
 export class DockerReadinessExecutor implements ReadinessExecutor {
   private readonly sessionId = randomBytes(8).toString('hex');
   private readonly preparedTag: string;
@@ -419,22 +630,13 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
 
   private ensureImagePulled(): void {
     try {
-      execFileSync('docker', ['image', 'inspect', this.image], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: DOCKER_INFO_TIMEOUT_MS,
-        windowsHide: true,
-      });
+      execDockerCliPrepare(['image', 'inspect', this.image], DOCKER_INFO_TIMEOUT_MS);
       return; // image already present locally
     } catch {
       // not found → fall through to pull
     }
     try {
-      execFileSync('docker', ['pull', this.image], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: DOCKER_PULL_TIMEOUT_MS,
-        windowsHide: true,
-        maxBuffer: 8 * 1024 * 1024,
-      });
+      execDockerCliPrepare(['pull', this.image], DOCKER_PULL_TIMEOUT_MS, 8 * 1024 * 1024);
     } catch (error) {
       throw new ReadinessExecutionError(
         'LOCAL_RUNNABILITY_DOCKER_PULL_FAILED',
@@ -452,42 +654,38 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       );
     }
     this.ensureDockerAvailable();
-    // K19 / ADR-083 §2.1 — resolve the AUTHORITATIVE base image identity
-    // BEFORE any build cost: the OCI REGISTRY MANIFEST DIGEST from the pulled
-    // image's RepoDigests. Never the tag, never the local image id. A daemon
+    // K19 repair after REJECT (blocker 1) / ADR-083 §2.1 — resolve the
+    // base-image identity from ONE ATOMIC `docker image inspect` snapshot
+    // BEFORE any build cost: RepoDigests (the authoritative OCI REGISTRY
+    // MANIFEST DIGEST) and the local Id are PAIRED FACTS of the SAME
+    // response, never two inspects against the MUTABLE declared tag — a
+    // tag switch between two resolutions (concurrent pull/tag: image A →
+    // image B) cannot pair A's manifest digest with B's local id. A daemon
     // fault here (inspect fails) throws a PLAIN error so the provider's
     // ADR-091 mid-check classifier routes it by observation — an identity
     // verdict is only ever made over successfully observed evidence.
-    let repoDigests: unknown;
+    let snapshotOutput: string;
     try {
-      repoDigests = JSON.parse(execFileSync(
-        'docker', ['image', 'inspect', '--format', '{{json .RepoDigests}}', this.image],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
-          windowsHide: true, encoding: 'utf8',
-        },
-      ).trim()) as unknown;
+      snapshotOutput = execDockerCliPrepare(
+        ['image', 'inspect', '--format', IMAGE_IDENTITY_SNAPSHOT_FORMAT, this.image],
+        DOCKER_INFO_TIMEOUT_MS,
+      );
     } catch (error) {
       throw new Error(commandFailureDetail(
         'docker image inspect',
-        ['--format', '{{json .RepoDigests}}', this.image],
+        ['--format', IMAGE_IDENTITY_SNAPSHOT_FORMAT.replace('\t', '\\t'), this.image],
         error,
       ));
     }
-    this.baseImageDigest = resolveRegistryManifestDigest(this.image, repoDigests);
+    const snapshot = resolveBaseImageIdentitySnapshot(this.image, snapshotOutput);
+    this.baseImageDigest = snapshot.baseImageDigest;
+    this.resolvedBaseImageId = snapshot.resolvedBaseImageId;
+    // Freeze the base by tagging ONLY the immutable Id from that same
+    // snapshot — never the mutable declared tag again. The prepared image
+    // is built FROM this frozen local id, so the executed environment and
+    // the recorded identity are facts of ONE image object.
     try {
-      this.resolvedBaseImageId = execFileSync(
-        'docker', ['image', 'inspect', '--format', '{{.Id}}', this.image],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
-          windowsHide: true, encoding: 'utf8',
-        },
-      ).trim();
-      execFileSync('docker', ['tag', this.resolvedBaseImageId, this.baseTag], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 30_000,
-        windowsHide: true,
-      });
+      execDockerCliPrepare(['tag', this.resolvedBaseImageId, this.baseTag], 30_000);
     } catch (error) {
       throw new ReadinessExecutionError(
         'LOCAL_RUNNABILITY_DOCKER_BASE_RESOLUTION_FAILED',
@@ -503,19 +701,14 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
         : [`RUN ["sh", "-c", ${JSON.stringify(installCommand)}]`]),
       '',
     ].join('\n');
-    const result = spawnSync(
-      'docker', [
+    const result = spawnDockerBuildPrepare(
+      [
         'build', '--quiet', '--file', '-', '--tag', this.preparedTag,
         '--label', `saga.readiness.session=${this.sessionId}`,
         this.contextDirectory,
       ],
-      {
-        input: dockerfile,
-        timeout: Math.max(timeoutMs, DOCKER_BUILD_TIMEOUT_MS),
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 8 * 1024 * 1024,
-      },
+      dockerfile,
+      Math.max(timeoutMs, DOCKER_BUILD_TIMEOUT_MS),
     );
     if (result.status !== 0) {
       throw new Error(
@@ -528,12 +721,9 @@ export class DockerReadinessExecutor implements ReadinessExecutor {
       );
     }
     try {
-      this.preparedImageId = execFileSync(
-        'docker', ['image', 'inspect', '--format', '{{.Id}}', this.preparedTag],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'], timeout: DOCKER_INFO_TIMEOUT_MS,
-          windowsHide: true, encoding: 'utf8',
-        },
+      this.preparedImageId = execDockerCliPrepare(
+        ['image', 'inspect', '--format', '{{.Id}}', this.preparedTag],
+        DOCKER_INFO_TIMEOUT_MS,
       ).trim();
     } catch (error) {
       throw new ReadinessExecutionError(

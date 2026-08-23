@@ -54,6 +54,7 @@ import {
 } from './readiness-executor.js';
 import {
   DockerReadinessExecutor,
+  isWellFormedOciDigest,
   resetDockerAvailabilityCache,
   reprobeDockerAvailabilityAfterFailure,
 } from './docker-readiness-executor.js';
@@ -431,6 +432,41 @@ function readPersistedReadinessReceipt(
   };
 }
 
+/**
+ * K19 repair after REJECT (blocker 2) — the AUTHENTIC version→built-in
+ * digest baseline of this provider lineage: every version the provider ever
+ * shipped, paired with the EXACT sha256 provider digest it presented when
+ * it shipped. Independently recovered from the git history of
+ * candidate-check-contracts.ts (each bump's digest object re-computed) and
+ * cross-checked against the operator's recovery table.
+ *
+ * A legacy trusted_providers row is migration-eligible ONLY when BOTH the
+ * version AND the `built-in:<digest>` trust basis match this table exactly
+ * (plus the exact category/determinism/scope/status metadata). A FORGED
+ * basis on a known version — the laundering defect this repair closes — is
+ * LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT, never silently re-trusted: the
+ * pre-fix check consulted the version list and the metadata alone, so a
+ * foreign `built-in:<anything>` on e.g. a 1.12.0 row was migrated in place
+ * and re-trusted as the current provider.
+ */
+const TRUSTED_PROVIDER_BASELINES: Readonly<Record<string, string>> = Object.freeze({
+  '1.0.0': '93b49183279fa1e94d833d8107ef3a894558c6666cad433fd3e1e9659f510dfb',
+  '1.1.0': '19dd6a5c10442e694614a7948c6a4efdbd6ddeb32ccba2720af834e2fa6ff278',
+  '1.2.0': 'fbe609a3855c69f772ea51a6ce4a739a343a84569617a296e703610c474c6200',
+  '1.3.0': '13dd611e36fc1e5041b7364cf4f6d57d3dee5dfe4cd36411a36a4627776407e0',
+  '1.3.1': 'b72ee47d8daa8d3512b8368cfaf4bf5a0fc591f9a3e2084641b0177bf9e64886a',
+  '1.4.0': 'c9a58ea385cde7dec013fc04be7c131df3091ac6ca78eedcacfd08114811a5506',
+  '1.5.0': '6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe23626677',
+  '1.6.0': '52d84078f73d30a61df61e9bdcd46887e627131cee04ccc7c63e2eec8cdd4eef2',
+  '1.7.0': '66a1a118a49b54c0fec8eae152d54f529b852c361ab78af1f29798ea38223dda2',
+  '1.8.0': 'da6e24e63c390efd62005eed27eba8d23f5685f61a1c92c1624f4584ee093cc96',
+  '1.9.0': '0430a19f10201e4ed432757152853c1f9e73004a201fe2bfce9fe492c0bb98881',
+  '1.10.0': '84fd94ebde65e9395a3ab8f875d0408a1303771fabe7f60cce7c26c5a5d000356',
+  '1.11.0': 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc4182263f',
+  '1.12.0': 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a',
+  '1.13.0': 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136',
+});
+
 export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
   const existingRows = db.prepare(
     `SELECT version,category,trust_basis,determinism,scope,status
@@ -483,9 +519,22 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // stays with ADR-089/091 (ADR-083 §6 split — identity failures are
     // product `failed`, never the substrate unknown, and consume no
     // substrate retry).
+    // 1.14 (K19 repair after REJECT) closes three proven blockers: the base
+    // image identity is observed ATOMICALLY (ONE docker image inspect
+    // snapshot pairs RepoDigests and the local Id from the SAME response,
+    // then tags only the immutable Id — a tag switch between two resolutions
+    // of the mutable tag can no longer pair A's manifest digest with B's
+    // local id); the PROVIDER BOUNDARY fails closed typed when a docker
+    // describe reaches the receipt without a well-formed sha256
+    // baseImageDigest (product failed, never passed/unknown/retried); and
+    // the trust migration requires the EXACT version→built-in-digest pair
+    // (TRUSTED_PROVIDER_BASELINES) — a forged trust_basis on a known legacy
+    // version is drift, never laundered.
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
-    const trustworthyBaseline = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.3.1', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0'].includes(existing.version ?? '')
+    const baselineDigest = TRUSTED_PROVIDER_BASELINES[existing.version ?? ''];
+    const trustworthyBaseline = baselineDigest !== undefined
+      && existing.trust_basis === `built-in:${baselineDigest}`
       && existing.category === 'deterministic_evidence'
       && existing.determinism === 'full'
       && existing.scope === 'local-runnability'
@@ -762,6 +811,43 @@ function extractProcessRunIdFromRef(candidateSetRef: string): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+/**
+ * K19 repair after REJECT (blocker 3) — the PROVIDER-BOUNDARY identity fence
+ * (ADR-083 §2.1/§3: "a readiness receipt whose subject does not bind
+ * candidate + tree + environment in one identity" is forbidden; a docker
+ * receipt never exists without a base image identity). A docker executor
+ * description that reaches the receipt boundary WITHOUT a well-formed
+ * `sha256:<64hex>` baseImageDigest is a typed K19 PRODUCT failure:
+ *
+ *   - never `passed` — no receipt may certify an environment whose
+ *     authoritative image identity was never observed (the shape a skipped
+ *     or failed identity resolution, or a foreign executor, presents);
+ *   - never the ADR-089 `unknown` and never retried — identity is K19-owned,
+ *     availability is ADR-091/089-owned (ADR-083 §6 split): the code is not
+ *     a substrate precondition and consumes no substrate retry.
+ */
+function assertBaseImageDigestAtProviderBoundary(
+  description: ExecutorDescription,
+): void {
+  if (description.substrate !== 'docker') return;
+  if (description.baseImageDigest === undefined) {
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_MISSING',
+      `the docker executor (${description.image ?? '<no image>'}) reached the receipt boundary WITHOUT a baseImageDigest — `
+        + 'the OCI registry manifest digest was never observed. A docker receipt never exists without '
+        + 'one (ADR-083 §2.1/§3): the tag and the local image id are not environment identity. '
+        + 'Resolve the declared image to its registry manifest digest before the check runs.',
+    );
+  }
+  if (!isWellFormedOciDigest(description.baseImageDigest)) {
+    throw new ReadinessExecutionError(
+      'ENVIRONMENT_IMAGE_IDENTITY_MALFORMED',
+      `the docker executor (${description.image ?? '<no image>'}) reported a baseImageDigest that is not a well-formed `
+        + `sha256:<64hex> digest (${JSON.stringify(description.baseImageDigest)}) — the receipt boundary refuses it (ADR-083 §2.1/§3).`,
+    );
+  }
+}
+
 function runLocalReadiness(
   db: SqlDatabasePort,
   subject: CandidateSubject,
@@ -1036,6 +1122,14 @@ function runLocalReadiness(
           step('profile-test');
           // Additive substrate evidence (free in the digest).
           const desc = attemptExecutor.describe();
+          // K19 repair after REJECT (blocker 3) — the PROVIDER-BOUNDARY
+          // identity fence: a docker description that reaches the receipt
+          // without a well-formed sha256 baseImageDigest fails typed here —
+          // a product failure, never passed/unknown/retried (ADR-083 §6
+          // split: identity is K19-owned, so this is NOT a classified
+          // docker step and never enters the ADR-091 re-probe/ADR-089
+          // substrate retry).
+          assertBaseImageDigestAtProviderBoundary(desc);
           const substrateEvidence: Record<string, unknown> = {
             substrate: desc.substrate,
             ...(desc.image !== undefined ? { image: desc.image } : {}),

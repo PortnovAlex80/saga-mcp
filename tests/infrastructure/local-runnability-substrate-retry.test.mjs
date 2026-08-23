@@ -216,13 +216,19 @@ function throwingExecutor(code, calls) {
   };
 }
 
-/** A passing host-shaped executor fake. */
+/** A passing docker-shaped executor fake (contract-faithful: a docker describe carries a well-formed baseImageDigest). */
 function passingExecutor() {
   return {
     prepare() {},
     runCommand() {},
     runServed() { return { port: 1, stdoutDigest: '0'.repeat(64), stderrDigest: '0'.repeat(64) }; },
-    describe() { return { substrate: 'docker', image: 'node:20-alpine' }; },
+    describe() {
+      return {
+        substrate: 'docker',
+        image: 'node:20-alpine',
+        baseImageDigest: `sha256:${'e'.repeat(64)}`,
+      };
+    },
     dispose() {},
   };
 }
