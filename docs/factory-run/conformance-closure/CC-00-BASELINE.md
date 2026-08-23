@@ -38,10 +38,37 @@ All commands run in the isolated worktree unless noted.
 
 Committed evidence digests at base SHA:
 
-- `tests/factory-evidence/conformance-report.json` sha256
-  `666e0567b550b20c4f79ce653a93b3ff79c8e919bbb096834939df0730deb97f`
-- `tests/factory-evidence/harvest-manifest.json` sha256 (pre-regeneration)
-  `bcc977468cbe10dd37359d87044da9398e6297e55e9472326da75b825c63293d`
+- `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `6ddcb107`)
+  `ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e`
+- `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob at `6ddcb107`, pre-regeneration)
+  `55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a`
+
+### Digest domain and method (K0 baseline-identity repair, 2026-08-23)
+
+**Domain:** the authority for every committed-evidence digest is the raw byte
+sequence of the committed git blob for the path at the recorded base SHA
+(`git cat-file blob 6ddcb107:<path>`). The pinned blobs are byte-identical at
+the CC-00B integration head `aef699b4` (git blob oids `79a64f22` for the
+report, `3ae2c03c` for the harvest manifest, recorded in the ledger).
+
+**Method:** SHA-256 over those raw blob bytes only — no EOL normalization, no
+working-tree or checkout bytes. Windows checkouts materialize CRLF
+(`core.autocrlf`) and PowerShell pipelines re-encode LF to CRLF, so hashes
+taken over checkout bytes or piped `git show` output belong to a different
+digest domain and are never the authority. Machine-checked by
+`tests/factory-proof/k0-baseline.test.mjs` (K0-E), which reads the exact
+committed blob through `git cat-file` and fails on any pin mismatch, a missing
+pin, or a non-64-hex pin; where full history is present it re-verifies at the
+base SHA itself.
+
+Correction provenance (both originally recorded pins were checkout-domain
+values; the values remain recorded in `committedEvidenceDigests.supersededValues`
+in the ledger): the report pin `666e0567…` was a working-tree capture matching
+no committed-blob variant; the harvest pin `bcc97746…` is the sha256 of the
+CRLF working-tree checkout (19085 bytes = the 18534-byte LF blob with 551
+LF→CRLF conversions). A repair-input candidate `66480ccd…` was identified as
+the sha256 of the report blob after LF→CRLF conversion and rejected for the
+same reason — it is a checkout-domain value, not raw blob bytes.
 
 ## Red baseline classification (11 failures at `6ddcb107`, run under 3-way load)
 

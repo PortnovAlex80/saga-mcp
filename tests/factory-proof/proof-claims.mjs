@@ -56,7 +56,10 @@ export const PROOF_CLAIMS = Object.freeze({
   },
   'tests/factory-proof/k0-baseline.test.mjs': {
     modes: ['Contract'],
-    claims: ['K0 baseline: composition inventory, normalized authority-trace schema (semantic ignore list), floors + observer non-vacuity'],
+    claims: [
+      'K0 baseline: composition inventory, normalized authority-trace schema (semantic ignore list), floors + observer non-vacuity',
+      'committed-evidence digest identity: the CC-00 ledger and baseline-doc pins equal SHA-256 over raw committed git-blob bytes (git cat-file, no EOL normalization, never checkout bytes), cross-checked ledger<->doc and at the recorded base SHA where history is present',
+    ],
     notClaimed: ['live-trace capture — sample fixtures; live normalization arrives with K4 evidence bundles'],
   },
   'tests/factory-proof/proof-claims.test.mjs': {

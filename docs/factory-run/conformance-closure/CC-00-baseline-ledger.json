@@ -42,7 +42,7 @@
       "command": "npm run conformance:v1",
       "exit": 0,
       "mode": "committed-snapshot",
-      "committedReportSha256": "666e0567b550b20c4f79ce653a93b3ff79c8e919bbb096834939df0730deb97f",
+      "committedReportSha256": "ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e",
       "semanticDiffFromCommitted": "none (rewrites generatedAt only)"
     },
     "coverageFactory": {
@@ -116,6 +116,41 @@
       "harvestManifestRunsVerdicts": { "pass": 68 },
       "note": "plan fact '68 PASS bundles' confirmed against committed harvest-manifest.json"
     }
+  },
+
+  "committedEvidenceDigests": {
+    "digestDomain": "raw bytes of the committed git blob for the path at the recorded baseSha (git cat-file blob <baseSha>:<path>); the same blob bytes are identical at the CC-00B integration head aef699b4 (git blob oids recorded below)",
+    "digestMethod": "SHA-256 over the raw blob byte sequence only; no EOL normalization and no working-tree/checkout bytes. Windows checkouts materialize CRLF (autocrlf) and PowerShell pipelines re-encode LF to CRLF, so checkout-derived hashes are a different digest domain by design and are never the authority",
+    "verifiedBy": "tests/factory-proof/k0-baseline.test.mjs (K0-E): reads the exact committed blob through git cat-file (never checkout bytes) and fails on any pin mismatch, missing pin, or non-64-hex pin",
+    "files": {
+      "tests/factory-evidence/conformance-report.json": {
+        "sha256": "ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e",
+        "gitBlobOid": "79a64f22dbc6f8dff61bdf9ad5bbf5d351ed692d",
+        "blobBytes": 28675
+      },
+      "tests/factory-evidence/harvest-manifest.json": {
+        "sha256": "55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a",
+        "gitBlobOid": "3ae2c03c7b9fff547b49f1c815b33c058d9a68d1",
+        "blobBytes": 18534
+      }
+    },
+    "supersededValues": [
+      {
+        "field": "baselineRuns.conformanceV1.committedReportSha256 and CC-00-BASELINE.md (conformance-report pin)",
+        "was": "666e0567b550b20c4f79ce653a93b3ff79c8e919bbb096834939df0730deb97f",
+        "identifiedAs": "working-tree capture at CC-00 time; matches neither the committed blob (ab5f3572...) nor its LF->CRLF transform (66480ccd...); superseded 2026-08-23 by the raw-blob pin (K0 baseline-identity repair)"
+      },
+      {
+        "field": "CC-00-BASELINE.md (harvest-manifest pin)",
+        "was": "bcc977468cbe10dd37359d87044da9398e6297e55e9472326da75b825c63293d",
+        "identifiedAs": "sha256 of the Windows CRLF working-tree checkout (19085 bytes = the 18534-byte LF blob with 551 LF->CRLF conversions); matched checkout bytes only, never the committed blob (55a3ad81...); superseded 2026-08-23 by the raw-blob pin (K0 baseline-identity repair)"
+      },
+      {
+        "field": "K0 repair input value (conformance-report)",
+        "was": "66480ccd783dfb21b4a698fddf64c84e9f2d15723e8f43021749a08dc6ca3e24",
+        "identifiedAs": "sha256 of the conformance-report blob bytes after LF->CRLF conversion (the Windows pipeline/checkout materialization of the blob); rejected as a checkout-domain value, not raw blob bytes"
+      }
+    ]
   },
 
   "semanticIgnoreAudit": {
