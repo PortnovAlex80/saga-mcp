@@ -7,22 +7,51 @@
   until points 1-6 exit green; when point 7 launches Elite-9, all work STOPS
   immediately (no mid-run repairs, no builds, escalate-only — the stage-20/21
   protocol discipline).
-- **Live Elite-8 status at authoring:** launched 15:15:56Z 2026-08-23 on
-  `a990157d` (worktree `D:/Development/saga-mcp-ELITE7`, branch
-  `cc/elite7-run`), engine pid 34836, controls 8/8, watchdog live; red-team
-  audit (91af2982) analyzed live Elite-6/7/8 DBs and preserved the P0
-  task-shadow diagnosis; after unpark+fix task 7 approved 17:52:21Z, task 14
-  working (`docs/factory-run/stage21-elite7/RUN-TRACKER.md:116-125`;
-  `docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:78-93`). Per ADR-094
-  guardrails: NO dist/build/test/factory/network action while Elite-8 lives;
-  saga4 CAS has NOT executed — canonical `origin/saga4` still `611c35e0`
-  (verified in this worktree: `git rev-parse origin/saga4`).
+- **Elite-8 status — TERMINAL (failed), NOT live. Corrected 2026-08-23.**
+  Historical launch facts (true at authoring): launched 15:15:56Z 2026-08-23
+  on `a990157d` (worktree `D:/Development/saga-mcp-ELITE7`, branch
+  `cc/elite7-run`), engine pid 34836, controls 8/8; red-team audit (91af2982)
+  analyzed live Elite-6/7/8 DBs and preserved the P0 task-shadow diagnosis;
+  after unpark+fix task 7 approved 17:52:21Z
+  (`docs/factory-run/stage21-elite7/RUN-TRACKER.md:116-125`;
+  `docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:78-93`).
+- **Terminal evidence (supersedes every earlier "Elite-8 live / task 14
+  working / watchdog live" statement, here and in the points below):** the
+  watchdog observed engine 34836 dead at 16:45:39Z and a replacement engine
+  pid 52300 alive from 17:34:39Z (pid change mid-run; the run continued and
+  terminalized under 52300); the
+  `development-plan-task-graph` gate receipts FAILED (19:10:52Z and
+  19:17:24Z, `development.task-graph-contract.v1`); `run.terminal` at
+  19:17:27.415Z recorded terminal_status=failed / stage_outcome=failed /
+  product_outcome=failed / final_stage=solution-development (cycles 3);
+  `engine.exit` code 0 at 19:17:33Z; the last watchdog sample (20:15:43Z)
+  shows engine dead, launch_state completed, 16 tasks done, and
+  `workplace/3/solution-development@1.4.4/development-plan-task-graph/singleton`
+  terminal/failed (revision 25). No engine process is alive now (pids
+  34836/52300 absent). Evidence:
+  `D:/Development/saga-mcp-ELITE7/.factory-sandboxes/elite8-db/factory-run-journal.jsonl`
+  (`run.terminal`, `engine.exit`) and
+  `D:/Development/saga-mcp-ELITE7/.factory-sandboxes/elite8-logs/watchdog.jsonl`.
+  The ADR-094 "NO dist/build/test/factory/network action while Elite-8
+  lives" freeze is therefore ENDED; what remains is ADR-094's separately
+  authorized post-CAS heavy-validation step (still not run).
+- **saga4 CAS truth (corrected):** the LOCAL saga4 compare-and-swap EXECUTED
+  (`611c35e0` → `586871ad`; verified in this worktree: `git rev-parse saga4`
+  = `586871adfeae77da0ca8af96232ef96d6b0ee7e4`), recorded by `92253c5b` on
+  branch `docs/post-cas-truth-2026-08-23` (ADR-094 decision/exit
+  checks/registry + decision journal updated post-CAS; archive bundle passes
+  `git bundle verify`; heavy validation and dist rebuild explicitly
+  deferred). Canonical `origin/saga4` REMAINS `611c35e0` (verified in this
+  worktree: `git rev-parse origin/saga4`) — no push occurred and none is
+  claimed.
 
 ---
 
 ## Point 1 — Freeze/consolidate branch truth WITHOUT dist rebuild
 
-**Status:** IN PROGRESS (staging merges landed; CAS pending by design).
+**Status:** CAS EXECUTED locally with ADR-094 exit checks recorded
+(`92253c5b`, branch `docs/post-cas-truth-2026-08-23` — not yet merged here);
+post-CAS heavy validation still deferred (separately authorized step).
 
 - [x] Elite-8 line snapshot merged into staging: `ab397ff7` (through `91af2982`
       red-team audit).
@@ -35,24 +64,38 @@
       registry entry `docs/architecture/adr-closure-registry.json:1302-1314`).
 - [x] Map integration branch truth frozen at `12d46037` (docs-only delta from
       `586871ad`; verified `git diff --stat 586871ad 12d46037`).
-- [ ] ADR-094 exit checks pass (Git-only invariants; no dist rebuild while
-      Elite-8 is live).
-- [ ] saga4 compare-and-swap executed atomically with expected old value
-      `611c35e0` (mismatch aborts) — only AFTER exit checks pass.
+- [x] ADR-094 exit checks pass — Git-only invariants executed and recorded
+      post-CAS by `92253c5b` (staging first-parent chain over base `611c35e0`
+      re-verified: `87b97e11` + `37b75b01` + `ab397ff7` + the staging ADR-094
+      docs commit; registry/`JSON.parse` and bundle verify recorded). The
+      "no dist rebuild while Elite-8 is live" clause is moot: Elite-8 is
+      TERMINAL (failed 19:17:27Z, engine dead — see header).
+- [x] saga4 compare-and-swap executed with expected old value `611c35e0`
+      (mismatch aborts): LOCAL `saga4` now `586871ad` (verified in this
+      worktree: `git rev-parse saga4`); before/after SHAs recorded by
+      `92253c5b`. `origin/saga4` remains `611c35e0` — the no-push rule held
+      (push is a separate explicit operator decision, never claimed here).
 - [ ] Post-CAS heavy validation run as a SEPARATELY AUTHORIZED quiet-machine
       step (not part of this freeze).
 
-**Commit/evidence:** staging merges above; `origin/saga4=611c35e0` (verified
-this worktree); ADR-094 registry notes record "the saga4 compare-and-swap has
-NOT yet executed". Note: the map-integration clone's LOCAL `saga4` pointer
-sits at `586871ad` — it is NOT canonical until the CAS; treat `origin/saga4`
-as truth.
+**Commit/evidence:** staging merges above; CAS truth `92253c5b` (branch
+`docs/post-cas-truth-2026-08-23`); verified in this worktree: local `saga4` =
+`586871ad`, `origin/saga4` = `611c35e0` (no push). Superseded wording on this
+branch ("CAS has NOT yet executed", registry notes) predates `92253c5b` and is
+corrected by this tracker entry; the authoritative post-CAS records live in
+`92253c5b` until that branch is merged.
 
-**Blockers:** ADR-094 exit checks unexecuted; Elite-8 liveness forbids builds.
+**Blockers:** post-CAS heavy validation (dist rebuild + suites) not yet
+authorized/run — the only remaining blocker. The previous blockers are stale:
+ADR-094 exit checks ARE executed/recorded, and Elite-8 is terminal, so its
+build freeze no longer applies.
 
-**Exit criteria:** ADR-094 exit checks green → CAS lands with before/after
-SHAs recorded → `origin/saga4` == consolidated tip → zero interference with
-the live run → heavy validation separately authorized and scheduled.
+**Exit criteria:** exit checks green (done, `92253c5b`) → CAS landed with
+before/after SHAs recorded (done, local `611c35e0` → `586871ad`) → zero
+interference with the Elite-8 run (verified: the run terminalized on its own
+gate failure at 19:17:27Z, engine exit 0; the CAS touched one local ref) →
+`origin/saga4` push remains an explicit future operator decision (no-push rule
+held) → heavy validation separately authorized and scheduled (open).
 
 ## Point 2 — Independent maps
 
@@ -135,8 +178,12 @@ GRAPH_RECONCILIATION). Follow-ups are owned by points 5-6, not here.
 **Commit/evidence:** none yet (this is the first code item of the pre-Elite-9
 program).
 
-**Blockers:** Elite-8 liveness forbids builds/tests; ADR-094 ordering puts the
-CAS before heavy validation.
+**Blockers:** the previous "Elite-8 liveness forbids builds/tests" blocker is
+STALE — Elite-8 is terminal (failed 19:17:27Z, engine dead; see header), so
+there is no live run to protect, and the saga4 CAS has executed. Remaining
+gate: the separately authorized post-CAS heavy-validation/dist-rebuild step
+(`92253c5b` defers it deliberately); this scenario is also the deterministic
+substrate for Point 5's corpus (ordering, not a liveness blocker).
 
 **Exit criteria:** scenario green twice consecutively on the consolidated tip;
 matrix-hosted blocking with removal guard; S1 subordinate scenario green;
@@ -187,8 +234,12 @@ no behavioral edit to production physics (composition unchanged).
 (91af2982) + `docs/factory-map/03_DEVELOPMENT.md:580-601` +
 `BRIDGE_MATRIX.md:§4`; no fix commits yet.
 
-**Blockers:** Elite-8 liveness (no builds); ADR-094 CAS ordering; corpus work
-needs the Point-4 regression harness as its deterministic substrate.
+**Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
+Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the
+`development-plan-task-graph` cell are preserved in the Elite-8 DB/logs cited
+in the header); the saga4 CAS has executed. Remaining gates: the separately
+authorized post-CAS heavy-validation step, and corpus work still needs the
+Point-4 regression harness as its deterministic substrate.
 
 **Exit criteria:** each fix lands with RED/GREEN regression; corpus actors
 parameterized and hosted; Discovery legacy removal merged with ADR + guard
@@ -197,7 +248,8 @@ workplace; no orphan left by the new suites (R1 check).
 
 ## Point 6 — Clean preflight, safe parallelism/operational envelope, current-config readiness
 
-**Status:** PENDING (Elite-8 still live; preflight is a launch-day gate).
+**Status:** PENDING (preflight is a launch-day gate; Elite-8 is TERMINAL —
+failed 19:17:27Z, engine dead — so no live run constrains scheduling).
 
 - [ ] Dedicated worktree + branch for Elite-9 at the consolidated tip (the
       w02/Elite-7 lesson: never share a worktree whose dist a live engine
