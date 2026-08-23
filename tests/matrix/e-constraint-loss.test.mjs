@@ -149,7 +149,7 @@ const BOUNDARIES = [
     boundary: 'AC → task graph (Development, plan-task-graph)',
     upstream: 'the frozen acceptance baseline / DevelopmentCase.acceptanceCriteria',
     restatement: 'the typed task-graph proposal (acceptanceCriterionIds per item; constraint relay is kernel-derived, never proposed)',
-    node: `${DEVELOPMENT_MODULE}:242-276 (node 'plan-task-graph')`,
+    node: `${DEVELOPMENT_MODULE}:248-282 (node 'plan-task-graph')`,
     promptAssembly: 'machine-filled card: src/modules/development/application/development-workspace-preparation.ts:78-124; gate semantics: src/modules/development/domain/development-settlement-policy.ts:250-589; relay derivation: src/modules/development/domain/development-task-graph.ts:221-253',
   },
   {
@@ -157,7 +157,7 @@ const BOUNDARIES = [
     boundary: 'task graph → workplace cards (Development, implement-work-items / verify-acceptance)',
     upstream: 'the canonical task graph item (cell_input_item: key, acceptanceCriterionIds, changeScopes, coveredConstraintIds)',
     restatement: 'the implementation result product (workItemKey + git snapshot) and the verification evidence product',
-    node: `${DEVELOPMENT_MODULE}:278-383 (node 'implement-work-items'; verification fan-out :384-434)`,
+    node: `${DEVELOPMENT_MODULE}:284-403 (node 'implement-work-items'; verification fan-out :404-454)`,
     promptAssembly: `card projection: ${CARD_EXECUTOR}:1744 (cell_input_item: workplace.item) and :1751-1753 (nodeInput = { upstream, item }); implementation scope provider: src/modules/development/application/development-check-providers.ts:717-917; verification echo check: :1089-1112`,
   },
 ];
@@ -385,8 +385,8 @@ test('space E — E1: the restatement boundaries are enumerated from the process
   assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
   assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 164);
   assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 194);
-  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 242);
-  assert.equal(lineOf(development, "id: 'implement-work-items'"), 278);
+  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 248);
+  assert.equal(lineOf(development, "id: 'implement-work-items'"), 284);
   assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');
   assert.equal(BOUNDARIES.length, 5, 'the E1 boundary list is fixed at five');
   for (const row of BOUNDARIES) {
@@ -1165,6 +1165,22 @@ test('space E — CC-IC-1 m6b: a v2 FormalizationCase takes its ONE register bin
     injections: [{ table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE, tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF }],
   });
   assert.ok(certificateRegister);
+  // CC-IC-2: the brief must dispose EVERY v2 register entry in the exact
+  // kind/state grammar — the settlement freeze re-verifies the set (missing
+  // entry = FORMALIZATION_DISPOSITION_FREEZE_INVALID/UNDISPOSED). Mirrors the
+  // migrated corpora's lawful shape: the ONE open question (ord-c-002, the
+  // proposal's unknown) resolves with the authentic discovery evidence this
+  // same file drives at m1 (the readiness assessment's unknowns_manageability
+  // dimension assessed 'sufficient'); every other kind accepts. `waived` is
+  // typed-unavailable on v2 — never a waiver here.
+  const lawfulV2Dispositions = Object.fromEntries(
+    certificateRegister.constraints.map(entry => [entry.id, entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' }]),
+  );
   const certificatePayload = {
     schemaVersion: 'factory.discovery-outcome-certificate.v1',
     decision: 'go', reasonCodes: [], rationale: 'r', inputHash: 'i'.repeat(64),
@@ -1197,7 +1213,7 @@ test('space E — CC-IC-1 m6b: a v2 FormalizationCase takes its ONE register bin
     findFirstTraceabilityGapForLifecycle: () => null,
     areTasksReady: () => ({ ready: true, blockingTaskIds: [] }),
     readOwningLifecycleRunId: () => 7,
-    readBriefConstraintDispositionsForLifecycle: () => ({}),
+    readBriefConstraintDispositionsForLifecycle: () => lawfulV2Dispositions,
   });
 
   const drive = (theCase, readCertificate) => {
