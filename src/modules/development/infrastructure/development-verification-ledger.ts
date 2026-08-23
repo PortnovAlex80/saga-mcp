@@ -16,6 +16,14 @@
  * execution is a recorded fact, never a discharge. The ONLY discharges are
  * an exact passed receipt and an operator-attributed waiver with provenance.
  *
+ * CC-GAP-8 terminal repair: TERMINAL-ROUTE facts append at the settlement
+ * seam when the run terminates without executing an obligation —
+ * `terminal-unknown` (environment/readiness uncertainty, never product
+ * failure), `terminal-blocked`, `terminal-human-required` (attributed to the
+ * exact open human gates) — each with settlement-certificate provenance.
+ * They close the row for this run without discharging it and never poison a
+ * later executed/waived append (latest event wins).
+ *
  * This store is Development-module-local. It deliberately does NOT touch
  * `factory_transition_obligations` (the conveyor transition ledger), GAP-9
  * routing, GAP-7 warrants, or GAP-10 role chips.
@@ -25,10 +33,14 @@ import type Database from 'better-sqlite3';
 import type {
   DevelopmentTaskGraphSnapshot,
 } from '../domain/development-schemas.js';
-import type { VerificationLedgerEvent } from '../domain/verification-accounting.js';
+import type {
+  VerificationLedgerEvent,
+  VerificationTerminalRouteKind,
+} from '../domain/verification-accounting.js';
 import {
   projectCriterionLedgerAccounting,
   projectLegacyUnaccountedVerification,
+  terminalRouteEventState,
   type VerificationAccountingProjection,
 } from '../domain/verification-accounting.js';
 
@@ -38,6 +50,21 @@ const TASK_GRAPH_PRODUCT_KIND = 'development.task-graph';
 export function ensureDevelopmentVerificationLedgerSchema(
   db: Database.Database,
 ): void {
+  const columns = db.prepare(
+    `PRAGMA table_info(${LEDGER_TABLE})`,
+  ).all() as Array<{ name: string }>;
+  if (columns.length > 0 && !columns.some(column => column.name === 'terminal_route')) {
+    // v1 -> v2 migration: the append-only rows are preserved verbatim; only
+    // the table shape changes (terminal-route columns + the extended
+    // entry_state CHECK). Rebuild in ONE transaction — triggers dropped, new
+    // table created, rows copied, old table replaced, triggers recreated.
+    migrateLedgerV1ToV2(db);
+    return;
+  }
+  createLedgerSchemaV2(db);
+}
+
+function createLedgerSchemaV2(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${LEDGER_TABLE} (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +80,9 @@ export function ensureDevelopmentVerificationLedgerSchema(
                             CHECK (criticality IS NULL
                                    OR criticality IN ('blocker','degradable','nice_to_have')),
       entry_state           TEXT NOT NULL
-                            CHECK (entry_state IN ('proposed','pending','executed','waived')),
+                            CHECK (entry_state IN ('proposed','pending','executed','waived',
+                                                   'terminal-unknown','terminal-blocked',
+                                                   'terminal-human-required')),
       outcome               TEXT
                             CHECK (outcome IS NULL OR outcome IN ('passed','failed')),
       candidate_hash        TEXT,
@@ -63,6 +92,16 @@ export function ensureDevelopmentVerificationLedgerSchema(
       waiver_reason         TEXT,
       waiver_provenance_ref TEXT,
       proposed_from_ref     TEXT,
+      terminal_route        TEXT
+                            CHECK (terminal_route IS NULL
+                                   OR terminal_route IN ('unknown','blocked','human-required')),
+      terminal_reason_codes TEXT
+                            CHECK (terminal_reason_codes IS NULL
+                                   OR terminal_reason_codes LIKE '[%'),
+      terminal_provenance_ref TEXT,
+      terminal_attributed_to TEXT
+                            CHECK (terminal_attributed_to IS NULL
+                                   OR terminal_attributed_to LIKE '[%'),
       recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -76,17 +115,80 @@ export function ensureDevelopmentVerificationLedgerSchema(
     -- never rewritten and never deleted. Discharge is a NEW event, never a
     -- mutation of an old one.
     CREATE TRIGGER IF NOT EXISTS trg_factory_development_verification_ledger_no_update
-    BEFORE UPDATE ON ${LEDGER_TABLE}
-    BEGIN
-      SELECT RAISE(ABORT, 'DEVELOPMENT_VERIFICATION_LEDGER_APPEND_ONLY');
-    END;
+      BEFORE UPDATE ON ${LEDGER_TABLE}
+      BEGIN
+        SELECT RAISE(ABORT, 'DEVELOPMENT_VERIFICATION_LEDGER_APPEND_ONLY');
+      END;
 
     CREATE TRIGGER IF NOT EXISTS trg_factory_development_verification_ledger_no_delete
-    BEFORE DELETE ON ${LEDGER_TABLE}
-    BEGIN
-      SELECT RAISE(ABORT, 'DEVELOPMENT_VERIFICATION_LEDGER_DELETE_FORBIDDEN');
-    END;
+      BEFORE DELETE ON ${LEDGER_TABLE}
+      BEGIN
+        SELECT RAISE(ABORT, 'DEVELOPMENT_VERIFICATION_LEDGER_DELETE_FORBIDDEN');
+      END;
   `);
+}
+
+/**
+ * v1 -> v2: preserve every recorded fact verbatim. The DELETE trigger blocks
+ * the plain drop-and-copy, so triggers are dropped INSIDE the migration
+ * transaction and recreated from the v2 shape at the end. A crash mid-way
+ * rolls the transaction back whole (SQLite DDL is transactional here).
+ */
+function migrateLedgerV1ToV2(db: Database.Database): void {
+  db.transaction(() => {
+    db.exec(`DROP TRIGGER IF EXISTS trg_factory_development_verification_ledger_no_update`);
+    db.exec(`DROP TRIGGER IF EXISTS trg_factory_development_verification_ledger_no_delete`);
+    db.exec(`
+      CREATE TABLE ${LEDGER_TABLE}__v2 (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id        INTEGER NOT NULL
+                                REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+        project_id            INTEGER NOT NULL,
+        epic_id               INTEGER NOT NULL,
+        graph_hash            TEXT NOT NULL,
+        criterion_key         TEXT NOT NULL,
+        verification_item_key TEXT NOT NULL,
+        required              INTEGER NOT NULL,
+        criticality           TEXT,
+        entry_state           TEXT NOT NULL
+                                CHECK (entry_state IN ('proposed','pending','executed','waived',
+                                                       'terminal-unknown','terminal-blocked',
+                                                       'terminal-human-required')),
+        outcome               TEXT
+                                CHECK (outcome IS NULL OR outcome IN ('passed','failed')),
+        candidate_hash        TEXT,
+        receipt_ref           TEXT,
+        receipt_digest        TEXT,
+        waiver_operator       TEXT,
+        waiver_reason         TEXT,
+        waiver_provenance_ref TEXT,
+        proposed_from_ref     TEXT,
+        terminal_route        TEXT
+                                CHECK (terminal_route IS NULL
+                                       OR terminal_route IN ('unknown','blocked','human-required')),
+        terminal_reason_codes TEXT,
+        terminal_provenance_ref TEXT,
+        terminal_attributed_to TEXT,
+        recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    db.exec(`
+      INSERT INTO ${LEDGER_TABLE}__v2
+        (id,process_run_id,project_id,epic_id,graph_hash,criterion_key,
+         verification_item_key,required,criticality,entry_state,outcome,
+         candidate_hash,receipt_ref,receipt_digest,waiver_operator,waiver_reason,
+         waiver_provenance_ref,proposed_from_ref,recorded_at)
+      SELECT id,process_run_id,project_id,epic_id,graph_hash,criterion_key,
+             verification_item_key,required,criticality,entry_state,outcome,
+             candidate_hash,receipt_ref,receipt_digest,waiver_operator,waiver_reason,
+             waiver_provenance_ref,proposed_from_ref,recorded_at
+        FROM ${LEDGER_TABLE}
+       ORDER BY id
+    `);
+    db.exec(`DROP TABLE ${LEDGER_TABLE}`);
+    db.exec(`ALTER TABLE ${LEDGER_TABLE}__v2 RENAME TO ${LEDGER_TABLE}`);
+  })();
+  createLedgerSchemaV2(db);
 }
 
 /**
@@ -288,6 +390,113 @@ export function recordVerificationWaiver(
   );
 }
 
+/**
+ * Append a TERMINAL-ROUTE fact for every criterion key whose latest event is
+ * still unexecuted (proposed/pending) or already terminal (a later settlement
+ * drive may legitimately re-classify the terminal route; latest event wins).
+ * Entries holding an `executed` fact are NEVER overwritten — an executed
+ * product verdict (passed or failed) is a recorded fact that a terminal
+ * route must not conflate with environment uncertainty.
+ *
+ * Terminal facts carry provenance (reason codes + settlement certificate
+ * ref) and are NEVER a discharge. They do NOT poison later replay/retry: an
+ * `executed`/`waived` fact appended afterwards supersedes by sequence, and a
+ * continuation run opens its own ledger. Idempotent per
+ * (run, criterion, route, provenance ref). Legacy runs (no ledger rows at
+ * all) are skipped whole — legacy typing must stay whole.
+ */
+export function recordVerificationTerminalRoute(
+  db: Database.Database,
+  input: {
+    processRunId: number;
+    route: VerificationTerminalRouteKind;
+    reasonCodes: readonly string[];
+    provenanceRef: string;
+    attributedTo?: readonly string[];
+  },
+): void {
+  ensureDevelopmentVerificationLedgerSchema(db);
+  const reasonCodes = [...new Set(input.reasonCodes.map(code => code.trim()))]
+    .filter(code => code.length > 0);
+  if (reasonCodes.length === 0) {
+    throw new Error('DEVELOPMENT_VERIFICATION_TERMINAL_PROVENANCE_REQUIRED');
+  }
+  if (!input.provenanceRef.trim()) {
+    throw new Error('DEVELOPMENT_VERIFICATION_TERMINAL_PROVENANCE_REQUIRED');
+  }
+  const attributedTo = input.attributedTo === undefined
+    ? []
+    : [...new Set(input.attributedTo.map(gate => gate.trim()))]
+      .filter(gate => gate.length > 0);
+  if (input.route === 'human-required' && attributedTo.length === 0) {
+    throw new Error('DEVELOPMENT_VERIFICATION_TERMINAL_HUMAN_ATTRIBUTION_REQUIRED');
+  }
+  const entryState = terminalRouteEventState(input.route);
+  const graphHash = readLedgerGraphHash(db, input.processRunId);
+  if (graphHash === null) return; // legacy run: never partially accounted
+  const rows = db.prepare(
+    `SELECT criterion_key,
+            (SELECT entry_state FROM ${LEDGER_TABLE} inner_row
+              WHERE inner_row.process_run_id=outer_row.process_run_id
+                AND inner_row.criterion_key=outer_row.criterion_key
+              ORDER BY inner_row.id DESC LIMIT 1) AS latest_state
+       FROM ${LEDGER_TABLE} outer_row
+      WHERE process_run_id=?
+      GROUP BY criterion_key
+      ORDER BY criterion_key`,
+  ).all(input.processRunId) as Array<{
+    criterion_key: string;
+    latest_state: VerificationLedgerEvent['entryState'];
+  }>;
+  const closable = new Set(['proposed', 'pending', 'terminal-unknown', 'terminal-blocked', 'terminal-human-required']);
+  const insert = db.prepare(
+    `INSERT INTO ${LEDGER_TABLE}
+       (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+        verification_item_key,required,entry_state,
+        terminal_route,terminal_reason_codes,terminal_provenance_ref,
+        terminal_attributed_to)
+     SELECT ?,(SELECT project_id FROM ${LEDGER_TABLE} WHERE process_run_id=? LIMIT 1),
+            (SELECT epic_id FROM ${LEDGER_TABLE} WHERE process_run_id=? LIMIT 1),
+            ?,?,?,?,?,?,?,?,?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM ${LEDGER_TABLE}
+          WHERE process_run_id=? AND criterion_key=? AND entry_state=?
+            AND terminal_provenance_ref=?
+       )`,
+  );
+  for (const row of rows) {
+    if (!closable.has(row.latest_state)) continue; // executed/waived: never overwritten
+    const opened = db.prepare(
+      `SELECT verification_item_key,required FROM ${LEDGER_TABLE}
+        WHERE process_run_id=? AND criterion_key=?
+          AND entry_state IN ('proposed','pending')
+        ORDER BY id LIMIT 1`,
+    ).get(input.processRunId, row.criterion_key) as {
+      verification_item_key: string;
+      required: number;
+    } | undefined;
+    if (!opened) continue;
+    insert.run(
+      input.processRunId,
+      input.processRunId,
+      input.processRunId,
+      graphHash,
+      row.criterion_key,
+      opened.verification_item_key,
+      opened.required,
+      entryState,
+      input.route,
+      JSON.stringify(reasonCodes),
+      input.provenanceRef,
+      JSON.stringify(attributedTo),
+      input.processRunId,
+      row.criterion_key,
+      entryState,
+      input.provenanceRef,
+    );
+  }
+}
+
 /** Read the ledger of one run in authoritative append order (by row id). */
 export function readDevelopmentVerificationLedgerEvents(
   db: Database.Database,
@@ -298,7 +507,9 @@ export function readDevelopmentVerificationLedgerEvents(
     `SELECT id,process_run_id,graph_hash,criterion_key,verification_item_key,
             required,criticality,entry_state,outcome,candidate_hash,
             receipt_ref,receipt_digest,waiver_operator,waiver_reason,
-            waiver_provenance_ref,proposed_from_ref,recorded_at
+            waiver_provenance_ref,proposed_from_ref,
+            terminal_route,terminal_reason_codes,terminal_provenance_ref,
+            terminal_attributed_to,recorded_at
        FROM ${LEDGER_TABLE}
       WHERE process_run_id=?
       ORDER BY id`,
@@ -378,6 +589,10 @@ interface VerificationLedgerRow {
   waiver_reason: string | null;
   waiver_provenance_ref: string | null;
   proposed_from_ref: string | null;
+  terminal_route: string | null;
+  terminal_reason_codes: string | null;
+  terminal_provenance_ref: string | null;
+  terminal_attributed_to: string | null;
   recorded_at: string;
 }
 
@@ -399,8 +614,24 @@ function rowToEvent(row: VerificationLedgerRow): VerificationLedgerEvent {
     waiverReason: row.waiver_reason,
     waiverProvenanceRef: row.waiver_provenance_ref,
     proposedFromRef: row.proposed_from_ref,
+    terminalRoute: row.terminal_route as VerificationLedgerEvent['terminalRoute'],
+    terminalReasonCodes: parseStringArray(row.terminal_reason_codes),
+    terminalProvenanceRef: row.terminal_provenance_ref,
+    terminalAttributedTo: parseStringArray(row.terminal_attributed_to),
     recordedAt: row.recorded_at,
   };
+}
+
+function parseStringArray(value: string | null): readonly string[] {
+  if (value === null) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function readLedgerGraphHash(

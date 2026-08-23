@@ -20,6 +20,21 @@
 //   - the ledger is append-only (UPDATE/DELETE rejected);
 //   - BLOCKING MUTATION: rendering unexecuted deferred verificationItems as
 //     discharged FAILS accounting.
+//
+// CC-GAP-8 TERMINAL REPAIR additions:
+//   - terminal-route classification keeps environment uncertainty (unknown),
+//     blocked routes and human-required attribution mechanically distinct;
+//   - terminal facts carry settlement provenance, close the row without a
+//     discharge, and are idempotent / never overwrite executed facts;
+//   - NO-POISON: a later exact passed receipt still discharges after a
+//     terminal-unknown fact (latest event wins);
+//   - TERMINAL INVARIANT: once a terminal route is recorded, no entry may
+//     stay proposed/pending (BLOCKING MUTATION: removing the terminal
+//     accounting of one criterion fails integrity);
+//   - the REAL settlement kernel seam records the classified terminal facts
+//     (Elite-6 readiness-failure shape -> terminal-unknown);
+//   - the render guard never fabricates executed verification (BLOCKING
+//     MUTATION: rendering terminal-unknown as executed/discharged fails).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
@@ -35,9 +50,11 @@ const { buildCanonicalDevelopmentTaskGraph } = await import(
 );
 const { sha256Hex } = await import('../../../dist/shared/canonical-json.js');
 const {
+  ensureDevelopmentVerificationLedgerSchema,
   readDevelopmentVerificationLedgerEvents,
   recordVerificationExecuted,
   recordVerificationWaiver,
+  recordVerificationTerminalRoute,
   projectDevelopmentVerificationAccounting,
   listDevelopmentVerificationAccountingByEpic,
 } = await import(
@@ -46,6 +63,8 @@ const {
 const {
   assertRenderedAccountingTruthful,
   assertVerificationAccountingIntegrity,
+  classifyVerificationTerminalRoute,
+  projectCriterionLedgerAccounting,
 } = await import(
   '../../../dist/modules/development/domain/verification-accounting.js'
 );
@@ -198,7 +217,9 @@ function makeDevelopmentCase() {
       },
     ],
     repositories: [{ projectRepositoryId: REPO_ID, integrationBranch: 'dev', expectedBaseCommit: 'b'.repeat(40) }],
-    policy: { id: 'p', version: '1', contentHash: '' },
+    // hashDevelopmentPolicy = sha256 of the policy snapshot minus contentHash
+    // (kept inline — sha256Hex is imported at the top of this file).
+    policy: { id: 'p', version: '1', contentHash: sha256Hex({ id: 'p', version: '1' }) },
     initiatedBy: 'operator',
   };
 }
@@ -397,7 +418,9 @@ test('projection exposes stage, deferral gate, owner, unblock condition and dete
     }
     assert.deepEqual(projection.summary, {
       proposed: 0, pending: 2, executedPassed: 0, executedFailed: 0,
-      waived: 0, legacyUnaccounted: 0, open: 2, discharged: 0, total: 2,
+      waived: 0, legacyUnaccounted: 0,
+      terminalUnknown: 0, terminalBlocked: 0, terminalHumanRequired: 0,
+      open: 2, discharged: 0, total: 2,
     });
     assertVerificationAccountingIntegrity(projection);
   } finally {
@@ -896,6 +919,662 @@ test('BLOCKING MUTATION: hiding stage/order coordinates from the status projecti
     assert.throws(
       () => assertVerificationAccountingIntegrity(executed),
       /DEVELOPMENT_VERIFICATION_ACCOUNTING_DEFERRAL_GATE_STALE/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CC-GAP-8 TERMINAL REPAIR: classification keeps the three route classes
+// mechanically distinct (environment uncertainty is never product failure)
+// ---------------------------------------------------------------------------
+
+const {
+  createDevelopmentKernelHandlers,
+} = await import(
+  '../../../dist/modules/development/application/development-installation.js'
+);
+const {
+  ReferenceDevelopmentSettlementPolicy,
+} = await import(
+  '../../../dist/modules/development/domain/development-settlement-policy.js'
+);
+const {
+  encodeCheckDiagnostic,
+} = await import(
+  '../../../dist/process-modules/domain/workplace/check-diagnostic.js'
+);
+const {
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+  LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+} = await import(
+  '../../../dist/modules/development/application/candidate-check-contracts.js'
+);
+
+test('terminal-route classification: substrate uncertainty, product failure, human gates and verified leftovers stay distinct', () => {
+  // Elite-6 shape: readiness failed WITH a substrate-precondition diagnostic
+  // (the frozen ADR-089 vocabulary) � environment uncertainty, never a
+  // product verdict.
+  const substrate = classifyVerificationTerminalRoute({
+    decision: 'blocked',
+    reasonCodes: ['candidate-missing', 'local-readiness-failed'],
+    openHumanGateIds: [],
+    readinessOutcome: 'failed',
+    readinessDiagnosticCodes: ['LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE'],
+  });
+  assert.equal(substrate.route, 'unknown');
+  assert.ok(substrate.reasonCodes.includes('environment-uncertainty-not-product-failure'));
+
+  // No receipt at all: nothing ever proved readiness � absence of a product
+  // verdict is uncertainty, not a product failure.
+  const missing = classifyVerificationTerminalRoute({
+    decision: 'blocked',
+    reasonCodes: ['local-readiness-missing'],
+    openHumanGateIds: [],
+    readinessOutcome: null,
+    readinessDiagnosticCodes: [],
+  });
+  assert.equal(missing.route, 'unknown');
+
+  // A FAILED readiness receipt whose diagnostics are product-adjacent (the
+  // check ran and the product was wanting) is a blocked route, NOT unknown.
+  const productFailure = classifyVerificationTerminalRoute({
+    decision: 'blocked',
+    reasonCodes: ['candidate-missing', 'local-readiness-failed'],
+    openHumanGateIds: [],
+    readinessOutcome: 'failed',
+    readinessDiagnosticCodes: ['local-runnability'],
+  });
+  assert.equal(productFailure.route, 'blocked');
+
+  // Open human gates win: explicit attribution, never flattened into
+  // unknown or blocked.
+  const human = classifyVerificationTerminalRoute({
+    decision: 'blocked',
+    reasonCodes: [],
+    openHumanGateIds: ['workplace/30/development-verification/x'],
+    readinessOutcome: null,
+    readinessDiagnosticCodes: [],
+  });
+  assert.equal(human.route, 'human-required');
+  assert.deepEqual(human.attributedTo, ['workplace/30/development-verification/x']);
+  assert.ok(human.reasonCodes.includes('human-decision-required'));
+
+  // A verified settlement that left a non-required obligation unexecuted is
+  // an explicit not-required leftover � still never a discharge.
+  const leftover = classifyVerificationTerminalRoute({
+    decision: 'verified',
+    reasonCodes: [],
+    openHumanGateIds: [],
+    readinessOutcome: 'passed',
+    readinessDiagnosticCodes: [],
+  });
+  assert.equal(leftover.route, 'blocked');
+  assert.deepEqual(leftover.reasonCodes, ['verification-item-not-required']);
+});
+
+// ---------------------------------------------------------------------------
+// Terminal facts: provenance, idempotency, executed-facts never overwritten
+// ---------------------------------------------------------------------------
+
+test('terminal facts close unexecuted rows with provenance, idempotently, and never discharge', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 31);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 31, developmentCase, graph });
+
+    // Fail-closed: terminal provenance is required, and human-required
+    // terminal facts demand explicit attribution.
+    assert.throws(
+      () => recordVerificationTerminalRoute(db, {
+        processRunId: 31, route: 'blocked', reasonCodes: [], provenanceRef: 'p',
+      }),
+      /DEVELOPMENT_VERIFICATION_TERMINAL_PROVENANCE_REQUIRED/,
+    );
+    assert.throws(
+      () => recordVerificationTerminalRoute(db, {
+        processRunId: 31, route: 'human-required', reasonCodes: ['r'],
+        provenanceRef: 'p', attributedTo: [],
+      }),
+      /DEVELOPMENT_VERIFICATION_TERMINAL_HUMAN_ATTRIBUTION_REQUIRED/,
+    );
+
+    recordVerificationTerminalRoute(db, {
+      processRunId: 31, route: 'unknown',
+      reasonCodes: ['environment-uncertainty-not-product-failure', 'local-readiness-failed'],
+      provenanceRef: 'development-settlement:31:' + 'u'.repeat(8),
+    });
+    // idempotent replay of the SAME terminal settlement
+    recordVerificationTerminalRoute(db, {
+      processRunId: 31, route: 'unknown',
+      reasonCodes: ['environment-uncertainty-not-product-failure', 'local-readiness-failed'],
+      provenanceRef: 'development-settlement:31:' + 'u'.repeat(8),
+    });
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 31 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, true);
+    assert.equal(projection.summary.terminalUnknown, 2);
+    assert.equal(projection.summary.pending, 0);
+    assert.equal(projection.summary.discharged, 0);
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-unknown');
+      assert.equal(entry.discharged, false);
+      assert.equal(entry.discharge, null);
+      assert.equal(entry.terminalRoute, 'unknown');
+      assert.ok(entry.terminalReasonCodes.length > 0);
+      assert.equal(entry.terminalProvenanceRef, 'development-settlement:31:' + 'u'.repeat(8));
+      assert.equal(entry.stage.gatedBy, null, 'terminal rows are no longer deferred');
+      assert.equal(entry.unblockCondition, null, 'terminal rows drop the stale unblock');
+    }
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+test('terminal facts never overwrite an executed fact: the product verdict stays visible', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 32);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 32, developmentCase, graph });
+    recordVerificationExecuted(db, {
+      processRunId: 32, criterionKey: '14:AC-1', verificationItemKey: 'verify-ac-1',
+      outcome: 'failed', receiptRef: 'check-receipt:fail-32',
+      receiptDigest: sha256Hex('fail-32'), candidateHash: CANDIDATE_HASH,
+    });
+    recordVerificationTerminalRoute(db, {
+      processRunId: 32, route: 'blocked', reasonCodes: ['verification-failed'],
+      provenanceRef: 'development-settlement:32:blocked',
+    });
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 32 });
+    const failed = projection.entries.find(e => e.criterionKey === '14:AC-1');
+    const terminal = projection.entries.find(e => e.criterionKey === '15:AC-2');
+    assert.equal(failed.state, 'executed', 'an executed product verdict is never flattened into a terminal route');
+    assert.equal(failed.outcome, 'failed');
+    assert.equal(failed.discharged, false);
+    assert.equal(terminal.state, 'terminal-blocked');
+    assert.equal(projection.summary.executedFailed, 1);
+    assert.equal(projection.summary.terminalBlocked, 1);
+    assertVerificationAccountingIntegrity(projection);
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// NO-POISON: a terminal fact never blocks or annotates a later pass
+// ---------------------------------------------------------------------------
+
+test('NO-POISON: after a terminal-unknown fact, a later exact passed receipt still discharges', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 33);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 33, developmentCase, graph });
+    // Run settled blocked at readiness (substrate down).
+    recordVerificationTerminalRoute(db, {
+      processRunId: 33, route: 'unknown',
+      reasonCodes: ['environment-uncertainty-not-product-failure'],
+      provenanceRef: 'development-settlement:33:u',
+    });
+    const before = projectDevelopmentVerificationAccounting(db, { processRunId: 33 });
+    assert.equal(before.summary.terminalUnknown, 2);
+
+    // Substrate recovered; the same run re-drove verification and the exact
+    // criterion passed under current authority.
+    recordVerificationExecuted(db, {
+      processRunId: 33, criterionKey: '14:AC-1', verificationItemKey: 'verify-ac-1',
+      outcome: 'passed', receiptRef: 'check-receipt:pass-33',
+      receiptDigest: sha256Hex('pass-33'), candidateHash: CANDIDATE_HASH,
+    });
+    const after = projectDevelopmentVerificationAccounting(db, { processRunId: 33 });
+    const recovered = after.entries.find(e => e.criterionKey === '14:AC-1');
+    assert.equal(recovered.state, 'executed');
+    assert.equal(recovered.outcome, 'passed');
+    assert.equal(recovered.discharged, true,
+      'the earlier terminal-unknown is append-only history and never poisons the later pass');
+    assert.equal(after.summary.terminalUnknown, 1);
+    assert.equal(after.summary.discharged, 1);
+    assertVerificationAccountingIntegrity(after);
+
+    // The unknown history row is still there � append-only, nothing erased.
+    const history = readDevelopmentVerificationLedgerEvents(db, 33)
+      .filter(e => e.entryState === 'terminal-unknown');
+    assert.equal(history.length, 2);
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// BLOCKING MUTATIONS: removing terminal accounting / fabricating executed
+// verification fails
+// ---------------------------------------------------------------------------
+
+test('BLOCKING MUTATION: removing the terminal accounting of one criterion fails the terminal invariant', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 34);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 34, developmentCase, graph });
+    recordVerificationTerminalRoute(db, {
+      processRunId: 34, route: 'blocked', reasonCodes: ['implementation-incomplete'],
+      provenanceRef: 'development-settlement:34:blocked',
+    });
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 34 });
+    assertVerificationAccountingIntegrity(projection);
+
+    // MUTATION: the terminal accounting of ONE criterion is removed (the
+    // recorder "forgot" it) � the run recorded a terminal route, so a bare
+    // pending row left behind FAILS the terminal invariant. It may never
+    // masquerade as executed-or-still-deferred.
+    const events = readDevelopmentVerificationLedgerEvents(db, 34);
+    const stripped = events.filter(e => !(e.criterionKey === '15:AC-2' && e.entryState === 'terminal-blocked'));
+    const mutated = projectCriterionLedgerAccounting({
+      processRunId: 34, graphHash: projection.graphHash, events: stripped,
+    });
+    assert.equal(mutated.terminalRouteRecorded, true);
+    assert.throws(
+      () => assertVerificationAccountingIntegrity(mutated),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_UNEXPLAINED_PENDING_AT_TERMINAL/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('BLOCKING MUTATION: forged terminal provenance, stale unblock and dishonest renders fail', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 35);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 35, developmentCase, graph });
+    recordVerificationTerminalRoute(db, {
+      processRunId: 35, route: 'human-required',
+      reasonCodes: ['human-decision-required'],
+      provenanceRef: 'development-settlement:35:blocked',
+      attributedTo: ['workplace/35/development-verification/verify-ac-1'],
+    });
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 35 });
+    assert.equal(projection.summary.terminalHumanRequired, 2);
+
+    // MUTATION: terminal provenance stripped (no reason codes) � must FAIL.
+    const noReasons = structuredClone(projection);
+    noReasons.entries[0].terminalReasonCodes = [];
+    assert.throws(
+      () => assertVerificationAccountingIntegrity(noReasons),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_TERMINAL_PROVENANCE_INVALID/,
+    );
+
+    // MUTATION: human-required without attribution � must FAIL.
+    const noAttribution = structuredClone(projection);
+    noAttribution.entries[0].terminalAttributedTo = [];
+    assert.throws(
+      () => assertVerificationAccountingIntegrity(noAttribution),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_HUMAN_ATTRIBUTION_MISSING/,
+    );
+
+    // MUTATION: terminal entry rendered discharged � must FAIL.
+    assert.throws(
+      () => assertRenderedAccountingTruthful({
+        rendered: [{ criterionKey: '14:AC-1', discharged: true }],
+        projection,
+      }),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_RENDER_DISHONEST/,
+    );
+
+    // MUTATION: terminal-unknown rendered AS EXECUTED � fabricated executed
+    // verification � must FAIL (never fabricate executed verification).
+    assert.throws(
+      () => assertRenderedAccountingTruthful({
+        rendered: [{ criterionKey: '14:AC-1', discharged: false, renderedState: 'executed' }],
+        projection,
+      }),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_RENDER_STATE_DISHONEST/,
+    );
+
+    // Honest render of the human-required terminal state passes.
+    assert.doesNotThrow(() => assertRenderedAccountingTruthful({
+      rendered: projection.entries.map(e => ({
+        criterionKey: e.criterionKey, discharged: false, renderedState: e.state,
+      })),
+      projection,
+    }));
+  } finally {
+    db.close();
+  }
+});
+
+test('BLOCKING MUTATION: terminal entry with a forged discharge or stale unblock fails integrity', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 36);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 36, developmentCase, graph });
+    recordVerificationTerminalRoute(db, {
+      processRunId: 36, route: 'unknown',
+      reasonCodes: ['environment-uncertainty-not-product-failure'],
+      provenanceRef: 'development-settlement:36:u',
+    });
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 36 });
+
+    // MUTATION: terminal entry silently discharged with forged provenance.
+    const forged = structuredClone(projection);
+    const entry = forged.entries[0];
+    entry.discharged = true;
+    entry.discharge = {
+      kind: 'operator-waiver', operator: 'forged', reason: 'forged',
+      provenanceRef: 'forged-journal',
+    };
+    assert.throws(
+      () => assertVerificationAccountingIntegrity(forged),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_SILENT_DISCHARGE/,
+    );
+
+    // MUTATION: stale unblock condition left on a terminal entry.
+    const stale = structuredClone(projection);
+    stale.entries[0].unblockCondition = 'readiness-recovery: ...';
+    assert.throws(
+      () => assertVerificationAccountingIntegrity(stale),
+      /DEVELOPMENT_VERIFICATION_ACCOUNTING_TERMINAL_UNBLOCK_STALE/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The REAL settlement kernel seam records the classified terminal facts
+// (Elite-6 readiness-failure shape -> terminal-unknown)
+// ---------------------------------------------------------------------------
+
+/** Seed the Elite-6 durable shape: a FAILED local-readiness receipt whose
+ *  evidence carries the substrate-precondition diagnostic (the pre-ADR-089
+ *  evidence record a continuation still reads from the DB). */
+function seedFailedSubstrateReadiness(db, processRunId) {
+  const workplaceRef = `workplace/${processRunId}/development-readiness-certification/primary`;
+  const candidateSetRef = `candidate-set/${processRunId}/readiness/author`;
+  const manifest = {
+    schemaVersion: 'factory.development-readiness-manifest.v1',
+    sourceCandidate: { schema: 'factory.integrated-source-candidate.v1', ref: 'x', hash: CANDIDATE_HASH },
+    targets: [{ key: 'primary', readiness: {} }],
+  };
+  db.prepare(`INSERT INTO factory_workplaces VALUES (?,?,?,?,?)`)
+    .run(workplaceRef, processRunId, 'development-readiness-certification', 'terminal', 'failed');
+  db.prepare(`INSERT INTO factory_candidate_sets (candidate_set_ref,workplace_ref,role)
+              VALUES (?,?,?)`).run(candidateSetRef, workplaceRef, 'author');
+  db.prepare(`INSERT INTO factory_candidate_set_members VALUES (?,?,?)`)
+    .run(candidateSetRef, 'factory.development-readiness-manifest.v1', 'managed-node-submission:601');
+  db.prepare(`INSERT INTO factory_managed_node_submissions
+              (id,process_run_id,task_id,execution_id,payload_snapshot,content_hash)
+              VALUES (?,?,?,?,?,?)`)
+    .run(601, processRunId, 400 + processRunId, 'exec-601',
+      JSON.stringify(manifest), sha256Hex(manifest));
+  db.prepare(`INSERT INTO factory_check_receipts VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(
+      `check-receipt:substrate-${processRunId}`,
+      `gate-run/${candidateSetRef}`, candidateSetRef,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
+      LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+      'failed', sha256Hex({ r: processRunId }),
+      JSON.stringify([encodeCheckDiagnostic({
+        code: 'LOCAL_RUNNABILITY_DOCKER_UNAVAILABLE',
+        message: 'the docker daemon is not reachable (daemon down, CLI absent)',
+      })]),
+    );
+}
+
+function makeCertificateRepo() {
+  let next = 1;
+  const rows = new Map();
+  return {
+    issue(command) {
+      const existing = [...rows.values()].find(row => row.certificateHash === command.certificateHash);
+      if (existing) return { record: existing, replayed: true };
+      const record = {
+        id: next++,
+        processRunId: command.processRunId,
+        certificateHash: command.certificateHash,
+        payload: command.payload,
+      };
+      rows.set(record.id, record);
+      return { record, replayed: false };
+    },
+  };
+}
+
+test('settlement kernel seam: the REAL settle handler records terminal-unknown for the Elite-6 readiness shape', () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 37);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 37, developmentCase, graph });
+    seedFailedSubstrateReadiness(db, 37);
+
+    const handlers = createDevelopmentKernelHandlers({
+      plannerSubmissions: { readLatestForNode: () => null, readLatestForTask: () => null },
+      ledger: { listPresentations: () => [] },
+      graph: { readArtifactsByIds: () => [], readTracesByIds: () => [] },
+      taskGraph: store,
+      settlementState: store,
+      outputRepository: {
+        persist: () => { throw new Error('not reached'); },
+        readByProcessRun: () => null,
+      },
+      taskGraphPolicy: { validate: () => ({ valid: true, reasonCodes: [], errors: [] }) },
+      settlementPolicy: new ReferenceDevelopmentSettlementPolicy(),
+      certificateRepository: makeCertificateRepo(),
+    });
+    const settle = handlers['development-settlement-policy'];
+    assert.ok(settle, 'the settlement kernel handler is installed');
+    const result = settle({
+      projectId: PROJECT_ID,
+      epicId: EPIC_ID,
+      processRunId: 37,
+      node: { id: 'settle-development' },
+      input: developmentCase,
+      frame: {
+        runInput: developmentCase,
+        productions: {
+          'resolve-task-graph': {
+            bindings: { resolutionStatus: 'valid' },
+          },
+        },
+      },
+      heartbeat: () => {},
+      initiatedBy: 'operator',
+    });
+    assert.equal(result.event, 'blocked');
+
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 37 });
+    assert.ok(projection);
+    assert.equal(projection.terminalRouteRecorded, true);
+    assert.equal(projection.summary.terminalUnknown, 2,
+      'the Elite-6 machine fault is accounted as environment uncertainty, not product failure');
+    for (const entry of projection.entries) {
+      assert.equal(entry.state, 'terminal-unknown');
+      assert.equal(entry.discharged, false);
+      assert.match(entry.terminalProvenanceRef, /^development-settlement:37:[0-9a-f]{64}$/,
+        'provenance is the exact settlement certificate');
+      assert.ok(entry.terminalReasonCodes.includes('environment-uncertainty-not-product-failure'));
+    }
+    assertVerificationAccountingIntegrity(projection);
+
+    // Re-driving the same settlement (crash-resume replay) appends nothing new.
+    settle({
+      projectId: PROJECT_ID, epicId: EPIC_ID, processRunId: 37,
+      node: { id: 'settle-development' }, input: developmentCase,
+      frame: {
+        runInput: developmentCase,
+        productions: { 'resolve-task-graph': { bindings: { resolutionStatus: 'valid' } } },
+      },
+      heartbeat: () => {}, initiatedBy: 'operator',
+    });
+    const terminalEvents = readDevelopmentVerificationLedgerEvents(db, 37)
+      .filter(e => e.entryState === 'terminal-unknown');
+    assert.equal(terminalEvents.length, 2, 'terminal facts are idempotent per settlement certificate');
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The tracker endpoint projection is render-guarded (never fabricates
+// executed verification)
+// ---------------------------------------------------------------------------
+
+test('tracker verification-accounting endpoint publishes only render-guarded truthful rows', async () => {
+  const db = makeDb();
+  try {
+    insertProcessRun(db, 38);
+    const { store } = makeStore(db);
+    const developmentCase = makeDevelopmentCase();
+    const graph = makeGraph(developmentCase);
+    store.materializeValidatedTaskGraph({ processRunId: 38, developmentCase, graph });
+    recordVerificationTerminalRoute(db, {
+      processRunId: 38, route: 'unknown',
+      reasonCodes: ['environment-uncertainty-not-product-failure'],
+      provenanceRef: 'development-settlement:38:u',
+    });
+
+    const { createVerificationAccountingApi } = await import(
+      '../../../tracker-view/verification-accounting-endpoints.mjs'
+    );
+    const api = createVerificationAccountingApi({
+      withDb: fn => fn(db),
+      respondJson: (res, code, obj) => {
+        res.statusCode = code;
+        res.body = obj;
+      },
+    });
+    const res = { statusCode: 0, body: null };
+    await api.handleVerificationAccounting(
+      {},
+      res,
+      new URL('http://localhost/api/development/verification-accounting?epic_id=' + EPIC_ID),
+    );
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.runs.length, 1);
+    const run = res.body.runs[0];
+    assert.equal(run.processRunId, 38);
+    assert.equal(run.terminalRouteRecorded, true);
+    for (const entry of run.entries) {
+      assert.equal(entry.state, 'terminal-unknown');
+      assert.equal(entry.discharged, false,
+        'the board surface can never fabricate executed/discharged verification');
+    }
+
+    // Bad input fails typed; an unknown epic is an honest empty projection.
+    const bad = { statusCode: 0, body: null };
+    await api.handleVerificationAccounting(
+      {}, bad, new URL('http://localhost/api/development/verification-accounting'),
+    );
+    assert.equal(bad.statusCode, 400);
+    const empty = { statusCode: 0, body: null };
+    await api.handleVerificationAccounting(
+      {}, empty, new URL('http://localhost/api/development/verification-accounting?epic_id=999'),
+    );
+    assert.equal(empty.statusCode, 200);
+    assert.deepEqual(empty.body.runs, []);
+  } finally {
+    db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// v1 -> v2 ledger migration: pre-terminal-repair tables keep every recorded
+// fact verbatim and gain the terminal-route columns + append-only triggers
+// ---------------------------------------------------------------------------
+
+test('a pre-terminal-repair (v1) ledger table migrates preserving every append-only fact', () => {
+  const db = makeDb();
+  try {
+    // Establish the current schema first, then rebuild the exact v1 shape
+    // (no terminal columns, four-state CHECK) as it exists in pre-repair DBs.
+    makeStore(db);
+    insertProcessRun(db, 39);
+    db.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_update`);
+    db.exec(`DROP TRIGGER trg_factory_development_verification_ledger_no_delete`);
+    db.exec(`DROP TABLE factory_development_verification_ledger`);
+    db.exec(`
+      CREATE TABLE factory_development_verification_ledger (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id        INTEGER NOT NULL,
+        project_id            INTEGER NOT NULL,
+        epic_id               INTEGER NOT NULL,
+        graph_hash            TEXT NOT NULL,
+        criterion_key         TEXT NOT NULL,
+        verification_item_key TEXT NOT NULL,
+        required              INTEGER NOT NULL,
+        criticality           TEXT,
+        entry_state           TEXT NOT NULL
+                              CHECK (entry_state IN ('proposed','pending','executed','waived')),
+        outcome               TEXT,
+        candidate_hash        TEXT,
+        receipt_ref           TEXT,
+        receipt_digest        TEXT,
+        waiver_operator       TEXT,
+        waiver_reason         TEXT,
+        waiver_provenance_ref TEXT,
+        proposed_from_ref     TEXT,
+        recorded_at           TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+    db.prepare(`INSERT INTO factory_development_verification_ledger
+                 (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+                  verification_item_key,required,entry_state)
+               VALUES (?,?,?,?,?,?,?,?)`)
+      .run(39, PROJECT_ID, EPIC_ID, 'legacy-graph', '14:AC-1', 'verify-ac-1', 1, 'proposed');
+    db.prepare(`INSERT INTO factory_development_verification_ledger
+                 (process_run_id,project_id,epic_id,graph_hash,criterion_key,
+                  verification_item_key,required,entry_state)
+               VALUES (?,?,?,?,?,?,?,?)`)
+      .run(39, PROJECT_ID, EPIC_ID, 'legacy-graph', '14:AC-1', 'verify-ac-1', 1, 'pending');
+
+    // Imported at the top of this file alongside the other ledger functions.
+    ensureDevelopmentVerificationLedgerSchema(db);
+    // Idempotent second ensure is a no-op.
+    ensureDevelopmentVerificationLedgerSchema(db);
+
+    const events = readDevelopmentVerificationLedgerEvents(db, 39);
+    assert.equal(events.length, 2, 'every recorded fact is preserved verbatim');
+    assert.deepEqual(events.map(e => e.entryState), ['proposed', 'pending']);
+
+    // The migrated table accepts terminal facts and keeps append-only discipline.
+    recordVerificationTerminalRoute(db, {
+      processRunId: 39, route: 'blocked', reasonCodes: ['implementation-incomplete'],
+      provenanceRef: 'development-settlement:39:blocked',
+    });
+    const projection = projectDevelopmentVerificationAccounting(db, { processRunId: 39 });
+    assert.equal(projection.entries[0].state, 'terminal-blocked');
+    assert.equal(projection.entries[0].discharged, false);
+    assert.throws(
+      () => db.prepare(`UPDATE factory_development_verification_ledger SET entry_state='waived'`).run(),
+      /DEVELOPMENT_VERIFICATION_LEDGER_APPEND_ONLY/,
+    );
+    assert.throws(
+      () => db.prepare(`DELETE FROM factory_development_verification_ledger`).run(),
+      /DEVELOPMENT_VERIFICATION_LEDGER_DELETE_FORBIDDEN/,
     );
   } finally {
     db.close();

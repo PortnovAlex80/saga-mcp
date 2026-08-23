@@ -50,9 +50,11 @@ import {
   hashIntegratedCandidate,
   hashIntegratedSourceCandidate,
 } from '../domain/development-settlement-policy.js';
+import type { VerificationTerminalRouteKind } from '../domain/verification-accounting.js';
 import {
   openVerificationLedgerAtGraphMaterialization,
   recordVerificationExecuted,
+  recordVerificationTerminalRoute,
   ensureDevelopmentVerificationLedgerSchema,
 } from './development-verification-ledger.js';
 import {
@@ -540,6 +542,24 @@ export class SqliteDevelopmentModuleStore implements
       openHumanGateIds,
       localReadinessReceipt,
     };
+  }
+
+  // ----- CC-GAP-8 terminal accounting ----------------------------------
+
+  /**
+   * Append terminal-route facts for every still-unexecuted criterion-key
+   * obligation of this run, with the settlement certificate as provenance.
+   * Delegates to the module-local append-only ledger; never a discharge and
+   * never a poison for a later executed/waived append (latest event wins).
+   */
+  recordVerificationTerminalRoute(input: {
+    processRunId: number;
+    route: VerificationTerminalRouteKind;
+    reasonCodes: readonly string[];
+    provenanceRef: string;
+    attributedTo?: readonly string[];
+  }): void {
+    recordVerificationTerminalRoute(this.db, input);
   }
 
   /**

@@ -74,9 +74,15 @@ const GROUPS = {
     note: 'C5 carry-forward adversarial matrix + production-cell transitions',
   },
   'process-modules': {
-    globs: ['tests/process-modules/*.test.mjs'],
+    globs: [
+      'tests/process-modules/*.test.mjs',
+      // CC-GAP-8: the criterion-key verification-accounting ledger suite
+      // (terminal-route facts, no-poison, blocking mutations) is a BLOCKING
+      // development-module acceptance proof — not blanket-`npm test` material.
+      'tests/modules/development/verification-ledger.test.mjs',
+    ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

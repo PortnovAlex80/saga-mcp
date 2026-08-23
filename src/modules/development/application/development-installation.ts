@@ -50,6 +50,10 @@ import {
   hashVerifiedIntegrationBundle,
   type DevelopmentSettlementResult,
 } from '../domain/development-settlement-policy.js';
+import {
+  classifyVerificationTerminalRoute,
+} from '../domain/verification-accounting.js';
+import { decodeCheckDiagnostic } from '../../../process-modules/domain/workplace/check-diagnostic.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../../process-modules/modules/development/development-process-module.js';
 import {
   buildCanonicalDevelopmentTaskGraph,
@@ -567,6 +571,17 @@ function developmentSettlementProduction(
   };
   const certificateHash = sha256Hex(certificatePayload);
 
+  // CC-GAP-8 terminal accounting: the settlement kernel just decided a
+  // TERMINAL module completion (every development outcome is terminal). Any
+  // criterion-key obligation still unexecuted gets an explicit terminal
+  // fact with this certificate as provenance — classified so environment
+  // uncertainty (substrate/readiness) is never conflated with product
+  // failure, human-required routes are attributed to their exact open
+  // gates, and nothing is discharged. Latest event still wins: a later
+  // executed/waived append (same-run recovery) supersedes the terminal fact.
+  recordTerminalVerificationRoute(deps, ctx, input, settled,
+    `development-settlement:${ctx.processRunId}:${certificateHash}`);
+
   // Uncle Bob Wave 4 — the settlement kernel is now the AUTHORITY for its own
   // certificate. Previously the generic-flow-executor's magic-bindings branch
   // called certificateRepo.issue on the kernel's behalf at settlement time
@@ -619,6 +634,46 @@ function developmentSettlementProduction(
     // declared outcome is terminal).
     completion: buildDevelopmentModuleCompletion(settled.decision, certificateRef),
   };
+}
+
+/**
+ * CC-GAP-8 terminal accounting seam: classify WHY the terminal settlement
+ * closed the run without executing the still-unexecuted obligations, then
+ * append the classified terminal facts with the settlement certificate as
+ * provenance. The classification reads only durable settlement-input facts
+ * (open human gates, the readiness receipt and its decodable diagnostics)
+ * and the settlement decision/reason codes — never prose. Fail-closed: a
+ * recorder error fails settlement (an unrecorded terminal route is exactly
+ * the unexplained-pending defect this closes).
+ */
+function recordTerminalVerificationRoute(
+  deps: DevelopmentModuleInstallationDependencies,
+  ctx: KernelHandlerContext,
+  input: DevelopmentSettlementInput,
+  settled: DevelopmentSettlementResult,
+  provenanceRef: string,
+): void {
+  const readiness = input.localReadinessReceipt;
+  const readinessDiagnosticCodes = readiness === null
+    ? []
+    : readiness.evidenceRefs.flatMap(ref => {
+      const diagnostic = decodeCheckDiagnostic(ref);
+      return diagnostic === null ? [] : [diagnostic.code];
+    });
+  const classified = classifyVerificationTerminalRoute({
+    decision: settled.decision,
+    reasonCodes: settled.reasonCodes,
+    openHumanGateIds: input.openHumanGateIds,
+    readinessOutcome: readiness === null ? null : readiness.outcome,
+    readinessDiagnosticCodes,
+  });
+  deps.settlementState.recordVerificationTerminalRoute({
+    processRunId: ctx.processRunId,
+    route: classified.route,
+    reasonCodes: classified.reasonCodes,
+    provenanceRef,
+    attributedTo: classified.attributedTo,
+  });
 }
 
 function developmentSettlementFailure(
@@ -687,6 +742,18 @@ function developmentSettlementFailure(
     ref: `certificate:${certResult.record.id}`,
     digest: certResult.record.certificateHash,
   };
+  // CC-GAP-8 terminal accounting on the exception path: the run terminates
+  // at settlement with an infrastructure error — still-unexecuted
+  // obligations get the explicit terminal-blocked fact with this failure
+  // certificate as provenance (never a bare pending row, never a
+  // discharge). No settlement input was built, so there is no human-gate or
+  // readiness context to classify from.
+  deps.settlementState.recordVerificationTerminalRoute({
+    processRunId: ctx.processRunId,
+    route: 'blocked',
+    reasonCodes: ['settlement-infrastructure-error'],
+    provenanceRef: `development-settlement:${ctx.processRunId}:${certificateHash}`,
+  });
   return {
     event: 'failed',
     production: {

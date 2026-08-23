@@ -499,6 +499,10 @@ export function createBoardRenderApi({
         <div class="bp-title">Pipeline</div>
         <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
       </div>
+      <details class="board-verification-accounting" id="verification-accounting-block">
+        <summary>Verification accounting (CC-GAP-8 criterion-key ledger) — <span id="vac-summary">…</span></summary>
+        <div id="verification-accounting"><div class="worker-empty">выбери эпик</div></div>
+      </details>
       <div class="episode-progress-bar">${episodeProgress}</div>
       <details class="board-ops">
         <summary>Repository and episode operations</summary>
@@ -1044,13 +1048,89 @@ export function createBoardRenderApi({
         epicSelect.addEventListener('change', () => {
           window.__sagaEpicId = Number(epicSelect.value) || null;
           fetchEngineStatus();
+          fetchVerificationAccounting();
           // Remount the lifecycle controller for the newly-selected epic. If the
-          // module is still loading or absent, this is a safe no-op (mount is a
+          // module is still loading or absent, this is a safe no-op (mount is
+          // idempotent per mount.js).
           if (window.__lifecyclePipeline) {
             window.__lifecyclePipeline.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
           }
         });
       }
+      // CC-GAP-8: truthful verification accounting projection. The endpoint
+      // publishes ONLY render-guarded ledger rows; this renderer displays the
+      // state strings EXACTLY as the ledger holds them — it never derives,
+      // upgrades or fabricates a verdict (no executed/discharged rendering
+      // unless the ledger entry is literally discharged).
+      function vacStateBadge(entry) {
+        const styles = {
+          'executed': entry.outcome === 'passed' ? '#3fb950' : '#f85149',
+          'pending': '#f39c12',
+          'proposed': '#f39c12',
+          'terminal-unknown': '#58a6ff',
+          'terminal-blocked': '#e67e22',
+          'terminal-human-required': '#a371f7',
+          'waived': '#3fb950',
+          'legacy-unaccounted': '#8b949e',
+        };
+        const color = styles[entry.state] || '#8b949e';
+        let label = entry.state;
+        if (entry.state === 'executed') label += '/' + (entry.outcome || '?');
+        const title = entry.state === 'terminal-unknown'
+          ? 'environment/readiness uncertainty — the product was never exercised; NOT a product failure'
+          : entry.state === 'terminal-human-required'
+            ? 'waiting on an explicit human decision: ' + (entry.terminalAttributedTo || []).join(', ')
+            : entry.state;
+        return '<span class="task-badge" style="color:' + color + '" title="' + esc(title) + '">' + esc(label) + '</span>'
+          + (entry.discharged ? ' <span class="task-badge" style="color:#3fb950" title="exact passed receipt or operator-attributed waiver">✓ discharged</span>' : '');
+      }
+      async function fetchVerificationAccounting() {
+        const block = document.getElementById('verification-accounting-block');
+        const container = document.getElementById('verification-accounting');
+        const summaryEl = document.getElementById('vac-summary');
+        if (!block || !container) return;
+        const epicId = window.__sagaEpicId;
+        if (!epicId) {
+          container.innerHTML = '<div class="worker-empty">выбери эпик</div>';
+          if (summaryEl) summaryEl.textContent = 'нет эпика';
+          return;
+        }
+        try {
+          const r = await fetch('/api/development/verification-accounting?epic_id=' + epicId);
+          const data = await r.json();
+          if (!r.ok || !data.ok) throw new Error(data.error || 'unavailable');
+          if (!Array.isArray(data.runs) || data.runs.length === 0) {
+            container.innerHTML = '<div class="worker-empty">нет учтённых обязательств верификации</div>';
+            if (summaryEl) summaryEl.textContent = 'нет данных';
+            return;
+          }
+          const html = data.runs.map(run => {
+            const rows = (run.entries || []).map(e => '<tr>'
+              + '<td class="muted small">' + esc(e.criterionKey) + '</td>'
+              + '<td>' + vacStateBadge(e) + '</td>'
+              + '<td class="muted small">' + esc((e.terminalReasonCodes || []).join(', ') || (e.gatedBy ? 'deferred by ' + e.gatedBy : '—')) + '</td>'
+              + '<td class="muted small" title="' + esc(e.terminalProvenanceRef || '') + '">' + esc(e.terminalProvenanceRef ? e.terminalProvenanceRef.slice(0, 48) : (e.unblockCondition ? 'unblock: readiness-recovery' : '—')) + '</td>'
+              + '</tr>').join('');
+            const s = run.summary || {};
+            const summaryLine = 'run #' + run.processRunId
+              + ' · open ' + (s.open ?? '?') + '/' + (s.total ?? '?')
+              + ' · discharged ' + (s.discharged ?? '?')
+              + (run.accountingType === 'legacy-unaccounted' ? ' · legacy-unaccounted (pre-ledger, frozen)' : '');
+            return '<div style="margin-bottom:10px"><div class="muted small" style="margin:2px 0">' + esc(summaryLine) + '</div>'
+              + '<table class="registry" style="font-size:11px"><thead><tr><th>criterion</th><th>state</th><th>reason</th><th>provenance</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+          }).join('');
+          container.innerHTML = html;
+          const first = data.runs[data.runs.length - 1];
+          const s = first && first.summary ? first.summary : {};
+          if (summaryEl) summaryEl.textContent = (data.runs.length) + ' run(s)'
+            + ' · open ' + (s.open ?? '?') + '/' + (s.total ?? '?')
+            + ' · discharged ' + (s.discharged ?? '?');
+        } catch (e) {
+          container.innerHTML = '<div class="worker-empty">учёт верификации недоступен: ' + esc(String(e && e.message || e)) + '</div>';
+          if (summaryEl) summaryEl.textContent = 'ошибка';
+        }
+      }
+      fetchVerificationAccounting();
       // Concurrency selector — on change, restart engine with new value.
       // Engine state (tasks, artifacts, episode stage) is preserved across
       // restart because everything lives in the shared SQLite DB.

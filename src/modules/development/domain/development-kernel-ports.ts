@@ -183,13 +183,30 @@ export interface DevelopmentSettlementStatePort {
    * settlement; no epic-wide "latest" lookup is allowed.
    *
    * The implementation reconstructs the implementation workset, integrated
-   * release candidate and acceptance-verification workset as INNER data of the
-   * DevelopmentSettlementInput from sealed CandidateSets.
+   * release candidate and acceptance-verification workset as INNER data of
+   * the DevelopmentSettlementInput from sealed CandidateSets.
    */
   buildSettlementInput(input: {
     processRunId: number;
     developmentCase: DevelopmentCase;
   }): DevelopmentSettlementInput;
+
+  /**
+   * CC-GAP-8 terminal accounting: append terminal-route facts (with
+   * settlement provenance) for every still-unexecuted criterion-key
+   * obligation of this run. Called by the settlement kernel when the module
+   * completion is terminal — a non-verified settlement, or a verified one
+   * that left non-required obligations unexecuted. Never a discharge; never
+   * poisons a later executed/waived append; no-op for legacy (pre-ledger)
+   * runs and runs with nothing materialized.
+   */
+  recordVerificationTerminalRoute(input: {
+    processRunId: number;
+    route: import('./verification-accounting.js').VerificationTerminalRouteKind;
+    reasonCodes: readonly string[];
+    provenanceRef: string;
+    attributedTo?: readonly string[];
+  }): void;
 
 }
 
