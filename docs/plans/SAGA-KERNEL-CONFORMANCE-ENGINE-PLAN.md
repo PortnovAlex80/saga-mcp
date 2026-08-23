@@ -321,8 +321,14 @@ Required generic properties:
       or transition due.
 - [ ] Idea authority conservation: every non-empty register line is covered,
       dispositioned, or typed-waived; open-question entries reach resolved,
-      deferred (reason, owner, and unblock criterion), or a loud per-entry
-      operator-attributed waiver; and every qualitative/experience entry
+      deferred (reason, owner, and unblock criterion) — on v2 registers the
+      waiver state is TYPED UNAVAILABLE (2026-08-23 waiver-authority
+      decision, LANDED at `906edf84`: every v2 `waived` record, any shape
+      including a perfectly shaped operator-attribution fake, is the
+      `WAIVER_UNAVAILABLE` typed red, never enters `waivedIds`, and never
+      subtracts, so the v2 required set is the FULL register —
+      register ⊆ covered; the v1 frozen reasoned-waiver semantics remain);
+      and every qualitative/experience entry
       carries a measurable interpretation or typed deferral;
       runnable-local synthesis and ordered-smoke obligations are injected
       deterministically at Discovery settlement — never inferred from prose;
@@ -330,6 +336,26 @@ Required generic properties:
       every new v2 Factory Start carries non-null typed authority (a built
       register or an explicit typed no-obligations attestation), and
       continuations inherit the original register ref (ADR-090).
+- [ ] Requirements-to-result translation conservation (Space E maintenance,
+      2026-08-23, LANDED at `905f5940` with the constraint-loss matrix
+      13/13): three domain-free seams of translating requirements into
+      plans/tasks/results for ANY product are honestly recorded as OPEN
+      findings in `tests/matrix/e-constraint-loss.test.mjs` (they are not
+      the Elite browser-game special case and are not solved by CC-U1,
+      which owns planning-graph completeness — these seams live at other
+      translation boundaries): (E-F2) the reverse orphan detector for
+      plain FR/NFR requirements exists but production never requests
+      reconciliation (`findContractGap({reconciliation:true})` is passed
+      by no wired call site; RULE artifacts are excluded from the orphan
+      check); (E-F3) the implementation result does not mechanically
+      bind/echo the card's acceptance-criterion and covered constraint
+      set, so a criterion-blind first attempt can pass the implementation
+      gate; (E-F4, split residual) file-claim narrowing is caught by the
+      landed claim-monotonicity ratchet, but criterion-level silent
+      surrender after a scope-fence rejection, a free-text `droppedFiles`
+      reason without criterion authority, and the criterion-blind first
+      attempt remain open. Fixes extend the existing gates and result
+      contracts — never a parallel vocabulary.
 
 ## 9. Generic scenario corpus
 

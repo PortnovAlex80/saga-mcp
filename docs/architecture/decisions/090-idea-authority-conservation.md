@@ -16,15 +16,22 @@
   (§7A, packets CC-IC-1..4, serialized after the CC-GAP-6 seam, which
   landed in integration at commit `50824c6a`; the v1 read-back verifier
   source repair is landed there with round-trip and digest-tamper tests —
-  the id-reorder and snake_case-at-verify reds remain explicit CC-IC-1
-  base-verification work; the proof-subset landing `3be7393d` already
+  the id-reorder and snake_case-at-verify reds are landed and green by
+  the CC-IC-1 base-verification work; the proof-subset landing `3be7393d` already
   corrected the acceptance-contract token direction (v2.1.0
   uncovered-residue form) and the SRS §D2↔AC residues — verify-only for
   CC-IC-4, which adds only the SRS register-coverage residue constraint,
-  never a bare member/of flip; the CC-IC v2 vocabulary work remains open —
+  never a bare member/of flip; CC-IC-1 LANDED (integrated as
+  `4c67f1d1` + `1f397348`) and CC-IC-2 LANDED (integrated as
+  `906edf84`, fail-closed per the 2026-08-23 waiver-authority decision —
+  v2 waivers are typed-unavailable: every v2 `waived` record is the
+  `WAIVER_UNAVAILABLE` red, never enters `waivedIds`, never subtracts;
+  on v2 the required set is the FULL register; the v1 frozen
+  reasoned-waiver semantics remain); CC-IC-3 and CC-IC-4 remain open —
   CC-IC is a mandatory overall qualification dependency — CC-10B, CC-80,
   and overall K qualification stay RED until CC-IC is implemented and
-  proven, while the frozen CC-00C scope stays CC-GAP-6..10)
+  proven, while the frozen CC-00C scope stays CC-GAP-6..10; each landing
+  is branch truth only — CC-81/CC-82 re-verify every packet)
 
 ## Context
 
@@ -254,6 +261,14 @@ Assumption: Option B was implemented and failed six months later.
     waiver is a typed red (a single entry or all open questions in one
     act alike; no undefined mass-waiver concept is needed — an attempted
     mass author waiver is simply that red repeated per entry).
+    [SUPERSEDED ON V2, 2026-08-23: the trusted-operator-attributed
+    waiver channel described here does not exist — v2 brief metadata is
+    worker-authored, so the CC-IC-2 landing (decision journal
+    `2026-08-23-cc-ic2-waiver-authority.md`, Option A) makes the v2
+    waiver state TYPED UNAVAILABLE (`WAIVER_UNAVAILABLE`); nothing
+    subtracts on v2 and the required set is the full register. The v1
+    frozen waiver semantics are untouched. See Decision 5's
+    implementation amendment.]
 4. The archaeologist quietly became a gate — someone wired its report to
    planning admission. Likelihood: medium. Detection: a blocking mutation
    proves an archaeologist report cannot alter the register digest, the
@@ -295,6 +310,12 @@ advisory-channel noise; no silent-green failure mode is introduced.
    unblocked-or-waived explicitly (waivers require trusted operator
    attribution; any author-attributed waiver, single or en masse, is
    red — no undefined mass-waiver concept exists).
+   [SUPERSEDED ON V2, 2026-08-23: on v2 registers there is no waiver
+   path at all until an operator-owned channel lands — every v2
+   `waived` record is the `WAIVER_UNAVAILABLE` typed red and nothing
+   subtracts; see Decision 5's implementation amendment and the
+   2026-08-23 waiver-authority decision journal. The deferral path
+   described here stands unchanged.]
 4. **"RULE-as-mechanics-spec confuses policy artifacts with algorithm
    specs."** RULE is the existing business-rule artifact and already binds
    designs through `implements_spec`/`verified_by` traces; SPEC remains the
@@ -423,52 +444,56 @@ Choose Option B. Normatively:
    browser/canvas/any frontend specifics arrive only through
    workshop-declared data (Conveyor Mental Model §3; master plan §4).
 5. **Open questions are obligations with owners.** Settlement drafts
-    kind `open-question` entries 1:1 and positionally from the proposal
-     `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
-     must reach, through the existing disposition network, either `resolved`
-     (with evidence) or `deferred` (with non-empty reason, owner, and
-     unblock criterion) or `waived` — every waiver on a new-v2 entry
-     requires TRUSTED OPERATOR ATTRIBUTION (a recorded operator identity on
-     the per-entry waiver; an author or model may at most propose one), and
-     ANY author-attributed waiver — a single entry or many entries in one
-     act — is a typed red; no separate "mass waiver" category is defined
-     beside the per-entry rule (an attempted multi-entry author waiver is
-     simply a set of red per-entry waivers). Undisposed open questions are a
-     typed red
-    (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
-    strings. Dispositions are DIGEST-PINNED to the register they were
-    authored against: the disposition freeze carries the `registerDigest` it
-    disposes, and a disposition set authored against one register digest
-    applied to another is a typed red — positional `ord-c-NNN` dispositions
-    are never reusable across register revisions (today
-    `constraint_dispositions` is keyed positionally with no register-digest
-    binding; closing that gap is CC-IC-2, mutation m2d). And the arithmetic
-     stays honest: `resolved` and `deferred` are disposition STATES, not
-     coverage discharges — only the trusted-operator-attributed typed
-     waiver subtracts an entry from the required set, so a resolved or
-     deferred open-question entry REMAINS in (register minus typed waivers
-     ⊆ covered) until it is covered or waived by the operator; resolution
-     and deferral never become silent waivers.
-     IMPLEMENTATION AMENDMENT (2026-08-23, CC-IC-2 — decision journal
-     `docs/architecture/decision-journal/2026-08-23-cc-ic2-waiver-authority.md`,
-     Option A): the reserved v2 waiver capability is INTENTIONALLY
-     UNAVAILABLE until a trusted channel lands. V2 brief metadata is
-     worker-authored, so ANY attribution record carried inside it —
-     including a perfectly shaped operator-identity record — is
-     worker-authored by construction and cannot carry operator authority;
-     no operator-owned channel (command / append-only ledger) exists yet.
-     Accordingly CC-IC-2 lands fail-closed: the v2 grammar is exactly
-     resolved+evidenceRef | deferred+reason+owner+unblockCriterion on kind
-     `open-question` and `accepted` on every other kind, and EVERY v2
-     `waived` record — whatever its shape — is the `WAIVER_UNAVAILABLE`
-     typed red at the A1 gate and the settlement freeze, never enters
-     `waivedIds`, and never subtracts from the coverage reverse diff (so on
-     v2 the required set is the full register: register ⊆ covered). Workers
-     may propose waivers in prose only; proposals never subtract
-     obligations. Re-opening `waived` for v2 requires an operator-owned
-     command/append-only ledger channel through a new decision record —
-     never a widening of the brief-metadata grammar. The v1 frozen waiver
-     semantics are untouched.
+   kind `open-question` entries 1:1 and positionally from the proposal
+   `unknowns` (kernel-side, no guessing, no LM). Every open-question entry
+   must reach, through the existing disposition network, either `resolved`
+   (with evidence) or `deferred` (with non-empty reason, owner, and
+   unblock criterion). The `waived` state is NOT a lawful v2 disposition:
+   as originally accepted this decision reserved it for TRUSTED OPERATOR
+   ATTRIBUTION (a recorded operator identity on the per-entry waiver; an
+   author or model may at most propose one), and ANY author-attributed
+   waiver — a single entry or many entries in one act — was already a
+   typed red; the implementation amendment below supersedes even that
+   reserved channel on v2 (there is no lawful v2 waiver at all — every
+   v2 `waived` record is the `WAIVER_UNAVAILABLE` typed red). Undisposed
+   open questions are a typed red
+   (`FORMALIZATION_CONSTRAINT_UNDISPOSED` per-ID guidance), never opaque
+   strings. Dispositions are DIGEST-PINNED to the register they were
+   authored against: the disposition freeze carries the `registerDigest` it
+   disposes, and a disposition set authored against one register digest
+   applied to another is a typed red — positional `ord-c-NNN` dispositions
+   are never reusable across register revisions (today
+   `constraint_dispositions` is keyed positionally with no register-digest
+   binding; closing that gap is CC-IC-2, mutation m2d — LANDED at
+   `906edf84`). And the arithmetic stays honest: `resolved` and `deferred`
+   are disposition STATES, not coverage discharges — on v2 NOTHING
+   subtracts (the waiver state is typed unavailable per the amendment
+   below, so a resolved or deferred open-question entry REMAINS in the
+   required set — register ⊆ covered — until it is covered); on v1 the
+   frozen reasoned-waiver subtraction remains; resolution and deferral
+   never become silent waivers.
+   IMPLEMENTATION AMENDMENT (2026-08-23, CC-IC-2 — decision journal
+   `docs/architecture/decision-journal/2026-08-23-cc-ic2-waiver-authority.md`,
+   Option A): the reserved v2 waiver capability is INTENTIONALLY
+   UNAVAILABLE until a trusted channel lands. V2 brief metadata is
+   worker-authored, so ANY attribution record carried inside it —
+   including a perfectly shaped operator-identity record — is
+   worker-authored by construction and cannot carry operator authority;
+   no operator-owned channel (command / append-only ledger) exists yet.
+   Accordingly CC-IC-2 lands fail-closed (LANDED: worker source
+   `7429df54` on `cc/CC-IC2-DISPOSITIONS`, integrated as `906edf84`;
+   branch truth only — CC-81/CC-82 re-verify): the v2 grammar is exactly
+   resolved+evidenceRef | deferred+reason+owner+unblockCriterion on kind
+   `open-question` and `accepted` on every other kind, and EVERY v2
+   `waived` record — whatever its shape — is the `WAIVER_UNAVAILABLE`
+   typed red at the A1 gate and the settlement freeze, never enters
+   `waivedIds`, and never subtracts from the coverage reverse diff (so on
+   v2 the required set is the full register: register ⊆ covered). Workers
+   may propose waivers in prose only; proposals never subtract
+   obligations. Re-opening `waived` for v2 requires an operator-owned
+   command/append-only ledger channel through a new decision record —
+   never a widening of the brief-metadata grammar. The v1 frozen waiver
+   semantics are untouched.
  6. **Coverage stays the ADR-088 mechanism.** v2 entries join the same
     kernel-derived `coveredConstraintIds` relay and the same SRS §D2 and
     §2.2 reverse diff (register ids minus union of covered ids minus typed
@@ -631,22 +656,30 @@ Choose Option B. Normatively:
      landing (`50824c6a` repairs the verifier; its host
      `tests/discovery/order-constraint-register.test.mjs` proves
      round-trip identity and digest tamper, while the id-reorder and
-     snake_case-at-verify reds are NOT yet tested there):
-     CC-IC-1 VERIFIES the repaired verifier is present at its base, CLOSES
+     snake_case-at-verify reds were, at that point, not yet tested
+     there):
+     CC-IC-1 VERIFIED the repaired verifier at its base and CLOSED
      the residual id-reorder and snake_case-at-verify verification
-     (explicit base-verification work at that host), and must
-     not duplicate or re-implement it; the proof-subset commit `3be7393d`
-     already landed the acceptance-contract direction repair and the SRS
-     §D2↔AC residues (verify-only for CC-IC-4, which adds only the SRS
-     register-coverage residue constraint); the v2 vocabulary work
-     (mutations m1..m7 and their lettered variants) remains open. It
-     is not a vague parallel implementation program and not a permanently
-     open architecture cycle. CC-IC is NOT required for CC-00C exit (the
-     frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
-     overall qualification dependency: until CC-IC is implemented and
-     proven, the CC-10B blocking group, the CC-80 qualification command,
-     and overall K qualification (CC-81/CC-82) remain RED — the unproven
-     CC-IC set is recorded as an open mandatory dependency, never skipped.
+     (explicit base-verification work at that host) without
+     duplicating or re-implementing it — CC-IC-1 is LANDED (integrated
+     as `4c67f1d1` + `1f397348`; its named-host mutations are landed
+     and were green in the landing session's focused suite, run-record
+     provenance only); CC-IC-2 is LANDED (integrated as `906edf84`;
+     the m2 family including the `WAIVER_UNAVAILABLE` fail-closure m2c
+     and the `registerDigest` pin m2d, with the focused disposition
+     suite 30/30 — run-record provenance only); the proof-subset commit
+     `3be7393d` already landed the acceptance-contract direction repair
+     and the SRS §D2↔AC residues (verify-only for CC-IC-4, which adds
+     only the SRS register-coverage residue constraint); CC-IC-3 and
+     CC-IC-4 and their mutations remain open. Landing is branch truth only —
+     CC-81/CC-82 re-verify every packet. It
+      is not a vague parallel implementation program and not a permanently
+      open architecture cycle. CC-IC is NOT required for CC-00C exit (the
+      frozen CC-00C scope stays CC-GAP-6..10), but it IS a mandatory
+      overall qualification dependency: until CC-IC is implemented and
+      proven, the CC-10B blocking group, the CC-80 qualification command,
+      and overall K qualification (CC-81/CC-82) remain RED — the unproven
+      CC-IC set is recorded as an open mandatory dependency, never skipped.
 
 ### A–G reconciliation (item by item)
 
@@ -654,7 +687,7 @@ Choose Option B. Normatively:
 |---|---|---|
 | A. Epic-as-authority trace gate | new scope-clause coverage gate; residue fails Formalization | Reused, not built: register ids + kernel-derived `coveredConstraintIds` + SRS §D2/§2.2 reverse diff (ADR-088); v2 entries join the same diff — no parallel scope-clause ledger |
 | B. Requirements archaeologist | second model; non-empty output triggers repair | Advisory only, operator-commissioned: a report exists only when the operator commissions an advisory producer with a recorded owner; no standing or automatic producer, no gate; promotion produces a new register revision/digest via Discovery settlement; cannot gate or mutate authority |
-| C. Unknowns are obligations | every Unknown becomes OPEN with an owner; Formalization blocked until resolved or deferred | `open-question` register KIND (the class vocabulary `execution|material|human` stays unchanged) drafted 1:1 from proposal unknowns; disposition `resolved`, or `deferred` (reason, owner, unblock criterion), or `waived` with trusted operator attribution — any author-attributed waiver, single or en masse, is red (no undefined mass-waiver concept) — on the existing network |
+| C. Unknowns are obligations | every Unknown becomes OPEN with an owner; Formalization blocked until resolved or deferred | `open-question` register KIND (the class vocabulary `execution\|material\|human` stays unchanged) drafted 1:1 from proposal unknowns; disposition `resolved`, or `deferred` (reason, owner, unblock criterion), on the existing network. Waiver truth per the 2026-08-23 waiver-authority decision (LANDED at `906edf84`): on v2 every `waived` record — any shape, including a perfectly shaped operator-attribution fake — is the `WAIVER_UNAVAILABLE` typed red; it never enters `waivedIds` and never subtracts, so the v2 required set is the FULL register (re-opening `waived` for v2 requires an operator-owned command/append-only ledger channel through a new decision record). The v1 frozen reasoned-waiver semantics remain |
 | D. Mechanics/dynamics first-class | new mechanics-spec artifact family | Existing RULE artifacts are the mechanics-spec carrier; the kind `mechanics` entry is created at Discovery with NO ref and the typed `mechanicsRef` binding is established at disposition/binding time against the accepted RULE artifact, trace-bound via `implements_spec`/`verified_by`; no new product family |
 | E. Runnable lifecycle auto-requires integration + ordered smoke AC | inferred at Formalization | `runnable-local` frozen lifecycle classification; Discovery settlement deterministically injects whole-product-synthesis + ordered-smoke obligation entries; engine never infers by rereading prose |
 | F. Qualitative adjectives quantified | new measurable-translation requirement | Typed measurability on qualitative/experience (kind `quality`) entries ONLY: measurable interpretation or typed deferral with reason; other entries carry no measurability requirement |
@@ -670,8 +703,11 @@ null), each of five blocking mutations
 turns the blocking group red when reversed — (m1) a proposal unknown absent
 from the register's open-question entries; (m2) an open-question entry
 without a resolved-or-deferred disposition (reason, owner, unblock
-criterion) or a trusted-operator-attributed waiver (any author-attributed
-waiver is itself red); (m3) a mechanics-bearing constraint whose RULE
+criterion) or carrying a waiver (on v2 every `waived` record — any
+shape, including a perfectly shaped operator-attribution fake — is
+itself the `WAIVER_UNAVAILABLE` red: waiver capability is intentionally
+unavailable until an operator-owned channel lands; the v1 frozen
+reasoned-waiver semantics remain); (m3) a mechanics-bearing constraint whose RULE
 binding is removed or
 untrace-bound; (m4) a runnable-local lifecycle
 classification without the injected whole-product-synthesis and
@@ -723,9 +759,12 @@ Negative:
 Neutral / follow-ups:
 
 - deferral/waiver discipline follows ADR-088/089 typed-waiver rules
-  (every new-v2 waiver requires trusted operator attribution; any
-  author-attributed waiver — single or en masse — is red, and no
-  undefined mass-waiver concept exists);
+  (2026-08-23 waiver-authority truth, LANDED at `906edf84`: on v2 the
+  waiver state is typed-unavailable — every v2 `waived` record is the
+  `WAIVER_UNAVAILABLE` red, never enters `waivedIds`, never subtracts,
+  and the v2 required set is the full register; the v1 frozen
+  reasoned-waiver semantics remain; re-opening v2 waivers requires an
+  operator-owned channel through a new decision record);
 - reason-code and token vocabulary above is the contract vocabulary; exact
   string stability is frozen by the CC-IC blocking proofs when they land;
 - the frozen legacy registerless (v1) corpus keeps exactly the current
