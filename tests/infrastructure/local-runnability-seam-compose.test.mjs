@@ -40,6 +40,9 @@ const { decodeSeamRepairIssue } = await import(
 const { decodeCheckDiagnostic } = await import(
   '../../dist/process-modules/domain/workplace/check-diagnostic.js'
 );
+const { HISTORICAL_DIGEST_BY_VERSION } = await import(
+  './local-runnability-provider-history.mjs'
+);
 
 const PROCESS_RUN_ID = 1;
 const PRODUCT_KIND = 'development.integrated-candidate';
@@ -580,7 +583,7 @@ test('provider version bump migrates the 1.5.0 trust row in place (exact authent
        (project_id,name,version,category,trust_basis,determinism,scope,status)
      VALUES(NULL,'factory.local-runnability.v1','1.5.0','deterministic_evidence',
        ?,'full','local-runnability','active')`,
-  ).run('built-in:6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe23626677');
+  ).run(`built-in:${HISTORICAL_DIGEST_BY_VERSION['1.5.0']}`);
   try {
     ensureLocalRunnabilityProviderTrust(db);
     const row = db.prepare(

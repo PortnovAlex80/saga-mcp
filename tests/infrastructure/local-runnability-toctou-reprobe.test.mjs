@@ -79,6 +79,7 @@ import {
   peekDockerAvailabilityCacheForTests,
   resetDockerAvailabilityCache,
 } from '../../dist/infrastructure/verification/docker-readiness-executor.js';
+import { HISTORICAL_DIGEST_BY_VERSION } from './local-runnability-provider-history.mjs';
 import {
   assertRenderedCheckOutcomeTruthful,
   classifyCheckOutcome,
@@ -1113,28 +1114,13 @@ test('BLOCKING MUTATION (f): the provider presents 1.14.0 with the digest fence 
 
 // The AUTHENTIC historical digests of this provider lineage — each version
 // paired with the EXACT `built-in:<digest>` basis it presented when it
-// shipped. Independently recovered from the git history of
-// candidate-check-contracts.ts (every bump's digest object re-computed and
-// cross-checked against the operator's recovery table); the tests hardcode
-// them on purpose — validating the production table against the same table
-// would prove nothing.
-const AUTHENTIC_BASELINES = {
-  '1.0.0': '93b49183279fa1e94d833d8107ef3a894558c6666cad433fd3e1e9659f510dfb',
-  '1.1.0': '19dd6a5c10442e694614a7948c6a4efdbd6ddeb32ccba2720af834e2fa6ff278',
-  '1.2.0': 'fbe609a3855c69f772ea51a6ce4a739a343a84569617a296e703610c474c6200',
-  '1.3.0': '13dd611e36fc1e5041b7364cf4f6d57d3dee5dfe4cd36411a36a4627776407e0',
-  '1.3.1': 'b72ee47d8daa8d3512b8368cfaf4bf5a0fc591f9a3e2084641b0177bf9e64886a',
-  '1.4.0': 'c9a58ea385cde7dec013fc04be7c131df3091ac6ca78eedcacfd08114811a5506',
-  '1.5.0': '6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe23626677',
-  '1.6.0': '52d84078f73d30a61df61e9bdcd46887e627131cee04ccc7c63e2eec8cdd4eef2',
-  '1.7.0': '66a1a118a49b54c0fec8eae152d54f529b852c361ab78af1f29798ea38223dda2',
-  '1.8.0': 'da6e24e63c390efd62005eed27eba8d23f5685f61a1c92c1624f4584ee093cc96',
-  '1.9.0': '0430a19f10201e4ed432757152853c1f9e73004a201fe2bfce9fe492c0bb98881',
-  '1.10.0': '84fd94ebde65e9395a3ab8f875d0408a1303771fabe7f60cce7c26c5a5d000356',
-  '1.11.0': 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc4182263f',
-  '1.12.0': 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a',
-  '1.13.0': 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136',
-};
+// shipped — live in ./local-runnability-provider-history.mjs: the checked,
+// independently reconstructed expected-history vector (provenance: the git
+// commit that introduced each version). The values are NEVER copied from the
+// production baseline table — validating production against its own
+// constants would prove nothing (that circularity is exactly how the
+// 2026-08-23 corrupted-baseline defect went undetected).
+const AUTHENTIC_BASELINES = HISTORICAL_DIGEST_BY_VERSION;
 
 /**
  * Seed one trusted_providers row for the local-runnability provider with a

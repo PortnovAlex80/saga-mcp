@@ -436,9 +436,22 @@ function readPersistedReadinessReceipt(
  * K19 repair after REJECT (blocker 2) — the AUTHENTIC version→built-in
  * digest baseline of this provider lineage: every version the provider ever
  * shipped, paired with the EXACT sha256 provider digest it presented when
- * it shipped. Independently recovered from the git history of
- * candidate-check-contracts.ts (each bump's digest object re-computed) and
- * cross-checked against the operator's recovery table.
+ * it shipped.
+ *
+ * Provenance: each value is the sha256 of the canonical digest object in
+ * src/modules/development/application/candidate-check-contracts.ts AS IT
+ * STOOD AT the git commit that introduced that version (every commit that
+ * ever touched that file bumped the version, so each version has exactly
+ * one authentic lifetime digest). The full introducing-commit map lives in
+ * tests/infrastructure/local-runnability-provider-history.mjs — the checked
+ * expected-history vector this table is conformance-tested against.
+ *
+ * 2026-08-23 digest repair: the values for 1.3.1–1.11.0 had been corrupted
+ * in transcription (one hex character duplicated near the tail, 65 chars —
+ * structurally impossible for sha256). Real databases holding authentic
+ * historical `built-in:` bases were therefore falsely classified as policy
+ * drift. All sixteen values are now exact 64-lowercase-hex digests
+ * re-derived from the introducing commits.
  *
  * A legacy trusted_providers row is migration-eligible ONLY when BOTH the
  * version AND the `built-in:<digest>` trust basis match this table exactly
@@ -454,15 +467,15 @@ const TRUSTED_PROVIDER_BASELINES: Readonly<Record<string, string>> = Object.free
   '1.1.0': '19dd6a5c10442e694614a7948c6a4efdbd6ddeb32ccba2720af834e2fa6ff278',
   '1.2.0': 'fbe609a3855c69f772ea51a6ce4a739a343a84569617a296e703610c474c6200',
   '1.3.0': '13dd611e36fc1e5041b7364cf4f6d57d3dee5dfe4cd36411a36a4627776407e0',
-  '1.3.1': 'b72ee47d8daa8d3512b8368cfaf4bf5a0fc591f9a3e2084641b0177bf9e64886a',
-  '1.4.0': 'c9a58ea385cde7dec013fc04be7c131df3091ac6ca78eedcacfd08114811a5506',
-  '1.5.0': '6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe23626677',
-  '1.6.0': '52d84078f73d30a61df61e9bdcd46887e627131cee04ccc7c63e2eec8cdd4eef2',
-  '1.7.0': '66a1a118a49b54c0fec8eae152d54f529b852c361ab78af1f29798ea38223dda2',
-  '1.8.0': 'da6e24e63c390efd62005eed27eba8d23f5685f61a1c92c1624f4584ee093cc96',
-  '1.9.0': '0430a19f10201e4ed432757152853c1f9e73004a201fe2bfce9fe492c0bb98881',
-  '1.10.0': '84fd94ebde65e9395a3ab8f875d0408a1303771fabe7f60cce7c26c5a5d000356',
-  '1.11.0': 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc4182263f',
+  '1.3.1': 'b72ee47d8daa8d3512b8368cfaf4bf5a0fc591f9a3e2084641b0177bf9e6486a',
+  '1.4.0': 'c9a58ea385cde7dec013fc04be7c131df3091ac6ca78eedcacfd08114811a506',
+  '1.5.0': '6908f8ad55f0599bc14d23b1570668df9015db97f6a26a86a44281bfe2362677',
+  '1.6.0': '52d84078f73d30a61df61e9bdcd46887e627131cee04ccc7c63e2eec8cdd4ef2',
+  '1.7.0': '66a1a118a49b54c0fec8eae152d54f529b852c361ab78af1f29798ea38223da2',
+  '1.8.0': 'da6e24e63c390efd62005eed27eba8d23f5685f61a1c92c1624f4584ee093c96',
+  '1.9.0': '0430a19f10201e4ed432757152853c1f9e73004a201fe2bfce9fe492c0bb9881',
+  '1.10.0': '84fd94ebde65e9395a3ab8f875d0408a1303771fabe7f60cce7c26c5a5d00356',
+  '1.11.0': 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc418263f',
   '1.12.0': 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a',
   '1.13.0': 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136',
 });

@@ -19,6 +19,7 @@ import {
 } from '../../dist/modules/development/domain/development-schemas.js';
 import { decodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import { isDockerAvailableForReadiness } from '../../dist/infrastructure/verification/docker-readiness-executor.js';
+import { HISTORICAL_DIGEST_BY_VERSION } from './local-runnability-provider-history.mjs';
 
 const PROCESS_RUN_ID = 1;
 const PRODUCT_KIND = 'development.integrated-candidate';
@@ -1075,16 +1076,18 @@ test('valid profile without environment.image uses the host substrate (backwards
 
 // ---------------------------------------------------------------------------
 // Trust migration: legacy baselines migrate ONLY on the exact
-// version→built-in-digest pair (K19 exact trust migration). The digests are
-// the authentic historical ones (recovered from the git history of
-// candidate-check-contracts.ts); a forged basis on a known version is
-// policy drift — the exact-pair battery lives in
-// local-runnability-toctou-reprobe.test.mjs (f).
+// version→built-in-digest pair (K19 exact trust migration). The digests come
+// from ./local-runnability-provider-history.mjs — the checked, independently
+// reconstructed expected-history vector (provenance: the git commit that
+// introduced each version); never copied from the production table. A forged
+// basis on a known version is policy drift — the exact-pair battery lives in
+// local-runnability-toctou-reprobe.test.mjs (f) and the full-history
+// conformance battery in local-runnability-trust-history.test.mjs.
 // ---------------------------------------------------------------------------
 
-const AUTHENTIC_1_0_0 = '93b49183279fa1e94d833d8107ef3a894558c6666cad433fd3e1e9659f510dfb';
-const AUTHENTIC_1_1_0 = '19dd6a5c10442e694614a7948c6a4efdbd6ddeb32ccba2720af834e2fa6ff278';
-const AUTHENTIC_1_4_0 = 'c9a58ea385cde7dec013fc04be7c131df3091ac6ca78eedcacfd08114811a5506';
+const AUTHENTIC_1_0_0 = HISTORICAL_DIGEST_BY_VERSION['1.0.0'];
+const AUTHENTIC_1_1_0 = HISTORICAL_DIGEST_BY_VERSION['1.1.0'];
+const AUTHENTIC_1_4_0 = HISTORICAL_DIGEST_BY_VERSION['1.4.0'];
 
 test('trust migration: existing 1.0.0 row with the exact authentic basis is migrated to the current version', () => {
   // A prior run installed the provider at version 1.0.0 with the EXACT
